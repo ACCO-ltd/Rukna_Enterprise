@@ -1901,6 +1901,11 @@ export interface CommercialBillingPackageDocument {
   total: string | null;
   dueDate: string | null;
   outstanding: string | null;
+  /**
+   * The invoice's posting status. Only a POSTED invoice is numbered and issued; anything else is a
+   * draft that still needs review and posting in Accounting — the stage must not read "issued".
+   */
+  postingStatus: ArPostingStatus;
   deliveries: CommercialDeliveryRecord[];
 }
 
@@ -2378,6 +2383,12 @@ export interface CommercialOverviewResponse {
     collected: string | null;
     outstanding: string | null;
     overdue: string | null;
+    /**
+     * Invoices raised but not yet posted (draft or approved). They are not billed yet, so they
+     * sit outside netBilled — the count tells the reader why "Net billed" can be $0 while
+     * Billing & Collection lists invoices. Null when the caller cannot view financials.
+     */
+    draftInvoiceCount: number | null;
   };
   /**
    * The current commercial stage, derived from the NEXT installment (or its absence).

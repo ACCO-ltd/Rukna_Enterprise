@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { cn, Button, StatusPill } from '@erp/ui';
 import {
@@ -28,6 +29,8 @@ interface MilestoneJourneyProps {
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (milestone: MilestoneItemViewModel) => void;
+  /** Where a stage's unposted invoice is reviewed and posted. Omit to show no action. */
+  draftInvoiceHref?: (invoiceId: string) => string;
   /** Panel title + trailing action, rendered as one bordered header on the list — so the
    * schedule reads as one titled panel rather than a floating, unlabeled list of cards. */
   title?: ReactNode;
@@ -43,6 +46,7 @@ export function MilestoneJourney({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  draftInvoiceHref,
   title,
   action,
 }: MilestoneJourneyProps) {
@@ -66,7 +70,7 @@ export function MilestoneJourney({
   }
 
   const billedStates: MilestoneUserState[] = [
-    'invoiced', 'paid', 'partially-paid', 'invoice-issued', 'awaiting-payment',
+    'invoiced', 'paid', 'partially-paid', 'invoice-draft', 'invoice-issued', 'awaiting-payment',
   ];
   const unassignedCount = viewModel.milestones
     .flatMap((m) => m.variationAllocations)
@@ -101,6 +105,7 @@ export function MilestoneJourney({
             onPrepareInvoice={onPrepareInvoice}
             onSendInvoice={onSendInvoice}
             onVerifyMilestone={onVerifyMilestone}
+            draftInvoiceHref={draftInvoiceHref}
           />
         ))}
         </ol>
@@ -129,6 +134,7 @@ function MilestoneItem({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  draftInvoiceHref,
 }: {
   milestone: MilestoneItemViewModel;
   stepNumber: number;
@@ -140,6 +146,7 @@ function MilestoneItem({
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (m: MilestoneItemViewModel) => void;
+  draftInvoiceHref?: (invoiceId: string) => string;
 }) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
@@ -148,6 +155,7 @@ function MilestoneItem({
     milestone.userState === 'in-progress' ||
     milestone.userState === 'review-for-billing' ||
     milestone.userState === 'ready-to-bill' ||
+    milestone.userState === 'invoice-draft' ||
     milestone.userState === 'invoice-issued';
   const isDone =
     milestone.userState === 'paid' ||
@@ -185,6 +193,12 @@ function MilestoneItem({
       <Button type="button" size="sm" onClick={() => onPrepareInvoice(milestone)}>
         {t('cta.prepareInvoice')}
       </Button>
+    ) : milestone.userState === 'invoice-draft' &&
+      draftInvoiceHref &&
+      milestone.invoiceJourney?.invoiceId ? (
+      <Button asChild variant="outline" size="sm">
+        <Link href={draftInvoiceHref(milestone.invoiceJourney.invoiceId)}>{t('cta.reviewDraft')}</Link>
+      </Button>
     ) : milestone.userState === 'invoice-issued' ? (
       <Button type="button" size="sm" onClick={() => onSendInvoice(milestone)}>
         {t('cta.sendToClient')}
@@ -197,7 +211,6 @@ function MilestoneItem({
 
   const hasDetail =
     milestone.userState === 'ready-to-bill' ||
-    milestone.userState === 'invoice-issued' ||
     milestone.userState === 'awaiting-payment' ||
     (!isDone && milestone.programmeMilestone) ||
     milestone.variationAllocations.length > 0;
@@ -247,11 +260,6 @@ function MilestoneItem({
               <CheckCircle2 size={12} className="text-success" aria-hidden="true" />
               {t('cta.readyNote')}
             </p>
-          ) : null}
-          {milestone.userState === 'invoice-issued' ? (
-            <StatusPill tone={statusTone('invoice-issued', 'milestoneJourney')} className="text-caption">
-              {t('state.invoice-issued')}
-            </StatusPill>
           ) : null}
           {milestone.userState === 'awaiting-payment' ? (
             <AwaitingPaymentDisplay milestone={milestone} currency={currency} locale={locale} t={t} />
@@ -306,6 +314,7 @@ function StepIcon({
     state === 'in-progress' ||
     state === 'review-for-billing' ||
     state === 'ready-to-bill' ||
+    state === 'invoice-draft' ||
     state === 'invoice-issued';
 
   if (isDone) {

@@ -26,6 +26,7 @@ export type MilestoneUserState =
   | 'in-progress'         // NEXT + no linked milestone, or milestone PLANNED
   | 'review-for-billing'  // NEXT + linked milestone VERIFIED → CTA: "Review for billing"
   | 'ready-to-bill'       // NEXT + readyToBill === true (derived from backend field)
+  | 'invoice-draft'       // invoice raised but not yet posted (unnumbered) — review + post in Accounting
   | 'invoice-issued'      // invoice issued (POSTED), not yet sent to client
   | 'awaiting-payment'    // invoice sent to client (delivery recorded), awaiting collection
   | 'invoiced'            // BILLED (invoice exists, not yet collected)

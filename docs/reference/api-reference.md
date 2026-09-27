@@ -750,6 +750,17 @@ project membership.
 | `GET` | `/projects/:projectId/commercial/summary` | Permission-aware commercial summary |
 | `GET` | `/projects/:projectId/commercial/current-cycle` | Server-owned lifecycle stage, blocker and permitted next action |
 | `GET` | `/projects/:projectId/commercial/applications` | IPA → IPC → invoice → settlement chain |
+| `GET` | `/projects/:projectId/commercial/overview` | Commercial overview: contract, financial position, current position, attention |
+| `GET` | `/projects/:projectId/commercial/billing-packages` | Invoices grouped per milestone stage (milestone invoice + variation lines) |
+
+**Overview agrees with the cycle (2026-09-27).** `overview.currentCycle.nextAction` is taken
+from `current-cycle`: it is `null` whenever the cycle is blocked (`MILESTONE_NOT_VERIFIED`) or
+the caller cannot bill (`manage:receivable`), so the card never offers what the ribbon says is
+blocked. `nextAction.label` is kept for compatibility; the web renders its own label from
+`nextAction.kind`. `financialPosition.draftInvoiceCount` counts live invoices raised but not
+yet posted (DRAFT/APPROVED, not POSTED) — they are outside `netBilled`; `null` when money is
+hidden. Each `billing-packages` document carries `postingStatus`: a stage whose invoice is not
+`POSTED` is a draft, never "issued".
 
 **Metric provenance.** Every money figure in `/summary.metrics` is a `CommercialMetric`
 carrying `{ state, amount, currency, sourceCount, drillTo, asOf }`. `state` distinguishes:

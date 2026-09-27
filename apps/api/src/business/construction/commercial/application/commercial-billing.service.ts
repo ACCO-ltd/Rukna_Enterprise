@@ -187,6 +187,7 @@ export class CommercialBillingService {
       total: money(new Decimal(inv.totalAmount.toString())),
       dueDate: inv.dueDate ? inv.dueDate.toISOString() : null,
       outstanding: money(new Decimal(inv.outstandingAmount.toString())),
+      postingStatus: inv.postingStatus as ArPostingStatus,
       deliveries: toDeliveries(inv),
     });
 

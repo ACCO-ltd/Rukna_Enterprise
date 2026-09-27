@@ -82,7 +82,12 @@ export class ProjectProcurementService {
     const budgetTotal = budget
       ? budget.lines.reduce((sum, l) => sum.plus(new Decimal(l.budgetAmount.toString())), ZERO)
       : null;
-    const currency = budget?.currency ?? entries[0]?.currencyCode ?? null;
+    // A project with no budget and no cost yet still has a currency: its zeros read "$0.00",
+    // not a bare "0.00" beside Commercial's "$0.00" for the same project.
+    const currency =
+      budget?.currency ??
+      entries[0]?.currencyCode ??
+      (await this.repo.findProjectCurrency(prisma, orgId, projectId));
 
     const rows = requirements.map((mr) => this.toRequirementRow(mr, mayViewFinancials));
     const attention = await this.buildAttention(
@@ -192,7 +197,12 @@ export class ProjectProcurementService {
     const budgetTotal = budget
       ? budget.lines.reduce((sum, l) => sum.plus(new Decimal(l.budgetAmount.toString())), ZERO)
       : null;
-    const currency = budget?.currency ?? entries[0]?.currencyCode ?? null;
+    // A project with no budget and no cost yet still has a currency: its zeros read "$0.00",
+    // not a bare "0.00" beside Commercial's "$0.00" for the same project.
+    const currency =
+      budget?.currency ??
+      entries[0]?.currencyCode ??
+      (await this.repo.findProjectCurrency(prisma, orgId, projectId));
     const { costByNode } = this.indexByNode(boqRows);
 
     return {

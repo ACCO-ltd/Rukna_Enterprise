@@ -132,7 +132,10 @@ export class ProjectProcurementRepository {
       where: { projectId },
       select: {
         versions: {
-          where: { status: 'BASELINED' },
+          // COMMITTED is what committing a BOQ produces (ADR-029 R2); BASELINED is the legacy
+          // equivalent. Inlined rather than imported: procurement must not import construction
+          // (ARCH-BOUNDARY-001).
+          where: { status: { in: ['COMMITTED', 'BASELINED'] } },
           orderBy: { versionNumber: 'desc' },
           take: 1,
           select: { id: true },
@@ -157,6 +160,19 @@ export class ProjectProcurementRepository {
   }
 
   /** The BASELINED cost budget with its lines, or null when the project has never set one. */
+  /** The project's own currency — what its figures are denominated in before any cost exists. */
+  async findProjectCurrency(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<string | null> {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      select: { currency: true },
+    });
+    return project?.currency ?? null;
+  }
+
   findBaselinedBudget(prisma: TenantPrisma, organizationId: string, projectId: string) {
     return prisma.projectCostBudget.findFirst({
       where: { organizationId, projectId, status: 'BASELINED' },

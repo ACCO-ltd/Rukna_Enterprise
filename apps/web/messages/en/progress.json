@@ -170,7 +170,8 @@
       "submittedBy": "Submitted by",
       "submittedAt": "Submitted",
       "approvedBy": "Approved by",
-      "returnReason": "Return reason"
+      "returnReason": "Return reason",
+      "previousReturnReason": "Previously returned for"
     }
   },
   "measurement": {

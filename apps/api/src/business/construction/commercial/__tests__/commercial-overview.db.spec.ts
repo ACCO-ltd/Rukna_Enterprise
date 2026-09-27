@@ -46,6 +46,7 @@ describe('CommercialService — getOverview (Slice 7)', () => {
   // Current-position scenarios
   let projReview: string;      // REVIEW_FOR_BILLING
   let projReady: string;       // READY_TO_BILL
+  let projBlocked: string;     // REVIEW_FOR_BILLING, milestone not verified
   let projAllBilled: string;   // ALL_BILLED
   let projAllComplete: string; // ALL_COMPLETE
   // Attention scenarios
@@ -100,7 +101,7 @@ describe('CommercialService — getOverview (Slice 7)', () => {
     name: string,
     pct: string,
     sortOrder: number,
-    opts: { readyToBillAt?: Date } = {},
+    opts: { readyToBillAt?: Date; triggerType?: 'ADVANCE' | 'MILESTONE' } = {},
   ): Promise<string> {
     const inst = await prisma.contractPaymentInstallment.create({
       data: {
@@ -108,7 +109,7 @@ describe('CommercialService — getOverview (Slice 7)', () => {
         name,
         sortOrder,
         percentage: new Decimal(pct),
-        triggerType: 'MILESTONE',
+        triggerType: opts.triggerType ?? 'MILESTONE',
         milestoneLabel: name,
         readyToBillAt: opts.readyToBillAt ?? null,
       },
@@ -274,6 +275,7 @@ describe('CommercialService — getOverview (Slice 7)', () => {
         PERMISSIONS.contractsView,
         PERMISSIONS.contractsManage,
         PERMISSIONS.financialPositionView,
+        PERMISSIONS.receivablesManage,
       ],
     };
 
@@ -344,7 +346,14 @@ describe('CommercialService — getOverview (Slice 7)', () => {
     // ── Current position: REVIEW_FOR_BILLING ──────────────────────────────────
     projReview = await makeProject(`COV-H-${suffix.slice(-6)}`);
     const ctrReview = await makeContract(projReview);
-    await makeInstallment(ctrReview, 'Mobilisation', '0.4000', 0); // !readyToBill
+    // An advance stage needs no verified work, so nothing blocks billing it.
+    await makeInstallment(ctrReview, 'Mobilisation', '0.4000', 0, { triggerType: 'ADVANCE' }); // !readyToBill
+    // A raised-but-unposted invoice (e.g. a separate charge): not billed, but counted as a draft.
+    const draftId = await makePostedInvoice(projReview, ctrReview, { total: 1_000 });
+    await prisma.clientInvoice.update({
+      where: { id: draftId },
+      data: { postingStatus: 'NOT_POSTED', documentStatus: 'DRAFT' },
+    });
     await makeInstallment(ctrReview, 'Completion', '0.6000', 1);
 
     // ── Current position: READY_TO_BILL ──────────────────────────────────────
@@ -352,7 +361,14 @@ describe('CommercialService — getOverview (Slice 7)', () => {
     const ctrReady = await makeContract(projReady);
     await makeInstallment(ctrReady, 'Mobilisation', '0.4000', 0, {
       readyToBillAt: new Date('2026-09-10'),
+      triggerType: 'ADVANCE',
     });
+
+    // ── Current position: blocked on work verification ───────────────────────
+    projBlocked = await makeProject(`COV-HB-${suffix.slice(-6)}`);
+    const ctrBlocked = await makeContract(projBlocked);
+    await makeInstallment(ctrBlocked, 'Structure', '0.4000', 0); // MILESTONE, nothing verified
+    await makeInstallment(ctrBlocked, 'Completion', '0.6000', 1);
     await makeInstallment(ctrReady, 'Completion', '0.6000', 1);
 
     // ── Current position: ALL_BILLED (all installments have invoices, outstanding) ─
@@ -601,6 +617,34 @@ describe('CommercialService — getOverview (Slice 7)', () => {
     expect(r.currentCycle.installmentId).not.toBeNull();
     expect(r.currentCycle.nextAction?.kind).toBe('PREPARE_INVOICE');
     expect(r.currentCycle.nextAction?.targetId).toBe(r.currentCycle.installmentId);
+  });
+
+  it('OV-H2: a stage the cycle blocks on work verification offers no action on the card', async () => {
+    // Production showed "Blocked: the linked milestone must be verified first" in the ribbon and
+    // a "Review for billing" button in the card below it. The card now follows the cycle.
+    const r = await service.getOverview(identity, projBlocked);
+
+    expect(r.currentCycle.stage).toBe('REVIEW_FOR_BILLING');
+    expect(r.currentCycle.description).toBe('Waiting for work verification before billing.');
+    expect(r.currentCycle.nextAction).toBeNull();
+  });
+
+  it('OV-H4: a raised-but-unposted invoice is counted as a draft, not billed', async () => {
+    const r = await service.getOverview(identity, projReview);
+
+    expect(r.financialPosition.netBilled).toBe('0.00');
+    expect(r.financialPosition.draftInvoiceCount).toBe(1);
+  });
+
+  it('OV-H3: a viewer who cannot bill is not offered the billing action', async () => {
+    const readOnly = {
+      ...identity,
+      permissions: identity.permissions.filter((p) => p !== PERMISSIONS.receivablesManage),
+    };
+    const r = await service.getOverview(readOnly, projReview);
+
+    expect(r.currentCycle.stage).toBe('REVIEW_FOR_BILLING');
+    expect(r.currentCycle.nextAction).toBeNull();
   });
 
   it('OV-J: all installments billed, some outstanding → ALL_BILLED', async () => {

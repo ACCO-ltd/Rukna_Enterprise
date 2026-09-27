@@ -560,13 +560,19 @@ function ScheduleBody({
           }
         : null;
       const journey = invoiceJourneyMap.get(m.id) ?? persistedJourney;
+      // An invoice exists but is not posted: it has no number and the client has not been
+      // issued anything. The stage must say "Draft invoice", never "Invoice issued" — Billing &
+      // Collection lists the same invoice as a draft, and the two screens must agree.
+      const hasDraftInvoice =
+        billingPackage?.documents.some((document) => document.postingStatus !== 'POSTED') ?? false;
 
       let userState = m.userState;
       // Settlement is authoritative. Delivery describes how an open invoice reached the client;
       // it must never make a partly-paid or paid stage look unpaid again.
       const isSettled = m.userState === 'partially-paid' || m.userState === 'paid';
-      if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
-      if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
+      if (!isSettled && hasDraftInvoice) userState = 'invoice-draft' as const;
+      else if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
+      else if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
 
       return { ...m, userState, invoiceJourney: journey };
     }),
@@ -592,6 +598,11 @@ function ScheduleBody({
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
+        draftInvoiceHref={(invoiceId) =>
+          `/finance/accounting/invoices/${invoiceId}?from=${encodeURIComponent(
+            `/projects/${projectId}/commercial/contract-milestones`,
+          )}&fromLabel=${encodeURIComponent(t('contractMilestones.paymentScheduleTitle'))}`
+        }
       />
       {allBilled && <AllMilestonesBilledBanner projectId={projectId} />}
     </>
