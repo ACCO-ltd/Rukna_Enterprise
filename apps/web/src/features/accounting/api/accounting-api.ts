@@ -9,6 +9,7 @@ import type {
   Account,
   AccountLedger,
   BankAccount,
+  BankAccountSignatory,
   AccountingPeriod,
   ApproveJournalPayload,
   BalanceSheet,
@@ -133,6 +134,24 @@ export function configureBankAccount(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+export function listSignatories(bankAccountId: string): Promise<BankAccountSignatory[]> {
+  return apiClient<BankAccountSignatory[]>(`/bank-accounts/${bankAccountId}/signatories`);
+}
+
+export function addSignatory(bankAccountId: string, userId: string): Promise<BankAccountSignatory> {
+  return apiClient<BankAccountSignatory>(`/bank-accounts/${bankAccountId}/signatories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export function removeSignatory(bankAccountId: string, userId: string): Promise<void> {
+  return apiClient<void>(`/bank-accounts/${bankAccountId}/signatories/${userId}`, {
+    method: 'DELETE',
   });
 }
 

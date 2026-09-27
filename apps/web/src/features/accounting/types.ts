@@ -620,6 +620,16 @@ export interface BankAccount {
   status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
 }
 
+export interface BankAccountSignatory {
+  id: string;
+  bankAccountId: string;
+  userId: string;
+  isActive: boolean;
+  addedBy: string;
+  addedAt: string;
+  removedAt: string | null;
+}
+
 /**
  * Body of `POST /fiscal-years`.
  *

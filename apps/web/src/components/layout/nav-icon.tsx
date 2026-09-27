@@ -3,6 +3,7 @@
 import {
   BookOpenIcon,
   BriefcaseIcon,
+  CheckCircleIcon,
   BuildingsIcon,
   CalendarBlankIcon,
   ChartBarIcon,
@@ -69,6 +70,7 @@ const ICONS: Record<NavIconKey, Icon> = {
   tag: TagIcon,
   'user-gear': UserGearIcon,
   key: KeyIcon,
+  'check-circle': CheckCircleIcon,
 };
 
 export function NavIcon({

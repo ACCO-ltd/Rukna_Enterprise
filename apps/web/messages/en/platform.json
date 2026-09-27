@@ -83,6 +83,7 @@
     "commitments": "Commitments",
     "suppliers": "Suppliers",
     "bankAccounts": "Bank Accounts",
+    "reconciliation": "Reconciliation",
     "openingBalance": "Opening Balance",
     "accountingReports": "Accounting Reports",
     "group": {

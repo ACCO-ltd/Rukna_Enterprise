@@ -35,6 +35,9 @@ import {
   listFiscalYears,
   listPostingProfiles,
   listJournals,
+  listSignatories,
+  addSignatory,
+  removeSignatory,
   postJournal,
   reverseJournal,
   submitJournal,
@@ -48,6 +51,7 @@ import type {
   Account,
   AccountLedger,
   BankAccount,
+  BankAccountSignatory,
   BalanceSheet,
   CloseGate,
   MonthlyPL,
@@ -68,6 +72,7 @@ export const accountingKeys = {
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
   bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
+  signatories: (bankAccountId: string) => [...accountingKeys.all, 'signatories', bankAccountId] as const,
   fiscalYears: () => [...accountingKeys.all, 'fiscal-years'] as const,
   fiscalYear: (id: string) => [...accountingKeys.all, 'fiscal-year', id] as const,
   journals: () => [...accountingKeys.all, 'journals'] as const,
@@ -210,6 +215,34 @@ export function useRunOpeningBalance() {
 export function useRunReconciliation() {
   return useMutation({
     mutationFn: (payload: RunReconciliationPayload) => runReconciliation(payload),
+  });
+}
+
+export function useSignatories(bankAccountId: string): UseQueryResult<BankAccountSignatory[], Error> {
+  return useQuery({
+    queryKey: accountingKeys.signatories(bankAccountId),
+    queryFn: () => listSignatories(bankAccountId),
+    enabled: Boolean(bankAccountId),
+  });
+}
+
+export function useAddSignatory(bankAccountId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => addSignatory(bankAccountId, userId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.signatories(bankAccountId) });
+    },
+  });
+}
+
+export function useRemoveSignatory(bankAccountId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => removeSignatory(bankAccountId, userId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.signatories(bankAccountId) });
+    },
   });
 }
 

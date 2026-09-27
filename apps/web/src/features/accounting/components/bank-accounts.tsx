@@ -25,11 +25,25 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
 } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
+import { formatDate } from '@/lib/format';
 
 import { accountName } from '../account-display';
 import {
@@ -42,10 +56,13 @@ import {
 } from '../bank-account-setup';
 import {
   useAccounts,
+  useAddSignatory,
   useBankAccounts,
   useConfigureBankAccount,
+  useRemoveSignatory,
+  useSignatories,
 } from '../hooks/use-accounting';
-import type { BankAccount } from '../types';
+import type { BankAccount, BankAccountSignatory } from '../types';
 
 export function BankAccounts() {
   const t = useTranslations('accounting.bankAccounts');
@@ -53,6 +70,7 @@ export function BankAccounts() {
 
   const banks = useBankAccounts();
   const [creating, setCreating] = useState(false);
+  const [signatoryBank, setSignatoryBank] = useState<BankAccount | null>(null);
 
   const columns: GridColumn<BankAccount>[] = [
     {
@@ -102,6 +120,24 @@ export function BankAccounts() {
           {t(`status.${bank.status}`)}
         </Badge>
       ),
+    },
+    {
+      key: 'signatories',
+      header: '',
+      render: (bank) =>
+        bank.allowsPayments ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSignatoryBank(bank);
+            }}
+          >
+            {t('signatories.button')}
+          </Button>
+        ) : null,
     },
   ];
 
@@ -153,6 +189,122 @@ export function BankAccounts() {
       />
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>
+
+      <Sheet
+        open={signatoryBank !== null}
+        onOpenChange={(open) => { if (!open) setSignatoryBank(null); }}
+      >
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>{t('signatories.sheetTitle')}</SheetTitle>
+            <SheetDescription>{signatoryBank?.accountName ?? ''}</SheetDescription>
+          </SheetHeader>
+          <SheetBody>
+            {signatoryBank && <SignatoriesPanel bank={signatoryBank} />}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+// ─── Signatories ─────────────────────────────────────────────────────────────────
+
+function SignatoriesPanel({ bank }: { bank: BankAccount }) {
+  const t = useTranslations('accounting.bankAccounts.signatories');
+  const locale = useLocale() as 'en';
+
+  const query = useSignatories(bank.id);
+  const add = useAddSignatory(bank.id);
+  const remove = useRemoveSignatory(bank.id);
+
+  const [userId, setUserId] = useState('');
+
+  function handleAdd() {
+    const trimmed = userId.trim();
+    if (!trimmed) return;
+    add.mutate(trimmed, { onSuccess: () => setUserId('') });
+  }
+
+  const signatories = (query.data ?? []).filter((s) => s.isActive);
+
+  return (
+    <div className="space-y-6">
+      <p className="text-xs text-muted-foreground">{t('dualControlNote')}</p>
+
+      {query.isError && <Alert variant="error" messages={[t('loadFailed')]} />}
+
+      {!query.isError && signatories.length === 0 && !query.isPending && (
+        <div className="rounded-panel border border-dashed border-border px-4 py-8 text-center">
+          <p className="text-sm font-medium text-foreground">{t('empty')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
+        </div>
+      )}
+
+      {signatories.length > 0 && (
+        <TableScroll aria-label={t('sheetTitle')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('colUser')}</TableHead>
+                <TableHead>{t('colAddedAt')}</TableHead>
+                <TableHead>{t('colActions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {signatories.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-mono text-xs">{s.userId}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDate(s.addedAt, locale)}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={remove.isPending}
+                      onClick={() => remove.mutate(s.userId)}
+                    >
+                      {t('remove')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableScroll>
+      )}
+
+      {remove.isError && (
+        <Alert variant="error" messages={[remove.error instanceof ApiError ? remove.error.message : t('removeFailed')]} />
+      )}
+
+      <div className="space-y-3 rounded-panel border border-border p-4">
+        <p className="text-sm font-medium text-foreground">{t('addTitle')}</p>
+        <FormField htmlFor="sig-user-id" label={t('userId')}>
+          <Input
+            id="sig-user-id"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder="cuid…"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">{t('userIdHint')}</p>
+        </FormField>
+        {add.isError && (
+          <Alert variant="error" messages={[add.error instanceof ApiError ? add.error.message : t('addFailed')]} />
+        )}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={handleAdd}
+            disabled={!userId.trim() || add.isPending}
+          >
+            {t('add')}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
