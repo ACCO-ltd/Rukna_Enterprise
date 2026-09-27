@@ -18,7 +18,11 @@ const DTO = {
   lines: [{ description: 'Office rent', netAmount: 5060, vatAmount: 0, expenseProfileCode: 'OFFICE_EXPENSE' }],
 };
 
-function build(bill: { id: string; documentStatus: string } | null, duplicate: unknown = null) {
+function build(
+  bill: { id: string; documentStatus: string } | null,
+  duplicate: unknown = null,
+  approvalState: 'PENDING' | 'APPROVED' | null = null,
+) {
   const supplierBill = {
     // requireStatus: the bill is found only in the status it asks for.
     findFirst: jest.fn().mockImplementation(({ where }: { where: { documentStatus: string } }) =>
@@ -39,6 +43,10 @@ function build(bill: { id: string; documentStatus: string } | null, duplicate: u
     findBySupplierInvoiceNumber: jest.fn().mockResolvedValue(duplicate),
     findById: jest.fn().mockResolvedValue({ ...bill, postedJournalEntryId: null, reversalJournalEntryId: null }),
   };
+  const governance = {
+    openApprovalState: jest.fn().mockResolvedValue(approvalState),
+    voidUnconsumedApproval: jest.fn().mockResolvedValue(undefined),
+  };
   const svc = new SupplierBillService(
     { getClient: () => prisma } as never,
     repo as never,
@@ -47,10 +55,10 @@ function build(bill: { id: string; documentStatus: string } | null, duplicate: u
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    governance as never,
     {} as never,
   );
-  return { svc, prisma, repo };
+  return { svc, prisma, repo, governance };
 }
 
 describe('SupplierBillService — return for correction', () => {
@@ -59,7 +67,7 @@ describe('SupplierBillService — return for correction', () => {
     await svc.returnForCorrection(identity, 'b1', '  Amount is $5,060, not $5,660.  ');
     expect(prisma.supplierBillMatch.deleteMany).toHaveBeenCalledWith({ where: { supplierBillId: 'b1' } });
     expect(prisma.supplierBill.update).toHaveBeenCalledWith({
-      where: { id: 'b1' },
+      where: { id: 'b1', documentStatus: 'SUBMITTED' },
       data: expect.objectContaining({
         documentStatus: 'DRAFT',
         matchStatus: 'NOT_RUN',
@@ -86,7 +94,7 @@ describe('SupplierBillService — reject', () => {
     const { svc, prisma } = build({ id: 'b1', documentStatus: 'SUBMITTED' });
     await svc.reject(identity, 'b1', 'Duplicate of BILL-2026-0041.');
     expect(prisma.supplierBill.update).toHaveBeenCalledWith({
-      where: { id: 'b1' },
+      where: { id: 'b1', documentStatus: 'SUBMITTED' },
       data: expect.objectContaining({
         documentStatus: 'REJECTED',
         rejectedBy: 'u-approver',
@@ -124,5 +132,31 @@ describe('SupplierBillService — edit a draft', () => {
   it('never edits a bill past DRAFT', async () => {
     const { svc } = build({ id: 'b1', documentStatus: 'SUBMITTED' });
     await expect(svc.update(identity, 'b1', DTO)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('SupplierBillService — review fixes (PR #221)', () => {
+  it('refuses to edit a draft while its approval is pending — approvers must see what they approve', async () => {
+    const { svc, prisma } = build({ id: 'b1', documentStatus: 'DRAFT' }, null, 'PENDING');
+    await expect(svc.update(identity, 'b1', DTO)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.supplierBill.update).not.toHaveBeenCalled();
+  });
+
+  it('voids a granted-but-unused approval when the draft is edited, so resubmitting re-approves', async () => {
+    const { svc, governance } = build({ id: 'b1', documentStatus: 'DRAFT' }, null, 'APPROVED');
+    await svc.update(identity, 'b1', DTO);
+    expect(governance.voidUnconsumedApproval).toHaveBeenCalledWith('SUPPLIER_BILL', 'b1');
+  });
+
+  it('guards every transition on the status it expects, and turns a lost race into a 409', async () => {
+    const { svc, prisma } = build({ id: 'b1', documentStatus: 'SUBMITTED' });
+    await svc.reject(identity, 'b1', 'Duplicate invoice.');
+    expect(prisma.supplierBill.update.mock.calls[0]![0].where).toEqual({ id: 'b1', documentStatus: 'SUBMITTED' });
+
+    const { Prisma } = await import('@prisma/client');
+    prisma.supplierBill.update.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Record to update not found.', { code: 'P2025', clientVersion: 'test' }),
+    );
+    await expect(svc.reject(identity, 'b1', 'Duplicate invoice.')).rejects.toBeInstanceOf(ConflictException);
   });
 });

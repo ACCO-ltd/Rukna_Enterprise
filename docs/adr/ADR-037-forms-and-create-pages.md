@@ -124,7 +124,15 @@ Use a **full page** for anything with line items and for master-data creation. U
 - **The invoice number is freed by rejection.** The unique index on (organization, supplier, normalised number) becomes a **partial** index, `WHERE document_status NOT IN ('REJECTED','CANCELLED')`, in migration `20260927120000_bill_return_reject`.
 - **Same permission as approve** (`payables:manage`).
 
-**Not decided / not built:** clerk self-cancel.
+**Review hardening (PR #221):**
+
+- **An edit respects the approval gate.** A draft whose approval is PENDING cannot be edited (409), because approvers must see what they approve. Editing a draft whose approval was granted but not yet used voids that approval, so resubmitting opens a fresh one; an approval covers the content it evaluated.
+- **Every bill status transition is guarded on its expected status:** submit, approve, return, reject and edit each add `where: { id, documentStatus }`. A command that loses a race gets a 409 instead of overwriting. For example, a bill approved or posted a moment ago can never be marked rejected, which would free its invoice number while a journal exists.
+
+**Not decided / not built:**
+
+- Clerk self-cancel.
+- Segregation of duties for return and reject. Anyone with `payables:manage`, including the clerk who entered the bill, can return or reject it. **Open question for Eng Ahmed.**
 
 When an approval policy gates *submit* and an approver rejects the approval instance, the bill stays DRAFT, which is unchanged. It can now be edited and resubmitted.
 

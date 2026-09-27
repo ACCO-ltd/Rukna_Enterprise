@@ -90,6 +90,30 @@ export class CommandGovernanceService {
 
     return { gated: true, approvalInstanceId: instance.id };
   }
+
+  /**
+   * The state of the latest approval raised for a document, for commands that must respect it:
+   * `PENDING` (approvers are deciding), `APPROVED` (granted, not yet consumed by the gated
+   * transition), or `null` (none open). A consumed approval is CANCELLED and counts as none.
+   */
+  async openApprovalState(
+    transactionType: WorkflowTransactionType,
+    resourceId: string,
+  ): Promise<'PENDING' | 'APPROVED' | null> {
+    const latest = await this.repo.findLatestInstanceForTransaction(transactionType, resourceId);
+    if (latest?.status === 'PENDING' || latest?.status === 'APPROVED') return latest.status;
+    return null;
+  }
+
+  /**
+   * Voids a granted-but-unused approval, so a document edited after approval must be approved
+   * again: an approval covers the content the approvers saw, not whatever the document later
+   * becomes. Marks it consumed (CANCELLED), exactly as the gate does when it uses one.
+   */
+  async voidUnconsumedApproval(transactionType: WorkflowTransactionType, resourceId: string): Promise<void> {
+    const latest = await this.repo.findLatestInstanceForTransaction(transactionType, resourceId);
+    if (latest?.status === 'APPROVED') await this.repo.markInstanceConsumed(latest.id);
+  }
 }
 
 /**

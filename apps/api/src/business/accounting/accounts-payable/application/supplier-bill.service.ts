@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { RequestIdentity } from '@erp/types';
+import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -71,6 +71,20 @@ function isDuplicateInvoiceNumberConflict(error: unknown): boolean {
     /supplierInvoiceNumberNorm|supplier_invoice_number/.test(
       String((error.meta as { target?: unknown } | undefined)?.target ?? ''),
     )
+  );
+}
+
+/**
+ * A status transition that lost a race: the guarded update (`where: { id, documentStatus }`)
+ * found no row because another command moved the bill first. Prisma reports it as P2025.
+ */
+function isStaleTransition(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+}
+
+function staleTransition(expected: string): ConflictException {
+  return new ConflictException(
+    `The bill is no longer ${expected} — someone else changed it. Reload it and try again.`,
   );
 }
 
@@ -237,10 +251,16 @@ export class SupplierBillService {
       'Supplier bill submission requires workflow approval.',
     );
 
-    const updated = await prisma.supplierBill.update({
-      where: { id: bill.id },
-      data: { documentStatus: 'SUBMITTED' },
-    });
+    let updated;
+    try {
+      updated = await prisma.supplierBill.update({
+        where: { id: bill.id, documentStatus: 'DRAFT' },
+        data: { documentStatus: 'SUBMITTED' },
+      });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('a draft');
+      throw err;
+    }
 
     // D6 — auto-match on submit (no manual "run matching"). A PO-backed bill has its 3-way match
     // run automatically as a silent control: the verdict lands on matchStatus and the bill proceeds.
@@ -264,6 +284,21 @@ export class SupplierBillService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId } = identity;
     const bill = await this.requireStatus(prisma, orgId, billId, 'DRAFT');
+
+    // A draft can sit under an approval when a policy gates submit (ADR-011). While approvers are
+    // deciding, the bill they are looking at must not change underneath them; and an approval
+    // already granted covered the old content, so an edit voids it (below) and resubmitting
+    // opens a fresh one.
+    const approval = await this.commandGovernance.openApprovalState(
+      WorkflowTransactionType.SUPPLIER_BILL,
+      bill.id,
+    );
+    if (approval === 'PENDING') {
+      throw new ConflictException(
+        'An approval is in progress for this bill. It can be edited once the approvers have decided.',
+      );
+    }
+
     const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
       await this.prepareBill(prisma, orgId, dto);
 
@@ -280,8 +315,9 @@ export class SupplierBillService {
       await prisma.$transaction(async (tx) => {
         await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
         await tx.supplierBillLine.deleteMany({ where: { supplierBillId: bill.id } });
+        // Guarded: only while still DRAFT, so a concurrent submit cannot be overwritten.
         await tx.supplierBill.update({
-          where: { id: bill.id },
+          where: { id: bill.id, documentStatus: 'DRAFT' },
           data: {
             supplierId: dto.supplierId,
             supplierInvoiceNumber: dto.supplierInvoiceNumber,
@@ -304,9 +340,21 @@ export class SupplierBillService {
       });
     } catch (err) {
       if (isDuplicateInvoiceNumberConflict(err)) {
-        throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, null);
+        // Lost a race at the index: name the bill that won, as create does.
+        const winner = await this.repo.findBySupplierInvoiceNumber(
+          prisma,
+          orgId,
+          dto.supplierId,
+          dto.supplierInvoiceNumber,
+          bill.id,
+        );
+        throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, winner?.billNumber ?? null);
       }
+      if (isStaleTransition(err)) throw staleTransition('a draft');
       throw err;
+    }
+    if (approval === 'APPROVED') {
+      await this.commandGovernance.voidUnconsumedApproval(WorkflowTransactionType.SUPPLIER_BILL, bill.id);
     }
     return this.findById(identity, bill.id);
   }
@@ -320,19 +368,24 @@ export class SupplierBillService {
     const prisma = this.tenancyService.getClient();
     const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
     const why = requireReason(reason);
-    return prisma.$transaction(async (tx) => {
-      await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
-      return tx.supplierBill.update({
-        where: { id: bill.id },
-        data: {
-          documentStatus: 'DRAFT',
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
+        return tx.supplierBill.update({
+          where: { id: bill.id, documentStatus: 'SUBMITTED' },
+          data: {
+            documentStatus: 'DRAFT',
           matchStatus: 'NOT_RUN',
           returnedAt: new Date(),
           returnedBy: identity.userId,
-          returnReason: why,
-        },
+            returnReason: why,
+          },
+        });
       });
-    });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('submitted');
+      throw err;
+    }
   }
 
   /**
@@ -343,15 +396,22 @@ export class SupplierBillService {
     const prisma = this.tenancyService.getClient();
     const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
     const why = requireReason(reason);
-    return prisma.supplierBill.update({
-      where: { id: bill.id },
-      data: {
-        documentStatus: 'REJECTED',
-        rejectedAt: new Date(),
-        rejectedBy: identity.userId,
-        rejectionReason: why,
-      },
-    });
+    try {
+      // Guarded: a bill approved (or posted) a moment ago must never be marked rejected — that
+      // would free its supplier invoice number while a journal exists.
+      return await prisma.supplierBill.update({
+        where: { id: bill.id, documentStatus: 'SUBMITTED' },
+        data: {
+          documentStatus: 'REJECTED',
+          rejectedAt: new Date(),
+          rejectedBy: identity.userId,
+          rejectionReason: why,
+        },
+      });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('submitted');
+      throw err;
+    }
   }
 
   async approve(identity: RequestIdentity, billId: string) {
@@ -374,7 +434,12 @@ export class SupplierBillService {
       });
     }
 
-    return this.repo.approve(prisma, bill.id, identity.userId);
+    try {
+      return await this.repo.approve(prisma, bill.id, identity.userId);
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('submitted');
+      throw err;
+    }
   }
 
   /**

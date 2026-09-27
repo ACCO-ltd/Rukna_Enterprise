@@ -97,14 +97,10 @@ export class SupplierBillRepository {
   }
 
   /**
-   * The bill already holding a supplier invoice number for this supplier, or null. Compared on
-   * the normalised form the unique index (organizationId, supplierId, supplierInvoiceNumberNorm)
-   * is built on, so "INV-0042" and "inv 0042" are the same number.
-   */
-  /**
-   * The LIVE bill already holding this supplier invoice number, if any. Rejected and cancelled
-   * bills no longer hold their number (partial unique index, migration 20260927120000);
-   * `excludeBillId` skips the bill being edited.
+   * The LIVE bill already holding this supplier invoice number, if any. Compared on the
+   * normalised form (so "INV-0042" and "inv 0042" are the same number). Rejected and cancelled
+   * bills no longer hold their number — the partial unique index in migration 20260927120000 —
+   * and `excludeBillId` skips the bill being edited.
    */
   findBySupplierInvoiceNumber(
     prisma: TenantPrisma,
@@ -153,9 +149,10 @@ export class SupplierBillRepository {
     });
   }
 
+  /** Guarded on SUBMITTED: a bill rejected or returned a moment ago is not approved (P2025). */
   approve(prisma: TenantPrisma, id: string, approvedBy: string) {
     return prisma.supplierBill.update({
-      where: { id },
+      where: { id, documentStatus: 'SUBMITTED' },
       data: { documentStatus: 'APPROVED', approvedBy, approvedAt: new Date() },
     });
   }
