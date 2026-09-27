@@ -1695,8 +1695,13 @@ export class CommercialService {
         // a viewer who cannot generate invoices. The card must never offer what the ribbon above
         // it says is blocked.
         const milestoneBlocked = cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
+        // The cycle also blocks a milestone stage with NO linked programme milestone ("missing
+        // evidence is not verification"). Say so — "waiting for verification" there points the
+        // reader at nothing to verify.
         const description = milestoneBlocked
-          ? 'Waiting for work verification before billing.'
+          ? nextInst.programmeMilestone
+            ? 'Waiting for work verification before billing.'
+            : 'Link this stage to a programme milestone and verify it before billing.'
           : nextInst.readyToBill
             ? 'Marked ready — billing package can be prepared.'
             : 'Commercial review required before billing.';

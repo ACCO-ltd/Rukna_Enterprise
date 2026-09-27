@@ -193,11 +193,9 @@ function MilestoneItem({
       <Button type="button" size="sm" onClick={() => onPrepareInvoice(milestone)}>
         {t('cta.prepareInvoice')}
       </Button>
-    ) : milestone.userState === 'invoice-draft' &&
-      draftInvoiceHref &&
-      milestone.invoiceJourney?.invoiceId ? (
+    ) : milestone.userState === 'invoice-draft' && draftInvoiceHref && milestone.draftInvoiceId ? (
       <Button asChild variant="outline" size="sm">
-        <Link href={draftInvoiceHref(milestone.invoiceJourney.invoiceId)}>{t('cta.reviewDraft')}</Link>
+        <Link href={draftInvoiceHref(milestone.draftInvoiceId)}>{t('cta.reviewDraft')}</Link>
       </Button>
     ) : milestone.userState === 'invoice-issued' ? (
       <Button type="button" size="sm" onClick={() => onSendInvoice(milestone)}>

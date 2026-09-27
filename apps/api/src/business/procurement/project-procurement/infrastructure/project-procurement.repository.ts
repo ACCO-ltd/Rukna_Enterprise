@@ -159,7 +159,6 @@ export class ProjectProcurementRepository {
     });
   }
 
-  /** The BASELINED cost budget with its lines, or null when the project has never set one. */
   /** The project's own currency — what its figures are denominated in before any cost exists. */
   async findProjectCurrency(
     prisma: TenantPrisma,
@@ -173,6 +172,7 @@ export class ProjectProcurementRepository {
     return project?.currency ?? null;
   }
 
+  /** The BASELINED cost budget with its lines, or null when the project has never set one. */
   findBaselinedBudget(prisma: TenantPrisma, organizationId: string, projectId: string) {
     return prisma.projectCostBudget.findFirst({
       where: { organizationId, projectId, status: 'BASELINED' },

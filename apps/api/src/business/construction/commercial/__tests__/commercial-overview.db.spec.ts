@@ -625,7 +625,10 @@ describe('CommercialService — getOverview (Slice 7)', () => {
     const r = await service.getOverview(identity, projBlocked);
 
     expect(r.currentCycle.stage).toBe('REVIEW_FOR_BILLING');
-    expect(r.currentCycle.description).toBe('Waiting for work verification before billing.');
+    // Unlinked milestone stage: the cycle still blocks it, and the card says what to do.
+    expect(r.currentCycle.description).toBe(
+      'Link this stage to a programme milestone and verify it before billing.',
+    );
     expect(r.currentCycle.nextAction).toBeNull();
   });
 

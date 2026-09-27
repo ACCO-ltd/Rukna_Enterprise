@@ -307,6 +307,7 @@ describe('ContractMilestonesTab', () => {
             {
               invoiceId: 'invoice-1',
               invoiceNumber: null,
+              sourceType: 'MILESTONE',
               dueDate: '2026-10-01',
               postingStatus: 'NOT_POSTED',
               deliveries: [],
@@ -321,6 +322,67 @@ describe('ContractMilestonesTab', () => {
     );
 
     expect(screen.getByTestId('milestone-journey')).toHaveAttribute(
+      'data-first-state',
+      'invoice-draft',
+    );
+  });
+
+  it('a draft variation invoice does not un-issue a stage whose own invoice is posted', () => {
+    cycleData.value = makeCycle([{ id: 'inst-1', status: 'BILLED', name: 'Structure' }]);
+    packageData.value = {
+      packages: [
+        {
+          installmentId: 'inst-1',
+          documents: [
+            {
+              invoiceId: 'invoice-1',
+              invoiceNumber: 'INV-0001',
+              sourceType: 'MILESTONE',
+              dueDate: '2026-10-01',
+              postingStatus: 'POSTED',
+              deliveries: [],
+            },
+            {
+              invoiceId: 'invoice-2',
+              invoiceNumber: null,
+              sourceType: 'VARIATION',
+              dueDate: '2026-10-01',
+              postingStatus: 'NOT_POSTED',
+              deliveries: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    renderWithProviders(<ContractMilestonesTab projectId="p-1" summary={makeSummary()} />);
+
+    expect(screen.getByTestId('milestone-journey')).toHaveAttribute('data-first-state', 'invoice-issued');
+  });
+
+  it('a reversed stage invoice is not a draft', () => {
+    cycleData.value = makeCycle([{ id: 'inst-1', status: 'BILLED', name: 'Structure' }]);
+    packageData.value = {
+      packages: [
+        {
+          installmentId: 'inst-1',
+          documents: [
+            {
+              invoiceId: 'invoice-1',
+              invoiceNumber: 'INV-0001',
+              sourceType: 'MILESTONE',
+              dueDate: '2026-10-01',
+              postingStatus: 'REVERSED',
+              deliveries: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    renderWithProviders(<ContractMilestonesTab projectId="p-1" summary={makeSummary()} />);
+
+    expect(screen.getByTestId('milestone-journey')).not.toHaveAttribute(
       'data-first-state',
       'invoice-draft',
     );

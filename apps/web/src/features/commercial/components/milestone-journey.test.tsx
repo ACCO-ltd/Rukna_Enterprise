@@ -247,6 +247,7 @@ function renderJourney(
           readyToBill: m.readyToBill ?? false,
           invoiceReference: m.invoiceReference ?? null,
           invoiceJourney: m.invoiceJourney ?? null,
+          ...(m.draftInvoiceId ? { draftInvoiceId: m.draftInvoiceId } : {}),
         }) satisfies MilestoneItemViewModel,
     ),
   };
@@ -314,13 +315,7 @@ describe('MilestoneJourney — rendering', () => {
         {
           userState: 'invoice-draft',
           name: 'Structure',
-          invoiceJourney: {
-            phase: 'issued',
-            invoiceId: 'inv-9',
-            invoiceDate: '',
-            dueDate: null,
-            documents: [],
-          },
+          draftInvoiceId: 'inv-9',
         },
       ],
       { draftInvoiceHref: (id) => `/finance/accounting/invoices/${id}` },
