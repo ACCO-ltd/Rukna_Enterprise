@@ -176,9 +176,13 @@ describe('SpendCategoriesScreen', () => {
   it('is labelled as spend, never as material or cost', () => {
     renderWithProviders(<SpendCategoriesScreen />);
 
-    expect(screen.getByRole('heading', { name: 'Spend Categories' })).toBeInTheDocument();
+    // The page title lives in the module header (ADR-035); the screen itself labels its table
+    // and states which kind of category it holds.
+    expect(screen.getByRole('region', { name: 'Spend Categories' })).toBeInTheDocument();
+    expect(screen.getByText(/financial hierarchy/i)).toBeInTheDocument();
     expect(screen.queryByText(/cost categor/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /material categor/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /material categor/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
 });

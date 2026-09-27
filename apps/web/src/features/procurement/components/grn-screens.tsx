@@ -30,6 +30,7 @@ import {
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatNumber } from '@/lib/format';
 import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
@@ -74,18 +75,13 @@ export function GrnList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-
-        {can(PROCUREMENT_PERMISSIONS.createReceipt) ? (
+      {can(PROCUREMENT_PERMISSIONS.createReceipt) ? (
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
           <Button asChild>
             <Link href="/procurement/grn/new">{t('new')}</Link>
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {receipts.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
@@ -166,6 +162,8 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const t = useTranslations('procurement.grn');
   const tc = useTranslations('procurement.common');
   const router = useRouter();
+  // The module header owns the page's h1 (ADR-035); the form names itself in the breadcrumb.
+  useModuleTrail(t('createTitle'));
 
   const [purchaseOrderId, setPurchaseOrderId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(today);
@@ -292,12 +290,7 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
 
   return (
     <div className="space-y-6 pb-28">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {t('createTitle')}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('createSubtitle')}</p>
-      </div>
+      <p className="text-body-sm text-muted-foreground">{t('createSubtitle')}</p>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField htmlFor="grn-po" label={t('purchaseOrder')}>
@@ -354,7 +347,7 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
       {receiveError ? <Alert variant="error" messages={[receiveError]} /> : null}
 
       {/* ── Sticky footer: the single primary action ──────────────────────────────── */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 lg:start-[var(--sidebar-width)]">
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 md:start-16 lg:start-[var(--sidebar-width)]">
         <div className="flex w-full max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6 lg:px-8">
           <Button type="button" variant="outline" disabled={busy} onClick={() => router.back()}>
             {tc('cancel')}
@@ -378,6 +371,7 @@ export function GrnDetail({ id }: { id: string }) {
   const { can } = usePermissions();
 
   const grn = useGoodsReceipt(id);
+  useModuleTrail(grn.data?.grnNumber);
   const [posting, setPosting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [approvingException, setApprovingException] = useState(false);
@@ -405,9 +399,9 @@ export function GrnDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
             {receipt.grnNumber}
-          </h1>
+          </h2>
           <div className="mt-2">
             <ProcurementStatusBadge vocabulary="grn" status={receipt.status} />
           </div>

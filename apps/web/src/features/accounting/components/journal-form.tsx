@@ -21,6 +21,7 @@ import {
   TableScroll,
 } from '@erp/ui';
 
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
@@ -58,6 +59,7 @@ export function JournalForm() {
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const router = useRouter();
+  useModuleTrail(t('title'));
 
   const accounts = useAccounts();
   const create = useCreateJournal();
@@ -102,18 +104,6 @@ export function JournalForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-8" noValidate>
-      <div>
-        <Link
-          href="/finance/accounting/journals"
-          className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          {t('back')}
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-          {t('title')}
-        </h1>
-      </div>
-
       <section className="grid gap-4 sm:grid-cols-2">
         <FormField
           htmlFor="journal-date"

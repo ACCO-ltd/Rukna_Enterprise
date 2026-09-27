@@ -22,6 +22,7 @@ import {
 import { Wallet } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -108,10 +109,6 @@ export function BuyerAdvancesList() {
   if (!enabled) {
     return (
       <div className="space-y-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
         <EmptyState
           icon={<Wallet size={28} aria-hidden="true" />}
           title={t('empty')}
@@ -123,11 +120,6 @@ export function BuyerAdvancesList() {
 
   return (
     <div className="space-y-6">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
-
       <PlatformDataGrid
         columns={columns}
         data={visible}
@@ -181,6 +173,8 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   const locale = useLocale() as 'en';
 
   const query = useGetBuyerAdvance(id);
+  // A buyer advance carries no document number of its own; the breadcrumb names the kind.
+  useModuleTrail(query.data ? t('detailTitle') : undefined);
   const [showPostConfirm, setShowPostConfirm] = useState(false);
 
   // poId is needed to invalidate settlement query; read from advance once loaded
@@ -206,9 +200,9 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
     <div className="space-y-6">
       {/* Header */}
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
           {t('detailTitle')}
-        </h1>
+        </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <PostingStatusBadge showAxis status={advance.postingStatus} />
           <span className="text-sm text-muted-foreground">

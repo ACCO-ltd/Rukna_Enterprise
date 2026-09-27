@@ -210,12 +210,6 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
 
   return (
     <div className="space-y-6">
-      {/* ── Page header ───────────────────────────────────────────────────── */}
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
-
       {/* ── Project + stage filters ───────────────────────────────────────── */}
       <div className="flex flex-wrap gap-4">
         <div className="min-w-56 flex-1">

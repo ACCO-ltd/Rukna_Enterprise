@@ -1,5 +1,7 @@
 export { Alert } from './components/alert';
 export type { AlertProps } from './components/alert';
+export { Notice } from './components/notice';
+export type { NoticeProps, NoticeTone } from './components/notice';
 export { Avatar, initialsFromName } from './components/avatar';
 export type { AvatarProps } from './components/avatar';
 export {
@@ -143,3 +145,22 @@ export {
   DropdownMenuTrigger,
 } from './components/dropdown-menu';
 export { cn } from './lib/utils';
+export { FilterChips, FilterPanel } from './components/filter-panel';
+export type {
+  DateListFilterField,
+  FilterChip,
+  FilterChipsProps,
+  FilterPanelProps,
+  FilterValues,
+  ListFilterField,
+  SelectListFilterField,
+} from './components/filter-panel';
+export { DocumentActionBar, DocumentIdentity, LifecycleStepper } from './components/document';
+export type {
+  DocumentActionBarProps,
+  DocumentAxis,
+  DocumentCommand,
+  DocumentIdentityProps,
+  LifecycleStep,
+  LifecycleStepperProps,
+} from './components/document';

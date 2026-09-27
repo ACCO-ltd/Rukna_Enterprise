@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, DatePicker, FormField, Input, MoneyInput, Select } from '@erp/ui';
 
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { toDecimalString } from '@/features/contracts/contract-form-payload';
 import { ApiError } from '@/lib/api-client';
@@ -22,6 +23,7 @@ interface ReceiptFormValues {
 export function ReceiptForm() {
   const t = useTranslations('platform.receipts.create');
   const tCommon = useTranslations('common');
+  useModuleTrail(t('title'));
 
   const create = useCreateReceipt();
   const clients = useClients();

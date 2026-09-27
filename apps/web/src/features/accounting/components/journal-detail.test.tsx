@@ -157,7 +157,9 @@ describe('JournalDetail', () => {
   it('leads with the journal value and its description', async () => {
     render();
 
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('$2,500.00');
+    // The module header owns the page's only h1; the record's value leads as an h2.
+    expect(await screen.findByRole('heading', { level: 2, name: '$2,500.00' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
     expect(screen.getByText('January office rent')).toBeInTheDocument();
   });
 
@@ -190,7 +192,7 @@ describe('JournalDetail', () => {
   it('totals both columns', async () => {
     render();
 
-    await screen.findByRole('heading', { level: 1 });
+    await screen.findByRole('heading', { level: 2, name: '$2,500.00' });
     expect(screen.getByText('Totals')).toBeInTheDocument();
     // Two line amounts plus two totals, all 2,500.
     expect(screen.getAllByText('$2,500.00').length).toBeGreaterThanOrEqual(3);
@@ -294,7 +296,7 @@ describe('JournalDetail', () => {
     it('says nothing when the two agree', async () => {
       render();
 
-      await screen.findByRole('heading', { level: 1 });
+      await screen.findByRole('heading', { level: 2, name: '$2,500.00' });
       expect(screen.queryByText(/do not agree/)).not.toBeInTheDocument();
     });
   });

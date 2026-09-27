@@ -7,7 +7,13 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSection": "Expand {section}",
     "collapseSection": "Collapse {section}",
-    "skipToContent": "Skip to main content"
+    "skipToContent": "Skip to main content",
+    "section": "Section",
+    "chooseSection": "Choose a section",
+    "more": "More",
+    "breadcrumb": "Breadcrumb",
+    "moduleSections": "{module} sections",
+    "modules": "Modules"
   },
   "commandMenu": {
     "title": "Command menu",
@@ -38,8 +44,8 @@
     "finance": "Finance",
     "receivables": "Receivables",
     "receipts": "Receipts",
-    "cashPosition": "Cash Position",
-    "generalLedger": "General Ledger",
+    "cashPosition": "Cash position",
+    "generalLedger": "General ledger",
     "operations": "Operations",
     "procurement": "Procurement",
     "inventory": "Inventory",
@@ -57,35 +63,35 @@
     "soon": "Soon",
     "contracts": "Contracts",
     "accounting": "Accounting",
-    "chartOfAccounts": "Chart of Accounts",
-    "fiscalPeriods": "Fiscal Periods",
+    "chartOfAccounts": "Chart of accounts",
+    "fiscalPeriods": "Fiscal periods",
     "journals": "Journals",
-    "trialBalance": "Trial Balance",
+    "trialBalance": "Trial balance",
     "profitLoss": "Profit & Loss",
-    "balanceSheet": "Balance Sheet",
-    "accountLedger": "Account Ledger",
-    "clientInvoices": "Client Invoices",
-    "supplierBills": "Supplier Bills",
-    "supplierPayments": "Supplier Payments",
-    "monthlyComparison": "Monthly Comparison",
+    "balanceSheet": "Balance sheet",
+    "accountLedger": "Account ledger",
+    "clientInvoices": "Client invoices",
+    "supplierBills": "Supplier bills",
+    "supplierPayments": "Supplier payments",
+    "monthlyComparison": "Monthly comparison",
     "accountingSetup": "Setup",
     "accountingEntry": "Transactions",
     "financialReports": "Financial reports",
     "procurementSetup": "Setup",
-    "unitsOfMeasure": "Units of Measure",
-    "materialCategories": "Material Categories",
-    "spendCategories": "Spend Categories",
+    "unitsOfMeasure": "Units of measure",
+    "materialCategories": "Material categories",
+    "spendCategories": "Spend categories",
     "materials": "Materials",
-    "materialRequests": "Requests",
-    "purchaseOrders": "Orders",
-    "goodsReceipts": "Goods Receipts",
-    "buyerAdvances": "Buyer Advances",
+    "materialRequests": "Material requests",
+    "purchaseOrders": "Purchase orders",
+    "goodsReceipts": "Goods receipts",
+    "buyerAdvances": "Buyer advances",
     "commitments": "Commitments",
     "suppliers": "Suppliers",
-    "bankAccounts": "Bank Accounts",
+    "bankAccounts": "Bank accounts",
     "reconciliation": "Reconciliation",
-    "openingBalance": "Opening Balance",
-    "accountingReports": "Accounting Reports",
+    "openingBalance": "Opening balance",
+    "accountingReports": "Accounting reports",
     "group": {
       "setup": "Setup",
       "people": "People",
@@ -94,9 +100,9 @@
       "evidence": "Evidence",
       "receivables": "Receivables",
       "payables": "Payables",
-      "ledger": "General Ledger",
+      "ledger": "General ledger",
       "reports": "Reports",
-      "acctSetup": "Setup & Close"
+      "acctSetup": "Setup & close"
     }
   },
   "admin": {
@@ -493,10 +499,10 @@
       "supersedeCertificate": "Supersede"
     },
     "preparation": {
-        "title": "Preparation sequence",
-        "hint": "Follow the numbered sequence. Team and programme setup may proceed in parallel, while the main contract must be priced against a baselined BOQ.",
-        "ready": "The current start conditions are satisfied. Record commencement to start the project.",
-        "progress": "{complete} of {total} complete",
+      "title": "Preparation sequence",
+      "hint": "Follow the numbered sequence. Team and programme setup may proceed in parallel, while the main contract must be priced against a baselined BOQ.",
+      "ready": "The current start conditions are satisfied. Record commencement to start the project.",
+      "progress": "{complete} of {total} complete",
       "remaining": "{count, plural, =0 {Ready for commencement} one {# condition remaining} other {# conditions remaining}}",
       "completed": "{count} conditions completed",
       "resolve": "Open task",
@@ -2665,5 +2671,16 @@
     "accountLedger": "Account Ledger",
     "accountLedgerDesc": "Full transaction history for a single account with running balance.",
     "open": "Open report"
+  },
+  "module": {
+    "portfolio": {
+      "description": "Projects and the clients they are built for."
+    },
+    "accounting": {
+      "description": "Receivables, payables and the general ledger for ACCO Ltd. All amounts in USD."
+    },
+    "procurement": {
+      "description": "Requests, purchase orders, receipts and suppliers."
+    }
   }
 }

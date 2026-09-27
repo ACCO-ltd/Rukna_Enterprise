@@ -46,8 +46,6 @@ export function UomList() {
   return (
     <>
       <SetupScreen
-        title={t('title')}
-        subtitle={t('subtitle')}
         notice={t('activeOnlyNotice')}
         createLabel={t('new')}
         createTitle={t('createTitle')}

@@ -87,8 +87,6 @@ export function SupplierList() {
 
   return (
     <SetupScreen
-      title={t('title')}
-      subtitle={t('subtitle')}
       notice={t('writeOnceNotice')}
       createLabel={t('new')}
       createTitle={t('createTitle')}

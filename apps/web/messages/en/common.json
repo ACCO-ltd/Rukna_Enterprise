@@ -90,7 +90,15 @@
     "nextPage": "Next page",
     "perPage": "Per page",
     "page": "Page {page} of {total}",
-    "showing": "Showing {from}–{to} of {count}"
+    "showing": "Showing {from}–{to} of {count}",
+    "filter": "Filter",
+    "filtersTitle": "Filters",
+    "applyFilters": "Apply",
+    "clearFilterPanel": "Clear",
+    "filterAny": "Any",
+    "clearAllFilters": "Clear all",
+    "removeFilter": "Remove filter: {filter}",
+    "noMatchesHint": "Try clearing a filter or changing your search."
   },
   "emptyState": {
     "noData": "No items yet",

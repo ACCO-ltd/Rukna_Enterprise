@@ -120,6 +120,11 @@ export function ReceiptsList() {
         noMatchMessage={t('noMatches')}
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 25 }}
+        toolbarActions={
+          <Button asChild>
+            <Link href="/receipts/new">{t('newReceipt')}</Link>
+          </Button>
+        }
         toolbarFilters={
           <FilterBar>
             <FilterField id="receipt-search" label={t('searchLabel')} hideLabel grow>

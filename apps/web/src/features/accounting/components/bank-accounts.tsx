@@ -143,20 +143,14 @@ export function BankAccounts() {
     },
   ];
 
+  const createAction = can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+    <Button type="button" onClick={() => setCreating(true)}>
+      {t('create.new')}
+    </Button>
+  ) : null;
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-
-        {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
-          <Button type="button" onClick={() => setCreating(true)}>
-            {t('create.new')}
-          </Button>
-        ) : null}
-      </div>
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="p-6 sm:max-w-lg">
@@ -184,10 +178,12 @@ export function BankAccounts() {
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
               </p>
+              {createAction ? <div className="mt-4 flex justify-center">{createAction}</div> : null}
             </div>
           ) : undefined
         }
         pagination={{ defaultPageSize: 25 }}
+        toolbarActions={createAction}
       />
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>

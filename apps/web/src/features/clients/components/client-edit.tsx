@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 
 import { useClient } from '../hooks/use-client';
 import { ClientForm } from './client-form';
@@ -20,6 +21,8 @@ export function ClientEdit({ id }: { id: string }) {
   const t = useTranslations('platform.clients.detail');
   const tCommon = useTranslations('common');
   const { data: client, isPending, isError, error } = useClient(id);
+  // Names the client being edited in the module breadcrumb (ADR-035): "Clients / <name>".
+  useModuleTrail(client?.name);
 
   if (isPending) {
     return (

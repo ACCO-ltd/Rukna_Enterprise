@@ -18,6 +18,7 @@ import { useTranslations } from 'next-intl';
 import { Alert, Button, DatePicker, FormField, Input, RadioGroup, Select, Textarea } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
 
 import { useCreateMaterialRequest, useSpendCategories } from '../hooks/use-procurement';
@@ -38,6 +39,8 @@ export function MrForm() {
   const t = useTranslations('procurement.mr');
   const tc = useTranslations('procurement.common');
   const tPriority = useTranslations('procurement.project.requirements.priority');
+  // The module header owns the page's h1 (ADR-035); the form names itself in the breadcrumb.
+  useModuleTrail(t('createTitle'));
   const router = useRouter();
 
   const [step, setStep] = useState<1 | 2>(1);
@@ -126,10 +129,7 @@ export function MrForm() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {t('createTitle')}
-        </h1>
-        <ol className="mt-3 flex gap-4 text-sm" aria-label={t('createTitle')}>
+        <ol className="flex gap-4 text-sm" aria-label={t('createTitle')}>
           <li aria-current={step === 1 ? 'step' : undefined}>
             <span className={step === 1 ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
               1. {t('stepHeader')}

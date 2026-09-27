@@ -51,7 +51,8 @@
     "all": "All",
     "deactivate": "Deactivate",
     "blockedTitle": "Not available yet",
-    "permissionDenied": "You do not have permission to perform this action."
+    "permissionDenied": "You do not have permission to perform this action.",
+    "moreActions": "More actions"
   },
   "lineType": {
     "MATERIAL": "Material",
@@ -473,6 +474,29 @@
       "not-posted": "Only a posted bill can be reversed.",
       "already-reversed": "This bill has already been reversed.",
       "unmatched": "Three-way matching has to complete before this bill can be posted."
+    },
+    "supplierRef": "Supplier ref {ref}",
+    "amount": "Amount",
+    "poMatch": "PO match",
+    "emptyHint": "Bills you record against suppliers will show up here.",
+    "searchPlaceholder": "Search bills, suppliers, references",
+    "backToList": "Supplier bills",
+    "eyebrow": "Supplier bill",
+    "submitForApproval": "Submit for approval",
+    "stepOf": "step {n} of {total}",
+    "axisDocument": "Document",
+    "notice": {
+      "postBlockedTitle": "Posting is blocked by the purchase-order match",
+      "postBlockedBody": "The match result is {match}. Approve the exception or mark it disputed in Matching below before this bill can post.",
+      "postFailedTitle": "Posting failed",
+      "postFailedBody": "The ledger did not accept this bill. Check that the accounting period is open, then retry.",
+      "retryPosting": "Retry posting",
+      "postingPendingTitle": "Posting in progress",
+      "postingPendingBody": "The ledger is writing this bill’s journal. This page updates when it finishes.",
+      "reversedTitle": "Posting reversed",
+      "reversedBody": "A reversing journal cancelled this bill’s posting. The bill is read-only.",
+      "postedTitle": "Bill posted",
+      "postedBody": "{amount} posted to the general ledger."
     }
   },
   "payments": {

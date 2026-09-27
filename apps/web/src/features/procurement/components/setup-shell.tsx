@@ -3,9 +3,12 @@
 /**
  * Shared furniture for the four Tier A master-data screens.
  *
- * All four are the same shape — a heading, a create drawer, a table, a deactivate
+ * All four are the same shape — a create action, a create dialog, a table, a deactivate
  * confirmation — so the shape lives here once and each screen supplies its columns and
  * its form. §12.4 describes them together for the same reason.
+ *
+ * No title: the Procurement module header owns the page's `h1` and its breadcrumb
+ * ("Setup / Materials") already names the screen (ADR-035).
  */
 
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -22,8 +25,11 @@ import {
 import { ApiError } from '@/lib/api-client';
 
 interface SetupScreenProps {
-  title: string;
-  subtitle: string;
+  /**
+   * One muted line of guidance above the create action, for a screen whose purpose is easy
+   * to confuse with another's (spend vs material categories). Omit it otherwise.
+   */
+  guidance?: string;
   /** Rendered as an informational banner above the table. */
   notice?: string;
   createLabel: string;
@@ -37,8 +43,7 @@ interface SetupScreenProps {
 }
 
 export function SetupScreen({
-  title,
-  subtitle,
+  guidance,
   notice,
   createLabel,
   canCreate,
@@ -54,18 +59,18 @@ export function SetupScreen({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{subtitle}</p>
+      {guidance || canCreate ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {guidance ? (
+            <p className="me-auto max-w-prose text-body-sm text-muted-foreground">{guidance}</p>
+          ) : null}
+          {canCreate ? (
+            <Button type="button" onClick={() => setOpen(true)}>
+              {createLabel}
+            </Button>
+          ) : null}
         </div>
-
-        {canCreate ? (
-          <Button type="button" onClick={() => setOpen(true)}>
-            {createLabel}
-          </Button>
-        ) : null}
-      </div>
+      ) : null}
 
       {notice ? <Alert variant="info" messages={[notice]} /> : null}
 

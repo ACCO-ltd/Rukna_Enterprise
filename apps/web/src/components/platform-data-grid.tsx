@@ -11,7 +11,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  EmptyState,
+  FilterChips,
+  FilterPanel,
+  type FilterValues,
   Input,
+  type ListFilterField,
+  MoneyDisplay,
+  SkeletonTable,
   Label,
   Select,
   Table,
@@ -24,7 +31,7 @@ import {
   TableScroll,
 } from '@erp/ui';
 import Link from 'next/link';
-import { ArrowUpDown, Columns3 } from 'lucide-react';
+import { ArrowUpDown, Columns3, Search } from 'lucide-react';
 
 // ─── Column definition ────────────────────────────────────────────────────────
 
@@ -61,6 +68,18 @@ export interface GridColumn<T> {
   plainValue?: (row: T) => string | number | null | undefined;
   /** Renders the cell's visual content. */
   render: (row: T, ctx: GridRenderContext) => React.ReactNode;
+  /**
+   * The viewer may not see this column's money (ADR-029 money-blind roles). Every cell renders
+   * the hidden state, and the column is neither sortable nor searchable — ordering by a figure
+   * you cannot see would reveal it.
+   */
+  redacted?: boolean;
+  /**
+   * The column's place in the phone row card (ADR-035), which replaces the table below 640px:
+   * `title` (the linked identity), `subtitle` and `meta` lines under it, `amount` top-right,
+   * `status` on the bottom row beside the row actions. Columns without a role stay off the card.
+   */
+  card?: 'title' | 'subtitle' | 'meta' | 'amount' | 'status';
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -192,14 +211,8 @@ function SortIcon({ direction }: { direction: SortDirection | null }) {
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
 
-function GridSkeleton({ label }: { label: string }) {
-  const tCommon = useTranslations('common');
-  return (
-    <div role="status" aria-live="polite" aria-label={label}>
-      <span className="sr-only">{tCommon('loading')}</span>
-      <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
-    </div>
-  );
+function GridSkeleton({ label, columns }: { label: string; columns: number }) {
+  return <SkeletonTable label={label} columns={Math.min(Math.max(columns, 3), 8)} rows={6} />;
 }
 
 // ─── Pagination controls ──────────────────────────────────────────────────────
@@ -234,7 +247,7 @@ function PaginationBar({
         {t('showing', { from, to, count })}
       </p>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Page size selector */}
         <div className="flex items-center gap-1.5">
           <label htmlFor={pageLabelId} className="whitespace-nowrap text-xs text-muted-foreground">
@@ -329,6 +342,17 @@ export interface PlatformDataGridProps<T> {
   toolbarActions?: React.ReactNode;
   /** @deprecated Use toolbarActions */
   toolbarRight?: React.ReactNode;
+
+  // ── Filter panel (ADR-035) ─────────────────────────────────────────────────
+
+  /**
+   * Fields for the Filter panel. The panel edits a draft; `onFilterValuesChange` fires only on
+   * Apply, Clear, or when a chip is removed. The caller applies the values to `data`, as with
+   * every domain filter. Applied filters show as removable chips under the toolbar.
+   */
+  filters?: ListFilterField[];
+  filterValues?: FilterValues;
+  onFilterValuesChange?: (next: FilterValues) => void;
 
   // ── Row features ───────────────────────────────────────────────────────────
 
@@ -527,6 +551,9 @@ export function PlatformDataGrid<T>({
   onClearFilters,
   sortControl = true,
   defaultSort,
+  filters,
+  filterValues,
+  onFilterValuesChange,
 }: PlatformDataGridProps<T>) {
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
@@ -578,8 +605,11 @@ export function PlatformDataGrid<T>({
 
   // ── Computed ───────────────────────────────────────────────────────────────
 
-  const searched = useMemo(() => searchRows(data, search, visibleColumns), [data, search, visibleColumns]);
-  const sorted = useMemo(() => sortRows(searched, sort, visibleColumns), [searched, sort, visibleColumns]);
+  // A redacted column is invisible to search and sort: matching or ordering by a figure the
+  // viewer cannot see would reveal it.
+  const readableColumns = useMemo(() => visibleColumns.filter((c) => !c.redacted), [visibleColumns]);
+  const searched = useMemo(() => searchRows(data, search, readableColumns), [data, search, readableColumns]);
+  const sorted = useMemo(() => sortRows(searched, sort, readableColumns), [searched, sort, readableColumns]);
 
   // Pagination
   const totalPages = paginationConfig ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
@@ -603,7 +633,7 @@ export function PlatformDataGrid<T>({
   // ── Loading ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
-    return <GridSkeleton label={label} />;
+    return <GridSkeleton label={label} columns={visibleColumns.length} />;
   }
 
   // ── Error ──────────────────────────────────────────────────────────────────
@@ -662,7 +692,7 @@ export function PlatformDataGrid<T>({
     visibleColumns.find((col) => col.sticky)?.key ?? visibleColumns[0]?.key;
 
   /** Sortable columns currently on screen — a hidden column is not an offer worth making. */
-  const sortableColumns = visibleColumns.filter((col) => col.sortable);
+  const sortableColumns = visibleColumns.filter((col) => col.sortable && !col.redacted);
   const activeSortColumn = sort ? sortableColumns.find((col) => col.key === sort.key) : undefined;
 
   /**
@@ -670,11 +700,60 @@ export function PlatformDataGrid<T>({
    * the caller filters on. A reader who has narrowed a list to nothing needs a single way
    * out, not one button for search and a set of selects to walk back to "All".
    */
+  const appliedFilters = filterValues ?? {};
+  const filterChips = (filters ?? []).flatMap((field) => {
+    const value = appliedFilters[field.key];
+    if (!value) return [];
+    const shown =
+      field.type === 'select'
+        ? (field.options.find((option) => option.value === value)?.label ?? value)
+        : value;
+    return [{ key: field.key, label: field.label, value: shown }];
+  });
+  const hasPanelFilters = filterChips.length > 0;
+
+  const applyFilters = (next: FilterValues) => {
+    setPage(1);
+    onFilterValuesChange?.(next);
+  };
+
   const clearEverything = () => {
     setSearch('');
     setPage(1);
+    if (hasPanelFilters) onFilterValuesChange?.({});
     onClearFilters?.();
   };
+
+  /** Phone row card, generated from the columns' `card` roles when no `mobileRow` is given. */
+  const cardColumns = columns.filter((col) => col.card && !hiddenColumns.has(col.key));
+  const autoCard = !mobileRow && cardColumns.some((col) => col.card === 'title');
+  const renderCell = (row: T, col: GridColumn<T>) =>
+    col.redacted ? <MoneyDisplay value={null} hidden /> : col.render(row, renderCtx);
+  const cardCell = (row: T, role: NonNullable<GridColumn<T>['card']>) =>
+    cardColumns
+      .filter((col) => col.card === role)
+      .map((col) => (
+        <span key={col.key} className="min-w-0">
+          {renderCell(row, col)}
+        </span>
+      ));
+
+  /** Filtered-empty: rows exist, but search and filters hide every one of them. */
+  const filteredEmpty = noMatchContent ?? (
+    <EmptyState
+      variant="inline"
+      title={noMatchMessage ?? t('noMatches')}
+      description={t('noMatchesHint')}
+      action={
+        // Lists still on inline filters already carry Clear in the toolbar; don't repeat it.
+        filters && (hasSearch || hasPanelFilters) ? (
+          <Button variant="outline" onClick={clearEverything}>
+            {t('clearFilters')}
+          </Button>
+        ) : undefined
+      }
+    />
+  );
 
   /**
    * Pointer navigation for a whole row.
@@ -722,119 +801,41 @@ export function PlatformDataGrid<T>({
       {/* ── Saved views ─────────────────────────────────────────────────── */}
       {savedViews}
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Global text search */}
-        <div className="min-w-0 flex-1 basis-48">
+      {/* ── Toolbar (ADR-035): scoped search · filters · one create ─────── */}
+      <div className="flex flex-wrap items-center gap-2 rounded-panel border border-border bg-surface p-3">
+        <div className="relative min-w-0 flex-1 basis-56 sm:max-w-md">
           <Label htmlFor={searchId} className="sr-only">
             {searchLabel ?? t('searchLabel')}
           </Label>
+          <Search
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             id={searchId}
             type="search"
             placeholder={searchPlaceholder ?? t('searchPlaceholder')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full"
+            className="w-full ps-9"
           />
         </div>
 
-        {/* Domain-specific filter controls */}
+        {/* Inline filter controls — lists not yet moved onto the Filter panel. */}
         {filtersSlot ? (
-          <div className="flex shrink-0 items-center gap-2">{filtersSlot}</div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">{filtersSlot}</div>
         ) : null}
 
-        {/* Column visibility */}
-        {enableColumnVisibility ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Columns3 size={15} aria-hidden="true" />
-                {t('columnVisibility')}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {columns
-                .filter((col) => !col.sticky)
-                .map((col) => (
-                  <DropdownMenuItem
-                    key={col.key}
-                    onSelect={() => toggleColumn(col.key)}
-                    className="gap-2"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border',
-                        !hiddenColumns.has(col.key) && 'bg-brand-primary border-brand-primary',
-                      )}
-                    >
-                      {!hiddenColumns.has(col.key) ? (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                      ) : null}
-                    </span>
-                    {col.header}
-                  </DropdownMenuItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-
-        {/* Clear — sits with the filters it undoes, not down beside the row count where it
-            used to be. Appears only once something is actually narrowing the list. */}
-        {onClearFilters || hasSearch ? (
-          <button
-            type="button"
-            onClick={clearEverything}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-control px-2 text-body-sm font-medium text-brand-primary transition-colors hover:text-brand-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-          >
-            {onClearFilters ? t('clearFilters') : t('clearSearch')}
-          </button>
-        ) : null}
-
-        {/* Right slot — create button etc. */}
-        {actionsSlot ? <div className="shrink-0">{actionsSlot}</div> : null}
-      </div>
-
-      {/* ── Bulk action bar (when rows selected) ──────────────────────────── */}
-      {hasSelection && selection && selection.selected.size > 0 ? (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-subtle px-4 py-2">
-          <span className="text-sm font-medium text-foreground">
-            {selection.selected.size} selected
-          </span>
-          {selection.actions}
-        </div>
-      ) : null}
-
-      {/* ── The list panel ──────────────────────────────────────────────────
-          Count, rows and footer are one bordered surface rather than three things floating
-          on the page background. The rules that used to separate them were doing the work a
-          single container does better, and the count now reads as a property of the table
-          under it instead of a sentence stranded above it. */}
-      <section className="overflow-hidden rounded-panel border border-border bg-surface">
-        {/* ── Count / money summary / sort ──────────────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-3">
-          <p
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm text-muted-foreground"
-            role="status"
-            aria-live="polite"
-          >
-            <span>{countText}</span>
-            {/* Inside the same live region as the count: when a filter changes, "4 bills" and
-                "2 071 350.00 outstanding" are one announcement, not two. */}
-            {footerSummary ? footerSummary(visible, sorted) : null}
-          </p>
-
-          {sortControl && sortableColumns.length > 1 ? (
+        <div className="ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {/* Sort — offered where the table gives way to cards, which have no headers to click. */}
+          {sortControl && sortableColumns.length > 1 && (autoCard || mobileRow) ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-body-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-                >
-                  <ArrowUpDown size={14} aria-hidden="true" />
+                <Button variant="outline" className={cn('gap-1.5', autoCard ? 'sm:hidden' : 'md:hidden')}>
+                  <ArrowUpDown size={16} aria-hidden="true" />
                   <span>{t('sortBy', { column: activeSortColumn?.header ?? t('sortByDefault') })}</span>
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 {sortableColumns.map((col) => (
@@ -859,18 +860,168 @@ export function PlatformDataGrid<T>({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-        </div>
 
-      {/* ── Mobile row renderer ──────────────────────────────────────────── */}
+          {filters && filters.length > 0 ? (
+            <FilterPanel
+              fields={filters}
+              value={appliedFilters}
+              onApply={applyFilters}
+              labels={{
+                trigger: t('filter'),
+                title: t('filtersTitle'),
+                apply: t('applyFilters'),
+                clear: t('clearFilterPanel'),
+                any: t('filterAny'),
+              }}
+            />
+          ) : null}
+
+          {enableColumnVisibility ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label={t('columnVisibility')}>
+                  <Columns3 size={16} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {columns
+                  .filter((col) => !col.sticky)
+                  .map((col) => (
+                    <DropdownMenuItem
+                      key={col.key}
+                      onSelect={(event) => {
+                        // Keep the menu open: people toggle several columns in one visit.
+                        event.preventDefault();
+                        toggleColumn(col.key);
+                      }}
+                      className="gap-2"
+                    >
+                      <Checkbox
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        checked={!hiddenColumns.has(col.key)}
+                        readOnly
+                        className="pointer-events-none"
+                      />
+                      {col.header}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+
+          {/* Clear for lists still on inline filters; panel lists clear through their chips. */}
+          {!filters && (onClearFilters || hasSearch) ? (
+            <Button variant="ghost" onClick={clearEverything}>
+              {onClearFilters ? t('clearFilters') : t('clearSearch')}
+            </Button>
+          ) : null}
+
+          {actionsSlot ? <div className="shrink-0">{actionsSlot}</div> : null}
+        </div>
+      </div>
+
+      {/* ── Applied filters — applied only, never the panel's draft ─────── */}
+      <FilterChips
+        chips={filterChips}
+        onRemove={(key) => applyFilters({ ...appliedFilters, [key]: '' })}
+        onClearAll={() => applyFilters({})}
+        labels={{
+          clearAll: t('clearAllFilters'),
+          remove: (chip) => t('removeFilter', { filter: chip.label }),
+        }}
+      />
+
+      {/* ── Bulk action bar (when rows selected) ──────────────────────────── */}
+      {hasSelection && selection && selection.selected.size > 0 ? (
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-subtle px-4 py-2">
+          <span className="text-sm font-medium text-foreground">
+            {selection.selected.size} selected
+          </span>
+          {selection.actions}
+        </div>
+      ) : null}
+
+      {/* ── The list panel ──────────────────────────────────────────────────
+          Count, rows and footer are one bordered surface rather than three things floating
+          on the page background. The rules that used to separate them were doing the work a
+          single container does better, and the count now reads as a property of the table
+          under it instead of a sentence stranded above it. */}
+      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+        {/* ── Money in view — only for lists that total a column ─────────── */}
+        {footerSummary ? (
+          <div className="border-b border-border px-4 py-3">
+            {/* One live region: when a filter changes, "4 bills" and the money total beside it
+                are one announcement, not two. */}
+            <p
+              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              <span>{countText}</span>
+              {footerSummary(visible, sorted)}
+            </p>
+          </div>
+        ) : (
+          // No visible count bar (ADR-035) — but a filter or search that changes the row count
+          // must still be announced, so the count lives on as a screen-reader-only status.
+          <p className="sr-only" role="status" aria-live="polite">
+            {countText}
+          </p>
+        )}
+
+        {/* ── Phone row cards, from the columns' card roles (below 640px) ──── */}
+        {autoCard ? (
+          <div className="p-3 sm:hidden">
+            {visible.length === 0 ? (
+              filteredEmpty
+            ) : (
+              <ul className="space-y-2" aria-label={label}>
+                {visible.map((row) => {
+                  const href = rowHref?.(row);
+                  const title = cardCell(row, 'title');
+                  return (
+                    <li key={rowKey(row)} className="rounded-panel border border-border bg-surface p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-0.5 text-body-sm">
+                          {href ? (
+                            <Link
+                              href={href}
+                              className="block font-semibold text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+                            >
+                              {title}
+                            </Link>
+                          ) : (
+                            <div className="font-semibold text-foreground">{title}</div>
+                          )}
+                          <div className="text-muted-foreground">{cardCell(row, 'subtitle')}</div>
+                          <div className="flex flex-wrap gap-x-1 text-muted-foreground">
+                            {cardCell(row, 'meta')}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-body-sm font-semibold tabular-nums text-foreground">
+                          {cardCell(row, 'amount')}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          {cardCell(row, 'status')}
+                        </div>
+                        {rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        ) : null}
+
+        {/* ── Caller-supplied mobile rows (below md) ──────────────────────── */}
         {mobileRow ? (
           <div className="p-3 md:hidden">
             {visible.length === 0 ? (
-              noMatchContent ?? (
-                <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-10 text-center">
-                  <p className="text-sm text-muted-foreground">{noMatchMessage ?? t('noMatches')}</p>
-
-                </div>
-              )
+              filteredEmpty
             ) : (
               <ul className="space-y-2" aria-label={label}>
                 {visible.map((row) => (
@@ -886,18 +1037,23 @@ export function PlatformDataGrid<T>({
           aria-label={label}
           // The panel around it already draws the frame; a second border here would read as a
           // box inside a box, which is exactly what radius is supposed to encode and this is not.
-          className={cn('rounded-none border-0', mobileRow && 'hidden md:block')}
+          className={cn(
+            'rounded-none border-0',
+            mobileRow && 'hidden md:block',
+            autoCard && 'hidden sm:block',
+          )}
           onScroll={(event) => {
             const next = event.currentTarget.scrollLeft > 0;
             setScrolledX((current) => (current === next ? current : next));
           }}
         >
           <Table>
-            <TableHeader>
-              <TableRow>
+            {/* Navy header band (ADR-035) — the same on every list in the product. */}
+            <TableHeader className="bg-brand-panel">
+              <TableRow className="bg-brand-panel hover:bg-brand-panel">
                 {/* Selection checkbox header */}
                 {hasSelection && selection ? (
-                  <TableHead className="w-10">
+                  <TableHead className="w-10 text-brand-on-panel">
                     <Checkbox
                       aria-label="Select all"
                       checked={
@@ -921,16 +1077,17 @@ export function PlatformDataGrid<T>({
                     numeric={col.numeric}
                     aria-sort={col.sortable ? ariaSort(col.key) : undefined}
                     className={cn(
-                      col.sticky && 'sticky start-0 z-10 bg-surface-subtle',
+                      'font-semibold text-brand-on-panel',
+                      col.sticky && 'sticky start-0 z-10 bg-brand-panel',
                       col.sticky && scrolledX && 'shadow-[1px_0_0_0] shadow-border',
                     )}
                   >
-                    {col.sortable ? (
+                    {col.sortable && !col.redacted ? (
                       <button
                         type="button"
                         className={cn(
                           'inline-flex w-full items-center gap-1 text-start',
-                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-on-panel',
                           col.numeric && 'flex-row-reverse',
                         )}
                         aria-label={sortButtonLabel(col)}
@@ -946,21 +1103,16 @@ export function PlatformDataGrid<T>({
                 ))}
 
                 {hasActions ? (
-                  <TableHead className="text-end">{t('actionsColumn')}</TableHead>
+                  <TableHead className="w-12 text-end">
+                    <span className="sr-only">{t('actionsColumn')}</span>
+                  </TableHead>
                 ) : null}
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {visible.length === 0 ? (
-                <TableEmpty colSpan={colCount}>
-                  {noMatchContent ?? (
-                    <>
-                      <p>{noMatchMessage ?? t('noMatches')}</p>
-
-                    </>
-                  )}
-                </TableEmpty>
+                <TableEmpty colSpan={colCount}>{filteredEmpty}</TableEmpty>
               ) : (
                 visible.map((row) => {
                   const href = rowHref?.(row);
@@ -1000,16 +1152,16 @@ export function PlatformDataGrid<T>({
                               data-row-link=""
                               className="-my-2 flex min-h-11 items-center rounded-control focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                             >
-                              {col.render(row, renderCtx)}
+                              {renderCell(row, col)}
                             </Link>
                           ) : (
-                            col.render(row, renderCtx)
+                            renderCell(row, col)
                           )}
                         </TableCell>
                       ))}
 
                       {hasActions ? (
-                        <TableCell className="text-end">{rowActions!(row)}</TableCell>
+                        <TableCell className="w-12 text-end">{rowActions!(row)}</TableCell>
                       ) : null}
                     </TableRow>
                   );

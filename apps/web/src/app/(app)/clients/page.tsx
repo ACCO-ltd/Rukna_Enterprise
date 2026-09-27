@@ -1,28 +1,9 @@
-import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
-import { Button } from '@erp/ui';
-import { Plus } from 'lucide-react';
-
-import { PageHeader } from '@/components/layout/page-header';
 import { ClientsList } from '@/features/clients/components/clients-list';
 
-export default async function ClientsPage() {
-  const t = await getTranslations('platform.clients');
-
-  return (
-    <>
-      <PageHeader
-        title={t('title')}
-        actions={
-          <Button asChild>
-            <Link href="/clients/new">
-              <Plus className="me-2 h-4 w-4" aria-hidden="true" />
-              {t('newClient')}
-            </Link>
-          </Button>
-        }
-      />
-      <ClientsList />
-    </>
-  );
+/**
+ * The Projects module header owns the page's `h1` and names this page in its breadcrumb
+ * (ADR-035); the "New client" action sits in the list's toolbar.
+ */
+export default function ClientsPage() {
+  return <ClientsList />;
 }

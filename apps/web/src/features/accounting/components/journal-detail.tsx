@@ -16,6 +16,7 @@ import {
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
@@ -43,6 +44,10 @@ export function JournalDetail({ journalId }: { journalId: string }) {
   const [pending, setPending] = useState<JournalAction | null>(null);
 
   const accountsById = useMemo(() => indexAccounts(accounts.data ?? []), [accounts.data]);
+
+  useModuleTrail(
+    journal.data ? (journal.data.journalNumber ?? journal.data.id.slice(-8)) : undefined,
+  );
 
   if (journal.isPending) {
     return (
@@ -102,21 +107,14 @@ export function JournalDetail({ journalId }: { journalId: string }) {
   return (
     <div className="space-y-8">
       <div>
-        <Link
-          href="/finance/accounting/journals"
-          className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          {t('back')}
-        </Link>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-muted-foreground">
             {entry.journalNumber ?? entry.id.slice(-8)}
           </span>
           <JournalStatusBadge status={entry.status} />
         </div>
 
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
           <bdi>
             {formatMoney(
               fromMinorUnits(totals.debitMinor, MONEY_SCALE),
@@ -124,7 +122,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
               locale,
             )}
           </bdi>
-        </h1>
+        </h2>
         <p className="text-sm text-muted-foreground">{entry.description}</p>
       </div>
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Label, OverflowGlyph, RowActions, Select, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
-import { Filter } from 'lucide-react';
+import { Filter, Plus } from 'lucide-react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { RecordTile } from '@/components/record-tile';
@@ -154,6 +154,15 @@ export function ClientsList() {
             </Button>
           }
         />
+      }
+      // The module header owns the page title (ADR-035); the create action sits with the list.
+      toolbarActions={
+        <Button asChild>
+          <Link href="/clients/new">
+            <Plus className="me-2 h-4 w-4" aria-hidden="true" />
+            {t('newClient')}
+          </Link>
+        </Button>
       }
       toolbarFilters={
         <div className="relative">

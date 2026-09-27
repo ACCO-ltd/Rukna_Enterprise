@@ -95,36 +95,26 @@ describe('AppShell — navigation', () => {
 
     expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
     expect(window.localStorage.getItem('rukna.sidebar.collapsed')).toBe('true');
-    expect(document.documentElement.style.getPropertyValue('--sidebar-width')).toBe('5rem');
+    expect(document.documentElement.style.getPropertyValue('--sidebar-width')).toBe('4rem');
   });
 
-  it('renders the live destinations across all visible domains', () => {
+  it('lists modules only — module pages live in the module tab bar (ADR-035)', () => {
     renderShell();
 
     const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
     const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent?.trim());
 
-    // Standalone: Dashboard
-    expect(links).toContain('Dashboard');
-
-    // Projects domain items
-    expect(links).toContain('Projects');
-    expect(links).toContain('Clients');
-
-    // Accounting domain items
-    expect(links).toContain('Receipts');
-    expect(links).toContain('Journals');
-
-    // Contracts is no longer a standalone sidebar destination.
-    expect(links).not.toContain('Contracts');
+    expect(links).toEqual(['Dashboard', 'Projects', 'Accounting', 'Procurement', 'Administration']);
+    expect(links).not.toContain('Clients');
+    expect(links).not.toContain('Receipts');
+    expect(links).not.toContain('Journals');
   });
 
   it('marks the current route with aria-current on the nav item', () => {
     pathname = '/projects/abc123';
     renderShell();
 
-    // The domain header link (/projects) and the item link (/projects) are both rendered.
-    // Only the item carries aria-current; the domain header is always a navigation affordance.
+    // The module row stays lit for every route beneath it, the project workspace included.
     const projectLinks = screen.getAllByRole('link', { name: 'Projects' });
     const activeItem = projectLinks.find((el) => el.getAttribute('aria-current') === 'page');
     expect(activeItem).toBeDefined();
@@ -161,15 +151,10 @@ describe('AppShell — flat domains', () => {
     expect(links).not.toContain('Audit logs');
   });
 
-  it('gives Administration no expand control, because there is nothing to expand', () => {
+  it('has no expand controls — no module nests in the sidebar any more', () => {
     renderShell();
 
-    expect(screen.queryByRole('button', { name: 'Expand Administration' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Collapse Administration' })).toBeNull();
-    // Accounting still expands — this is one domain's behaviour, not a new sidebar.
-    expect(
-      screen.queryByRole('button', { name: /Accounting/ }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(Expand|Collapse) (Administration|Accounting)/ })).toBeNull();
   });
 
   it('stays lit on every route beneath it', () => {
@@ -182,6 +167,30 @@ describe('AppShell — flat domains', () => {
       'aria-current',
       'page',
     );
+  });
+});
+
+describe('AppShell — module chrome', () => {
+  it('renders the module header and tabs on a module page', () => {
+    pathname = '/finance/accounting/bills';
+    renderShell();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Accounting' })).toBeInTheDocument();
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs).getByText('Payables')).toBeInTheDocument();
+    expect(within(crumbs).getByText('Supplier bills')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('navigation', { name: 'Accounting sections' })).toBeInTheDocument();
+  });
+
+  it('renders no module chrome outside a module, or inside the project workspace', () => {
+    pathname = '/dashboard';
+    const { unmount } = renderShell();
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
+    unmount();
+
+    pathname = '/projects/abc123/boq';
+    renderShell();
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
   });
 });
 

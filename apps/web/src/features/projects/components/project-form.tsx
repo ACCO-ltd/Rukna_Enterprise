@@ -22,6 +22,7 @@ import {
 import { FormActions } from '@/components/form-actions';
 import { FormErrorSummary } from '@/components/form-error-summary';
 import { ApiError } from '@/lib/api-client';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 
 import { useCreateProject } from '../hooks/use-create-project';
 import { useUpdateProject } from '../hooks/use-update-project';
@@ -102,6 +103,9 @@ export function ProjectForm({ project }: ProjectFormProps = {}) {
 function ProjectCreateForm() {
   const t = useTranslations('platform.projects.create');
   const tTypes = useTranslations('projectTypes');
+  // The Projects module header owns the page's h1 (ADR-035); the wizard names itself in the
+  // breadcrumb. The edit form lives in the project workspace, which has no module chrome.
+  useModuleTrail(t('title'));
   const searchParams = useSearchParams();
   const { can } = usePermissions();
   const [addingClient, setAddingClient] = useState(false);

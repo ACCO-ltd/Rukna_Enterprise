@@ -3,7 +3,7 @@ import { PoForm } from '@/features/procurement/components/po-form';
 export default function NewPurchaseOrderPage() {
   return (
     <div className="w-full max-w-5xl">
-      <PoForm />
+      <PoForm moduleChrome />
     </div>
   );
 }

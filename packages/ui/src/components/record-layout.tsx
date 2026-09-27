@@ -77,8 +77,14 @@ export function RecordHeader({
   figure,
   actions,
   lifecycle,
+  headingLevel = 'h1',
   className,
 }: {
+  /**
+   * The title's heading level. Inside a module (ADR-035) the module header owns the page's
+   * `h1`, so a record there passes `h2`; a workspace with no module header keeps `h1`.
+   */
+  headingLevel?: 'h1' | 'h2';
   /** Back link or breadcrumb trail, above the identifier. */
   breadcrumb?: React.ReactNode;
   /** The record's own reference — IPC-2026-0042. Rendered mono: it is a code, not a name. */
@@ -99,6 +105,7 @@ export function RecordHeader({
   lifecycle?: React.ReactNode;
   className?: string;
 }) {
+  const Heading = headingLevel;
   return (
     <div
       className={cn(
@@ -117,7 +124,7 @@ export function RecordHeader({
             ) : null}
             {status}
           </div>
-          <h1 className="mt-1.5 text-h1 font-bold text-foreground">{title}</h1>
+          <Heading className="mt-1.5 text-h1 font-bold text-foreground">{title}</Heading>
           {subtitle ? (
             <p className="mt-1 text-body-sm text-muted-foreground">{subtitle}</p>
           ) : null}

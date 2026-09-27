@@ -1,18 +1,17 @@
 import { getTranslations } from 'next-intl/server';
 
-import { PageHeader } from '@/components/layout/page-header';
 import { ProjectForm } from '@/features/projects/components/project-form';
 
+/**
+ * The Projects module header owns the page's `h1` (ADR-035); the wizard names itself in the
+ * breadcrumb. What stays here is the one line a creator needs before starting.
+ */
 export default async function NewProjectPage() {
   const t = await getTranslations('platform.projects.create');
 
   return (
     <div className="w-full max-w-4xl">
-      <PageHeader
-        breadcrumbs={[{ label: t('breadcrumb'), href: '/projects' }]}
-        title={t('title')}
-        subtitle={t('subtitle')}
-      />
+      <p className="mb-4 text-body-sm text-muted-foreground">{t('subtitle')}</p>
       <ProjectForm />
     </div>
   );

@@ -5,6 +5,9 @@ import type { Account, PostingProfile } from '@/features/accounting/types';
 import {
   availableBillActions,
   billBlockReason,
+  billLifecycle,
+  billNotice,
+  primaryBillAction,
   canPost,
   canReverse,
   expenseProfiles,
@@ -336,5 +339,58 @@ describe('planBillPost', () => {
 
     expect(result.plan.totalDebit).toBe('0.00');
     expect(result.plan.balanced).toBe(false);
+  });
+});
+
+// ─── The document page (ADR-035) ─────────────────────────────────────────────────
+
+describe('billLifecycle', () => {
+  it('follows document status along the main line', () => {
+    expect(billLifecycle(bill({ documentStatus: 'DRAFT' }))).toEqual({ current: 'DRAFT', terminal: null });
+    expect(billLifecycle(bill({ documentStatus: 'SUBMITTED' }))).toEqual({ current: 'SUBMITTED', terminal: null });
+    expect(billLifecycle(bill({ documentStatus: 'APPROVED' }))).toEqual({ current: 'APPROVED', terminal: null });
+  });
+
+  it('lets posting status outrank document status', () => {
+    expect(billLifecycle(bill({ postingStatus: 'POSTED' }))).toEqual({ current: 'POSTED', terminal: null });
+    expect(billLifecycle(bill({ postingStatus: 'REVERSED' }))).toEqual({ current: 'POSTED', terminal: 'REVERSED' });
+  });
+
+  it('draws rejection and cancellation as terminals off the main line', () => {
+    expect(billLifecycle(bill({ documentStatus: 'REJECTED' })).terminal).toBe('REJECTED');
+    expect(billLifecycle(bill({ documentStatus: 'CANCELLED' })).terminal).toBe('CANCELLED');
+  });
+});
+
+describe('primaryBillAction', () => {
+  it('is the next step along the main line', () => {
+    expect(primaryBillAction(bill({ documentStatus: 'DRAFT' }))).toBe('submit');
+    expect(primaryBillAction(bill({ documentStatus: 'SUBMITTED' }))).toBe('approve');
+    expect(primaryBillAction(bill({ documentStatus: 'APPROVED' }))).toBe('post');
+  });
+
+  it('is never reverse, and nothing once posted', () => {
+    expect(primaryBillAction(bill({ postingStatus: 'POSTED' }))).toBeNull();
+    expect(primaryBillAction(bill({ postingStatus: 'REVERSED' }))).toBeNull();
+  });
+
+  it('is nothing while a PO match blocks posting — the notice explains instead', () => {
+    const blocked = bill({ purchaseOrderRevisionId: 'rev-1', matchStatus: 'EXCEPTION' });
+    expect(primaryBillAction(blocked)).toBeNull();
+    expect(billNotice(blocked)).toBe('post-blocked');
+  });
+});
+
+describe('billNotice', () => {
+  it('explains each posting outcome once', () => {
+    expect(billNotice(bill({ postingStatus: 'FAILED' }))).toBe('post-failed');
+    expect(billNotice(bill({ postingStatus: 'PENDING' }))).toBe('posting-pending');
+    expect(billNotice(bill({ postingStatus: 'POSTED' }))).toBe('posted');
+    expect(billNotice(bill({ postingStatus: 'REVERSED' }))).toBe('reversed');
+  });
+
+  it('says nothing when the state speaks for itself', () => {
+    expect(billNotice(bill({ documentStatus: 'DRAFT' }))).toBeNull();
+    expect(billNotice(bill({ documentStatus: 'APPROVED' }))).toBeNull();
   });
 });

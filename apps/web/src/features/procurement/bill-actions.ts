@@ -138,6 +138,63 @@ export function billBlockReason(
   }
 }
 
+// ─── The document page (ADR-035) ─────────────────────────────────────────────────
+
+/** The bill's main line, as the lifecycle stepper draws it. */
+export const BILL_STAGES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED'] as const;
+export type BillStage = (typeof BILL_STAGES)[number];
+
+export interface BillLifecycle {
+  current: BillStage;
+  /** A state off the main line, drawn after it. */
+  terminal: 'REVERSED' | 'REJECTED' | 'CANCELLED' | null;
+}
+
+/**
+ * Folds the two status axes into the stepper's one line. Posting outranks document status:
+ * an APPROVED bill whose postingStatus is POSTED is at "Posted".
+ */
+export function billLifecycle(bill: SupplierBill): BillLifecycle {
+  if (bill.postingStatus === 'REVERSED') return { current: 'POSTED', terminal: 'REVERSED' };
+  if (bill.postingStatus === 'POSTED') return { current: 'POSTED', terminal: null };
+  if (bill.documentStatus === 'REJECTED') return { current: 'SUBMITTED', terminal: 'REJECTED' };
+  if (bill.documentStatus === 'CANCELLED') return { current: 'DRAFT', terminal: 'CANCELLED' };
+  return { current: bill.documentStatus, terminal: null };
+}
+
+/**
+ * The one primary command for this state — the next step along the main line. Reverse is never
+ * primary: it undoes a posting, and it lives in the kebab.
+ */
+export function primaryBillAction(bill: SupplierBill): Exclude<BillAction, 'reverse'> | null {
+  const allowed = availableBillActions(bill);
+  for (const action of ['submit', 'approve', 'post'] as const) {
+    if (allowed.includes(action)) return action;
+  }
+  return null;
+}
+
+export type BillNotice = 'post-blocked' | 'post-failed' | 'posting-pending' | 'reversed' | 'posted';
+
+/**
+ * The single notice a bill page shows, when something needs explaining in words: why it cannot
+ * post, that posting failed, that it was reversed. `null` when the state speaks for itself.
+ */
+export function billNotice(bill: SupplierBill): BillNotice | null {
+  switch (bill.postingStatus) {
+    case 'REVERSED':
+      return 'reversed';
+    case 'FAILED':
+      return 'post-failed';
+    case 'PENDING':
+      return 'posting-pending';
+    case 'POSTED':
+      return 'posted';
+    default:
+      return billBlockReason(bill, 'post') === 'unmatched' ? 'post-blocked' : null;
+  }
+}
+
 // ─── Expense posting profiles ────────────────────────────────────────────────────
 
 /**

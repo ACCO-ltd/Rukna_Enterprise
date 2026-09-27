@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, StatusPill } from '@erp/ui';
 
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useClient } from '@/features/clients/hooks/use-client';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -25,6 +26,8 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
 
   const { data: receipt, isPending, isError, error } = useReceipt(receiptId);
   const [posting, setPosting] = useState(false);
+
+  useModuleTrail(receipt ? (receipt.reference ?? tReceipts('noReference')) : undefined);
 
   if (isPending) {
     return (
@@ -107,14 +110,7 @@ function ReceiptHeader({
 
   return (
     <div>
-      <Link
-        href="/receipts"
-        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-      >
-        {t('back')}
-      </Link>
-
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs text-muted-foreground">
@@ -124,9 +120,9 @@ function ReceiptHeader({
             {over ? <Badge tone="danger">{t('overAllocated')}</Badge> : null}
             {fully ? <Badge tone="success">{t('fullyAllocated')}</Badge> : null}
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
             <bdi>{formatMoney(receipt.totalAmount, receipt.currencyCode, locale)}</bdi>
-          </h1>
+          </h2>
           <p className="text-sm text-muted-foreground">
             {client.data ? client.data.name : tReceipts('notSet')}
           </p>

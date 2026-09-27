@@ -60,18 +60,13 @@ export function FiscalPeriods() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-
-        {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+      {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" onClick={() => setCreating(true)}>
             {t('create.new')}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="p-6 sm:max-w-2xl">

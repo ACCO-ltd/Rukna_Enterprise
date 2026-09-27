@@ -1,18 +1,21 @@
 'use client';
 
 /**
- * The lifecycle controls on a supplier bill: submit, approve, post, reverse.
+ * The top of a supplier bill (ADR-035): the sticky DocumentActionBar, the DocumentIdentity with
+ * its three labelled status axes, and at most one Notice — plus the confirmations its commands
+ * open.
  *
- * Every action is confirmed, because none can be undone from the UI — there is no reject
- * endpoint, nothing returns a bill to DRAFT, and the only exit from a posted bill is a
- * reversal that writes a second journal.
+ * Every command is confirmed, because none can be undone from the UI — there is no reject
+ * endpoint, nothing returns a bill to DRAFT, and the only exit from a posted bill is a reversal
+ * that writes a second journal.
  *
- * Unavailable actions are rendered disabled with the reason attached rather than hidden. A
- * button that is simply absent tells the user nothing about what to do next; "the bill has to
- * be submitted before it can be approved" does.
+ * Commands follow backend state and permissions: the one valid next step is the primary
+ * button, Reverse sits in the kebab, and anything unavailable is not rendered. A blocked post is
+ * explained in words by the Notice rather than by a greyed-out button.
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -22,7 +25,13 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  DocumentActionBar,
+  DocumentIdentity,
+  LifecycleStepper,
+  Notice,
+  type DocumentCommand,
 } from '@erp/ui';
+import { ArrowLeft } from 'lucide-react';
 
 import { WorkflowTransactionType } from '@erp/types';
 
@@ -30,12 +39,15 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 
 import {
   availableBillActions,
-  billBlockReason,
+  BILL_STAGES,
+  billLifecycle,
+  billNotice,
   planBillPost,
+  primaryBillAction,
   type BillAction,
 } from '../bill-actions';
 import {
@@ -45,14 +57,14 @@ import {
   useSubmitSupplierBill,
 } from '../hooks/use-procurement';
 import type { SupplierBill } from '../types';
+import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
-// Submit is rendered separately — it runs through the ADR-011 approval gate. The rest keep the
-// plain confirm-then-mutate flow.
-const ORDER: BillAction[] = ['approve', 'post', 'reverse'];
-
-export function BillActionBar({ bill }: { bill: SupplierBill }) {
+export function BillDocumentHeader({ bill }: { bill: SupplierBill }) {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
+  const tStatus = useTranslations('procurement.status');
+  const tPosting = useTranslations('procurement.postingStatus');
+  const tMatch = useTranslations('procurement.matchStatus');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
 
@@ -66,59 +78,127 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
   const post = usePostSupplierBill();
   const reverse = useReverseSupplierBill();
 
-  const allowed = availableBillActions(bill);
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
-
-  if (!canManage) return null;
-
+  const allowed = canManage ? availableBillActions(bill) : [];
+  const primary = canManage ? primaryBillAction(bill) : null;
   const plan = planBillPost(bill, accounts.data ?? [], profiles.data ?? [], locale);
+  const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
+  const lifecycle = billLifecycle(bill);
+  const notice = billNotice(bill);
 
-  function close() {
-    setPending(null);
-  }
+  const close = () => setPending(null);
 
-  const submitReason = billBlockReason(bill, 'submit');
+  const primaryButton =
+    primary === 'submit' ? (
+      // Submit runs through the approval gate (ADR-011): with a DoA binding configured the server
+      // opens an approval instead of transitioning.
+      <GatedActionButton
+        command={() => submit.mutateAsync(bill.id)}
+        transactionType={WorkflowTransactionType.SUPPLIER_BILL}
+        label={t('submitForApproval')}
+      />
+    ) : primary ? (
+      <Button type="button" onClick={() => setPending(primary)}>
+        {t(primary)}
+      </Button>
+    ) : null;
+
+  const commands: DocumentCommand[] = allowed.includes('reverse')
+    ? [{ key: 'reverse', label: t('reverse'), onSelect: () => setPending('reverse'), destructive: true }]
+    : [];
 
   return (
-    <div className="space-y-4">
-      {/* Submit routes through the approval gate (ADR-011): with a DoA binding configured the
-          server opens an approval instead of transitioning, and the panel + "Complete" re-drive
-          carry it through. When submit is not available it stays on screen, disabled with its
-          reason, per this bar's stated principle of never hiding an action. */}
-      {allowed.includes('submit') ? (
-        <GatedActionButton
-          command={() => submit.mutateAsync(bill.id)}
-          transactionType={WorkflowTransactionType.SUPPLIER_BILL}
-          label={t('submit')}
-        />
-      ) : (
-        <Button
-          type="button"
-          disabled
-          title={submitReason ? t(`blockReason.${submitReason}`) : undefined}
-        >
-          {t('submit')}
-        </Button>
-      )}
+    <>
+      <DocumentActionBar
+        back={
+          <Button asChild variant="ghost" className="gap-1.5 px-2">
+            <Link href="/finance/accounting/bills">
+              <ArrowLeft size={16} aria-hidden="true" />
+              {t('backToList')}
+            </Link>
+          </Button>
+        }
+        primary={primaryButton}
+        commands={commands}
+        moreLabel={tc('moreActions')}
+        lifecycle={
+          <LifecycleStepper
+            steps={BILL_STAGES.map((stage) => ({
+              key: stage,
+              label: stage === 'POSTED' ? tPosting('POSTED') : tStatus(stage),
+            }))}
+            current={lifecycle.current}
+            terminal={
+              lifecycle.terminal
+                ? {
+                    label:
+                      lifecycle.terminal === 'REVERSED'
+                        ? tPosting('REVERSED')
+                        : tStatus(lifecycle.terminal),
+                    tone: lifecycle.terminal === 'REJECTED' ? 'danger' : 'historical',
+                  }
+                : undefined
+            }
+            stepOfLabel={(n, total) => t('stepOf', { n, total })}
+          />
+        }
+      />
 
-      <div className="flex flex-wrap gap-2">
-        {ORDER.map((action) => {
-          const reason = billBlockReason(bill, action);
-          const enabled = allowed.includes(action);
-          return (
-            <Button
-              key={action}
-              type="button"
-              variant={action === 'reverse' ? 'outline' : 'default'}
-              disabled={!enabled}
-              title={reason ? t(`blockReason.${reason}`) : undefined}
-              onClick={() => setPending(action)}
-            >
-              {t(action)}
-            </Button>
-          );
-        })}
-      </div>
+      <DocumentIdentity
+        eyebrow={t('eyebrow')}
+        title={bill.billNumber ?? tStatus(bill.documentStatus)}
+        subtitle={[
+          bill.supplier?.name ?? tc('notAvailable'),
+          t('supplierRef', { ref: bill.supplierInvoiceNumber }),
+        ].join(' · ')}
+        axes={[
+          {
+            label: t('axisDocument'),
+            value: <ProcurementStatusBadge vocabulary="supplierBill" status={bill.documentStatus} />,
+          },
+          { label: tPosting('axis'), value: <PostingStatusBadge status={bill.postingStatus} /> },
+          // A non-PO bill never matches; showing "Not run" there would read as a missing step (D6).
+          ...(hasPoLink
+            ? [{ label: tMatch('axis'), value: <BillMatchStatusBadge status={bill.matchStatus} /> }]
+            : []),
+        ]}
+      />
+
+      {notice === 'post-blocked' ? (
+        <Notice tone="attention" title={t('notice.postBlockedTitle')} className="mb-6">
+          {t('notice.postBlockedBody', { match: tMatch(bill.matchStatus) })}
+        </Notice>
+      ) : notice === 'post-failed' ? (
+        <Notice
+          tone="danger"
+          title={t('notice.postFailedTitle')}
+          className="mb-6"
+          action={
+            allowed.includes('post') ? (
+              <Button variant="outline" onClick={() => setPending('post')}>
+                {t('notice.retryPosting')}
+              </Button>
+            ) : undefined
+          }
+        >
+          {t('notice.postFailedBody')}
+        </Notice>
+      ) : notice === 'posting-pending' ? (
+        <Notice tone="info" title={t('notice.postingPendingTitle')} className="mb-6">
+          {t('notice.postingPendingBody')}
+        </Notice>
+      ) : notice === 'reversed' ? (
+        <Notice tone="historical" title={t('notice.reversedTitle')} className="mb-6">
+          {t('notice.reversedBody')}
+        </Notice>
+      ) : notice === 'posted' ? (
+        <Notice tone="success" title={t('notice.postedTitle')} className="mb-6">
+          {t('notice.postedBody', {
+            amount: formatMoney(bill.totalAmount, bill.currencyCode, locale) ?? '',
+            date: formatDate(bill.billDate, locale) ?? '',
+          })}
+        </Notice>
+      ) : null}
 
       {pending === 'approve' ? (
         <ConfirmActionDialog
@@ -138,9 +218,7 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
           plan={plan}
           isPending={post.isPending}
           isError={post.isError}
-          onConfirm={(payload) =>
-            post.mutate({ id: bill.id, payload }, { onSuccess: close })
-          }
+          onConfirm={(payload) => post.mutate({ id: bill.id, payload }, { onSuccess: close })}
           onDismiss={close}
         />
       ) : null}
@@ -167,7 +245,7 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
           onDismiss={close}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 

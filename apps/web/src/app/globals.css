@@ -104,7 +104,7 @@
 }
 
 :root {
-  --sidebar-width: 17rem;
+  --sidebar-width: 15rem;
   /* Rukna brand — the only layer tenant branding should override. */
   color-scheme: light;
   --background: #f4f6f8;
@@ -125,6 +125,8 @@
   --brand-ink-deep: #101828;
   --brand-ink-soft: #344054;
   --brand-panel: #172033;
+  /* Text on brand-panel (navy table headers, hero panels) — light in both themes. */
+  --brand-on-panel: #ffffff;
   --brand-primary: #255edb;
   --brand-primary-hover: #194bbe;
   --brand-primary-active: #123d9e;
@@ -244,6 +246,7 @@
   --brand-ink-deep: #f4f6fa;
   --brand-ink-soft: #c5ccd8;
   --brand-panel: #151d2c;
+  --brand-on-panel: #e4e9f2;
   --brand-primary: #6d96ff;
   --brand-primary-hover: #88aaff;
   --brand-primary-active: #a2bcff;
@@ -331,6 +334,7 @@
   --color-brand-ink-deep: var(--brand-ink-deep);
   --color-brand-ink-soft: var(--brand-ink-soft);
   --color-brand-panel: var(--brand-panel);
+  --color-brand-on-panel: var(--brand-on-panel);
   --color-brand-primary: var(--brand-primary);
   --color-brand-primary-hover: var(--brand-primary-hover);
   --color-brand-primary-active: var(--brand-primary-active);

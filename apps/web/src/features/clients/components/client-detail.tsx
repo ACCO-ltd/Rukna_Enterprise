@@ -9,6 +9,7 @@ import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, Dro
 import { EllipsisVertical } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 import { useProjects } from '@/features/projects/hooks/use-projects';
@@ -34,6 +35,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   const { can } = usePermissions();
   const [confirmingStatus, setConfirmingStatus] = useState(false);
   const [section, setSection] = useState<Section>(searchParams.get('tab') === 'projects' ? 'projects' : 'overview');
+  useModuleTrail(clientQuery.data?.name);
 
   if (clientQuery.isPending) {
     return <div role="status" aria-live="polite"><span className="sr-only">{tCommon('loading')}</span><div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" /></div>;
@@ -54,7 +56,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
         <Link href="/clients" className="text-sm text-muted-foreground underline-offset-4 hover:underline">{t('back')}</Link>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold text-foreground">{client.name}</h1>
+            <h2 className="text-2xl font-semibold text-foreground">{client.name}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <span className="font-mono text-xs">{client.code}</span><span aria-hidden="true">·</span>
               <span>{client.type ? tCreate(`clientTypes.${client.type}`) : tClients('notSet')}</span><span aria-hidden="true">·</span>

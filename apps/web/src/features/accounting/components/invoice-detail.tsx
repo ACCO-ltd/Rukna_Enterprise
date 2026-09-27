@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, DefinitionList, DefinitionRow, RecordHeader, RecordPanel } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecycle-error';
@@ -43,6 +44,10 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const action = useInvoiceAction(invoiceId);
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
+
+  useModuleTrail(
+    invoice.data ? (invoice.data.invoiceNumber ?? t('unnumbered')) : undefined,
+  );
 
   if (invoice.isPending) {
     return (
@@ -89,6 +94,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   return (
     <div className="space-y-6">
       <RecordHeader
+        headingLevel="h2"
         breadcrumb={
           backHref ? (
             <Link

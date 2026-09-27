@@ -80,10 +80,7 @@ export function BankReconciliation() {
 
   return (
     <div className="space-y-8">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
+      <p className="max-w-prose text-body-sm text-muted-foreground">{t('subtitle')}</p>
 
       {/* Detected control accounts */}
       <section aria-labelledby="rec-accounts-heading" className="space-y-4">

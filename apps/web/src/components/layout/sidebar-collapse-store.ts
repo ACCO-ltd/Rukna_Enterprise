@@ -15,7 +15,7 @@ function load(): boolean {
 
 function applyWidth(collapsed: boolean): void {
   if (typeof document !== 'undefined') {
-    document.documentElement.style.setProperty('--sidebar-width', collapsed ? '5rem' : '17rem');
+    document.documentElement.style.setProperty('--sidebar-width', collapsed ? '4rem' : '15rem');
   }
 }
 
