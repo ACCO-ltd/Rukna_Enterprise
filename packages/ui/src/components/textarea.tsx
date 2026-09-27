@@ -22,7 +22,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     const field = React.useContext(FormFieldContext);
 
     const ctxDescribedBy = field
-      ? [field.hintId, field.errorId, field.successId].filter(Boolean).join(' ') || undefined
+      ? [field.hintId, field.errorId, field.warningId, field.successId].filter(Boolean).join(' ') || undefined
       : undefined;
     const describedBy =
       [describedByProp, ctxDescribedBy].filter(Boolean).join(' ') || undefined;
@@ -54,6 +54,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           'disabled:cursor-not-allowed disabled:opacity-50',
           isInvalid === true && 'border-danger focus:border-danger',
           field?.hasSuccess && isInvalid !== true && 'border-success',
+          field?.hasWarning && isInvalid !== true && 'border-warning',
           className,
         )}
         {...props}

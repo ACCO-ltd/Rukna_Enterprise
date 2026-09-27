@@ -29,9 +29,14 @@ describe('FormErrorSummary', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('renders the default title from messages', () => {
+  it('counts what needs fixing in the default title (ADR-037)', () => {
     renderWithProviders(<FormErrorSummary errors={FIELD_ERRORS} />);
-    expect(screen.getByText('Please fix the following')).toBeInTheDocument();
+    expect(screen.getByText('Fix 2 fields before saving')).toBeInTheDocument();
+  });
+
+  it('uses the singular for one field', () => {
+    renderWithProviders(<FormErrorSummary errors={FIELD_ERRORS.slice(0, 1)} />);
+    expect(screen.getByText('Fix 1 field before saving')).toBeInTheDocument();
   });
 
   it('renders a custom title when provided', () => {

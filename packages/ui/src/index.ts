@@ -56,8 +56,10 @@ export type { ConfirmDialogProps } from './components/confirm-dialog';
 export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
-export { MoneyInput, formatThousands, sanitizeMoney } from './components/money-input';
-export type { MoneyInputProps } from './components/money-input';
+export { MoneyInput, QuantityInput, formatThousands, sanitizeMoney } from './components/money-input';
+export type { MoneyInputProps, QuantityInputProps } from './components/money-input';
+export { Switch, SwitchField } from './components/switch';
+export type { SwitchFieldProps, SwitchProps } from './components/switch';
 export {
   DefinitionList,
   DefinitionRow,
@@ -177,3 +179,17 @@ export type {
   DocumentTab,
   TotalsRow,
 } from './components/document-body';
+export {
+  FormActionBar,
+  FormGroup,
+  LineItemsEditor,
+  RECORD_NAME_INPUT,
+  RecordCreateHeader,
+} from './components/form-layout';
+export type {
+  FormActionBarProps,
+  FormSaveState,
+  LineColumn,
+  LineItemsEditorProps,
+  LineNote,
+} from './components/form-layout';

@@ -38,7 +38,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     // Merge context-supplied IDs with any explicit prop. The explicit prop wins
     // the position (comes first), preserving caller intent for ordering.
     const ctxDescribedBy = field
-      ? [field.hintId, field.errorId, field.successId].filter(Boolean).join(' ') || undefined
+      ? [field.hintId, field.errorId, field.warningId, field.successId].filter(Boolean).join(' ') || undefined
       : undefined;
     const describedBy =
       [describedByProp, ctxDescribedBy].filter(Boolean).join(' ') || undefined;
@@ -80,6 +80,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           endSlot && 'pe-10',
           isInvalid === true && 'border-danger focus:border-danger',
           showSuccess && 'border-success',
+          field?.hasWarning && isInvalid !== true && 'border-warning',
           field?.isChecking && 'border-border-interactive',
           className,
         )}

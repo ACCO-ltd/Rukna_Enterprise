@@ -200,7 +200,7 @@ export function Select({
   const { entries, placeholder: fromOption } = parseOptions(children);
 
   const ctxDescribedBy = field
-    ? [field.hintId, field.errorId, field.successId].filter(Boolean).join(' ') || undefined
+    ? [field.hintId, field.errorId, field.warningId, field.successId].filter(Boolean).join(' ') || undefined
     : undefined;
   const describedBy = [describedByProp, ctxDescribedBy].filter(Boolean).join(' ') || undefined;
 
@@ -291,6 +291,7 @@ export function Select({
           'data-[placeholder]:text-muted-foreground',
           isInvalid && 'border-danger focus:border-danger',
           field?.hasSuccess && !isInvalid && 'border-success',
+          field?.hasWarning && !isInvalid && 'border-warning',
           className,
         )}
       >
