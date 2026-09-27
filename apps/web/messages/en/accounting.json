@@ -701,7 +701,18 @@
       "dueDateHint": "Defaults to 30 days after the invoice date.",
       "amountNote": "The amount is taken from this certificate and cannot be edited here.",
       "dueOn": "Due {date}"
-    }
+    },
+    "colInvoice": "Invoice",
+    "colDueDate": "Due date",
+    "colBalanceDue": "Balance due",
+    "overdue": "Overdue",
+    "searchPlaceholder": "Search invoices, clients, sources",
+    "rowMenu": "Actions for {number}",
+    "rowOpen": "Open",
+    "rowOpenPdf": "Open PDF",
+    "rowCopyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "linkCopyFailed": "Could not copy the link"
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

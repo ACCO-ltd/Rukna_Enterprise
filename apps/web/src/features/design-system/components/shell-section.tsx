@@ -2,8 +2,20 @@
 
 import { useMemo, useState } from 'react';
 import {
+  ActivityTimeline,
+  ApprovalTimeline,
   Button,
   DocumentActionBar,
+  DocumentTabs,
+  SummaryRail,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
+  TotalsBlock,
   DocumentIdentity,
   type FilterValues,
   LifecycleStepper,
@@ -292,6 +304,131 @@ export function ShellSection() {
             back={<Button variant="ghost" className="gap-1.5 px-2"><ArrowLeft size={16} aria-hidden="true" />Supplier bills</Button>}
             lifecycle={<LifecycleStepper steps={STAGES} current="POSTED" terminal={{ label: 'Reversed', tone: 'historical' }} />}
           />
+        </Specimen>
+        <Specimen
+          label="Document body — identity facts, tabs, totals and summary rail"
+          token="<DocumentIdentity facts> · <DocumentTabs> · <TotalsBlock> · <SummaryRail>"
+          note="Tabs keep a fixed order on every document. A tab the API cannot supply is left out rather than drawn empty — on the live bill page Approvals and Activity wait for their endpoints."
+        >
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
+            <div className="min-w-0">
+              <DocumentIdentity
+                eyebrow="Supplier bill"
+                title="BILL-2026-0042"
+                subtitle="Berbera Cement Co. · Supplier ref BCC/INV/5531"
+                axes={[
+                  { label: 'Document', value: <StatusPill tone="success">Approved</StatusPill> },
+                  { label: 'Posting', value: <StatusText tone="success">Posted</StatusText> },
+                  { label: 'Match', value: <StatusText tone="success">Matched</StatusText> },
+                ]}
+                facts={[
+                  { label: 'Supplier', value: 'Berbera Cement Co.' },
+                  { label: 'Supplier invoice', value: 'BCC/INV/5531' },
+                  { label: 'Project', value: <a href="#document" className="font-medium text-brand-primary hover:underline">Hodan Mixed-Use Tower</a> },
+                  { label: 'Purchase order', value: <a href="#document" className="font-medium text-brand-primary hover:underline">PO-2026-0311</a> },
+                  { label: 'Bill date', value: '14 Sep 2026' },
+                  { label: 'Due date', value: '14 Oct 2026' },
+                ]}
+              />
+              <DocumentTabs
+                label="Bill sections"
+                tabs={[
+                  {
+                    key: 'lines',
+                    label: 'Lines',
+                    count: 3,
+                    content: (
+                      <div className="space-y-6">
+                        <TableScroll aria-label="Bill lines">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Item</TableHead>
+                                <TableHead>Expense profile</TableHead>
+                                <TableHead numeric>Quantity</TableHead>
+                                <TableHead numeric>Amount</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {[
+                                ['Cement 42.5N', 'MAT-CEMENT', '200 bag', '1900.00'],
+                                ['Rebar Y12', 'MAT-STEEL', '4.5 ton', '3510.00'],
+                                ['Delivery to site', 'FREIGHT-IN', '1 trip', '250.00'],
+                              ].map(([item, code, qty, amount]) => (
+                                <TableRow key={item}>
+                                  <TableCell className="font-medium">{item}</TableCell>
+                                  <TableCell className="font-mono text-caption text-muted-foreground">{code}</TableCell>
+                                  <TableCell numeric>{qty}</TableCell>
+                                  <TableCell numeric><MoneyDisplay value={amount} /></TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableScroll>
+                        <TotalsBlock
+                          className="ms-auto max-w-sm"
+                          rows={[
+                            { label: 'Subtotal', value: <MoneyDisplay value="5660.00" /> },
+                            { label: 'VAT', value: <MoneyDisplay value="0" /> },
+                          ]}
+                          total={{ label: 'Total', value: <MoneyDisplay value="5660.00" /> }}
+                          amountDue={{ label: 'Amount due', value: <MoneyDisplay value="5660.00" /> }}
+                        />
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'journal',
+                    label: 'Journal items',
+                    content: <p className="py-6 text-body-sm text-muted-foreground">Journal items are created when this bill is posted.</p>,
+                  },
+                  {
+                    key: 'approvals',
+                    label: 'Approvals',
+                    count: 2,
+                    content: (
+                      <ApprovalTimeline
+                        label="Approval history"
+                        steps={[
+                          { id: 'fm', title: 'Finance Manager', actor: 'Hodan Abdi', at: '15 Sep 2026, 09:12', state: 'approved', comment: 'Quantities checked against GRN-2026-0154.' },
+                          { id: 'cd', title: 'Commercial Director', actor: 'Abdi Yusuf', state: 'current', condition: 'Bills from $5,000 to $25,000 need two approvals.' },
+                        ]}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'activity',
+                    label: 'Activity',
+                    count: 3,
+                    content: (
+                      <ActivityTimeline
+                        entries={[
+                          { id: '3', actor: 'Hodan Abdi', summary: 'approved as Finance Manager', at: '15 Sep 2026, 09:12', code: 'bill.approve' },
+                          { id: '2', actor: 'Faarax Nuur', summary: 'submitted the bill for approval', at: '14 Sep 2026, 10:20', code: 'bill.submit' },
+                          { id: '1', actor: 'Faarax Nuur', summary: 'created the bill from PO-2026-0311', at: '14 Sep 2026, 10:05', code: 'bill.create' },
+                        ]}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </div>
+            <div className="space-y-4">
+              <SummaryRail
+                title="Payment summary"
+                rows={[
+                  { label: 'Balance due', value: <MoneyDisplay value="5660.00" /> },
+                  { label: 'Due date', value: '14 Oct 2026' },
+                  { label: 'Posted', value: '16 Sep 2026' },
+                ]}
+              />
+              <TotalsBlock
+                hidden
+                rows={[]}
+                total={{ label: 'Total', value: null }}
+              />
+            </div>
+          </div>
         </Specimen>
         <Specimen label="Notice — one per document, when a state needs words" token="<Notice tone title action>">
           <div className="flex flex-col gap-3">

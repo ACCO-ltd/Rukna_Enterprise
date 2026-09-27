@@ -30,15 +30,12 @@ import {
   EmptyState,
   type FilterValues,
   type ListFilterField,
+  DocumentTabs,
   MoneyDisplay,
   SectionHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
+  SkeletonRecord,
+  SummaryRail,
+  TotalsBlock,
 } from '@erp/ui';
 import { Plus, Receipt } from 'lucide-react';
 
@@ -50,7 +47,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
-import { ClassificationChips } from './classification-chips';
+import { BillJournalTab, BillLinesTab, useBillFacts, useBillSummary, useBillTotals } from './bill-document-body';
 import { BillMatchSummary } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
@@ -250,11 +247,7 @@ export function SupplierBillsList() {
 // ─── Detail ──────────────────────────────────────────────────────────────────────
 
 export function SupplierBillDetail({ id }: { id: string }) {
-  const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
-  const tMatch = useTranslations('procurement.matching');
-  const locale = useLocale() as 'en';
-
   const query = useSupplierBill(id);
   const tStatusTrail = useTranslations('procurement.status');
   useModuleTrail(
@@ -262,113 +255,64 @@ export function SupplierBillDetail({ id }: { id: string }) {
   );
 
   if (query.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
-      </div>
-    );
+    return <SkeletonRecord label={tc('loading')} />;
   }
 
   if (query.isError || !query.data) {
     return <Alert variant="error" messages={[tc('loadFailed')]} />;
   }
 
-  const bill: SupplierBill = query.data;
-  const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
+  return <SupplierBillDocument bill={query.data} />;
+}
+
+/**
+ * The bill as a document (ADR-035/036): action bar, identity + facts, one notice, the body
+ * tabs, totals, and the summary rail — then the purchase-order match, which is the bill's own
+ * procurement concern and keeps its section.
+ */
+function SupplierBillDocument({ bill }: { bill: SupplierBill }) {
+  const t = useTranslations('procurement.bills');
+  const tMatch = useTranslations('procurement.matching');
+  const facts = useBillFacts(bill);
+  const totals = useBillTotals(bill);
+  const summary = useBillSummary(bill);
+  const lineCount = bill.lines?.length ?? 0;
 
   return (
-    <div className="space-y-6">
-      <BillDocumentHeader bill={bill} />
+    <BillDocumentHeader
+      bill={bill}
+      facts={facts}
+      rail={<SummaryRail title={t('summaryTitle')} rows={summary} />}
+    >
+      <DocumentTabs
+        label={t('sectionsLabel')}
+        tabs={[
+          {
+            key: 'lines',
+            label: t('tabLines'),
+            count: lineCount,
+            content: (
+              <div className="space-y-6">
+                <BillLinesTab bill={bill} />
+                <TotalsBlock
+                  className="ms-auto max-w-sm"
+                  rows={totals.rows}
+                  total={totals.total}
+                  amountDue={bill.postingStatus === 'POSTED' ? totals.amountDue : undefined}
+                />
+              </div>
+            ),
+          },
+          { key: 'journal', label: t('tabJournal'), content: <BillJournalTab bill={bill} /> },
+        ]}
+      />
 
-      {/* Details — a hairline section, not a card wrapper (doctrine §2.1). */}
-      <section aria-labelledby="bill-details-heading" className="space-y-4">
-        <SectionHeader id="bill-details-heading" title={t('tabDetails')} />
-
-        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field
-            label={t('billDate')}
-            value={formatDate(bill.billDate, locale) ?? tc('notAvailable')}
-          />
-          <Field
-            label={t('dueDate')}
-            value={formatDate(bill.dueDate, locale) ?? tc('notAvailable')}
-          />
-          <Field
-            label={t('totalAmount')}
-            value={formatMoney(bill.totalAmount, bill.currencyCode, locale) ?? ''}
-          />
-          <Field
-            label={t('subtotal')}
-            value={formatMoney(bill.subtotal, bill.currencyCode, locale) ?? ''}
-          />
-          <Field
-            label={t('vat')}
-            value={formatMoney(bill.vatAmount, bill.currencyCode, locale) ?? ''}
-          />
-        </dl>
-
-        {bill.lines && bill.lines.length > 0 ? (
-          <TableScroll aria-label={t('linesTitle')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-end">{tc('lineNumber')}</TableHead>
-                  <TableHead>{tc('description')}</TableHead>
-                  <TableHead className="text-end">{tc('quantity')}</TableHead>
-                  <TableHead className="text-end">{tc('unitPrice')}</TableHead>
-                  <TableHead className="text-end">{t('totalAmount')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bill.lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="text-end tabular-nums">{line.lineNumber}</TableCell>
-                    <TableCell className="text-sm">
-                      {line.description}
-                      {/* Read-only classification chip (D7). A bill line carries a
-                          boqNodeId when it is booked to a cost target; the chip states
-                          that a target is set without naming the BOQ path the read model
-                          does not send. */}
-                      <ClassificationChips
-                        className="mt-1.5 flex flex-wrap items-center gap-1.5"
-                        hasCostTarget={Boolean(line.boqNodeId)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums">
-                      {line.quantity ?? tc('notAvailable')}
-                    </TableCell>
-                    <TableCell className="text-end tabular-nums">
-                      {formatMoney(line.unitPrice, bill.currencyCode, locale) ??
-                        tc('notAvailable')}
-                    </TableCell>
-                    <TableCell className="text-end font-medium tabular-nums">
-                      {formatMoney(line.grossAmount, bill.currencyCode, locale)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableScroll>
-        ) : null}
-      </section>
-
-      {/* Matching — the auto-match outcome, not a manual tab (D6). Rendered for every bill;
-          BillMatchSummary self-suppresses to "not applicable" for a genuine non-PO bill. */}
-      <section aria-labelledby="bill-matching-heading" className="space-y-4">
+      {/* Matching — the auto-match outcome (D6). BillMatchSummary self-suppresses to "not
+          applicable" for a genuine non-PO bill. The blocked-posting notice links here. */}
+      <section id="bill-matching" aria-labelledby="bill-matching-heading" className="mt-10 scroll-mt-40 space-y-4">
         <SectionHeader id="bill-matching-heading" title={tMatch('title')} />
         <BillMatchSummary bill={bill} />
       </section>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-1 truncate text-sm text-foreground">{value}</dd>
-    </div>
+    </BillDocumentHeader>
   );
 }

@@ -121,13 +121,36 @@ beforeEach(() => {
 });
 
 describe('InvoicesList', () => {
+  it('flags an overdue invoice under its due date', async () => {
+    vi.mocked(listInvoices).mockResolvedValue([
+      invoice({ documentStatus: 'APPROVED', postingStatus: 'POSTED', dueDate: '2020-01-31', outstandingAmount: '100.00' }),
+    ]);
+    renderWithProviders(<InvoicesList />, { withToast: true });
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Overdue')).toBeInTheDocument();
+  });
+
+  it('offers Open, Open PDF and Copy link in the row menu — and no create action', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listInvoices).mockResolvedValue([invoice()]);
+    renderWithProviders(<InvoicesList />, { withToast: true });
+    const table = await screen.findByRole('table');
+    await user.click(within(table).getByRole('button', { name: /Actions for INV-2026-031/ }));
+    expect(await screen.findByRole('menuitem', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Open PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Copy link' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /New invoice/ })).toBeNull();
+  });
+
   it('renders an invoice with its client name joined from GET /clients', async () => {
     vi.mocked(listInvoices).mockResolvedValue([invoice()]);
 
-    renderWithProviders(<InvoicesList />);
+    renderWithProviders(<InvoicesList />, { withToast: true });
 
-    expect(await screen.findByText('INV-2026-031')).toBeInTheDocument();
-    expect(await screen.findByText('Al-Noor Development')).toBeInTheDocument();
+    // Scoped to the table: below 640px the same row also renders as a phone card.
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('INV-2026-031')).toBeInTheDocument();
+    expect(await within(table).findByText('Al-Noor Development')).toBeInTheDocument();
   });
 
   it('labels a draft as unnumbered rather than showing an empty cell', async () => {
@@ -135,9 +158,10 @@ describe('InvoicesList', () => {
       invoice({ invoiceNumber: null, documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }),
     ]);
 
-    renderWithProviders(<InvoicesList />);
+    renderWithProviders(<InvoicesList />, { withToast: true });
 
-    expect(await screen.findByText('Not yet numbered')).toBeInTheDocument();
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Not yet numbered')).toBeInTheDocument();
   });
 
   it('shows both status axes, because one badge cannot express the pair', async () => {
@@ -145,7 +169,7 @@ describe('InvoicesList', () => {
       invoice({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' }),
     ]);
 
-    renderWithProviders(<InvoicesList />);
+    renderWithProviders(<InvoicesList />, { withToast: true });
 
     // Scoped to the table: the status filter renders its own "Approved" option, and an
     // unscoped query would pass on the dropdown while the badge was missing.
@@ -161,19 +185,24 @@ describe('InvoicesList', () => {
       invoice({ id: 'b', invoiceNumber: 'INV-B', documentStatus: 'DRAFT' }),
     ]);
 
-    renderWithProviders(<InvoicesList />);
-    expect(await screen.findByText('INV-A')).toBeInTheDocument();
+    renderWithProviders(<InvoicesList />, { withToast: true });
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('INV-A')).toBeInTheDocument();
 
-    await chooseOption(user, screen.getByLabelText('Approval status'), 'DRAFT');
+    // The Filter panel edits a draft; nothing changes until Apply (ADR-035).
+    await user.click(screen.getByRole('button', { name: /^Filter/ }));
+    await chooseOption(user, await screen.findByLabelText('Approval status'), 'DRAFT');
+    expect(within(table).getByText('INV-A')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
-    expect(screen.queryByText('INV-A')).not.toBeInTheDocument();
-    expect(screen.getByText('INV-B')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).queryByText('INV-A')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('INV-B')).toBeInTheDocument();
   });
 
   it('explains the empty state rather than showing a bare table', async () => {
     vi.mocked(listInvoices).mockResolvedValue([]);
 
-    renderWithProviders(<InvoicesList />);
+    renderWithProviders(<InvoicesList />, { withToast: true });
 
     expect(await screen.findByText('No client invoices yet')).toBeInTheDocument();
     expect(screen.getByText(/raised from an effective payment certificate/i)).toBeInTheDocument();

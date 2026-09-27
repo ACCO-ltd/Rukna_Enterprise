@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Check, Ellipsis } from 'lucide-react';
 
 import { cn } from '../lib/utils';
+import { DefinitionGrid, type DefinitionFact } from './document-body';
 import { Button } from './button';
 import {
   DropdownMenu,
@@ -213,6 +214,8 @@ export interface DocumentIdentityProps {
   subtitle?: React.ReactNode;
   /** Status axes, each labelled — never three unlabelled pills in a row. */
   axes?: DocumentAxis[];
+  /** The document's facts, as a two-column definition grid under the axes. */
+  facts?: DefinitionFact[];
   /** Heading level. The module header owns the page's `h1`, so this defaults to `h2`. */
   as?: 'h1' | 'h2';
   className?: string;
@@ -227,6 +230,7 @@ export function DocumentIdentity({
   title,
   subtitle,
   axes = [],
+  facts = [],
   as: Heading = 'h2',
   className,
 }: DocumentIdentityProps) {
@@ -249,6 +253,7 @@ export function DocumentIdentity({
           ))}
         </dl>
       ) : null}
+      {facts.length > 0 ? <DefinitionGrid facts={facts} className="mt-5" /> : null}
     </div>
   );
 }

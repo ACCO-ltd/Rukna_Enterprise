@@ -164,3 +164,16 @@ export type {
   LifecycleStep,
   LifecycleStepperProps,
 } from './components/document';
+export {
+  ActivityTimeline,
+  DefinitionGrid,
+  DocumentTabs,
+  SummaryRail,
+  TotalsBlock,
+} from './components/document-body';
+export type {
+  ActivityEntry,
+  DefinitionFact,
+  DocumentTab,
+  TotalsRow,
+} from './components/document-body';

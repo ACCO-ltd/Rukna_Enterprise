@@ -27,6 +27,7 @@ import {
   DialogTitle,
   DocumentActionBar,
   DocumentIdentity,
+  type DefinitionFact,
   LifecycleStepper,
   Notice,
   type DocumentCommand,
@@ -59,7 +60,20 @@ import {
 import type { SupplierBill } from '../types';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
-export function BillDocumentHeader({ bill }: { bill: SupplierBill }) {
+export function BillDocumentHeader({
+  bill,
+  facts,
+  rail,
+  children,
+}: {
+  bill: SupplierBill;
+  /** Facts under the identity — see `useBillFacts`. */
+  facts?: DefinitionFact[];
+  /** The summary rail, beside the body from `lg`, under it below. */
+  rail?: React.ReactNode;
+  /** The document body — tabs and totals. */
+  children?: React.ReactNode;
+}) {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
   const tStatus = useTranslations('procurement.status');
@@ -144,8 +158,11 @@ export function BillDocumentHeader({ bill }: { bill: SupplierBill }) {
         }
       />
 
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      <div className="min-w-0">
       <DocumentIdentity
         eyebrow={t('eyebrow')}
+        facts={facts}
         title={bill.billNumber ?? tStatus(bill.documentStatus)}
         subtitle={[
           bill.supplier?.name ?? tc('notAvailable'),
@@ -165,7 +182,16 @@ export function BillDocumentHeader({ bill }: { bill: SupplierBill }) {
       />
 
       {notice === 'post-blocked' ? (
-        <Notice tone="attention" title={t('notice.postBlockedTitle')} className="mb-6">
+        <Notice
+          tone="attention"
+          title={t('notice.postBlockedTitle')}
+          className="mb-6"
+          action={
+            <Button asChild variant="outline">
+              <a href="#bill-matching">{t('notice.reviewMatch')}</a>
+            </Button>
+          }
+        >
           {t('notice.postBlockedBody', { match: tMatch(bill.matchStatus) })}
         </Notice>
       ) : notice === 'post-failed' ? (
@@ -199,6 +225,11 @@ export function BillDocumentHeader({ bill }: { bill: SupplierBill }) {
           })}
         </Notice>
       ) : null}
+
+      {children}
+      </div>
+      {rail ? <div className="lg:pt-1">{rail}</div> : null}
+      </div>
 
       {pending === 'approve' ? (
         <ConfirmActionDialog

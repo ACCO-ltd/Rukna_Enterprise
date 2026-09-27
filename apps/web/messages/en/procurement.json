@@ -52,7 +52,8 @@
     "deactivate": "Deactivate",
     "blockedTitle": "Not available yet",
     "permissionDenied": "You do not have permission to perform this action.",
-    "moreActions": "More actions"
+    "moreActions": "More actions",
+    "loading": "Loading"
   },
   "lineType": {
     "MATERIAL": "Material",
@@ -394,7 +395,7 @@
     "title": "Supplier Bills",
     "subtitle": "Bills received from suppliers, and how each one matches its purchase order.",
     "number": "Bill",
-    "invoiceNumber": "Supplier Invoice",
+    "invoiceNumber": "Supplier invoice",
     "billDate": "Bill Date",
     "dueDate": "Due Date",
     "subtotal": "Subtotal",
@@ -496,7 +497,29 @@
       "reversedTitle": "Posting reversed",
       "reversedBody": "A reversing journal cancelled this bill’s posting. The bill is read-only.",
       "postedTitle": "Bill posted",
-      "postedBody": "{amount} posted to the general ledger."
+      "postedBody": "{amount} posted to the general ledger.",
+      "reviewMatch": "Review match"
+    },
+    "purchaseOrder": "Purchase order",
+    "goodsReceipt": "Goods receipt",
+    "noLines": "This bill has no lines.",
+    "lineItem": "Item",
+    "lineAccount": "Expense profile",
+    "amountDue": "Amount due",
+    "balanceDue": "Balance due",
+    "postedAt": "Posted",
+    "summaryTitle": "Payment summary",
+    "sectionsLabel": "Bill sections",
+    "tabLines": "Lines",
+    "tabJournal": "Journal items",
+    "journal": {
+      "title": "Journal items",
+      "notYet": "Journal items are created when this bill is posted.",
+      "noAccess": "This bill is posted to the general ledger. Viewing its journal lines needs the Manage journals permission.",
+      "loadFailed": "Could not load the journal entry.",
+      "account": "Account",
+      "description": "Description",
+      "postedAs": "Posted as <link>{number}</link>. Journal entries are immutable; corrections use a reversal."
     }
   },
   "payments": {

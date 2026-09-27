@@ -1,196 +1,261 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { EmptyState, FilterBar, FilterField, Select } from '@erp/ui';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  EmptyState,
+  type FilterValues,
+  type ListFilterField,
+  MoneyDisplay,
+  OverflowGlyph,
+  RowActions,
+  useToast,
+} from '@erp/ui';
 import { FileText } from 'lucide-react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
-import { useInvoices } from '../hooks/use-invoices';
+import { useInvoices, useOpenInvoiceDocument } from '../hooks/use-invoices';
+import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
 import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
-import { InvoiceStatusBadges } from './invoice-status-badges';
+import { InvoiceDocStatusBadge, InvoicePostingStatusBadge } from './invoice-status-badges';
 
 const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
-const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'POSTED', 'REVERSED', 'FAILED'];
+const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'PENDING', 'POSTED', 'REVERSED', 'FAILED'];
+
+const detailHref = (invoice: ClientInvoice) => `/finance/accounting/invoices/${invoice.id}`;
 
 /**
- * Read-only by design.
+ * The client invoice list (ADR-035 list page, ADR-036 pilot).
  *
- * There is no blank create endpoint — `POST /invoices/from-ipc` is the only way an invoice
- * exists — so a "New invoice" button here would have to open a certificate picker, and the
- * certificate page is where someone already is when the certificate becomes effective. The
- * action lives there instead.
+ * No create action, by design: there is no blank create endpoint — an invoice is raised from an
+ * effective payment certificate, a billed milestone or a separate charge, on the screen where
+ * that happens. A "New invoice" button here could only open a picker for one of those.
  */
 export function InvoicesList() {
   const t = useTranslations('accounting.invoices');
+  const tGrid = useTranslations('common.grid');
+  const { toast } = useToast();
+  const openDocument = useOpenInvoiceDocument();
 
   const invoices = useInvoices();
-  // Joined here because `GET /invoices` embeds no client relation. P16 fixed this for supplier
-  // bills; AR was not given the same treatment.
+  // Joined here because `GET /invoices` embeds no client relation.
   const clients = useClients();
-  const [docStatus, setDocStatus] = useState<InvoiceDocStatus | ''>('');
-  const [postingStatus, setPostingStatus] = useState<PostingStatus | ''>('');
+  const [filters, setFilters] = useState<FilterValues>({});
+  const today = todayWireDate();
 
   const clientNames = useMemo(() => {
     const map = new Map<string, string>();
-    for (const client of clients.data ?? []) {
-      map.set(client.id, client.name);
-    }
+    for (const client of clients.data ?? []) map.set(client.id, client.name);
     return map;
   }, [clients.data]);
 
-  const visible = useMemo(() => {
-    let all = invoices.data ?? [];
-    if (docStatus) all = all.filter((inv) => inv.documentStatus === docStatus);
-    if (postingStatus) all = all.filter((inv) => inv.postingStatus === postingStatus);
-    return all;
-  }, [invoices.data, docStatus, postingStatus]);
+  const all = useMemo(() => invoices.data ?? [], [invoices.data]);
+  const visible = useMemo(
+    () =>
+      all.filter(
+        (inv) =>
+          (!filters.status || inv.documentStatus === filters.status) &&
+          (!filters.posting || inv.postingStatus === filters.posting) &&
+          (!filters.client || inv.clientId === filters.client),
+      ),
+    [all, filters],
+  );
+
+  // Client options are the clients that have invoices — never an option that can only empty the list.
+  const clientOptions = useMemo(() => {
+    const ids = new Set(all.map((inv) => inv.clientId));
+    return [...ids]
+      .map((id) => ({ value: id, label: clientNames.get(id) ?? id.slice(-8) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [all, clientNames]);
+
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'status',
+      type: 'select',
+      label: t('filterByStatus'),
+      options: DOC_STATUSES.map((s) => ({ value: s, label: t(`docStatus.${s}`) })),
+    },
+    {
+      key: 'posting',
+      type: 'select',
+      label: t('filterByPostingStatus'),
+      options: POSTING_STATUSES.map((s) => ({ value: s, label: t(`postingStatus.${s}`) })),
+    },
+    { key: 'client', type: 'select', label: t('colClient'), options: clientOptions },
+  ];
+
+  const sourceText = (invoice: ClientInvoice) => {
+    const kind = t(`sourceKind.${invoice.source.kind}`);
+    return invoice.source.label ? `${kind} · ${invoice.source.label}` : kind;
+  };
 
   const columns: GridColumn<ClientInvoice>[] = [
     {
       key: 'number',
-      header: t('colNumber'),
+      header: t('colInvoice'),
       sticky: true,
       sortable: true,
-      plainValue: (invoice) => invoice.invoiceNumber ?? '',
-      render: (invoice) => (
-        <span className="font-mono text-caption font-semibold">
-          {invoice.invoiceNumber ?? t('unnumbered')}
+      card: 'title',
+      plainValue: (inv) => `${inv.invoiceNumber ?? ''} ${sourceText(inv)}`,
+      // The invoice number is the row's one link (the grid wraps this cell); the source says
+      // what was billed — a certificate, a milestone, a separate charge.
+      render: (inv) => (
+        <span className="block">
+          <span className="block font-semibold text-brand-primary">
+            {inv.invoiceNumber ?? t('unnumbered')}
+          </span>
+          <span className="block max-w-[16rem] truncate text-caption font-normal text-muted-foreground">
+            {sourceText(inv)}
+          </span>
         </span>
-      ),
-    },
-    {
-      key: 'source',
-      header: t('colSource'),
-      sortable: true,
-      plainValue: (invoice) => {
-        const kindText = t(`sourceKind.${invoice.source.kind}`);
-        return invoice.source.label ? `${kindText} · ${invoice.source.label}` : kindText;
-      },
-      render: (invoice) => {
-        const kindText = t(`sourceKind.${invoice.source.kind}`);
-        const label = invoice.source.label ? `${kindText} · ${invoice.source.label}` : kindText;
-        return <span className="block max-w-[18rem] truncate text-sm text-muted-foreground">{label}</span>;
-      },
-    },
-    {
-      key: 'date',
-      header: t('colDate'),
-      sortable: true,
-      plainValue: (invoice) => invoice.invoiceDate,
-      render: (invoice, ctx) => (
-        <span className="text-muted-foreground">{formatDate(invoice.invoiceDate, ctx.locale)}</span>
       ),
     },
     {
       key: 'client',
       header: t('colClient'),
       sortable: true,
-      plainValue: (invoice) => clientNames.get(invoice.clientId) ?? '',
-      render: (invoice) => (
-        <span className="block max-w-[16rem] truncate">
-          {clientNames.get(invoice.clientId) ?? invoice.clientId.slice(-8)}
+      card: 'subtitle',
+      plainValue: (inv) => clientNames.get(inv.clientId) ?? '',
+      render: (inv) => (
+        <span className="block max-w-[16rem] truncate font-medium">
+          {clientNames.get(inv.clientId) ?? inv.clientId.slice(-8)}
         </span>
       ),
     },
     {
-      key: 'status',
-      header: t('colStatus'),
-      render: (invoice) => (
-        <InvoiceStatusBadges
-          documentStatus={invoice.documentStatus}
-          postingStatus={invoice.postingStatus}
-        />
-      ),
+      key: 'dueDate',
+      header: t('colDueDate'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (inv) => inv.dueDate ?? '',
+      render: (inv, ctx) =>
+        inv.dueDate ? (
+          <span className="block">
+            <span className="block">{formatDate(inv.dueDate, ctx.locale)}</span>
+            {isInvoiceOverdue(inv, today) ? (
+              <span className="block text-caption font-semibold text-danger">{t('overdue')}</span>
+            ) : null}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
     },
     {
       key: 'total',
       header: t('colTotal'),
       numeric: true,
       sortable: true,
-      plainValue: (invoice) => Number(invoice.totalAmount),
-      render: (invoice, ctx) => (
-        <bdi className="tabular-nums">
-          {formatMoney(invoice.totalAmount, invoice.currencyCode, ctx.locale)}
-        </bdi>
-      ),
+      card: 'amount',
+      plainValue: (inv) => Number(inv.totalAmount),
+      render: (inv) => <MoneyDisplay value={inv.totalAmount} />,
     },
     {
       key: 'outstanding',
-      header: t('colOutstanding'),
+      header: t('colBalanceDue'),
       numeric: true,
       sortable: true,
-      plainValue: (invoice) => Number(invoice.outstandingAmount),
-      render: (invoice, ctx) => (
-        <bdi className="tabular-nums">
-          {formatMoney(invoice.outstandingAmount, invoice.currencyCode, ctx.locale)}
-        </bdi>
+      plainValue: (inv) => Number(inv.outstandingAmount),
+      // A cancelled or reversed invoice owes nothing, and a zero there would read as "paid".
+      render: (inv) =>
+        inv.documentStatus === 'CANCELLED' || inv.postingStatus === 'REVERSED' ? (
+          <MoneyDisplay value={null} />
+        ) : (
+          <MoneyDisplay value={inv.outstandingAmount} />
+        ),
+    },
+    {
+      key: 'status',
+      header: t('colStatus'),
+      card: 'status',
+      render: (inv) => (
+        <span className="flex flex-col items-start gap-1">
+          <InvoiceDocStatusBadge status={inv.documentStatus} />
+          <InvoicePostingStatusBadge status={inv.postingStatus} />
+        </span>
       ),
     },
   ];
 
-  const hasFilter = docStatus !== '' || postingStatus !== '';
+  const copyLink = async (invoice: ClientInvoice) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${detailHref(invoice)}`);
+      toast({ title: t('linkCopied'), tone: 'success' });
+    } catch {
+      toast({ title: t('linkCopyFailed'), tone: 'error' });
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <PlatformDataGrid
-        columns={columns}
-        data={visible}
-        rowKey={(invoice) => invoice.id}
-        label={t('title')}
-        isLoading={invoices.isPending}
-        isError={invoices.isError}
-        errorMessage={t('loadFailed')}
-        rowHref={(invoice) => `/finance/accounting/invoices/${invoice.id}`}
-        emptyState={
-          (invoices.data?.length ?? 0) === 0 ? (
-            <EmptyState
-              icon={<FileText size={28} aria-hidden="true" />}
-              title={t('empty')}
-              description={t('emptyHint')}
-            />
-          ) : undefined
-        }
-        noMatchMessage={t('noMatches')}
-        resultLabel={(count) => t('countLabel', { count })}
-        pagination={{ defaultPageSize: 25 }}
-        toolbarFilters={
-          <FilterBar>
-            <FilterField id="invoice-doc-status" label={t('filterByStatus')}>
-              <Select
-                id="invoice-doc-status"
-                value={docStatus}
-                onChange={(value) => setDocStatus(value as InvoiceDocStatus | '')}
-              >
-                <option value="">{t('allStatuses')}</option>
-                {DOC_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {t(`docStatus.${s}`)}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-            <FilterField id="invoice-posting-status" label={t('filterByPostingStatus')}>
-              <Select
-                id="invoice-posting-status"
-                value={postingStatus}
-                onChange={(value) => setPostingStatus(value as PostingStatus | '')}
-              >
-                <option value="">{t('allPostingStatuses')}</option>
-                {POSTING_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {t(`postingStatus.${s}`)}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-          </FilterBar>
-        }
-        onClearFilters={hasFilter ? () => { setDocStatus(''); setPostingStatus(''); } : undefined}
-      />
-    </div>
+    <PlatformDataGrid
+      columns={columns}
+      data={visible}
+      rowKey={(invoice) => invoice.id}
+      label={t('title')}
+      isLoading={invoices.isPending}
+      isError={invoices.isError}
+      onRetry={() => void invoices.refetch()}
+      errorMessage={t('loadFailed')}
+      rowHref={detailHref}
+      rowActions={(invoice) => (
+        <RowActions
+          overflow={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('rowMenu', { number: invoice.invoiceNumber ?? t('unnumbered') })}
+                >
+                  <OverflowGlyph />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href={detailHref(invoice)}>{t('rowOpen')}</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    openDocument.mutate(invoice.id, {
+                      onError: () => toast({ title: t('viewDocumentFailed'), tone: 'error' }),
+                    })
+                  }
+                >
+                  {t('rowOpenPdf')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void copyLink(invoice)}>{t('rowCopyLink')}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+      )}
+      emptyState={
+        all.length === 0 ? (
+          <EmptyState
+            icon={<FileText size={20} aria-hidden="true" />}
+            title={t('empty')}
+            description={t('emptyHint')}
+          />
+        ) : undefined
+      }
+      noMatchMessage={t('noMatches')}
+      resultLabel={(count) => t('countLabel', { count })}
+      pagination={{ defaultPageSize: 25 }}
+      defaultSort={{ key: 'dueDate', direction: 'desc' }}
+      searchPlaceholder={t('searchPlaceholder')}
+      searchLabel={tGrid('searchLabel')}
+      filters={filterFields}
+      filterValues={filters}
+      onFilterValuesChange={setFilters}
+    />
   );
 }

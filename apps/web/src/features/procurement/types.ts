@@ -527,6 +527,15 @@ export interface SupplierBill {
   vatAmount: Money;
   totalAmount: Money;
   outstandingAmount: Money;
+  /**
+   * Posting trail. `GET /bills/:id` returns the whole row, so these arrive on detail; typed
+   * optional because older fixtures and the list endpoint may omit them.
+   */
+  postedJournalEntryId?: string | null;
+  postedAt?: string | null;
+  reversalJournalEntryId?: string | null;
+  reversedAt?: string | null;
+  approvedAt?: string | null;
   /** Present on detail only — `findAll` includes no lines. */
   lines?: SupplierBillLine[];
 }

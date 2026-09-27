@@ -220,7 +220,7 @@ describe('SupplierBillForm', () => {
     renderWithProviders(<SupplierBillForm />);
 
     expect(screen.getByLabelText('Supplier')).toBeInTheDocument();
-    expect(screen.getByLabelText('Supplier Invoice')).toBeInTheDocument();
+    expect(screen.getByLabelText('Supplier invoice')).toBeInTheDocument();
     expect(screen.getByLabelText('Bill Date')).toBeInTheDocument();
     expect(screen.getByLabelText('Due Date')).toBeInTheDocument();
   });
