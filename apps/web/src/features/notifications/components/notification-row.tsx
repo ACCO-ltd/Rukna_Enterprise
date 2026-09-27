@@ -11,11 +11,10 @@ import { notificationCopy, notificationTone } from '../presentation';
 /** Maps a badge tone to the dot colour class. The label carries meaning; the dot is a scan aid. */
 const DOT_CLASS: Record<ReturnType<typeof notificationTone>, string> = {
   danger: 'bg-danger',
-  warning: 'bg-warning',
-  info: 'bg-brand-primary',
+  attention: 'bg-warning',
+  progress: 'bg-progress',
   neutral: 'bg-muted-foreground',
-  live: 'bg-success',
-  accent: 'bg-historical',
+  success: 'bg-success',
   historical: 'bg-historical',
 };
 

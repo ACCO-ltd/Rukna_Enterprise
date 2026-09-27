@@ -117,6 +117,8 @@ export interface RadioOption<TValue extends string> {
   label: React.ReactNode;
   /** Secondary line, for options whose difference is not obvious from the label. */
   description?: React.ReactNode;
+  /** A 16px glyph before the label, card variant only — a picture of what the option is. */
+  icon?: React.ReactNode;
   disabled?: boolean;
 }
 
@@ -129,6 +131,8 @@ export interface RadioGroupProps<TValue extends string> {
   onChange: (value: TValue) => void;
   options: readonly RadioOption<TValue>[];
   description?: React.ReactNode;
+  /** Renders the required asterisk beside the question. */
+  required?: boolean;
   /**
    * `"horizontal"` (default) for a short closed set whose labels are a word or two — the
    * payment-terms case. `"vertical"` once options carry descriptions, or once there are more
@@ -173,6 +177,7 @@ export function RadioGroup<TValue extends string>({
   onChange,
   options,
   description,
+  required,
   orientation = 'horizontal',
   variant = 'inline',
   compact = false,
@@ -183,7 +188,14 @@ export function RadioGroup<TValue extends string>({
 
   return (
     <fieldset className={cn('min-w-0', className)} disabled={disabled}>
-      <legend className="block text-body-sm font-medium text-foreground">{label}</legend>
+      <legend className="block text-body-sm font-medium text-foreground">
+        {label}
+        {required ? (
+          <span className="ms-0.5 text-danger" aria-hidden="true">
+            *
+          </span>
+        ) : null}
+      </legend>
       {description ? (
         <p className="mt-1 text-caption leading-5 text-muted-foreground">{description}</p>
       ) : null}
@@ -247,7 +259,14 @@ export function RadioGroup<TValue extends string>({
                       option.disabled ? 'cursor-not-allowed' : 'cursor-pointer',
                     )}
                   >
-                    {option.label}
+                    <span className="inline-flex items-center gap-1.5">
+                      {option.icon ? (
+                        <span aria-hidden="true" className="shrink-0 text-muted-foreground">
+                          {option.icon}
+                        </span>
+                      ) : null}
+                      {option.label}
+                    </span>
                   </label>
                   {option.description ? (
                     <p

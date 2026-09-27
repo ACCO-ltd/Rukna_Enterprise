@@ -8,11 +8,23 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, FormField, FormSection, Input, Select, Textarea, useToast } from '@erp/ui';
+import { ArrowLeft, Users } from 'lucide-react';
+import {
+  Button,
+  FormActionBar,
+  FormField,
+  FormGroup,
+  Input,
+  RECORD_NAME_INPUT,
+  RecordCreateHeader,
+  Select,
+  Textarea,
+  useToast,
+  type FormSaveState,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
-import { FormActions } from '@/components/form-actions';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
 import { findClientDuplicateCandidates } from '../api/clients-api';
 import { EMPTY_CLIENT_FORM, toClientFormValues, toCreateClientPayload, toUpdateClientPayload, type ClientFormValues } from '../client-form-payload';
@@ -21,23 +33,38 @@ import type { Client } from '../types';
 
 interface ClientFormProps { client?: Client; onCreated?: (client: Client) => void; onCancel?: () => void }
 
+type ClientCreateT = ReturnType<typeof useTranslations<'platform.clients.create'>>;
+
 /**
- * Create and edit a client.
- *
- * ─── Why this is one page and not a wizard ───────────────────────────────────────
- *
- * It used to be a two-step wizard: step one held two fields, step two held four. A wizard
- * earns its cost when a later step depends on an earlier answer, or when the flow is long
- * enough that one page would be daunting — neither is true of six fields, and the doctrine's
- * own blacklist (ux-doctrine §7) rejects "a wizard where a form works". Stepping it also meant
- * a step-one panel holding two inputs in a column sized for a whole document, which is what
- * made the screen read as empty.
+ * Create and edit a client — the ADR-037 create page.
  *
  * ─── The shape ───────────────────────────────────────────────────────────────────
  *
- * One panel, sections separated by hairlines (§2.1: structure by rules and background steps,
- * not by a box around every group), and one action bar joined to the panel's foot. The
- * identity of the record comes first, then who we talk to, then anything optional.
+ * Sticky action bar (back, one Save, Discard, save state) → the error summary when a save
+ * failed → the record header (icon tile + the name, set large, because the name is what the
+ * record will be known by) → "* Required" → two hairline groups: Details (how the client
+ * appears on invoices and in search) and Contact (who ACCO calls). Notes stay behind a
+ * disclosure: they are optional and internal.
+ *
+ * It is one page and not a wizard: six-odd fields with no dependency between them is a form,
+ * and ux-doctrine §7 rejects "a wizard where a form works".
+ *
+ * ─── Three hosts ─────────────────────────────────────────────────────────────────
+ *
+ * The /clients/new page, the edit page (`ClientEdit`), and inline inside the project create
+ * form (`onCreated` / `onCancel`), where saving hands the new client back to the project
+ * instead of navigating, and there is no back link because the project form is the context.
+ *
+ * ─── Contacts on edit ────────────────────────────────────────────────────────────
+ *
+ * Contact capture belongs to creation only. On an existing client the contact list is its own
+ * aggregate with its own add/remove affordances (ClientContacts); a second single-contact
+ * editor here would be two ways to change one thing. The address is a client column, so it
+ * stays editable.
+ *
+ * Not here, by decision (ADR-037): a hand-typed short code (the server assigns CLI-000001),
+ * district (ADR-025: it belongs to the project), payment terms, receivable account, an
+ * "email invoices" toggle and a registration number — none exist in the API.
  */
 export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}) {
   const t = useTranslations('platform.clients.create');
@@ -45,13 +72,15 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
   const router = useRouter();
   const { toast } = useToast();
   const isEdit = Boolean(client);
+  const isInline = Boolean(onCreated || onCancel);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [allowDuplicate, setAllowDuplicate] = useState(false);
 
   const schema = z.object({
     name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
     type: z.enum(['COMPANY', 'GOVERNMENT', 'NGO', 'INDIVIDUAL', 'OTHER']).optional(),
-    taxNumber: z.string(), defaultCurrency: z.string(), address: z.string().optional(),
+    taxNumber: z.string().trim().max(50, t('taxNumberTooLong')),
+    defaultCurrency: z.string(),
+    address: z.string().optional(),
     contactName: z.string().trim().max(255, t('nameTooLong')),
     contactRole: z.string().trim().max(100, t('contactRoleTooLong')),
     contactPhone: z.string().trim().max(50, t('contactPhoneTooLong')).refine(
@@ -78,7 +107,9 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
     enabled: !isEdit && name.trim().length >= 3,
     staleTime: 30_000,
   });
-  const candidates = allowDuplicate ? [] : (duplicateQuery.data ?? []);
+  // A warning, not an error (ADR-037): two clients can legitimately share a name, so this
+  // never blocks the save. It names what to check and links to it.
+  const candidates = duplicateQuery.data ?? [];
 
   useEffect(() => {
     if (!isDirty || mutation.isSuccess) return;
@@ -88,16 +119,23 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
   }, [isDirty, mutation.isSuccess]);
 
   const fieldErrors: FormFieldError[] = [
-    errors.name ? { label: t('name'), fieldId: 'client-name', message: errors.name.message! } : null,
+    errors.name ? { label: t('clientName'), fieldId: 'client-name', message: errors.name.message! } : null,
+    errors.taxNumber ? { label: t('taxId'), fieldId: 'client-tax-number', message: errors.taxNumber.message! } : null,
     errors.contactName ? { label: t('contactName'), fieldId: 'client-contact-name', message: errors.contactName.message! } : null,
     errors.contactRole ? { label: t('contactRole'), fieldId: 'client-contact-role', message: errors.contactRole.message! } : null,
     errors.contactPhone ? { label: t('contactPhone'), fieldId: 'client-contact-phone', message: errors.contactPhone.message! } : null,
     errors.contactEmail ? { label: t('contactEmail'), fieldId: 'client-contact-email', message: errors.contactEmail.message! } : null,
+    errors.notes ? { label: t('notes'), fieldId: 'client-notes', message: errors.notes.message! } : null,
   ].filter(Boolean) as FormFieldError[];
   const apiErrors = mutation.error ? [mutation.error instanceof ApiError ? mutation.error.message : t('failed')] : [];
   const hasSummary = fieldErrors.length > 0 || apiErrors.length > 0;
 
-  const leave = () => onCancel ? onCancel() : router.push('/clients');
+  const discardHref = isEdit ? `/clients/${client!.id}` : '/clients';
+  const leave = () => (onCancel ? onCancel() : router.push(discardHref));
+  const discard = () => (isDirty ? setShowLeaveConfirm(true) : leave());
+
+  const saveState: FormSaveState = isDirty ? 'dirty' : isEdit ? 'clean' : 'new';
+
   const submit = (values: ClientFormValues) => {
     if (mutation.isPending) return;
     if (isEdit && client) return update.mutate(toUpdateClientPayload(values));
@@ -116,56 +154,83 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
   return (
     <>
       <form onSubmit={(event) => void handleSubmit(submit)(event)} noValidate>
-        <FormPanel>
+        <FormActionBar
+          back={isInline ? undefined : (
+            <Button asChild variant="ghost" className="gap-1.5 px-2">
+              <Link href="/clients"><ArrowLeft size={16} aria-hidden="true" />{t('backToList')}</Link>
+            </Button>
+          )}
+          save={<Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? t('saving') : t('save')}</Button>}
+          discard={<Button type="button" variant="ghost" onClick={discard} disabled={mutation.isPending}>{t('discard')}</Button>}
+          saveState={saveState}
+          saveStateLabels={{ new: tCommon('formState.new'), dirty: tCommon('formState.dirty'), clean: tCommon('formState.clean') }}
+        />
+
+        <div className="space-y-8">
           {hasSummary ? <FormErrorSummary errors={fieldErrors} formErrors={apiErrors} /> : null}
 
-          <FormSection title={t('identityStep')} description={t('identityDescription')} variant="plain">
-            {/* Full width, alone on its row: the name is what the record *is*, and pairing it with
-                a dropdown would give a secondary attribute equal weight. */}
-            <FormField htmlFor="client-name" label={t('name')} hint={t('nameHint')} error={errors.name?.message} required>
-              <Input id="client-name" placeholder={t('namePlaceholder')} autoFocus={!isEdit} {...register('name', { onChange: () => setAllowDuplicate(false) })} />
-            </FormField>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <FormField htmlFor="client-type" label={t('clientType')} required>
-                <ClientTypeSelect control={control} t={t} />
+          <div className="space-y-3">
+            <RecordCreateHeader icon={<Users size={20} />}>
+              <FormField
+                htmlFor="client-name"
+                label={t('clientName')}
+                hint={t('clientNameHint')}
+                error={errors.name?.message}
+                warning={candidates.length > 0 ? t('possibleDuplicate') : undefined}
+                required
+              >
+                <Input id="client-name" className={RECORD_NAME_INPUT} placeholder={t('namePlaceholder')} autoFocus={!isEdit} {...register('name')} />
               </FormField>
+              {candidates.length > 0 ? <DuplicateLinks candidates={candidates} t={t} /> : null}
+            </RecordCreateHeader>
+            <RequiredNote label={tCommon('required')} />
+          </div>
 
-              {isEdit ? <FormField htmlFor="client-code" label={t('code')}><Input id="client-code" readOnly value={client?.code ?? ''} /></FormField> : null}
-            </div>
-
-            {candidates.length > 0 ? <DuplicateWarning candidates={candidates} onContinue={() => setAllowDuplicate(true)} t={t} /> : null}
-          </FormSection>
-
-          {/* Contact capture belongs to creation only. On an existing client the contact list is
-              its own aggregate with its own add/remove affordances (ClientContacts), and offering
-              a second, single-contact editor here would be two ways to change one thing. */}
-          {isEdit ? null : (
-            <FormSection title={t('contactStep')} description={t('contactDescription')} variant="plain">
-              <div className="grid gap-5 sm:grid-cols-2">
-                <FormField htmlFor="client-contact-name" label={t('contactName')} error={errors.contactName?.message} required><Input id="client-contact-name" placeholder={t('contactNamePlaceholder')} {...register('contactName')} /></FormField>
-                <FormField htmlFor="client-contact-role" label={t('contactRole')} error={errors.contactRole?.message}><Input id="client-contact-role" placeholder={t('contactRolePlaceholder')} {...register('contactRole')} /></FormField>
-                <FormField htmlFor="client-contact-phone" label={t('contactPhone')} error={errors.contactPhone?.message}><Input id="client-contact-phone" type="tel" placeholder={t('contactPhonePlaceholder')} {...register('contactPhone')} /></FormField>
-                <FormField htmlFor="client-contact-email" label={t('contactEmail')} error={errors.contactEmail?.message}><Input id="client-contact-email" type="email" placeholder={t('contactEmailPlaceholder')} {...register('contactEmail')} /></FormField>
-              </div>
-            </FormSection>
-          )}
-
-          <details open={isEdit || undefined}><summary className="cursor-pointer text-body-sm font-medium text-foreground">{t('notesSection')}</summary><div className="pt-4">
-            <FormField htmlFor="client-notes" label={t('notes')} hint={t('notesHint')}>
-              <Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} />
+          <FormGroup title={t('detailsGroup')} description={t('detailsGroupHint')}>
+            <FormField htmlFor="client-type" label={t('clientType')} required>
+              <ClientTypeSelect control={control} t={t} />
             </FormField>
-          </div></details>
-        </FormPanel>
+            <FormField htmlFor="client-tax-number" label={t('taxId')} error={errors.taxNumber?.message}>
+              <Input id="client-tax-number" placeholder={t('taxIdPlaceholder')} {...register('taxNumber')} />
+            </FormField>
+            {isEdit ? (
+              <FormField htmlFor="client-code" label={t('code')}>
+                <Input id="client-code" readOnly value={client?.code ?? ''} className="bg-muted text-muted-foreground" />
+              </FormField>
+            ) : null}
+          </FormGroup>
 
-        <FormActionBar
-          submitLabel={isEdit ? t('saveChanges') : t('submit')}
-          pendingLabel={isEdit ? undefined : t('creating')}
-          isPending={mutation.isPending}
-          cancelHref={isEdit ? `/clients/${client!.id}` : undefined}
-          onCancel={isEdit ? undefined : () => (isDirty ? setShowLeaveConfirm(true) : leave())}
-          cancelLabel={t('cancel')}
-        />
+          <FormGroup title={t('contactGroup')} description={isEdit ? t('contactGroupEditHint') : t('contactGroupHint')}>
+            {isEdit ? null : (
+              <>
+                <FormField htmlFor="client-contact-name" label={t('contactName')} error={errors.contactName?.message} required>
+                  <Input id="client-contact-name" placeholder={t('contactNamePlaceholder')} {...register('contactName')} />
+                </FormField>
+                <FormField htmlFor="client-contact-role" label={t('contactRole')} error={errors.contactRole?.message}>
+                  <Input id="client-contact-role" placeholder={t('contactRolePlaceholder')} {...register('contactRole')} />
+                </FormField>
+                <FormField htmlFor="client-contact-phone" label={t('contactPhone')} hint={t('contactPhoneHint')} error={errors.contactPhone?.message}>
+                  <Input id="client-contact-phone" type="tel" placeholder={t('contactPhonePlaceholder')} {...register('contactPhone')} />
+                </FormField>
+                <FormField htmlFor="client-contact-email" label={t('contactEmail')} error={errors.contactEmail?.message}>
+                  <Input id="client-contact-email" type="email" placeholder={t('contactEmailPlaceholder')} {...register('contactEmail')} />
+                </FormField>
+              </>
+            )}
+            <FormField htmlFor="client-address" label={t('address')} className="sm:col-span-2">
+              <Textarea id="client-address" rows={2} placeholder={t('addressPlaceholder')} {...register('address')} />
+            </FormField>
+          </FormGroup>
+
+          <details open={isEdit || Boolean(errors.notes) || undefined}>
+            <summary className="cursor-pointer text-body-sm font-medium text-foreground">{t('notesSection')}</summary>
+            <div className="pt-4">
+              <FormField htmlFor="client-notes" label={t('notes')} hint={t('notesHint')} error={errors.notes?.message}>
+                <Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} />
+              </FormField>
+            </div>
+          </details>
+        </div>
       </form>
 
       {showLeaveConfirm ? <ConfirmActionDialog title={tCommon('unsavedChanges.title')} description={tCommon('unsavedChanges.body')} confirmLabel={tCommon('unsavedChanges.leave')} isPending={false} onConfirm={leave} onDismiss={() => setShowLeaveConfirm(false)} /> : null}
@@ -173,26 +238,19 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
   );
 }
 
-// ─── Panel ────────────────────────────────────────────────────────────────────
-// One surface for the whole document, with the action bar joined to its foot. The panel drops
-// its bottom border and the bar carries the matching bottom rounding, so the two read as a
-// single object rather than as a card with something parked underneath it.
+// ─── Pieces ───────────────────────────────────────────────────────────────────
 
-function FormPanel({ children }: { children: React.ReactNode }) {
+/** "* Required" — the one line that says what the asterisks mean. */
+export function RequiredNote({ label }: { label: string }) {
   return (
-    <div className="rounded-t-panel border border-b-0 border-border bg-surface px-5 py-6  sm:px-8">
-      <div className="space-y-8">{children}</div>
-    </div>
+    <p className="text-caption text-muted-foreground">
+      <span className="me-0.5 text-danger" aria-hidden="true">*</span>
+      {label}
+    </p>
   );
 }
 
-function FormActionBar(props: React.ComponentProps<typeof FormActions>) {
-  return <FormActions {...props} className="rounded-b-panel border border-border  sm:px-8" />;
-}
-
-// ─── Fields ───────────────────────────────────────────────────────────────────
-
-function ClientTypeSelect({ control, t }: { control: Control<ClientFormValues>; t: ReturnType<typeof useTranslations<'platform.clients.create'>> }) {
+function ClientTypeSelect({ control, t }: { control: Control<ClientFormValues>; t: ClientCreateT }) {
   return <Controller
            control={control}
            name="type"
@@ -202,6 +260,17 @@ function ClientTypeSelect({ control, t }: { control: Control<ClientFormValues>; 
          />;
 }
 
-function DuplicateWarning({ candidates, onContinue, t }: { candidates: Awaited<ReturnType<typeof findClientDuplicateCandidates>>; onContinue: () => void; t: ReturnType<typeof useTranslations<'platform.clients.create'>> }) {
-  return <Alert variant="warning" messages={[t('possibleDuplicate')]}><div className="mt-3 space-y-2">{candidates.map((candidate) => <div key={candidate.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-2"><span className="text-sm font-medium text-foreground">{candidate.name}</span><Button asChild size="sm" variant="outline"><Link href={`/clients/${candidate.id}`} target="_blank">{t('openClient')}</Link></Button></div>)}<Button type="button" size="sm" variant="ghost" onClick={onContinue}>{t('continueAnyway')}</Button></div></Alert>;
+/** The possible duplicates behind the name field's warning, each opening in a new tab. */
+function DuplicateLinks({ candidates, t }: { candidates: Awaited<ReturnType<typeof findClientDuplicateCandidates>>; t: ClientCreateT }) {
+  return (
+    <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-caption" aria-label={t('possibleDuplicate')}>
+      {candidates.map((candidate) => (
+        <li key={candidate.id}>
+          <Link href={`/clients/${candidate.id}`} target="_blank" className="font-medium text-brand-primary underline-offset-2 hover:underline">
+            {t('openClient')}: {candidate.name}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
 }

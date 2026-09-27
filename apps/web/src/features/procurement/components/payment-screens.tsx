@@ -27,6 +27,7 @@ import {
   TableScroll,
 } from '@erp/ui';
 
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -53,18 +54,13 @@ export function SupplierPaymentsList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-
-        {can(ACCOUNTING_PERMISSIONS.managePayables) ? (
+      {can(ACCOUNTING_PERMISSIONS.managePayables) ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button asChild>
             <Link href="/finance/accounting/payments/new">{t('new')}</Link>
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {payments.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
@@ -115,10 +111,10 @@ export function SupplierPaymentsList() {
                     {formatMoney(payment.unallocatedAmount, payment.currencyCode, locale)}
                   </TableCell>
                   <TableCell>
-                    <ProcurementStatusBadge status={payment.documentStatus} />
+                    <ProcurementStatusBadge vocabulary="payment" status={payment.documentStatus} />
                   </TableCell>
                   <TableCell>
-                    <PostingStatusBadge status={payment.postingStatus} />
+                    <PostingStatusBadge showAxis status={payment.postingStatus} />
                   </TableCell>
                 </TableRow>
               ))
@@ -140,6 +136,8 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
   const query = useSupplierPayment(id);
   const suppliers = useSuppliers();
   const bankAccounts = useBankAccounts();
+
+  useModuleTrail(query.data ? (query.data.paymentNumber ?? t('unnumbered')) : undefined);
 
   if (query.isPending) {
     return (
@@ -163,12 +161,12 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
           {payment.paymentNumber ?? t('unnumbered')}
-        </h1>
+        </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <ProcurementStatusBadge status={payment.documentStatus} />
-          <PostingStatusBadge status={payment.postingStatus} />
+          <ProcurementStatusBadge vocabulary="payment" status={payment.documentStatus} />
+          <PostingStatusBadge showAxis status={payment.postingStatus} />
           <span className="text-sm text-muted-foreground">
             {supplier ? `${supplier.code} · ${supplier.name}` : tc('notAvailable')}
           </span>

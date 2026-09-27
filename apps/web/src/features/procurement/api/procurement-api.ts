@@ -14,6 +14,9 @@
 import { apiClient } from '@/lib/api-client';
 
 import type {
+  BillActivityEntry,
+  BillApprovals,
+  BillPayments,
   ApproveExceptionPayload,
   BillMatchResult,
   ResolveExceptionPayload,
@@ -519,6 +522,21 @@ export function getSupplierBill(id: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}`);
 }
 
+/** ADR-036: the bill's approval chain(s), or who approved it directly. */
+export function getSupplierBillApprovals(id: string): Promise<BillApprovals> {
+  return apiClient<BillApprovals>(`/bills/${id}/approvals`);
+}
+
+/** ADR-036: the bill's history, newest first. */
+export function getSupplierBillActivity(id: string): Promise<BillActivityEntry[]> {
+  return apiClient<BillActivityEntry[]>(`/bills/${id}/activity`);
+}
+
+/** ADR-036: payments against the bill, with paid / pending computed server-side. */
+export function getSupplierBillPayments(id: string): Promise<BillPayments> {
+  return apiClient<BillPayments>(`/bills/${id}/payments`);
+}
+
 /**
  * `POST /bills` — creates a DRAFT.
  *
@@ -541,17 +559,47 @@ export function createSupplierBill(
   });
 }
 
+/**
+ * `PATCH /bills/:id` — edit a DRAFT bill (new, or returned for correction). Same body as create;
+ * the lines are replaced. 409 when another live bill holds the supplier invoice number.
+ */
+export function updateSupplierBill(
+  id: string,
+  payload: CreateSupplierBillPayload,
+): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /bills/:id/return` — SUBMITTED → DRAFT, with a required reason. Discards the PO match. */
+export function returnSupplierBill(id: string, reason: string): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/return`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** `POST /bills/:id/reject` — SUBMITTED → REJECTED (final), with a required reason. */
+export function rejectSupplierBill(id: string, reason: string): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 /** `POST /bills/:id/submit` — DRAFT → SUBMITTED. */
 export function submitSupplierBill(id: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}/submit`, { method: 'POST' });
 }
 
 /**
- * `POST /bills/:id/approve` — SUBMITTED → APPROVED.
- *
- * The controller's summary reads "Approve or reject", but the DTO has no `approved` flag and
- * `supplier-bill.service.ts:124` only ever approves. There is no reject path over HTTP, so
- * `REJECTED` is unreachable — the same shape of gap as P4's unreachable `CLOSED`.
+ * `POST /bills/:id/approve` — SUBMITTED → APPROVED. Rejection is its own command
+ * (`rejectSupplierBill`).
  */
 export function approveSupplierBill(id: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}/approve`, { method: 'POST' });

@@ -89,7 +89,7 @@ export function IpcListPanel({ applicationId, currency, basePath }: IpcListPanel
                       {cert.certificateRef ?? `#${cert.certificateNumber}`}
                     </Link>
                     {cert.isEffective ? (
-                      <Badge tone="live" className="ms-2 text-xs">
+                      <Badge tone="success" className="ms-2 text-xs">
                         {t('effective')}
                       </Badge>
                     ) : null}

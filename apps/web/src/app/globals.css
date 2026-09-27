@@ -104,7 +104,7 @@
 }
 
 :root {
-  --sidebar-width: 17rem;
+  --sidebar-width: 15rem;
   /* Rukna brand — the only layer tenant branding should override. */
   color-scheme: light;
   --background: #f4f6f8;
@@ -125,6 +125,8 @@
   --brand-ink-deep: #101828;
   --brand-ink-soft: #344054;
   --brand-panel: #172033;
+  /* Text on brand-panel (navy table headers, hero panels) — light in both themes. */
+  --brand-on-panel: #ffffff;
   --brand-primary: #255edb;
   --brand-primary-hover: #194bbe;
   --brand-primary-active: #123d9e;
@@ -141,6 +143,10 @@
   --success-subtle: #eaf8f2;
   --historical: #6941c6;
   --historical-subtle: #f3f0ff;
+  /* In-progress status tone (ADR-034). A slate, not brand blue: brand-primary is
+     reserved for interactive affordances and must never read as a status. */
+  --progress: #475467;
+  --progress-subtle: #edeef0;
   --overlay: rgb(16 24 40 / 0.46);
 
   /* ── Data-visualisation ramp ───────────────────────────────────────────
@@ -240,6 +246,7 @@
   --brand-ink-deep: #f4f6fa;
   --brand-ink-soft: #c5ccd8;
   --brand-panel: #151d2c;
+  --brand-on-panel: #e4e9f2;
   --brand-primary: #6d96ff;
   --brand-primary-hover: #88aaff;
   --brand-primary-active: #a2bcff;
@@ -256,6 +263,8 @@
   --success-subtle: #173d35;
   --historical: #b7a0ff;
   --historical-subtle: #342a52;
+  --progress: #c3cad6;
+  --progress-subtle: #373a3f;
   --overlay: rgb(0 0 0 / 0.66);
   /* Data-viz ramp, lifted for a dark surface (see the light-theme note above). */
   --chart-1: #6d96ff;
@@ -325,6 +334,7 @@
   --color-brand-ink-deep: var(--brand-ink-deep);
   --color-brand-ink-soft: var(--brand-ink-soft);
   --color-brand-panel: var(--brand-panel);
+  --color-brand-on-panel: var(--brand-on-panel);
   --color-brand-primary: var(--brand-primary);
   --color-brand-primary-hover: var(--brand-primary-hover);
   --color-brand-primary-active: var(--brand-primary-active);
@@ -341,6 +351,8 @@
   --color-success-subtle: var(--success-subtle);
   --color-historical: var(--historical);
   --color-historical-subtle: var(--historical-subtle);
+  --color-progress: var(--progress);
+  --color-progress-subtle: var(--progress-subtle);
   --color-overlay: var(--overlay);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);

@@ -5,18 +5,12 @@ import { Skeleton } from '@erp/ui';
 import { Wallet } from 'lucide-react';
 import type { PhysicalFinancialSignalResponse } from '@erp/types';
 
+import { statusTone } from '@/lib/status-registry';
+
 import { usePhysicalFinancialSignal } from '../hooks/use-progress';
 import { SignalBanner, formatPct, formatSignedPct } from './signal-banner';
-import type { RefTone } from './ref-ui';
 
 type Status = PhysicalFinancialSignalResponse['status'];
-
-const STATUS_TONE: Record<Status, RefTone> = {
-  ALIGNED: 'green',
-  COST_AHEAD: 'amber',
-  PROGRESS_AHEAD: 'blue',
-  INSUFFICIENT_DATA: 'gray',
-};
 
 const STATUS_HINT: Record<Status, string> = {
   ALIGNED: 'signal.alignedHint',
@@ -52,7 +46,7 @@ export function PhysicalFinancialSignalBanner({
       headingId="signal-heading"
       title={t('signal.title')}
       statusLabel={t(`signal.status.${s.status}`)}
-      tone={STATUS_TONE[s.status]}
+      tone={statusTone(s.status, 'costSignal')}
       hint={t(STATUS_HINT[s.status])}
       icon={<Wallet size={17} strokeWidth={1.9} />}
       stats={[

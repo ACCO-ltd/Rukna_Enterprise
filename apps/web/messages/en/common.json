@@ -23,7 +23,8 @@
   },
   "formErrors": {
     "title": "Please fix the following",
-    "fieldLink": "Go to {field}"
+    "fieldLink": "Go to {field}",
+    "fixCount": "{count, plural, one {Fix # field before saving} other {Fix # fields before saving}}"
   },
   "language": {
     "label": "Language",
@@ -90,7 +91,15 @@
     "nextPage": "Next page",
     "perPage": "Per page",
     "page": "Page {page} of {total}",
-    "showing": "Showing {from}–{to} of {count}"
+    "showing": "Showing {from}–{to} of {count}",
+    "filter": "Filter",
+    "filtersTitle": "Filters",
+    "applyFilters": "Apply",
+    "clearFilterPanel": "Clear",
+    "filterAny": "Any",
+    "clearAllFilters": "Clear all",
+    "removeFilter": "Remove filter: {filter}",
+    "noMatchesHint": "Try clearing a filter or changing your search."
   },
   "emptyState": {
     "noData": "No items yet",
@@ -120,5 +129,10 @@
     "title": "Leave without saving?",
     "body": "Your changes will be lost if you leave this page.",
     "leave": "Leave"
+  },
+  "formState": {
+    "new": "Not saved yet",
+    "dirty": "Unsaved changes",
+    "clean": "All changes saved"
   }
 }

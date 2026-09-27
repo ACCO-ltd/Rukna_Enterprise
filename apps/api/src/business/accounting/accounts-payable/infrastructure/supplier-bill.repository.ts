@@ -57,6 +57,14 @@ export interface BillLineCostTarget {
   accruedBasis: Decimal;
 }
 
+/**
+ * The duplicate-detection key for a supplier invoice number: trimmed, upper-cased, and stripped
+ * of everything but letters and digits. The web form mirrors this exactly to warn before saving.
+ */
+export function normalizeSupplierInvoiceNumber(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 @Injectable()
 export class SupplierBillRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
@@ -69,6 +77,17 @@ export class SupplierBillRepository {
     });
   }
 
+  /** Every payment allocation against a bill, oldest first, with the paying document's identity. */
+  findAllocationsForBill(prisma: TenantPrisma, organizationId: string, billId: string) {
+    return prisma.supplierPaymentAllocation.findMany({
+      where: { organizationId, supplierBillId: billId },
+      include: {
+        payment: { select: { paymentNumber: true, paymentDate: true, documentStatus: true } },
+      },
+      orderBy: { allocationDate: 'asc' },
+    });
+  }
+
   findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {
     return prisma.supplierBill.findMany({
       where: { organizationId, ...(supplierId ? { supplierId } : {}) },
@@ -77,8 +96,33 @@ export class SupplierBillRepository {
     });
   }
 
+  /**
+   * The LIVE bill already holding this supplier invoice number, if any. Compared on the
+   * normalised form (so "INV-0042" and "inv 0042" are the same number). Rejected and cancelled
+   * bills no longer hold their number — the partial unique index in migration 20260927120000 —
+   * and `excludeBillId` skips the bill being edited.
+   */
+  findBySupplierInvoiceNumber(
+    prisma: TenantPrisma,
+    organizationId: string,
+    supplierId: string,
+    supplierInvoiceNumber: string,
+    excludeBillId?: string,
+  ) {
+    return prisma.supplierBill.findFirst({
+      where: {
+        organizationId,
+        supplierId,
+        supplierInvoiceNumberNorm: normalizeSupplierInvoiceNumber(supplierInvoiceNumber),
+        documentStatus: { notIn: ['REJECTED', 'CANCELLED'] },
+        ...(excludeBillId ? { id: { not: excludeBillId } } : {}),
+      },
+      select: { id: true, billNumber: true, supplierInvoiceNumber: true },
+    });
+  }
+
   async create(prisma: TenantPrisma, data: CreateSupplierBillData) {
-    const norm = data.supplierInvoiceNumber.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const norm = normalizeSupplierInvoiceNumber(data.supplierInvoiceNumber);
     return prisma.supplierBill.create({
       data: {
         organizationId: data.organizationId,
@@ -105,9 +149,10 @@ export class SupplierBillRepository {
     });
   }
 
+  /** Guarded on SUBMITTED: a bill rejected or returned a moment ago is not approved (P2025). */
   approve(prisma: TenantPrisma, id: string, approvedBy: string) {
     return prisma.supplierBill.update({
-      where: { id },
+      where: { id, documentStatus: 'SUBMITTED' },
       data: { documentStatus: 'APPROVED', approvedBy, approvedAt: new Date() },
     });
   }

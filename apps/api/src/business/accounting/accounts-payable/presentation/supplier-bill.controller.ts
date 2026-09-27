@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
+  Controller, Get, Post, Patch, Body, Param, Query,
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -9,9 +9,11 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SupplierBillService } from '../application/supplier-bill.service.js';
+import { SupplierBillDocumentService } from '../application/supplier-bill-document.service.js';
 import { CreateSupplierBillDto } from './dto/create-supplier-bill.dto.js';
 import { PostSupplierBillDto } from './dto/post-supplier-bill.dto.js';
 import { ReverseSupplierBillDto } from './dto/reverse-supplier-bill.dto.js';
+import { BillDecisionReasonDto } from './dto/bill-decision-reason.dto.js';
 
 @ApiTags('Supplier Bills')
 @ApiBearerAuth('access-token')
@@ -19,7 +21,10 @@ import { ReverseSupplierBillDto } from './dto/reverse-supplier-bill.dto.js';
 @RequirePermissions(PERMISSIONS.payablesManage)
 @Controller('bills')
 export class SupplierBillController {
-  constructor(private readonly supplierBillService: SupplierBillService) {}
+  constructor(
+    private readonly supplierBillService: SupplierBillService,
+    private readonly documentService: SupplierBillDocumentService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List supplier bills' })
@@ -42,6 +47,69 @@ export class SupplierBillController {
   @ApiOperation({ summary: 'Get supplier bill with lines' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.supplierBillService.findById(identity, id);
+  }
+
+  @Get(':id/approvals')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Approval chain(s) raised for the bill, or who approved it directly (ADR-036)',
+  })
+  approvals(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.approvals(identity, id);
+  }
+
+  @Get(':id/activity')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'The bill history, newest first: audited commands, approval decisions, creation (ADR-036)',
+  })
+  activity(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.activity(identity, id);
+  }
+
+  @Get(':id/payments')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Payment allocations against the bill, with paid and pending amounts computed server-side (ADR-036)',
+  })
+  payments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.payments(identity, id);
+  }
+
+  @Patch(':id')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Edit a DRAFT bill (new, or returned for correction); lines are replaced' })
+  @ApiResponse({ status: 409, description: 'Supplier invoice number already recorded on a live bill' })
+  update(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: CreateSupplierBillDto,
+  ) {
+    return this.supplierBillService.update(identity, id, dto);
+  }
+
+  @Post(':id/return')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Return a SUBMITTED bill to DRAFT for correction, with a reason' })
+  returnForCorrection(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: BillDecisionReasonDto,
+  ) {
+    return this.supplierBillService.returnForCorrection(identity, id, dto.reason);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Reject a SUBMITTED bill (final), with a reason; frees its supplier invoice number' })
+  reject(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: BillDecisionReasonDto,
+  ) {
+    return this.supplierBillService.reject(identity, id, dto.reason);
   }
 
   @Post(':id/submit')

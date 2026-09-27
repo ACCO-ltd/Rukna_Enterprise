@@ -473,6 +473,10 @@ export interface SupplierBillLine {
   expenseProfileCode: string;
   projectId: string | null;
   boqNodeId: string | null;
+  /** Direct bills: the project cost category a line is for. Detail returns the whole row. */
+  spendCategoryId?: string | null;
+  /** Not written by bill create today; matched by position when absent. */
+  purchaseOrderLineId?: string | null;
 }
 
 /** `BillDocStatus` in `schema.prisma`. */
@@ -527,6 +531,28 @@ export interface SupplierBill {
   vatAmount: Money;
   totalAmount: Money;
   outstandingAmount: Money;
+  /**
+   * Posting trail. `GET /bills/:id` returns the whole row, so these arrive on detail; typed
+   * optional because older fixtures and the list endpoint may omit them.
+   */
+  postedJournalEntryId?: string | null;
+  postedAt?: string | null;
+  reversalJournalEntryId?: string | null;
+  reversedAt?: string | null;
+  approvedAt?: string | null;
+  /** Human numbers of the posting and reversal journals — detail only (ADR-036). */
+  postedJournalNumber?: string | null;
+  reversalJournalNumber?: string | null;
+  /**
+   * Return for correction and rejection (ADR-037 amendment). A returned bill is back in DRAFT
+   * and keeps the last return's reason; a rejected bill is final. Detail returns the whole row.
+   */
+  returnedAt?: string | null;
+  returnedBy?: string | null;
+  returnReason?: string | null;
+  rejectedAt?: string | null;
+  rejectedBy?: string | null;
+  rejectionReason?: string | null;
   /** Present on detail only — `findAll` includes no lines. */
   lines?: SupplierBillLine[];
 }
@@ -558,6 +584,10 @@ export interface CreateSupplierBillLinePayload {
   vatAmount: number;
   expenseProfileCode: string;
   projectId?: string;
+  /** Direct (non-PO) bills only: the BOQ cost item a project line is for. */
+  boqNodeId?: string;
+  /** Direct (non-PO) bills only: the project-level cost category, for cost the BOQ has no line for. */
+  spendCategoryId?: string;
 }
 
 export interface CreateSupplierBillPayload {
@@ -1060,4 +1090,69 @@ export interface BuyerAdvance {
   returns: AdvanceReturn[];
   evidenceAllocations: BuyerAdvanceEvidenceAllocation[];
   outstanding: Money;
+}
+
+
+// ─── Supplier bill document read models (ADR-036) ─────────────────────────────
+
+export interface ActorRef {
+  id: string;
+  name: string;
+}
+
+export type BillApprovalStepState = 'APPROVED' | 'REJECTED' | 'CURRENT' | 'UPCOMING' | 'SKIPPED' | 'CANCELLED';
+
+export interface BillApprovalStep {
+  stepOrder: number;
+  roleRequired: string;
+  isOptional: boolean;
+  state: BillApprovalStepState;
+  actor: ActorRef | null;
+  actedAt: string | null;
+  notes: string | null;
+}
+
+export interface BillApprovalInstance {
+  id: string;
+  status: string;
+  policyName: string;
+  initiatedAt: string;
+  initiatedBy: ActorRef;
+  evaluatedAmount: Money | null;
+  steps: BillApprovalStep[];
+}
+
+/** `GET /bills/:id/approvals`. */
+export interface BillApprovals {
+  instances: BillApprovalInstance[];
+  directApproval: { actor: ActorRef; at: string } | null;
+}
+
+/** `GET /bills/:id/activity` — newest first. */
+export interface BillActivityEntry {
+  id: string;
+  at: string;
+  actor: ActorRef;
+  /** `bills.submit`, `approval.approve`, `bill-matching.run`… */
+  code: string;
+  /** The approving role, for approval decisions. */
+  detail?: string;
+  /** Why — on `bills.return` and `bills.reject`. */
+  reason?: string;
+}
+
+/** `GET /bills/:id/payments` — money computed server-side. */
+export interface BillPayments {
+  paidAmount: Money;
+  pendingAmount: Money;
+  paymentCount: number;
+  allocations: Array<{
+    id: string;
+    paymentId: string;
+    paymentNumber: string | null;
+    paymentDate: ApiDate;
+    allocatedAmount: Money;
+    postingStatus: string;
+    paymentStatus: string;
+  }>;
 }

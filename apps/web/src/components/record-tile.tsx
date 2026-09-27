@@ -1,4 +1,4 @@
-import { Buildings } from '@phosphor-icons/react';
+import { Building2 } from 'lucide-react';
 
 /**
  * The accent tile that marks where a record starts in an entity list.
@@ -23,7 +23,7 @@ export function RecordTile() {
       className="flex size-9 shrink-0 items-center justify-center rounded-panel bg-brand-accent text-brand-primary"
       aria-hidden="true"
     >
-      <Buildings size={18} weight="regular" />
+      <Building2 size={18} />
     </span>
   );
 }

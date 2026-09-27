@@ -44,7 +44,7 @@ export function TopBar({ onOpenMenu }: TopBarProps) {
           '-ms-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
           'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
-          'lg:hidden',
+          'md:hidden',
         )}
         aria-label={t('openMenu')}
       >

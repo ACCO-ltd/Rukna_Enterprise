@@ -3,7 +3,6 @@
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
   DefinitionList,
   DefinitionRow,
@@ -16,9 +15,11 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
 
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import type {
   ApprovalPolicyDetail,
   DraftValidation,
@@ -86,7 +87,7 @@ export function PolicyOverviewTab({
             v{detail.version}
           </DefinitionRow>
           <DefinitionRow label={t('detailStatus')}>
-            <Badge tone={detail.status === 'ACTIVE' ? 'live' : 'neutral'}>{detail.status}</Badge>
+            <StatusPill tone={statusTone(detail.status, 'approvalPolicy')}>{detail.status}</StatusPill>
           </DefinitionRow>
           <DefinitionRow label={t('detailAmountBasis')}>{detail.amountBasis}</DefinitionRow>
           <DefinitionRow
@@ -242,9 +243,9 @@ function BindingRow({ binding }: { binding: WorkflowTriggerBinding }) {
       </TableCell>
       <TableCell className="text-sm text-foreground">{binding.definition.name}</TableCell>
       <TableCell>
-        <Badge tone={binding.isActive ? 'live' : 'neutral'}>
+        <StatusPill tone={statusTone(binding.isActive ? 'ACTIVE' : 'INACTIVE', 'masterData')}>
           {binding.isActive ? t('bindingActive') : t('bindingInactive')}
-        </Badge>
+        </StatusPill>
       </TableCell>
     </TableRow>
   );
@@ -303,9 +304,9 @@ function PolicyVersions({
                     <TableRow key={version.id}>
                       <TableCell className="font-mono text-xs">v{version.version}</TableCell>
                       <TableCell>
-                        <Badge tone={version.status === 'ACTIVE' ? 'live' : 'neutral'}>
+                        <StatusPill tone={statusTone(version.status, 'approvalPolicy')}>
                           {version.status}
-                        </Badge>
+                        </StatusPill>
                       </TableCell>
                       <TableCell className="text-end tabular-nums">{version.ruleCount}</TableCell>
                       <TableCell className="text-end">

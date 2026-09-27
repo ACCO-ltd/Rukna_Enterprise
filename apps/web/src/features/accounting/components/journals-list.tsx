@@ -90,17 +90,14 @@ export function JournalsList() {
     },
   ];
 
+  const createAction = (
+    <Button asChild>
+      <Link href="/finance/accounting/journals/new">{t('newJournal')}</Link>
+    </Button>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-        <Button asChild>
-          <Link href="/finance/accounting/journals/new">{t('newJournal')}</Link>
-        </Button>
-      </div>
 
       {/* `GET /journals` accepts no query parameters despite §6.17 documenting `?status=`
           (A7), so this filter is applied here. Said plainly, because a filter that silently
@@ -123,6 +120,7 @@ export function JournalsList() {
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
               </p>
+              <div className="mt-4 flex justify-center">{createAction}</div>
             </div>
           ) : undefined
         }
@@ -148,6 +146,7 @@ export function JournalsList() {
           </FilterBar>
         }
         onClearFilters={() => setStatus('')}
+        toolbarActions={createAction}
       />
     </div>
   );

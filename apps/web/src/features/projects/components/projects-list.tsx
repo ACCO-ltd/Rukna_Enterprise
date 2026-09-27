@@ -146,9 +146,17 @@ export function ProjectsList() {
       noMatchMessage={t('noMatches')}
       emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
       toolbarFilters={statusFilter}
-      // No create button here. The page header already carries one, and two identical primary
-      // buttons a hundred pixels apart is not emphasis — it is a reader wondering whether they
-      // do different things.
+      // The one create button. The module header owns the page title (ADR-035), so the action
+      // sits with the list it adds to; the empty state carries the same action when there is no
+      // list to sit beside.
+      toolbarActions={mayCreate ? (
+        <Button asChild>
+          <Link href="/projects/new">
+            <Plus className="me-2 h-4 w-4" aria-hidden="true" />
+            {t('newProject')}
+          </Link>
+        </Button>
+      ) : undefined}
       // The list opens in name order, and the sort control says so. It previously read
       // "Sort by: Default", which named nothing and was not even true — the rows arrived in
       // whatever order the API returned.

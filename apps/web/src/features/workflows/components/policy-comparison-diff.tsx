@@ -70,9 +70,9 @@ export function PolicyComparisonDiff({ comparison }: { comparison: ApprovalPolic
       </p>
 
       {added.length > 0 ? (
-        <DiffGroup title={t('addedHeading')} count={added.length} tone="live">
+        <DiffGroup title={t('addedHeading')} count={added.length} tone="success">
           {added.map((rule) => (
-            <RuleCard key={rule.ruleKey} rule={rule} tone="live" fieldLabel={fieldLabel} />
+            <RuleCard key={rule.ruleKey} rule={rule} tone="success" fieldLabel={fieldLabel} />
           ))}
         </DiffGroup>
       ) : null}
@@ -86,7 +86,7 @@ export function PolicyComparisonDiff({ comparison }: { comparison: ApprovalPolic
       ) : null}
 
       {changed.length > 0 ? (
-        <DiffGroup title={t('changedHeading')} count={changed.length} tone="warning">
+        <DiffGroup title={t('changedHeading')} count={changed.length} tone="attention">
           {changed.map((rule) => (
             <div key={rule.ruleKey} className="rounded-panel border border-warning/20 bg-warning-subtle/40 p-3">
               <p className="font-mono text-xs text-foreground">{rule.ruleKey}</p>
@@ -108,7 +108,7 @@ export function PolicyComparisonDiff({ comparison }: { comparison: ApprovalPolic
       ) : null}
 
       {sodRules.length > 0 ? (
-        <DiffGroup title={t('sodHeading')} count={sodRules.length} tone="accent">
+        <DiffGroup title={t('sodHeading')} count={sodRules.length} tone="historical">
           {sodRules.map((diff) => (
             <SodCard key={diff.code} diff={diff} />
           ))}
@@ -126,7 +126,7 @@ function DiffGroup({
 }: {
   title: string;
   count: number;
-  tone: 'live' | 'danger' | 'warning' | 'accent';
+  tone: 'success' | 'danger' | 'attention' | 'historical';
   children: React.ReactNode;
 }) {
   return (
@@ -146,11 +146,11 @@ function RuleCard({
   fieldLabel,
 }: {
   rule: ApprovalPolicyRuleSnapshot;
-  tone: 'live' | 'danger';
+  tone: 'success' | 'danger';
   fieldLabel: (field: keyof Omit<ApprovalPolicyRuleSnapshot, 'ruleKey'>) => string;
 }) {
   const wrap =
-    tone === 'live'
+    tone === 'success'
       ? 'border-success/20 bg-success-subtle/40'
       : 'border-danger/20 bg-danger-subtle/40';
   const matrix = policyMatrixFor(rule.transactionType);
@@ -181,7 +181,7 @@ function SodCard({ diff }: { diff: ApprovalPolicySodDiff }) {
   // active-flag change. The tone is chosen so the word + colour agree with the rule bands above.
   const kind: 'added' | 'removed' | 'changed' =
     diff.base === null ? 'added' : diff.target === null ? 'removed' : 'changed';
-  const tone = kind === 'added' ? 'live' : kind === 'removed' ? 'danger' : 'warning';
+  const tone = kind === 'added' ? 'success' : kind === 'removed' ? 'danger' : 'attention';
   const wrap =
     kind === 'added'
       ? 'border-success/20 bg-success-subtle/40'

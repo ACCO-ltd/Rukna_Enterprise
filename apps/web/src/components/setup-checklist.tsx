@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import { Check, Lock, Minus } from '@phosphor-icons/react';
+import { Check, Lock, Minus } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ function ItemIndicator({ status }: { status: ChecklistItemStatus }) {
         aria-label={t('complete')}
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success text-white"
       >
-        <Check size={12} weight="bold" aria-hidden="true" />
+        <Check size={12} aria-hidden="true" />
       </span>
     );
   }

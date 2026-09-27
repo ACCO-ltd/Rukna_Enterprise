@@ -46,8 +46,6 @@ export function UomList() {
   return (
     <>
       <SetupScreen
-        title={t('title')}
-        subtitle={t('subtitle')}
         notice={t('activeOnlyNotice')}
         createLabel={t('new')}
         createTitle={t('createTitle')}
@@ -83,7 +81,7 @@ export function UomList() {
                       <bdi className="text-sm">{uom.symbol}</bdi>
                     </TableCell>
                     <TableCell>
-                      <ProcurementStatusBadge status={uom.status} />
+                      <ProcurementStatusBadge vocabulary="masterData" status={uom.status} />
                     </TableCell>
                     <TableCell>
                       {canManage && uom.status === 'ACTIVE' ? (

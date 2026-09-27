@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, cn } from '@erp/ui';
+import { Alert, Badge, Button, cn, StatusPill } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 import { Check, LockKeyhole } from 'lucide-react';
 import { usePermissions, type PermissionKey } from '@/features/auth/permissions/can';
 import { useProjectReadiness } from '../hooks/use-project';
@@ -143,7 +145,7 @@ export function ProjectReadiness({ project }: { project: ProjectDetail }) {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-body-sm font-semibold">{t(`conditions.${code}`)}</p>
-                  <StatusBadge
+                  <ReadinessStatusPill
                     complete={condition.satisfied}
                     blocked={blocked}
                     waivable={condition.severity === 'WAIVABLE'}
@@ -191,7 +193,17 @@ export function ProjectReadiness({ project }: { project: ProjectDetail }) {
   );
 }
 
-function StatusBadge({
+/** One step's readiness — keys of the registry's `readinessStep` vocabulary (ADR-034). */
+type ReadinessStepState = 'COMPLETE' | 'BLOCKED' | 'OPTIONAL' | 'READY';
+
+const STATE_LABEL_KEY = {
+  COMPLETE: 'status.complete',
+  BLOCKED: 'status.blocked',
+  OPTIONAL: 'status.optional',
+  READY: 'status.ready',
+} as const;
+
+function ReadinessStatusPill({
   complete,
   blocked,
   waivable,
@@ -201,12 +213,15 @@ function StatusBadge({
   waivable: boolean;
 }) {
   const t = useTranslations('platform.projects.preparation');
+  const state: ReadinessStepState = complete
+    ? 'COMPLETE'
+    : blocked
+      ? 'BLOCKED'
+      : waivable
+        ? 'OPTIONAL'
+        : 'READY';
 
-  if (complete) return <Badge tone="live">{t('status.complete')}</Badge>;
-  if (blocked) return <Badge tone="neutral">{t('status.blocked')}</Badge>;
   return (
-    <Badge tone={waivable ? 'warning' : 'info'}>
-      {waivable ? t('status.optional') : t('status.ready')}
-    </Badge>
+    <StatusPill tone={statusTone(state, 'readinessStep')}>{t(STATE_LABEL_KEY[state])}</StatusPill>
   );
 }

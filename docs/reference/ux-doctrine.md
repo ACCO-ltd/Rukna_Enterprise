@@ -152,8 +152,12 @@ level. Keep the source of truth honest as the system changes.
 
 ## 5. Navigation model (confirmed, Round 2)
 
-**Domain → destination** in the global sidebar; **project workspace tabs** inside a project.
-Domain-specific configuration lives inside its domain.
+**Module → tab** (ADR-035, 2026-09-27): the global sidebar lists **modules only**. A module's
+pages are its `ModuleTabs` under the `ModuleHeader`: a direct tab per ungrouped nav item, and a
+click-to-open dropdown per `groupKey`. There is one navigation system per page; never a sidebar
+and a tab bar listing the same pages. The **project workspace tabs** stay inside a project, and
+the module header stands aside there. Domain-specific configuration lives inside its domain,
+usually as a `Setup` dropdown tab.
 
 **Navigation-depth rule (revised 2026-08-26 — supersedes the crude "no third nesting level").**
 The real enemy is *unclear hierarchy*, not depth per se. An information-dense ERP workspace legitimately
@@ -390,6 +394,10 @@ breadcrumb project link   unconstrained, ~20px
 breadcrumb "Projects"     unconstrained, ~20px
 sidebar domain row        min-h-10 (40px)   ← added to this list 2026-09-08
 ```
+
+**Update 2026-09-27 (ADR-035):** the sidebar module row is now `min-h-11` (44px) and the
+sidebar item control no longer exists (modules only). The collapse toggle is `min-h-10`.
+Module tabs are `h-11` (44px).
 
 (The TanStack devtools button also fails and is dev-only — not debt, ignore it.)
 

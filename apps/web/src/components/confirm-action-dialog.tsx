@@ -30,6 +30,8 @@ interface ConfirmActionDialogProps {
   confirmLabel: string;
   /** Omit for a plain yes/no confirmation. */
   reason?: ConfirmReasonField;
+  /** Renders the confirm button in danger — for a final, destructive command. */
+  destructive?: boolean;
   isPending: boolean;
   errorMessage?: string | undefined;
   onConfirm: (text: string) => void;
@@ -59,6 +61,7 @@ export function ConfirmActionDialog({
   description,
   confirmLabel,
   reason,
+  destructive = false,
   isPending,
   errorMessage,
   onConfirm,
@@ -145,7 +148,7 @@ export function ConfirmActionDialog({
         ) : null}
 
         <DialogFooter>
-          <Button onClick={submit} disabled={isPending}>
+          <Button onClick={submit} disabled={isPending} variant={destructive ? 'destructive' : 'default'}>
             {isPending ? t('working') : confirmLabel}
           </Button>
           <Button variant="outline" onClick={onDismiss} disabled={isPending}>

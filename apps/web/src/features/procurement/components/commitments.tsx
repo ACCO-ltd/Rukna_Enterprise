@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Coins, HandCoins, Receipt, TrendUp } from '@phosphor-icons/react';
+import { Coins, HandCoins, Receipt, TrendingUp } from 'lucide-react';
 import {
   Alert,
   Card,
@@ -157,7 +157,7 @@ export function ProjectCommitmentsCard({
         <>
           <dl className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0 rtl:sm:divide-x-reverse">
             {stages.map(({ key, value }, index) => {
-              const MetricIcon = [HandCoins, TrendUp, Receipt][index];
+              const MetricIcon = [HandCoins, TrendingUp, Receipt][index];
               return (
                 <div key={key} className="p-4 sm:p-5">
                   <dt
@@ -165,7 +165,7 @@ export function ProjectCommitmentsCard({
                     title={t(`${key}Hint`)}
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-control bg-surface-subtle text-muted-foreground">
-                      <MetricIcon size={17} weight="duotone" aria-hidden="true" />
+                      <MetricIcon size={17} aria-hidden="true" />
                     </span>
                     {t(key)}
                   </dt>
@@ -210,12 +210,6 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
 
   return (
     <div className="space-y-6">
-      {/* ── Page header ───────────────────────────────────────────────────── */}
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
-
       {/* ── Project + stage filters ───────────────────────────────────────── */}
       <div className="flex flex-wrap gap-4">
         <div className="min-w-56 flex-1">

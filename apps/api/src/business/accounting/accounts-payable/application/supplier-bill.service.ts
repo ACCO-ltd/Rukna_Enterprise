@@ -5,8 +5,9 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { RequestIdentity } from '@erp/types';
+import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -14,7 +15,10 @@ import {
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
-import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import {
+  normalizeSupplierInvoiceNumber,
+  SupplierBillRepository,
+} from '../infrastructure/supplier-bill.repository.js';
 import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
 import { BillMatchingService } from '../../../../business/procurement/bill-matching/application/bill-matching.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
@@ -55,6 +59,42 @@ export interface CreateSupplierBillDto {
   lines: CreateSupplierBillLineDto[];
 }
 
+/**
+ * True when a create hit the (organizationId, supplierId, supplierInvoiceNumberNorm) unique index.
+ * Other unique violations (none today) are left to propagate unchanged.
+ */
+function isDuplicateInvoiceNumberConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    // The live-number index is a raw partial index, so Prisma reports its name, not the field.
+    /supplierInvoiceNumberNorm|supplier_invoice_number/.test(
+      String((error.meta as { target?: unknown } | undefined)?.target ?? ''),
+    )
+  );
+}
+
+/**
+ * A status transition that lost a race: the guarded update (`where: { id, documentStatus }`)
+ * found no row because another command moved the bill first. Prisma reports it as P2025.
+ */
+function isStaleTransition(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+}
+
+function staleTransition(expected: string): ConflictException {
+  return new ConflictException(
+    `The bill is no longer ${expected} — someone else changed it. Reload it and try again.`,
+  );
+}
+
+/** A return or rejection must say why — it is what the clerk acts on and what the audit keeps. */
+function requireReason(reason: string | undefined): string {
+  const trimmed = (reason ?? '').trim();
+  if (!trimmed) throw new BadRequestException('A reason is required');
+  return trimmed;
+}
+
 export interface PostSupplierBillDto {
   billId: string;
   apAccountCode: string;
@@ -75,10 +115,16 @@ export class SupplierBillService {
     private readonly sod: SegregationOfDutiesService,
   ) {}
 
-  async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
-    const prisma = this.tenancyService.getClient();
-    const { activeOrganizationId: orgId, userId } = identity;
-
+  /**
+   * Validation and line building shared by create and update, so an edited draft passes exactly
+   * the rules a new bill does: cost targets on a non-PO bill (D7), an ACTIVE PO revision on a PO
+   * bill, and server-computed totals.
+   */
+  private async prepareBill(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    dto: CreateSupplierBillDto,
+  ) {
     // A non-PO bill is the only path where cost coding is keyed by hand, so it is validated
     // by the same rule a purchase order is: a BOQ node needs its project, and a project needs
     // a target (a BOQ node, or a spend category for project-level cost). A PO-backed bill
@@ -120,10 +166,10 @@ export class SupplierBillService {
       };
     });
 
-    const subtotal = lines.reduce((s, l) => s.plus(l.netAmount), new Decimal(0));
-    const vatTotal = lines.reduce((s, l) => s.plus(l.vatAmount), new Decimal(0));
+    const subtotal = lines.reduce((sum, l) => sum.plus(l.netAmount), new Decimal(0));
+    const vatTotal = lines.reduce((sum, l) => sum.plus(l.vatAmount), new Decimal(0));
     // For NON_RECOVERABLE VAT (ACCO policy): gross posts to expense
-    const totalAmount = lines.reduce((s, l) => s.plus(l.grossAmount), new Decimal(0));
+    const totalAmount = lines.reduce((sum, l) => sum.plus(l.grossAmount), new Decimal(0));
 
     let purchaseOrderRevisionId: string | undefined;
     if (dto.purchaseOrderId) {
@@ -137,23 +183,63 @@ export class SupplierBillService {
       purchaseOrderRevisionId = activeRevision.id;
     }
 
-    return this.repo.create(prisma, {
-      organizationId: orgId,
-      supplierId: dto.supplierId,
-      supplierInvoiceNumber: dto.supplierInvoiceNumber,
-      billDate: new Date(dto.billDate),
-      dueDate: new Date(dto.dueDate),
-      currencyCode: dto.currencyCode,
-      purchaseOrderId: dto.purchaseOrderId,
-      purchaseOrderRevisionId,
-      projectId: dto.projectId,
-      departmentId: dto.departmentId,
-      subtotal,
-      vatAmount: vatTotal,
-      totalAmount,
-      createdBy: userId,
-      lines,
-    });
+    return { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId };
+  }
+
+  async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+    const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
+      await this.prepareBill(prisma, orgId, dto);
+
+    // One supplier invoice number is recorded once per supplier — the unique index on
+    // (organizationId, supplierId, supplierInvoiceNumberNorm). Checked up front so a duplicate is
+    // a 409 that names the bill already holding the number, instead of a raw constraint 500.
+    const existing = await this.repo.findBySupplierInvoiceNumber(
+      prisma,
+      orgId,
+      dto.supplierId,
+      dto.supplierInvoiceNumber,
+    );
+    if (existing) throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, existing.billNumber);
+
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        supplierId: dto.supplierId,
+        supplierInvoiceNumber: dto.supplierInvoiceNumber,
+        billDate: new Date(dto.billDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: dto.currencyCode,
+        purchaseOrderId: dto.purchaseOrderId,
+        purchaseOrderRevisionId,
+        projectId: dto.projectId,
+        departmentId: dto.departmentId,
+        subtotal,
+        vatAmount: vatTotal,
+        totalAmount,
+        createdBy: userId,
+        lines,
+      });
+    } catch (err) {
+      // A concurrent create of the same number passes the pre-check and loses at the index.
+      if (isDuplicateInvoiceNumberConflict(err)) {
+        const winner = await this.repo.findBySupplierInvoiceNumber(
+          prisma,
+          orgId,
+          dto.supplierId,
+          dto.supplierInvoiceNumber,
+        );
+        throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, winner?.billNumber ?? null);
+      }
+      throw err;
+    }
+  }
+
+  private duplicateInvoiceNumber(number: string, billNumber: string | null): ConflictException {
+    return new ConflictException(
+      `Supplier invoice ${number} is already recorded on ${billNumber ?? 'a draft bill'}`,
+    );
   }
 
   async submit(identity: RequestIdentity, billId: string) {
@@ -165,10 +251,16 @@ export class SupplierBillService {
       'Supplier bill submission requires workflow approval.',
     );
 
-    const updated = await prisma.supplierBill.update({
-      where: { id: bill.id },
-      data: { documentStatus: 'SUBMITTED' },
-    });
+    let updated;
+    try {
+      updated = await prisma.supplierBill.update({
+        where: { id: bill.id, documentStatus: 'DRAFT' },
+        data: { documentStatus: 'SUBMITTED' },
+      });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('a draft');
+      throw err;
+    }
 
     // D6 — auto-match on submit (no manual "run matching"). A PO-backed bill has its 3-way match
     // run automatically as a silent control: the verdict lands on matchStatus and the bill proceeds.
@@ -181,6 +273,145 @@ export class SupplierBillService {
     }
 
     return updated;
+  }
+
+  /**
+   * Edit a DRAFT bill — a new one, or one returned for correction. Same payload and the same
+   * rules as create; the lines are replaced. A PO bill's previous match is discarded, because it
+   * describes lines that no longer exist; submitting again runs a fresh one (D6).
+   */
+  async update(identity: RequestIdentity, billId: string, dto: CreateSupplierBillDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId } = identity;
+    const bill = await this.requireStatus(prisma, orgId, billId, 'DRAFT');
+
+    // A draft can sit under an approval when a policy gates submit (ADR-011). While approvers are
+    // deciding, the bill they are looking at must not change underneath them; and an approval
+    // already granted covered the old content, so an edit voids it (below) and resubmitting
+    // opens a fresh one.
+    const approval = await this.commandGovernance.openApprovalState(
+      WorkflowTransactionType.SUPPLIER_BILL,
+      bill.id,
+    );
+    if (approval === 'PENDING') {
+      throw new ConflictException(
+        'An approval is in progress for this bill. It can be edited once the approvers have decided.',
+      );
+    }
+
+    const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
+      await this.prepareBill(prisma, orgId, dto);
+
+    const existing = await this.repo.findBySupplierInvoiceNumber(
+      prisma,
+      orgId,
+      dto.supplierId,
+      dto.supplierInvoiceNumber,
+      bill.id,
+    );
+    if (existing) throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, existing.billNumber);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
+        await tx.supplierBillLine.deleteMany({ where: { supplierBillId: bill.id } });
+        // Guarded: only while still DRAFT, so a concurrent submit cannot be overwritten.
+        await tx.supplierBill.update({
+          where: { id: bill.id, documentStatus: 'DRAFT' },
+          data: {
+            supplierId: dto.supplierId,
+            supplierInvoiceNumber: dto.supplierInvoiceNumber,
+            supplierInvoiceNumberNorm: normalizeSupplierInvoiceNumber(dto.supplierInvoiceNumber),
+            billDate: new Date(dto.billDate),
+            dueDate: new Date(dto.dueDate),
+            currencyCode: dto.currencyCode,
+            purchaseOrderId: dto.purchaseOrderId ?? null,
+            purchaseOrderRevisionId: purchaseOrderRevisionId ?? null,
+            projectId: dto.projectId ?? null,
+            departmentId: dto.departmentId ?? null,
+            subtotal,
+            vatAmount: vatTotal,
+            totalAmount,
+            outstandingAmount: totalAmount,
+            matchStatus: 'NOT_RUN',
+            lines: { create: lines },
+          },
+        });
+      });
+    } catch (err) {
+      if (isDuplicateInvoiceNumberConflict(err)) {
+        // Lost a race at the index: name the bill that won, as create does.
+        const winner = await this.repo.findBySupplierInvoiceNumber(
+          prisma,
+          orgId,
+          dto.supplierId,
+          dto.supplierInvoiceNumber,
+          bill.id,
+        );
+        throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, winner?.billNumber ?? null);
+      }
+      if (isStaleTransition(err)) throw staleTransition('a draft');
+      throw err;
+    }
+    if (approval === 'APPROVED') {
+      await this.commandGovernance.voidUnconsumedApproval(WorkflowTransactionType.SUPPLIER_BILL, bill.id);
+    }
+    return this.findById(identity, bill.id);
+  }
+
+  /**
+   * Return a SUBMITTED bill to its clerk for correction (ADR-037 amendment): back to DRAFT, with
+   * a required reason. The PO match is discarded — the lines are about to change — and runs
+   * again when the corrected bill is submitted.
+   */
+  async returnForCorrection(identity: RequestIdentity, billId: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
+    const why = requireReason(reason);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
+        return tx.supplierBill.update({
+          where: { id: bill.id, documentStatus: 'SUBMITTED' },
+          data: {
+            documentStatus: 'DRAFT',
+          matchStatus: 'NOT_RUN',
+          returnedAt: new Date(),
+          returnedBy: identity.userId,
+            returnReason: why,
+          },
+        });
+      });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('submitted');
+      throw err;
+    }
+  }
+
+  /**
+   * Reject a SUBMITTED bill — final (ADR-037 amendment). A rejected bill stays on record, is
+   * never posted, and frees its supplier invoice number for a corrected bill.
+   */
+  async reject(identity: RequestIdentity, billId: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
+    const why = requireReason(reason);
+    try {
+      // Guarded: a bill approved (or posted) a moment ago must never be marked rejected — that
+      // would free its supplier invoice number while a journal exists.
+      return await prisma.supplierBill.update({
+        where: { id: bill.id, documentStatus: 'SUBMITTED' },
+        data: {
+          documentStatus: 'REJECTED',
+          rejectedAt: new Date(),
+          rejectedBy: identity.userId,
+          rejectionReason: why,
+        },
+      });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('submitted');
+      throw err;
+    }
   }
 
   async approve(identity: RequestIdentity, billId: string) {
@@ -203,7 +434,12 @@ export class SupplierBillService {
       });
     }
 
-    return this.repo.approve(prisma, bill.id, identity.userId);
+    try {
+      return await this.repo.approve(prisma, bill.id, identity.userId);
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('submitted');
+      throw err;
+    }
   }
 
   /**
@@ -543,7 +779,26 @@ export class SupplierBillService {
     const prisma = this.tenancyService.getClient();
     const bill = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!bill) throw new NotFoundException(`SupplierBill ${id} not found`);
-    return bill;
+
+    // The human journal numbers of the posting and its reversal (ADR-036), so a reader without
+    // journal access can still see which journal posted the bill.
+    const journalIds = [bill.postedJournalEntryId, bill.reversalJournalEntryId].filter(
+      (value): value is string => Boolean(value),
+    );
+    const journals = journalIds.length
+      ? await prisma.journalEntry.findMany({
+          where: { id: { in: journalIds }, organizationId: identity.activeOrganizationId },
+          select: { id: true, journalNumber: true },
+        })
+      : [];
+    const numberOf = (journalId: string | null) =>
+      journalId ? (journals.find((j) => j.id === journalId)?.journalNumber ?? null) : null;
+
+    return {
+      ...bill,
+      postedJournalNumber: numberOf(bill.postedJournalEntryId),
+      reversalJournalNumber: numberOf(bill.reversalJournalEntryId),
+    };
   }
 
   /** The facts the cost-target rule needs about a BOQ node, or null when it does not resolve. */

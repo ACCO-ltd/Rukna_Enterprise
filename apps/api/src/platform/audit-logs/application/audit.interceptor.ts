@@ -33,6 +33,7 @@ export class AuditInterceptor implements NestInterceptor {
             resource: this.resourceName(request),
             resourceId: this.resourceId(request),
             ipAddress: request.ip,
+            reason: this.reason(request),
           }),
         ).pipe(map(() => result)),
       ),
@@ -42,6 +43,12 @@ export class AuditInterceptor implements NestInterceptor {
   private resourceName(request: Request): string {
     const routePath = (request.route as { path?: string } | undefined)?.path ?? request.path;
     return `${request.baseUrl}${routePath}`.replace(/\/+/g, '/').slice(0, 255);
+  }
+
+  /** A command's stated reason, when its body carries one — kept so the history says why. */
+  private reason(request: Request): string | undefined {
+    const body = request.body as { reason?: unknown } | undefined;
+    return typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim().slice(0, 1000) : undefined;
   }
 
   private resourceId(request: Request): string {

@@ -1,5 +1,7 @@
 export { Alert } from './components/alert';
 export type { AlertProps } from './components/alert';
+export { Notice } from './components/notice';
+export type { NoticeProps, NoticeTone } from './components/notice';
 export { Avatar, initialsFromName } from './components/avatar';
 export type { AvatarProps } from './components/avatar';
 export {
@@ -16,8 +18,10 @@ export type {
   ApprovalTimelineProps,
   DecisionPanelProps,
 } from './components/approval';
-export { Badge, StatusBadge } from './components/badge';
-export type { BadgeProps, BadgeTone } from './components/badge';
+export { Badge, StatusBadge, StatusPill, StatusText, STATUS_TONES } from './components/badge';
+export type { BadgeProps, BadgeTone, StatusTone, StatusTextProps } from './components/badge';
+export { MoneyDisplay, formatUsd } from './components/money-display';
+export type { MoneyDisplayProps, MoneyValue } from './components/money-display';
 export { Button } from './components/button';
 export type { ButtonProps } from './components/button';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './components/card';
@@ -52,8 +56,10 @@ export type { ConfirmDialogProps } from './components/confirm-dialog';
 export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
-export { MoneyInput, formatThousands, sanitizeMoney } from './components/money-input';
-export type { MoneyInputProps } from './components/money-input';
+export { MoneyInput, QuantityInput, formatThousands, sanitizeMoney } from './components/money-input';
+export type { MoneyInputProps, QuantityInputProps } from './components/money-input';
+export { Switch, SwitchField } from './components/switch';
+export type { SwitchFieldProps, SwitchProps } from './components/switch';
 export {
   DefinitionList,
   DefinitionRow,
@@ -141,3 +147,49 @@ export {
   DropdownMenuTrigger,
 } from './components/dropdown-menu';
 export { cn } from './lib/utils';
+export { FilterChips, FilterPanel } from './components/filter-panel';
+export type {
+  DateListFilterField,
+  FilterChip,
+  FilterChipsProps,
+  FilterPanelProps,
+  FilterValues,
+  ListFilterField,
+  SelectListFilterField,
+} from './components/filter-panel';
+export { DocumentActionBar, DocumentIdentity, LifecycleStepper } from './components/document';
+export type {
+  DocumentActionBarProps,
+  DocumentAxis,
+  DocumentCommand,
+  DocumentIdentityProps,
+  LifecycleStep,
+  LifecycleStepperProps,
+} from './components/document';
+export {
+  ActivityTimeline,
+  DefinitionGrid,
+  DocumentTabs,
+  SummaryRail,
+  TotalsBlock,
+} from './components/document-body';
+export type {
+  ActivityEntry,
+  DefinitionFact,
+  DocumentTab,
+  TotalsRow,
+} from './components/document-body';
+export {
+  FormActionBar,
+  FormGroup,
+  LineItemsEditor,
+  RECORD_NAME_INPUT,
+  RecordCreateHeader,
+} from './components/form-layout';
+export type {
+  FormActionBarProps,
+  FormSaveState,
+  LineColumn,
+  LineItemsEditorProps,
+  LineNote,
+} from './components/form-layout';

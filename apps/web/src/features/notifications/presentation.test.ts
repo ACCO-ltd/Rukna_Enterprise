@@ -21,10 +21,10 @@ function item(overrides: Partial<NotificationItem> = {}): NotificationItem {
 }
 
 describe('notificationTone — severity chooses the colour, nothing else does', () => {
-  it('maps URGENT to danger, WARNING to warning, INFO to info', () => {
+  it('maps URGENT to danger, WARNING to attention, INFO to neutral', () => {
     expect(notificationTone('URGENT')).toBe('danger');
-    expect(notificationTone('WARNING')).toBe('warning');
-    expect(notificationTone('INFO')).toBe('info');
+    expect(notificationTone('WARNING')).toBe('attention');
+    expect(notificationTone('INFO')).toBe('neutral');
   });
 });
 

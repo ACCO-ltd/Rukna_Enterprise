@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import { ProjectCategory } from '@erp/types';
 import {
   Alert,
-  Badge,
   Button,
   FormField,
   Input,
@@ -17,10 +16,12 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
+import { statusTone } from '@/lib/status-registry';
 
 import type { ProjectSubtype } from '../api/project-subtypes-api';
 import {
@@ -193,9 +194,9 @@ function SubtypeRow({
     <TableRow>
       <TableCell className="text-sm text-foreground">{subtype.name}</TableCell>
       <TableCell>
-        <Badge tone={isActive ? 'live' : 'neutral'}>
+        <StatusPill tone={statusTone(isActive ? 'ACTIVE' : 'INACTIVE', 'masterData')}>
           {isActive ? t('active') : t('inactive')}
-        </Badge>
+        </StatusPill>
       </TableCell>
       {canManage ? (
         <TableCell className="text-end">

@@ -1,25 +1,22 @@
 import * as React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '../lib/utils';
+import { Notice, type NoticeTone } from './notice';
 
-const alertVariants = cva('rounded-md border px-4 py-3 text-sm', {
-  variants: {
-    variant: {
-      error: 'border-danger/20 bg-danger-subtle text-danger',
-      warning: 'border-warning/20 bg-warning-subtle text-warning',
-      success: 'border-brand-primary/20 bg-surface-subtle text-foreground',
-      info: 'border-border bg-surface-subtle text-muted-foreground',
-    },
-  },
-  defaultVariants: { variant: 'info' },
-});
+type AlertVariant = 'error' | 'warning' | 'success' | 'info';
+
+const VARIANT_TONE: Record<AlertVariant, NoticeTone> = {
+  error: 'danger',
+  warning: 'attention',
+  success: 'success',
+  info: 'info',
+};
 
 export interface AlertProps
   // `title` is omitted from the native attributes so it can carry rich content here
   // rather than being constrained to a tooltip string.
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'>,
-    VariantProps<typeof alertVariants> {
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
+  variant?: AlertVariant | null;
   title?: React.ReactNode;
   /**
    * Multiple messages, rendered as a list. The API returns `error.message` as an ARRAY
@@ -27,56 +24,41 @@ export interface AlertProps
    * individually rather than concatenated into one unreadable line.
    */
   messages?: string[];
-  /** Leading glyph, ~16px. Decorative — the variant and title already carry the meaning. */
+  /** Leading glyph, ~16px. Defaults to the tone's glyph; `null` for none. */
   icon?: React.ReactNode;
-  /** Trailing control — a button or link, aligned with the title row. For "Investigate",
-   * "View All", not for restating the alert's own dismissal (there is none). */
+  /** Trailing control — a button or link, aligned with the title row. */
   action?: React.ReactNode;
 }
 
+/**
+ * The feedback message for forms and failed loads — a `Notice` that also accepts the API's
+ * array of validation messages. Same look as `Notice` (ADR-035), so a screen never shows two
+ * styles of message.
+ */
 export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant, title, messages, icon, action, children, ...props }, ref) => {
-    // Errors are announced assertively; everything else politely, so a success or info
-    // message does not interrupt what a screen reader user is currently reading.
-    const isError = variant === 'error';
-
-    return (
-      <div
-        ref={ref}
-        role={isError ? 'alert' : 'status'}
-        aria-live={isError ? 'assertive' : 'polite'}
-        className={cn(alertVariants({ variant }), className)}
-        {...props}
-      >
-        <div className="flex items-start gap-3">
-          {icon ? (
-            <span className="mt-0.5 shrink-0" aria-hidden="true">
-              {icon}
-            </span>
-          ) : null}
-
-          <div className="min-w-0 flex-1">
-            {title ? <p className="font-semibold">{title}</p> : null}
-
-            {messages && messages.length > 0 ? (
-              messages.length === 1 ? (
-                <p className={cn(title && 'mt-1')}>{messages[0]}</p>
-              ) : (
-                <ul className={cn('list-disc space-y-1 ps-5', title && 'mt-1')}>
-                  {messages.map((message) => (
-                    <li key={message}>{message}</li>
-                  ))}
-                </ul>
-              )
-            ) : null}
-
-            {children}
-          </div>
-
-          {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-      </div>
-    );
-  },
+  ({ variant, title, messages, icon, action, children, className, ...props }, ref) => (
+    <Notice
+      ref={ref}
+      tone={VARIANT_TONE[variant ?? 'info']}
+      title={title}
+      icon={icon}
+      action={action}
+      className={className}
+      {...props}
+    >
+      {messages && messages.length > 0 ? (
+        messages.length === 1 ? (
+          <p>{messages[0]}</p>
+        ) : (
+          <ul className={cn('list-disc space-y-1 ps-5')}>
+            {messages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        )
+      ) : null}
+      {children}
+    </Notice>
+  ),
 );
 Alert.displayName = 'Alert';

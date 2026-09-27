@@ -50,6 +50,9 @@ import {
   getPurchaseOrder,
   getPurchaseOrderSettlement,
   getSupplierBill,
+  getSupplierBillActivity,
+  getSupplierBillApprovals,
+  getSupplierBillPayments,
   getSupplierPayment,
   listGoodsReceipts,
   listGoodsReceiptAttachments,
@@ -68,6 +71,8 @@ import {
   postGoodsReceipt,
   postSupplierBill,
   postSupplierPayment,
+  rejectSupplierBill,
+  returnSupplierBill,
   reverseSupplierBill,
   reverseSupplierPayment,
   revisePurchaseOrder,
@@ -76,6 +81,7 @@ import {
   submitMaterialRequest,
   submitPurchaseOrder,
   submitSupplierBill,
+  updateSupplierBill,
   updateSupplier,
   attachPoRevision,
   createBuyerAdvance,
@@ -86,6 +92,9 @@ import {
   createEvidenceAllocation,
 } from '../api/procurement-api';
 import type {
+  BillActivityEntry,
+  BillApprovals,
+  BillPayments,
   ApproveExceptionPayload,
   BillMatchResult,
   ResolveExceptionPayload,
@@ -614,6 +623,32 @@ export function useSupplierBill(id: string): UseQueryResult<SupplierBill> {
   });
 }
 
+// Keyed under the bill, so every bill mutation's invalidation of `bill(id)` refreshes them too.
+
+export function useSupplierBillApprovals(id: string): UseQueryResult<BillApprovals> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'approvals'],
+    queryFn: () => getSupplierBillApprovals(id),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSupplierBillActivity(id: string): UseQueryResult<BillActivityEntry[]> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'activity'],
+    queryFn: () => getSupplierBillActivity(id),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSupplierBillPayments(id: string): UseQueryResult<BillPayments> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'payments'],
+    queryFn: () => getSupplierBillPayments(id),
+    enabled: Boolean(id),
+  });
+}
+
 /**
  * Every bill mutation invalidates the list, the individual bill, and the commitment ledger.
  *
@@ -631,6 +666,8 @@ function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBil
     onSuccess: (bill) => {
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
       void qc.invalidateQueries({ queryKey: procurementKeys.bill(bill.id) });
+      // Edit and return discard the PO match; submit runs a fresh one.
+      void qc.invalidateQueries({ queryKey: procurementKeys.billMatch(bill.id) });
       void qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
     },
   });
@@ -638,6 +675,25 @@ function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBil
 
 export function useCreateSupplierBill() {
   return useBillMutation((payload: CreateSupplierBillPayload) => createSupplierBill(payload));
+}
+
+/** `PATCH /bills/:id` — edit a DRAFT bill. */
+export function useUpdateSupplierBill() {
+  return useBillMutation((args: { id: string; payload: CreateSupplierBillPayload }) =>
+    updateSupplierBill(args.id, args.payload),
+  );
+}
+
+export function useReturnSupplierBill() {
+  return useBillMutation((args: { id: string; reason: string }) =>
+    returnSupplierBill(args.id, args.reason),
+  );
+}
+
+export function useRejectSupplierBill() {
+  return useBillMutation((args: { id: string; reason: string }) =>
+    rejectSupplierBill(args.id, args.reason),
+  );
 }
 
 export function useSubmitSupplierBill() {

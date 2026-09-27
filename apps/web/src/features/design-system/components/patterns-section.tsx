@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Avatar, Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Pagination, Progress, Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
-import { FileX, Receipt, Warning } from '@phosphor-icons/react';
+import { Alert, Avatar, Badge, Button, Card, MoneyDisplay, StatusPill, StatusText, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Pagination, Progress, Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { FileX, Receipt, TriangleAlert } from 'lucide-react';
 
 import { ProgressStepper, type Step } from '@/components/progress-stepper';
 import { SetupChecklist } from '@/components/setup-checklist';
@@ -13,23 +13,23 @@ import { Pending, Row, Rule, Section, Specimen } from './gallery-chrome';
 // ─── Badge tone vocabulary ────────────────────────────────────────────────────
 
 const TONES = [
-  { tone: 'neutral', label: 'Draft', meaning: 'Not started, or finished and inert' },
-  { tone: 'info', label: 'Approved', meaning: 'Progressing normally' },
-  { tone: 'live', label: 'Active', meaning: 'In force right now' },
-  { tone: 'accent', label: 'Mobilizing', meaning: 'Transitional — someone must move it along' },
-  { tone: 'warning', label: 'Closeout', meaning: 'Needs attention, or winding down' },
-  { tone: 'danger', label: 'Cancelled', meaning: 'Stopped short of its normal end' },
-  { tone: 'historical', label: 'Superseded', meaning: 'Replaced, kept for the record' },
+  { tone: 'neutral', label: 'Draft', meaning: 'Draft or not started' },
+  { tone: 'progress', label: 'Submitted', meaning: 'Submitted, pending, open, partially done' },
+  { tone: 'attention', label: 'Exception', meaning: 'Needs action — exception, expiring, returned' },
+  { tone: 'success', label: 'Posted', meaning: 'Approved, posted, active, matched, verified' },
+  { tone: 'danger', label: 'Rejected', meaning: 'Rejected, failed, overdue, disputed' },
+  { tone: 'historical', label: 'Reversed', meaning: 'Closed, cancelled, superseded, reversed, withdrawn' },
 ] as const;
 
-/** One real status per semantic token, so the mapping can be checked by eye. */
-const STATUSES = [
-  'DRAFT',
-  'PENDING_INTERNAL_APPROVAL',
-  'ACTIVE',
-  'PRACTICAL_COMPLETION',
-  'REJECTED',
-  'SUPERSEDED',
+/** The same word toned per vocabulary — the registry, not the string, decides. */
+const REGISTRY_SAMPLES = [
+  { vocabulary: 'project', status: 'DRAFT' },
+  { vocabulary: 'project', status: 'ACTIVE' },
+  { vocabulary: 'masterData', status: 'ACTIVE' },
+  { vocabulary: 'supplierBill', status: 'SUBMITTED' },
+  { vocabulary: 'billMatch', status: 'MATCHED_WITH_TOLERANCE' },
+  { vocabulary: 'journal', status: 'REVERSED' },
+  { vocabulary: 'contract', status: 'TERMINATED' },
 ] as const;
 
 const STEPS: Step[] = [
@@ -110,11 +110,11 @@ export function PatternsSection() {
         title="Status"
         intro="Every status machine in the platform — projects, contracts, applications, certificates, bills, payments, guarantees — draws from one tone vocabulary. Tones describe where a record sits in its lifecycle, never a palette."
       >
-        <Specimen label="Badge tones" token="<Badge tone>">
+        <Specimen label="Status tones" token="<StatusPill tone>">
           <div className="flex flex-col">
             {TONES.map((t) => (
               <Row key={t.tone} label={t.tone}>
-                <Badge tone={t.tone}>{t.label}</Badge>
+                <StatusPill tone={t.tone}>{t.label}</StatusPill>
                 <span className="text-caption text-muted-foreground">{t.meaning}</span>
               </Row>
             ))}
@@ -122,13 +122,15 @@ export function PatternsSection() {
         </Specimen>
 
         <Specimen
-          label="StatusBadge — the mapping from an API status"
-          token="<StatusBadge status>"
-          note="Pass the raw status key straight from the API. formatStatus() in lib/format.ts is the single source of truth for which colour a status gets, so no feature module ever maps a status string to a colour itself."
+          label="StatusBadge — toned by the status registry"
+          token="<StatusBadge vocabulary status>"
+          note="Pass the raw API status and its vocabulary. lib/status-registry.ts is the single source of truth for which tone a status gets — no feature module maps a status to a colour itself (ADR-034)."
         >
-          <div className="flex flex-wrap gap-2">
-            {STATUSES.map((s) => (
-              <StatusBadge key={s} status={s} />
+          <div className="flex flex-col">
+            {REGISTRY_SAMPLES.map((r) => (
+              <Row key={`${r.vocabulary}.${r.status}`} label={`${r.vocabulary} · ${r.status}`}>
+                <StatusBadge vocabulary={r.vocabulary} status={r.status} />
+              </Row>
             ))}
           </div>
           <p className="mt-4 text-caption text-muted-foreground">
@@ -140,9 +142,41 @@ export function PatternsSection() {
           </div>
         </Specimen>
 
+        <Specimen
+          label="Three axes on one document"
+          token="<StatusPill> + <StatusText axis>"
+          note="One primary pill for the document status. Posting and match are quieter dot + text, and name their axis wherever the context does not — never three competing pills."
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <StatusBadge vocabulary="supplierBill" status="APPROVED" />
+            <StatusText tone="progress" axis="Posting">Pending</StatusText>
+            <StatusText tone="attention" axis="Match">Matched with variance</StatusText>
+          </div>
+        </Specimen>
+
+        <Specimen
+          label="MoneyDisplay — five states, never conflated"
+          token="<MoneyDisplay value hidden loading compact>"
+        >
+          <div className="flex flex-col">
+            <Row label="Known value"><MoneyDisplay value="48250.5" /></Row>
+            <Row label="Known zero"><MoneyDisplay value="0" /></Row>
+            <Row label="Not applicable"><MoneyDisplay value={null} /></Row>
+            <Row label="Hidden by permission"><MoneyDisplay value={undefined} hidden /></Row>
+            <Row label="Loading"><MoneyDisplay value={undefined} loading /></Row>
+            <Row label="Compact (KPI)"><MoneyDisplay value="1240000" compact /></Row>
+          </div>
+        </Specimen>
+
+        <Rule>
+          A zero is a value: <code className="font-mono text-caption">$0.00</code>. A dash means
+          there is no value. A hidden figure is a lock and a dash — never a fabricated{' '}
+          <code className="font-mono text-caption">$0.00</code> and never a blank cell.
+        </Rule>
+
         <Rule>
           Colour carries emphasis, never meaning on its own. The label is always present and
-          every status carries a glyph, so a badge stays readable for a colour-blind user, in a
+          every status carries its dot, so a badge stays readable for a colour-blind user, in a
           printed submittal, and on the contrast a site-office monitor actually manages.
         </Rule>
       </Section>
@@ -170,7 +204,7 @@ export function PatternsSection() {
                   <TableCell className="font-mono text-caption">BILL-2026-0311</TableCell>
                   <TableCell>Horyaal Building Materials</TableCell>
                   <TableCell>
-                    <StatusBadge status="APPROVED" />
+                    <StatusBadge vocabulary="supplierBill" status="APPROVED" />
                   </TableCell>
                   <TableCell numeric>486 200.00</TableCell>
                   <TableCell numeric>486 200.00</TableCell>
@@ -179,7 +213,7 @@ export function PatternsSection() {
                   <TableCell className="font-mono text-caption">BILL-2026-0310</TableCell>
                   <TableCell>Berbera Freight &amp; Logistics</TableCell>
                   <TableCell>
-                    <StatusBadge status="PAID" />
+                    <StatusBadge vocabulary="posting" status="POSTED" />
                   </TableCell>
                   <TableCell numeric>62 400.00</TableCell>
                   <TableCell numeric>0.00</TableCell>
@@ -188,7 +222,7 @@ export function PatternsSection() {
                   <TableCell className="font-mono text-caption">BILL-2026-0309</TableCell>
                   <TableCell>Sheikh Steel Trading</TableCell>
                   <TableCell>
-                    <StatusBadge status="PARTIALLY_PAID" />
+                    <StatusBadge vocabulary="supplierBill" status="SUBMITTED" />
                   </TableCell>
                   <TableCell numeric>1 204 750.00</TableCell>
                   <TableCell numeric>300 000.00</TableCell>
@@ -335,7 +369,7 @@ export function PatternsSection() {
             />
             <Alert
               variant="warning"
-              icon={<Warning size={18} weight="fill" aria-hidden="true" />}
+              icon={<TriangleAlert size={16} aria-hidden="true" />}
               title="Structural materials at 91% while work is 73%"
               messages={[
                 'Structural materials cost has reached 91% of budget, while physical progress is 73%. Review usage, delivery schedule, and remaining quantities to avoid cost overrun.',
@@ -362,13 +396,13 @@ export function PatternsSection() {
         <Specimen label="EmptyState" token="<EmptyState variant>">
           <div className="flex flex-col gap-6">
             <EmptyState
-              icon={<Receipt size={24} aria-hidden="true" />}
+              icon={<Receipt size={20} aria-hidden="true" />}
               title="No supplier bills yet"
               description="Bills appear here once a supplier invoice is recorded against a purchase order or entered directly."
               action={<Button>New bill</Button>}
             />
             <EmptyState
-              icon={<FileX size={24} aria-hidden="true" />}
+              icon={<FileX size={20} aria-hidden="true" />}
               title="No bills match these filters"
               description="Three bills exist outside the current period and supplier filter."
               action={<Button variant="outline">Clear filters</Button>}
@@ -628,9 +662,7 @@ export function PatternsSection() {
         <Specimen label="Tooltip" token="<Tooltip> · <TooltipTrigger> · <TooltipContent>">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge tone="info" dot>
-                Committed
-              </Badge>
+              <StatusPill tone="progress">Committed</StatusPill>
             </TooltipTrigger>
             <TooltipContent>Ordered but not yet received or billed.</TooltipContent>
           </Tooltip>

@@ -126,7 +126,7 @@ function StatTilesSpecimen() {
             label="Committed"
             value="2.94"
             unit="M SOS"
-            note={<Badge tone="warning">Accuracy note</Badge>}
+            note={<Badge tone="attention">Accuracy note</Badge>}
           />
           <StatTile
             label="Retention held"
@@ -181,7 +181,7 @@ function RecordLayoutSpecimen() {
                 identifier="BILL-2026-0311"
                 title="Horyaal Building Materials"
                 subtitle="Against PO-2026-00418 R2 · Hargeisa Ring Road, Pkg 2"
-                status={<StatusBadge status="APPROVED" />}
+                status={<StatusBadge vocabulary="supplierBill" status="APPROVED" />}
                 figure={{ label: 'Amount due', value: '486 200.00' }}
                 actions={
                   <>
@@ -204,7 +204,7 @@ function RecordLayoutSpecimen() {
                 }
               />
             }
-            banner={<RecordPanel padded={false}><div className="p-4"><ApprovalChain steps={CHAIN} label="Approval chain" awaitingYouSlot={<Badge tone="info">Awaiting you</Badge>} /></div></RecordPanel>}
+            banner={<RecordPanel padded={false}><div className="p-4"><ApprovalChain steps={CHAIN} label="Approval chain" awaitingYouSlot={<Badge tone="progress">Awaiting you</Badge>} /></div></RecordPanel>}
             rail={
               <>
                 <RecordPanel title="Summary">
@@ -299,7 +299,7 @@ function ApprovalSpecimen() {
       intro="The platform's whole backend proposition is a governed approval chain with delegation-of-authority thresholds. Material requests, purchase orders, bills, payments, journals, certificates, contracts and variations all route for approval — and to the person approving them it is the same mechanism, so it should look like one."
     >
       <Specimen label="Chain — in progress, awaiting you" token="<ApprovalChain>">
-        <ApprovalChain steps={CHAIN} label="Approval chain" awaitingYouSlot={<Badge tone="info">Awaiting you</Badge>} />
+        <ApprovalChain steps={CHAIN} label="Approval chain" awaitingYouSlot={<Badge tone="progress">Awaiting you</Badge>} />
       </Specimen>
 
       <Specimen
@@ -312,7 +312,7 @@ function ApprovalSpecimen() {
 
       <Specimen label="Decision panel" token="<DecisionPanel>">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          <RecordPanel title="Your decision" action={<Badge tone="warning">Step 3 of 4</Badge>}>
+          <RecordPanel title="Your decision" action={<Badge tone="attention">Step 3 of 4</Badge>}>
             <DecisionPanel
               labels={{
                 commentLabel: 'Comment',

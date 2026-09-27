@@ -36,6 +36,7 @@ import { Alert, Button, Card, CardContent, DatePicker, FormField, Input } from '
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 import { formatMoney } from '@/lib/format';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
@@ -62,10 +63,22 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function PoForm({ redirectBase = '/procurement/orders' }: { redirectBase?: string }) {
+/**
+ * `moduleChrome`: the form sits under the Procurement module header (ADR-035), which owns the
+ * page's `h1`. The form then names itself in the breadcrumb instead of repeating a title. The
+ * project workspace mounts the form without module chrome and keeps its own heading.
+ */
+export function PoForm({
+  redirectBase = '/procurement/orders',
+  moduleChrome = false,
+}: {
+  redirectBase?: string;
+  moduleChrome?: boolean;
+}) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const router = useRouter();
+  useModuleTrail(moduleChrome ? t('createTitle') : undefined);
 
   const [supplierId, setSupplierId] = useState('');
   // Single-currency platform (ADR-024): USD is implicit, never entered.
@@ -211,12 +224,16 @@ export function PoForm({ redirectBase = '/procurement/orders' }: { redirectBase?
 
   return (
     <div className="space-y-6 pb-28">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {t('createTitle')}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('createSubtitle')}</p>
-      </div>
+      {moduleChrome ? (
+        <p className="text-body-sm text-muted-foreground">{t('createSubtitle')}</p>
+      ) : (
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {t('createTitle')}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('createSubtitle')}</p>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField htmlFor={ids.supplier} label={tc('supplier')}>
@@ -297,7 +314,7 @@ export function PoForm({ redirectBase = '/procurement/orders' }: { redirectBase?
 
       {/* ── Sticky footer: running total + the single primary action ──────────────── */}
       {approvalInstanceId ? null : (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 lg:start-[var(--sidebar-width)]">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 md:start-16 lg:start-[var(--sidebar-width)]">
           <div className="flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <p className="text-sm" aria-live="polite">
               <span className="text-muted-foreground">{tc('total')}: </span>

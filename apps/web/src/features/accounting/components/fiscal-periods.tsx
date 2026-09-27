@@ -4,9 +4,7 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
-  type BadgeTone,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -17,34 +15,23 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useFiscalYears } from '../hooks/use-accounting';
-import type { AccountingPeriod, FiscalYear, FiscalYearStatus, PeriodStatus } from '../types';
+import type { AccountingPeriod, FiscalYear } from '../types';
 import { CreateFiscalYearForm } from './create-fiscal-year-form';
 import { FiscalYearCloseAction, PeriodActions } from './period-actions';
 
 /**
  * Period status is the single most consequential thing on this screen: it decides whether a
- * journal dated in that month can be posted at all. `CLOSED` is `danger` not because closing
- * is a fault but because it is the state that rejects work.
+ * journal dated in that month can be posted at all. Tones come from the status registry
+ * (ADR-034); the hint line under each status says what it means for posting.
  */
-const PERIOD_TONES: Record<PeriodStatus, BadgeTone> = {
-  OPEN: 'live',
-  LOCKED: 'warning',
-  CLOSED: 'danger',
-  REOPENED: 'accent',
-};
-
-const YEAR_TONES: Record<FiscalYearStatus, BadgeTone> = {
-  DRAFT: 'neutral',
-  OPEN: 'live',
-  LOCKED: 'warning',
-  CLOSED: 'danger',
-};
 
 export function FiscalPeriods() {
   const t = useTranslations('accounting.periods');
@@ -73,18 +60,13 @@ export function FiscalPeriods() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-
-        {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+      {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" onClick={() => setCreating(true)}>
             {t('create.new')}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="p-6 sm:max-w-2xl">
@@ -136,7 +118,7 @@ function FiscalYearPanel({ year }: { year: FiscalYear }) {
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold text-foreground">{year.name}</h2>
-          <Badge tone={YEAR_TONES[year.status] ?? 'neutral'}>{t(`yearStatus.${year.status}`)}</Badge>
+          <StatusPill tone={statusTone(year.status, 'fiscalYear')}>{t(`yearStatus.${year.status}`)}</StatusPill>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <p className="text-xs text-muted-foreground">
@@ -204,9 +186,9 @@ function PeriodRow({ period, locale }: { period: AccountingPeriod; locale: 'en' 
 
       <TableCell>
         <div className="flex flex-col gap-1">
-          <Badge tone={PERIOD_TONES[period.status] ?? 'neutral'}>
+          <StatusPill tone={statusTone(period.status, 'fiscalPeriod')}>
             {t(`status.${period.status}`)}
-          </Badge>
+          </StatusPill>
           {/* What the status means for posting. A period list whose statuses are only badges
               leaves the reader to remember which of four words accepts a journal. */}
           <span className="text-xs text-muted-foreground">{t(`statusHint.${period.status}`)}</span>

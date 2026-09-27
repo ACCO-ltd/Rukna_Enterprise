@@ -1,72 +1,54 @@
 'use client';
 
 /**
- * Status vocabulary for the procurement workspace.
+ * Status rendering for the procurement workspace.
  *
- * §12.10 names colours — slate, blue, green, amber, teal, red. The design system does not
- * have colours, it has tones, and mapping through them keeps procurement looking like the
- * rest of the platform instead of like a second product. The mapping below is the spec's
- * intent, not its palette:
- *
- *   slate  → neutral   a resting state, nothing to act on
- *   blue   → info      moving through a workflow
- *   green  → live      the state where the record is doing its job
- *   amber  → warning   something needs a human
- *   red    → danger    terminal and not by plan
- *
- * `PARTIALLY_ORDERED` and `FULLY_ORDERED` collapse to `info` and `accent`. The spec gives
- * them amber and teal, but amber here would read as "needs attention" when partial
- * ordering is the ordinary course of a large request.
+ * Tones come from the platform status registry (ADR-034) — this file only supplies the
+ * procurement translations. A document shows one primary pill (its document status); the
+ * posting and match axes render as quieter dot + text so they never compete with it.
  */
 
 import { useTranslations } from 'next-intl';
-import { Badge, type BadgeTone, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import {
+  Badge,
+  type StatusTone,
+  StatusPill,
+  StatusText,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@erp/ui';
+
+import { statusTone, type StatusVocabulary } from '@/lib/status-registry';
 
 import type { BillMatchStatus, CommitmentStage } from '../types';
 
-const STATUS_TONES: Record<string, BadgeTone> = {
-  DRAFT: 'neutral',
-  SUBMITTED: 'info',
-  APPROVED: 'live',
-  ACTIVE: 'live',
-  OPEN: 'live',
-  PARTIALLY_ORDERED: 'info',
-  FULLY_ORDERED: 'accent',
-  POSTED: 'live',
-  EXCEPTION_PENDING: 'warning',
-  SUPERSEDED: 'neutral',
-  CANCELLED: 'danger',
-  CLOSED: 'neutral',
-  DISCONTINUED: 'danger',
-  INACTIVE: 'neutral',
-};
-
-/**
- * `postingStatus`, which advances independently of `documentStatus`.
- *
- * Kept as a separate badge rather than folded into the map above, because the two axes can
- * disagree in ways that matter: a bill reading APPROVED / FAILED is not the same document as
- * one reading APPROVED / NOT_POSTED, and showing only the first would hide a posting that
- * broke. `FAILED` is warning rather than danger — the engine records the error and leaves the
- * document postable, so it is a retry rather than a dead end.
- */
-const POSTING_TONES: Record<string, BadgeTone> = {
-  NOT_POSTED: 'neutral',
-  PENDING: 'info',
-  POSTED: 'live',
-  FAILED: 'warning',
-  REVERSED: 'danger',
-  OPENING_BALANCE: 'neutral',
-};
-
-export function PostingStatusBadge({ status }: { status: string }) {
+export function PostingStatusBadge({
+  status,
+  showAxis = false,
+}: {
+  status: string;
+  /** Prefix "Posting:" — use wherever the cell or header does not already name the axis. */
+  showAxis?: boolean;
+}) {
   const t = useTranslations('procurement.postingStatus');
-  return <Badge tone={POSTING_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
+  return (
+    <StatusText tone={statusTone(status, 'posting')} axis={showAxis ? t('axis') : undefined}>
+      {t(status)}
+    </StatusText>
+  );
 }
 
-export function ProcurementStatusBadge({ status }: { status: string }) {
+export function ProcurementStatusBadge({
+  status,
+  vocabulary,
+}: {
+  status: string;
+  /** Which lifecycle `status` belongs to — the registry tones per vocabulary. */
+  vocabulary: StatusVocabulary;
+}) {
   const t = useTranslations('procurement.status');
-  return <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, vocabulary)}>{t(status)}</StatusPill>;
 }
 
 /**
@@ -76,10 +58,10 @@ export function ProcurementStatusBadge({ status }: { status: string }) {
  * accounting terms, and the people reading this screen are site and commercial staff who
  * mostly are not accountants — §12.10 asks for the explanation for that reason.
  */
-const STAGE_TONES: Record<CommitmentStage, BadgeTone> = {
-  COMMITTED: 'info',
-  ACCRUED: 'warning',
-  ACTUAL: 'live',
+const STAGE_TONES: Record<CommitmentStage, StatusTone> = {
+  COMMITTED: 'progress',
+  ACCRUED: 'attention',
+  ACTUAL: 'success',
 };
 
 export function CommitmentStageTag({ stage }: { stage: CommitmentStage }) {
@@ -103,22 +85,19 @@ export function CommitmentStageTag({ stage }: { stage: CommitmentStage }) {
 }
 
 /**
- * A bill's matching state.
- *
- * `NOT_RUN` is neutral rather than warning: not having run matching yet is the starting
- * position for every bill, not a problem. `EXCEPTION` is danger because posting is blocked
- * until someone with the permission clears it.
+ * A bill's matching state — the third axis, shown only for PO-backed bills.
  */
-const MATCH_TONES: Record<BillMatchStatus, BadgeTone> = {
-  NOT_RUN: 'neutral',
-  MATCHED: 'live',
-  MATCHED_WITH_TOLERANCE: 'warning',
-  EXCEPTION: 'danger',
-  APPROVED_EXCEPTION: 'warning',
-  DISPUTED: 'danger',
-};
-
-export function BillMatchStatusBadge({ status }: { status: BillMatchStatus }) {
+export function BillMatchStatusBadge({
+  status,
+  showAxis = false,
+}: {
+  status: BillMatchStatus;
+  showAxis?: boolean;
+}) {
   const t = useTranslations('procurement.matchStatus');
-  return <Badge tone={MATCH_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
+  return (
+    <StatusText tone={statusTone(status, 'billMatch')} axis={showAxis ? t('axis') : undefined}>
+      {t(status)}
+    </StatusText>
+  );
 }

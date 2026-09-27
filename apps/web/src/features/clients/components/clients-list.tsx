@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Label, OverflowGlyph, RowActions, Select, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
-import { FunnelSimple } from '@phosphor-icons/react';
+import { Filter, Plus } from 'lucide-react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { RecordTile } from '@/components/record-tile';
 import { formatMoney } from '@/lib/format';
 
@@ -109,6 +110,19 @@ export function ClientsList() {
   const [status, setStatus] = useState<ClientStatus | 'ALL'>('ALL');
   const filtered = status === 'ALL' ? data : data.filter((client) => client.status === status);
   const columns = useMemo(() => buildColumns(t), [t]);
+  const { can } = usePermissions();
+  // The same gates the API enforces: POST /clients needs create:client, PATCH needs
+  // manage:client. Offering either without the permission only leads to a 403.
+  const mayCreate = can('create:client');
+  const mayEdit = can('manage:client');
+  const createAction = mayCreate ? (
+    <Button asChild>
+      <Link href="/clients/new">
+        <Plus className="me-2 h-4 w-4" aria-hidden="true" />
+        {t('newClient')}
+      </Link>
+    </Button>
+  ) : undefined;
 
   return (
     <PlatformDataGrid
@@ -136,9 +150,11 @@ export function ClientsList() {
                 <DropdownMenuItem asChild>
                   <Link href={`/clients/${client.id}`}>{t('rowMenu.view')}</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={`/clients/${client.id}/edit`}>{t('rowMenu.edit')}</Link>
-                </DropdownMenuItem>
+                {mayEdit ? (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/clients/${client.id}/edit`}>{t('rowMenu.edit')}</Link>
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           }
@@ -148,13 +164,11 @@ export function ClientsList() {
         <EmptyState
           title={t('empty')}
           description={t('emptyHint')}
-          action={
-            <Button asChild>
-              <Link href="/clients/new">{t('newClient')}</Link>
-            </Button>
-          }
+          action={createAction}
         />
       }
+      // The module header owns the page title (ADR-035); the create action sits with the list.
+      toolbarActions={createAction}
       toolbarFilters={
         <div className="relative">
           <Label htmlFor="client-status" className="sr-only">
@@ -173,7 +187,7 @@ export function ClientsList() {
               </option>
             ))}
           </Select>
-          <FunnelSimple
+          <Filter
             size={18}
             className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/65"
             aria-hidden="true"

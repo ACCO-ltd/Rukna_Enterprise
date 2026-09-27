@@ -31,6 +31,7 @@ import {
   SheetTitle,
   SheetDescription,
   SheetBody,
+  StatusPill,
   Table,
   TableBody,
   TableCell,
@@ -43,6 +44,7 @@ import {
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
+import { statusTone } from '@/lib/status-registry';
 import { formatDate } from '@/lib/format';
 
 import { accountName } from '../account-display';
@@ -104,10 +106,10 @@ export function BankAccounts() {
       header: t('colUse'),
       render: (bank) => (
         <span className="flex flex-wrap gap-1">
-          {bank.allowsReceipts ? <Badge tone="info">{t('receipts')}</Badge> : null}
-          {bank.allowsPayments ? <Badge tone="accent">{t('payments')}</Badge> : null}
+          {bank.allowsReceipts ? <Badge tone="neutral">{t('receipts')}</Badge> : null}
+          {bank.allowsPayments ? <Badge tone="neutral">{t('payments')}</Badge> : null}
           {!bank.allowsReceipts && !bank.allowsPayments ? (
-            <Badge tone="warning">{t('neither')}</Badge>
+            <Badge tone="attention">{t('neither')}</Badge>
           ) : null}
         </span>
       ),
@@ -116,9 +118,9 @@ export function BankAccounts() {
       key: 'status',
       header: t('colStatus'),
       render: (bank) => (
-        <Badge tone={bank.status === 'ACTIVE' ? 'live' : 'neutral'}>
+        <StatusPill tone={statusTone(bank.status, 'masterData')}>
           {t(`status.${bank.status}`)}
-        </Badge>
+        </StatusPill>
       ),
     },
     {
@@ -141,20 +143,14 @@ export function BankAccounts() {
     },
   ];
 
+  const createAction = can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+    <Button type="button" onClick={() => setCreating(true)}>
+      {t('create.new')}
+    </Button>
+  ) : null;
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-
-        {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
-          <Button type="button" onClick={() => setCreating(true)}>
-            {t('create.new')}
-          </Button>
-        ) : null}
-      </div>
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="p-6 sm:max-w-lg">
@@ -182,10 +178,12 @@ export function BankAccounts() {
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
               </p>
+              {createAction ? <div className="mt-4 flex justify-center">{createAction}</div> : null}
             </div>
           ) : undefined
         }
         pagination={{ defaultPageSize: 25 }}
+        toolbarActions={createAction}
       />
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>

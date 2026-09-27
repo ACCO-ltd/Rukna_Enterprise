@@ -3,15 +3,15 @@
 import * as React from 'react';
 import { CalendarClock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Badge, Button, CheckboxField, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, SectionHeader, Skeleton, Textarea, useToast } from '@erp/ui';
+import { Badge, Button, CheckboxField, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, SectionHeader, Skeleton, Textarea, useToast, StatusPill } from '@erp/ui';
 import type { ExtensionOfTimeResponse, VariationOrderListItem } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import { usePermissions } from '@/features/auth/permissions/can';
 
 import { useExtensionsOfTime, useGrantExtensionOfTime } from '../hooks/use-commercial';
-import { variationStatusTone } from '../presentation';
 
 /**
  * Extension of Time (ADR-026 Phase 4). Surfaces the contract's current completion date, the full
@@ -119,7 +119,7 @@ function ExtensionRow({
           {formatDate(eot.newEndDate, locale)}
         </p>
         {eot.grantedDays !== null ? (
-          <Badge tone={eot.grantedDays >= 0 ? 'info' : 'warning'}>
+          <Badge tone={eot.grantedDays >= 0 ? 'neutral' : 'attention'}>
             {t('grantedDays', { n: eot.grantedDays })}
           </Badge>
         ) : null}
@@ -129,9 +129,9 @@ function ExtensionRow({
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <span className="text-caption text-muted-foreground">{t('cited')}</span>
           {eot.citedVariationOrders.map((vo) => (
-            <Badge key={vo.id} tone={variationStatusTone(vo.status)}>
+            <StatusPill key={vo.id} tone={statusTone(vo.status, 'variation')}>
               {vo.reference}
-            </Badge>
+            </StatusPill>
           ))}
         </div>
       ) : null}
@@ -243,9 +243,9 @@ function GrantExtensionSheet({
                             <code className="font-mono text-caption text-muted-foreground">
                               {vo.reference}
                             </code>
-                            <Badge tone={variationStatusTone(vo.status)}>
+                            <StatusPill tone={statusTone(vo.status, 'variation')}>
                               {tVo(`status.${vo.status}`)}
-                            </Badge>
+                            </StatusPill>
                           </span>
                         }
                         description={

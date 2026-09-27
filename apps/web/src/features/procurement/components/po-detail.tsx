@@ -34,6 +34,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
@@ -58,6 +59,7 @@ export function PoDetail({ id }: { id: string }) {
   const { can } = usePermissions();
 
   const po = usePurchaseOrder(id);
+  useModuleTrail(po.data?.poNumber);
   const [amending, setAmending] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -140,12 +142,12 @@ export function PoDetail({ id }: { id: string }) {
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {order.poNumber}
             </span>
-            <ProcurementStatusBadge status={order.status} />
+            <ProcurementStatusBadge vocabulary="purchaseOrder" status={order.status} />
           </div>
 
-          <h1 className="mt-2 text-h1 font-bold text-foreground">
+          <h2 className="mt-2 text-h1 font-bold text-foreground">
             {order.supplier?.name ?? t('detailTitle', { number: order.poNumber })}
-          </h1>
+          </h2>
 
           <p className="mt-1 text-sm text-muted-foreground">
             {t('revisionOf', {
@@ -259,7 +261,7 @@ function RevisionHistoryItem({
           <span className="text-sm font-medium text-foreground">
             {t('revisionTab', { number: revision.revisionNumber })}
           </span>
-          <ProcurementStatusBadge status={revision.status} />
+          <ProcurementStatusBadge vocabulary="poRevision" status={revision.status} />
           <span className="text-xs text-muted-foreground">
             {formatDate(revision.effectiveFrom, locale) ?? ''}
           </span>
@@ -299,7 +301,7 @@ function RevisionPanel({
     <div className="space-y-5">
       {isCurrent ? (
         <div className="flex flex-wrap items-center gap-2">
-          <ProcurementStatusBadge status={revision.status} />
+          <ProcurementStatusBadge vocabulary="poRevision" status={revision.status} />
           <span className="text-xs text-muted-foreground">
             {t('revisionTab', { number: revision.revisionNumber })}
           </span>

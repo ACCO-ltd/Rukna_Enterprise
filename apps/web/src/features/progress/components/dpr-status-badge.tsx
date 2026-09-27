@@ -1,17 +1,11 @@
 import { useTranslations } from 'next-intl';
-import { DprStatus } from '@erp/types';
+import { StatusPill } from '@erp/ui';
+import type { DprStatus } from '@erp/types';
 
-import { RefPill, type RefTone } from './ref-ui';
+import { statusTone } from '@/lib/status-registry';
 
-export const statusPillTone: Record<DprStatus, RefTone> = {
-  [DprStatus.DRAFT]: 'gray',
-  [DprStatus.SUBMITTED]: 'blue',
-  [DprStatus.APPROVED]: 'green',
-  [DprStatus.RETURNED]: 'amber',
-  [DprStatus.REOPENED]: 'amber',
-};
-
+/** A daily progress report's status. Tone from the status registry (ADR-034). */
 export function DprStatusBadge({ status }: { status: `${DprStatus}` }) {
   const t = useTranslations('progress');
-  return <RefPill tone={statusPillTone[status as DprStatus] ?? 'gray'}>{t(`report.status.${status}`)}</RefPill>;
+  return <StatusPill tone={statusTone(status, 'dpr')}>{t(`report.status.${status}`)}</StatusPill>;
 }

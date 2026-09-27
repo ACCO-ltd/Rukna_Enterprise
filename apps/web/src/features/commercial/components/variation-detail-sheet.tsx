@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { ArrowRight, TriangleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Badge,
   Button,
   DefinitionList,
   DefinitionRow,
@@ -18,14 +17,15 @@ import {
   Skeleton,
   Textarea,
   useToast,
+  StatusPill,
 } from '@erp/ui';
 import type { VariationOrderResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useReverseVariation, useVariation } from '../hooks/use-commercial';
-import { variationStatusTone } from '../presentation';
 import { VariationBillingChip, type VariationBilling } from './variation-billing-chip';
 
 /**
@@ -169,9 +169,9 @@ function DetailBody({
       <div className="border-b border-border px-5 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <code className="font-mono text-caption text-muted-foreground">{variation.reference}</code>
-          <Badge tone={variationStatusTone(variation.status)}>
+          <StatusPill tone={statusTone(variation.status, 'variation')}>
             {t(`status.${variation.status}`)}
-          </Badge>
+          </StatusPill>
         </div>
         <DialogTitle className="mt-1.5">{variation.title}</DialogTitle>
         <DialogDescription id="vo-detail-desc" className="mt-1">

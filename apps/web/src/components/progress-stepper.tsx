@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import { Check, Warning } from '@phosphor-icons/react';
+import { Check, TriangleAlert } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ function StepIndicator({
         aria-label={`${t('complete')}: ${label}`}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success text-white"
       >
-        <Check size={13} weight="bold" aria-hidden="true" />
+        <Check size={13} aria-hidden="true" />
       </span>
     );
   }
@@ -59,7 +59,7 @@ function StepIndicator({
         aria-label={`${t('error')}: ${label}`}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-danger bg-surface text-danger"
       >
-        <Warning size={13} weight="bold" aria-hidden="true" />
+        <TriangleAlert size={13} aria-hidden="true" />
       </span>
     );
   }

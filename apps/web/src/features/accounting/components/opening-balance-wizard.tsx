@@ -116,11 +116,6 @@ export function OpeningBalanceWizard() {
 
   return (
     <div className="space-y-6">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
-
       <Alert variant="warning" title={t('onceTitle')} messages={[t('onceBody')]} />
       <Alert variant="info" title={t('scopeTitle')} messages={[t('scopeBody')]} />
 
@@ -315,7 +310,7 @@ function MigrationReportView({ report }: { report: MigrationReport }) {
   return (
     <div className="space-y-6">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h2>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">
           {t('subtitle', {
             journal: report.openingBalanceJournalNumber,

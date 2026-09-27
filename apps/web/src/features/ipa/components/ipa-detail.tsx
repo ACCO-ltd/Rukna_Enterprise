@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, DefinitionList, DefinitionRow, SectionHeader } from '@erp/ui';
-import { CaretLeftIcon } from '@phosphor-icons/react';
+import { ChevronLeft } from 'lucide-react';
 
 import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { IpcListPanel } from '@/features/ipc/components/ipc-list-panel';
@@ -77,7 +77,7 @@ export function IpaDetail({
           href={basePath}
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary focus-visible:rounded"
         >
-          <CaretLeftIcon size={14} aria-hidden="true" />
+          <ChevronLeft size={14} aria-hidden="true" />
           {t('back')}
         </Link>
       </div>

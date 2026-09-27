@@ -345,7 +345,7 @@ function ScopeRow({
         {line.scheduleOnly ? (
           <Badge tone="neutral">{tw('scope.scheduleOnlyBadge')}</Badge>
         ) : (
-          <Badge tone="info">{tw('scope.itemCount', { count: line.leafCount })}</Badge>
+          <Badge tone="neutral">{tw('scope.itemCount', { count: line.leafCount })}</Badge>
         )}
       </div>
 

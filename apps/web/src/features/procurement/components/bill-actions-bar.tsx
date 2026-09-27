@@ -1,18 +1,23 @@
 'use client';
 
 /**
- * The lifecycle controls on a supplier bill: submit, approve, post, reverse.
+ * The top of a supplier bill (ADR-035): the sticky DocumentActionBar, the DocumentIdentity with
+ * its three labelled status axes, and at most one Notice — plus the confirmations its commands
+ * open.
  *
- * Every action is confirmed, because none can be undone from the UI — there is no reject
- * endpoint, nothing returns a bill to DRAFT, and the only exit from a posted bill is a
- * reversal that writes a second journal.
+ * Every command is confirmed, because none can be undone from the UI — a rejected bill is final,
+ * and the only exit from a posted bill is a reversal that writes a second journal. Return and
+ * reject (ADR-037 amendment) and reverse each ask for a reason, which the history keeps.
  *
- * Unavailable actions are rendered disabled with the reason attached rather than hidden. A
- * button that is simply absent tells the user nothing about what to do next; "the bill has to
- * be submitted before it can be approved" does.
+ * Commands follow backend state and permissions: the one valid next step is the primary
+ * button; Edit (a draft), Return for correction and Reject (a submitted bill) and Reverse sit
+ * in the kebab, destructive ones last; and anything unavailable is not rendered. A blocked post is
+ * explained in words by the Notice rather than by a greyed-out button.
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -22,39 +27,75 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  DocumentActionBar,
+  DocumentIdentity,
+  type DefinitionFact,
+  LifecycleStepper,
+  Notice,
+  type DocumentCommand,
 } from '@erp/ui';
+import { ArrowLeft } from 'lucide-react';
 
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
-import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ACCOUNTING_PERMISSIONS, PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
-import { formatMoney } from '@/lib/format';
+import { ApiError } from '@/lib/api-client';
+import { formatDate, formatMoney } from '@/lib/format';
 
 import {
   availableBillActions,
-  billBlockReason,
+  BILL_STAGES,
+  billLifecycle,
+  billNotice,
+  canEditBill,
   planBillPost,
+  primaryBillAction,
   type BillAction,
 } from '../bill-actions';
 import {
   useApproveSupplierBill,
+  useBillMatch,
   usePostSupplierBill,
+  useRejectSupplierBill,
+  useReturnSupplierBill,
   useReverseSupplierBill,
   useSubmitSupplierBill,
 } from '../hooks/use-procurement';
 import type { SupplierBill } from '../types';
+import { ResolveExceptionDialog } from './bill-matching';
+import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
-// Submit is rendered separately — it runs through the ADR-011 approval gate. The rest keep the
-// plain confirm-then-mutate flow.
-const ORDER: BillAction[] = ['approve', 'post', 'reverse'];
+/** The server's words for a refused command (e.g. the bill changed state meanwhile), else a fallback. */
+function commandError(error: unknown, fallback: string): string | undefined {
+  if (!error) return undefined;
+  return error instanceof ApiError && error.message ? error.message : fallback;
+}
 
-export function BillActionBar({ bill }: { bill: SupplierBill }) {
+export function BillDocumentHeader({
+  bill,
+  facts,
+  rail,
+  children,
+}: {
+  bill: SupplierBill;
+  /** Facts under the identity — see `useBillFacts`. */
+  facts?: DefinitionFact[];
+  /** The summary rail, beside the body from `lg`, under it below. */
+  rail?: React.ReactNode;
+  /** The document body — tabs and totals. */
+  children?: React.ReactNode;
+}) {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
+  const tStatus = useTranslations('procurement.status');
+  const tPosting = useTranslations('procurement.postingStatus');
+  const tMatch = useTranslations('procurement.matchStatus');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
+  const router = useRouter();
 
   const [pending, setPending] = useState<BillAction | null>(null);
 
@@ -65,59 +106,188 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
   const approve = useApproveSupplierBill();
   const post = usePostSupplierBill();
   const reverse = useReverseSupplierBill();
+  const returnBill = useReturnSupplierBill();
+  const reject = useRejectSupplierBill();
 
-  const allowed = availableBillActions(bill);
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
-
-  if (!canManage) return null;
-
+  const allowed = canManage ? availableBillActions(bill) : [];
+  const primary = canManage ? primaryBillAction(bill) : null;
   const plan = planBillPost(bill, accounts.data ?? [], profiles.data ?? [], locale);
+  const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
+  const lifecycle = billLifecycle(bill);
+  const notice = billNotice(bill);
 
-  function close() {
-    setPending(null);
-  }
+  const close = () => setPending(null);
 
-  const submitReason = billBlockReason(bill, 'submit');
+  // Posting held by an open match exception: resolving it is the one next step, so it takes the
+  // primary slot — for whoever holds the authority to resolve it.
+  const canResolveException = can(PROCUREMENT_PERMISSIONS.approveMatchException);
+
+  const primaryButton =
+    notice === 'post-blocked' && canResolveException && bill.matchStatus === 'EXCEPTION' ? (
+      <ResolveExceptionAction billId={bill.id} />
+    ) : primary === 'submit' ? (
+      // Submit runs through the approval gate (ADR-011): with a DoA binding configured the server
+      // opens an approval instead of transitioning.
+      <GatedActionButton
+        command={() => submit.mutateAsync(bill.id)}
+        transactionType={WorkflowTransactionType.SUPPLIER_BILL}
+        label={t('submitForApproval')}
+      />
+    ) : primary ? (
+      <Button type="button" onClick={() => setPending(primary)}>
+        {t(primary)}
+      </Button>
+    ) : null;
+
+  const editHref = `/finance/accounting/bills/${bill.id}/edit`;
+  const canEdit = canManage && canEditBill(bill);
+  const billName = bill.billNumber ?? t('thisBill');
+
+  const commands: DocumentCommand[] = [
+    ...(canEdit ? [{ key: 'edit', label: t('editBill'), onSelect: () => router.push(editHref) }] : []),
+    ...(allowed.includes('return')
+      ? [{ key: 'return', label: t('returnForCorrection'), onSelect: () => setPending('return') }]
+      : []),
+    ...(allowed.includes('reject')
+      ? [{ key: 'reject', label: t('reject'), onSelect: () => setPending('reject'), destructive: true }]
+      : []),
+    ...(allowed.includes('reverse')
+      ? [{ key: 'reverse', label: t('reverse'), onSelect: () => setPending('reverse'), destructive: true }]
+      : []),
+  ];
 
   return (
-    <div className="space-y-4">
-      {/* Submit routes through the approval gate (ADR-011): with a DoA binding configured the
-          server opens an approval instead of transitioning, and the panel + "Complete" re-drive
-          carry it through. When submit is not available it stays on screen, disabled with its
-          reason, per this bar's stated principle of never hiding an action. */}
-      {allowed.includes('submit') ? (
-        <GatedActionButton
-          command={() => submit.mutateAsync(bill.id)}
-          transactionType={WorkflowTransactionType.SUPPLIER_BILL}
-          label={t('submit')}
-        />
-      ) : (
-        <Button
-          type="button"
-          disabled
-          title={submitReason ? t(`blockReason.${submitReason}`) : undefined}
-        >
-          {t('submit')}
-        </Button>
-      )}
+    <>
+      <DocumentActionBar
+        back={
+          <Button asChild variant="ghost" className="gap-1.5 px-2">
+            <Link href="/finance/accounting/bills">
+              <ArrowLeft size={16} aria-hidden="true" />
+              {t('backToList')}
+            </Link>
+          </Button>
+        }
+        primary={primaryButton}
+        commands={commands}
+        moreLabel={tc('moreActions')}
+        lifecycle={
+          <LifecycleStepper
+            steps={BILL_STAGES.map((stage) => ({
+              key: stage,
+              label: stage === 'POSTED' ? tPosting('POSTED') : tStatus(stage),
+            }))}
+            current={lifecycle.current}
+            terminal={
+              lifecycle.terminal
+                ? {
+                    label:
+                      lifecycle.terminal === 'REVERSED'
+                        ? tPosting('REVERSED')
+                        : tStatus(lifecycle.terminal),
+                    tone: lifecycle.terminal === 'REJECTED' ? 'danger' : 'historical',
+                  }
+                : undefined
+            }
+            stepOfLabel={(n, total) => t('stepOf', { n, total })}
+          />
+        }
+      />
 
-      <div className="flex flex-wrap gap-2">
-        {ORDER.map((action) => {
-          const reason = billBlockReason(bill, action);
-          const enabled = allowed.includes(action);
-          return (
-            <Button
-              key={action}
-              type="button"
-              variant={action === 'reverse' ? 'outline' : 'default'}
-              disabled={!enabled}
-              title={reason ? t(`blockReason.${reason}`) : undefined}
-              onClick={() => setPending(action)}
-            >
-              {t(action)}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      <div className="min-w-0">
+      <DocumentIdentity
+        eyebrow={t('eyebrow')}
+        facts={facts}
+        title={bill.billNumber ?? tStatus(bill.documentStatus)}
+        subtitle={[
+          bill.supplier?.name ?? tc('notAvailable'),
+          t('supplierRef', { ref: bill.supplierInvoiceNumber }),
+        ].join(' · ')}
+        axes={[
+          {
+            label: t('axisDocument'),
+            value: <ProcurementStatusBadge vocabulary="supplierBill" status={bill.documentStatus} />,
+          },
+          { label: tPosting('axis'), value: <PostingStatusBadge status={bill.postingStatus} /> },
+          // A non-PO bill never matches; showing "Not run" there would read as a missing step (D6).
+          ...(hasPoLink
+            ? [{ label: tMatch('axis'), value: <BillMatchStatusBadge status={bill.matchStatus} /> }]
+            : []),
+        ]}
+      />
+
+      {notice === 'returned' ? (
+        <Notice
+          tone="attention"
+          title={t('notice.returnedTitle', { date: formatDate(bill.returnedAt, locale) ?? '' })}
+          className="mb-6"
+          action={
+            canEdit ? (
+              <Button asChild variant="outline">
+                <Link href={editHref}>{t('editBill')}</Link>
+              </Button>
+            ) : undefined
+          }
+        >
+          {bill.returnReason ?? ''}
+        </Notice>
+      ) : notice === 'rejected' ? (
+        <Notice
+          tone="danger"
+          title={t('notice.rejectedTitle', { date: formatDate(bill.rejectedAt, locale) ?? '' })}
+          className="mb-6"
+        >
+          {bill.rejectionReason ?? ''}
+        </Notice>
+      ) : notice === 'post-blocked' ? (
+        <Notice
+          tone="attention"
+          title={t('notice.postBlockedTitle')}
+          className="mb-6"
+          action={
+            <Button asChild variant="outline">
+              <a href="#bill-matching">{t('notice.reviewMatch')}</a>
             </Button>
-          );
-        })}
+          }
+        >
+          {t('notice.postBlockedBody', { match: tMatch(bill.matchStatus) })}
+        </Notice>
+      ) : notice === 'post-failed' ? (
+        <Notice
+          tone="danger"
+          title={t('notice.postFailedTitle')}
+          className="mb-6"
+          action={
+            allowed.includes('post') ? (
+              <Button variant="outline" onClick={() => setPending('post')}>
+                {t('notice.retryPosting')}
+              </Button>
+            ) : undefined
+          }
+        >
+          {t('notice.postFailedBody')}
+        </Notice>
+      ) : notice === 'posting-pending' ? (
+        <Notice tone="info" title={t('notice.postingPendingTitle')} className="mb-6">
+          {t('notice.postingPendingBody')}
+        </Notice>
+      ) : notice === 'reversed' ? (
+        <Notice tone="historical" title={t('notice.reversedTitle')} className="mb-6">
+          {t('notice.reversedBody')}
+        </Notice>
+      ) : notice === 'posted' ? (
+        <Notice tone="success" title={t('notice.postedTitle')} className="mb-6">
+          {t('notice.postedBody', {
+            amount: formatMoney(bill.totalAmount, bill.currencyCode, locale) ?? '',
+            date: formatDate(bill.billDate, locale) ?? '',
+          })}
+        </Notice>
+      ) : null}
+
+      {children}
+      </div>
+      {rail ? <div className="lg:pt-1">{rail}</div> : null}
       </div>
 
       {pending === 'approve' ? (
@@ -132,15 +302,40 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
         />
       ) : null}
 
+      {pending === 'return' ? (
+        <ConfirmActionDialog
+          title={t('returnTitle', { bill: billName })}
+          description={t('returnBody')}
+          confirmLabel={t('returnForCorrection')}
+          reason={{ label: t('returnReason'), required: true }}
+          isPending={returnBill.isPending}
+          errorMessage={commandError(returnBill.error, tc('loadFailed'))}
+          onConfirm={(reason) => returnBill.mutate({ id: bill.id, reason }, { onSuccess: close })}
+          onDismiss={close}
+        />
+      ) : null}
+
+      {pending === 'reject' ? (
+        <ConfirmActionDialog
+          title={t('rejectTitle', { bill: billName })}
+          description={t('rejectBody')}
+          confirmLabel={t('rejectConfirm')}
+          reason={{ label: t('rejectReason'), required: true }}
+          destructive
+          isPending={reject.isPending}
+          errorMessage={commandError(reject.error, tc('loadFailed'))}
+          onConfirm={(reason) => reject.mutate({ id: bill.id, reason }, { onSuccess: close })}
+          onDismiss={close}
+        />
+      ) : null}
+
       {pending === 'post' ? (
         <PostDialog
           bill={bill}
           plan={plan}
           isPending={post.isPending}
           isError={post.isError}
-          onConfirm={(payload) =>
-            post.mutate({ id: bill.id, payload }, { onSuccess: close })
-          }
+          onConfirm={(payload) => post.mutate({ id: bill.id, payload }, { onSuccess: close })}
           onDismiss={close}
         />
       ) : null}
@@ -167,7 +362,7 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
           onDismiss={close}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -305,5 +500,33 @@ function PostDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Resolve a match exception ─────────────────────────────────────────────────────
+
+/**
+ * The header's primary command while posting is held by a fresh match exception. It opens the
+ * same dialog as Matching's "Resolve exception" — one dialog, one set of rules. Renders nothing
+ * once the exception already carries a resolution (a PO revision or a receipt correction is
+ * pending): there is nothing left to resolve here, and Matching explains what to do instead.
+ *
+ * Labelled "Resolve", not "Approve": the reason chosen in the dialog can equally dispute the
+ * invoice or send it back for a PO revision, and a button must not promise one outcome of several.
+ */
+function ResolveExceptionAction({ billId }: { billId: string }) {
+  const t = useTranslations('procurement.matching');
+  const match = useBillMatch(billId);
+  const [open, setOpen] = useState(false);
+
+  if (match.data?.status !== 'EXCEPTION' || match.data.resolutionAction) return null;
+
+  return (
+    <>
+      <Button type="button" onClick={() => setOpen(true)}>
+        {t('resolveException')}
+      </Button>
+      {open ? <ResolveExceptionDialog billId={billId} onClose={() => setOpen(false)} /> : null}
+    </>
   );
 }

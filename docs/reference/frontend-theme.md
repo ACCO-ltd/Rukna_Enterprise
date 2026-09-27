@@ -70,12 +70,19 @@ plenty of information and no signal.
 
 | Meaning | Token | Carried by |
 |---|---|---|
-| Complete, approved, on track | `success` / `success-subtle` | Baselined and posted badges, a 100% progress bar, "matches approved baseline", reconciled figures |
-| In progress, needs attention | `warning` / `warning-subtle` | Draft badges, a sub-100% progress bar, rows missing required data, readiness and exception banners |
-| Blocking or destructive | `danger` / `danger-subtle` | Validation failures, discard and delete, over-claim, currency mismatch |
-| Historical, superseded | `historical` / `historical-subtle` | Superseded versions, reversed journals, prior revisions |
-| **Interactive** | `brand-primary` | The single primary action, links, the active tab, the focus ring — **and nothing else** |
+| Draft, not started | `muted-foreground` / `muted` (tone `neutral`) | Draft documents, not-posted, not-run |
+| In progress | `progress` / `progress-subtle` (tone `progress`) | Submitted, pending, open, partially ordered, an active project |
+| Needs action | `warning` / `warning-subtle` (tone `attention`) | Returned, exception, expiring, pending signature, a sub-100% progress bar |
+| Complete, approved, on track | `success` / `success-subtle` (tone `success`) | Approved, posted, matched, baselined, a 100% progress bar |
+| Blocking or destructive | `danger` / `danger-subtle` (tone `danger`) | Rejected, failed, overdue, disputed, validation failures, delete |
+| Historical, finished | `historical` / `historical-subtle` (tone `historical`) | Closed, cancelled, superseded, reversed, withdrawn |
+| **Interactive** | `brand-primary` | Links, the active tab, the focus ring — **and nothing else** |
+| Primary action | `brand-ink` | The single primary button on a screen (ADR-034) |
 | Structure and figures | `foreground` / `muted-foreground` | Codes, descriptions, units, and money |
+
+**Which status gets which tone is decided in one file:** `apps/web/src/lib/status-registry.ts`
+(ADR-034). Render a lifecycle status with `<StatusBadge vocabulary status />`; render a
+secondary axis (posting, match) with `StatusText`. Never keep a status→colour map in a feature.
 
 Two consequences worth stating outright, because both are counter-intuitive:
 
@@ -88,9 +95,9 @@ state it must look different when it gets there. `warning` while incomplete, `su
 100%. A brand-blue progress bar is the accent pretending to carry state, which is exactly
 what the ownership rule forbids.
 
-**One primary per screen.** `brand-primary` marks the single action the user should take
-next. Two blue buttons compete and neither reads as the answer; a *disabled* blue button is
-worse still, because the one thing drawing the eye is the one thing that cannot be done.
+**One primary per screen.** The navy primary button (`brand-ink`, ADR-034) marks the single
+action the user should take next. Two primary buttons compete and neither reads as the answer;
+a *disabled* primary is worse still, because the one thing drawing the eye is the one thing that cannot be done.
 Where the obvious next action changes with state, resolve it in a pure module and let the
 button follow — see `apps/web/src/features/boq/boq-next-step.ts`.
 

@@ -14,7 +14,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
 import type {
   CommercialBillingPosition,
   CommercialBillingResponse,
@@ -25,6 +25,7 @@ import type {
 
 import { useOpenInvoiceDocument } from '@/features/accounting/hooks/use-invoices';
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useCommercialBilling } from '../hooks/use-commercial';
 import {
@@ -524,26 +525,6 @@ function invoiceStatusGroup(state: CollectionPaymentState): InvoiceStatusGroup {
   return 'OPEN'; // AWAITING_PAYMENT, PARTIALLY_PAID, OVERDUE
 }
 
-function paymentStateTone(
-  state: CollectionPaymentState,
-): 'live' | 'warning' | 'danger' | 'neutral' | 'historical' {
-  switch (state) {
-    case 'PAID':
-      return 'live';
-    case 'PARTIALLY_PAID':
-      return 'warning';
-    case 'OVERDUE':
-      return 'danger';
-    case 'AWAITING_PAYMENT':
-      return 'neutral';
-    case 'DRAFT':
-    case 'CANCELLED':
-      return 'historical';
-    default:
-      return 'neutral';
-  }
-}
-
 function OpenInvoicesPanel({
   projectId,
   currency,
@@ -909,9 +890,9 @@ function OpenInvoiceRow({
         {inv.paymentState === 'DRAFT' ? '—' : money(inv.outstanding)}
       </TableCell>
       <TableCell>
-        <Badge tone={paymentStateTone(inv.paymentState)}>
+        <StatusPill tone={statusTone(inv.paymentState, 'invoiceCollection')}>
           {t(`paymentState.${inv.paymentState}`)}
-        </Badge>
+        </StatusPill>
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">

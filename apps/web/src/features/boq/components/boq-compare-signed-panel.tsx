@@ -77,7 +77,7 @@ export function BoqCompareSignedPanel({
                 </span>
               </span>
               <span className="inline-flex items-center gap-2">
-                <Badge tone="warning">{t('classValue')}</Badge>
+                <Badge tone="attention">{t('classValue')}</Badge>
                 <span className="text-body-sm text-muted-foreground">
                   {t('valueChanging', { count: data.valueChangingCount })}
                 </span>
@@ -108,7 +108,7 @@ export function BoqCompareSignedPanel({
                     {data.changes.map((change) => (
                       <TableRow key={`${change.leftNodeId ?? ''}-${change.rightNodeId ?? ''}-${change.code}`}>
                         <TableCell>
-                          <Badge tone={change.changeClass === 'VALUE_CHANGING' ? 'warning' : 'neutral'}>
+                          <Badge tone={change.changeClass === 'VALUE_CHANGING' ? 'attention' : 'neutral'}>
                             {change.changeClass === 'VALUE_CHANGING'
                               ? t('classValue')
                               : t('classNeutral')}

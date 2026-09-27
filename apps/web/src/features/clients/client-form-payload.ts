@@ -43,7 +43,11 @@ export const EMPTY_CLIENT_FORM: ClientFormValues = {
 export function toCreateClientPayload(values: ClientFormValues): CreateClientPayload {
   const payload: CreateClientPayload = { name: values.name.trim() };
 
-  const optional = { notes: values.notes ?? '' } as const;
+  const optional = {
+    taxNumber: values.taxNumber ?? '',
+    address: values.address ?? '',
+    notes: values.notes ?? '',
+  } as const;
 
   for (const [key, value] of Object.entries(optional)) {
     const trimmed = value.trim();
@@ -89,6 +93,8 @@ export function toUpdateClientPayload(values: ClientFormValues): UpdateClientPay
   return {
     name: values.name.trim(),
     type: values.type ?? 'COMPANY',
+    taxNumber: text(values.taxNumber ?? ''),
+    address: text(values.address ?? ''),
     notes: text(values.notes ?? ''),
   };
 }

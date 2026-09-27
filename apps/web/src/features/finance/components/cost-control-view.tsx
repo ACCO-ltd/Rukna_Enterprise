@@ -5,7 +5,6 @@ import { useLocale, useTranslations } from 'next-intl';
 import { ChevronRight, Download, History, PieChart, Plus, Search, Wallet } from 'lucide-react';
 import {
   Alert,
-  Badge,
   Button,
   Input,
   Skeleton,
@@ -18,6 +17,7 @@ import {
   TableScroll,
   ViewSwitcher,
   cn,
+  StatusPill,
 } from '@erp/ui';
 import type {
   ProjectCostBudgetListResponse,
@@ -26,6 +26,7 @@ import type {
 } from '@erp/types';
 
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { SectionPanel } from '@/features/procurement/components/project/section-panel';
 import {
@@ -312,7 +313,7 @@ export function CostControlView({ projectId }: { projectId: string }) {
                 <span className="text-body-sm font-semibold text-foreground">
                   {t('budget.version', { version: workingVersion.versionNumber })}
                 </span>
-                <Badge tone="warning">{t('budget.status.WORKING')}</Badge>
+                <StatusPill tone={statusTone('DRAFT', 'costBudget')}>{t('budget.status.WORKING')}</StatusPill>
               </div>
               <p className="mt-1 text-caption text-muted-foreground">
                 {t('budget.workingHint')}
@@ -335,7 +336,7 @@ export function CostControlView({ projectId }: { projectId: string }) {
                   <span className="text-body-sm font-semibold text-foreground">
                     {t('budget.version', { version: baselinedVersion.versionNumber })}
                   </span>
-                  <Badge tone="live">{t('budget.status.BASELINED')}</Badge>
+                  <StatusPill tone={statusTone('BASELINED', 'costBudget')}>{t('budget.status.BASELINED')}</StatusPill>
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
@@ -392,19 +393,11 @@ export function CostControlView({ projectId }: { projectId: string }) {
                     <span className="text-caption text-muted-foreground">
                       {t('budget.version', { version: v.versionNumber })}
                     </span>
-                    <Badge
-                      tone={
-                        v.status === 'BASELINED'
-                          ? 'live'
-                          : v.status === 'DRAFT'
-                            ? 'warning'
-                            : 'neutral'
-                      }
-                    >
+                    <StatusPill tone={statusTone(v.status, 'costBudget')}>
                       {t(
                         `budget.status.${v.status === 'DRAFT' ? 'WORKING' : v.status}`,
                       )}
-                    </Badge>
+                    </StatusPill>
                   </li>
                 ))}
               </ul>

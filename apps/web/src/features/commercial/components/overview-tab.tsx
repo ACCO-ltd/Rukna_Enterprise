@@ -6,7 +6,6 @@ import { useLocale, useTranslations } from 'next-intl';
 import { AlertTriangle, CheckCircle2, Circle, XCircle } from 'lucide-react';
 import {
   Alert,
-  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -16,6 +15,7 @@ import {
   LtrValue,
   Skeleton,
   cn,
+  StatusPill,
 } from '@erp/ui';
 import type {
   CommercialOverviewResponse,
@@ -24,6 +24,7 @@ import type {
 } from '@erp/types';
 
 import { formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import {
   useCloseContract,
@@ -288,15 +289,6 @@ function CommercialPositionPanel({ overview }: { overview: CommercialOverviewRes
   const t = useTranslations('commercial');
   const { contract, currentCycle: cc } = overview;
 
-  const statusTone: 'live' | 'neutral' | 'warning' | 'danger' =
-    contract.status === 'ACTIVE'
-      ? 'live'
-      : contract.status === 'CANCELLED' || contract.status === 'TERMINATED'
-        ? 'danger'
-        : contract.status === 'FINAL_ACCOUNT_PENDING'
-          ? 'warning'
-          : 'neutral';
-
   return (
     <div className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-3">
       <PositionCell label={t('overview.commercialPosition.contractReference')}>
@@ -306,15 +298,15 @@ function CommercialPositionPanel({ overview }: { overview: CommercialOverviewRes
       </PositionCell>
       <PositionCell label={t('overview.commercialPosition.contractStatus')}>
         {contract.status ? (
-          <Badge tone={statusTone}>{t(`contractStatus.${contract.status}`)}</Badge>
+          <StatusPill tone={statusTone(contract.status, 'contract')}>{t(`contractStatus.${contract.status}`)}</StatusPill>
         ) : (
           <span className="text-body-sm text-muted-foreground">{t('states.notSet')}</span>
         )}
       </PositionCell>
       <PositionCell label={t('overview.commercialPosition.nextInvoiceStatus')}>
-        <Badge tone={cc.stage === 'ALL_COMPLETE' ? 'live' : 'neutral'}>
+        <StatusPill tone={statusTone(cc.stage, 'commercialCycle')}>
           {t(`overview.commercialPosition.stage.${cc.stage}`)}
-        </Badge>
+        </StatusPill>
       </PositionCell>
     </div>
   );

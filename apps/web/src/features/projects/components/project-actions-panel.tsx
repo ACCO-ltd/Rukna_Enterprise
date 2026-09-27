@@ -6,7 +6,7 @@ import { ProjectTransitionDialog } from './project-transition-dialog';
 import { useProjectReadiness } from '../hooks/use-project';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { ArrowRight, DotsThree } from '@phosphor-icons/react';
+import { ArrowRight, Ellipsis } from 'lucide-react';
 import {
   Button,
   DropdownMenu,
@@ -134,7 +134,7 @@ export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label={t('more')} title={t('more')}>
-                <DotsThree size={20} weight="bold" aria-hidden="true" />
+                <Ellipsis size={20} aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

@@ -106,25 +106,12 @@ export function MrList() {
     {
       key: 'status',
       header: tc('status'),
-      render: (mr) => <ProcurementStatusBadge status={mr.status} />,
+      render: (mr) => <ProcurementStatusBadge vocabulary="materialRequest" status={mr.status} />,
     },
   ];
 
   return (
     <div className="space-y-6">
-      {/* ── Page header ───────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-        {can(PROCUREMENT_PERMISSIONS.createRequest) ? (
-          <Button asChild>
-            <Link href="/procurement/requests/new">{t('new')}</Link>
-          </Button>
-        ) : null}
-      </div>
-
       {requests.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
       <PlatformDataGrid
@@ -136,6 +123,13 @@ export function MrList() {
         rowHref={(mr) => `/procurement/requests/${mr.id}`}
         noMatchMessage={t('empty')}
         pagination={{ defaultPageSize: 25 }}
+        toolbarActions={
+          can(PROCUREMENT_PERMISSIONS.createRequest) ? (
+            <Button asChild>
+              <Link href="/procurement/requests/new">{t('new')}</Link>
+            </Button>
+          ) : undefined
+        }
         toolbarFilters={
           <FilterBar>
             <FilterField id={ids.status} label={tc('status')}>

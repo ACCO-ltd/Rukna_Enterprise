@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, Checkbox, DatePicker, FormField, Input, MoneyInput, Select, Textarea } from '@erp/ui';
 
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useBankAccounts, useFiscalYears } from '@/features/accounting/hooks/use-accounting';
 import { makeClosedPeriodPredicate } from '@/features/accounting/open-period';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -71,6 +72,7 @@ export function SupplierPaymentForm() {
   const tc = useTranslations('procurement.common');
   const locale = useLocale() as 'en' | 'ar';
   const router = useRouter();
+  useModuleTrail(t('createTitle'));
   const { can } = usePermissions();
 
   const [supplierId, setSupplierId] = useState('');
@@ -212,13 +214,6 @@ export function SupplierPaymentForm() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {t('createTitle')}
-        </h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('createSubtitle')}</p>
-      </div>
-
       {noBanks ? (
         <Alert variant="error" title={t('noBanksTitle')} messages={[t('noBanksBody')]} />
       ) : null}

@@ -14,7 +14,6 @@
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Table,
   TableBody,
   TableCell,
@@ -22,7 +21,10 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 
 import { useWorkflowBindings } from '../hooks/use-workflow-bindings';
 import type { WorkflowTriggerBinding } from '../types';
@@ -124,9 +126,9 @@ function BindingRow({
 
       {/* Status — the one fact this whole view exists to show. */}
       <TableCell>
-        <Badge tone={binding.isActive ? 'live' : 'neutral'}>
+        <StatusPill tone={statusTone(binding.isActive ? 'ACTIVE' : 'INACTIVE', 'masterData')}>
           {binding.isActive ? t('active') : t('inactive')}
-        </Badge>
+        </StatusPill>
       </TableCell>
     </TableRow>
   );

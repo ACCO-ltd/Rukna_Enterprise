@@ -531,6 +531,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             setCommand(null);
           }}
           commandName={t(`commands.${command}.name`)}
+          statusVocabulary="boqVersion"
           currentStatus={command === 'revise' ? 'COMMITTED' : 'DRAFT'}
           nextStatus={command === 'discard' ? 'CANCELLED' : 'DRAFT'}
           businessImpact={t(`commands.${command}.impact`)}

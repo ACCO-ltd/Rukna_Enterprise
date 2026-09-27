@@ -16,10 +16,14 @@ export interface FormFieldContextValue {
   errorId: string | undefined;
   /** id of the rendered success element, when a success message is present. */
   successId: string | undefined;
+  /** id of the rendered warning element, when a warning is present and no error is. */
+  warningId: string | undefined;
   /** True when an error message is present. */
   hasError: boolean;
   /** True when a success message is present and no error is. */
   hasSuccess: boolean;
+  /** True when a warning is present and no error is. */
+  hasWarning: boolean;
   /** True while an async check on this field is in flight. */
   isChecking: boolean;
   /** True when the required indicator is shown. */
@@ -60,6 +64,12 @@ export interface FormFieldProps {
    */
   success?: string | undefined;
   /**
+   * Something worth a second look that does **not** block saving — "BCC/INV/5531 is already
+   * recorded on BILL-2026-0042. Check this isn't a duplicate." Errors block; warnings don't
+   * (ADR-037). `error` wins when both are set.
+   */
+  warning?: string | undefined;
+  /**
    * True while an async check is in flight. Renders a status line and puts the control in
    * its checking state, so the user knows the blank verdict is pending rather than absent.
    */
@@ -95,6 +105,7 @@ export function FormField({
   hint,
   error,
   success,
+  warning,
   checking,
   checkingLabel,
   counter,
@@ -108,14 +119,18 @@ export function FormField({
   // A field is never both. Error wins, so a stale success can never mask a live failure.
   const showSuccess = Boolean(success) && !error;
   const successId = showSuccess ? `${htmlFor}-success` : undefined;
+  const showWarning = Boolean(warning) && !error;
+  const warningId = showWarning ? `${htmlFor}-warning` : undefined;
 
   const ctx: FormFieldContextValue = {
     controlId: htmlFor,
     hintId,
     errorId,
     successId,
+    warningId,
     hasError: Boolean(error),
     hasSuccess: showSuccess,
+    hasWarning: showWarning,
     isChecking: Boolean(checking),
     required: Boolean(required),
   };
@@ -183,6 +198,18 @@ export function FormField({
           </p>
         ) : null}
 
+        {showWarning ? (
+          // Polite: a warning informs, it does not stop the person mid-sentence.
+          <p
+            id={warningId}
+            className="flex items-start gap-1.5 text-caption font-medium leading-5 text-warning"
+            role="status"
+          >
+            <TriangleGlyph />
+            {warning}
+          </p>
+        ) : null}
+
         {showSuccess ? (
           // Polite, not assertive: a confirmation must never interrupt what someone is
           // reading, and unlike an error it costs nothing to hear a moment later.
@@ -217,6 +244,15 @@ function WarningGlyph() {
     >
       <circle cx="6" cy="6" r="5.1" stroke="currentColor" strokeWidth="1.4" />
       <path d="M6 3.4v2.9M6 8.3v.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TriangleGlyph() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="mt-0.5 shrink-0">
+      <path d="M6 1.3 11 10.3H1L6 1.3Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M6 4.6v2.6M6 8.7v.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }

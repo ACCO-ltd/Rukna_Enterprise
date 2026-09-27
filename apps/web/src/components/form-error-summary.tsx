@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import { Warning } from '@phosphor-icons/react';
+import { CircleAlert } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,44 +72,42 @@ export function FormErrorSummary({
     }
   };
 
+  const count = errors.length + (formErrors?.length ?? 0);
+
+  // ADR-037: a counted title ("Fix 3 fields before saving"), each field named as a link that
+  // focuses it, then the message. Server errors that belong to no field come first.
   return (
     <div
       role="alert"
-      className={cn(
-        'rounded-lg border border-danger/30 bg-danger-subtle px-4 py-4',
-        className,
-      )}
+      className={cn('rounded-panel border border-danger/30 bg-danger-subtle px-4 py-3', className)}
     >
       <div className="flex gap-3">
         <span className="mt-0.5 shrink-0 text-danger">
-          <Warning size={18} weight="bold" aria-hidden="true" />
+          <CircleAlert size={16} aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-danger">
-            {title ?? t('title')}
-          </p>
+        <div className="min-w-0 flex-1 text-body-sm text-foreground">
+          <p className="font-semibold">{title ?? t('fixCount', { count })}</p>
 
           {formErrors && formErrors.length > 0 ? (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-1.5 list-disc space-y-1 ps-5">
               {formErrors.map((msg, i) => (
-                <li key={i} className="text-sm text-danger">
-                  {msg}
-                </li>
+                <li key={i}>{msg}</li>
               ))}
             </ul>
           ) : null}
 
           {errors.length > 0 ? (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-1.5 list-disc space-y-1 ps-5">
               {errors.map(({ label, fieldId, message }) => (
                 <li key={fieldId}>
                   <a
                     href={`#${fieldId}`}
                     onClick={handleFieldLink(fieldId)}
-                    className="text-sm text-danger underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+                    className="font-medium text-brand-primary underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
                   >
-                    <span className="font-medium">{label}:</span> {message}
-                  </a>
+                    {label}
+                  </a>{' '}
+                  — {message}
                 </li>
               ))}
             </ul>

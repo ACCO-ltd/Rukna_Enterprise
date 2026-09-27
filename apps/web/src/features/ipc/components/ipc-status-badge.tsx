@@ -1,32 +1,24 @@
 import { IpcStatus } from '@erp/types';
 import { useTranslations } from 'next-intl';
-import { Badge, type BadgeTone } from '@erp/ui';
+import { StatusPill, StatusText } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 
 import type { SettlementState } from '../settlement';
 
-/**
- * `PARTIALLY_CERTIFIED` is a warning rather than a neutral state: the certifier allowed less
- * than was claimed, which is the line a quantity surveyor needs to look at. `CERTIFIED` is
- * `live` because it is the document the client owes against.
- */
-const STATUS_TONES: Record<IpcStatus, BadgeTone> = {
-  [IpcStatus.CERTIFIED]: 'live',
-  [IpcStatus.PARTIALLY_CERTIFIED]: 'warning',
-  [IpcStatus.REJECTED]: 'danger',
-};
-
+/** A certificate's primary status. Tone from the status registry (ADR-034). */
 export function IpcStatusBadge({ status }: { status: IpcStatus }) {
   const t = useTranslations('platform.ipc.status');
 
-  return <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'ipc')}>{t(status)}</StatusPill>;
 }
 
 /**
  * Whether a certificate has been superseded, which matters more than its status once it has.
  *
- * Exactly one certificate per application is effective; a superseded one is a historical
- * record that must not be paid against. Rendering it as `neutral` rather than `danger` is
- * deliberate — being replaced is the normal course of a re-certification, not a fault.
+ * Exactly one certificate per application is effective; a superseded one is a historical record
+ * that must not be paid against. A second axis beside the status pill, so it renders as quiet
+ * dot + text rather than a competing pill.
  */
 export function IpcEffectiveBadge({ isEffective }: { isEffective: boolean }) {
   // `platform.ipc.effective` and `.superseded` are flat siblings rather than a nested
@@ -35,27 +27,20 @@ export function IpcEffectiveBadge({ isEffective }: { isEffective: boolean }) {
   const t = useTranslations('platform.ipc');
 
   return (
-    <Badge tone={isEffective ? 'accent' : 'neutral'}>
+    <StatusText tone={statusTone(isEffective ? 'EFFECTIVE' : 'SUPERSEDED', 'ipcEffectiveness')}>
       {isEffective ? t('effective') : t('superseded')}
-    </Badge>
+    </StatusText>
   );
 }
 
 /**
- * How much of the certificate has been paid.
+ * How much of the certificate has been paid — a secondary axis to the certificate status.
  *
  * `OVER_ALLOCATED` is `danger` because it is a data fault rather than a payment state — more
  * has been applied to this certificate than it is worth, which C17 (#14) makes reachable.
  */
-const SETTLEMENT_TONES: Record<SettlementState, BadgeTone> = {
-  UNPAID: 'neutral',
-  PARTIALLY_PAID: 'info',
-  PAID: 'live',
-  OVER_ALLOCATED: 'danger',
-};
-
 export function SettlementBadge({ state }: { state: SettlementState }) {
   const t = useTranslations('platform.ipc.settlement');
 
-  return <Badge tone={SETTLEMENT_TONES[state]}>{t(state)}</Badge>;
+  return <StatusText tone={statusTone(state, 'ipcSettlement')}>{t(state)}</StatusText>;
 }

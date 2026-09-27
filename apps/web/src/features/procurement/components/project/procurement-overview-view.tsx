@@ -338,7 +338,7 @@ function AttentionPanel({
                       : ''}
                   </span>
                 </span>
-                <Badge tone={item.tier === 'SITE_BLOCKING' ? 'danger' : 'warning'}>
+                <Badge tone={item.tier === 'SITE_BLOCKING' ? 'danger' : 'attention'}>
                   {item.count}
                 </Badge>
                 {item.actionUrl ? (
@@ -513,7 +513,7 @@ function ActivityPanel({ data }: { data: ProjectProcurementOverviewResponse }) {
                     {entry.reference ?? '—'}
                   </TableCell>
                   <TableCell>
-                    <Badge tone={entry.stage === 'ACTUAL' ? 'live' : 'info'}>
+                    <Badge tone={entry.stage === 'ACTUAL' ? 'success' : 'progress'}>
                       {tCost(`stage.${entry.stage}`)}
                     </Badge>
                   </TableCell>

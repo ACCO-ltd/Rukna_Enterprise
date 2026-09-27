@@ -1,5 +1,6 @@
 /**
- * Display formatting for money, quantities, dates, relative time and status badges.
+ * Display formatting for money, quantities, dates and relative time.
+ * Status tones live in `status-registry.ts`.
  *
  * MONEY POLICY — the frontend performs NO arithmetic on monetary values.
  *
@@ -139,95 +140,20 @@ export function relativeTime(
   return rtf.format(Math.round(diffSeconds / 31536000), 'year');
 }
 
-// ─── Status presentation ──────────────────────────────────────────────────────
-
 /**
- * The six semantic display tokens for lifecycle states across the platform.
- * Components map these to Tailwind classes — never map status strings to colors directly.
+ * A timestamp as "15 Sep 2026, 09:12", for activity and approval trails. Null for absent or
+ * unparseable input, like its siblings.
  */
-export type StatusToken =
-  | 'NEUTRAL'      // draft, inactive — grey
-  | 'IN_PROGRESS'  // moving through a workflow — blue
-  | 'WARNING'      // needs attention, partial, at risk — yellow
-  | 'SUCCESS'      // healthy, complete, paid — green
-  | 'DANGER'       // stopped, failed, urgent — red
-  | 'HISTORICAL';  // superseded, archived, no longer active — purple
-
-export interface StatusPresentation {
-  token: StatusToken;
-  /**
-   * True for terminal states that are resolved but not urgent (CLOSED, CANCELLED,
-   * SUPERSEDED). Components render these as muted/ghost variants of their token.
-   */
-  muted: boolean;
-}
-
-/**
- * Global status → token mapping for statuses that have the same meaning regardless
- * of which entity carries them.
- */
-const GLOBAL_STATUS_MAP: Record<string, StatusPresentation> = {
-  // Neutral
-  DRAFT:                       { token: 'NEUTRAL',     muted: false },
-  INACTIVE:                    { token: 'NEUTRAL',     muted: false },
-  PENDING:                     { token: 'NEUTRAL',     muted: false },
-
-  // In progress
-  UNDER_REVIEW:                { token: 'IN_PROGRESS', muted: false },
-  PENDING_INTERNAL_APPROVAL:   { token: 'IN_PROGRESS', muted: false },
-  APPROVED_FOR_SUBMISSION:     { token: 'IN_PROGRESS', muted: false },
-  APPROVED:                    { token: 'IN_PROGRESS', muted: false },
-  PENDING_SIGNATURE:           { token: 'IN_PROGRESS', muted: false },
-  MOBILIZING:                  { token: 'IN_PROGRESS', muted: false },
-  SUBMITTED:                   { token: 'IN_PROGRESS', muted: false },
-
-  // Warning
-  RETURNED_FOR_REVISION:       { token: 'WARNING',     muted: false },
-  SUSPENDED:                   { token: 'WARNING',     muted: false },
-  FINAL_ACCOUNT_PENDING:       { token: 'WARNING',     muted: false },
-  PRACTICAL_COMPLETION:        { token: 'WARNING',     muted: false },
-  CLOSEOUT:                    { token: 'WARNING',     muted: false },
-  PARTIALLY_CERTIFIED:         { token: 'WARNING',     muted: false },
-  PARTIALLY_PAID:              { token: 'WARNING',     muted: false },
-  EXPIRING_SOON:               { token: 'WARNING',     muted: false },
-  UNPAID:                      { token: 'WARNING',     muted: false },
-
-  // Success
-  ACTIVE:                      { token: 'SUCCESS',     muted: false },
-  BASELINED:                   { token: 'SUCCESS',     muted: false },
-  COMMITTED:                   { token: 'SUCCESS',     muted: false },
-  EXECUTED:                    { token: 'SUCCESS',     muted: false },
-  CERTIFIED:                   { token: 'SUCCESS',     muted: false },
-  PAID:                        { token: 'SUCCESS',     muted: false },
-  COMPLETED:                   { token: 'SUCCESS',     muted: false },
-  RELEASED:                    { token: 'SUCCESS',     muted: true  },
-  CLOSED:                      { token: 'SUCCESS',     muted: true  },
-
-  // Danger
-  REJECTED:                    { token: 'DANGER',      muted: false },
-  TERMINATED:                  { token: 'DANGER',      muted: true  },
-  CANCELLED:                   { token: 'DANGER',      muted: true  },
-  OVERDUE:                     { token: 'DANGER',      muted: false },
-  EXPIRED:                     { token: 'DANGER',      muted: false },
-
-  // Historical
-  SUPERSEDED:                  { token: 'HISTORICAL',  muted: true  },
-  ARCHIVED:                    { token: 'HISTORICAL',  muted: true  },
-  REPLACED:                    { token: 'HISTORICAL',  muted: true  },
-};
-
-const FALLBACK: StatusPresentation = { token: 'NEUTRAL', muted: false };
-
-/**
- * Resolves a status string to its platform display token.
- *
- * Pass `entityType` for context-sensitive overrides — e.g. a Project in APPROVED status
- * is still mobilizing (IN_PROGRESS), whereas the same string on a hypothetical future
- * entity might mean the work is complete (SUCCESS). The global map handles all Sprint 1–3
- * statuses correctly without overrides; add entity-specific entries here as new modules
- * introduce ambiguous status strings.
- */
-export function formatStatus(status: string | null | undefined): StatusPresentation {
-  if (!status) return FALLBACK;
-  return GLOBAL_STATUS_MAP[status] ?? FALLBACK;
+export function formatDateTime(value: string | null | undefined, locale: Locale = 'en'): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(numericLocale(locale), {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
 }

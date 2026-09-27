@@ -66,7 +66,7 @@ export function ClientContacts({ clientId, contacts, canManage = true }: ClientC
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-foreground">{contact.name}</span>
-                  {contact.isPrimary ? <Badge tone="info">{t('primary')}</Badge> : null}
+                  {contact.isPrimary ? <Badge tone="neutral">{t('primary')}</Badge> : null}
                 </div>
                 {contact.role ? (
                   <p className="text-xs text-muted-foreground">{contact.role}</p>

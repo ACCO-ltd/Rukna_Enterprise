@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { Badge, cn, type BadgeTone } from '@erp/ui';
+import { cn, StatusPill, StatusText } from '@erp/ui';
 import type {
   DocumentRevisionStatus,
   DocumentValidity,
@@ -10,6 +10,7 @@ import type {
 } from '@erp/types';
 
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 /**
  * The register's shared vocabulary.
@@ -19,52 +20,20 @@ import { formatDate } from '@/lib/format';
  * and a reader who sees a single green badge learns none of that. The table gives each its own
  * column and this file gives each its own component.
  *
- * Colour is used only where a state genuinely demands attention. Six differently-coloured chips in
- * a row is not information design, it is decoration that trains people to ignore colour — so
- * Issued and Valid are quiet, and Expired is not.
+ * Tones come from the status registry (ADR-034). The document and revision statuses are pills;
+ * validity is a second axis beside them, so it renders as quiet dot + text — the healthy majority
+ * (Valid, No expiry) stays unremarkable and an Expired row still stands out.
  */
-
-const DOCUMENT_STATUS_TONE: Record<`${ProjectDocumentStatus}`, BadgeTone> = {
-  DRAFT: 'neutral',
-  // `live` in the shared vocabulary means "in force right now", which is exactly what an issued
-  // document is — the same tone ACTIVE contracts and CERTIFIED IPCs already carry.
-  ISSUED: 'live',
-  SUPERSEDED: 'historical',
-  WITHDRAWN: 'warning',
-  ARCHIVED: 'neutral',
-};
 
 export function DocumentStatusChip({ status }: { status: `${ProjectDocumentStatus}` }) {
   const t = useTranslations('documents.status');
-  return <Badge tone={DOCUMENT_STATUS_TONE[status]}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'projectDocument')}>{t(status)}</StatusPill>;
 }
-
-const REVISION_STATUS_TONE: Record<`${DocumentRevisionStatus}`, BadgeTone> = {
-  DRAFT: 'neutral',
-  ISSUED: 'live',
-  SUPERSEDED: 'historical',
-  WITHDRAWN: 'warning',
-};
 
 export function RevisionStatusChip({ status }: { status: `${DocumentRevisionStatus}` }) {
   const t = useTranslations('documents.revisionStatus');
-  return <Badge tone={REVISION_STATUS_TONE[status]}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'documentRevision')}>{t(status)}</StatusPill>;
 }
-
-/**
- * Validity is quiet when there is nothing to do about it.
- *
- * VALID and NO_EXPIRY are the unremarkable majority of any register, and colouring them would put
- * a second bright chip on every healthy row — which trains a reader to stop seeing the one row
- * that is actually expired. Colour starts at NOT_YET_VALID and escalates from there.
- */
-const VALIDITY_TONE: Record<`${DocumentValidity}`, BadgeTone> = {
-  NO_EXPIRY: 'neutral',
-  VALID: 'neutral',
-  NOT_YET_VALID: 'accent',
-  EXPIRING_SOON: 'warning',
-  EXPIRED: 'danger',
-};
 
 /**
  * Validity, with the day count that makes it actionable.
@@ -93,7 +62,7 @@ export function ValidityChip({
 
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <Badge tone={VALIDITY_TONE[validity]}>{t(validity)}</Badge>
+      <StatusText tone={statusTone(validity, 'documentValidity')}>{t(validity)}</StatusText>
       {detail ? <span className="text-body-sm text-muted-foreground">{detail}</span> : null}
     </span>
   );

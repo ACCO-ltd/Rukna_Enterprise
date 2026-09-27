@@ -1,26 +1,16 @@
 import { ClientStatus } from '@erp/types';
 import { useTranslations } from 'next-intl';
-import { Badge, type BadgeTone } from '@erp/ui';
+import { StatusPill } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 
 /**
- * A client is either in use or retired — there is no lifecycle to walk, so only two tones
- * are needed. `INACTIVE` is neutral rather than a warning: retiring a client is a normal
- * housekeeping action, not a problem to flag.
+ * Whether a client is in use or retired. Tone from the status registry's master-data vocabulary
+ * (ADR-034). The category and stage badges elsewhere classify rather than report state, and
+ * deliberately carry no dot.
  */
-const STATUS_TONES: Record<ClientStatus, BadgeTone> = {
-  [ClientStatus.ACTIVE]: 'live',
-  [ClientStatus.INACTIVE]: 'neutral',
-};
-
 export function ClientStatusBadge({ status }: { status: ClientStatus }) {
   const t = useTranslations('platform.clients.status');
 
-  // Dotted: this reports whether the client is live right now, which is what someone scans a
-  // status column for. The category and stage badges elsewhere classify rather than report
-  // state, and deliberately carry no dot.
-  return (
-    <Badge dot tone={STATUS_TONES[status] ?? 'neutral'}>
-      {t(status)}
-    </Badge>
-  );
+  return <StatusPill tone={statusTone(status, 'masterData')}>{t(status)}</StatusPill>;
 }

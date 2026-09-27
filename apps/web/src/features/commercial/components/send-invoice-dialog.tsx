@@ -221,7 +221,7 @@ export function SendInvoiceDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent size="2xl" aria-describedby="send-invoice-desc">
         <DialogHeader>
-          <Badge tone="live" dot className="w-fit">
+          <Badge tone="success" dot className="w-fit">
             {t('eyebrow')}
           </Badge>
           <DialogTitle className="mt-2">{t('title')}</DialogTitle>

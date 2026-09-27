@@ -3,12 +3,16 @@
 /**
  * Shared furniture for the four Tier A master-data screens.
  *
- * All four are the same shape — a heading, a create drawer, a table, a deactivate
+ * All four are the same shape — a create action, a create dialog, a table, a deactivate
  * confirmation — so the shape lives here once and each screen supplies its columns and
  * its form. §12.4 describes them together for the same reason.
+ *
+ * No title: the Procurement module header owns the page's `h1` and its breadcrumb
+ * ("Setup / Materials") already names the screen (ADR-035).
  */
 
 import { useState, type FormEvent, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -22,26 +26,34 @@ import {
 import { ApiError } from '@/lib/api-client';
 
 interface SetupScreenProps {
-  title: string;
-  subtitle: string;
+  /**
+   * One muted line of guidance above the create action, for a screen whose purpose is easy
+   * to confuse with another's (spend vs material categories). Omit it otherwise.
+   */
+  guidance?: string;
   /** Rendered as an informational banner above the table. */
   notice?: string;
   createLabel: string;
   /** Withheld when the user lacks `manage:procurement-config`. */
   canCreate: boolean;
-  createForm: (close: () => void) => ReactNode;
-  createTitle: string;
+  /**
+   * A full create page to link to instead of the dialog — for master data whose create form has
+   * outgrown a few short fields (ADR-037's container rule). When set, `createForm` is unused.
+   */
+  createHref?: string;
+  createForm?: (close: () => void) => ReactNode;
+  createTitle?: string;
   isPending: boolean;
   isError: boolean;
   children: ReactNode;
 }
 
 export function SetupScreen({
-  title,
-  subtitle,
+  guidance,
   notice,
   createLabel,
   canCreate,
+  createHref,
   createForm,
   createTitle,
   isPending,
@@ -54,18 +66,22 @@ export function SetupScreen({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{subtitle}</p>
+      {guidance || canCreate ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {guidance ? (
+            <p className="me-auto max-w-prose text-body-sm text-muted-foreground">{guidance}</p>
+          ) : null}
+          {canCreate && createHref ? (
+            <Button asChild>
+              <Link href={createHref}>{createLabel}</Link>
+            </Button>
+          ) : canCreate ? (
+            <Button type="button" onClick={() => setOpen(true)}>
+              {createLabel}
+            </Button>
+          ) : null}
         </div>
-
-        {canCreate ? (
-          <Button type="button" onClick={() => setOpen(true)}>
-            {createLabel}
-          </Button>
-        ) : null}
-      </div>
+      ) : null}
 
       {notice ? <Alert variant="info" messages={[notice]} /> : null}
 
@@ -85,14 +101,16 @@ export function SetupScreen({
 
       {/* A dialog, not the side panel this was: these setup forms are three or four short
           fields, and none of them needs the table behind it to stay readable while you type. */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>{createTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="mt-5">{createForm(() => setOpen(false))}</div>
-        </DialogContent>
-      </Dialog>
+      {createForm ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent size="md">
+            <DialogHeader>
+              <DialogTitle>{createTitle}</DialogTitle>
+            </DialogHeader>
+            <div className="mt-5">{createForm(() => setOpen(false))}</div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

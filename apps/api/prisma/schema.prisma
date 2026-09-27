@@ -3071,6 +3071,15 @@ model SupplierBill {
   revision                  Int             @default(1)
   createdBy                 String          @map("created_by")
   approvedBy                String?         @map("approved_by")
+  // Return for correction: SUBMITTED → DRAFT with a reason; the latest return is kept here and
+  // every return is in the audit trail (AuditLog.reason).
+  returnedAt                DateTime?       @map("returned_at")
+  returnedBy                String?         @map("returned_by")
+  returnReason              String?         @map("return_reason")
+  // Reject (final): SUBMITTED → REJECTED with a reason. Terminal; frees the invoice number.
+  rejectedAt                DateTime?       @map("rejected_at")
+  rejectedBy                String?         @map("rejected_by")
+  rejectionReason           String?         @map("rejection_reason")
   approvedAt                DateTime?       @map("approved_at")
   createdAt                 DateTime        @default(now()) @map("created_at")
   updatedAt                 DateTime        @updatedAt @map("updated_at")
@@ -3081,7 +3090,11 @@ model SupplierBill {
   allocations                SupplierPaymentAllocation[]
   advanceEvidenceAllocations BuyerAdvanceEvidenceAllocation[]
 
-  @@unique([organizationId, supplierId, supplierInvoiceNumberNorm])
+  // One LIVE bill per supplier invoice number (ADR-037 amendment, 2026-09-27): a partial unique
+  // index in migration 20260927120000 — `WHERE document_status NOT IN ('REJECTED','CANCELLED')` —
+  // so a rejected bill frees its number for the corrected one. Prisma cannot express a partial
+  // index, so the schema carries only the plain lookup index below.
+  @@index([organizationId, supplierId, supplierInvoiceNumberNorm], map: "supplier_bills_organization_id_supplier_id_supplier_invoice_idx")
   @@unique([organizationId, billNumber])
   @@index([organizationId, postingStatus])
   @@index([supplierId])

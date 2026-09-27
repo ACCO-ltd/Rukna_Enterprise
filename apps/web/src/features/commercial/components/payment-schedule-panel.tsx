@@ -10,17 +10,18 @@ import type {
   CommercialSummaryResponse,
   ProgrammeMilestoneResponse,
 } from '@erp/types';
-import { Alert, Badge, Button, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Badge, Button, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useCreateMilestone, useMilestones } from '@/features/programme/hooks/use-programme';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
+import { statusTone } from '@/lib/status-registry';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
-import { dueStatus, isBilledInstallment, paymentInstallmentTone } from '../presentation';
+import { dueStatus, isBilledInstallment } from '../presentation';
 import { errorText } from './commercial-workspace';
 
 type Installment = CommercialPaymentScheduleInstallment;
@@ -262,9 +263,9 @@ function InstallmentRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge tone={paymentInstallmentTone(inst.status)}>
+        <StatusPill tone={statusTone(inst.status, 'paymentInstallment')}>
           {t(`paymentSchedule.status.${inst.status}`)}
-        </Badge>
+        </StatusPill>
       </TableCell>
       <TableCell>
         <MilestoneCell inst={inst} canManageLink={canManageLink} onLink={onLink} t={t} />
@@ -335,7 +336,7 @@ function VariationChildRow({
       <TableCell />
       <TableCell>
         {line.amount !== null ? (
-          <Badge tone={isOmission ? 'warning' : 'live'}>
+          <Badge tone="neutral">
             {isOmission
               ? t('paymentSchedule.variation.omission')
               : t('paymentSchedule.variation.addition')}
@@ -408,11 +409,11 @@ function MilestoneCell({
   return (
     <div className="flex items-center gap-2">
       <span className="font-mono text-xs text-foreground">{milestone.code}</span>
-      <Badge tone={verified ? 'live' : 'warning'}>
+      <StatusPill tone={statusTone(milestone.status, 'programmeMilestone')}>
         {verified
           ? t('paymentSchedule.milestone.verified')
           : t('paymentSchedule.milestone.planned')}
-      </Badge>
+      </StatusPill>
       {canManageLink ? (
         <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onLink}>
           {t('paymentSchedule.milestone.change')}

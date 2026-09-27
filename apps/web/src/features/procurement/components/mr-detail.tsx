@@ -25,6 +25,7 @@ import {
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useModuleTrail } from '@/components/layout/module-chrome';
 import { formatDate, formatNumber } from '@/lib/format';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 
@@ -51,6 +52,7 @@ export function MrDetail({ id }: { id: string }) {
   const locale = useLocale() as 'en' | 'ar';
 
   const mr = useMaterialRequest(id);
+  useModuleTrail(mr.data?.mrNumber);
   const projects = useProjects();
   const [pending, setPending] = useState<PendingAction | null>(null);
 
@@ -107,16 +109,16 @@ export function MrDetail({ id }: { id: string }) {
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {request.mrNumber}
             </span>
-            <ProcurementStatusBadge status={request.status} />
+            <ProcurementStatusBadge vocabulary="materialRequest" status={request.status} />
             <Badge tone="neutral">
               {request.requestScope === 'PROJECT' ? t('scopeProject') : t('scopeOrganization')}
             </Badge>
           </div>
 
           {/* Primary heading */}
-          <h1 className="mt-2 text-h1 font-bold text-foreground">
+          <h2 className="mt-2 text-h1 font-bold text-foreground">
             {request.description ?? t('detailTitle', { number: request.mrNumber })}
-          </h1>
+          </h2>
 
           {/* Subtitle: project name */}
           {projectName ? (

@@ -20,5 +20,5 @@ export function ProjectCategoryBadge({
     return <Badge tone="neutral">{t('display.untyped')}</Badge>;
   }
 
-  return <Badge tone="info">{t(`categories.${category}`)}</Badge>;
+  return <Badge tone="neutral">{t(`categories.${category}`)}</Badge>;
 }

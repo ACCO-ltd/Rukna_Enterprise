@@ -4,14 +4,14 @@ import * as React from 'react';
 import Link from 'next/link';
 import { GitBranch } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, EmptyState, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Button, EmptyState, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
 import type { CommercialSummaryResponse, VariationOrderListItem } from '@erp/types';
 
 import { formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useBillingPackages, useVariations } from '../hooks/use-commercial';
 import { summariseVariations, variationKind } from '../variations-summary';
-import { variationStatusTone } from '../presentation';
 import { errorText } from './commercial-workspace';
 import { VariationDetailSheet } from './variation-detail-sheet';
 import {
@@ -263,7 +263,7 @@ function VariationRow({
         {vo.proposedTimeImpactDays === null ? '—' : t('daysShort', { n: vo.proposedTimeImpactDays })}
       </TableCell>
       <TableCell>
-        <Badge tone={variationStatusTone(vo.status)}>{t(`status.${vo.status}`)}</Badge>
+        <StatusPill tone={statusTone(vo.status, 'variation')}>{t(`status.${vo.status}`)}</StatusPill>
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <VariationBillingChip status={vo.status} billing={billing} />

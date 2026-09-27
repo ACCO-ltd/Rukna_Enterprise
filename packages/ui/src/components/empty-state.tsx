@@ -86,7 +86,7 @@ export function EmptyState({
   const inner = (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
       {icon ? (
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-subtle text-muted-foreground">
+        <span className="flex h-12 w-12 items-center justify-center rounded-panel border border-border bg-surface-subtle text-muted-foreground">
           {icon}
         </span>
       ) : null}

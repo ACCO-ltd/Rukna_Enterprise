@@ -113,15 +113,13 @@ export function MaterialsList() {
     {
       key: 'status',
       header: tc('status'),
-      render: (material) => <ProcurementStatusBadge status={material.status} />,
+      render: (material) => <ProcurementStatusBadge vocabulary="masterData" status={material.status} />,
     },
   ];
 
   return (
     <>
       <SetupScreen
-        title={t('title')}
-        subtitle={t('subtitle')}
         notice={t('activeOnlyNotice')}
         createLabel={t('new')}
         createTitle={t('createTitle')}

@@ -1,11 +1,12 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Alert, SectionHeader, Skeleton } from '@erp/ui';
+import { Alert, SectionHeader, Skeleton, StatusPill } from '@erp/ui';
 import { TrendingUp } from 'lucide-react';
-import type { ProgressCurveSource, ProgressScheduleStatus } from '@erp/types';
+import type { ProgressCurveSource } from '@erp/types';
 
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useProgressCurve } from '../hooks/use-progress';
 import { CaptureSnapshotAction } from './capture-snapshot-action';
@@ -16,18 +17,6 @@ import { WorkPackageProgressPanel } from './work-package-progress-panel';
 import type { ProgressView } from './progress-tab';
 import { ProgressCurveChart } from './progress-curve-chart';
 import { RefButton, RefCard, RefCardBody, RefCardHeader, RefEmpty, RefPill, RefStatTile, type RefTone } from './ref-ui';
-
-/**
- * The schedule-status chip *is* a status (ahead/on-track/behind), so it colours by meaning. This is
- * the one place the Performance view colours by status; the curve itself stays on the `--chart-*`
- * ramp. Mirrors the headline band so the tab reads one vocabulary.
- */
-const SCHEDULE_TONE: Record<ProgressScheduleStatus, RefTone> = {
-  AHEAD: 'green',
-  ON_TRACK: 'blue',
-  BEHIND: 'amber',
-  INSUFFICIENT_DATA: 'gray',
-};
 
 /**
  * Where the planned line came from (Master Schedule P3, ADR-029). A frozen, governing baseline is
@@ -177,11 +166,12 @@ function ProgressCurvePanel({
                 ? t('curve.source.baseline', { version: curve.baselineVersion ?? 0 })
                 : t(`curve.source.${curve.baselineSource}`)}
             </RefPill>
-            <RefPill tone={SCHEDULE_TONE[status]}>
+            {/* The schedule verdict is a status, toned by the registry (ADR-034). */}
+            <StatusPill tone={statusTone(status, 'scheduleHealth')}>
               {varianceLabel === null
                 ? t(`curve.status.${status}`)
                 : `${t(`curve.status.${status}`)} · ${varianceLabel}`}
-            </RefPill>
+            </StatusPill>
             <CaptureSnapshotAction projectId={projectId} />
           </div>
         }

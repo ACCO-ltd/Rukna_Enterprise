@@ -92,7 +92,7 @@ export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail })
                         allocation.clientInvoiceId.slice(-8)}
                     </Link>
                     {reversed ? (
-                      <Badge tone="warning" className="ms-2">
+                      <Badge tone="attention" className="ms-2">
                         {t('reversed')}
                       </Badge>
                     ) : null}

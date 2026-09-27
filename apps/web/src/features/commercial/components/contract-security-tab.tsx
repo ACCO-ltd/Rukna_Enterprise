@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Textarea } from '@erp/ui';
+import { Alert, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Textarea, StatusPill, StatusText } from '@erp/ui';
 import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp/types';
 
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import {
   useAdvanceContract,
   useContract,
@@ -23,7 +24,6 @@ import {
 import type { ContractDetail } from '@/features/contracts/types';
 
 import { commercialKeys } from '../hooks/use-commercial';
-import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from '../presentation';
 import { FactRow, SectionCard } from './commercial-ui';
 
 /** The transition that becomes available from each state, where one exists (label keys). */
@@ -206,9 +206,9 @@ export function ContractStatusPanel({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
           <span className="text-caption text-muted-foreground">{t('contractStatus_.current')}</span>
-          <Badge tone={contractStatusTone(contract.status)}>
+          <StatusPill tone={statusTone(contract.status, 'contract')}>
             {t(`contractStatus.${contract.status}`)}
-          </Badge>
+          </StatusPill>
         </div>
 
         <div className="flex items-center gap-2">
@@ -559,13 +559,15 @@ function GuaranteesPanel({
                     the server's own policy, not a status. */}
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">
-                    <Badge tone={guaranteeStatusTone(guarantee.status)}>
+                    {/* ACCO does not use guarantees, so there is no registry vocabulary for them:
+                        these resolve through the registry's generic fallback (ADR-034). */}
+                    <StatusPill tone={statusTone(guarantee.status)}>
                       {tRoot(`guaranteeStatus.${guarantee.status}`)}
-                    </Badge>
+                    </StatusPill>
                     {guarantee.attention !== 'NONE' ? (
-                      <Badge tone={guaranteeAttentionTone(guarantee.attention)}>
+                      <StatusText tone={statusTone(guarantee.attention)}>
                         {tRoot(`guaranteeAttention.${guarantee.attention}`)}
-                      </Badge>
+                      </StatusText>
                     ) : null}
                   </div>
                 </TableCell>
@@ -657,7 +659,7 @@ function ContractDeliverablesPanel({
                   {formatDate(deliverable.dueDate, locale) ?? '—'}
                 </TableCell>
                 <TableCell>
-                  <Badge tone={deliverable.completedAt ? 'live' : 'neutral'}>
+                  <Badge tone={deliverable.completedAt ? 'success' : 'neutral'}>
                     {deliverable.completedAt ? t('completed') : t('open')}
                   </Badge>
                 </TableCell>

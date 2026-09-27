@@ -285,7 +285,7 @@ function ExceptionMatch({
       ) : null}
 
       {resolving ? (
-        <ResolveExceptionDrawer billId={bill.id} onClose={() => setResolving(false)} />
+        <ResolveExceptionDialog billId={bill.id} onClose={() => setResolving(false)} />
       ) : null}
     </div>
   );
@@ -516,9 +516,14 @@ function VarianceValue({
   );
 }
 
-// ─── Resolve exception drawer ──────────────────────────────────────────────────────
+// ─── Resolve exception dialog ──────────────────────────────────────────────────────
 
-function ResolveExceptionDrawer({
+/**
+ * Resolve a fresh match exception: the reason chosen decides the action (approve, dispute,
+ * require a PO revision or a receipt correction). Exported so the bill's header can offer it as
+ * the primary command when posting is blocked by the match — one dialog, opened from two places.
+ */
+export function ResolveExceptionDialog({
   billId,
   onClose,
 }: {

@@ -1,542 +1,153 @@
 'use client';
 
-import { Fragment, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import { CaretRightIcon } from '@phosphor-icons/react';
+import { ChevronLeft, Layers } from 'lucide-react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 
-import {
-  groupNavItems,
-  isActiveNavItem,
-  NAV_DOMAINS,
-  STANDALONE_NAV,
-  type NavDomain,
-  type NavItem,
-} from './nav-groups';
+import { isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV, type NavDomain, type NavIconKey } from './nav-groups';
 import { NavIcon } from './nav-icon';
-import { navCollapseStore } from './nav-collapse-store';
 import { sidebarCollapseStore } from './sidebar-collapse-store';
 
 interface GlobalSidebarProps {
+  /**
+   * `docked` — the fixed column: an icon rail between `md` and `lg`, a labelled column from
+   * `lg` (unless the user has collapsed it). `drawer` — the phone menu: always labelled.
+   */
+  variant?: 'docked' | 'drawer';
+  /** Called after a link is followed — the drawer closes itself with it. */
   onNavigate?: () => void;
-  collapsed?: boolean;
-  onToggleCollapsed?: () => void;
 }
 
-function toInitials(email: string): string {
-  const local = email.split('@')[0] ?? '';
-  const parts = local.replace(/[._-]+/g, ' ').trim().split(/\s+/);
-  return parts.length >= 2
-    ? ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase()
-    : local.slice(0, 2).toUpperCase();
-}
-
-export function GlobalSidebar({
-  onNavigate,
-  collapsed: controlledCollapsed,
-  onToggleCollapsed,
-}: GlobalSidebarProps) {
+/**
+ * The global sidebar lists modules and nothing else (ADR-035).
+ *
+ * A module's pages live in its own tab bar under the module header, so the sidebar no longer
+ * carries a second level — no expanding sections, no flyouts. One row per module, lit for
+ * every route beneath it, is the whole job; there is exactly one navigation system per page.
+ */
+export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarProps) {
   const t = useTranslations('platform');
   const pathname = usePathname();
-  const { can, moduleVisible } = usePermissions();
+  const { moduleVisible } = usePermissions();
   const { user } = useSession();
-  const localCollapsed = useSyncExternalStore(
+  const userCollapsed = useSyncExternalStore(
     sidebarCollapseStore.subscribe,
     sidebarCollapseStore.getSnapshot,
     sidebarCollapseStore.getServerSnapshot,
   );
-  const sidebarCollapsed = controlledCollapsed ?? localCollapsed;
 
-  const toggleSidebar = () => {
-    if (onToggleCollapsed) {
-      onToggleCollapsed();
-      return;
-    }
-    sidebarCollapseStore.toggle();
-  };
+  const docked = variant === 'docked';
+  // Labels show in the drawer always; docked, only from `lg` and only when not collapsed.
+  const labelClass = docked ? (userCollapsed ? 'sr-only' : 'sr-only lg:not-sr-only') : undefined;
+  const railClass = docked ? (userCollapsed ? 'justify-center px-0' : 'justify-center px-0 lg:justify-start lg:px-3') : 'px-3';
 
-  const collapsed = useSyncExternalStore(
-    navCollapseStore.subscribe,
-    navCollapseStore.getSnapshot,
-    navCollapseStore.getServerSnapshot,
-  );
+  const domainActive = (domain: NavDomain) =>
+    isActiveNavItem(pathname, domain.href) ||
+    domain.items.some((item) => !item.crossLink && isActiveNavItem(pathname, item.href));
 
-  const isDomainActive = (domain: NavDomain): boolean =>
-    domain.items.some((item) => isActiveNavItem(pathname, item.href));
-
-  /** Domain stays expanded when any of its items is the current page. */
-  const isDomainCollapsed = (domain: NavDomain): boolean => {
-    if (isDomainActive(domain)) return false;
-    return collapsed.includes(domain.labelKey);
-  };
-
-  const toggleDomain = (domain: NavDomain): void => {
-    navCollapseStore.toggle(domain.labelKey);
-  };
+  const rows: Array<{ href: string; labelKey: string; iconKey: NavIconKey; active: boolean }> = [
+    ...STANDALONE_NAV.map((item) => ({
+      href: item.href,
+      labelKey: item.labelKey,
+      iconKey: item.iconKey ?? 'grid',
+      active: isActiveNavItem(pathname, item.href),
+    })),
+    ...NAV_DOMAINS.filter((domain) => moduleVisible(domain.moduleKey)).map((domain) => ({
+      href: domain.href,
+      labelKey: domain.labelKey,
+      iconKey: domain.iconKey,
+      active: domainActive(domain),
+    })),
+  ];
 
   return (
     <div className="flex h-full flex-col bg-surface text-foreground">
-
-      {/* ── Brand header ──────────────────────────────────────────────── */}
-      <div className={cn(
-        'relative flex h-14 shrink-0 items-center border-b border-border transition-[padding,gap] duration-300',
-        sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-4',
-      )}>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary text-brand-on-primary shadow-[var(--shadow-control)]">
-          <LogoMark />
-        </div>
-        <div className={cn(
-          'min-w-0 overflow-hidden transition-[width,opacity] duration-200',
-          sidebarCollapsed ? 'w-0 opacity-0' : 'w-32 opacity-100',
-        )}>
-          <span className="block text-[15px] font-bold text-brand-ink">
-            Rukna ERP
-          </span>
+      {/* ── Brand ─────────────────────────────────────────────────────── */}
+      <div className={cn('flex h-14 shrink-0 items-center gap-3 border-b border-border', railClass)}>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-brand-ink text-brand-on-primary">
+          <Layers size={16} aria-hidden="true" />
+        </span>
+        <span className={cn('min-w-0', labelClass)}>
+          <span className="block text-body-sm font-semibold text-foreground">Rukna ERP</span>
           {user ? (
-            <span className="block truncate text-[10px] font-semibold uppercase text-brand-primary/70">
+            <span className="block truncate text-micro uppercase tracking-wider text-muted-foreground">
               {user.tenantSlug}
             </span>
           ) : null}
-        </div>
-        {!onNavigate ? (
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className={cn(
-              'ms-auto hidden h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-sm transition hover:border-brand-primary/30 hover:bg-brand-accent hover:text-brand-primary lg:flex',
-              sidebarCollapsed && 'absolute start-[3.9rem] ms-0 shadow-lg',
-            )}
-            aria-label={sidebarCollapsed ? t('shell.expandSidebar') : t('shell.collapseSidebar')}
-          >
-            <ChevronIcon className={cn('transition-transform duration-300 rtl:rotate-180', sidebarCollapsed && 'rotate-180 rtl:rotate-0')} />
-          </button>
-        ) : null}
+        </span>
       </div>
 
-      {/* ── Primary nav ───────────────────────────────────────────────── */}
+      {/* ── Modules ───────────────────────────────────────────────────── */}
       <nav
         aria-label={t('shell.primaryNavLabel')}
-        className={cn(
-          'flex-1 px-2 py-3',
-          sidebarCollapsed
-            ? 'overflow-visible'
-            : 'overflow-y-auto [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]',
-        )}
+        // Docked, the rail's tooltips sit outside the column; a scroll container would clip them.
+        className={cn('flex-1 px-2 py-3', docked ? 'overflow-visible' : 'overflow-y-auto')}
       >
-        {/* Dashboard — standalone */}
-        <div className="mb-2 px-1">
-          <ul>
-            {STANDALONE_NAV.map((item) => (
-              <StandaloneLink
-                key={item.href}
-                item={item}
-                pathname={pathname}
-                t={t}
-                onNavigate={onNavigate}
-                collapsed={sidebarCollapsed}
-              />
-            ))}
-          </ul>
-        </div>
-
-        {/* Domains */}
-        <div className="space-y-0.5">
-          {NAV_DOMAINS.map((domain) => {
-            if (!moduleVisible(domain.moduleKey)) return null;
-
-            // A flat domain has no second level in here at all: one row, no chevron, no
-            // child list, no flyout. Its destinations live in its own workspace tab bar.
-            if (domain.flat) {
-              return (
-                <FlatDomainLink
-                  key={domain.labelKey}
-                  domain={domain}
-                  pathname={pathname}
-                  t={t}
-                  onNavigate={onNavigate}
-                  collapsed={sidebarCollapsed}
-                />
-              );
-            }
-
-            const active = isDomainActive(domain);
-            const shut = isDomainCollapsed(domain);
-            const panelId = `nav-domain-${domain.labelKey}`;
-
+        <ul className="space-y-1">
+          {rows.map((row) => {
+            const label = t(`nav.${row.labelKey}`);
             return (
-              <div key={domain.labelKey} className="group/domain relative">
-                {/* Domain header row */}
-                <div
+              <li key={row.href} className="group/row relative">
+                <Link
+                  href={row.href}
+                  onClick={onNavigate}
+                  aria-current={row.active ? 'page' : undefined}
                   className={cn(
-                    'mx-1 mb-0.5 flex items-center rounded-lg border border-transparent transition-colors',
-                    active && 'border-brand-primary/10 bg-brand-accent/60',
-                    sidebarCollapsed && active && 'border-brand-primary/15 bg-brand-accent',
+                    'flex min-h-11 items-center gap-3 rounded-control text-body-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+                    railClass,
+                    row.active
+                      ? 'bg-surface-selected text-foreground'
+                      : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
                   )}
                 >
-                  {/* Label — navigates to domain home */}
-                  <Link
-                    href={domain.href}
-                    onClick={onNavigate}
-                    title={sidebarCollapsed ? t(`nav.${domain.labelKey}`) : undefined}
+                  <NavIcon iconKey={row.iconKey} className={cn('shrink-0', row.active && 'text-brand-primary')} />
+                  <span className={cn('truncate', labelClass)}>{label}</span>
+                </Link>
+                {/* Rail tooltip — the label the rail hides, on hover and keyboard focus. */}
+                {docked ? (
+                  <span
+                    aria-hidden="true"
                     className={cn(
-                      'flex min-h-10 flex-1 items-center rounded-md text-[13px] font-semibold transition-all duration-200',
-                      sidebarCollapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
-                      active
-                        ? 'text-brand-primary'
-                        : 'text-brand-ink/82 hover:bg-muted/70 hover:text-brand-ink',
+                      'pointer-events-none absolute start-[calc(100%+0.5rem)] top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-control bg-foreground px-2 py-1 text-caption font-medium text-background opacity-0 shadow-e3 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+                      !userCollapsed && 'lg:hidden',
                     )}
                   >
-                    <NavIcon iconKey={domain.iconKey} className={cn('shrink-0', active ? 'opacity-100' : 'opacity-70')} />
-                    <span className={cn('truncate', sidebarCollapsed && 'sr-only')}>
-                      {t(`nav.${domain.labelKey}`)}
-                    </span>
-                  </Link>
-
-                  {/* Chevron — toggles expand/collapse only */}
-                  <button
-                    type="button"
-                    onClick={() => toggleDomain(domain)}
-                    aria-expanded={!shut}
-                    aria-controls={panelId}
-                    aria-label={shut
-                      ? t('shell.expandSection', { section: t(`nav.${domain.labelKey}`) })
-                      : t('shell.collapseSection', { section: t(`nav.${domain.labelKey}`) })}
-                    className={cn(
-                      'flex h-10 w-9 shrink-0 items-center justify-center rounded-e-md transition-colors duration-150',
-                      sidebarCollapsed && 'hidden',
-                      active
-                        ? 'text-brand-primary/70 hover:bg-brand-accent hover:text-brand-primary'
-                        : 'text-muted-foreground/70 hover:bg-muted hover:text-foreground',
-                    )}
-                  >
-                    <ChevronIcon
-                      className={cn(
-                        'transition-transform duration-200 rtl:rotate-180',
-                        !shut && 'rotate-90 rtl:rotate-90',
-                      )}
-                    />
-                  </button>
-                </div>
-
-                {sidebarCollapsed ? (
-                  <div className="pointer-events-none absolute start-[calc(100%-0.25rem)] top-0 z-50 w-64 translate-x-1 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover/domain:pointer-events-auto group-hover/domain:translate-x-0 group-hover/domain:opacity-100 group-focus-within/domain:pointer-events-auto group-focus-within/domain:translate-x-0 group-focus-within/domain:opacity-100 rtl:-translate-x-1 rtl:group-hover/domain:translate-x-0 rtl:group-focus-within/domain:translate-x-0">
-                    <div className="ms-3 overflow-hidden rounded-lg border border-border bg-surface-elevated p-2 shadow-[var(--shadow-overlay)]">
-                      <Link
-                        href={domain.href}
-                        onClick={onNavigate}
-                        className="mb-1 flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-semibold text-brand-ink hover:bg-muted"
-                      >
-                        <NavIcon iconKey={domain.iconKey} className="text-brand-primary" />
-                        {t(`nav.${domain.labelKey}`)}
-                      </Link>
-                      <div className="my-1 h-px bg-border" />
-                      <NavItemList
-                        items={domain.items}
-                        pathname={pathname}
-                        t={t}
-                        can={can}
-                        onNavigate={onNavigate}
-                        flyout
-                      />
-                    </div>
-                  </div>
+                    {label}
+                  </span>
                 ) : null}
-
-                <div className={cn(
-                  'grid transition-[grid-template-rows,opacity] duration-300 ease-out',
-                  shut || sidebarCollapsed
-                    ? 'grid-rows-[0fr] opacity-0'
-                    : 'grid-rows-[1fr] opacity-100',
-                )}>
-                  <NavItemList
-                    id={panelId}
-                    items={domain.items}
-                    pathname={pathname}
-                    t={t}
-                    can={can}
-                    onNavigate={onNavigate}
-                  />
-                </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </nav>
 
-      {/* ── User footer ───────────────────────────────────────────────── */}
-      {user ? (
-        <div className={cn(
-          'shrink-0 border-t border-border py-3 transition-[padding] duration-300',
-          sidebarCollapsed ? 'px-2' : 'px-4',
-        )}>
-          <div className={cn('flex items-center', sidebarCollapsed ? 'justify-center' : 'gap-2.5')}>
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-primary text-[11px] font-semibold text-brand-on-primary">
-              {toInitials(user.email)}
-            </div>
-            <div className={cn(
-              'min-w-0 overflow-hidden transition-[width,opacity] duration-200',
-              sidebarCollapsed ? 'w-0 opacity-0' : 'w-44 opacity-100',
-            )}>
-              <p className="truncate text-[12px] font-semibold text-brand-ink">{user.email}</p>
-              <p className="truncate text-[10px] uppercase text-muted-foreground">
-                {user.tenantSlug}
-              </p>
-            </div>
-          </div>
+      {/* ── Collapse (docked, lg+) ────────────────────────────────────── */}
+      {docked ? (
+        <div className="hidden shrink-0 border-t border-border p-2 lg:block">
+          <button
+            type="button"
+            onClick={() => sidebarCollapseStore.toggle()}
+            className={cn(
+              'flex min-h-10 w-full items-center gap-3 rounded-control text-body-sm text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+              userCollapsed ? 'justify-center' : 'px-3',
+            )}
+            aria-label={userCollapsed ? t('shell.expandSidebar') : t('shell.collapseSidebar')}
+          >
+            <ChevronLeft
+              size={16}
+              aria-hidden="true"
+              className={cn('transition-transform', userCollapsed && 'rotate-180')}
+            />
+            {userCollapsed ? null : <span>{t('shell.collapseSidebar')}</span>}
+          </button>
         </div>
       ) : null}
     </div>
-  );
-}
-
-// ─── Flat domain row (Administration) ─────────────────────────────────────────
-
-interface FlatDomainLinkProps {
-  domain: NavDomain;
-  pathname: string;
-  t: ReturnType<typeof useTranslations>;
-  onNavigate?: () => void;
-  collapsed?: boolean;
-}
-
-/**
- * A domain that owns a workspace rather than a column.
- *
- * It looks exactly like the Dashboard row because it behaves exactly like it: one destination,
- * one click. The row stays lit for every route beneath the domain — someone on Audit logs is
- * still in Administration, and the sidebar has to keep saying so once the child rows that used
- * to say it are gone.
- */
-function FlatDomainLink({ domain, pathname, t, onNavigate, collapsed }: FlatDomainLinkProps) {
-  const isActive = isActiveNavItem(pathname, domain.href);
-  const label = t(`nav.${domain.labelKey}`);
-
-  return (
-    <div className="group/flat relative mx-1">
-      <Link
-        href={domain.href}
-        onClick={onNavigate}
-        aria-current={isActive ? 'page' : undefined}
-        title={collapsed ? label : undefined}
-        className={cn(
-          'relative flex min-h-10 items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
-          collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
-          isActive
-            ? 'bg-brand-accent text-brand-primary before:absolute before:inset-y-1.5 before:-start-px before:w-0.5 before:rounded-full before:bg-brand-primary'
-            : 'text-brand-ink/82 hover:bg-muted/70 hover:text-brand-ink',
-        )}
-      >
-        <NavIcon
-          iconKey={domain.iconKey}
-          className={cn('shrink-0', isActive ? 'opacity-100' : 'opacity-70')}
-        />
-        <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
-      </Link>
-      {collapsed ? (
-        <span className="pointer-events-none absolute start-[calc(100%+0.75rem)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[11px] font-semibold text-background opacity-0 shadow-[var(--shadow-overlay)] transition-[opacity,transform] duration-150 group-hover/flat:translate-x-0 group-hover/flat:opacity-100 group-focus-within/flat:translate-x-0 group-focus-within/flat:opacity-100">
-          {label}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-// ─── Standalone link (Dashboard) ──────────────────────────────────────────────
-
-interface StandaloneLinkProps {
-  item: NavItem;
-  pathname: string;
-  t: ReturnType<typeof useTranslations>;
-  onNavigate?: () => void;
-  collapsed?: boolean;
-}
-
-function StandaloneLink({ item, pathname, t, onNavigate, collapsed }: StandaloneLinkProps) {
-  const isActive = isActiveNavItem(pathname, item.href);
-  return (
-    <li className="group/standalone relative">
-      <Link
-        href={item.href}
-        onClick={onNavigate}
-        aria-current={isActive ? 'page' : undefined}
-        title={collapsed ? t(`nav.${item.labelKey}`) : undefined}
-        className={cn(
-          'relative flex min-h-10 items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
-          collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
-          isActive
-            ? 'bg-brand-accent font-semibold text-brand-primary before:absolute before:inset-y-1.5 before:-start-px before:w-0.5 before:rounded-full before:bg-brand-primary'
-            : 'text-brand-ink/82 hover:bg-muted/70 hover:text-brand-ink',
-        )}
-      >
-        {item.iconKey ? (
-          <NavIcon
-            iconKey={item.iconKey}
-            className={cn('shrink-0', isActive ? 'opacity-100' : 'opacity-70')}
-          />
-        ) : null}
-        <span className={cn('truncate', collapsed && 'sr-only')}>{t(`nav.${item.labelKey}`)}</span>
-      </Link>
-      {collapsed ? (
-        <span className="pointer-events-none absolute start-[calc(100%+0.75rem)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[11px] font-semibold text-background opacity-0 shadow-[var(--shadow-overlay)] transition-[opacity,transform] duration-150 group-hover/standalone:translate-x-0 group-hover/standalone:opacity-100 group-focus-within/standalone:translate-x-0 group-focus-within/standalone:opacity-100 rtl:-translate-x-1 rtl:group-hover/standalone:translate-x-0 rtl:group-focus-within/standalone:translate-x-0">
-          {t(`nav.${item.labelKey}`)}
-        </span>
-      ) : null}
-    </li>
-  );
-}
-
-// ─── Domain item list (with labelled groups) ──────────────────────────────────
-
-interface NavItemListProps {
-  items: NavItem[];
-  pathname: string;
-  t: ReturnType<typeof useTranslations>;
-  can: (permission: `${string}:${string}`) => boolean;
-  onNavigate?: () => void;
-  /** Flyout (collapsed-sidebar hover panel): no connector line, plain list. */
-  flyout?: boolean;
-  id?: string;
-}
-
-/**
- * Renders a domain's items, inserting a quiet micro-label before each labelled group
- * (e.g. Procurement's "Setup"). Permission-hidden items are dropped first, so a group whose
- * every item is gated away renders neither its label nor an empty gap. The leading ungrouped
- * run carries no label — it is the domain's operational spine.
- *
- * The expanded sidebar keeps its vertical connector line on the list; the flyout does not.
- */
-function NavItemList({ items, pathname, t, can, onNavigate, flyout = false, id }: NavItemListProps) {
-  const visibleGroups = groupNavItems(items)
-    .map((group) => ({
-      ...group,
-      items: group.items.filter(
-        (item) => !item.permissionKey || can(item.permissionKey as `${string}:${string}`),
-      ),
-    }))
-    .filter((group) => group.items.length > 0);
-
-  return (
-    <ul
-      id={id}
-      className={cn(
-        'space-y-0.5',
-        flyout
-          ? ''
-          : 'relative mb-2 min-h-0 overflow-hidden ps-8 pe-1 before:absolute before:bottom-3 before:start-[1.15rem] before:top-0 before:w-px before:bg-border-strong/70',
-      )}
-    >
-      {visibleGroups.map((group) => (
-        <Fragment key={group.key ?? '__ungrouped'}>
-          {group.key ? (
-            <li
-              className={cn(
-                'mb-0.5 mt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70',
-                flyout ? 'px-2.5' : 'relative bg-surface ps-0.5',
-              )}
-            >
-              {t(`nav.group.${group.key}`)}
-            </li>
-          ) : null}
-          {group.items.map((item) => (
-            <NavLink
-              key={item.href}
-              item={item}
-              pathname={pathname}
-              t={t}
-              onNavigate={onNavigate}
-              flyout={flyout}
-            />
-          ))}
-        </Fragment>
-      ))}
-    </ul>
-  );
-}
-
-// ─── Domain nav link ──────────────────────────────────────────────────────────
-
-interface NavLinkProps {
-  item: NavItem;
-  pathname: string;
-  t: ReturnType<typeof useTranslations>;
-  onNavigate?: () => void;
-  flyout?: boolean;
-}
-
-function NavLink({ item, pathname, t, onNavigate, flyout = false }: NavLinkProps) {
-  const isActive = isActiveNavItem(pathname, item.href);
-  const label = t(`nav.${item.labelKey}`);
-
-  if (item.disabled) {
-    return (
-      <li>
-        <span
-          className="flex min-h-9 cursor-not-allowed items-center gap-2 rounded-lg px-2.5 text-[12.5px] text-muted-foreground/60"
-          aria-disabled="true"
-          title={t('nav.comingSoon')}
-        >
-          {label}
-          <span className="ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground ring-1 ring-inset ring-border-strong">
-            {t('nav.soon')}
-          </span>
-        </span>
-      </li>
-    );
-  }
-
-  return (
-    <li>
-      <Link
-        href={item.href}
-        onClick={onNavigate}
-        aria-current={isActive ? 'page' : undefined}
-        className={cn(
-          'relative flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 text-[12.5px] transition-[background-color,color,box-shadow] duration-150 before:absolute before:-start-[0.85rem] before:top-1/2 before:h-px before:w-[0.85rem] before:bg-border-strong/70',
-          flyout && 'before:hidden',
-          isActive
-            ? 'bg-brand-accent font-semibold text-brand-primary after:absolute after:inset-y-1.5 after:-start-px after:w-0.5 after:rounded-full after:bg-brand-primary'
-            : 'font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground',
-        )}
-      >
-        {item.iconKey ? (
-          <NavIcon iconKey={item.iconKey} className={cn('shrink-0', isActive ? 'opacity-100' : 'opacity-70')} />
-        ) : null}
-        {label}
-      </Link>
-    </li>
-  );
-}
-
-// ─── Chevron ──────────────────────────────────────────────────────────────────
-
-function ChevronIcon({ className }: { className?: string }) {
-  return <CaretRightIcon size={14} weight="bold" aria-hidden="true" className={className} />;
-}
-
-// ─── Logo mark ────────────────────────────────────────────────────────────────
-
-function LogoMark() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 2L2 7l10 5 10-5-10-5z" />
-      <path d="M2 17l10 5 10-5" />
-      <path d="M2 12l10 5 10-5" />
-    </svg>
   );
 }

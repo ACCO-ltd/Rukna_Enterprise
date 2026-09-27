@@ -7,7 +7,10 @@ import { ToastProvider } from '@/providers/toast-provider';
 import { CommandMenu } from '@/features/command-menu/command-menu';
 import { toggleCommandMenu } from '@/features/command-menu/command-menu-store';
 
+import { X } from 'lucide-react';
+
 import { GlobalSidebar } from './global-sidebar';
+import { ModuleChrome, ModuleTrailProvider } from './module-chrome';
 import { TopBar } from './top-bar';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -56,9 +59,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {t('skipToContent')}
       </a>
 
-      {/* ── Desktop sidebar — persistent, fixed ──────────────────────────── */}
+      {/* ── Docked sidebar — icon rail from md, labelled column from lg ──── */}
       <aside
-        className="fixed inset-y-0 start-0 z-40 hidden w-[var(--sidebar-width)] border-e border-border bg-surface shadow-[var(--shadow-panel)] transition-[width] duration-300 ease-out lg:flex lg:flex-col"
+        className="fixed inset-y-0 start-0 z-40 hidden w-16 border-e border-border bg-surface transition-[width] duration-300 ease-out md:flex md:flex-col lg:w-[var(--sidebar-width)]"
         aria-label={t('primaryNavLabel')}
       >
         <GlobalSidebar />
@@ -66,7 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile drawer ─────────────────────────────────────────────────── */}
       {isMenuOpen ? (
-        <div className="lg:hidden">
+        <div className="md:hidden">
           <div
             className="fixed inset-0 z-40 bg-overlay"
             aria-hidden="true"
@@ -85,20 +88,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
                 aria-label={t('closeMenu')}
               >
-                <CloseIcon />
+                <X size={16} aria-hidden="true" />
               </button>
             </div>
-            <GlobalSidebar collapsed={false} onNavigate={close} />
+            <GlobalSidebar variant="drawer" onNavigate={close} />
           </div>
         </div>
       ) : null}
 
       {/* ── Content column — offset by sidebar on desktop ─────────────────── */}
-      <div className="flex min-h-screen flex-col transition-[padding] duration-300 ease-out lg:ps-[var(--sidebar-width)]">
+      <div className="flex min-h-screen flex-col transition-[padding] duration-300 ease-out md:ps-16 lg:ps-[var(--sidebar-width)]">
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
         <main id="main-content" className="flex-1 px-4 py-7 sm:px-6 lg:px-8 lg:py-8">
-          <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+          <div className="mx-auto w-full max-w-[1440px]">
+            <ModuleTrailProvider>
+              {/* Module header + tabs for whichever module owns this route (ADR-035). */}
+              <ModuleChrome />
+              {children}
+            </ModuleTrailProvider>
+          </div>
         </main>
       </div>
 
@@ -106,22 +115,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <CommandMenu />
     </div>
     </ToastProvider>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M18 6L6 18M6 6l12 12" />
-    </svg>
   );
 }

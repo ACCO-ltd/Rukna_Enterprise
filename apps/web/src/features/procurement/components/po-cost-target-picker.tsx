@@ -206,13 +206,14 @@ interface BoqNodeSelectProps {
  * otherwise). It stays disabled until a project is chosen, because a node without a project
  * is a half-specified target the backend refuses.
  */
-function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSelectProps) {
-  const t = useTranslations('procurement.costTarget');
-
+/**
+ * The BOQ cost nodes a project line may be charged to: the leaf, active nodes of the project's
+ * baselined BOQ — the contract baseline when the contract names one, otherwise the current
+ * approved version. Not the open draft: an unbaselined node is not yet a real budget line.
+ * Shared by this picker and the supplier bill's cost-line select, so both offer the same set.
+ */
+export function useProjectCostNodes(projectId: string | null) {
   const workspace = useBoqWorkspace(projectId ?? '');
-  // The baseline the cost-target must reference: the contract baseline when the contract
-  // names one, otherwise the current approved version. Not the open draft — an unbaselined
-  // node is not yet a real budget line.
   const baselineVersionId =
     workspace.data?.contractBaseline?.id ?? workspace.data?.approved?.id ?? null;
 
@@ -225,6 +226,13 @@ function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSele
 
   const loading = Boolean(projectId) && (workspace.isLoading || tree.isLoading);
   const noBaseline = Boolean(projectId) && !workspace.isLoading && baselineVersionId === null;
+  return { leafNodes, loading, noBaseline, isError: tree.isError };
+}
+
+function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSelectProps) {
+  const t = useTranslations('procurement.costTarget');
+
+  const { leafNodes, loading, noBaseline, isError } = useProjectCostNodes(projectId);
   const empty = Boolean(projectId) && !loading && !noBaseline && leafNodes.length === 0;
 
   return (
@@ -254,7 +262,7 @@ function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSele
 
       {noBaseline ? <p className="mt-1 text-xs text-muted-foreground">{t('noBaseline')}</p> : null}
       {empty ? <p className="mt-1 text-xs text-muted-foreground">{t('noLeafNodes')}</p> : null}
-      {tree.isError ? <p className="mt-1 text-xs text-danger">{t('nodesLoadFailed')}</p> : null}
+      {isError ? <p className="mt-1 text-xs text-danger">{t('nodesLoadFailed')}</p> : null}
     </div>
   );
 }
