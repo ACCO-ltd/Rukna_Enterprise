@@ -1,15 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import {
-  LayoutDashboard,
-  ListChecks,
-  ReceiptText,
-  Stamp,
-} from 'lucide-react';
-import { ViewSwitcher } from '@erp/ui';
 import type { BillingModel } from '@erp/types';
+
+import { WorkspaceSubNav } from '@/components/layout/workspace-sub-nav';
 
 /** The read model returns the enum's string form, not the enum member. */
 type BillingModelValue = `${BillingModel}`;
@@ -19,13 +13,6 @@ export type CommercialTab =
   | 'applications'
   | 'contract-milestones'
   | 'billing-collection';
-
-const ICONS: Record<CommercialTab, React.ReactNode> = {
-  overview: <LayoutDashboard size={16} strokeWidth={1.9} />,
-  applications: <Stamp size={16} strokeWidth={1.9} />,
-  'contract-milestones': <ListChecks size={16} strokeWidth={1.9} />,
-  'billing-collection': <ReceiptText size={16} strokeWidth={1.9} />,
-};
 
 /**
  * Slice 8 — consolidated 3-tab navigation (ADR-030 CONST-COM-026, S-SH-1).
@@ -69,8 +56,8 @@ export function commercialTabHref(projectId: string, tab: CommercialTab): string
  * Underline rather than segmented, matching the Progress sub-tabs on the owner's instruction
  * (2026-09-05): the two workspaces sit under the same project tab row and a reader should not
  * have to learn two different controls for the same job. The separation from the level-2 tabs
- * above comes from a shorter row, a lighter weight, and a glyph on the active view only — which
- * doubles as a non-colour signal of where you are.
+ * above comes from a shorter row and a lighter weight. Text only since the flow plan (B2,
+ * 2026-09-27): every workspace tab now uses the one `WorkspaceSubNav`.
  *
  * Unlike Progress (client-side state), these are real routes and stay deep-linkable: the switcher
  * runs in **link mode** via `renderLink`, setting `aria-current="page"` on the active view. It
@@ -89,26 +76,14 @@ export function CommercialNav({
   const tabs = commercialTabsFor(billingModel);
 
   return (
-    <ViewSwitcher
-      appearance="underline"
-      aria-label={t('label')}
+    <WorkspaceSubNav
+      label={t('label')}
       value={active}
       items={tabs.map((tab) => ({
         value: tab,
         label: t(tab),
         href: commercialTabHref(projectId, tab),
-        icon: ICONS[tab],
       }))}
-      renderLink={({ href: linkHref, active: isActive, className, children, key }) => (
-        <Link
-          key={key}
-          href={linkHref}
-          aria-current={isActive ? 'page' : undefined}
-          className={className}
-        >
-          {children}
-        </Link>
-      )}
     />
   );
 }

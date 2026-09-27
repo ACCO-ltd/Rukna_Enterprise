@@ -252,12 +252,10 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
                 </div>
               </div>
 
-              {/* One primary control and an overflow for everything else. These used to be
-                  portalled up from the Overview page, which left the other seven tabs with a
-                  header that had no actions in it at all. */}
-              {(pathname === `/projects/${id}` || advanceBlockedBySuspension) ? <ProjectActionsPanel
-                project={project}
-              /> : project.status === 'DRAFT' ? <Button variant="ghost" size="sm" asChild><Link href={`/projects/${id}#project-readiness-title`}>{t('preparation.title')}</Link></Button> : null}
+              {/* One primary control and an overflow, identical on every tab (flow plan B1). Other
+                  tabs used to show a ghost "Preparation sequence" link that read as plain text,
+                  so the header changed shape as the reader moved between tabs. */}
+              <ProjectActionsPanel project={project} />
             </div>
           ) : null}
         </div>

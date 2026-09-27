@@ -105,6 +105,17 @@ Reviewed from the 14 production screenshots (project `ACCO-HDN-26-0005`) and the
 - B6 sentence case; activity feed only on Commercial overview.
 - New **ADR-038 Project workspace anatomy** recording shell, sub-nav, metric strip, screen heading rules (ADR-035 left this as "its own decision").
 
+**Delivered (branch `feat/workspace-shell`).**
+- New `WorkspaceSubNav` and `WorkspaceSectionHeader`. Commercial, Finance, Procurement and Documents use both. Progress uses the header, and its state-driven switcher loses its icons.
+- `MetricStrip` now has `columns` and `tone`. It serves the Commercial overview and Billing & collection. Finance's `Metric` matches its type.
+- Wording:
+  - "Sales tax" replaces "VAT" in all labels.
+  - "Invoiced" replaces "Net Billed" and "Billed".
+  - "Not yet numbered" is used everywhere.
+  - Commercial and Finance titles are sentence case.
+- Finance and Documents headings moved from `h1` to `h2`.
+- The ADR-030 amendment records the three shipped Commercial tabs (decision 1).
+
 ### PR 3 — Client → project → first day
 - Client detail on `RecordHeader` + `WorkspaceTabs` (B7); primary action "New project".
 - Project form back link says the client when opened from a client.

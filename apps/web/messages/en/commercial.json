@@ -26,7 +26,7 @@
   },
   "metric": {
     "receiptsAllocated": "Posted receipt allocations",
-    "contractValue": "Contract Value",
+    "contractValue": "Contract value",
     "certified": "Certified",
     "invoiced": "Invoiced",
     "received": "Received",
@@ -61,7 +61,7 @@
     "TERMINATED": "Terminated"
   },
   "overview": {
-    "recentActivity": "Recent Commercial Activity",
+    "recentActivity": "Recent commercial activity",
     "noActivity": "No commercial activity yet.",
     "noContractTitle": "No main contract yet",
     "noContractHint": "This project has no client contract. Create one to begin certification and billing.",
@@ -76,11 +76,11 @@
     "notActiveAction": "Open contract",
     "financialStrip": {
       "contractValue": "Contract",
-      "netBilled": "Net Billed",
+      "netBilled": "Invoiced",
       "collected": "Collected",
       "outstanding": "Outstanding",
       "overdue": "Overdue",
-      "creditNoteNote": "Includes {amount} in posted credit notes",
+      "creditNoteNote": "Net of {amount} in posted credit notes",
       "draftsNote": "{count, plural, one {# draft invoice} other {# draft invoices}} not yet posted"
     },
     "currentPosition": {
@@ -107,13 +107,13 @@
       }
     },
     "attentionSection": {
-      "title": "Needs Attention",
+      "title": "Needs attention",
       "sendToClient": "Send to client",
       "followUp": "Follow up",
       "viewDispute": "View dispute"
     },
     "finalAccount": {
-      "title": "Final Account",
+      "title": "Final account",
       "hint": "Project has reached practical completion. Complete the checklist to close the contract.",
       "checklist": {
         "title": "Closing checklist",
@@ -170,7 +170,7 @@
     "number": "Contract number",
     "status": "Status",
     "client": "Client",
-    "value": "Contract Value",
+    "value": "Contract value",
     "startDate": "Start date",
     "expectedEndDate": "Expected completion",
     "frozenTitle": "Commercial baseline is locked",
@@ -351,7 +351,7 @@
     "noReceipts": "No client payments have been allocated to this contract yet.",
     "receiptsNote": "Receipts are shown with the allocations that settle this contract's invoices.",
     "methodUnknown": "Method not recorded",
-    "unnumbered": "Unnumbered draft",
+    "unnumbered": "Not yet numbered",
     "unapplied": "Unapplied",
     "unappliedTitle": "Unapplied receipts",
     "unappliedHint": "Client-level, not project-level: this cash has not been attributed to any contract yet.",
@@ -388,7 +388,7 @@
       "stageTitle": "{name} — billing",
       "milestone": "Milestone",
       "presentedTotal": "Presented total",
-      "unnumbered": "Unnumbered draft",
+      "unnumbered": "Not yet numbered",
       "treatment": {
         "STAGE_REDUCTION": "Omission",
         "CREDIT_NOTE": "Credit note"
@@ -430,7 +430,7 @@
     "noUnapplied": "No unapplied client cash.",
     "collection": {
       "summaryTitle": "Receivables summary",
-      "billed": "Billed",
+      "billed": "Invoiced",
       "collected": "Collected",
       "outstanding": "Outstanding",
       "overdue": "Overdue",
@@ -456,7 +456,7 @@
       "unappliedNote": "Goes to client unapplied cash.",
       "overdueBy": "{days} days overdue",
       "methodUnknown": "Method not recorded",
-      "unnumbered": "Unnumbered",
+      "unnumbered": "Not yet numbered",
       "vatNote": "Totals include Sales Tax (5%).",
       "paymentState": {
         "AWAITING_PAYMENT": "Awaiting payment",
@@ -740,7 +740,7 @@
     "saveFailed": "Could not save the payment schedule."
   },
   "cycle": {
-    "title": "Current Payment Cycle",
+    "title": "Current payment cycle",
     "loadFailed": "Could not load the payment cycle",
     "loadFailedHint": "The workflow state is unavailable. Retry before taking commercial action.",
     "retry": "Retry",
@@ -1336,7 +1336,7 @@
       "retry": "Retry"
     },
     "separateCharges": {
-      "title": "Separate Charges",
+      "title": "Separate charges",
       "emptyTitle": "No separate charges",
       "emptyHint": "No extra-work items have been marked as separate charges on this contract.",
       "col": {

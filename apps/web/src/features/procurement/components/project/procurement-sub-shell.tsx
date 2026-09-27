@@ -2,10 +2,12 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ExternalLink } from 'lucide-react';
-import { Button, cn } from '@erp/ui';
+import { Button } from '@erp/ui';
+
+import { WorkspaceSubNav } from '@/components/layout/workspace-sub-nav';
+import { WorkspaceSectionHeader } from '@/components/layout/workspace-section-header';
 
 /**
  * Sub-shell for the project procurement workspace.
@@ -25,7 +27,6 @@ export function ProcurementSubShell({
   children: ReactNode;
 }) {
   const t = useTranslations('procurement.project');
-  const pathname = usePathname();
 
   const tabs = [
     {
@@ -46,47 +47,24 @@ export function ProcurementSubShell({
   ];
 
   return (
-    <div className="space-y-5">
-      {/* Header row: workspace identity + escape-hatch to buyer workspace */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-h2 font-bold text-foreground">{t('title')}</h2>
-          <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-        <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
-          <Link href="/procurement/orders">
-            {t('openProcurement')}
-            <ExternalLink size={14} aria-hidden="true" />
-          </Link>
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <WorkspaceSectionHeader
+        title={t('title')}
+        description={t('subtitle')}
+        action={
+          <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
+            <Link href="/procurement/orders">
+              {t('openProcurement')}
+              <ExternalLink size={14} aria-hidden="true" />
+            </Link>
+          </Button>
+        }
+      />
 
-      {/* Underline tab nav — identical visual contract to WorkspaceTabs desktop row */}
-      <nav aria-label={t('navLabel')}>
-        <div className="flex gap-0 border-b border-border">
-          {tabs.map((tab) => {
-            const isActive =
-              pathname.endsWith(`/procurement/${tab.key}`) ||
-              pathname.includes(`/procurement/${tab.key}/`);
-            return (
-              <Link
-                key={tab.key}
-                href={tab.href}
-                className={cn(
-                  'flex min-h-11 items-center px-4 py-2 text-body-sm font-medium transition-colors',
-                  'border-b-2 -mb-px',
-                  isActive
-                    ? 'border-brand-primary text-brand-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <WorkspaceSubNav
+        label={t('navLabel')}
+        items={tabs.map((tab) => ({ value: tab.key, label: tab.label, href: tab.href }))}
+      />
 
       {/* Tab content */}
       <div data-project-procurement-root>{children}</div>

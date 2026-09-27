@@ -276,7 +276,9 @@ describe('ProjectWorkspaceShell — actions', () => {
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 
-  it('does not repeat the lifecycle actions on a working tab', () => {
+  it('keeps the same header actions on every tab (flow plan B1)', () => {
+    // The header used to lose its actions off Overview and show a ghost "Preparation sequence"
+    // link instead, so it changed shape as the reader moved between tabs.
     pathname = '/projects/project-1/boq';
 
     renderWithProviders(
@@ -286,10 +288,8 @@ describe('ProjectWorkspaceShell — actions', () => {
       MANAGER,
     );
 
-    expect(
-      screen.queryByRole('button', { name: 'Record practical completion' }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record practical completion' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Preparation sequence' })).not.toBeInTheDocument();
   });
 
   it('hands readiness to the action panel, so an unfinished draft is offered its next step', () => {

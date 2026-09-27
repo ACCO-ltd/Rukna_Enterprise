@@ -27,22 +27,35 @@ export interface Metric {
   sublabel?: string;
   /** Makes the whole segment a link to the list behind the figure. */
   href?: string;
+  /**
+   * Colours the value only when the figure is a real variance the reader must act on (ADR-034:
+   * colour a figure only for a real variance) — e.g. an overdue balance above zero.
+   */
+  tone?: 'warning' | 'danger';
 }
 
 interface MetricStripProps {
   metrics: Metric[];
   /** Labels each segment for assistive tech; omit if a nearby heading already names the group. */
   'aria-label'?: string;
+  /** Segments per row from `lg`, so the row fills instead of leaving a gap. Defaults to 5. */
+  columns?: 3 | 4 | 5;
 }
 
-export function MetricStrip({ metrics, 'aria-label': ariaLabel }: MetricStripProps) {
+const LG_COLUMNS = { 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4', 5: 'lg:grid-cols-5' } as const;
+
+/**
+ * The one metric strip for workspaces (flow plan B4): Commercial overview, Billing & collection
+ * and the dashboard all use it, so a figure's label and value look the same on every tab.
+ */
+export function MetricStrip({ metrics, 'aria-label': ariaLabel, columns = 5 }: MetricStripProps) {
   return (
     // Border rules, not cards: a top+bottom hairline on the strip and a vertical hairline
     // between segments. On a narrow viewport the row wraps to a 2-/3-column grid, still
     // hairline-separated, so it never overflows at 375px (DoD §8.2).
     <dl
       aria-label={ariaLabel}
-      className="grid grid-cols-2 border-y border-border sm:grid-cols-3 lg:grid-cols-5"
+      className={`grid grid-cols-2 border-y border-border sm:grid-cols-3 ${LG_COLUMNS[columns]}`}
     >
       {metrics.map((metric, index) => (
         <MetricSegment key={metric.label} metric={metric} index={index} />
@@ -52,7 +65,7 @@ export function MetricStrip({ metrics, 'aria-label': ariaLabel }: MetricStripPro
 }
 
 function MetricSegment({ metric, index }: { metric: Metric; index: number }) {
-  const { label, value, sublabel, href } = metric;
+  const { label, value, sublabel, href, tone } = metric;
   const unavailable = value === null || value === undefined;
 
   // Hairline between segments. A left rule on every segment except the first in its row
@@ -65,8 +78,14 @@ function MetricSegment({ metric, index }: { metric: Metric; index: number }) {
       <dt className="text-micro font-semibold uppercase text-muted-foreground">{label}</dt>
       <LtrValue
         as="dd"
-        className={`mt-1 block text-h1 font-bold tabular-nums ${
-          unavailable ? 'text-muted-foreground' : 'text-foreground'
+        className={`mt-1 block text-h2 font-semibold tabular-nums ${
+          unavailable
+            ? 'text-muted-foreground'
+            : tone === 'danger'
+              ? 'text-danger'
+              : tone === 'warning'
+                ? 'text-warning'
+                : 'text-foreground'
         }`}
       >
         {unavailable ? '—' : value}

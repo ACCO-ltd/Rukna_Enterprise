@@ -369,7 +369,7 @@ export function ShellSection() {
                           className="ms-auto max-w-sm"
                           rows={[
                             { label: 'Subtotal', value: <MoneyDisplay value="5660.00" /> },
-                            { label: 'VAT', value: <MoneyDisplay value="0" /> },
+                            { label: 'Sales tax', value: <MoneyDisplay value="0" /> },
                           ]}
                           total={{ label: 'Total', value: <MoneyDisplay value="5660.00" /> }}
                           amountDue={{ label: 'Amount due', value: <MoneyDisplay value="5660.00" /> }}
