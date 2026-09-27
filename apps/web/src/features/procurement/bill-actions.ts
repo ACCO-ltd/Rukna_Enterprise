@@ -63,9 +63,14 @@ export function canReturn(bill: SupplierBill): boolean {
   return bill.documentStatus === 'SUBMITTED';
 }
 
-/** `supplier-bill.service.ts` `reject` — SUBMITTED only; final. */
-export function canReject(bill: SupplierBill): boolean {
-  return bill.documentStatus === 'SUBMITTED';
+/**
+ * `supplier-bill.service.ts` `reject` — SUBMITTED only; final. Whoever entered the bill may
+ * return it but not reject it (Eng Ahmed, 2026-09-27): someone else must. The server refuses
+ * the author with a 403; this only keeps the command off their menu.
+ */
+export function canReject(bill: SupplierBill, viewerId?: string | null): boolean {
+  if (bill.documentStatus !== 'SUBMITTED') return false;
+  return !(viewerId && bill.createdBy === viewerId);
 }
 
 /**
@@ -120,12 +125,13 @@ export function canReverse(bill: SupplierBill): boolean {
   return bill.postingStatus === 'POSTED';
 }
 
-export function availableBillActions(bill: SupplierBill): BillAction[] {
+/** `viewerId` is the signed-in user: the bill's author is not offered Reject. */
+export function availableBillActions(bill: SupplierBill, viewerId?: string | null): BillAction[] {
   const actions: BillAction[] = [];
   if (canSubmit(bill)) actions.push('submit');
   if (canApprove(bill)) actions.push('approve');
   if (canReturn(bill)) actions.push('return');
-  if (canReject(bill)) actions.push('reject');
+  if (canReject(bill, viewerId)) actions.push('reject');
   if (canPost(bill)) actions.push('post');
   if (canReverse(bill)) actions.push('reverse');
   return actions;

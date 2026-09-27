@@ -318,6 +318,47 @@ describe('SupplierBillCreateForm — direct expense', () => {
     expect(routerMocks.push).toHaveBeenCalledWith('/finance/accounting/bills/bill-9');
   });
 
+  it('lets the clerk type a net over qty × price, warns by how much it differs, and saves it', async () => {
+    const user = userEvent.setup();
+    mutate.mockImplementation((_payload, options) => options.onSuccess({ id: 'bill-9' }));
+    renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);
+
+    await chooseOption(user, byId('bill-supplier'), 'sup-2');
+    await user.type(byId('bill-invoice-number'), 'INV-78');
+    await chooseOption(user, byId('bill-project'), 'none');
+    await pickDate(user, byId('bill-date'), '2026-09-10');
+    await pickDate(user, byId('bill-due-date'), '2026-10-10');
+    await user.type(byId('bill-line-0-description'), 'Cement');
+    await chooseOption(user, byId('bill-line-0-profile'), 'OFFICE_EXPENSE');
+    await user.clear(byId('bill-line-0-quantity'));
+    await user.type(byId('bill-line-0-quantity'), '200');
+    await user.type(byId('bill-line-0-unitPrice'), '9.50');
+    await user.type(byId('bill-line-0-vat'), '0');
+
+    // Calculated until the clerk types: the product is the placeholder.
+    expect(byId('bill-line-0-amount')).toHaveAttribute('placeholder', '1,900.00');
+    await user.type(byId('bill-line-0-amount'), '1995');
+    expect(
+      screen.getByText(/Amount is \$95\.00 more than 200 × \$9\.50 \(\$1,900\.00\)/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save bill' }));
+    expect(mutate.mock.calls[0]![0].lines[0]).toMatchObject({ quantity: 200, unitPrice: 9.5, netAmount: 1995 });
+  });
+
+  it('goes back to qty × price when the typed net is reset', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);
+
+    await user.type(byId('bill-line-0-unitPrice'), '400');
+    await user.type(byId('bill-line-0-amount'), '395');
+    expect(screen.getByText(/Amount is \$5\.00 less than/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Use qty × price' }));
+    expect(byId('bill-line-0-amount')).toHaveValue('');
+    expect(screen.queryByText(/Amount is .* than/)).not.toBeInTheDocument();
+  });
+
   it("sets the due date from the supplier's payment terms, and says so", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);

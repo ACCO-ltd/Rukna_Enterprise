@@ -41,6 +41,7 @@ import { WorkflowTransactionType } from '@erp/types';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { useSession } from '@/features/auth/session/use-session';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -110,7 +111,8 @@ export function BillDocumentHeader({
   const reject = useRejectSupplierBill();
 
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
-  const allowed = canManage ? availableBillActions(bill) : [];
+  const viewerId = useSession().user?.id ?? null;
+  const allowed = canManage ? availableBillActions(bill, viewerId) : [];
   const primary = canManage ? primaryBillAction(bill) : null;
   const plan = planBillPost(bill, accounts.data ?? [], profiles.data ?? [], locale);
   const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);

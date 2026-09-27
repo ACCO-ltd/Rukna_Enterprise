@@ -32,6 +32,7 @@ import { useJournal } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
+import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { statusLabel } from '@/lib/status-registry';
 
 import {
@@ -41,6 +42,7 @@ import {
   useSupplierBillApprovals,
   useSupplierBillPayments,
 } from '../hooks/use-procurement';
+import { savedNetVariance } from '../bill-create';
 import type { BillApprovalStepState, SupplierBill } from '../types';
 import { ClassificationChips } from './classification-chips';
 
@@ -141,6 +143,7 @@ export function BillLinesTab({ bill }: { bill: SupplierBill }) {
                   className="mt-1 flex flex-wrap items-center gap-1.5"
                   hasCostTarget={Boolean(line.boqNodeId)}
                 />
+                <NetVarianceNote line={line} />
               </TableCell>
               <TableCell className="font-mono text-caption text-muted-foreground">
                 {line.expenseProfileCode}
@@ -157,6 +160,30 @@ export function BillLinesTab({ bill }: { bill: SupplierBill }) {
         </TableBody>
       </Table>
     </TableScroll>
+  );
+}
+
+/**
+ * A line whose net was typed over `quantity × unit price` says so — the difference the clerk
+ * accepted stays visible on the bill (Eng Ahmed, 2026-09-27).
+ */
+function NetVarianceNote({ line }: { line: NonNullable<SupplierBill['lines']>[number] }) {
+  const t = useTranslations('procurement.bills');
+  const locale = useLocale() as 'en';
+  const variance = savedNetVariance(line);
+  if (!variance) return null;
+  const money = (minor: number) => formatMoney(fromMinorUnits(minor, MONEY_SCALE), 'USD', locale) ?? '';
+  return (
+    <span className="mt-1 block text-caption text-warning">
+      {t('netDiffers', {
+        net: money(variance.netMinor),
+        diff: money(Math.abs(variance.diffMinor)),
+        direction: variance.diffMinor > 0 ? 'more' : 'less',
+        qty: formatNumber(line.quantity) ?? line.quantity ?? '',
+        price: formatMoney(line.unitPrice, 'USD', locale) ?? line.unitPrice ?? '',
+        computed: money(variance.computedMinor),
+      })}
+    </span>
   );
 }
 

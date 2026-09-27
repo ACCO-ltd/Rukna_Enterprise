@@ -259,6 +259,14 @@ describe('bill lifecycle gates', () => {
     expect(billBlockReason(bill({ documentStatus: 'SUBMITTED' }), 'reject')).toBeNull();
   });
 
+  it('never offers Reject to the person who entered the bill; Return stays theirs', () => {
+    const mine = bill({ documentStatus: 'SUBMITTED', createdBy: 'u-clerk' });
+    expect(canReject(mine, 'u-clerk')).toBe(false);
+    expect(canReject(mine, 'u-approver')).toBe(true);
+    expect(availableBillActions(mine, 'u-clerk')).toContain('return');
+    expect(availableBillActions(mine, 'u-clerk')).not.toContain('reject');
+  });
+
   it('lets only a DRAFT bill be edited — new or returned', () => {
     expect(canEditBill(bill({ documentStatus: 'DRAFT' }))).toBe(true);
     expect(canEditBill(bill({ documentStatus: 'DRAFT', returnedAt: '2026-09-20T10:00:00Z' }))).toBe(true);

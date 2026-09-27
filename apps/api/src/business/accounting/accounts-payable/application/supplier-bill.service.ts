@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -391,10 +392,17 @@ export class SupplierBillService {
   /**
    * Reject a SUBMITTED bill — final (ADR-037 amendment). A rejected bill stays on record, is
    * never posted, and frees its supplier invoice number for a corrected bill.
+   *
+   * Segregation of duties (Eng Ahmed, 2026-09-27): the person who entered a bill may return it
+   * for correction but may not reject it — a rejection is final, so someone else must make it.
+   * Always on, not a policy toggle.
    */
   async reject(identity: RequestIdentity, billId: string, reason: string) {
     const prisma = this.tenancyService.getClient();
     const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
+    if (bill.createdBy === identity.userId) {
+      throw new ForbiddenException('You entered this bill, so someone else must reject it.');
+    }
     const why = requireReason(reason);
     try {
       // Guarded: a bill approved (or posted) a moment ago must never be marked rejected — that

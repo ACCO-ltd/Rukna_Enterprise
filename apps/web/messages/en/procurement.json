@@ -465,6 +465,7 @@
     "vatHint": "Required. Enter 0 when the line carries no VAT.",
     "expenseProfile": "Expense posting profile",
     "expenseProfileHint": "Determines the GL account debited when this bill is posted. Revenue profiles are not offered.",
+    "netDiffers": "Net {net} is {diff} {direction, select, more {more} other {less}} than {qty} × {price} ({computed}), as entered from the supplier's invoice.",
     "lineError": {
       "description": "Enter a description for this line.",
       "quantity": "Enter a quantity greater than zero.",
@@ -582,6 +583,8 @@
       "overReceivedNothing": "Billing {qty} {unit} and nothing has been received on this line yet — the match will likely raise an exception.",
       "overOrdered": "Billing {qty} {unit} more than ordered — the match will likely raise an exception.",
       "totalsNote": "A preview. The server calculates the totals it records from the lines.",
+      "resetNet": "Use qty × price",
+      "netDiffers": "Amount is {diff} {direction, select, more {more} other {less}} than {qty} × {price} ({computed}). The amount you typed is what posts.",
       "failed": "The bill could not be saved.",
       "errorLine": "Line {n} — {field}",
       "editTitle": "Edit bill",
