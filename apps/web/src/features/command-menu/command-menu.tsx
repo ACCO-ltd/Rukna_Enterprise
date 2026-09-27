@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { MagnifyingGlassIcon } from '@phosphor-icons/react';
+import { Search } from 'lucide-react';
 import { cn, Dialog, DialogContent, DialogTitle } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
@@ -105,7 +105,7 @@ function CommandMenuBody() {
 
       {/* Type-ahead */}
       <div className="flex items-center gap-2.5 border-b border-border px-4">
-        <MagnifyingGlassIcon size={18} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Search size={18} className="shrink-0 text-muted-foreground" aria-hidden="true" />
         <input
           ref={inputRef}
           type="text"

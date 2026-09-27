@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CommercialMetric } from '@erp/types';
 
-import {
-  contractStatusTone,
-  dueStatus,
-  guaranteeAttentionTone,
-  isBilledInstallment,
-  metricDisplay,
-  paymentInstallmentTone,
-  settlementTone,
-  variationStatusTone,
-} from './presentation';
+import { dueStatus, isBilledInstallment, metricDisplay } from './presentation';
 
 function metric(partial: Partial<CommercialMetric>): CommercialMetric {
   return {
@@ -54,41 +45,6 @@ describe('metricDisplay — a genuine zero must not look like a blank', () => {
   });
 });
 
-describe('tone mapping', () => {
-  it('maps contract lifecycle to tones', () => {
-    expect(contractStatusTone('ACTIVE')).toBe('live');
-    expect(contractStatusTone('TERMINATED')).toBe('historical');
-    expect(contractStatusTone('UNDER_REVIEW')).toBe('warning');
-  });
-
-  it('maps settlement and guarantee attention', () => {
-    expect(settlementTone('PAID')).toBe('live');
-    expect(settlementTone('UNPAID')).toBe('danger');
-    expect(guaranteeAttentionTone('EXPIRED')).toBe('danger');
-    expect(guaranteeAttentionTone('EXPIRING_SOON')).toBe('warning');
-    expect(guaranteeAttentionTone('NONE')).toBe('live');
-  });
-
-  it('maps payment installment bill status — NEXT is the actionable one', () => {
-    expect(paymentInstallmentTone('NEXT')).toBe('accent');
-    expect(paymentInstallmentTone('UPCOMING')).toBe('neutral');
-    expect(paymentInstallmentTone('BILLED')).toBe('info');
-    expect(paymentInstallmentTone('PARTIALLY_PAID')).toBe('warning');
-    expect(paymentInstallmentTone('PAID')).toBe('live');
-  });
-
-  it('maps variation lifecycle — only CLIENT_APPROVED reads as live, terminals as historical', () => {
-    expect(variationStatusTone('DRAFT')).toBe('neutral');
-    expect(variationStatusTone('PENDING_INTERNAL')).toBe('info');
-    expect(variationStatusTone('INTERNAL_APPROVED')).toBe('accent');
-    // The one status that actually moves the governing contract value.
-    expect(variationStatusTone('CLIENT_APPROVED')).toBe('live');
-    // Commercially inert terminals — historical, not alarming red.
-    expect(variationStatusTone('REJECTED')).toBe('historical');
-    expect(variationStatusTone('WITHDRAWN')).toBe('historical');
-  });
-});
-
 describe('isBilledInstallment', () => {
   it('is true once an invoice is raised (BILLED/PARTIALLY_PAID/PAID), false before', () => {
     expect(isBilledInstallment('BILLED')).toBe(true);
@@ -113,13 +69,13 @@ describe('dueStatus — a stage due-date cue, derived on UTC calendar days', () 
     expect(dueStatus('2026-11-03', now)).toEqual({ tone: 'danger', key: 'overdue', days: -3 });
   });
 
-  it('flags today as a warning', () => {
-    expect(dueStatus('2026-11-06', now)).toEqual({ tone: 'warning', key: 'today', days: 0 });
+  it('flags today as needing attention', () => {
+    expect(dueStatus('2026-11-06', now)).toEqual({ tone: 'attention', key: 'today', days: 0 });
   });
 
-  it('flags within a week as a warning, and counts the days', () => {
-    expect(dueStatus('2026-11-11', now)).toEqual({ tone: 'warning', key: 'soon', days: 5 });
-    expect(dueStatus('2026-11-13', now)).toEqual({ tone: 'warning', key: 'soon', days: 7 });
+  it('flags within a week as needing attention, and counts the days', () => {
+    expect(dueStatus('2026-11-11', now)).toEqual({ tone: 'attention', key: 'soon', days: 5 });
+    expect(dueStatus('2026-11-13', now)).toEqual({ tone: 'attention', key: 'soon', days: 7 });
   });
 
   it('treats more than a week out as a quiet upcoming (callers render no chip)', () => {

@@ -2,7 +2,6 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Badge,
   Skeleton,
   Table,
   TableBody,
@@ -12,13 +11,14 @@ import {
   TableRow,
   TableScroll,
   cn,
+  StatusPill,
 } from '@erp/ui';
 import type { CommercialSummaryResponse } from '@erp/types';
 
 import { formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
-import { paymentInstallmentTone } from '../presentation';
 import { formatPercent } from './current-payment-cycle';
 import { PanelLink, SectionCard } from './commercial-ui';
 
@@ -117,9 +117,9 @@ export function PaymentPlanPanel({
                 </TableCell>
                 <TableCell className="text-end tabular-nums">{money(installment.amount)}</TableCell>
                 <TableCell>
-                  <Badge tone={paymentInstallmentTone(installment.status)}>
+                  <StatusPill tone={statusTone(installment.status, 'paymentInstallment')}>
                     {tSchedule(`status.${installment.status}`)}
-                  </Badge>
+                  </StatusPill>
                 </TableCell>
               </TableRow>
             ))}

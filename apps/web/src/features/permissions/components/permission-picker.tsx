@@ -173,7 +173,7 @@ export function PermissionPicker({ selectedIds, onChange, disabled }: Permission
           {(data ?? [])
             .filter((item) => selected.has(item.id))
             .map((item) => (
-              <Badge key={item.id} tone="info">
+              <Badge key={item.id} tone="neutral">
                 {permissionKey(item)}
               </Badge>
             ))}

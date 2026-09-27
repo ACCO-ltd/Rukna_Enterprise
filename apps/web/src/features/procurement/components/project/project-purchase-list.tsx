@@ -4,21 +4,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { ShoppingCart } from 'lucide-react';
-import { Alert, Badge, Button, EmptyState, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
-import type { BadgeTone } from '@erp/ui';
+import { Alert, Button, EmptyState, LtrValue, Skeleton, StatusPill, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
-import type { PurchaseOrderStatus } from '../../types';
 import { usePurchaseOrders } from '../../hooks/use-procurement';
-
-const STATUS_TONE: Record<PurchaseOrderStatus, BadgeTone> = {
-  DRAFT: 'neutral',
-  OPEN: 'live',
-  CLOSED: 'historical',
-  CANCELLED: 'historical',
-};
 
 export function ProjectPurchaseList({ projectId }: { projectId: string }) {
   const t = useTranslations('procurement.project.purchases');
@@ -104,7 +96,7 @@ export function ProjectPurchaseList({ projectId }: { projectId: string }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge tone={STATUS_TONE[po.status]}>{t(`status.${po.status}`)}</Badge>
+                      <StatusPill tone={statusTone(po.status, 'purchaseOrder')}>{t(`status.${po.status}`)}</StatusPill>
                     </TableCell>
                   </TableRow>
                 );

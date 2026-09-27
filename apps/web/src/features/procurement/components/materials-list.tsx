@@ -113,7 +113,7 @@ export function MaterialsList() {
     {
       key: 'status',
       header: tc('status'),
-      render: (material) => <ProcurementStatusBadge status={material.status} />,
+      render: (material) => <ProcurementStatusBadge vocabulary="masterData" status={material.status} />,
     },
   ];
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { EmptyState, FilterBar, FilterField, Select } from '@erp/ui';
-import { FileTextIcon } from '@phosphor-icons/react';
+import { FileText } from 'lucide-react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -153,7 +153,7 @@ export function InvoicesList() {
         emptyState={
           (invoices.data?.length ?? 0) === 0 ? (
             <EmptyState
-              icon={<FileTextIcon size={28} aria-hidden="true" />}
+              icon={<FileText size={28} aria-hidden="true" />}
               title={t('empty')}
               description={t('emptyHint')}
             />

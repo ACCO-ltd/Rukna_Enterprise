@@ -115,10 +115,10 @@ export function SupplierPaymentsList() {
                     {formatMoney(payment.unallocatedAmount, payment.currencyCode, locale)}
                   </TableCell>
                   <TableCell>
-                    <ProcurementStatusBadge status={payment.documentStatus} />
+                    <ProcurementStatusBadge vocabulary="payment" status={payment.documentStatus} />
                   </TableCell>
                   <TableCell>
-                    <PostingStatusBadge status={payment.postingStatus} />
+                    <PostingStatusBadge showAxis status={payment.postingStatus} />
                   </TableCell>
                 </TableRow>
               ))
@@ -167,8 +167,8 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
           {payment.paymentNumber ?? t('unnumbered')}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <ProcurementStatusBadge status={payment.documentStatus} />
-          <PostingStatusBadge status={payment.postingStatus} />
+          <ProcurementStatusBadge vocabulary="payment" status={payment.documentStatus} />
+          <PostingStatusBadge showAxis status={payment.postingStatus} />
           <span className="text-sm text-muted-foreground">
             {supplier ? `${supplier.code} · ${supplier.name}` : tc('notAvailable')}
           </span>

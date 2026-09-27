@@ -153,7 +153,7 @@ export function DocumentDetailView({
                 daysUntilExpiry={document.daysUntilExpiry}
               />
               {current?.purpose ? (
-                <Badge tone="accent">{t(`purpose.${current.purpose}`)}</Badge>
+                <Badge tone="neutral">{t(`purpose.${current.purpose}`)}</Badge>
               ) : null}
             </div>
           </div>
@@ -280,7 +280,7 @@ export function DocumentDetailView({
                   </span>
                   <RevisionStatusChip status={current.status} />
                   {current.purpose ? (
-                    <Badge tone="accent">{t(`purpose.${current.purpose}`)}</Badge>
+                    <Badge tone="neutral">{t(`purpose.${current.purpose}`)}</Badge>
                   ) : null}
                 </div>
                 <p className="text-body-sm text-muted-foreground">

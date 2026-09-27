@@ -124,7 +124,7 @@ export function GrnList() {
                     {grn.deliveryNoteRef ?? tc('notAvailable')}
                   </TableCell>
                   <TableCell>
-                    <ProcurementStatusBadge status={grn.status} />
+                    <ProcurementStatusBadge vocabulary="grn" status={grn.status} />
                   </TableCell>
                 </TableRow>
               ))
@@ -409,7 +409,7 @@ export function GrnDetail({ id }: { id: string }) {
             {receipt.grnNumber}
           </h1>
           <div className="mt-2">
-            <ProcurementStatusBadge status={receipt.status} />
+            <ProcurementStatusBadge vocabulary="grn" status={receipt.status} />
           </div>
         </div>
 

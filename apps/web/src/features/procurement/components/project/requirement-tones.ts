@@ -1,31 +1,17 @@
-import type { BadgeTone } from '@erp/ui';
+import type { StatusTone } from '@erp/ui';
 import type { ProjectRequirementRow } from '@erp/types';
 
 /**
- * Badge tones for the two requirement states, kept in one place because the list and the detail
- * panel must not colour the same status differently.
+ * Requirement priority is a marker, not a lifecycle status (ADR-034), so it has no registry
+ * vocabulary and renders as a plain badge without a dot. LOW and NORMAL are the default and say
+ * nothing; only HIGH and URGENT earn a colour.
  *
- * Approval and fulfilment stay separate everywhere — they are different questions, and a single
- * "Status" column answers neither cleanly.
+ * The approval and fulfilment statuses take their tones from the status registry
+ * (`requirementApproval`, `requirementFulfilment`), never from this file.
  */
-export const APPROVAL_TONE: Record<ProjectRequirementRow['approvalStatus'], BadgeTone> = {
-  DRAFT: 'neutral',
-  SUBMITTED: 'info',
-  APPROVED: 'live',
-  CANCELLED: 'historical',
-  CLOSED: 'historical',
-};
-
-export const FULFILMENT_TONE: Record<ProjectRequirementRow['fulfillmentStatus'], BadgeTone> = {
-  NOT_ORDERED: 'neutral',
-  PARTIALLY_ORDERED: 'warning',
-  FULLY_ORDERED: 'live',
-};
-
-/** LOW and NORMAL are the default and say nothing; only HIGH and URGENT earn a colour. */
-export const PRIORITY_TONE: Record<ProjectRequirementRow['priority'], BadgeTone> = {
+export const PRIORITY_TONE: Record<ProjectRequirementRow['priority'], StatusTone> = {
   LOW: 'neutral',
   NORMAL: 'neutral',
-  HIGH: 'warning',
+  HIGH: 'attention',
   URGENT: 'danger',
 };

@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -20,12 +19,14 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  StatusPill,
 } from '@erp/ui';
 
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import type { ApprovalPolicySummary } from '../api/workflows-api';
 import {
   useApprovalPolicy,
@@ -193,7 +194,7 @@ export function GovernanceWorkspace({ policyId }: { policyId: string }) {
         edited: formatDate(policy.updatedAt) ?? '—',
       })}
       status={
-        <Badge tone={policy.status === 'ACTIVE' ? 'live' : 'neutral'}>{policy.status}</Badge>
+        <StatusPill tone={statusTone(policy.status, 'approvalPolicy')}>{policy.status}</StatusPill>
       }
       actions={actions}
       lifecycle={<GovernanceLifecycleBar status={policy.status} />}

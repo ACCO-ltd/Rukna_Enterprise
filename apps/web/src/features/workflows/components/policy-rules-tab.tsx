@@ -244,7 +244,7 @@ export function PolicyRulesTab({
           {editing ? (
             <form onSubmit={saveRule} className="mt-4 space-y-3">
               {editingMatrix ? (
-                <Badge tone="info">
+                <Badge tone="neutral">
                   {editingMatrix.label} · {editingMatrix.transition}
                 </Badge>
               ) : null}

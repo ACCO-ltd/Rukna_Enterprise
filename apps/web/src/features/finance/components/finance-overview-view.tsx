@@ -30,10 +30,12 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
 import type { FinanceAttentionItem, ProjectFinanceOverviewResponse } from '@erp/types';
 
 import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import { SectionPanel } from '@/features/procurement/components/project/section-panel';
 
 import { useFinanceOverview } from '../hooks/use-finance';
@@ -309,7 +311,6 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
       WARNING: AlertTriangle,
       INFO: Info,
     } as const;
-    const TONE = { CRITICAL: 'danger', WARNING: 'warning', INFO: 'neutral' } as const;
 
     return (
       <SectionPanel
@@ -335,9 +336,9 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
-                  <Badge tone={TONE[item.severity]}>
+                  <StatusPill tone={statusTone(item.severity, 'severity')}>
                     {t(`attention.severity.${item.severity}`)}
-                  </Badge>
+                  </StatusPill>
                   {item.href ? (
                     <ChevronRight
                       size={15}

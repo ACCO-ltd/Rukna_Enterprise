@@ -105,7 +105,7 @@ export function MilestoneDetailPanel({
                       })}
                     </span>
                     {milestone.programmeMilestone.status === 'VERIFIED' ? (
-                      <Badge tone="live" className="gap-1">
+                      <Badge tone="success" className="gap-1">
                         <CheckCircle2 size={11} aria-hidden="true" />
                         {t('milestone.verified')}
                       </Badge>

@@ -484,7 +484,7 @@ function RecentEntriesPanel({ data }: { data: ProjectProcurementCostResponse }) 
                   {entry.reference ?? '—'}
                 </TableCell>
                 <TableCell>
-                  <Badge tone={entry.stage === 'ACTUAL' ? 'live' : 'info'}>
+                  <Badge tone={entry.stage === 'ACTUAL' ? 'success' : 'progress'}>
                     {t(`stage.${entry.stage}`)}
                   </Badge>
                 </TableCell>

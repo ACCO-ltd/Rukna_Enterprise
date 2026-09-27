@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { ExternalLink } from 'lucide-react';
 import {
-  Badge,
   Button,
   Dialog,
   DialogContent,
   DialogTitle,
   LtrValue,
   Skeleton,
+  StatusPill,
   Table,
   TableBody,
   TableCell,
@@ -24,9 +24,9 @@ import {
 import type { ProjectRequirementDetail } from '@erp/types';
 
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useProjectRequirement } from '../../hooks/use-project-procurement';
-import { APPROVAL_TONE, FULFILMENT_TONE, PRIORITY_TONE } from './requirement-tones';
 
 type DetailTab = 'details' | 'items' | 'pos';
 
@@ -94,12 +94,12 @@ function DetailBody({
           </DialogTitle>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
             <LtrValue className="font-mono">{data.mrNumber}</LtrValue>
-            <Badge tone={APPROVAL_TONE[data.approvalStatus]}>
+            <StatusPill tone={statusTone(data.approvalStatus, 'requirementApproval')}>
               {t(`approval.${data.approvalStatus}`)}
-            </Badge>
-            <Badge tone={FULFILMENT_TONE[data.fulfillmentStatus]}>
+            </StatusPill>
+            <StatusPill tone={statusTone(data.fulfillmentStatus, 'requirementFulfilment')}>
               {t(`fulfilment.${data.fulfillmentStatus}`)}
-            </Badge>
+            </StatusPill>
           </p>
         </div>
         <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
@@ -240,9 +240,9 @@ function ItemsTab({ data }: { data: ProjectRequirementDetail }) {
                 {trimQty(line.orderedQuantity)}
               </TableCell>
               <TableCell>
-                <Badge tone={FULFILMENT_TONE[line.fulfillmentStatus]}>
+                <StatusPill tone={statusTone(line.fulfillmentStatus, 'requirementFulfilment')}>
                   {t(`fulfilment.${line.fulfillmentStatus}`)}
-                </Badge>
+                </StatusPill>
               </TableCell>
             </TableRow>
           ))}
@@ -304,9 +304,9 @@ function PurchaseOrdersTab({ data }: { data: ProjectRequirementDetail }) {
                   : `${t('revShort', { n: po.revisionNumber })} · ${t(`revisionStatus.${po.revisionStatus}`)}`}
               </TableCell>
               <TableCell>
-                <Badge tone={po.documentState === 'OPEN' ? 'live' : 'historical'}>
+                <StatusPill tone={statusTone(po.documentState, 'purchaseOrder')}>
                   {t(`poState.${po.documentState}`)}
-                </Badge>
+                </StatusPill>
               </TableCell>
               <TableCell className="text-body-sm text-foreground">
                 {po.supplierName ?? '—'}

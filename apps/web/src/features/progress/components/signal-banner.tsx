@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 
-import { RefBar, RefCard, RefCardBody, RefCardHeader, RefPill, type RefTone } from './ref-ui';
+import { StatusPill, type StatusTone } from '@erp/ui';
+
+import { RefBar, RefCard, RefCardBody, RefCardHeader } from './ref-ui';
 
 export interface SignalStat {
   label: string;
@@ -45,7 +47,8 @@ export function SignalBanner({
   title: string;
   icon?: React.ReactNode;
   statusLabel: string;
-  tone: RefTone;
+  /** The signal's tone, from the status registry (`costSignal` / `collectionSignal`). */
+  tone: StatusTone;
   hint: string;
   stats: SignalStat[];
   /** Cross-link into the surface that owns the detail. Omit to render no link (e.g. a self-link). */
@@ -79,7 +82,7 @@ export function SignalBanner({
         title={title}
         action={
           <div className="flex items-center gap-2.5">
-            <RefPill tone={tone}>{statusLabel}</RefPill>
+            <StatusPill tone={tone}>{statusLabel}</StatusPill>
             {link ? (
               <Link href={link.href} className="text-caption font-medium text-brand-primary hover:underline">
                 {link.label}
@@ -116,9 +119,9 @@ export function SignalBanner({
 }
 
 /** The variance takes the signal's own tone, so the number and the pill agree. */
-function toneClass(tone: RefTone): string {
-  if (tone === 'amber') return 'text-warning';
-  if (tone === 'red') return 'text-danger';
-  if (tone === 'green') return 'text-success';
+function toneClass(tone: StatusTone): string {
+  if (tone === 'attention') return 'text-warning';
+  if (tone === 'danger') return 'text-danger';
+  if (tone === 'success') return 'text-success';
   return 'text-foreground';
 }

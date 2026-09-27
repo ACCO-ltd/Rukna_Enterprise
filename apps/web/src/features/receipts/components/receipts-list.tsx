@@ -3,11 +3,12 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Badge, Button, FilterBar, FilterField, Input, Select } from '@erp/ui';
+import { Button, FilterBar, FilterField, Input, Select, StatusPill } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { useReceipts } from '../hooks/use-receipts';
 import type { Receipt } from '../types';
@@ -76,17 +77,9 @@ export function ReceiptsList() {
       key: 'status',
       header: t('columns.status'),
       render: (receipt) => (
-        <Badge
-          tone={
-            receipt.postingStatus === 'POSTED'
-              ? 'live'
-              : receipt.postingStatus === 'REVERSED'
-                ? 'danger'
-                : 'warning'
-          }
-        >
+        <StatusPill tone={statusTone(receipt.postingStatus, 'posting')}>
           {t(`status.${receipt.postingStatus === 'POSTED' ? 'posted' : receipt.postingStatus === 'REVERSED' ? 'reversed' : 'notPosted'}`)}
-        </Badge>
+        </StatusPill>
       ),
     },
     {

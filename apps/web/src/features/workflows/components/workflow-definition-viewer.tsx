@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, Label, Select, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Badge, Button, Label, Select, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 
 import { useWorkflowDefinition } from '../hooks/use-workflow-definition';
 import { WorkflowTransactionType } from '../types';
@@ -67,11 +69,11 @@ export function WorkflowDefinitionViewer() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge tone={definition.isActive ? 'live' : 'neutral'}>
+                <StatusPill tone={statusTone(definition.isActive ? 'ACTIVE' : 'INACTIVE', 'masterData')}>
                   {definition.isActive ? t('viewer.active') : t('viewer.inactive')}
-                </Badge>
+                </StatusPill>
                 {definition.requiresCeoConfirmation ? (
-                  <Badge tone='warning'>{t('viewer.requiresCeo')}</Badge>
+                  <Badge tone="attention">{t('viewer.requiresCeo')}</Badge>
                 ) : null}
               </div>
             </div>

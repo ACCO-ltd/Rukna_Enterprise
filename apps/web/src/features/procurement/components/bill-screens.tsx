@@ -40,7 +40,7 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import { ReceiptIcon } from '@phosphor-icons/react';
+import { Receipt } from 'lucide-react';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -134,8 +134,8 @@ export function SupplierBillsList() {
       header: tc('status'),
       render: (bill) => (
         <div className="flex flex-wrap items-center gap-1.5">
-          <ProcurementStatusBadge status={bill.documentStatus} />
-          <PostingStatusBadge status={bill.postingStatus} />
+          <ProcurementStatusBadge vocabulary="supplierBill" status={bill.documentStatus} />
+          <PostingStatusBadge showAxis status={bill.postingStatus} />
         </div>
       ),
     },
@@ -185,7 +185,7 @@ export function SupplierBillsList() {
         emptyState={
           (bills.data?.length ?? 0) === 0 ? (
             <EmptyState
-              icon={<ReceiptIcon size={28} aria-hidden="true" />}
+              icon={<Receipt size={28} aria-hidden="true" />}
               title={t('empty')}
             />
           ) : undefined
@@ -249,11 +249,11 @@ export function SupplierBillDetail({ id }: { id: string }) {
           {t('detailTitle', { number: bill.supplierInvoiceNumber })}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <ProcurementStatusBadge status={bill.documentStatus} />
-          <PostingStatusBadge status={bill.postingStatus} />
+          <ProcurementStatusBadge vocabulary="supplierBill" status={bill.documentStatus} />
+          <PostingStatusBadge showAxis status={bill.postingStatus} />
           {/* The match badge is only meaningful for a PO-backed bill; a non-PO bill never
               matches, so showing NOT_RUN there would read as an unfinished step (D6). */}
-          {hasPoLink ? <BillMatchStatusBadge status={bill.matchStatus} /> : null}
+          {hasPoLink ? <BillMatchStatusBadge showAxis status={bill.matchStatus} /> : null}
           <span className="text-sm text-muted-foreground">
             {bill.supplier
               ? `${bill.supplier.code} · ${bill.supplier.name}`

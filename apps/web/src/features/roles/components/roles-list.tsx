@@ -205,7 +205,7 @@ export function RolesList() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-foreground">{role.name}</span>
-                            <Badge tone={role.kind === 'SYSTEM' ? 'info' : 'neutral'}>
+                            <Badge tone="neutral">
                               {role.kind === 'SYSTEM' ? t('systemRole') : t('customRole')}
                             </Badge>
                           </div>

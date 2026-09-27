@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { cn, Badge, Button, type BadgeTone } from '@erp/ui';
+import { cn, Button, StatusPill } from '@erp/ui';
 import {
   Check,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import type {
   MilestoneItemViewModel,
@@ -248,9 +249,9 @@ function MilestoneItem({
             </p>
           ) : null}
           {milestone.userState === 'invoice-issued' ? (
-            <Badge tone="info" className="text-caption">
+            <StatusPill tone={statusTone('invoice-issued', 'milestoneJourney')} className="text-caption">
               {t('state.invoice-issued')}
-            </Badge>
+            </StatusPill>
           ) : null}
           {milestone.userState === 'awaiting-payment' ? (
             <AwaitingPaymentDisplay milestone={milestone} currency={currency} locale={locale} t={t} />
@@ -332,36 +333,11 @@ function StepIcon({
 
 function StateBadge({ state }: { state: MilestoneUserState }) {
   const t = useTranslations('commercial.contractMilestones.state');
-  const tone = stateTone(state);
   return (
-    <Badge tone={tone} className="shrink-0 text-caption">
+    <StatusPill tone={statusTone(state, 'milestoneJourney')} className="shrink-0 text-caption">
       {t(state)}
-    </Badge>
+    </StatusPill>
   );
-}
-
-function stateTone(state: MilestoneUserState): BadgeTone {
-  switch (state) {
-    case 'paid':
-      return 'live';
-    case 'partially-paid':
-      return 'warning';
-    case 'awaiting-payment':
-      return 'warning';
-    case 'invoiced':
-      return 'info';
-    case 'invoice-issued':
-      return 'info';
-    case 'ready-to-bill':
-      return 'live';
-    case 'review-for-billing':
-      return 'accent';
-    case 'in-progress':
-      return 'info';
-    case 'upcoming':
-    default:
-      return 'neutral';
-  }
 }
 
 // ─── Awaiting-payment display ─────────────────────────────────────────────────

@@ -5,18 +5,12 @@ import { Banknote } from 'lucide-react';
 import { Skeleton } from '@erp/ui';
 import type { CollectionProgressSignalResponse } from '@erp/types';
 
+import { statusTone } from '@/lib/status-registry';
+
 import { useCollectionProgressSignal } from '../hooks/use-progress';
 import { SignalBanner, formatPct, formatSignedPct } from './signal-banner';
-import type { RefTone } from './ref-ui';
 
 type Status = CollectionProgressSignalResponse['status'];
-
-const STATUS_TONE: Record<Status, RefTone> = {
-  ALIGNED: 'green',
-  CASH_AHEAD: 'blue',
-  WORK_AHEAD: 'amber',
-  INSUFFICIENT_DATA: 'gray',
-};
 
 const STATUS_HINT: Record<Status, string> = {
   ALIGNED: 'collectionSignal.alignedHint',
@@ -43,7 +37,7 @@ export function CollectionProgressSignalBanner({ projectId }: { projectId: strin
       headingId="collection-signal-heading"
       title={t('collectionSignal.title')}
       statusLabel={t(`collectionSignal.status.${s.status}`)}
-      tone={STATUS_TONE[s.status]}
+      tone={statusTone(s.status, 'collectionSignal')}
       hint={t(STATUS_HINT[s.status])}
       icon={<Banknote size={17} strokeWidth={1.9} />}
       stats={[

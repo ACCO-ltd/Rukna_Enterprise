@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Label, OverflowGlyph, RowActions, Select, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
-import { FunnelSimple } from '@phosphor-icons/react';
+import { Filter } from 'lucide-react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { RecordTile } from '@/components/record-tile';
@@ -173,7 +173,7 @@ export function ClientsList() {
               </option>
             ))}
           </Select>
-          <FunnelSimple
+          <Filter
             size={18}
             className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/65"
             aria-hidden="true"

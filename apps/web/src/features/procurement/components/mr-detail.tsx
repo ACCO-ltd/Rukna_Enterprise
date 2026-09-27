@@ -107,7 +107,7 @@ export function MrDetail({ id }: { id: string }) {
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {request.mrNumber}
             </span>
-            <ProcurementStatusBadge status={request.status} />
+            <ProcurementStatusBadge vocabulary="materialRequest" status={request.status} />
             <Badge tone="neutral">
               {request.requestScope === 'PROJECT' ? t('scopeProject') : t('scopeOrganization')}
             </Badge>

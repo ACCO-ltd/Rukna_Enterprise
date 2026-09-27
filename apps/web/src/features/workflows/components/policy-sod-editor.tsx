@@ -4,7 +4,6 @@ import { type FormEvent, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
   FormField,
   Input,
@@ -16,9 +15,11 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
+import { statusTone } from '@/lib/status-registry';
 import {
   useApprovalPolicySodRules,
   useUpsertApprovalPolicySodRule,
@@ -133,9 +134,9 @@ export function PolicySodEditor({ policyId, editable }: { policyId: string; edit
                     <TableCell className="font-mono text-xs">{rule.code}</TableCell>
                     <TableCell className="text-sm text-foreground">{rule.description}</TableCell>
                     <TableCell>
-                      <Badge tone={rule.isActive ? 'live' : 'neutral'}>
+                      <StatusPill tone={statusTone(rule.isActive ? 'ACTIVE' : 'INACTIVE', 'masterData')}>
                         {rule.isActive ? t('active') : t('inactive')}
-                      </Badge>
+                      </StatusPill>
                     </TableCell>
                     {editable ? (
                       <TableCell className="text-end">

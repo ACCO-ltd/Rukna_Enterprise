@@ -15,6 +15,7 @@ import {
   Input,
   Select,
   Skeleton,
+  StatusPill,
   Table,
   TableBody,
   TableCell,
@@ -28,6 +29,7 @@ import {
 
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
+import { statusTone } from '@/lib/status-registry';
 import { useFileUpload } from '@/features/files/hooks/use-file-upload';
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { useUsers } from '@/features/users/hooks/use-users';
@@ -132,7 +134,7 @@ export function PurchaseDetailShell({
             <LtrValue className="font-mono text-xs font-medium text-muted-foreground">
               {order.poNumber}
             </LtrValue>
-            <ProcurementStatusBadge status={order.status} />
+            <ProcurementStatusBadge vocabulary="purchaseOrder" status={order.status} />
           </div>
           <h2 className="mt-2 text-h1 font-bold text-foreground">
             {order.supplier?.name ?? order.poNumber}
@@ -541,11 +543,11 @@ function AdvanceCard({
             {formatMoney(adv.amount, 'USD', locale)}
           </p>
           {hasOutstanding ? (
-            <Badge tone="warning" className="mt-1">
+            <Badge tone="attention" className="mt-1">
               {t('outstanding')}: {formatMoney(adv.outstanding, 'USD', locale)}
             </Badge>
           ) : (
-            <Badge tone="live" className="mt-1">
+            <Badge tone="success" className="mt-1">
               {t('evidenceAllocated')}
             </Badge>
           )}
@@ -1110,7 +1112,7 @@ function ReceivingTab({
                       {grn.deliveryNoteRef ?? '—'}
                     </TableCell>
                     <TableCell>
-                      <ProcurementStatusBadge status={grn.status} />
+                      <ProcurementStatusBadge vocabulary="grn" status={grn.status} />
                     </TableCell>
                     <TableCell>
                       <Link
@@ -1245,49 +1247,32 @@ function ReconciliationRow({
   );
 }
 
+// Status tones come from the status registry (ADR-034) — these only supply the translations.
+
 function FundingStatusBadge({ status }: { status: PoFundingStatus }) {
   const t = useTranslations('procurement.project.purchase.funding.fundingStatus');
-  const tones: Record<PoFundingStatus, 'neutral' | 'warning' | 'live'> = {
-    NOT_FUNDED: 'neutral',
-    PARTIALLY_FUNDED: 'warning',
-    FUNDED: 'live',
-  };
-  return <Badge tone={tones[status]}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'poFunding')}>{t(status)}</StatusPill>;
 }
 
 function ReceivingStatusBadge({ status }: { status: PoReceivingStatus }) {
   const t = useTranslations('procurement.project.purchase.receiving.receivingStatus');
-  const tones: Record<PoReceivingStatus, 'neutral' | 'warning' | 'live'> = {
-    NOT_RECEIVED: 'neutral',
-    PARTIALLY_RECEIVED: 'warning',
-    RECEIVED: 'live',
-  };
-  return <Badge tone={tones[status]}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'poReceiving')}>{t(status)}</StatusPill>;
 }
 
 function LineReceivingStatusBadge({ status }: { status: PoLineReceivingStatus }) {
   const t = useTranslations('procurement.project.purchase.receiving');
-  const tones: Record<PoLineReceivingStatus, 'neutral' | 'warning' | 'live'> = {
-    NOT_RECEIVED: 'neutral',
-    PARTIALLY_RECEIVED: 'warning',
-    RECEIVED: 'live',
-  };
-  return <Badge tone={tones[status]}>{t(`lineStatus.${status}`)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'poReceiving')}>{t(`lineStatus.${status}`)}</StatusPill>;
 }
 
 function SettlementStatusBadge({ status }: { status: PoSettlementStatus }) {
   const t = useTranslations('procurement.project.purchase.settlement.settlementStatus');
-  const tones: Record<PoSettlementStatus, 'neutral' | 'warning' | 'live'> = {
-    OPEN: 'neutral',
-    ACTION_REQUIRED: 'warning',
-    SETTLED: 'live',
-  };
-  return <Badge tone={tones[status]}>{t(status)}</Badge>;
+  return <StatusPill tone={statusTone(status, 'poSettlement')}>{t(status)}</StatusPill>;
 }
 
+/** An exception's kind — a classification, so a plain badge without a dot. */
 function ExceptionTypeBadge({ type }: { type: PoExceptionType }) {
   const t = useTranslations('procurement.project.purchase.settlement.exceptionType');
-  return <Badge tone="warning">{t(type)}</Badge>;
+  return <Badge tone="attention">{t(type)}</Badge>;
 }
 
 // ─── Icon ─────────────────────────────────────────────────────────────────────────

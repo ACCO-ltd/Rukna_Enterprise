@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { MagnifyingGlassIcon } from '@phosphor-icons/react';
+import { Search } from 'lucide-react';
 import { cn } from '@erp/ui';
 
 import { openCommandMenu } from './command-menu-store';
@@ -26,7 +26,7 @@ export function CommandMenuTrigger() {
       )}
       aria-label={t('commandMenu.triggerLabel')}
     >
-      <MagnifyingGlassIcon size={16} className="shrink-0" aria-hidden="true" />
+      <Search size={16} className="shrink-0" aria-hidden="true" />
       <span className="truncate">{t('commandMenu.triggerLabel')}</span>
       <kbd className="ms-auto hidden shrink-0 rounded-control border border-border bg-surface px-1.5 py-0.5 text-micro font-semibold text-muted-foreground sm:inline-block">
         {t('commandMenu.hintKey')}

@@ -2,20 +2,15 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Badge, RecordPanel, type BadgeTone } from '@erp/ui';
+import { RecordPanel, StatusPill } from '@erp/ui';
 import { Activity } from 'lucide-react';
 import type { PhysicalFinancialSignalResponse } from '@erp/types';
+
+import { statusTone } from '@/lib/status-registry';
 
 import { usePhysicalFinancialSignal, useProjectRollup } from '../hooks/use-progress';
 
 type SignalStatus = PhysicalFinancialSignalResponse['status'];
-
-const STATUS_TONE: Record<SignalStatus, BadgeTone> = {
-  ALIGNED: 'live',
-  COST_AHEAD: 'warning',
-  PROGRESS_AHEAD: 'info',
-  INSUFFICIENT_DATA: 'neutral',
-};
 
 const STATUS_HINT: Record<SignalStatus, string> = {
   ALIGNED: 'signal.alignedHint',
@@ -64,9 +59,9 @@ export function ProjectProgressCard({ projectId }: { projectId: string }) {
                 {signal.data.physicalPercent}%
               </p>
             </div>
-            <Badge tone={STATUS_TONE[signal.data.status]}>
+            <StatusPill tone={statusTone(signal.data.status, 'costSignal')}>
               {t(`signal.status.${signal.data.status}`)}
-            </Badge>
+            </StatusPill>
           </div>
           <p className="mt-2 text-caption text-muted-foreground">
             {t(STATUS_HINT[signal.data.status])}

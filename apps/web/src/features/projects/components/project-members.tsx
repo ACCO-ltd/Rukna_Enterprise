@@ -3,7 +3,7 @@
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProjectRole } from '@erp/types';
-import { DotsThree, Plus } from '@phosphor-icons/react';
+import { Ellipsis, Plus } from 'lucide-react';
 import {
   Alert,
   Button,
@@ -172,7 +172,7 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
                                     size="icon"
                                     aria-label={t('memberActions', { name: memberName(member) })}
                                   >
-                                    <DotsThree size={20} aria-hidden="true" />
+                                    <Ellipsis size={20} aria-hidden="true" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">

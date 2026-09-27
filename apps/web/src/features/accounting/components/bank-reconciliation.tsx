@@ -237,7 +237,7 @@ function CheckRow({ check, locale }: { check: ControlAccountCheck; locale: 'en' 
         {formatMoney(check.variance, 'USD', locale)}
       </TableCell>
       <TableCell>
-        <Badge tone={check.reconciled ? 'live' : 'danger'}>
+        <Badge tone={check.reconciled ? 'success' : 'danger'}>
           {check.reconciled ? t('statusOk') : t('statusVariance')}
         </Badge>
       </TableCell>

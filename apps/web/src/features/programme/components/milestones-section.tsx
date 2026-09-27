@@ -14,12 +14,14 @@ import {
   DialogTitle,
   FormField,
   Input,
+  StatusPill,
 } from '@erp/ui';
 import { Flag } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
+import { statusTone } from '@/lib/status-registry';
 
 import { useCreateMilestone, useMilestones, useVerifyMilestone } from '../hooks/use-programme';
 import {
@@ -36,13 +38,7 @@ import {
   RefTh,
   RefThead,
   RefTr,
-  type RefTone,
 } from '@/features/progress/components/ref-ui';
-
-const STATUS_TONE: Record<ProgrammeMilestoneResponse['status'], RefTone> = {
-  PLANNED: 'gray',
-  VERIFIED: 'green',
-};
 
 const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
@@ -147,7 +143,7 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
                       <ReleasesCell releases={m.releases} locale={locale} t={t} projectId={projectId} />
                     </RefTd>
                     <RefTd>
-                      <RefPill tone={STATUS_TONE[m.status]}>{t(`programme.status.${m.status}`)}</RefPill>
+                      <StatusPill tone={statusTone(m.status, 'programmeMilestone')}>{t(`programme.status.${m.status}`)}</StatusPill>
                     </RefTd>
                     <RefTd className="text-end">
                       {m.status === 'PLANNED' ? (

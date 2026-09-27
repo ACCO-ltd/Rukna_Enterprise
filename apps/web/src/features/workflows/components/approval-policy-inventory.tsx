@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
   FormField,
   Input,
@@ -25,7 +24,10 @@ import {
   TableRow,
   TableScroll,
   Textarea,
+  StatusPill,
 } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { AdminPanel } from '@/features/admin/components/admin-panel';
@@ -153,9 +155,9 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
                           <div className="text-xs text-muted-foreground">{policy.amountBasis}</div>
                         </TableCell>
                         <TableCell>
-                          <Badge tone={policy.status === 'ACTIVE' ? 'live' : 'neutral'}>
+                          <StatusPill tone={statusTone(policy.status, 'approvalPolicy')}>
                             {policy.status}
-                          </Badge>
+                          </StatusPill>
                         </TableCell>
                         <TableCell className="text-end tabular-nums">v{policy.version}</TableCell>
                         <TableCell className="text-end tabular-nums">{policy.ruleCount}</TableCell>

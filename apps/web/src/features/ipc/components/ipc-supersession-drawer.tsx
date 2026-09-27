@@ -51,6 +51,7 @@ export function IpcSupersessionDrawer({
       open={open}
       onClose={handleClose}
       commandName={t('commandName')}
+      statusVocabulary="ipc"
       currentStatus={effectiveCert?.status ?? newCert.status}
       nextStatus="SUPERSEDED"
       businessImpact={

@@ -3,12 +3,12 @@ import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '../lib/utils';
 
-const alertVariants = cva('rounded-md border px-4 py-3 text-sm', {
+const alertVariants = cva('rounded-panel border px-4 py-3 text-sm', {
   variants: {
     variant: {
       error: 'border-danger/20 bg-danger-subtle text-danger',
       warning: 'border-warning/20 bg-warning-subtle text-warning',
-      success: 'border-brand-primary/20 bg-surface-subtle text-foreground',
+      success: 'border-success/20 bg-success-subtle text-success',
       info: 'border-border bg-surface-subtle text-muted-foreground',
     },
   },

@@ -24,7 +24,7 @@ function clampPercent(value: number, max: number): number {
 }
 
 const progressFillTone: Record<ProgressTone, string> = {
-  default: 'bg-brand-primary',
+  default: 'bg-progress',
   success: 'bg-success',
   warning: 'bg-warning',
   danger: 'bg-danger',
@@ -72,7 +72,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
 Progress.displayName = 'Progress';
 
 const meterStrokeTone: Record<ProgressTone, string> = {
-  default: 'text-brand-primary',
+  default: 'text-progress',
   success: 'text-success',
   warning: 'text-warning',
   danger: 'text-danger',

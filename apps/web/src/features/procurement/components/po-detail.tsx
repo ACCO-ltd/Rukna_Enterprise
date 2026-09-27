@@ -140,7 +140,7 @@ export function PoDetail({ id }: { id: string }) {
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {order.poNumber}
             </span>
-            <ProcurementStatusBadge status={order.status} />
+            <ProcurementStatusBadge vocabulary="purchaseOrder" status={order.status} />
           </div>
 
           <h1 className="mt-2 text-h1 font-bold text-foreground">
@@ -259,7 +259,7 @@ function RevisionHistoryItem({
           <span className="text-sm font-medium text-foreground">
             {t('revisionTab', { number: revision.revisionNumber })}
           </span>
-          <ProcurementStatusBadge status={revision.status} />
+          <ProcurementStatusBadge vocabulary="poRevision" status={revision.status} />
           <span className="text-xs text-muted-foreground">
             {formatDate(revision.effectiveFrom, locale) ?? ''}
           </span>
@@ -299,7 +299,7 @@ function RevisionPanel({
     <div className="space-y-5">
       {isCurrent ? (
         <div className="flex flex-wrap items-center gap-2">
-          <ProcurementStatusBadge status={revision.status} />
+          <ProcurementStatusBadge vocabulary="poRevision" status={revision.status} />
           <span className="text-xs text-muted-foreground">
             {t('revisionTab', { number: revision.revisionNumber })}
           </span>

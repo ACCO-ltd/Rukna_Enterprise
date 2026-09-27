@@ -18,14 +18,22 @@ import type { BadgeTone } from './badge';
  * Not a licence to reach for this inside `RecordPanel`, a `Card`, or a table row — those keep
  * the one-tile-per-region rule. This exists only for rows inside a timeline/feed list.
  */
-const timelineIconToneClass: Record<BadgeTone, string> = {
+const TONE = {
   neutral: 'bg-muted text-muted-foreground',
-  info: 'bg-brand-accent text-brand-primary',
-  live: 'bg-success-subtle text-success',
-  accent: 'bg-historical-subtle text-historical',
-  warning: 'bg-warning-subtle text-warning',
+  progress: 'bg-progress-subtle text-progress',
+  attention: 'bg-warning-subtle text-warning',
+  success: 'bg-success-subtle text-success',
   danger: 'bg-danger-subtle text-danger',
   historical: 'bg-historical-subtle text-historical',
+};
+
+// Deprecated Badge tone names resolve exactly as they do on `Badge` (ADR-034).
+const timelineIconToneClass: Record<BadgeTone, string> = {
+  ...TONE,
+  info: TONE.progress,
+  live: TONE.success,
+  accent: TONE.historical,
+  warning: TONE.attention,
 };
 
 export interface TimelineIconProps {

@@ -74,7 +74,7 @@ export function PoList() {
       header: t('revisionStatus'),
       render: (po) => {
         const revision = latestRevision(po.revisions);
-        return revision ? <ProcurementStatusBadge status={revision.status} /> : null;
+        return revision ? <ProcurementStatusBadge vocabulary="poRevision" status={revision.status} /> : null;
       },
     },
     {
@@ -89,7 +89,7 @@ export function PoList() {
     {
       key: 'status',
       header: tc('status'),
-      render: (po) => <ProcurementStatusBadge status={po.status} />,
+      render: (po) => <ProcurementStatusBadge vocabulary="purchaseOrder" status={po.status} />,
     },
   ];
 

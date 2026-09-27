@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import { Warning } from '@phosphor-icons/react';
+import { TriangleAlert } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ export function FormErrorSummary({
     >
       <div className="flex gap-3">
         <span className="mt-0.5 shrink-0 text-danger">
-          <Warning size={18} weight="bold" aria-hidden="true" />
+          <TriangleAlert size={18} aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-danger">

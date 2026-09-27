@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Select,
   Sheet,
   SheetBody,
@@ -12,7 +11,10 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
+  StatusPill,
 } from '@erp/ui';
+
+import { statusTone } from '@/lib/status-registry';
 
 import type { ApprovalPolicyVersionSummary } from '@erp/types';
 
@@ -99,7 +101,7 @@ function VersionComparer({ versions }: { versions: ApprovalPolicyVersionSummary[
         {versions.map((version) => (
           <li key={version.id} className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-mono text-foreground">v{version.version}</span>
-            <Badge tone={version.status === 'ACTIVE' ? 'live' : 'neutral'}>{version.status}</Badge>
+            <StatusPill tone={statusTone(version.status, 'approvalPolicy')}>{version.status}</StatusPill>
             <span className="text-caption text-muted-foreground">
               {t('ruleCount', { count: version.ruleCount })}
             </span>

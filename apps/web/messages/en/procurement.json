@@ -101,11 +101,12 @@
   },
   "postingStatus": {
     "NOT_POSTED": "Not posted",
-    "PENDING": "Posting",
+    "PENDING": "Pending",
     "POSTED": "Posted",
     "FAILED": "Posting failed",
     "REVERSED": "Reversed",
-    "OPENING_BALANCE": "Opening balance"
+    "OPENING_BALANCE": "Opening balance",
+    "axis": "Posting"
   },
   "matchStatus": {
     "NOT_RUN": "Not run",
@@ -113,7 +114,8 @@
     "MATCHED_WITH_TOLERANCE": "Matched with variance",
     "EXCEPTION": "Exception",
     "APPROVED_EXCEPTION": "Exception approved",
-    "DISPUTED": "Disputed"
+    "DISPUTED": "Disputed",
+    "axis": "Match"
   },
   "uom": {
     "title": "Units of Measure",

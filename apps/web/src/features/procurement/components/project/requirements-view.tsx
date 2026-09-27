@@ -3,10 +3,11 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ClipboardList, Search } from 'lucide-react';
-import { Alert, Badge, Button, EmptyState, Input, LtrValue, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { Alert, Badge, Button, EmptyState, Input, LtrValue, Select, Skeleton, StatusPill, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 import type { ProjectRequirementRow, ProjectRequirementsResponse } from '@erp/types';
 
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import {
   EMPTY_REQUIREMENT_FILTERS,
@@ -18,7 +19,7 @@ import {
 import { useProjectRequirements } from '../../hooks/use-project-procurement';
 import { RaiseRequirementButton } from './procurement-overview-view';
 import { RequirementDetailDialog } from './requirement-detail-dialog';
-import { APPROVAL_TONE, FULFILMENT_TONE, PRIORITY_TONE } from './requirement-tones';
+import { PRIORITY_TONE } from './requirement-tones';
 import { SectionPanel } from './section-panel';
 
 const APPROVAL_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED', 'CLOSED'] as const;
@@ -323,14 +324,14 @@ function RequirementRow({
         )}
       </TableCell>
       <TableCell>
-        <Badge tone={APPROVAL_TONE[row.approvalStatus]}>
+        <StatusPill tone={statusTone(row.approvalStatus, 'requirementApproval')}>
           {t(`approval.${row.approvalStatus}`)}
-        </Badge>
+        </StatusPill>
       </TableCell>
       <TableCell>
-        <Badge tone={FULFILMENT_TONE[row.fulfillmentStatus]}>
+        <StatusPill tone={statusTone(row.fulfillmentStatus, 'requirementFulfilment')}>
           {t(`fulfilment.${row.fulfillmentStatus}`)}
-        </Badge>
+        </StatusPill>
       </TableCell>
       {/* The requester's estimate — what ADR-022 routes approval on. Not a commitment. */}
       <TableCell className="text-end tabular-nums text-muted-foreground">

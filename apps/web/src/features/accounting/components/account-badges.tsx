@@ -1,27 +1,17 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Badge, type BadgeTone, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { Badge, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 
 import type { AccountClass, ControlPostingPolicy, NormalBalance } from '../types';
 
 /**
- * Account class tones follow the accounting equation rather than a rainbow: the two sides of
- * the balance sheet read differently from the two sides of the income statement, so a glance
- * down the class column separates position from performance.
+ * Account class is a classification, not a status (ADR-034): it has no lifecycle, so it renders
+ * as a plain neutral badge without a dot. The word carries the distinction.
  */
-const CLASS_TONES: Record<AccountClass, BadgeTone> = {
-  ASSET: 'info',
-  LIABILITY: 'accent',
-  EQUITY: 'accent',
-  INCOME: 'live',
-  COST_OF_SALES: 'warning',
-  EXPENSE: 'warning',
-};
-
 export function AccountClassBadge({ accountClass }: { accountClass: AccountClass }) {
   const t = useTranslations('accounting.accountClass');
-  return <Badge tone={CLASS_TONES[accountClass] ?? 'neutral'}>{t(accountClass)}</Badge>;
+  return <Badge tone="neutral">{t(accountClass)}</Badge>;
 }
 
 /**
@@ -30,6 +20,9 @@ export function AccountClassBadge({ accountClass }: { accountClass: AccountClass
  * A control account is the one distinction that matters on this screen: it is not "blocked" in
  * the sense of being switched off, it is reserved for the posting engine, and someone looking
  * for why their journal will not accept it needs that difference stated.
+ *
+ * A property of the account rather than a lifecycle status, so it stays a plain badge: neutral,
+ * with only the reserved (system-only) case drawing attention.
  */
 export function PostingPolicyBadge({
   isPostingAllowed,
@@ -50,7 +43,7 @@ export function PostingPolicyBadge({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge tone="warning">{t('systemOnly')}</Badge>
+          <Badge tone="attention">{t('systemOnly')}</Badge>
         </TooltipTrigger>
         <TooltipContent>{t('controlAccountHint')}</TooltipContent>
       </Tooltip>
@@ -58,10 +51,10 @@ export function PostingPolicyBadge({
   }
 
   if (controlPostingPolicy === 'SYSTEM_OR_APPROVED_ADJUSTMENT') {
-    return <Badge tone="info">{t('systemOrApproved')}</Badge>;
+    return <Badge tone="neutral">{t('systemOrApproved')}</Badge>;
   }
 
-  return <Badge tone="live">{t('postingAllowed')}</Badge>;
+  return <Badge tone="neutral">{t('postingAllowed')}</Badge>;
 }
 
 /**

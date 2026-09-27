@@ -16,8 +16,10 @@ export type {
   ApprovalTimelineProps,
   DecisionPanelProps,
 } from './components/approval';
-export { Badge, StatusBadge } from './components/badge';
-export type { BadgeProps, BadgeTone } from './components/badge';
+export { Badge, StatusBadge, StatusPill, StatusText, STATUS_TONES } from './components/badge';
+export type { BadgeProps, BadgeTone, StatusTone, StatusTextProps } from './components/badge';
+export { MoneyDisplay, formatUsd } from './components/money-display';
+export type { MoneyDisplayProps, MoneyValue } from './components/money-display';
 export { Button } from './components/button';
 export type { ButtonProps } from './components/button';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './components/card';

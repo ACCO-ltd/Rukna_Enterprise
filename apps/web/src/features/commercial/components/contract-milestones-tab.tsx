@@ -22,10 +22,12 @@ import {
   Skeleton,
   ViewSwitcher,
   cn,
+  StatusPill,
 } from '@erp/ui';
 import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
 
 import { formatDate, formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 import { useRecordSignedDate } from '@/features/contracts/hooks/use-contracts';
 import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
 
@@ -44,7 +46,6 @@ import {
   type InvoiceJourneyPhase,
   type MilestoneItemViewModel,
 } from '../milestone-journey.adapter';
-import { contractStatusTone } from '../presentation';
 import { CommercialActivity } from './commercial-activity';
 import { MilestoneJourney } from './milestone-journey';
 import { MilestoneDetailPanel } from './milestone-detail-panel';
@@ -290,9 +291,9 @@ function ContractHeader({
           <p className="text-micro font-semibold uppercase text-muted-foreground">{t('reference')}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2.5">
             <span className="text-h3 font-bold text-foreground">{contract.contractNumber}</span>
-            <Badge tone={contractStatusTone(contract.status)} dot>
+            <StatusPill tone={statusTone(contract.status, 'contract')}>
               {tRoot(`contractStatus.${contract.status}`)}
-            </Badge>
+            </StatusPill>
           </div>
         </div>
         <Link
@@ -825,7 +826,7 @@ function SeparateChargeRow({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {item.invoice ? (
-          <Badge tone="live" className="text-caption">{t('statusInvoiced')}</Badge>
+          <Badge tone="success" className="text-caption">{t('statusInvoiced')}</Badge>
         ) : (
           <>
             <Badge tone="neutral" className="text-caption">{t('statusNotBilled')}</Badge>

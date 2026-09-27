@@ -149,7 +149,7 @@ export function SupplierList() {
                       : t('paymentTermsDays', { days: supplier.paymentTermsDays })}
                   </TableCell>
                   <TableCell>
-                    <ProcurementStatusBadge status={supplier.status} />
+                    <ProcurementStatusBadge vocabulary="masterData" status={supplier.status} />
                   </TableCell>
                   <TableCell className="text-end">
                     {canEdit ? (

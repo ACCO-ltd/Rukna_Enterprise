@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import { CaretRightIcon } from '@phosphor-icons/react';
+import { ChevronRight } from 'lucide-react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
@@ -516,7 +516,7 @@ function NavLink({ item, pathname, t, onNavigate, flyout = false }: NavLinkProps
 // ─── Chevron ──────────────────────────────────────────────────────────────────
 
 function ChevronIcon({ className }: { className?: string }) {
-  return <CaretRightIcon size={14} weight="bold" aria-hidden="true" className={className} />;
+  return <ChevronRight size={14} aria-hidden="true" className={className} />;
 }
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────

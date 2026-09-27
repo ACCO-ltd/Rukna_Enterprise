@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
   FormField,
   Input,
@@ -16,10 +15,12 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  StatusPill,
 } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
+import { statusTone } from '@/lib/status-registry';
 import { useDistricts, useCreateDistrict, useUpdateDistrict } from '../hooks/use-districts';
 
 export function DistrictsManager() {
@@ -129,9 +130,9 @@ export function DistrictsManager() {
                   <TableCell className="font-mono text-xs">{district.code}</TableCell>
                   <TableCell className="text-sm text-foreground">{district.name}</TableCell>
                   <TableCell>
-                    <Badge tone={district.active ? 'live' : 'neutral'}>
+                    <StatusPill tone={statusTone(district.active ? 'ACTIVE' : 'INACTIVE', 'masterData')}>
                       {district.active ? t('active') : t('inactive')}
-                    </Badge>
+                    </StatusPill>
                   </TableCell>
                   {canManage ? (
                     <TableCell className="text-end">

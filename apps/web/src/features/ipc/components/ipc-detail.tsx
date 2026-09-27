@@ -17,7 +17,7 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import { CaretLeftIcon } from '@phosphor-icons/react';
+import { ChevronLeft } from 'lucide-react';
 
 import { useBoqTree } from '@/features/boq/hooks/use-boq';
 import { fractionToPercent } from '@/features/contracts/contract-terms';
@@ -143,7 +143,7 @@ export function IpcDetail({ contractId, ipaId, ipcId, basePath }: IpcDetailProps
           href={backHref}
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary focus-visible:rounded"
         >
-          <CaretLeftIcon size={14} aria-hidden="true" />
+          <ChevronLeft size={14} aria-hidden="true" />
           {t('back')}
         </Link>
       </div>

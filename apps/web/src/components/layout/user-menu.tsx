@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { CaretDown, Desktop, Moon, Sun } from '@phosphor-icons/react';
+import { ChevronDown, Monitor, Moon, Sun } from 'lucide-react';
 import {
   Avatar,
   cn,
@@ -68,7 +68,7 @@ export function UserMenu() {
             </span>
           ) : null}
 
-          <CaretDown size={12} weight="bold" className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
+          <ChevronDown size={12} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
 
@@ -118,7 +118,7 @@ export function UserMenu() {
             preference="system"
             current={themePreference}
             label={t('user.themeSystem')}
-            icon={<Desktop size={16} aria-hidden="true" />}
+            icon={<Monitor size={16} aria-hidden="true" />}
           />
         </DropdownMenuGroup>
 

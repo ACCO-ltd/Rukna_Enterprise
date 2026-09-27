@@ -192,7 +192,7 @@ function CategoryRow({
         <span className="text-sm text-foreground">{category.name}</span>
       </TableCell>
       <TableCell>
-        <ProcurementStatusBadge status={category.status} />
+        <ProcurementStatusBadge vocabulary="masterData" status={category.status} />
       </TableCell>
       <TableCell>
         {canManage && category.status === 'ACTIVE' ? (

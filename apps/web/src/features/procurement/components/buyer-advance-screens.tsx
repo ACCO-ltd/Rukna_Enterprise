@@ -19,7 +19,7 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import { WalletIcon } from '@phosphor-icons/react';
+import { Wallet } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -113,7 +113,7 @@ export function BuyerAdvancesList() {
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
         <EmptyState
-          icon={<WalletIcon size={28} aria-hidden="true" />}
+          icon={<Wallet size={28} aria-hidden="true" />}
           title={t('empty')}
           description={t('emptyDesc')}
         />
@@ -140,7 +140,7 @@ export function BuyerAdvancesList() {
         emptyState={
           data.length === 0 ? (
             <EmptyState
-              icon={<WalletIcon size={28} aria-hidden="true" />}
+              icon={<Wallet size={28} aria-hidden="true" />}
               title={t('empty')}
               description={t('emptyDesc')}
             />
@@ -210,7 +210,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           {t('detailTitle')}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <PostingStatusBadge status={advance.postingStatus} />
+          <PostingStatusBadge showAxis status={advance.postingStatus} />
           <span className="text-sm text-muted-foreground">
             {formatDate(advance.advancedAt, locale)}
           </span>

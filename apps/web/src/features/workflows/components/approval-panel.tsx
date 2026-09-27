@@ -74,7 +74,7 @@ export function ApprovalPanel({
           </div>
 
           {current ? (
-            <Badge tone={canActOnStep(current, roles) ? 'live' : 'neutral'}>
+            <Badge tone={canActOnStep(current, roles) ? 'success' : 'neutral'}>
               {current.roleRequired}
             </Badge>
           ) : null}

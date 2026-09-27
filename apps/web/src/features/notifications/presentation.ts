@@ -1,5 +1,7 @@
-import type { BadgeTone } from '@erp/ui';
+import type { StatusTone } from '@erp/ui';
 import type { NotificationItem, NotificationSeverity } from '@erp/types';
+
+import { statusTone } from '@/lib/status-registry';
 
 /**
  * Pure presentation policy for the notification center (ADR-031). Kept out of the components so the
@@ -8,19 +10,12 @@ import type { NotificationItem, NotificationSeverity } from '@erp/types';
  */
 
 /**
- * A notification's severity → badge tone. Severity is the server's judgement of urgency; the UI
- * only colours it. URGENT is the one that must read as red; a WARNING is amber; INFO is quiet.
+ * A notification's severity → tone. Severity is the server's judgement of urgency; the UI only
+ * colours it, through the status registry's `severity` vocabulary (ADR-034): URGENT reads as red,
+ * WARNING as amber, INFO stays quiet.
  */
-export function notificationTone(severity: NotificationSeverity): BadgeTone {
-  switch (severity) {
-    case 'URGENT':
-      return 'danger';
-    case 'WARNING':
-      return 'warning';
-    case 'INFO':
-    default:
-      return 'info';
-  }
+export function notificationTone(severity: NotificationSeverity): StatusTone {
+  return statusTone(severity, 'severity');
 }
 
 /**

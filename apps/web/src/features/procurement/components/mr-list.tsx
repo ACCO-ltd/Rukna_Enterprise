@@ -106,7 +106,7 @@ export function MrList() {
     {
       key: 'status',
       header: tc('status'),
-      render: (mr) => <ProcurementStatusBadge status={mr.status} />,
+      render: (mr) => <ProcurementStatusBadge vocabulary="materialRequest" status={mr.status} />,
     },
   ];
 

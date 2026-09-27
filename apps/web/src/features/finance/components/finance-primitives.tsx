@@ -3,18 +3,18 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Badge,
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
   LtrValue,
   cn,
-  type BadgeTone,
+  StatusPill,
 } from '@erp/ui';
-import type { FinanceControlState, FinanceControlStatus } from '@erp/types';
+import type { FinanceControlStatus } from '@erp/types';
 
 import { formatMoney } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 /**
  * The shared vocabulary of the Finance workspace.
@@ -165,18 +165,12 @@ export function MetricBand({
   );
 }
 
-const CONTROL_TONE: Record<FinanceControlState, BadgeTone> = {
-  OK: 'live',
-  ATTENTION: 'warning',
-  UNAVAILABLE: 'neutral',
-};
-
 /**
  * One control state: is this part of the picture trustworthy?
  *
  * These are the states the backend measured, never a judgement the browser formed. Semantic
  * colour lives here and only here — money itself stays neutral, because a figure is not good or
- * bad, it is just true.
+ * bad, it is just true. The tone comes from the status registry (ADR-034).
  */
 export function ControlRow({
   icon,
@@ -203,9 +197,9 @@ export function ControlRow({
           ) : null}
         </div>
       </div>
-      <Badge tone={CONTROL_TONE[status.state]} className="shrink-0">
+      <StatusPill tone={statusTone(status.state, 'financeControl')} className="shrink-0">
         {status.label}
-      </Badge>
+      </StatusPill>
     </div>
   );
 }

@@ -31,6 +31,7 @@ import {
   SheetTitle,
   SheetDescription,
   SheetBody,
+  StatusPill,
   Table,
   TableBody,
   TableCell,
@@ -43,6 +44,7 @@ import {
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
+import { statusTone } from '@/lib/status-registry';
 import { formatDate } from '@/lib/format';
 
 import { accountName } from '../account-display';
@@ -104,10 +106,10 @@ export function BankAccounts() {
       header: t('colUse'),
       render: (bank) => (
         <span className="flex flex-wrap gap-1">
-          {bank.allowsReceipts ? <Badge tone="info">{t('receipts')}</Badge> : null}
-          {bank.allowsPayments ? <Badge tone="accent">{t('payments')}</Badge> : null}
+          {bank.allowsReceipts ? <Badge tone="neutral">{t('receipts')}</Badge> : null}
+          {bank.allowsPayments ? <Badge tone="neutral">{t('payments')}</Badge> : null}
           {!bank.allowsReceipts && !bank.allowsPayments ? (
-            <Badge tone="warning">{t('neither')}</Badge>
+            <Badge tone="attention">{t('neither')}</Badge>
           ) : null}
         </span>
       ),
@@ -116,9 +118,9 @@ export function BankAccounts() {
       key: 'status',
       header: t('colStatus'),
       render: (bank) => (
-        <Badge tone={bank.status === 'ACTIVE' ? 'live' : 'neutral'}>
+        <StatusPill tone={statusTone(bank.status, 'masterData')}>
           {t(`status.${bank.status}`)}
-        </Badge>
+        </StatusPill>
       ),
     },
     {

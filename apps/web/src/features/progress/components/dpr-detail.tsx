@@ -16,6 +16,8 @@ import {
   Textarea,
   useToast,
   type ApprovalStep,
+  Badge,
+  type StatusTone,
 } from '@erp/ui';
 import {
   ArrowLeft,
@@ -44,7 +46,6 @@ import {
   RefCard,
   RefCardBody,
   RefCardHeader,
-  RefPill,
   RefStatTile,
   RefTable,
   RefTableScroll,
@@ -53,7 +54,6 @@ import {
   RefTh,
   RefThead,
   RefTr,
-  type RefTone,
 } from './ref-ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -1265,10 +1265,14 @@ type ObsCategory = (typeof OBS_CATEGORIES)[number];
 
 const SEVERITY_OPTIONS = ['low', 'medium', 'high'] as const;
 
-const OBS_TONES: Record<ObsCategory, RefTone> = {
-  ISSUE: 'amber',
-  DELAY: 'amber',
-  SAFETY: 'red',
+/**
+ * Observation category is a classification, not a lifecycle status (ADR-034): a plain badge
+ * without a dot, neutral except SAFETY, which is the one category that must read as urgent.
+ */
+const OBS_TONES: Record<ObsCategory, StatusTone> = {
+  ISSUE: 'neutral',
+  DELAY: 'neutral',
+  SAFETY: 'danger',
 };
 
 function ObservationsSection({
@@ -1321,9 +1325,9 @@ function ObservationsSection({
         <ul className="divide-y divide-border">
           {rows.map((obs) => (
             <li key={obs.id} className="flex items-start gap-3 py-3">
-              <RefPill tone={OBS_TONES[obs.category as ObsCategory] ?? 'blue'} className="mt-0.5 shrink-0">
+              <Badge tone={OBS_TONES[obs.category as ObsCategory] ?? 'neutral'} className="mt-0.5 shrink-0">
                 {t(`observations.categories.${obs.category}`)}
-              </RefPill>
+              </Badge>
               <div className="min-w-0 flex-1">
                 <p className="text-body font-medium text-foreground">{obs.description}</p>
                 {obs.affectedWork ? (

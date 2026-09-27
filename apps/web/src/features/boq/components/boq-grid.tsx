@@ -568,7 +568,7 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
 
   if (node.sourceType === 'VARIATION') {
     return (
-      <Badge tone="info" className="gap-1">
+      <Badge tone="neutral" className="gap-1">
         <Diamond size={10} aria-hidden="true" />
         {node.sourceChangeOrderId
           ? t('sourceVariationRef', { ref: node.sourceChangeOrderId })

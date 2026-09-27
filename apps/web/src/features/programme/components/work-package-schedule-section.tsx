@@ -2,37 +2,19 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, cn, EmptyState, SectionHeader, Skeleton } from '@erp/ui';
+import { Alert, cn, EmptyState, SectionHeader, Skeleton, StatusPill } from '@erp/ui';
 import { CalendarClock } from 'lucide-react';
 import type { ProgressScheduleStatus, WorkPackageRollupLine } from '@erp/types';
 
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useBoqLeaves } from '@/features/progress/hooks/use-boq-leaves';
 import { useProjectRollup } from '@/features/progress/hooks/use-progress';
-import { RefButton, RefPill, type RefTone } from '@/features/progress/components/ref-ui';
+import { RefButton, RefPill } from '@/features/progress/components/ref-ui';
+import { statusTone } from '@/lib/status-registry';
 
 const dateOnly = (iso: string | null): string => (iso ? iso.slice(0, 10) : '');
 const isoOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 const msOf = (iso: string): number => new Date(iso).getTime();
-
-/**
- * Same status vocabulary the headline band and Performance chip use — the dot repeats the badge
- * word so nothing depends on colour alone (ux-doctrine §1). The bars themselves stay on the
- * `--chart-*` ramp (data-viz, not status); only this dot/badge colours by meaning.
- */
-const STATUS_DOT: Record<ProgressScheduleStatus, string> = {
-  AHEAD: 'bg-success',
-  ON_TRACK: 'bg-success',
-  BEHIND: 'bg-warning',
-  INSUFFICIENT_DATA: 'bg-disabled-foreground',
-};
-
-const STATUS_TONE: Record<ProgressScheduleStatus, RefTone> = {
-  AHEAD: 'green',
-  ON_TRACK: 'blue',
-  BEHIND: 'amber',
-  INSUFFICIENT_DATA: 'gray',
-};
 
 /**
  * Master Schedule P1-c (ADR-029): the **work package is the schedule row**.
@@ -281,7 +263,7 @@ function ScheduleRow({
         </span>
         {line.scheduleOnly ? <RefPill tone="gray">{t('wpSchedule.scheduleOnly')}</RefPill> : null}
         <PercentChip percent={line.percentComplete} label={t('wpSchedule.percentLabel')} />
-        <StatusBadge status={line.scheduleStatus} />
+        <ScheduleHealthPill status={line.scheduleStatus} />
       </div>
 
       <div className="flex items-center gap-2">
@@ -346,16 +328,15 @@ function PercentChip({ percent, label }: { percent: number | null; label: string
   );
 }
 
-/** Schedule health for the phase — dot + word, so the meaning never rides on colour alone. */
-function StatusBadge({ status }: { status: ProgressScheduleStatus }) {
+/**
+ * Schedule health for the phase — dot + word, so the meaning never rides on colour alone. Same
+ * registry vocabulary (`scheduleHealth`, ADR-034) the Performance chip uses.
+ */
+function ScheduleHealthPill({ status }: { status: ProgressScheduleStatus }) {
   const t = useTranslations('progress');
   return (
-    <RefPill tone={STATUS_TONE[status]} className="shrink-0 gap-1.5">
-      <span
-        aria-hidden="true"
-        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[status])}
-      />
+    <StatusPill tone={statusTone(status, 'scheduleHealth')} className="shrink-0">
       {t(`curve.status.${status}`)}
-    </RefPill>
+    </StatusPill>
   );
 }

@@ -24,7 +24,7 @@ import {
   TableScroll,
 } from '@erp/ui';
 import Link from 'next/link';
-import { ArrowsDownUp, Columns } from '@phosphor-icons/react';
+import { ArrowUpDown, Columns3 } from 'lucide-react';
 
 // ─── Column definition ────────────────────────────────────────────────────────
 
@@ -749,7 +749,7 @@ export function PlatformDataGrid<T>({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1.5">
-                <Columns size={15} aria-hidden="true" />
+                <Columns3 size={15} aria-hidden="true" />
                 {t('columnVisibility')}
               </Button>
             </DropdownMenuTrigger>
@@ -832,7 +832,7 @@ export function PlatformDataGrid<T>({
                   type="button"
                   className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-body-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                 >
-                  <ArrowsDownUp size={14} aria-hidden="true" />
+                  <ArrowUpDown size={14} aria-hidden="true" />
                   <span>{t('sortBy', { column: activeSortColumn?.header ?? t('sortByDefault') })}</span>
                 </button>
               </DropdownMenuTrigger>

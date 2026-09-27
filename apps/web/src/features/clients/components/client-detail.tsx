@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
 import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@erp/ui';
-import { DotsThreeVertical } from '@phosphor-icons/react';
+import { EllipsisVertical } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
@@ -65,7 +65,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
             {can('create:project') && isActive ? <Button asChild><Link href={`/projects/new?clientId=${client.id}`}>{t('newProject')}</Link></Button> : null}
             {can('manage:client') ? <Button variant="outline" asChild><Link href={`/clients/${client.id}/edit`}>{t('edit')}</Link></Button> : null}
             {can('manage:client') ? <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={t('more')}><DotsThreeVertical size={20} aria-hidden="true" /></Button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={t('more')}><EllipsisVertical size={20} aria-hidden="true" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setConfirmingStatus(true)}>{isActive ? t('deactivate') : t('reactivate')}</DropdownMenuItem></DropdownMenuContent>
             </DropdownMenu> : null}
           </div>

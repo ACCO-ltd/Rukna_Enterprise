@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDate, formatMoney, formatNumber, formatStatus, relativeTime } from './format';
+import { formatDate, formatMoney, formatNumber, relativeTime } from './format';
 
 describe('formatMoney', () => {
   it('formats the decimal STRING the API sends, without losing precision', () => {
@@ -95,52 +95,5 @@ describe('relativeTime', () => {
     expect(relativeTime(null)).toBeNull();
     expect(relativeTime('')).toBeNull();
     expect(relativeTime('nonsense')).toBeNull();
-  });
-});
-
-describe('formatStatus', () => {
-  it('maps DRAFT to NEUTRAL (not muted)', () => {
-    expect(formatStatus('DRAFT')).toEqual({ token: 'NEUTRAL', muted: false });
-  });
-
-  it('maps ACTIVE to SUCCESS (not muted)', () => {
-    expect(formatStatus('ACTIVE')).toEqual({ token: 'SUCCESS', muted: false });
-  });
-
-  it('maps CANCELLED to DANGER (muted — terminal but not urgent)', () => {
-    expect(formatStatus('CANCELLED')).toEqual({ token: 'DANGER', muted: true });
-  });
-
-  it('maps CLOSED to SUCCESS (muted — resolved but not urgent)', () => {
-    expect(formatStatus('CLOSED')).toEqual({ token: 'SUCCESS', muted: true });
-  });
-
-  it('maps SUPERSEDED to HISTORICAL (muted)', () => {
-    expect(formatStatus('SUPERSEDED')).toEqual({ token: 'HISTORICAL', muted: true });
-  });
-
-  it('maps PENDING_INTERNAL_APPROVAL to IN_PROGRESS', () => {
-    expect(formatStatus('PENDING_INTERNAL_APPROVAL')).toEqual({ token: 'IN_PROGRESS', muted: false });
-  });
-
-  it('maps RETURNED_FOR_REVISION to WARNING', () => {
-    expect(formatStatus('RETURNED_FOR_REVISION')).toEqual({ token: 'WARNING', muted: false });
-  });
-
-  it('maps PARTIALLY_PAID to WARNING', () => {
-    expect(formatStatus('PARTIALLY_PAID')).toEqual({ token: 'WARNING', muted: false });
-  });
-
-  it('maps PAID to SUCCESS', () => {
-    expect(formatStatus('PAID')).toEqual({ token: 'SUCCESS', muted: false });
-  });
-
-  it('falls back to NEUTRAL for unknown statuses rather than throwing', () => {
-    expect(formatStatus('SOME_FUTURE_STATUS')).toEqual({ token: 'NEUTRAL', muted: false });
-  });
-
-  it('falls back to NEUTRAL for null or undefined', () => {
-    expect(formatStatus(null)).toEqual({ token: 'NEUTRAL', muted: false });
-    expect(formatStatus(undefined)).toEqual({ token: 'NEUTRAL', muted: false });
   });
 });

@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  cn,
   FormField,
   Dialog,
   DialogContent,
@@ -15,35 +14,8 @@ import {
   Textarea,
 } from '@erp/ui';
 
-import { formatStatus, type StatusToken } from '@/lib/format';
-
-// ─── Status chip ──────────────────────────────────────────────────────────────
-
-const TOKEN_CLASSES: Record<StatusToken, string> = {
-  NEUTRAL:     'bg-slate-100 text-slate-700',
-  IN_PROGRESS: 'bg-blue-50  text-blue-700',
-  WARNING:     'bg-amber-50 text-amber-700',
-  SUCCESS:     'bg-green-50 text-green-700',
-  DANGER:      'bg-red-50   text-red-700',
-  HISTORICAL:  'bg-purple-50 text-purple-700',
-};
-
-function StatusChip({ status }: { status: string }) {
-  const { token, muted } = formatStatus(status);
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded px-2 py-0.5 text-xs font-medium',
-        TOKEN_CLASSES[token],
-        muted && 'opacity-60',
-      )}
-    >
-      {/* Preserve the raw status key — the chip's text is a technical identifier
-          for users who know the domain, not a translated label. */}
-      {status.replace(/_/g, ' ')}
-    </span>
-  );
-}
+import { StatusBadge } from '@/components/status-badge';
+import type { StatusVocabulary } from '@/lib/status-registry';
 
 // ─── Drawer ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +38,8 @@ export interface LifecycleCommandDrawerProps {
   currentStatus: string;
   /** The status the aggregate will move to on success, e.g. "PENDING_INTERNAL_APPROVAL". */
   nextStatus: string;
+  /** Which lifecycle the two statuses belong to, so they are toned by the status registry. */
+  statusVocabulary?: StatusVocabulary;
 
   /**
    * One or two sentences describing the business consequence of this command.
@@ -129,6 +103,7 @@ export function LifecycleCommandDrawer({
   commandName,
   currentStatus,
   nextStatus,
+  statusVocabulary,
   businessImpact,
   reason,
   children,
@@ -194,9 +169,9 @@ export function LifecycleCommandDrawer({
 
           {/* Status transition indicator */}
           <div className="mt-3 flex items-center gap-2 text-sm">
-            <StatusChip status={currentStatus} />
+            <StatusBadge status={currentStatus} vocabulary={statusVocabulary} />
             <span className="text-muted-foreground" aria-hidden="true">→</span>
-            <StatusChip status={nextStatus} />
+            <StatusBadge status={nextStatus} vocabulary={statusVocabulary} />
           </div>
 
           {/* Business impact */}
