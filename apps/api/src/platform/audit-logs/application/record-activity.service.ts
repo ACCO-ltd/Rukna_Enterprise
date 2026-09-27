@@ -25,7 +25,7 @@ export class RecordActivityService {
       where: { orgId, resourceId: { in: resourceIds } },
       orderBy: { createdAt: 'desc' },
       take: LIMIT,
-      select: { id: true, userId: true, action: true, resource: true, createdAt: true },
+      select: { id: true, userId: true, action: true, resource: true, createdAt: true, reason: true },
     });
     const actorName = await loadActorNames(prisma, rows.map((r) => r.userId));
     return rows.map((row) => ({
@@ -33,6 +33,7 @@ export class RecordActivityService {
       at: row.createdAt.toISOString(),
       actor: { id: row.userId, name: actorName(row.userId) },
       code: activityCode(row.action, row.resource),
+      ...(row.reason ? { reason: row.reason } : {}),
     }));
   }
 }

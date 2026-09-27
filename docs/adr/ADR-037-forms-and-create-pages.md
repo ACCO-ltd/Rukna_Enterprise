@@ -59,7 +59,7 @@ Use a **full page** for anything with line items and for master-data creation. U
 | Client payment terms, receivable account, "email invoices" toggle | Not added. Each would be a new backend feature | Not in the API; Sprint-6 removed payment terms from clients |
 | Contract value on New project | Not added | CONST-CONTRACT-003: the contract owns the value |
 | Free-form New invoice with editable lines, discount and client reference | Built as a **source picker** instead: choose an IPC, milestone or separate charge, and the source's line is read-only | Invoices are source-bound and their amounts are immutable (ADR-029 CONST-BOQ-030/033) |
-| Reject bill dialog | Not built. **Open question for Eng Ahmed** (approval workflow) | No reject endpoint; REJECTED is never set |
+| Reject bill dialog | **Decided 2026-09-27 (owner):** both *Return for correction* and *Reject (final)*, each with a required reason — see the amendment below | No reject endpoint existed; REJECTED was never set |
 | Supplier type, spend category, contacts, payable account | Not added | Not in the API |
 | Discount on invoices and bills | Not shown | No discount in the model |
 | "Waiting for your approval, step 1 of 2" on a submitted bill | Not shown; the Approvals tab carries the chain | Bill approval gates *submit* |
@@ -101,6 +101,32 @@ Use a **full page** for anything with line items and for master-data creation. U
 
 - A full page replaces the create dialog.
 - Fields: code, name, Tax ID, and payment terms as a select mapped to days. USD is fixed.
+
+## Amendment: return for correction and reject (2026-09-27)
+
+**The problem.** A submitted bill with a mistake had no way out:
+
+- There was no reject, return, cancel or edit command.
+- The duplicate-number rule stopped a corrected bill from being entered, because the wrong bill still held the number.
+
+**Decision (owner):**
+
+- **Return for correction:** `POST /bills/:id/return {reason}` moves the bill from SUBMITTED back to DRAFT.
+  - The PO match is discarded, and runs again when the bill is resubmitted.
+  - The latest return is kept on the bill in `returnedAt`, `returnedBy` and `returnReason`.
+- **Reject (final):** `POST /bills/:id/reject {reason}` moves the bill from SUBMITTED to REJECTED.
+  - The bill stays on record, is never posted, and frees its supplier invoice number.
+- **Edit a draft:** `PATCH /bills/:id` accepts the create payload and runs the same rules, through a shared `prepareBill`.
+  - It works on a new draft or a returned one. The lines are replaced.
+- **A reason is required** for both return and reject.
+  - The audit interceptor now stores a command's `{ reason }` in `AuditLog.reason`, and the bill's Activity shows it.
+  - So every return and rejection is on record, not only the latest.
+- **The invoice number is freed by rejection.** The unique index on (organization, supplier, normalised number) becomes a **partial** index, `WHERE document_status NOT IN ('REJECTED','CANCELLED')`, in migration `20260927120000_bill_return_reject`.
+- **Same permission as approve** (`payables:manage`).
+
+**Not decided / not built:** clerk self-cancel.
+
+When an approval policy gates *submit* and an approver rejects the approval instance, the bill stays DRAFT, which is unchanged. It can now be edited and resubmitted.
 
 ## Consequences
 

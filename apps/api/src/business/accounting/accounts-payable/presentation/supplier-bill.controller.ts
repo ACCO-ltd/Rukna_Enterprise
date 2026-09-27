@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
+  Controller, Get, Post, Patch, Body, Param, Query,
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -13,6 +13,7 @@ import { SupplierBillDocumentService } from '../application/supplier-bill-docume
 import { CreateSupplierBillDto } from './dto/create-supplier-bill.dto.js';
 import { PostSupplierBillDto } from './dto/post-supplier-bill.dto.js';
 import { ReverseSupplierBillDto } from './dto/reverse-supplier-bill.dto.js';
+import { BillDecisionReasonDto } from './dto/bill-decision-reason.dto.js';
 
 @ApiTags('Supplier Bills')
 @ApiBearerAuth('access-token')
@@ -73,6 +74,42 @@ export class SupplierBillController {
   })
   payments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.documentService.payments(identity, id);
+  }
+
+  @Patch(':id')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Edit a DRAFT bill (new, or returned for correction); lines are replaced' })
+  @ApiResponse({ status: 409, description: 'Supplier invoice number already recorded on a live bill' })
+  update(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: CreateSupplierBillDto,
+  ) {
+    return this.supplierBillService.update(identity, id, dto);
+  }
+
+  @Post(':id/return')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Return a SUBMITTED bill to DRAFT for correction, with a reason' })
+  returnForCorrection(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: BillDecisionReasonDto,
+  ) {
+    return this.supplierBillService.returnForCorrection(identity, id, dto.reason);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Reject a SUBMITTED bill (final), with a reason; frees its supplier invoice number' })
+  reject(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: BillDecisionReasonDto,
+  ) {
+    return this.supplierBillService.reject(identity, id, dto.reason);
   }
 
   @Post(':id/submit')

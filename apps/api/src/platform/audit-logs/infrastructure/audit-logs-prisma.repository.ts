@@ -24,6 +24,7 @@ export class AuditLogsPrismaRepository implements IAuditLogsRepository {
         before: (data.before ?? undefined) as InputJsonValue | undefined,
         after: (data.after ?? undefined) as InputJsonValue | undefined,
         ipAddress: data.ipAddress,
+        reason: data.reason,
       },
     });
   }

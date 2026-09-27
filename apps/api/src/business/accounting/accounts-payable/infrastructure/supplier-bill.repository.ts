@@ -101,17 +101,25 @@ export class SupplierBillRepository {
    * the normalised form the unique index (organizationId, supplierId, supplierInvoiceNumberNorm)
    * is built on, so "INV-0042" and "inv 0042" are the same number.
    */
+  /**
+   * The LIVE bill already holding this supplier invoice number, if any. Rejected and cancelled
+   * bills no longer hold their number (partial unique index, migration 20260927120000);
+   * `excludeBillId` skips the bill being edited.
+   */
   findBySupplierInvoiceNumber(
     prisma: TenantPrisma,
     organizationId: string,
     supplierId: string,
     supplierInvoiceNumber: string,
+    excludeBillId?: string,
   ) {
     return prisma.supplierBill.findFirst({
       where: {
         organizationId,
         supplierId,
         supplierInvoiceNumberNorm: normalizeSupplierInvoiceNumber(supplierInvoiceNumber),
+        documentStatus: { notIn: ['REJECTED', 'CANCELLED'] },
+        ...(excludeBillId ? { id: { not: excludeBillId } } : {}),
       },
       select: { id: true, billNumber: true, supplierInvoiceNumber: true },
     });

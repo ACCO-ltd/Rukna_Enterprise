@@ -1493,6 +1493,9 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 | `GET` | `/bills/:id/approvals` | Approval chain(s) raised for the bill — `{ instances: [{ policyName, evaluatedAmount, steps: [{ roleRequired, state, actor, actedAt, notes }] }], directApproval }`. `state`: APPROVED, REJECTED, CURRENT, UPCOMING, SKIPPED, CANCELLED (ADR-036) |
 | `GET` | `/bills/:id/activity` | The bill's history, newest first — `[{ id, at, actor: { id, name }, code, detail? }]`. Merges audited commands (`bills.submit`, `bills.post`, `bill-matching.run`…), approval decisions (`approval.approve` / `approval.reject`, `detail` = role) and creation (`bills.create`) (ADR-036) |
 | `GET` | `/bills/:id/payments` | Payment allocations against the bill with server-computed `paidAmount` (POSTED allocations), `pendingAmount` (allocated by unposted payments, already off `outstandingAmount`) and `paymentCount` (ADR-036) |
+| `PATCH` | `/bills/:id` | Edit a DRAFT bill (new or returned) — same body as `POST /bills`; lines replaced; 409 if another live bill holds the supplier invoice number (ADR-037) |
+| `POST` | `/bills/:id/return` | `{ reason }` required — SUBMITTED → DRAFT for correction; resets the PO match (ADR-037) |
+| `POST` | `/bills/:id/reject` | `{ reason }` required — SUBMITTED → REJECTED (final); frees the supplier invoice number (ADR-037) |
 | `POST` | `/bills/:id/submit` | Submit for approval |
 | `POST` | `/bills/:id/approve` | Approve or reject |
 | `POST` | `/bills/:id/post` | Post to AP control account |

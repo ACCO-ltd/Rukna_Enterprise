@@ -71,6 +71,8 @@ import {
   postGoodsReceipt,
   postSupplierBill,
   postSupplierPayment,
+  rejectSupplierBill,
+  returnSupplierBill,
   reverseSupplierBill,
   reverseSupplierPayment,
   revisePurchaseOrder,
@@ -79,6 +81,7 @@ import {
   submitMaterialRequest,
   submitPurchaseOrder,
   submitSupplierBill,
+  updateSupplierBill,
   updateSupplier,
   attachPoRevision,
   createBuyerAdvance,
@@ -663,6 +666,8 @@ function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBil
     onSuccess: (bill) => {
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
       void qc.invalidateQueries({ queryKey: procurementKeys.bill(bill.id) });
+      // Edit and return discard the PO match; submit runs a fresh one.
+      void qc.invalidateQueries({ queryKey: procurementKeys.billMatch(bill.id) });
       void qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
     },
   });
@@ -670,6 +675,25 @@ function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBil
 
 export function useCreateSupplierBill() {
   return useBillMutation((payload: CreateSupplierBillPayload) => createSupplierBill(payload));
+}
+
+/** `PATCH /bills/:id` — edit a DRAFT bill. */
+export function useUpdateSupplierBill() {
+  return useBillMutation((args: { id: string; payload: CreateSupplierBillPayload }) =>
+    updateSupplierBill(args.id, args.payload),
+  );
+}
+
+export function useReturnSupplierBill() {
+  return useBillMutation((args: { id: string; reason: string }) =>
+    returnSupplierBill(args.id, args.reason),
+  );
+}
+
+export function useRejectSupplierBill() {
+  return useBillMutation((args: { id: string; reason: string }) =>
+    rejectSupplierBill(args.id, args.reason),
+  );
 }
 
 export function useSubmitSupplierBill() {

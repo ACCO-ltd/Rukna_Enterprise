@@ -16,7 +16,11 @@ import type { SupplierBill, PostSupplierBillPayload } from './types';
  * approved, where an invoice goes straight to approval:
  *
  *   DRAFT ──submit──▶ SUBMITTED ──approve──▶ APPROVED ──post──▶ (POSTED) ──reverse──▶ (REVERSED)
+ *     ▲                  │
+ *     └────return────────┤          (ADR-037 amendment: both need a reason)
+ *                        └──reject──▶ REJECTED (final — never posted)
  *
+ * A DRAFT bill — new, or returned for correction — can be edited.
  * The parenthesised states are `postingStatus`; the rest are `documentStatus`. The two axes
  * advance independently, which is why no single field drives this.
  *
@@ -33,7 +37,7 @@ import type { SupplierBill, PostSupplierBillPayload } from './types';
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────────
 
-export type BillAction = 'submit' | 'approve' | 'post' | 'reverse';
+export type BillAction = 'submit' | 'approve' | 'return' | 'reject' | 'post' | 'reverse';
 
 export type BillBlockReason =
   | 'not-draft'
@@ -52,6 +56,24 @@ export function canSubmit(bill: SupplierBill): boolean {
 /** `supplier-bill.service.ts:124` — approve requires SUBMITTED. */
 export function canApprove(bill: SupplierBill): boolean {
   return bill.documentStatus === 'SUBMITTED';
+}
+
+/** `supplier-bill.service.ts` `returnForCorrection` — SUBMITTED only; back to DRAFT. */
+export function canReturn(bill: SupplierBill): boolean {
+  return bill.documentStatus === 'SUBMITTED';
+}
+
+/** `supplier-bill.service.ts` `reject` — SUBMITTED only; final. */
+export function canReject(bill: SupplierBill): boolean {
+  return bill.documentStatus === 'SUBMITTED';
+}
+
+/**
+ * `supplier-bill.service.ts` `update` — only a DRAFT bill can be edited, whether it is new or
+ * was returned for correction. Not a `BillAction`: it navigates to a page, it is not a command.
+ */
+export function canEditBill(bill: SupplierBill): boolean {
+  return bill.documentStatus === 'DRAFT';
 }
 
 /**
@@ -102,6 +124,8 @@ export function availableBillActions(bill: SupplierBill): BillAction[] {
   const actions: BillAction[] = [];
   if (canSubmit(bill)) actions.push('submit');
   if (canApprove(bill)) actions.push('approve');
+  if (canReturn(bill)) actions.push('return');
+  if (canReject(bill)) actions.push('reject');
   if (canPost(bill)) actions.push('post');
   if (canReverse(bill)) actions.push('reverse');
   return actions;
@@ -118,6 +142,12 @@ export function billBlockReason(
 
     case 'approve':
       return canApprove(bill) ? null : 'not-submitted';
+
+    case 'return':
+      return canReturn(bill) ? null : 'not-submitted';
+
+    case 'reject':
+      return canReject(bill) ? null : 'not-submitted';
 
     case 'post': {
       if (canPost(bill)) return null;
@@ -163,10 +193,12 @@ export function billLifecycle(bill: SupplierBill): BillLifecycle {
 }
 
 /**
- * The one primary command for this state — the next step along the main line. Reverse is never
- * primary: it undoes a posting, and it lives in the kebab.
+ * The one primary command for this state — the next step along the main line. Reverse, return
+ * and reject are never primary: they undo or stop the line, and they live in the kebab.
  */
-export function primaryBillAction(bill: SupplierBill): Exclude<BillAction, 'reverse'> | null {
+export function primaryBillAction(
+  bill: SupplierBill,
+): Exclude<BillAction, 'reverse' | 'return' | 'reject'> | null {
   const allowed = availableBillActions(bill);
   for (const action of ['submit', 'approve', 'post'] as const) {
     if (allowed.includes(action)) return action;
@@ -174,13 +206,26 @@ export function primaryBillAction(bill: SupplierBill): Exclude<BillAction, 'reve
   return null;
 }
 
-export type BillNotice = 'post-blocked' | 'post-failed' | 'posting-pending' | 'reversed' | 'posted';
+export type BillNotice =
+  | 'post-blocked'
+  | 'post-failed'
+  | 'posting-pending'
+  | 'reversed'
+  | 'posted'
+  | 'returned'
+  | 'rejected';
 
 /**
  * The single notice a bill page shows, when something needs explaining in words: why it cannot
- * post, that posting failed, that it was reversed. `null` when the state speaks for itself.
+ * post, that posting failed, that it was reversed, returned or rejected. `null` when the state
+ * speaks for itself.
+ *
+ * "Returned" shows only while the bill is still a DRAFT: once it is submitted again the return
+ * is history (the Activity tab keeps it), not something the page needs to say.
  */
 export function billNotice(bill: SupplierBill): BillNotice | null {
+  if (bill.documentStatus === 'REJECTED') return 'rejected';
+  if (bill.documentStatus === 'DRAFT' && bill.returnedAt) return 'returned';
   switch (bill.postingStatus) {
     case 'REVERSED':
       return 'reversed';

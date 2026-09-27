@@ -24,7 +24,7 @@
  * the totals shown on the form are a preview of that.
  */
 
-import { MONEY_SCALE, QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
+import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 
 import { poLineCostTargetLabel } from './bill-po-match';
 import { buildCostTargetPayload, isCostTargetComplete, type CostTargetValue } from './components/po-cost-target-picker';
@@ -53,20 +53,31 @@ export function normalizeInvoiceNumber(value: string): string {
 }
 
 /**
- * The supplier's existing bill that already holds this invoice number, or null. Every status
- * counts — the unique index covers drafts and reversed bills alike.
+ * Statuses that free a supplier invoice number (the server's LIVE check excludes them): a
+ * rejected bill stays on record but its number can be used again on a corrected bill.
+ */
+const NUMBER_FREEING_STATUSES: readonly SupplierBill['documentStatus'][] = ['REJECTED', 'CANCELLED'];
+
+/**
+ * The supplier's existing live bill that already holds this invoice number, or null. Drafts and
+ * reversed bills count; rejected and cancelled ones do not. `excludeBillId` is the bill being
+ * edited — its own number is never a duplicate of itself.
  */
 export function findDuplicateBill(
   bills: readonly SupplierBill[],
   supplierId: string,
   invoiceNumber: string,
+  excludeBillId?: string,
 ): SupplierBill | null {
   const norm = normalizeInvoiceNumber(invoiceNumber);
   if (!supplierId || !norm) return null;
   return (
     bills.find(
       (bill) =>
-        bill.supplierId === supplierId && normalizeInvoiceNumber(bill.supplierInvoiceNumber) === norm,
+        bill.id !== excludeBillId &&
+        !NUMBER_FREEING_STATUSES.includes(bill.documentStatus) &&
+        bill.supplierId === supplierId &&
+        normalizeInvoiceNumber(bill.supplierInvoiceNumber) === norm,
     ) ?? null
   );
 }
@@ -384,4 +395,136 @@ export function buildDirectBillPayload(
       }),
     ),
   };
+}
+
+// ─── Edit: an existing draft back into the form ──────────────────────────────────
+
+/** The figures a PO-backed bill line carries, laid over the PO line it bills. */
+export interface BilledFigures {
+  /** The PO line this bill line bills, when the server recorded it; else matched by position. */
+  poLineId: string | null;
+  quantity: string;
+  unitPrice: string;
+  vatAmount: string;
+  expenseProfileCode: string;
+}
+
+/** Everything the form holds, as an existing bill describes it. */
+export interface BillFormValues {
+  kind: BillKind;
+  supplierId: string;
+  invoiceNumber: string;
+  purchaseOrderId: string;
+  projectChoice: string;
+  billDate: string;
+  dueDate: string;
+  /** Direct bills: the lines as drafts. Empty for a PO bill. */
+  directLines: DirectLineDraft[];
+  /** PO bills: what each line bills, applied once the PO's lines load. Empty for a direct bill. */
+  poFigures: BilledFigures[];
+}
+
+/** `2026-09-01T00:00:00.000Z` → `2026-09-01`; already-plain dates pass through. */
+function isoDay(value: string | null | undefined): string {
+  return value ? value.slice(0, 10) : '';
+}
+
+/** A decimal string from the API, as a person would type it: `12.5000` → `12.5`, `3.000` → `3`. */
+function plainQuantity(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const minor = parseMinorUnits(value, QUANTITY_SCALE);
+  if (minor === null) return value;
+  return fromMinorUnits(minor, QUANTITY_SCALE).replace(/\.?0+$/, '');
+}
+
+/** A money string from the API at the form's 2dp: `100.5000` → `100.50`. */
+function plainMoney(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const minor = parseMinorUnits(value, MONEY_SCALE);
+  return minor === null ? value : fromMinorUnits(minor, MONEY_SCALE);
+}
+
+/**
+ * The form values for editing `bill` — every header field and every line.
+ *
+ * A line with no quantity or unit price (written before lines carried them) reads as quantity 1
+ * at its net amount, so its Amount — and the bill's total — is what it was.
+ */
+export function billToFormValues(bill: SupplierBill): BillFormValues {
+  const lines = [...(bill.lines ?? [])].sort((a, b) => a.lineNumber - b.lineNumber);
+  const figuresOf = (line: NonNullable<SupplierBill['lines']>[number]) => {
+    const priced = line.quantity !== null && line.unitPrice !== null;
+    return {
+      quantity: priced ? plainQuantity(line.quantity) : '1',
+      unitPrice: priced ? plainMoney(line.unitPrice) : plainMoney(line.netAmount),
+      vatAmount: plainMoney(line.vatAmount),
+    };
+  };
+
+  const header = {
+    supplierId: bill.supplierId,
+    invoiceNumber: bill.supplierInvoiceNumber,
+    billDate: isoDay(bill.billDate),
+    dueDate: isoDay(bill.dueDate),
+  };
+
+  if (bill.purchaseOrderId) {
+    return {
+      ...header,
+      kind: 'po',
+      purchaseOrderId: bill.purchaseOrderId,
+      projectChoice: '',
+      directLines: [],
+      poFigures: lines.map((line) => ({
+        poLineId: line.purchaseOrderLineId ?? null,
+        ...figuresOf(line),
+        expenseProfileCode: line.expenseProfileCode,
+      })),
+    };
+  }
+
+  return {
+    ...header,
+    kind: 'direct',
+    purchaseOrderId: '',
+    // A direct bill saved with no project was an explicit "no project" — the form required it.
+    projectChoice: bill.projectId ?? NO_PROJECT,
+    directLines: lines.map((line) => ({
+      ...emptyDirectLine(),
+      description: line.description,
+      expenseProfileCode: line.expenseProfileCode,
+      ...figuresOf(line),
+      costLine: line.boqNodeId
+        ? `node:${line.boqNodeId}`
+        : line.spendCategoryId
+          ? `category:${line.spendCategoryId}`
+          : '',
+    })),
+    poFigures: [],
+  };
+}
+
+/**
+ * Lays a saved bill's figures over freshly seeded PO lines: by recorded PO line where the bill
+ * has one, otherwise by position — the order the lines were created in. A PO line the bill does
+ * not cover keeps its seeded values.
+ */
+export function applyBilledFigures(
+  seeded: readonly PoLineDraft[],
+  figures: readonly BilledFigures[],
+): PoLineDraft[] {
+  const byPoLine = new Map(
+    figures.filter((f) => f.poLineId).map((f) => [f.poLineId as string, f]),
+  );
+  return seeded.map((line, index) => {
+    const figure = byPoLine.size > 0 ? byPoLine.get(line.poLineId) : figures[index];
+    if (!figure) return line;
+    return {
+      ...line,
+      quantity: figure.quantity,
+      unitPrice: figure.unitPrice,
+      vatAmount: figure.vatAmount,
+      expenseProfileCode: figure.expenseProfileCode,
+    };
+  });
 }

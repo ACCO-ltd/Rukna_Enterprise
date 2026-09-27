@@ -15,7 +15,10 @@ import {
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
-import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import {
+  normalizeSupplierInvoiceNumber,
+  SupplierBillRepository,
+} from '../infrastructure/supplier-bill.repository.js';
 import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
 import { BillMatchingService } from '../../../../business/procurement/bill-matching/application/bill-matching.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
@@ -64,10 +67,18 @@ function isDuplicateInvoiceNumberConflict(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === 'P2002' &&
-    String((error.meta as { target?: unknown } | undefined)?.target ?? '').includes(
-      'supplierInvoiceNumberNorm',
+    // The live-number index is a raw partial index, so Prisma reports its name, not the field.
+    /supplierInvoiceNumberNorm|supplier_invoice_number/.test(
+      String((error.meta as { target?: unknown } | undefined)?.target ?? ''),
     )
   );
+}
+
+/** A return or rejection must say why — it is what the clerk acts on and what the audit keeps. */
+function requireReason(reason: string | undefined): string {
+  const trimmed = (reason ?? '').trim();
+  if (!trimmed) throw new BadRequestException('A reason is required');
+  return trimmed;
 }
 
 export interface PostSupplierBillDto {
@@ -90,10 +101,16 @@ export class SupplierBillService {
     private readonly sod: SegregationOfDutiesService,
   ) {}
 
-  async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
-    const prisma = this.tenancyService.getClient();
-    const { activeOrganizationId: orgId, userId } = identity;
-
+  /**
+   * Validation and line building shared by create and update, so an edited draft passes exactly
+   * the rules a new bill does: cost targets on a non-PO bill (D7), an ACTIVE PO revision on a PO
+   * bill, and server-computed totals.
+   */
+  private async prepareBill(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    dto: CreateSupplierBillDto,
+  ) {
     // A non-PO bill is the only path where cost coding is keyed by hand, so it is validated
     // by the same rule a purchase order is: a BOQ node needs its project, and a project needs
     // a target (a BOQ node, or a spend category for project-level cost). A PO-backed bill
@@ -135,10 +152,10 @@ export class SupplierBillService {
       };
     });
 
-    const subtotal = lines.reduce((s, l) => s.plus(l.netAmount), new Decimal(0));
-    const vatTotal = lines.reduce((s, l) => s.plus(l.vatAmount), new Decimal(0));
+    const subtotal = lines.reduce((sum, l) => sum.plus(l.netAmount), new Decimal(0));
+    const vatTotal = lines.reduce((sum, l) => sum.plus(l.vatAmount), new Decimal(0));
     // For NON_RECOVERABLE VAT (ACCO policy): gross posts to expense
-    const totalAmount = lines.reduce((s, l) => s.plus(l.grossAmount), new Decimal(0));
+    const totalAmount = lines.reduce((sum, l) => sum.plus(l.grossAmount), new Decimal(0));
 
     let purchaseOrderRevisionId: string | undefined;
     if (dto.purchaseOrderId) {
@@ -151,6 +168,15 @@ export class SupplierBillService {
       }
       purchaseOrderRevisionId = activeRevision.id;
     }
+
+    return { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId };
+  }
+
+  async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+    const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
+      await this.prepareBill(prisma, orgId, dto);
 
     // One supplier invoice number is recorded once per supplier — the unique index on
     // (organizationId, supplierId, supplierInvoiceNumberNorm). Checked up front so a duplicate is
@@ -227,6 +253,105 @@ export class SupplierBillService {
     }
 
     return updated;
+  }
+
+  /**
+   * Edit a DRAFT bill — a new one, or one returned for correction. Same payload and the same
+   * rules as create; the lines are replaced. A PO bill's previous match is discarded, because it
+   * describes lines that no longer exist; submitting again runs a fresh one (D6).
+   */
+  async update(identity: RequestIdentity, billId: string, dto: CreateSupplierBillDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId } = identity;
+    const bill = await this.requireStatus(prisma, orgId, billId, 'DRAFT');
+    const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
+      await this.prepareBill(prisma, orgId, dto);
+
+    const existing = await this.repo.findBySupplierInvoiceNumber(
+      prisma,
+      orgId,
+      dto.supplierId,
+      dto.supplierInvoiceNumber,
+      bill.id,
+    );
+    if (existing) throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, existing.billNumber);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
+        await tx.supplierBillLine.deleteMany({ where: { supplierBillId: bill.id } });
+        await tx.supplierBill.update({
+          where: { id: bill.id },
+          data: {
+            supplierId: dto.supplierId,
+            supplierInvoiceNumber: dto.supplierInvoiceNumber,
+            supplierInvoiceNumberNorm: normalizeSupplierInvoiceNumber(dto.supplierInvoiceNumber),
+            billDate: new Date(dto.billDate),
+            dueDate: new Date(dto.dueDate),
+            currencyCode: dto.currencyCode,
+            purchaseOrderId: dto.purchaseOrderId ?? null,
+            purchaseOrderRevisionId: purchaseOrderRevisionId ?? null,
+            projectId: dto.projectId ?? null,
+            departmentId: dto.departmentId ?? null,
+            subtotal,
+            vatAmount: vatTotal,
+            totalAmount,
+            outstandingAmount: totalAmount,
+            matchStatus: 'NOT_RUN',
+            lines: { create: lines },
+          },
+        });
+      });
+    } catch (err) {
+      if (isDuplicateInvoiceNumberConflict(err)) {
+        throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, null);
+      }
+      throw err;
+    }
+    return this.findById(identity, bill.id);
+  }
+
+  /**
+   * Return a SUBMITTED bill to its clerk for correction (ADR-037 amendment): back to DRAFT, with
+   * a required reason. The PO match is discarded — the lines are about to change — and runs
+   * again when the corrected bill is submitted.
+   */
+  async returnForCorrection(identity: RequestIdentity, billId: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
+    const why = requireReason(reason);
+    return prisma.$transaction(async (tx) => {
+      await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
+      return tx.supplierBill.update({
+        where: { id: bill.id },
+        data: {
+          documentStatus: 'DRAFT',
+          matchStatus: 'NOT_RUN',
+          returnedAt: new Date(),
+          returnedBy: identity.userId,
+          returnReason: why,
+        },
+      });
+    });
+  }
+
+  /**
+   * Reject a SUBMITTED bill — final (ADR-037 amendment). A rejected bill stays on record, is
+   * never posted, and frees its supplier invoice number for a corrected bill.
+   */
+  async reject(identity: RequestIdentity, billId: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
+    const why = requireReason(reason);
+    return prisma.supplierBill.update({
+      where: { id: bill.id },
+      data: {
+        documentStatus: 'REJECTED',
+        rejectedAt: new Date(),
+        rejectedBy: identity.userId,
+        rejectionReason: why,
+      },
+    });
   }
 
   async approve(identity: RequestIdentity, billId: string) {

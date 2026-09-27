@@ -100,6 +100,20 @@ describe('BillActivityTab (ADR-036)', () => {
     expect(screen.getByText(/recorded bills\.archive/)).toBeInTheDocument();
     expect(screen.getByText(/bills\.post/)).toBeInTheDocument();
   });
+
+  it('words return, reject and edit, and quotes the reason a return or rejection gave', () => {
+    mocks.activity = [
+      { id: '3', at: '2026-09-21T10:00:00Z', actor: { id: 'u2', name: 'Hodan Abdi' }, code: 'bills.reject', reason: 'Duplicate of BILL-2026-0040.' },
+      { id: '2', at: '2026-09-20T11:00:00Z', actor: { id: 'u1', name: 'Faarax Nuur' }, code: 'bills.update' },
+      { id: '1', at: '2026-09-20T10:00:00Z', actor: { id: 'u2', name: 'Hodan Abdi' }, code: 'bills.return', reason: 'Amount is $5,060, not $5,660.' },
+    ];
+    renderWithProviders(<BillActivityTab bill={BILL} />);
+    expect(screen.getByText(/returned the bill for correction/)).toBeInTheDocument();
+    expect(screen.getByText(/rejected the bill/)).toBeInTheDocument();
+    expect(screen.getByText(/edited the bill/)).toBeInTheDocument();
+    expect(screen.getByText('— “Amount is $5,060, not $5,660.”')).toBeInTheDocument();
+    expect(screen.getByText('— “Duplicate of BILL-2026-0040.”')).toBeInTheDocument();
+  });
 });
 
 describe('bill summary rail (ADR-036)', () => {

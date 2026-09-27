@@ -8,7 +8,10 @@ import {
   billLifecycle,
   billNotice,
   primaryBillAction,
+  canEditBill,
   canPost,
+  canReject,
+  canReturn,
   canReverse,
   expenseProfiles,
   planBillPost,
@@ -191,7 +194,11 @@ describe('expenseProfiles', () => {
 describe('bill lifecycle gates', () => {
   it('walks DRAFT → SUBMITTED → APPROVED → POSTED, one action at a time', () => {
     expect(availableBillActions(bill({ documentStatus: 'DRAFT' }))).toEqual(['submit']);
-    expect(availableBillActions(bill({ documentStatus: 'SUBMITTED' }))).toEqual(['approve']);
+    expect(availableBillActions(bill({ documentStatus: 'SUBMITTED' }))).toEqual([
+      'approve',
+      'return',
+      'reject',
+    ]);
     expect(availableBillActions(bill({ documentStatus: 'APPROVED' }))).toEqual(['post']);
     expect(
       availableBillActions(bill({ documentStatus: 'APPROVED', postingStatus: 'POSTED' })),
@@ -238,6 +245,30 @@ describe('bill lifecycle gates', () => {
     expect(canReverse(bill({ postingStatus: 'POSTED' }))).toBe(true);
     expect(canReverse(bill({ postingStatus: 'NOT_POSTED' }))).toBe(false);
     expect(billBlockReason(bill({ postingStatus: 'NOT_POSTED' }), 'reverse')).toBe('not-posted');
+  });
+
+  it('offers return and reject only on a SUBMITTED bill', () => {
+    const statuses = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+    for (const documentStatus of statuses) {
+      const b = bill({ documentStatus });
+      expect(canReturn(b)).toBe(documentStatus === 'SUBMITTED');
+      expect(canReject(b)).toBe(documentStatus === 'SUBMITTED');
+    }
+    expect(billBlockReason(bill({ documentStatus: 'APPROVED' }), 'return')).toBe('not-submitted');
+    expect(billBlockReason(bill({ documentStatus: 'DRAFT' }), 'reject')).toBe('not-submitted');
+    expect(billBlockReason(bill({ documentStatus: 'SUBMITTED' }), 'reject')).toBeNull();
+  });
+
+  it('lets only a DRAFT bill be edited — new or returned', () => {
+    expect(canEditBill(bill({ documentStatus: 'DRAFT' }))).toBe(true);
+    expect(canEditBill(bill({ documentStatus: 'DRAFT', returnedAt: '2026-09-20T10:00:00Z' }))).toBe(true);
+    expect(canEditBill(bill({ documentStatus: 'SUBMITTED' }))).toBe(false);
+    expect(canEditBill(bill({ documentStatus: 'REJECTED' }))).toBe(false);
+    expect(canEditBill(bill({ documentStatus: 'APPROVED' }))).toBe(false);
+  });
+
+  it('offers nothing on a REJECTED bill — rejection is final', () => {
+    expect(availableBillActions(bill({ documentStatus: 'REJECTED' }))).toEqual([]);
   });
 
   it('names why each action is blocked, for the disabled tooltip', () => {
@@ -369,6 +400,14 @@ describe('primaryBillAction', () => {
     expect(primaryBillAction(bill({ documentStatus: 'APPROVED' }))).toBe('post');
   });
 
+  it('stays approve for a SUBMITTED bill — return and reject are never primary', () => {
+    expect(primaryBillAction(bill({ documentStatus: 'SUBMITTED' }))).toBe('approve');
+  });
+
+  it('is nothing on a REJECTED bill', () => {
+    expect(primaryBillAction(bill({ documentStatus: 'REJECTED' }))).toBeNull();
+  });
+
   it('is never reverse, and nothing once posted', () => {
     expect(primaryBillAction(bill({ postingStatus: 'POSTED' }))).toBeNull();
     expect(primaryBillAction(bill({ postingStatus: 'REVERSED' }))).toBeNull();
@@ -387,6 +426,22 @@ describe('billNotice', () => {
     expect(billNotice(bill({ postingStatus: 'PENDING' }))).toBe('posting-pending');
     expect(billNotice(bill({ postingStatus: 'POSTED' }))).toBe('posted');
     expect(billNotice(bill({ postingStatus: 'REVERSED' }))).toBe('reversed');
+  });
+
+  it('says a DRAFT bill was returned for correction, only while it is still a draft', () => {
+    expect(billNotice(bill({ documentStatus: 'DRAFT', returnedAt: '2026-09-20T10:00:00Z' }))).toBe(
+      'returned',
+    );
+    // Resubmitted: the return is history now, not a notice.
+    expect(
+      billNotice(bill({ documentStatus: 'SUBMITTED', returnedAt: '2026-09-20T10:00:00Z' })),
+    ).toBeNull();
+  });
+
+  it('says a REJECTED bill was rejected', () => {
+    expect(billNotice(bill({ documentStatus: 'REJECTED', rejectedAt: '2026-09-20T10:00:00Z' }))).toBe(
+      'rejected',
+    );
   });
 
   it('says nothing when the state speaks for itself', () => {

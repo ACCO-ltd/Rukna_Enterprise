@@ -365,6 +365,8 @@ const KNOWN_CODES = new Set([
   'bills.approve',
   'bills.post',
   'bills.reverse',
+  'bills.return',
+  'bills.reject',
   'approval.approve',
   'approval.reject',
   'bill-matching.run',
@@ -397,11 +399,19 @@ export function BillActivityTab({ bill }: { bill: SupplierBill }) {
       entries={activity.data.map((entry) => ({
         id: entry.id,
         actor: entry.actor.name,
-        summary: KNOWN_CODES.has(entry.code)
-          ? t(`activity.code.${codeKey(entry.code)}` as 'activity.code.bills_create', {
-              role: entry.detail ? roleWords(entry.detail) : '',
-            })
-          : t('activity.other', { code: entry.code }),
+        summary: (
+          <>
+            {KNOWN_CODES.has(entry.code)
+              ? t(`activity.code.${codeKey(entry.code)}` as 'activity.code.bills_create', {
+                  role: entry.detail ? roleWords(entry.detail) : '',
+                })
+              : t('activity.other', { code: entry.code })}
+            {/* Return and reject carry the reason given — the history is where it is kept. */}
+            {entry.reason ? (
+              <span className="text-muted-foreground"> {t('activity.reason', { reason: entry.reason })}</span>
+            ) : null}
+          </>
+        ),
         at: formatDateTime(entry.at, locale) ?? entry.at,
         code: entry.code,
       }))}

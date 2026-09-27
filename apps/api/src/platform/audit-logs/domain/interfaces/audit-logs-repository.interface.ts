@@ -14,4 +14,6 @@ export interface CreateAuditLogData {
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
   ipAddress?: string;
+  /** The reason a command carried in its body (`{ reason }`) — a return, a rejection, a reversal. */
+  reason?: string;
 }

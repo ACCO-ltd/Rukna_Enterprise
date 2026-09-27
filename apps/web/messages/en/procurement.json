@@ -481,7 +481,18 @@
     "submitTitle": "Submit this bill for approval?",
     "submitBody": "The bill can no longer be edited once submitted.",
     "approveTitle": "Approve this bill?",
-    "approveBody": "Approving clears the bill for posting. There is no reject action over the API, so this cannot be undone from the UI.",
+    "approveBody": "Approving clears the bill for posting. This cannot be undone from the UI.",
+    "returnForCorrection": "Return for correction",
+    "returnTitle": "Return {bill} for correction?",
+    "returnBody": "The bill goes back to draft so it can be corrected and submitted again. Your reason is shown on the bill and kept in its history.",
+    "returnReason": "What needs correcting",
+    "reject": "Reject",
+    "rejectTitle": "Reject {bill}?",
+    "rejectBody": "A rejected bill stays on record and is never posted. Its supplier invoice number can be used again on a corrected bill. This can't be undone.",
+    "rejectReason": "Reason for rejecting",
+    "rejectConfirm": "Reject bill",
+    "thisBill": "this bill",
+    "editBill": "Edit bill",
     "postTitle": "Post this bill to the general ledger?",
     "postBody": "This writes the journal below. It can only be undone by a reversal.",
     "postPreview": "Journal to be written",
@@ -573,6 +584,12 @@
       "totalsNote": "A preview. The server calculates the totals it records from the lines.",
       "failed": "The bill could not be saved.",
       "errorLine": "Line {n} — {field}",
+      "editTitle": "Edit bill",
+      "editTitleNumbered": "Edit bill {number}",
+      "editIntro": "Saving replaces the bill's details and lines. The bill stays a draft — submit it again from the bill when it is ready.",
+      "saveChanges": "Save changes",
+      "backToBill": "Back to bill",
+      "notDraft": "Only a draft bill can be edited.",
       "errors": {
         "supplier": "Choose the supplier.",
         "invoiceNumber": "Enter the supplier's invoice number.",
@@ -599,7 +616,10 @@
       "reversedBody": "A reversing journal cancelled this bill’s posting. The bill is read-only.",
       "postedTitle": "Bill posted",
       "postedBody": "{amount} posted to the general ledger.",
-      "reviewMatch": "Review match"
+      "reviewMatch": "Review match",
+      "returnedTitle": "Returned for correction on {date}",
+      "rejectedTitle": "Rejected on {date}",
+      "returnedWhileEditing": "Returned for correction — fix this before submitting again"
     },
     "purchaseOrder": "Purchase order",
     "goodsReceipt": "Goods receipt",
@@ -642,7 +662,9 @@
       "empty": "No history recorded for this bill yet.",
       "code": {
         "bills_create": "created the bill",
-        "bills_update": "updated the bill",
+        "bills_update": "edited the bill",
+        "bills_return": "returned the bill for correction",
+        "bills_reject": "rejected the bill",
         "bills_submit": "submitted the bill for approval",
         "bills_approve": "approved the bill",
         "bills_post": "posted the bill to the general ledger",
@@ -653,7 +675,8 @@
         "bill_matching_approve_exception": "approved the match exception",
         "bill_matching_resolve": "resolved the match exception"
       },
-      "other": "recorded {code}"
+      "other": "recorded {code}",
+      "reason": "— “{reason}”"
     }
   },
   "payments": {

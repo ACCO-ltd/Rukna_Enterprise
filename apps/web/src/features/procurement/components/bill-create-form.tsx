@@ -19,6 +19,11 @@
  * Saving creates a DRAFT and nothing more. The stepper in the action bar says so, and the
  * intro line says it in words: submit, approve and post are separate commands on the bill.
  *
+ * **Edit mode** (ADR-037 amendment) is the same form, not a fork: `initialBill` prefills every
+ * field and line through `billToFormValues`, a PO bill's billed figures are laid over the PO's
+ * lines once they load (`applyBilledFigures`), and Save PATCHes the draft. Only a DRAFT bill —
+ * new, or returned for correction — reaches it; `SupplierBillEditPage` refuses anything else.
+ *
  * Line rules, previews and payloads live in `../bill-create.ts`, pure and unit-tested.
  */
 
@@ -30,6 +35,7 @@ import {
   Alert,
   Button,
   DatePicker,
+  Notice,
   FormActionBar,
   FormField,
   FormGroup,
@@ -38,6 +44,7 @@ import {
   LineItemsEditor,
   MoneyInput,
   QuantityInput,
+  SkeletonRecord,
   RadioGroup,
   Select,
   TotalsBlock,
@@ -47,7 +54,7 @@ import { ArrowLeft, ClipboardCheck, Receipt } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
-import { useModuleTrail } from '@/components/layout/module-chrome';
+import { ModuleTrail, useModuleTrail } from '@/components/layout/module-chrome';
 import { accountName } from '@/features/accounting/account-display';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { useProjects } from '@/features/projects/hooks/use-projects';
@@ -55,9 +62,11 @@ import { ApiError } from '@/lib/api-client';
 import { formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits } from '@/lib/money';
 
-import { BILL_STAGES, expenseProfiles, type ExpenseProfile } from '../bill-actions';
+import { BILL_STAGES, canEditBill, expenseProfiles, type ExpenseProfile } from '../bill-actions';
 import {
   NO_PROJECT,
+  applyBilledFigures,
+  billToFormValues,
   billTotalsMinor,
   buildDirectBillPayload,
   buildPoBillPayload,
@@ -70,6 +79,7 @@ import {
   poLineErrors,
   receivedByPoLine,
   seedPoLine,
+  type BilledFigures,
   type BillKind,
   type DirectLineDraft,
   type LineErrors,
@@ -81,9 +91,12 @@ import {
   useGoodsReceipts,
   usePurchaseOrder,
   useSpendCategories,
+  useSupplierBill,
   useSupplierBills,
   useSuppliers,
+  useUpdateSupplierBill,
 } from '../hooks/use-procurement';
+import type { SupplierBill } from '../types';
 import { ClassificationChips } from './classification-chips';
 import { useProjectCostNodes } from './po-cost-target-picker';
 import { PurchaseOrderPicker } from './purchase-order-picker';
@@ -116,7 +129,108 @@ interface CostLineOptions {
   loading: boolean;
 }
 
-export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind }) {
+/**
+ * What the form compares to decide whether an edit has changed anything. Line keys are left out:
+ * they are React's, not the bill's.
+ */
+function formSignature(values: {
+  kind: BillKind;
+  supplierId: string;
+  invoiceNumber: string;
+  purchaseOrderId: string;
+  projectChoice: string;
+  billDate: string;
+  dueDate: string;
+  directLines: readonly DirectLineDraft[];
+  poLines: readonly PoLineDraft[];
+}): string {
+  return JSON.stringify([
+    values.kind,
+    values.supplierId,
+    values.invoiceNumber,
+    values.purchaseOrderId,
+    values.projectChoice,
+    values.billDate,
+    values.dueDate,
+    values.kind === 'direct'
+      ? values.directLines.map((l) => [
+          l.description,
+          l.expenseProfileCode,
+          l.quantity,
+          l.unitPrice,
+          l.vatAmount,
+          l.costLine,
+        ])
+      : null,
+    values.kind === 'po'
+      ? values.poLines.map((l) => [l.poLineId, l.quantity, l.unitPrice, l.vatAmount, l.expenseProfileCode])
+      : null,
+  ]);
+}
+
+// ─── Edit page ────────────────────────────────────────────────────────────────
+
+/**
+ * `/finance/accounting/bills/:id/edit` — loads the bill and renders the form in edit mode, or
+ * says why it cannot: only a DRAFT bill (new, or returned for correction) can be edited.
+ */
+export function SupplierBillEditPage({ id }: { id: string }) {
+  const t = useTranslations('procurement.bills.create');
+  const tc = useTranslations('procurement.common');
+  const tStatus = useTranslations('procurement.status');
+  const query = useSupplierBill(id);
+  const billHref = `${BILLS_HREF}/${id}`;
+
+  if (query.isPending) {
+    return (
+      <>
+        <ModuleTrail label={t('editTitle')} />
+        <SkeletonRecord label={tc('loading')} />
+      </>
+    );
+  }
+
+  if (query.isError || !query.data) {
+    return (
+      <>
+        <ModuleTrail label={t('editTitle')} />
+        <Alert variant="error" messages={[tc('loadFailed')]} />
+      </>
+    );
+  }
+
+  const bill = query.data;
+  if (!canEditBill(bill)) {
+    return (
+      <>
+        <ModuleTrail label={bill.billNumber ?? tStatus(bill.documentStatus)} />
+        <Notice
+          tone="attention"
+          title={t('notDraft')}
+          action={
+            <Button asChild variant="outline">
+              <Link href={billHref}>{t('backToBill')}</Link>
+            </Button>
+          }
+        />
+      </>
+    );
+  }
+
+  // Keyed by the bill, so a different bill starts from its own values rather than the last one's.
+  return <SupplierBillCreateForm key={bill.id} initialKind="direct" initialBill={bill} />;
+}
+
+// ─── The form ─────────────────────────────────────────────────────────────────
+
+export function SupplierBillCreateForm({
+  initialKind,
+  initialBill,
+}: {
+  initialKind: BillKind;
+  /** Edit mode: the DRAFT bill being corrected. Its values replace `initialKind` and the blanks. */
+  initialBill?: SupplierBill;
+}) {
   const t = useTranslations('procurement.bills.create');
   const tBills = useTranslations('procurement.bills');
   const tLine = useTranslations('procurement.bills.lineError');
@@ -128,19 +242,41 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
   const locale = useLocale() as 'en';
   const router = useRouter();
 
-  useModuleTrail(t('title'));
+  // Read once: the form owns its values from here on.
+  const [initial] = useState(() => (initialBill ? billToFormValues(initialBill) : null));
+  const editing = initialBill !== undefined;
+  const billHref = initialBill ? `${BILLS_HREF}/${initialBill.id}` : BILLS_HREF;
+  const title = !initialBill
+    ? t('title')
+    : initialBill.billNumber
+      ? t('editTitleNumbered', { number: initialBill.billNumber })
+      : t('editTitle');
 
-  const [kind, setKind] = useState<BillKind>(initialKind);
-  const [supplierId, setSupplierId] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [purchaseOrderId, setPurchaseOrderId] = useState('');
-  const [projectChoice, setProjectChoice] = useState('');
-  const [billDate, setBillDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  // The payment-terms days the due date was derived from, or null once it has been typed.
+  useModuleTrail(initialBill ? (initialBill.billNumber ?? t('editTitle')) : t('title'));
+
+  const [kind, setKind] = useState<BillKind>(initial?.kind ?? initialKind);
+  const [supplierId, setSupplierId] = useState(initial?.supplierId ?? '');
+  const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoiceNumber ?? '');
+  const [purchaseOrderId, setPurchaseOrderId] = useState(initial?.purchaseOrderId ?? '');
+  const [projectChoice, setProjectChoice] = useState(initial?.projectChoice ?? '');
+  const [billDate, setBillDate] = useState(initial?.billDate ?? '');
+  const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
+  // The payment-terms days the due date was derived from, or null once it has been typed. An
+  // edited bill's due date is the one it was saved with — treated as typed, never re-derived.
   const [dueDateTerms, setDueDateTerms] = useState<number | null>(null);
-  const [directLines, setDirectLines] = useState<DirectLineDraft[]>(() => [emptyDirectLine()]);
+  const [directLines, setDirectLines] = useState<DirectLineDraft[]>(() =>
+    initial?.directLines.length ? initial.directLines : [emptyDirectLine()],
+  );
   const [poLines, setPoLines] = useState<PoLineDraft[]>([]);
+  // Edit mode, PO bill: the saved figures, waiting for the PO's lines to load. Applied once.
+  const [pendingFigures, setPendingFigures] = useState<BilledFigures[] | null>(
+    initial?.kind === 'po' ? initial.poFigures : null,
+  );
+  // Edit mode: the values as saved, to tell a changed form from an untouched one. A PO bill's
+  // baseline is taken when its figures are applied, since its lines only exist from then.
+  const [baseline, setBaseline] = useState<string | null>(() =>
+    initial?.kind === 'direct' ? formSignature({ ...initial, poLines: [] }) : null,
+  );
   const [submitted, setSubmitted] = useState(false);
   // Bumped on every refused save, so the summary is brought into view each time.
   const [refusals, setRefusals] = useState(0);
@@ -148,6 +284,9 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
   const [confirmLeave, setConfirmLeave] = useState(false);
 
   const create = useCreateSupplierBill();
+  const update = useUpdateSupplierBill();
+  // The one mutation this page runs — create a draft, or save changes to one.
+  const save = editing ? update : create;
   const suppliers = useSuppliers();
   const accounts = useAccounts();
   const profiles = usePostingProfiles();
@@ -181,7 +320,14 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
   const [seededSignature, setSeededSignature] = useState('');
   if (poSignature !== seededSignature) {
     setSeededSignature(poSignature);
-    setPoLines(finds ? finds.poLines.map((l) => seedPoLine(l, received, !finds.noReceipts)) : []);
+    let seeded = finds ? finds.poLines.map((l) => seedPoLine(l, received, !finds.noReceipts)) : [];
+    // Edit mode: the first time the bill's own PO resolves, its lines carry what was billed.
+    if (finds && pendingFigures && initial && purchaseOrderId === initial.purchaseOrderId) {
+      seeded = applyBilledFigures(seeded, pendingFigures);
+      setPendingFigures(null);
+      setBaseline(formSignature({ ...initial, poLines: seeded }));
+    }
+    setPoLines(seeded);
   }
   // What was received is read live, so a receipt posted while the form is open shows up.
   const poRows = useMemo(
@@ -196,28 +342,41 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
   );
 
   // ─── Derived: duplicates, totals, dirty ──────────────────────────────────────
-  const duplicate = findDuplicateBill(supplierBills.data ?? [], supplierId, invoiceNumber);
+  // The bill being edited never duplicates itself.
+  const duplicate = findDuplicateBill(supplierBills.data ?? [], supplierId, invoiceNumber, initialBill?.id);
   const totals = billTotalsMinor(kind === 'po' ? poRows : directLines);
-  const dirty =
-    Boolean(supplierId || invoiceNumber || purchaseOrderId || projectChoice || billDate || dueDate) ||
-    directLines.some(
-      (l) => l.description || l.unitPrice || l.vatAmount || l.expenseProfileCode || l.costLine || l.quantity !== '1',
-    );
+  const dirty = editing
+    ? baseline !== null &&
+      formSignature({
+        kind,
+        supplierId,
+        invoiceNumber,
+        purchaseOrderId,
+        projectChoice,
+        billDate,
+        dueDate,
+        directLines,
+        poLines,
+      }) !== baseline
+    : Boolean(supplierId || invoiceNumber || purchaseOrderId || projectChoice || billDate || dueDate) ||
+      directLines.some(
+        (l) => l.description || l.unitPrice || l.vatAmount || l.expenseProfileCode || l.costLine || l.quantity !== '1',
+      );
 
   useEffect(() => {
     if (refusals > 0) summaryRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   }, [refusals]);
 
   useEffect(() => {
-    if (!dirty || create.isSuccess) return;
+    if (!dirty || save.isSuccess) return;
     const handler = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [dirty, create.isSuccess]);
+  }, [dirty, save.isSuccess]);
 
   // ─── Errors ───────────────────────────────────────────────────────────────────
   const serverConflict =
-    create.error instanceof ApiError && create.error.status === 409 ? create.error.message : null;
+    save.error instanceof ApiError && save.error.status === 409 ? save.error.message : null;
 
   const headerErrors: Partial<Record<HeaderField, string>> = {};
   if (!supplierId) headerErrors.supplier = t('errors.supplier');
@@ -292,8 +451,8 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
   }
   const formErrors: string[] = [];
   if (submitted && noLinesError) formErrors.push(t('errors.noLines'));
-  if (create.error && !serverConflict) {
-    formErrors.push(create.error instanceof ApiError ? create.error.message : t('failed'));
+  if (save.error && !serverConflict) {
+    formErrors.push(save.error instanceof ApiError ? save.error.message : t('failed'));
   }
   const showSummary = summaryErrors.length > 0 || formErrors.length > 0;
 
@@ -322,7 +481,7 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
     // A PO belongs to one supplier; a stale selection would resolve a mismatched order.
     setPurchaseOrderId('');
     deriveDueDate(next, billDate);
-    if (create.error) create.reset();
+    if (save.error) save.reset();
   }
 
   function handleBillDateChange(next: string) {
@@ -355,7 +514,7 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
-    if (create.isPending) return;
+    if (save.isPending) return;
     if (hasBlockingError) {
       setRefusals((n) => n + 1);
       return;
@@ -367,12 +526,13 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
         ? buildPoBillPayload(header, purchaseOrderId, poRows)
         : buildDirectBillPayload(header, projectChoice, directLines);
 
-    create.mutate(payload, {
-      onSuccess: (bill) => router.push(`${BILLS_HREF}/${bill.id}`),
-    });
+    const onSuccess = (bill: SupplierBill) => router.push(`${BILLS_HREF}/${bill.id}`);
+    if (initialBill) update.mutate({ id: initialBill.id, payload }, { onSuccess });
+    else create.mutate(payload, { onSuccess });
   }
 
-  const leave = () => router.push(BILLS_HREF);
+  // Discarding an edit goes back to the bill; discarding a new bill goes back to the list.
+  const leave = () => router.push(billHref);
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
@@ -391,15 +551,15 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
         <FormActionBar
           back={
             <Button asChild variant="ghost" className="gap-1.5 px-2">
-              <Link href={BILLS_HREF}>
+              <Link href={billHref}>
                 <ArrowLeft size={16} aria-hidden="true" />
-                {tBills('backToList')}
+                {editing ? t('backToBill') : tBills('backToList')}
               </Link>
             </Button>
           }
           save={
-            <Button type="submit" disabled={create.isPending || noProfiles}>
-              {create.isPending ? t('saving') : t('save')}
+            <Button type="submit" disabled={save.isPending || noProfiles}>
+              {save.isPending ? t('saving') : editing ? t('saveChanges') : t('save')}
             </Button>
           }
           discard={
@@ -407,7 +567,7 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
               {t('discard')}
             </Button>
           }
-          saveState={dirty ? 'dirty' : 'new'}
+          saveState={dirty ? 'dirty' : editing ? 'clean' : 'new'}
           saveStateLabels={{ new: tForm('new'), dirty: tForm('dirty'), clean: tForm('clean') }}
           lifecycle={
             <LifecycleStepper
@@ -430,9 +590,19 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
             <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
               {tBills('eyebrow')}
             </p>
-            <h2 className="mt-1 text-display font-semibold tracking-tight text-foreground">{t('title')}</h2>
-            <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{t('intro')}</p>
+            <h2 className="mt-1 text-display font-semibold tracking-tight text-foreground">{title}</h2>
+            <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">
+              {editing ? t('editIntro') : t('intro')}
+            </p>
           </div>
+
+          {/* The clerk correcting a returned bill needs the reason in front of them, not a click
+              away on the bill page. */}
+          {initialBill?.returnReason ? (
+            <Notice tone="attention" title={tBills('notice.returnedWhileEditing')}>
+              {initialBill.returnReason}
+            </Notice>
+          ) : null}
 
           {noProfiles ? (
             <Alert variant="error" title={tBills('noProfilesTitle')} messages={[tBills('noProfilesBody')]} />
@@ -486,7 +656,7 @@ export function SupplierBillCreateForm({ initialKind }: { initialKind: BillKind 
                 value={invoiceNumber}
                 onChange={(e) => {
                   setInvoiceNumber(e.target.value);
-                  if (create.error) create.reset();
+                  if (save.error) save.reset();
                 }}
                 maxLength={100}
                 autoComplete="off"

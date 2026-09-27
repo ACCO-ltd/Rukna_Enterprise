@@ -19,6 +19,8 @@ import type { GoodsReceipt, PurchaseOrder, Supplier, SupplierBill } from '../typ
 
 const mocks = vi.hoisted(() => ({
   useCreateSupplierBill: vi.fn(),
+  useUpdateSupplierBill: vi.fn(),
+  useSupplierBill: vi.fn(),
   useSuppliers: vi.fn(),
   useSupplierBills: vi.fn(),
   // SupplierPicker offers "New supplier" from the picker itself.
@@ -44,7 +46,7 @@ vi.mock('@/features/projects/hooks/use-projects', () => projectMocks);
 vi.mock('@/features/boq/hooks/use-boq', () => boqMocks);
 vi.mock('next/navigation', () => ({ useRouter: () => routerMocks, usePathname: () => '/finance/accounting/bills/new' }));
 
-import { SupplierBillCreateForm } from './bill-create-form';
+import { SupplierBillCreateForm, SupplierBillEditPage } from './bill-create-form';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -192,6 +194,8 @@ function createState(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.useCreateSupplierBill.mockReturnValue(createState());
+  mocks.useUpdateSupplierBill.mockReturnValue(createState());
+  mocks.useSupplierBill.mockReturnValue({ data: undefined, isPending: true, isError: false });
   mocks.useSuppliers.mockReturnValue(loaded([SUPPLIER, NO_TERMS]));
   mocks.useSupplierBills.mockReturnValue(loaded([]));
   mocks.usePurchaseOrders.mockReturnValue(loaded([PO]));
@@ -469,4 +473,206 @@ describe('SupplierBillCreateForm — against a purchase order', () => {
       ],
     });
   });
+});
+
+// ─── Edit a draft (ADR-037 amendment) ─────────────────────────────────────────
+
+const DRAFT_DIRECT = {
+  id: 'bill-7',
+  billNumber: 'BILL-2026-0042',
+  supplierId: 'sup-2',
+  supplier: { id: 'sup-2', code: 'SUP-002', name: 'Horn Cement' },
+  supplierInvoiceNumber: 'INV-77',
+  billDate: '2026-09-10T00:00:00.000Z',
+  dueDate: '2026-10-10T00:00:00.000Z',
+  currencyCode: 'USD',
+  documentStatus: 'DRAFT',
+  postingStatus: 'NOT_POSTED',
+  matchStatus: 'NOT_RUN',
+  purchaseOrderId: null,
+  purchaseOrderRevisionId: null,
+  projectId: null,
+  subtotal: '5660.00',
+  vatAmount: '0.00',
+  totalAmount: '5660.00',
+  outstandingAmount: '5660.00',
+  returnedAt: '2026-09-20T10:00:00.000Z',
+  returnReason: 'Amount is $5,060, not $5,660.',
+  lines: [
+    {
+      id: 'bl-1',
+      lineNumber: 1,
+      description: 'Office rent',
+      quantity: '1.0000',
+      unitPrice: '5660.0000',
+      netAmount: '5660.00',
+      vatAmount: '0.00',
+      grossAmount: '5660.00',
+      expenseProfileCode: 'OFFICE_EXPENSE',
+      projectId: null,
+      boqNodeId: null,
+    },
+  ],
+} as unknown as SupplierBill;
+
+const DRAFT_PO = {
+  ...DRAFT_DIRECT,
+  id: 'bill-8',
+  billNumber: null,
+  supplierId: 'sup-1',
+  supplier: { id: 'sup-1', code: 'SUP-001', name: 'ABC Trading' },
+  supplierInvoiceNumber: 'INV-9044',
+  billDate: '2026-09-01T00:00:00.000Z',
+  dueDate: '2026-10-01T00:00:00.000Z',
+  purchaseOrderId: 'po-1',
+  purchaseOrderRevisionId: 'rev-1',
+  lines: [
+    {
+      id: 'bl-9',
+      lineNumber: 1,
+      description: '50kg cement bags',
+      quantity: '185.0000',
+      unitPrice: '10.0000',
+      netAmount: '1850.00',
+      vatAmount: '0.00',
+      grossAmount: '1850.00',
+      expenseProfileCode: 'OFFICE_EXPENSE',
+      projectId: 'prj-1',
+      boqNodeId: null,
+    },
+  ],
+} as unknown as SupplierBill;
+
+describe('SupplierBillEditPage', () => {
+  it('prefills a returned direct bill and saves changes with PATCH, then opens the bill', async () => {
+    const user = userEvent.setup();
+    const patch = vi.fn((_args, options) => options.onSuccess({ id: 'bill-7' }));
+    mocks.useUpdateSupplierBill.mockReturnValue(createState({ mutate: patch }));
+    mocks.useSupplierBill.mockReturnValue(loaded(DRAFT_DIRECT));
+    renderWithProviders(<SupplierBillEditPage id="bill-7" />);
+
+    expect(screen.getByRole('heading', { name: 'Edit bill BILL-2026-0042' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to bill' })).toHaveAttribute('href', '/finance/accounting/bills/bill-7');
+    expect(screen.getByRole('radio', { name: /direct expense/i })).toBeChecked();
+    expect(byId('bill-invoice-number')).toHaveValue('INV-77');
+    expect(byId('bill-line-0-description')).toHaveValue('Office rent');
+    // Untouched: nothing to save yet, said as such.
+    expect(screen.queryByText('Not saved yet')).not.toBeInTheDocument();
+
+    const price = byId('bill-line-0-unitPrice');
+    await user.clear(price);
+    await user.type(price, '5060');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    // PATCH, never a second POST.
+    expect(mutate).not.toHaveBeenCalled();
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(patch.mock.calls[0]![0]).toEqual({
+      id: 'bill-7',
+      payload: {
+        supplierId: 'sup-2',
+        supplierInvoiceNumber: 'INV-77',
+        billDate: '2026-09-10',
+        dueDate: '2026-10-10',
+        currencyCode: 'USD',
+        lines: [
+          {
+            description: 'Office rent',
+            quantity: 1,
+            unitPrice: 5060,
+            netAmount: 5060,
+            vatAmount: 0,
+            expenseProfileCode: 'OFFICE_EXPENSE',
+          },
+        ],
+      },
+    });
+    expect(routerMocks.push).toHaveBeenCalledWith('/finance/accounting/bills/bill-7');
+  });
+
+  it('shows why a returned bill came back, while it is being corrected', () => {
+    mocks.useSupplierBill.mockReturnValue(
+      loaded({ ...DRAFT_DIRECT, returnedAt: '2026-09-16T10:00:00Z', returnReason: 'Amount is $5,060, not $5,660.' }),
+    );
+    renderWithProviders(<SupplierBillEditPage id="bill-7" />);
+    expect(screen.getByText('Returned for correction — fix this before submitting again')).toBeInTheDocument();
+    expect(screen.getByText('Amount is $5,060, not $5,660.')).toBeInTheDocument();
+  });
+
+  it('does not warn that the bill duplicates its own invoice number', () => {
+    mocks.useSupplierBill.mockReturnValue(loaded(DRAFT_DIRECT));
+    mocks.useSupplierBills.mockReturnValue(loaded([DRAFT_DIRECT]));
+    renderWithProviders(<SupplierBillEditPage id="bill-7" />);
+
+    expect(screen.queryByText(/is already recorded on/)).not.toBeInTheDocument();
+  });
+
+  it('shows a 409 from PATCH on the invoice-number field', () => {
+    mocks.useSupplierBill.mockReturnValue(loaded(DRAFT_DIRECT));
+    mocks.useUpdateSupplierBill.mockReturnValue(
+      createState({
+        isError: true,
+        error: new ApiError(409, 'Supplier invoice INV-77 is already recorded on BILL-2026-0050', 'CONFLICT'),
+      }),
+    );
+    renderWithProviders(<SupplierBillEditPage id="bill-7" />);
+
+    expect(byId('bill-invoice-number-error')).toHaveTextContent(
+      'Supplier invoice INV-77 is already recorded on BILL-2026-0050',
+    );
+  });
+
+  it('prefills a PO bill with what each line billed, and PATCHes it', async () => {
+    const user = userEvent.setup();
+    mocks.useSupplierBill.mockReturnValue(loaded(DRAFT_PO));
+    mocks.usePurchaseOrder.mockReturnValue({ data: PO, isPending: false, isError: false });
+    mocks.useGoodsReceipts.mockReturnValue(loaded([GRN_POSTED]));
+    renderWithProviders(<SupplierBillEditPage id="bill-8" />);
+
+    expect(screen.getByRole('heading', { name: 'Edit bill' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /against a purchase order/i })).toBeChecked();
+    await waitFor(() => expect(byId('bill-line-0-quantity')).toHaveValue('185'));
+    // Billing what was received: no over-billing note.
+    expect(screen.queryByText(/more than received/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate.mock.calls[0]![0]).toEqual({
+      id: 'bill-8',
+      payload: {
+        supplierId: 'sup-1',
+        purchaseOrderId: 'po-1',
+        supplierInvoiceNumber: 'INV-9044',
+        billDate: '2026-09-01',
+        dueDate: '2026-10-01',
+        currencyCode: 'USD',
+        lines: [
+          {
+            description: '50kg cement bags',
+            quantity: 185,
+            unitPrice: 10,
+            netAmount: 1850,
+            vatAmount: 0,
+            expenseProfileCode: 'OFFICE_EXPENSE',
+          },
+        ],
+      },
+    });
+  });
+
+  it.each(['SUBMITTED', 'APPROVED', 'REJECTED'] as const)(
+    'refuses to edit a %s bill, with a link back to it',
+    (documentStatus) => {
+      mocks.useSupplierBill.mockReturnValue(loaded({ ...DRAFT_DIRECT, documentStatus }));
+      renderWithProviders(<SupplierBillEditPage id="bill-7" />);
+
+      expect(screen.getByText('Only a draft bill can be edited.')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Back to bill' })).toHaveAttribute(
+        'href',
+        '/finance/accounting/bills/bill-7',
+      );
+      expect(byId('bill-invoice-number')).toBeNull();
+    },
+  );
 });

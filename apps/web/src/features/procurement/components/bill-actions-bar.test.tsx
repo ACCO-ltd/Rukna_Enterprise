@@ -19,13 +19,18 @@ const mocks = vi.hoisted(() => ({
   usePostSupplierBill: vi.fn(),
   useReverseSupplierBill: vi.fn(),
   useSubmitSupplierBill: vi.fn(),
+  useReturnSupplierBill: vi.fn(),
+  useRejectSupplierBill: vi.fn(),
   useBillMatch: vi.fn(),
   useResolveMatchException: vi.fn(),
   useRunBillMatch: vi.fn(),
   useApproveMatchException: vi.fn(),
 }));
 
+const routerMocks = vi.hoisted(() => ({ push: vi.fn() }));
+
 vi.mock('../hooks/use-procurement', () => mocks);
+vi.mock('next/navigation', () => ({ useRouter: () => routerMocks, usePathname: () => '/finance/accounting/bills/bill-1' }));
 vi.mock('@/features/accounting/hooks/use-accounting', () => ({
   useAccounts: () => ({ data: [], isPending: false, isError: false }),
   usePostingProfiles: () => ({ data: [], isPending: false, isError: false }),
@@ -66,7 +71,7 @@ const RESOLVER = [PROCUREMENT_PERMISSIONS.approveMatchException, ACCOUNTING_PERM
 
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const hook of ['useApproveSupplierBill', 'usePostSupplierBill', 'useReverseSupplierBill', 'useSubmitSupplierBill', 'useResolveMatchException', 'useRunBillMatch', 'useApproveMatchException'] as const) {
+  for (const hook of ['useApproveSupplierBill', 'usePostSupplierBill', 'useReverseSupplierBill', 'useSubmitSupplierBill', 'useReturnSupplierBill', 'useRejectSupplierBill', 'useResolveMatchException', 'useRunBillMatch', 'useApproveMatchException'] as const) {
     mocks[hook].mockReturnValue(idle);
   }
   mocks.useBillMatch.mockReturnValue({ data: EXCEPTION, isPending: false, isError: false });
@@ -111,5 +116,156 @@ describe('BillDocumentHeader — posting blocked by the match', () => {
     });
 
     expect(screen.queryByRole('button', { name: 'Resolve exception' })).not.toBeInTheDocument();
+  });
+});
+
+// ─── Return for correction / reject / edit (ADR-037 amendment) ─────────────────────
+
+const SUBMITTED = {
+  ...BLOCKED,
+  billNumber: 'BILL-2026-0042',
+  documentStatus: 'SUBMITTED',
+  matchStatus: 'NOT_RUN',
+  purchaseOrderId: null,
+  purchaseOrderRevisionId: null,
+} as unknown as SupplierBill;
+
+const MANAGER = [ACCOUNTING_PERMISSIONS.managePayables];
+
+async function openKebab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'More actions' }));
+}
+
+describe('BillDocumentHeader — return and reject a submitted bill', () => {
+  it('offers Return for correction and Reject in the kebab, with Approve still primary', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BillDocumentHeader bill={SUBMITTED} />, { permissions: MANAGER });
+
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    await openKebab(user);
+    const items = await screen.findAllByRole('menuitem');
+    // Reject is destructive, so it sits last.
+    expect(items.map((item) => item.textContent)).toEqual(['Return for correction', 'Reject']);
+  });
+
+  it('offers neither without the manage-payables permission', () => {
+    renderWithProviders(<BillDocumentHeader bill={SUBMITTED} />, { permissions: [] });
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+
+  it.each(['DRAFT', 'APPROVED', 'REJECTED'] as const)('offers neither on a %s bill', async (documentStatus) => {
+    const user = userEvent.setup();
+    renderWithProviders(<BillDocumentHeader bill={{ ...SUBMITTED, documentStatus }} />, { permissions: MANAGER });
+
+    const kebab = screen.queryByRole('button', { name: 'More actions' });
+    if (kebab) {
+      await openKebab(user);
+      expect(screen.queryByRole('menuitem', { name: 'Return for correction' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Reject' })).not.toBeInTheDocument();
+    }
+  });
+
+  it('returns the bill only once a reason is given', async () => {
+    const user = userEvent.setup();
+    const returnMutate = vi.fn();
+    mocks.useReturnSupplierBill.mockReturnValue({ ...idle, mutate: returnMutate });
+    renderWithProviders(<BillDocumentHeader bill={SUBMITTED} />, { permissions: MANAGER });
+
+    await openKebab(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Return for correction' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Return BILL-2026-0042 for correction?');
+    expect(dialog).toHaveTextContent(/goes back to draft so it can be corrected/);
+
+    await user.click(screen.getByRole('button', { name: 'Return for correction' }));
+    expect(returnMutate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('What needs correcting')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('What needs correcting'), 'Amount is $5,060, not $5,660.');
+    await user.click(screen.getByRole('button', { name: 'Return for correction' }));
+    expect(returnMutate).toHaveBeenCalledWith(
+      { id: 'bill-1', reason: 'Amount is $5,060, not $5,660.' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it('rejects the bill only once a reason is given, from a destructive confirm', async () => {
+    const user = userEvent.setup();
+    const rejectMutate = vi.fn();
+    mocks.useRejectSupplierBill.mockReturnValue({ ...idle, mutate: rejectMutate });
+    renderWithProviders(<BillDocumentHeader bill={{ ...SUBMITTED, billNumber: null }} />, { permissions: MANAGER });
+
+    await openKebab(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Reject' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Reject this bill?');
+    expect(dialog).toHaveTextContent(/never posted/);
+    expect(dialog).toHaveTextContent(/can't be undone/);
+
+    await user.click(screen.getByRole('button', { name: 'Reject bill' }));
+    expect(rejectMutate).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('Reason for rejecting'), 'Duplicate of BILL-2026-0040.');
+    await user.click(screen.getByRole('button', { name: 'Reject bill' }));
+    expect(rejectMutate).toHaveBeenCalledWith(
+      { id: 'bill-1', reason: 'Duplicate of BILL-2026-0040.' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+});
+
+describe('BillDocumentHeader — returned and rejected notices', () => {
+  it('says a returned draft was returned, why, and links to edit it', () => {
+    renderWithProviders(
+      <BillDocumentHeader
+        bill={{
+          ...SUBMITTED,
+          documentStatus: 'DRAFT',
+          returnedAt: '2026-09-20T10:00:00.000Z',
+          returnReason: 'Amount is $5,060, not $5,660.',
+        }}
+      />,
+      { permissions: MANAGER },
+    );
+
+    expect(screen.getByText(/^Returned for correction on/)).toBeInTheDocument();
+    expect(screen.getByText('Amount is $5,060, not $5,660.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Edit bill' })).toHaveAttribute(
+      'href',
+      '/finance/accounting/bills/bill-1/edit',
+    );
+  });
+
+  it('says a rejected bill was rejected, and why, with no commands left', () => {
+    renderWithProviders(
+      <BillDocumentHeader
+        bill={{
+          ...SUBMITTED,
+          documentStatus: 'REJECTED',
+          rejectedAt: '2026-09-20T10:00:00.000Z',
+          rejectionReason: 'Duplicate of BILL-2026-0040.',
+        }}
+      />,
+      { permissions: MANAGER },
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Rejected on/);
+    expect(screen.getByText('Duplicate of BILL-2026-0040.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+  });
+
+  it('offers Edit bill in the kebab of a draft, with Submit still primary', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BillDocumentHeader bill={{ ...SUBMITTED, documentStatus: 'DRAFT' }} />, {
+      permissions: MANAGER,
+    });
+
+    expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
+    await openKebab(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit bill' }));
+    expect(routerMocks.push).toHaveBeenCalledWith('/finance/accounting/bills/bill-1/edit');
   });
 });

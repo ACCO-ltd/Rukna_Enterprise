@@ -12,6 +12,8 @@ export interface ActivityEntryView {
   actor: { id: string; name: string };
   /** Stable event code — `bills.submit`, `bills.update`, `bill-matching.rerun`. */
   code: string;
+  /** Why, when the command carried a reason — a return, a rejection. */
+  reason?: string;
 }
 
 const METHOD_VERB: Record<string, string> = {

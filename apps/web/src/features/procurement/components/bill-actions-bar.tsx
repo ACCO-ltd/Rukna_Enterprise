@@ -5,17 +5,19 @@
  * its three labelled status axes, and at most one Notice — plus the confirmations its commands
  * open.
  *
- * Every command is confirmed, because none can be undone from the UI — there is no reject
- * endpoint, nothing returns a bill to DRAFT, and the only exit from a posted bill is a reversal
- * that writes a second journal.
+ * Every command is confirmed, because none can be undone from the UI — a rejected bill is final,
+ * and the only exit from a posted bill is a reversal that writes a second journal. Return and
+ * reject (ADR-037 amendment) and reverse each ask for a reason, which the history keeps.
  *
  * Commands follow backend state and permissions: the one valid next step is the primary
- * button, Reverse sits in the kebab, and anything unavailable is not rendered. A blocked post is
+ * button; Edit (a draft), Return for correction and Reject (a submitted bill) and Reverse sit
+ * in the kebab, destructive ones last; and anything unavailable is not rendered. A blocked post is
  * explained in words by the Notice rather than by a greyed-out button.
  */
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -40,6 +42,7 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
+import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import {
@@ -47,6 +50,7 @@ import {
   BILL_STAGES,
   billLifecycle,
   billNotice,
+  canEditBill,
   planBillPost,
   primaryBillAction,
   type BillAction,
@@ -55,12 +59,20 @@ import {
   useApproveSupplierBill,
   useBillMatch,
   usePostSupplierBill,
+  useRejectSupplierBill,
+  useReturnSupplierBill,
   useReverseSupplierBill,
   useSubmitSupplierBill,
 } from '../hooks/use-procurement';
 import type { SupplierBill } from '../types';
 import { ResolveExceptionDialog } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
+
+/** The server's words for a refused command (e.g. the bill changed state meanwhile), else a fallback. */
+function commandError(error: unknown, fallback: string): string | undefined {
+  if (!error) return undefined;
+  return error instanceof ApiError && error.message ? error.message : fallback;
+}
 
 export function BillDocumentHeader({
   bill,
@@ -83,6 +95,7 @@ export function BillDocumentHeader({
   const tMatch = useTranslations('procurement.matchStatus');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
+  const router = useRouter();
 
   const [pending, setPending] = useState<BillAction | null>(null);
 
@@ -93,6 +106,8 @@ export function BillDocumentHeader({
   const approve = useApproveSupplierBill();
   const post = usePostSupplierBill();
   const reverse = useReverseSupplierBill();
+  const returnBill = useReturnSupplierBill();
+  const reject = useRejectSupplierBill();
 
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
   const allowed = canManage ? availableBillActions(bill) : [];
@@ -125,9 +140,22 @@ export function BillDocumentHeader({
       </Button>
     ) : null;
 
-  const commands: DocumentCommand[] = allowed.includes('reverse')
-    ? [{ key: 'reverse', label: t('reverse'), onSelect: () => setPending('reverse'), destructive: true }]
-    : [];
+  const editHref = `/finance/accounting/bills/${bill.id}/edit`;
+  const canEdit = canManage && canEditBill(bill);
+  const billName = bill.billNumber ?? t('thisBill');
+
+  const commands: DocumentCommand[] = [
+    ...(canEdit ? [{ key: 'edit', label: t('editBill'), onSelect: () => router.push(editHref) }] : []),
+    ...(allowed.includes('return')
+      ? [{ key: 'return', label: t('returnForCorrection'), onSelect: () => setPending('return') }]
+      : []),
+    ...(allowed.includes('reject')
+      ? [{ key: 'reject', label: t('reject'), onSelect: () => setPending('reject'), destructive: true }]
+      : []),
+    ...(allowed.includes('reverse')
+      ? [{ key: 'reverse', label: t('reverse'), onSelect: () => setPending('reverse'), destructive: true }]
+      : []),
+  ];
 
   return (
     <>
@@ -189,7 +217,30 @@ export function BillDocumentHeader({
         ]}
       />
 
-      {notice === 'post-blocked' ? (
+      {notice === 'returned' ? (
+        <Notice
+          tone="attention"
+          title={t('notice.returnedTitle', { date: formatDate(bill.returnedAt, locale) ?? '' })}
+          className="mb-6"
+          action={
+            canEdit ? (
+              <Button asChild variant="outline">
+                <Link href={editHref}>{t('editBill')}</Link>
+              </Button>
+            ) : undefined
+          }
+        >
+          {bill.returnReason ?? ''}
+        </Notice>
+      ) : notice === 'rejected' ? (
+        <Notice
+          tone="danger"
+          title={t('notice.rejectedTitle', { date: formatDate(bill.rejectedAt, locale) ?? '' })}
+          className="mb-6"
+        >
+          {bill.rejectionReason ?? ''}
+        </Notice>
+      ) : notice === 'post-blocked' ? (
         <Notice
           tone="attention"
           title={t('notice.postBlockedTitle')}
@@ -247,6 +298,33 @@ export function BillDocumentHeader({
           isPending={approve.isPending}
           errorMessage={approve.isError ? tc('loadFailed') : undefined}
           onConfirm={() => approve.mutate(bill.id, { onSuccess: close })}
+          onDismiss={close}
+        />
+      ) : null}
+
+      {pending === 'return' ? (
+        <ConfirmActionDialog
+          title={t('returnTitle', { bill: billName })}
+          description={t('returnBody')}
+          confirmLabel={t('returnForCorrection')}
+          reason={{ label: t('returnReason'), required: true }}
+          isPending={returnBill.isPending}
+          errorMessage={commandError(returnBill.error, tc('loadFailed'))}
+          onConfirm={(reason) => returnBill.mutate({ id: bill.id, reason }, { onSuccess: close })}
+          onDismiss={close}
+        />
+      ) : null}
+
+      {pending === 'reject' ? (
+        <ConfirmActionDialog
+          title={t('rejectTitle', { bill: billName })}
+          description={t('rejectBody')}
+          confirmLabel={t('rejectConfirm')}
+          reason={{ label: t('rejectReason'), required: true }}
+          destructive
+          isPending={reject.isPending}
+          errorMessage={commandError(reject.error, tc('loadFailed'))}
+          onConfirm={(reason) => reject.mutate({ id: bill.id, reason }, { onSuccess: close })}
           onDismiss={close}
         />
       ) : null}
