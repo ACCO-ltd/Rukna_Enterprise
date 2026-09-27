@@ -242,7 +242,7 @@
       "currencyLabel": "Currency",
       "currencyNone": "Not set",
       "startDateLabel": "Start date",
-      "expectedEndDateLabel": "Expected completion",
+      "expectedEndDateLabel": "Planned completion",
       "submit": "Create project",
       "submitting": "Creating...",
       "cancel": "Cancel",
@@ -253,7 +253,7 @@
       "contractValueInvalid": "Enter a valid amount",
       "contractValueNegative": "Contract value cannot be negative",
       "contractValueDecimals": "Contract value can have at most 2 decimal places",
-      "endBeforeStart": "Expected completion cannot be before the start date",
+      "endBeforeStart": "Planned completion cannot be before the start date",
       "duplicateCode": "A project with this code already exists.",
       "failed": "Could not create the project.",
       "wizard": {
@@ -271,7 +271,16 @@
       "deliveryArrangement": "Delivery arrangement",
       "newClient": "New client",
       "selectClient": "Select a client",
-      "clientsLoadFailed": "Clients could not be loaded. Reload this page to try again."
+      "clientsLoadFailed": "Clients could not be loaded. Reload this page to try again.",
+      "nameHint": "The project code is assigned on save.",
+      "contractGroup": "Contract",
+      "contractGroupHint": "The client and site this project is delivered for. Billing milestones are set up after saving.",
+      "clientSearchPlaceholder": "Search clients",
+      "clientNoMatch": "No client matches",
+      "saveProject": "Save project",
+      "saving": "Saving...",
+      "discard": "Discard",
+      "backToList": "Projects"
     },
     "detail": {
       "notFound": "This project does not exist, or you do not have access to it.",
@@ -1910,7 +1919,22 @@
       "sectionContact": "Contact",
       "sectionAddress": "Address",
       "sectionBusiness": "Business Information",
-      "sectionAdditional": "Additional"
+      "sectionAdditional": "Additional",
+      "clientName": "Client name",
+      "clientNameHint": "Clients are shared by every project, invoice and receipt.",
+      "detailsGroup": "Details",
+      "detailsGroupHint": "How the client appears on invoices and in search.",
+      "contactGroup": "Contact",
+      "contactGroupHint": "Who ACCO calls about documents and payments.",
+      "contactGroupEditHint": "Where documents are sent. People to call are managed on the client page.",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "e.g. SO123456789",
+      "contactPhoneHint": "Include the country code, e.g. +252 61 234 5678.",
+      "addressPlaceholder": "Street, building and city",
+      "save": "Save client",
+      "saving": "Saving...",
+      "discard": "Discard",
+      "backToList": "Clients"
     }
   },
   "contracts": {

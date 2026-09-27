@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -98,12 +98,12 @@ async function fillDetails(
   }: { startDate?: string; endDate?: string; description?: string } = {},
 ) {
   if (startDate) await pickDate(user, screen.getByLabelText('Start date'), startDate);
-  if (endDate) await pickDate(user, screen.getByLabelText('Expected completion'), endDate);
+  if (endDate) await pickDate(user, screen.getByLabelText('Planned completion'), endDate);
   if (description) await user.type(screen.getByLabelText('Description'), description);
 }
 
 async function submitProject(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Create project' }));
+  await user.click(screen.getByRole('button', { name: 'Save project' }));
 }
 
 beforeEach(() => {
@@ -119,11 +119,39 @@ describe('ProjectForm — validation', () => {
     const user = userEvent.setup();
     renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     expect(screen.getAllByText('Enter a project name')[0]).toBeInTheDocument();
     expect(screen.getAllByText('Select a client')[0]).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it('lists every invalid field as a link in the error summary after a failed save', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    const summary = await screen.findByText('Fix 4 fields before saving');
+    const box = summary.closest('[role="alert"]') as HTMLElement;
+    expect(box).toBeInTheDocument();
+    for (const [label, id] of [
+      ['Project name', 'project-name'],
+      ['District', 'project-district'],
+      ['Category', 'project-category'],
+      ['Client', 'project-clientId'],
+    ]) {
+      expect(within(box).getByRole('link', { name: label })).toHaveAttribute('href', `#${id}`);
+    }
+  });
+
+  it('offers clients in a searchable picker and hides "New client" without create:client', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByRole('combobox', { name: /^client/i }));
+    expect(await screen.findByRole('option', { name: /Baraka Real Estate/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'New client' })).not.toBeInTheDocument();
   });
 
   it('requires a client before creating a project', async () => {
@@ -131,7 +159,7 @@ describe('ProjectForm — validation', () => {
     renderForm();
 
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     expect((await screen.findAllByText('Select a client'))[0]).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
@@ -144,7 +172,7 @@ describe('ProjectForm — validation', () => {
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
     await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
     await chooseOption(user, screen.getByRole('combobox', { name: /^client/i }), 'client-1');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     // The category field surfaces its required error (a role="alert"); the wizard stays on step 1.
     expect((await screen.findAllByText('Select a category'))[0]).toBeInTheDocument();
@@ -164,7 +192,7 @@ describe('ProjectForm — validation', () => {
     // the backstop for the edit form and for anything posting to the API directly.
     const cell = await findDayCell(
       user,
-      screen.getByLabelText('Expected completion'),
+      screen.getByLabelText('Planned completion'),
       '2028-03-30',
     );
     expect(cell).toHaveAttribute('data-disabled');
@@ -253,7 +281,7 @@ describe('ProjectForm — client preselection', () => {
         'The client in the URL was not found. It may have been deactivated or does not exist.',
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Create project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save project' })).not.toBeInTheDocument();
   });
 
   it('preselects and locks the client when a valid clientId param is provided', async () => {
@@ -271,7 +299,7 @@ describe('ProjectForm — client preselection', () => {
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
     await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
     await chooseOption(user, screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     await waitFor(() =>
       expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'client-1' })),
@@ -284,9 +312,11 @@ describe('Project form client handoff', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectForm />, { permissions: ['create:client'], withToast: true });
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Preserved tower');
-    await user.click(screen.getByRole('button', { name: 'New client' }));
-    expect(screen.getByRole('button', { name: 'Create client' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    // "New client" is the pinned last row of the client picker, not a button beside it.
+    await user.click(screen.getByRole('combobox', { name: /^client/i }));
+    await user.click(await screen.findByRole('option', { name: 'New client' }));
+    expect(screen.getByRole('button', { name: 'Save client' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
     expect(screen.getByRole('textbox', { name: /^project name/i })).toHaveValue('Preserved tower');
     expect(createProject).not.toHaveBeenCalled();
   });

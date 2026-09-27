@@ -570,6 +570,10 @@ export interface CreateSupplierBillLinePayload {
   vatAmount: number;
   expenseProfileCode: string;
   projectId?: string;
+  /** Direct (non-PO) bills only: the BOQ cost item a project line is for. */
+  boqNodeId?: string;
+  /** Direct (non-PO) bills only: the project-level cost category, for cost the BOQ has no line for. */
+  spendCategoryId?: string;
 }
 
 export interface CreateSupplierBillPayload {

@@ -130,7 +130,7 @@ describe('InvoicesList', () => {
     expect(within(table).getByText('Overdue')).toBeInTheDocument();
   });
 
-  it('offers Open, Open PDF and Copy link in the row menu — and no create action', async () => {
+  it('offers Open, Open PDF and Copy link in the row menu — and no create action without manage:receivable', async () => {
     const user = userEvent.setup();
     vi.mocked(listInvoices).mockResolvedValue([invoice()]);
     renderWithProviders(<InvoicesList />, { withToast: true });
@@ -205,7 +205,7 @@ describe('InvoicesList', () => {
     renderWithProviders(<InvoicesList />, { withToast: true });
 
     expect(await screen.findByText('No client invoices yet')).toBeInTheDocument();
-    expect(screen.getByText(/raised from an effective payment certificate/i)).toBeInTheDocument();
+    expect(screen.getByText(/raised from a certified IPC, a billing milestone or a separate charge/i)).toBeInTheDocument();
   });
 
 });

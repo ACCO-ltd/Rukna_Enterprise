@@ -20,6 +20,7 @@ import {
 import { FileText } from 'lucide-react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate } from '@/lib/format';
 
@@ -36,15 +37,22 @@ const detailHref = (invoice: ClientInvoice) => `/finance/accounting/invoices/${i
 /**
  * The client invoice list (ADR-035 list page, ADR-036 pilot).
  *
- * No create action, by design: there is no blank create endpoint — an invoice is raised from an
- * effective payment certificate, a billed milestone or a separate charge, on the screen where
- * that happens. A "New invoice" button here could only open a picker for one of those.
+ * "New invoice" opens a source picker, not a blank form (ADR-037): there is no blank create
+ * endpoint — an invoice is raised from a certified IPC, a billing milestone or a separate charge,
+ * and its amount is copied from that source. The action is shown only to holders of
+ * `manage:receivable`, which every create endpoint requires.
  */
 export function InvoicesList() {
   const t = useTranslations('accounting.invoices');
   const tGrid = useTranslations('common.grid');
   const { toast } = useToast();
   const openDocument = useOpenInvoiceDocument();
+  const { can } = usePermissions();
+  const createAction = can(ACCOUNTING_PERMISSIONS.manageReceivables) ? (
+    <Button asChild>
+      <Link href="/finance/accounting/invoices/new">{t('newInvoice')}</Link>
+    </Button>
+  ) : null;
 
   const invoices = useInvoices();
   // Joined here because `GET /invoices` embeds no client relation.
@@ -244,6 +252,7 @@ export function InvoicesList() {
             icon={<FileText size={20} aria-hidden="true" />}
             title={t('empty')}
             description={t('emptyHint')}
+            action={createAction ?? undefined}
           />
         ) : undefined
       }
@@ -256,6 +265,7 @@ export function InvoicesList() {
       filters={filterFields}
       filterValues={filters}
       onFilterValuesChange={setFilters}
+      toolbarActions={createAction ?? undefined}
     />
   );
 }

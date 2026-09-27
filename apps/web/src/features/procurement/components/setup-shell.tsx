@@ -12,6 +12,7 @@
  */
 
 import { useState, type FormEvent, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -35,8 +36,13 @@ interface SetupScreenProps {
   createLabel: string;
   /** Withheld when the user lacks `manage:procurement-config`. */
   canCreate: boolean;
-  createForm: (close: () => void) => ReactNode;
-  createTitle: string;
+  /**
+   * A full create page to link to instead of the dialog — for master data whose create form has
+   * outgrown a few short fields (ADR-037's container rule). When set, `createForm` is unused.
+   */
+  createHref?: string;
+  createForm?: (close: () => void) => ReactNode;
+  createTitle?: string;
   isPending: boolean;
   isError: boolean;
   children: ReactNode;
@@ -47,6 +53,7 @@ export function SetupScreen({
   notice,
   createLabel,
   canCreate,
+  createHref,
   createForm,
   createTitle,
   isPending,
@@ -64,7 +71,11 @@ export function SetupScreen({
           {guidance ? (
             <p className="me-auto max-w-prose text-body-sm text-muted-foreground">{guidance}</p>
           ) : null}
-          {canCreate ? (
+          {canCreate && createHref ? (
+            <Button asChild>
+              <Link href={createHref}>{createLabel}</Link>
+            </Button>
+          ) : canCreate ? (
             <Button type="button" onClick={() => setOpen(true)}>
               {createLabel}
             </Button>
@@ -90,14 +101,16 @@ export function SetupScreen({
 
       {/* A dialog, not the side panel this was: these setup forms are three or four short
           fields, and none of them needs the table behind it to stay readable while you type. */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>{createTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="mt-5">{createForm(() => setOpen(false))}</div>
-        </DialogContent>
-      </Dialog>
+      {createForm ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent size="md">
+            <DialogHeader>
+              <DialogTitle>{createTitle}</DialogTitle>
+            </DialogHeader>
+            <div className="mt-5">{createForm(() => setOpen(false))}</div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

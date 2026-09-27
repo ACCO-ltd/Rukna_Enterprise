@@ -16,6 +16,7 @@ import { FoundationsSection } from './foundations-section';
 import { PatternsSection } from './patterns-section';
 import { RecordsSection } from './records-section';
 import { ShellSection } from './shell-section';
+import { FormsSection } from './forms-section';
 
 // ─── Contents ─────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ const CONTENTS = [
   { id: 'module', label: 'Module shell' },
   { id: 'list', label: 'List page' },
   { id: 'document', label: 'Document' },
+  { id: 'forms', label: 'Forms' },
 ] as const;
 
 // ─── Toggle group ─────────────────────────────────────────────────────────────
@@ -196,6 +198,7 @@ export function Gallery() {
             <PatternsSection />
             <RecordsSection />
             <ShellSection />
+            <FormsSection />
           </div>
         </DirectionProvider>
 

@@ -46,7 +46,7 @@ import {
   usePermissions,
 } from '@/features/auth/permissions/can';
 
-import { useCreateSupplier, useSuppliers, useUpdateSupplier } from '../hooks/use-procurement';
+import { useSuppliers, useUpdateSupplier } from '../hooks/use-procurement';
 import type { Supplier, UpdateSupplierPayload } from '../types';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { CreateForm, SetupScreen } from './setup-shell';
@@ -89,9 +89,9 @@ export function SupplierList() {
     <SetupScreen
       notice={t('writeOnceNotice')}
       createLabel={t('new')}
-      createTitle={t('createTitle')}
       canCreate={canManage}
-      createForm={(close) => <SupplierCreateForm onDone={close} />}
+      // A full page (ADR-037): master-data creation is never a dialog.
+      createHref="/procurement/suppliers/new"
       isPending={suppliers.isPending}
       isError={suppliers.isError}
     >
@@ -182,92 +182,6 @@ export function SupplierList() {
         </DialogContent>
       </Dialog>
     </SetupScreen>
-  );
-}
-
-// ─── Create ──────────────────────────────────────────────────────────────────────
-
-function SupplierCreateForm({ onDone }: { onDone: () => void }) {
-  const t = useTranslations('procurement.supplier');
-  const tc = useTranslations('procurement.common');
-
-  const ids = {
-    code: useId(),
-    name: useId(),
-    taxNumber: useId(),
-    currency: useId(),
-    terms: useId(),
-  };
-
-  const create = useCreateSupplier();
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-
-    const code = String(form.get('code') ?? '').trim();
-    const name = String(form.get('name') ?? '').trim();
-    const taxNumber = String(form.get('taxNumber') ?? '').trim();
-    const terms = String(form.get('paymentTermsDays') ?? '').trim();
-
-    if (!code || !name) return;
-
-    // `paymentTermsDays` is @IsInt() @Min(0). An empty field must be omitted rather than
-    // sent as 0 — "pay immediately" and "not recorded" are different facts about a supplier.
-    const paymentTermsDays = terms === '' ? undefined : Number(terms);
-    if (paymentTermsDays !== undefined && !Number.isInteger(paymentTermsDays)) return;
-
-    create.mutate(
-      {
-        code,
-        name,
-        ...(taxNumber ? { taxNumber } : {}),
-        // Single-currency platform (ADR-024): suppliers default to USD implicitly.
-        defaultCurrency: 'USD',
-        ...(paymentTermsDays !== undefined ? { paymentTermsDays } : {}),
-      },
-      { onSuccess: onDone },
-    );
-  }
-
-  return (
-    <CreateForm
-      onSubmit={handleSubmit}
-      isPending={create.isPending}
-      error={create.error}
-      onCancel={onDone}
-    >
-      {/* The code is permanent — the other fields can be corrected later from Edit (A15 /
-          D8). Said before the fields rather than after, where it would be an epitaph. */}
-      <Alert variant="warning" messages={[t('noEditWarning')]} />
-
-      <FormField htmlFor={ids.code} label={tc('code')}>
-        <Input id={ids.code} name="code" required maxLength={50} autoComplete="off" />
-        <p className="text-xs text-muted-foreground">{t('codeHint')}</p>
-      </FormField>
-
-      <FormField htmlFor={ids.name} label={tc('name')}>
-        <Input id={ids.name} name="name" required maxLength={255} autoComplete="off" />
-      </FormField>
-
-      <FormField htmlFor={ids.taxNumber} label={`${t('taxNumber')} (${tc('optional')})`}>
-        <Input id={ids.taxNumber} name="taxNumber" maxLength={50} autoComplete="off" />
-        <p className="text-xs text-muted-foreground">{t('taxNumberHint')}</p>
-      </FormField>
-
-      <FormField htmlFor={ids.terms} label={`${t('paymentTerms')} (${tc('optional')})`}>
-        <Input
-          id={ids.terms}
-          name="paymentTermsDays"
-          type="number"
-          min={0}
-          step={1}
-          inputMode="numeric"
-          autoComplete="off"
-        />
-        <p className="text-xs text-muted-foreground">{t('paymentTermsHint')}</p>
-      </FormField>
-    </CreateForm>
   );
 }
 

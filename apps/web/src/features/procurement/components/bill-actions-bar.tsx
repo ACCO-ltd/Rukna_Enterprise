@@ -38,7 +38,7 @@ import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
-import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ACCOUNTING_PERMISSIONS, PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -53,11 +53,13 @@ import {
 } from '../bill-actions';
 import {
   useApproveSupplierBill,
+  useBillMatch,
   usePostSupplierBill,
   useReverseSupplierBill,
   useSubmitSupplierBill,
 } from '../hooks/use-procurement';
 import type { SupplierBill } from '../types';
+import { ResolveExceptionDialog } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
 export function BillDocumentHeader({
@@ -102,8 +104,14 @@ export function BillDocumentHeader({
 
   const close = () => setPending(null);
 
+  // Posting held by an open match exception: resolving it is the one next step, so it takes the
+  // primary slot — for whoever holds the authority to resolve it.
+  const canResolveException = can(PROCUREMENT_PERMISSIONS.approveMatchException);
+
   const primaryButton =
-    primary === 'submit' ? (
+    notice === 'post-blocked' && canResolveException && bill.matchStatus === 'EXCEPTION' ? (
+      <ResolveExceptionAction billId={bill.id} />
+    ) : primary === 'submit' ? (
       // Submit runs through the approval gate (ADR-011): with a DoA binding configured the server
       // opens an approval instead of transitioning.
       <GatedActionButton
@@ -414,5 +422,33 @@ function PostDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Resolve a match exception ─────────────────────────────────────────────────────
+
+/**
+ * The header's primary command while posting is held by a fresh match exception. It opens the
+ * same dialog as Matching's "Resolve exception" — one dialog, one set of rules. Renders nothing
+ * once the exception already carries a resolution (a PO revision or a receipt correction is
+ * pending): there is nothing left to resolve here, and Matching explains what to do instead.
+ *
+ * Labelled "Resolve", not "Approve": the reason chosen in the dialog can equally dispute the
+ * invoice or send it back for a PO revision, and a button must not promise one outcome of several.
+ */
+function ResolveExceptionAction({ billId }: { billId: string }) {
+  const t = useTranslations('procurement.matching');
+  const match = useBillMatch(billId);
+  const [open, setOpen] = useState(false);
+
+  if (match.data?.status !== 'EXCEPTION' || match.data.resolutionAction) return null;
+
+  return (
+    <>
+      <Button type="button" onClick={() => setOpen(true)}>
+        {t('resolveException')}
+      </Button>
+      {open ? <ResolveExceptionDialog billId={billId} onClose={() => setOpen(false)} /> : null}
+    </>
   );
 }

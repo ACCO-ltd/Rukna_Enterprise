@@ -5,6 +5,7 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -53,6 +54,20 @@ export interface CreateSupplierBillDto {
   projectId?: string;
   departmentId?: string;
   lines: CreateSupplierBillLineDto[];
+}
+
+/**
+ * True when a create hit the (organizationId, supplierId, supplierInvoiceNumberNorm) unique index.
+ * Other unique violations (none today) are left to propagate unchanged.
+ */
+function isDuplicateInvoiceNumberConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    String((error.meta as { target?: unknown } | undefined)?.target ?? '').includes(
+      'supplierInvoiceNumberNorm',
+    )
+  );
 }
 
 export interface PostSupplierBillDto {
@@ -137,23 +152,54 @@ export class SupplierBillService {
       purchaseOrderRevisionId = activeRevision.id;
     }
 
-    return this.repo.create(prisma, {
-      organizationId: orgId,
-      supplierId: dto.supplierId,
-      supplierInvoiceNumber: dto.supplierInvoiceNumber,
-      billDate: new Date(dto.billDate),
-      dueDate: new Date(dto.dueDate),
-      currencyCode: dto.currencyCode,
-      purchaseOrderId: dto.purchaseOrderId,
-      purchaseOrderRevisionId,
-      projectId: dto.projectId,
-      departmentId: dto.departmentId,
-      subtotal,
-      vatAmount: vatTotal,
-      totalAmount,
-      createdBy: userId,
-      lines,
-    });
+    // One supplier invoice number is recorded once per supplier — the unique index on
+    // (organizationId, supplierId, supplierInvoiceNumberNorm). Checked up front so a duplicate is
+    // a 409 that names the bill already holding the number, instead of a raw constraint 500.
+    const existing = await this.repo.findBySupplierInvoiceNumber(
+      prisma,
+      orgId,
+      dto.supplierId,
+      dto.supplierInvoiceNumber,
+    );
+    if (existing) throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, existing.billNumber);
+
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        supplierId: dto.supplierId,
+        supplierInvoiceNumber: dto.supplierInvoiceNumber,
+        billDate: new Date(dto.billDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: dto.currencyCode,
+        purchaseOrderId: dto.purchaseOrderId,
+        purchaseOrderRevisionId,
+        projectId: dto.projectId,
+        departmentId: dto.departmentId,
+        subtotal,
+        vatAmount: vatTotal,
+        totalAmount,
+        createdBy: userId,
+        lines,
+      });
+    } catch (err) {
+      // A concurrent create of the same number passes the pre-check and loses at the index.
+      if (isDuplicateInvoiceNumberConflict(err)) {
+        const winner = await this.repo.findBySupplierInvoiceNumber(
+          prisma,
+          orgId,
+          dto.supplierId,
+          dto.supplierInvoiceNumber,
+        );
+        throw this.duplicateInvoiceNumber(dto.supplierInvoiceNumber, winner?.billNumber ?? null);
+      }
+      throw err;
+    }
+  }
+
+  private duplicateInvoiceNumber(number: string, billNumber: string | null): ConflictException {
+    return new ConflictException(
+      `Supplier invoice ${number} is already recorded on ${billNumber ?? 'a draft bill'}`,
+    );
   }
 
   async submit(identity: RequestIdentity, billId: string) {

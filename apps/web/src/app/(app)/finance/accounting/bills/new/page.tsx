@@ -1,10 +1,9 @@
-import { SupplierBillForm } from '@/features/procurement/components/bill-form';
-import { PoSupplierBillForm } from '@/features/procurement/components/po-bill-form';
+import { SupplierBillCreateForm } from '@/features/procurement/components/bill-create-form';
 
 /**
- * Two distinct controlled paths behind one route (D6):
- *  - `?po=1` → the PO-backed bill that auto-matches on submit.
- *  - default → the genuine non-PO bill (utilities, rent, one-off), which never matches.
+ * New supplier bill (ADR-037). One page for both kinds of bill; the kind is the form's first
+ * question. `?po=1` opens it with "Against a purchase order" chosen, so the list's
+ * "New PO bill" action and any existing link keep landing where they did.
  */
 export default async function NewSupplierBillPage({
   searchParams,
@@ -12,11 +11,10 @@ export default async function NewSupplierBillPage({
   searchParams: Promise<{ po?: string }>;
 }) {
   const { po } = await searchParams;
-  const poBacked = po === '1';
 
   return (
-    <div className="w-full max-w-4xl">
-      {poBacked ? <PoSupplierBillForm /> : <SupplierBillForm />}
+    <div className="w-full max-w-6xl">
+      <SupplierBillCreateForm initialKind={po === '1' ? 'po' : 'direct'} />
     </div>
   );
 }

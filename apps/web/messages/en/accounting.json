@@ -573,7 +573,7 @@
     "title": "Client Invoices",
     "subtitle": "Invoices raised against certified payment certificates, and their position in the ledger.",
     "empty": "No client invoices yet",
-    "emptyHint": "An invoice is raised from an effective payment certificate. Open a certificate to raise the first one.",
+    "emptyHint": "An invoice is raised from a certified IPC, a billing milestone or a separate charge.",
     "noMatches": "No invoices match this filter.",
     "loadFailed": "Could not load invoices.",
     "actionFailed": "The action could not be completed.",
@@ -712,7 +712,102 @@
     "rowOpenPdf": "Open PDF",
     "rowCopyLink": "Copy link",
     "linkCopied": "Link copied",
-    "linkCopyFailed": "Could not copy the link"
+    "linkCopyFailed": "Could not copy the link",
+    "newInvoice": "New invoice",
+    "create": {
+      "back": "Client invoices",
+      "eyebrow": "Client invoice",
+      "title": "New invoice",
+      "intro": "The number is assigned when the invoice is posted. Its client and amount are copied from the source you choose.",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "prepareMilestone": "Prepare invoice",
+      "discard": "Discard",
+      "lifecycle": {
+        "DRAFT": "Draft",
+        "APPROVED": "Approved",
+        "POSTED": "Posted"
+      },
+      "stepOf": "step {n} of {total}",
+      "kindLabel": "What are you invoicing?",
+      "kind": {
+        "IPC": {
+          "label": "Interim payment certificate",
+          "description": "Bill the amount the client certified on an IPC"
+        },
+        "INSTALLMENT": {
+          "label": "Billing milestone",
+          "description": "Bill a milestone from the project's billing schedule"
+        },
+        "SEPARATE_CHARGE": {
+          "label": "Separate charge",
+          "description": "Mobilisation, a variation or another charge outside the schedule"
+        }
+      },
+      "detailsTitle": "Invoice details",
+      "detailsDescription": "Pick the project and the source document. The client and amount follow from it.",
+      "project": "Project",
+      "projectPlaceholder": "Choose a project",
+      "projectSearch": "Search projects",
+      "projectEmpty": "No projects match.",
+      "source": {
+        "IPC": {
+          "label": "Payment certificate",
+          "placeholder": "Choose a certified IPC",
+          "empty": "No certified IPCs on this project are waiting to be invoiced."
+        },
+        "INSTALLMENT": {
+          "label": "Milestone",
+          "placeholder": "Choose a milestone",
+          "empty": "No milestone on this project is marked ready to bill. Mark it ready in the project's Commercial workspace first."
+        },
+        "SEPARATE_CHARGE": {
+          "label": "Separate charge item",
+          "placeholder": "Choose a separate charge",
+          "empty": "No separate charges on this project are waiting to be invoiced."
+        }
+      },
+      "sourceHint": "Filling this in copies its client and amount.",
+      "sourceSearch": "Search",
+      "sourceNoMatch": "Nothing matches.",
+      "chooseProjectFirst": "Choose a project first.",
+      "sourceLoadFailed": "Could not load this project's billable items.",
+      "retry": "Retry",
+      "loading": "Loading…",
+      "ipcOption": "Certificate for application {application}",
+      "applicationNumber": "#{number}",
+      "client": "Client",
+      "clientHint": "From the project's contract. It can't be changed here.",
+      "clientPending": "Set by the source",
+      "invoiceDate": "Invoice date",
+      "dueDate": "Due date",
+      "dueDateHint": "Defaults to 30 days after the invoice date.",
+      "terms": "Terms shown on the invoice",
+      "termsPlaceholder": "e.g. Net 30",
+      "milestoneIssueNote": "A milestone is billed through its billing package. Prepare invoice opens it: you confirm the dates, terms and any variations there, and issuing approves and posts the invoice in one step.",
+      "linesTitle": "Lines",
+      "linesLabel": "Invoice lines",
+      "linesNote": "Lines come from the source document and can't be edited here.",
+      "colDescription": "Description",
+      "colAmount": "Amount",
+      "lineCard": "Line {n}",
+      "emptyLinesTitle": "Choose a source to add its line",
+      "emptyLinesHint": "The line and its amount are copied from the IPC, milestone or separate charge you pick.",
+      "totalBeforeVat": "Amount before VAT",
+      "vatNote": "VAT is calculated when the invoice is created.",
+      "amountsHidden": "Amounts are hidden for your role.",
+      "errors": {
+        "kindRequired": "Choose what you're invoicing.",
+        "projectRequired": "Choose a project.",
+        "sourceRequired": "Choose the item to invoice.",
+        "invoiceDateRequired": "Enter the invoice date.",
+        "dueDateRequired": "Enter the due date.",
+        "termsTooLong": "Keep the terms to 100 characters or fewer."
+      },
+      "saveFailed": "The invoice could not be saved.",
+      "noPermissionTitle": "You can't raise client invoices",
+      "noPermissionBody": "Creating a client invoice needs permission to manage receivables."
+    }
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

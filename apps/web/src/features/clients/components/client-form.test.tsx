@@ -1,5 +1,5 @@
 import { ClientStatus } from '@erp/types';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
@@ -38,21 +38,70 @@ describe('Client form handoff', () => {
     const user = userEvent.setup();
     renderWithProviders(<ClientForm />, { withToast: true });
 
-    await user.click(screen.getByRole('button', { name: 'Create client' }));
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
 
     expect(await screen.findAllByText('Enter a name')).not.toHaveLength(0);
     expect(screen.getAllByText('Enter a contact person before adding their phone or email')).not.toHaveLength(0);
     expect(createClient).not.toHaveBeenCalled();
   });
 
+  it('lists each invalid field as a link in the error summary on a failed save', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClientForm />, { withToast: true });
+
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
+
+    const box = (await screen.findByText('Fix 2 fields before saving')).closest('[role="alert"]') as HTMLElement;
+    expect(within(box).getByRole('link', { name: 'Client name' })).toHaveAttribute('href', '#client-name');
+    expect(within(box).getByRole('link', { name: 'Contact person' })).toHaveAttribute('href', '#client-contact-name');
+  });
+
+  it('renders tax ID and address and sends them on create', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClientForm />, { withToast: true });
+
+    await user.type(screen.getByRole('textbox', { name: /^Client name/ }), 'Ministry of Works');
+    await user.type(screen.getByRole('textbox', { name: 'Tax ID' }), ' SO123456789 ');
+    await user.type(screen.getByRole('textbox', { name: /Contact person/ }), 'Amina Yusuf');
+    await user.type(screen.getByRole('textbox', { name: 'Address' }), 'Maka Al Mukarama Road, Mogadishu');
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
+
+    await waitFor(() =>
+      expect(createClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Ministry of Works',
+          taxNumber: 'SO123456789',
+          address: 'Maka Al Mukarama Road, Mogadishu',
+          primaryContact: expect.objectContaining({ name: 'Amina Yusuf' }),
+        }),
+      ),
+    );
+  });
+
+  it('warns about a possible duplicate name without blocking the save', async () => {
+    const user = userEvent.setup();
+    vi.mocked(findClientDuplicateCandidates).mockResolvedValue([
+      { id: 'c9', name: 'Ministry of Works', type: 'GOVERNMENT', status: ClientStatus.ACTIVE },
+    ]);
+    renderWithProviders(<ClientForm />, { withToast: true });
+
+    await user.type(screen.getByRole('textbox', { name: /^Client name/ }), 'Ministry of Works');
+    expect(await screen.findByText('A client with a similar name may already exist.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ministry of Works/ })).toHaveAttribute('href', '/clients/c9');
+
+    await user.type(screen.getByRole('textbox', { name: /Contact person/ }), 'Amina Yusuf');
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
+    await waitFor(() => expect(createClient).toHaveBeenCalled());
+  });
+
   it('validates optional phone and notes when supplied', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ClientForm />, { withToast: true });
 
-    await user.type(screen.getByRole('textbox', { name: /^Name/ }), 'Ministry of Works');
+    await user.type(screen.getByRole('textbox', { name: /^Client name/ }), 'Ministry of Works');
     await user.type(screen.getByRole('textbox', { name: /Contact person/ }), 'Amina Yusuf');
     await user.type(screen.getByRole('textbox', { name: 'Phone' }), '123');
-    await user.click(screen.getByRole('button', { name: 'Create client' }));
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
 
     expect(await screen.findAllByText('Enter a valid phone number')).not.toHaveLength(0);
     expect(createClient).not.toHaveBeenCalled();
@@ -62,11 +111,13 @@ describe('Client form handoff', () => {
     const user = userEvent.setup();
     renderWithProviders(<ClientForm client={client} />, { withToast: true });
     expect(screen.queryByRole('textbox', { name: /Contact person/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await user.type(screen.getByRole('textbox', { name: 'Tax ID' }), 'SO-77');
+    await user.type(screen.getByRole('textbox', { name: 'Address' }), 'KM4, Mogadishu');
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
     await waitFor(() =>
       expect(updateClient).toHaveBeenCalledWith(
         'c1',
-        expect.objectContaining({ name: 'Ministry of Works' }),
+        expect.objectContaining({ name: 'Ministry of Works', taxNumber: 'SO-77', address: 'KM4, Mogadishu' }),
       ),
     );
   });
@@ -75,9 +126,9 @@ describe('Client form handoff', () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
     renderWithProviders(<ClientForm onCreated={onCreated} />, { withToast: true });
-    await user.type(screen.getByRole('textbox', { name: /^Name/ }), 'Ministry of Works');
+    await user.type(screen.getByRole('textbox', { name: /^Client name/ }), 'Ministry of Works');
     await user.type(screen.getByRole('textbox', { name: /Contact person/ }), 'Amina Yusuf');
-    await user.click(screen.getByRole('button', { name: 'Create client' }));
+    await user.click(screen.getByRole('button', { name: 'Save client' }));
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(client));
     expect(push).not.toHaveBeenCalled();
   });

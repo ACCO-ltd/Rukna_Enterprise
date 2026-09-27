@@ -57,6 +57,14 @@ export interface BillLineCostTarget {
   accruedBasis: Decimal;
 }
 
+/**
+ * The duplicate-detection key for a supplier invoice number: trimmed, upper-cased, and stripped
+ * of everything but letters and digits. The web form mirrors this exactly to warn before saving.
+ */
+export function normalizeSupplierInvoiceNumber(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 @Injectable()
 export class SupplierBillRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
@@ -88,8 +96,29 @@ export class SupplierBillRepository {
     });
   }
 
+  /**
+   * The bill already holding a supplier invoice number for this supplier, or null. Compared on
+   * the normalised form the unique index (organizationId, supplierId, supplierInvoiceNumberNorm)
+   * is built on, so "INV-0042" and "inv 0042" are the same number.
+   */
+  findBySupplierInvoiceNumber(
+    prisma: TenantPrisma,
+    organizationId: string,
+    supplierId: string,
+    supplierInvoiceNumber: string,
+  ) {
+    return prisma.supplierBill.findFirst({
+      where: {
+        organizationId,
+        supplierId,
+        supplierInvoiceNumberNorm: normalizeSupplierInvoiceNumber(supplierInvoiceNumber),
+      },
+      select: { id: true, billNumber: true, supplierInvoiceNumber: true },
+    });
+  }
+
   async create(prisma: TenantPrisma, data: CreateSupplierBillData) {
-    const norm = data.supplierInvoiceNumber.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const norm = normalizeSupplierInvoiceNumber(data.supplierInvoiceNumber);
     return prisma.supplierBill.create({
       data: {
         organizationId: data.organizationId,
