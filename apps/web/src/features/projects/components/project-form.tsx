@@ -387,7 +387,7 @@ function ProjectCreateForm() {
                     )}
                   />
                 )}
-                {!isClientLocked && can('manage:client') ? (
+                {!isClientLocked && can('create:client') ? (
                   <Button
                     type="button"
                     variant="ghost"

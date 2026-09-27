@@ -85,7 +85,7 @@ describe('ClientsList', () => {
 
   it('offers to create a client when there are none', async () => {
     vi.mocked(listClientSummaries).mockResolvedValue([]);
-    renderWithProviders(<ClientsList />);
+    renderWithProviders(<ClientsList />, { permissions: ['view:client', 'create:client'] });
 
     expect(await screen.findByText('No clients yet.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'New client' })).toHaveAttribute('href', '/clients/new');
@@ -157,7 +157,7 @@ describe('ClientsList', () => {
   it('offers view and edit behind the row menu, and nothing destructive', async () => {
     vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '7', name: 'Baraka' })]);
     const user = userEvent.setup();
-    renderWithProviders(<ClientsList />);
+    renderWithProviders(<ClientsList />, { permissions: ['view:client', 'manage:client'] });
 
     await user.click(await screen.findByRole('button', { name: 'Actions for Baraka' }));
 
@@ -166,5 +166,23 @@ describe('ClientsList', () => {
     // A list row is the wrong place to deactivate a client from — it is one slip away from
     // the row above it, and the record page is where that decision has its context.
     expect(screen.queryByRole('menuitem', { name: /Deactivate/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('ClientsList — permission gates (ADR-035)', () => {
+  it('offers New client and Edit only to holders of the permissions the API checks', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' })]);
+    renderWithProviders(<ClientsList />, { permissions: ['view:client', 'create:client', 'manage:client'] });
+
+    await screen.findByRole('link', { name: /Client 1/ });
+    expect(screen.getByRole('link', { name: /New client/ })).toHaveAttribute('href', '/clients/new');
+  });
+
+  it('hides New client from a viewer without create:client, rather than letting them hit a 403', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' })]);
+    renderWithProviders(<ClientsList />, { permissions: ['view:client'] });
+
+    await screen.findByRole('link', { name: /Client 1/ });
+    expect(screen.queryByRole('link', { name: /New client/ })).toBeNull();
   });
 });

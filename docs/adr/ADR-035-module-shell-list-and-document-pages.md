@@ -1,7 +1,7 @@
 ---
-Status: proposed
+Status: accepted
 Date: 2026-09-27
-Owner approval: pending (Abdulsalam)
+Owner approval: Abdulsalam, 2026-09-27. Condition: browser QA against the live API before deploy
 Amends: ADR-028 (domain workspaces and navigation depth)
 ---
 
@@ -155,11 +155,16 @@ They belong to the document-editor batch.
 - **About 15 bare-table lists** (users, roles, GRN, payments, UoM and others) still need
   moving onto the grid.
 
+## Resolved on acceptance
+
+- **`/accounting/reports`** was an orphan hub whose four reports all sit in the **Reports**
+  tab. It is now a redirect to Trial balance.
+- **Client create and edit** now follow the server's gates. "New client" (in the list, the
+  empty state and the new-project form) needs `create:client`. The row menu's "Edit" needs
+  `manage:client`. The new-project shortcut had been checking `manage:client`, which did not
+  match `POST /clients`.
+
 ## Open items
 
-- **`/accounting/reports`** is not in `NAV_DOMAINS`, so it gets no module header. Either
-  add it under Reports or remove the route.
-- **Creating a client** is currently not gated by any permission (unchanged by this ADR).
-  Decide whether it should require `manage:client`.
 - **The project workspace** still has five of the six tab implementations. Migrating it is
   its own decision.

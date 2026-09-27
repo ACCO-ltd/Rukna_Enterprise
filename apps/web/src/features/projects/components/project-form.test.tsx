@@ -282,7 +282,7 @@ describe('ProjectForm — client preselection', () => {
 describe('Project form client handoff', () => {
   it('retains project details while opening and cancelling client creation', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<ProjectForm />, { permissions: ['manage:client'], withToast: true });
+    renderWithProviders(<ProjectForm />, { permissions: ['create:client'], withToast: true });
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Preserved tower');
     await user.click(screen.getByRole('button', { name: 'New client' }));
     expect(screen.getByRole('button', { name: 'Create client' })).toBeInTheDocument();
