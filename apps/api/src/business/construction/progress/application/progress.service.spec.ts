@@ -26,6 +26,7 @@ type Over = {
   users?: unknown[];
   workPackageForUpdate?: unknown;
   reportDates?: { boqNodeId: string; reportDate: Date }[];
+  dprWorkPackages?: unknown[];
 };
 
 /** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
@@ -65,6 +66,7 @@ function build(over: Over = {}) {
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
     lockBoqNodes: jest.fn().mockResolvedValue(undefined),
+    findWorkPackagesForDprs: jest.fn().mockResolvedValue(over.dprWorkPackages ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   // The approve path runs its locked re-check + status flip inside a transaction.
@@ -1186,6 +1188,59 @@ describe('ProgressService (ADR-021 MVP)', () => {
     });
     const res = await service.listDprs(identity, 'p-1');
     expect(res[0]).toMatchObject({ preparedByName: 'Site Engineer', returnedByName: 'Ahmed Shirie' });
+    expect(repo.findUserNamesByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('listDprs: adds the distinct work packages each report touches, from one batched query', async () => {
+    const wp = (id: string, code: string) => ({ workPackage: { id, code, name: `Package ${code}` } });
+    const { repo, service } = build({
+      dprs: [
+        { id: 'dpr-1', projectId: 'p-1', status: 'DRAFT', preparedBy: 'user-1' },
+        { id: 'dpr-2', projectId: 'p-1', status: 'DRAFT', preparedBy: 'user-1' },
+      ],
+      dprWorkPackages: [
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [wp('wp-b', 'WP-02')] } },
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [wp('wp-a', 'WP-01')] } },
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [wp('wp-b', 'WP-02')] } }, // same package again
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [] } }, // an unallocated leaf
+      ],
+    });
+
+    const res = await service.listDprs(identity, 'p-1');
+
+    expect(res[0]!.workPackages).toEqual([
+      { id: 'wp-a', code: 'WP-01', name: 'Package WP-01' },
+      { id: 'wp-b', code: 'WP-02', name: 'Package WP-02' },
+    ]);
+    expect(res[1]!.workPackages).toEqual([]);
+    expect(repo.findWorkPackagesForDprs).toHaveBeenCalledTimes(1);
+    expect(repo.findWorkPackagesForDprs).toHaveBeenCalledWith(expect.anything(), 'org-1', ['dpr-1', 'dpr-2']);
+  });
+
+  it('listDprs: approvedByName, and reviewedByName = approver (APPROVED/REOPENED) or returner (RETURNED)', async () => {
+    const { repo, service } = build({
+      dprs: [
+        { id: 'a', projectId: 'p-1', status: 'APPROVED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null },
+        { id: 'r', projectId: 'p-1', status: 'RETURNED', preparedBy: 'se', approvedBy: null, returnedBy: 'pm2' },
+        { id: 'o', projectId: 'p-1', status: 'REOPENED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null },
+        { id: 's', projectId: 'p-1', status: 'SUBMITTED', preparedBy: 'se', approvedBy: null, returnedBy: 'pm2' },
+      ],
+      users: [
+        { id: 'se', firstName: 'Site', lastName: 'Eng' },
+        { id: 'pm', firstName: 'Project', lastName: 'Manager' },
+        { id: 'pm2', firstName: 'Other', lastName: 'PM' },
+      ],
+    });
+
+    const res = await service.listDprs(identity, 'p-1');
+
+    expect(res.map((d) => [d.approvedByName, d.reviewedByName])).toEqual([
+      ['Project Manager', 'Project Manager'],
+      [undefined, 'Other PM'],
+      ['Project Manager', 'Project Manager'],
+      [undefined, undefined], // resubmitted after a return: not reviewed yet
+    ]);
+    // Still one users query for every name on the list.
     expect(repo.findUserNamesByIds).toHaveBeenCalledTimes(1);
   });
 

@@ -60,6 +60,7 @@ const DPRS: DailyProgressReportResponse[] = [
     labourCount: 12,
     preparedBy: 'cms7a5j640004tgu4y7cxy761',
     preparedByName: 'Ahmed Shirie',
+    workPackages: [],
   },
   {
     id: 'dpr-2',
@@ -69,6 +70,7 @@ const DPRS: DailyProgressReportResponse[] = [
     labourCount: 8,
     // No resolved name → the id shows as a graceful fallback.
     preparedBy: 'ghost-user-id',
+    workPackages: [],
   },
 ];
 

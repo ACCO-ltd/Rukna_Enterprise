@@ -570,6 +570,13 @@ export interface DprObservationResponse {
   followUpOwner?: string;
 }
 
+// A work package a DPR's measured BOQ leaves are allocated to (Progress redesign, 2026-09-28).
+export interface DprWorkPackageRef {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface DailyProgressReportResponse {
   id: string;
   projectId: string;
@@ -591,6 +598,18 @@ export interface DailyProgressReportResponse {
   /** ISO datetime string; present once the report has been submitted. */
   submittedAt?: string;
   approvedBy?: string;
+  /** The approver's "firstName lastName", resolved like preparedByName. */
+  approvedByName?: string;
+  /**
+   * The latest reviewer's name: the approver for APPROVED / REOPENED, the returner for RETURNED;
+   * undefined for DRAFT / SUBMITTED (not reviewed yet in this cycle).
+   */
+  reviewedByName?: string;
+  /**
+   * Distinct work packages this report's measured BOQ leaves are allocated to, ordered by code.
+   * `[]` when nothing is measured or no measured leaf is allocated. On both list and detail.
+   */
+  workPackages: DprWorkPackageRef[];
   /** The reason the report was most recently returned to the author. */
   returnReason?: string;
   /** Who most recently returned the report (user id). Kept on resubmit, overwritten by the next return. */

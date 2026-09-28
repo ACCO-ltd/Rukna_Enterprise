@@ -487,32 +487,72 @@ export class ProgressService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
     const dprs = await this.repo.findDprsByProject(prisma, identity.activeOrganizationId, projectId);
-    // Resolve the preparer / returner ids → names once for the whole list (one users query, not N).
-    const names = await this.resolveUserNames(
-      prisma,
-      identity.activeOrganizationId,
-      dprs.flatMap((d) => [d.preparedBy, d.returnedBy ?? '']),
-    );
-    return dprs.map((d) => ({
-      ...d,
-      preparedByName: names.get(d.preparedBy),
-      returnedByName: d.returnedBy ? names.get(d.returnedBy) : undefined,
-    }));
+    return this.withReadModelFields(identity, dprs);
   }
 
   async getDpr(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    // Resolve this one DPR's preparer / returner ids → names (read-side, tenant-scoped).
-    const names = await this.resolveUserNames(
-      this.tenancy.getClient(),
-      identity.activeOrganizationId,
-      [dpr.preparedBy, dpr.returnedBy ?? ''],
-    );
-    return {
-      ...dpr,
-      preparedByName: names.get(dpr.preparedBy),
-      returnedByName: dpr.returnedBy ? names.get(dpr.returnedBy) : undefined,
-    };
+    const [enriched] = await this.withReadModelFields(identity, [dpr]);
+    return enriched!;
+  }
+
+  /**
+   * Read-model enrichment shared by the DPR list and detail, batched for the whole set:
+   *  - one users query resolves preparedByName / approvedByName / returnedByName / reviewedByName
+   *    (the reviewer is the approver for APPROVED and REOPENED, the returner for RETURNED);
+   *  - one measurements query resolves `workPackages` — the distinct work packages the report's
+   *    measured BOQ leaves are allocated to, ordered by code.
+   */
+  private async withReadModelFields<
+    T extends {
+      id: string;
+      status: string;
+      preparedBy: string;
+      approvedBy: string | null;
+      returnedBy: string | null;
+    },
+  >(identity: RequestIdentity, dprs: T[]) {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const [names, packageRows] = await Promise.all([
+      this.resolveUserNames(
+        prisma,
+        orgId,
+        dprs.flatMap((d) => [d.preparedBy, d.approvedBy ?? '', d.returnedBy ?? '']),
+      ),
+      this.repo.findWorkPackagesForDprs(
+        prisma,
+        orgId,
+        dprs.map((d) => d.id),
+      ),
+    ]);
+
+    const packagesByDpr = new Map<string, Map<string, { id: string; code: string; name: string }>>();
+    for (const row of packageRows) {
+      const byId = packagesByDpr.get(row.dprId) ?? new Map();
+      for (const link of row.boqNode.workPackageLinks) byId.set(link.workPackage.id, link.workPackage);
+      packagesByDpr.set(row.dprId, byId);
+    }
+    const nameOf = (id: string | null) => (id ? names.get(id) : undefined);
+
+    return dprs.map((d) => {
+      const reviewer =
+        d.status === DprStatus.APPROVED || d.status === DprStatus.REOPENED
+          ? d.approvedBy
+          : d.status === DprStatus.RETURNED
+            ? d.returnedBy
+            : null;
+      return {
+        ...d,
+        preparedByName: names.get(d.preparedBy),
+        approvedByName: nameOf(d.approvedBy),
+        returnedByName: nameOf(d.returnedBy),
+        reviewedByName: nameOf(reviewer),
+        workPackages: [...(packagesByDpr.get(d.id)?.values() ?? [])].sort((a, b) =>
+          a.code.localeCompare(b.code),
+        ),
+      };
+    });
   }
 
   /**

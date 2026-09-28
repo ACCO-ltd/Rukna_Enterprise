@@ -37,6 +37,28 @@ export class ProgressRepository {
   }
 
   /**
+   * The work packages each report's measured BOQ leaves are allocated to — ONE query for a whole
+   * list of reports (Prisma batches the nested relations; no per-report round trip). The service
+   * folds the rows into a distinct, code-ordered set per report.
+   */
+  findWorkPackagesForDprs(prisma: TenantPrisma, organizationId: string, dprIds: string[]) {
+    if (dprIds.length === 0) return Promise.resolve([]);
+    return prisma.progressMeasurement.findMany({
+      where: { organizationId, dprId: { in: dprIds } },
+      select: {
+        dprId: true,
+        boqNode: {
+          select: {
+            workPackageLinks: {
+              select: { workPackage: { select: { id: true, code: true, name: true } } },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
    * Batch-resolve users by id, tenant-scoped. Read-side only: the DPR's preparedBy/submittedBy/
    * approvedBy are plain string columns (not Prisma relations), so the service resolves the id→name
    * map from these rows. Empty input short-circuits to avoid a needless query.
