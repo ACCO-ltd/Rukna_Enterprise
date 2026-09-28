@@ -16,17 +16,26 @@ import { VerifiedProgressSection } from './verified-progress-section';
 import { WorkPackagesSection } from './work-packages-section';
 import { BaselineSection } from './baseline-section';
 
+/** Whether the progress model (packages, allocation, weights) is set up, and the next step if not. */
+function useSetupStep(projectId: string) {
+  const rollup = useProjectRollup(projectId);
+  const workPackages = useWorkPackages(projectId);
+
+  const hasPackages = (workPackages.data?.length ?? 0) > 0;
+  const hasAllocation = (rollup.data?.packages ?? []).some((p) => p.leafCount > 0);
+  const weightsComplete = rollup.data?.weightsComplete ?? false;
+
+  if (!hasPackages) return 'workPackages' as const;
+  if (!hasAllocation) return 'allocate' as const;
+  if (!weightsComplete) return 'weights' as const;
+  return null;
+}
+
 /**
- * Programme view — the PM's configuration and planning hub.
- *
- * Consolidates what was previously split across "Plan & Setup" and "Schedule" tabs:
- * performance metrics, verified progress breakdown, work packages, baseline, milestones,
- * WP schedule timeline, and activities — in one scrollable view.
- *
- * A compact setup notice appears at the top when the project is not yet configured,
- * pointing to the relevant subsection below rather than blocking the entire tab.
+ * Performance — what the numbers say: the progress curve, what needs attention, work-package
+ * progress and verified progress. Read-only; every "fix this" link goes to Plan & setup.
  */
-export function ProgrammeSection({
+export function PerformanceView({
   projectId,
   onGoTo,
 }: {
@@ -34,21 +43,24 @@ export function ProgrammeSection({
   onGoTo: (view: ProgressView) => void;
 }) {
   const t = useTranslations('progress');
-  const rollup = useProjectRollup(projectId);
-  const workPackages = useWorkPackages(projectId);
+  const setupStep = useSetupStep(projectId);
 
-  const hasPackages = (workPackages.data?.length ?? 0) > 0;
-  const hasAllocation = (rollup.data?.packages ?? []).some((p) => p.leafCount > 0);
-  const weightsComplete = rollup.data?.weightsComplete ?? false;
-  const modelReady = hasPackages && hasAllocation && weightsComplete;
+  return (
+    <div className="space-y-8">
+      {setupStep ? <SetupNotice step={setupStep} t={t} onAction={() => onGoTo('plan')} /> : null}
+      <PerformanceSection projectId={projectId} onGoTo={onGoTo} />
+      <VerifiedProgressSection projectId={projectId} />
+    </div>
+  );
+}
 
-  const setupStep = !hasPackages
-    ? 'workPackages'
-    : !hasAllocation
-      ? 'allocate'
-      : !weightsComplete
-        ? 'weights'
-        : null;
+/**
+ * Plan & setup — how the programme is built: work packages (the one editable list), the
+ * planned baseline, milestones, the master schedule and activities.
+ */
+export function PlanView({ projectId }: { projectId: string }) {
+  const t = useTranslations('progress');
+  const setupStep = useSetupStep(projectId);
 
   function scrollToWorkPackages() {
     document.getElementById('progress-section-work-packages')?.scrollIntoView({
@@ -59,13 +71,7 @@ export function ProgrammeSection({
 
   return (
     <div className="space-y-8">
-      {!modelReady && setupStep && (
-        <SetupNotice step={setupStep} t={t} onAction={scrollToWorkPackages} />
-      )}
-
-      <PerformanceSection projectId={projectId} onGoTo={onGoTo} />
-
-      <VerifiedProgressSection projectId={projectId} />
+      {setupStep ? <SetupNotice step={setupStep} t={t} onAction={scrollToWorkPackages} /> : null}
 
       <div id="progress-section-work-packages">
         <WorkPackagesSection projectId={projectId} />
@@ -76,7 +82,7 @@ export function ProgrammeSection({
       <MilestonesSection projectId={projectId} />
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <h3 className="text-sm font-semibold text-foreground">{t('tabs.programme')}</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('schedule.title')}</h3>
         <DownloadMasterScheduleButton projectId={projectId} />
       </div>
 

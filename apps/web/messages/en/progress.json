@@ -10,7 +10,9 @@
     "today": "Today",
     "review": "Review",
     "programme": "Programme",
-    "milestones": "Milestones"
+    "milestones": "Milestones",
+    "performance": "Performance",
+    "plan": "Plan & setup"
   },
   "review": {
     "title": "Reports",
@@ -718,5 +720,8 @@
     "download": "Download PDF",
     "downloading": "Generating…",
     "downloadFailed": "Could not generate the master schedule PDF. Please try again."
+  },
+  "schedule": {
+    "title": "Master schedule"
   }
 }

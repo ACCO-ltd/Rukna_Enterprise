@@ -65,7 +65,7 @@ export function NeedsAttentionPanel({
       count: 1,
       title: t('attention.weightsIncomplete', { total }),
       hint: t('attention.weightsIncompleteHint'),
-      goTo: 'programme',
+      goTo: 'plan',
     });
   }
 
@@ -81,7 +81,7 @@ export function NeedsAttentionPanel({
       count: unallocated,
       title: t('attention.unallocated', { count: unallocated }),
       hint: t('attention.unallocatedHint'),
-      goTo: 'programme',
+      goTo: 'plan',
     });
   }
   const loading = dprs.isPending || rollup.isPending || workPackages.isPending;

@@ -165,6 +165,15 @@ Reviewed from the 14 production screenshots (project `ACCO-HDN-26-0005`) and the
 - Split **Programme** into **Performance** (curve, needs attention, work-package progress, period comparison) and **Plan & setup** (work packages, baseline, milestones, schedule, activities). One work-package list, not two (D1).
 - Report review: measurement that exceeds BOQ scope warned at entry, not only at review.
 
+**Delivered (branch `feat/progress-split`).**
+- Progress now has four views: **Today · Review · Performance · Plan & setup**.
+  - **Performance** holds the curve, "Needs attention", work-package progress and verified progress. It is read-only, and its setup notice links to Plan & setup.
+  - **Plan & setup** holds the editable work-package list, the baseline, milestones, the master schedule and activities.
+  - Work packages now appear once per view, not twice on one page.
+  - Every "fix this" link, from the attention items and the overview header, opens Plan & setup.
+- The BOQ-scope warning already fires at entry ("This exceeds the remaining scope.", in the measurement form). No change was needed.
+- **Still state, not routes:** Progress's views are not yet deep-linkable. That is left for later, because the Today and Review components hold selection state that a route change would reset.
+
 Order: PR 1 → PR 2 → (PR 3 ‖ PR 4) → PR 5. Each PR: build + tests before commit, review, then merge on approval.
 
 ## Decisions (all accepted as recommended, 2026-09-27)

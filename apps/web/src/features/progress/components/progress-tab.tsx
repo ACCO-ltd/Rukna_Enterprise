@@ -9,9 +9,14 @@ import { WorkspaceSectionHeader } from '@/components/layout/workspace-section-he
 
 import { TodaySection } from './today-section';
 import { ReviewSection } from './review-section';
-import { ProgrammeSection } from './programme-section';
+import { PerformanceView, PlanView } from './programme-section';
 
-export type ProgressView = 'today' | 'review' | 'programme';
+/**
+ * Four views (flow plan PR 5). Programme used to be one very long page mixing what the numbers
+ * say with how the plan is set up, and listed work packages twice; it is now Performance
+ * (read) and Plan & setup (configure).
+ */
+export type ProgressView = 'today' | 'review' | 'performance' | 'plan';
 
 /**
  * Programme & Progress workspace — three role-aware views (ADR-021, ADR-022).
@@ -49,14 +54,16 @@ export function ProgressTab({ projectId }: { projectId: string }) {
         items={[
           { value: 'today', label: t('tabs.today') },
           { value: 'review', label: t('tabs.review') },
-          { value: 'programme', label: t('tabs.programme') },
+          { value: 'performance', label: t('tabs.performance') },
+          { value: 'plan', label: t('tabs.plan') },
         ]}
       />
 
       <div>
         {view === 'today' && <TodaySection projectId={projectId} />}
         {view === 'review' && <ReviewSection projectId={projectId} />}
-        {view === 'programme' && <ProgrammeSection projectId={projectId} onGoTo={setView} />}
+        {view === 'performance' && <PerformanceView projectId={projectId} onGoTo={setView} />}
+        {view === 'plan' && <PlanView projectId={projectId} />}
       </div>
     </div>
   );
