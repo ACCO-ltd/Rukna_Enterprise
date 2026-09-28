@@ -2556,9 +2556,15 @@ Both return **400** with `error.code = "DPR_EXCEEDS_BOQ_QUANTITY"`:
 
 All quantities are decimal strings. `verifiedToDate` counts OTHER approved reports only;
 `maxForThisReport = max(0, boqQuantity − verifiedToDate)`. The message names the first line; every
-offending line is in `details.lines`. Approve runs the check under a row lock on the measured BOQ
-lines, in the same transaction as the status change, so two reports approved at once cannot
-together exceed a line.
+offending line is in `details.lines`.
+
+**Concurrency.** Approve locks the report row, then its measured BOQ lines (sorted by id), re-reads
+the report inside that transaction, re-runs SoD and the quantity check on the fresh read, freezes the
+evidence and flips the status — all in one transaction. Two reports approved at once cannot together
+exceed a line, and an edit that slipped in after the approver opened the report is checked. Submit,
+approve, return and reopen are conditional on the status the command read: if another command moved
+the report first, the loser gets **409** `DPR_CHANGED` ("This report changed while you were …
+it — reload it and try again.").
 
 #### DPR read model, returns and work-entry delete
 
@@ -2566,12 +2572,15 @@ together exceed a line.
 |---|---|---|
 | `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName` |
 | `POST` | `/progress/reports/:dprId/return` | Also records `returnedBy` / `returnedAt` (kept on resubmit, overwritten by the next return — same as `returnReason`) |
-| `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. Evidence tagged to the entry is detached, not deleted |
+| `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. In a **REOPENED** report, entries created before the reopen were approved and are refused with **409** (CONST-PROG-010 supersede, don't overwrite) — only entries added since the reopen can be deleted. Evidence tagged to the entry is detached, not deleted. Runs under the report row lock, re-checking the status |
+
+The labour / equipment / observation row deletes run under the same report lock and status re-check
+(they keep their existing 400 for a non-editable report).
 
 ```ts
 workPackages: Array<{ id: string; code: string; name: string }>; // distinct packages of the measured leaves, by code
 approvedByName?: string;
-reviewedByName?: string;   // approver for APPROVED/REOPENED, returner for RETURNED, else undefined
+reviewedByName?: string;   // approver for APPROVED, reopener for REOPENED, returner for RETURNED, else undefined
 returnedBy?: string; returnedAt?: string; returnedByName?: string;
 ```
 
