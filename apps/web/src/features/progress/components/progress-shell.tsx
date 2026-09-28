@@ -4,16 +4,19 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import type { DailyProgressReportResponse, ProgrammeMilestoneResponse } from '@erp/types';
 import { Button, EmptyState, Notice, Skeleton } from '@erp/ui';
 import { ClipboardList } from 'lucide-react';
 
 import { useSession } from '@/features/auth/session/use-session';
+import { useMilestones } from '@/features/programme/hooks/use-programme';
 import { WorkspaceSectionHeader } from '@/components/layout/workspace-section-header';
 import { WorkspaceSubNav } from '@/components/layout/workspace-sub-nav';
 
 import {
   canSeeProgressView,
   isHardSetupGap,
+  type ProgressAccess,
   progressLandingView,
   progressViewHref,
   visibleProgressViews,
@@ -33,6 +36,29 @@ import { useProgressSetup } from '../hooks/use-progress-setup';
  */
 export { useProgressAccess };
 
+/**
+ * What waits in Review for THIS reader, counting only what they can act on: submitted reports
+ * that are not their own (`approve:progress` — a preparer cannot approve their own report), plus
+ * milestones the server marks ready to verify (`manage:project`).
+ */
+export function reviewBadgeCount({
+  reports,
+  milestones,
+  userId,
+  access,
+}: {
+  reports: DailyProgressReportResponse[];
+  milestones: ProgrammeMilestoneResponse[];
+  userId: string | null;
+  access: ProgressAccess;
+}): number {
+  const reportCount = access.canApprove
+    ? reports.filter((d) => d.status === 'SUBMITTED' && d.preparedBy !== userId).length
+    : 0;
+  const milestoneCount = access.canManage ? milestones.filter((m) => m.readyToVerify).length : 0;
+  return reportCount + milestoneCount;
+}
+
 export function ProgressShell({
   projectId,
   children,
@@ -45,11 +71,15 @@ export function ProgressShell({
   const dprs = useDprs(projectId);
   const userId = useSession().user?.id ?? null;
 
+  const milestones = useMilestones(projectId);
+
   const views = visibleProgressViews(access);
-  // What waits on THIS reader: their own submitted reports are not theirs to review (the preparer
-  // cannot approve their own report), so they do not count.
-  const awaitingReview =
-    dprs.data?.filter((d) => d.status === 'SUBMITTED' && d.preparedBy !== userId).length ?? 0;
+  const awaitingReview = reviewBadgeCount({
+    reports: dprs.data ?? [],
+    milestones: milestones.data ?? [],
+    userId,
+    access,
+  });
   const labels: Record<ProgressView, string> = {
     today: t('tabs.today'),
     review: t('tabs.review'),

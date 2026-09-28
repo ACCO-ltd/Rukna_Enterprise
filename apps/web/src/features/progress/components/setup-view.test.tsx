@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   useProgrammeBaseline: vi.fn(),
   useMilestones: vi.fn(),
   useProgressSetup: vi.fn(),
+  setPackages: vi.fn(),
 }));
 
 vi.mock('@/features/boq/hooks/use-boq', () => ({ useBoqWorkspace: mocks.useBoqWorkspace }));
@@ -22,7 +23,10 @@ vi.mock('../hooks/use-progress', () => ({
   useProgrammeBaseline: mocks.useProgrammeBaseline,
 }));
 vi.mock('../hooks/use-progress-setup', () => ({ useProgressSetup: mocks.useProgressSetup }));
-vi.mock('@/features/programme/hooks/use-programme', () => ({ useMilestones: mocks.useMilestones }));
+vi.mock('@/features/programme/hooks/use-programme', () => ({
+  useMilestones: mocks.useMilestones,
+  useSetMilestoneWorkPackages: () => ({ mutate: mocks.setPackages, isPending: false, isError: false }),
+}));
 
 // The step bodies are covered by their own tests; stub them to keep this about the step flow.
 vi.mock('./baseline-section', () => ({ BaselineSection: () => <p>baseline editor</p> }));
@@ -35,7 +39,6 @@ vi.mock('./delivery-plan-dialog', () => ({
 }));
 vi.mock('@/features/programme/components/milestones-section', () => ({
   CreateMilestoneForm: ({ primary }: { primary: boolean }) => <p>milestone form ({String(primary)})</p>,
-  VerifyMilestoneDialog: () => null,
 }));
 vi.mock('@/features/programme/components/work-package-schedule-section', () => ({
   WorkPackageScheduleSection: () => <p>wp schedule</p>,
@@ -191,7 +194,16 @@ describe('SetupView', () => {
         ],
       },
       milestones: [
-        { id: 'm1', code: 'M1', name: 'Frame complete', status: 'VERIFIED', baselineDate: '2026-12-01', releases: [] },
+        {
+          id: 'm1',
+          code: 'M1',
+          name: 'Frame complete',
+          status: 'VERIFIED',
+          baselineDate: '2026-12-01',
+          releases: [],
+          workPackages: [{ id: 'wp1', code: 'WP-01', name: 'Frame', percentComplete: 100 }],
+          readyToVerify: false,
+        },
       ],
     });
     renderWithProviders(<SetupView projectId="p1" />, PM);
@@ -200,6 +212,54 @@ describe('SetupView', () => {
     expect(screen.getByText('1 milestone · 1 verified')).toBeInTheDocument();
     // Nothing is current once every step is done.
     for (const region of screen.getAllByRole('region')) expect(region).not.toHaveAttribute('aria-current');
+  });
+
+  it('sets the packages a planned milestone needs, and never offers Verify in setup', async () => {
+    const user = userEvent.setup();
+    setup({
+      packages: [
+        { id: 'wp1', code: 'WP-01', leafCount: 3 },
+        { id: 'wp9', code: 'WP-09', leafCount: 0, scheduleOnly: true },
+      ],
+      weightsTotal: '1',
+      weightsComplete: true,
+      allocatedIds: ['l1', 'l2', 'l3'],
+      milestones: [
+        {
+          id: 'm1',
+          code: 'M1',
+          name: 'Frame complete',
+          status: 'PLANNED',
+          baselineDate: '2026-12-01',
+          releases: [],
+          workPackages: [],
+          readyToVerify: false,
+        },
+      ],
+    });
+    mocks.useProjectRollup.mockReturnValue(
+      loaded({
+        weightsTotal: '1',
+        weightsComplete: true,
+        packages: [
+          { id: 'wp1', code: 'WP-01', name: 'Frame', leafCount: 3, scheduleOnly: false },
+          { id: 'wp9', code: 'WP-09', name: 'Mobilisation', leafCount: 0, scheduleOnly: true },
+        ],
+      }),
+    );
+    renderWithProviders(<SetupView projectId="p1" />, PM);
+
+    // Milestones is done (one exists), so its table sits behind "Edit".
+    await user.click(within(screen.getByRole('region', { name: 'Milestones' })).getByRole('button', { name: /Edit/ }));
+    expect(screen.getByText('None set')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Verify/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Set the packages Frame complete needs' }));
+    // Schedule-only phases cannot be linked, so they are not offered.
+    expect(screen.queryByLabelText('WP-09 Mobilisation')).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('WP-01 Frame'));
+    await user.click(screen.getByRole('button', { name: 'Save packages' }));
+    expect(mocks.setPackages).toHaveBeenCalledWith({ milestoneId: 'm1', workPackageIds: ['wp1'] }, expect.anything());
   });
 
   it('keeps the schedule in one collapsed section below the steps', async () => {

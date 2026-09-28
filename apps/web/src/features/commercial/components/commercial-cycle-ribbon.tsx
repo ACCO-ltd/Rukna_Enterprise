@@ -139,7 +139,7 @@ function Ribbon({
                     href={
                       notLinked && focus
                         ? `/projects/${projectId}/commercial/contract-milestones?installment=${focus.id}&action=link`
-                        : `/projects/${projectId}/progress`
+                        : `/projects/${projectId}/progress/review`
                     }
                     className="inline-flex shrink-0 items-center gap-0.5 font-medium text-warning underline underline-offset-2 hover:text-warning/80"
                   >

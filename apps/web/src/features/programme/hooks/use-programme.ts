@@ -15,6 +15,7 @@ import {
   downloadMasterSchedule,
   listActivities,
   listMilestones,
+  setMilestoneWorkPackages,
   suggestWeights,
   updateActivity,
   updateWorkPackage,
@@ -57,6 +58,18 @@ export function useVerifyMilestone(projectId: string) {
   return useMutation({
     mutationFn: ({ milestoneId, actualDate }: { milestoneId: string; actualDate: string }) =>
       verifyMilestone(milestoneId, actualDate),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) });
+    },
+  });
+}
+
+/** Set the work packages a milestone needs. Moves `readyToVerify`, so the milestone list refetches. */
+export function useSetMilestoneWorkPackages(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ milestoneId, workPackageIds }: { milestoneId: string; workPackageIds: string[] }) =>
+      setMilestoneWorkPackages(projectId, milestoneId, workPackageIds),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) });
     },

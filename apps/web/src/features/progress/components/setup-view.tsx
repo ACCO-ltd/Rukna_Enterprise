@@ -3,10 +3,16 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import type { ProgrammeMilestoneResponse } from '@erp/types';
+import type { ProgrammeMilestoneResponse, WorkPackageRollupLine } from '@erp/types';
 import {
   Alert,
   Button,
+  CheckboxField,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Skeleton,
   Table,
   TableBody,
@@ -24,10 +30,9 @@ import { formatDate } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useMilestones } from '@/features/programme/hooks/use-programme';
-import {
-  CreateMilestoneForm,
-  VerifyMilestoneDialog,
-} from '@/features/programme/components/milestones-section';
+import { CreateMilestoneForm } from '@/features/programme/components/milestones-section';
+import { useSetMilestoneWorkPackages } from '@/features/programme/hooks/use-programme';
+import { ApiError } from '@/lib/api-client';
 import { WorkPackageScheduleSection } from '@/features/programme/components/work-package-schedule-section';
 import { ActivitiesSection } from '@/features/programme/components/activities-section';
 import { ScheduleSetupCard } from '@/features/programme/components/schedule-setup-card';
@@ -259,7 +264,11 @@ export function SetupView({ projectId }: { projectId: string }) {
         doneAction={{ kind: 'edit' }}
       >
         <div className="space-y-4">
-          <MilestonesTable projectId={projectId} milestones={milestoneList} />
+          <MilestonesTable
+            projectId={projectId}
+            milestones={milestoneList}
+            packages={rollup.data.packages.filter((p) => !p.scheduleOnly)}
+          />
           <CreateMilestoneForm projectId={projectId} primary={states.milestones === 'current'} />
         </div>
       </StepSection>
@@ -285,22 +294,26 @@ export function SetupView({ projectId }: { projectId: string }) {
 }
 
 /**
- * The milestones as a compact table: name, planned date, the installment it releases, status. The
- * released installment is named by its share and name only — its money figure belongs to
- * Commercial, and the backend money redaction for this read lands with the Review work.
+ * The milestones as a compact table: name, planned date, the packages it needs, the installment it
+ * releases, status. The released installment is named by share and name only — its money belongs
+ * to Commercial. Verifying moved to Review (where ready milestones are listed); setup shows status.
+ * "Set packages…" (manage:project, PLANNED only) chooses which packages make the milestone ready.
  */
 function MilestonesTable({
   projectId,
   milestones,
+  packages,
 }: {
   projectId: string;
   milestones: ProgrammeMilestoneResponse[];
+  packages: WorkPackageRollupLine[];
 }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
   const { can } = usePermissions();
-  const [verifying, setVerifying] = useState<ProgrammeMilestoneResponse | null>(null);
-  const canVerify = can('manage:project');
+  const [editing, setEditing] = useState<ProgrammeMilestoneResponse | null>(null);
+  const canManage = can('manage:project');
+  const showActions = canManage && milestones.some((m) => m.status === 'PLANNED');
 
   if (milestones.length === 0) {
     return <p className="text-body-sm text-muted-foreground">{t('setupView.milestones.empty')}</p>;
@@ -314,9 +327,10 @@ function MilestonesTable({
             <TableRow>
               <TableHead>{t('setupView.milestones.col.name')}</TableHead>
               <TableHead>{t('setupView.milestones.col.planned')}</TableHead>
+              <TableHead>{t('setupView.milestones.col.packages')}</TableHead>
               <TableHead>{t('setupView.milestones.col.releases')}</TableHead>
               <TableHead>{t('setupView.milestones.col.status')}</TableHead>
-              {canVerify ? (
+              {showActions ? (
                 <TableHead>
                   <span className="sr-only">{t('setupView.milestones.col.actions')}</span>
                 </TableHead>
@@ -332,6 +346,11 @@ function MilestonesTable({
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
                   {formatDate(m.baselineDate, locale)}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {m.workPackages.length === 0
+                    ? t('setupView.milestones.packagesNone')
+                    : m.workPackages.map((wp) => `${wp.code} ${wp.percentComplete}%`).join(', ')}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {m.releases.length === 0
@@ -352,11 +371,16 @@ function MilestonesTable({
                     label={t(`programme.status.${m.status}`)}
                   />
                 </TableCell>
-                {canVerify ? (
+                {showActions ? (
                   <TableCell className="text-end">
                     {m.status === 'PLANNED' ? (
-                      <Button variant="ghost" size="sm" onClick={() => setVerifying(m)}>
-                        {t('programme.actions.verify')}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditing(m)}
+                        aria-label={t('setupView.milestones.setPackagesLabel', { name: m.name })}
+                      >
+                        {t('setupView.milestones.setPackages')}
                       </Button>
                     ) : null}
                   </TableCell>
@@ -366,10 +390,97 @@ function MilestonesTable({
           </TableBody>
         </Table>
       </TableScroll>
-      {verifying ? (
-        <VerifyMilestoneDialog projectId={projectId} milestone={verifying} onDismiss={() => setVerifying(null)} />
+      {editing ? (
+        <MilestonePackagesDialog
+          projectId={projectId}
+          milestone={editing}
+          packages={packages}
+          onDismiss={() => setEditing(null)}
+        />
       ) : null}
     </>
+  );
+}
+
+/** Choose the (measurable) work packages a milestone needs, then PUT the whole set. */
+function MilestonePackagesDialog({
+  projectId,
+  milestone,
+  packages,
+  onDismiss,
+}: {
+  projectId: string;
+  milestone: ProgrammeMilestoneResponse;
+  packages: WorkPackageRollupLine[];
+  onDismiss: () => void;
+}) {
+  const t = useTranslations('progress');
+  const save = useSetMilestoneWorkPackages(projectId);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(milestone.workPackages.map((wp) => wp.id)));
+
+  function toggle(id: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !save.isPending) onDismiss();
+      }}
+    >
+      <DialogContent size="sm">
+        <DialogTitle>{t('setupView.milestones.packagesTitle', { name: milestone.name })}</DialogTitle>
+        <DialogDescription>{t('setupView.milestones.packagesHint')}</DialogDescription>
+
+        {save.isError ? (
+          <div className="mt-4">
+            <Alert
+              variant="error"
+              messages={[save.error instanceof ApiError ? save.error.message : t('setupView.milestones.packagesFailed')]}
+            />
+          </div>
+        ) : null}
+
+        <div className="mt-4 space-y-1">
+          {packages.length === 0 ? (
+            <p className="text-body-sm text-muted-foreground">{t('setupView.milestones.packagesNoneAvailable')}</p>
+          ) : (
+            packages.map((p) => (
+              <CheckboxField
+                key={p.id}
+                id={`ms-wp-${p.id}`}
+                label={`${p.code} ${p.name}`}
+                checked={selected.has(p.id)}
+                onChange={(e) => toggle(p.id, e.target.checked)}
+              />
+            ))
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() =>
+              save.mutate(
+                { milestoneId: milestone.id, workPackageIds: [...selected] },
+                { onSuccess: onDismiss },
+              )
+            }
+            disabled={save.isPending || packages.length === 0}
+          >
+            {t('setupView.milestones.packagesSave')}
+          </Button>
+          <Button variant="outline" onClick={onDismiss} disabled={save.isPending}>
+            {t('setupView.milestones.packagesCancel')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

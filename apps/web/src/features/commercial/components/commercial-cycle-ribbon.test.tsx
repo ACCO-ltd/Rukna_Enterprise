@@ -152,7 +152,7 @@ describe('CommercialCycleRibbon — MILESTONE_NOT_VERIFIED blocker (CONST-COM-02
 
     // "Go verify" links to the project's Progress/milestones view.
     const verify = screen.getByRole('link', { name: /Go verify/i });
-    expect(verify).toHaveAttribute('href', '/projects/p-1/progress');
+    expect(verify).toHaveAttribute('href', '/projects/p-1/progress/review');
   });
 
   it('shows the action disabled (never bare) — the reason sits alongside it', () => {

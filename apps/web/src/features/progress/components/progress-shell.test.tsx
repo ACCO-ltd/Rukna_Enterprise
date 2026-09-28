@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   pathname: '/projects/p1/progress/today',
   useDprs: vi.fn(),
   useProgressSetup: vi.fn(),
+  useMilestones: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -17,8 +18,9 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('../hooks/use-progress', () => ({ useDprs: mocks.useDprs }));
 vi.mock('../hooks/use-progress-setup', () => ({ useProgressSetup: mocks.useProgressSetup }));
+vi.mock('@/features/programme/hooks/use-programme', () => ({ useMilestones: mocks.useMilestones }));
 
-import { ProgressLanding, ProgressShell, ProgressViewGate } from './progress-shell';
+import { ProgressLanding, ProgressShell, ProgressViewGate, reviewBadgeCount } from './progress-shell';
 
 const FACTS = {
   hasBoqBaseline: true,
@@ -50,6 +52,7 @@ beforeEach(() => {
     ],
   });
   mocks.useProgressSetup.mockReturnValue(setupComplete);
+  mocks.useMilestones.mockReturnValue({ data: [{ id: 'm1', readyToVerify: true }, { id: 'm2', readyToVerify: false }] });
 });
 
 describe('ProgressShell — views by permission', () => {
@@ -69,7 +72,8 @@ describe('ProgressShell — views by permission', () => {
       '/projects/p1/progress/performance',
       '/projects/p1/progress/setup',
     ]);
-    expect(screen.getByRole('link', { name: 'Review, 2 waiting' })).toBeInTheDocument();
+    // 2 reports not mine + 1 milestone ready to verify.
+    expect(screen.getByRole('link', { name: 'Review, 3 waiting' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Today' })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -257,5 +261,22 @@ describe('ProgressViewGate', () => {
       { permissions: ['approve:progress'] },
     );
     expect(screen.getByText('review body')).toBeInTheDocument();
+  });
+});
+
+describe('reviewBadgeCount', () => {
+  const reports = [
+    { status: 'SUBMITTED', preparedBy: 'other' },
+    { status: 'SUBMITTED', preparedBy: 'me' },
+    { status: 'APPROVED', preparedBy: 'other' },
+  ] as never[];
+  const milestones = [{ readyToVerify: true }, { readyToVerify: true }, { readyToVerify: false }] as never[];
+
+  it('counts only what the reader can act on', () => {
+    const base = { reports, milestones, userId: 'me' };
+    expect(reviewBadgeCount({ ...base, access: { canRecord: false, canApprove: true, canManage: true } })).toBe(3);
+    expect(reviewBadgeCount({ ...base, access: { canRecord: false, canApprove: true, canManage: false } })).toBe(1);
+    expect(reviewBadgeCount({ ...base, access: { canRecord: false, canApprove: false, canManage: true } })).toBe(2);
+    expect(reviewBadgeCount({ ...base, access: { canRecord: true, canApprove: false, canManage: false } })).toBe(0);
   });
 });

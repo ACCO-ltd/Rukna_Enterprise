@@ -254,7 +254,7 @@ describe('PaymentSchedulePanel — row-level milestone gate (S-PS-1 / CONST-COM-
 
     // The reason names the gating milestone and links straight into Programme & Progress.
     const verify = screen.getByRole('link', { name: /Verify “Partition complete”/i });
-    expect(verify).toHaveAttribute('href', '/projects/p-1/progress');
+    expect(verify).toHaveAttribute('href', '/projects/p-1/progress/review');
   });
 
   it('leaves a NEXT row whose milestone is VERIFIED unblocked (no reason shown)', () => {

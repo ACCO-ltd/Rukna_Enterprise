@@ -278,7 +278,7 @@ function InstallmentRow({
             journey "Issue" flow (Contract & Milestones tab) — this panel only surfaces the gate. */}
         {inst.status === 'NEXT' && blocked && inst.programmeMilestone ? (
           <Link
-            href={`/projects/${projectId}/progress`}
+            href={`/projects/${projectId}/progress/review`}
             className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning underline underline-offset-2 hover:text-warning/80"
           >
             <Ban size={13} className="shrink-0" aria-hidden="true" />
