@@ -46,7 +46,10 @@ function build(over: Over = {}) {
     ),
     findDprsByProject: jest.fn().mockResolvedValue(over.dprs ?? []),
     findUserNamesByIds: jest.fn().mockResolvedValue(over.users ?? []),
-    updateDprStatus: jest.fn().mockResolvedValue({ id: 'dpr-1' }),
+    // Conditional transitions: 1 row changed = the report was still in the expected status.
+    transitionDprStatus: jest.fn().mockResolvedValue(1),
+    findDprRow: jest.fn().mockResolvedValue({ id: 'dpr-1' }),
+    lockDpr: jest.fn().mockResolvedValue(true),
     findAttachmentFileIds: jest.fn().mockResolvedValue([]),
     addMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
     createAttachment: jest.fn().mockResolvedValue({ id: 'att-1' }),
@@ -131,9 +134,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
       prior: { _sum: { quantity: '200' } }, // 200 + 500 = 700 <= 1000
     });
     await service.approve(identity, 'dpr-1');
-    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(
       expect.anything(),
       'dpr-1',
+      expect.any(String),
       expect.objectContaining({ status: 'APPROVED' }),
     );
   });
@@ -154,6 +158,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(fileService.markManyImmutable).toHaveBeenCalledWith(
       ['file-a', 'file-b'],
       expect.stringContaining('dpr-1'),
+      expect.anything(), // the approve transaction's client
     );
   });
 
@@ -177,7 +182,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     // The re-check's reads come after the lock, and the status write after those.
     const lastSumRead = Math.max(...repo.sumVerifiedForNode.mock.invocationCallOrder);
     expect(lastSumRead).toBeGreaterThan(lockOrder);
-    expect(repo.updateDprStatus.mock.invocationCallOrder[0]!).toBeGreaterThan(lastSumRead);
+    expect(repo.transitionDprStatus.mock.invocationCallOrder[0]!).toBeGreaterThan(lastSumRead);
   });
 
   it('approve: a concurrent approval that lands first makes the locked re-check refuse (no status flip)', async () => {
@@ -194,7 +199,68 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect((err as BadRequestException).getResponse()).toMatchObject({
       errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
     });
-    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('approve: locks the DPR row before the BOQ lines and re-reads the report inside the transaction', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', preparedBy: 'se', measurements: [{ boqNodeId: 'n1', quantity: 1 }], attachments: [] },
+    });
+    await service.approve(identity, 'dpr-1');
+    expect(repo.lockDpr.mock.invocationCallOrder[0]!).toBeLessThan(
+      repo.lockBoqNodes.mock.invocationCallOrder[0]!,
+    );
+    expect(repo.findDpr).toHaveBeenCalledTimes(2); // pre-check read + fresh read under the lock
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      'SUBMITTED',
+      expect.objectContaining({ status: 'APPROVED' }),
+    );
+  });
+
+  it('approve: 409 when the report is no longer SUBMITTED under the lock (a return landed first)', async () => {
+    const { repo, service, fileService } = build();
+    const submitted = { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', preparedBy: 'se', measurements: [], attachments: [] };
+    repo.findDpr
+      .mockResolvedValueOnce(submitted)
+      .mockResolvedValueOnce({ ...submitted, status: 'RETURNED' });
+    const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({ errorCode: 'DPR_CHANGED' });
+    expect(fileService.markManyImmutable).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('approve: 409 when the conditional status flip changes no row', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', preparedBy: 'se', measurements: [], attachments: [] },
+    });
+    repo.transitionDprStatus.mockResolvedValue(0);
+    await expect(service.approve(identity, 'dpr-1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('approve: freezes evidence inside the transaction (passes the tx client)', async () => {
+    const { repo, service, fileService } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', preparedBy: 'se', measurements: [], attachments: [] },
+    });
+    repo.findAttachmentFileIds.mockResolvedValue(['file-a']);
+    await service.approve(identity, 'dpr-1');
+    expect(fileService.markManyImmutable).toHaveBeenCalledWith(['file-a'], expect.any(String), expect.anything());
+    expect(fileService.markManyImmutable.mock.invocationCallOrder[0]!).toBeLessThan(
+      repo.transitionDprStatus.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('returnForRevision: 409 when the report moved first (conditional on SUBMITTED)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    repo.transitionDprStatus.mockResolvedValue(0);
+    await expect(service.returnForRevision(identity, 'dpr-1', 'x')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(expect.anything(), 'dpr-1', 'SUBMITTED', expect.anything());
   });
 
   it('approve: gates (409) and does not verify when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
@@ -213,7 +279,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'APPROVED',
       'dpr-1',
     );
-    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
   });
 
   it('approve: rejects when cumulative would exceed BOQ scope (CONST-PROG-002/009)', async () => {
@@ -230,7 +296,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     });
     // The "prior" figure excludes this report itself — only OTHER approved reports count.
     expect(repo.sumVerifiedForNode).toHaveBeenCalledWith(expect.anything(), 'org-1', 'n1', 'dpr-1');
-    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
   });
 
   it('submit: rejects an over-quantity report with a structured DPR_EXCEEDS_BOQ_QUANTITY error naming the line', async () => {
@@ -271,7 +337,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
         ],
       },
     });
-    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
   });
 
   it('submit: submits a report that stays within every BOQ line', async () => {
@@ -281,9 +347,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
       prior: { _sum: { quantity: '58' } },
     });
     await service.submit(identity, 'dpr-1');
-    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(
       expect.anything(),
       'dpr-1',
+      expect.any(String),
       expect.objectContaining({ status: 'SUBMITTED' }),
     );
   });
@@ -293,9 +360,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
       dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
     });
     await service.returnForRevision(identity, 'dpr-1', 'Photos missing for grid 5');
-    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(
       expect.anything(),
       'dpr-1',
+      expect.any(String),
       expect.objectContaining({
         status: 'RETURNED',
         returnReason: 'Photos missing for grid 5',
@@ -310,7 +378,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       dpr: { id: 'dpr-1', status: 'RETURNED', projectId: 'p-1', measurements: [], attachments: [] },
     });
     await service.submit(identity, 'dpr-1');
-    const data = repo.updateDprStatus.mock.calls[0]![2] as Record<string, unknown>;
+    const data = repo.transitionDprStatus.mock.calls[0]![3] as Record<string, unknown>;
     expect(data).not.toHaveProperty('returnedBy');
     expect(data).not.toHaveProperty('returnedAt');
     expect(data).not.toHaveProperty('returnReason');
@@ -321,9 +389,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
       dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
     });
     await service.reopen(identity, 'dpr-1', 'Grid 5 double-counted — reopening to correct');
-    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(
       expect.anything(),
       'dpr-1',
+      expect.any(String),
       expect.objectContaining({
         status: 'REOPENED',
         reopenedBy: 'user-1',
@@ -338,7 +407,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
     });
     await expect(service.reopen(identity, 'dpr-1', 'nope')).rejects.toBeInstanceOf(BadRequestException);
-    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
   });
 
   it('reopen: gates (409) and does not reopen when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
@@ -355,7 +424,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'REOPENED',
       'dpr-1',
     );
-    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+    expect(repo.transitionDprStatus).not.toHaveBeenCalled();
   });
 
   it('addMeasurement: allows editing a REOPENED report (correction path)', async () => {
@@ -371,9 +440,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
       dpr: { id: 'dpr-1', status: 'REOPENED', projectId: 'p-1', measurements: [], attachments: [] },
     });
     await service.submit(identity, 'dpr-1');
-    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+    expect(repo.transitionDprStatus).toHaveBeenCalledWith(
       expect.anything(),
       'dpr-1',
+      expect.any(String),
       expect.objectContaining({ status: 'SUBMITTED' }),
     );
   });
@@ -401,6 +471,44 @@ describe('ProgressService (ADR-021 MVP)', () => {
       expect(repo.deleteMeasurement).not.toHaveBeenCalled();
     },
   );
+
+  it('removeMeasurement: in a REOPENED report, an entry from before the reopen is protected (409)', async () => {
+    const reopenedAt = new Date('2026-09-20T10:00:00Z');
+    const { repo, service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'REOPENED',
+        projectId: 'p-1',
+        reopenedAt,
+        measurements: [
+          { id: 'old', boqNodeId: 'n1', quantity: 5, createdAt: new Date('2026-09-18T08:00:00Z') },
+          { id: 'new', boqNodeId: 'n1', quantity: 1, createdAt: new Date('2026-09-20T11:00:00Z') },
+        ],
+        attachments: [],
+      },
+    });
+
+    await expect(service.removeMeasurement(identity, 'dpr-1', 'old')).rejects.toThrow(
+      /part of the approved report/,
+    );
+    expect(repo.deleteMeasurement).not.toHaveBeenCalled();
+
+    await service.removeMeasurement(identity, 'dpr-1', 'new');
+    expect(repo.deleteMeasurement).toHaveBeenCalledWith(expect.anything(), 'new');
+  });
+
+  it('removeMeasurement: re-checks the status under the DPR lock (a submit that landed first wins)', async () => {
+    const { repo, service } = build();
+    const draft = { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] };
+    repo.findDpr
+      .mockResolvedValueOnce(draft) // unlocked read
+      .mockResolvedValueOnce({ ...draft, status: 'SUBMITTED' }); // fresh read under the lock
+    await expect(service.removeMeasurement(identity, 'dpr-1', 'm-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.lockDpr).toHaveBeenCalledWith(expect.anything(), 'org-1', 'dpr-1');
+    expect(repo.deleteMeasurement).not.toHaveBeenCalled();
+  });
 
   it('removeMeasurement: 404 for an entry that is not on this report', async () => {
     const { repo, service } = build({
@@ -1252,12 +1360,12 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(repo.findWorkPackagesForDprs).toHaveBeenCalledWith(expect.anything(), 'org-1', ['dpr-1', 'dpr-2']);
   });
 
-  it('listDprs: approvedByName, and reviewedByName = approver (APPROVED/REOPENED) or returner (RETURNED)', async () => {
+  it('listDprs: approvedByName, and reviewedByName = approver (APPROVED), reopener (REOPENED) or returner (RETURNED)', async () => {
     const { repo, service } = build({
       dprs: [
         { id: 'a', projectId: 'p-1', status: 'APPROVED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null },
         { id: 'r', projectId: 'p-1', status: 'RETURNED', preparedBy: 'se', approvedBy: null, returnedBy: 'pm2' },
-        { id: 'o', projectId: 'p-1', status: 'REOPENED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null },
+        { id: 'o', projectId: 'p-1', status: 'REOPENED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null, reopenedBy: 'pm2' },
         { id: 's', projectId: 'p-1', status: 'SUBMITTED', preparedBy: 'se', approvedBy: null, returnedBy: 'pm2' },
       ],
       users: [
@@ -1272,7 +1380,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(res.map((d) => [d.approvedByName, d.reviewedByName])).toEqual([
       ['Project Manager', 'Project Manager'],
       [undefined, 'Other PM'],
-      ['Project Manager', 'Project Manager'],
+      ['Project Manager', 'Other PM'], // REOPENED: the reopener is the latest reviewer
       [undefined, undefined], // resubmitted after a return: not reviewed yet
     ]);
     // Still one users query for every name on the list.
