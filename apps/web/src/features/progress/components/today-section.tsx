@@ -1,225 +1,332 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { type DprStatus } from '@erp/types';
-import { Skeleton } from '@erp/ui';
-import { ClipboardList, FileText, HardHat, Image as ImageIcon, TriangleAlert } from 'lucide-react';
+import type { DailyProgressReportResponse } from '@erp/types';
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  EmptyState,
+  FormField,
+  Notice,
+  Skeleton,
+} from '@erp/ui';
+import { ClipboardList, Ellipsis } from 'lucide-react';
 
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate } from '@/lib/format';
+import { useSession } from '@/features/auth/session/use-session';
+import { useProjectMembers } from '@/features/projects/hooks/use-project-members';
 
-import type { DailyProgressReportDetail } from '../api/progress-api';
-import { useDpr, useDprs, useProjectRollup } from '../hooks/use-progress';
-import { ProgressHeadline } from './progress-headline';
-import { DailyReportsSection } from './daily-reports-section';
-import { DprDetail } from './dpr-detail';
+import { isEditableDpr, localIsoDate, myReports, sortMyReports } from '../domain/my-reports';
+import { mapDprError } from '../domain/dpr-errors';
+import { useCreateDpr, useDprs } from '../hooks/use-progress';
+import { DprEntrySheet } from './dpr-entry-sheet';
 import { DprStatusBadge } from './dpr-status-badge';
-import { RefButton, RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
 
 /**
- * Today view — the SE's primary entry point.
+ * Today — the site engineer's view.
  *
- * Shows the current-day DPR state with one primary action above the fold,
- * then the recent reports list. The ProgressHeadline band is shown when
- * the project is set up (has work packages + allocation + weights); otherwise
- * it is silently omitted so the SE is never blocked by a PM setup task.
+ * A context bar for the day (today's report status, what is waiting for review, the last approved
+ * report) carrying the view's one primary: start, continue or open today's report. Below it, one
+ * attention notice per report of MINE that a reviewer returned, then "My reports" with anything
+ * waiting on me first. Reports open in a side sheet.
+ *
+ * "My reports" and the counts are derived client-side from the project's report list
+ * (owner-approved) — there is no per-user endpoint.
  */
 export function TodaySection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
-  const rollup = useProjectRollup(projectId);
+  const session = useSession();
   const dprs = useDprs(projectId);
-  const [selectedDprId, setSelectedDprId] = useState<string | null>(null);
+  const create = useCreateDpr(projectId);
 
-  const modelReady = Boolean(
-    rollup.data?.weightsComplete && rollup.data.packages.some((p) => p.leafCount > 0),
-  );
+  const [openDprId, setOpenDprId] = useState<string | null>(null);
+  const [otherDayOpen, setOtherDayOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayDpr = dprs.data?.find((d) => d.reportDate.slice(0, 10) === today) ?? null;
+  const today = localIsoDate();
+  const userId = session.user?.id ?? null;
+  const all = useMemo(() => dprs.data ?? [], [dprs.data]);
+  const mine = useMemo(() => sortMyReports(myReports(all, userId)), [all, userId]);
 
-  if (selectedDprId) {
+  if (dprs.isPending) {
     return (
-      <DprDetail
-        projectId={projectId}
-        dprId={selectedDprId}
-        onBack={() => setSelectedDprId(null)}
-      />
+      <div className="space-y-4">
+        <Skeleton className="h-24 w-full rounded-panel" aria-hidden="true" />
+        <Skeleton className="h-48 w-full rounded-panel" aria-hidden="true" />
+      </div>
     );
   }
+
+  if (dprs.isError) {
+    return (
+      <Alert variant="error" messages={[t('states.loadFailed')]}>
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={() => void dprs.refetch()}>
+            {t('actions.retry')}
+          </Button>
+        </div>
+      </Alert>
+    );
+  }
+
+  const todays = mine.find((d) => d.reportDate.slice(0, 10) === today) ?? null;
+  const waiting = all.filter((d) => d.status === 'SUBMITTED').length;
+  const lastApproved = [...all]
+    .filter((d) => d.status === 'APPROVED')
+    .sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
+  const returned = mine.filter((d) => d.status === 'RETURNED');
+
+  function startReport(reportDate: string, onDone?: () => void) {
+    // One report per day: an existing report for that day (mine) opens instead of a duplicate.
+    const existing = mine.find((d) => d.reportDate.slice(0, 10) === reportDate);
+    if (existing) {
+      onDone?.();
+      setOpenDprId(existing.id);
+      return;
+    }
+    setCreateError(null);
+    create.mutate(
+      { reportDate },
+      {
+        onSuccess: (dpr) => {
+          onDone?.();
+          setOpenDprId(dpr.id);
+        },
+        onError: (error) => setCreateError(mapDprError(error, t('today.createFailed')).formError),
+      },
+    );
+  }
+
+  const primaryLabel = !todays
+    ? t('today.startReport')
+    : isEditableDpr(todays.status)
+      ? t('today.continueReport')
+      : t('today.open');
 
   return (
     <div className="space-y-6">
-      {modelReady && <ProgressHeadline projectId={projectId} />}
+      {/* Context bar */}
+      <section
+        aria-labelledby="today-context-title"
+        className="flex flex-col gap-4 rounded-panel border border-border bg-surface px-4 py-4 sm:px-5 md:flex-row md:items-center md:justify-between"
+      >
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 id="today-context-title" className="text-body font-semibold text-foreground">
+              {t('today.contextTitle', { date: formatDate(today, locale) ?? today })}
+            </h3>
+            {todays ? (
+              <DprStatusBadge status={todays.status} />
+            ) : (
+              <span className="text-body-sm text-muted-foreground">{t('today.notStarted')}</span>
+            )}
+          </div>
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-body-sm">
+            <div className="flex gap-1.5">
+              <dt className="text-muted-foreground">{t('today.waitingForReview')}</dt>
+              <dd className="font-medium text-foreground">{t('today.waitingForReviewValue', { count: waiting })}</dd>
+            </div>
+            {lastApproved ? (
+              <div className="flex gap-1.5">
+                <dt className="text-muted-foreground">{t('today.lastApproved')}</dt>
+                <dd className="font-medium text-foreground">{formatDate(lastApproved.reportDate, locale)}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            onClick={() => (todays ? setOpenDprId(todays.id) : startReport(today))}
+            disabled={create.isPending}
+          >
+            {primaryLabel}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label={t('today.more')} title={t('today.more')}>
+                <Ellipsis size={18} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setOtherDayOpen(true)}>{t('today.otherDay')}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </section>
 
-      <TodayReportCard
-        today={today}
-        todayDpr={todayDpr}
-        isPending={dprs.isPending}
-        isError={dprs.isError}
-        onOpen={(id) => setSelectedDprId(id)}
-        locale={locale}
-        t={t}
+      {createError && !otherDayOpen ? <Alert variant="error" messages={[createError]} /> : null}
+
+      {/* One notice per report of mine that a reviewer sent back. */}
+      {returned.map((dpr) => (
+        <Notice
+          key={dpr.id}
+          tone="attention"
+          title={t('today.returnedTitle', { date: formatDate(dpr.reportDate, locale) ?? dpr.reportDate })}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setOpenDprId(dpr.id)}>
+              {t('today.fixAndResubmit')}
+            </Button>
+          }
+        >
+          {dpr.returnReason ?? t('today.returnedNoReason')}
+        </Notice>
+      ))}
+
+      <MyReports projectId={projectId} reports={mine} onOpen={setOpenDprId} />
+
+      <OtherDayDialog
+        open={otherDayOpen}
+        onOpenChange={(open) => {
+          setOtherDayOpen(open);
+          if (!open) setCreateError(null);
+        }}
+        max={today}
+        pending={create.isPending}
+        error={createError}
+        onStart={(date) => startReport(date, () => setOtherDayOpen(false))}
       />
 
-      {/* Full report history / creation — passes down its own internal state */}
-      <DailyReportsSection projectId={projectId} />
+      <DprEntrySheet projectId={projectId} dprId={openDprId} onClose={() => setOpenDprId(null)} />
     </div>
   );
 }
 
-function TodayReportCard({
-  today,
-  todayDpr,
-  isPending,
-  isError,
+function MyReports({
+  projectId,
+  reports,
   onOpen,
-  locale,
-  t,
 }: {
-  today: string;
-  todayDpr: { id: string; status: `${DprStatus}`; reportDate: string } | null;
-  isPending: boolean;
-  isError: boolean;
+  projectId: string;
+  reports: DailyProgressReportResponse[];
   onOpen: (id: string) => void;
-  locale: string;
-  t: ReturnType<typeof useTranslations<'progress'>>;
 }) {
-  // Only fires once there is a today's report — `useDpr` no-ops on an empty id.
-  const detail = useDpr(todayDpr?.id ?? '');
+  const t = useTranslations('progress');
+  const locale = useLocale() as 'en';
+  const members = useProjectMembers(projectId);
 
-  if (isPending) return <Skeleton className="h-24 w-full rounded-container" aria-hidden="true" />;
-  if (isError) return null;
+  // The list carries the approver's id only; resolve it from the project's members, and show a
+  // dash rather than a raw id when they are not a member any more.
+  const nameById = useMemo(
+    () =>
+      new Map(
+        (members.data ?? []).map((m) => [m.userId, `${m.user.firstName} ${m.user.lastName}`.trim()]),
+      ),
+    [members.data],
+  );
 
-  const dateLabel = formatDate(today, locale as 'en');
-
-  if (!todayDpr) {
-    return (
-      <RefCard>
-        <RefCardHeader icon={<FileText size={17} strokeWidth={1.9} />} title={dateLabel} subtitle={t('today.noReportHint')} />
-        <RefCardBody />
-      </RefCard>
-    );
-  }
-
-  const { status } = todayDpr;
-  const d = detail.data;
+  const columns: GridColumn<DailyProgressReportResponse>[] = [
+    {
+      key: 'date',
+      header: t('today.col.date'),
+      sticky: true,
+      card: 'title',
+      plainValue: (r) => r.reportDate,
+      render: (r) => (
+        <button
+          type="button"
+          onClick={() => onOpen(r.id)}
+          className="min-h-11 text-start font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:shadow-ring sm:min-h-0"
+        >
+          {formatDate(r.reportDate, locale)}
+        </button>
+      ),
+    },
+    {
+      key: 'reviewedBy',
+      header: t('today.col.reviewedBy'),
+      card: 'meta',
+      plainValue: (r) => (r.approvedBy ? nameById.get(r.approvedBy) : undefined),
+      render: (r) => (
+        <span className="text-muted-foreground">{(r.approvedBy && nameById.get(r.approvedBy)) || '—'}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('today.col.status'),
+      card: 'status',
+      plainValue: (r) => r.status,
+      render: (r) => <DprStatusBadge status={r.status} />,
+    },
+  ];
 
   return (
-    <RefCard>
-      <RefCardHeader
-        icon={<FileText size={17} strokeWidth={1.9} />}
-        title={t('today.cardTitle')}
-        subtitle={dateLabel}
-        action={
-          status === 'DRAFT' || status === 'RETURNED' ? (
-            <RefButton size="sm" onClick={() => onOpen(todayDpr.id)}>
-              {status === 'RETURNED' ? t('today.reviseReport') : t('today.continueReport')}
-            </RefButton>
-          ) : status === 'SUBMITTED' ? (
-            <RefPill tone="blue">{t('today.awaitingReview')}</RefPill>
-          ) : (
-            <RefButton variant="outline" size="sm" onClick={() => onOpen(todayDpr.id)}>
-              {t('today.viewReport')}
-            </RefButton>
-          )
+    <section aria-labelledby="my-reports-title" className="space-y-3">
+      <h3 id="my-reports-title" className="text-body font-semibold text-foreground">
+        {t('today.myReports')}
+      </h3>
+      <PlatformDataGrid
+        label={t('today.myReports')}
+        columns={columns}
+        data={reports}
+        rowKey={(r) => r.id}
+        sortControl={false}
+        emptyState={
+          <EmptyState
+            variant="row"
+            icon={<ClipboardList size={20} aria-hidden="true" />}
+            title={t('today.myReportsEmpty')}
+            description={t('today.myReportsEmptyHint')}
+          />
         }
       />
-      <RefCardBody>
-        <div className="mt-3 divide-y divide-border border-t border-border">
-          <SummaryRow
-            icon={<HardHat size={16} strokeWidth={1.9} />}
-            tone="green"
-            label={t('today.workCompleted')}
-            value={
-              d
-                ? d.measurements.length > 0
-                  ? t('today.workCompletedCount', { count: d.measurements.length })
-                  : t('today.workCompletedNone')
-                : undefined
-            }
-          />
-          <SummaryRow
-            icon={<ClipboardList size={16} strokeWidth={1.9} />}
-            tone="blue"
-            label={t('today.labourOnSite')}
-            value={d ? labourSummary(d, t) : undefined}
-          />
-          <SummaryRow
-            icon={<TriangleAlert size={16} strokeWidth={1.9} />}
-            tone="amber"
-            label={t('today.issues')}
-            value={
-              d
-                ? (d.observations?.length ?? 0) > 0
-                  ? t('today.issuesCount', { count: d.observations?.length ?? 0 })
-                  : t('today.issuesNone')
-                : undefined
-            }
-          />
-          <SummaryRow
-            icon={<ImageIcon size={16} strokeWidth={1.9} />}
-            tone="violet"
-            label={t('today.photos')}
-            value={
-              d
-                ? d.attachments.length > 0
-                  ? t('today.photosCount', { count: d.attachments.length })
-                  : t('today.photosNone')
-                : undefined
-            }
-          />
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <DprStatusBadge status={status} />
-        </div>
-      </RefCardBody>
-    </RefCard>
+    </section>
   );
 }
 
-function labourSummary(
-  d: DailyProgressReportDetail,
-  t: ReturnType<typeof useTranslations<'progress'>>,
-): string {
-  if (typeof d.labourCount === 'number') return String(d.labourCount);
-  if (d.labourRows && d.labourRows.length > 0) {
-    const total = d.labourRows.reduce((sum, row) => sum + row.headcount, 0);
-    return String(total);
-  }
-  return t('today.labourNone');
-}
-
-function SummaryRow({
-  icon,
-  tone,
-  label,
-  value,
+function OtherDayDialog({
+  open,
+  onOpenChange,
+  max,
+  pending,
+  error,
+  onStart,
 }: {
-  icon: React.ReactNode;
-  tone: 'green' | 'blue' | 'amber' | 'violet';
-  label: string;
-  value: string | undefined;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  max: string;
+  pending: boolean;
+  error: string | null;
+  onStart: (date: string) => void;
 }) {
-  const toneClass: Record<typeof tone, string> = {
-    green: 'bg-success-subtle text-success',
-    blue: 'bg-brand-accent text-brand-primary',
-    amber: 'bg-warning-subtle text-warning',
-    violet: 'bg-historical-subtle text-historical',
-  };
+  const t = useTranslations('progress');
+  const [date, setDate] = useState('');
+
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${toneClass[tone]}`} aria-hidden="true">
-          {icon}
-        </span>
-        <span className="truncate text-body text-muted-foreground">{label}</span>
-      </div>
-      {value === undefined ? (
-        <span className="h-3.5 w-20 animate-pulse rounded bg-muted" aria-hidden="true" />
-      ) : (
-        <span className="shrink-0 text-body font-medium text-foreground">{value}</span>
-      )}
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>{t('today.otherDayTitle')}</DialogTitle>
+          <DialogDescription>{t('today.otherDayHint')}</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (date) onStart(date);
+          }}
+          className="mt-4 space-y-4"
+        >
+          {error ? <Alert variant="error" messages={[error]} /> : null}
+          <FormField htmlFor="dpr-other-day" label={t('report.fields.reportDate')}>
+            <DatePicker id="dpr-other-day" value={date} max={max} onChange={setDate} />
+          </FormField>
+          <Button type="submit" className="w-full" disabled={pending || !date}>
+            {t('today.otherDaySubmit')}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

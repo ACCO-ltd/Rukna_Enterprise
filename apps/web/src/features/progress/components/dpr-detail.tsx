@@ -756,18 +756,21 @@ function AddMeasurementForm({
  * stored attachment resolves its own signed URL, which doubles as the thumbnail and carries the
  * mime type used to pick <img> vs <video>.
  */
-function DprEvidence({
+export function DprEvidence({
   dprId,
   canUpload,
   attachments,
   measurements,
   leafLabel,
+  bare = false,
 }: {
   dprId: string;
   canUpload: boolean;
   attachments: Array<{ id: string; platformFileId: string; measurementId?: string }>;
   measurements: ProgressMeasurementResponse[];
   leafLabel: Map<string, string>;
+  /** Render without its card chrome — for the DPR entry sheet, which supplies its own heading. */
+  bare?: boolean;
 }) {
   const t = useTranslations('progress');
   const upload = useFileUpload();
@@ -798,10 +801,8 @@ function DprEvidence({
     remove: t('evidence.remove'),
   };
 
-  return (
-    <RefCard>
-      <RefCardHeader icon={<ImageIcon size={17} strokeWidth={1.9} />} iconTone="violet" title={t('evidence.title')} subtitle={t('evidence.hint')} />
-      <RefCardBody>
+  const content = (
+    <>
         {canUpload ? (
           <div className="mt-1">
             {measurements.length > 0 ? (
@@ -835,6 +836,16 @@ function DprEvidence({
             ))}
           </ul>
         )}
+    </>
+  );
+
+  if (bare) return <div>{content}</div>;
+
+  return (
+    <RefCard>
+      <RefCardHeader icon={<ImageIcon size={17} strokeWidth={1.9} />} iconTone="violet" title={t('evidence.title')} subtitle={t('evidence.hint')} />
+      <RefCardBody>
+        {content}
       </RefCardBody>
     </RefCard>
   );
@@ -927,7 +938,7 @@ function EvidenceTile({
 
 // ─── Section C: Labour ───────────────────────────────────────────────────────────────────
 
-function LabourSection({
+export function LabourSection({
   dprId,
   rows,
   editable,
