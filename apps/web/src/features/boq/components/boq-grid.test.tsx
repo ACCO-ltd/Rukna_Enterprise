@@ -1,249 +1,264 @@
-import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
-import { buildRows } from '../boq-rows';
+import { buildRows, siblingBounds } from '../boq-rows';
 import { testNode } from '../test-node';
-import { BoqGrid } from './boq-grid';
+import { BoqGrid, type BoqRowCommands, type PendingLine } from './boq-grid';
+
+beforeAll(() => {
+  // jsdom has no matchMedia; the grid asks it whether a row tap should open the details sheet.
+  window.matchMedia ??= ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
+});
 
 const tree = () => [
   testNode({
     id: 's1',
-    code: '01',
-    description: 'Preliminaries',
+    code: '1',
+    description: 'Substructure',
     children: [
       testNode({
         id: 'i1',
-        code: '01.001',
-        description: 'Site office',
+        parentId: 's1',
+        code: '1.1',
+        description: 'Excavate foundation trenches',
         isLeaf: true,
-        unit: 'LS',
-        quantity: '1.000',
-        unitRate: '45000.00',
-        computedTotal: '45000.00',
+        unit: 'm³',
+        quantity: '180.000',
+        unitRate: '6.50',
+        computedTotal: '1170.00',
+        sortOrder: 0,
       }),
       testNode({
         id: 'i2',
-        code: '01.002',
-        description: 'Fencing',
+        parentId: 's1',
+        code: '1.2',
+        description: 'Site security, 24 hours',
         isLeaf: true,
-        unit: 'm',
-        quantity: '620.000',
+        unit: 'nr',
+        quantity: '16.000',
+        sortOrder: 1,
       }),
     ],
   }),
+  testNode({
+    id: 's2',
+    code: '2',
+    description: 'Preliminaries',
+    sortOrder: 1,
+    children: [
+      testNode({
+        id: 'i3',
+        parentId: 's2',
+        code: '2.1',
+        description: 'Site mobilisation',
+        isLeaf: true,
+        pricingBasis: 'LUMP_SUM',
+        quantity: '1.000',
+        unitRate: '9800.00',
+        computedTotal: '9800.00',
+      }),
+    ],
+  }),
+  testNode({
+    id: 's3',
+    code: '3',
+    description: 'Structure',
+    sortOrder: 2,
+    children: [testNode({ id: 's31', parentId: 's3', code: '3.1', description: 'Frame', children: [] })],
+  }),
 ];
 
-function render(overrides: Partial<Parameters<typeof BoqGrid>[0]> = {}) {
-  const onSelect = vi.fn();
-  const onToggle = vi.fn();
-
-  renderWithProviders(
-    <BoqGrid
-      rows={buildRows(tree(), { collapsed: new Set(), search: '', pricing: 'all' })}
-      totalRows={3}
-      currency="USD"
-      totalAmount="45000.00"
-      visibleAmount="45000.00"
-      sectionTotals={new Map([['s1', '45000.00']])}
-      isFiltered={false}
-      canManage
-      canViewCommercials
-      showSource={false}
-      highlighted={new Set()}
-      collapsed={new Set()}
-      onToggle={onToggle}
-      onSelect={onSelect}
-      commands={null}
-      emptyMessage="Nothing here"
-      {...overrides}
-    />,
-  );
-
-  const allRows = screen.getAllByRole('row');
-  const headers = [...allRows[0]!.querySelectorAll('th')].map(
-    (th) => th.textContent?.trim() ?? '',
-  );
-
+function commands(overrides: Partial<BoqRowCommands> = {}): BoqRowCommands {
+  const nodes = tree();
   return {
-    rows: allRows.slice(1),
-    headers,
-    // Addressed by header rather than by index. A positional assertion broke the moment the
-    // TYPE column was dropped, and it broke by pointing at the wrong column rather than by
-    // saying the column had moved.
-    columnIndex: (name: string) => headers.indexOf(name),
-    onSelect,
-    onToggle,
+    onEdit: vi.fn(),
+    onAddSection: vi.fn(),
+    onAddFromLibrary: vi.fn(),
+    onDelete: vi.fn(),
+    onMove: vi.fn(),
+    bounds: (node) => siblingBounds(nodes, node),
+    onEditField: vi.fn().mockResolvedValue(undefined),
+    onCreate: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
   };
 }
 
-/**
- * The grid shipped as `<tr onClick>` with `cursor-pointer` and no `tabIndex`, `role` or key
- * handler, so opening a BOQ item could not be done from a keyboard at all — WCAG 2.1.1,
- * Level A, on the primary interaction of the densest screen in the product.
- */
-describe('BoqGrid — keyboard access', () => {
-  it('exposes exactly one tab stop, so 67 rows do not become 67 tab stops', () => {
-    const { rows } = render();
-
-    expect(rows.map((row) => row.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
-  });
-
-  it('moves focus down and up with the arrow keys', () => {
-    const { rows } = render();
-
-    rows[0]!.focus();
-    fireEvent.keyDown(rows[0]!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(rows[1]);
-
-    fireEvent.keyDown(rows[1]!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(rows[2]);
-
-    fireEvent.keyDown(rows[2]!, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(rows[1]);
-  });
-
-  it('jumps to the ends with Home and End', () => {
-    const { rows } = render();
-
-    rows[0]!.focus();
-    fireEvent.keyDown(rows[0]!, { key: 'End' });
-    expect(document.activeElement).toBe(rows[2]);
-
-    fireEvent.keyDown(rows[2]!, { key: 'Home' });
-    expect(document.activeElement).toBe(rows[0]);
-  });
-
-  it('opens the focused row with Enter', () => {
-    const { rows, onSelect } = render();
-
-    rows[0]!.focus();
-    fireEvent.keyDown(rows[0]!, { key: 'ArrowDown' });
-    fireEvent.keyDown(rows[1]!, { key: 'Enter' });
-
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ code: '01.001' }));
-  });
-
-  it('folds a section with the shallower arrow', () => {
-    const { rows, onToggle } = render();
-
-    rows[0]!.focus();
-    fireEvent.keyDown(rows[0]!, { key: 'ArrowLeft' });
-
-    expect(onToggle).toHaveBeenCalledWith('s1');
-  });
-
-  /** Otherwise typing a code into a row's own control would steer the grid instead. */
-  it('ignores keys it does not own', () => {
-    const { rows, onSelect } = render();
-
-    rows[0]!.focus();
-    fireEvent.keyDown(rows[0]!, { key: 'a' });
-
-    expect(onSelect).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(rows[0]);
-  });
-
-  it('announces itself as a grid so arrow navigation is expected', () => {
-    render();
-
-    expect(screen.getByRole('grid')).toBeInTheDocument();
-  });
-});
-
-describe('BoqGrid — reading the rows', () => {
-  /**
-   * A section has no unit by definition. Printing a dash says "missing", which is the signal
-   * the amber row edge already carries for data that genuinely is absent.
-   */
-  it('leaves a section blank under Unit rather than printing a dash', () => {
-    const { rows, columnIndex } = render();
-    const unit = columnIndex('Unit');
-
-    expect(rows[0]!.querySelectorAll('td')[unit]?.textContent).toBe('');
-    expect(rows[1]!.querySelectorAll('td')[unit]?.textContent).toBe('LS');
-  });
-
-  /**
-   * Section or item is already carried by the chevron, the indent, the weight, the tint and
-   * the absence of pricing cells. A sixth signal spelling it out in words spent a column on
-   * every row of a 400-line bill to repeat what the row already looked like.
-   */
-  it('spends no column on TYPE, but still announces it', () => {
-    const { rows, headers } = render();
-
-    expect(headers).not.toContain('Type');
-    // The screen reader still hears it, once, at the start of the row.
-    expect(rows[0]!).toHaveTextContent('Section');
-    expect(rows[1]!).toHaveTextContent('Item');
-  });
-
-  /**
-   * Provenance only earns a column once there is provenance to tell apart. Until a Variation
-   * scopes a line in, SOURCE reads "Baseline" on every row — horizontal space spent to say
-   * nothing on the densest screen in the product.
-   */
-  it('hides Source while every line came in with the original scope', () => {
-    expect(render().headers).not.toContain('Source');
-  });
-
-  it('shows Source once provenance is mixed', () => {
-    expect(render({ showSource: true }).headers).toContain('Source');
-  });
-
-  /**
-   * The footer used to pair a filtered row count with a total covering every row, so the
-   * count and the figure described different sets. Filtered, it must show both and label
-   * which is which.
-   */
-  it('distinguishes the BOQ total from the visible total while filtered', () => {
-    render({ isFiltered: true, visibleAmount: '11470.00', totalAmount: '56470.00' });
-
-    expect(screen.getByText(/11,470\.00/)).toBeInTheDocument();
-    expect(screen.getByText(/56,470\.00/)).toBeInTheDocument();
-  });
-
-  it('shows only the BOQ total when nothing is filtered', () => {
-    render({ isFiltered: false, totalAmount: '56470.00', visibleAmount: '11470.00' });
-
-    expect(screen.getByText(/56,470\.00/)).toBeInTheDocument();
-    expect(screen.queryByText(/11,470\.00/)).not.toBeInTheDocument();
-  });
-});
-
-/**
- * WORKING vs COMMITTED are genuinely different modes (R11 Decision 3/4). In COMMITTED, a leaf's
- * value cells (Qty/Rate) are PINNED: they do not accept a direct overwrite; the attempt opens the
- * who-pays classifier instead. Money-neutral cells stay editable. The rule is taught at the cell.
- */
-describe('BoqGrid — COMMITTED mode pin', () => {
-  const editCommands = {
-    onEdit: vi.fn(),
-    onAddSection: vi.fn(),
-    onAddItem: vi.fn(),
-    onDelete: vi.fn(),
-    onMove: vi.fn(),
-    onEditField: vi.fn(async () => {}),
+function render(overrides: Partial<Parameters<typeof BoqGrid>[0]> = {}) {
+  const props: Parameters<typeof BoqGrid>[0] = {
+    rows: buildRows(tree(), { collapsed: new Set(), search: '', pricing: 'all' }),
+    currency: 'USD',
+    totalAmount: '10970.00',
+    sectionTotals: new Map([
+      ['s1', '1170.00'],
+      ['s2', '9800.00'],
+    ]),
+    isFiltered: false,
+    canViewCommercials: true,
+    showSource: false,
+    collapsed: new Set(),
+    onToggle: vi.fn(),
+    onSelect: vi.fn(),
+    commands: null,
+    emptyMessage: 'Nothing here',
+    ...overrides,
   };
+  return { props, ...renderWithProviders(<BoqGrid {...props} />) };
+}
 
-  it('pins a committed leaf value cell — a click opens the classifier, not an inline editor', () => {
-    const onPinnedCellEdit = vi.fn();
-    render({ committed: true, commands: editCommands, onPinnedCellEdit });
-
-    // The rate cell is now a pinned button announcing the who-pays decision, not a text input.
-    const pinned = screen.getByRole('button', {
-      name: /Edit rate of 01\.001 — Committed value/i,
-    });
-    fireEvent.click(pinned);
-    expect(onPinnedCellEdit).toHaveBeenCalledTimes(1);
-    expect(editCommands.onEditField).not.toHaveBeenCalled();
+describe('BoqGrid — reading', () => {
+  it('marks an unpriced line "No rate" and a lump sum as such', () => {
+    render();
+    const security = screen.getByText('Site security, 24 hours').closest('tr')!;
+    expect(within(security).getByText('No rate')).toHaveClass('text-warning');
+    const mobilisation = screen.getByText('Site mobilisation').closest('tr')!;
+    expect(within(mobilisation).getAllByText('Lump sum').length).toBeGreaterThan(0);
   });
 
-  it('leaves value cells free-editing in WORKING mode (no pin)', () => {
-    render({ committed: false, commands: editCommands });
-    expect(
-      screen.queryByRole('button', { name: /Committed value/i }),
-    ).not.toBeInTheDocument();
+  it('ends with the BOQ total, and no "Showing x of y rows"', () => {
+    render();
+    expect(screen.getByText('BOQ total')).toBeInTheDocument();
+    expect(screen.getByText('$10,970.00')).toBeInTheDocument();
+    expect(screen.queryByText(/Showing/)).not.toBeInTheDocument();
+  });
+
+  /** Money-blind roles: the figures never reached the browser, so neither do their columns. */
+  it('drops the rate, amount and total for a reader who may not see money', () => {
+    render({ canViewCommercials: false, totalAmount: null });
+    expect(screen.queryByRole('columnheader', { name: /Rate/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Amount/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('BOQ total')).not.toBeInTheDocument();
+    expect(screen.queryByText('No rate')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0/)).not.toBeInTheDocument();
+  });
+
+  it('collapses sections with a real button that states its state', async () => {
+    const user = userEvent.setup();
+    const { props } = render();
+    const toggle = screen.getByRole('button', { name: 'Collapse section 1' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    toggle.focus();
+    await user.keyboard('{Enter}');
+    expect(props.onToggle).toHaveBeenCalledWith('s1');
+  });
+});
+
+describe('BoqGrid — editing a draft', () => {
+  it('boxes every editable cell and saves one on blur', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    render({ commands: cmds });
+
+    const rate = screen.getByRole('textbox', { name: 'Edit rate of 1.2' });
+    await user.click(rate);
+    await user.type(rate, '12.5');
+    await user.tab();
+
+    await waitFor(() =>
+      expect(cmds.onEditField).toHaveBeenCalledWith(expect.objectContaining({ id: 'i2' }), 'unitRate', '12.5'),
+    );
+  });
+
+  it('keeps a failed value in the cell and says so', async () => {
+    const user = userEvent.setup();
+    const cmds = commands({ onEditField: vi.fn().mockRejectedValue(new Error('boom')) });
+    render({ commands: cmds });
+
+    const quantity = screen.getByRole('textbox', { name: 'Edit quantity of 1.1' });
+    await user.clear(quantity);
+    await user.type(quantity, '200{Enter}');
+
+    expect(await screen.findByText("Couldn't save. Try again.")).toBeInTheDocument();
+    expect(quantity).toHaveValue('200');
+    expect(quantity).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('refuses a rate with more decimals than the server accepts, before sending it', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    render({ commands: cmds });
+    const rate = screen.getByRole('textbox', { name: 'Edit rate of 1.1' });
+    await user.clear(rate);
+    await user.type(rate, '6.505{Enter}');
+    expect(await screen.findByText("Couldn't save. Try again.")).toBeInTheDocument();
+    expect(cmds.onEditField).not.toHaveBeenCalled();
+  });
+
+  it('ends each open section that takes items with "+ Add item", and focuses the new line', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    let pending: PendingLine | null = null;
+    const onPendingChange = vi.fn((next: PendingLine | null) => {
+      pending = next;
+    });
+    const view = render({ commands: cmds, onPendingChange });
+
+    // Section 3 holds a sub-section, so it is not offered an item (the server forbids mixing).
+    expect(screen.getByRole('button', { name: 'Add item to 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add item to 3.1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add item to 3' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add item to 1' }));
+    expect(onPendingChange).toHaveBeenCalledWith({ parentId: 's1', kind: 'item' });
+
+    view.rerender(<BoqGrid {...view.props} commands={cmds} onPendingChange={onPendingChange} pending={pending} />);
+    const line = screen.getByRole('textbox', { name: 'New item in 1' });
+    expect(line).toHaveFocus();
+    await user.type(line, 'Blinding concrete{Enter}');
+    await waitFor(() =>
+      expect(cmds.onCreate).toHaveBeenCalledWith({
+        parent: expect.objectContaining({ id: 's1' }),
+        kind: 'item',
+        description: 'Blinding concrete',
+      }),
+    );
+  });
+
+  it('abandons an empty new line on Escape without creating anything', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    const onPendingChange = vi.fn();
+    render({ commands: cmds, pending: { parentId: 's1', kind: 'item' }, onPendingChange });
+    await user.keyboard('{Escape}');
+    expect(onPendingChange).toHaveBeenCalledWith(null);
+    expect(cmds.onCreate).not.toHaveBeenCalled();
+  });
+
+  it('offers only the moves and deletes a node can take, from a keyboard-reachable menu', async () => {
+    const user = userEvent.setup();
+    render({ commands: commands() });
+
+    const trigger = screen.getByRole('button', { name: 'Actions for 1' });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Add item' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Move up' })).not.toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Move down' })).toBeInTheDocument();
+    // It has lines under it; the server would refuse the delete.
+    expect(within(menu).queryByRole('menuitem', { name: 'Delete section' })).not.toBeInTheDocument();
+  });
+
+  it('reaches cells, toggles and menus with Tab alone', async () => {
+    const user = userEvent.setup();
+    render({ commands: commands() });
+    // First stop: the scroll region itself, so a keyboard can scroll a wide table sideways.
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Collapse section 1' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('textbox', { name: 'Name of section 1' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Actions for 1' })).toHaveFocus();
+    // An item row has no toggle, so its description is the next stop.
+    await user.tab();
+    expect(screen.getByRole('textbox', { name: 'Edit description of 1.1' })).toHaveFocus();
   });
 });

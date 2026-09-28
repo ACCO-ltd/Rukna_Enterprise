@@ -1,30 +1,23 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, History, Plus } from 'lucide-react';
+import { ClipboardList, Download, FileSpreadsheet, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Skeleton, useToast } from '@erp/ui';
-
-import type { BoqTreeNodeResponse } from '@erp/types';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Button, EmptyState, Notice, Skeleton, useToast } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
-import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
-import { useProjectGuidance } from '@/features/projects/hooks/use-project';
 import { usePermissions } from '@/features/auth/permissions/can';
+import { useProject } from '@/features/projects/hooks/use-project';
+import { listUoms } from '@/features/procurement/api/procurement-api';
 
-import {
-  buildRows,
-  collectSectionIds,
-  countTree,
-  flattenTree,
-  isPriced,
-  type PricingFilter,
-} from '../boq-rows';
+import { buildRows, collectSectionIds, countTree, flattenTree, siblingBounds } from '../boq-rows';
 import { computeRollup } from '../boq-totals';
 import { treeToCsv, downloadCsv } from '../boq-export';
+import { importTemplateCsv } from '../boq-import-mapping';
 import {
   useBoqCompareToSigned,
   useBoqTimeline,
@@ -39,39 +32,29 @@ import {
   useAddNode,
   useUpdateNode,
 } from '../hooks/use-boq';
-import {
-  useCreateLibraryItem,
-  useRecordLibraryUsage,
-} from '../hooks/use-boq-item-library';
-import {
-  toCreateNodePayload,
-  toNodeFormValues,
-  toUpdateNodePayload,
-  type NodeFormValues,
-} from '../node-form';
+import { useCreateLibraryItem, useRecordLibraryUsage } from '../hooks/use-boq-item-library';
+import { toCreateNodePayload, toNodeFormValues, toUpdateNodePayload, type NodeFormValues } from '../node-form';
 import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqClassifierDrawer, type ClassifierResult } from './boq-classifier-drawer';
 import { BoqCompareSignedPanel } from './boq-compare-signed-panel';
-import { BoqGrid, type BoqRowCommands } from './boq-grid';
-import { BoqImportDialog } from './boq-import-dialog';
+import { BoqContextBar } from './boq-context-bar';
+import { BoqGrid, type BoqRowCommands, type PendingLine } from './boq-grid';
+import { BoqImportView, type ImportOutcome } from './boq-import-view';
 import { BoqItemDrawer, type DrawerTarget, type LibraryIntent } from './boq-item-drawer';
-import { BoqMoneyStrip } from './boq-money-strip';
-import { BoqReadinessBanner } from './boq-readiness-banner';
 import { BoqTimelineDrawer } from './boq-timeline-drawer';
-import { BoqToolbar } from './boq-toolbar';
+import { BoqToolbar, type LineFilter } from './boq-toolbar';
+import type { BoqTreeNodeResponse } from '@erp/types';
 
-type Command = 'discard' | 'revise' | null;
+const UNITS_LIST_ID = 'boq-units';
 
 /**
- * The BOQ workspace (R11 redesign).
+ * The BOQ tab.
  *
- * Composition follows the "Excel-level speed, ERP-level control" principle: a compact sticky
- * money strip on top, then the grid as the dominant surface, with the compare-to-signed lens and
- * the timeline summoned on demand. The two life-stages — WORKING and COMMITTED — are genuinely
- * different modes, driven off `moneyBand.lifeStage` (never re-derived). Everything commercial is
- * decided server-side: the workspace query withholds figures a tier cannot see, and this screen
- * renders what is present rather than re-summing anything.
+ * One bar on top owns the BOQ's state and its one next step (`BoqContextBar`); a find-and-narrow
+ * toolbar; then the bill itself, edited in place while it is a draft. Import is a page inside the
+ * tab, not a modal. Everything commercial is decided server-side — the workspace query withholds
+ * figures a tier cannot see — and this screen renders what is present rather than re-deciding it.
  */
 export function BoqWorkspace({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.boq');
@@ -80,23 +63,25 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const { toast } = useToast();
   const router = useRouter();
 
-  const guidance = useProjectGuidance(projectId);
+  const project = useProject(projectId).data;
   const workspaceQuery = useBoqWorkspace(projectId);
   const workspace = workspaceQuery.data;
 
+  const [view, setView] = useState<'bill' | 'import'>('bill');
   const [search, setSearch] = useState('');
-  const [pricing, setPricing] = useState<PricingFilter>('all');
+  const [filter, setFilter] = useState<LineFilter>('all');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [highlighted, setHighlighted] = useState<ReadonlySet<string>>(new Set());
+  const [pending, setPending] = useState<PendingLine | null>(null);
   const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
-  const [command, setCommand] = useState<Command>(null);
-  const [importOpen, setImportOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BoqTreeNodeResponse | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [reviseOpen, setReviseOpen] = useState(false);
   const [classifierOpen, setClassifierOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [imported, setImported] = useState<ImportOutcome | null>(null);
 
-  // The one operational version the redesign works on: prefer the working draft, else the
-  // approved/committed one. No user-facing version switching (Decision 9).
+  // The one operational version: the working draft, else the approved/committed one.
   const operationalVersionId =
     workspace?.draft?.id ?? workspace?.approved?.id ?? workspace?.versions[0]?.id ?? null;
 
@@ -115,56 +100,80 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const recordLibraryUsage = useRecordLibraryUsage();
   const saveLibraryItem = useCreateLibraryItem();
 
+  // Units master: suggestions only. `GET /procurement/uom` needs procurement-config rights, so it
+  // is asked for only by someone who holds them; everyone else gets the units already in the bill.
+  const canReadUnits = can('manage:procurement-config');
+  const unitsQuery = useQuery({
+    queryKey: ['procurement', 'uom'],
+    queryFn: listUoms,
+    enabled: canReadUnits,
+    retry: false,
+  });
+
   const nodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const counts = useMemo(() => countTree(nodes), [nodes]);
-  const hasVariations = useMemo(
-    () => flattenTree(nodes).some((node) => node.sourceType === 'VARIATION'),
-    [nodes],
-  );
-  const siblingCodesUnder = useCallback(
-    (parentId: string | null) =>
-      nodes.filter((node) => node.parentId === parentId).map((node) => node.code),
-    [nodes],
-  );
+  const hasVariations = useMemo(() => flattenTree(nodes).some((node) => node.sourceType === 'VARIATION'), [nodes]);
   const rollup = useMemo(() => computeRollup(nodes), [nodes]);
   const rows = useMemo(
-    () => buildRows(nodes, { collapsed, search, pricing, pinned: highlighted }),
-    [nodes, collapsed, search, pricing, highlighted],
+    () => buildRows(nodes, { collapsed, search, pricing: filter === 'unpriced' ? 'incomplete' : 'all' }),
+    [nodes, collapsed, search, filter],
   );
+  const unitOptions = useMemo(() => {
+    const fromBill = flattenTree(nodes).map((node) => node.unit).filter((unit): unit is string => Boolean(unit));
+    const fromMaster = (unitsQuery.data ?? []).map((unit) => unit.symbol || unit.code);
+    return [...new Set([...fromMaster, ...fromBill])].sort();
+  }, [nodes, unitsQuery.data]);
+  const bounds = useCallback((node: BoqTreeNodeResponse) => siblingBounds(nodes, node), [nodes]);
 
   if (workspaceQuery.isPending) return <WorkspaceSkeleton label={tCommon('loading')} />;
 
   if (workspaceQuery.isError) {
     return (
-      <Alert
-        variant="error"
-        title={t('loadFailed')}
-        messages={[errorText(workspaceQuery.error, t('loadFailedHint'))]}
-      />
+      <Alert variant="error" title={t('loadFailed')} messages={[errorText(workspaceQuery.error, t('loadFailedHint'))]} />
     );
   }
 
   if (!workspace) return null;
 
-  const capabilities = workspace.capabilities;
+  const { capabilities } = workspace;
   const canEdit = capabilities.canEdit;
   const canViewCost = capabilities.canViewCost;
-  const canViewMargin = capabilities.canViewMargin;
+  const onDraft = operationalVersionId === workspace.draft?.id;
+  const canManage = can(BOQ_PERMISSIONS.manage) && canEdit && onDraft;
+  const signed = workspace.mainContractStatus === 'ACTIVE';
+  const committed = workspace.moneyBand?.lifeStage === 'COMMITTED';
+  const actions = getVersionActions(workspace, operationalVersionId);
+  const canCreateContract =
+    can('create:contract') && can('approve:contract') && project?.commercialModel !== 'INTERNAL_CAPITAL';
 
-  // Empty BOQ (H2): two doors, only when the user can edit. Import creates the BOQ; Start blank
-  // does too. A read-only user with no BOQ sees a plain "nothing here yet".
+  const importView = (
+    <BoqImportView
+      projectId={projectId}
+      currency={workspace.currency}
+      existing={{ sections: counts.sections, items: counts.items }}
+      canViewCost={canViewCost}
+      onCancel={() => setView('bill')}
+      onImported={(outcome) => {
+        setImported(outcome);
+        setView('bill');
+      }}
+    />
+  );
+
+  // ─── Empty ──────────────────────────────────────────────────────────────────
   if (!workspace.boq) {
+    if (view === 'import' && canEdit) return importView;
     return (
-      <>
-        <EmptyState
-          variant="page"
-          icon={<ClipboardList size={25} strokeWidth={1.8} aria-hidden="true" />}
-          title={t('empty.title')}
-          description={t('empty.description')}
-          action={
-            canEdit ? (
+      <EmptyState
+        variant="page"
+        icon={<ClipboardList size={25} strokeWidth={1.8} aria-hidden="true" />}
+        title={t('empty.title')}
+        description={canEdit ? t('empty.description') : t('empty.readOnly')}
+        action={
+          canEdit ? (
+            <div className="flex flex-col items-center gap-3">
               <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button className="gap-2" onClick={() => setImportOpen(true)}>
+                <Button className="gap-2" onClick={() => setView('import')}>
                   <FileSpreadsheet size={16} aria-hidden="true" />
                   {t('empty.import')}
                 </Button>
@@ -178,56 +187,27 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   {initialize.isPending ? t('initializing') : t('empty.startBlank')}
                 </Button>
               </div>
-            ) : undefined
-          }
-        />
-        {importOpen ? (
-          <BoqImportDialog
-            projectId={projectId}
-            currency={workspace.currency}
-            open
-            onClose={() => setImportOpen(false)}
-            onImported={(summary) => toast({ title: summary })}
-          />
-        ) : null}
-      </>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto gap-1.5 p-0"
+                onClick={() => downloadCsv('BOQ-import-template.csv', importTemplateCsv())}
+              >
+                <Download size={14} aria-hidden="true" />
+                {t('import.upload.template')}
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
     );
   }
 
-  const band = workspace.moneyBand;
-  const committed = band?.lifeStage === 'COMMITTED';
-  // A contract created from a draft BOQ owns a signing snapshot even though the live operational
-  // version remains WORKING. That post-signing state must expose the variation command.
-  const hasSignedContract = workspace.mainContractStatus === 'ACTIVE';
-  // The working draft is what free-editing acts on; a committed version pins value cells.
-  const onDraft = operationalVersionId === workspace.draft?.id;
-  // Edit affordances need edit permission AND an editable draft (the server refuses otherwise).
-  const canManage = can(BOQ_PERMISSIONS.manage) && canEdit && onDraft;
-  const canImport = canManage;
-  const actions = getVersionActions(workspace, operationalVersionId);
+  if (view === 'import' && canManage) return importView;
 
-  const allSectionIds = collectSectionIds(nodes);
-  const allExpanded = collapsed.size === 0;
-  const isFiltered = search.trim().length > 0 || pricing !== 'all';
-
-  const pricedPercent = counts.items === 0 ? 0 : Math.round((counts.priced / counts.items) * 100);
+  const isFiltered = search.trim().length > 0 || filter !== 'all';
   const unpricedCount = Math.max(0, counts.items - counts.priced);
-
-  const showNodes = (nodeIds: string[]) => {
-    setHighlighted(new Set(nodeIds));
-    setSearch('');
-    setPricing('all');
-    setCollapsed(new Set());
-    document.getElementById('boq-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  /* Manual BOQ commitment is retired. Contract signing captures the immutable snapshot. */
-  // WORKING BOQs are signed through the contract command; no manual baseline command lives here.
-        // WORKING → the forward move is commit-to-contract.
-
-  const visibleAmount = isFiltered
-    ? sumVisibleItems(rows.map((row) => row.node))
-    : (workspace.draft?.totalAmount ?? workspace.approved?.totalAmount ?? null);
+  const allSectionIds = collectSectionIds(nodes);
 
   const toggleCollapsed = (nodeId: string) =>
     setCollapsed((current) => {
@@ -239,163 +219,93 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   const rowCommands: BoqRowCommands | null = canManage
     ? {
-        onEdit: (node) =>
-          setDrawer({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node }),
-        onAddItem: (parent) =>
-          setDrawer({ mode: 'add', kind: 'item', parent, node: null, siblingCodes: siblingCodesUnder(parent.id) }),
-        onAddSection: (parent) =>
-          setDrawer({ mode: 'add', kind: 'section', parent, node: null, siblingCodes: siblingCodesUnder(parent.id) }),
-        onDelete: (node) => {
-          if (!operationalVersionId) return;
-          deleteNode.mutate(node.id);
+        onEdit: (node) => setDrawer({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node }),
+        onAddFromLibrary: (parent) =>
+          setDrawer({ mode: 'add', kind: 'item', parent, node: null, siblingCodes: parent.children.map((c) => c.code) }),
+        onAddSection: (parent) => {
+          if (collapsed.has(parent.id)) toggleCollapsed(parent.id);
+          setPending({ parentId: parent.id, kind: 'section' });
         },
-        onMove: (node, direction) => {
-          if (!operationalVersionId) return;
+        onDelete: (node) => {
+          deleteNode.reset();
+          setDeleteTarget(node);
+        },
+        onMove: (node, direction) =>
           moveNode.mutate({
             nodeId: node.id,
             ...(node.parentId ? { newParentId: node.parentId } : {}),
             newSortOrder: Math.max(0, node.sortOrder + direction),
-          });
-        },
+          }),
+        bounds,
         onEditField: async (node, field, value) => {
-          if (!operationalVersionId) return;
           const values = { ...toNodeFormValues(node), [field]: value };
           const payload = toUpdateNodePayload(values, { kind: node.isLeaf ? 'item' : 'section' });
           await updateNode.mutateAsync({ nodeId: node.id, payload });
         },
+        onCreate: async ({ parent, kind, description }) => {
+          // No code: the server numbers the line from its position (D2).
+          await addNode.mutateAsync({
+            ...(parent ? { parentId: parent.id } : {}),
+            description,
+            isLeaf: kind === 'item',
+          });
+        },
       }
     : null;
 
-  // The primary action is life-stage-aware and never a disabled dead button (next-step doctrine).
-  const contractAction = guidance.data?.find(
-    (item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl,
-  );
-
-  const primaryAction = committed || hasSignedContract ? (
-    canEdit ? (
-      <Button size="sm" className="gap-2" onClick={() => setClassifierOpen(true)}>
-        <Plus size={16} aria-hidden="true" />
-        {t('mode.addExtraWork')}
-      </Button>
-    ) : null
-  ) : (
-    <Button asChild size="sm">
-      <Link href={contractAction?.actionUrl ?? `/projects/${projectId}/commercial/contract/new`}>
-        {t('actions.createContract')}
-      </Link>
-    </Button>
-  );
-
-  const compareAffordance = workspace.compareToSignedAvailable ? (
-    <Button variant="outline" size="sm" className="gap-2" onClick={() => setCompareOpen(true)}>
-      <GitCompare size={16} aria-hidden="true" />
-      {t('compareToSigned.action')}
-    </Button>
-  ) : null;
-
-  const timelineAffordance = (
-    <Button variant="outline" size="sm" className="gap-2" onClick={() => setTimelineOpen(true)}>
-      <History size={16} aria-hidden="true" />
-      {t('timeline.action')}
-    </Button>
-  );
-
-  const handleExportTree = () => {
-    downloadCsv(
-      `BOQ.csv`,
-      treeToCsv(nodes, workspace.currency, {
-        includePricing: canViewCost,
-        headers: exportHeaders(t),
-      }),
-    );
-  };
+  const createContractHref = `/projects/${projectId}/commercial/contract/new`;
 
   return (
     <div className="space-y-3">
-      <BoqMoneyStrip
-        band={band}
-        currency={workspace.currency}
-        pricedPercent={pricedPercent}
-        unpricedCount={unpricedCount}
-        signedContractValue={band?.baseContractValue ?? null}
-        signedContractActive={hasSignedContract}
-        // variation-collapse: a raised variation is adopted immediately, never "pending", so the
-        // workspace never seeds a pending count. The committed hint below still links to the ledger.
-        pendingVariationCount={0}
-        primaryAction={primaryAction}
-        secondaryActions={
-          <>
-            {compareAffordance}
-            {timelineAffordance}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  {t('actions.more')}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={handleExportTree}>{t('toolbar.export')}</DropdownMenuItem>
-                {actions.canCreateDraft ? (
-                  <DropdownMenuItem onSelect={() => setCommand('revise')}>
-                    {t('actions.startRevision')}
-                  </DropdownMenuItem>
-                ) : null}
-                {actions.canCancelDraft ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => setCommand('discard')}>
-                      {t('actions.discardDraft')}
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
+      <BoqContextBar
+        workspace={workspace}
+        stage={{ editable: canManage, signed, committed }}
+        counts={counts}
+        actions={actions}
+        canCreateContract={canCreateContract}
+        canImport={canManage && !signed}
+        createContractHref={createContractHref}
+        onShowUnpriced={() => {
+          setSearch('');
+          setFilter('unpriced');
+          document.getElementById('boq-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        onAddExtraWork={() => setClassifierOpen(true)}
+        onImport={() => {
+          setImported(null);
+          setView('import');
+        }}
+        onExport={() =>
+          downloadCsv(
+            'BOQ.csv',
+            treeToCsv(nodes, workspace.currency, { includePricing: canViewCost, headers: exportHeaders(t) }),
+          )
         }
+        onHistory={() => setTimelineOpen(true)}
+        onCompare={workspace.compareToSignedAvailable ? () => setCompareOpen(true) : undefined}
+        onRevise={() => setReviseOpen(true)}
+        onDiscard={() => {
+          discard.reset();
+          setDiscardOpen(true);
+        }}
       />
 
-      {workspace.readiness && onDraft && !committed && !workspace.readiness.ready ? (
-        <BoqReadinessBanner
-          readiness={workspace.readiness}
-          dismissible={workspace.readiness.ready}
-          onShowNodes={showNodes}
-        />
+      {imported ? (
+        <Notice tone="success">
+          {t('import.done', { items: imported.items, sections: imported.sections, file: imported.fileName })}
+        </Notice>
       ) : null}
 
-      {/* COMMITTED teaches the pin at the cell (grid), but a one-line note names the rule once. */}
-      {committed && canEdit ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface-subtle px-4 py-2.5">
-          <span className="text-body-sm text-muted-foreground">{t('mode.committedHint')}</span>
-          <Link
-            href={`/projects/${projectId}/commercial/variations`}
-            className="inline-flex items-center gap-1 text-body-sm font-medium text-brand-primary hover:underline"
-          >
-            {t('contractLocked.action')}
-            <ArrowRight size={14} aria-hidden="true" />
-          </Link>
-        </div>
-      ) : null}
-
-      <div id="boq-grid" className="space-y-3 scroll-mt-4">
+      <div id="boq-grid" className="scroll-mt-4 space-y-3">
         <BoqToolbar
           search={search}
           onSearchChange={setSearch}
-          pricing={pricing}
-          onPricingChange={(next) => {
-            setPricing(next);
-            if (next === 'all') setHighlighted(new Set());
-          }}
-          allExpanded={allExpanded}
-          onToggleExpandAll={() => setCollapsed(allExpanded ? new Set(allSectionIds) : new Set())}
-          onAddSection={() =>
-            setDrawer({ mode: 'add', kind: 'section', parent: null, node: null, siblingCodes: siblingCodesUnder(null) })
-          }
-          onImport={() => setImportOpen(true)}
-          canManage={canManage}
-          canImport={canImport}
-          hasVariations={hasVariations}
-          resultCount={rows.length}
-          totalCount={counts.sections + counts.items}
+          filter={filter}
+          onFilterChange={setFilter}
+          unpricedCount={unpricedCount}
+          showFilter={canViewCost}
+          onExpandAll={() => setCollapsed(new Set())}
+          onCollapseAll={() => setCollapsed(new Set(allSectionIds))}
         />
 
         {treeQuery.isPending ? (
@@ -405,56 +315,47 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         ) : (
           <BoqGrid
             rows={rows}
-            totalRows={counts.sections + counts.items}
             currency={workspace.currency}
             totalAmount={workspace.draft?.totalAmount ?? workspace.approved?.totalAmount ?? null}
-            visibleAmount={visibleAmount}
             sectionTotals={rollup.sectionTotals}
             isFiltered={isFiltered}
-            canManage={canManage}
             canViewCommercials={canViewCost}
             committed={committed}
             showSource={hasVariations || committed}
-            highlighted={highlighted}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
-            onPinnedCellEdit={committed || (hasSignedContract && canEdit) ? () => setClassifierOpen(true) : undefined}
-            onSelect={(node) =>
-              setDrawer({
-                mode: 'edit',
-                kind: node.isLeaf ? 'item' : 'section',
-                parent: null,
-                node,
-              })
-            }
+            onPinnedCellEdit={committed || (signed && canEdit) ? () => setClassifierOpen(true) : undefined}
+            onSelect={(node) => setDrawer({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node })}
             commands={rowCommands}
-            emptyMessage={
-              search || pricing !== 'all'
-                ? t('grid.noMatches')
-                : onDraft
-                  ? t('grid.emptyDraft')
-                  : t('grid.empty')
-            }
+            pending={pending}
+            onPendingChange={setPending}
+            unitsListId={UNITS_LIST_ID}
+            emptyMessage={isFiltered ? t('grid.noMatches') : onDraft ? t('grid.emptyDraft') : t('grid.empty')}
           />
         )}
+
+        {rowCommands && !isFiltered && !pending ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-brand-primary"
+            onClick={() => setPending({ parentId: null, kind: 'section' })}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {t('grid.addSection')}
+          </Button>
+        ) : null}
       </div>
 
-      {importOpen ? (
-        <BoqImportDialog
-          projectId={projectId}
-          currency={workspace.currency}
-          open
-          onClose={() => setImportOpen(false)}
-          onImported={(summary) => toast({ title: summary })}
-        />
-      ) : null}
+      <datalist id={UNITS_LIST_ID}>
+        {unitOptions.map((unit) => (
+          <option key={unit} value={unit} />
+        ))}
+      </datalist>
 
       <BoqItemDrawer
-        key={
-          drawer
-            ? `${drawer.mode}-${drawer.kind}-${drawer.node?.id ?? drawer.parent?.id ?? 'root'}`
-            : 'closed'
-        }
+        key={drawer ? `${drawer.mode}-${drawer.kind}-${drawer.node?.id ?? drawer.parent?.id ?? 'root'}` : 'closed'}
         target={drawer}
         currency={workspace.currency}
         readOnly={!canManage}
@@ -463,7 +364,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         canViewCommercials={canViewCost}
         canSaveToLibrary={canManage}
         errorMessage={
-          addNode.error || updateNode.error
+          drawer && (addNode.error || updateNode.error)
             ? errorText(addNode.error ?? updateNode.error, t('editor.saveFailed'))
             : undefined
         }
@@ -475,25 +376,67 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         onSubmit={(values, target, library) => handleSave(values, target, library)}
       />
 
+      {deleteTarget ? (
+        <ConfirmActionDialog
+          title={t('grid.deleteTitle', { code: deleteTarget.code, name: deleteTarget.description })}
+          description={t('grid.deleteBody')}
+          confirmLabel={deleteTarget.isLeaf ? t('grid.delete') : t('grid.deleteSection')}
+          destructive
+          isPending={deleteNode.isPending}
+          errorMessage={deleteNode.isError ? errorText(deleteNode.error, t('grid.deleteFailed')) : undefined}
+          onConfirm={() => deleteNode.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) })}
+          onDismiss={() => setDeleteTarget(null)}
+        />
+      ) : null}
+
+      {discardOpen && operationalVersionId ? (
+        <ConfirmActionDialog
+          title={t('contextBar.discardTitle', { version: workspace.draft?.versionNumber ?? 1 })}
+          description={t('contextBar.discardBody', { items: counts.items, sections: counts.sections })}
+          confirmLabel={t('contextBar.discardConfirm')}
+          destructive
+          isPending={discard.isPending}
+          errorMessage={discard.isError ? errorText(discard.error, t('commands.discard.failed')) : undefined}
+          onConfirm={() => discard.mutate(operationalVersionId, { onSuccess: () => setDiscardOpen(false) })}
+          onDismiss={() => setDiscardOpen(false)}
+        />
+      ) : null}
+
+      {reviseOpen ? (
+        <LifecycleCommandDrawer
+          open
+          onClose={() => {
+            revise.reset();
+            setReviseOpen(false);
+          }}
+          commandName={t('commands.revise.name')}
+          statusVocabulary="boqVersion"
+          currentStatus="COMMITTED"
+          nextStatus="DRAFT"
+          businessImpact={t('commands.revise.impact')}
+          reason={{ required: false, label: t('commands.revise.notes'), hint: t('commands.revise.notesHint') }}
+          confirmLabel={t('commands.revise.confirm')}
+          isPending={revise.isPending}
+          errorMessage={revise.isError ? errorText(revise.error, t('commands.revise.failed')) : undefined}
+          onConfirm={(reason) => revise.mutate(reason, { onSuccess: () => setReviseOpen(false) })}
+        />
+      ) : null}
+
       {classifierOpen ? (
         <BoqClassifierDrawer
           open
           currency={workspace.currency}
-          contingencyRemaining={band?.contingencyRemaining ?? null}
-          contractValue={band?.contractValue ?? null}
-          totalClientRevenue={band?.totalClientRevenue ?? null}
-          // All three routes write via POST .../boq/extra-work (R5, variation-collapse): Absorb adds
-          // an ABSORBED leaf from contingency, Separate a SEPARATE_CHARGE leaf, and Variation creates
-          // AND adopts the VO inline (contract value rises immediately).
+          contingencyRemaining={workspace.moneyBand?.contingencyRemaining ?? null}
+          contractValue={workspace.moneyBand?.contractValue ?? null}
+          totalClientRevenue={workspace.moneyBand?.totalClientRevenue ?? null}
+          // All three routes write via POST …/boq/extra-work (R5, variation-collapse).
           absorbEnabled
           separateEnabled
           sections={nodes
             .filter((node) => !node.isLeaf)
             .map((node) => ({ id: node.id, code: node.code, description: node.description }))}
           isPending={addExtraWork.isPending}
-          errorMessage={
-            addExtraWork.isError ? (addExtraWork.error as Error | undefined)?.message : undefined
-          }
+          errorMessage={addExtraWork.isError ? (addExtraWork.error as Error | undefined)?.message : undefined}
           onSubmit={handleClassify}
           onClose={() => {
             addExtraWork.reset();
@@ -517,36 +460,10 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         <BoqTimelineDrawer
           data={timelineQuery.data}
           currency={workspace.currency}
-          canViewMargin={canViewMargin}
+          canViewMargin={capabilities.canViewMargin}
           isPending={timelineQuery.isPending}
           isError={timelineQuery.isError}
           onClose={() => setTimelineOpen(false)}
-        />
-      ) : null}
-
-      {command ? (
-        <LifecycleCommandDrawer
-          open
-          onClose={() => {
-            discard.reset();
-            revise.reset();
-            setCommand(null);
-          }}
-          commandName={t(`commands.${command}.name`)}
-          statusVocabulary="boqVersion"
-          currentStatus={command === 'revise' ? 'COMMITTED' : 'DRAFT'}
-          nextStatus={command === 'discard' ? 'CANCELLED' : 'DRAFT'}
-          businessImpact={t(`commands.${command}.impact`)}
-          reason={
-            command === 'revise'
-              ? { required: false, label: t('commands.revise.notes'), hint: t('commands.revise.notesHint') }
-              : undefined
-          }
-          confirmLabel={t(`commands.${command}.confirm`)}
-          isDestructive={command === 'discard'}
-          isPending={discard.isPending || revise.isPending}
-          errorMessage={commandError(command, t)}
-          onConfirm={(reason) => runCommand(command, reason)}
         />
       ) : null}
     </div>
@@ -559,20 +476,13 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
     if (target.mode === 'edit' && target.node) {
       updateNode.mutate(
-        {
-          nodeId: target.node.id,
-          payload: toUpdateNodePayload(values, { kind: target.kind }),
-        },
+        { nodeId: target.node.id, payload: toUpdateNodePayload(values, { kind: target.kind }) },
         { onSuccess: () => setDrawer(null) },
       );
       return;
     }
 
-    const payload = toCreateNodePayload(values, {
-      kind: target.kind,
-      parentId: target.parent?.id,
-    });
-
+    const payload = toCreateNodePayload(values, { kind: target.kind, parentId: target.parent?.id });
     addNode.mutate(payload, {
       onSuccess: () => {
         runLibrarySideEffects(values, library, payload.unitRate ?? null);
@@ -581,14 +491,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     });
   }
 
-  /**
-   * The who-pays classifier's decision (R5, variation-collapse). All three routes write immediately
-   * via the extra-work route and the drawer stays open until success, so a 400 (e.g. contingency
-   * insufficient) shows in place. VARIATION now creates AND adopts the variation in one step — it
-   * raises the contract value inline and nests under a billing stage, so there is no redirect and no
-   * "pending" framing: on success the BOQ workspace query invalidation (via useAddExtraWork) refreshes
-   * the money band and tree so the raised value shows here.
-   */
+  /** The who-pays classifier's decision (R5, variation-collapse). */
   function handleClassify(result: ClassifierResult) {
     addExtraWork.mutate(
       {
@@ -600,9 +503,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             ...(result.parentId ? { parentId: result.parentId } : {}),
           },
         ],
-        ...(result.clientApprovalReference
-          ? { clientApprovalReference: result.clientApprovalReference }
-          : {}),
+        ...(result.clientApprovalReference ? { clientApprovalReference: result.clientApprovalReference } : {}),
       },
       {
         onSuccess: () => {
@@ -615,9 +516,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   ? 'classifier.absorbed'
                   : 'classifier.separateAdded',
             ),
-            // A separate charge raises a draft client invoice as a side effect. Say so, and take
-            // the reader to where it waits for review (flow plan PR 4) — it used to appear in
-            // Billing & collection without a word.
             ...(result.route === 'SEPARATE'
               ? {
                   description: t('classifier.separateDraftCreated'),
@@ -634,18 +532,10 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     );
   }
 
-  function runLibrarySideEffects(
-    values: NodeFormValues,
-    library: LibraryIntent,
-    unitRate: string | null,
-  ) {
+  function runLibrarySideEffects(values: NodeFormValues, library: LibraryIntent, unitRate: string | null) {
     if (library.pickedItemId && unitRate) {
-      recordLibraryUsage.mutate({
-        id: library.pickedItemId,
-        payload: { rate: unitRate, projectId },
-      });
+      recordLibraryUsage.mutate({ id: library.pickedItemId, payload: { rate: unitRate, projectId } });
     }
-
     if (library.saveToLibrary) {
       const unit = values.unit.trim();
       saveLibraryItem.mutate({
@@ -657,42 +547,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       });
     }
   }
-
-  function runCommand(current: Exclude<Command, null>, reason: string) {
-    const close = { onSuccess: () => setCommand(null) };
-
-    if (current === 'discard' && operationalVersionId) discard.mutate(operationalVersionId, close);
-    else if (current === 'revise') revise.mutate(reason, close);
-  }
-
-  function commandError(current: Exclude<Command, null>, translate: (key: string) => string) {
-    const mutation = current === 'discard' ? discard : revise;
-    if (!mutation.error) return undefined;
-
-    // A 409 on commit is the governance gate — sent for sign-off, not a failure (ADR-011/015).
-    return errorText(mutation.error, translate(`commands.${current}.failed`));
-  }
 }
 
-/**
- * The single primary action for the WORKING flow. Always `brand-primary`, never disabled:
- * `resolveNextStep` returns something doable or nothing at all.
- */
-/** Sum of the visible billable rows, in minor units, so a filtered footer stays honest. */
-function sumVisibleItems(nodes: BoqTreeNodeResponse[]): string | null {
-  const items = flattenTree(nodes).filter((node) => node.isLeaf && isPriced(node));
-  if (items.length === 0) return null;
-  const minor = sumMinorUnits(
-    items.map((item) => item.computedTotal),
-    MONEY_SCALE,
-  );
-  return fromMinorUnits(minor, MONEY_SCALE);
-}
-
-/**
- * The commit consequence copy (M3) carries the weight of the transition — fixing the contract
- * value and setting the milestone schedule, after which money changes go through a variation.
- */
 function exportHeaders(t: (key: string, values?: Record<string, string>) => string) {
   return {
     code: t('grid.code'),
@@ -717,8 +573,7 @@ function WorkspaceSkeleton({ label }: { label: string }) {
   return (
     <div className="space-y-3" role="status" aria-live="polite">
       <span className="sr-only">{label}</span>
-      {/* Skeletons mirror the final layout: a compact strip, then the dominant grid. */}
-      <Skeleton className="h-12 w-full" aria-hidden="true" />
+      <Skeleton className="h-14 w-full" aria-hidden="true" />
       <Skeleton className="h-96 w-full" aria-hidden="true" />
     </div>
   );

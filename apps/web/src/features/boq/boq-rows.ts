@@ -120,6 +120,65 @@ function matches(node: BoqTreeNodeResponse, term: string, options: RowOptions): 
   }
 }
 
+/** A row the grid draws: a node, or the "+ Add item to {code}" line closing an open section. */
+export type GridEntry =
+  | { type: 'node'; row: BoqRow }
+  | { type: 'add'; parent: BoqTreeNodeResponse; depth: number };
+
+/**
+ * A section may hold items OR sub-sections, never both (server-enforced). So an "Add item" line
+ * belongs only under a section with no sub-sections — one that holds items, or nothing yet.
+ */
+export function acceptsItems(node: BoqTreeNodeResponse): boolean {
+  return !node.isLeaf && node.children.every((child) => child.isLeaf);
+}
+
+export function acceptsSections(node: BoqTreeNodeResponse): boolean {
+  return !node.isLeaf && node.children.every((child) => !child.isLeaf);
+}
+
+/**
+ * Interleaves the "+ Add item to {code}" lines: one at the end of every expanded section that
+ * accepts items, after the last row of its subtree. Pure, so the placement is testable.
+ */
+export function withAddRows(rows: BoqRow[]): GridEntry[] {
+  const entries: GridEntry[] = [];
+  // Sections whose subtree is still open, innermost last.
+  const open: BoqRow[] = [];
+
+  const closeUntil = (depth: number) => {
+    while (open.length > 0 && open[open.length - 1]!.depth >= depth) {
+      const section = open.pop()!;
+      entries.push({ type: 'add', parent: section.node, depth: section.depth + 1 });
+    }
+  };
+
+  for (const row of rows) {
+    closeUntil(row.depth);
+    entries.push({ type: 'node', row });
+    if (!row.node.isLeaf && row.expanded && acceptsItems(row.node)) open.push(row);
+  }
+  closeUntil(0);
+  return entries;
+}
+
+/** Whether a node can move up / down among its siblings — hide the moves it cannot make. */
+export function siblingBounds(
+  nodes: BoqTreeNodeResponse[],
+  node: BoqTreeNodeResponse,
+): { first: boolean; last: boolean } {
+  const siblings = node.parentId
+    ? (flattenTree(nodes).find((candidate) => candidate.id === node.parentId)?.children ?? [])
+    : nodes;
+  const index = siblings.findIndex((sibling) => sibling.id === node.id);
+  return { first: index <= 0, last: index === -1 || index === siblings.length - 1 };
+}
+
+/** Every node under a node (not counting it) — "and n lines under it". */
+export function countDescendants(node: BoqTreeNodeResponse): number {
+  return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
+}
+
 /** Every node id in the tree — for expand-all / collapse-all. */
 export function collectSectionIds(nodes: BoqTreeNodeResponse[]): string[] {
   const ids: string[] = [];

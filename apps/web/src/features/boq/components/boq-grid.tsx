@@ -2,16 +2,7 @@
 
 import { useRef, useState } from 'react';
 import type { BoqTreeNodeResponse } from '@erp/types';
-import {
-  ChevronRight,
-  CircleDollarSign,
-  Diamond,
-  Lock,
-  LockKeyhole,
-  MoreHorizontal,
-  Plus,
-  Receipt,
-} from 'lucide-react';
+import { ChevronRight, CircleDollarSign, Diamond, Lock, MoreHorizontal, Plus, Receipt } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
@@ -36,160 +27,234 @@ import {
 import { formatMoney, formatNumber } from '@/lib/format';
 
 import { clamp, isNavigationKey, resolveKeyIntent } from '../boq-keyboard';
-import { isIncomplete, type BoqRow } from '../boq-rows';
-import { EditableCell } from './boq-editable-cell';
+import {
+  acceptsItems,
+  acceptsSections,
+  countDescendants,
+  withAddRows,
+  type BoqRow,
+  type GridEntry,
+} from '../boq-rows';
+import { CellEditor } from './boq-cell-editor';
+
+export type EditableField = 'description' | 'unit' | 'quantity' | 'unitRate';
 
 export interface BoqRowCommands {
+  /** "Edit details…" — the side sheet with pricing basis, measurement method and library. */
   onEdit: (node: BoqTreeNodeResponse) => void;
   onAddSection: (parent: BoqTreeNodeResponse) => void;
-  onAddItem: (parent: BoqTreeNodeResponse) => void;
+  /** "Add from library…" — the sheet in add mode with the library picker. */
+  onAddFromLibrary: (parent: BoqTreeNodeResponse) => void;
   onDelete: (node: BoqTreeNodeResponse) => void;
   onMove: (node: BoqTreeNodeResponse, direction: -1 | 1) => void;
-  /** Opens the change log filtered to this line (BOQ refinement Phase 1). Optional. */
-  onViewHistory?: (node: BoqTreeNodeResponse) => void;
-  /**
-   * Inline field edit (BOQ refinement Phase 5). Resolves when persisted, rejects on failure so the
-   * cell can show a retry. Present only when the version is an editable draft.
-   */
-  onEditField?: (
-    node: BoqTreeNodeResponse,
-    field: 'description' | 'quantity' | 'unitRate',
-    value: string,
-  ) => Promise<void>;
+  /** Hide the moves a node cannot make — the first sibling has no "Move up". */
+  bounds: (node: BoqTreeNodeResponse) => { first: boolean; last: boolean };
+  /** Persist one field; rejects on failure so the cell keeps the value for a retry. */
+  onEditField: (node: BoqTreeNodeResponse, field: EditableField, value: string) => Promise<void>;
+  /** Create a new line from the inline "+ Add item" / "+ Add section" row. */
+  onCreate: (input: { parent: BoqTreeNodeResponse | null; kind: 'item' | 'section'; description: string }) => Promise<void>;
+}
+
+/** An inline line being typed but not yet created. */
+export interface PendingLine {
+  parentId: string | null;
+  kind: 'item' | 'section';
 }
 
 /**
  * The BOQ grid.
  *
- * A real `<table>` this time. The previous implementation was flexbox `div`s with
- * hand-tuned widths (`w-16`, `w-24`, `w-28`, `w-40`), which meant no sticky header, no
- * column alignment down the page, and nothing for a screen reader to announce as a table —
- * on the most number-dense screen in the product.
+ * Two modes, one table:
  *
- * Wide content scrolls inside `TableScroll`; the page body never scrolls sideways. Every
- * numeric cell is `tabular-nums` and wrapped in `LtrValue`, without which a rate reverses
- * in Arabic — `tabular-nums` does not fix bidi.
+ *  - **Read** (no `commands`): a `role="grid"` with one roving tab stop and arrow-key navigation;
+ *    Enter opens the line's details.
+ *  - **Edit** (a draft the reader may change): boxed fields at rest — description, unit, quantity,
+ *    rate — each saving itself on blur/Enter. Tab moves field to field, so the table drops the
+ *    grid role and the roving focus (they would fight the inputs). Every open section that takes
+ *    items ends with "+ Add item to {code}", which inserts a focused line; "+ Add section" sits
+ *    under the table.
+ *
+ * Below 640px the unit, quantity and rate columns go; the line reads "180 m³ × $6.50" under its
+ * description, and tapping it opens the details sheet — a phone is no place for a four-field row.
+ *
+ * Money follows the server's visibility tiers: without `canViewCommercials` the rate and amount
+ * columns and the total are not drawn at all — the figures never reached the browser.
  */
 export function BoqGrid({
   rows,
-  totalRows,
   currency,
   totalAmount,
-  visibleAmount,
   sectionTotals,
   isFiltered,
-  canManage,
   canViewCommercials,
   committed = false,
   showSource,
-  highlighted,
+  highlighted = new Set(),
   collapsed,
   onToggle,
   onSelect,
   onPinnedCellEdit,
   commands,
+  pending = null,
+  onPendingChange,
+  unitsListId,
   emptyMessage,
+  footer = true,
 }: {
   rows: BoqRow[];
-  totalRows: number;
   currency: string;
   totalAmount: string | null;
-  /** Sum of the items currently visible. Shown only while a filter narrows the list. */
-  visibleAmount: string | null;
-  /**
-   * Section id → client-rolled-up subtotal (decimal string, or null when unpriced). Computed
-   * once in the workspace from the tree and memoized, so a section shows the sum of its own
-   * descendant leaves rather than each leaf being read in isolation.
-   */
+  /** Section id → rolled-up subtotal (decimal string, or null when unpriced). */
   sectionTotals: ReadonlyMap<string, string | null>;
   isFiltered: boolean;
-  canManage: boolean;
   canViewCommercials: boolean;
-  /**
-   * COMMITTED mode (R11 Decision 3/4). Value cells (Qty/Rate) are PINNED: they show 🔒 and do not
-   * accept a direct overwrite — the attempt opens the who-pays classifier (`onPinnedCellEdit`).
-   * Money-neutral cells (description) stay freely editable. Driven off `moneyBand.lifeStage`.
-   */
+  /** Legacy COMMITTED versions: value cells are pinned and open the who-pays decision. */
   committed?: boolean;
-  /**
-   * Whether provenance is worth a column. False while every line came in with the original
-   * scope, which is every BOQ until a Variation adds one — a column reading "Baseline" on all
-   * 400 rows spends horizontal space to say nothing. `sourceType` is never dropped from the
-   * data, and the column returns the moment provenance is actually mixed.
-   */
   showSource: boolean;
-  /** Node ids the readiness banner asked to draw attention to. */
-  highlighted: ReadonlySet<string>;
+  highlighted?: ReadonlySet<string>;
   collapsed: ReadonlySet<string>;
   onToggle: (nodeId: string) => void;
   onSelect: (node: BoqTreeNodeResponse) => void;
-  /** COMMITTED only — a click on a pinned value cell opens the who-pays classifier. */
   onPinnedCellEdit?: () => void;
+  /** Present only on an editable draft. Its presence switches the grid to edit mode. */
   commands: BoqRowCommands | null;
+  pending?: PendingLine | null;
+  onPendingChange?: (next: PendingLine | null) => void;
+  unitsListId?: string;
   emptyMessage: string;
+  /** The BOQ-total footer row. Off for the import preview. */
+  footer?: boolean;
 }) {
   const t = useTranslations('platform.boq.grid');
   const locale = useLocale() as 'en' | 'ar';
   const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const editing = commands !== null;
 
-  // Roving tab stop: one row is reachable by Tab, the arrows move between them. Sixty-seven
-  // individually tabbable rows would be worse than none.
+  // Read mode: one row holds the tab stop, arrows move between rows.
   const [focusIndex, setFocusIndex] = useState(0);
   const activeIndex = clamp(focusIndex, rows.length);
 
-  // code · description · unit · quantity · actions, plus rate/amount and source when shown.
+  const entries: GridEntry[] =
+    editing && !isFiltered ? withAddRows(rows) : rows.map((row) => ({ type: 'node', row }));
+
+  // code · description · unit · quantity · [rate · amount] · [source] · actions
   const columnCount = 5 + (canViewCommercials ? 2 : 0) + (showSource ? 1 : 0);
 
   const focusRow = (index: number) => {
     setFocusIndex(index);
-    bodyRef.current?.querySelectorAll<HTMLTableRowElement>('tr')[index]?.focus();
+    bodyRef.current?.querySelectorAll<HTMLTableRowElement>('tr[data-node]')[index]?.focus();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTableSectionElement>) => {
-    // Let a control inside the row keep its own keys — Enter on the ⋯ trigger should open
-    // the menu, not the item drawer.
-    if (event.target !== event.currentTarget && !(event.target as HTMLElement).matches('tr')) {
-      return;
-    }
+    if (editing) return;
+    if (event.target !== event.currentTarget && !(event.target as HTMLElement).matches('tr')) return;
     if (!isNavigationKey(event.key)) return;
-
     const intent = resolveKeyIntent(event.key, activeIndex, rows, false);
     if (!intent) return;
-
     event.preventDefault();
     if (intent.type === 'focus') focusRow(intent.index);
     else if (intent.type === 'toggle') onToggle(intent.nodeId);
     else if (intent.type === 'open') onSelect(rows[intent.index]!.node);
   };
 
+  const pendingRow = (parent: BoqTreeNodeResponse | null, depth: number) => (
+    <PendingLineRow
+      key={`pending-${parent?.id ?? 'root'}`}
+      kind={pending!.kind}
+      depth={depth}
+      parent={parent}
+      columnCount={columnCount}
+      onCancel={() => onPendingChange?.(null)}
+      onCreate={async (description) => {
+        await commands!.onCreate({ parent, kind: pending!.kind, description });
+        onPendingChange?.(null);
+      }}
+    />
+  );
+
+  // A new sub-section is typed in place after the last line under its parent.
+  let pendingSectionAfter = -1;
+  let pendingSectionParent: BoqTreeNodeResponse | null = null;
+  let pendingSectionDepth = 0;
+  if (pending?.kind === 'section' && pending.parentId) {
+    const start = entries.findIndex((entry) => entry.type === 'node' && entry.row.node.id === pending.parentId);
+    if (start >= 0) {
+      const parentRow = (entries[start] as Extract<GridEntry, { type: 'node' }>).row;
+      pendingSectionParent = parentRow.node;
+      pendingSectionDepth = parentRow.depth + 1;
+      let end = start;
+      for (let i = start + 1; i < entries.length; i += 1) {
+        const entry = entries[i]!;
+        const depth = entry.type === 'node' ? entry.row.depth : entry.depth - 1;
+        if (depth <= parentRow.depth) break;
+        end = i;
+      }
+      pendingSectionAfter = end;
+    }
+  }
+
+  let nodeIndex = -1;
+
+  const renderEntry = (entry: GridEntry): React.ReactNode => {
+                if (entry.type === 'add') {
+                  if (pending?.kind === 'item' && pending.parentId === entry.parent.id) {
+                    return pendingRow(entry.parent, entry.depth);
+                  }
+                  return (
+                    <AddLineRow
+                      key={`add-${entry.parent.id}`}
+                      label={t('addItemTo', { code: entry.parent.code })}
+                      depth={entry.depth}
+                      columnCount={columnCount}
+                      onAdd={() => onPendingChange?.({ parentId: entry.parent.id, kind: 'item' })}
+                    />
+                  );
+                }
+                nodeIndex += 1;
+                const index = nodeIndex;
+                const { row } = entry;
+                return (
+                  <GridRow
+                    key={row.node.id}
+                    row={row}
+                    currency={currency}
+                    locale={locale}
+                    canViewCommercials={canViewCommercials}
+                    committed={committed}
+                    showSource={showSource}
+                    sectionTotal={row.node.isLeaf ? undefined : (sectionTotals.get(row.node.id) ?? null)}
+                    highlighted={highlighted.has(row.node.id)}
+                    collapsed={collapsed.has(row.node.id)}
+                    tabbable={!editing && index === activeIndex}
+                    onFocus={() => setFocusIndex(index)}
+                    onToggle={onToggle}
+                    onSelect={onSelect}
+                    onPinnedCellEdit={onPinnedCellEdit}
+                    commands={commands}
+                    unitsListId={unitsListId}
+                    onAddItemInline={() => {
+                      if (collapsed.has(row.node.id)) onToggle(row.node.id);
+                      onPendingChange?.({ parentId: row.node.id, kind: 'item' });
+                    }}
+                  />
+                );
+  };
+
   return (
     <div className="overflow-hidden rounded-panel border border-border bg-surface">
       <TableScroll className="rounded-none border-0">
-        {/* `role="grid"` announces this as navigable with the arrow keys. The native table
-            semantics underneath are untouched. */}
-        <Table role="grid">
-          <TableHeader className="sticky top-0 z-10 shadow-e1">
-            <TableRow className="hover:bg-surface-subtle">
-              {/* Fixed, and pinned. Fixed because the auto layout was handing slack to the
-                  code column and starving the description; pinned because between ~375 and
-                  1100px this grid scrolls sideways, and a rate with no visible item code
-                  beside it is a number nobody can act on. */}
-              <TableHead className="sticky start-0 z-20 w-56 border-e border-border bg-surface-subtle">
-                {t('code')}
-              </TableHead>
-              {/* Takes every spare pixel, so wide viewports widen the column that benefits. */}
-              <TableHead className="w-full min-w-64">{t('description')}</TableHead>
-              {/* No TYPE column. Whether a row is a section or an item is already carried by
-                  the chevron, the indent, the weight, the tint and the absence of pricing
-                  cells — five signals, none of which needed a sixth in words. Screen readers
-                  keep it: the code cell states it. */}
-              <TableHead className="whitespace-nowrap">{t('unit')}</TableHead>
-              <TableHead numeric className="whitespace-nowrap">
+        <Table role={editing ? undefined : 'grid'} aria-label={t('tableLabel')}>
+          <TableHeader className="sticky top-0 z-10">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-24 whitespace-nowrap">{t('code')}</TableHead>
+              <TableHead className="w-full sm:min-w-56">{t('description')}</TableHead>
+              <TableHead className="whitespace-nowrap max-sm:hidden">{t('unit')}</TableHead>
+              <TableHead numeric className="whitespace-nowrap max-sm:hidden">
                 {t('quantity')}
               </TableHead>
               {canViewCommercials ? (
                 <>
-                  <TableHead numeric className="whitespace-nowrap">
+                  <TableHead numeric className="whitespace-nowrap max-sm:hidden">
                     {t('rate', { currency })}
                   </TableHead>
                   <TableHead numeric className="whitespace-nowrap">
@@ -197,9 +262,7 @@ export function BoqGrid({
                   </TableHead>
                 </>
               ) : null}
-              {showSource ? (
-                <TableHead className="whitespace-nowrap">{t('source')}</TableHead>
-              ) : null}
+              {showSource ? <TableHead className="whitespace-nowrap">{t('source')}</TableHead> : null}
               <TableHead className="w-12">
                 <span className="sr-only">{t('actions')}</span>
               </TableHead>
@@ -207,81 +270,53 @@ export function BoqGrid({
           </TableHeader>
 
           <TableBody ref={bodyRef} onKeyDown={handleKeyDown}>
-            {rows.length === 0 ? (
+            {entries.length === 0 && !pending ? (
               <TableEmpty colSpan={columnCount}>{emptyMessage}</TableEmpty>
             ) : (
-              rows.map((row, index) => (
-                <GridRow
-                  key={row.node.id}
-                  row={row}
-                  currency={currency}
-                  locale={locale}
-                  canManage={canManage}
-                  canViewCommercials={canViewCommercials}
-                  committed={committed}
-                  showSource={showSource}
-                  sectionTotal={
-                    row.node.isLeaf ? undefined : (sectionTotals.get(row.node.id) ?? null)
-                  }
-                  highlighted={highlighted.has(row.node.id)}
-                  collapsed={collapsed.has(row.node.id)}
-                  tabbable={index === activeIndex}
-                  onFocus={() => setFocusIndex(index)}
-                  onToggle={onToggle}
-                  onSelect={onSelect}
-                  onPinnedCellEdit={onPinnedCellEdit}
-                  commands={commands}
-                />
-              ))
+              entries.flatMap((entry, entryIndex) => {
+                const rendered = renderEntry(entry);
+                return entryIndex === pendingSectionAfter && pendingSectionParent
+                  ? [rendered, pendingRow(pendingSectionParent, pendingSectionDepth)]
+                  : [rendered];
+              })
             )}
+            {pending && pending.parentId === null ? pendingRow(null, 0) : null}
           </TableBody>
+
+          {footer && canViewCommercials ? (
+            <tfoot className="border-t border-border bg-surface-subtle">
+              <TableRow className="hover:bg-transparent">
+                <TableCell />
+                <TableCell className="text-end font-semibold text-foreground">{t('boqTotal')}</TableCell>
+                <TableCell className="max-sm:hidden" />
+                <TableCell className="max-sm:hidden" />
+                <TableCell className="max-sm:hidden" />
+                <TableCell numeric className="font-semibold text-foreground">
+                  <LtrValue>{formatMoney(totalAmount, currency, locale) ?? '—'}</LtrValue>
+                </TableCell>
+                {showSource ? <TableCell /> : null}
+                <TableCell />
+              </TableRow>
+            </tfoot>
+          ) : null}
         </Table>
       </TableScroll>
-
-      {/* Footer. "26 of 67 rows" used to sit beside a total covering all 67, so a filtered
-          view showed a count and a figure that did not describe the same thing. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-subtle px-4 py-3 sm:px-5">
-        <span className="text-caption text-muted-foreground">
-          {t('showingRows', { shown: rows.length, total: totalRows })}
-        </span>
-        {canViewCommercials ? (
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {isFiltered ? (
-              <>
-                <span className="text-caption text-muted-foreground">
-                  {t('visibleTotal')}{' '}
-                  <LtrValue className="font-medium tabular-nums text-foreground">
-                    {formatMoney(visibleAmount, currency, locale) ?? '—'}
-                  </LtrValue>
-                </span>
-                <span className="text-muted-foreground" aria-hidden="true">
-                  ·
-                </span>
-              </>
-            ) : null}
-            <span className="text-body-sm font-semibold text-foreground">
-              {t('boqTotal')}{' '}
-              <LtrValue className="tabular-nums">
-                {formatMoney(totalAmount, currency, locale) ?? '—'}
-              </LtrValue>
-            </span>
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
-            <LockKeyhole size={14} aria-hidden="true" />
-            {t('totalRestricted')}
-          </span>
-        )}
-      </div>
     </div>
   );
+}
+
+function indentStyle(depth: number): React.CSSProperties {
+  return { paddingInlineStart: `${depth * 1.25}rem` };
+}
+
+function isLumpSum(node: BoqTreeNodeResponse): boolean {
+  return node.pricingBasis === 'LUMP_SUM' && (node.quantity === null || Number(node.quantity) === 1);
 }
 
 function GridRow({
   row,
   currency,
   locale,
-  canManage,
   canViewCommercials,
   committed,
   showSource,
@@ -294,84 +329,85 @@ function GridRow({
   onSelect,
   onPinnedCellEdit,
   commands,
+  unitsListId,
+  onAddItemInline,
 }: {
   row: BoqRow;
   currency: string;
   locale: 'en' | 'ar';
-  canManage: boolean;
   canViewCommercials: boolean;
   committed: boolean;
   showSource: boolean;
-  /** A section's client-rolled-up subtotal. `undefined` for a leaf (which uses computedTotal). */
   sectionTotal?: string | null;
   highlighted: boolean;
   collapsed: boolean;
-  /** True for the single row holding the grid's tab stop. */
   tabbable: boolean;
   onFocus: () => void;
   onToggle: (nodeId: string) => void;
   onSelect: (node: BoqTreeNodeResponse) => void;
   onPinnedCellEdit?: () => void;
   commands: BoqRowCommands | null;
+  unitsListId?: string;
+  onAddItemInline: () => void;
 }) {
   const t = useTranslations('platform.boq.grid');
   const { node, depth, hasChildren } = row;
-  const incomplete = isIncomplete(node);
-  // Present only on an editable draft (the workspace withholds it otherwise), so its presence is
-  // the signal that cells accept inline edits.
-  const edit = commands?.onEditField;
-  // COMMITTED: a leaf's value cells (Qty/Rate) are pinned — no direct overwrite. A money-neutral
-  // SEPARATE_CHARGE / ABSORBED leaf stays editable, but the common case is the in-contract pin.
+  const editing = commands !== null;
   const pinned = committed && node.isLeaf;
+  const editValues = editing && !pinned;
+  const lumpSum = node.isLeaf && isLumpSum(node);
+  const unpriced = node.isLeaf && node.unitRate === null;
+  const saveFailed = t('saveFailed');
 
-  // The sticky cell needs its own opaque background or the columns scrolling underneath
-  // show through it. It has to track the row's state, not just default to the surface.
-  const stickyBackground = highlighted
-    ? 'bg-warning-subtle'
-    : node.isLeaf
-      ? 'bg-surface'
-      : 'bg-[color-mix(in_oklab,var(--surface-subtle)_60%,var(--surface))]';
+  const commit = (field: EditableField) => (value: string) => commands!.onEditField(node, field, value);
+
+  const quantityText = node.quantity ? formatNumber(Number(node.quantity), locale, 3) : null;
+  const rateText = node.unitRate ? formatMoney(node.unitRate, currency, locale) : null;
+  // The phone line: "180 m³ × $6.50" — what the hidden columns would have said.
+  const mobileSummary = node.isLeaf
+    ? [
+        lumpSum ? t('lumpSum') : quantityText ? `${quantityText}${node.unit ? ` ${node.unit}` : ''}` : null,
+        canViewCommercials ? (rateText ?? t('noRate')) : null,
+      ]
+        .filter(Boolean)
+        .join(' × ')
+    : '';
 
   return (
     <TableRow
-      onClick={() => onSelect(node)}
-      onFocus={onFocus}
-      tabIndex={tabbable ? 0 : -1}
-      aria-expanded={hasChildren ? !collapsed : undefined}
+      data-node=""
+      onClick={() => {
+        // In edit mode the fields are the interaction; only a phone (no fields) opens the sheet.
+        if (editing && !window.matchMedia('(max-width: 639px)').matches) return;
+        onSelect(node);
+      }}
+      onFocus={editing ? undefined : onFocus}
+      tabIndex={editing ? undefined : tabbable ? 0 : -1}
+      aria-expanded={!editing && hasChildren ? !collapsed : undefined}
       className={cn(
-        'cursor-pointer',
-        'focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary',
-        // Sections read as structure, items as data. Restrained: a tint and a weight, not a
-        // second background colour per level.
-        !node.isLeaf && 'bg-surface-subtle/60 font-medium',
-        // An unpriced row carries an amber leading edge rather than a 6px dot. A dot is
-        // invisible while scrolling 400 rows, which is exactly when it matters; an edge is
-        // the only thing at this density the eye can catch in peripheral vision.
-        incomplete && 'border-s-2 border-s-warning',
-        // The result of pressing "Show these" — the rows asked for, tinted so the jump is
-        // visibly the answer to the button.
+        editing ? 'max-sm:cursor-pointer' : 'cursor-pointer',
+        'align-top focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary',
+        !node.isLeaf && 'bg-surface-subtle font-semibold',
         highlighted && 'bg-warning-subtle',
         !node.isActive && 'opacity-60',
       )}
     >
-      <TableCell
-        className={cn(
-          'sticky start-0 z-10 w-56 whitespace-nowrap border-e border-border',
-          stickyBackground,
-        )}
-      >
-        {/* Logical inline padding, so the indent flows from the trailing edge in RTL. */}
-        <div className="flex items-center gap-1" style={{ paddingInlineStart: depth * 1.25 + 'rem' }}>
-          {hasChildren ? (
+      <TableCell className="whitespace-nowrap">
+        <div className="flex min-h-8 items-center gap-1">
+          {!node.isLeaf ? (
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 onToggle(node.id);
               }}
-              aria-expanded={!collapsed}
-              aria-label={collapsed ? t('expand') : t('collapse')}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+              disabled={!hasChildren}
+              aria-expanded={hasChildren ? !collapsed : undefined}
+              aria-label={t(collapsed ? 'expandSection' : 'collapseSection', { code: node.code })}
+              className={cn(
+                'flex size-7 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring',
+                !hasChildren && 'invisible',
+              )}
             >
               <ChevronRight
                 size={14}
@@ -380,111 +416,98 @@ function GridRow({
               />
             </button>
           ) : (
-            <span className="h-7 w-7 shrink-0" aria-hidden="true" />
+            <span className="size-7 shrink-0" aria-hidden="true" />
           )}
-          <LtrValue className="font-mono text-caption">{node.code}</LtrValue>
-          {/* What the visible TYPE column used to say. Sighted readers get it from the row's
-              shape; a screen reader gets it here, once, at the start of the row. */}
+          <LtrValue className={cn('text-caption tabular-nums', node.isLeaf ? 'text-muted-foreground' : 'text-foreground')}>
+            {node.code}
+          </LtrValue>
           <span className="sr-only">{node.isLeaf ? t('typeItem') : t('typeSection')}</span>
-          {incomplete ? <span className="sr-only">{t('incomplete')}</span> : null}
         </div>
       </TableCell>
 
       <TableCell>
-        <EditableCell
-          editable={Boolean(edit)}
-          value={node.description}
-          kind="text"
-          ariaLabel={t('editDescription', { code: node.code })}
-          onCommit={edit ? (next) => edit(node, 'description', next) : async () => {}}
-          display={
-            <span className={cn('block truncate', !node.isLeaf && 'text-foreground')}>
-              {node.description}
-            </span>
-          }
-        />
+        <div style={indentStyle(depth)} className="min-w-0">
+          {editing ? (
+            <>
+              <CellEditor
+                className="max-sm:hidden"
+                value={node.description}
+                kind={node.isLeaf ? 'textarea' : 'text'}
+                ariaLabel={t(node.isLeaf ? 'editDescription' : 'editSectionName', { code: node.code })}
+                errorText={saveFailed}
+                onCommit={commit('description')}
+              />
+              <p className="text-body-sm sm:hidden">{node.description}</p>
+            </>
+          ) : (
+            <p className={cn('text-body-sm', !node.isLeaf && 'text-foreground')}>{node.description}</p>
+          )}
+          {mobileSummary ? (
+            <p className="mt-0.5 text-caption tabular-nums text-muted-foreground sm:hidden">{mobileSummary}</p>
+          ) : null}
+        </div>
       </TableCell>
 
-      {/* UNIT is the quietest column on the row and should look it. `text-muted-foreground`
-          is the sanctioned secondary-text token. An earlier attempt used `text-foreground/55`
-          to dodge the faint blue cast it reads with at 12px — measured, the composite is still
-          cool, because `--foreground` is itself a navy and every grey in the ramp inherits
-          that. Fighting it here only produced an off-system value on one screen; a warmer ramp
-          is a token decision for the whole product. */}
-      <TableCell className="text-caption text-muted-foreground">
-        {node.isLeaf ? (node.unit ?? '—') : ''}
-      </TableCell>
-
-      <TableCell numeric>
-        {pinned ? (
-          <PinnedCell
-            value={
-              node.quantity ? (
-                <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )
-            }
-            ariaLabel={t('editQuantity', { code: node.code })}
-            onEdit={onPinnedCellEdit}
+      <TableCell className="max-sm:hidden">
+        {!node.isLeaf ? null : lumpSum ? (
+          <span className="text-muted-foreground">—</span>
+        ) : editValues ? (
+          <CellEditor
+            className="w-24"
+            value={node.unit}
+            kind="unit"
+            unitsListId={unitsListId}
+            ariaLabel={t('editUnit', { code: node.code })}
+            errorText={saveFailed}
+            onCommit={commit('unit')}
           />
         ) : (
-          <EditableCell
-            editable={Boolean(edit) && node.isLeaf}
+          <span className="text-body-sm">{node.unit ?? '—'}</span>
+        )}
+      </TableCell>
+
+      <TableCell numeric className="max-sm:hidden">
+        {!node.isLeaf ? null : lumpSum ? (
+          <span className="text-muted-foreground">{t('lumpSum')}</span>
+        ) : pinned ? (
+          <PinnedCell value={quantityText} ariaLabel={t('editQuantity', { code: node.code })} onEdit={onPinnedCellEdit} />
+        ) : editValues ? (
+          <CellEditor
+            className="ms-auto w-28"
             value={node.quantity}
             kind="quantity"
-            numeric
             ariaLabel={t('editQuantity', { code: node.code })}
-            onCommit={edit ? (next) => edit(node, 'quantity', next) : async () => {}}
-            display={
-              node.quantity ? (
-                <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
-              ) : (
-                <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
-              )
-            }
+            errorText={saveFailed}
+            onCommit={commit('quantity')}
           />
+        ) : (
+          <LtrValue>{quantityText ?? '—'}</LtrValue>
         )}
       </TableCell>
 
       {canViewCommercials ? (
         <>
-          <TableCell numeric>
-            {pinned ? (
-              <PinnedCell
-                value={
-                  node.unitRate ? (
-                    <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )
-                }
-                ariaLabel={t('editRate', { code: node.code })}
-                onEdit={onPinnedCellEdit}
-              />
-            ) : (
-              <EditableCell
-                editable={Boolean(edit) && node.isLeaf}
+          <TableCell numeric className="max-sm:hidden">
+            {!node.isLeaf ? null : pinned ? (
+              <PinnedCell value={rateText} ariaLabel={t('editRate', { code: node.code })} onEdit={onPinnedCellEdit} />
+            ) : editValues ? (
+              <CellEditor
+                className="ms-auto w-32"
                 value={node.unitRate}
                 kind="rate"
-                numeric
+                attention={unpriced}
                 ariaLabel={t('editRate', { code: node.code })}
-                onCommit={edit ? (next) => edit(node, 'unitRate', next) : async () => {}}
-                display={
-                  node.unitRate ? (
-                    <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
-                  ) : (
-                    <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
-                  )
-                }
+                placeholder={t('noRate')}
+                errorText={saveFailed}
+                onCommit={commit('unitRate')}
               />
+            ) : unpriced ? (
+              <span className="text-caption font-medium text-warning">{t('noRate')}</span>
+            ) : (
+              <LtrValue>{rateText}</LtrValue>
             )}
           </TableCell>
-          {/* A section shows its client-rolled-up subtotal — the sum of its own descendant
-              leaves — computed once in the workspace and memoized. A leaf shows its own
-              server-computed line amount. Both are right-aligned and tabular so subtotals line
-              up down the column against the items they roll up. */}
-          <TableCell numeric className={cn(!node.isLeaf && 'font-semibold')}>
+          <TableCell numeric className={cn('whitespace-nowrap', !node.isLeaf && 'font-semibold')}>
             {(() => {
               const amount = node.isLeaf ? node.computedTotal : (sectionTotal ?? null);
               return amount ? (
@@ -504,42 +527,107 @@ function GridRow({
       ) : null}
 
       <TableCell className="w-12">
-        {commands && canManage ? (
-          <RowMenu node={node} commands={commands} />
-        ) : null}
+        {commands ? <RowMenu node={node} commands={commands} onAddItemInline={onAddItemInline} /> : null}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** "+ Add item to 1.3" — the end of an open section that takes items. */
+function AddLineRow({
+  label,
+  depth,
+  columnCount,
+  onAdd,
+}: {
+  label: string;
+  depth: number;
+  columnCount: number;
+  onAdd: () => void;
+}) {
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell className="max-sm:hidden" />
+      <TableCell colSpan={columnCount - 1} className="py-1.5">
+        <div style={indentStyle(depth)}>
+          <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-brand-primary" onClick={onAdd}>
+            <Plus size={14} aria-hidden="true" />
+            {label}
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );
 }
 
 /**
- * A pinned value cell (COMMITTED mode, R11 Decision 4).
- *
- * A committed Qty/Rate cell does not accept a direct overwrite — the pin is taught at the cell,
- * not by a banner. It shows the value with a 🔒 affordance; activating it opens the who-pays
- * classifier rather than an inline editor. When no `onEdit` is supplied (read-only), it is a
- * plain read-only cell with the lock glyph.
+ * A line being typed. It exists only here until its description is committed, because a node
+ * without a description is not valid on the server; leaving it empty (blur, Escape) abandons it.
  */
+function PendingLineRow({
+  kind,
+  depth,
+  parent,
+  columnCount,
+  onCreate,
+  onCancel,
+}: {
+  kind: 'item' | 'section';
+  depth: number;
+  parent: BoqTreeNodeResponse | null;
+  columnCount: number;
+  onCreate: (description: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const t = useTranslations('platform.boq.grid');
+  return (
+    <TableRow className={cn('hover:bg-transparent', kind === 'section' && 'bg-surface-subtle')}>
+      <TableCell className="text-caption text-muted-foreground">
+        <span className="ps-8">{t('newCode')}</span>
+      </TableCell>
+      <TableCell colSpan={columnCount - 1}>
+        <div style={indentStyle(depth)} className="max-w-2xl">
+          <CellEditor
+            autoFocus
+            value={null}
+            kind={kind === 'item' ? 'textarea' : 'text'}
+            placeholder={t(kind === 'item' ? 'newItemPlaceholder' : 'newSectionPlaceholder')}
+            ariaLabel={
+              kind === 'item'
+                ? t('newItemIn', { code: parent?.code ?? '' })
+                : parent
+                  ? t('newSubsectionIn', { code: parent.code })
+                  : t('newSection')
+            }
+            errorText={t('createFailed')}
+            onCommit={onCreate}
+            onEmptyCommit={onCancel}
+          />
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function PinnedCell({
   value,
   ariaLabel,
   onEdit,
 }: {
-  value: React.ReactNode;
+  value: string | null;
   ariaLabel: string;
   onEdit?: () => void;
 }) {
   const t = useTranslations('platform.boq.mode');
-
+  const content = <LtrValue>{value ?? '—'}</LtrValue>;
   if (!onEdit) {
     return (
-      <span className="inline-flex items-center justify-end gap-1 text-muted-foreground">
-        {value}
-        <Lock size={11} aria-hidden="true" className="text-border-strong" />
+      <span className="inline-flex items-center justify-end gap-1">
+        {content}
+        <Lock size={11} aria-hidden="true" className="text-muted-foreground" />
       </span>
     );
   }
-
   return (
     <button
       type="button"
@@ -549,34 +637,24 @@ function PinnedCell({
       }}
       aria-label={`${ariaLabel} — ${t('pinnedCell')}`}
       title={t('pinnedCell')}
-      className="inline-flex items-center justify-end gap-1 rounded-control px-1 py-0.5 transition-colors hover:bg-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+      className="inline-flex items-center justify-end gap-1 rounded-control px-1 py-0.5 hover:bg-surface-hover focus-visible:outline-none focus-visible:shadow-ring"
     >
-      {value}
+      {content}
       <Lock size={11} aria-hidden="true" className="text-muted-foreground" />
     </button>
   );
 }
 
-/**
- * The Source tag — where this line's scope came from (R11 M4). DISTINCT from the ⚑ validity flag:
- * this answers "who authorised this scope", validity answers "is the line ready". `sourceType`
- * marks a VARIATION line; `commercialTreatment` marks an Absorb (⊙, funded from contingency) or a
- * Separate charge (↗, billed outside the contract). Ordinary in-contract WORK carries no tag.
- */
 function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
   const t = useTranslations('platform.boq.grid');
-
   if (node.sourceType === 'VARIATION') {
     return (
       <Badge tone="neutral" className="gap-1">
         <Diamond size={10} aria-hidden="true" />
-        {node.sourceChangeOrderId
-          ? t('sourceVariationRef', { ref: node.sourceChangeOrderId })
-          : t('sourceVariation')}
+        {node.sourceChangeOrderId ? t('sourceVariationRef', { ref: node.sourceChangeOrderId }) : t('sourceVariation')}
       </Badge>
     );
   }
-
   if (node.commercialTreatment === 'ABSORBED') {
     return (
       <Badge tone="neutral" className="gap-1">
@@ -585,7 +663,6 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
       </Badge>
     );
   }
-
   if (node.commercialTreatment === 'SEPARATE_CHARGE') {
     return (
       <Badge tone="neutral" className="gap-1">
@@ -594,19 +671,27 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
       </Badge>
     );
   }
-
   return <span className="text-caption text-muted-foreground">—</span>;
 }
 
 /**
- * One menu, not six buttons.
- *
- * Each row used to carry up to six 44×44 icon buttons — a toolbar repeated 426 times, which
- * decided the table's width at 375px and drowned the data it sat next to. `RowActions`
- * documents this rule; the BOQ was the screen that most needed it.
+ * One menu per row. Only the commands this node can take are listed — a section that holds
+ * sub-sections is not offered "Add item" (the server forbids mixing), the first sibling has no
+ * "Move up", and a section with lines under it has no Delete (the server refuses it; its lines go
+ * first).
  */
-function RowMenu({ node, commands }: { node: BoqTreeNodeResponse; commands: BoqRowCommands }) {
+function RowMenu({
+  node,
+  commands,
+  onAddItemInline,
+}: {
+  node: BoqTreeNodeResponse;
+  commands: BoqRowCommands;
+  onAddItemInline: () => void;
+}) {
   const t = useTranslations('platform.boq.grid');
+  const { first, last } = commands.bounds(node);
+  const canDelete = node.isLeaf || countDescendants(node) === 0;
 
   return (
     <div onClick={(event) => event.stopPropagation()}>
@@ -617,40 +702,38 @@ function RowMenu({ node, commands }: { node: BoqTreeNodeResponse; commands: BoqR
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => commands.onEdit(node)}>{t('edit')}</DropdownMenuItem>
-
-          {commands.onViewHistory ? (
-            <DropdownMenuItem onSelect={() => commands.onViewHistory!(node)}>
-              {t('viewHistory')}
-            </DropdownMenuItem>
+          {node.isLeaf ? (
+            <DropdownMenuItem onSelect={() => commands.onEdit(node)}>{t('editDetails')}</DropdownMenuItem>
+          ) : (
+            <>
+              {acceptsItems(node) ? (
+                <>
+                  <DropdownMenuItem onSelect={onAddItemInline}>{t('addItem')}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => commands.onAddFromLibrary(node)}>
+                    {t('addFromLibrary')}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+              {acceptsSections(node) ? (
+                <DropdownMenuItem onSelect={() => commands.onAddSection(node)}>{t('addSubsection')}</DropdownMenuItem>
+              ) : null}
+            </>
+          )}
+          {!first || !last ? <DropdownMenuSeparator /> : null}
+          {!first ? (
+            <DropdownMenuItem onSelect={() => commands.onMove(node, -1)}>{t('moveUp')}</DropdownMenuItem>
           ) : null}
-
-          {!node.isLeaf ? (
+          {!last ? (
+            <DropdownMenuItem onSelect={() => commands.onMove(node, 1)}>{t('moveDown')}</DropdownMenuItem>
+          ) : null}
+          {canDelete ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => commands.onAddItem(node)}>
-                <Plus size={14} aria-hidden="true" />
-                {t('addItem')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => commands.onAddSection(node)}>
-                <Plus size={14} aria-hidden="true" />
-                {t('addSubsection')}
+              <DropdownMenuItem destructive onSelect={() => commands.onDelete(node)}>
+                {node.isLeaf ? t('delete') : t('deleteSection')}
               </DropdownMenuItem>
             </>
           ) : null}
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => commands.onMove(node, -1)}>
-            {t('moveUp')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => commands.onMove(node, 1)}>
-            {t('moveDown')}
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => commands.onDelete(node)}>
-            {t('delete')}
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
