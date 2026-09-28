@@ -227,7 +227,7 @@ describe('PerformanceView — packages and attention', () => {
     expect(screen.getByRole('link', { name: 'Open Finance' })).toHaveAttribute('href', '/projects/p1/finance');
     expect(screen.getByRole('link', { name: 'Open Billing & collection' })).toHaveAttribute(
       'href',
-      '/projects/p1/commercial/billing-collection',
+      '/projects/p1/commercial/billing',
     );
   });
 

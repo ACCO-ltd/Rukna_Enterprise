@@ -193,9 +193,23 @@ describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () =
   const draftWithClient = {
     id: 'c-1',
     status: 'DRAFT',
+    signedDate: new Date('2026-09-01'),
     retentionTerms: null,
     client: { name: 'Rukna Client Co', taxNumber: 'TAX-123' },
   };
+
+  // D3 (commercial redesign 2026-09-28): activation requires the paper contract's signed date.
+  it('refuses activate without a recorded signedDate (400 CONTRACT_SIGNED_DATE_REQUIRED)', async () => {
+    const { service, repo, attachments } = build({ ...draftWithClient, signedDate: null });
+    const err = await service.transition(identity, 'c-1', 'activate').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({
+      code: 'CONTRACT_SIGNED_DATE_REQUIRED',
+      errorCode: 'CONTRACT_SIGNED_DATE_REQUIRED',
+    });
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(attachments.freezeFor).not.toHaveBeenCalled();
+  });
 
   it('activate (DRAFT → ACTIVE) freezes the client snapshots and freezes the evidence', async () => {
     const { service, repo, audit, attachments } = build(draftWithClient);
@@ -226,6 +240,7 @@ describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () =
       return {
         id: 'c-1',
         status: 'DRAFT',
+        signedDate: new Date('2026-09-01'),
         billingModel: 'MILESTONE',
         retentionTerms: null,
         client: { name: 'Rukna Client Co', taxNumber: 'TAX-123' },
@@ -274,6 +289,7 @@ describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () =
       const { service, repo } = build({
         id: 'c-1',
         status: 'DRAFT',
+        signedDate: new Date('2026-09-01'),
         billingModel: 'MEASURED_IPC',
         retentionTerms: null,
         client: { name: 'Rukna Client Co', taxNumber: 'TAX-123' },

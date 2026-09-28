@@ -212,6 +212,30 @@ export class ClientInvoiceRepository {
     });
   }
 
+  /**
+   * Commercial redesign D8 — replace the frozen branding snapshot on a not-yet-posted invoice and drop
+   * any draft PDF rendered from the old one (it carried no invoice number either), so the document is
+   * regenerated from the issued state. Guarded on NOT posted in the WHERE, so a posted invoice's
+   * snapshot can never be rewritten through this path. Returns the number of rows changed (0 or 1).
+   */
+  async replaceBrandingSnapshotIfUnposted(
+    prisma: TenantPrisma,
+    organizationId: string,
+    id: string,
+    billingAddressSnapshot: object,
+  ): Promise<number> {
+    const result = await prisma.clientInvoice.updateMany({
+      where: {
+        id,
+        organizationId,
+        postingStatus: { in: ['NOT_POSTED', 'FAILED'] },
+        documentStatus: { not: 'CANCELLED' },
+      },
+      data: { billingAddressSnapshot, documentFileId: null },
+    });
+    return result.count;
+  }
+
   updateOutstandingAmount(prisma: TenantPrisma, id: string, outstandingAmount: Decimal) {
     return prisma.clientInvoice.update({ where: { id }, data: { outstandingAmount } });
   }

@@ -460,7 +460,7 @@ function AttentionRail({
               })}
             </p>
             {can('view:contract') ? (
-              <Link href={`/projects/${projectId}/commercial/billing-collection`} className={linkClass}>
+              <Link href={`/projects/${projectId}/commercial/billing`} className={linkClass}>
                 {t('performance.openBilling')}
               </Link>
             ) : null}

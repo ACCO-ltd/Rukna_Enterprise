@@ -288,6 +288,7 @@ export class CommercialPrismaRepository {
             contractNumber: true,
             baseContractValue: true,
             contractValue: true,
+            paymentTerms: true,
           },
         },
       },
@@ -417,7 +418,17 @@ export class CommercialPrismaRepository {
       // when the milestone is not yet verified.
       include: {
         programmeMilestone: {
-          select: { id: true, code: true, name: true, status: true },
+          // Commercial redesign D4/D5: the dates behind a stage's expected date and "released by".
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            status: true,
+            baselineDate: true,
+            forecastDate: true,
+            actualDate: true,
+            verifiedAt: true,
+          },
         },
       },
     });
@@ -474,6 +485,7 @@ export class CommercialPrismaRepository {
         outstandingAmount: true,
         documentStatus: true,
         postingStatus: true,
+        createdAt: true,
         // The mutually-exclusive provenance links (ADR-023 installment/IPC; ADR-029 R-4 separate
         // charge). Names, not ids, are what a reader recognises, so each carries the human reference
         // of its source document.
@@ -539,6 +551,8 @@ export class CommercialPrismaRepository {
         reference: true,
         bankReference: true,
         postingStatus: true,
+        // Commercial redesign 2026-09-28 — the deposit account the payment landed in.
+        bankAccount: { select: { bankName: true, accountNumber: true, currencyCode: true } },
         clientAllocations: {
           where: { postingStatus: 'POSTED' },
           orderBy: { allocationDate: 'desc' },
@@ -843,6 +857,272 @@ export class CommercialPrismaRepository {
       collectionData,
       draftInvoiceCount,
     };
+  }
+
+  // ─── Commercial tab redesign (2026-09-28) ──────────────────────────────────────
+
+  /** The project's code (the prefix a contract number is built from) and currency. Org-scoped. */
+  findProjectHeader(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      select: { code: true, currency: true },
+    });
+  }
+
+  /** A contract's number, org-scoped (an invoice carries only the bare `contractId`). */
+  /** Same lookup `recordProjectPayment` guards on: a payment needs an ACTIVE contract on the project. */
+  async hasActiveContract(prisma: TenantPrisma, organizationId: string, projectId: string): Promise<boolean> {
+    const contract = await prisma.contract.findFirst({
+      where: { organizationId, projectId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    return contract !== null;
+  }
+
+  async findContractNumber(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, organizationId },
+      select: { contractNumber: true },
+    });
+    return contract?.contractNumber ?? null;
+  }
+
+  /**
+   * The live BOQ version recording a contract will snapshot — the same pointer `recordSigned` reads
+   * (`currentVersionId ?? currentDraftVersionId`), with its number.
+   */
+  async findLiveBoqVersion(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    const boq = await prisma.boq.findFirst({
+      where: { projectId, organizationId },
+      select: { currentVersionId: true, currentDraftVersionId: true },
+    });
+    const versionId = boq?.currentVersionId ?? boq?.currentDraftVersionId ?? null;
+    if (!versionId) return null;
+    const version = await prisma.boqVersion.findUnique({
+      where: { id: versionId },
+      select: { id: true, versionNumber: true },
+    });
+    return version ? { versionId: version.id, versionNumber: version.versionNumber } : null;
+  }
+
+  /** The most recently attached evidence file on the contract — the signed agreement, if uploaded. */
+  async findSignedAgreement(prisma: TenantPrisma, contractId: string) {
+    const attachment = await prisma.contractAttachment.findFirst({
+      where: { contractId },
+      orderBy: { createdAt: 'desc' },
+      select: { platformFile: { select: { id: true, originalName: true } } },
+    });
+    return attachment
+      ? { fileId: attachment.platformFile.id, fileName: attachment.platformFile.originalName }
+      : null;
+  }
+
+  /**
+   * One project invoice with what the issue / delete commands decide on: its states, its source tags,
+   * and the stage it rides with when it is a variation invoice (via its INVOICE allocation). Scoped by
+   * org AND project — an invoice id from another project is "not found".
+   */
+  findInvoiceHeader(prisma: TenantPrisma, organizationId: string, projectId: string, invoiceId: string) {
+    return prisma.clientInvoice.findFirst({
+      where: { id: invoiceId, organizationId, projectId },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        contractId: true,
+        documentStatus: true,
+        postingStatus: true,
+        sourceInstallmentId: true,
+        sourceBoqNodeId: true,
+        sourceIpcId: true,
+        variationBillingAllocations: {
+          where: { treatment: 'INVOICE' },
+          select: { installmentId: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Every invoice of one stage's billing package: the stage invoice (sourceInstallmentId) plus each
+   * variation invoice billed with it (INVOICE allocation on the stage). Omission rows point at the
+   * stage invoice itself, so they add nothing.
+   */
+  async findPackageInvoices(prisma: TenantPrisma, organizationId: string, installmentId: string) {
+    const select = { id: true, documentStatus: true, postingStatus: true, invoiceNumber: true } as const;
+    const [stage, allocations] = await Promise.all([
+      prisma.clientInvoice.findFirst({
+        where: { organizationId, sourceInstallmentId: installmentId },
+        select,
+      }),
+      prisma.variationBillingAllocation.findMany({
+        where: { organizationId, installmentId, treatment: 'INVOICE', clientInvoiceId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { clientInvoice: { select } },
+      }),
+    ]);
+    const vos = allocations.flatMap((a) => (a.clientInvoice ? [a.clientInvoice] : []));
+    return { stage, vos };
+  }
+
+  /** Set the free-text notes on freshly-created drafts (prepare-package). */
+  setDraftNotes(prisma: TenantPrisma, organizationId: string, invoiceIds: string[], notes: string) {
+    return prisma.clientInvoice.updateMany({
+      where: { organizationId, id: { in: invoiceIds }, postingStatus: 'NOT_POSTED' },
+      data: { notes },
+    });
+  }
+
+  /**
+   * Cancel unposted drafts. The unique source tags (`sourceInstallmentId`, `sourceBoqNodeId`) are
+   * released so the stage / separate charge can be prepared again (one live invoice per source); the
+   * cancelled row keeps its `billingAddressSnapshot.description` and the audit event records the
+   * original source. Guarded on unposted in the WHERE — a posted invoice is never cancelled here.
+   * Returns the number of rows cancelled.
+   */
+  async cancelDraftInvoices(
+    prisma: TenantPrisma,
+    organizationId: string,
+    invoiceIds: string[],
+    cancelledBy: string,
+    reason: string,
+  ): Promise<number> {
+    const result = await prisma.clientInvoice.updateMany({
+      where: {
+        organizationId,
+        id: { in: invoiceIds },
+        postingStatus: { in: ['NOT_POSTED', 'FAILED'] },
+        documentStatus: { not: 'CANCELLED' },
+      },
+      data: {
+        documentStatus: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledBy,
+        cancellationReason: reason,
+        sourceInstallmentId: null,
+        sourceBoqNodeId: null,
+      },
+    });
+    return result.count;
+  }
+
+  /** The organisation's current invoice branding (drafts render with it). */
+  findOrgBranding(prisma: TenantPrisma, organizationId: string) {
+    return prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        name: true,
+        logoFileId: true,
+        legalAddress: true,
+        taxRegistrationNumber: true,
+        invoiceFooterNote: true,
+      },
+    });
+  }
+
+  /** One invoice as a document: header, amounts, snapshot, source, deliveries, and its VO lines. */
+  findInvoiceDocument(prisma: TenantPrisma, organizationId: string, projectId: string, invoiceId: string) {
+    return prisma.clientInvoice.findFirst({
+      where: { id: invoiceId, organizationId, projectId },
+      select: {
+        id: true,
+        projectId: true,
+        contractId: true,
+        clientId: true,
+        invoiceNumber: true,
+        invoiceDate: true,
+        dueDate: true,
+        currencyCode: true,
+        subtotal: true,
+        vatAmount: true,
+        totalAmount: true,
+        outstandingAmount: true,
+        documentStatus: true,
+        postingStatus: true,
+        postedJournalEntryId: true,
+        billingAddressSnapshot: true,
+        createdAt: true,
+        createdBy: true,
+        sourceInstallmentId: true,
+        sourceInstallment: { select: { id: true, name: true, sortOrder: true, percentage: true } },
+        sourceIpcId: true,
+        sourceIpc: {
+          select: {
+            id: true,
+            application: { select: { id: true, applicationRef: true, applicationNumber: true } },
+          },
+        },
+        sourceBoqNodeId: true,
+        sourceBoqNode: { select: { id: true, code: true, description: true } },
+        client: { select: { name: true, address: true } },
+        deliveries: {
+          orderBy: { sentAt: 'asc' },
+          select: { id: true, method: true, recipient: true, note: true, sentAt: true, sentBy: true },
+        },
+        variationBillingAllocations: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            amount: true,
+            treatment: true,
+            variation: { select: { reference: true, title: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /** Display name for a user id, or null. */
+  async findUserName(prisma: TenantPrisma, organizationId: string, userId: string): Promise<string | null> {
+    const user = await prisma.user.findFirst({
+      where: { id: userId, organizationId },
+      select: { firstName: true, lastName: true },
+    });
+    return user ? `${user.firstName} ${user.lastName}`.trim() || null : null;
+  }
+
+  /**
+   * The client statement's source rows for one contract: its posted invoices, the posted credit notes
+   * against them, and the posted receipt allocations against them.
+   */
+  async findStatementData(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    const invoices = await prisma.clientInvoice.findMany({
+      where: { organizationId, contractId, postingStatus: 'POSTED' },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        invoiceDate: true,
+        totalAmount: true,
+        billingAddressSnapshot: true,
+      },
+    });
+    const ids = invoices.map((i) => i.id);
+    if (ids.length === 0) return { invoices, creditNotes: [], allocations: [] };
+    const [creditNotes, allocations] = await Promise.all([
+      prisma.creditNote.findMany({
+        where: { organizationId, invoiceId: { in: ids }, postingStatus: 'POSTED' },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          invoiceId: true,
+          creditNoteNumber: true,
+          accountingDate: true,
+          totalAmount: true,
+          reason: true,
+        },
+      }),
+      prisma.clientReceiptAllocation.findMany({
+        where: { organizationId, clientInvoiceId: { in: ids }, postingStatus: 'POSTED' },
+        orderBy: { allocationDate: 'asc' },
+        select: {
+          id: true,
+          clientInvoiceId: true,
+          allocatedAmount: true,
+          allocationDate: true,
+          receipt: { select: { reference: true, bankReference: true } },
+        },
+      }),
+    ]);
+    return { invoices, creditNotes, allocations };
   }
 
   /**

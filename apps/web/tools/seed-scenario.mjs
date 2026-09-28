@@ -160,6 +160,7 @@ async function request(method, path, body) {
 
 const get = (path) => request('GET', path);
 const post = (path, body) => request('POST', path, body);
+const patch = (path, body) => request('PATCH', path, body);
 
 // ─── Output ──────────────────────────────────────────────────────────────────────
 
@@ -331,6 +332,12 @@ async function main() {
     sortOrder: 1,
   });
   ok();
+
+  // D3 (2026-09-28): activation requires the date the paper contract was signed — the API
+  // refuses to activate without it. Record it first, exactly as an operator would.
+  step('record signed date');
+  await patch(`/contracts/${contract.id}/signed-date`, { signedDate: '2026-01-25' });
+  ok('2026-01-25');
 
   step('activate contract (DRAFT → ACTIVE)');
   await post(`/contracts/${contract.id}/activate`);

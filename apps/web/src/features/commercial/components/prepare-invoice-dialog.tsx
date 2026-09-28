@@ -1,358 +1,276 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
   Checkbox,
-  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  FormField,
-  Input,
-  Textarea,
+  MoneyDisplay,
+  Notice,
+  SkeletonRegion,
 } from '@erp/ui';
-import type { CommercialSummaryResponse } from '@erp/types';
-import { useQueryClient } from '@tanstack/react-query';
+import type { CommercialPreparePreviewResponse, InstallmentReleasedBy } from '@erp/types';
 
-import { formatMoney } from '@/lib/format';
-import { issuePackage } from '../api/commercial-api';
-import { commercialKeys } from '../hooks/use-commercial';
+import { formatDate } from '@/lib/format';
 
-import type { InvoiceJourneyPhase, MilestoneItemViewModel } from '../milestone-journey.adapter';
-import { InvoicePreviewPanel } from './invoice-preview-panel';
-
-// ─── Props ───────────────────────────────────────────────────────────────────
+import { usePreparePackage, usePreparePreview } from '../hooks/use-commercial-invoice';
+import { formatRate, prepareTotals } from './prepare-invoice-dialog.model';
 
 export interface PrepareInvoiceDialogProps {
+  projectId: string;
+  /** The payment-schedule stage to invoice. The dialog renders nothing without one. */
+  installmentId: string | null;
   open: boolean;
-  milestone: MilestoneItemViewModel | null;
-  summary: CommercialSummaryResponse;
-  onInvoiceIssued: (installmentId: string, journey: InvoiceJourneyPhase) => void;
   onClose: () => void;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+/**
+ * Prepare invoice (decision D1): creates the stage's DRAFT invoice — and one per ticked
+ * variation — and opens it. Nothing is numbered or posted here; that is Issue, on the invoice
+ * page, after the draft has been reviewed.
+ *
+ * Everything shown comes from `GET …/installments/:id/prepare-preview`: the stage, what releases
+ * it, the variations that can ride on it and the server's tax rate. When the server says the
+ * stage is blocked, the dialog says why and offers no primary.
+ */
+export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }: PrepareInvoiceDialogProps) {
+  const t = useTranslations('commercial.prepare');
+  const preview = usePreparePreview(projectId, installmentId, open);
 
-export function PrepareInvoiceDialog({
-  open,
-  milestone,
-  summary,
-  onInvoiceIssued,
-  onClose,
-}: PrepareInvoiceDialogProps) {
-  const queryClient = useQueryClient();
-  const t = useTranslations('commercial.contractMilestones.prepareInvoice');
-  const locale = useLocale() as 'en';
-  const currency = summary.currency ?? summary.mainContract?.currency ?? 'USD';
-  const clientName = summary.mainContract?.clientName ?? '—';
-  const orgName = 'ACCO Ltd'; // TODO: read from org profile when available
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [invoiceDate, setInvoiceDate] = useState(today);
-  const [dueDate, setDueDate] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('');
-  const [notes, setNotes] = useState('');
-  const [selectedVoIds, setSelectedVoIds] = useState<Set<string>>(
-    new Set(milestone?.variationAllocations.map((vo) => vo.variationId) ?? []),
-  );
-  const [isPending, setIsPending] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  function toggleVo(voId: string) {
-    setSelectedVoIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(voId)) {
-        next.delete(voId);
-      } else {
-        next.add(voId);
-      }
-      return next;
-    });
-  }
-
-  async function handleIssue() {
-    if (!milestone || !dueDate || !summary.mainContract?.id) return;
-    setIsPending(true);
-    setErrorMessage(null);
-    try {
-      const pkg = await issuePackage(summary.projectId, milestone.id, {
-        invoiceDate,
-        dueDate,
-        paymentTerms: paymentTerms.trim() || undefined,
-        notes: notes.trim() || undefined,
-        selectedVariationIds: [...selectedVoIds],
-      });
-      await queryClient.invalidateQueries({ queryKey: commercialKeys.all(summary.projectId) });
-      const invoiceId = pkg.milestoneInvoice?.id ?? milestone.id;
-      onInvoiceIssued(milestone.id, {
-        phase: 'issued',
-        invoiceId,
-        invoiceDate,
-        dueDate,
-        documents: pkg.documents,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not issue the invoice. Please try again.';
-      setErrorMessage(message);
-    } finally {
-      setIsPending(false);
-    }
-  }
-
-  if (!milestone) return null;
-
-  const fmt = (amount: string | null) =>
-    amount ? (formatMoney(amount, currency, locale) ?? amount) : '—';
-
-  const canIssue = Boolean(dueDate) && !isPending;
+  if (!installmentId) return null;
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
-      <DialogContent size="xl">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('subtitle')}</DialogDescription>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* ── Left: form ─────────────────────────────────────────────────── */}
-          <div className="space-y-5 overflow-y-auto">
-            {/* Error */}
-            {errorMessage ? (
-              <Alert variant="error" messages={[errorMessage]} role="alert" />
-            ) : null}
-
-            {/* Client + source */}
-            <div className="space-y-2 rounded-panel border border-border bg-surface p-4">
-              <FieldRow label={t('client')}>{clientName}</FieldRow>
-              <FieldRow label={t('billingSource')}>
-                {milestone.name} · {fmtPercent(milestone.percentage)}
-              </FieldRow>
-              {summary.financialsVisible ? (
-                <FieldRow label={t('baseAmount')}>{fmt(milestone.baseAmount)}</FieldRow>
-              ) : null}
-            </div>
-
-            {/* Variation allocations */}
-            {summary.financialsVisible ? (
-              <div>
-                <p className="mb-1.5 text-body-sm font-medium text-foreground">
-                  {t('variationsTitle')}
-                </p>
-                {milestone.variationAllocations.length === 0 ? (
-                  <p className="text-body-sm text-muted-foreground">{t('noVariations')}</p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    <li>
-                      <p className="text-caption text-muted-foreground">{t('variationNote')}</p>
-                    </li>
-                    {milestone.variationAllocations.map((vo) => (
-                      <li key={vo.variationId} className="flex items-center gap-3">
-                        <Checkbox
-                          id={`vo-${vo.variationId}`}
-                          checked={selectedVoIds.has(vo.variationId)}
-                          onChange={() => toggleVo(vo.variationId)}
-                          disabled={isPending}
-                          aria-label={`${vo.reference} ${vo.title}`}
-                        />
-                        <label
-                          htmlFor={`vo-${vo.variationId}`}
-                          className="flex flex-1 cursor-pointer items-baseline justify-between gap-4 text-body-sm"
-                        >
-                          <span className="min-w-0">
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {vo.reference}
-                            </span>{' '}
-                            {vo.title}
-                          </span>
-                          {vo.amount ? (
-                            <span
-                              className={`shrink-0 tabular-nums ${
-                                vo.isOmission ? 'text-danger' : 'text-success'
-                              }`}
-                            >
-                              {vo.isOmission ? '' : '+'}
-                              {fmt(vo.amount)}
-                            </span>
-                          ) : null}
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {/* Computed totals */}
-                <ComputedTotals
-                  milestone={milestone}
-                  selectedVoIds={selectedVoIds}
-                  currency={currency}
-                  locale={locale}
-                />
-              </div>
-            ) : null}
-
-            {/* Divider */}
-            <div className="border-t border-border" />
-
-            {/* Invoice date */}
-            <FormField htmlFor="pi-invoice-date" label={t('invoiceDate')}>
-              <DatePicker
-                id="pi-invoice-date"
-                value={invoiceDate}
-                onChange={(value) => setInvoiceDate(value)}
-                disabled={isPending}
-              />
-            </FormField>
-
-            {/* Due date */}
-            <FormField
-              htmlFor="pi-due-date"
-              label={
-                <>
-                  {t('dueDate')}{' '}
-                  <span className="text-caption text-muted-foreground">
-                    ({t('dueDateRequired')})
-                  </span>
-                </>
-              }
-            >
-              <DatePicker
-                id="pi-due-date"
-                value={dueDate}
-                onChange={(value) => setDueDate(value)}
-                disabled={isPending}
-              />
-            </FormField>
-
-            {/* Payment terms */}
-            <FormField htmlFor="pi-payment-terms" label={t('paymentTerms')}>
-              <Input
-                id="pi-payment-terms"
-                type="text"
-                value={paymentTerms}
-                onChange={(e) => setPaymentTerms(e.target.value)}
-                placeholder={t('paymentTermsPlaceholder')}
-                maxLength={100}
-                disabled={isPending}
-              />
-            </FormField>
-
-            {/* Notes */}
-            <FormField htmlFor="pi-notes" label={t('notes')}>
-              <Textarea
-                id="pi-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('notesPlaceholder')}
-                rows={3}
-                disabled={isPending}
-              />
-            </FormField>
+        {preview.isPending ? (
+          <SkeletonRegion label={t('loading')} className="mt-4 space-y-3">
+            <div className="h-5 w-2/3 animate-pulse rounded-control bg-muted" />
+            <div className="h-5 w-1/2 animate-pulse rounded-control bg-muted" />
+            <div className="h-16 animate-pulse rounded-control bg-muted" />
+          </SkeletonRegion>
+        ) : preview.isError ? (
+          <div className="mt-4 space-y-3">
+            <Alert variant="error" messages={[preview.error.message || t('loadFailed')]} />
+            <Button variant="outline" onClick={() => void preview.refetch()}>
+              {t('retry')}
+            </Button>
           </div>
-
-          {/* ── Right: live preview ─────────────────────────────────────────── */}
-          <div className="hidden lg:block">
-            <InvoicePreviewPanel
-              milestone={milestone}
-              clientName={clientName}
-              orgName={orgName}
-              currency={currency}
-              invoiceDate={invoiceDate}
-              dueDate={dueDate}
-              paymentTerms={paymentTerms}
-              notes={notes}
-              selectedVoIds={selectedVoIds}
-              isIssued={false}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
-            {t('cancel')}
-          </Button>
-          <Button
-            variant="default"
-            onClick={handleIssue}
-            disabled={!canIssue}
-            aria-label={t('issueCta')}
-          >
-            {t('issueCta')}
-          </Button>
-        </DialogFooter>
+        ) : (
+          <PrepareBody
+            key={preview.data.installmentId}
+            projectId={projectId}
+            installmentId={installmentId}
+            preview={preview.data}
+            onClose={onClose}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <span className="shrink-0 text-body-sm text-muted-foreground">{label}</span>
-      <span className="text-end text-body-sm font-medium text-foreground">{children}</span>
-    </div>
-  );
-}
-
-function ComputedTotals({
-  milestone,
-  selectedVoIds,
-  currency,
-  locale,
+function PrepareBody({
+  projectId,
+  installmentId,
+  preview,
+  onClose,
 }: {
-  milestone: MilestoneItemViewModel;
-  selectedVoIds: Set<string>;
-  currency: string;
-  locale: 'en';
+  projectId: string;
+  installmentId: string;
+  preview: CommercialPreparePreviewResponse;
+  onClose: () => void;
 }) {
-  const t = useTranslations('commercial.contractMilestones.prepareInvoice');
+  const t = useTranslations('commercial.prepare');
+  const locale = useLocale() as 'en';
+  const router = useRouter();
+  const mutation = usePreparePackage(projectId, installmentId);
 
-  const fmt = (n: number) => formatMoney(n.toFixed(2), currency, locale) ?? n.toFixed(2);
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(preview.variations.filter((v) => v.defaultSelected).map((v) => v.variationId)),
+  );
 
-  const base = milestone.baseAmount ? Number(milestone.baseAmount) : 0;
-  const voTotal = milestone.variationAllocations
-    .filter((vo) => selectedVoIds.has(vo.variationId))
-    .reduce((sum, vo) => sum + (vo.amount ? Number(vo.amount) : 0), 0);
+  // The preview nulls money for a viewer who cannot see financials.
+  const moneyHidden = preview.stageAmount === null;
+  const hiddenLabel = t('hiddenAmount');
 
-  const subtotal = base + voTotal;
-  const vat = subtotal * 0.05;
-  const total = subtotal + vat;
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const totals = moneyHidden
+    ? null
+    : prepareTotals(
+        preview.stageAmount as string,
+        preview.variations.filter((v) => selected.has(v.variationId)).map((v) => v.amount),
+        preview.taxRate,
+      );
+
+  function create() {
+    mutation.mutate(
+      { selectedVariationIds: [...selected] },
+      {
+        onSuccess: (result) => {
+          onClose();
+          router.push(`/projects/${projectId}/commercial/invoices/${result.invoiceId}`);
+        },
+      },
+    );
+  }
 
   return (
-    <div className="mt-4 space-y-1 rounded-panel bg-surface px-4 py-3">
-      <TotalLine label={t('subtotal')} value={fmt(subtotal)} />
-      <TotalLine label={t('vat')} value={fmt(vat)} />
-      <div className="border-t border-border pt-1.5">
-        <TotalLine label={t('total')} value={fmt(total)} bold />
+    <>
+      <div className="mt-4 space-y-5">
+        {mutation.isError ? (
+          <Alert variant="error" messages={[mutation.error.message || t('createFailed')]} />
+        ) : null}
+
+        <dl className="space-y-3 text-body-sm">
+          <div>
+            <dt className="text-caption text-muted-foreground">{t('stage')}</dt>
+            <dd className="font-medium text-foreground">{preview.stageName}</dd>
+            <dd className="text-caption text-muted-foreground">
+              {t('stagePosition', {
+                n: preview.stageNumber,
+                count: preview.stageCount,
+                percent: formatRate(preview.percentage),
+              })}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-caption text-muted-foreground">{t('releasedBy')}</dt>
+            <dd className="text-foreground">
+              <ReleasedBy releasedBy={preview.releasedBy} locale={locale} />
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-4">
+            <dt className="text-muted-foreground">{t('stageAmount')}</dt>
+            <dd className="font-medium text-foreground">
+              <MoneyDisplay value={preview.stageAmount} hidden={moneyHidden} hiddenLabel={hiddenLabel} />
+            </dd>
+          </div>
+        </dl>
+
+        {preview.blocker ? (
+          <Notice tone="attention" title={t('blockedTitle')}>
+            {t(`blocker.${preview.blocker}`)}
+          </Notice>
+        ) : null}
+
+        {preview.variations.length > 0 ? (
+          <fieldset className="space-y-2">
+            <legend className="text-body-sm font-semibold text-foreground">{t('variationsTitle')}</legend>
+            <p className="text-caption text-muted-foreground">{t('variationsHint')}</p>
+            <ul className="divide-y divide-border rounded-panel border border-border">
+              {preview.variations.map((variation) => {
+                const id = `prep-vo-${variation.variationId}`;
+                const reduction = variation.treatment === 'STAGE_REDUCTION';
+                return (
+                  <li key={variation.variationId} className="flex min-h-11 items-start gap-3 p-3">
+                    <Checkbox
+                      id={id}
+                      checked={selected.has(variation.variationId)}
+                      onChange={() => toggle(variation.variationId)}
+                      disabled={mutation.isPending || Boolean(preview.blocker)}
+                      className="mt-0.5"
+                    />
+                    <label htmlFor={id} className="flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block text-body-sm text-foreground">
+                          <span className="font-mono text-caption text-muted-foreground">{variation.reference}</span>{' '}
+                          {variation.title}
+                        </span>
+                        <span className="block text-caption text-muted-foreground">
+                          {reduction ? t('treatment.STAGE_REDUCTION') : t('treatment.INVOICE')}
+                        </span>
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-body-sm text-foreground">
+                        <MoneyDisplay value={variation.amount} hidden={variation.amount === null} hiddenLabel={hiddenLabel} />
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
+        ) : null}
+
+        {totals ? (
+          <dl className="space-y-1.5 rounded-panel bg-surface-subtle px-4 py-3 text-body-sm tabular-nums">
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className="text-muted-foreground">{t('subtotal')}</dt>
+              <dd className="text-foreground">
+                <MoneyDisplay value={totals.subtotal} />
+              </dd>
+            </div>
+            {totals.tax !== null && preview.taxRate ? (
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-muted-foreground">{t('tax', { rate: formatRate(preview.taxRate) })}</dt>
+                <dd className="text-foreground">
+                  <MoneyDisplay value={totals.tax} />
+                </dd>
+              </div>
+            ) : null}
+            <div className="flex items-baseline justify-between gap-4 border-t border-border pt-1.5 font-semibold">
+              <dt className="text-foreground">{t('total')}</dt>
+              <dd className="text-foreground" data-testid="prepare-total">
+                <MoneyDisplay value={totals.total} />
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-body-sm text-muted-foreground">{t('totalsHidden')}</p>
+        )}
+
+        {preview.blocker ? null : <p className="text-caption text-muted-foreground">{t('draftNote')}</p>}
       </div>
-    </div>
+
+      <DialogFooter>
+        {preview.blocker ? null : (
+          <Button onClick={create} disabled={mutation.isPending}>
+            {mutation.isPending ? t('creating') : t('create')}
+          </Button>
+        )}
+        <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+          {preview.blocker ? t('close') : t('cancel')}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 
-function TotalLine({ label, value, bold = false }: { label: string; value: string; bold?: boolean }) {
+function ReleasedBy({ releasedBy, locale }: { releasedBy: InstallmentReleasedBy; locale: 'en' }) {
+  const t = useTranslations('commercial.prepare');
+  if (releasedBy.kind === 'ADVANCE') return <>{t('released.advance')}</>;
+  if (releasedBy.kind === 'DATE') {
+    const date = formatDate(releasedBy.date, locale);
+    return <>{date ? t('released.date', { date }) : t('released.dateNotSet')}</>;
+  }
+  const name = [releasedBy.milestoneCode, releasedBy.milestoneName].filter(Boolean).join(' ');
+  const verified = formatDate(releasedBy.verifiedAt, locale);
   return (
-    <div className="flex items-baseline justify-between gap-4">
-      <span className={`text-body-sm ${bold ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-        {label}
+    <>
+      {name || t('released.noMilestone')}
+      <span className="block text-caption text-muted-foreground">
+        {verified ? t('released.verified', { date: verified }) : t('released.notVerified')}
       </span>
-      <span className={`shrink-0 tabular-nums text-body-sm ${bold ? 'font-bold text-foreground' : 'text-foreground'}`}>
-        {value}
-      </span>
-    </div>
+    </>
   );
-}
-
-function fmtPercent(fraction: string): string {
-  const n = Number(fraction);
-  if (!Number.isFinite(n)) return fraction;
-  return new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 2 }).format(n);
 }

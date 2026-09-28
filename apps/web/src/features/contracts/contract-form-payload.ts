@@ -26,7 +26,16 @@ export interface PaymentPlanRow {
   isAdvance: boolean;
   /** Calendar date (`YYYY-MM-DD`) the stage is expected to be billed by. Optional. */
   dueDate: string;
+  /**
+   * What bills the stage, when the form asks explicitly (Record signed contract, 2026-09-28):
+   * ADVANCE → billable while the contract is active; MILESTONE → a linked, verified programme
+   * milestone; DATE → on `dueDate` (TIME_BASED). Omitted by the older builders, which classify
+   * with `isAdvance` alone.
+   */
+  billedOn?: PaymentPlanBilledOn;
 }
+
+export type PaymentPlanBilledOn = 'ADVANCE' | 'MILESTONE' | 'DATE';
 
 export const EMPTY_PAYMENT_PLAN_ROW: PaymentPlanRow = {
   name: '',
@@ -160,16 +169,24 @@ export function buildPaymentPlan(
   allowAdvance = true,
 ): PaymentInstallmentPayload[] {
   return rows.map((row, index) => {
-    const isAdvance = row.isAdvance && allowAdvance;
+    const billedOn: PaymentPlanBilledOn =
+      row.billedOn ?? (row.isAdvance && allowAdvance ? 'ADVANCE' : 'MILESTONE');
     const installment: PaymentInstallmentPayload = {
       sortOrder: index + 1,
       name: row.name.trim(),
       percentage: percentToFraction(row.percentage) ?? 0,
-      triggerType: isAdvance ? PaymentTrigger.ADVANCE : PaymentTrigger.MILESTONE,
+      triggerType:
+        billedOn === 'DATE'
+          ? PaymentTrigger.TIME_BASED
+          : billedOn === 'ADVANCE' && allowAdvance
+            ? PaymentTrigger.ADVANCE
+            : PaymentTrigger.MILESTONE,
     };
 
+    // An explicit Billed-on form sends a date only for a Date stage; the older builders keep
+    // sending the optional expected date they always did.
     const dueDate = row.dueDate.trim();
-    if (dueDate) installment.dueDate = dueDate;
+    if (dueDate && (row.billedOn === undefined || billedOn === 'DATE')) installment.dueDate = dueDate;
 
     return installment;
   });

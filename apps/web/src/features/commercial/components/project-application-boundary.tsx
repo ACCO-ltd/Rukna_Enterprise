@@ -30,7 +30,7 @@ export function ProjectApplicationBoundary({
   const tCommon = useTranslations('common');
   const summary = useCommercialSummary(projectId);
 
-  const contractSecurityHref = `/projects/${projectId}/commercial/contract-security`;
+  const contractSecurityHref = `/projects/${projectId}/commercial/contract`;
 
   if (summary.isPending) {
     return (

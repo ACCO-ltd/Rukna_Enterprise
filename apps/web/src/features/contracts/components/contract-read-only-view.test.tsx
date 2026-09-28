@@ -65,10 +65,10 @@ describe('ContractReadOnlyView', () => {
 
   it('links back to the given backHref', () => {
     renderWithProviders(
-      <ContractReadOnlyView contract={contract()} backHref="/projects/p1/commercial/contract-security" reason="notDraft" />,
+      <ContractReadOnlyView contract={contract()} backHref="/projects/p1/commercial/contract" reason="notDraft" />,
     );
 
     const back = screen.getByRole('link');
-    expect(back).toHaveAttribute('href', '/projects/p1/commercial/contract-security');
+    expect(back).toHaveAttribute('href', '/projects/p1/commercial/contract');
   });
 });

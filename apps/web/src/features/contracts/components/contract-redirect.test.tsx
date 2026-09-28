@@ -48,7 +48,7 @@ describe('ContractRedirect', () => {
 
     await waitFor(() => {
       expect(mocks.replace).toHaveBeenCalledWith(
-        `/projects/${PROJECT_ID}/commercial/contract-security`,
+        `/projects/${PROJECT_ID}/commercial/contract`,
       );
     });
   });

@@ -332,7 +332,7 @@ function CommercialFoundation({
       title={t('railCommercial')}
       action={
         canOpenCommercial ? (
-          <Link href={`/projects/${project.id}/commercial/overview`} className={railLinkClass}>
+          <Link href={`/projects/${project.id}/commercial`} className={railLinkClass}>
             {t('openLink')}
           </Link>
         ) : null
@@ -356,7 +356,7 @@ function CommercialFoundation({
             canOpenCommercial ? (
               // Straight to the page that holds the contract, not a route that redirects to it.
               <Link
-                href={`/projects/${project.id}/commercial/contract-milestones`}
+                href={`/projects/${project.id}/commercial/contract`}
                 className="font-medium text-brand-primary hover:underline"
               >
                 {mainContract.contractNumber}

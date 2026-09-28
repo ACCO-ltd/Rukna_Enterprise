@@ -68,13 +68,14 @@ export const Notice = React.forwardRef<HTMLDivElement, NoticeProps>(
         className={cn(noticeVariants({ tone }), className)}
         {...props}
       >
-        <div className="flex items-start gap-3">
+        {/* The action wraps under the text on a phone rather than squeezing it into a column. */}
+        <div className="flex flex-wrap items-start gap-3">
           {glyph ? (
             <span className={cn('mt-0.5 shrink-0', ICON_TONE[tone])} aria-hidden="true">
               {glyph}
             </span>
           ) : null}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-[1_1_16rem]">
             {title ? <p className="font-semibold text-foreground">{title}</p> : null}
             {children ? (
               <div className={cn('text-foreground/85', title ? 'mt-0.5' : undefined)}>{children}</div>

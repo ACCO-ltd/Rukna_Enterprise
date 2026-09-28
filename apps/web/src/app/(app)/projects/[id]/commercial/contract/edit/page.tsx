@@ -20,7 +20,7 @@ export default async function EditProjectContractPage({
   const { id } = await params;
   const t = await getTranslations('commercial.contractAuthoring');
 
-  const backHref = `/projects/${id}/commercial/contract-security`;
+  const backHref = `/projects/${id}/commercial/contract`;
 
   return (
     <div className="w-full max-w-4xl">

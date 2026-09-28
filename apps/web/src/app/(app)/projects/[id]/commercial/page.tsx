@@ -1,14 +1,7 @@
-import { redirect } from 'next/navigation';
+import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
 
-/**
- * Root `/commercial` route — redirects to the Overview tab (Slice 7).
- * Overview is now the authoritative landing for all billing models.
- */
-export default async function CommercialRootPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/** `/commercial` lands billers on Billing and everyone else on Contract (decided client-side). */
+export default async function CommercialRootPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  redirect(`/projects/${id}/commercial/overview`);
+  return <CommercialWorkspace projectId={id} active="landing" />;
 }
