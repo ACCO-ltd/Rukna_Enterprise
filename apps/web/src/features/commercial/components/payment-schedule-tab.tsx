@@ -321,7 +321,7 @@ function seedEditableRows(editable: CommercialPaymentScheduleInstallment[]): Pay
   return editable.map((i) => paymentPlanRowFromInstallment(i));
 }
 
-function ScheduleForm({
+export function ScheduleForm({
   projectId,
   contractId,
   isReprofile,

@@ -52,6 +52,11 @@ function installment(
     readyToBillAt: null,
     canMarkReadyToBill: false,
     canPrepareInvoice: false,
+    billingBlocker: null,
+    expectedDate: null,
+    releasedBy: { kind: 'MILESTONE', milestoneId: null, milestoneCode: null, milestoneName: null, verifiedAt: null },
+    invoiceId: null,
+    invoiceState: null,
     ...overrides,
   };
 }
