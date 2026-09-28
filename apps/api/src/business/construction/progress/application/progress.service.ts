@@ -1,9 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   DprStatus,
   type RequestIdentity,
   type ApplyScheduleTemplateResponse,
+  type CollectionProgressSignalResponse,
+  type PhysicalFinancialSignalResponse,
   type ProgressActualPoint,
   type ProgressCurvePoint,
   type ProgressCurveResponse,
@@ -18,6 +21,12 @@ import {
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
 import { classifyDivergence } from '../domain/divergence.js';
 import { validateDeliveryPlanBatch, type DeliveryPlanPackageInput } from '../domain/delivery-plan.js';
+import {
+  DPR_EXCEEDS_BOQ_QUANTITY,
+  findOverQuantityLines,
+  overQuantityMessage,
+  type OverQuantityInput,
+} from '../domain/over-quantity.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -29,10 +38,47 @@ import {
   CommandGovernanceService,
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
-import { weightedPackagePercent } from '../domain/progress-rollup.js';
+import {
+  leafPercentComplete,
+  packagePercentComplete,
+  progressValueByLeaf,
+  weightedPackagePercent,
+} from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
+// The single server-owned money-visibility definition (ADR-029 §8 A-2) — reused, not re-derived, so
+// the Progress signals hide money from exactly the roles the BOQ and Commercial read models do.
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 
 const ZERO = new Decimal(0);
+
+/** Wire code for a BOQ leaf that is already allocated to a work package (CONST-PROG-012). */
+export const BOQ_ITEM_ALREADY_ALLOCATED = 'BOQ_ITEM_ALREADY_ALLOCATED';
+
+function boqItemAlreadyAllocated(): ConflictException {
+  return new ConflictException({
+    message:
+      'This BOQ item is already allocated to another work package. Refresh the plan and pick an unallocated item.',
+    errorCode: BOQ_ITEM_ALREADY_ALLOCATED,
+  });
+}
+
+/**
+ * True when a write hit the work-package allocation table's unique leaf index
+ * (`WorkPackageBoqNode @@unique([boqNodeId])`) — a leaf allocated by a racing request between our
+ * pre-check and the insert. Prisma reports P2002 with either `meta.modelName` or a `meta.target`
+ * that is a column array (`['boq_node_id']`) or the constraint name as a string
+ * (`work_package_boq_nodes_boq_node_id_key`) depending on version and query path, so any of those
+ * counts. A P2002 on another model (e.g. the package code) propagates unchanged.
+ */
+function isLeafAllocationConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
+  }
+  const meta = (error.meta ?? {}) as { modelName?: unknown; target?: unknown };
+  if (meta.modelName === 'WorkPackageBoqNode') return true;
+  const target = Array.isArray(meta.target) ? meta.target.join(',') : String(meta.target ?? '');
+  return /work_package_boq_nodes|boq_node_id|boqNodeId/.test(target);
+}
 
 // ADR-021: the statuses in which a DPR's measurements may be added/edited and it can be submitted —
 // a fresh draft, one returned before approval, or one reopened for correction (CONST-PROG-010).
@@ -119,6 +165,26 @@ export class ProgressService {
       locationArea: dto.locationArea ?? null,
       createdBy: identity.userId,
     });
+  }
+
+  /**
+   * Remove a work entry from a report still in the preparer's hands (DRAFT / RETURNED / REOPENED) —
+   * e.g. a typo'd quantity. Once submitted or approved the entry is under review / verified, so the
+   * delete is refused with 409. Evidence tagged to the entry is NOT deleted: the schema's SetNull
+   * on `DprAttachment.measurementId` detaches it, so the file stays on the report as general
+   * evidence (removing a tag never destroys evidence).
+   */
+  async removeMeasurement(identity: RequestIdentity, dprId: string, measurementId: string) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!dpr.measurements.some((m) => m.id === measurementId)) {
+      throw new NotFoundException(`Work entry ${measurementId} not found on this report.`);
+    }
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new ConflictException(
+        `Work entries can only be removed from a DRAFT, RETURNED or REOPENED report (is ${dpr.status}).`,
+      );
+    }
+    return this.repo.deleteMeasurement(this.tenancy.getClient(), measurementId);
   }
 
   async attachEvidence(
@@ -267,6 +333,9 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException(`Cannot submit a ${dpr.status} report.`);
     }
+    // Catch an over-quantity entry while the report is still in the preparer's hands, rather than
+    // letting it bounce at approval. Approve re-runs the same check and stays authoritative.
+    await this.assertWithinBoqQuantity(identity, dpr);
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
       status: DprStatus.SUBMITTED,
       submittedBy: identity.userId,
@@ -304,36 +373,84 @@ export class ProgressService {
       'Approving this progress report requires workflow approval.',
     );
 
-    const byNode = new Map<string, Decimal>();
-    for (const m of dpr.measurements) {
-      byNode.set(m.boqNodeId, (byNode.get(m.boqNodeId) ?? ZERO).plus(new Decimal(m.quantity.toString())));
-    }
-    for (const [nodeId, thisReport] of byNode) {
-      const node = await this.repo.findBoqNodeForProject(prisma, dpr.projectId, nodeId);
-      const scope = new Decimal(node?.quantity?.toString() ?? '0');
-      const prior = await this.repo.sumVerifiedForNode(prisma, identity.activeOrganizationId, nodeId, dprId);
-      const priorQty = new Decimal(prior._sum.quantity?.toString() ?? '0');
-      if (priorQty.plus(thisReport).greaterThan(scope)) {
-        throw new BadRequestException(
-          `Approving would exceed the BOQ scope for a line ` +
-            `(${priorQty.plus(thisReport).toString()} > ${scope.toString()}). ` +
-            'Route the excess through an unplanned-requirement classification.',
-        );
-      }
-    }
+    // Fast, unlocked pre-check: fail an obviously over-quantity report before touching evidence.
+    await this.assertWithinBoqQuantity(identity, dpr);
 
     // CONST-PROG-008: approval is what makes these measurements verified, so from here the
     // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
     // never releases the old, which is the same supersede-don't-overwrite rule the BOQ and the
-    // programme already follow.
+    // programme already follow. Frozen before the status flips, so an APPROVED report never has
+    // unfrozen evidence.
     const evidence = await this.repo.findAttachmentFileIds(prisma, dprId);
     await this.files.markManyImmutable(evidence, `evidence on approved report ${dprId}`);
 
-    return this.repo.updateDprStatus(prisma, dprId, {
-      status: DprStatus.APPROVED,
-      approvedBy: identity.userId,
-      approvedAt: new Date(),
+    // Authoritative re-check, race-safe: two reports approved at the same moment must not together
+    // exceed a BOQ line. Lock the BOQ leaf rows this report measures (sorted, so concurrent
+    // approvals take them in the same order and cannot deadlock), re-read the verified totals, and
+    // flip the status in the same transaction. A concurrent approver on an overlapping line waits
+    // for our commit and then sees our quantities.
+    const nodeIds = [...new Set(dpr.measurements.map((m) => m.boqNodeId))].sort();
+    return prisma.$transaction(async (tx) => {
+      await this.repo.lockBoqNodes(tx as never, nodeIds);
+      await this.assertWithinBoqQuantity(identity, dpr, tx as never);
+      return this.repo.updateDprStatus(tx as never, dprId, {
+        status: DprStatus.APPROVED,
+        approvedBy: identity.userId,
+        approvedAt: new Date(),
+      });
     });
+  }
+
+  /**
+   * CONST-PROG-002/009: cumulative verified quantity per BOQ leaf may not exceed the leaf's
+   * measurable quantity. Sums this report's measurements per line, adds what OTHER approved reports
+   * have verified, and — when any line would go over — throws 400 `DPR_EXCEEDS_BOQ_QUANTITY` with
+   * every offending line in `details.lines` and a message naming the first one.
+   */
+  private async assertWithinBoqQuantity(
+    identity: RequestIdentity,
+    dpr: {
+      id: string;
+      projectId: string;
+      measurements: { boqNodeId: string; quantity: { toString(): string } }[];
+    },
+    // The approve transaction passes its client so the reads see the rows it has locked.
+    client?: ReturnType<TenancyService['getClient']>,
+  ): Promise<void> {
+    const prisma = client ?? this.tenancy.getClient();
+    const byNode = new Map<string, Decimal>();
+    for (const m of dpr.measurements) {
+      byNode.set(m.boqNodeId, (byNode.get(m.boqNodeId) ?? ZERO).plus(new Decimal(m.quantity.toString())));
+    }
+
+    const inputs: OverQuantityInput[] = [];
+    for (const [nodeId, thisReport] of byNode) {
+      const node = await this.repo.findBoqNodeForProject(prisma, dpr.projectId, nodeId);
+      const prior = await this.repo.sumVerifiedForNode(
+        prisma,
+        identity.activeOrganizationId,
+        nodeId,
+        dpr.id,
+      );
+      inputs.push({
+        boqNodeId: nodeId,
+        boqCode: node?.code ?? null,
+        description: node?.description ?? null,
+        unit: node?.unit ?? null,
+        boqQuantity: new Decimal(node?.quantity?.toString() ?? '0'),
+        verifiedToDate: new Decimal(prior._sum.quantity?.toString() ?? '0'),
+        thisReport,
+      });
+    }
+
+    const lines = findOverQuantityLines(inputs);
+    if (lines.length > 0) {
+      throw new BadRequestException({
+        message: overQuantityMessage(lines),
+        errorCode: DPR_EXCEEDS_BOQ_QUANTITY,
+        details: { lines },
+      });
+    }
   }
 
   async returnForRevision(identity: RequestIdentity, dprId: string, reason: string) {
@@ -341,9 +458,13 @@ export class ProgressService {
     if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException('Only a SUBMITTED report can be returned.');
     }
+    // returnedBy/At record the most recent return alongside returnReason; like the reason, a
+    // resubmit keeps them and the next return overwrites them.
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
       status: DprStatus.RETURNED,
       returnReason: reason,
+      returnedBy: identity.userId,
+      returnedAt: new Date(),
     });
   }
 
@@ -386,26 +507,72 @@ export class ProgressService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
     const dprs = await this.repo.findDprsByProject(prisma, identity.activeOrganizationId, projectId);
-    // Resolve the preparer id → name once for the whole list (one users query, not N).
-    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
-    const names = await this.resolveUserNames(
-      prisma,
-      identity.activeOrganizationId,
-      dprs.map((d) => d.preparedBy),
-    );
-    return dprs.map((d) => ({ ...d, preparedByName: names.get(d.preparedBy) }));
+    return this.withReadModelFields(identity, dprs);
   }
 
   async getDpr(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    // Resolve this one DPR's preparer id → name (read-side, tenant-scoped). Undefined if not found.
-    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
-    const names = await this.resolveUserNames(
-      this.tenancy.getClient(),
-      identity.activeOrganizationId,
-      [dpr.preparedBy],
-    );
-    return { ...dpr, preparedByName: names.get(dpr.preparedBy) };
+    const [enriched] = await this.withReadModelFields(identity, [dpr]);
+    return enriched!;
+  }
+
+  /**
+   * Read-model enrichment shared by the DPR list and detail, batched for the whole set:
+   *  - one users query resolves preparedByName / approvedByName / returnedByName / reviewedByName
+   *    (the reviewer is the approver for APPROVED and REOPENED, the returner for RETURNED);
+   *  - one measurements query resolves `workPackages` — the distinct work packages the report's
+   *    measured BOQ leaves are allocated to, ordered by code.
+   */
+  private async withReadModelFields<
+    T extends {
+      id: string;
+      status: string;
+      preparedBy: string;
+      approvedBy: string | null;
+      returnedBy: string | null;
+    },
+  >(identity: RequestIdentity, dprs: T[]) {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const [names, packageRows] = await Promise.all([
+      this.resolveUserNames(
+        prisma,
+        orgId,
+        dprs.flatMap((d) => [d.preparedBy, d.approvedBy ?? '', d.returnedBy ?? '']),
+      ),
+      this.repo.findWorkPackagesForDprs(
+        prisma,
+        orgId,
+        dprs.map((d) => d.id),
+      ),
+    ]);
+
+    const packagesByDpr = new Map<string, Map<string, { id: string; code: string; name: string }>>();
+    for (const row of packageRows) {
+      const byId = packagesByDpr.get(row.dprId) ?? new Map();
+      for (const link of row.boqNode.workPackageLinks) byId.set(link.workPackage.id, link.workPackage);
+      packagesByDpr.set(row.dprId, byId);
+    }
+    const nameOf = (id: string | null) => (id ? names.get(id) : undefined);
+
+    return dprs.map((d) => {
+      const reviewer =
+        d.status === DprStatus.APPROVED || d.status === DprStatus.REOPENED
+          ? d.approvedBy
+          : d.status === DprStatus.RETURNED
+            ? d.returnedBy
+            : null;
+      return {
+        ...d,
+        preparedByName: names.get(d.preparedBy),
+        approvedByName: nameOf(d.approvedBy),
+        returnedByName: nameOf(d.returnedBy),
+        reviewedByName: nameOf(reviewer),
+        workPackages: [...(packagesByDpr.get(d.id)?.values() ?? [])].sort((a, b) =>
+          a.code.localeCompare(b.code),
+        ),
+      };
+    });
   }
 
   /**
@@ -454,9 +621,7 @@ export class ProgressService {
       description: e.description,
       measurableQuantity: e.quantity.toString(),
       verifiedToDate: e.verified.toString(),
-      percentComplete: e.quantity.greaterThan(ZERO)
-        ? Math.min(100, Math.round(e.verified.div(e.quantity).mul(100).toNumber()))
-        : null,
+      percentComplete: leafPercentComplete(e.verified, e.quantity),
     }));
   }
 
@@ -489,10 +654,16 @@ export class ProgressService {
     // counted once in the roll-up. Surface the clash rather than let the unique index 500.
     const existing = await this.repo.findLeafAllocation(prisma, boqNodeId);
     if (existing && existing.workPackageId !== workPackageId) {
-      throw new BadRequestException('This BOQ item is already allocated to another work package.');
+      throw boqItemAlreadyAllocated();
     }
 
-    return this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+    try {
+      return await this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+    } catch (error) {
+      // A racing allocation of the same leaf landed between the check above and this insert.
+      if (isLeafAllocationConflict(error)) throw boqItemAlreadyAllocated();
+      throw error;
+    }
   }
 
   async listWorkPackages(identity: RequestIdentity, projectId: string) {
@@ -583,6 +754,11 @@ export class ProgressService {
         ),
       );
       return packages;
+    }).catch((error: unknown) => {
+      // The unique-leaf backstop fired: another plan claimed a leaf after validation. The whole
+      // transaction has rolled back; tell the caller plainly rather than surfacing a raw 500.
+      if (isLeafAllocationConflict(error)) throw boqItemAlreadyAllocated();
+      throw error;
     });
 
     return {
@@ -795,11 +971,7 @@ export class ProgressService {
     // treat it as an absent (zero-value) leaf, and a package that is *only* contingency falls through
     // to the existing unpriced-package plain-average fallback rather than reading 0%. SEPARATE_CHARGE
     // and ABSORBED leaves are `nodeRole = WORK`, so they keep their value and roll up normally (P-2).
-    const valueByNode = new Map<string, Decimal>(
-      leafValues
-        .filter((v) => v.nodeRole !== 'CONTINGENCY')
-        .map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
-    );
+    const valueByNode = progressValueByLeaf(leafValues);
 
     // P1-b: one batched read of the APPROVED-DPR report dates across every allocated leaf, folded to
     // per-node min/max. Each package then reads its own actual window from its leaves.
@@ -848,9 +1020,10 @@ export class ProgressService {
           scheduleStatus: deriveScheduleOnlyStatus(wp.plannedStart, wp.plannedEnd, at),
         };
       }
-      // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
+      // Value-weighted, not a plain average — see `progress-rollup.ts` for why. The rounded figure
+      // comes from the same helper milestone readiness reads (ProgrammeService), so they agree.
       const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
-      const percentComplete = Math.round(pct);
+      const percentComplete = packagePercentComplete(leaves, pctByNode, valueByNode);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));
@@ -897,7 +1070,10 @@ export class ProgressService {
    * A project that has set no budget has not consumed 0% of it, so INSUFFICIENT_DATA is the
    * honest answer rather than a ratio against a number nobody agreed.
    */
-  async getPhysicalFinancialSignal(identity: RequestIdentity, projectId: string) {
+  async getPhysicalFinancialSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<PhysicalFinancialSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -917,11 +1093,16 @@ export class ProgressService {
       'COST_AHEAD',
     );
 
+    // Money-blind callers (PM / Site Engineer, per the owner's financial-visibility decision) get
+    // the ratio and status but never the amounts behind them — the cost tier gates cost figures.
+    const { canViewCost } = resolveBoqVisibility(identity);
+
     return {
       projectId,
       physicalPercent,
-      actualCost: fp.actualCost,
-      budgetTotal: fp.budgetTotal,
+      actualCost: canViewCost ? fp.actualCost : null,
+      budgetTotal: canViewCost ? fp.budgetTotal : null,
+      moneyVisible: canViewCost,
       costConsumedPercent,
       divergence,
       status,
@@ -936,7 +1117,10 @@ export class ProgressService {
    * exposure if the advance is spent before the work is delivered; a large negative gap (work ahead of
    * cash) is ACCO financing the client. The revenue read crosses into accounting — the allowed direction.
    */
-  async getCollectionProgressSignal(identity: RequestIdentity, projectId: string) {
+  async getCollectionProgressSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<CollectionProgressSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -956,11 +1140,16 @@ export class ProgressService {
       'WORK_AHEAD',
     );
 
+    // Contract value and client revenue are the commercial (margin) tier — hidden from money-blind
+    // callers; the collected % and status stay, since a ratio discloses no amount.
+    const { canViewMargin } = resolveBoqVisibility(identity);
+
     return {
       projectId,
       physicalPercent,
-      contractValue: fp.contractValue,
-      receivedRevenue: fp.receivedRevenue,
+      contractValue: canViewMargin ? fp.contractValue : null,
+      receivedRevenue: canViewMargin ? fp.receivedRevenue : null,
+      moneyVisible: canViewMargin,
       collectedPercent,
       divergence,
       status,

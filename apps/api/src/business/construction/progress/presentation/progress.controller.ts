@@ -394,6 +394,22 @@ export class ProgressController {
     return this.service.addMeasurement(identity, dprId, dto);
   }
 
+  @Delete('progress/reports/:dprId/measurements/:measurementId')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiParam({ name: 'dprId' })
+  @ApiParam({ name: 'measurementId' })
+  @ApiOperation({
+    summary: 'Remove a work entry from an editable DPR (DRAFT / RETURNED / REOPENED; 409 otherwise)',
+  })
+  async removeMeasurement(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Param('measurementId') measurementId: string,
+  ): Promise<void> {
+    await this.service.removeMeasurement(identity, dprId, measurementId);
+  }
+
   @Post('progress/reports/:dprId/evidence')
   @RequirePermissions(PERMISSIONS.progressRecord)
   @ApiParam({ name: 'dprId' })

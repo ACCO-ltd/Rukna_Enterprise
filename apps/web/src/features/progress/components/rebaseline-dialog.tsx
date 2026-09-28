@@ -56,7 +56,10 @@ export function RebaselineDialog({
   const [note, setNote] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
-  const variations = variationsQuery.data?.variations ?? [];
+  // Only an adopted variation can justify a re-baseline — the server refuses anything else.
+  const variations = (variationsQuery.data?.variations ?? []).filter(
+    (v) => v.status === 'CLIENT_APPROVED',
+  );
   const loading = summary.isPending || (Boolean(contractId) && variationsQuery.isPending);
   const noContract = !summary.isPending && contractId === null;
   const noVariations = Boolean(contractId) && !variationsQuery.isPending && variations.length === 0;

@@ -251,12 +251,22 @@ export interface IpaPrefillResponse {
 }
 
 // ADR-021/023: physical-vs-financial early warning for the Finance/Overview cockpit.
+//
+// Money visibility (Progress redesign): the money fields are null when the caller lacks the cost
+// tier (`resolveBoqVisibility(...).canViewCost` — PM / Site Engineer are money-blind). Ratios and
+// status stay populated; `moneyVisible` says which reading of a null applies.
 export interface PhysicalFinancialSignalResponse {
   projectId: string;
   physicalPercent: number;
-  actualCost: string;
-  /** Total of the BASELINED cost budget. Null when the project has never baselined one. */
+  /** Posted actual cost. Null only when money is hidden from the caller (`moneyVisible: false`). */
+  actualCost: string | null;
+  /**
+   * Total of the BASELINED cost budget. Null when the project has never baselined one, or when
+   * money is hidden from the caller.
+   */
   budgetTotal: string | null;
+  /** False when the caller may not see money: the amount fields above are then null. */
+  moneyVisible: boolean;
   /**
    * actualCost ÷ budgetTotal × 100. Null without a baselined budget — a project with no
    * budget has not consumed 0% of it, and the signal reads INSUFFICIENT_DATA instead.
@@ -270,11 +280,18 @@ export interface PhysicalFinancialSignalResponse {
 }
 
 // ADR-021/023: collection-vs-progress early warning — cash collected vs work built.
+//
+// Money visibility (Progress redesign): contractValue / receivedRevenue are null when the caller
+// lacks the commercial tier (`resolveBoqVisibility(...).canViewMargin`). Ratios and status remain.
 export interface CollectionProgressSignalResponse {
   projectId: string;
   physicalPercent: number;
+  /** Null when there is no contract value yet, or when money is hidden from the caller. */
   contractValue: string | null;
+  /** Null when there is no contract yet, or when money is hidden from the caller. */
   receivedRevenue: string | null;
+  /** False when the caller may not see money: contractValue / receivedRevenue are then null. */
+  moneyVisible: boolean;
   /** receivedRevenue ÷ contractValue × 100. Null when there is no contract value yet. */
   collectedPercent: number | null;
   /** collectedPercent − physicalPercent (positive = cash ahead of work). */
@@ -553,6 +570,13 @@ export interface DprObservationResponse {
   followUpOwner?: string;
 }
 
+// A work package a DPR's measured BOQ leaves are allocated to (Progress redesign, 2026-09-28).
+export interface DprWorkPackageRef {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface DailyProgressReportResponse {
   id: string;
   projectId: string;
@@ -574,8 +598,26 @@ export interface DailyProgressReportResponse {
   /** ISO datetime string; present once the report has been submitted. */
   submittedAt?: string;
   approvedBy?: string;
+  /** The approver's "firstName lastName", resolved like preparedByName. */
+  approvedByName?: string;
+  /**
+   * The latest reviewer's name: the approver for APPROVED / REOPENED, the returner for RETURNED;
+   * undefined for DRAFT / SUBMITTED (not reviewed yet in this cycle).
+   */
+  reviewedByName?: string;
+  /**
+   * Distinct work packages this report's measured BOQ leaves are allocated to, ordered by code.
+   * `[]` when nothing is measured or no measured leaf is allocated. On both list and detail.
+   */
+  workPackages: DprWorkPackageRef[];
   /** The reason the report was most recently returned to the author. */
   returnReason?: string;
+  /** Who most recently returned the report (user id). Kept on resubmit, overwritten by the next return. */
+  returnedBy?: string;
+  /** ISO datetime of the most recent return. */
+  returnedAt?: string;
+  /** The returner's "firstName lastName", resolved like preparedByName. */
+  returnedByName?: string;
   // Phase 3 structured row collections — present only on the getDpr endpoint (not on list).
   labourRows?: DprLabourRowResponse[];
   equipmentRows?: DprEquipmentRowResponse[];
@@ -592,11 +634,30 @@ export interface MilestoneReleaseLine {
   /** Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage. */
   percentage: string;
   triggerType: `${PaymentTrigger}`;
-  /** contractValue × percentage, fixed to 2 decimals (money). */
-  amount: string;
+  /**
+   * contractValue × percentage, fixed to 2 decimals (money). Null when the caller lacks the
+   * commercial money tier (`resolveBoqVisibility(...).canViewMargin`) — percentage stays visible.
+   */
+  amount: string | null;
   currency: string;
   /** True when a ClientInvoice has been generated from this installment. */
   invoiced: boolean;
+}
+
+// ADR-021 amendment (2026-09-28): a work package linked to a milestone, with its verified physical %
+// (0..100, whole number) — the same figure the progress roll-up reports for the package. A
+// schedule-only phase cannot be linked; a linked package with no BOQ leaves reads 0.
+export interface MilestoneWorkPackageLine {
+  id: string;
+  code: string;
+  name: string;
+  percentComplete: number;
+}
+
+// ADR-021 amendment (2026-09-28): body of PUT projects/:projectId/programme/milestones/:milestoneId/
+// work-packages — replaces the milestone's linked set (an empty array clears it).
+export interface SetMilestoneWorkPackagesRequest {
+  workPackageIds: string[];
 }
 
 // ADR-021 phase 2: a programme delivery milestone (baseline/forecast/actual dates, PLANNED -> VERIFIED).
@@ -616,6 +677,13 @@ export interface ProgrammeMilestoneResponse {
   // Master Schedule P2 — the contract payment installment(s) this milestone releases. `[]` when none
   // link to it (ContractPaymentInstallment.programmeMilestoneId is null for every installment).
   releases: MilestoneReleaseLine[];
+  /** ADR-021 amendment (2026-09-28): the work packages that make up this stage, ordered by code. */
+  workPackages: MilestoneWorkPackageLine[];
+  /**
+   * Server-computed: status is PLANNED, at least one package is linked, and every linked package's
+   * percentComplete is >= 100. A prompt to verify — verification itself stays a human act.
+   */
+  readyToVerify: boolean;
 }
 
 // --- Documents (Phase 7A): the controlled project register ---------------------

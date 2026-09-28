@@ -31,7 +31,7 @@ const dpr = (
   reportDate: string,
   status: DailyProgressReportResponse['status'],
   extra: Partial<DailyProgressReportResponse> = {},
-): DailyProgressReportResponse => ({ id, projectId: 'p1', reportDate, status, preparedBy: ME, ...extra });
+): DailyProgressReportResponse => ({ id, projectId: 'p1', reportDate, status, preparedBy: ME, workPackages: [], ...extra });
 
 function load(reports: DailyProgressReportResponse[]) {
   mocks.useDprs.mockReturnValue({ data: reports, isPending: false, isError: false, refetch: vi.fn() });

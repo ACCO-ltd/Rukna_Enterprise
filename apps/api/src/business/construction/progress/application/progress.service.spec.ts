@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgressService } from './progress.service.js';
 
@@ -25,6 +26,7 @@ type Over = {
   users?: unknown[];
   workPackageForUpdate?: unknown;
   reportDates?: { boqNodeId: string; reportDate: Date }[];
+  dprWorkPackages?: unknown[];
 };
 
 /** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
@@ -63,9 +65,14 @@ function build(over: Over = {}) {
     approvedReportDatesForLeaves: jest.fn().mockResolvedValue(over.reportDates ?? []),
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
+    lockBoqNodes: jest.fn().mockResolvedValue(undefined),
+    deleteMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
+    findWorkPackagesForDprs: jest.fn().mockResolvedValue(over.dprWorkPackages ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
-  const tenancy = { getClient: () => ({}) };
+  // The approve path runs its locked re-check + status flip inside a transaction.
+  const client = { $transaction: (fn: (tx: unknown) => unknown) => fn(client) };
+  const tenancy = { getClient: () => client };
   const financialPosition = {
     getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', budgetTotal: null }),
   };
@@ -150,6 +157,46 @@ describe('ProgressService (ADR-021 MVP)', () => {
     );
   });
 
+  it('approve: locks the measured BOQ lines (sorted) and re-checks before flipping the status', async () => {
+    const { repo, service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'SUBMITTED',
+        projectId: 'p-1',
+        measurements: [
+          { boqNodeId: 'n2', quantity: 1 },
+          { boqNodeId: 'n1', quantity: 1 },
+          { boqNodeId: 'n2', quantity: 1 },
+        ],
+        attachments: [],
+      },
+    });
+    await service.approve(identity, 'dpr-1');
+    expect(repo.lockBoqNodes).toHaveBeenCalledWith(expect.anything(), ['n1', 'n2']);
+    const lockOrder = repo.lockBoqNodes.mock.invocationCallOrder[0]!;
+    // The re-check's reads come after the lock, and the status write after those.
+    const lastSumRead = Math.max(...repo.sumVerifiedForNode.mock.invocationCallOrder);
+    expect(lastSumRead).toBeGreaterThan(lockOrder);
+    expect(repo.updateDprStatus.mock.invocationCallOrder[0]!).toBeGreaterThan(lastSumRead);
+  });
+
+  it('approve: a concurrent approval that lands first makes the locked re-check refuse (no status flip)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [{ boqNodeId: 'n1', quantity: 500 }], attachments: [] },
+      node: { id: 'n1', quantity: 1000, isLeaf: true },
+    });
+    // Unlocked pre-check sees 400 prior; by the time the lock is held another report added 300.
+    repo.sumVerifiedForNode
+      .mockResolvedValueOnce({ _sum: { quantity: '400' } })
+      .mockResolvedValueOnce({ _sum: { quantity: '700' } });
+    const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+    });
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
   it('approve: gates (409) and does not verify when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
     const { repo, service, commandGovernance } = build({
       dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [{ boqNodeId: 'n1', quantity: 500 }], attachments: [] },
@@ -175,8 +222,98 @@ describe('ProgressService (ADR-021 MVP)', () => {
       node: { id: 'n1', quantity: 1000, isLeaf: true },
       prior: { _sum: { quantity: '600' } }, // 600 + 500 = 1100 > 1000
     });
-    await expect(service.approve(identity, 'dpr-1')).rejects.toBeInstanceOf(BadRequestException);
+    const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+      details: { lines: [expect.objectContaining({ boqNodeId: 'n1', maxForThisReport: '400' })] },
+    });
+    // The "prior" figure excludes this report itself — only OTHER approved reports count.
+    expect(repo.sumVerifiedForNode).toHaveBeenCalledWith(expect.anything(), 'org-1', 'n1', 'dpr-1');
     expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('submit: rejects an over-quantity report with a structured DPR_EXCEEDS_BOQ_QUANTITY error naming the line', async () => {
+    const { repo, service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'DRAFT',
+        projectId: 'p-1',
+        measurements: [
+          { boqNodeId: 'n1', quantity: 5 },
+          { boqNodeId: 'n1', quantity: 7 },
+        ],
+        attachments: [],
+      },
+      node: { id: 'n1', quantity: '60', isLeaf: true, code: '2.2', description: 'RC C30 slab', unit: 'm³' },
+      prior: { _sum: { quantity: '58' } },
+    });
+
+    const err = await service.submit(identity, 'dpr-1').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toEqual({
+      message:
+        '2.2 RC C30 slab: this report brings the total to 70 m³ but the BOQ has 60 m³. Enter 2 or less, or raise a variation.',
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+      details: {
+        lines: [
+          {
+            boqNodeId: 'n1',
+            boqCode: '2.2',
+            description: 'RC C30 slab',
+            unit: 'm³',
+            boqQuantity: '60',
+            verifiedToDate: '58',
+            thisReport: '12',
+            maxForThisReport: '2',
+          },
+        ],
+      },
+    });
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('submit: submits a report that stays within every BOQ line', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ boqNodeId: 'n1', quantity: 2 }], attachments: [] },
+      node: { id: 'n1', quantity: '60', isLeaf: true, code: '2.2', description: 'RC C30 slab', unit: 'm³' },
+      prior: { _sum: { quantity: '58' } },
+    });
+    await service.submit(identity, 'dpr-1');
+    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      expect.objectContaining({ status: 'SUBMITTED' }),
+    );
+  });
+
+  it('returnForRevision: records the reason, who returned it and when', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.returnForRevision(identity, 'dpr-1', 'Photos missing for grid 5');
+    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      expect.objectContaining({
+        status: 'RETURNED',
+        returnReason: 'Photos missing for grid 5',
+        returnedBy: 'user-1',
+        returnedAt: expect.any(Date),
+      }),
+    );
+  });
+
+  it('submit: a resubmit keeps the last return record (same as returnReason)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'RETURNED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.submit(identity, 'dpr-1');
+    const data = repo.updateDprStatus.mock.calls[0]![2] as Record<string, unknown>;
+    expect(data).not.toHaveProperty('returnedBy');
+    expect(data).not.toHaveProperty('returnedAt');
+    expect(data).not.toHaveProperty('returnReason');
   });
 
   it('reopen: moves an APPROVED report to REOPENED with the reopen audit trail (CONST-PROG-010)', async () => {
@@ -239,6 +376,40 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'dpr-1',
       expect.objectContaining({ status: 'SUBMITTED' }),
     );
+  });
+
+  it.each(['DRAFT', 'RETURNED', 'REOPENED'])(
+    'removeMeasurement: deletes a work entry on a %s report',
+    async (status) => {
+      const { repo, service } = build({
+        dpr: { id: 'dpr-1', status, projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] },
+      });
+      await service.removeMeasurement(identity, 'dpr-1', 'm-1');
+      expect(repo.deleteMeasurement).toHaveBeenCalledWith(expect.anything(), 'm-1');
+    },
+  );
+
+  it.each(['SUBMITTED', 'APPROVED'])(
+    'removeMeasurement: 409 on a %s report, nothing deleted',
+    async (status) => {
+      const { repo, service } = build({
+        dpr: { id: 'dpr-1', status, projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] },
+      });
+      await expect(service.removeMeasurement(identity, 'dpr-1', 'm-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(repo.deleteMeasurement).not.toHaveBeenCalled();
+    },
+  );
+
+  it('removeMeasurement: 404 for an entry that is not on this report', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] },
+    });
+    await expect(service.removeMeasurement(identity, 'dpr-1', 'm-OTHER')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(repo.deleteMeasurement).not.toHaveBeenCalled();
   });
 
   it('attachEvidence: rejects a file that is not READY', async () => {
@@ -499,12 +670,69 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(repo.allocateBoqNode).toHaveBeenCalledWith(expect.anything(), 'wp-1', 'n1');
   });
 
-  it('allocateBoqNode: rejects a leaf already allocated to another package (CONST-PROG-012)', async () => {
+  it('allocateBoqNode: rejects a leaf already allocated to another package (CONST-PROG-012) with 409 BOQ_ITEM_ALREADY_ALLOCATED', async () => {
     const { repo, service } = build({ leafAllocation: { workPackageId: 'wp-OTHER' } });
-    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    const err = await service.allocateBoqNode(identity, 'wp-1', 'n1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+    });
     expect(repo.allocateBoqNode).not.toHaveBeenCalled();
+  });
+
+  it('allocateBoqNode: maps a racing unique-leaf violation (P2002) to 409 BOQ_ITEM_ALREADY_ALLOCATED, not a 500', async () => {
+    const { repo, service } = build();
+    repo.allocateBoqNode.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: { target: ['boq_node_id'] },
+      }),
+    );
+    const err = await service.allocateBoqNode(identity, 'wp-1', 'n1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+      message: expect.stringContaining('already allocated'),
+    });
+  });
+
+  it.each([
+    ['meta.modelName', { modelName: 'WorkPackageBoqNode', target: undefined }],
+    ['a column-array target', { target: ['boq_node_id'] }],
+    ['a constraint-name string target', { target: 'work_package_boq_nodes_boq_node_id_key' }],
+  ])('allocateBoqNode: maps P2002 identified by %s to 409', async (_label, meta) => {
+    const { repo, service } = build();
+    repo.allocateBoqNode.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta,
+      }),
+    );
+    const err = await service.allocateBoqNode(identity, 'wp-1', 'n1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+    });
+  });
+
+  it('allocateBoqNode: a P2002 on another model (WorkPackage code) is not remapped', async () => {
+    const { repo, service } = build();
+    const codeClash = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'x',
+      meta: { modelName: 'WorkPackage', target: 'work_packages_project_id_code_key' },
+    });
+    repo.allocateBoqNode.mockRejectedValue(codeClash);
+    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBe(codeClash);
+  });
+
+  it('allocateBoqNode: lets an unrelated database error propagate unchanged', async () => {
+    const { repo, service } = build();
+    const boom = new Error('connection reset');
+    repo.allocateBoqNode.mockRejectedValue(boom);
+    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBe(boom);
   });
 
   // ── Master Schedule P1-a (ADR-029): WorkPackage schedule window + update guards ──
@@ -908,6 +1136,63 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(res.status).toBe('INSUFFICIENT_DATA');
   });
 
+  // ── Money visibility (Progress redesign): PM / Site Engineer are money-blind ──────────────
+
+  const signalFixture = {
+    workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+    measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
+    fp: { actualCost: '510', budgetTotal: '1000', contractValue: '1000', receivedRevenue: '700' },
+  };
+  /** A finance caller: the legacy commercial gate carries both money tiers. */
+  const financeIdentity: RequestIdentity = {
+    ...identity,
+    permissions: [PERMISSIONS.projectsView, PERMISSIONS.financialPositionView],
+  };
+  /** A money-blind caller (PM / Site Engineer): view:project only, no cost or margin tier. */
+  const moneyBlindIdentity: RequestIdentity = { ...identity, permissions: [PERMISSIONS.projectsView] };
+
+  it('signal: shows cost amounts to a caller with the cost tier', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(financeIdentity, 'p-1');
+    expect(res).toMatchObject({ actualCost: '510', budgetTotal: '1000', moneyVisible: true, costConsumedPercent: 51 });
+  });
+
+  it('signal: nulls cost amounts for a money-blind caller but keeps the ratio and status', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(moneyBlindIdentity, 'p-1');
+    expect(res.actualCost).toBeNull();
+    expect(res.budgetTotal).toBeNull();
+    expect(res.moneyVisible).toBe(false);
+    expect(res.costConsumedPercent).toBe(51);
+    expect(res.status).toBe('COST_AHEAD');
+  });
+
+  it('collection signal: shows contract value and revenue to a caller with the commercial tier', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(financeIdentity, 'p-1');
+    expect(res).toMatchObject({ contractValue: '1000', receivedRevenue: '700', moneyVisible: true, collectedPercent: 70 });
+  });
+
+  it('collection signal: nulls contract value and revenue for a money-blind caller but keeps the ratio and status', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(moneyBlindIdentity, 'p-1');
+    expect(res.contractValue).toBeNull();
+    expect(res.receivedRevenue).toBeNull();
+    expect(res.moneyVisible).toBe(false);
+    expect(res.collectedPercent).toBe(70);
+    expect(res.status).toBe('CASH_AHEAD');
+  });
+
+  it('collection signal: the cost tier alone (Construction Director) does not reveal contract revenue', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(
+      { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost] },
+      'p-1',
+    );
+    expect(res.contractValue).toBeNull();
+    expect(res.receivedRevenue).toBeNull();
+  });
+
   it('listDprs: resolves preparedByName for a known preparer and leaves unknown ids undefined', async () => {
     const { repo, service } = build({
       dprs: [
@@ -926,6 +1211,72 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'org-1',
       expect.arrayContaining(['user-1', 'ghost-user']),
     );
+  });
+
+  it('listDprs: resolves returnedByName in the same batched users query', async () => {
+    const { repo, service } = build({
+      dprs: [{ id: 'dpr-1', projectId: 'p-1', status: 'RETURNED', preparedBy: 'user-2', returnedBy: 'user-1' }],
+      users: [
+        { id: 'user-1', firstName: 'Ahmed', lastName: 'Shirie' },
+        { id: 'user-2', firstName: 'Site', lastName: 'Engineer' },
+      ],
+    });
+    const res = await service.listDprs(identity, 'p-1');
+    expect(res[0]).toMatchObject({ preparedByName: 'Site Engineer', returnedByName: 'Ahmed Shirie' });
+    expect(repo.findUserNamesByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('listDprs: adds the distinct work packages each report touches, from one batched query', async () => {
+    const wp = (id: string, code: string) => ({ workPackage: { id, code, name: `Package ${code}` } });
+    const { repo, service } = build({
+      dprs: [
+        { id: 'dpr-1', projectId: 'p-1', status: 'DRAFT', preparedBy: 'user-1' },
+        { id: 'dpr-2', projectId: 'p-1', status: 'DRAFT', preparedBy: 'user-1' },
+      ],
+      dprWorkPackages: [
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [wp('wp-b', 'WP-02')] } },
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [wp('wp-a', 'WP-01')] } },
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [wp('wp-b', 'WP-02')] } }, // same package again
+        { dprId: 'dpr-1', boqNode: { workPackageLinks: [] } }, // an unallocated leaf
+      ],
+    });
+
+    const res = await service.listDprs(identity, 'p-1');
+
+    expect(res[0]!.workPackages).toEqual([
+      { id: 'wp-a', code: 'WP-01', name: 'Package WP-01' },
+      { id: 'wp-b', code: 'WP-02', name: 'Package WP-02' },
+    ]);
+    expect(res[1]!.workPackages).toEqual([]);
+    expect(repo.findWorkPackagesForDprs).toHaveBeenCalledTimes(1);
+    expect(repo.findWorkPackagesForDprs).toHaveBeenCalledWith(expect.anything(), 'org-1', ['dpr-1', 'dpr-2']);
+  });
+
+  it('listDprs: approvedByName, and reviewedByName = approver (APPROVED/REOPENED) or returner (RETURNED)', async () => {
+    const { repo, service } = build({
+      dprs: [
+        { id: 'a', projectId: 'p-1', status: 'APPROVED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null },
+        { id: 'r', projectId: 'p-1', status: 'RETURNED', preparedBy: 'se', approvedBy: null, returnedBy: 'pm2' },
+        { id: 'o', projectId: 'p-1', status: 'REOPENED', preparedBy: 'se', approvedBy: 'pm', returnedBy: null },
+        { id: 's', projectId: 'p-1', status: 'SUBMITTED', preparedBy: 'se', approvedBy: null, returnedBy: 'pm2' },
+      ],
+      users: [
+        { id: 'se', firstName: 'Site', lastName: 'Eng' },
+        { id: 'pm', firstName: 'Project', lastName: 'Manager' },
+        { id: 'pm2', firstName: 'Other', lastName: 'PM' },
+      ],
+    });
+
+    const res = await service.listDprs(identity, 'p-1');
+
+    expect(res.map((d) => [d.approvedByName, d.reviewedByName])).toEqual([
+      ['Project Manager', 'Project Manager'],
+      [undefined, 'Other PM'],
+      ['Project Manager', 'Project Manager'],
+      [undefined, undefined], // resubmitted after a return: not reviewed yet
+    ]);
+    // Still one users query for every name on the list.
+    expect(repo.findUserNamesByIds).toHaveBeenCalledTimes(1);
   });
 
   it('getDpr: resolves the single report preparedByName', async () => {

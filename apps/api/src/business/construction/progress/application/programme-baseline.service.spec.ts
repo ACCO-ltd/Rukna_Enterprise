@@ -47,7 +47,9 @@ function build(over: Over = {}) {
     findLatestVersion: jest.fn().mockResolvedValue(over.latestVersion ?? null),
     findVariationOrderProject: jest.fn().mockResolvedValue(
       // Distinguish an explicit null override (VO not found) from "not provided" (default VO).
-      'variationOrder' in over ? over.variationOrder : { id: 'vo-1', contract: { projectId: 'p-1' } },
+      'variationOrder' in over
+        ? over.variationOrder
+        : { id: 'vo-1', status: 'CLIENT_APPROVED', contract: { projectId: 'p-1' } },
     ),
     supersedeApproved: jest.fn().mockResolvedValue({ count: 1 }),
     createApproved: jest.fn().mockResolvedValue({ id: over.createdId ?? 'pb-new' }),
@@ -122,13 +124,36 @@ describe('ProgrammeBaselineService (Master Schedule P3, ADR-029)', () => {
     it('rejects a Variation that belongs to another project', async () => {
       const { repo, service } = build({
         approved: baselineRow(),
-        variationOrder: { id: 'vo-x', contract: { projectId: 'other-project' } },
+        variationOrder: {
+          id: 'vo-x',
+          status: 'CLIENT_APPROVED',
+          contract: { projectId: 'other-project' },
+        },
       });
       await expect(
         service.rebaseline(identity, 'p-1', { variationOrderId: 'vo-x' }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.createApproved).not.toHaveBeenCalled();
     });
+
+    it.each(['DRAFT', 'PENDING_INTERNAL', 'INTERNAL_APPROVED', 'REJECTED', 'WITHDRAWN'])(
+      'rejects a %s Variation — only an adopted one can justify moving the plan',
+      async (status) => {
+        const { repo, service } = build({
+          approved: baselineRow(),
+          variationOrder: { id: 'vo-1', status, contract: { projectId: 'p-1' } },
+        });
+        const err = await service
+          .rebaseline(identity, 'p-1', { variationOrderId: 'vo-1' })
+          .catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect((err as BadRequestException).message).toBe(
+          "Rebaselining must cite an adopted variation on this project's contract.",
+        );
+        expect(repo.supersedeApproved).not.toHaveBeenCalled();
+        expect(repo.createApproved).not.toHaveBeenCalled();
+      },
+    );
 
     it('rejects when the Variation does not exist', async () => {
       const { repo, service } = build({ approved: baselineRow(), variationOrder: null });

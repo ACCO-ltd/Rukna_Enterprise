@@ -63,8 +63,16 @@ function formatFraction(fraction: string, locale: 'en' | 'ar'): string {
   }).format(n);
 }
 
-/** Money for a release line, using the line's own currency (the contract's). */
-function releaseAmount(release: MilestoneReleaseLine, locale: 'en' | 'ar'): string {
+/**
+ * Money for a release line, using the line's own currency (the contract's). The server nulls the
+ * amount for a money-blind caller — shown as the neutral `hiddenLabel`, never as 0.
+ */
+function releaseAmount(
+  release: MilestoneReleaseLine,
+  locale: 'en' | 'ar',
+  hiddenLabel: string,
+): string {
+  if (release.amount === null) return hiddenLabel;
   return formatMoney(release.amount, release.currency, locale) ?? release.amount;
 }
 
@@ -200,7 +208,7 @@ function ReleasesCell({
             {t('programme.releases.line', {
               percent: formatFraction(r.percentage, locale),
               name: r.name,
-              amount: releaseAmount(r, locale),
+              amount: releaseAmount(r, locale, t('programme.releases.amountHidden')),
             })}
           </span>
           {r.invoiced ? (
@@ -314,13 +322,13 @@ export function VerifyMilestoneDialog({
     verifyNote = t('programme.verify.hintReleaseOne', {
       percent: formatFraction(r.percentage, locale),
       name: r.name,
-      amount: releaseAmount(r, locale),
+      amount: releaseAmount(r, locale, t('programme.releases.amountHidden')),
     });
   } else {
     verifyNote = t('programme.verify.hintReleaseMany', {
       count: releases.length,
       list: releases
-        .map((r) => `${formatFraction(r.percentage, locale)} ${r.name} (${releaseAmount(r, locale)})`)
+        .map((r) => `${formatFraction(r.percentage, locale)} ${r.name} (${releaseAmount(r, locale, t('programme.releases.amountHidden'))})`)
         .join(', '),
     });
   }

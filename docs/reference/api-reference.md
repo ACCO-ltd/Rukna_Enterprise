@@ -2513,6 +2513,125 @@ Read-only query endpoints. The ledger is written automatically by PO approval an
 
 ---
 
+### 6.35 Progress & Programme — Progress redesign backend (2026-09-28)
+
+The full Progress/DPR catalogue lives in
+[`frontend-integration-progress-documents.md`](frontend-integration-progress-documents.md). This
+section records the contract changes made for the Progress redesign (ADR-021 amendment 2026-09-28).
+Errors use the standard envelope (§3); where a specific `error.code` is listed, branch on it rather
+than on the message.
+
+#### Over-quantity at DPR submit and approve
+
+| Method | Path | Change |
+|---|---|---|
+| `POST` | `/progress/reports/:dprId/submit` | Now refuses a report that would take any BOQ line past its measurable quantity |
+| `POST` | `/progress/reports/:dprId/approve` | Same check, re-run (authoritative — other reports may have been approved since submit) |
+
+Both return **400** with `error.code = "DPR_EXCEEDS_BOQ_QUANTITY"`:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "DPR_EXCEEDS_BOQ_QUANTITY",
+    "message": "2.2 RC C30 slab: this report brings the total to 70 m³ but the BOQ has 60 m³. Enter 2 or less, or raise a variation.",
+    "details": {
+      "lines": [
+        {
+          "boqNodeId": "clx...",
+          "boqCode": "2.2",
+          "description": "RC C30 slab",
+          "unit": "m³",
+          "boqQuantity": "60",
+          "verifiedToDate": "58",
+          "thisReport": "12",
+          "maxForThisReport": "2"
+        }
+      ]
+    }
+  }
+}
+```
+
+All quantities are decimal strings. `verifiedToDate` counts OTHER approved reports only;
+`maxForThisReport = max(0, boqQuantity − verifiedToDate)`. The message names the first line; every
+offending line is in `details.lines`. Approve runs the check under a row lock on the measured BOQ
+lines, in the same transaction as the status change, so two reports approved at once cannot
+together exceed a line.
+
+#### DPR read model, returns and work-entry delete
+
+| Method | Path | Change |
+|---|---|---|
+| `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName` |
+| `POST` | `/progress/reports/:dprId/return` | Also records `returnedBy` / `returnedAt` (kept on resubmit, overwritten by the next return — same as `returnReason`) |
+| `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. Evidence tagged to the entry is detached, not deleted |
+
+```ts
+workPackages: Array<{ id: string; code: string; name: string }>; // distinct packages of the measured leaves, by code
+approvedByName?: string;
+reviewedByName?: string;   // approver for APPROVED/REOPENED, returner for RETURNED, else undefined
+returnedBy?: string; returnedAt?: string; returnedByName?: string;
+```
+
+#### Work-package allocation race
+
+| Method | Path | Change |
+|---|---|---|
+| `POST` | `/work-packages/:workPackageId/boq-nodes` | A leaf already in another package → **409** `BOQ_ITEM_ALREADY_ALLOCATED` (was 400; a concurrent insert was a raw 500) |
+| `POST` | `/projects/:projectId/work-packages/delivery-plan` | A leaf claimed by a concurrent save → **409** `BOQ_ITEM_ALREADY_ALLOCATED` (whole batch rolled back) |
+
+#### Programme milestones ↔ work packages + readiness
+
+| Method | Path | Permission | Change |
+|---|---|---|---|
+| `POST` | `/projects/:projectId/programme/milestones` | `manage:project` | Body accepts optional `workPackageIds: string[]` |
+| `PUT` | `/projects/:projectId/programme/milestones/:milestoneId/work-packages` | `manage:project` | **New.** Body `{ "workPackageIds": string[] }` replaces the linked set (`[]` clears it). Returns the milestone's `ProgrammeMilestoneResponse` |
+| `GET` | `/projects/:projectId/programme/milestones` | `view:project` | Each milestone gains `workPackages[]` and `readyToVerify` |
+
+Project membership is checked on every call. Rules: every package must be on the same project
+(else 400); a schedule-only phase cannot be linked (400); a VERIFIED milestone's set is frozen
+(**409**); a milestone on another project is 404.
+
+```ts
+workPackages: Array<{ id: string; code: string; name: string; percentComplete: number }>; // 0..100, ordered by code
+readyToVerify: boolean; // status PLANNED && workPackages.length > 0 && every package FULLY verified
+```
+
+"Fully verified" is decided on exact quantities: every work leaf of the package has verified ≥
+its measurable quantity (contingency leaves ignored). `percentComplete` is the rounded display
+figure only — 199.1 of 200 displays 100 but is not ready. A link change re-checks VERIFIED under a
+row lock, so it cannot follow a concurrent verify.
+
+`percentComplete` is the package's verified physical % — the same figure `GET
+/projects/:projectId/progress/rollup` reports for it (APPROVED reports only, value-weighted,
+contingency excluded). `readyToVerify` is a prompt; verifying is still `POST
+/programme/milestones/:id/verify`.
+
+#### Money redaction for money-blind roles
+
+Visibility reuses the BOQ money tiers (`resolveBoqVisibility`, ADR-029 §8 A-2). When the caller
+lacks the tier, the amount is `null`; percentages, ratios and `status` are unchanged.
+
+| Endpoint | Fields nulled | Tier required |
+|---|---|---|
+| `GET /projects/:projectId/progress/signal` | `actualCost`, `budgetTotal` | cost (`view-cost:boq`, `manage:boq`, or a margin grant) |
+| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue` | margin (`view-margin:boq` or `view:financial-position`) |
+| `GET /projects/:projectId/programme/milestones` | `releases[].amount` | margin |
+
+Both signals also carry `moneyVisible: boolean`, so a hidden `null` is not mistaken for "no budget"
+or "no contract". Render a neutral hidden/restricted state, never `$0`.
+
+#### Re-baseline must cite an adopted variation
+
+`POST /projects/:projectId/programme/baseline/rebaseline` now accepts only a variation in
+`CLIENT_APPROVED` (adopted) status on this project's contract. Anything else — DRAFT, pending,
+REJECTED, reversed (`WITHDRAWN`), or a variation on another project — is **400** "Rebaselining must
+cite an adopted variation on this project's contract." An unknown id is still 404.
+
+---
+
 ## 9. What Is NOT Built Yet (Do Not Call)
 
 These features are planned but endpoints do not exist:
@@ -2521,7 +2640,6 @@ These features are planned but endpoints do not exist:
 - Variations / Change Orders (Sprint 6)
 - Inventory: Stock Ledger / Stock Transfers (Sprint 7)
 - Cost Ledger / Project Costing (Sprint 7)
-- Daily Progress Reports / Measurement Sheets (Sprint 9)
 - Labour Attendance / Equipment Logs (Sprint 9)
 - File uploads / Attachment storage (tables exist in DB, no file serving yet)
 - Notifications / Expiry alerts

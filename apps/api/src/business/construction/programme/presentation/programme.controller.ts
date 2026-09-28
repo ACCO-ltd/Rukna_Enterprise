@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
@@ -6,7 +6,11 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgrammeService } from '../application/programme.service.js';
-import { CreateMilestoneDto, VerifyMilestoneDto } from './dto/programme.dto.js';
+import {
+  CreateMilestoneDto,
+  SetMilestoneWorkPackagesDto,
+  VerifyMilestoneDto,
+} from './dto/programme.dto.js';
 
 // ADR-021 phase 2: programme delivery milestones (baseline dates + PLANNED -> VERIFIED).
 // Capability gate mirrors the rest of construction (view:project to read, manage:project to
@@ -37,6 +41,22 @@ export class ProgrammeController {
   @ApiOperation({ summary: 'List the project programme milestones' })
   list(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.service.listMilestones(identity, projectId);
+  }
+
+  @Put('projects/:projectId/programme/milestones/:milestoneId/work-packages')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'milestoneId' })
+  @ApiOperation({
+    summary: "Replace the work packages that make up a milestone's stage (drives readyToVerify)",
+  })
+  setWorkPackages(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('milestoneId') milestoneId: string,
+    @Body() dto: SetMilestoneWorkPackagesDto,
+  ) {
+    return this.service.setMilestoneWorkPackages(identity, projectId, milestoneId, dto.workPackageIds);
   }
 
   @Post('programme/milestones/:id/verify')
