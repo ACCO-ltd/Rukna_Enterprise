@@ -166,6 +166,35 @@ describe('BoqGrid — editing a draft', () => {
     );
   });
 
+  it('sends one save for Enter then Tab, and none for an unchanged value after it saved', async () => {
+    const user = userEvent.setup();
+    let resolve: () => void = () => {};
+    const cmds = commands({
+      onEditField: vi.fn(() => new Promise<void>((done) => { resolve = done; })),
+    });
+    render({ commands: cmds });
+    const rate = screen.getByRole('textbox', { name: 'Edit rate of 1.2' });
+    await user.type(rate, '12.5{Enter}');
+    await user.tab();
+    expect(cmds.onEditField).toHaveBeenCalledTimes(1);
+    resolve();
+    await waitFor(() => expect(rate).not.toHaveAttribute('aria-busy'));
+    await user.click(rate);
+    await user.tab();
+    expect(cmds.onEditField).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefixes a rate with the BOQ's own currency, and links the error to the field", async () => {
+    const user = userEvent.setup();
+    render({ commands: commands({ onEditField: vi.fn().mockRejectedValue(new Error('x')) }), currency: 'EUR' });
+    const rate = screen.getByRole('textbox', { name: 'Edit rate of 1.1' });
+    expect(rate.parentElement).toHaveTextContent('€');
+    await user.clear(rate);
+    await user.type(rate, '7{Enter}');
+    const error = await screen.findByText("Couldn't save. Try again.");
+    expect(rate).toHaveAttribute('aria-describedby', error.id);
+  });
+
   it('keeps a failed value in the cell and says so', async () => {
     const user = userEvent.setup();
     const cmds = commands({ onEditField: vi.fn().mockRejectedValue(new Error('boom')) });

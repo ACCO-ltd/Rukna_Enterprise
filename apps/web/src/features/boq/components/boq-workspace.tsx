@@ -143,8 +143,14 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const signed = workspace.mainContractStatus === 'ACTIVE';
   const committed = workspace.moneyBand?.lifeStage === 'COMMITTED';
   const actions = getVersionActions(workspace, operationalVersionId);
+  // Only when there is no current main contract: a reopened or draft one is continued in
+  // Commercial, and record-signed would refuse a second (409).
+  const hasContract = Boolean(workspace.mainContractStatus);
   const canCreateContract =
-    can('create:contract') && can('approve:contract') && project?.commercialModel !== 'INTERNAL_CAPITAL';
+    !hasContract &&
+    can('create:contract') &&
+    can('approve:contract') &&
+    project?.commercialModel !== 'INTERNAL_CAPITAL';
 
   const importView = (
     <BoqImportView
@@ -259,7 +265,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     <div className="space-y-3">
       <BoqContextBar
         workspace={workspace}
-        stage={{ editable: canManage, signed, committed }}
+        stage={{ editable: canManage, signed, committed, contractInProgress: hasContract && !signed }}
         counts={counts}
         actions={actions}
         canCreateContract={canCreateContract}

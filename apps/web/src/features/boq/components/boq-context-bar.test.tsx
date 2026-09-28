@@ -123,6 +123,12 @@ describe('BoqContextBar', () => {
     expect(screen.getByText('The commercial team creates the contract from this BOQ.')).toBeInTheDocument();
   });
 
+  it('offers no Create contract once a draft or reopened contract exists, and says where it lives', () => {
+    render({ canCreateContract: false, stage: { ...DRAFT, contractInProgress: true } }, { sections: 3, items: 11, priced: 11 });
+    expect(screen.queryByRole('link', { name: 'Create contract' })).not.toBeInTheDocument();
+    expect(screen.getByText('A main contract is already being prepared. Continue it in Commercial.')).toBeInTheDocument();
+  });
+
   it('after signing, the next step is extra work, and the discard is gone', async () => {
     const user = userEvent.setup();
     render({ stage: { editable: true, signed: true, committed: false } });

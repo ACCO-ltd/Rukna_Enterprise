@@ -1,6 +1,6 @@
 # BOQ tab — redesign implementation note
 
-Status: implemented 2026-09-28 (uncommitted). Frontend only; no BOQ API contract, numbering, validation, amount,
+Status: implemented 2026-09-28 (branch `feat/project-overview-boq-redesign`). Frontend only; no BOQ API contract, numbering, validation, amount,
 audit, library or permission change. No migrations, no new statuses.
 
 ## 1. Phase 0 — what is there
@@ -85,6 +85,7 @@ audit, library or permission change. No migrations, no new statuses.
 5. Mixed sections (items and sub-sections under one parent), if the design's shape is wanted.
 6. Workspace guidance still says "main contract blocked until the BOQ is baselined" (`project.service.ts`, workspace-guidance), contradicting ADR-032. The BOQ tab no longer reads it.
 7. An xlsx export (today CSV).
+8. **Pre-existing readiness gap (on `main` before this branch):** project readiness `BOQ_BASELINED` counts only `COMMITTED`/`BASELINED` versions (`boq-version-status.ts`), but since ADR-032 signing creates a `SNAPSHOT` and leaves the live version DRAFT, and no UI commits a BOQ. So the step can only be cleared by an apex waiver. Needs a domain decision (e.g. count the contract-signing snapshot); the Overview step still points to the BOQ tab, which has no baseline control.
 
 ## 5. Verification
 

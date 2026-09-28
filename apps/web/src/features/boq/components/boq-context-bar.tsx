@@ -29,6 +29,8 @@ export interface BoqStage {
   signed: boolean;
   /** Legacy life stage: the operational version itself was committed (value cells pinned). */
   committed: boolean;
+  /** A main contract exists but is not ACTIVE yet (draft or reopened) — continued in Commercial. */
+  contractInProgress?: boolean;
 }
 
 /**
@@ -136,6 +138,8 @@ export function BoqContextBar({
     note = t('committedNote');
   } else if (stage.signed) {
     note = t('signedNote');
+  } else if (stage.contractInProgress) {
+    note = t('contractInProgressNote');
   } else if (!primary) {
     note = t('contractOwnerNote');
   }

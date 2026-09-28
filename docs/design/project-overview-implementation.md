@@ -1,6 +1,6 @@
 # Project Overview — redesign implementation note
 
-Status: implemented 2026-09-28 (frontend only; no API, schema or migration change).
+Status: implemented 2026-09-28. The Overview redesign itself is frontend only; the backend follow-up in §6 adds API fields and one endpoint (additive; no schema or migration change).
 Scope: the project workspace header and the **Overview** tab. Other tabs untouched.
 
 ## 1. What was there (Phase 0 read)
@@ -76,7 +76,7 @@ None open. All five items shipped on 2026-09-28 — see §6:
 
 ## 6. Backend follow-up (readiness + activity)
 
-Status: **shipped 2026-09-28** (uncommitted). Additive API only — no migration, no new status, no field removed or renamed. Authorization identical or stricter; the API stays the security boundary.
+Status: **shipped 2026-09-28** (branch `feat/project-overview-boq-redesign`). Additive API only — no migration, no new status, no field removed or renamed. Authorization identical or stricter; the API stays the security boundary.
 
 ### 6.1 Plan
 

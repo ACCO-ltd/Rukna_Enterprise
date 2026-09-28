@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { cn } from '@erp/ui';
 
 /**
@@ -72,6 +72,7 @@ export function CellEditor({
   attention = false,
   autoFocus = false,
   unitsListId,
+  currencySymbol = '$',
   className,
   onEmptyCommit,
 }: {
@@ -88,6 +89,8 @@ export function CellEditor({
   autoFocus?: boolean;
   /** `id` of a `<datalist>` of known units, for `kind="unit"`. */
   unitsListId?: string;
+  /** Adornment before a rate — the BOQ's own currency, never assumed. */
+  currencySymbol?: string;
   className?: string;
   /** Called instead of `onCommit` when a text field is left empty (e.g. abandon a new line). */
   onEmptyCommit?: () => void;
@@ -97,6 +100,11 @@ export function CellEditor({
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const cancelled = useRef(false);
+  // Guards against a second PATCH: Enter then Tab (blur) would otherwise both commit, and a blur
+  // between a successful save and the refetch would resend the same value.
+  const inFlight = useRef(false);
+  const lastSaved = useRef<string | null>(null);
+  const errorId = useId();
 
   // Follow the server value while the field is idle (React's "adjust state on prop change"
   // pattern — no effect, so no extra render pass). A focused or failed field keeps what was typed.
@@ -106,11 +114,13 @@ export function CellEditor({
     setDraft(seedCellValue(kind, value));
   }
 
+
   const numeric = kind === 'quantity' || kind === 'rate';
 
   const commit = async () => {
+    if (inFlight.current) return;
     const next = normalizeCellValue(kind, draft);
-    if (sameCellValue(kind, next, value)) {
+    if (sameCellValue(kind, next, value) || (lastSaved.current !== null && sameCellValue(kind, next, lastSaved.current))) {
       setFailed(false);
       return;
     }
@@ -122,13 +132,16 @@ export function CellEditor({
       setFailed(true);
       return;
     }
+    inFlight.current = true;
     setSaving(true);
     try {
       await onCommit(next);
+      lastSaved.current = next;
       setFailed(false);
     } catch {
       setFailed(true);
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   };
@@ -145,6 +158,7 @@ export function CellEditor({
     value: draft,
     'aria-label': ariaLabel,
     'aria-invalid': failed || undefined,
+    'aria-describedby': failed ? errorId : undefined,
     'aria-busy': saving || undefined,
     readOnly: saving,
     placeholder,
@@ -198,14 +212,13 @@ export function CellEditor({
               aria-hidden="true"
               className="pointer-events-none absolute inset-y-0 start-2 flex items-center text-caption text-muted-foreground"
             >
-              $
+              {currencySymbol}
             </span>
           ) : null}
           <input
             {...shared}
             type="text"
             inputMode={numeric ? 'decimal' : undefined}
-            dir={numeric ? 'ltr' : undefined}
             list={kind === 'unit' ? unitsListId : undefined}
             maxLength={kind === 'unit' ? MAX_UNIT : kind === 'text' ? MAX_TEXT : undefined}
             className={cn(fieldClass, kind === 'rate' && 'ps-5')}
@@ -217,7 +230,7 @@ export function CellEditor({
         </div>
       )}
       {failed ? (
-        <p role="alert" className="mt-1 text-caption text-danger">
+        <p id={errorId} role="alert" className="mt-1 text-caption text-danger">
           {errorText}
         </p>
       ) : null}

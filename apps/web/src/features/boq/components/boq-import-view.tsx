@@ -181,7 +181,7 @@ export function BoqImportView({
     <div className="flex min-h-[60vh] flex-col rounded-panel border border-border bg-surface shadow-e1">
       <div className="space-y-4 border-b border-border px-4 py-4 sm:px-6">
         <Button variant="link" size="sm" className="h-auto gap-1.5 p-0" onClick={onCancel} disabled={commit.isPending}>
-          <ArrowLeft size={14} aria-hidden="true" className="rtl:rotate-180" />
+          <ArrowLeft size={14} aria-hidden="true" />
           {t('backToBoq')}
         </Button>
         <div>
@@ -340,8 +340,11 @@ export function BoqImportView({
                 variant="card"
                 value={mode}
                 onChange={(value) => {
+                  const previous = mode;
                   setMode(value);
-                  preview.mutate(request(value), { onSuccess: setReviewData });
+                  // The review must describe what Import will do: if the re-run fails, the
+                  // choice goes back to the mode the review on screen was made for.
+                  preview.mutate(request(value), { onSuccess: setReviewData, onError: () => setMode(previous) });
                 }}
                 options={[
                   {

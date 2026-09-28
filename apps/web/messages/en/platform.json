@@ -1341,7 +1341,8 @@
       },
       "discardTitle": "Discard draft version {version}?",
       "discardBody": "This removes {items, plural, one {# item} other {# items}} in {sections, plural, one {# section} other {# sections}}. It can't be undone.",
-      "discardConfirm": "Discard draft"
+      "discardConfirm": "Discard draft",
+      "contractInProgressNote": "A main contract is already being prepared. Continue it in Commercial."
     }
   },
   "districts": {

@@ -190,7 +190,7 @@ function RailSection({
 }
 
 const railLinkClass =
-  'inline-flex min-h-8 items-center rounded-control px-1 text-caption font-medium text-brand-primary hover:underline focus-visible:outline-none focus-visible:shadow-ring';
+  'relative inline-flex min-h-8 items-center after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-[""] rounded-control px-1 text-caption font-medium text-brand-primary hover:underline focus-visible:outline-none focus-visible:shadow-ring';
 
 // ─── Project information ──────────────────────────────────────────────────────
 

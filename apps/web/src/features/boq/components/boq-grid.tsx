@@ -305,6 +305,19 @@ export function BoqGrid({
   );
 }
 
+/** "$" for USD — the rate adornment follows the BOQ's currency. */
+function currencySymbol(currency: string): string {
+  try {
+    return (
+      new Intl.NumberFormat('en', { style: 'currency', currency })
+        .formatToParts(0)
+        .find((part) => part.type === 'currency')?.value ?? currency
+    );
+  } catch {
+    return currency;
+  }
+}
+
 function indentStyle(depth: number): React.CSSProperties {
   return { paddingInlineStart: `${depth * 1.25}rem` };
 }
@@ -405,13 +418,14 @@ function GridRow({
               aria-expanded={hasChildren ? !collapsed : undefined}
               aria-label={t(collapsed ? 'expandSection' : 'collapseSection', { code: node.code })}
               className={cn(
-                'flex size-7 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring',
+                // 28px glyph box, 44px hit area (the ::after extends it) — the row stays dense.
+                'relative flex size-7 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors after:absolute after:-inset-2 after:content-[""] hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring',
                 !hasChildren && 'invisible',
               )}
             >
               <ChevronRight
                 size={14}
-                className={cn('transition-transform rtl:rotate-180', !collapsed && 'rotate-90 rtl:rotate-90')}
+                className={cn('transition-transform', !collapsed && 'rotate-90')}
                 aria-hidden="true"
               />
             </button>
@@ -496,6 +510,7 @@ function GridRow({
                 value={node.unitRate}
                 kind="rate"
                 attention={unpriced}
+                currencySymbol={currencySymbol(currency)}
                 ariaLabel={t('editRate', { code: node.code })}
                 placeholder={t('noRate')}
                 errorText={saveFailed}

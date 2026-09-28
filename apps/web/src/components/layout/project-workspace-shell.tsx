@@ -251,7 +251,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
               actions={
                 <ProjectActionsPanel
                   project={project}
-                  showPrimary={isActive(`/projects/${id}`)}
+                  // Overview itself, not its edit form: the form's Save is that screen's primary.
+                  showPrimary={pathname === `/projects/${id}`}
                 />
               }
             />
