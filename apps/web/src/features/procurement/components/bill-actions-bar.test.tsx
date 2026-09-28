@@ -165,6 +165,18 @@ describe('BillDocumentHeader — return and reject a submitted bill', () => {
     }
   });
 
+  it('keeps Reject off the menu of whoever entered the bill — they may still return it', async () => {
+    const user = userEvent.setup();
+    // renderWithProviders signs in as `test-user`.
+    renderWithProviders(<BillDocumentHeader bill={{ ...SUBMITTED, createdBy: 'test-user' }} />, {
+      permissions: MANAGER,
+    });
+
+    await openKebab(user);
+    const items = await screen.findAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Return for correction']);
+  });
+
   it('returns the bill only once a reason is given', async () => {
     const user = userEvent.setup();
     const returnMutate = vi.fn();

@@ -16,7 +16,10 @@ import {
   normalizeInvoiceNumber,
   overBilling,
   poLineErrors,
+  lineNetMinor,
+  netVariance,
   receivedByPoLine,
+  savedNetVariance,
   seedPoLine,
   type DirectLineDraft,
   type PoLineDraft,
@@ -38,6 +41,7 @@ const DIRECT: DirectLineDraft = {
   quantity: '1',
   unitPrice: '400.00',
   vatAmount: '0',
+  netOverride: '',
   costLine: '',
 };
 
@@ -50,6 +54,7 @@ const PO_LINE: PoLineDraft = {
   quantity: '185',
   unitPrice: '10.00',
   vatAmount: '0',
+  netOverride: '',
   expenseProfileCode: 'MATERIAL_PURCHASE',
   costTargetLabel: null,
 };
@@ -159,8 +164,8 @@ describe('billTotalsMinor', () => {
     // 285 × 10.00 = 2850.00; 4 × 25.00 = 100.00 → subtotal 2950.00; VAT 5.00 → 2955.00.
     expect(
       billTotalsMinor([
-        { quantity: '285', unitPrice: '10.00', vatAmount: '0' },
-        { quantity: '4', unitPrice: '25.00', vatAmount: '5.00' },
+        { quantity: '285', unitPrice: '10.00', vatAmount: '0', netOverride: '' },
+        { quantity: '4', unitPrice: '25.00', vatAmount: '5.00', netOverride: '' },
       ]),
     ).toEqual({ subtotal: 295000, vat: 500, total: 295500 });
   });
@@ -170,7 +175,7 @@ describe('billTotalsMinor', () => {
   });
 
   it('carries the quantity scale change correctly (3dp × 2dp → 2dp)', () => {
-    expect(billTotalsMinor([{ quantity: '2.5', unitPrice: '3.33', vatAmount: '0' }]).subtotal).toBe(833);
+    expect(billTotalsMinor([{ quantity: '2.5', unitPrice: '3.33', vatAmount: '0', netOverride: '' }]).subtotal).toBe(833);
   });
 });
 
@@ -470,6 +475,7 @@ describe('billToFormValues', () => {
           line({
             quantity: '185.0000',
             unitPrice: '10.0000',
+            netAmount: '1850.00',
             vatAmount: '5.00',
             expenseProfileCode: 'MATERIAL_PURCHASE',
           }),
@@ -478,7 +484,14 @@ describe('billToFormValues', () => {
     );
     expect(values).toMatchObject({ kind: 'po', purchaseOrderId: 'po-1', projectChoice: '', directLines: [] });
     expect(values.poFigures).toEqual([
-      { poLineId: null, quantity: '185', unitPrice: '10.00', vatAmount: '5.00', expenseProfileCode: 'MATERIAL_PURCHASE' },
+      {
+        poLineId: null,
+        quantity: '185',
+        unitPrice: '10.00',
+        vatAmount: '5.00',
+        netOverride: '',
+        expenseProfileCode: 'MATERIAL_PURCHASE',
+      },
     ]);
   });
 });
@@ -493,6 +506,7 @@ describe('applyBilledFigures', () => {
     quantity: '285',
     unitPrice: '10.00',
     vatAmount: '',
+    netOverride: '',
     expenseProfileCode: '',
     costTargetLabel: null,
   });
@@ -501,6 +515,7 @@ describe('applyBilledFigures', () => {
     quantity,
     unitPrice: '9.50',
     vatAmount: '0.00',
+    netOverride: '',
     expenseProfileCode: 'MATERIAL_PURCHASE',
   });
 
@@ -519,5 +534,73 @@ describe('applyBilledFigures', () => {
     const out = applyBilledFigures([seeded('pol-1'), seeded('pol-2')], [figure('pol-2', '20')]);
     expect(out[0]).toMatchObject({ quantity: '285', expenseProfileCode: '' });
     expect(out[1]).toMatchObject({ quantity: '20', expenseProfileCode: 'MATERIAL_PURCHASE' });
+  });
+});
+
+// ─── Net: calculated, but can be overridden (Eng Ahmed, 2026-09-27) ────────────
+
+describe('net override', () => {
+  const line = { quantity: '200', unitPrice: '9.50', vatAmount: '0', netOverride: '' };
+
+  it('follows quantity × price while nothing is typed', () => {
+    expect(lineNetMinor(line)).toBe(190000);
+    expect(netVariance(line)).toBeNull();
+  });
+
+  it('uses the typed net, and says by how much it differs from quantity × price', () => {
+    const typed = { ...line, netOverride: '1995.00' };
+    expect(lineNetMinor(typed)).toBe(199500);
+    expect(netVariance(typed)).toEqual({ computedMinor: 190000, netMinor: 199500, diffMinor: 9500 });
+    expect(billTotalsMinor([typed]).subtotal).toBe(199500);
+  });
+
+  it('sends the typed net as the line net, alongside the quantity and price it differs from', () => {
+    const payload = buildDirectBillPayload(HEADER, NO_PROJECT, [{ ...DIRECT, netOverride: '395.50' }]);
+    expect(payload.lines[0]).toMatchObject({ quantity: 1, unitPrice: 400, netAmount: 395.5 });
+  });
+
+  it('treats a typed net equal to quantity × price as no variance', () => {
+    expect(netVariance({ ...line, netOverride: '1900' })).toBeNull();
+  });
+
+  it('refuses a typed net that is not a number of zero or more', () => {
+    expect(directLineErrors({ ...DIRECT, netOverride: '-5' }, NO_PROJECT).amount).toBe('net');
+    expect(poLineErrors({ ...PO_LINE, netOverride: 'abc' }).amount).toBe('net');
+    expect(directLineErrors({ ...DIRECT, netOverride: '395.50' }, NO_PROJECT).amount).toBeUndefined();
+  });
+
+  it('brings a saved override back into the form when a draft is edited', () => {
+    const values = billToFormValues({
+      id: 'b1',
+      supplierId: 'sup-1',
+      supplierInvoiceNumber: 'INV-1',
+      billDate: '2026-09-01',
+      dueDate: '2026-10-01',
+      purchaseOrderId: null,
+      projectId: null,
+      lines: [
+        {
+          id: 'bl-1',
+          lineNumber: 1,
+          description: 'Cement',
+          quantity: '200.0000',
+          unitPrice: '9.5000',
+          netAmount: '1995.00',
+          vatAmount: '0.00',
+          grossAmount: '1995.00',
+          expenseProfileCode: 'MATERIAL_PURCHASE',
+          projectId: null,
+          boqNodeId: null,
+        },
+      ],
+    } as unknown as SupplierBill);
+    expect(values.directLines[0]).toMatchObject({ quantity: '200', unitPrice: '9.50', netOverride: '1995.00' });
+  });
+
+  it('reads the variance off a saved line, but not off a line priced finer than cents', () => {
+    expect(savedNetVariance({ quantity: '200.0000', unitPrice: '9.5000', netAmount: '1995.00' })?.diffMinor).toBe(9500);
+    expect(savedNetVariance({ quantity: '200.0000', unitPrice: '9.5000', netAmount: '1900.00' })).toBeNull();
+    expect(savedNetVariance({ quantity: '3.0000', unitPrice: '0.3333', netAmount: '1.00' })).toBeNull();
+    expect(savedNetVariance({ quantity: null, unitPrice: null, netAmount: '630.00' })).toBeNull();
   });
 });

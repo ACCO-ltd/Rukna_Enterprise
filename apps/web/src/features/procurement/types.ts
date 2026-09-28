@@ -553,6 +553,8 @@ export interface SupplierBill {
   rejectedAt?: string | null;
   rejectedBy?: string | null;
   rejectionReason?: string | null;
+  /** Who entered the bill. The detail returns the whole row; they may not reject it themselves. */
+  createdBy?: string;
   /** Present on detail only — `findAll` includes no lines. */
   lines?: SupplierBillLine[];
 }

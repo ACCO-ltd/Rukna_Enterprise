@@ -1519,7 +1519,7 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 | `GET` | `/bills/:id/payments` | Payment allocations against the bill with server-computed `paidAmount` (POSTED allocations), `pendingAmount` (allocated by unposted payments, already off `outstandingAmount`) and `paymentCount` (ADR-036) |
 | `PATCH` | `/bills/:id` | Edit a DRAFT bill (new or returned) — same body as `POST /bills`; lines replaced; 409 if another live bill holds the supplier invoice number (ADR-037) |
 | `POST` | `/bills/:id/return` | `{ reason }` required — SUBMITTED → DRAFT for correction; resets the PO match (ADR-037) |
-| `POST` | `/bills/:id/reject` | `{ reason }` required — SUBMITTED → REJECTED (final); frees the supplier invoice number (ADR-037) |
+| `POST` | `/bills/:id/reject` | `{ reason }` required — SUBMITTED → REJECTED (final); frees the supplier invoice number. `403` when the caller entered the bill — someone else must reject it (ADR-037) |
 | `POST` | `/bills/:id/submit` | Submit for approval |
 | `POST` | `/bills/:id/approve` | Approve or reject |
 | `POST` | `/bills/:id/post` | Post to AP control account |

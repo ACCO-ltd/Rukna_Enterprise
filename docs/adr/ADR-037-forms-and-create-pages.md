@@ -74,10 +74,11 @@ Use a **full page** for anything with line items and for master-data creation. U
 
 - **One page, two kinds.** The two previous forms (PO and non-PO) become one page with a card choice. `?po=1` still opens the PO kind.
 - **Due date** fills in from the supplier's `paymentTermsDays` until the user edits it.
-- **Line amount is calculated, not typed:**
-  - Amount = qty × unit price, worked out in integer minor units with the existing `extendedAmountMinor` helper, and sent as `netAmount`. The previous forms let the user type net directly.
-  - The server recomputes the bill's totals but takes each line's net as given, so this calculated figure is what posts.
-  - **Needs owner confirmation.**
+- **Line amount is calculated, but can be overridden** (Eng Ahmed, 2026-09-27):
+  - By default Amount = qty × unit price, worked out in integer minor units with the existing `extendedAmountMinor` helper, and shown as the Amount field's placeholder.
+  - The clerk can type a different net, for example when the supplier's invoice rounds or takes a discount on the total. The row then warns "Amount is $95.00 more than 200 × $9.50 ($1,900.00)", and "Use qty × price" clears the override.
+  - Whatever the line shows is sent as `netAmount`, alongside `quantity` and `unitPrice`. The server takes each line's net as given, so it is what posts.
+  - The difference is recorded: the saved line keeps quantity, unit price and net, and the bill's Lines tab notes any line whose net differs from qty × price. Editing a draft brings the override back into the form.
 - **Expense profile is a column on PO lines too.** The API requires `expenseProfileCode` on every line.
 - **Direct-expense bills require a project**, with a "No project — company overhead" option. A real project needs a cost line on each bill line, per the cost-target rule (D7).
 - **PO bills send no header project.** Cost coding comes from the PO lines.
@@ -132,7 +133,12 @@ Use a **full page** for anything with line items and for master-data creation. U
 **Not decided / not built:**
 
 - Clerk self-cancel.
-- Segregation of duties for return and reject. Anyone with `payables:manage`, including the clerk who entered the bill, can return or reject it. **Open question for Eng Ahmed.**
+
+**Segregation of duties for return and reject (Eng Ahmed, 2026-09-27):**
+
+- The person who entered a bill (`createdBy`) **may return** it for correction, because correcting their own bill is harmless.
+- They **may not reject** it. A rejection is final, so someone else must make it: `POST /bills/:id/reject` answers 403 to the author, and the bill page does not offer them Reject.
+- The rule is always on in `SupplierBillService.reject`, not a policy-toggled segregation-of-duties code.
 
 When an approval policy gates *submit* and an approver rejects the approval instance, the bill stays DRAFT, which is unchanged. It can now be edited and resubmitted.
 

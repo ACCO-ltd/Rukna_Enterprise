@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { SupplierBillService } from './supplier-bill.service.js';
 
@@ -19,7 +19,7 @@ const DTO = {
 };
 
 function build(
-  bill: { id: string; documentStatus: string } | null,
+  bill: { id: string; documentStatus: string; createdBy?: string } | null,
   duplicate: unknown = null,
   approvalState: 'PENDING' | 'APPROVED' | null = null,
 ) {
@@ -77,6 +77,12 @@ describe('SupplierBillService — return for correction', () => {
     });
   });
 
+  it('lets the person who entered the bill return it — correcting their own bill is harmless', async () => {
+    const { svc, prisma } = build({ id: 'b1', documentStatus: 'SUBMITTED', createdBy: 'u-approver' });
+    await svc.returnForCorrection(identity, 'b1', 'I typed the wrong amount.');
+    expect(prisma.supplierBill.update).toHaveBeenCalled();
+  });
+
   it('requires a reason', async () => {
     const { svc, prisma } = build({ id: 'b1', documentStatus: 'SUBMITTED' });
     await expect(svc.returnForCorrection(identity, 'b1', '   ')).rejects.toBeInstanceOf(BadRequestException);
@@ -101,6 +107,12 @@ describe('SupplierBillService — reject', () => {
         rejectionReason: 'Duplicate of BILL-2026-0041.',
       }),
     });
+  });
+
+  it('refuses the person who entered the bill — someone else must reject it', async () => {
+    const { svc, prisma } = build({ id: 'b1', documentStatus: 'SUBMITTED', createdBy: 'u-approver' });
+    await expect(svc.reject(identity, 'b1', 'Duplicate invoice.')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.supplierBill.update).not.toHaveBeenCalled();
   });
 
   it('requires a reason and a submitted bill', async () => {

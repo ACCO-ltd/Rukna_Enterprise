@@ -44,6 +44,7 @@ import {
   LineItemsEditor,
   MoneyInput,
   QuantityInput,
+  formatThousands,
   SkeletonRecord,
   RadioGroup,
   Select,
@@ -75,6 +76,7 @@ import {
   emptyDirectLine,
   findDuplicateBill,
   lineAmountMinor,
+  netVariance,
   overBilling,
   poLineErrors,
   receivedByPoLine,
@@ -83,6 +85,7 @@ import {
   type BillKind,
   type DirectLineDraft,
   type LineErrors,
+  type NetFigures,
   type PoLineDraft,
 } from '../bill-create';
 import { systemFinds } from '../bill-po-match';
@@ -430,6 +433,7 @@ export function SupplierBillCreateForm({
     quantity: kind === 'po' ? t('col.billedQty') : t('col.qty'),
     unitPrice: t('col.unitPrice'),
     vat: t('col.vat'),
+    amount: t('col.amount'),
     costLine: t('col.costLine'),
   };
 
@@ -937,13 +941,61 @@ function ProfileSelect({
   );
 }
 
-function AmountCell({ line, locale }: { line: { quantity: string; unitPrice: string }; locale: 'en' }) {
-  const amount = lineAmountMinor(line);
+/**
+ * The line's net. Empty, it follows `quantity × unit price`, shown as the placeholder; typing
+ * an amount overrides it — the supplier's invoice is what posts — and a note under the row says
+ * by how much it differs (Eng Ahmed, 2026-09-27).
+ */
+function AmountCell({
+  id,
+  line,
+  onChange,
+}: {
+  id: string;
+  line: NetFigures;
+  onChange: (netOverride: string) => void;
+}) {
+  const t = useTranslations('procurement.bills.create');
+  const computed = lineAmountMinor(line);
+  const overridden = line.netOverride.trim() !== '';
   return (
-    <p className="py-2 text-end text-body-sm font-medium tabular-nums text-foreground">
-      {amount === null ? '—' : formatMoney(fromMinorUnits(amount, MONEY_SCALE), 'USD', locale)}
-    </p>
+    <div className="space-y-1">
+      <MoneyInput
+        id={id}
+        value={line.netOverride}
+        onValueChange={onChange}
+        placeholder={computed === null ? undefined : formatThousands(fromMinorUnits(computed, MONEY_SCALE))}
+        autoComplete="off"
+      />
+      {overridden ? (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="w-full text-end text-caption text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {t('resetNet')}
+        </button>
+      ) : null}
+    </div>
   );
+}
+
+/** "Amount is $95.00 more than 200 × $9.50 ($1,900.00)." — or null when the net is the product. */
+function netVarianceText(
+  line: NetFigures,
+  locale: 'en',
+  t: ReturnType<typeof useTranslations<'procurement.bills.create'>>,
+): string | null {
+  const variance = netVariance(line);
+  if (!variance) return null;
+  const money = (minor: number) => formatMoney(fromMinorUnits(minor, MONEY_SCALE), 'USD', locale) ?? '';
+  return t('netDiffers', {
+    diff: money(Math.abs(variance.diffMinor)),
+    direction: variance.diffMinor > 0 ? 'more' : 'less',
+    qty: formatNumber(line.quantity, locale) ?? line.quantity,
+    price: formatMoney(line.unitPrice, 'USD', locale) ?? line.unitPrice,
+    computed: money(variance.computedMinor),
+  });
 }
 
 function PoLinesEditor({
@@ -1061,9 +1113,12 @@ function PoLinesEditor({
     {
       key: 'amount',
       header: t('col.amount'),
-      width: '7.5rem',
+      width: '8.5rem',
       align: 'end',
-      cell: (row) => <AmountCell line={row} locale={locale} />,
+      controlId: (i) => lineId(i, 'amount'),
+      cell: (row, i) => (
+        <AmountCell id={lineId(i, 'amount')} line={row} onChange={(netOverride) => onChange(i, { netOverride })} />
+      ),
     },
   ];
 
@@ -1076,18 +1131,22 @@ function PoLinesEditor({
       errors={errors}
       cardTitle={(row, i) => t('lineTitleNamed', { n: i + 1, name: row.description })}
       note={(row) => {
+        const texts: string[] = [];
         const over = overBilling(row);
-        if (!over) return null;
-        const qty = formatNumber(fromMinorUnits(over.excessMinor, QUANTITY_SCALE), locale) ?? '';
-        const unit = row.unit ?? '';
-        if (over.kind === 'ordered') return { tone: 'warning', text: t('overOrdered', { qty, unit }) };
-        return {
-          tone: 'warning',
-          text:
-            over.grnNumbers.length > 0
-              ? t('overReceived', { qty, unit, grn: over.grnNumbers.join(', ') })
-              : t('overReceivedNothing', { qty, unit }),
-        };
+        if (over) {
+          const qty = formatNumber(fromMinorUnits(over.excessMinor, QUANTITY_SCALE), locale) ?? '';
+          const unit = row.unit ?? '';
+          texts.push(
+            over.kind === 'ordered'
+              ? t('overOrdered', { qty, unit })
+              : over.grnNumbers.length > 0
+                ? t('overReceived', { qty, unit, grn: over.grnNumbers.join(', ') })
+                : t('overReceivedNothing', { qty, unit }),
+          );
+        }
+        const variance = netVarianceText(row, locale, t);
+        if (variance) texts.push(variance);
+        return texts.length > 0 ? { tone: 'warning', text: texts.join(' ') } : null;
       }}
     />
   );
@@ -1222,9 +1281,12 @@ function DirectLinesEditor({
     {
       key: 'amount',
       header: t('col.amount'),
-      width: '7.5rem',
+      width: '8.5rem',
       align: 'end',
-      cell: (row) => <AmountCell line={row} locale={locale} />,
+      controlId: (i) => lineId(i, 'amount'),
+      cell: (row, i) => (
+        <AmountCell id={lineId(i, 'amount')} line={row} onChange={(netOverride) => onChange(i, { netOverride })} />
+      ),
     },
   ];
 
@@ -1235,6 +1297,10 @@ function DirectLinesEditor({
       rowKey={(row) => row.key}
       columns={columns}
       errors={errors}
+      note={(row) => {
+        const variance = netVarianceText(row, locale, t);
+        return variance ? { tone: 'warning', text: variance } : null;
+      }}
       cardTitle={(row, i) =>
         row.description.trim()
           ? t('lineTitleNamed', { n: i + 1, name: row.description.trim() })

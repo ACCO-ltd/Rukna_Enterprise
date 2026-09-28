@@ -115,6 +115,13 @@ export interface DirectLineDraft {
   unitPrice: string;
   vatAmount: string;
   /**
+   * A net amount the clerk typed over `quantity × unit price` — the supplier's invoice says
+   * something else (rounding, a discount taken on the total). Empty: the net follows the
+   * product. Kept on the saved line next to quantity and unit price, so the difference is on
+   * the record (Eng Ahmed, 2026-09-27).
+   */
+  netOverride: string;
+  /**
    * What a project line is spending on: `node:<boqNodeId>` or `category:<spendCategoryId>`.
    * Empty when the bill has no project, where it does not apply.
    */
@@ -132,6 +139,7 @@ export function emptyDirectLine(): DirectLineDraft {
     quantity: '1',
     unitPrice: '',
     vatAmount: '',
+    netOverride: '',
     costLine: '',
   };
 }
@@ -156,6 +164,8 @@ export interface PoLineDraft {
   quantity: string;
   unitPrice: string;
   vatAmount: string;
+  /** As on {@link DirectLineDraft.netOverride}. */
+  netOverride: string;
   expenseProfileCode: string;
   costTargetLabel: string | null;
 }
@@ -198,6 +208,7 @@ export function seedPoLine(
     quantity: line.orderedQuantity,
     unitPrice: line.unitPrice,
     vatAmount: '',
+    netOverride: '',
     expenseProfileCode: '',
     costTargetLabel: poLineCostTargetLabel(line),
   };
@@ -211,20 +222,72 @@ export function lineAmountMinor(line: { quantity: string; unitPrice: string }): 
   return extendedAmountMinor(qty, price);
 }
 
+/** The figures a line's net is worked out from. */
+export interface NetFigures {
+  quantity: string;
+  unitPrice: string;
+  netOverride: string;
+}
+
+/**
+ * The line's net in money minor units: the typed override when there is one, otherwise
+ * `quantity × unit price`. Null while the figure it rests on is not a number.
+ */
+export function lineNetMinor(line: NetFigures): number | null {
+  if (line.netOverride.trim() !== '') return parseMinorUnits(line.netOverride, MONEY_SCALE);
+  return lineAmountMinor(line);
+}
+
+export interface NetVariance {
+  /** `quantity × unit price`. */
+  computedMinor: number;
+  /** The net the line carries. */
+  netMinor: number;
+  /** `net − computed`; negative when the invoice charges less than the product. */
+  diffMinor: number;
+}
+
+/**
+ * How far a typed net departs from `quantity × unit price`, or null when it does not (no
+ * override, an override equal to the product, or a figure not yet a number).
+ */
+export function netVariance(line: NetFigures): NetVariance | null {
+  if (line.netOverride.trim() === '') return null;
+  const netMinor = parseMinorUnits(line.netOverride, MONEY_SCALE);
+  const computedMinor = lineAmountMinor(line);
+  if (netMinor === null || computedMinor === null || netMinor === computedMinor) return null;
+  return { computedMinor, netMinor, diffMinor: netMinor - computedMinor };
+}
+
+/**
+ * The variance a saved bill line carries — its net against its own `quantity × unit price` —
+ * so the bill shows the difference the clerk accepted. Null for a line without quantity and
+ * price (written before lines carried them), or priced finer than cents, where the form's
+ * product was never the reference.
+ */
+export function savedNetVariance(line: {
+  quantity: string | null;
+  unitPrice: string | null;
+  netAmount: string;
+}): NetVariance | null {
+  if (line.quantity === null || line.unitPrice === null) return null;
+  const cents = /^-?\d*(?:\.(\d*))?$/.exec(line.unitPrice.trim());
+  if (!cents || /[1-9]/.test((cents[1] ?? '').slice(MONEY_SCALE))) return null;
+  return netVariance({ quantity: line.quantity, unitPrice: line.unitPrice, netOverride: line.netAmount });
+}
+
 export interface BillTotalsMinor {
   subtotal: number;
   vat: number;
   total: number;
 }
 
-/** Subtotal (Σ amount), VAT and Total, in minor units. A line not yet complete counts as zero. */
-export function billTotalsMinor(
-  lines: readonly { quantity: string; unitPrice: string; vatAmount: string }[],
-): BillTotalsMinor {
+/** Subtotal (Σ net), VAT and Total, in minor units. A line not yet complete counts as zero. */
+export function billTotalsMinor(lines: readonly (NetFigures & { vatAmount: string })[]): BillTotalsMinor {
   let subtotal = 0;
   let vat = 0;
   for (const line of lines) {
-    subtotal += lineAmountMinor(line) ?? 0;
+    subtotal += lineNetMinor(line) ?? 0;
     vat += parseMinorUnits(line.vatAmount, MONEY_SCALE) ?? 0;
   }
   return { subtotal, vat, total: subtotal + vat };
@@ -235,7 +298,9 @@ export function billTotalsMinor(
 /** Keys under `procurement.bills.lineError` (and `create.errors.costLine`). */
 export type LineErrorKey = 'description' | 'profile' | 'quantity' | 'unitPrice' | 'net' | 'vat' | 'costLine';
 
-export type LineErrors = Partial<Record<'description' | 'profile' | 'quantity' | 'unitPrice' | 'vat' | 'costLine', LineErrorKey>>;
+export type LineErrors = Partial<
+  Record<'description' | 'profile' | 'quantity' | 'unitPrice' | 'vat' | 'amount' | 'costLine', LineErrorKey>
+>;
 
 /**
  * The figures every line shares.
@@ -247,8 +312,9 @@ export type LineErrors = Partial<Record<'description' | 'profile' | 'quantity' |
  *   explicit 0 is the answer for a line with none.
  * - The amount must be computable: a figure so large its product overflows is refused rather
  *   than sent as a quietly wrong number.
+ * - A typed net must be a number of zero or more — it is what the line posts.
  */
-function figureErrors(line: { quantity: string; unitPrice: string; vatAmount: string }): LineErrors {
+function figureErrors(line: NetFigures & { vatAmount: string }): LineErrors {
   const errors: LineErrors = {};
   const qty = parseMinorUnits(line.quantity, QUANTITY_SCALE);
   if (qty === null || qty <= 0) errors.quantity = 'quantity';
@@ -259,6 +325,11 @@ function figureErrors(line: { quantity: string; unitPrice: string; vatAmount: st
 
   const vat = parseMinorUnits(line.vatAmount, MONEY_SCALE);
   if (vat === null || vat < 0) errors.vat = 'vat';
+
+  if (line.netOverride.trim() !== '') {
+    const net = parseMinorUnits(line.netOverride, MONEY_SCALE);
+    if (net === null || net < 0) errors.amount = 'net';
+  }
   return errors;
 }
 
@@ -339,11 +410,11 @@ interface HeaderDraft {
   dueDate: string;
 }
 
-function figures(line: { quantity: string; unitPrice: string; vatAmount: string }) {
+function figures(line: NetFigures & { vatAmount: string }) {
   return {
     quantity: quantityToApi(parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0),
     unitPrice: moneyToApi(parseMinorUnits(line.unitPrice, MONEY_SCALE) ?? 0),
-    netAmount: moneyToApi(lineAmountMinor(line) ?? 0),
+    netAmount: moneyToApi(lineNetMinor(line) ?? 0),
     vatAmount: moneyToApi(parseMinorUnits(line.vatAmount, MONEY_SCALE) ?? 0),
   };
 }
@@ -406,6 +477,7 @@ export interface BilledFigures {
   quantity: string;
   unitPrice: string;
   vatAmount: string;
+  netOverride: string;
   expenseProfileCode: string;
 }
 
@@ -448,16 +520,23 @@ function plainMoney(value: string | null | undefined): string {
  * The form values for editing `bill` — every header field and every line.
  *
  * A line with no quantity or unit price (written before lines carried them) reads as quantity 1
- * at its net amount, so its Amount — and the bill's total — is what it was.
+ * at its net amount, so its Amount — and the bill's total — is what it was. A line saved with a
+ * net that differs from `quantity × unit price` comes back with that net as its override.
  */
 export function billToFormValues(bill: SupplierBill): BillFormValues {
   const lines = [...(bill.lines ?? [])].sort((a, b) => a.lineNumber - b.lineNumber);
   const figuresOf = (line: NonNullable<SupplierBill['lines']>[number]) => {
     const priced = line.quantity !== null && line.unitPrice !== null;
+    const quantity = priced ? plainQuantity(line.quantity) : '1';
+    const unitPrice = priced ? plainMoney(line.unitPrice) : plainMoney(line.netAmount);
+    const net = plainMoney(line.netAmount);
+    const computed = lineAmountMinor({ quantity, unitPrice });
+    const saved = parseMinorUnits(net, MONEY_SCALE);
     return {
-      quantity: priced ? plainQuantity(line.quantity) : '1',
-      unitPrice: priced ? plainMoney(line.unitPrice) : plainMoney(line.netAmount),
+      quantity,
+      unitPrice,
       vatAmount: plainMoney(line.vatAmount),
+      netOverride: saved !== null && computed !== null && saved !== computed ? net : '',
     };
   };
 
@@ -524,6 +603,7 @@ export function applyBilledFigures(
       quantity: figure.quantity,
       unitPrice: figure.unitPrice,
       vatAmount: figure.vatAmount,
+      netOverride: figure.netOverride,
       expenseProfileCode: figure.expenseProfileCode,
     };
   });
