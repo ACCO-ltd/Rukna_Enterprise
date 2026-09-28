@@ -67,6 +67,19 @@ export {
   RecordLayout,
   RecordPanel,
 } from './components/record-layout';
+export { ContextBar } from './components/context-bar';
+export type { ContextBarMetric, ContextBarNoteTone, ContextBarProps } from './components/context-bar';
+export { FileDrop } from './components/file-drop';
+export type { FileDropProps } from './components/file-drop';
+export { ReadinessChecklist, readinessCounts } from './components/readiness-checklist';
+export type {
+  ReadinessChecklistLabels,
+  ReadinessChecklistProps,
+  ReadinessCounts,
+  ReadinessStep,
+  ReadinessStepState,
+  ReadinessSummaryKind,
+} from './components/readiness-checklist';
 export { OverflowGlyph, RowActions } from './components/row-actions';
 export { Pagination } from './components/pagination';
 export type { PaginationProps } from './components/pagination';

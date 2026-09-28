@@ -15,20 +15,23 @@ import {
   FormField,
   Textarea,
 } from '@erp/ui';
-import { useSession } from '@/features/auth/session/use-session';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { useGatedCommand } from '@/features/workflows/use-gated-command';
 import { useProjectReadiness } from '../hooks/use-project';
 import { projectKeys } from '../hooks/use-projects';
 import { runProjectCommand, type ProjectTransition } from '../api/projects-api';
 import type { ProjectCommand } from '../project-actions';
+import { readinessCaller } from '../readiness-caller';
 
 export function ProjectTransitionDialog({
   projectId,
+  projectName,
   command,
   onDismiss,
 }: {
   projectId: string;
+  /** Names the project in the title — "Start Hayat Market Renovation?" — when given. */
+  projectName?: string;
   command: ProjectCommand;
   onDismiss: () => void;
 }) {
@@ -47,12 +50,10 @@ export function ProjectTransitionDialog({
   const gate = useGatedCommand((transition: ProjectTransition) =>
     runProjectCommand(projectId, transition),
   );
-  const { user } = useSession();
-  const apex =
-    command === 'start' && Boolean(user?.roles.some((role) => role === 'CFO' || role === 'CEO'));
-  const canWaive = (condition: { severity: string; code: string }) =>
-    condition.severity === 'WAIVABLE' ||
-    (apex && ['ACTIVE_MAIN_CONTRACT', 'CONTRACT_START_DATE'].includes(condition.code));
+  // Which open conditions this user may waive is the server's answer (`caller`), not a role-name
+  // rule re-derived here; anything open and not waivable by them is a blocker.
+  const waivable = new Set(readinessCaller(readiness.data).waivableConditions);
+  const canWaive = (condition: { code: string }) => waivable.has(condition.code);
   const needsDate = command === 'start' || command === 'close';
   const conditions = readiness.data?.conditions.filter((condition) => !condition.satisfied) ?? [];
   const blockers = conditions.filter((condition) => !canWaive(condition));
@@ -130,7 +131,9 @@ export function ProjectTransitionDialog({
         onPointerDownOutside={preventPending}
         onInteractOutside={preventPending}
       >
-        <DialogTitle>{actions(command)}</DialogTitle>
+        <DialogTitle>
+          {command === 'start' && projectName ? t('startTitle', { name: projectName }) : actions(command)}
+        </DialogTitle>
         <DialogDescription>{t(`description.${command}`)}</DialogDescription>
         <div className="mt-4 max-h-[60vh] space-y-4 overflow-y-auto">
           {readiness.isPending ? <p role="status">{common('loading')}</p> : null}
@@ -200,10 +203,14 @@ export function ProjectTransitionDialog({
             <FormField
               key={condition.code}
               htmlFor={`waiver-${condition.code}`}
+              // "Reason for starting without a delivery team" says what the reason is *for*; the
+              // bare step name read as a second copy of the checklist.
               label={
-                prep.has(`conditions.${condition.code}`)
-                  ? prep(`conditions.${condition.code}`)
-                  : condition.detail
+                command === 'start' && t.has(`waiverLabel.${condition.code}`)
+                  ? t(`waiverLabel.${condition.code}`)
+                  : prep.has(`conditions.${condition.code}`)
+                    ? prep(`conditions.${condition.code}`)
+                    : condition.detail
               }
               hint={t('waiverHint')}
               required

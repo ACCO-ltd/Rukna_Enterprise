@@ -13,11 +13,12 @@ import {
   LtrValue,
   MoneyInput,
   Select,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
   Textarea,
 } from '@erp/ui';
 
@@ -178,14 +179,16 @@ export function BoqItemDrawer({
   };
 
   return (
-    <Dialog open onOpenChange={(next) => !next && !isPending && onClose()}>
-      <DialogContent
-        className="sm:max-w-2xl"
+    // A side sheet, not a centred dialog: the grid stays in view beside the line being edited.
+    <Sheet open onOpenChange={(next) => !next && !isPending && onClose()}>
+      <SheetContent
+        size="lg"
+        closeLabel={t('close')}
         onEscapeKeyDown={(event) => isPending && event.preventDefault()}
         onInteractOutside={(event) => isPending && event.preventDefault()}
       >
-        <div className="px-5 pb-4 pt-10">
-          <DialogTitle>
+        <SheetHeader>
+          <SheetTitle>
             {target.mode === 'add'
               ? isItem
                 ? t('addItem')
@@ -193,8 +196,8 @@ export function BoqItemDrawer({
               : isItem
                 ? t('editItem')
                 : t('editSection')}
-          </DialogTitle>
-          <DialogDescription className="mt-1">
+          </SheetTitle>
+          <SheetDescription className="mt-1">
             {target.node ? (
               <LtrValue className="font-mono">{target.node.code}</LtrValue>
             ) : target.parent ? (
@@ -202,10 +205,8 @@ export function BoqItemDrawer({
             ) : (
               t('atRoot')
             )}
-          </DialogDescription>
-        </div>
-
-        <div className="border-t border-border" />
+          </SheetDescription>
+        </SheetHeader>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
           {errorMessage ? <Alert variant="error" messages={[errorMessage]} /> : null}
@@ -464,7 +465,7 @@ export function BoqItemDrawer({
           ) : null}
         </div>
 
-        <DialogFooter>
+        <SheetFooter>
           {!readOnly ? (
             <Button onClick={handleSubmit} disabled={isPending}>
               {isPending
@@ -479,9 +480,9 @@ export function BoqItemDrawer({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             {readOnly ? t('close') : t('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 

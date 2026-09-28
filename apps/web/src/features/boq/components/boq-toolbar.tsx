@@ -1,125 +1,78 @@
 'use client';
 
-import { ChevronsDownUp, ChevronsUpDown, FileUp, Plus, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Button, Input, Select, cn } from '@erp/ui';
+import { Button, Input, ViewSwitcher } from '@erp/ui';
 
-import type { PricingFilter } from '../boq-rows';
+export type LineFilter = 'all' | 'unpriced';
 
 /**
- * Search, filters, and the always-visible ways to add scope.
+ * Find and narrow — nothing else. Adding and importing moved to where they happen (the grid's
+ * "+ Add" lines, the bar's overflow), so this row only answers "which lines am I looking at?".
  *
- * The two creative actions a BOQ needs — **Add section** and **Import** — live here in the open,
- * not behind the header overflow: on an empty or new BOQ they are the whole job, and hiding them
- * is what made "how do I start?" a support question. Export moved the other way, into the header
- * overflow, because reading the BOQ out is a rare act next to building it. Both stay `outline`:
- * the status bar owns the one primary button (the contextual next step).
+ * Two views instead of the old seven-way dropdown: every line, or the unpriced ones — the only
+ * narrowing the next step depends on. Search matches code and description; a matching line keeps
+ * its parent sections visible (see `buildRows`).
  */
 export function BoqToolbar({
   search,
   onSearchChange,
-  pricing,
-  onPricingChange,
-  allExpanded,
-  onToggleExpandAll,
-  onAddSection,
-  onImport,
-  canManage,
-  canImport,
-  hasVariations,
-  resultCount,
-  totalCount,
+  filter,
+  onFilterChange,
+  unpricedCount,
+  showFilter,
+  onExpandAll,
+  onCollapseAll,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
-  pricing: PricingFilter;
-  onPricingChange: (value: PricingFilter) => void;
-  allExpanded: boolean;
-  onToggleExpandAll: () => void;
-  onAddSection: () => void;
-  onImport: () => void;
-  canManage: boolean;
-  canImport: boolean;
-  /** Whether any line was scoped in by a variation — gates the provenance filter (Phase 6). */
-  hasVariations: boolean;
-  resultCount: number;
-  totalCount: number;
+  filter: LineFilter;
+  onFilterChange: (value: LineFilter) => void;
+  unpricedCount: number;
+  /** Money-blind readers cannot see what is priced, so the filter would be a riddle. */
+  showFilter: boolean;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
 }) {
   const t = useTranslations('platform.boq.toolbar');
-  const filtering = search.trim().length > 0 || pricing !== 'all';
 
   return (
-    <div className="flex flex-col gap-3 border-b border-border pb-2.5 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:flex-initial">
-          <Search
-            size={15}
-            aria-hidden="true"
-            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="search"
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder={t('searchPlaceholder')}
-            aria-label={t('searchLabel')}
-            className="ps-10 sm:w-64"
-          />
-        </div>
-
-        <Select
-          value={pricing}
-          aria-label={t('filterLabel')}
-          onChange={(value) => onPricingChange(value as PricingFilter)}
-          className="w-auto"
-        >
-          <option value="all">{t('filter.all')}</option>
-          <option value="incomplete">{t('filter.incomplete')}</option>
-          <option value="priced">{t('filter.priced')}</option>
-          <option value="sections">{t('filter.sections')}</option>
-          <option value="items">{t('filter.items')}</option>
-          {hasVariations ? (
-            <>
-              <option value="original">{t('filter.original')}</option>
-              <option value="variations">{t('filter.variations')}</option>
-            </>
-          ) : null}
-        </Select>
-
-        {/* Only meaningful while a filter narrows the list — otherwise it restates the
-            row count the grid footer already gives. */}
-        {filtering ? (
-          <span className="text-caption text-muted-foreground">
-            {t('matching', { count: resultCount, total: totalCount })}
-          </span>
-        ) : null}
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="relative w-full min-w-0 sm:w-72">
+        <Search
+          size={15}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 start-3 my-auto text-muted-foreground"
+        />
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder={t('searchPlaceholder')}
+          aria-label={t('searchLabel')}
+          className="ps-10"
+        />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" className="gap-2" onClick={onToggleExpandAll}>
-          {allExpanded ? (
-            <ChevronsDownUp size={15} aria-hidden="true" />
-          ) : (
-            <ChevronsUpDown size={15} aria-hidden="true" />
-          )}
-          {allExpanded ? t('collapseAll') : t('expandAll')}
+      {showFilter ? (
+        <ViewSwitcher
+          aria-label={t('filterLabel')}
+          value={filter}
+          onValueChange={(value) => onFilterChange(value as LineFilter)}
+          items={[
+            { value: 'all', label: t('allLines') },
+            { value: 'unpriced', label: t('unpriced', { count: unpricedCount }) },
+          ]}
+        />
+      ) : null}
+
+      <div className="ms-auto flex items-center gap-1">
+        <Button type="button" variant="ghost" size="sm" className="text-brand-primary" onClick={onExpandAll}>
+          {t('expandAll')}
         </Button>
-
-        {/* Outline, not primary — the status bar owns the one blue button. Add section and
-            Import are peers, always visible so starting a BOQ is never a hunt. */}
-        {canManage ? (
-          <Button variant="outline" size="sm" className={cn('gap-2')} onClick={onAddSection}>
-            <Plus size={15} aria-hidden="true" />
-            {t('addSection')}
-          </Button>
-        ) : null}
-
-        {canImport ? (
-          <Button variant="outline" size="sm" className="gap-2" onClick={onImport}>
-            <FileUp size={15} aria-hidden="true" />
-            {t('import')}
-          </Button>
-        ) : null}
+        <Button type="button" variant="ghost" size="sm" className="text-brand-primary" onClick={onCollapseAll}>
+          {t('collapseAll')}
+        </Button>
       </div>
     </div>
   );

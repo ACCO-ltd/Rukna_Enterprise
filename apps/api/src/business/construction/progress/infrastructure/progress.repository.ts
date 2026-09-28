@@ -75,12 +75,37 @@ export class ProgressRepository {
     });
   }
 
-  updateDprStatus(
+  /**
+   * Row-lock a report for the rest of the transaction (SELECT … FOR UPDATE). True when it exists
+   * in this organization. Always taken BEFORE any BOQ-node lock (fixed lock order).
+   */
+  async lockDpr(prisma: TenantPrisma, organizationId: string, id: string): Promise<boolean> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM daily_progress_reports
+      WHERE id = ${id} AND organization_id = ${organizationId}
+      FOR UPDATE`;
+    return rows.length === 1;
+  }
+
+  /**
+   * Conditional status transition: updates only while the report is still in `fromStatus`.
+   * Returns the number of rows changed (1 on success, 0 when a concurrent command moved it first).
+   */
+  async transitionDprStatus(
     prisma: TenantPrisma,
     id: string,
-    data: Prisma.DailyProgressReportUncheckedUpdateInput,
-  ) {
-    return prisma.dailyProgressReport.update({ where: { id }, data });
+    fromStatus: string,
+    data: Prisma.DailyProgressReportUncheckedUpdateManyInput,
+  ): Promise<number> {
+    const { count } = await prisma.dailyProgressReport.updateMany({
+      where: { id, status: fromStatus as Prisma.EnumDprStatusFilter['equals'] },
+      data,
+    });
+    return count;
+  }
+
+  findDprRow(prisma: TenantPrisma, id: string) {
+    return prisma.dailyProgressReport.findUniqueOrThrow({ where: { id } });
   }
 
   addMeasurement(prisma: TenantPrisma, data: Prisma.ProgressMeasurementUncheckedCreateInput) {

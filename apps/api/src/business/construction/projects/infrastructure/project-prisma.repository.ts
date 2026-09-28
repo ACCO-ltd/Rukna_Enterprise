@@ -1,6 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, Project, ProjectRole, Prisma } from '@prisma/client';
 
+import {
+  ACTIVITY_OUTBOX_RESOURCES,
+  ACTIVITY_ROUTES,
+  PROJECT_ROW_COMMERCIAL_PREFIX,
+  storedRouteForms,
+  type ActivityCursor,
+  type ActivityFamily,
+} from '../domain/project-activity.js';
+
 type TenantPrisma = Omit<
   PrismaClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
@@ -84,9 +93,14 @@ export type ProjectWorkspaceSummaryRecord = Prisma.ProjectGetPayload<{
 // status, the effective (non-terminal) client contract's status + start date, whether a BOQ version
 // is baselined, and the active member count. Scalars (status, commercialModel, dates, clientId)
 // come with the include.
+//
+// Amendment 2026-09-28 — plus the evidence behind `satisfiedAt`: each version's commit stamp
+// (`baselinedAt`), the contract id (its signature events are read from the audit log), and EVERY
+// membership row with its join/removal time (removed rows included, so the moment the delivery
+// team formed can be reconstructed). The active member count is derived from the same rows.
 const PROJECT_READINESS_INCLUDE = {
   client: { select: { status: true } },
-  boq: { select: { versions: { select: { status: true } } } },
+  boq: { select: { versions: { select: { status: true, baselinedAt: true } } } },
   contracts: {
     where: {
       contractKind: 'CLIENT_CONTRACT',
@@ -94,10 +108,25 @@ const PROJECT_READINESS_INCLUDE = {
     },
     orderBy: { createdAt: 'desc' },
     take: 1,
-    select: { status: true, startDate: true },
+    select: { id: true, status: true, startDate: true },
   },
-  members: { where: { removedAt: null }, select: { id: true } },
+  members: { select: { id: true, joinedAt: true, removedAt: true } },
 } satisfies Prisma.ProjectInclude;
+
+/** Outbox commands that put a contract into ACTIVE (ADR-032 record-signed, or legacy activate). */
+const CONTRACT_SIGNATURE_COMMANDS = ['contract.record-signed', 'contract.activate'];
+
+const ACTIVITY_SELECT = {
+  id: true,
+  action: true,
+  resource: true,
+  resourceId: true,
+  sourceCommand: true,
+  createdAt: true,
+  user: { select: { id: true, firstName: true, lastName: true } },
+} satisfies Prisma.AuditLogSelect;
+
+export type ProjectActivityRow = Prisma.AuditLogGetPayload<{ select: typeof ACTIVITY_SELECT }>;
 
 export type ProjectReadinessRecord = Prisma.ProjectGetPayload<{
   include: typeof PROJECT_READINESS_INCLUDE;
@@ -157,18 +186,132 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async findRecentProjectActivity(prisma: TenantPrisma, organizationId: string, projectId: string) {
+  /**
+   * The effective contract's signature events, newest first: `contract.record-signed` (ADR-032,
+   * creates the contract ACTIVE) and `contract.activate` (legacy DRAFT -> ACTIVE). Outbox rows,
+   * written in the transaction that changed the status.
+   */
+  async findContractSignatureEvents(prisma: TenantPrisma, organizationId: string, contractId: string) {
     return prisma.auditLog.findMany({
-      where: { orgId: organizationId, resource: 'Project', resourceId: projectId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        action: true,
-        sourceCommand: true,
-        createdAt: true,
-        user: { select: { id: true, firstName: true, lastName: true } },
+      where: {
+        orgId: organizationId,
+        resource: 'Contract',
+        resourceId: contractId,
+        sourceCommand: { in: CONTRACT_SIGNATURE_COMMANDS },
       },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { sourceCommand: true, createdAt: true },
+    });
+  }
+
+  /**
+   * A project's history, newest first (ADR-019 amendment 2026-09-28). `families` is the set the
+   * caller may read — decided by the service from permissions; this only turns it into a query.
+   * See `domain/project-activity.ts` for which rows can be tied to the project and why.
+   */
+  async findProjectActivity(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+    families: ReadonlySet<ActivityFamily>,
+    page: { cursor: ActivityCursor | null; take: number },
+  ): Promise<ProjectActivityRow[]> {
+    const clauses: Prisma.AuditLogWhereInput[] = [];
+
+    if (families.has('project')) {
+      clauses.push({
+        resource: { in: [...ACTIVITY_OUTBOX_RESOURCES.project] },
+        resourceId: projectId,
+        // A project-level payment is a commercial event; it follows the contract family's gate.
+        ...(families.has('contract')
+          ? {}
+          : { NOT: { sourceCommand: { startsWith: PROJECT_ROW_COMMERCIAL_PREFIX } } }),
+      });
+    }
+
+    if (families.has('contract')) {
+      const contracts = await prisma.contract.findMany({
+        where: { projectId, organizationId },
+        select: {
+          id: true,
+          paymentInstallments: { select: { id: true } },
+          advanceTerms: { select: { id: true } },
+          deliverables: { select: { id: true } },
+          guarantees: { select: { id: true } },
+          variationOrders: { select: { id: true } },
+        },
+      });
+      const ids = contracts.flatMap((c) => [
+        c.id,
+        ...c.paymentInstallments.map((x) => x.id),
+        ...c.advanceTerms.map((x) => x.id),
+        ...c.deliverables.map((x) => x.id),
+        ...c.guarantees.map((x) => x.id),
+        ...c.variationOrders.map((x) => x.id),
+      ]);
+      if (ids.length > 0) {
+        clauses.push({ resource: { in: [...ACTIVITY_OUTBOX_RESOURCES.contract] }, resourceId: { in: ids } });
+      }
+    }
+
+    if (families.has('documents')) {
+      const documents = await prisma.projectDocument.findMany({
+        where: { projectId, organizationId },
+        select: { id: true, revisions: { select: { id: true } } },
+      });
+      const ids = documents.flatMap((d) => [d.id, ...d.revisions.map((r) => r.id)]);
+      if (ids.length > 0) {
+        clauses.push({ resource: { in: [...ACTIVITY_OUTBOX_RESOURCES.documents] }, resourceId: { in: ids } });
+      }
+    }
+
+    if (families.has('programme')) {
+      const baselines = await prisma.programmeBaseline.findMany({
+        where: { projectId, organizationId },
+        select: { id: true },
+      });
+      if (baselines.length > 0) {
+        clauses.push({
+          resource: { in: [...ACTIVITY_OUTBOX_RESOURCES.programme] },
+          resourceId: { in: baselines.map((b) => b.id) },
+        });
+      }
+    }
+
+    // Request-logged rows: the stored resource is the route pattern and the id is the project.
+    for (const route of ACTIVITY_ROUTES) {
+      if (!families.has(route.family)) continue;
+      clauses.push({
+        resource: { in: storedRouteForms(route.route) },
+        action: route.method,
+        resourceId: projectId,
+        sourceCommand: null,
+      });
+    }
+
+    if (clauses.length === 0) return [];
+
+    const { cursor, take } = page;
+    return prisma.auditLog.findMany({
+      where: {
+        orgId: organizationId,
+        OR: clauses,
+        ...(cursor
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { createdAt: { lt: cursor.createdAt } },
+                    { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take,
+      select: ACTIVITY_SELECT,
     });
   }
 

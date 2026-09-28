@@ -76,13 +76,33 @@ export interface ProjectWorkspaceSummaryResponse {
     currency: string | null;
   } | null;
   financialsVisible: boolean;
-  recentActivity: Array<{
-    id: string;
-    action: string;
-    sourceCommand: string | null;
-    occurredAt: string;
-    actor: { id: string; name: string };
-  }>;
+  /** The five newest events of `GET /projects/:id/activity` (same selection, same shape). */
+  recentActivity: ProjectActivityEventResponse[];
+}
+
+/**
+ * One event in a project's history (`GET /projects/:id/activity`, and `recentActivity` on the
+ * workspace summary). `sourceCommand` is the transactional-outbox command when the row has one;
+ * `command` is always a stable code — the `sourceCommand`, or the catalogued code of a
+ * request-logged route (e.g. `boq.commit`, `project.addMember`). Neither is display text.
+ */
+export interface ProjectActivityEventResponse {
+  id: string;
+  action: string;
+  sourceCommand: string | null;
+  /** Stable event code, never null. Clients map it to a label; unknown codes use `resourceType`. */
+  command: string;
+  /** What the event happened to: `Project`, `ProjectMember`, `Contract`, `VariationOrder`, `Boq`, … */
+  resourceType: string;
+  resourceId: string;
+  occurredAt: string;
+  actor: { id: string; name: string };
+}
+
+export interface ProjectActivityPageResponse {
+  items: ProjectActivityEventResponse[];
+  /** Opaque; pass back as `?cursor=` for the next (older) page. Null on the last page. */
+  nextCursor: string | null;
 }
 
 export type ProjectWorkspaceGuidanceKind =
@@ -119,6 +139,26 @@ export interface ProjectReadinessConditionResponse {
   severity: ReadinessConditionSeverity;
   satisfied: boolean;
   detail: string;
+  /**
+   * Codes of conditions in the same response that must be satisfied before this one can be —
+   * genuine server-side data dependencies only (e.g. CONTRACT_START_DATE is read off the main
+   * contract, so it waits for ACTIVE_MAIN_CONTRACT). Empty when the condition stands alone.
+   */
+  blockedBy: string[];
+  /** ISO time the condition became satisfied, when a trustworthy source exists; else null. */
+  satisfiedAt: string | null;
+}
+
+/** What the readiness means for the caller who asked (ADR-019 amendment 2026-09-28). */
+export interface ProjectReadinessCallerResponse {
+  /**
+   * True when this caller holds the command's permission and the command would pass readiness
+   * for them once a reason is given for every entry in `waivableConditions`. Workflow approval
+   * (a 409 with `approvalInstanceId`) may still apply; lifecycle status is not re-checked here.
+   */
+  canRun: boolean;
+  /** Unsatisfied conditions this caller may waive with a reason (WAIVABLE, or apex-waivable). */
+  waivableConditions: string[];
 }
 
 export interface ProjectReadinessResponse {
@@ -130,6 +170,7 @@ export interface ProjectReadinessResponse {
   // project (e.g. final-account / commitments / inventory / retention on close). Listed by code
   // so the contract is self-documenting rather than silently omitting them.
   deferred: string[];
+  caller: ProjectReadinessCallerResponse;
 }
 
 // ─── Client ───────────────────────────────────────────────────────────────────

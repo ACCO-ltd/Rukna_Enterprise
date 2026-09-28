@@ -182,3 +182,32 @@ approved or began mobilizing.
 - Reuses existing patterns: the accounting close-gate pre-flight (readiness), 
   `CommandGovernanceService` (authorization), `ProjectSuspension` (condition).
 - Gated on Eng Ahmed's domain sign-off before implementation.
+
+## Amendment 2026-09-28 — readiness read contract: dependencies, completion time, caller view
+
+Additive to CONST-PLC-009 (no field removed or renamed, no migration, no new status). The
+command-side rules (CONST-PLC-004/006, ADR-026 Route 7A) are unchanged.
+
+1. **`blockedBy: string[]` per condition.** Codes of conditions in the same response that must be
+   satisfied first — genuine server-side data dependencies only, declared in the pure policy
+   (`READINESS_DEPENDENCIES`). Today exactly one: `CONTRACT_START_DATE` waits for
+   `ACTIVE_MAIN_CONTRACT` (the date is read off the effective main contract, which
+   `record-signed` creates with it). No `BOQ_BASELINED → ACTIVE_MAIN_CONTRACT` edge: since ADR-032
+   the signed contract is recorded against a live BOQ that passes BOQ readiness, not a committed
+   one. `blockedBy` is descriptive; it does not add a gate.
+2. **`satisfiedAt: string | null` per condition.** When the condition became true, loaded by the
+   repository from sources written in the same transaction as the fact (BOQ version commit stamp,
+   the contract's `record-signed`/`activate` outbox event, membership join/removal rows) and
+   resolved by the pure policy only for satisfied conditions. `null` wherever no trustworthy
+   source exists (`CLIENT_ACTIVE`, `PROGRAMME_DATES`) — the policy never invents a time.
+3. **`caller: { canRun, waivableConditions }`.** Readiness as seen by the requesting user:
+   `waivableConditions` = the unsatisfied conditions this caller may waive (WAIVABLE, plus the two
+   Route 7A conditions for a Start-chain apex caller); `canRun` = holds the command's permission
+   (`manage:project`) and `planEnforcement` would allow the command given a reason for each. The
+   same pure function and the same apex determination as the command, so the read and the command
+   cannot disagree. Clients must use it instead of re-deriving authority from role names.
+   Governance approval (CONST-PLC-007) and lifecycle status are outside `canRun`.
+
+Alongside, `GET /projects/:id/activity` exposes the project's history to project members (see
+`docs/reference/api-reference.md` §6.7); the workspace summary's `recentActivity` is its first
+five events.

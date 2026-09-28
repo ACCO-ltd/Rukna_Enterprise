@@ -26,6 +26,8 @@ describe('DPR approve — over-quantity race (CONST-PROG-002/009) [DB]', () => {
   let projectId: string;
   let leafId: string;
   let service: ProgressService;
+  let repo: ProgressRepository;
+  const siteEngineer = (): RequestIdentity => ({ ...approver, userId: 'site-engineer' });
 
   beforeAll(async () => {
     await prisma.organization.create({
@@ -75,9 +77,10 @@ describe('DPR approve — over-quantity race (CONST-PROG-002/009) [DB]', () => {
     });
     leafId = leaf.id;
 
+    repo = new ProgressRepository();
     service = new ProgressService(
       tenancy,
-      new ProgressRepository(),
+      repo,
       { assertMember: jest.fn(async () => undefined) } as never,
       {} as never, // financialPosition — unused
       gate as never,
@@ -140,5 +143,70 @@ describe('DPR approve — over-quantity race (CONST-PROG-002/009) [DB]', () => {
       where: { boqNodeId: leafId, dpr: { status: 'APPROVED' } },
     });
     expect(verified._sum.quantity?.toString()).toBe('6');
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('the same report approved twice at once: approved exactly once, the loser is refused', async () => {
+    const id = await submittedReport('1');
+
+    const results = await Promise.allSettled([
+      service.approve(approver, id),
+      service.approve(approver, id),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const [loser] = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    // Whether the loser is stopped by the locked re-read or, having read after the winner
+    // committed, by the status pre-check, it is the same 409 DPR_CHANGED. Never a second approve.
+    expect(loser!.reason.getStatus()).toBe(409);
+    expect(loser!.reason.getResponse()).toMatchObject({ errorCode: 'DPR_CHANGED' });
+  });
+
+  it('approve vs return + edit + resubmit: the line added in between is checked', async () => {
+    // Line capacity 10; 7 already approved by the tests above. This report measures 1 (fits).
+    const id = await submittedReport('1');
+    // Another report on the same line, approved while ours is being edited.
+    const other = await submittedReport('1');
+    const realLock = repo.lockDpr.bind(repo);
+
+    // Between approve's unlocked pre-check and its transaction lock, the report is returned, an
+    // entry of 2 is added and it is legitimately resubmitted (7 + 3 = 10 fits at submit time); then
+    // the other report is approved. On the stale read (1) approve would pass: 8 + 1 = 9. On the
+    // fresh read it must refuse: 8 + 3 = 11 > 10.
+    jest.spyOn(repo, 'lockDpr').mockImplementationOnce(async (tx, orgIdArg, dprId) => {
+      await service.returnForRevision(approver, id, 'Add the east wing pour');
+      await service.addMeasurement(siteEngineer(), id, { boqNodeId: leafId, quantity: 2 });
+      await service.submit(siteEngineer(), id);
+      await prisma.dailyProgressReport.update({ where: { id: other }, data: { status: 'APPROVED' } });
+      return realLock(tx, orgIdArg, dprId);
+    });
+
+    const err = await service.approve(approver, id).catch((e: unknown) => e);
+
+    expect((err as { getResponse(): unknown }).getResponse()).toMatchObject({
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+    });
+    const row = await prisma.dailyProgressReport.findUniqueOrThrow({ where: { id } });
+    expect(row.status).toBe('SUBMITTED'); // not approved on the stale read
+  });
+
+  it('approve racing a return: the report never ends up RETURNED-then-APPROVED', async () => {
+    const id = await submittedReport('1');
+
+    const results = await Promise.allSettled([
+      service.approve(approver, id),
+      service.returnForRevision(approver, id, 'Photos missing'),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const row = await prisma.dailyProgressReport.findUniqueOrThrow({ where: { id } });
+    if (results[0]!.status === 'fulfilled') {
+      expect(row.status).toBe('APPROVED');
+      expect(row.returnedBy).toBeNull();
+    } else {
+      expect(row.status).toBe('RETURNED');
+      expect(row.approvedAt).toBeNull();
+    }
   });
 });

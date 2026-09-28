@@ -381,6 +381,7 @@ approval panel via `approvalInstanceId`, and re-call the command once the instan
 | `GET` | `/projects/:id` | Get with members + suspension |
 | `GET` | `/projects/:id/workspace-summary` | Permission-aware setup, responsibility and main-contract projection |
 | `GET` | `/projects/:id/workspace-guidance` | Ordered, lifecycle-aware project setup and control guidance |
+| `GET` | `/projects/:id/activity` | Project history, newest first, cursor-paged (see below) |
 | `PATCH` | `/projects/:id` | Update (DRAFT only) |
 
 The workspace summary is organization- and membership-scoped. Main-contract metadata requires
@@ -391,6 +392,31 @@ Workspace guidance is computed server-side and returned in `URGENT`, `WARNING`, 
 This project-setup guidance is not the cross-domain `AttentionQueryService` contract
 reserved by `frontend-design.md` for approvals, expiry, payment, milestone, and suspension alerts.
 The workspace Overview presents it as setup and control guidance, not as the Attention Required panel.
+
+`recentActivity` on the workspace summary is the first **5** events of `GET /projects/:id/activity`
+(same selection, same shape — see below). Each event now also carries `command`, `resourceType`
+and `resourceId` (additive, 2026-09-28).
+
+**Project activity (ADR-019 amendment 2026-09-28):**
+```
+GET /projects/:id/activity?cursor=<nextCursor>&limit=25
+→ { items: [{ id, action, sourceCommand, command, resourceType, resourceId, occurredAt,
+              actor: { id, name } }],
+    nextCursor: string | null }
+```
+- `view:project` + project membership (`@ProjectScoped`), like the other project reads. Newest
+  first (`createdAt DESC, id DESC`), keyset cursor (opaque; pass `nextCursor` back). `limit`
+  defaults to 25, is clamped to 100; a non-integer/`< 1` limit or a malformed cursor is a `400`.
+- Rows: audit events on the project **and the records it owns**. Outbox rows (`sourceCommand`
+  set) on the project, its contracts and their children/variations (**only with
+  `view:contract`**, which also gates project-level `commercial.*` rows), its documents/revisions
+  and programme baselines; plus request-logged rows (`sourceCommand: null`) of project routes that
+  write no outbox row — project edit, member add/remove/roles, BOQ create/import/draft/commit/
+  baseline/cancel/contingency draw (**only with `view:boq`**), programme/progress setup. BOQ line
+  edits are excluded. Full list: `projects/domain/project-activity.ts`.
+- `command` is always a stable code — the `sourceCommand`, or the catalogued code of a
+  request-logged route (`project.update`, `project.addMember`, `boq.commit`, …). It is not display
+  text; clients map it to a label and fall back on `resourceType`.
 
 **Create project — request body:**
 ```json
@@ -427,9 +453,26 @@ All return the updated project. All return `400` if the transition is invalid fr
 **Readiness (ADR-019 Phase B — query before you command):**
 ```
 GET /projects/:id/readiness?command=start
-→ { command, targetStatus, ready, conditions: [{ code, severity: MANDATORY|WAIVABLE, satisfied, detail }], deferred: [] }
+→ { command, targetStatus, ready,
+    conditions: [{ code, severity: MANDATORY|WAIVABLE, satisfied, detail,
+                   blockedBy: string[], satisfiedAt: string | null }],
+    deferred: [],
+    caller: { canRun: boolean, waivableConditions: string[] } }
 ```
 Call this to render a readiness dashboard **before** `start`/`close`. `ready` is false while any condition is unsatisfied.
+
+Additive since 2026-09-28 (ADR-019 amendment):
+- `blockedBy` — codes in the same response that must be satisfied first. Only genuine data
+  dependencies: today `CONTRACT_START_DATE → ACTIVE_MAIN_CONTRACT`. There is **no**
+  `BOQ_BASELINED → ACTIVE_MAIN_CONTRACT` edge (ADR-032).
+- `satisfiedAt` — ISO time the condition became true, or `null` when there is no trustworthy
+  source (always `null` for `CLIENT_ACTIVE` and `PROGRAMME_DATES`; sources in
+  `docs/design/project-overview-implementation.md` §6.2).
+- `caller` — for the requesting user: `canRun` = holds `manage:project` and the command would pass
+  readiness once a reason is supplied for each of `waivableConditions` (the unsatisfied conditions
+  this user may waive: WAIVABLE ones, plus — for `start`, CFO/CEO only — `ACTIVE_MAIN_CONTRACT` /
+  `CONTRACT_START_DATE`, ADR-026 Route 7A). Workflow approval may still answer `409`; status and
+  suspension are not re-checked here. Computed with the same `planEnforcement` the command uses.
 
 **Start (now takes a body — ADR-019 Phase B2):**
 ```
@@ -2556,9 +2599,22 @@ Both return **400** with `error.code = "DPR_EXCEEDS_BOQ_QUANTITY"`:
 
 All quantities are decimal strings. `verifiedToDate` counts OTHER approved reports only;
 `maxForThisReport = max(0, boqQuantity − verifiedToDate)`. The message names the first line; every
-offending line is in `details.lines`. Approve runs the check under a row lock on the measured BOQ
-lines, in the same transaction as the status change, so two reports approved at once cannot
-together exceed a line.
+offending line is in `details.lines`.
+
+**Concurrency.** Approve locks the report row, then its measured BOQ lines (sorted by id), re-reads
+the report inside that transaction, re-runs SoD and the quantity check on the fresh read, freezes the
+evidence and flips the status — all in one transaction. Two reports approved at once cannot together
+exceed a line, and an edit that slipped in after the approver opened the report is checked. Submit,
+approve, return and reopen are conditional on the status the command read: if another command moved
+the report first, the loser gets **409** `DPR_CHANGED` ("This report changed while you were …
+it — reload it and try again."). Approving a report that is not SUBMITTED is also **409**
+`DPR_CHANGED`. Locked transactions are bounded at 15 s; a lock timeout or deadlock returns **409**
+`DPR_CHANGED` ("This report is busy — try again.").
+
+All DPR write paths (add / edit / delete of work entries, labour, equipment, observations, context,
+and evidence) run under the report's row lock with a fresh status re-check. Evidence
+(`POST /progress/reports/:dprId/evidence`) is accepted while DRAFT / RETURNED / REOPENED / SUBMITTED
+and refused with **409** once APPROVED.
 
 #### DPR read model, returns and work-entry delete
 
@@ -2566,12 +2622,15 @@ together exceed a line.
 |---|---|---|
 | `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName` |
 | `POST` | `/progress/reports/:dprId/return` | Also records `returnedBy` / `returnedAt` (kept on resubmit, overwritten by the next return — same as `returnReason`) |
-| `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. Evidence tagged to the entry is detached, not deleted |
+| `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. In a **REOPENED** report, entries created before the reopen were approved and are refused with **409** (CONST-PROG-010 supersede, don't overwrite) — only entries added since the reopen can be deleted. Evidence tagged to the entry is detached, not deleted. Runs under the report row lock, re-checking the status |
+
+The labour / equipment / observation row deletes run under the same report lock and status re-check
+(they keep their existing 400 for a non-editable report).
 
 ```ts
 workPackages: Array<{ id: string; code: string; name: string }>; // distinct packages of the measured leaves, by code
 approvedByName?: string;
-reviewedByName?: string;   // approver for APPROVED/REOPENED, returner for RETURNED, else undefined
+reviewedByName?: string;   // approver for APPROVED, reopener for REOPENED, returner for RETURNED, else undefined
 returnedBy?: string; returnedAt?: string; returnedByName?: string;
 ```
 

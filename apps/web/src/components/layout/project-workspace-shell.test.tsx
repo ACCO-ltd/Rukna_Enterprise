@@ -235,7 +235,8 @@ describe('ProjectWorkspaceShell — identity', () => {
     const client = screen.getByTitle(
       'Federal Government of Somalia, Ministry of Health and Human Services',
     );
-    expect(client).toHaveClass('min-w-0', 'truncate');
+    expect(client).toHaveClass('truncate');
+    expect(client.parentElement).toHaveClass('min-w-0');
   });
 
   it('names the active tab in the breadcrumb, not always "Overview"', () => {
@@ -276,33 +277,37 @@ describe('ProjectWorkspaceShell — actions', () => {
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 
-  it('keeps the same header actions on every tab (flow plan B1)', () => {
-    // The header used to lose its actions off Overview and show a ghost "Preparation sequence"
-    // link instead, so it changed shape as the reader moved between tabs.
-    pathname = '/projects/project-1/boq';
+  it.each(['boq', 'progress', 'commercial/overview', 'documents', 'edit'])(
+    'keeps one primary per screen: on /%s the header has only its overflow',
+    (tab) => {
+      // The tab's own bar owns the next step there (the BOQ bar's Create contract, say); a second
+      // primary in the header above it would compete. The overflow stays, so the header keeps
+      // its shape from tab to tab.
+      pathname = `/projects/project-1/${tab}`;
 
-    renderWithProviders(
-      <ProjectWorkspaceShell id="project-1">
-        <p>Workspace content</p>
-      </ProjectWorkspaceShell>,
-      MANAGER,
-    );
+      renderWithProviders(
+        <ProjectWorkspaceShell id="project-1">
+          <p>Workspace content</p>
+        </ProjectWorkspaceShell>,
+        MANAGER,
+      );
 
-    expect(screen.getByRole('button', { name: 'Record practical completion' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Preparation sequence' })).not.toBeInTheDocument();
-  });
+      expect(screen.queryByRole('button', { name: 'Record practical completion' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    },
+  );
 
-  it('hands readiness to the action panel, so an unfinished draft is offered its next step', () => {
+  it('offers no Start project — and no detour — while a required step is open', () => {
     useProject.mockReturnValue({
       data: { ...project, status: ProjectStatus.DRAFT },
       isPending: false,
       isError: false,
       refetch: vi.fn(),
     });
-    // Server readiness — not the old workspace-summary `setup` — now gates commencement. A
-    // mandatory unsatisfied condition keeps the draft in preparation: the panel offers
-    // "Continue setup" pointing at the readiness section on Overview rather than "Start
-    // project". Mirrors the action-panel suite's own readiness case.
+    // Server readiness — not the old workspace-summary `setup` — gates commencement. A
+    // mandatory unsatisfied condition keeps the draft in preparation: no Start button, not a
+    // disabled one, and not a "Continue setup" link either — the Overview checklist already
+    // says how many required steps are left.
     useProjectReadiness.mockReturnValue({
       data: {
         command: 'start' as const,
@@ -330,11 +335,10 @@ describe('ProjectWorkspaceShell — actions', () => {
       MANAGER,
     );
 
-    expect(screen.getByRole('link', { name: /Continue setup/ })).toHaveAttribute(
-      'href',
-      '/projects/project-1#project-readiness-title',
-    );
+    expect(screen.queryByRole('link', { name: /Continue setup/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+    // The overflow stays: editing and cancelling a draft do not wait on readiness.
+    expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 
   /**

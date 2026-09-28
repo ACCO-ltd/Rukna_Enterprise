@@ -7,6 +7,8 @@ import {
 import { CommercialModel, ParticipationModel, Prisma, Project, ProjectCategory } from '@prisma/client';
 import {
   PERMISSIONS,
+  type ProjectActivityEventResponse,
+  type ProjectActivityPageResponse,
   type ProjectLifecycleCommand,
   type ProjectReadinessResponse,
   type ProjectWorkspaceGuidanceItemResponse,
@@ -23,6 +25,7 @@ import {
   ProjectPrismaRepository,
   ProjectFull,
   ProjectReadinessRecord,
+  type ProjectActivityRow,
 } from '../infrastructure/project-prisma.repository.js';
 import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -31,11 +34,21 @@ import {
   evaluateReadiness,
   planEnforcement,
   APEX_WAIVABLE_START_CONDITIONS,
+  type CallerAuthority,
   type EnforcementPlan,
+  type ReadinessEvidence,
   type ReadinessSnapshot,
   type WaiverInput,
 } from '../domain/project-readiness.policy.js';
-import { hasCommittedBoqVersion } from '../../boq/domain/boq-version-status.js';
+import {
+  decodeActivityCursor,
+  describeActivityRow,
+  encodeActivityCursor,
+  parseActivityLimit,
+  readableActivityFamilies,
+  type ActivityCursor,
+} from '../domain/project-activity.js';
+import { hasCommittedBoqVersion, isCommittedBoqStatus } from '../../boq/domain/boq-version-status.js';
 import type { StartProjectDto } from '../presentation/dto/start-project.dto.js';
 import type { CloseProjectDto } from '../presentation/dto/close-project.dto.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
@@ -53,6 +66,9 @@ const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'ACTIVE']);
 // authority to waive the two MANDATORY Start conditions (project-before-contract) is that apex tier:
 // CFO or CEO. A normal manager (projectsManage permission alone) can never waive them.
 const START_CHAIN_APEX_ROLES: ReadonlySet<string> = new Set(['CFO', 'CEO']);
+
+/** How many events the workspace summary's `recentActivity` carries. */
+const RECENT_ACTIVITY_COUNT = 5;
 
 const LIFECYCLE_TRANSITIONS: Record<string, string> = {
   start: 'ACTIVE',
@@ -131,7 +147,8 @@ export class ProjectService {
     const prisma = this.tenancyService.getClient();
     const [project, recentActivity] = await Promise.all([
       this.repo.findWorkspaceSummary(prisma, identity.activeOrganizationId, id),
-      this.repo.findRecentProjectActivity(prisma, identity.activeOrganizationId, id),
+      // The same stream as GET /projects/:id/activity, so "Latest activity" and "View all" agree.
+      this.loadActivity(identity, id, { cursor: null, take: RECENT_ACTIVITY_COUNT }),
     ]);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
 
@@ -194,16 +211,66 @@ export class ProjectService {
             }
           : null,
       financialsVisible: mayViewFinancials,
-      recentActivity: recentActivity.map((event) => ({
-        id: event.id,
-        action: event.action,
-        sourceCommand: event.sourceCommand,
-        occurredAt: event.createdAt.toISOString(),
-        actor: {
-          id: event.user.id,
-          name: `${event.user.firstName} ${event.user.lastName}`.trim(),
-        },
-      })),
+      recentActivity: recentActivity.map((row) => this.toActivityEvent(row)),
+    };
+  }
+
+  /**
+   * ADR-019 amendment 2026-09-28 — a project's history for any member: audit rows that can be
+   * tied to the project reliably (see `domain/project-activity.ts`), each family behind the
+   * permission that reads it elsewhere. Newest first, keyset-paged.
+   */
+  async getActivity(
+    identity: RequestIdentity,
+    id: string,
+    query: { cursor?: string; limit?: string },
+  ): Promise<ProjectActivityPageResponse> {
+    const limit = parseActivityLimit(query.limit);
+    const cursor = decodeActivityCursor(query.cursor);
+    await this.projectAccess.assertMember(identity, id);
+    const prisma = this.tenancyService.getClient();
+    const project = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+    if (!project) throw new NotFoundException(`Project ${id} not found`);
+
+    // One extra row says whether an older page exists without a count query.
+    const rows = await this.loadActivity(identity, id, { cursor, take: limit + 1 });
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((row) => this.toActivityEvent(row)),
+      nextCursor:
+        rows.length > limit && last ? encodeActivityCursor({ createdAt: last.createdAt, id: last.id }) : null,
+    };
+  }
+
+  private loadActivity(
+    identity: RequestIdentity,
+    id: string,
+    page: { cursor: ActivityCursor | null; take: number },
+  ): Promise<ProjectActivityRow[]> {
+    return this.repo.findProjectActivity(
+      this.tenancyService.getClient(),
+      identity.activeOrganizationId,
+      id,
+      readableActivityFamilies(identity.permissions),
+      page,
+    );
+  }
+
+  private toActivityEvent(row: ProjectActivityRow): ProjectActivityEventResponse {
+    const { command, resourceType } = describeActivityRow(row);
+    return {
+      id: row.id,
+      action: row.action,
+      sourceCommand: row.sourceCommand,
+      command,
+      resourceType,
+      resourceId: row.resourceId,
+      occurredAt: row.createdAt.toISOString(),
+      actor: {
+        id: row.user.id,
+        name: `${row.user.firstName} ${row.user.lastName}`.trim(),
+      },
     };
   }
 
@@ -295,7 +362,59 @@ export class ProjectService {
     const project = await this.repo.findReadinessSnapshot(prisma, identity.activeOrganizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
 
-    return evaluateReadiness(this.toReadinessSnapshot(project), command as ProjectLifecycleCommand);
+    const lifecycleCommand = command as ProjectLifecycleCommand;
+    const evidence = await this.loadReadinessEvidence(prisma, identity.activeOrganizationId, project);
+    return evaluateReadiness(
+      { ...this.toReadinessSnapshot(project), evidence },
+      lifecycleCommand,
+      this.callerAuthority(identity, lifecycleCommand),
+    );
+  }
+
+  /**
+   * What the caller brings to a readiness command — the exact inputs `enforceReadiness` uses, so
+   * `caller.canRun` on the read and the command's own gate cannot disagree. Every readiness
+   * command is guarded by `manage:project` (see ProjectsController).
+   */
+  private callerAuthority(identity: RequestIdentity, command: ProjectLifecycleCommand): CallerAuthority {
+    return {
+      mayRun: identity.permissions.includes(PERMISSIONS.projectsManage),
+      apexAuthority: this.hasStartApexAuthority(identity, command),
+    };
+  }
+
+  /** ADR-026 CONST-VAR-011 (Route 7A) — Start-chain apex (CFO/CEO), for `start` only. */
+  private hasStartApexAuthority(identity: RequestIdentity, command: ProjectLifecycleCommand): boolean {
+    return command === 'start' && identity.roles.some((r) => START_CHAIN_APEX_ROLES.has(r));
+  }
+
+  /**
+   * The timestamps behind each condition's `satisfiedAt` (sources: design note §6.2). Loaded for
+   * the read only — enforcement needs no times.
+   */
+  private async loadReadinessEvidence(
+    prisma: ReturnType<TenancyService['getClient']>,
+    organizationId: string,
+    project: ProjectReadinessRecord,
+  ): Promise<ReadinessEvidence> {
+    const contract = project.contracts[0] ?? null;
+    const signatures = contract?.id
+      ? await this.repo.findContractSignatureEvents(prisma, organizationId, contract.id)
+      : [];
+    const committedStamps = (project.boq?.versions ?? [])
+      .filter((v) => isCommittedBoqStatus(v.status) && v.baselinedAt)
+      .map((v) => v.baselinedAt!.getTime());
+    return {
+      boqCommittedAt: committedStamps.length ? new Date(Math.min(...committedStamps)) : null,
+      // Newest first: the latest move into ACTIVE (a reopen + re-activate resets it).
+      contractActivatedAt: contract?.status === 'ACTIVE' ? (signatures[0]?.createdAt ?? null) : null,
+      // `record-signed` always writes the start date and nothing clears it afterwards.
+      contractStartDateSetAt:
+        signatures.find((e) => e.sourceCommand === 'contract.record-signed')?.createdAt ?? null,
+      memberships: project.members
+        .filter((m) => m.joinedAt instanceof Date)
+        .map((m) => ({ joinedAt: m.joinedAt, removedAt: m.removedAt ?? null })),
+    };
   }
 
   /** Map the loaded readiness record to the pure policy's snapshot shape. */
@@ -312,7 +431,8 @@ export class ProjectService {
         ? { status: activeContract.status, startDate: activeContract.startDate }
         : null,
       hasBaselinedBoq: hasCommittedBoqVersion(project.boq?.versions),
-      activeMemberCount: project.members.length,
+      // Removed rows are loaded too (for the team-formed time); only active ones count.
+      activeMemberCount: project.members.filter((m) => m.removedAt == null).length,
     };
   }
 
@@ -657,8 +777,7 @@ export class ProjectService {
     const snapshot = await this.repo.findReadinessSnapshot(prisma, identity.activeOrganizationId, id);
     if (!snapshot) throw new NotFoundException(`Project ${id} not found`);
     const readiness = evaluateReadiness(this.toReadinessSnapshot(snapshot), command);
-    const apexAuthority =
-      command === 'start' && identity.roles.some((r) => START_CHAIN_APEX_ROLES.has(r));
+    const apexAuthority = this.hasStartApexAuthority(identity, command);
     const plan = planEnforcement(readiness, overrides ?? [], { apexAuthority });
     if (!plan.allowed) {
       throw new BadRequestException(this.readinessError(command, plan));

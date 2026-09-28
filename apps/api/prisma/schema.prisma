@@ -1007,6 +1007,10 @@ model ProgressMeasurement {
   // this is per work entry, since one report can cover several locations).
   locationArea   String? @map("location_area")
   createdBy      String  @map("created_by")
+  // When the entry was recorded (2026-09-28). In a REOPENED report, entries created before the
+  // reopen were approved and may not be deleted (CONST-PROG-010 supersede, don't overwrite).
+  // Backfilled from the report's created_at for rows that predate the column.
+  createdAt      DateTime @default(now()) @map("created_at")
 
   dpr         DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
   boqNode     BoqNode             @relation(fields: [boqNodeId], references: [id])
