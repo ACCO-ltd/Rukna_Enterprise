@@ -157,9 +157,10 @@ describe('DPR approve — over-quantity race (CONST-PROG-002/009) [DB]', () => {
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     const [loser] = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
-    // Depending on timing the loser is stopped by the locked re-read (409 DPR_CHANGED) or, if it
-    // read after the winner committed, by the plain status pre-check (400). Never a second approve.
-    expect([400, 409]).toContain(loser!.reason.getStatus());
+    // Whether the loser is stopped by the locked re-read or, having read after the winner
+    // committed, by the status pre-check, it is the same 409 DPR_CHANGED. Never a second approve.
+    expect(loser!.reason.getStatus()).toBe(409);
+    expect(loser!.reason.getResponse()).toMatchObject({ errorCode: 'DPR_CHANGED' });
   });
 
   it('approve vs return + edit + resubmit: the line added in between is checked', async () => {

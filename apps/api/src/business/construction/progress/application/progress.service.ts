@@ -86,12 +86,64 @@ function isEditableDprStatus(status: string): boolean {
   return status === DprStatus.DRAFT || status === DprStatus.RETURNED || status === DprStatus.REOPENED;
 }
 
+/**
+ * Evidence may be added while the report is editable AND while it is SUBMITTED (the Progress UI
+ * lets the preparer / reviewer add photos during review — `canUpload = !isApproved`). It is closed
+ * once APPROVED: approval freezes the evidence set (CONST-PROG-008).
+ */
+function canAttachEvidence(status: string): boolean {
+  return isEditableDprStatus(status) || status === DprStatus.SUBMITTED;
+}
+
+function evidenceClosed(status: string): ConflictException {
+  return new ConflictException(
+    `Evidence can no longer be added to this report (it is ${status}). Reopen it to add corrections.`,
+  );
+}
+
 /** 409 when a report moved between our read and our write (a concurrent command won). */
 function reportChanged(action: string): ConflictException {
   return new ConflictException({
     message: `This report changed while you were ${action} it — reload it and try again.`,
     errorCode: 'DPR_CHANGED',
   });
+}
+
+/** Locked DPR transactions give up after this long rather than hold rows indefinitely. */
+const LOCKED_TX_TIMEOUT_MS = 15000; // same bound as the commercial billing transactions
+
+/**
+ * True for lock contention on a locked DPR transaction: Prisma's interactive-transaction timeout
+ * (P2028), a write conflict / deadlock (P2034), or Postgres deadlock_detected (40P01) surfaced
+ * through a raw query (P2010 with meta.code) or in the message.
+ */
+function isLockContention(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return error instanceof Error && error.message.includes('40P01');
+  }
+  if (error.code === 'P2028' || error.code === 'P2034') return true;
+  const metaCode = (error.meta as { code?: unknown } | undefined)?.code;
+  return metaCode === '40P01' || error.message.includes('40P01');
+}
+
+/** 409 when a locked DPR transaction timed out or deadlocked — safe to retry. */
+function reportBusy(): ConflictException {
+  return new ConflictException({
+    message: 'This report is busy — try again.',
+    errorCode: 'DPR_CHANGED',
+  });
+}
+
+/** Run a delete; a row that vanished between our read and the delete (P2025) is a plain 404. */
+async function deleteOr404<T>(write: Promise<T>, notFoundMessage: string): Promise<T> {
+  try {
+    return await write;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw new NotFoundException(notFoundMessage);
+    }
+    throw error;
+  }
 }
 
 /** ADR-022 CONST-DOA-008 SoD: the preparer or submitter cannot approve their own report. */
@@ -177,15 +229,22 @@ export class ProgressService {
     if (!node) throw new NotFoundException('BOQ node not found for this project.');
     if (!node.isLeaf) throw new BadRequestException('Measure against a BOQ leaf item, not a section.');
 
-    return this.repo.addMeasurement(prisma, {
-      organizationId: identity.activeOrganizationId,
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      boqNodeId: dto.boqNodeId,
-      quantity: dto.quantity,
-      notes: dto.notes ?? null,
-      locationArea: dto.locationArea ?? null,
-      createdBy: identity.userId,
-    });
+      () =>
+        new BadRequestException('Measurements can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addMeasurement(tx, {
+          organizationId: identity.activeOrganizationId,
+          dprId,
+          boqNodeId: dto.boqNodeId,
+          quantity: dto.quantity,
+          notes: dto.notes ?? null,
+          locationArea: dto.locationArea ?? null,
+          createdBy: identity.userId,
+        }),
+    );
   }
 
   /**
@@ -220,7 +279,10 @@ export class ProgressService {
             'This work entry was part of the approved report, so it cannot be deleted while the report is reopened. Add a correcting entry instead.',
           );
         }
-        return this.repo.deleteMeasurement(tx, measurementId);
+        return deleteOr404(
+          this.repo.deleteMeasurement(tx, measurementId),
+          `Work entry ${measurementId} not found on this report.`,
+        );
       },
     );
   }
@@ -233,6 +295,7 @@ export class ProgressService {
   ) {
     const prisma = this.tenancy.getClient();
     const dpr = await this.requireDpr(identity, dprId);
+    if (!canAttachEvidence(dpr.status)) throw evidenceClosed(dpr.status);
     const file = await this.repo.findFileStatus(prisma, identity.activeOrganizationId, platformFileId);
     if (!file) throw new NotFoundException(`File ${platformFileId} not found`);
     if (file.status !== 'READY') {
@@ -242,14 +305,27 @@ export class ProgressService {
       const belongs = dpr.measurements.some((m) => m.id === measurementId);
       if (!belongs) throw new BadRequestException('That work entry does not belong to this report.');
     }
+    // Under the DPR row lock, so evidence cannot land on a report an approval has just frozen:
+    // either it is attached first (and frozen with the rest) or it sees APPROVED and is refused.
+    const attachment = await this.inLockedEditableDpr(
+      identity,
+      dprId,
+      evidenceClosed,
+      async (tx, fresh) => {
+        if (measurementId && !fresh.measurements.some((m) => m.id === measurementId)) {
+          throw new BadRequestException('That work entry does not belong to this report.');
+        }
+        return this.repo.createAttachment(tx, {
+          dprId,
+          platformFileId,
+          measurementId: measurementId ?? null,
+          createdBy: identity.userId,
+        });
+      },
+      canAttachEvidence,
+    );
     // Binding takes the file out of reach of the abandoned-upload sweep and of DELETE /files/:id:
     // from here it is evidence on a report, and only the report can release it.
-    const attachment = await this.repo.createAttachment(prisma, {
-      dprId,
-      platformFileId,
-      measurementId: measurementId ?? null,
-      createdBy: identity.userId,
-    });
     await this.files.bind(platformFileId, `DPR evidence ${attachment.id}`);
     return attachment;
   }
@@ -275,7 +351,13 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Context fields can only be updated on a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.patchDprContext(this.tenancy.getClient(), dprId, dto);
+    return this.inLockedEditableDpr(
+      identity,
+      dprId,
+      () =>
+        new BadRequestException('Context fields can only be updated on a DRAFT, RETURNED or REOPENED report.'),
+      (tx) => this.repo.patchDprContext(tx, dprId, dto),
+    );
   }
 
   async addLabourRow(identity: RequestIdentity, dprId: string, dto: { trade: string; headcount: number; contractor?: string; hours?: number }) {
@@ -283,13 +365,19 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Labour rows can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.addLabourRow(this.tenancy.getClient(), {
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      trade: dto.trade,
-      headcount: dto.headcount,
-      contractor: dto.contractor ?? null,
-      hours: dto.hours ?? null,
-    });
+      () => new BadRequestException('Labour rows can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addLabourRow(tx, {
+          dprId,
+          trade: dto.trade,
+          headcount: dto.headcount,
+          contractor: dto.contractor ?? null,
+          hours: dto.hours ?? null,
+        }),
+    );
   }
 
   async removeLabourRow(identity: RequestIdentity, dprId: string, rowId: string) {
@@ -302,7 +390,7 @@ export class ProgressService {
       dprId,
       () =>
         new BadRequestException('Labour rows can only be removed from a DRAFT, RETURNED or REOPENED report.'),
-      (tx) => this.repo.deleteLabourRow(tx, rowId),
+      (tx) => deleteOr404(this.repo.deleteLabourRow(tx, rowId), `Labour row ${rowId} not found on this report.`),
     );
   }
 
@@ -315,14 +403,21 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Equipment rows can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.addEquipmentRow(this.tenancy.getClient(), {
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      equipmentType: dto.equipmentType,
-      count: dto.count,
-      hoursWorked: dto.hoursWorked ?? null,
-      condition: dto.condition ?? null,
-      notes: dto.notes ?? null,
-    });
+      () =>
+        new BadRequestException('Equipment rows can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addEquipmentRow(tx, {
+          dprId,
+          equipmentType: dto.equipmentType,
+          count: dto.count,
+          hoursWorked: dto.hoursWorked ?? null,
+          condition: dto.condition ?? null,
+          notes: dto.notes ?? null,
+        }),
+    );
   }
 
   async removeEquipmentRow(identity: RequestIdentity, dprId: string, rowId: string) {
@@ -335,7 +430,8 @@ export class ProgressService {
       dprId,
       () =>
         new BadRequestException('Equipment rows can only be removed from a DRAFT, RETURNED or REOPENED report.'),
-      (tx) => this.repo.deleteEquipmentRow(tx, rowId),
+      (tx) =>
+        deleteOr404(this.repo.deleteEquipmentRow(tx, rowId), `Equipment row ${rowId} not found on this report.`),
     );
   }
 
@@ -348,15 +444,21 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Observations can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.addObservation(this.tenancy.getClient(), {
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      category: dto.category as any,
-      description: dto.description,
-      affectedWork: dto.affectedWork ?? null,
-      severity: dto.severity ?? null,
-      followUpOwner: dto.followUpOwner ?? null,
-    });
+      () => new BadRequestException('Observations can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addObservation(tx, {
+          dprId,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          category: dto.category as any,
+          description: dto.description,
+          affectedWork: dto.affectedWork ?? null,
+          severity: dto.severity ?? null,
+          followUpOwner: dto.followUpOwner ?? null,
+        }),
+    );
   }
 
   async removeObservation(identity: RequestIdentity, dprId: string, obsId: string) {
@@ -369,7 +471,7 @@ export class ProgressService {
       dprId,
       () =>
         new BadRequestException('Observations can only be removed from a DRAFT, RETURNED or REOPENED report.'),
-      (tx) => this.repo.deleteObservation(tx, obsId),
+      (tx) => deleteOr404(this.repo.deleteObservation(tx, obsId), `Observation ${obsId} not found on this report.`),
     );
   }
 
@@ -403,10 +505,13 @@ export class ProgressService {
    *    on the report still being SUBMITTED, so a concurrent approve/return loses with 409.
    */
   async approve(identity: RequestIdentity, dprId: string) {
-    const prisma = this.tenancy.getClient();
     const pre = await this.requireDpr(identity, dprId);
     if (pre.status !== DprStatus.SUBMITTED) {
-      throw new BadRequestException(`Only a SUBMITTED report can be approved (is ${pre.status}).`);
+      // 409, like the in-transaction re-check: the report is not (or no longer) awaiting approval.
+      throw new ConflictException({
+        message: `Only a SUBMITTED report can be approved (is ${pre.status}) — reload it.`,
+        errorCode: 'DPR_CHANGED',
+      });
     }
     assertNotSelfApproval(pre, identity.userId);
 
@@ -428,8 +533,7 @@ export class ProgressService {
     // Fast, unlocked pre-check: fail an obviously over-quantity report before opening the transaction.
     await this.assertWithinBoqQuantity(identity, pre);
 
-    return prisma.$transaction(async (txClient) => {
-      const tx = txClient as never;
+    return this.lockedTx(async (tx) => {
       // Lock order: DPR row first, then BOQ leaves by id — every approver takes them the same way.
       const dpr = await this.lockAndReadDpr(tx, identity, dprId);
       if (dpr.status !== DprStatus.SUBMITTED) throw reportChanged('approving');
@@ -494,13 +598,30 @@ export class ProgressService {
       tx: ReturnType<TenancyService['getClient']>,
       dpr: Awaited<ReturnType<ProgressService['lockAndReadDpr']>>,
     ) => Promise<T>,
+    allowed: (status: string) => boolean = isEditableDprStatus,
   ): Promise<T> {
-    return this.tenancy.getClient().$transaction(async (txClient) => {
-      const tx = txClient as never;
+    return this.lockedTx(async (tx) => {
       const dpr = await this.lockAndReadDpr(tx, identity, dprId);
-      if (!isEditableDprStatus(dpr.status)) throw notEditable(dpr.status);
+      if (!allowed(dpr.status)) throw notEditable(dpr.status);
       return fn(tx, dpr);
     });
+  }
+
+  /**
+   * An interactive transaction for the DPR row-locking paths: bounded by LOCKED_TX_TIMEOUT_MS, and
+   * lock contention (timeout / deadlock) surfaces as a retryable 409 instead of a 500.
+   */
+  private async lockedTx<T>(
+    fn: (tx: ReturnType<TenancyService['getClient']>) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.tenancy
+        .getClient()
+        .$transaction(async (txClient) => fn(txClient as never), { timeout: LOCKED_TX_TIMEOUT_MS });
+    } catch (error) {
+      if (isLockContention(error)) throw reportBusy();
+      throw error;
+    }
   }
 
   /**

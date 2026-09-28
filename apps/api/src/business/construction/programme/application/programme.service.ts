@@ -128,7 +128,7 @@ export class ProgrammeService {
       }
       if (status === 'VERIFIED') throw milestoneAlreadyVerified();
       await this.repo.replaceMilestoneWorkPackages(tx as never, milestoneId, ids, identity.userId);
-    });
+    }, { timeout: 15000 }); // same bound as the commercial billing / DPR locked transactions
 
     const rows = await this.repo.findMilestones(
       prisma,

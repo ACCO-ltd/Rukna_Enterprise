@@ -70,6 +70,12 @@ function build(over: Over = {}) {
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
     lockBoqNodes: jest.fn().mockResolvedValue(undefined),
     deleteMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
+    findLabourRow: jest.fn().mockResolvedValue({ id: 'row-1', dprId: 'dpr-1' }),
+    deleteLabourRow: jest.fn().mockResolvedValue({ id: 'row-1' }),
+    addLabourRow: jest.fn().mockResolvedValue({ id: 'row-1' }),
+    addEquipmentRow: jest.fn().mockResolvedValue({ id: 'eq-1' }),
+    addObservation: jest.fn().mockResolvedValue({ id: 'obs-1' }),
+    patchDprContext: jest.fn().mockResolvedValue({ id: 'dpr-1' }),
     findWorkPackagesForDprs: jest.fn().mockResolvedValue(over.dprWorkPackages ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
@@ -518,6 +524,95 @@ describe('ProgressService (ADR-021 MVP)', () => {
       NotFoundException,
     );
     expect(repo.deleteMeasurement).not.toHaveBeenCalled();
+  });
+
+  it('attachEvidence: refused on an APPROVED report (409) — approval froze the evidence set', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await expect(service.attachEvidence(identity, 'dpr-1', 'f-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.createAttachment).not.toHaveBeenCalled();
+  });
+
+  it('attachEvidence: allowed while SUBMITTED (the UI lets reviewers add photos) and done under the DPR lock', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.attachEvidence(identity, 'dpr-1', 'f-1');
+    expect(repo.lockDpr).toHaveBeenCalledWith(expect.anything(), 'org-1', 'dpr-1');
+    expect(repo.createAttachment).toHaveBeenCalled();
+  });
+
+  it('attachEvidence: an approval that lands first under the lock wins (409, nothing attached)', async () => {
+    const { repo, service } = build();
+    const submitted = { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] };
+    repo.findDpr.mockResolvedValueOnce(submitted).mockResolvedValueOnce({ ...submitted, status: 'APPROVED' });
+    await expect(service.attachEvidence(identity, 'dpr-1', 'f-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.createAttachment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['addMeasurement', (svc: ProgressService) => svc.addMeasurement(identity, 'dpr-1', { boqNodeId: 'n1', quantity: 1 }), 'addMeasurement'],
+    ['addLabourRow', (svc: ProgressService) => svc.addLabourRow(identity, 'dpr-1', { trade: 'Mason', headcount: 2 }), 'addLabourRow'],
+    ['addEquipmentRow', (svc: ProgressService) => svc.addEquipmentRow(identity, 'dpr-1', { equipmentType: 'Mixer', count: 1 }), 'addEquipmentRow'],
+    ['addObservation', (svc: ProgressService) => svc.addObservation(identity, 'dpr-1', { category: 'ISSUE', description: 'x' }), 'addObservation'],
+    ['patchDprContext', (svc: ProgressService) => svc.patchDprContext(identity, 'dpr-1', { shift: 'Day' }), 'patchDprContext'],
+  ] as const)(
+    '%s: a submit that lands first under the DPR lock wins — nothing is written',
+    async (_label, call, repoMethod) => {
+      const { repo, service } = build();
+      const draft = { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [], attachments: [] };
+      repo.findDpr.mockResolvedValueOnce(draft).mockResolvedValueOnce({ ...draft, status: 'SUBMITTED' });
+      await expect(call(service)).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.lockDpr).toHaveBeenCalledWith(expect.anything(), 'org-1', 'dpr-1');
+      expect((repo as Record<string, jest.Mock>)[repoMethod]).not.toHaveBeenCalled();
+    },
+  );
+
+  it('approve: a lock timeout (P2028) or deadlock (40P01) is a retryable 409 DPR_CHANGED, not a 500', async () => {
+    for (const error of [
+      new Prisma.PrismaClientKnownRequestError('Transaction already closed', { code: 'P2028', clientVersion: 'x' }),
+      new Prisma.PrismaClientKnownRequestError('Raw query failed', {
+        code: 'P2010',
+        clientVersion: 'x',
+        meta: { code: '40P01', message: 'deadlock detected' },
+      }),
+    ]) {
+      const { repo, service } = build({
+        dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', preparedBy: 'se', measurements: [], attachments: [] },
+      });
+      repo.lockDpr.mockRejectedValue(error);
+      const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).getResponse()).toMatchObject({
+        errorCode: 'DPR_CHANGED',
+        message: expect.stringContaining('busy'),
+      });
+    }
+  });
+
+  it('approve: not SUBMITTED at the pre-check is 409 DPR_CHANGED (same as the in-transaction check)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({ errorCode: 'DPR_CHANGED' });
+    expect(repo.lockDpr).not.toHaveBeenCalled();
+  });
+
+  it('removeLabourRow: a row deleted concurrently (P2025) is a 404, not a 500', async () => {
+    const { repo, service } = build();
+    repo.deleteLabourRow.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Record to delete does not exist.', { code: 'P2025', clientVersion: 'x' }),
+    );
+    await expect(service.removeLabourRow(identity, 'dpr-1', 'row-1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('attachEvidence: rejects a file that is not READY', async () => {
