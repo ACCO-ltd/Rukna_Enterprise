@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command';
 import type { ProjectLifecycleCommand } from '@erp/types';
@@ -9,6 +9,7 @@ import {
   cancelProject,
   getProject,
   getProjectWorkspaceSummary,
+  getProjectActivity,
   getProjectReadiness,
   getProjectGuidance,
   type ProjectTransition,
@@ -54,6 +55,20 @@ export function useAdvanceProject(id: string) {
 
 export function useProjectReadiness(id: string, command: ProjectLifecycleCommand = 'start', enabled = true) {
   return useQuery({ queryKey: [...projectKeys.detail(id), 'readiness', command], queryFn: () => getProjectReadiness(id, command), enabled });
+}
+
+/**
+ * The project's full history, a page at a time ("Load more"). Only fetched while `enabled` —
+ * the history sheet is closed most of the time.
+ */
+export function useProjectActivity(id: string, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...projectKeys.detail(id), 'activity'],
+    queryFn: ({ pageParam }) => getProjectActivity(id, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled,
+  });
 }
 
 export function useProjectGuidance(id: string) {

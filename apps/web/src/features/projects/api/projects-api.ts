@@ -1,4 +1,4 @@
-import type { ProjectCategory, ProjectRole, ProjectStatus, ProjectReadinessResponse, ProjectLifecycleCommand, ProjectWorkspaceGuidanceItemResponse } from '@erp/types';
+import type { ProjectActivityPageResponse, ProjectCategory, ProjectRole, ProjectStatus, ProjectReadinessResponse, ProjectLifecycleCommand, ProjectWorkspaceGuidanceItemResponse } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
@@ -115,6 +115,20 @@ export type ProjectTransition =
 
 export function getProjectReadiness(id: string, command: ProjectLifecycleCommand): Promise<ProjectReadinessResponse> {
   return apiClient<ProjectReadinessResponse>(`/projects/${id}/readiness`, { params: { command } });
+}
+
+/**
+ * One page of the project's history, newest first. `cursor` is the previous page's
+ * `nextCursor`; the server filters events by what the caller may read.
+ */
+export function getProjectActivity(
+  id: string,
+  cursor?: string,
+  limit = 25,
+): Promise<ProjectActivityPageResponse> {
+  return apiClient<ProjectActivityPageResponse>(`/projects/${id}/activity`, {
+    params: { limit: String(limit), ...(cursor ? { cursor } : {}) },
+  });
 }
 
 export function getProjectGuidance(id: string): Promise<ProjectWorkspaceGuidanceItemResponse[]> {

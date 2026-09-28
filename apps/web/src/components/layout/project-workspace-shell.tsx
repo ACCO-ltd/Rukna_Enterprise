@@ -3,19 +3,8 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { usePathname } from 'next/navigation';
-import { Alert, Button } from '@erp/ui';
-import {
-  Activity,
-  BriefcaseBusiness,
-  ChevronRight,
-  ClipboardList,
-  FolderOpen,
-  LayoutDashboard,
-  ShoppingCart,
-  Users,
-  Wallet,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Alert, Button, RecordHeader } from '@erp/ui';
+import { Building2, ChevronRight, MapPin } from 'lucide-react';
 
 import { usePermissions, type PermissionKey } from '@/features/auth/permissions/can';
 import { ProjectActionsPanel } from '@/features/projects/components/project-actions-panel';
@@ -44,16 +33,16 @@ interface ProjectWorkspaceShellProps {
  *
  *  - **The building icon.** Every project had the same one, so it encoded nothing while taking
  *    horizontal space and pushing the title out of alignment.
- *  - **The lifecycle strip.** Project stage is project-level context, not BOQ context — someone
- *    editing a BOQ already knows which project they are in. It is now a section on Overview,
- *    which is where a reader goes for the project's own facts. That returns a row of vertical
- *    space to all seven working tabs.
+ *  - **The lifecycle strip.** Project stage is said once, by the status pill beside the name
+ *    (from the status registry). A second stepper — here, or later on Overview — was a second
+ *    lifecycle indicator that could disagree with the first, so both are gone.
  *  - **The four-tile summary row.** Main contract, programme, physical progress and current
- *    stage: every one of them is now stated once, in the Overview section that owns it
- *    (Commercial foundation, Project information, the progress card, the lifecycle rail).
+ *    stage: every one of them is now stated once, in the Overview section that owns it.
+ *  - **Tab icons.** Eight labels already name eight places; a glyph per tab was decoration the
+ *    reader had to parse before the word.
  *
  * The commercial model left the metadata line for the same reason — it is configuration, not
- * identity, and it reads on Overview under Commercial foundation.
+ * identity, and it reads on Overview under Commercial.
  */
 export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellProps) {
   const t = useTranslations('platform.projects');
@@ -82,7 +71,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     key: string;
     label: string;
     href: string;
-    icon: LucideIcon;
     // A money tab the user must hold the matching read permission to see. Gating these keeps
     // money-blind roles (Project Manager / Site Engineer) off dead tabs that would 403 when
     // clicked — the server stays the boundary; this only removes the dead-end.
@@ -92,18 +80,16 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       key: 'overview',
       label: t('workspace.overview'),
       href: `/projects/${id}`,
-      icon: LayoutDashboard,
     },
     // Named "BOQ", not "Scope" or "Planning". For construction professionals BOQ is the precise
     // term, and the aggregate behind this tab really is a versioned, baselined bill of
     // quantities. "Planning" would be the right name only once programme, work packages and
     // milestones lived under it too. See ADR-016.
-    { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq`, icon: ClipboardList },
+    { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq` },
     {
       key: 'progress',
       label: t('workspace.progress'),
       href: `/projects/${id}/progress`,
-      icon: Activity,
     },
     // One tab, not a dropdown. Commercial was three flat entries — Contracts, Applications &
     // certificates, Finance — inside the only nested control in this bar, and they duplicated
@@ -114,14 +100,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       key: 'commercial',
       label: t('workspace.commercial'),
       href: `/projects/${id}/commercial`,
-      icon: BriefcaseBusiness,
       requires: 'view:contract',
     },
     {
       key: 'procurement',
       label: t('workspace.procurement'),
       href: `/projects/${id}/procurement`,
-      icon: ShoppingCart,
       requires: 'view:procurement',
     },
     // The Finance tab used to land on the Project Actual P&L alone — a subset presented as the
@@ -131,16 +115,14 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       key: 'finance',
       label: t('workspace.finance'),
       href: `/projects/${id}/finance`,
-      icon: Wallet,
       requires: 'view:financial-position',
     },
     {
       key: 'documents',
       label: t('workspace.documents'),
       href: `/projects/${id}/documents`,
-      icon: FolderOpen,
     },
-    { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
+    { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members` },
   ];
 
   // Drop the money tabs the current user cannot open, so a money-blind role never lands on a
@@ -217,46 +199,62 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
               <div className="h-4 w-48 animate-pulse rounded bg-muted" />
             </div>
           ) : project ? (
-            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="text-h1 font-semibold leading-tight text-foreground">
-                    {project.name}
-                  </h1>
-                  <ProjectStatusBadge status={project.status} />
-                </div>
-                {/* Identity only: code, client, site. `·`-separated, empties dropped. What the
-                    project *is* — not how it is configured, and not what state it is in. */}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-body-sm text-muted-foreground">
-                  <span className="shrink-0">{project.code}</span>
-                  {/* `min-w-0` is what makes `truncate` work on a flex child: without it the
-                      item's automatic minimum size is its content, so a long client name pushes
-                      the row wide instead of ellipsizing. `title` keeps the full value
-                      reachable. */}
+            <RecordHeader
+              surface="plain"
+              statusPlacement="title"
+              title={project.name}
+              status={<ProjectStatusBadge status={project.status} />}
+              // Identity only: code, client, site. What the project *is* — not how it is
+              // configured, and not what state it is in. Each item names itself to a screen
+              // reader, because a bare "ACC-HDN-26-0005" or "Hodan" says nothing out of context.
+              meta={
+                <>
+                  <span className="shrink-0 tabular-nums">
+                    <span className="sr-only">{t('workspace.metaCode')}: </span>
+                    {project.code}
+                  </span>
                   {project.clientName ? (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="min-w-0 max-w-full truncate" title={project.clientName}>
-                        {project.clientName}
-                      </span>
-                    </>
+                    // `min-w-0` is what makes `truncate` work on a flex child; `title` keeps the
+                    // full value reachable.
+                    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+                      <Building2 size={14} className="shrink-0" aria-hidden="true" />
+                      <span className="sr-only">{t('workspace.metaClient')}: </span>
+                      {project.clientId && can('view:client') ? (
+                        <Link
+                          href={`/clients/${project.clientId}`}
+                          title={project.clientName}
+                          className="truncate hover:text-foreground hover:underline"
+                        >
+                          {project.clientName}
+                        </Link>
+                      ) : (
+                        <span className="truncate" title={project.clientName}>
+                          {project.clientName}
+                        </span>
+                      )}
+                    </span>
                   ) : null}
                   {siteLabel ? (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="min-w-0 max-w-full truncate" title={siteLabel}>
+                    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+                      <MapPin size={14} className="shrink-0" aria-hidden="true" />
+                      <span className="sr-only">{t('workspace.metaSite')}: </span>
+                      <span className="truncate" title={siteLabel}>
                         {siteLabel}
                       </span>
-                    </>
+                    </span>
                   ) : null}
-                </div>
-              </div>
-
-              {/* One primary control and an overflow, identical on every tab (flow plan B1). Other
-                  tabs used to show a ghost "Preparation sequence" link that read as plain text,
-                  so the header changed shape as the reader moved between tabs. */}
-              <ProjectActionsPanel project={project} />
-            </div>
+                </>
+              }
+              // One primary per screen. On Overview the header owns it (Start project, Record
+              // practical completion…); on every other tab the tab's own bar owns the next step
+              // (the BOQ bar's Create contract, say), so the header keeps only its overflow.
+              actions={
+                <ProjectActionsPanel
+                  project={project}
+                  showPrimary={isActive(`/projects/${id}`)}
+                />
+              }
+            />
           ) : null}
         </div>
 
@@ -272,7 +270,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           tabs={primaryTabs.map((tab) => ({
             href: tab.href,
             label: tab.label,
-            icon: <tab.icon size={16} strokeWidth={1.8} aria-hidden="true" />,
             active: isActive(tab.href),
           }))}
         />

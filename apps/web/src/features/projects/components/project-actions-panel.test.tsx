@@ -95,6 +95,7 @@ beforeEach(() => {
     ready: true,
     conditions: [],
     deferred: [],
+    caller: { canRun: true, waivableConditions: [] },
   });
   vi.mocked(runProjectCommand).mockReset();
   vi.mocked(cancelProject).mockReset();
@@ -114,15 +115,49 @@ describe('Project lifecycle controls', () => {
           severity: 'MANDATORY',
           satisfied: false,
           detail: 'Execute the contract',
+          blockedBy: [],
+          satisfiedAt: null,
         },
       ],
       deferred: [],
+      caller: { canRun: false, waivableConditions: [] },
     });
     renderWithProviders(<ProjectActionsPanel project={project()} />, MANAGER);
-    expect(await screen.findByRole('link', { name: /Continue setup/ })).toHaveAttribute(
-      'href',
-      '/projects/p1#project-readiness-title',
-    );
+    // No Start while a required step is open — not disabled, simply absent — and no
+    // "Continue setup" detour: the Overview checklist says what is left.
+    expect(await screen.findByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    await waitFor(() => expect(getProjectReadiness).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Continue setup/ })).not.toBeInTheDocument();
+  });
+
+  it('still offers Start when only an optional step is open', async () => {
+    vi.mocked(getProjectReadiness).mockResolvedValue({
+      command: 'start',
+      targetStatus: 'ACTIVE',
+      ready: false,
+      conditions: [
+        {
+          code: 'DELIVERY_TEAM',
+          severity: 'WAIVABLE',
+          satisfied: false,
+          detail: 'Team',
+          blockedBy: [],
+          satisfiedAt: null,
+        },
+      ],
+      deferred: [],
+      caller: { canRun: true, waivableConditions: ['DELIVERY_TEAM'] },
+    });
+    renderWithProviders(<ProjectActionsPanel project={project()} />, MANAGER);
+    expect(await screen.findByRole('button', { name: 'Start project' })).toBeInTheDocument();
+  });
+
+  it('never offers Start to a reader without manage:project, even when ready', async () => {
+    renderWithProviders(<ProjectActionsPanel project={project()} />, {
+      permissions: ['view:project'],
+    });
+    await waitFor(() => expect(getProjectReadiness).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
   });
 
@@ -144,7 +179,12 @@ describe('Project lifecycle controls', () => {
     vi.mocked(runProjectCommand).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
     renderWithProviders(<ProjectActionsPanel project={project()} />, MANAGER);
     await user.click(await screen.findByRole('button', { name: 'Start project' }));
-    const dialog = within(screen.getByRole('dialog'));
+    // Names the project, and says in one sentence what starting does.
+    const dialogNode = screen.getByRole('dialog', { name: 'Start Al-Baraka Tower?' });
+    expect(dialogNode).toHaveAccessibleDescription(
+      'The project becomes active, its actual commencement date is recorded, and its information can no longer be edited.',
+    );
+    const dialog = within(dialogNode);
     await user.click(dialog.getByRole('button', { name: 'Start project' }));
     expect(runProjectCommand).not.toHaveBeenCalled();
     await pickDate(user, dialog.getByLabelText(/Actual commencement date/), '2026-09-09');
@@ -166,6 +206,7 @@ describe('Project lifecycle controls', () => {
       ready: true,
       conditions: [],
       deferred: ['DOCUMENTS_COMPLETE'],
+      caller: { canRun: true, waivableConditions: [] },
     });
     renderWithProviders(
       <ProjectActionsPanel project={project({ status: ProjectStatus.CLOSEOUT })} />,
@@ -204,9 +245,12 @@ describe('Project lifecycle controls', () => {
           satisfied: false,
           severity: 'WAIVABLE',
           detail: 'Team incomplete',
+          blockedBy: [],
+          satisfiedAt: null,
         },
       ],
       deferred: [],
+      caller: { canRun: true, waivableConditions: ['DELIVERY_TEAM'] },
     });
     renderWithProviders(<ProjectActionsPanel project={project()} />, MANAGER);
     await user.click(await screen.findByRole('button', { name: 'Start project' }));
@@ -214,8 +258,9 @@ describe('Project lifecycle controls', () => {
     await pickDate(user, dialog.getByLabelText(/Actual commencement date/), '2026-09-09');
     await user.click(dialog.getByRole('button', { name: 'Start project' }));
     expect(runProjectCommand).not.toHaveBeenCalled();
+    // The reason field says what the reason is for.
     await user.type(
-      dialog.getByRole('textbox', { name: /team/i }),
+      dialog.getByRole('textbox', { name: /Reason for starting without a delivery team/ }),
       'Engineer joins after site handover',
     );
     await user.click(dialog.getByRole('button', { name: 'Start project' }));
@@ -272,6 +317,97 @@ describe('Project lifecycle controls', () => {
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Resume' }));
     await waitFor(() => expect(resumeProject).toHaveBeenCalledWith('p1'));
+  });
+
+  it('follows the server on who may start: no Start when caller.canRun is false', async () => {
+    // Every condition is met, but the server says this caller cannot run it. The UI never
+    // second-guesses that from role names or the condition list.
+    vi.mocked(getProjectReadiness).mockResolvedValue({
+      command: 'start',
+      targetStatus: 'ACTIVE',
+      ready: true,
+      conditions: [],
+      deferred: [],
+      caller: { canRun: false, waivableConditions: [] },
+    });
+    renderWithProviders(<ProjectActionsPanel project={project()} />, MANAGER);
+    await waitFor(() => expect(getProjectReadiness).toHaveBeenCalled());
+    expect(await screen.findByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+  });
+
+  it('asks for a reason for a required condition the server says this caller may waive', async () => {
+    // The ADR-026 Route 7A exception, as the server expresses it: no role names in the UI.
+    const user = userEvent.setup();
+    vi.mocked(runProjectCommand).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
+    vi.mocked(getProjectReadiness).mockResolvedValue({
+      command: 'start',
+      targetStatus: 'ACTIVE',
+      ready: false,
+      conditions: [
+        {
+          code: 'ACTIVE_MAIN_CONTRACT',
+          severity: 'MANDATORY',
+          satisfied: false,
+          detail: 'Execute the contract',
+          blockedBy: [],
+          satisfiedAt: null,
+        },
+      ],
+      deferred: [],
+      caller: { canRun: true, waivableConditions: ['ACTIVE_MAIN_CONTRACT'] },
+    });
+    renderWithProviders(<ProjectActionsPanel project={project()} />, MANAGER);
+    await user.click(await screen.findByRole('button', { name: 'Start project' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await pickDate(user, dialog.getByLabelText(/Actual commencement date/), '2026-09-09');
+    const reasons = dialog.getAllByRole('textbox').filter((box) => box.id === 'waiver-ACTIVE_MAIN_CONTRACT');
+    expect(reasons).toHaveLength(1);
+    await user.type(reasons[0]!, 'Board approved an at-risk start');
+    await user.click(dialog.getByRole('button', { name: 'Start project' }));
+    await waitFor(() =>
+      expect(runProjectCommand).toHaveBeenCalledWith('p1', {
+        command: 'start',
+        evidence: {
+          actualStartDate: '2026-09-09',
+          overrides: [
+            { condition: 'ACTIVE_MAIN_CONTRACT', reason: 'Board approved an at-risk start' },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('with showPrimary={false} hides only the forward lifecycle button', async () => {
+    renderWithProviders(
+      <ProjectActionsPanel project={project({ status: ProjectStatus.ACTIVE })} showPrimary={false} />,
+      MANAGER,
+    );
+    expect(await screen.findByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Record practical completion' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('with showPrimary={false} still offers Resume on a suspended project', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ProjectActionsPanel
+        project={project({ status: ProjectStatus.ACTIVE, suspensions: [suspension()] })}
+        showPrimary={false}
+      />,
+      MANAGER,
+    );
+    await user.click(screen.getByRole('button', { name: 'Resume' }));
+    await waitFor(() => expect(resumeProject).toHaveBeenCalledWith('p1'));
+  });
+
+  it('with showPrimary={false} does not offer Start on a ready draft', async () => {
+    renderWithProviders(<ProjectActionsPanel project={project()} showPrimary={false} />, MANAGER);
+    expect(await screen.findByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+    // Readiness is not even asked for when the primary cannot show.
+    expect(getProjectReadiness).not.toHaveBeenCalled();
   });
 });
 

@@ -77,6 +77,24 @@ export class ProjectsController {
     return this.projectService.getWorkspaceGuidance(identity, id);
   }
 
+  @Get(':id/activity')
+  @ApiOperation({
+    summary:
+      "Project history, newest first: audit events for the project and the records it owns, " +
+      'filtered by what the caller may read (ADR-019 amendment 2026-09-28)',
+  })
+  @ApiParam({ name: 'id', description: 'Project ID' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'nextCursor from the previous page' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Page size, 1-100 (default 25)' })
+  activity(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.projectService.getActivity(identity, id, { cursor, limit });
+  }
+
   @Get(':id/readiness')
   @ApiOperation({
     summary: 'Query why a project is (not) ready for a lifecycle command (ADR-019 CONST-PLC-009)',

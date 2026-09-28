@@ -48,7 +48,7 @@ describe('ProjectService workspace summary', () => {
   const projectAccess = { assertMember: jest.fn() };
   const repo = {
     findWorkspaceSummary: jest.fn(),
-    findRecentProjectActivity: jest.fn(),
+    findProjectActivity: jest.fn(),
   };
   const tenancy = { getClient: jest.fn(() => ({ marker: 'tenant-client' })) };
   const service = new ProjectService(
@@ -64,10 +64,12 @@ describe('ProjectService workspace summary', () => {
     jest.clearAllMocks();
     projectAccess.assertMember.mockResolvedValue(undefined);
     repo.findWorkspaceSummary.mockResolvedValue(workspaceRecord);
-    repo.findRecentProjectActivity.mockResolvedValue([
+    repo.findProjectActivity.mockResolvedValue([
       {
         id: 'audit-1',
         action: 'CREATE',
+        resource: 'Project',
+        resourceId: 'project-1',
         sourceCommand: 'project.create',
         createdAt: new Date('2026-08-13T10:42:00.000Z'),
         user: { id: 'user-1', firstName: 'Ahmed', lastName: 'Hassan' },
@@ -104,8 +106,15 @@ describe('ProjectService workspace summary', () => {
     expect(result.mainContract?.contractValue).toBe('12500000.00');
     expect(result.recentActivity[0]).toMatchObject({
       action: 'CREATE',
+      command: 'project.create',
+      resourceType: 'Project',
       actor: { name: 'Ahmed Hassan' },
     });
+    // The same stream as GET /activity, first five, read with the caller's families.
+    const [, , , families, page] = repo.findProjectActivity.mock.calls[0];
+    expect(page).toEqual({ cursor: null, take: 5 });
+    expect(families.has('contract')).toBe(true);
+    expect(families.has('boq')).toBe(false);
   });
 
   it('does not disclose main-contract details or value without their permissions', async () => {
@@ -190,11 +199,17 @@ describe('ProjectService.getReadiness (ADR-019 CONST-PLC-009)', () => {
     client: { status: 'ACTIVE' },
     contracts: [{ status: 'ACTIVE', startDate: new Date('2026-02-01') }],
     boq: { versions: [{ status: 'BASELINED' }] },
-    members: [{ id: 'm-1' }, { id: 'm-2' }],
+    members: [
+      { id: 'm-1', joinedAt: new Date('2026-01-01T00:00:00Z'), removedAt: null },
+      { id: 'm-2', joinedAt: new Date('2026-01-05T00:00:00Z'), removedAt: null },
+    ],
   };
 
-  function build(record: unknown = readinessRecord) {
-    const repo = { findReadinessSnapshot: jest.fn().mockResolvedValue(record) };
+  function build(record: unknown = readinessRecord, signatures: unknown[] = []) {
+    const repo = {
+      findReadinessSnapshot: jest.fn().mockResolvedValue(record),
+      findContractSignatureEvents: jest.fn().mockResolvedValue(signatures),
+    };
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const tenancy = { getClient: () => ({ marker: 'tenant-client' }) };
     const service = new ProjectService(
@@ -239,6 +254,185 @@ describe('ProjectService.getReadiness (ADR-019 CONST-PLC-009)', () => {
   it('404s when the project is not found', async () => {
     const { service } = build(null);
     await expect(service.getReadiness(identity([]), 'missing', 'start')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  // ── Amendment 2026-09-28 ────────────────────────────────────────────────────
+
+  const noContractRecord = { ...readinessRecord, contracts: [] };
+
+  it('caller: a reader without manage:project can never run the command', async () => {
+    const { service } = build();
+    const result = await service.getReadiness(identity([PERMISSIONS.projectsView]), 'project-1', 'start');
+    expect(result.caller).toEqual({ canRun: false, waivableConditions: [] });
+  });
+
+  it('caller: a manager is blocked by the contract conditions; a CFO manager may waive them', async () => {
+    const { service } = build(noContractRecord);
+    const manager = await service.getReadiness(
+      identity([PERMISSIONS.projectsManage]),
+      'project-1',
+      'start',
+    );
+    expect(manager.caller).toEqual({ canRun: false, waivableConditions: [] });
+
+    const cfo = await service.getReadiness(
+      { ...identity([PERMISSIONS.projectsManage]), roles: ['CFO'] },
+      'project-1',
+      'start',
+    );
+    expect(cfo.caller.canRun).toBe(true);
+    expect([...cfo.caller.waivableConditions].sort()).toEqual([
+      'ACTIVE_MAIN_CONTRACT',
+      'CONTRACT_START_DATE',
+    ]);
+  });
+
+  it('caller: apex authority is a Start-only exception', async () => {
+    const { service } = build(noContractRecord);
+    const close = await service.getReadiness(
+      { ...identity([PERMISSIONS.projectsManage]), roles: ['CEO'] },
+      'project-1',
+      'close',
+    );
+    expect(close.caller.waivableConditions).toEqual([]);
+  });
+
+  it('satisfiedAt: loads the contract signature event and derives each time from its source', async () => {
+    const record = {
+      ...readinessRecord,
+      contracts: [{ id: 'contract-1', status: 'ACTIVE', startDate: new Date('2026-02-01') }],
+      boq: {
+        versions: [
+          { status: 'SUPERSEDED', baselinedAt: new Date('2026-01-10T00:00:00Z') },
+          { status: 'COMMITTED', baselinedAt: new Date('2026-03-01T08:00:00Z') },
+        ],
+      },
+      members: [
+        { id: 'm-1', joinedAt: new Date('2026-01-01T00:00:00Z'), removedAt: null },
+        { id: 'm-2', joinedAt: new Date('2026-01-03T00:00:00Z'), removedAt: new Date('2026-01-04T00:00:00Z') },
+        { id: 'm-3', joinedAt: new Date('2026-02-01T00:00:00Z'), removedAt: null },
+      ],
+    };
+    const { service, repo } = build(record, [
+      { sourceCommand: 'contract.activate', createdAt: new Date('2026-04-02T00:00:00Z') },
+      { sourceCommand: 'contract.record-signed', createdAt: new Date('2026-04-01T09:00:00Z') },
+    ]);
+    const result = await service.getReadiness(identity([]), 'project-1', 'start');
+    const at = new Map(result.conditions.map((c) => [c.code, c.satisfiedAt]));
+
+    expect(repo.findContractSignatureEvents).toHaveBeenCalledWith(
+      { marker: 'tenant-client' },
+      'org-1',
+      'contract-1',
+    );
+    expect(at.get('BOQ_BASELINED')).toBe('2026-03-01T08:00:00.000Z'); // the committed version only
+    expect(at.get('ACTIVE_MAIN_CONTRACT')).toBe('2026-04-02T00:00:00.000Z'); // latest move to ACTIVE
+    expect(at.get('CONTRACT_START_DATE')).toBe('2026-04-01T09:00:00.000Z'); // record-signed wrote it
+    expect(at.get('DELIVERY_TEAM')).toBe('2026-02-01T00:00:00.000Z'); // m-2 left; m-3 re-formed it
+    expect(at.get('CLIENT_ACTIVE')).toBeNull();
+    expect(at.get('PROGRAMME_DATES')).toBeNull();
+    // Removed members are loaded for the timeline but never counted as active.
+    expect(result.conditions.find((c) => c.code === 'DELIVERY_TEAM')?.satisfied).toBe(true);
+  });
+
+  it('satisfiedAt: a removed member does not count towards the delivery team', async () => {
+    const { service } = build({
+      ...readinessRecord,
+      members: [
+        { id: 'm-1', joinedAt: new Date('2026-01-01T00:00:00Z'), removedAt: null },
+        { id: 'm-2', joinedAt: new Date('2026-01-03T00:00:00Z'), removedAt: new Date('2026-01-04T00:00:00Z') },
+      ],
+    });
+    const result = await service.getReadiness(identity([]), 'project-1', 'start');
+    expect(result.conditions.find((c) => c.code === 'DELIVERY_TEAM')).toMatchObject({
+      satisfied: false,
+      satisfiedAt: null,
+    });
+  });
+});
+
+describe('ProjectService.getActivity (amendment 2026-09-28)', () => {
+  const row = (id: string, at: string) => ({
+    id,
+    action: 'POST',
+    resource: '/api/v1/projects/:projectId/boq/versions/:versionId/commit',
+    resourceId: 'project-1',
+    sourceCommand: null,
+    createdAt: new Date(at),
+    user: { id: 'user-2', firstName: 'Asha', lastName: 'Ali' },
+  });
+
+  function build(rows: unknown[], project: unknown = { id: 'project-1' }) {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(project),
+      findProjectActivity: jest.fn().mockResolvedValue(rows),
+    };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const tenancy = { getClient: () => ({ marker: 'tenant-client' }) };
+    const service = new ProjectService(
+      tenancy as never,
+      {} as never,
+      repo as never,
+      {} as never,
+      projectAccess as never,
+      {} as never,
+    );
+    return { service, repo, projectAccess };
+  }
+
+  it('asserts membership, asks for one extra row, and returns a cursor when an older page exists', async () => {
+    const { service, repo, projectAccess } = build([
+      row('a3', '2026-09-03T00:00:00Z'),
+      row('a2', '2026-09-02T00:00:00Z'),
+      row('a1', '2026-09-01T00:00:00Z'),
+    ]);
+    const page = await service.getActivity(identity([PERMISSIONS.boqView]), 'project-1', { limit: '2' });
+
+    expect(projectAccess.assertMember).toHaveBeenCalledWith(expect.any(Object), 'project-1');
+    const [, orgId, projectId, families, paging] = repo.findProjectActivity.mock.calls[0];
+    expect([orgId, projectId]).toEqual(['org-1', 'project-1']);
+    expect(paging).toEqual({ cursor: null, take: 3 });
+    expect(families.has('boq')).toBe(true);
+    expect(families.has('contract')).toBe(false);
+
+    expect(page.items.map((e) => e.id)).toEqual(['a3', 'a2']);
+    expect(page.items[0]).toMatchObject({
+      command: 'boq.commit',
+      resourceType: 'Boq',
+      sourceCommand: null,
+      actor: { id: 'user-2', name: 'Asha Ali' },
+    });
+    expect(page.nextCursor).toEqual(expect.any(String));
+
+    // The cursor points at the last returned row.
+    await service.getActivity(identity([]), 'project-1', { cursor: page.nextCursor!, limit: '2' });
+    const [, , , , next] = repo.findProjectActivity.mock.calls[1];
+    expect(next.cursor).toEqual({ createdAt: new Date('2026-09-02T00:00:00Z'), id: 'a2' });
+  });
+
+  it('the last page has no cursor; the default page size is 25', async () => {
+    const { service, repo } = build([row('a1', '2026-09-01T00:00:00Z')]);
+    const page = await service.getActivity(identity([]), 'project-1', {});
+    expect(page.nextCursor).toBeNull();
+    expect(repo.findProjectActivity.mock.calls[0][4]).toEqual({ cursor: null, take: 26 });
+  });
+
+  it('rejects a bad limit or cursor before touching data', async () => {
+    const { service, repo } = build([]);
+    await expect(service.getActivity(identity([]), 'project-1', { limit: 'x' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(
+      service.getActivity(identity([]), 'project-1', { cursor: 'garbage' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.findProjectActivity).not.toHaveBeenCalled();
+  });
+
+  it('404s for a project that does not exist', async () => {
+    const { service } = build([], null);
+    await expect(service.getActivity(identity([]), 'missing', {})).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });

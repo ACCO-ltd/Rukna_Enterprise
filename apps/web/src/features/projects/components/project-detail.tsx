@@ -1,14 +1,22 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, DefinitionList, DefinitionRow, RecordPanel, useToast } from '@erp/ui';
-import { ArrowRight, Building2, FileText, History, PencilLine } from 'lucide-react';
+import {
+  Alert,
+  Button,
+  DefinitionList,
+  DefinitionRow,
+  MoneyDisplay,
+  StatusPill,
+  useToast,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { statusTone } from '@/lib/status-registry';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 
@@ -20,7 +28,7 @@ import { useCommercialSummary } from '@/features/commercial/hooks/use-commercial
 
 import { PROJECT_PERMISSIONS } from '../permissions';
 import type { ProjectDetail as ProjectDetailModel, ProjectWorkspaceSummary } from '../types';
-import { ProjectLifecycleRail } from './project-lifecycle-rail';
+import { ActivityList, ProjectActivitySheet } from './project-activity-sheet';
 import { ProjectReadiness } from './project-readiness';
 
 export function ProjectDetail({ id }: { id: string }) {
@@ -90,17 +98,15 @@ export function ProjectDetail({ id }: { id: string }) {
  * The project's own tab, and the only one carrying project-level context.
  *
  * It is lifecycle-aware rather than a fixed set of panels. In preparation the page answers one
- * question — *what is stopping this project from starting?* — so readiness leads and the
- * money, which is all zero, follows. Once the project is running that question is settled and
- * the readiness checklist disappears rather than standing as a permanent "4 of 4 complete";
- * physical progress and the revenue chain take the lead instead.
+ * question — *what is left before this project can start?* — so the readiness checklist leads.
+ * Once the project is running that question is settled and the checklist disappears rather than
+ * standing as a permanent "6 of 6"; physical progress and the revenue chain take the lead.
  *
- * Six regions, each a bounded `RecordPanel`. The first build made them open hairline sections,
- * which is the doctrine's default (§2.1) and the right call in one column — but this page is two
- * columns, and there a rule under every heading produces rules at six different heights across
- * the page with nothing bounding any of them. Rendered, it read as one undifferentiated field of
- * text. A panel per *region* is not the anti-pattern the doctrine blacklists; a panel per *fact*
- * is, and that is what the original Overview did with three identity cards.
+ * There is no lifecycle stepper here. The status pill in the header is the one lifecycle
+ * indicator; a second one on this tab could only repeat it, or disagree with it.
+ *
+ * The right rail is plain sections — a hairline header and label/value rows — not boxed cards:
+ * it is reference material beside the work, and a card per section made three competing boxes.
  */
 function Overview({
   project,
@@ -120,51 +126,78 @@ function Overview({
   const commercial = useCommercialSummary(project.id);
 
   return (
-    // `gap-5` throughout, matching `RecordLayout`: the panel edges are what separate one region
-    // from the next now, so the gutter only has to keep them from touching.
     <div className="space-y-5">
-      <ProjectLifecycleRail status={project.status} />
-
       {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
 
       {/* The revenue chain — value → certified → invoiced → received → outstanding. Nothing to
           say about a project that has not started, so it waits until there is. */}
       {!isDraft && commercial.data ? <CommercialSummaryStrip summary={commercial.data} /> : null}
 
-      {/* Left column: what the project is doing. Right column: what it is.
-
-          1.4fr/1fr — 58/42 — rather than `RecordLayout`'s 1.7/1. That ratio is tuned for a
-          narrow summary rail beside a wide table; here the right column carries three full
-          sections of label/value pairs while the left carries a checklist and three figures.
-          At 1366 the old split left the right column wrapping values the left column had room
-          to spare for. */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      {/* Main column: what the project is doing. Rail (320px): what it is. Below 900px the rail
+          drops under the main column in source order. */}
+      <div className="grid gap-6 min-[900px]:grid-cols-[minmax(0,1fr)_20rem] min-[900px]:gap-8">
         <div className="flex min-w-0 flex-col gap-5">
-          {isDraft ? <ProjectReadiness project={project} /> : <ProjectProgressCard projectId={project.id} />}
+          {isDraft ? (
+            <ProjectReadiness project={project} />
+          ) : (
+            <ProjectProgressCard projectId={project.id} />
+          )}
 
-          {!isDraft ? <ProjectCommitmentsCard
-            projectId={project.id}
-            currencyCode={summary?.mainContract?.currency ?? project.currency ?? null}
-            presentation="overview"
-          /> : null}
+          {!isDraft ? (
+            <ProjectCommitmentsCard
+              projectId={project.id}
+              currencyCode={summary?.mainContract?.currency ?? project.currency ?? null}
+              presentation="overview"
+            />
+          ) : null}
         </div>
 
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-7">
           <ProjectInformation project={project} locale={locale} />
-          <CommercialFoundation project={project} summary={summary} locale={locale} />
-          <RecentActivity summary={summary} locale={locale} />
+          <CommercialFoundation project={project} summary={summary} />
+          <RecentActivity projectId={project.id} summary={summary} />
         </div>
       </div>
     </div>
   );
 }
 
+// ─── Rail section ─────────────────────────────────────────────────────────────
+
+/** A hairline header — a title and at most one text link — over label/value rows. */
+function RailSection({
+  id,
+  title,
+  action,
+  children,
+}: {
+  id: string;
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="min-w-0">
+      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-border pb-1.5">
+        <h2 id={id} className="text-h3 font-semibold text-foreground">
+          {title}
+        </h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const railLinkClass =
+  'inline-flex min-h-8 items-center rounded-control px-1 text-caption font-medium text-brand-primary hover:underline focus-visible:outline-none focus-visible:shadow-ring';
+
 // ─── Project information ──────────────────────────────────────────────────────
 
 /**
- * What the project *is*: classification, delivery shape, where it is, when it runs.
+ * What the project *is*: classification, delivery shape, when it runs.
  *
- * Project code and client are deliberately absent — both are two lines up in the workspace
+ * Project code, client and site are deliberately absent — all three are in the workspace
  * header, and a fact restated one screen from itself is a fact the reader has to reconcile.
  * Empty optional fields are dropped rather than rendered as a dash: a column of `—` is a
  * picture of the database schema, not of the project.
@@ -183,6 +216,7 @@ function ProjectInformation({
 
   const startDate = formatDate(project.startDate, locale);
   const endDate = formatDate(project.expectedEndDate, locale);
+  const duration = durationLabel(project.startDate, project.expectedEndDate, t);
 
   const rows: Array<{ label: string; value: string | null }> = [
     {
@@ -204,34 +238,27 @@ function ProjectInformation({
           )
         : null,
     },
-    ...(project.location ? [{ label: t('location'), value: project.location }] : []),
-    ...(startDate ? [{ label: t('startDate'), value: startDate }] : []),
-    ...(endDate ? [{ label: t('expectedEnd'), value: endDate }] : []),
+    ...(startDate ? [{ label: t('plannedStart'), value: startDate }] : []),
+    ...(endDate ? [{ label: t('plannedCompletion'), value: endDate }] : []),
+    ...(duration ? [{ label: t('duration'), value: duration }] : []),
     ...(project.description ? [{ label: t('description'), value: project.description }] : []),
   ];
 
   return (
-    <RecordPanel
-      title={t('projectInformation')}
-      icon={<FileText size={17} strokeWidth={1.9} />}
+    <RailSection
+      id="project-information-title"
+      title={t('railProject')}
       action={
-        /* Contextual, so it says what it edits. Two conditions, and they are different kinds
-           of thing: only a draft accepts edits at all (a lifecycle rule), and
-           `PATCH /projects/:id` requires `manage:project` (an authorization rule). */
+        /* Two conditions, and they are different kinds of thing: only a draft accepts edits at
+           all (a lifecycle rule), and `PATCH /projects/:id` requires `manage:project` (an
+           authorization rule). */
         project.status === 'DRAFT' && can(PROJECT_PERMISSIONS.manage) ? (
-          <Link
-            href={`/projects/${project.id}/edit`}
-            className="inline-flex items-center gap-1.5 text-caption font-medium text-brand-primary hover:underline"
-          >
-            <PencilLine size={14} aria-hidden="true" />
+          <Link href={`/projects/${project.id}/edit`} className={railLinkClass}>
             {t('edit')}
           </Link>
         ) : null
       }
     >
-      {/* Hairline rows are right again now that a panel bounds them — that is the composition
-          `DefinitionRow` was drawn for, and inside an edge they read as one table rather than
-          as loose rules on an open page. */}
       <DefinitionList>
         {rows.map((row) => (
           <DefinitionRow key={row.label} label={row.label}>
@@ -239,70 +266,76 @@ function ProjectInformation({
           </DefinitionRow>
         ))}
       </DefinitionList>
-    </RecordPanel>
+    </RailSection>
   );
 }
 
-// ─── Commercial foundation ────────────────────────────────────────────────────
+/**
+ * Planned duration, derived from the two planned dates — nothing new is stored. Whole weeks
+ * read as weeks ("4 weeks"); anything else as days, so a 30-day programme is not rounded.
+ */
+export function durationLabel(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  t: (key: 'durationWeeks' | 'daysCount', values: { count: number }) => string,
+): string | null {
+  if (!start || !end) return null;
+  const days = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return days % 7 === 0
+    ? t('durationWeeks', { count: days / 7 })
+    : t('daysCount', { count: days });
+}
+
+// ─── Commercial ───────────────────────────────────────────────────────────────
 
 /**
  * The commercial facts a project stands on, separated from its identity because they are
  * configuration and state rather than what the project is.
  *
- * Absence is stated in business terms. "Main contract — " tells a reader a value is missing;
- * "Main contract  Not created" tells them what has not happened yet, which is the thing they
- * can act on. Billing model and contract value are hidden entirely until a contract exists to
- * give them meaning — an empty row for a figure that cannot exist yet is noise.
+ * Absence is stated in business terms ("Not created"), not as a dash. Contract value follows the
+ * money-visibility rule (ADR-029): a reader the server hides it from (`financialsVisible: false`,
+ * `contractValue: null`) sees the lock-and-dash hidden state — never `$0.00`, never a blank.
+ * There is no currency row: ACCO is USD-only (ADR-024) and the figure itself says so.
  */
 function CommercialFoundation({
   project,
   summary,
-  locale,
 }: {
   project: ProjectDetailModel;
   summary: ProjectWorkspaceSummary | undefined;
-  locale: 'en' | 'ar';
 }) {
   const t = useTranslations('platform.projects.detail');
   const tProjects = useTranslations('platform.projects');
+  const { can } = usePermissions();
+  // Commercial is a gated tab; a link into it for someone who cannot open it is a 403 dead-end.
+  const canOpenCommercial = can('view:contract');
 
   const setup = summary?.setup;
   const mainContract = summary?.mainContract ?? null;
   const contractApplicable = project.commercialModel !== 'INTERNAL_CAPITAL';
+  const financialsVisible = summary?.financialsVisible ?? false;
 
-  const boqStatus = !setup
+  // Status words from the BOQ-version vocabulary of the status registry, so "Committed" here is
+  // the same colour it is on the BOQ tab.
+  const boq = !setup
     ? null
     : setup.boqBaselined
-      ? t('boqBaselined')
+      ? { status: 'COMMITTED', label: t('boqBaselined') }
       : setup.boqExists
-        ? t('boqWorking')
-        : t('boqNotStarted');
-
-  const contractValue = mainContract?.contractValue
-    ? formatMoney(mainContract.contractValue, mainContract.currency, locale)
-    : null;
-
-  // The contract owns the currency. `toCreateProjectPayload` deliberately never sends one —
-  // "Commercial value and currency intentionally do not travel through this workflow" — so
-  // `Project.currency` is a legacy read-compatible column that is NULL on everything the app
-  // creates. Before a contract exists there is genuinely no answer, and the row is dropped
-  // rather than showing a dash for a fact that cannot exist yet, on the same rule as contract
-  // value below it. It is emphatically NOT defaulted to USD: ACCO being USD-only today
-  // (ADR-024) is a tenant fact, not a reason for the UI to state a currency nobody chose.
-  const currency = mainContract?.currency ?? project.currency ?? null;
+        ? { status: 'DRAFT', label: t('boqWorking') }
+        : { status: 'DRAFT', label: t('boqStateNotStarted') };
 
   return (
-    <RecordPanel
-      title={t('commercialFoundation')}
-      icon={<Building2 size={17} strokeWidth={1.9} />}
+    <RailSection
+      id="project-commercial-title"
+      title={t('railCommercial')}
       action={
-        <Link
-          href={`/projects/${project.id}/commercial`}
-          className="inline-flex items-center gap-1.5 text-caption font-medium text-brand-primary hover:underline"
-        >
-          {t('openCommercial')}
-          <ArrowRight size={14} className="rtl:rotate-180" aria-hidden="true" />
-        </Link>
+        canOpenCommercial ? (
+          <Link href={`/projects/${project.id}/commercial/overview`} className={railLinkClass}>
+            {t('openLink')}
+          </Link>
+        ) : null
       }
     >
       <DefinitionList>
@@ -311,118 +344,100 @@ function CommercialFoundation({
             `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
           )}
         </DefinitionRow>
-        <DefinitionRow label={t('boqStatus')}>{boqStatus}</DefinitionRow>
+        <DefinitionRow label={t('boqStatus')}>
+          {boq ? (
+            <StatusPill tone={statusTone(boq.status, 'boqVersion')}>{boq.label}</StatusPill>
+          ) : null}
+        </DefinitionRow>
         <DefinitionRow label={t('mainContract')}>
           {!contractApplicable ? (
             t('notApplicable')
           ) : mainContract ? (
-            <Link
-              href={`/projects/${project.id}/commercial/contract-security`}
-              className="font-medium text-brand-primary hover:underline"
-            >
-              {mainContract.contractNumber}
-            </Link>
+            canOpenCommercial ? (
+              // Straight to the page that holds the contract, not a route that redirects to it.
+              <Link
+                href={`/projects/${project.id}/commercial/contract-milestones`}
+                className="font-medium text-brand-primary hover:underline"
+              >
+                {mainContract.contractNumber}
+              </Link>
+            ) : (
+              mainContract.contractNumber
+            )
           ) : (
             t('notCreated')
           )}
         </DefinitionRow>
-        {contractValue ? (
+        {/* Only once a contract exists to give the figure meaning. */}
+        {mainContract ? (
           <DefinitionRow label={t('contractValue')} numeric>
-            {contractValue}
+            <MoneyDisplay
+              value={financialsVisible ? mainContract.contractValue : null}
+              hidden={!financialsVisible}
+              hiddenLabel={t('hiddenByPermission')}
+            />
           </DefinitionRow>
         ) : null}
-        {currency ? (
-          <DefinitionRow label={t('currency')}>{currency}</DefinitionRow>
-        ) : null}
       </DefinitionList>
-    </RecordPanel>
+    </RailSection>
   );
 }
 
-// ─── Recent activity ──────────────────────────────────────────────────────────
+// ─── Latest activity ──────────────────────────────────────────────────────────
 
 /**
- * The last five things that happened to this project, as a feed rather than a table.
+ * The three latest things that happened to this project: who, what, when. Compact on purpose —
+ * no machine codes (the label catalog falls back to "Contract changed" and the like).
  *
- * There is no "View all" link: the API returns five events and has no project-scoped history
- * endpoint behind them, and `/admin/audit-logs` is org-wide and permission-gated, so pointing
- * at it would send most readers to a 403 for someone else's records.
+ * "View all" opens the project's own history (`GET /projects/:id/activity`) in a side sheet for
+ * every project member; the server filters it to what the reader may see. It used to link to the
+ * organisation audit log, which only `view:audit-log` holders could open.
  */
 function RecentActivity({
+  projectId,
   summary,
-  locale,
 }: {
+  projectId: string;
   summary: ProjectWorkspaceSummary | undefined;
-  locale: 'en' | 'ar';
 }) {
   const t = useTranslations('platform.projects.detail');
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   if (!summary) return null;
 
+  const events = summary.recentActivity.slice(0, 3);
+
   return (
-    <RecordPanel title={t('recentActivity')} icon={<History size={17} strokeWidth={1.9} />}>
-      {summary.recentActivity.length > 0 ? (
-        <ol className="flex flex-col gap-3">
-          {summary.recentActivity.map((event) => (
-            <li key={event.id}>
-              <p className="text-body-sm font-medium text-foreground">
-                {activityLabel(event.sourceCommand ?? event.action, t)}
-              </p>
-              <p className="mt-0.5 text-caption text-muted-foreground">
-                {event.actor.name}
-                <span aria-hidden="true"> · </span>
-                <time dateTime={event.occurredAt}>
-                  {formatActivityTime(event.occurredAt, locale)}
-                </time>
-              </p>
-            </li>
-          ))}
-        </ol>
+    <RailSection
+      id="project-activity-title"
+      title={t('latestActivity')}
+      action={
+        events.length > 0 ? (
+          <button
+            type="button"
+            className={railLinkClass}
+            aria-haspopup="dialog"
+            onClick={() => setHistoryOpen(true)}
+          >
+            {/* The size sits on the label: globals.css gives <button> `font: inherit`, unlayered,
+                which outranks the text utility on the button itself. */}
+            <span className="text-caption">{t('viewAll')}</span>
+          </button>
+        ) : null
+      }
+    >
+      {events.length > 0 ? (
+        <div className="mt-3">
+          <ActivityList events={events} />
+        </div>
       ) : (
-        <p className="text-caption text-muted-foreground">{t('noRecentActivity')}</p>
+        <p className="mt-3 text-caption text-muted-foreground">{t('noRecentActivity')}</p>
       )}
-    </RecordPanel>
+      <ProjectActivitySheet
+        projectId={projectId}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
+    </RailSection>
   );
-}
-
-function formatActivityTime(value: string, locale: 'en' | 'ar'): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
-}
-
-function activityLabel(
-  command: string,
-  t: (
-    key:
-      | 'activityProjectCreated'
-      | 'activityProjectUpdated'
-      | 'activityProjectSuspended'
-      | 'activityProjectResumed'
-      | 'activityProjectApproved'
-      | 'activityProjectMobilized'
-      | 'activityProjectActivated'
-      | 'activityPracticalCompletion'
-      | 'activityProjectCloseout'
-      | 'activityProjectClosed'
-      | 'activityProjectCancelled'
-      | 'activityProjectChanged',
-  ) => string,
-): string {
-  const labels: Record<string, string> = {
-    'project.create': t('activityProjectCreated'),
-    'project.update': t('activityProjectUpdated'),
-    'project.suspend': t('activityProjectSuspended'),
-    'project.resume': t('activityProjectResumed'),
-    // Retired commands (the approve → mobilize → activate chain, ADR-019) still have audit
-    // rows behind them, so they keep their labels even though nothing writes them now.
-    'project.approve': t('activityProjectApproved'),
-    'project.mobilize': t('activityProjectMobilized'),
-    'project.activate': t('activityProjectActivated'),
-    'project.practical-completion': t('activityPracticalCompletion'),
-    'project.closeout': t('activityProjectCloseout'),
-    'project.close': t('activityProjectClosed'),
-    'project.cancel': t('activityProjectCancelled'),
-  };
-  return labels[command] ?? t('activityProjectChanged');
 }

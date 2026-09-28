@@ -1,12 +1,11 @@
 'use client';
 
-import { useSession } from '@/features/auth/session/use-session';
 import { useState } from 'react';
 import { ProjectTransitionDialog } from './project-transition-dialog';
 import { useProjectReadiness } from '../hooks/use-project';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { ArrowRight, Ellipsis } from 'lucide-react';
+import { Ellipsis } from 'lucide-react';
 import {
   Button,
   DropdownMenu,
@@ -23,21 +22,38 @@ import { ApiError } from '@/lib/api-client';
 import { useCancelProject, useResumeProject, useSuspendProject } from '../hooks/use-project';
 import { PROJECT_PERMISSIONS } from '../permissions';
 import { getAvailableActions, type ProjectCommand } from '../project-actions';
+import { readinessCaller } from '../readiness-caller';
 import type { ProjectDetail } from '../types';
 
 type PendingAction =
   { kind: 'advance'; command: ProjectCommand } | { kind: 'cancel' } | { kind: 'suspend' };
 
-/** Server readiness guides commencement. Every transition is checked again by the API. */
-export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
+/**
+ * Server readiness guides commencement. Every transition is checked again by the API.
+ *
+ * `showPrimary` (default true) controls the forward lifecycle button only — Start project,
+ * Record practical completion, and so on. The workspace shell turns it off on every tab but
+ * Overview, where the tab's own bar owns the next step. Resume and the overflow menu stay: they
+ * are not the forward step, and a suspension has to be liftable from wherever it is explained.
+ */
+export function ProjectActionsPanel({
+  project,
+  showPrimary = true,
+}: {
+  project: ProjectDetail;
+  showPrimary?: boolean;
+}) {
   const t = useTranslations('platform.projects.actions');
   const { can } = usePermissions();
-  const { user } = useSession();
   const actions = getAvailableActions(project);
 
   const [pending, setPending] = useState<PendingAction | null>(null);
 
-  const readiness = useProjectReadiness(project.id, 'start', project.status === 'DRAFT');
+  const readiness = useProjectReadiness(
+    project.id,
+    'start',
+    showPrimary && project.status === 'DRAFT',
+  );
   const cancel = useCancelProject(project.id);
   const suspend = useSuspendProject(project.id);
   const resume = useResumeProject(project.id);
@@ -84,31 +100,22 @@ export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
 
   // Readiness only speaks for the one command it gates. Every later transition (practical
   // completion, closeout, close) is offered on its own terms.
+  //
+  // Start is offered only when the server says this user can run it (`caller.canRun`: every
+  // condition met or waivable *by them* — the server decides who may waive what, including the
+  // ADR-026 Route 7A apex exception). While required steps are open there is no button at all —
+  // not a disabled one, and not a "Continue setup" detour: the Overview checklist says how many
+  // required steps are left, and a header control that only scrolls to it is a second voice
+  // saying the same thing. Open waivable steps do not hide it; the dialog asks for the reason.
   const gatedByReadiness = actions.advance === 'start';
-  const apex = user?.roles.some((role) => role === 'CFO' || role === 'CEO');
-  const mandatoryBlockers = readiness.data?.conditions.some(
-    (condition) =>
-      !condition.satisfied &&
-      condition.severity === 'MANDATORY' &&
-      !(apex && ['ACTIVE_MAIN_CONTRACT', 'CONTRACT_START_DATE'].includes(condition.code)),
-  );
-  const setupHref =
-    gatedByReadiness && mandatoryBlockers
-      ? `/projects/${project.id}#project-readiness-title`
-      : null;
-  const holdForReadiness = gatedByReadiness && (readiness.isPending || readiness.isError);
+  const holdForReadiness =
+    gatedByReadiness &&
+    (readiness.isPending || readiness.isError || !readinessCaller(readiness.data).canRun);
 
   return (
     <>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        {setupHref ? (
-          <Button asChild>
-            <Link href={setupHref} className="gap-2">
-              {t('continueSetup')}
-              <ArrowRight size={16} className="rtl:rotate-180" aria-hidden="true" />
-            </Link>
-          </Button>
-        ) : actions.advance && !holdForReadiness ? (
+        {showPrimary && actions.advance && !holdForReadiness ? (
           <Button
             onClick={() => {
               setPending({ kind: 'advance', command: actions.advance! });
@@ -171,6 +178,7 @@ export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
       {pending?.kind === 'advance' ? (
         <ProjectTransitionDialog
           projectId={project.id}
+          projectName={project.name}
           command={pending.command}
           onDismiss={() => setPending(null)}
         />

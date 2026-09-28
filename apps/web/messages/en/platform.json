@@ -199,7 +199,10 @@
       "loadingValue": "Loading...",
       "loadingProject": "Loading project",
       "loadFailedHint": "Check your connection or try loading the project again.",
-      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable."
+      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable.",
+      "metaCode": "Project code",
+      "metaClient": "Client",
+      "metaSite": "Site"
     },
     "create": {
       "title": "New project",
@@ -339,20 +342,7 @@
       "team": "Team",
       "teamMembers": "{count, plural, one {# member} other {# members}}",
       "summaryUnavailable": "The workspace summary is temporarily unavailable. Project details remain usable.",
-      "recentActivity": "Recent activity",
       "noRecentActivity": "No project activity has been recorded yet.",
-      "activityProjectCreated": "Project created",
-      "activityProjectUpdated": "Project information updated",
-      "activityProjectSuspended": "Project suspended",
-      "activityProjectResumed": "Project resumed",
-      "activityProjectApproved": "Project approved",
-      "activityProjectMobilized": "Mobilization started",
-      "activityProjectActivated": "Project activated",
-      "activityPracticalCompletion": "Practical completion recorded",
-      "activityProjectCloseout": "Project moved to closeout",
-      "activityProjectClosed": "Project closed",
-      "activityProjectCancelled": "Project cancelled",
-      "activityProjectChanged": "Project changed",
       "attentionClear": "No immediate attention required",
       "attentionClearHint": "Project controls are currently up to date.",
       "roles": {
@@ -395,8 +385,6 @@
           "action": "Manage team"
         }
       },
-      "lifecycle": "Project lifecycle",
-      "lifecycleHint": "The stage this project is in, and the stages ahead of it.",
       "readiness": "Project readiness",
       "readinessHint": "Complete the required setup before this project can start.",
       "readinessProgress": "{done} of {total} complete",
@@ -405,15 +393,145 @@
       "setupContractNote": "The main contract becomes available once the BOQ is committed.",
       "openBoq": "Open BOQ",
       "addMembers": "Add members",
-      "projectInformation": "Project information",
-      "commercialFoundation": "Commercial foundation",
-      "openCommercial": "Open Commercial",
       "boqStatus": "BOQ",
       "boqNotStarted": "Not started",
       "boqWorking": "Working",
       "boqBaselined": "Committed",
-      "currency": "Currency",
-      "notCreated": "Not created"
+      "notCreated": "Not created",
+      "railProject": "Project",
+      "railCommercial": "Commercial",
+      "openLink": "Open",
+      "plannedStart": "Planned start",
+      "plannedCompletion": "Planned completion",
+      "duration": "Duration",
+      "durationWeeks": "{count, plural, one {# week} other {# weeks}}",
+      "latestActivity": "Latest activity",
+      "viewAll": "View all",
+      "hiddenByPermission": "Hidden by permission",
+      "boqStateNotStarted": "Not started"
+    },
+    "activity": {
+      "title": "Project activity",
+      "description": "Everything recorded on this project and the records it owns that you can see, newest first.",
+      "close": "Close",
+      "loadMore": "Load more",
+      "loadingMore": "Loading…",
+      "loadFailed": "Could not load the project activity.",
+      "empty": "No project activity has been recorded yet.",
+      "end": "That is everything recorded so far.",
+      "events": {
+        "project": {
+          "create": "Project created",
+          "update": "Project information updated",
+          "start": "Project started",
+          "conditionWaived": "Start condition waived",
+          "suspend": "Project suspended",
+          "resume": "Project resumed",
+          "approve": "Project approved",
+          "mobilize": "Mobilization started",
+          "activate": "Project activated",
+          "practical-completion": "Practical completion recorded",
+          "closeout": "Project moved to closeout",
+          "close": "Project closed",
+          "cancel": "Project cancelled",
+          "reopen-to-active": "Project reopened",
+          "reopen-to-pc": "Project returned to practical completion",
+          "addMember": "Team member added",
+          "removeMember": "Team member removed",
+          "setMemberRoles": "Team member roles changed"
+        },
+        "commercial": {
+          "recordProjectPayment": "Payment recorded",
+          "markReadyToBill": "Payment stage marked ready to bill",
+          "revokeReadyToBill": "Ready to bill withdrawn",
+          "issuePackage": "Billing package issued"
+        },
+        "contract": {
+          "create": "Contract drafted",
+          "record-signed": "Signed contract recorded",
+          "activate": "Contract activated",
+          "update": "Contract details updated",
+          "recordSignedDate": "Contract signing date recorded",
+          "replacePaymentPlan": "Payment schedule updated",
+          "raiseCurrentValueForVariation": "Contract value raised by a variation",
+          "lowerCurrentValueForVariation": "Contract value lowered by a variation",
+          "adoptBaseline": "Contract baseline adopted",
+          "grantExtensionOfTime": "Extension of time granted",
+          "reopen": "Contract reopened",
+          "cancel": "Contract cancelled",
+          "terminate": "Contract terminated",
+          "close": "Contract closed",
+          "setRetentionTerms": "Retention terms set",
+          "releaseRetention": "Retention released",
+          "addAdvanceTerm": "Advance term added",
+          "removeAdvanceTerm": "Advance term removed",
+          "addGuarantee": "Guarantee added",
+          "updateGuarantee": "Guarantee updated",
+          "addDeliverable": "Deliverable added",
+          "completeDeliverable": "Deliverable completed"
+        },
+        "variation": {
+          "create": "Variation raised",
+          "raiseAndAdopt": "Extra work added",
+          "updateHeader": "Variation updated",
+          "addLine": "Variation line added",
+          "updateLine": "Variation line updated",
+          "removeLine": "Variation line removed",
+          "applyToBoq": "Variation applied to the BOQ",
+          "allocateBilling": "Variation billing allocated",
+          "submit": "Variation submitted",
+          "approve": "Variation approved",
+          "reject": "Variation rejected",
+          "withdraw": "Variation withdrawn",
+          "reverse": "Variation reversed"
+        },
+        "projectDocument": {
+          "create": "Document registered",
+          "update": "Document details updated",
+          "createRevision": "Document revision added",
+          "replaceRevisionFile": "Revision file replaced",
+          "issueRevision": "Document revision issued",
+          "withdraw": "Document withdrawn",
+          "archive": "Document archived",
+          "supersede": "Document superseded",
+          "remove": "Document removed"
+        },
+        "programmeBaseline": {
+          "approve": "Programme baseline approved",
+          "rebaseline": "Programme rebaselined"
+        },
+        "programme": {
+          "addMilestone": "Programme milestone added",
+          "setTargets": "Programme targets set",
+          "applyTemplate": "Schedule template applied",
+          "addWorkPackage": "Work package added",
+          "setDeliveryPlan": "Delivery plan updated"
+        },
+        "progress": {
+          "createReport": "Daily progress report started",
+          "captureSnapshot": "Progress snapshot captured"
+        },
+        "boq": {
+          "create": "BOQ created",
+          "import": "BOQ imported",
+          "createDraft": "BOQ revision started",
+          "commit": "BOQ committed",
+          "baseline": "BOQ baselined",
+          "cancelDraft": "BOQ revision discarded",
+          "drawContingency": "Contingency drawn down"
+        }
+      },
+      "fallback": {
+        "project": "Project changed",
+        "team": "Team changed",
+        "contract": "Contract changed",
+        "variation": "Variation changed",
+        "document": "Document changed",
+        "programme": "Programme changed",
+        "progress": "Progress changed",
+        "boq": "BOQ changed",
+        "record": "Record changed"
+      }
     },
     "members": {
       "title": "Project team",
@@ -478,7 +596,6 @@
       "working": "Working...",
       "dismiss": "Cancel",
       "more": "Actions",
-      "continueSetup": "Continue setup",
       "editInformation": "Edit project information"
     },
     "status": {
@@ -509,30 +626,12 @@
       "supersedeCertificate": "Supersede"
     },
     "preparation": {
-      "title": "Preparation sequence",
-      "hint": "Follow the numbered sequence. Team and programme setup may proceed in parallel, while the main contract must be priced against a baselined BOQ.",
-      "ready": "The current start conditions are satisfied. Record commencement to start the project.",
-      "progress": "{complete} of {total} complete",
-      "remaining": "{count, plural, =0 {Ready for commencement} one {# condition remaining} other {# conditions remaining}}",
-      "completed": "{count} conditions completed",
-      "resolve": "Open task",
+      "title": "Before you start",
       "loadFailed": "Readiness could not be checked. Try again before starting.",
       "projectManager": "Project manager",
       "commercialTeam": "Commercial team",
       "quantitySurveyor": "Quantity surveyor",
-      "waivable": "Complete this condition or record an authorized exception when starting.",
-      "ownerAction": "Owner action needed",
-      "blockedBy": "Complete \"{task}\" first.",
-      "finalReady": "Final step: record commencement and start the project",
-      "finalBlocked": "Final step: start the project after mandatory preparation is complete",
-      "finalHint": "Starting the project records the actual commencement date and may require workflow approval. Optional preparation requires a recorded exception if left incomplete.",
       "deferred": "Some requirements are not checked automatically. Review them before commencement.",
-      "status": {
-        "complete": "Complete",
-        "ready": "Ready now",
-        "blocked": "Blocked",
-        "optional": "Exception allowed"
-      },
       "conditions": {
         "CLIENT_ACTIVE": "Assign an active client",
         "BOQ_BASELINED": "Baseline the BOQ",
@@ -544,15 +643,38 @@
       "descriptions": {
         "CLIENT_ACTIVE": "Confirm the legal customer that owns the project contract and billing relationship.",
         "BOQ_BASELINED": "Freeze the approved scope, quantities and rates that the main contract will reference.",
-        "ACTIVE_MAIN_CONTRACT": "Create the contract against the baselined BOQ, complete its approval, and mark it executed.",
+        "ACTIVE_MAIN_CONTRACT": "Record the signed contract with its value, dates and payment schedule.",
         "CONTRACT_START_DATE": "Record the commencement date stated by the executed contract or notice to proceed.",
         "DELIVERY_TEAM": "Add at least one delivery member beyond the project manager.",
         "PROGRAMME_DATES": "Confirm the planned start and expected completion dates used by scheduling and progress tracking."
+      },
+      "summaryRequired": "{count, plural, one {# required step} other {# required steps}} left before you can start.",
+      "summaryOptional": "Ready to start. {count, plural, one {# optional step is} other {# optional steps are}} still open.",
+      "summaryAllDone": "Ready to start. Every step is done.",
+      "countOf": "of {total}",
+      "progressLabel": "{done} of {total} steps done",
+      "optional": "Optional",
+      "skippable": "Can be skipped with a recorded reason",
+      "waitsFor": "Waits for <b>{step}</b>",
+      "doneToggle": "{count, plural, one {# step done} other {# steps done}}",
+      "show": "Show",
+      "hide": "Hide",
+      "footnoteRequired": "Start project appears once every required step is done. Starting records the actual commencement date and may need workflow approval.",
+      "footnoteOptional": "Start project records the actual commencement date and may need workflow approval. Starting with an optional step open asks for a reason.",
+      "footnoteReady": "Start project records the actual commencement date and may need workflow approval.",
+      "footnoteReadOnly": "Starting the project records the actual commencement date and may need workflow approval.",
+      "action": {
+        "CLIENT_ACTIVE": "Assign client",
+        "BOQ_BASELINED": "Open BOQ",
+        "ACTIVE_MAIN_CONTRACT": "Open contract",
+        "CONTRACT_START_DATE": "Open contract",
+        "DELIVERY_TEAM": "Assign team",
+        "PROGRAMME_DATES": "Set dates"
       }
     },
     "transition": {
       "description": {
-        "start": "Record actual commencement. Required approvals still apply.",
+        "start": "The project becomes active, its actual commencement date is recorded, and its information can no longer be edited.",
         "close": "Record the closure decision and review obligations that are not checked automatically.",
         "closeout": "Begin closeout. Review outstanding commercial and project obligations.",
         "practical-completion": "Record practical completion. Active contracts will move to final account preparation."
@@ -578,6 +700,13 @@
         "RETENTION_RELEASED": "Retention release",
         "PROJECT_DOCUMENTS_COMPLETE": "Project documents",
         "INTERNAL_AUTHORIZATION": "Internal funding authorization"
+      },
+      "startTitle": "Start {name}?",
+      "waiverLabel": {
+        "ACTIVE_MAIN_CONTRACT": "Reason for starting without an executed contract",
+        "CONTRACT_START_DATE": "Reason for starting without a contractual start date",
+        "DELIVERY_TEAM": "Reason for starting without a delivery team",
+        "PROGRAMME_DATES": "Reason for starting without planned dates"
       }
     },
     "restricted": "Restricted"
@@ -744,18 +873,20 @@
       "description": "Upload an Excel or CSV file, match its columns, and review everything before it is added.",
       "steps": {
         "upload": "Upload",
-        "map": "Map columns",
+        "map": "Match columns",
         "review": "Review"
       },
       "upload": {
-        "prompt": "Choose an Excel (.xlsx) or CSV file",
-        "hint": "The first row must be the column headings.",
+        "prompt": "Drop your BOQ here, or choose a file",
+        "hint": "Excel (.xlsx) or CSV. The first row must be the column headings.",
         "choose": "Choose file",
-        "template": "Download template",
-        "parseFailed": "That file could not be read. Check it is a valid .xlsx or .csv with a header row."
+        "template": "Download the BOQ template",
+        "parseFailed": "That file could not be read. Check it is a valid .xlsx or .csv with a header row.",
+        "remove": "Remove",
+        "required": "Choose a spreadsheet to continue."
       },
       "map": {
-        "intro": "Match each spreadsheet column to a BOQ field. Code and Description are required; the rest are optional.",
+        "intro": "Match each BOQ field to a column in your spreadsheet. Code and Description are required.",
         "notMapped": "— Not mapped —",
         "required": "Required",
         "fields": {
@@ -764,7 +895,7 @@
           "unit": "Unit",
           "quantity": "Quantity",
           "unitRate": "Rate",
-          "sheetAmount": "Amount (cross-check only)"
+          "sheetAmount": "Amount"
         },
         "modeLabel": "If the draft already has items",
         "modeReplace": "Replace them with this import",
@@ -772,7 +903,16 @@
         "addToLibrary": "Also save these items to the library",
         "addToLibraryHint": "New descriptions become reusable for other BOQs.",
         "rowsFound": "{count, plural, one {# row found} other {# rows found}}",
-        "preview": "Preview"
+        "preview": "Preview",
+        "fieldColumn": "BOQ field",
+        "sheetColumn": "Spreadsheet column",
+        "firstRow": "First row",
+        "fieldHints": {
+          "code": "Numbers like 1, 1.1, 1.1.1 build the sections.",
+          "sheetAmount": "Only used to cross-check quantity × rate."
+        },
+        "requiredError": "Choose the column that holds the {field}.",
+        "noRows": "No rows to import with this mapping."
       },
       "review": {
         "summary": "{sections, plural, one {# section} other {# sections}} · {items, plural, one {# item} other {# items}}",
@@ -786,10 +926,26 @@
         "confirm": "{items, plural, one {Import # item} other {Import # items}}",
         "importing": "Importing…",
         "blocked": "This spreadsheet has errors and cannot be imported. Fix them and upload it again.",
-        "empty": "There are no rows to import."
+        "empty": "There are no rows to import.",
+        "sections": "Sections",
+        "items": "Items",
+        "total": "Total",
+        "attentionTitle": "Imports, but worth a look",
+        "unpricedRows": "{count, plural, one {# row has no rate (row {rows})} other {# rows have no rate (rows {rows})}}.",
+        "mismatchRows": "{count, plural, one {# row's amount doesn't match quantity × rate (row {rows})} other {# rows' amounts don't match quantity × rate (rows {rows})}}.",
+        "skippedRows": "{count, plural, one {# blank row was} other {# blank rows were}} skipped.",
+        "modeLabel": "The draft already has lines",
+        "modeAppend": "Add to the draft",
+        "modeAppendHint": "Keeps the {items, plural, one {# item} other {# items}} already there.",
+        "modeReplace": "Replace the draft",
+        "modeReplaceHint": "Removes {items, plural, one {# item} other {# items}} and {sections, plural, one {# section} other {# sections}} first."
       },
       "success": "{items, plural, one {# item imported} other {# items imported}}.",
-      "failed": "The import could not be completed."
+      "failed": "The import could not be completed.",
+      "backToBoq": "Back to BOQ",
+      "continue": "Continue",
+      "stepOf": "Step {n} of {total}",
+      "done": "Imported {items, plural, one {# item} other {# items}} in {sections, plural, one {# section} other {# sections}} from {file}."
     },
     "history": {
       "title": "Activity",
@@ -827,7 +983,8 @@
       "title": "No BOQ yet",
       "description": "Bring in your priced bill from a spreadsheet, or start a blank one and add sections and items.",
       "import": "Import from spreadsheet",
-      "startBlank": "Start a blank BOQ"
+      "startBlank": "Start a blank BOQ",
+      "readOnly": "The quantity surveyor hasn't added the bill of quantities yet."
     },
     "contractLocked": {
       "note": "This BOQ is under contract and locked. To add, omit or change work, raise a variation.",
@@ -910,9 +1067,9 @@
       }
     },
     "toolbar": {
-      "searchPlaceholder": "Search BOQ…",
+      "searchPlaceholder": "Search code or description",
       "searchLabel": "Search by code or description",
-      "filterLabel": "Filter rows",
+      "filterLabel": "Lines to show",
       "filter": {
         "all": "All items",
         "incomplete": "Incomplete pricing",
@@ -927,7 +1084,9 @@
       "collapseAll": "Collapse all",
       "export": "Export",
       "addSection": "Add section",
-      "import": "Import"
+      "import": "Import",
+      "allLines": "All lines",
+      "unpriced": "Unpriced ({count})"
     },
     "grid": {
       "code": "Code",
@@ -962,11 +1121,34 @@
       "delete": "Delete",
       "totalRestricted": "Total restricted",
       "empty": "This version has no items.",
-      "emptyDraft": "This BOQ is empty. Use Add section or Import above to start building it.",
+      "emptyDraft": "This BOQ is empty. Add a section below, or import a spreadsheet from the actions menu.",
       "noMatches": "No rows match the current filters.",
       "showingRows": "Showing {shown} of {total} rows",
       "visibleTotal": "Visible",
-      "boqTotal": "BOQ total"
+      "boqTotal": "BOQ total",
+      "tableLabel": "Bill of quantities",
+      "noRate": "No rate",
+      "lumpSum": "Lump sum",
+      "addItemTo": "Add item to {code}",
+      "addSection": "Add section",
+      "addFromLibrary": "Add from library…",
+      "editDetails": "Edit details…",
+      "deleteSection": "Delete section",
+      "saveFailed": "Couldn't save. Try again.",
+      "createFailed": "Couldn't add this line. Try again.",
+      "editUnit": "Unit of {code}",
+      "editSectionName": "Name of section {code}",
+      "expandSection": "Expand section {code}",
+      "collapseSection": "Collapse section {code}",
+      "newCode": "New",
+      "newItemPlaceholder": "Describe the item",
+      "newSectionPlaceholder": "Section name",
+      "newItemIn": "New item in {code}",
+      "newSubsectionIn": "New sub-section in {code}",
+      "newSection": "New section",
+      "deleteTitle": "Delete {code} {name}?",
+      "deleteBody": "This can't be undone.",
+      "deleteFailed": "Couldn't delete this line."
     },
     "editor": {
       "addItem": "Add BOQ item",
@@ -1124,6 +1306,42 @@
       "SUBMIT_BASELINE": "Commit to contract",
       "START_REVISION": "Start changes",
       "VIEW_ONLY": ""
+    },
+    "contextBar": {
+      "title": "Bill of quantities",
+      "version": "Version",
+      "lines": "Lines",
+      "linesValue": "{sections, plural, one {# section} other {# sections}} · {items, plural, one {# item} other {# items}}",
+      "priced": "Priced",
+      "pricedValue": "{priced} of {items}",
+      "total": "Total",
+      "signed": "Signed",
+      "addExtraWork": "Add extra work",
+      "createContract": "Create contract",
+      "moneyHidden": "Rates and amounts are hidden for your role.",
+      "unpricedNote": "{count, plural, one {# item isn't} other {# items aren't}} fully priced (unit, quantity and rate).",
+      "showUnpriced": "Show unpriced",
+      "committedNote": "Value lines are locked. To change what the client owes, add extra work.",
+      "signedNote": "The signed BOQ is kept as a snapshot. To change what the client owes, add extra work.",
+      "contractOwnerNote": "The commercial team creates the contract from this BOQ.",
+      "more": "BOQ actions",
+      "import": "Import from spreadsheet…",
+      "export": "Export to CSV",
+      "history": "History",
+      "compare": "Compare to signed",
+      "startRevision": "Start a revision…",
+      "discardDraft": "Discard draft…",
+      "status": {
+        "DRAFT": "Draft",
+        "BASELINED": "Baselined",
+        "COMMITTED": "Committed",
+        "SNAPSHOT": "Snapshot",
+        "SUPERSEDED": "Superseded",
+        "CANCELLED": "Cancelled"
+      },
+      "discardTitle": "Discard draft version {version}?",
+      "discardBody": "This removes {items, plural, one {# item} other {# items}} in {sections, plural, one {# section} other {# sections}}. It can't be undone.",
+      "discardConfirm": "Discard draft"
     }
   },
   "districts": {
