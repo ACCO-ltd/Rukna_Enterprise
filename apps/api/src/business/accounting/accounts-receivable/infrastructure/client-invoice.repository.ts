@@ -132,9 +132,13 @@ export class ClientInvoiceRepository {
     });
   }
 
-  findAll(prisma: TenantPrisma, organizationId: string, clientId?: string) {
+  findAll(prisma: TenantPrisma, organizationId: string, filter: { clientId?: string; projectId?: string } = {}) {
     return prisma.clientInvoice.findMany({
-      where: { organizationId, ...(clientId ? { clientId } : {}) },
+      where: {
+        organizationId,
+        ...(filter.clientId ? { clientId: filter.clientId } : {}),
+        ...(filter.projectId ? { projectId: filter.projectId } : {}),
+      },
       orderBy: { invoiceDate: 'desc' },
     });
   }

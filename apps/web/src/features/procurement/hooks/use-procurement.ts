@@ -168,8 +168,8 @@ export const procurementKeys = {
   goodsReceipts: (purchaseOrderId?: string) =>
     [...procurementKeys.all, 'goods-receipts', purchaseOrderId ?? 'all'] as const,
   goodsReceipt: (id: string) => [...procurementKeys.all, 'goods-receipt', id] as const,
-  bills: (supplierId?: string) =>
-    [...procurementKeys.all, 'bills', supplierId ?? 'all'] as const,
+  bills: (supplierId?: string, projectId?: string) =>
+    [...procurementKeys.all, 'bills', supplierId ?? 'all', projectId ?? 'all'] as const,
   bill: (id: string) => [...procurementKeys.all, 'bill', id] as const,
   payments: (supplierId?: string) =>
     [...procurementKeys.all, 'payments', supplierId ?? 'all'] as const,
@@ -603,11 +603,11 @@ export function useApproveGoodsReceiptException() {
 // ─── Supplier bills and matching ─────────────────────────────────────────────────
 
 export function useSupplierBills(
-  filters?: { supplierId?: string },
+  filters?: { supplierId?: string; projectId?: string },
   options?: { enabled?: boolean },
 ): UseQueryResult<SupplierBill[]> {
   return useQuery({
-    queryKey: procurementKeys.bills(filters?.supplierId),
+    queryKey: procurementKeys.bills(filters?.supplierId, filters?.projectId),
     queryFn: () => listSupplierBills(filters),
     // The payment form gates this on a chosen supplier — there is nothing to fetch, and no
     // "Apply to bills" list to build, before one is picked. Defaults to on for every other caller.

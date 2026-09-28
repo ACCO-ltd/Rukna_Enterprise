@@ -44,9 +44,11 @@ function queryParams(input: Record<string, string | undefined>): Record<string, 
  * exactly this for supplier bills by including `supplier`; AR did not get the same treatment,
  * so the client name has to be joined from `GET /clients`. Raised for Abdulsalam.
  */
-export function listInvoices(clientId?: string): Promise<ClientInvoice[]> {
+export function listInvoices(
+  filters: { clientId?: string; projectId?: string } = {},
+): Promise<ClientInvoice[]> {
   return apiClient<ClientInvoice[]>('/invoices', {
-    params: queryParams({ clientId }),
+    params: queryParams({ clientId: filters.clientId, projectId: filters.projectId }),
   });
 }
 

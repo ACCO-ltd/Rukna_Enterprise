@@ -221,6 +221,7 @@ function renderJourney(
     financialsVisible?: boolean;
     onSendInvoice?: (milestone: MilestoneItemViewModel) => void;
     draftInvoiceHref?: (invoiceId: string) => string;
+    billingBlocked?: boolean;
   },
 ) {
   const vm: MilestoneJourneyViewModel = {
@@ -259,6 +260,7 @@ function renderJourney(
       onPrepareInvoice={vi.fn()}
       onSendInvoice={opts?.onSendInvoice ?? vi.fn()}
       draftInvoiceHref={opts?.draftInvoiceHref}
+      billingBlocked={opts?.billingBlocked}
     />,
   );
 }
@@ -327,6 +329,11 @@ describe('MilestoneJourney — rendering', () => {
       '/finance/accounting/invoices/inv-9',
     );
     expect(screen.queryByRole('button', { name: /send to client/i })).not.toBeInTheDocument();
+  });
+
+  it('withholds "Prepare invoice" while the ledger cannot post (the tab notice says why)', () => {
+    renderJourney([{ userState: 'ready-to-bill', name: 'Structure' }], { billingBlocked: true });
+    expect(screen.queryByRole('button', { name: /prepare invoice/i })).not.toBeInTheDocument();
   });
 
   it('says "Invoice issued" once per stage, not twice', () => {

@@ -95,7 +95,7 @@ test('navigation branches on the contract billing model', async ({ app }) => {
   await app.goto(`/projects/${PROJECT_ID}/commercial`);
   await app.getByRole('heading', { name: 'Commercial', exact: true, level: 2 }).waitFor();
   const milestoneNav = app.getByRole('navigation', { name: 'Commercial sections' });
-  await expect(milestoneNav.getByRole('link', { name: 'Billing & Collection' })).toBeVisible();
+  await expect(milestoneNav.getByRole('link', { name: 'Billing & collection' })).toBeVisible();
   await expect(
     milestoneNav.getByRole('link', { name: 'Applications & Certification' }),
   ).toHaveCount(0);

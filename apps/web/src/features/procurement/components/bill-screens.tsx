@@ -44,6 +44,8 @@ import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-gr
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { formatDate, formatMoney } from '@/lib/format';
 
+import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
+
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
@@ -73,8 +75,13 @@ export function SupplierBillsList() {
   const tPosting = useTranslations('procurement.postingStatus');
   const { can } = usePermissions();
 
-  const bills = useSupplierBills();
-  const [filters, setFilters] = useState<FilterValues>({});
+  const projectFilter = useProjectFilter();
+  const [filters, setFilters] = useState<FilterValues>(() => {
+    const initial: FilterValues = {};
+    if (projectFilter.initialProjectId) initial.project = projectFilter.initialProjectId;
+    return initial;
+  });
+  const bills = useSupplierBills({ projectId: filters.project || undefined });
 
   const all = useMemo(() => bills.data ?? [], [bills.data]);
   const visible = useMemo(
@@ -114,6 +121,7 @@ export function SupplierBillsList() {
       options: BILL_POSTING_STATUSES.map((s) => ({ value: s, label: tPosting(s) })),
     },
     { key: 'supplier', type: 'select', label: tc('supplier'), options: supplierOptions },
+    { key: 'project', type: 'select', label: tc('project'), options: projectFilter.options },
   ];
 
   const columns: GridColumn<SupplierBill>[] = [
@@ -256,7 +264,7 @@ export function SupplierBillsList() {
 
 // ─── Detail ──────────────────────────────────────────────────────────────────────
 
-export function SupplierBillDetail({ id }: { id: string }) {
+export function SupplierBillDetail({ id, back }: { id: string; back?: { href: string; label: string } }) {
   const tc = useTranslations('procurement.common');
   const query = useSupplierBill(id);
   const tStatusTrail = useTranslations('procurement.status');
@@ -272,7 +280,7 @@ export function SupplierBillDetail({ id }: { id: string }) {
     return <Alert variant="error" messages={[tc('loadFailed')]} />;
   }
 
-  return <SupplierBillDocument bill={query.data} />;
+  return <SupplierBillDocument bill={query.data} back={back} />;
 }
 
 /**
@@ -280,7 +288,7 @@ export function SupplierBillDetail({ id }: { id: string }) {
  * tabs, totals, and the summary rail — then the purchase-order match, which is the bill's own
  * procurement concern and keeps its section.
  */
-function SupplierBillDocument({ bill }: { bill: SupplierBill }) {
+function SupplierBillDocument({ bill, back }: { bill: SupplierBill; back?: { href: string; label: string } }) {
   const t = useTranslations('procurement.bills');
   const tMatch = useTranslations('procurement.matching');
   const facts = useBillFacts(bill);
@@ -293,6 +301,7 @@ function SupplierBillDocument({ bill }: { bill: SupplierBill }) {
   return (
     <BillDocumentHeader
       bill={bill}
+      back={back}
       facts={facts}
       rail={<SummaryRail title={t('summaryTitle')} rows={summary} />}
     >

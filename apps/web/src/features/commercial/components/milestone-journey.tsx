@@ -31,6 +31,11 @@ interface MilestoneJourneyProps {
   onVerifyMilestone?: (milestone: MilestoneItemViewModel) => void;
   /** Where a stage's unposted invoice is reviewed and posted. Omit to show no action. */
   draftInvoiceHref?: (invoiceId: string) => string;
+  /**
+   * The ledger cannot post yet (accounting setup incomplete). "Prepare invoice" issues and posts
+   * in one step, so it is withheld; the tab's setup notice states why (flow plan A7).
+   */
+  billingBlocked?: boolean;
   /** Panel title + trailing action, rendered as one bordered header on the list — so the
    * schedule reads as one titled panel rather than a floating, unlabeled list of cards. */
   title?: ReactNode;
@@ -47,6 +52,7 @@ export function MilestoneJourney({
   onSendInvoice,
   onVerifyMilestone,
   draftInvoiceHref,
+  billingBlocked = false,
   title,
   action,
 }: MilestoneJourneyProps) {
@@ -106,6 +112,7 @@ export function MilestoneJourney({
             onSendInvoice={onSendInvoice}
             onVerifyMilestone={onVerifyMilestone}
             draftInvoiceHref={draftInvoiceHref}
+            billingBlocked={billingBlocked}
           />
         ))}
         </ol>
@@ -135,6 +142,7 @@ function MilestoneItem({
   onSendInvoice,
   onVerifyMilestone,
   draftInvoiceHref,
+  billingBlocked,
 }: {
   milestone: MilestoneItemViewModel;
   stepNumber: number;
@@ -147,6 +155,7 @@ function MilestoneItem({
   onSendInvoice: (m: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (m: MilestoneItemViewModel) => void;
   draftInvoiceHref?: (invoiceId: string) => string;
+  billingBlocked: boolean;
 }) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
@@ -189,7 +198,7 @@ function MilestoneItem({
       <Button type="button" size="sm" onClick={() => onReviewForBilling(milestone)}>
         {t('cta.reviewForBilling')}
       </Button>
-    ) : milestone.userState === 'ready-to-bill' ? (
+    ) : milestone.userState === 'ready-to-bill' && !billingBlocked ? (
       <Button type="button" size="sm" onClick={() => onPrepareInvoice(milestone)}>
         {t('cta.prepareInvoice')}
       </Button>

@@ -723,9 +723,13 @@ export class ClientInvoiceService {
     });
   }
 
-  async findAll(identity: RequestIdentity, clientId?: string) {
+  /**
+   * Org-wide list, optionally narrowed. `projectId` (flow plan PR 4) lets a finance officer work
+   * one project's receivables from Accounting; it only narrows what the caller can already list.
+   */
+  async findAll(identity: RequestIdentity, filter: { clientId?: string; projectId?: string } = {}) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, clientId);
+    return this.repo.findAll(prisma, identity.activeOrganizationId, filter);
   }
 
   async findById(identity: RequestIdentity, id: string) {

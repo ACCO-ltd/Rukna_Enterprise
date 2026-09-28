@@ -46,6 +46,8 @@ import {
   type InvoiceJourneyPhase,
   type MilestoneItemViewModel,
 } from '../milestone-journey.adapter';
+import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { MilestoneJourney } from './milestone-journey';
 import { MilestoneDetailPanel } from './milestone-detail-panel';
 import { ReviewForBillingDrawer } from './review-for-billing-drawer';
@@ -498,6 +500,7 @@ function ScheduleBody({
   const t = useTranslations('commercial');
   const cycleQuery = useCommercialCurrentCycle(projectId);
   const packagesQuery = useBillingPackages(projectId, contractId);
+  const ledgerBlocked = useLedgerBlocked();
 
   if (cycleQuery.isPending) {
     return <Skeleton className="h-48 w-full" />;
@@ -603,7 +606,9 @@ function ScheduleBody({
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
       />
+      <AccountingSetupNotice />
       <MilestoneJourney
+        billingBlocked={ledgerBlocked}
         title={t('contractMilestones.paymentScheduleTitle')}
         viewModel={viewModel}
         onMilestoneClick={onMilestoneClick}
@@ -612,9 +617,9 @@ function ScheduleBody({
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
         draftInvoiceHref={(invoiceId) =>
-          `/finance/accounting/invoices/${invoiceId}?from=${encodeURIComponent(
+          `/projects/${projectId}/commercial/invoices/${invoiceId}?from=${encodeURIComponent(
             `/projects/${projectId}/commercial/contract-milestones`,
-          )}&fromLabel=${encodeURIComponent(t('contractMilestones.paymentScheduleTitle'))}`
+          )}`
         }
       />
       {allBilled && <AllMilestonesBilledBanner projectId={projectId} />}

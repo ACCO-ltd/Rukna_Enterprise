@@ -2647,9 +2647,22 @@ export interface ProjectFinanceOverviewResponse {
   accountingPosition: ProjectAccountingPosition;
   controls: {
     reconciliation: FinanceControlStatus;
+    /**
+     * Billing and general ledger (flow plan PR 4): what Commercial invoiced for this project
+     * (posted invoice subtotals less posted credit notes, excluding sales tax) against the
+     * revenue the ledger recognised for it. They should agree; a difference is named, not hidden.
+     */
+    billing: FinanceControlStatus;
     accountingSetup: FinanceControlStatus;
     costBudget: FinanceControlStatus;
     period: FinanceControlStatus;
+  };
+  /** Figures behind `controls.billing`. Null when the caller cannot view money. */
+  billingReconciliation: {
+    invoicedNet: string | null;
+    glRevenue: string | null;
+    variance: string | null;
+    reconciled: boolean;
   };
   reconciliation: ProjectCostReconciliationResponse;
   period: ProjectFinancePeriod | null;

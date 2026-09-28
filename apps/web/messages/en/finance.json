@@ -70,6 +70,8 @@
       "description": "Whether the figures above can be relied on.",
       "reconciliation": "Procurement and general ledger",
       "reconciliationDetail": "Supplier-bill variance {variance}",
+      "billing": "Billing and general ledger",
+      "billingDetail": "Invoiced {invoiced} (excl. sales tax) · Revenue posted {revenue}",
       "accountingSetup": "Accounting setup",
       "costBudget": "Cost budget",
       "budgetDetail": "Version {version}, baselined {date}",
@@ -298,5 +300,10 @@
       "contract": "Contract",
       "openSource": "Open source document"
     }
+  },
+  "setupNotice": {
+    "title": "Invoices can't be posted until accounting setup is finished",
+    "body": "Still to set up: {items}. Preparing or posting an invoice is unavailable until then.",
+    "action": "Open accounting setup"
   }
 }

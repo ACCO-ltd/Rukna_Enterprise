@@ -282,6 +282,33 @@ export class ProjectFinancialPositionRepository {
   // ─── Finance Overview ─────────────────────────────────────────────────────────
 
   /** Posted revenue carrying this project: credit-normal, excluding CLOSING entries. */
+  /**
+   * What the project billed, net of tax and credit notes: posted client-invoice subtotals less
+   * posted credit notes (total minus their tax). The figure the ledger's project revenue should
+   * equal. Reversed invoices are excluded — their reversal took the revenue back out.
+   */
+  async sumPostedBillingNet(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<Decimal> {
+    const [invoices, credits] = await Promise.all([
+      prisma.clientInvoice.aggregate({
+        where: { organizationId, projectId, postingStatus: 'POSTED' },
+        _sum: { subtotal: true },
+      }),
+      prisma.creditNote.aggregate({
+        where: { organizationId, postingStatus: 'POSTED', invoice: { projectId } },
+        _sum: { totalAmount: true, vatAmount: true },
+      }),
+    ]);
+    const invoiced = new Decimal((invoices._sum.subtotal ?? 0).toString());
+    const credited = new Decimal((credits._sum.totalAmount ?? 0).toString()).minus(
+      new Decimal((credits._sum.vatAmount ?? 0).toString()),
+    );
+    return invoiced.minus(credited);
+  }
+
   async sumPostedRevenue(
     prisma: TenantPrisma,
     organizationId: string,

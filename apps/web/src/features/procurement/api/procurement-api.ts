@@ -512,9 +512,13 @@ export function resolveMatchException(
  *
  * `status` is documented as a filter and not implemented (A7) — filtering is client-side.
  */
-export function listSupplierBills(filters?: { supplierId?: string }): Promise<SupplierBill[]> {
+/** `projectId` matches a bill coded to the project on its header or any line (server-side). */
+export function listSupplierBills(filters?: {
+  supplierId?: string;
+  projectId?: string;
+}): Promise<SupplierBill[]> {
   return apiClient<SupplierBill[]>('/bills', {
-    params: queryParams({ supplierId: filters?.supplierId }),
+    params: queryParams({ supplierId: filters?.supplierId, projectId: filters?.projectId }),
   });
 }
 

@@ -556,7 +556,7 @@ function ActionsPanel({
         {data.capabilities.canRaiseRequirement ? (
           <li>
             <Link
-              href="/procurement/requests/new"
+              href={`/procurement/requests/new?projectId=${data.projectId}`}
               className="flex min-h-11 items-center gap-3 bg-brand-primary px-4 py-3 text-brand-on-primary hover:bg-brand-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary sm:px-5"
             >
               <FilePlus2 size={16} aria-hidden="true" />
@@ -642,12 +642,18 @@ function ActionRow({
 }
 
 /** The one action the project genuinely owns. Buying is the buyer's job, in their workspace. */
-export function RaiseRequirementButton({ canRaise }: { canRaise: boolean }) {
+export function RaiseRequirementButton({
+  canRaise,
+  projectId,
+}: {
+  canRaise: boolean;
+  projectId: string;
+}) {
   const t = useTranslations('procurement.project.overview');
   if (!canRaise) return null;
   return (
     <Button asChild size="sm" className="min-h-11 sm:min-h-0">
-      <Link href="/procurement/requests/new">
+      <Link href={`/procurement/requests/new?projectId=${projectId}`}>
         <FilePlus2 size={15} aria-hidden="true" />
         {t('raiseRequirement')}
       </Link>

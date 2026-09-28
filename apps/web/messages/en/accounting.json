@@ -580,6 +580,7 @@
     "filterByStatus": "Approval status",
     "allStatuses": "All statuses",
     "filterByPostingStatus": "Posting status",
+    "filterByProject": "Project",
     "allPostingStatuses": "All posting statuses",
     "countLabel": "{count, plural, =0 {No invoices} one {# invoice} other {# invoices}}",
     "colNumber": "Number",

@@ -4,7 +4,7 @@
   "actions": {
     "more": "More",
     "backToProject": "Back to project",
-    "viewApplications": "Applications & Certificates",
+    "viewApplications": "Applications & certificates",
     "view": "View",
     "open": "Open",
     "viewTerms": "View terms",
@@ -19,9 +19,9 @@
   },
   "tabs": {
     "overview": "Overview",
-    "contract-milestones": "Contract & Milestones",
-    "billing-collection": "Billing & Collection",
-    "applications": "Applications & Certification",
+    "contract-milestones": "Contract & milestones",
+    "billing-collection": "Billing & collection",
+    "applications": "Applications & certification",
     "label": "Commercial sections"
   },
   "metric": {
@@ -262,7 +262,7 @@
     "EXPIRED": "Expired"
   },
   "applications": {
-    "title": "Applications & Certification",
+    "title": "Applications & certification",
     "subtitle": "Prepare, review and certify interim payment applications.",
     "summary": {
       "open": "Open applications",
@@ -315,7 +315,7 @@
     "loadFailed": "Could not load this project's contract."
   },
   "billing": {
-    "title": "Billing & Collection",
+    "title": "Billing & collection",
     "subtitle": "Posted client invoices, receipt allocations and the outstanding accounting balance.",
     "invoices": "Client invoices",
     "viewDocument": "View invoice document",

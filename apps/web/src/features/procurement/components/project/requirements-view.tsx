@@ -60,7 +60,10 @@ export function RequirementsView({ projectId }: { projectId: string }) {
           <h3 className="text-h3 font-semibold text-foreground">{t('title')}</h3>
           <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
-        <RaiseRequirementButton canRaise={data.capabilities.canRaiseRequirement} />
+        <RaiseRequirementButton
+          canRaise={data.capabilities.canRaiseRequirement}
+          projectId={projectId}
+        />
       </div>
 
       <SummaryBand data={data} />

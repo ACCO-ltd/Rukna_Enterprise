@@ -645,6 +645,8 @@
       "variationCreated": "Draft variation created — sent to Commercial for approval",
       "absorbed": "Extra work recorded as internal cost.",
       "separateAdded": "Separate charge added.",
+      "separateDraftCreated": "A draft invoice for it is waiting for review in Billing & collection.",
+      "reviewInBilling": "Review invoice",
       "unavailable": "This route is not available yet.",
       "cancel": "Cancel"
     },

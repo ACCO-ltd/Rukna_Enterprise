@@ -53,7 +53,7 @@ export function PostReceiptDialog({
   const post = usePostReceipt(receipt.id);
   const bankAccounts = useBankAccounts();
   const accounts = useAccounts();
-  const invoices = useInvoices(receipt.clientId);
+  const invoices = useInvoices({ clientId: receipt.clientId });
 
   const [bankAccountId, setBankAccountId] = useState('');
   const [rows, setRows] = useState<AllocationRow[]>([]);
