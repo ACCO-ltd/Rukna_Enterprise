@@ -277,7 +277,7 @@ describe('SupplierBillCreateForm — direct expense', () => {
     expect(within(summary).getByRole('link', { name: 'Supplier invoice number' })).toBeInTheDocument();
     expect(within(summary).getByRole('link', { name: 'Project' })).toBeInTheDocument();
     expect(within(summary).getByRole('link', { name: 'Line 1 — Description' })).toBeInTheDocument();
-    expect(within(summary).getByRole('link', { name: 'Line 1 — VAT' })).toBeInTheDocument();
+    expect(within(summary).getByRole('link', { name: 'Line 1 — Sales tax' })).toBeInTheDocument();
   });
 
   it('saves an overhead bill with the payload POST /bills expects, then opens it', async () => {

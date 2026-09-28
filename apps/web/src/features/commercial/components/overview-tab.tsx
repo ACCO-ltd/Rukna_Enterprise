@@ -23,6 +23,7 @@ import type {
   OverviewAttentionItem,
 } from '@erp/types';
 
+import { MetricStrip } from '@/components/widget/metric-strip';
 import { formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
@@ -122,93 +123,34 @@ function FinancialStrip({ overview }: { overview: CommercialOverviewResponse }) 
   const locale = useLocale() as 'en' | 'ar';
   const { financialPosition: fp, contract, currency } = overview;
 
-  const money = (v: string | null) =>
-    v === null ? '—' : (formatMoney(v, currency, locale) ?? v);
+  const money = (v: string | null) => (v === null ? null : (formatMoney(v, currency, locale) ?? v));
 
   const postedCreditNotes = fp.postedCreditNotes !== null && parseFloat(fp.postedCreditNotes) > 0;
-
-  const hasOutstanding = fp.outstanding !== null && parseFloat(fp.outstanding) > 0;
   const hasOverdue = fp.overdue !== null && parseFloat(fp.overdue) > 0;
 
-  return (
-    <dl className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-2 lg:grid-cols-5">
-      <MetricCell
-        label={t('contractValue')}
-        value={money(contract.currentContractValue)}
-      />
-      <MetricCell
-        label={t('netBilled')}
-        value={money(fp.netBilled)}
-        note={
-          [
-            postedCreditNotes ? t('creditNoteNote', { amount: money(fp.postedCreditNotes) }) : null,
-            fp.draftInvoiceCount ? t('draftsNote', { count: fp.draftInvoiceCount }) : null,
-          ]
-            .filter(Boolean)
-            .join(' · ') || undefined
-        }
-      />
-      <MetricCell label={t('collected')} value={money(fp.collected)} />
-      <MetricCell
-        label={t('outstanding')}
-        value={money(fp.outstanding)}
-        highlight={hasOutstanding}
-        accent={hasOutstanding ? 'brand' : undefined}
-      />
-      <MetricCell
-        label={t('overdue')}
-        value={money(fp.overdue)}
-        highlight={hasOverdue}
-        highlightColor="warning"
-        accent={hasOverdue ? 'warning' : undefined}
-      />
-    </dl>
-  );
-}
-
-function MetricCell({
-  label,
-  value,
-  note,
-  highlight,
-  highlightColor = 'default',
-  accent,
-}: {
-  label: string;
-  value: string;
-  note?: string;
-  highlight?: boolean;
-  highlightColor?: 'default' | 'warning';
-  accent?: 'brand' | 'success' | 'warning';
-}) {
-  const accentClass = accent === 'brand'
-    ? 'border-t-2 border-t-brand-primary'
-    : accent === 'success'
-      ? 'border-t-2 border-t-success'
-      : accent === 'warning'
-        ? 'border-t-2 border-t-warning'
-        : '';
+  const netBilledNote =
+    [
+      postedCreditNotes ? t('creditNoteNote', { amount: money(fp.postedCreditNotes) ?? '' }) : null,
+      fp.draftInvoiceCount ? t('draftsNote', { count: fp.draftInvoiceCount }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || undefined;
 
   return (
-    <div
-      className={cn(
-        'border-b border-border p-4 last:border-b-0 sm:nth-last-2:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e',
-        accentClass,
-      )}
-    >
-      <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1.5">
-        <LtrValue
-          className={cn(
-            'text-h2 font-semibold tabular-nums',
-            highlight && highlightColor === 'warning' ? 'text-warning' : 'text-foreground',
-          )}
-        >
-          {value}
-        </LtrValue>
-      </dd>
-      {note ? <dd className="mt-1 text-caption text-muted-foreground">{note}</dd> : null}
-    </div>
+    <MetricStrip
+      columns={5}
+      metrics={[
+        { label: t('contractValue'), value: money(contract.currentContractValue) },
+        { label: t('netBilled'), value: money(fp.netBilled), sublabel: netBilledNote },
+        { label: t('collected'), value: money(fp.collected) },
+        { label: t('outstanding'), value: money(fp.outstanding) },
+        {
+          label: t('overdue'),
+          value: money(fp.overdue),
+          tone: hasOverdue ? 'warning' : undefined,
+        },
+      ]}
+    />
   );
 }
 

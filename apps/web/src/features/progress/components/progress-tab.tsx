@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ViewSwitcher } from '@erp/ui';
-import { CalendarDays, ClipboardCheck, PenLine } from 'lucide-react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
+import { WorkspaceSectionHeader } from '@/components/layout/workspace-section-header';
 
 import { TodaySection } from './today-section';
 import { ReviewSection } from './review-section';
@@ -36,30 +36,20 @@ export function ProgressTab({ projectId }: { projectId: string }) {
   const [view, setView] = useState<ProgressView>(defaultView);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-h2 font-bold text-foreground">{t('title')}</h2>
-        <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
+    <div className="space-y-6">
+      <WorkspaceSectionHeader title={t('title')} description={t('subtitle')} />
 
-      {/* Underline nav — three views replacing the previous five */}
+      {/* Same look as WorkspaceSubNav (text-only underline). Button mode: these views are
+          component state, not routes — the flow plan's PR 5 restructures Progress. */}
       <ViewSwitcher
         appearance="underline"
         aria-label={t('tabs.label')}
         value={view}
         onValueChange={(next) => setView(next as ProgressView)}
         items={[
-          { value: 'today', label: t('tabs.today'), icon: <PenLine size={16} strokeWidth={1.9} /> },
-          {
-            value: 'review',
-            label: t('tabs.review'),
-            icon: <ClipboardCheck size={16} strokeWidth={1.9} />,
-          },
-          {
-            value: 'programme',
-            label: t('tabs.programme'),
-            icon: <CalendarDays size={16} strokeWidth={1.9} />,
-          },
+          { value: 'today', label: t('tabs.today') },
+          { value: 'review', label: t('tabs.review') },
+          { value: 'programme', label: t('tabs.programme') },
         ]}
       />
 

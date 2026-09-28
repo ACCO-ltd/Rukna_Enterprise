@@ -46,7 +46,6 @@ import {
   type InvoiceJourneyPhase,
   type MilestoneItemViewModel,
 } from '../milestone-journey.adapter';
-import { CommercialActivity } from './commercial-activity';
 import { MilestoneJourney } from './milestone-journey';
 import { MilestoneDetailPanel } from './milestone-detail-panel';
 import { ReviewForBillingDrawer } from './review-for-billing-drawer';
@@ -197,7 +196,7 @@ export function ContractMilestonesTab({
           status={contract.status}
         />
         <ContractSecurityBody projectId={projectId} summary={summary} />
-        <CommercialActivity items={summary.recentActivity} />
+        {/* The activity feed lives on Overview only (flow plan B6) — it was repeated here. */}
       </div>
 
       {/* Detail panel */}

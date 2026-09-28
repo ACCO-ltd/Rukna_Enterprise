@@ -200,7 +200,7 @@ describe('BillingCollectionTab — receivables summary strip', () => {
   it('shows billed, collected, outstanding, and overdue labels from position data', () => {
     renderTab();
 
-    expect(screen.getByText('Billed')).toBeInTheDocument();
+    expect(screen.getByText('Invoiced')).toBeInTheDocument();
     expect(screen.getByText('Collected')).toBeInTheDocument();
     expect(screen.getByText('Outstanding')).toBeInTheDocument();
     expect(screen.getByText('Overdue')).toBeInTheDocument();

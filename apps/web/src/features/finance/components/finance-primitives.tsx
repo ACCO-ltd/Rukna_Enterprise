@@ -87,16 +87,14 @@ export function Metric({
     overrunLabel !== undefined && amount !== null && amount !== undefined && Number(amount) < 0;
   return (
     <div className="min-w-0 border-b border-border px-4 py-3.5 last:border-b-0 sm:nth-last-2:border-b-0 sm:odd:border-e xl:border-b-0 xl:not-last:border-e">
-      <dt className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        {label}
-      </dt>
+      <dt className="text-micro font-semibold uppercase text-muted-foreground">{label}</dt>
       <dd className="mt-1.5 flex flex-wrap items-baseline gap-1.5">
         <Money
           amount={amount}
           currency={currency}
           unavailableLabel={unavailableLabel}
           className={cn(
-            'text-h2 font-bold',
+            'text-h2 font-semibold',
             over ? 'text-danger' : emphasis ? 'text-foreground' : 'text-foreground/90',
           )}
         />

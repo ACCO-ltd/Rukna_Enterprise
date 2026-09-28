@@ -212,7 +212,7 @@ describe('InvoiceCreate', () => {
     expect(within(lines).getAllByText('$9,800.00').length).toBeGreaterThan(0);
     expect(within(lines).queryByRole('textbox')).toBeNull();
     expect(screen.getByText("Lines come from the source document and can't be edited here.")).toBeInTheDocument();
-    expect(screen.getByText('Amount before VAT')).toBeInTheDocument();
+    expect(screen.getByText('Amount before sales tax')).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByLabelText('Client')).toHaveValue('Ministry of Water Resources'),
     );
