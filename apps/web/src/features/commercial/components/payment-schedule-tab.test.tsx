@@ -270,7 +270,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
 
     expect(replaceMutate).toHaveBeenCalledTimes(1);
     const [installments] = replaceMutate.mock.calls[0]!;
-    // Four installments, fractions summing to 1, ADVANCE first (Structure 40%).
+    // Four installments, fractions summing to 1, ADVANCE first (Advance (mobilisation) 40%).
     expect(installments).toHaveLength(4);
     expect(installments[0]).toMatchObject({ name: 'Advance (mobilisation)', percentage: 0.4, triggerType: 'ADVANCE' });
     const total = (installments as Array<{ percentage: number }>).reduce((s, r) => s + r.percentage, 0);

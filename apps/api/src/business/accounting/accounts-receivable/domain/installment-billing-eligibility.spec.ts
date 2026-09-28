@@ -23,6 +23,22 @@ describe('installmentBillingBlocker — strict CONST-COM-011 (owner decision 202
     expect(installmentBillingBlocker({ triggerType: 'ADVANCE' })).toBe('CONTRACT_NOT_ACTIVE');
   });
 
+  it('still posts an advance already raised after the contract moved on (practical completion, close, termination)', () => {
+    for (const contractStatus of ['ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED', 'TERMINATED']) {
+      expect(installmentBillingBlocker({ triggerType: 'ADVANCE', contractStatus }, { at: 'post' })).toBeNull();
+    }
+  });
+
+  it('never posts an advance on a contract that was never executed', () => {
+    for (const contractStatus of ['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE', 'CANCELLED']) {
+      expect(installmentBillingBlocker({ triggerType: 'ADVANCE', contractStatus }, { at: 'post' })).toBe('CONTRACT_NOT_ACTIVE');
+    }
+  });
+
+  it('raises an advance only while the contract is ACTIVE', () => {
+    expect(installmentBillingBlocker({ triggerType: 'ADVANCE', contractStatus: 'FINAL_ACCOUNT_PENDING' })).toBe('CONTRACT_NOT_ACTIVE');
+  });
+
   it('does not gate a time-based stage here', () => {
     expect(installmentBillingBlocker({ triggerType: 'TIME_BASED' })).toBeNull();
   });

@@ -545,7 +545,7 @@ export class ClientInvoiceService {
     if (invoice.sourceInstallmentId) {
       const stage = await this.repo.findInstallmentForBilling(readPrisma, orgId, invoice.sourceInstallmentId);
       const stageBlocker = stage
-        ? installmentBillingBlocker({ ...stage, contractStatus: stage.contract.status })
+        ? installmentBillingBlocker({ ...stage, contractStatus: stage.contract.status }, { at: 'post' })
         : null;
       if (stage && stageBlocker) {
         throw new BadRequestException(installmentBillingBlockerMessage(stageBlocker, stage.name));

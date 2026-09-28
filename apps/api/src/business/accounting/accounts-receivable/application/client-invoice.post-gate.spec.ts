@@ -41,4 +41,17 @@ describe('ClientInvoiceService.post — milestone evidence gate', () => {
     const { service } = build({ name: 'Structure', contract: { status: 'ACTIVE' }, triggerType: 'MILESTONE', programmeMilestoneId: 'm1', programmeMilestone: { status: 'PLANNED' } });
     await expect(service.post(identity, { invoiceId: 'inv1' } as never)).rejects.toThrow(/not yet verified/);
   });
+
+  it('posts an advance invoice after practical completion (contract final account pending)', async () => {
+    const { service, postingPort } = build({ name: 'Advance (mobilisation)', contract: { status: 'FINAL_ACCOUNT_PENDING' }, triggerType: 'ADVANCE' });
+    // Past the gate: the next step (account resolution) is not wired in this unit, so it fails later —
+    // but never with the evidence-gate refusal.
+    await expect(service.post(identity, { invoiceId: 'inv1' } as never)).rejects.not.toThrow(/advance: it can be billed once/);
+    expect(postingPort.post).not.toHaveBeenCalled();
+  });
+
+  it('refuses to post an advance invoice on a contract that was never executed', async () => {
+    const { service } = build({ name: 'Advance (mobilisation)', contract: { status: 'DRAFT' }, triggerType: 'ADVANCE' });
+    await expect(service.post(identity, { invoiceId: 'inv1' } as never)).rejects.toThrow(/advance: it can be billed once/);
+  });
 });

@@ -31,11 +31,24 @@ export interface InstallmentBillingFacts {
   contractStatus?: string;
 }
 
+/** Statuses of a contract that was never executed (CANCELLED is reachable only from DRAFT). */
+const NEVER_EXECUTED = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE', 'CANCELLED']);
+
+/**
+ * `at: 'raise'` (default) — raising the invoice or marking the stage ready: an advance needs the
+ * contract ACTIVE. `at: 'post'` — posting an invoice already raised: an advance needs the contract
+ * to have been executed at some point. A contract that has since moved on (final account pending
+ * after practical completion, closed, terminated) still owes the advance it invoiced, so its
+ * approved invoice must stay postable.
+ */
 export function installmentBillingBlocker(
   installment: InstallmentBillingFacts,
+  options: { at?: 'raise' | 'post' } = {},
 ): InstallmentBillingBlocker | null {
   if (installment.triggerType === 'ADVANCE') {
-    return installment.contractStatus === 'ACTIVE' ? null : 'CONTRACT_NOT_ACTIVE';
+    const status = installment.contractStatus;
+    if (options.at === 'post') return status && !NEVER_EXECUTED.has(status) ? null : 'CONTRACT_NOT_ACTIVE';
+    return status === 'ACTIVE' ? null : 'CONTRACT_NOT_ACTIVE';
   }
   if (installment.triggerType !== 'MILESTONE') return null;
   const linked = Boolean(installment.programmeMilestoneId) || Boolean(installment.programmeMilestone);
