@@ -46,6 +46,8 @@ import {
   type InvoiceJourneyPhase,
   type MilestoneItemViewModel,
 } from '../milestone-journey.adapter';
+import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { MilestoneJourney } from './milestone-journey';
 import { MilestoneDetailPanel } from './milestone-detail-panel';
 import { ReviewForBillingDrawer } from './review-for-billing-drawer';
@@ -91,6 +93,10 @@ export function ContractMilestonesTab({
   // Slice 3B: real mutation; invalidates current-cycle on success so the adapter
   // re-derives readyToBill from the refreshed API data.
   const markReadyMutation = useMarkReadyToBill(projectId);
+  // Preparing an invoice issues and posts it in one step, so it needs a ledger that can post.
+  // Every route to it — the row button, the detail panel, the Overview card's deep link —
+  // passes through handlePrepareInvoice, so the guard lives here (flow plan A7).
+  const ledgerBlockedForPrepare = useLedgerBlocked();
 
   // Invoice journey state: tracks the issued/sent phase after issuePackage succeeds.
   // The adapter never produces 'invoice-issued' or 'awaiting-payment' — these are
@@ -118,6 +124,7 @@ export function ContractMilestonesTab({
   }
 
   function handlePrepareInvoice(milestone: MilestoneItemViewModel) {
+    if (ledgerBlockedForPrepare && milestone.userState === 'ready-to-bill') return;
     setDetailOpen(false);
     setPreparingMilestone(milestone);
   }
@@ -208,6 +215,7 @@ export function ContractMilestonesTab({
         onOpenChange={setDetailOpen}
         onReviewForBilling={handleReviewForBilling}
         onPrepareInvoice={handlePrepareInvoice}
+        billingBlocked={ledgerBlockedForPrepare}
       />
 
       {/* Review drawer */}
@@ -498,6 +506,7 @@ function ScheduleBody({
   const t = useTranslations('commercial');
   const cycleQuery = useCommercialCurrentCycle(projectId);
   const packagesQuery = useBillingPackages(projectId, contractId);
+  const ledgerBlocked = useLedgerBlocked();
 
   if (cycleQuery.isPending) {
     return <Skeleton className="h-48 w-full" />;
@@ -603,7 +612,9 @@ function ScheduleBody({
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
       />
+      <AccountingSetupNotice />
       <MilestoneJourney
+        billingBlocked={ledgerBlocked}
         title={t('contractMilestones.paymentScheduleTitle')}
         viewModel={viewModel}
         onMilestoneClick={onMilestoneClick}
@@ -612,9 +623,9 @@ function ScheduleBody({
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
         draftInvoiceHref={(invoiceId) =>
-          `/finance/accounting/invoices/${invoiceId}?from=${encodeURIComponent(
+          `/projects/${projectId}/commercial/invoices/${invoiceId}?from=${encodeURIComponent(
             `/projects/${projectId}/commercial/contract-milestones`,
-          )}&fromLabel=${encodeURIComponent(t('contractMilestones.paymentScheduleTitle'))}`
+          )}`
         }
       />
       {allBilled && <AllMilestonesBilledBanner projectId={projectId} />}

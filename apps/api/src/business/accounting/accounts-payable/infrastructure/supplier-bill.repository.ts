@@ -88,9 +88,28 @@ export class SupplierBillRepository {
     });
   }
 
-  findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {
+  /**
+   * `projectId` matches a bill coded to the project on its header or on any line — a bill for
+   * several projects is coded per line, and each of those projects must see it.
+   */
+  findAll(
+    prisma: TenantPrisma,
+    organizationId: string,
+    filter: { supplierId?: string; projectId?: string } = {},
+  ) {
     return prisma.supplierBill.findMany({
-      where: { organizationId, ...(supplierId ? { supplierId } : {}) },
+      where: {
+        organizationId,
+        ...(filter.supplierId ? { supplierId: filter.supplierId } : {}),
+        ...(filter.projectId
+          ? {
+              OR: [
+                { projectId: filter.projectId },
+                { lines: { some: { projectId: filter.projectId } } },
+              ],
+            }
+          : {}),
+      },
       include: { supplier: { select: { id: true, code: true, name: true } } },
       orderBy: { billDate: 'desc' },
     });

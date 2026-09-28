@@ -29,11 +29,13 @@ export class SupplierBillController {
   @Get()
   @ApiOperation({ summary: 'List supplier bills' })
   @ApiQuery({ name: 'supplierId', required: false })
+  @ApiQuery({ name: 'projectId', required: false })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('supplierId') supplierId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.supplierBillService.findAll(identity, supplierId);
+    return this.supplierBillService.findAll(identity, { supplierId, projectId });
   }
 
   @Post()

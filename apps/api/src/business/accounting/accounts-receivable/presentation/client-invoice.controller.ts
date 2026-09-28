@@ -26,11 +26,13 @@ export class ClientInvoiceController {
   @Get()
   @ApiOperation({ summary: 'List client invoices' })
   @ApiQuery({ name: 'clientId', required: false })
+  @ApiQuery({ name: 'projectId', required: false })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('clientId') clientId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.clientInvoiceService.findAll(identity, clientId);
+    return this.clientInvoiceService.findAll(identity, { clientId, projectId });
   }
 
   @Post('from-ipc')

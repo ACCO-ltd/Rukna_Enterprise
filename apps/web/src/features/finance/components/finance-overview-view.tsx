@@ -34,7 +34,7 @@ import {
 } from '@erp/ui';
 import type { FinanceAttentionItem, ProjectFinanceOverviewResponse } from '@erp/types';
 
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 import { SectionPanel } from '@/features/procurement/components/project/section-panel';
 
@@ -241,7 +241,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
   }
 
   function ControlStatus({ data }: { data: ProjectFinanceOverviewResponse }) {
-    const { controls, reconciliation, budget, period } = data;
+    const { controls, reconciliation, billingReconciliation, budget, period } = data;
     return (
       <SectionPanel
         title={t('controls.title')}
@@ -255,6 +255,21 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
             label={t('controls.reconciliation')}
             status={controls.reconciliation}
             detail={t('controls.reconciliationDetail', { variance: reconciliation.variance })}
+          />
+          <ControlRow
+            icon={<Scale size={16} strokeWidth={1.9} />}
+            label={t('controls.billing')}
+            status={controls.billing}
+            detail={
+              billingReconciliation.variance !== null
+                ? t('controls.billingDetail', {
+                    invoiced:
+                      formatMoney(billingReconciliation.invoicedNet, data.currency, locale) ?? '—',
+                    revenue:
+                      formatMoney(billingReconciliation.glRevenue, data.currency, locale) ?? '—',
+                  })
+                : undefined
+            }
           />
           <ControlRow
             icon={<Settings2 size={16} strokeWidth={1.9} />}

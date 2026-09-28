@@ -45,7 +45,7 @@ export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail })
 
   // Invoice references for the rows — an allocation carries only `clientInvoiceId`, so the
   // client's invoices (already fetched for the picker; TanStack shares the cache) label them.
-  const invoices = useInvoices(receipt.clientId);
+  const invoices = useInvoices({ clientId: receipt.clientId });
   const invoiceById = useMemo(
     () =>
       new Map(
@@ -152,7 +152,7 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
   const locale = useLocale() as 'en' | 'ar';
 
   const allocate = useAllocateToInvoice(receipt.id);
-  const invoices = useInvoices(receipt.clientId);
+  const invoices = useInvoices({ clientId: receipt.clientId });
   const isLoading = invoices.isPending;
 
   const options = useMemo(

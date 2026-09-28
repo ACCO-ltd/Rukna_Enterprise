@@ -702,6 +702,10 @@ export class ClientInvoiceService {
             creditAmount: l.debitAmount as unknown as Decimal,
             sourceSubledgerType: l.sourceSubledgerType ?? undefined,
             clientId: l.clientId ?? undefined,
+            // The reversal carries every dimension the original carried. Dropping projectId left
+            // the original revenue credit on the project and the reversing debit off it, so
+            // project revenue (and the project P&L) kept a reversed invoice.
+            projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
@@ -723,9 +727,13 @@ export class ClientInvoiceService {
     });
   }
 
-  async findAll(identity: RequestIdentity, clientId?: string) {
+  /**
+   * Org-wide list, optionally narrowed. `projectId` (flow plan PR 4) lets a finance officer work
+   * one project's receivables from Accounting; it only narrows what the caller can already list.
+   */
+  async findAll(identity: RequestIdentity, filter: { clientId?: string; projectId?: string } = {}) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, clientId);
+    return this.repo.findAll(prisma, identity.activeOrganizationId, filter);
   }
 
   async findById(identity: RequestIdentity, id: string) {

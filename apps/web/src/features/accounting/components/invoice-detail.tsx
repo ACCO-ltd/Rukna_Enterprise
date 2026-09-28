@@ -13,6 +13,8 @@ import { useClients } from '@/features/clients/hooks/use-clients';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecycle-error';
 import { formatDate, formatMoney } from '@/lib/format';
+import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 
 import { useAccounts } from '../hooks/use-accounting';
 import { useInvoice, useInvoiceAction } from '../hooks/use-invoices';
@@ -30,12 +32,26 @@ import { PostInvoiceDialog } from './post-invoice-dialog';
 
 type OpenDialog = 'approve' | 'post' | 'reverse' | null;
 
-export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
+export function InvoiceDetail({
+  invoiceId,
+  back,
+  projectId,
+}: {
+  invoiceId: string;
+  /** Set by a project-scoped route: the invoice returns to the project tab it was opened from. */
+  back?: { href: string; label: string };
+  /**
+   * Set by a project-scoped route. An invoice of another project is shown as not found there,
+   * never under the wrong project's header (flow plan PR 4 review).
+   */
+  projectId?: string;
+}) {
   const t = useTranslations('accounting.invoices');
   const tCommon = useTranslations('common');
   const tLifecycle = useTranslations('common.lifecycleErrors');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
+  const ledgerBlockedState = useLedgerBlocked();
   const searchParams = useSearchParams();
 
   const invoice = useInvoice(invoiceId);
@@ -66,18 +82,27 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   }
 
   const data = invoice.data;
+  if (projectId && data.projectId !== projectId) {
+    return <Alert variant="error" messages={[t('notInProject')]} />;
+  }
   const client = (clients.data ?? []).find((c) => c.id === data.clientId);
   const clientName = client ? client.name : null;
   const state = invoiceWorkspaceState(data);
   const money = (value: string | null) => formatMoney(value, data.currencyCode, locale);
 
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
+  // Post needs a ready ledger. When it is not, the action is withheld and the notice below the
+  // header says why and where to fix it — never a button that fails and rolls back (A7).
+  const ledgerBlocked = ledgerBlockedState;
   const errorMessage = action.isError
     ? tLifecycle(lifecycleErrorKey(toLifecycleError(action.error).kind))
     : undefined;
 
-  const backHref = searchParams.get('from');
-  const backLabel = searchParams.get('fromLabel') ?? t('backToInvoices');
+  // `from` is only followed when it is a same-origin path — never `//host` or an absolute URL.
+  const fromParam = searchParams.get('from');
+  const safeFrom = fromParam && fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : null;
+  const backHref = back?.href ?? safeFrom;
+  const backLabel = back?.label ?? searchParams.get('fromLabel') ?? t('backToInvoices');
 
   const title =
     state === 'POSTED' ? t('stateTitle.POSTED', { number: data.invoiceNumber ?? t('unnumbered') }) : t(`stateTitle.${state}`);
@@ -116,9 +141,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
               ) : null}
 
-              {canPost(data) ? (
+              {canPost(data) && !ledgerBlocked ? (
                 <Button onClick={() => setDialog('post')}>{t('postAction')}</Button>
-              ) : (
+              ) : canPost(data) ? null : (
                 <BlockedHint invoice={data} />
               )}
 
@@ -131,6 +156,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           ) : undefined
         }
       />
+
+      {data.postingStatus !== 'POSTED' ? <AccountingSetupNotice /> : null}
 
       {state === 'DRAFT' ? <p className="text-caption text-muted-foreground">{t('approveHint')}</p> : null}
       {state === 'AWAITING_POSTING' ? (

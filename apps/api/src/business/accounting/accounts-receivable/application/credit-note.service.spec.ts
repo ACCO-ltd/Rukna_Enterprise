@@ -247,6 +247,9 @@ describe('postCreditNote', () => {
     const revLine = lines.find((l: { accountId: string }) => l.accountId === 'acc-rev');
     expect(revLine.debitAmount.toFixed(2)).toBe('10000.00');
     expect(new Decimal(revLine.creditAmount).toFixed(2)).toBe('0.00');
+    // The credit takes revenue back from the invoice's project (flow plan PR 4 review): an
+    // untagged debit left project revenue — and the project P&L — overstated.
+    expect(revLine.projectId).toBe('p-1');
 
     // VAT debit
     const vatLine = lines.find((l: { accountId: string }) => l.accountId === 'acc-vat');

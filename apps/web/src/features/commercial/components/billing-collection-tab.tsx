@@ -27,6 +27,7 @@ import { useOpenInvoiceDocument } from '@/features/accounting/hooks/use-invoices
 import { MetricStrip } from '@/components/widget/metric-strip';
 import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
+import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 
 import { useCommercialBilling } from '../hooks/use-commercial';
 import {
@@ -232,6 +233,7 @@ function BillingCollectionInner({
     <div className="space-y-4">
       <AttentionList items={summary.attention} />
 
+      <AccountingSetupNotice />
       <ReceivablesSummaryStrip
         position={billing.position}
         financialsVisible={billing.financialsVisible}
@@ -813,7 +815,9 @@ function OpenInvoiceRow({
       : inv.documentStatus === 'APPROVED' && inv.postingStatus !== 'POSTED'
         ? 'postInvoice'
         : null;
-  const invoiceWorkspaceHref = `/finance/accounting/invoices/${inv.invoiceId}?from=${encodeURIComponent(fromHref)}&fromLabel=${encodeURIComponent(tBilling('title'))}`;
+  // Opens inside the project (flow plan PR 4). The Accounting route still takes ?from= for
+  // the filtered list the reader came from; the project route knows its own way back.
+  const invoiceWorkspaceHref = `/projects/${projectId}/commercial/invoices/${inv.invoiceId}?from=${encodeURIComponent(fromHref)}`;
 
   // Due-status chip display for approaching deadlines
   const dueBadge = (() => {

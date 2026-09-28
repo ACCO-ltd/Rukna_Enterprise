@@ -144,6 +144,23 @@ Reviewed from the 14 production screenshots (project `ACCO-HDN-26-0005`) and the
 - **Reconciliation line** on Finance overview: Commercial *invoiced* vs GL *project revenue* — same number or the difference explained.
 - Amend ADR-030 (see decision 1) and `docs/reference/api-reference.md`.
 
+**Delivered (branch `feat/money-flow`).**
+- **API:** `GET /invoices?projectId=` and `GET /bills?projectId=`. A bill matches on its header or on any line.
+- **Accounting:** the invoice and bill lists have a Project filter, pre-filled from `?projectId=`.
+- **Documents open inside the project:**
+  - Invoices open at `/projects/:id/commercial/invoices/:invoiceId`, reached from Billing & collection, the schedule's "Review draft" and the ledger. They use the same page Accounting uses.
+  - Bills open at `/projects/:id/finance/ledger/bills/:billId`.
+  - Back returns to the tab you came from and keeps its filter. A `from` that points outside the project is ignored.
+- **Readiness (A7):**
+  - `AccountingSetupNotice` appears on Billing & collection, Contract & milestones and unposted invoices.
+  - **Post** and **Prepare invoice** are hidden while the ledger cannot post.
+  - Finance's setup item now links to the page that fixes the first blocker.
+- **Separate charge:** the toast says a draft invoice was created, with a "Review invoice" action.
+- **Procurement:** "Raise requirement" pre-fills the project and returns to it after saving.
+- **Reconciliation:** Finance overview has a **Billing and general ledger** control. It shows what was invoiced, net of sales tax and credit notes, against the revenue posted.
+- **Not done:** the PO list has no project filter yet (API work needed). "Open Procurement" stays the deliberate exit to the cross-project buyer workspace.
+- **Also:** the Commercial tab labels are now sentence case ("Contract & milestones", "Billing & collection").
+
 ### PR 5 — Progress and Programme
 - Split **Programme** into **Performance** (curve, needs attention, work-package progress, period comparison) and **Plan & setup** (work packages, baseline, milestones, schedule, activities). One work-package list, not two (D1).
 - Report review: measurement that exceeds BOQ scope warned at entry, not only at review.
