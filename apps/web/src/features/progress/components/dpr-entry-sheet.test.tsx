@@ -12,9 +12,12 @@ const mocks = vi.hoisted(() => ({
   useSubmitDpr: vi.fn(),
   useAddMeasurement: vi.fn(),
   usePatchDprContext: vi.fn(),
+  useRemoveMeasurement: vi.fn(),
   useBoqLeaves: vi.fn(),
   submit: vi.fn(),
   add: vi.fn(),
+  remove: vi.fn(),
+  patch: vi.fn(),
 }));
 
 vi.mock('../hooks/use-progress', () => ({
@@ -24,6 +27,7 @@ vi.mock('../hooks/use-progress', () => ({
   useSubmitDpr: mocks.useSubmitDpr,
   useAddMeasurement: mocks.useAddMeasurement,
   usePatchDprContext: mocks.usePatchDprContext,
+  useRemoveMeasurement: mocks.useRemoveMeasurement,
 }));
 vi.mock('../hooks/use-boq-leaves', () => ({
   useBoqLeaves: mocks.useBoqLeaves,
@@ -75,7 +79,9 @@ beforeEach(() => {
   });
   mocks.useSubmitDpr.mockReturnValue({ mutate: mocks.submit, isPending: false });
   mocks.useAddMeasurement.mockReturnValue({ mutate: mocks.add, isPending: false });
-  mocks.usePatchDprContext.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.patch.mockResolvedValue({});
+  mocks.usePatchDprContext.mockReturnValue({ mutateAsync: mocks.patch, isPending: false });
+  mocks.useRemoveMeasurement.mockReturnValue({ mutate: mocks.remove, isPending: false });
 });
 
 const render = (onClose = vi.fn()) =>
@@ -131,12 +137,59 @@ describe('DprEntrySheet', () => {
     render();
 
     await user.click(screen.getByRole('button', { name: 'Submit for review' }));
-    expect(screen.getByText('Enter 88.000 m3 or less, or raise a variation')).toBeInTheDocument();
-    expect(screen.getByRole('spinbutton', { name: 'Quantity today for 1.1 Excavation' })).toHaveAttribute(
-      'aria-invalid',
-      'true',
-    );
-    expect(screen.queryByText('Over quantity')).not.toBeInTheDocument();
+    // Inline, with a direct "remove what is recorded here" hint…
+    expect(
+      screen.getByText('Enter 88.000 m3 or less, or raise a variation. Remove 2.000 m3 recorded here to correct it.'),
+    ).toBeInTheDocument();
+    const input = screen.getByRole('spinbutton', { name: 'Quantity today for 1.1 Excavation' });
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    // …a form-level summary naming the item…
+    expect(
+      screen.getByText('1 item exceeds its BOQ quantity: 1.1 Excavation — enter 88.000 m3 or less'),
+    ).toBeInTheDocument();
+    // …and focus on the first errored field.
+    expect(input).toHaveFocus();
+  });
+
+  it('removes a recorded entry, and says so when the server refuses', async () => {
+    const user = userEvent.setup();
+    mocks.remove.mockImplementation((_id, opts) => opts.onError(new ApiError(404, 'Not found', 'NOT_FOUND')));
+    render();
+
+    await user.click(screen.getByRole('button', { name: 'Remove 2.000 m3 from 1.1 Excavation' }));
+    expect(mocks.remove).toHaveBeenCalledWith('m1', expect.anything());
+    expect(screen.getByText('Could not remove the entry: Not found')).toBeInTheDocument();
+  });
+
+  it('saves pending site notes and waits before submitting', async () => {
+    const user = userEvent.setup();
+    const order: string[] = [];
+    mocks.patch.mockImplementation(async () => {
+      order.push('patch');
+    });
+    mocks.submit.mockImplementation(() => order.push('submit'));
+    render();
+
+    await user.type(screen.getByRole('textbox', { name: 'Site notes' }), 'Poured slab B');
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }));
+    expect(mocks.patch).toHaveBeenCalledWith({ narrative: 'Poured slab B' });
+    expect(order[order.length - 1]).toBe('submit');
+    expect(order).toContain('patch');
+  });
+
+  it('keeps the sheet open with the error when the notes cannot be saved', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    mocks.patch.mockRejectedValue(new ApiError(500, 'Server down', 'INTERNAL'));
+    render(onClose);
+
+    const notes = screen.getByRole('textbox', { name: 'Site notes' });
+    await user.type(notes, 'Rain stopped work');
+    // Straight to Save draft: the flush is what saves the notes, and its failure blocks the close.
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+    expect((await screen.findAllByText('Site notes could not be saved: Server down')).length).toBeGreaterThan(0);
   });
 
   it('falls back to a form-level message for any other error', async () => {

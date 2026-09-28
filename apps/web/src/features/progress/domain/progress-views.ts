@@ -53,20 +53,26 @@ export function visibleProgressViews(access: ProgressAccess): ProgressView[] {
   return PROGRESS_VIEWS.filter((view) => canSeeProgressView(view, access));
 }
 
+/** What the landing rule needs to know about setup. */
+export interface ProgressSetupState {
+  /** Nothing can be recorded yet: no BOQ baseline, or no measurable work package. */
+  hardGap: boolean;
+  /** Any setup gap at all, including unallocated packages or weights below 100%. */
+  incomplete: boolean;
+}
+
 /**
  * Where `/progress` lands.
  *
- * 1. Setup is incomplete and the reader can finish it → Plan & setup. Nothing else on the tab
- *    works until it is done, so sending the one person who can do it anywhere else wastes a click.
- * 2. The reader records progress → Today.
+ * 1. A setup manager goes to Plan & setup when nothing can be recorded yet (the hard gate), or
+ *    when setup is incomplete and they do not record progress themselves — setup is their job.
+ * 2. The reader records progress → Today. A soft gap (an unallocated package, weights below 100%)
+ *    never keeps the site team away from Today.
  * 3. The reader reviews → Review.
  * 4. Otherwise → Performance.
- *
- * `setupIncomplete` is `null` while it is still unknown; callers wait for an answer rather than
- * redirecting on a guess (which would bounce a setup manager to Today and back).
  */
-export function progressLandingView(access: ProgressAccess, setupIncomplete: boolean): ProgressView {
-  if (setupIncomplete && access.canManage) return 'setup';
+export function progressLandingView(access: ProgressAccess, setup: ProgressSetupState): ProgressView {
+  if (access.canManage && (setup.hardGap || (setup.incomplete && !access.canRecord))) return 'setup';
   if (access.canRecord) return 'today';
   if (canSeeProgressView('review', access)) return 'review';
   return 'performance';
@@ -78,32 +84,47 @@ export function progressViewHref(projectId: string, view: ProgressView): string 
 
 // ─── Setup completeness ──────────────────────────────────────────────────────────────────
 
-/** What is still missing before daily reports and performance mean anything, in setup order. */
-export type ProgressSetupGap = 'boq' | 'workPackages' | 'allocation' | 'weights';
+/**
+ * What is still missing, in setup order.
+ *
+ * Hard gaps — nothing can be measured, so Today, Review and Performance show one empty state:
+ * - `boq`: no baselined BOQ.
+ * - `workPackages`: no work packages at all.
+ * - `scheduleOnly`: packages exist, but every one is a schedule-only phase with no BOQ scope.
+ *
+ * Soft gaps — reports can still be recorded and reviewed; Performance figures are provisional:
+ * - `allocation`: a measurable package has no BOQ items.
+ * - `weights`: the server's `weightsComplete` flag is false.
+ */
+export type ProgressSetupGap = 'boq' | 'workPackages' | 'scheduleOnly' | 'allocation' | 'weights';
+
+const HARD_GAPS: ReadonlySet<ProgressSetupGap> = new Set(['boq', 'workPackages', 'scheduleOnly']);
+
+export function isHardSetupGap(gap: ProgressSetupGap | null | undefined): boolean {
+  return Boolean(gap && HARD_GAPS.has(gap));
+}
 
 export interface ProgressSetupFacts {
   /** The BOQ has a baselined (or contract) version to measure against. */
   hasBoqBaseline: boolean;
-  /** Number of work packages. */
+  /** Number of work packages, schedule-only phases included. */
   packageCount: number;
-  /**
-   * Every measurable package has at least one BOQ item allocated. Schedule-only phases
-   * (mobilisation, design) have no BOQ scope by design and do not count against this.
-   */
-  allPackagesAllocated: boolean;
+  /** Work packages that carry BOQ scope (not schedule-only phases). */
+  measurablePackageCount: number;
+  /** Codes of measurable packages with no BOQ item allocated. */
+  unallocatedPackageCodes: string[];
   /** The server's `weightsComplete` flag from the roll-up — never recomputed here. */
   weightsComplete: boolean;
+  /** The server's weights total, as a whole percent, for the provisional-figures notice. */
+  weightsPercent: number;
 }
 
-/**
- * The first gap in setup order, or `null` when setup is complete. "Setup incomplete" means: no
- * BOQ baseline, or no work packages, or a package with nothing allocated, or weights not at 100%.
- * Milestones and the planned baseline are not part of it — the tab works without them.
- */
+/** The first gap in setup order, or `null` when setup is complete. Milestones and the baseline are not part of it. */
 export function progressSetupGap(facts: ProgressSetupFacts): ProgressSetupGap | null {
   if (!facts.hasBoqBaseline) return 'boq';
   if (facts.packageCount === 0) return 'workPackages';
-  if (!facts.allPackagesAllocated) return 'allocation';
+  if (facts.measurablePackageCount === 0) return 'scheduleOnly';
+  if (facts.unallocatedPackageCodes.length > 0) return 'allocation';
   if (!facts.weightsComplete) return 'weights';
   return null;
 }

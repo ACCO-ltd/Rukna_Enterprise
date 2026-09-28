@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canSeeProgressView,
+  isHardSetupGap,
   progressLandingView,
   progressSetupGap,
   progressViewHref,
@@ -41,35 +42,51 @@ describe('visibleProgressViews', () => {
   });
 });
 
+const HARD = { hardGap: true, incomplete: true };
+const SOFT = { hardGap: false, incomplete: true };
+const DONE = { hardGap: false, incomplete: false };
+
 describe('progressLandingView', () => {
-  it('sends a setup manager to Plan & setup while setup is incomplete', () => {
-    expect(progressLandingView(PM, true)).toBe('setup');
-    expect(progressLandingView(MANAGER_ONLY, true)).toBe('setup');
+  it('sends a setup manager to Plan & setup when nothing can be recorded yet', () => {
+    expect(progressLandingView(PM, HARD)).toBe('setup');
+    expect(progressLandingView(MANAGER_ONLY, HARD)).toBe('setup');
   });
 
-  it('sends a recorder to Today once setup is complete', () => {
-    expect(progressLandingView(PM, false)).toBe('today');
-    expect(progressLandingView(SITE_ENGINEER, false)).toBe('today');
+  it('keeps a manager who records on Today for a soft gap — field work is not blocked', () => {
+    expect(progressLandingView(PM, SOFT)).toBe('today');
   });
 
-  it('does not send a non-manager to setup even when it is incomplete', () => {
-    expect(progressLandingView(SITE_ENGINEER, true)).toBe('today');
-    expect(progressLandingView(REVIEWER, true)).toBe('review');
+  it('sends a manager who does not record to setup for any incomplete setup', () => {
+    expect(progressLandingView(MANAGER_ONLY, SOFT)).toBe('setup');
+    expect(progressLandingView(MANAGER_ONLY, DONE)).toBe('review');
+  });
+
+  it('sends a recorder to Today, gap or not, when they cannot finish setup', () => {
+    expect(progressLandingView(SITE_ENGINEER, HARD)).toBe('today');
+    expect(progressLandingView(SITE_ENGINEER, DONE)).toBe('today');
+    expect(progressLandingView(PM, DONE)).toBe('today');
   });
 
   it('sends a reviewer who does not record to Review', () => {
-    expect(progressLandingView(REVIEWER, false)).toBe('review');
-    expect(progressLandingView(MANAGER_ONLY, false)).toBe('review');
+    expect(progressLandingView(REVIEWER, HARD)).toBe('review');
+    expect(progressLandingView(REVIEWER, DONE)).toBe('review');
   });
 
   it('falls back to Performance for everyone else', () => {
-    expect(progressLandingView(NONE, false)).toBe('performance');
-    expect(progressLandingView(NONE, true)).toBe('performance');
+    expect(progressLandingView(NONE, DONE)).toBe('performance');
+    expect(progressLandingView(NONE, HARD)).toBe('performance');
   });
 });
 
 describe('progressSetupGap', () => {
-  const complete = { hasBoqBaseline: true, packageCount: 3, allPackagesAllocated: true, weightsComplete: true };
+  const complete = {
+    hasBoqBaseline: true,
+    packageCount: 3,
+    measurablePackageCount: 3,
+    unallocatedPackageCodes: [] as string[],
+    weightsComplete: true,
+    weightsPercent: 100,
+  };
 
   it('is null when every part of setup is done', () => {
     expect(progressSetupGap(complete)).toBeNull();
@@ -77,11 +94,21 @@ describe('progressSetupGap', () => {
 
   it('reports the first gap in setup order', () => {
     expect(progressSetupGap({ ...complete, hasBoqBaseline: false, packageCount: 0 })).toBe('boq');
-    expect(progressSetupGap({ ...complete, packageCount: 0 })).toBe('workPackages');
-    expect(progressSetupGap({ ...complete, allPackagesAllocated: false, weightsComplete: false })).toBe(
-      'allocation',
-    );
+    expect(progressSetupGap({ ...complete, packageCount: 0, measurablePackageCount: 0 })).toBe('workPackages');
+    expect(progressSetupGap({ ...complete, measurablePackageCount: 0 })).toBe('scheduleOnly');
+    expect(
+      progressSetupGap({ ...complete, unallocatedPackageCodes: ['WP-07'], weightsComplete: false }),
+    ).toBe('allocation');
     expect(progressSetupGap({ ...complete, weightsComplete: false })).toBe('weights');
+  });
+
+  it('treats only a missing BOQ or no measurable package as a hard gap', () => {
+    expect(isHardSetupGap('boq')).toBe(true);
+    expect(isHardSetupGap('workPackages')).toBe(true);
+    expect(isHardSetupGap('scheduleOnly')).toBe(true);
+    expect(isHardSetupGap('allocation')).toBe(false);
+    expect(isHardSetupGap('weights')).toBe(false);
+    expect(isHardSetupGap(null)).toBe(false);
   });
 });
 

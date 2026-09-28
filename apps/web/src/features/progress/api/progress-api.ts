@@ -152,6 +152,15 @@ export function addMeasurement(
 }
 
 /**
+ * Remove one measurement from a report that is still editable (DRAFT / RETURNED / REOPENED); the
+ * server answers `409` otherwise. Added by the backend in PR #233 — until that is deployed the
+ * route answers `404`, which the caller surfaces rather than hides.
+ */
+export function removeMeasurement(dprId: string, measurementId: string): Promise<void> {
+  return apiClient<void>(`/progress/reports/${dprId}/measurements/${measurementId}`, { method: 'DELETE' });
+}
+
+/**
  * Attach a READY PlatformFile as evidence (upload it via files-api first). Pass `measurementId` to
  * tag the evidence to a specific work entry on the report, rather than the report as a whole.
  */

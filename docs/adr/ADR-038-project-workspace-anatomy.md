@@ -64,10 +64,17 @@ Owner-approved as part of the Progress redesign (flow plan PR 5).
   the only underlined row, so the two levels never read as the same control. The row still scrolls
   inside itself at 375px.
 - **Progress's views are routes**, not component state:
-  `/projects/{id}/progress/{today|review|performance|setup}`. `/progress` redirects to the reader's
-  landing view (Plan & setup while setup is incomplete and the reader can finish it; else Today for
-  recorders; else Review for reviewers; else Performance). A view the reader cannot use is removed
-  from the row, never disabled. The `ViewSwitcher` exception in the table above is retired.
+  `/projects/{id}/progress/{today|review|performance|setup}`. A view the reader cannot use is
+  removed from the row, never disabled. The `ViewSwitcher` exception in the table above is retired.
+- **Setup gaps come in two strengths.** A *hard* gap (no baselined BOQ, or no measurable work
+  package — none at all, or only schedule-only phases) means nothing can be recorded, so Today,
+  Review and Performance show one empty state naming the gap. A *soft* gap (a package with no BOQ
+  items, or the server's `weightsComplete` false) never blocks field work: Today and Review render
+  as normal, and Performance shows one notice that its figures are provisional. Plan & setup keeps
+  the step current either way.
+- **Landing.** `/progress` redirects to Plan & setup for a setup manager when there is a hard gap,
+  or when setup is incomplete and they do not hold `record:progress`; otherwise Today for
+  recorders, Review for reviewers, else Performance.
 - **On Progress the tab heading carries no primary action**; each view owns its one primary.
 
 This supersedes the "Views inside a tab" row's "Underline style" wording and closes the open item

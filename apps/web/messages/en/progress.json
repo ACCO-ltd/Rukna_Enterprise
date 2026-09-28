@@ -11,16 +11,18 @@
     "review": "Review",
     "milestones": "Milestones",
     "performance": "Performance",
-    "setup": "Plan & setup"
+    "setup": "Plan & setup",
+    "reviewWithCount": "Review, {count} waiting"
   },
   "gate": {
     "title": "Progress isn't set up yet",
     "boq": "Progress is measured against the BOQ, and this project has no baselined BOQ yet.",
     "workPackages": "There are no work packages yet. Daily reports and performance start once the scope is split into work packages.",
-    "allocation": "Some work packages have no BOQ items allocated, so their progress can't be measured yet.",
-    "weights": "Work-package weights don't add up to 100% yet, so overall progress would be understated.",
     "continueSetup": "Continue setup",
-    "askManager": "The project manager finishes this in Plan & setup."
+    "askManager": "The project manager finishes this in Plan & setup.",
+    "scheduleOnly": "Every work package is a schedule-only phase, so there is no BOQ scope to measure progress against. Add a work package that carries BOQ items.",
+    "provisionalWeights": "Weights total {total}% — performance figures are provisional until they reach 100%.",
+    "provisionalAllocation": "{codes} {count, plural, one {has} other {have}} no BOQ items — performance figures are provisional until every package has some."
   },
   "setupView": {
     "intro": "Set up how this project's progress is measured. Daily reports and performance start once work packages and milestones exist.",
@@ -38,11 +40,12 @@
       "startFromBoqBody": "Proposes one work package for each BOQ section that still has unallocated items, weighted by that section's share of the BOQ value. You can rename packages, move items between them or leave some out before anything is created.",
       "addManually": "Add a package manually",
       "waitsFor": "a baselined BOQ",
-      "gapAllocation": "{count, plural, one {# work package has} other {# work packages have}} no BOQ items yet, so {count, plural, one {its} other {their}} progress can't be measured. Allocate items to {count, plural, one {it} other {them}}.",
+      "gapAllocation": "{codes} {count, plural, one {has} other {have}} no BOQ items yet, so {count, plural, one {its} other {their}} progress can't be measured. Allocate items to {count, plural, one {it} other {them}}.",
       "gapWeights": "Package weights total {total}%. They need to add up to 100% for overall progress to be right — suggest them from BOQ values, or set them per package.",
       "summary": "{packages, plural, one {# package} other {# packages}} · weights total {weights}% · {allocation}",
       "allAllocated": "all {count} BOQ items allocated",
-      "someAllocated": "{allocated} of {count} BOQ items allocated"
+      "someAllocated": "{allocated} of {count} BOQ items allocated",
+      "scheduleOnlyNote": "The packages so far are schedule-only phases. Progress needs at least one package that carries BOQ items."
     },
     "baseline": {
       "title": "Planned baseline",
@@ -808,6 +811,13 @@
     "saveDraft": "Save draft",
     "submit": "Submit for review",
     "submitted": "Report submitted for review.",
-    "saveFailed": "Could not save. Try again."
+    "saveFailed": "Could not save. Try again.",
+    "exceedsRemove": "Enter {max} or less, or raise a variation. Remove {quantity} recorded here to correct it.",
+    "exceedsSummary": "{count, plural, one {# item exceeds} other {# items exceed}} {count, plural, one {its} other {their}} BOQ quantity: {list}",
+    "exceedsSummaryLine": "{item} — enter {max} or less",
+    "remove": "Remove {quantity}",
+    "removeLabel": "Remove {quantity} from {item}",
+    "removeFailed": "Could not remove the entry: {message}",
+    "notesFailed": "Site notes could not be saved: {message}"
   }
 }

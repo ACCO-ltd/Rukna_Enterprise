@@ -17,8 +17,9 @@ describe('mapDprError', () => {
         ],
       }),
       'fallback',
+      (errors) => `${Object.keys(errors).length} items over`,
     );
-    expect(mapped.formError).toBeNull();
+    expect(mapped.formError).toBe('2 items over');
     expect(mapped.fieldErrors).toEqual({
       n1: { max: '12.500', unit: 'm3' },
       n2: { max: '0', unit: null },
@@ -33,7 +34,8 @@ describe('mapDprError', () => {
       'fallback',
     );
     expect(mapped.fieldErrors).toEqual({ n4: { max: '2', unit: null } });
-    expect(mapped.formError).toBeNull();
+    // Without a describer the server's message is still the summary — never empty.
+    expect(mapped.formError).toBe('Quantity exceeds the BOQ');
   });
 
   it('falls back to the server message when the code has no usable lines', () => {

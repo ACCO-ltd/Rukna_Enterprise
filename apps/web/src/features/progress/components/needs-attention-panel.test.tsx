@@ -60,4 +60,20 @@ describe('NeedsAttentionPanel', () => {
     expect(screen.queryByText(/Nothing needs attention/i)).not.toBeInTheDocument();
     expect(screen.getByText(/60%, not 100%/i)).toBeInTheDocument();
   });
+
+  it('links an item only when the reader can open its view', () => {
+    mocks.useDprs.mockReturnValue(loaded([{ id: 'd1', status: 'SUBMITTED' }]));
+    mocks.useProjectRollup.mockReturnValue(
+      loaded({ packages: [{ id: 'wp-1', leafCount: 1 }], weightsComplete: false, weightsTotal: '0.6' }),
+    );
+    mocks.useWorkPackages.mockReturnValue(loaded([{ id: 'wp-1' }]));
+
+    // A reviewer who is not a setup manager: the review item links, the weights item does not.
+    renderWithProviders(<NeedsAttentionPanel projectId="proj-1" onGoTo={() => {}} />, {
+      permissions: ['approve:progress'],
+    });
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByText(/60%, not 100%/i).closest('button')).toBeNull();
+  });
 });

@@ -46,6 +46,7 @@ vi.mock('@/features/programme/components/download-master-schedule-button', () =>
   DownloadMasterScheduleButton: () => null,
 }));
 
+import { progressSetupGap } from '../domain/progress-views';
 import { SetupView } from './setup-view';
 
 const loaded = <T,>(data: T) => ({ data, isPending: false, isError: false });
@@ -58,7 +59,7 @@ const LEAVES = [
 ];
 
 function setup({
-  packages = [] as Array<{ id: string; leafCount: number; scheduleOnly?: boolean }>,
+  packages = [] as Array<{ id: string; code?: string; leafCount: number; scheduleOnly?: boolean }>,
   weightsTotal = '0',
   weightsComplete = false,
   allocatedIds = [] as string[],
@@ -83,17 +84,15 @@ function setup({
   mocks.useProgrammeBaseline.mockReturnValue(loaded(baseline));
   mocks.useMilestones.mockReturnValue(loaded(milestones));
   const measurable = packages.filter((p) => !p.scheduleOnly);
-  mocks.useProgressSetup.mockReturnValue({
-    isPending: false,
-    isError: false,
-    gap: undefined,
-    facts: {
-      hasBoqBaseline: hasBoq,
-      packageCount: packages.length,
-      allPackagesAllocated: measurable.length > 0 && measurable.every((p) => p.leafCount > 0),
-      weightsComplete,
-    },
-  });
+  const facts = {
+    hasBoqBaseline: hasBoq,
+    packageCount: packages.length,
+    measurablePackageCount: measurable.length,
+    unallocatedPackageCodes: measurable.filter((p) => p.leafCount === 0).map((p) => p.code ?? p.id),
+    weightsComplete,
+    weightsPercent: Math.round(Number(weightsTotal) * 100),
+  };
+  mocks.useProgressSetup.mockReturnValue({ isPending: false, isError: false, gap: progressSetupGap(facts), facts });
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -134,11 +133,21 @@ describe('SetupView', () => {
   });
 
   it('asks for allocation when a package has no BOQ items, with Allocate as the editor primary', () => {
-    setup({ packages: [{ id: 'wp1', leafCount: 0 }], weightsTotal: '1', weightsComplete: true });
+    // Weights are ALSO short here: the step must name allocation, the first gap, not weights.
+    setup({ packages: [{ id: 'wp1', code: 'WP-07', leafCount: 0 }], weightsTotal: '0.5', weightsComplete: false });
     renderWithProviders(<SetupView projectId="p1" />, PM);
 
-    expect(screen.getByText(/1 work package has no BOQ items yet/)).toBeInTheDocument();
+    expect(screen.getByText(/WP-07 has no BOQ items yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/Package weights total/)).not.toBeInTheDocument();
     expect(screen.getByText('work package editor (allocate)')).toBeInTheDocument();
+  });
+
+  it('treats schedule-only packages as no measurable package and offers the delivery plan', () => {
+    setup({ packages: [{ id: 'wp1', leafCount: 0, scheduleOnly: true }], weightsTotal: '1', weightsComplete: true });
+    renderWithProviders(<SetupView projectId="p1" />, PM);
+
+    expect(screen.getByText(/The packages so far are schedule-only phases/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create delivery plan from BOQ' })).toBeInTheDocument();
   });
 
   it('asks for weights when the server says they do not total 100%', () => {

@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import type { ProgressMeasurementResponse } from '@erp/types';
 import {
   Alert,
   Button,
@@ -30,6 +31,7 @@ import {
   useDpr,
   usePatchDprContext,
   useProjectProgress,
+  useRemoveMeasurement,
   useSubmitDpr,
   useWorkPackages,
 } from '../hooks/use-progress';
@@ -41,8 +43,8 @@ import { DprDetail, DprEvidence, LabourSection } from './dpr-detail';
  *
  * An editable report (draft, returned, reopened) shows the entry form: every BOQ item grouped by
  * work package with a quantity input and its to-date figure, then labour and hours, site notes and
- * photos. Each entry saves as it is made (the API has no batch save), so "Save draft" only closes
- * the sheet; "Submit for review" is the one primary. A report that is no longer editable opens
+ * photos. Each entry saves as it is made (the API has no batch save); "Save draft" and "Submit for
+ * review" first flush and await any site notes not yet saved, and stay open if that fails. A report that is no longer editable opens
  * read-only in the same sheet.
  *
  * Work packages are not linked to users (`responsibleOwner` is free text), so the form shows ALL
@@ -61,7 +63,8 @@ export function DprEntrySheet({
   return (
     <Sheet open={dprId !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
       <SheetContent size="xl">
-        {dprId ? <SheetInner projectId={projectId} dprId={dprId} onClose={onClose} /> : null}
+        {/* Keyed by report: opening another report starts from its own state, never the last one's. */}
+        {dprId ? <SheetInner key={dprId} projectId={projectId} dprId={dprId} onClose={onClose} /> : null}
       </SheetContent>
     </Sheet>
   );
@@ -127,16 +130,23 @@ function EntryForm({
   onClose: () => void;
 }) {
   const t = useTranslations('progress');
+  const locale = useLocale() as 'en';
   const { toast } = useToast();
 
   const { leaves, isPending: leavesPending } = useBoqLeaves(projectId);
   const workPackages = useWorkPackages(projectId);
   const progress = useProjectProgress(projectId);
   const submit = useSubmitDpr(projectId, dpr.id);
+  const patch = usePatchDprContext(dpr.id);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, DprQuantityFieldError>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [notes, setNotes] = useState(dpr.narrative ?? '');
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Bumped when a submit comes back with item errors, so focus moves to the first one.
+  const [focusRequest, setFocusRequest] = useState(0);
 
   const leafLabel = useMemo(() => new Map(leaves.map((l) => [l.id, lineLabel(l)])), [leaves]);
 
@@ -162,24 +172,80 @@ function EntryForm({
     () => new Map((progress.data ?? []).map((line) => [line.boqNodeId, line])),
     [progress.data],
   );
-  const onThisReport = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const m of dpr.measurements) map.set(m.boqNodeId, (map.get(m.boqNodeId) ?? 0) + Number(m.quantity));
+  const measurementsByNode = useMemo(() => {
+    const map = new Map<string, ProgressMeasurementResponse[]>();
+    for (const m of dpr.measurements) map.set(m.boqNodeId, [...(map.get(m.boqNodeId) ?? []), m]);
     return map;
   }, [dpr.measurements]);
 
-  function onSubmit() {
+  // Move focus to the first errored item (in screen order) once it has rendered.
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    for (const group of groups) {
+      const first = group.items.find((leaf) => fieldErrors[leaf.id]);
+      if (first) {
+        document.getElementById(`entry-qty-${first.id}`)?.focus();
+        return;
+      }
+    }
+  }, [focusRequest, groups, fieldErrors]);
+
+  /** "1 item exceeds its BOQ quantity: 2.2 RC C30 slab — enter 2 or less". */
+  function describeExceeds(errors: Record<string, DprQuantityFieldError>): string {
+    const lines = Object.entries(errors).map(([id, e]) =>
+      t('entry.exceedsSummaryLine', {
+        item: leafLabel.get(id) ?? id,
+        max: `${formatNumber(e.max, locale, 3) ?? e.max}${e.unit ? ` ${e.unit}` : ''}`,
+      }),
+    );
+    return t('entry.exceedsSummary', { count: lines.length, list: lines.join('; ') });
+  }
+
+  /**
+   * Saves site notes that have not been saved yet and waits for the answer. Returns false when the
+   * save failed — the caller then keeps the sheet open so nothing typed is lost.
+   */
+  async function flushNotes(): Promise<boolean> {
+    const next = notes.trim();
+    if (next === (dpr.narrative ?? '').trim()) return true;
+    setNotesError(null);
+    try {
+      await patch.mutateAsync({ narrative: next || undefined });
+      return true;
+    } catch (error) {
+      setNotesError(t('entry.notesFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
+      return false;
+    }
+  }
+
+  async function onSaveDraft() {
+    setBusy(true);
+    const saved = await flushNotes();
+    setBusy(false);
+    if (saved) onClose();
+  }
+
+  async function onSubmit() {
     setFormError(null);
     setFieldErrors({});
+    setBusy(true);
+    const saved = await flushNotes();
+    if (!saved) {
+      setBusy(false);
+      return;
+    }
     submit.mutate(undefined, {
       onSuccess: () => {
+        setBusy(false);
         toast({ tone: 'success', title: t('entry.submitted') });
         onClose();
       },
       onError: (error) => {
-        const mapped = mapDprError(error, t('entry.saveFailed'));
+        setBusy(false);
+        const mapped = mapDprError(error, t('entry.saveFailed'), describeExceeds);
         setFieldErrors(mapped.fieldErrors);
         setFormError(mapped.formError);
+        if (Object.keys(mapped.fieldErrors).length > 0) setFocusRequest((n) => n + 1);
       },
     });
   }
@@ -220,11 +286,12 @@ function EntryForm({
                   {group.items.map((leaf) => (
                     <EntryItemRow
                       key={leaf.id}
+                      projectId={projectId}
                       dprId={dpr.id}
                       leaf={leaf}
                       verifiedToDate={Number(verifiedByNode.get(leaf.id)?.verifiedToDate ?? 0)}
                       scope={verifiedByNode.get(leaf.id)?.measurableQuantity ?? leaf.quantity}
-                      recordedHere={onThisReport.get(leaf.id) ?? 0}
+                      measurements={measurementsByNode.get(leaf.id) ?? []}
                       fieldError={fieldErrors[leaf.id]}
                       rowError={rowErrors[leaf.id]}
                       onRowError={(message) =>
@@ -258,7 +325,28 @@ function EntryForm({
           <LabourSection dprId={dpr.id} rows={dpr.labourRows ?? []} editable />
         </section>
 
-        <SiteNotes dpr={dpr} />
+        <section aria-labelledby="entry-notes" className="space-y-2">
+          <h3 id="entry-notes" className="text-body font-semibold text-foreground">
+            <label htmlFor="entry-notes-field">{t('entry.notes')}</label>
+          </h3>
+          <Textarea
+            id="entry-notes-field"
+            rows={4}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => void flushNotes()}
+            aria-describedby="entry-notes-hint"
+            aria-invalid={notesError ? true : undefined}
+          />
+          <p id="entry-notes-hint" className="text-caption text-muted-foreground">
+            {t('entry.notesHint')}
+          </p>
+          {notesError ? (
+            <p role="alert" className="text-caption font-medium text-danger">
+              {notesError}
+            </p>
+          ) : null}
+        </section>
 
         <section aria-labelledby="entry-photos" className="space-y-3">
           <h3 id="entry-photos" className="text-body font-semibold text-foreground">
@@ -277,10 +365,10 @@ function EntryForm({
 
       {/* SheetFooter lays out row-reverse from `sm`: the primary comes first so it sits at the end. */}
       <SheetFooter>
-        <Button onClick={onSubmit} disabled={submit.isPending}>
+        <Button onClick={() => void onSubmit()} disabled={busy || submit.isPending}>
           {t('entry.submit')}
         </Button>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={() => void onSaveDraft()} disabled={busy}>
           {t('entry.saveDraft')}
         </Button>
       </SheetFooter>
@@ -289,21 +377,23 @@ function EntryForm({
 }
 
 function EntryItemRow({
+  projectId,
   dprId,
   leaf,
   verifiedToDate,
   scope,
-  recordedHere,
+  measurements,
   fieldError,
   rowError,
   onRowError,
   onFieldError,
 }: {
+  projectId: string;
   dprId: string;
   leaf: ClaimableLine;
   verifiedToDate: number;
   scope: string | null;
-  recordedHere: number;
+  measurements: ProgressMeasurementResponse[];
   fieldError: DprQuantityFieldError | undefined;
   rowError: string | undefined;
   onRowError: (message: string | null) => void;
@@ -312,10 +402,12 @@ function EntryItemRow({
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
   const add = useAddMeasurement(dprId);
+  const remove = useRemoveMeasurement(projectId, dprId);
   const [quantity, setQuantity] = useState('');
 
   const unit = leaf.unit ?? '';
   const withUnit = (n: number | string) => `${formatNumber(n, locale, 3) ?? n}${unit ? ` ${unit}` : ''}`;
+  const recordedHere = measurements.reduce((sum, m) => sum + Number(m.quantity), 0);
   const cumulative = verifiedToDate + recordedHere;
   const scopeNum = scope != null && scope !== '' ? Number(scope) : null;
   const hint =
@@ -326,8 +418,13 @@ function EntryItemRow({
   const inputId = `entry-qty-${leaf.id}`;
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
+  const maxText = fieldError
+    ? `${formatNumber(fieldError.max, locale, 3) ?? fieldError.max}${fieldError.unit ? ` ${fieldError.unit}` : unit ? ` ${unit}` : ''}`
+    : '';
   const errorText = fieldError
-    ? t('entry.exceeds', { max: `${formatNumber(fieldError.max, locale, 3) ?? fieldError.max}${fieldError.unit ? ` ${fieldError.unit}` : unit ? ` ${unit}` : ''}` })
+    ? recordedHere > 0
+      ? t('entry.exceedsRemove', { max: maxText, quantity: withUnit(recordedHere) })
+      : t('entry.exceeds', { max: maxText })
     : rowError;
 
   function onAdd(event: React.FormEvent) {
@@ -347,10 +444,23 @@ function EntryItemRow({
           const mapped = mapDprError(error, t('entry.saveFailed'));
           const mine = mapped.fieldErrors[leaf.id];
           if (mine) onFieldError(mine);
-          else onRowError(mapped.formError ?? t('entry.saveFailed'));
+          else onRowError(mapped.formError);
         },
       },
     );
+  }
+
+  function onRemove(measurementId: string) {
+    onRowError(null);
+    remove.mutate(measurementId, {
+      // The item's over-quantity error was about what is recorded here; removing an entry changes
+      // that, so the stale error goes and a resubmit re-checks.
+      onSuccess: () => onFieldError(null),
+      // Not hidden: until the backend route ships this answers 404, and the reader must know the
+      // entry is still on the report.
+      onError: (error) =>
+        onRowError(t('entry.removeFailed', { message: mapDprError(error, t('entry.saveFailed')).formError })),
+    });
   }
 
   return (
@@ -389,44 +499,23 @@ function EntryItemRow({
           </Button>
         </div>
       </form>
+      {measurements.length > 0 ? (
+        <ul className="mt-2 flex flex-wrap gap-2" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
+          {measurements.map((m) => (
+            <li key={m.id}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onRemove(m.id)}
+                disabled={remove.isPending}
+                aria-label={t('entry.removeLabel', { quantity: withUnit(m.quantity), item: lineLabel(leaf) })}
+              >
+                {t('entry.remove', { quantity: withUnit(m.quantity) })}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </li>
-  );
-}
-
-/** The day's narrative, saved when the field loses focus (only if it changed). */
-function SiteNotes({ dpr }: { dpr: DailyProgressReportDetail }) {
-  const t = useTranslations('progress');
-  const patch = usePatchDprContext(dpr.id);
-  const [notes, setNotes] = useState(dpr.narrative ?? '');
-  const [error, setError] = useState<string | null>(null);
-
-  function onBlur() {
-    const next = notes.trim();
-    if (next === (dpr.narrative ?? '').trim()) return;
-    setError(null);
-    patch.mutate(
-      { narrative: next || undefined },
-      { onError: (e) => setError(mapDprError(e, t('entry.saveFailed')).formError) },
-    );
-  }
-
-  return (
-    <section aria-labelledby="entry-notes" className="space-y-2">
-      <h3 id="entry-notes" className="text-body font-semibold text-foreground">
-        <label htmlFor="entry-notes-field">{t('entry.notes')}</label>
-      </h3>
-      <Textarea
-        id="entry-notes-field"
-        rows={4}
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        onBlur={onBlur}
-        aria-describedby="entry-notes-hint"
-      />
-      <p id="entry-notes-hint" className="text-caption text-muted-foreground">
-        {t('entry.notesHint')}
-      </p>
-      {error ? <p className="text-caption font-medium text-danger">{error}</p> : null}
-    </section>
   );
 }

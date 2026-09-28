@@ -42,8 +42,10 @@ export function useProgressSetup(projectId: string): ProgressSetupStatus {
   const facts: ProgressSetupFacts = {
     hasBoqBaseline: Boolean(workspace.data.approved ?? workspace.data.contractBaseline),
     packageCount: rollup.data.packages.length,
-    allPackagesAllocated: measurable.length > 0 && measurable.every((p) => p.leafCount > 0),
+    measurablePackageCount: measurable.length,
+    unallocatedPackageCodes: measurable.filter((p) => p.leafCount === 0).map((p) => p.code),
     weightsComplete: rollup.data.weightsComplete,
+    weightsPercent: Math.round(Number(rollup.data.weightsTotal) * 100),
   };
 
   return { isPending: false, isError: false, facts, gap: progressSetupGap(facts) };

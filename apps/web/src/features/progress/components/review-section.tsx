@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Avatar, Tabs, TabsContent, TabsList, TabsTrigger } from '@erp/ui';
+import { Alert, Tabs, TabsContent, TabsList, TabsTrigger } from '@erp/ui';
 import { ClipboardCheck } from 'lucide-react';
 import type { DailyProgressReportResponse } from '@erp/types';
 
+import { QueueList, joinQueueMeta } from '@/components/queue-list';
 import { formatDate } from '@/lib/format';
 
 import { useDprs } from '../hooks/use-progress';
@@ -93,7 +94,15 @@ export function ReviewSection({ projectId }: { projectId: string }) {
           </div>
           {(Object.keys(groups) as QueueTab[]).map((key) => (
             <TabsContent key={key} value={key} className="mt-3 max-h-[32rem] overflow-y-auto px-2 pb-2">
-              <QueueList items={groups[key]} tab={key} selectedDprId={selectedDprId} onSelect={setSelectedDprId} locale={locale} t={t} />
+              <ReportQueue
+                items={groups[key]}
+                tab={key}
+                label={tabLabels[key]}
+                selectedDprId={selectedDprId}
+                onSelect={setSelectedDprId}
+                locale={locale}
+                t={t}
+              />
             </TabsContent>
           ))}
         </Tabs>
@@ -124,9 +133,11 @@ function TabCount({ value }: { value: number }) {
   );
 }
 
-function QueueList({
+/** One status group of the review queue, on the shared `QueueList` (listbox, keyboard selection). */
+function ReportQueue({
   items,
   tab,
+  label,
   selectedDprId,
   onSelect,
   locale,
@@ -134,6 +145,7 @@ function QueueList({
 }: {
   items: DailyProgressReportResponse[];
   tab: QueueTab;
+  label: string;
   selectedDprId: string | null;
   onSelect: (id: string) => void;
   locale: 'en';
@@ -149,46 +161,16 @@ function QueueList({
   }
 
   return (
-    <ul className="space-y-1">
-      {items.map((dpr) => (
-        <QueueRow key={dpr.id} dpr={dpr} selected={dpr.id === selectedDprId} onSelect={() => onSelect(dpr.id)} locale={locale} />
-      ))}
-    </ul>
-  );
-}
-
-function QueueRow({
-  dpr,
-  selected,
-  onSelect,
-  locale,
-}: {
-  dpr: DailyProgressReportResponse;
-  selected: boolean;
-  onSelect: () => void;
-  locale: 'en';
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected ? 'true' : undefined}
-        className={`flex w-full items-start gap-2.5 rounded-panel border px-3 py-2.5 text-start transition-colors ${
-          selected ? 'border-brand-accent-strong bg-brand-accent' : 'border-transparent hover:bg-surface-subtle'
-        }`}
-      >
-        <Avatar name={dpr.preparedByName ?? dpr.preparedBy} size="sm" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-body font-medium text-foreground">{dpr.preparedByName ?? dpr.preparedBy}</p>
-            <span className="shrink-0 text-caption text-disabled-foreground">{formatDate(dpr.reportDate, locale)}</span>
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5">
-            <DprStatusBadge status={dpr.status} />
-          </div>
-        </div>
-      </button>
-    </li>
+    <QueueList
+      label={label}
+      selectedId={selectedDprId}
+      onSelect={onSelect}
+      items={items.map((dpr) => ({
+        id: dpr.id,
+        title: formatDate(dpr.reportDate, locale) ?? dpr.reportDate,
+        meta: joinQueueMeta([dpr.preparedByName ?? dpr.preparedBy]),
+        trailing: <DprStatusBadge status={dpr.status} />,
+      }))}
+    />
   );
 }

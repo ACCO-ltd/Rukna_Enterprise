@@ -14,6 +14,11 @@ export interface WorkspaceSubNavItem {
    * label; omitted entirely — never "0" — when absent or zero.
    */
   count?: number;
+  /**
+   * The link's accessible name when a count is shown, e.g. "Review, 3 waiting" — the bare badge
+   * would otherwise read as "Review 3". Translated by the caller.
+   */
+  countLabel?: string;
 }
 
 // Quiet pills (ADR-038 amendment 2026-09-28). Inactive views are plain muted text; the active
@@ -61,17 +66,19 @@ export function WorkspaceSubNav({
     >
       {items.map((item) => {
         const active = item.value === current;
+        const showCount = Boolean(item.count && item.count > 0);
         return (
           <Link
             key={item.value}
             href={item.href}
             aria-current={active ? 'page' : undefined}
+            aria-label={showCount && item.countLabel ? item.countLabel : undefined}
             className={cn(ITEM_BASE_CLASS, active ? ITEM_ACTIVE_CLASS : ITEM_INACTIVE_CLASS)}
           >
             {item.label}
-            {item.count && item.count > 0 ? (
+            {showCount ? (
               <span
-                data-testid="sub-nav-count"
+                aria-hidden={item.countLabel ? true : undefined}
                 className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-ink px-1.5 text-micro font-semibold tabular-nums text-brand-on-primary"
               >
                 {item.count}

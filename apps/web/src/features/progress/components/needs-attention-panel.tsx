@@ -5,7 +5,8 @@ import { AlertCircle, ChevronRight } from 'lucide-react';
 
 import { useBoqLeaves } from '../hooks/use-boq-leaves';
 import { useDprs, useProjectRollup, useWorkPackages } from '../hooks/use-progress';
-import type { ProgressView } from '../domain/progress-views';
+import { canSeeProgressView, type ProgressView } from '../domain/progress-views';
+import { useProgressAccess } from '../hooks/use-progress-access';
 import { RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
 
 interface AttentionItem {
@@ -43,6 +44,7 @@ export function NeedsAttentionPanel({
   const rollup = useProjectRollup(projectId);
   const workPackages = useWorkPackages(projectId);
   const leaves = useBoqLeaves(projectId);
+  const access = useProgressAccess();
 
   const items: AttentionItem[] = [];
 
@@ -116,13 +118,9 @@ export function NeedsAttentionPanel({
         </RefCardBody>
       ) : (
         <ul className="divide-y divide-border">
-          {items.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => onGoTo(item.goTo)}
-                className="flex w-full items-start gap-3 px-5 py-3 text-start transition-colors hover:bg-surface-subtle focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary"
-              >
+          {items.map((item) => {
+            const body = (
+              <>
                 <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning-subtle text-caption font-bold tabular-nums text-warning">
                   {item.count}
                 </span>
@@ -130,10 +128,27 @@ export function NeedsAttentionPanel({
                   <span className="block text-body font-medium text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-caption text-muted-foreground">{item.hint}</span>
                 </span>
-                <ChevronRight size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-disabled-foreground rtl:rotate-180" />
-              </button>
-            </li>
-          ))}
+              </>
+            );
+            // A link only when the reader can open the view it goes to — the same rule the
+            // sub-navigation uses. Otherwise the item is information, not a dead end.
+            return (
+              <li key={item.id}>
+                {canSeeProgressView(item.goTo, access) ? (
+                  <button
+                    type="button"
+                    onClick={() => onGoTo(item.goTo)}
+                    className="flex w-full items-start gap-3 px-5 py-3 text-start transition-colors hover:bg-surface-subtle focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary"
+                  >
+                    {body}
+                    <ChevronRight size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-disabled-foreground rtl:rotate-180" />
+                  </button>
+                ) : (
+                  <div className="flex w-full items-start gap-3 px-5 py-3">{body}</div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </RefCard>

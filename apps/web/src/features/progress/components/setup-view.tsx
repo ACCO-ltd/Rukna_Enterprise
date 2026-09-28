@@ -98,8 +98,13 @@ export function SetupView({ projectId }: { projectId: string }) {
   }
 
   const facts = setup.facts;
+  // The step is done only when nothing in it is left: at least one measurable package, every
+  // measurable package allocated, and the server's weights flag true.
   const workPackagesDone = Boolean(
-    facts && facts.packageCount > 0 && facts.allPackagesAllocated && facts.weightsComplete,
+    facts &&
+      facts.measurablePackageCount > 0 &&
+      facts.unallocatedPackageCodes.length === 0 &&
+      facts.weightsComplete,
   );
   const governing = baseline.data ?? null;
   const milestoneList = milestones.data ?? [];
@@ -112,7 +117,6 @@ export function SetupView({ projectId }: { projectId: string }) {
 
   const packageCount = rollup.data.packages.length;
   const weightsPercent = Math.round(Number(rollup.data.weightsTotal) * 100);
-  const unallocatedPackages = rollup.data.packages.filter((p) => !p.scheduleOnly && p.leafCount === 0).length;
 
   // ── Step 1 summary ─────────────────────────────────────────────────────────
   const boqSummary = version
@@ -154,7 +158,10 @@ export function SetupView({ projectId }: { projectId: string }) {
     verified: milestoneList.filter((m) => m.status === 'VERIFIED').length,
   });
 
-  const wpGap = facts && facts.packageCount > 0 ? (unallocatedPackages > 0 ? 'allocation' : 'weights') : null;
+  // The work-packages step speaks to the one gap the setup rules found — never a guess from the
+  // packages' own figures, so the message always matches what blocks the step.
+  const wpGap = setup.gap === 'allocation' || setup.gap === 'weights' ? setup.gap : null;
+  const hasMeasurable = (facts?.measurablePackageCount ?? 0) > 0;
 
   return (
     <div className="space-y-4">
@@ -184,8 +191,13 @@ export function SetupView({ projectId }: { projectId: string }) {
         waitsFor={t('setupView.workPackages.waitsFor')}
         doneAction={{ kind: 'edit' }}
       >
-        {states.workPackages === 'current' && packageCount === 0 ? (
+        {states.workPackages === 'current' && !hasMeasurable ? (
           <div className="space-y-3">
+            {packageCount > 0 ? (
+              <p className="max-w-prose text-body-sm text-foreground">
+                {t('setupView.workPackages.scheduleOnlyNote')}
+              </p>
+            ) : null}
             <h4 className="text-body-sm font-semibold text-foreground">
               {t('setupView.workPackages.startFromBoq')}
             </h4>
@@ -204,7 +216,10 @@ export function SetupView({ projectId }: { projectId: string }) {
             {states.workPackages === 'current' && wpGap ? (
               <p className="max-w-prose text-body-sm text-foreground">
                 {wpGap === 'allocation'
-                  ? t('setupView.workPackages.gapAllocation', { count: unallocatedPackages })
+                  ? t('setupView.workPackages.gapAllocation', {
+                      codes: facts?.unallocatedPackageCodes.join(', ') ?? '',
+                      count: facts?.unallocatedPackageCodes.length ?? 0,
+                    })
                   : t('setupView.workPackages.gapWeights', { total: weightsPercent })}
               </p>
             ) : null}

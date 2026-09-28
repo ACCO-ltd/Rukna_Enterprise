@@ -20,16 +20,33 @@ vi.mock('../hooks/use-progress-setup', () => ({ useProgressSetup: mocks.useProgr
 
 import { ProgressLanding, ProgressShell, ProgressViewGate } from './progress-shell';
 
-const setupComplete = { isPending: false, isError: false, facts: null, gap: null };
+const FACTS = {
+  hasBoqBaseline: true,
+  packageCount: 2,
+  measurablePackageCount: 2,
+  unallocatedPackageCodes: [] as string[],
+  weightsComplete: false,
+  weightsPercent: 85,
+};
+const setupComplete = { isPending: false, isError: false, facts: { ...FACTS, weightsComplete: true }, gap: null };
 const setupMissingPackages = { isPending: false, isError: false, facts: null, gap: 'workPackages' };
+const setupWeightsShort = { isPending: false, isError: false, facts: FACTS, gap: 'weights' };
+const setupUnallocated = {
+  isPending: false,
+  isError: false,
+  facts: { ...FACTS, unallocatedPackageCodes: ['WP-07'] },
+  gap: 'allocation',
+};
 
 beforeEach(() => {
   mocks.replace.mockReset();
   mocks.useDprs.mockReturnValue({
     data: [
-      { id: 'd1', status: 'SUBMITTED' },
-      { id: 'd2', status: 'SUBMITTED' },
-      { id: 'd3', status: 'APPROVED' },
+      { id: 'd1', status: 'SUBMITTED', preparedBy: 'someone' },
+      { id: 'd2', status: 'SUBMITTED', preparedBy: 'someone' },
+      // The viewer's own submitted report is not theirs to review, so it is not counted.
+      { id: 'd4', status: 'SUBMITTED', preparedBy: 'test-user' },
+      { id: 'd3', status: 'APPROVED', preparedBy: 'someone' },
     ],
   });
   mocks.useProgressSetup.mockReturnValue(setupComplete);
@@ -52,7 +69,7 @@ describe('ProgressShell — views by permission', () => {
       '/projects/p1/progress/performance',
       '/projects/p1/progress/setup',
     ]);
-    expect(screen.getByRole('link', { name: 'Review 2' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review, 2 waiting' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Today' })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -82,6 +99,20 @@ describe('ProgressShell — views by permission', () => {
 });
 
 describe('ProgressLanding', () => {
+  it('keeps a recording manager on Today when only weights are short', async () => {
+    mocks.useProgressSetup.mockReturnValue(setupWeightsShort);
+    renderWithProviders(<ProgressLanding projectId="p1" />, {
+      permissions: ['record:progress', 'approve:progress', 'manage:project'],
+    });
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/projects/p1/progress/today'));
+  });
+
+  it('sends a manager who does not record to setup for a soft gap', async () => {
+    mocks.useProgressSetup.mockReturnValue(setupWeightsShort);
+    renderWithProviders(<ProgressLanding projectId="p1" />, { permissions: ['manage:project'] });
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/projects/p1/progress/setup'));
+  });
+
   it('sends a setup manager to Plan & setup while setup is incomplete', async () => {
     mocks.useProgressSetup.mockReturnValue(setupMissingPackages);
     renderWithProviders(<ProgressLanding projectId="p1" />, {
@@ -159,6 +190,63 @@ describe('ProgressViewGate', () => {
       { permissions: ['manage:project'] },
     );
     expect(screen.getByText('setup body')).toBeInTheDocument();
+  });
+
+  it('does not block Today or Review for a soft gap', () => {
+    mocks.useProgressSetup.mockReturnValue(setupUnallocated);
+    renderWithProviders(
+      <>
+        <ProgressViewGate projectId="p1" view="today">
+          <p>today body</p>
+        </ProgressViewGate>
+        <ProgressViewGate projectId="p1" view="review">
+          <p>review body</p>
+        </ProgressViewGate>
+      </>,
+      { permissions: ['record:progress', 'approve:progress'] },
+    );
+    expect(screen.getByText('today body')).toBeInTheDocument();
+    expect(screen.getByText('review body')).toBeInTheDocument();
+    expect(screen.queryByText(/provisional/)).not.toBeInTheDocument();
+  });
+
+  it('shows Performance with one provisional notice for a soft gap, and Continue setup for a manager', () => {
+    mocks.useProgressSetup.mockReturnValue(setupWeightsShort);
+    renderWithProviders(
+      <ProgressViewGate projectId="p1" view="performance">
+        <p>performance body</p>
+      </ProgressViewGate>,
+      { permissions: ['manage:project'] },
+    );
+    expect(screen.getByText('performance body')).toBeInTheDocument();
+    expect(
+      screen.getByText('Weights total 85% — performance figures are provisional until they reach 100%.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Continue setup' })).toBeInTheDocument();
+  });
+
+  it('names the unallocated package in the Performance notice, without an action for non-managers', () => {
+    mocks.useProgressSetup.mockReturnValue(setupUnallocated);
+    renderWithProviders(
+      <ProgressViewGate projectId="p1" view="performance">
+        <p>performance body</p>
+      </ProgressViewGate>,
+      { permissions: ['record:progress'] },
+    );
+    expect(screen.getByText(/WP-07 has no BOQ items/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Continue setup' })).not.toBeInTheDocument();
+  });
+
+  it('hard-gates when every package is schedule-only, and says so', () => {
+    mocks.useProgressSetup.mockReturnValue({ isPending: false, isError: false, facts: null, gap: 'scheduleOnly' });
+    renderWithProviders(
+      <ProgressViewGate projectId="p1" view="today">
+        <p>today body</p>
+      </ProgressViewGate>,
+      { permissions: ['record:progress', 'manage:project'] },
+    );
+    expect(screen.queryByText('today body')).not.toBeInTheDocument();
+    expect(screen.getByText(/Every work package is a schedule-only phase/)).toBeInTheDocument();
   });
 
   it('renders the view once setup is complete', () => {

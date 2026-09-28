@@ -40,6 +40,7 @@ import {
   listDprs,
   listWorkPackages,
   rebaselineProgramme,
+  removeMeasurement,
   returnDpr,
   saveDeliveryPlan,
   setProgressTargets,
@@ -229,6 +230,20 @@ export function useAddMeasurement(dprId: string) {
     mutationFn: (body: AddMeasurementBody) => addMeasurement(dprId, body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+/** Remove a measurement from an editable report. The report and the roll-up both move. */
+export function useRemoveMeasurement(projectId: string, dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (measurementId: string) => removeMeasurement(dprId, measurementId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
+      ]);
     },
   });
 }
