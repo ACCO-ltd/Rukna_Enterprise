@@ -69,6 +69,32 @@ snapshot lines or a verified-as-of derivation this scope does not store).
 programmes. Activity-date → planned-% derivation (feeding schedule variance from activities rather
 than the target curve) is a possible later refinement.
 
+**Amendment 2026-09-28 — Progress redesign backend (owner-approved).**
+
+1. *Milestone ↔ work package link and readiness.* A `ProgrammeMilestone` names the work packages that
+   make up its stage (`ProgrammeMilestoneWorkPackage`, unique per pair, removed with either side;
+   both on the same project; a schedule-only phase cannot be linked because it has no measurable
+   scope). The milestone read model carries each linked package's verified physical % — computed by
+   the roll-up's own pure helpers (`leafPercentComplete`, `progressValueByLeaf`,
+   `packagePercentComplete`), so it always equals the package's `percentComplete` in
+   `GET …/progress/rollup` — and a derived **`readyToVerify`** = status PLANNED ∧ ≥1 package linked ∧
+   every linked package ≥ 100%. Readiness is a prompt, never a gate: verifying stays a deliberate
+   human act (the milestone is billing evidence, ADR-023 CONST-COM-011), and a milestone with no
+   packages linked is simply never "ready". A VERIFIED milestone's package set is frozen (409). The
+   package % is the rounded whole-number figure the roll-up already reports, so a leaf at 99.5%
+   reads 100 — the same rounding the roll-up has always used.
+2. *Over-quantity at submit.* CONST-PROG-002/009 (cumulative verified ≤ BOQ measurable quantity) is
+   now checked at DPR **submit** as well as approve; approve stays authoritative because other
+   reports may be approved in between. Both raise `DPR_EXCEEDS_BOQ_QUANTITY` with the offending lines.
+3. *Re-baseline provenance.* A re-baseline must cite a variation that is **adopted**
+   (`CLIENT_APPROVED`) on this project's contract; a draft, rejected or reversed (`WITHDRAWN`)
+   variation cannot justify moving the frozen plan.
+4. *Money visibility.* The physical-vs-financial and collection-vs-progress signals, and milestone
+   release amounts, follow the BOQ money tiers (ADR-029 §8 A-2): amounts are null for a caller
+   without the tier (PM / Site Engineer are money-blind); ratios and status stay.
+5. *Allocation race.* A concurrent allocation of the same BOQ leaf (the `@@unique([boqNodeId])`
+   backstop, CONST-PROG-012) is a 409 `BOQ_ITEM_ALREADY_ALLOCATED`, not a 500.
+
 Engineering shape owned by Abdulsalam; the domain rules are gated on **Eng Ahmed Shirie**. This
 ADR **extends** ADR-002's `CONST-PROG-001/002/003` (it must not silently change them) and depends
 on **PlatformFile (ADR-014)**, which is unbuilt and is a hard prerequisite. It refines the

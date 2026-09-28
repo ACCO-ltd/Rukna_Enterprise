@@ -61,7 +61,9 @@ so the list renders without an extra call. Use `/files/:id/download` only when t
 
 Lifecycle: `DRAFT → SUBMITTED → APPROVED` (or `→ RETURNED` for revision).
 Measurements are editable **only while DRAFT**. On approve, measurements become **verified
-progress** and the report is immutable. Approve enforces cumulative ≤ BOQ scope (CONST-PROG-002/009).
+progress** and the report is immutable. Submit **and** approve enforce cumulative ≤ BOQ scope
+(CONST-PROG-002/009) → 400 `DPR_EXCEEDS_BOQ_QUANTITY` with `details.lines[]` (see
+[api-reference §6.35](api-reference.md#635-progress--programme--progress-redesign-backend-2026-09-28)).
 
 **Report-scoped (`/progress/reports/...`):**
 
@@ -117,8 +119,10 @@ Compares built % against cost consumed % — an early-warning, **not** EVM.
 ```ts
 {
   projectId, physicalPercent,           // number
-  actualCost, forecastCost,             // string (Decimal)
-  costConsumedPercent,                  // number | null (null = no forecast cost yet)
+  actualCost,                           // string | null (null = money hidden from this caller)
+  budgetTotal,                          // string | null (null = no baselined budget, or money hidden)
+  moneyVisible,                         // boolean — false for money-blind roles (PM / Site Engineer)
+  costConsumedPercent,                  // number | null (null = no baselined budget yet)
   divergence,                           // number | null: physical − cost (positive = built ahead of spend)
   status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA',
   weightsComplete                       // boolean (from the roll-up)
