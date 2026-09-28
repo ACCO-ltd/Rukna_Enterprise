@@ -22,6 +22,57 @@
     "continueSetup": "Continue setup",
     "askManager": "The project manager finishes this in Plan & setup."
   },
+  "setupView": {
+    "intro": "Set up how this project's progress is measured. Daily reports and performance start once work packages and milestones exist.",
+    "boq": {
+      "title": "BOQ baselined",
+      "description": "Progress is measured against the BOQ's items, so the BOQ needs a baselined version first. Baseline it on the BOQ tab.",
+      "open": "Open BOQ",
+      "summary": "Version {version} · {items, plural, one {# item} other {# items}} in {sections, plural, one {# section} other {# sections}}",
+      "summaryBaselined": "Version {version} · {items, plural, one {# item} other {# items}} in {sections, plural, one {# section} other {# sections}} · baselined {date}"
+    },
+    "workPackages": {
+      "title": "Work packages",
+      "description": "Split the BOQ into the packages progress is tracked by. Each package gets BOQ items and a share of the overall weight.",
+      "startFromBoq": "Start from the BOQ",
+      "startFromBoqBody": "Proposes one work package for each BOQ section that still has unallocated items, weighted by that section's share of the BOQ value. You can rename packages, move items between them or leave some out before anything is created.",
+      "addManually": "Add a package manually",
+      "waitsFor": "a baselined BOQ",
+      "gapAllocation": "{count, plural, one {# work package has} other {# work packages have}} no BOQ items yet, so {count, plural, one {its} other {their}} progress can't be measured. Allocate items to {count, plural, one {it} other {them}}.",
+      "gapWeights": "Package weights total {total}%. They need to add up to 100% for overall progress to be right — suggest them from BOQ values, or set them per package.",
+      "summary": "{packages, plural, one {# package} other {# packages}} · weights total {weights}% · {allocation}",
+      "allAllocated": "all {count} BOQ items allocated",
+      "someAllocated": "{allocated} of {count} BOQ items allocated"
+    },
+    "baseline": {
+      "title": "Planned baseline",
+      "description": "Lock a planned progress curve so Performance compares actual progress against a real plan instead of an estimate.",
+      "waitsFor": "work packages",
+      "summary": "Baselined {date} · {start} → {end} · {rebaselines, plural, =0 {no rebaselines} one {# rebaseline} other {# rebaselines}}"
+    },
+    "milestones": {
+      "title": "Milestones",
+      "description": "The delivery milestones the programme is judged by. A milestone can release a contract payment installment once it is verified.",
+      "waitsFor": "work packages",
+      "summary": "{count, plural, one {# milestone} other {# milestones}} · {verified} verified",
+      "col": {
+        "name": "Milestone",
+        "planned": "Planned date",
+        "releases": "Releases",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "releaseLine": "{percent} · {name}",
+      "releasesNone": "No installment",
+      "empty": "No milestones yet."
+    },
+    "schedule": {
+      "title": "Schedule",
+      "description": "Master schedule, work-package dates and activities.",
+      "show": "Show schedule",
+      "hide": "Hide schedule"
+    }
+  },
   "review": {
     "title": "Reports",
     "subtitle": "Daily reports waiting for your review.",
@@ -386,11 +437,11 @@
       "pointCount": "{count, plural, one {# frozen point} other {# frozen points}}",
       "unpublished": "Unpublished changes",
       "unpublishedHint": "The working curve differs from the governing baseline. These staged changes do not affect variance until you re-baseline.",
-      "approve": "Approve baseline",
-      "approveNeedsCurve": "Enter a working curve before approving a baseline.",
-      "approved": "Baseline approved.",
-      "approveFailed": "Could not approve the baseline.",
-      "rebaseline": "Re-baseline",
+      "approve": "Lock baseline",
+      "approveNeedsCurve": "Save a planned curve first, then lock it.",
+      "approved": "Baseline locked.",
+      "approveFailed": "Could not lock the baseline.",
+      "rebaseline": "Rebaseline…",
       "rebaselineTitle": "Re-baseline the programme",
       "rebaselineSubtitle": "Snapshot the current working curve as a new governing baseline. This supersedes the previous version and must cite a Variation.",
       "variationLabel": "Variation",
@@ -402,7 +453,8 @@
       "rebaselined": "Programme re-baselined.",
       "rebaselineFailed": "Could not re-baseline the programme.",
       "noContract": "This project has no main contract yet, so there are no variations to cite. A re-baseline needs a variation.",
-      "noVariations": "This contract has no variations to cite. Raise a variation before re-baselining."
+      "noVariations": "This contract has no variations to cite. Raise a variation before re-baselining.",
+      "lockHint": "Locking freezes this curve as the plan progress is measured against. Changing it later needs a rebaseline that cites a variation."
     },
     "generateLinear": "Generate monthly (linear)",
     "deriveMilestones": "Derive from milestones",
@@ -411,7 +463,7 @@
     "colPercent": "Cumulative %",
     "addPoint": "Add point",
     "remove": "Remove point",
-    "save": "Save baseline",
+    "save": "Save planned curve",
     "saved": "Baseline saved.",
     "empty": "Add points, or start from a generator above.",
     "preview": "Preview",

@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { MilestoneReleaseLine, ProgrammeMilestoneResponse } from '@erp/types';
 import {
   Alert,
+  Button,
   DatePicker,
   Dialog,
   DialogContent,
@@ -221,7 +222,11 @@ function ReleasesCell({
   );
 }
 
-function CreateMilestoneForm({ projectId }: { projectId: string }) {
+/**
+ * Add one milestone (code, name, planned date). `primary` makes its submit the screen's one
+ * primary — Plan & setup passes it while the Milestones step is the current step.
+ */
+export function CreateMilestoneForm({ projectId, primary = true }: { projectId: string; primary?: boolean }) {
   const t = useTranslations('progress');
   const create = useCreateMilestone(projectId);
 
@@ -274,15 +279,15 @@ function CreateMilestoneForm({ projectId }: { projectId: string }) {
         </FormField>
       </div>
       <div className="mt-3">
-        <RefButton type="submit" disabled={create.isPending}>
+        <Button type="submit" variant={primary ? 'default' : 'outline'} disabled={create.isPending}>
           {t('programme.form.submit')}
-        </RefButton>
+        </Button>
       </div>
     </form>
   );
 }
 
-function VerifyMilestoneDialog({
+export function VerifyMilestoneDialog({
   projectId,
   milestone,
   onDismiss,
@@ -342,17 +347,17 @@ function VerifyMilestoneDialog({
         </div>
 
         <DialogFooter>
-          <RefButton
+          <Button
             onClick={() =>
               verify.mutate({ milestoneId: milestone.id, actualDate }, { onSuccess: onDismiss })
             }
             disabled={verify.isPending || !actualDate}
           >
             {t('programme.actions.verify')}
-          </RefButton>
-          <RefButton variant="outline" onClick={onDismiss} disabled={verify.isPending}>
+          </Button>
+          <Button variant="outline" onClick={onDismiss} disabled={verify.isPending}>
             {t('programme.actions.cancel')}
-          </RefButton>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

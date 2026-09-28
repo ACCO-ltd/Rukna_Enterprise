@@ -1,11 +1,11 @@
 import { ProgressViewGate } from '@/features/progress/components/progress-shell';
-import { PlanView } from '@/features/progress/components/programme-section';
+import { SetupView } from '@/features/progress/components/setup-view';
 
 export default async function ProgressSetupPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   return (
     <ProgressViewGate projectId={id} view="setup">
-      <PlanView projectId={id} />
+      <SetupView projectId={id} />
     </ProgressViewGate>
   );
 }

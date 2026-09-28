@@ -72,14 +72,16 @@ beforeEach(() => {
 });
 
 describe('BaselineSection — governing baseline', () => {
-  it('shows "Approve baseline" (gated manage:project) and no re-baseline when no baseline exists', () => {
+  it('shows "Lock baseline" as the primary (gated manage:project) and no rebaseline when no baseline exists', () => {
     renderWithProviders(<BaselineSection projectId="proj-1" />, {
       permissions: ['manage:project'],
       withToast: true,
     });
 
-    expect(screen.getByRole('button', { name: 'Approve baseline' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Re-baseline' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Lock baseline' })).toBeEnabled();
+    // Saving becomes secondary once there is a saved curve to lock.
+    expect(screen.getByRole('button', { name: 'Save planned curve' })).toHaveClass('bg-surface');
+    expect(screen.queryByRole('button', { name: 'Rebaseline…' })).not.toBeInTheDocument();
     // The "no governing baseline yet" copy is shown.
     expect(screen.getByText(/No baseline is governing yet/i)).toBeInTheDocument();
   });
@@ -90,17 +92,20 @@ describe('BaselineSection — governing baseline', () => {
       withToast: true,
     });
 
-    expect(screen.queryByRole('button', { name: 'Approve baseline' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Lock baseline' })).not.toBeInTheDocument();
   });
 
-  it('disables approve until a working curve is entered', () => {
+  it('does not offer Lock until a working curve is saved, and says why in words', () => {
     mocks.useProgressTargets.mockReturnValue(loaded([]));
     renderWithProviders(<BaselineSection projectId="proj-1" />, {
       permissions: ['manage:project'],
       withToast: true,
     });
 
-    expect(screen.getByRole('button', { name: 'Approve baseline' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Lock baseline' })).not.toBeInTheDocument();
+    expect(screen.getByText('Save a planned curve first, then lock it.')).toBeInTheDocument();
+    // Saving the curve is the one primary until then.
+    expect(screen.getByRole('button', { name: 'Save planned curve' })).toHaveClass('bg-brand-ink');
   });
 
   it('shows the governing-baseline card and the re-baseline button (gated approve:project) once one exists', () => {
@@ -112,9 +117,9 @@ describe('BaselineSection — governing baseline', () => {
 
     expect(screen.getByText('Baseline v1')).toBeInTheDocument();
     expect(screen.getByText(/Approved by Amina PM/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Re-baseline' })).toBeInTheDocument();
-    // The initial approve is gone once a baseline governs.
-    expect(screen.queryByRole('button', { name: 'Approve baseline' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Rebaseline…' })).toBeInTheDocument();
+    // The initial lock is gone once a baseline governs.
+    expect(screen.queryByRole('button', { name: 'Lock baseline' })).not.toBeInTheDocument();
   });
 
   it('hides re-baseline from a user without approve:project even when a baseline exists', () => {
@@ -125,7 +130,7 @@ describe('BaselineSection — governing baseline', () => {
     });
 
     expect(screen.getByText('Baseline v1')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Re-baseline' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rebaseline…' })).not.toBeInTheDocument();
   });
 
   it('flags unpublished changes when the working curve differs from the frozen baseline', () => {
