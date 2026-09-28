@@ -856,6 +856,21 @@ export class ContractService {
       );
     }
 
+    // D3 (commercial redesign, owner decision 2026-09-28): a contract goes live only once the date the
+    // paper contract was signed is on record. `recordSigned` captures it up front; the legacy
+    // create → activate path (and re-activation after a reopen) must back-fill it first through
+    // `PATCH /contracts/:id/signed-date`, which is allowed on a DRAFT contract.
+    if (command === 'activate' && !contract.signedDate) {
+      throw new BadRequestException({
+        message:
+          `Record the date contract ${contract.contractNumber} was signed before activating it ` +
+          '(PATCH /contracts/:id/signed-date).',
+        code: 'CONTRACT_SIGNED_DATE_REQUIRED',
+        // The global exception filter surfaces `errorCode` as the envelope's `error.code`.
+        errorCode: 'CONTRACT_SIGNED_DATE_REQUIRED',
+      });
+    }
+
     // ADR-023 CONST-COM-012: activation must not let a MILESTONE contract go live with a payment
     // schedule that does not reconcile to 100% — including the previously-open gap of ZERO
     // installments (an unset schedule, never populated via create() or replacePaymentPlan()).

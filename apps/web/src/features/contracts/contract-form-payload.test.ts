@@ -331,3 +331,22 @@ describe('toCreateContractPayload — payment plan', () => {
     expect(payload).not.toHaveProperty('paymentPlan');
   });
 });
+
+describe('buildPaymentPlan — explicit Billed on (Record signed contract)', () => {
+  it('maps Advance / Milestone / Date to ADVANCE / MILESTONE / TIME_BASED', () => {
+    const plan = buildPaymentPlan([
+      { name: 'Advance', percentage: '40', isAdvance: false, dueDate: '', billedOn: 'ADVANCE' },
+      { name: 'Structure', percentage: '30', isAdvance: false, dueDate: '2026-11-01', billedOn: 'MILESTONE' },
+      { name: 'Retainer', percentage: '30', isAdvance: false, dueDate: '2026-12-01', billedOn: 'DATE' },
+    ]);
+    expect(plan.map((row) => row.triggerType)).toEqual(['ADVANCE', 'MILESTONE', 'TIME_BASED']);
+    // A date travels only on a Date stage: a milestone stage bills on its verified milestone.
+    expect(plan[1]).not.toHaveProperty('dueDate');
+    expect(plan[2]).toMatchObject({ dueDate: '2026-12-01', percentage: 0.3 });
+  });
+
+  it('keeps the older isAdvance classification when Billed on is not given', () => {
+    const plan = buildPaymentPlan([{ name: 'Advance', percentage: '100', isAdvance: true, dueDate: '2026-10-01' }]);
+    expect(plan[0]).toMatchObject({ triggerType: 'ADVANCE', dueDate: '2026-10-01' });
+  });
+});

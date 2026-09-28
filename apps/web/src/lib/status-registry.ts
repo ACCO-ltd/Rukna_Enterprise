@@ -254,13 +254,28 @@ export const STATUS_REGISTRY = {
     ACTION_REQUIRED: 'attention',
     SETTLED: 'success',
   },
-  /** ADR-023 per-installment billing status (`PaymentInstallmentBillStatus`). NEXT is the one to bill. */
+  /**
+   * ADR-023 per-installment billing status (`PaymentInstallmentBillStatus`), plus two display
+   * states the Commercial tab derives from the same read model (never from its own rules):
+   * READY = NEXT with no `billingBlocker` and no invoice yet ("Ready to bill"); DRAFT = the stage's
+   * invoice is prepared but not issued. A blocked NEXT stage reads as UPCOMING plus its reason.
+   */
   paymentInstallment: {
     UPCOMING: 'neutral',
-    NEXT: 'attention',
+    NEXT: 'neutral',
+    READY: 'progress',
+    DRAFT: 'neutral',
     BILLED: 'progress',
     PARTIALLY_PAID: 'progress',
     PAID: 'success',
+  },
+  /** A row of the Commercial Billing "To do" list (`CommercialTodoKind`). */
+  commercialTodo: {
+    OVERDUE_INVOICE: 'danger',
+    READY_TO_INVOICE: 'progress',
+    DRAFT_INVOICE: 'neutral',
+    ISSUED_NOT_SENT: 'attention',
+    BLOCKED_STAGE: 'neutral',
   },
   /** The milestone journey card's user-facing state (`MilestoneUserState`, derived by the adapter). */
   milestoneJourney: {
@@ -291,6 +306,8 @@ export const STATUS_REGISTRY = {
     PAID: 'success',
     OVERDUE: 'danger',
     CANCELLED: 'historical',
+    /** Approved but not yet in the ledger (backend `AWAITING_POSTING`). */
+    AWAITING_POSTING: 'attention',
   },
   /** Whether an approved variation has been realised in billing (`VariationBillingState`). */
   variationBilling: {

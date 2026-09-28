@@ -22,6 +22,8 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { CommercialService } from '../application/commercial.service.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
+import { CommercialWorkspaceService } from '../application/commercial-workspace.service.js';
+import { PreparePackageDto } from './dto/prepare-package.dto.js';
 import { CollectionEventsService } from '../../../accounting/accounts-receivable/application/collection-events.service.js';
 import { CreditNoteService } from '../../../accounting/accounts-receivable/application/credit-note.service.js';
 import { IssuePackageDto } from './dto/issue-package.dto.js';
@@ -49,7 +51,107 @@ export class CommercialController {
     private readonly commercialBillingService: CommercialBillingService,
     private readonly collectionEventsService: CollectionEventsService,
     private readonly creditNoteService: CreditNoteService,
+    private readonly workspaceService: CommercialWorkspaceService,
   ) {}
+
+  // ─── Commercial tab redesign (2026-09-28) — read models ──────────────────────────
+
+  @Get('workspace')
+  @ApiOperation({ summary: 'Commercial workspace: bar facts, ranked To do, capabilities (redesign D5)' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  getWorkspace(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.workspaceService.getWorkspace(identity, projectId);
+  }
+
+  @Get('statement')
+  @ApiOperation({ summary: "Client statement for the project's contract, oldest first (redesign D6)" })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  getStatement(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.workspaceService.getStatement(identity, projectId);
+  }
+
+  @Get('installments/:installmentId/prepare-preview')
+  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
+  @ApiOperation({ summary: 'Prepare-invoice dialog preview: stage amount, variations, server tax rate' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })
+  @ApiResponse({ status: 400, description: 'STAGE_ALREADY_INVOICED' })
+  getPreparePreview(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('installmentId') installmentId: string,
+  ) {
+    return this.workspaceService.getPreparePreview(identity, projectId, installmentId);
+  }
+
+  @Get('invoices/:invoiceId')
+  @ApiOperation({ summary: 'The invoice as a document (issuer, bill-to, lines, lifecycle, capabilities)' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'invoiceId', description: 'Client invoice ID' })
+  getInvoiceDocument(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.workspaceService.getInvoiceDocument(identity, projectId, invoiceId);
+  }
+
+  // ─── Commercial tab redesign D1 — prepare / issue / delete ──────────────────────
+
+  @Post('installments/:installmentId/prepare-package')
+  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
+  @ApiOperation({
+    summary: 'Prepare a stage invoice package as DRAFTS (stage + selected variation lines); nothing is posted',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'CONTRACT_NOT_ACTIVE | MILESTONE_NOT_LINKED | MILESTONE_NOT_VERIFIED | STAGE_ALREADY_INVOICED | VARIATION_NOT_BILLABLE | INVALID_DUE_DATE',
+  })
+  preparePackage(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('installmentId') installmentId: string,
+    @Body() dto: PreparePackageDto,
+  ) {
+    return this.commercialBillingService.preparePackage(identity, projectId, installmentId, dto);
+  }
+
+  @Post('invoices/:invoiceId/issue')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
+  @ApiOperation({
+    summary: 'Issue a draft: approve + number + post it and every draft of its stage package in one transaction',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'invoiceId', description: 'Client invoice ID' })
+  @ApiResponse({ status: 400, description: 'INVOICE_CANCELLED, or the posting gate refused' })
+  issueInvoice(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.commercialBillingService.issueInvoice(identity, projectId, invoiceId);
+  }
+
+  @Delete('invoices/:invoiceId')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
+  @ApiOperation({
+    summary: 'Delete a draft: cancel it and its package drafts, releasing variation allocations',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'invoiceId', description: 'Client invoice ID' })
+  @ApiResponse({ status: 400, description: 'INVOICE_ALREADY_ISSUED | INVOICE_CANCELLED' })
+  deleteDraftInvoice(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.commercialBillingService.deleteDraftInvoice(identity, projectId, invoiceId);
+  }
 
   // Slice 7 — must be declared before ':projectId/commercial/:anything' catch-all routes
   @Get('overview')
@@ -147,7 +249,9 @@ export class CommercialController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
   @ApiOperation({
-    summary: 'Slice 4B: issue (approve + post) the billing package for a milestone installment atomically',
+    summary:
+      'DEPRECATED (redesign D1): use prepare-package + invoices/:invoiceId/issue. Issues the stage package atomically.',
+    deprecated: true,
   })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })

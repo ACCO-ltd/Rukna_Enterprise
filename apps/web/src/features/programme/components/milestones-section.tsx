@@ -219,7 +219,7 @@ function ReleasesCell({
           {/* The same ProgrammeMilestone is read from both domains (see research) — this only
               deep-links into where its billing side lives, never creates or copies anything. */}
           <Link
-            href={`/projects/${projectId}/commercial/contract-milestones`}
+            href={`/projects/${projectId}/commercial/contract`}
             className="text-caption font-medium text-brand-primary hover:underline"
           >
             {t('programme.releases.viewInCommercial')}

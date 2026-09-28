@@ -54,6 +54,12 @@ import {
 import type { CommercialContractValue } from '@erp/types';
 import { CollectionEventsService } from '../../../accounting/accounts-receivable/application/collection-events.service.js';
 import { installmentBillingBlocker } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
+import {
+  daysPastDue,
+  deriveExpectedDate,
+  deriveInvoiceState,
+  deriveReleasedBy,
+} from '../domain/commercial-workspace.policy.js';
 
 const ZERO = new Decimal(0);
 
@@ -88,9 +94,13 @@ function utcMidnight(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
-/** Whole UTC days from `dueDate` to `todayUtc`. Negative while the invoice is not yet due. */
+/**
+ * Whole UTC days from `dueDate` to `todayUtc`. Negative while the invoice is not yet due. Delegates to
+ * the one overdue rule (`daysPastDue`, commercial redesign D5) so billing, overview and the workspace
+ * can never count lateness differently.
+ */
 function daysBetweenUtc(todayUtc: number, dueDate: Date): number {
-  return Math.round((todayUtc - utcMidnight(dueDate)) / 86_400_000);
+  return daysPastDue(dueDate, new Date(todayUtc));
 }
 
 function agingBucket(daysLate: number): CommercialAgingBucket['bucket'] {
@@ -123,7 +133,7 @@ function emptyBillingPosition(): CommercialBillingPosition {
  * measured one. The two links are mutually exclusive by schema; a migration-loaded invoice has
  * neither, and says so rather than borrowing a provenance it does not have.
  */
-function invoiceSource(inv: {
+export function invoiceSource(inv: {
   sourceInstallmentId: string | null;
   sourceInstallment: { id: string; name: string; sortOrder: number } | null;
   sourceIpcId: string | null;
@@ -1026,6 +1036,12 @@ export class CommercialService {
         // The bank's own reference is what reconciles against a statement; fall back to the
         // free-text reference only when there is no bank one.
         reference: receipt.bankReference ?? receipt.reference ?? null,
+        // Customer receipts have no document-number column yet (it needs a migration) — null, never
+        // a borrowed number from another document.
+        receiptNumber: null,
+        depositAccountLabel: receipt.bankAccount
+          ? `${receipt.bankAccount.bankName} · ${receipt.bankAccount.currencyCode} ···${receipt.bankAccount.accountNumber.slice(-4)}`
+          : null,
         postingStatus: receipt.postingStatus as ArPostingStatus,
         allocations: mine.map((a) => ({
           id: a.id,
@@ -1088,7 +1104,7 @@ export class CommercialService {
    * not the current `contractValue`, so raising the current value via a variation (R6) never re-spreads
    * the schedule. Legacy contracts predate the split (M-4): a null base means "= contractValue".
    */
-  private async buildPaymentSchedule(
+  async buildPaymentSchedule(
     identity: RequestIdentity,
     contract: MainContract,
   ): Promise<{ schedule: CommercialPaymentSchedule; hasFocus: boolean }> {
@@ -1130,8 +1146,11 @@ export class CommercialService {
       }
     }
 
+    // A cancelled draft is not the stage's invoice (deleting a draft also releases its source tag).
     const byInstallment = new Map(
-      invoices.filter((inv) => inv.sourceInstallmentId).map((inv) => [inv.sourceInstallmentId, inv]),
+      invoices
+        .filter((inv) => inv.sourceInstallmentId && inv.documentStatus !== 'CANCELLED')
+        .map((inv) => [inv.sourceInstallmentId, inv]),
     );
     // T-6 — the schedule is frozen against the base value. Fall back to contractValue for a legacy
     // contract whose base was never set (M-4: never fail a legacy contract).
@@ -1167,6 +1186,12 @@ export class CommercialService {
       collected = collected.plus(paid);
 
       const isReady = inst.readyToBillAt != null;
+      // Commercial redesign D4/D5 — computed once here, never re-derived in the browser.
+      const releaseFacts = {
+        triggerType: inst.triggerType,
+        dueDate: inst.dueDate,
+        programmeMilestone: inst.programmeMilestone,
+      };
       return {
         id: inst.id,
         sortOrder: inst.sortOrder,
@@ -1197,6 +1222,13 @@ export class CommercialService {
               status: inst.programmeMilestone.status,
             }
           : null,
+        billingBlocker: inv
+          ? null
+          : installmentBillingBlocker({ ...inst, contractStatus: contract.status }),
+        expectedDate: deriveExpectedDate(releaseFacts),
+        releasedBy: deriveReleasedBy(releaseFacts),
+        invoiceId: inv?.id ?? null,
+        invoiceState: deriveInvoiceState(inv),
       };
     });
 
@@ -1621,12 +1653,21 @@ export class CommercialService {
           id: contract.id,
           contractNumber: contract.contractNumber,
           status: contract.status,
-          baseContractValue: new Decimal(
-            (contract.baseContractValue ?? contract.contractValue).toString(),
-          ).toFixed(2),
-          currentContractValue: new Decimal(contract.contractValue.toString()).toFixed(2),
+          // D5 — the contract value is the most sensitive figure on the page; withheld like the rest.
+          baseContractValue: mayViewFinancials
+            ? new Decimal((contract.baseContractValue ?? contract.contractValue).toString()).toFixed(2)
+            : null,
+          currentContractValue: mayViewFinancials
+            ? new Decimal(contract.contractValue.toString()).toFixed(2)
+            : null,
         }
-      : { id: null, contractNumber: null, status: null, baseContractValue: '0.00', currentContractValue: '0.00' };
+      : {
+          id: null,
+          contractNumber: null,
+          status: null,
+          baseContractValue: mayViewFinancials ? '0.00' : null,
+          currentContractValue: mayViewFinancials ? '0.00' : null,
+        };
 
     // ── Financial position ─────────────────────────────────────────────────────────
     let financialPosition: CommercialOverviewResponse['financialPosition'];
@@ -1643,9 +1684,9 @@ export class CommercialService {
     } else {
       const grossIssued = overviewData.invoices.reduce((s, i) => s.plus(i.totalAmount), ZERO);
       const outstanding = overviewData.invoices.reduce((s, i) => s.plus(i.outstandingAmount), ZERO);
+      // D5 — the one overdue rule (whole UTC days past due > 0, server clock), as billing uses.
       const overdue = overviewData.invoices.reduce((s, i) => {
-        if (!i.dueDate) return s;
-        if (utcMidnight(i.dueDate) >= todayUtcMs) return s;
+        if (!i.dueDate || daysPastDue(i.dueDate, today) <= 0) return s;
         return i.outstandingAmount.gt(ZERO) ? s.plus(i.outstandingAmount) : s;
       }, ZERO);
       financialPosition = {
@@ -1764,9 +1805,10 @@ export class CommercialService {
       const followUpAt = latestFollowUp?.occurredAt.toISOString() ?? null;
 
       const isOverdue =
-        inv.dueDate !== null &&
-        utcMidnight(inv.dueDate) < todayUtcMs &&
-        inv.outstandingAmount.gt(ZERO);
+        inv.dueDate !== null && daysPastDue(inv.dueDate, today) > 0 && inv.outstandingAmount.gt(ZERO);
+      // D5 — attention amounts are money: withheld without financial visibility.
+      const amt = (d: Decimal | null | undefined): string | null =>
+        mayViewFinancials && d ? d.toFixed(2) : null;
 
       const isMissedPromise =
         latestPromise !== null &&
@@ -1779,8 +1821,8 @@ export class CommercialService {
           invoiceId: inv.id,
           invoiceNumber: num,
           headline: 'Client dispute open',
-          amount: inv.outstandingAmount.toFixed(2),
-          disputedAmount: openDispute.disputedAmount?.toFixed(2) ?? undefined,
+          amount: amt(inv.outstandingAmount),
+          disputedAmount: openDispute.disputedAmount ? amt(openDispute.disputedAmount) : undefined,
           lastContactAt: followUpAt,
         });
       } else if (isMissedPromise) {
@@ -1789,10 +1831,10 @@ export class CommercialService {
           invoiceId: inv.id,
           invoiceNumber: num,
           headline: 'Promise missed',
-          amount: inv.outstandingAmount.toFixed(2),
+          amount: amt(inv.outstandingAmount),
           lastContactAt: followUpAt,
           promisedDate: latestPromise!.promisedDate.toISOString().slice(0, 10),
-          promisedAmount: latestPromise!.promisedAmount?.toFixed(2) ?? null,
+          promisedAmount: amt(latestPromise!.promisedAmount),
         });
       } else if (inv.deliveryCount === 0) {
         group1.push({
@@ -1800,16 +1842,16 @@ export class CommercialService {
           invoiceId: inv.id,
           invoiceNumber: num,
           headline: 'Issued but not sent to client',
-          amount: inv.outstandingAmount.toFixed(2),
+          amount: amt(inv.outstandingAmount),
         });
       } else if (isOverdue) {
-        const daysOverdue = Math.round((todayUtcMs - utcMidnight(inv.dueDate!)) / 86_400_000);
+        const daysOverdue = daysPastDue(inv.dueDate!, today);
         group2.push({
           kind: 'OVERDUE_INVOICE',
           invoiceId: inv.id,
           invoiceNumber: num,
           headline: `${daysOverdue} day${daysOverdue === 1 ? '' : 's'} overdue`,
-          amount: inv.outstandingAmount.toFixed(2),
+          amount: amt(inv.outstandingAmount),
           daysOverdue,
           lastContactAt: followUpAt,
         });

@@ -405,11 +405,11 @@ describe('ProjectDetail — commercial', () => {
     // Straight to the page, not through the contract-security redirect.
     expect(within(section).getByRole('link', { name: 'CTR-001' })).toHaveAttribute(
       'href',
-      '/projects/p1/commercial/contract-milestones',
+      '/projects/p1/commercial/contract',
     );
     expect(within(section).getByRole('link', { name: 'Open' })).toHaveAttribute(
       'href',
-      '/projects/p1/commercial/overview',
+      '/projects/p1/commercial',
     );
     expect(within(section).getByText('$12,500,000.00')).toBeInTheDocument();
   });

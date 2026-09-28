@@ -50,7 +50,7 @@ export function useContract(id: string): UseQueryResult<ContractDetail, Error> {
  * is always known regardless of how the form was entered.
  */
 function contractSecurityHref(projectId: string): string {
-  return `/projects/${projectId}/commercial/contract-security`;
+  return `/projects/${projectId}/commercial/contract`;
 }
 
 export function useCreateContract() {

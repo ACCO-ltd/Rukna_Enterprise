@@ -28,8 +28,6 @@ import { FormErrorSummary, type FormFieldError } from '@/components/form-error-s
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useCreateSeparateChargeInvoice } from '@/features/commercial/hooks/use-commercial';
-import { toMilestoneJourneyViewModel } from '@/features/commercial/milestone-journey.adapter';
-import type { InvoiceJourneyPhase } from '@/features/commercial/milestone-journey.adapter';
 import { PrepareInvoiceDialog } from '@/features/commercial/components/prepare-invoice-dialog';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { formatMoney } from '@/lib/format';
@@ -59,13 +57,12 @@ import {
  *                       Creates a DRAFT; approve and post follow on the invoice page.
  *   - SEPARATE_CHARGE → `POST /invoices/from-separate-charge` (`useCreateSeparateChargeInvoice`).
  *                       Creates a DRAFT, the same lifecycle stage as the IPC path.
- *   - INSTALLMENT     → the commercial billing-package flow, via the same `PrepareInvoiceDialog`
- *                       the Contract & Milestones tab opens. `issue-package` enforces the Slice 3B
- *                       ready-to-bill gate and nets/bills the stage's variations; the bare
- *                       `POST /invoices/from-installment` does neither, so calling it from here
- *                       would bypass the gate and could orphan a variation's billing. Issuing
- *                       approves AND posts in one step — so for a milestone the primary action is
- *                       "Prepare invoice", not "Save draft", and the page says so.
+ *   - INSTALLMENT     → the commercial `PrepareInvoiceDialog` (`POST …/installments/:id/
+ *                       prepare-package`), which enforces the stage's billing gate and bills its
+ *                       variations; the bare `POST /invoices/from-installment` does neither, so
+ *                       calling it from here would bypass the gate and could orphan a variation's
+ *                       billing. Prepare creates drafts only and opens the project's invoice page,
+ *                       where Issue approves, numbers and posts in one step.
  */
 
 const LIFECYCLE_KEYS = ['DRAFT', 'APPROVED', 'POSTED'] as const;
@@ -223,12 +220,6 @@ export function InvoiceCreate() {
     }
   }
 
-  function handleMilestoneIssued(_installmentId: string, journey: InvoiceJourneyPhase) {
-    void queryClient.invalidateQueries({ queryKey: invoiceKeys.all });
-    setPreparing(false);
-    openInvoice(journey.invoiceId);
-  }
-
   const leave = () => router.push(LIST_HREF);
 
   // ── Restricted ─────────────────────────────────────────────────────────────
@@ -245,14 +236,6 @@ export function InvoiceCreate() {
       </div>
     );
   }
-
-  const milestoneVm =
-    isMilestone && summary.data && sources.currentCycle?.paymentSchedule
-      ? (toMilestoneJourneyViewModel(
-          sources.currentCycle.paymentSchedule,
-          summary.data.financialsVisible,
-        ).milestones.find((m) => m.id === sourceId) ?? null)
-      : null;
 
   const lineColumns: LineColumn<SourceLine>[] = [
     {
@@ -530,13 +513,14 @@ export function InvoiceCreate() {
         />
       ) : null}
 
-      {isMilestone && summary.data ? (
+      {isMilestone && projectId && sourceId ? (
+        // Prepare creates the stage's draft and opens it on the project's invoice page, where it
+        // is reviewed and issued (commercial-tab redesign, decision D1).
         <PrepareInvoiceDialog
           key={preparing ? sourceId : 'closed'}
-          open={preparing && milestoneVm !== null}
-          milestone={milestoneVm}
-          summary={summary.data}
-          onInvoiceIssued={handleMilestoneIssued}
+          projectId={projectId}
+          installmentId={sourceId}
+          open={preparing}
           onClose={() => setPreparing(false)}
         />
       ) : null}

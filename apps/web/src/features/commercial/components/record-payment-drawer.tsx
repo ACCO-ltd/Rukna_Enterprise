@@ -1,45 +1,68 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
+  Alert,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
+  FormField,
   Input,
-  Label,
-  LtrValue,
+  MoneyDisplay,
+  MoneyInput,
   Select,
-  Textarea,
-  cn,
 } from '@erp/ui';
 
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
+import { MONEY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 
-import {
-  buildAllocationPreview,
-  type ClientReceivableView,
-} from '../lib/collection-view-model';
+import type { ClientReceivableView } from '../lib/collection-view-model';
 import { useProjectDepositAccounts, useRecordProjectPayment } from '../hooks/use-commercial';
-
-// ─── Props ───────────────────────────────────────────────────────────────────
+import type { RecordProjectPaymentPayload } from '../api/commercial-api';
+import {
+  allocationPayload,
+  checkAllocations,
+  payableInvoices,
+  prefillAllocations,
+} from './record-payment-drawer.model';
 
 export interface RecordPaymentDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
   currency: string;
-  /** The invoice the user clicked "Record payment" on — pre-populates amount with its outstanding. */
+  /** The invoice the user started from — listed first and its balance pre-fills the amount. */
   preselectedInvoice: ClientReceivableView | null;
-  /** All invoices eligible for allocation (canRecordPayment === true). */
+  /** The project's invoices; those with a balance and `canRecordPayment` can take the receipt. */
   allInvoices: ClientReceivableView[];
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+const today = () => new Date().toISOString().slice(0, 10);
 
+function newIdempotencyKey(): string {
+  const cryptoApi = globalThis.crypto as Crypto | undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') return cryptoApi.randomUUID();
+  return `rp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Record a client payment (decision D9: a Dialog). The name is historical — callers keep
+ * importing `RecordPaymentDrawer`.
+ *
+ * The receipt is applied to invoices OLDEST DUE FIRST (the invoice the user started from goes
+ * first), pre-filled and editable per line. Whatever is received but not applied stays on the
+ * client's account as credit, and the dialog says so; applying more than was received, or more
+ * than an invoice's balance, is stopped with an inline reason.
+ *
+ * One idempotency key per opening: a retry after a network failure cannot record the receipt
+ * twice (the API de-duplicates on it).
+ */
 export function RecordPaymentDrawer({
   open,
   onOpenChange,
@@ -48,288 +71,245 @@ export function RecordPaymentDrawer({
   preselectedInvoice,
   allInvoices,
 }: RecordPaymentDrawerProps) {
-  const t = useTranslations('commercial.billing.collection.drawer');
+  const t = useTranslations('commercial.recordPayment');
   const locale = useLocale() as 'en';
 
-  const defaultAmount = preselectedInvoice?.outstanding ?? '';
-  const [amount, setAmount] = useState(defaultAmount);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [reference, setReference] = useState('');
-  const [notes, setNotes] = useState('');
-  // User-confirmed allocation overrides: maps invoiceId → amount string. Empty = use greedy suggestion.
-  const [allocationOverrides, setAllocationOverrides] = useState<Record<string, string>>({});
+  const invoices = useMemo(
+    () => payableInvoices(allInvoices, preselectedInvoice?.invoiceId),
+    [allInvoices, preselectedInvoice?.invoiceId],
+  );
+  const moneyHidden = allInvoices.some(
+    (invoice) => invoice.canRecordPayment && invoice.outstanding === null,
+  );
 
-  const depositAccountsQuery = useProjectDepositAccounts(projectId);
+  const initialAmount = () => {
+    const first = invoices[0];
+    return preselectedInvoice && first && first.invoiceId === preselectedInvoice.invoiceId
+      ? first.outstanding
+      : '';
+  };
+
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [amount, setAmount] = useState(initialAmount);
+  const [date, setDate] = useState(today);
+  const [reference, setReference] = useState('');
+  const [amounts, setAmounts] = useState<Record<string, string>>(() =>
+    prefillAllocations(parseMinorUnits(initialAmount(), MONEY_SCALE) ?? 0, invoices),
+  );
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  const [attempted, setAttempted] = useState(false);
+
+  const depositAccounts = useProjectDepositAccounts(projectId);
   const mutation = useRecordProjectPayment(projectId);
 
-  // ─── Reset when drawer closes ────────────────────────────────────────────
+  const check = checkAllocations(amount, invoices, amounts);
+
+  function reset() {
+    const initial = initialAmount();
+    setBankAccountId('');
+    setAmount(initial);
+    setDate(today());
+    setReference('');
+    setAmounts(prefillAllocations(parseMinorUnits(initial, MONEY_SCALE) ?? 0, invoices));
+    setIdempotencyKey(newIdempotencyKey());
+    setAttempted(false);
+    mutation.reset();
+  }
 
   function handleOpenChange(next: boolean) {
-    if (!next) {
-      setAmount(preselectedInvoice?.outstanding ?? '');
-      setDate(new Date().toISOString().slice(0, 10));
-      setBankAccountId('');
-      setPaymentMethod('');
-      setReference('');
-      setNotes('');
-      setAllocationOverrides({});
-      mutation.reset();
-    }
+    if (!next && mutation.isPending) return;
+    if (!next) reset();
     onOpenChange(next);
   }
 
-  function handleAmountChange(nextAmount: string) {
-    // A new receipt amount needs a fresh greedy suggestion; manual allocations belong to the
-    // previous amount and must not be silently carried into this calculation.
-    setAllocationOverrides({});
-    setAmount(nextAmount);
+  function handleAmountChange(next: string) {
+    setAmount(next);
+    // A new received amount gets a fresh oldest-first split; edits made for the old amount
+    // would silently misapply the new one.
+    const received = parseMinorUnits(next, MONEY_SCALE) ?? 0;
+    setAmounts(prefillAllocations(received, invoices));
   }
 
-  // ─── Allocation (editable) ───────────────────────────────────────────────
+  const missingAccount = bankAccountId === '';
+  const canSubmit = check.valid && !missingAccount && date !== '' && !moneyHidden;
 
-  const allocationLines = buildAllocationPreview(
-    amount,
-    allInvoices,
-    preselectedInvoice?.invoiceId,
-  );
-  const amountNum = parseFloat(amount) || 0;
-
-  const effectiveAmount = (invoiceId: string, suggested: string): string =>
-    allocationOverrides[invoiceId] ?? suggested;
-
-  const allocatedNum = allocationLines.reduce(
-    (sum, l) => sum + (parseFloat(effectiveAmount(l.invoiceId, l.suggested)) || 0),
-    0,
-  );
-  const unallocatedNum = parseFloat(Math.max(0, amountNum - allocatedNum).toFixed(2));
-  const hasUnallocated = unallocatedNum > 0 && amountNum > 0;
-
-  const allocationsValid =
-    allocationLines.every((l) => {
-      const v = parseFloat(effectiveAmount(l.invoiceId, l.suggested));
-      return !isNaN(v) && v >= 0 && v <= parseFloat(l.max);
-    }) && allocatedNum <= amountNum;
-
-  const money = (value: number) =>
-    formatMoney(value.toFixed(2), currency, locale) ?? value.toFixed(2);
-
-  // ─── Submit ──────────────────────────────────────────────────────────────
-
-  const canSubmit =
-    bankAccountId !== '' &&
-    amountNum > 0 &&
-    date.length > 0 &&
-    allocationsValid &&
-    !mutation.isPending;
-
-  function handleSubmit() {
-    if (!canSubmit) return;
-    mutation.mutate(
-      {
-        bankAccountId,
-        receiptDate: date,
-        amount,
-        currency,
-        paymentMethod: paymentMethod || undefined,
-        reference: reference.trim() || undefined,
-        notes: notes.trim() || undefined,
-        allocations: allocationLines
-          .map((l) => ({
-            clientInvoiceId: l.invoiceId,
-            amount: parseFloat(effectiveAmount(l.invoiceId, l.suggested)),
-          }))
-          .filter((a) => a.amount > 0),
+  function submit() {
+    setAttempted(true);
+    if (!canSubmit || check.receivedMinor === null) return;
+    // `idempotencyKey` is accepted by the API DTO; the shared payload type predates it.
+    const payload: RecordProjectPaymentPayload & { idempotencyKey: string } = {
+      bankAccountId,
+      receiptDate: date,
+      amount: fromMinorUnits(check.receivedMinor, MONEY_SCALE),
+      currency,
+      reference: reference.trim() || undefined,
+      allocations: allocationPayload(invoices, amounts),
+      idempotencyKey,
+    };
+    mutation.mutate(payload, {
+      onSuccess: () => {
+        reset();
+        onOpenChange(false);
       },
-      {
-        onSuccess: () => handleOpenChange(false),
-      },
-    );
+    });
   }
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const money = (minor: number) => <MoneyDisplay value={fromMinorUnits(minor, MONEY_SCALE)} />;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription className="text-body-sm text-muted-foreground">
-          {t('description')}
-        </DialogDescription>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
+        </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* ── Deposit account ───────────────────────────────────────────── */}
-          <div className="space-y-1.5">
-            <Label htmlFor="rp-bank-account">{t('depositAccountLabel')}</Label>
-            <Select
-              id="rp-bank-account"
-              value={bankAccountId}
-              onChange={setBankAccountId}
-              disabled={mutation.isPending || depositAccountsQuery.isPending}
+        {moneyHidden ? (
+          <p className="mt-4 text-body-sm text-muted-foreground">{t('moneyHidden')}</p>
+        ) : (
+          <div className="mt-4 space-y-5">
+            {mutation.isError ? (
+              <Alert variant="error" messages={[mutation.error.message || t('failed')]} />
+            ) : null}
+
+            <FormField
+              htmlFor="rp-account"
+              label={t('account')}
+              error={attempted && missingAccount ? t('accountRequired') : undefined}
             >
-              <option value="">{t('depositAccountPlaceholder')}</option>
-              {(depositAccountsQuery.data ?? []).map((acct) => (
-                <option key={acct.id} value={acct.id}>
-                  {acct.bankName} — {acct.accountNumber}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          {/* ── Amount & date ─────────────────────────────────────────────── */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="rp-amount">{t('amountLabel')}</Label>
-              <Input
-                id="rp-amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => handleAmountChange(e.target.value)}
-                placeholder="0.00"
-                disabled={mutation.isPending}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="rp-date">{t('dateLabel')}</Label>
-              <Input
-                id="rp-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                disabled={mutation.isPending}
-              />
-            </div>
-          </div>
-
-          {/* ── Payment method & reference ────────────────────────────────── */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="rp-method">{t('methodLabel')}</Label>
               <Select
-                id="rp-method"
-                value={paymentMethod}
-                onChange={setPaymentMethod}
+                id="rp-account"
+                value={bankAccountId}
+                onChange={setBankAccountId}
                 disabled={mutation.isPending}
+                required
               >
-                <option value="">{t('methodPlaceholder')}</option>
-                <option value="bank_transfer">{t('method.bank_transfer')}</option>
-                <option value="cheque">{t('method.cheque')}</option>
-                <option value="cash">{t('method.cash')}</option>
-                <option value="other">{t('method.other')}</option>
+                <option value="">
+                  {depositAccounts.isPending ? t('accountLoading') : t('accountPlaceholder')}
+                </option>
+                {(depositAccounts.data ?? []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.bankName} · {account.accountName} · {account.accountNumber}
+                  </option>
+                ))}
               </Select>
+            </FormField>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                htmlFor="rp-amount"
+                label={t('amount')}
+                error={
+                  attempted && (check.receivedMinor === null || check.receivedMinor <= 0)
+                    ? t('amountRequired')
+                    : undefined
+                }
+              >
+                <MoneyInput
+                  id="rp-amount"
+                  value={amount}
+                  onValueChange={handleAmountChange}
+                  disabled={mutation.isPending}
+                  required
+                />
+              </FormField>
+              <FormField htmlFor="rp-date" label={t('date')}>
+                <DatePicker id="rp-date" value={date} onChange={setDate} max={today()} />
+              </FormField>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="rp-reference">{t('referenceLabel')}</Label>
+
+            <FormField htmlFor="rp-reference" label={t('reference')} hint={t('referenceHint')}>
               <Input
                 id="rp-reference"
-                type="text"
                 value={reference}
-                onChange={(e) => setReference(e.target.value)}
+                onChange={(event) => setReference(event.target.value)}
                 disabled={mutation.isPending}
               />
-            </div>
-          </div>
+            </FormField>
 
-          {/* ── Note ─────────────────────────────────────────────────────── */}
-          <div className="space-y-1.5">
-            <Label htmlFor="rp-notes">{t('notesLabel')}</Label>
-            <Textarea
-              id="rp-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              disabled={mutation.isPending}
-            />
-          </div>
-
-          {/* ── Allocation (editable) ────────────────────────────────────── */}
-          {amountNum > 0 ? (
-            <div>
-              <p className="mb-2 text-body-sm font-semibold text-foreground">
-                {t('allocationPreviewTitle')}
-              </p>
-              <ul className="space-y-2">
-                {allocationLines.map((line) => {
-                  const val = effectiveAmount(line.invoiceId, line.suggested);
-                  const numVal = parseFloat(val);
-                  const isOver = !isNaN(numVal) && numVal > parseFloat(line.max);
-                  return (
-                    <li key={line.invoiceId} className="flex items-center gap-3">
-                      <span className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
-                        <LtrValue>{line.invoiceNumber ?? '—'}</LtrValue>
-                      </span>
-                      <Input
-                        type="number"
-                        min="0"
-                        max={line.max}
-                        step="0.01"
-                        value={val}
-                        onChange={(e) =>
-                          setAllocationOverrides((prev) => ({
-                            ...prev,
-                            [line.invoiceId]: e.target.value,
-                          }))
-                        }
-                        className={cn('w-28 text-right tabular-nums', isOver && 'border-danger')}
-                        disabled={mutation.isPending}
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-
-              <div className="mt-2 space-y-1 border-t border-border pt-2">
-                <div className="flex items-baseline justify-between gap-3 text-caption">
-                  <span className="text-muted-foreground">{t('allocatedTotal')}</span>
-                  <LtrValue
-                    className={cn(
-                      'tabular-nums font-medium',
-                      allocatedNum > amountNum ? 'text-danger' : 'text-foreground',
-                    )}
-                  >
-                    {money(allocatedNum)}
-                  </LtrValue>
-                </div>
-                {hasUnallocated ? (
-                  <div className="flex items-baseline justify-between gap-3 text-caption">
-                    <span className="text-warning">{t('unallocatedAmount')}</span>
-                    <LtrValue className={cn('tabular-nums font-medium', 'text-warning')}>
-                      {money(unallocatedNum)}
-                    </LtrValue>
-                  </div>
-                ) : null}
+            <section aria-labelledby="rp-apply-title" className="space-y-3">
+              <div>
+                <h3 id="rp-apply-title" className="text-body-sm font-semibold text-foreground">
+                  {t('applyTitle')}
+                </h3>
+                <p className="text-caption text-muted-foreground">{t('applyHint')}</p>
               </div>
 
-              {allocatedNum > amountNum ? (
-                <p className="mt-1.5 text-caption text-danger" role="alert">
-                  {t('allocationExceedsPayment')}
-                </p>
-              ) : hasUnallocated ? (
-                <p className="mt-1.5 text-caption text-muted-foreground">{t('unallocatedHint')}</p>
-              ) : null}
-            </div>
-          ) : null}
+              {invoices.length === 0 ? (
+                <p className="text-body-sm text-muted-foreground">{t('noOpenInvoices')}</p>
+              ) : (
+                <ul className="divide-y divide-border rounded-panel border border-border">
+                  {invoices.map((invoice) => {
+                    const lineError = check.lineErrors[invoice.invoiceId];
+                    const inputId = `rp-line-${invoice.invoiceId}`;
+                    return (
+                      <li key={invoice.invoiceId} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <label htmlFor={inputId} className="block text-body-sm font-medium text-foreground">
+                            {invoice.invoiceNumber ?? t('unnumbered')}
+                          </label>
+                          <p className="truncate text-caption text-muted-foreground">{invoice.sourceLabel}</p>
+                          <p className="text-caption text-muted-foreground">
+                            {t('balance')} <MoneyDisplay value={invoice.outstanding} />
+                            {invoice.dueDate
+                              ? ` · ${t('due', { date: formatDate(invoice.dueDate, locale) ?? invoice.dueDate })}`
+                              : null}
+                          </p>
+                        </div>
+                        <div className="w-full sm:w-40 sm:shrink-0">
+                          <MoneyInput
+                            id={inputId}
+                            value={amounts[invoice.invoiceId] ?? ''}
+                            onValueChange={(value) =>
+                              setAmounts((prev) => ({ ...prev, [invoice.invoiceId]: value }))
+                            }
+                            aria-invalid={Boolean(lineError)}
+                            aria-describedby={lineError ? `${inputId}-error` : undefined}
+                            disabled={mutation.isPending}
+                            className="text-end"
+                          />
+                          {lineError ? (
+                            <p id={`${inputId}-error`} role="alert" className="mt-1 text-caption text-danger">
+                              {lineError === 'OVER_BALANCE' ? t('overBalance') : t('invalidAmount')}
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
 
-          {/* ── Error ──────────────────────────────────────────────────────── */}
-          {mutation.isError ? (
-            <p className="rounded-control bg-danger/10 px-3 py-2 text-caption text-danger" role="alert">
-              {(mutation.error as Error).message}
-            </p>
-          ) : null}
-        </div>
+              <dl className="space-y-1 text-body-sm">
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-muted-foreground">{t('applied')}</dt>
+                  <dd className="font-medium text-foreground">{money(check.appliedMinor)}</dd>
+                </div>
+              </dl>
+
+              {check.overApplied ? (
+                <p role="alert" className="text-body-sm text-danger">
+                  {t('overApplied')}
+                </p>
+              ) : check.unappliedMinor > 0 ? (
+                <p className="text-body-sm text-muted-foreground">
+                  {t('unapplied', {
+                    amount:
+                      formatMoney(fromMinorUnits(check.unappliedMinor, MONEY_SCALE), currency, locale) ?? '',
+                  })}
+                </p>
+              ) : null}
+            </section>
+          </div>
+        )}
 
         <DialogFooter>
-          <Button variant="default" onClick={handleSubmit} disabled={!canSubmit}>
-            {mutation.isPending ? '…' : t('submit')}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => handleOpenChange(false)}
-            disabled={mutation.isPending}
-          >
+          {moneyHidden ? null : (
+            <Button onClick={submit} disabled={mutation.isPending}>
+              {mutation.isPending ? t('saving') : t('submit')}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
         </DialogFooter>

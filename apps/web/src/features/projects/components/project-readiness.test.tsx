@@ -100,7 +100,7 @@ describe('ProjectReadiness — Before you start', () => {
     ]);
     expect(within(rows[0]!).getByRole('link', { name: 'Open contract' })).toHaveAttribute(
       'href',
-      '/projects/p1/commercial/contract-milestones',
+      '/projects/p1/commercial/contract',
     );
     expect(within(rows[2]!).getByRole('link', { name: 'Assign team' })).toHaveAttribute(
       'href',

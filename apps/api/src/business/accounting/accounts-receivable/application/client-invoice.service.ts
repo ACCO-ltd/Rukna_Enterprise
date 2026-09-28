@@ -28,6 +28,7 @@ import {
   installmentBillingBlocker,
   installmentBillingBlockerMessage,
 } from '../domain/installment-billing-eligibility.js';
+import { clientInvoiceSalesTax } from '../domain/client-invoice-tax.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
 interface OrgBrandingSnapshot {
@@ -204,8 +205,7 @@ export class ClientInvoiceService {
 
     const contract = ipc.application.contract;
     const subtotal = new Decimal(ipc.certifiedTotal.toString());
-    const vatRate = new Decimal('0.05');
-    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const vatAmount = clientInvoiceSalesTax(subtotal);
     const totalAmount = subtotal.plus(vatAmount);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
@@ -308,8 +308,7 @@ export class ClientInvoiceService {
           'exceed the stage value. Reduce the omission or bill it as a credit note.',
       );
     }
-    const vatRate = new Decimal('0.05');
-    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const vatAmount = clientInvoiceSalesTax(subtotal);
     const totalAmount = subtotal.plus(vatAmount);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
@@ -403,8 +402,7 @@ export class ClientInvoiceService {
     }
 
     const subtotal = new Decimal(node.totalAmount.toString()).toDecimalPlaces(2);
-    const vatRate = new Decimal('0.05');
-    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const vatAmount = clientInvoiceSalesTax(subtotal);
     const totalAmount = subtotal.plus(vatAmount);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
@@ -468,8 +466,7 @@ export class ClientInvoiceService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const subtotal = new Decimal(dto.subtotal).toDecimalPlaces(2);
-    const vatRate = new Decimal('0.05');
-    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const vatAmount = clientInvoiceSalesTax(subtotal);
     const totalAmount = subtotal.plus(vatAmount);
     // Client is looked up by id only, deliberately — this method must not read the VO or the
     // contract (Accounting never imports Variations); Client is Accounting's own domain.
@@ -507,6 +504,34 @@ export class ClientInvoiceService {
       },
       createdBy: userId,
     });
+  }
+
+  /**
+   * Commercial redesign D8 (2026-09-28) — re-take the organisation's branding snapshot onto a draft
+   * just before it is issued. A draft is not yet a document the client holds, so it should go out
+   * wearing the organisation's CURRENT identity (e.g. a corrected logo); once posted the snapshot is
+   * frozen and this refuses. Runs inside the issuing command's transaction.
+   */
+  async refreshBrandingSnapshot(
+    identity: RequestIdentity,
+    invoiceId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const orgId = identity.activeOrganizationId;
+    const prisma = tx as TenantPrisma;
+    const invoice = await this.repo.findById(prisma, orgId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    const org = await this.snapshotOrgBranding(tx, orgId);
+    const current = (invoice.billingAddressSnapshot ?? {}) as Record<string, unknown>;
+    const changed = await this.repo.replaceBrandingSnapshotIfUnposted(prisma, orgId, invoiceId, {
+      ...current,
+      org,
+    });
+    if (changed === 0) {
+      throw new BadRequestException(
+        `Invoice ${invoice.invoiceNumber ?? invoiceId} is already issued or cancelled; its branding is frozen.`,
+      );
+    }
   }
 
   async approve(identity: RequestIdentity, invoiceId: string, externalTx?: Prisma.TransactionClient) {

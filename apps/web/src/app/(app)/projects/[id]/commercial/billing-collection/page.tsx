@@ -1,10 +1,7 @@
-import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
+import { redirect } from 'next/navigation';
 
-export default async function BillingCollectionPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/** Renamed to Billing (2026-09-28). */
+export default async function BillingCollectionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <CommercialWorkspace projectId={id} active="billing-collection" />;
+  redirect(`/projects/${id}/commercial/billing`);
 }

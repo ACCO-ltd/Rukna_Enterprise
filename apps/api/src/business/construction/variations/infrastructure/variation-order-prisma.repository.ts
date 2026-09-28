@@ -328,6 +328,34 @@ export class VariationOrderPrismaRepository {
   }
 
   /**
+   * Commercial redesign 2026-09-28 — the realization rows that name any of `clientInvoiceIds`, with the
+   * posting state of that invoice, so the release path can refuse to touch a row behind a posted one.
+   */
+  findAllocationsForInvoices(
+    prisma: Prisma.TransactionClient,
+    organizationId: string,
+    clientInvoiceIds: string[],
+  ) {
+    return prisma.variationBillingAllocation.findMany({
+      where: { organizationId, clientInvoiceId: { in: clientInvoiceIds } },
+      select: {
+        id: true,
+        variationId: true,
+        amount: true,
+        treatment: true,
+        clientInvoiceId: true,
+        installmentId: true,
+        clientInvoice: { select: { postingStatus: true } },
+      },
+    });
+  }
+
+  /** Remove realization rows by id (release path only — see VariationOrderService.releaseBillingForCancelledDrafts). */
+  deleteAllocations(prisma: Prisma.TransactionClient, organizationId: string, ids: string[]) {
+    return prisma.variationBillingAllocation.deleteMany({ where: { organizationId, id: { in: ids } } });
+  }
+
+  /**
    * Append one realization row to a VO's ledger. Called only inside the allocate transaction, AFTER the
    * domain policy has validated the slice against the VO's net and existing allocations — the invariant
    * is enforced in the service, never here (infrastructure carries no business rule).

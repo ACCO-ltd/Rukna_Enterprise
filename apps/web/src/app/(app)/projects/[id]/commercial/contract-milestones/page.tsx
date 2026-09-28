@@ -1,10 +1,7 @@
-import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
+import { redirect } from 'next/navigation';
 
-export default async function ContractMilestonesPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/** Renamed to Contract (2026-09-28). */
+export default async function ContractMilestonesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <CommercialWorkspace projectId={id} active="contract-milestones" />;
+  redirect(`/projects/${id}/commercial/contract`);
 }

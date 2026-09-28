@@ -42,7 +42,7 @@ export function ContractEdit({
   // standalone entry (no projectId) still falls back to the retired detail route, which itself
   // redirects into the workspace.
   const backHref = projectId
-    ? `/projects/${projectId}/commercial/contract-security`
+    ? `/projects/${projectId}/commercial/contract`
     : `/contracts/${id}`;
 
   if (isPending) {

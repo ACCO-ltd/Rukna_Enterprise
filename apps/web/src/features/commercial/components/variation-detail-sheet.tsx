@@ -264,7 +264,7 @@ function DetailBody({
               </span>
               {billing?.invoice ? (
                 <Link
-                  href={`/projects/${projectId}/commercial/billing-collection`}
+                  href={`/projects/${projectId}/commercial/billing`}
                   className="inline-flex min-h-11 items-center gap-1 text-caption font-medium text-brand-primary hover:underline sm:min-h-0"
                 >
                   {t('detail.viewBilling')}

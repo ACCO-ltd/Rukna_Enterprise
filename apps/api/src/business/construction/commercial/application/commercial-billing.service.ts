@@ -2,11 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
-  PERMISSIONS,
   type BillingPackageDocumentSource,
   type ClientInvoiceDocStatus,
   type ArPostingStatus,
@@ -16,6 +17,10 @@ import {
   type CommercialBillingPackageLine,
   type CommercialBillingPackagesResponse,
   type CommercialDeliveryRecord,
+  type CommercialDeleteDraftInvoiceResponse,
+  type CommercialIssueInvoiceResponse,
+  type CommercialPreparePackageRequest,
+  type CommercialPreparePackageResponse,
   type DepositAccountOption,
   type InvoiceDeliveryMethod,
   type InstallmentReadinessResult,
@@ -38,8 +43,44 @@ import {
   installmentBillingBlocker,
   installmentBillingBlockerMessage,
 } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
+import { isUnposted, resolveInvoiceDates } from '../domain/commercial-workspace.policy.js';
 
 const ZERO = new Decimal(0);
+
+/**
+ * A refused command: 400 whose body carries a machine `code` (the convention elsewhere) and
+ * `errorCode` (what the global exception filter lifts into the envelope's `error.code`).
+ */
+/**
+ * An audit idempotency key for a set of invoices. The ids are sorted so the same set always gives
+ * the same key, and hashed rather than cut to the column's length — a truncated list of ids could
+ * make two different packages share a key and the second event be dropped as a duplicate.
+ */
+function invoiceSetKey(prefix: string, invoiceIds: readonly string[]): string {
+  const digest = createHash('sha256').update([...invoiceIds].sort().join(',')).digest('hex');
+  return `${prefix}-${digest}`;
+}
+
+function refuse(code: string, message: string): BadRequestException {
+  return new BadRequestException({ message, code, errorCode: code });
+}
+
+/** A VO slice still to bill, resolved from the positive selection. */
+interface EligibleVariation {
+  id: string;
+  reference: string;
+  title: string;
+  remaining: Decimal;
+}
+
+/** One invoice of a billing package, as the issue / delete commands need it. */
+interface PackageInvoice {
+  id: string;
+  documentStatus: string;
+  postingStatus: string;
+  invoiceNumber: string | null;
+}
 
 /** The shape of a ClientInvoice the read model surfaces (selected in the AR/commercial repos). */
 interface InvoiceLike {
@@ -133,7 +174,9 @@ export class CommercialBillingService {
     await this.projectAccess.assertContract(identity, contractId);
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
-    const canViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // Commercial redesign D5 — the same money-visibility rule as every other Commercial read model
+    // (ADR-029 §8 A-2 margin tier), not the bare legacy `financialPositionView` check it used before.
+    const { canViewMargin: canViewFinancials } = resolveBoqVisibility(identity);
 
     const [installments, allocations] = await Promise.all([
       this.repo.findInstallmentsWithInvoiceForContract(prisma, orgId, contractId),
@@ -491,37 +534,12 @@ export class CommercialBillingService {
     }
 
     // Validate selectedVariationIds — reject unknown/ineligible VOs upfront.
-    const allVos = await this.variationRepo.findByContract(prisma, orgId, contract.id);
-    const eligibleById = new Map(
-      allVos.filter((v) => v.status === 'CLIENT_APPROVED').map((v) => [v.id, v]),
+    const { additions, omissions } = await this.resolveSelectedVariations(
+      prisma,
+      orgId,
+      contract.id,
+      dto.selectedVariationIds,
     );
-    for (const id of dto.selectedVariationIds) {
-      if (!eligibleById.has(id)) {
-        throw new BadRequestException(
-          `Variation ${id} is not a CLIENT_APPROVED variation on this contract.`,
-        );
-      }
-    }
-    const selectedSet = new Set(dto.selectedVariationIds);
-
-    interface Eligible {
-      id: string;
-      reference: string;
-      title: string;
-      remaining: Decimal;
-    }
-    const additions: Eligible[] = [];
-    const omissions: Eligible[] = [];
-    for (const [id, vo] of eligibleById) {
-      if (!selectedSet.has(id)) continue;
-      const net = computeNetPrice(vo.lines.map((l) => ({ amount: l.amount as Decimal })));
-      const existing = await this.variationRepo.findAllocationsByVariation(prisma, orgId, vo.id);
-      const remaining = VariationBillingAllocationPolicy.remainingUnallocated(net, existing);
-      if (remaining.isZero()) continue;
-      const e: Eligible = { id: vo.id, reference: vo.reference, title: vo.title, remaining };
-      if (remaining.greaterThan(ZERO)) additions.push(e);
-      else omissions.push(e);
-    }
 
     const alreadyInvoiced = installment.clientInvoice !== null;
     if (alreadyInvoiced && omissions.length > 0) {
@@ -599,13 +617,13 @@ export class CommercialBillingService {
         voInvoiceIds.push(voInvoice.id);
       }
 
-      // Step 4: approve + post each invoice (milestone + VOs) atomically.
+      // Step 4: approve + post every not-yet-posted invoice of the stage's package (milestone + VOs)
+      // atomically. The package is read back from the ledger, not from this call's selection, so a
+      // stage PREPARED through the new prepare-package command (drafts whose VOs are already fully
+      // allocated, so `additions` above skips them) still has every draft posted — never orphaned.
       // All inside the same transaction — if any posting fails, everything rolls back.
-      const allInvoiceIds = [milestoneInvoice.id, ...voInvoiceIds];
-      for (const invId of allInvoiceIds) {
-        await this.clientInvoiceService.approve(identity, invId, tx);
-        await this.clientInvoiceService.post(identity, { invoiceId: invId }, tx);
-      }
+      const packageNow = await this.repo.findPackageInvoices(tx as never, orgId, installmentId);
+      await this.issueDrafts(identity, this.pendingOf(packageNow), tx);
 
       await this.auditOutbox.record(tx, {
         organizationId: orgId,
@@ -632,6 +650,302 @@ export class CommercialBillingService {
       );
     }
     return pkg;
+  }
+
+  // ─── Commercial redesign D1 (2026-09-28) — prepare / issue / delete ──────────────
+
+  /**
+   * Prepare = drafts only (D1). Creates the stage's DRAFT invoice (with any selected omissions netted
+   * into its subtotal) and one DRAFT per selected variation addition, and records the variation
+   * allocations — exactly what {@link issuePackage} creates — but approves and posts nothing. The
+   * draft review is the human checkpoint; {@link issueInvoice} is the one command that numbers and
+   * posts the package.
+   *
+   * Refused (400, coded) when the contract is not ACTIVE, when `installmentBillingBlocker(at:'raise')`
+   * names a blocker, or when the stage already has a live (non-cancelled) invoice. D2: preparing a
+   * stage records `readyToBillAt/By` itself when unset, with its audit event, so the retired
+   * "mark ready" step's trail is kept. One transaction; the unique source index on the stage invoice
+   * (and the `(variation, installment)` allocation index) make a racing double-submit roll back.
+   */
+  async preparePackage(
+    identity: RequestIdentity,
+    projectId: string,
+    installmentId: string,
+    dto: CommercialPreparePackageRequest,
+  ): Promise<CommercialPreparePackageResponse> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+
+    const installment = await this.repo.findInstallmentWithContract(prisma, orgId, installmentId);
+    if (!installment || installment.contract.projectId !== projectId) {
+      throw new NotFoundException(`Payment installment ${installmentId} not found on project ${projectId}`);
+    }
+    await this.projectAccess.assertMember(identity, projectId);
+    const contract = installment.contract;
+
+    if (contract.status !== 'ACTIVE') {
+      throw refuse(
+        'CONTRACT_NOT_ACTIVE',
+        `Contract ${contract.contractNumber} must be ACTIVE to prepare an invoice (currently ${contract.status}).`,
+      );
+    }
+    const blocker = installmentBillingBlocker({ ...installment, contractStatus: contract.status });
+    if (blocker) {
+      throw refuse(blocker, installmentBillingBlockerMessage(blocker, installment.name));
+    }
+    if (installment.clientInvoice && installment.clientInvoice.documentStatus !== 'CANCELLED') {
+      throw refuse(
+        'STAGE_ALREADY_INVOICED',
+        `"${installment.name}" already has an invoice (${installment.clientInvoice.invoiceNumber ?? 'draft'}).`,
+      );
+    }
+
+    const dates = resolveInvoiceDates(dto, contract.paymentTerms, new Date());
+    if (dates.error) throw refuse('INVALID_DUE_DATE', dates.error);
+    const paymentTerms =
+      dto.paymentTermsDays !== undefined ? `${dto.paymentTermsDays} days` : (contract.paymentTerms ?? undefined);
+
+    const { additions, omissions } = await this.resolveSelectedVariations(
+      prisma,
+      orgId,
+      contract.id,
+      dto.selectedVariationIds ?? [],
+    );
+    const omissionAdjustment = omissions.reduce((sum, o) => sum.plus(o.remaining), ZERO);
+
+    return prisma.$transaction(
+      async (tx) => {
+        // Authoritative re-check inside the transaction (the pre-check above is a fast error only).
+        const existing = await this.repo.findPackageInvoices(tx as never, orgId, installmentId);
+        if (existing.stage) {
+          throw refuse('STAGE_ALREADY_INVOICED', `"${installment.name}" already has an invoice.`);
+        }
+
+        const stageInvoice = await this.clientInvoiceService.generateFromInstallment(
+          identity,
+          {
+            installmentId,
+            invoiceDate: dates.invoiceDate,
+            dueDate: dates.dueDate,
+            paymentTerms,
+            subtotalAdjustment: omissionAdjustment.toFixed(2),
+          },
+          tx,
+        );
+
+        for (const omission of omissions) {
+          await this.variationService.allocateVariationBilling(
+            identity,
+            omission.id,
+            {
+              amount: omission.remaining,
+              treatment: 'STAGE_REDUCTION',
+              clientInvoiceId: stageInvoice.id,
+              installmentId,
+            },
+            tx,
+          );
+        }
+
+        const voInvoiceIds: string[] = [];
+        for (const addition of additions) {
+          const voInvoice = await this.clientInvoiceService.generateStandaloneCharge(
+            identity,
+            {
+              clientId: contract.clientId,
+              projectId: contract.projectId,
+              contractId: contract.id,
+              currencyCode: contract.currency,
+              subtotal: addition.remaining.toFixed(2),
+              label: `${addition.reference} — ${addition.title}`,
+              invoiceDate: dates.invoiceDate,
+              dueDate: dates.dueDate,
+              paymentTerms,
+            },
+            tx,
+          );
+          await this.variationService.allocateVariationBilling(
+            identity,
+            addition.id,
+            { amount: addition.remaining, treatment: 'INVOICE', clientInvoiceId: voInvoice.id, installmentId },
+            tx,
+          );
+          voInvoiceIds.push(voInvoice.id);
+        }
+
+        const invoiceIds = [stageInvoice.id, ...voInvoiceIds];
+        if (dto.notes) {
+          await this.repo.setDraftNotes(tx as never, orgId, invoiceIds, dto.notes);
+        }
+
+        // D2 — preparing IS the ready-to-bill decision now; keep its audit trail.
+        if (!installment.readyToBillAt) {
+          await this.repo.markInstallmentReadyToBill(
+            tx as never,
+            orgId,
+            installmentId,
+            identity.userId,
+            'Prepared for billing',
+          );
+          await this.auditOutbox.record(tx, {
+            organizationId: orgId,
+            actorUserId: identity.userId,
+            action: 'UPDATE',
+            resourceType: 'ContractPaymentInstallment',
+            resourceId: installmentId,
+            sourceCommand: 'commercial.preparePackage',
+            eventType: 'MILESTONE_READY_TO_BILL',
+            idempotencyKey: `ready-to-bill-${installmentId}-prepare-${stageInvoice.id}`,
+            after: { readyToBillBy: identity.userId, note: 'Prepared for billing' },
+          });
+        }
+
+        await this.auditOutbox.record(tx, {
+          organizationId: orgId,
+          actorUserId: identity.userId,
+          action: 'CREATE',
+          resourceType: 'Contract',
+          resourceId: contract.id,
+          sourceCommand: 'commercial.preparePackage',
+          eventType: 'COMMERCIAL_STAGE_PREPARED',
+          idempotencyKey: `prepare-package-${stageInvoice.id}`,
+          after: {
+            installmentId,
+            stageInvoiceId: stageInvoice.id,
+            voInvoiceIds,
+            omissionVariationIds: omissions.map((o) => o.id),
+          },
+        });
+
+        return { invoiceId: stageInvoice.id, invoiceIds };
+      },
+      { timeout: 15000 },
+    );
+  }
+
+  /**
+   * Issue = approve + number + post in ONE command (D1). For a stage invoice — or any variation
+   * invoice of a stage package — every not-yet-posted draft of that package is issued together; for
+   * a separate charge (or any other unlinked invoice) just that one. Each draft is re-snapshotted with
+   * the organisation's CURRENT branding first (D8). One transaction: numbers are claimed at post and
+   * everything rolls back if any posting fails. Posting still runs `installmentBillingBlocker(at:'post')`.
+   *
+   * Idempotent: re-issuing a package whose drafts are all posted returns the posted documents.
+   */
+  async issueInvoice(
+    identity: RequestIdentity,
+    projectId: string,
+    invoiceId: string,
+  ): Promise<CommercialIssueInvoiceResponse> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    await this.projectAccess.assertMember(identity, projectId);
+
+    const header = await this.repo.findInvoiceHeader(prisma, orgId, projectId, invoiceId);
+    if (!header) throw new NotFoundException(`Invoice ${invoiceId} not found on project ${projectId}`);
+    if (header.documentStatus === 'CANCELLED') {
+      throw refuse('INVOICE_CANCELLED', `Invoice ${invoiceId} was cancelled; prepare a new one.`);
+    }
+
+    const pkg = await this.resolvePackage(prisma, orgId, header);
+    const pending = pkg.invoices.filter((i) => i.documentStatus !== 'CANCELLED' && isUnposted(i.postingStatus));
+
+    if (pending.length > 0) {
+      await prisma.$transaction(
+        async (tx) => {
+          await this.issueDrafts(identity, pending, tx);
+          await this.auditOutbox.record(tx, {
+            organizationId: orgId,
+            actorUserId: identity.userId,
+            action: 'UPDATE',
+            resourceType: 'Contract',
+            resourceId: header.contractId ?? projectId,
+            sourceCommand: 'commercial.issueInvoice',
+            eventType: 'COMMERCIAL_INVOICE_ISSUED',
+            idempotencyKey: invoiceSetKey('issue-invoice', pending.map((i) => i.id)),
+            after: { invoiceIds: pending.map((i) => i.id), installmentId: pkg.installmentId },
+          });
+        },
+        { timeout: 15000 },
+      );
+    }
+
+    // Read back the numbers the post claimed (outside the tx — it has committed).
+    const after = await this.resolvePackage(prisma, orgId, header);
+    const issued = after.invoices.filter((i) => i.postingStatus === 'POSTED');
+    return {
+      invoiceIds: issued.map((i) => i.id),
+      invoiceNumbers: issued.map((i) => i.invoiceNumber ?? ''),
+    };
+  }
+
+  /**
+   * Delete a draft = cancel it (and the other drafts of its stage package), release the variation
+   * billing allocations recorded against them so each VO reads unbilled again, and free the stage /
+   * separate charge to be prepared again. 400 once posted — a posted invoice is undone with a credit
+   * note, never deleted. One transaction, one audit event naming what was cancelled and released.
+   */
+  async deleteDraftInvoice(
+    identity: RequestIdentity,
+    projectId: string,
+    invoiceId: string,
+  ): Promise<CommercialDeleteDraftInvoiceResponse> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    await this.projectAccess.assertMember(identity, projectId);
+
+    const header = await this.repo.findInvoiceHeader(prisma, orgId, projectId, invoiceId);
+    if (!header) throw new NotFoundException(`Invoice ${invoiceId} not found on project ${projectId}`);
+    if (header.documentStatus === 'CANCELLED') {
+      throw refuse('INVOICE_CANCELLED', `Invoice ${invoiceId} is already cancelled.`);
+    }
+    if (!isUnposted(header.postingStatus)) {
+      throw refuse(
+        'INVOICE_ALREADY_ISSUED',
+        `Invoice ${header.invoiceNumber ?? invoiceId} has been issued; it cannot be deleted. Issue a credit note instead.`,
+      );
+    }
+
+    const pkg = await this.resolvePackage(prisma, orgId, header);
+    const targets = pkg.invoices
+      .filter((i) => i.documentStatus !== 'CANCELLED' && isUnposted(i.postingStatus))
+      .map((i) => i.id);
+
+    await prisma.$transaction(
+      async (tx) => {
+        const released = await this.variationService.releaseBillingForCancelledDrafts(identity, targets, tx);
+        const cancelled = await this.repo.cancelDraftInvoices(
+          tx as never,
+          orgId,
+          targets,
+          identity.userId,
+          'Draft deleted from Commercial',
+        );
+        if (cancelled !== targets.length) {
+          // Something was issued between the read and this write — refuse rather than half-cancel.
+          throw new ConflictException('The invoice package changed while it was being deleted; reload and retry.');
+        }
+        await this.auditOutbox.record(tx, {
+          organizationId: orgId,
+          actorUserId: identity.userId,
+          action: 'DELETE',
+          resourceType: 'Contract',
+          resourceId: header.contractId ?? projectId,
+          sourceCommand: 'commercial.deleteDraftInvoice',
+          eventType: 'COMMERCIAL_DRAFT_DELETED',
+          idempotencyKey: invoiceSetKey('delete-draft', targets),
+          before: {
+            invoiceIds: targets,
+            installmentId: pkg.installmentId,
+            sourceBoqNodeId: header.sourceBoqNodeId,
+          },
+          after: { releasedAllocations: released },
+        });
+      },
+      { timeout: 15000 },
+    );
+
+    return { cancelledInvoiceIds: targets };
   }
 
   /**
@@ -1061,6 +1375,110 @@ export class CommercialBillingService {
   }
 
   // ─── Internal helpers ───────────────────────────────────────────────────────────
+
+  /**
+   * Resolve the positive VO selection for a stage package: every id must be a CLIENT_APPROVED
+   * variation on the contract (400 otherwise); each is split by the sign of what is still unbilled
+   * (addition → its own invoice; omission → nets into the stage). Fully-billed VOs are skipped.
+   */
+  private async resolveSelectedVariations(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    contractId: string,
+    selectedVariationIds: string[],
+  ): Promise<{ additions: EligibleVariation[]; omissions: EligibleVariation[] }> {
+    const allVos = await this.variationRepo.findByContract(prisma, orgId, contractId);
+    const eligibleById = new Map(
+      allVos.filter((v) => v.status === 'CLIENT_APPROVED').map((v) => [v.id, v]),
+    );
+    for (const id of selectedVariationIds) {
+      if (!eligibleById.has(id)) {
+        throw refuse(
+          'VARIATION_NOT_BILLABLE',
+          `Variation ${id} is not a CLIENT_APPROVED variation on this contract.`,
+        );
+      }
+    }
+    const selectedSet = new Set(selectedVariationIds);
+    const additions: EligibleVariation[] = [];
+    const omissions: EligibleVariation[] = [];
+    for (const [id, vo] of eligibleById) {
+      if (!selectedSet.has(id)) continue;
+      const net = computeNetPrice(vo.lines.map((l) => ({ amount: l.amount as Decimal })));
+      const existing = await this.variationRepo.findAllocationsByVariation(prisma, orgId, vo.id);
+      const remaining = VariationBillingAllocationPolicy.remainingUnallocated(net, existing);
+      if (remaining.isZero()) continue;
+      const e: EligibleVariation = { id: vo.id, reference: vo.reference, title: vo.title, remaining };
+      if (remaining.greaterThan(ZERO)) additions.push(e);
+      else omissions.push(e);
+    }
+    return { additions, omissions };
+  }
+
+  /**
+   * The billing package an invoice belongs to. A stage invoice (sourceInstallmentId) or a variation
+   * invoice billed on a stage (INVOICE allocation → installment) resolves to that stage's whole
+   * package, stage invoice first; anything else (separate charge, IPC, unlinked) is a package of one.
+   */
+  private async resolvePackage(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    header: {
+      id: string;
+      invoiceNumber: string | null;
+      documentStatus: string;
+      postingStatus: string;
+      sourceInstallmentId: string | null;
+      variationBillingAllocations: Array<{ installmentId: string | null }>;
+    },
+  ): Promise<{ installmentId: string | null; invoices: PackageInvoice[] }> {
+    const installmentId =
+      header.sourceInstallmentId ??
+      header.variationBillingAllocations.find((a) => a.installmentId)?.installmentId ??
+      null;
+    if (!installmentId) {
+      const fresh = await prisma.clientInvoice.findFirst({
+        where: { id: header.id, organizationId: orgId },
+        select: { id: true, documentStatus: true, postingStatus: true, invoiceNumber: true },
+      });
+      return { installmentId: null, invoices: fresh ? [fresh] : [] };
+    }
+    const { stage, vos } = await this.repo.findPackageInvoices(prisma, orgId, installmentId);
+    const seen = new Set<string>();
+    const invoices: PackageInvoice[] = [];
+    for (const inv of [stage, ...vos]) {
+      if (!inv || seen.has(inv.id)) continue;
+      seen.add(inv.id);
+      invoices.push(inv);
+    }
+    return { installmentId, invoices };
+  }
+
+  /** The not-yet-posted, not-cancelled invoices of a package, stage invoice first. */
+  private pendingOf(pkg: { stage: PackageInvoice | null; vos: PackageInvoice[] }): PackageInvoice[] {
+    return [pkg.stage, ...pkg.vos].filter(
+      (i): i is PackageInvoice => i !== null && i.documentStatus !== 'CANCELLED' && isUnposted(i.postingStatus),
+    );
+  }
+
+  /**
+   * Issue drafts inside the caller's transaction: re-snapshot the org branding (D8), approve (a legacy
+   * draft may already be APPROVED), then post — which claims the INV number and runs the
+   * `at:'post'` billing gate.
+   */
+  private async issueDrafts(
+    identity: RequestIdentity,
+    drafts: PackageInvoice[],
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    for (const draft of drafts) {
+      await this.clientInvoiceService.refreshBrandingSnapshot(identity, draft.id, tx);
+      if (draft.documentStatus === 'DRAFT') {
+        await this.clientInvoiceService.approve(identity, draft.id, tx);
+      }
+      await this.clientInvoiceService.post(identity, { invoiceId: draft.id }, tx);
+    }
+  }
 
   /**
    * The invoice id of a prior INVOICE allocation for `(variationId, installmentId)`, or null. Used by

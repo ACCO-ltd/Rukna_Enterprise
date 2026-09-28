@@ -1927,7 +1927,43 @@ export interface CommercialPaymentScheduleInstallment {
   canMarkReadyToBill: boolean;
   /** True when the user may click "Prepare Invoice" — NEXT status, marked ready, no outstanding invoice. */
   canPrepareInvoice: boolean;
+  /**
+   * Commercial redesign 2026-09-28 — `installmentBillingBlocker(…, { at: 'raise' })` for this
+   * installment, computed server-side (never re-derived in the browser). Null when nothing blocks
+   * raising it. Only meaningful while the installment has no invoice.
+   */
+  billingBlocker: InstallmentBillingBlockerCode | null;
+  /**
+   * When the stage is expected to bill: MILESTONE → the linked milestone's forecastDate, else its
+   * baselineDate; TIME_BASED → dueDate; ADVANCE → null (billable once the contract is active).
+   */
+  expectedDate: string | null;
+  /** What releases this stage for billing — shown as "what bills it". */
+  releasedBy: InstallmentReleasedBy;
+  /** The stage's current invoice (draft or issued), or null. */
+  invoiceId: string | null;
+  /** DRAFT while the stage's invoice is prepared but not issued; ISSUED once posted. */
+  invoiceState: 'DRAFT' | 'ISSUED' | null;
 }
+
+/** Commercial redesign — the codes `installmentBillingBlocker` returns. */
+export type InstallmentBillingBlockerCode =
+  | 'MILESTONE_NOT_LINKED'
+  | 'MILESTONE_NOT_VERIFIED'
+  | 'CONTRACT_NOT_ACTIVE';
+
+/** What releases an installment: the advance, a verified milestone, or a date. */
+export type InstallmentReleasedBy =
+  | { kind: 'ADVANCE' }
+  | {
+      kind: 'MILESTONE';
+      milestoneId: string | null;
+      milestoneCode: string | null;
+      milestoneName: string | null;
+      /** When the linked milestone was verified; null while it is not. */
+      verifiedAt: string | null;
+    }
+  | { kind: 'DATE'; date: string | null };
 
 /** A programme milestone linked to a payment installment (CONST-COM-011 evidence gate). */
 export interface PaymentInstallmentMilestoneLink {
@@ -2322,6 +2358,14 @@ export interface CommercialReceiptRow {
   allocatedToThisContract: string | null;
   paymentMethod: string | null;
   reference: string | null;
+  /**
+   * Commercial redesign 2026-09-28 — the receipt's document number. Always null today: customer
+   * receipts carry no document-number column (adding one needs a migration). Reserved so the
+   * Payments panel can show it the day it exists.
+   */
+  receiptNumber: string | null;
+  /** The deposit account it landed in, e.g. "Premier Bank · USD ···4410". Null when not recorded. */
+  depositAccountLabel: string | null;
   postingStatus: ArPostingStatus;
   allocations: CommercialReceiptAllocationRow[];
 }
@@ -2430,12 +2474,15 @@ export interface OverviewAttentionItem {
   invoiceNumber: string;
   /** Human headline — e.g. "8 days overdue", "Promise missed", "Client dispute open". */
   headline: string;
-  /** The financially relevant amount for this attention kind (VAT-inclusive outstanding or disputed). */
-  amount: string;
+  /**
+   * The financially relevant amount for this attention kind (VAT-inclusive outstanding or disputed).
+   * Null without financial visibility (commercial redesign 2026-09-28 — was always a string).
+   */
+  amount: string | null;
   /** Populated for OVERDUE_INVOICE: whole calendar days past due date. */
   daysOverdue?: number;
-  /** Populated for OPEN_DISPUTE: the contested portion (may be less than outstanding). */
-  disputedAmount?: string;
+  /** Populated for OPEN_DISPUTE: the contested portion (may be less than outstanding). Null when hidden. */
+  disputedAmount?: string | null;
   /** ISO timestamp of the most recent follow-up, if any. */
   lastContactAt?: string | null;
   /** ISO date string of the latest promise, for MISSED_PROMISE. */
@@ -2481,10 +2528,13 @@ export interface CommercialOverviewResponse {
     id: string | null;
     contractNumber: string | null;
     status: string | null;
-    /** Frozen at contract creation; never inflated by variations. */
-    baseContractValue: string;
-    /** Current governing value (includes adopted variations). */
-    currentContractValue: string;
+    /**
+     * Frozen at contract creation; never inflated by variations. Null without financial visibility
+     * (commercial redesign 2026-09-28 — was always a string).
+     */
+    baseContractValue: string | null;
+    /** Current governing value (includes adopted variations). Null without financial visibility. */
+    currentContractValue: string | null;
   };
   /**
    * All values are null when the caller lacks financialPositionView; never "$0".
@@ -3513,4 +3563,237 @@ export interface ProjectCostBudgetListResponse {
   /** The version the project is currently measured against, or null when none is baselined. */
   baselined: ProjectCostBudgetResponse | null;
   budgets: Array<Omit<ProjectCostBudgetResponse, 'lines'> & { lineCount: number }>;
+}
+
+// ─── Commercial tab redesign (2026-09-28) ────────────────────────────────────────
+//
+// One workspace read model for the redesigned Commercial tab (bar facts + ranked To do), the
+// prepare/issue split (Prepare = draft, Issue = approve + number + post in one command, the same
+// for milestone packages and separate charges), the invoice as a document the page renders on
+// paper, and the client statement. All additive. Money is null when the caller cannot view
+// financials — never "0".
+
+/** One row of the Billing "To do" list, ranked server-side (most urgent first). */
+export type CommercialTodoKind =
+  | 'OVERDUE_INVOICE'
+  | 'READY_TO_INVOICE'
+  | 'DRAFT_INVOICE'
+  | 'ISSUED_NOT_SENT'
+  | 'BLOCKED_STAGE';
+
+export interface CommercialTodoItem {
+  /** Stable key, e.g. "overdue:<invoiceId>" / "ready:<installmentId>". */
+  id: string;
+  kind: CommercialTodoKind;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  installmentId: string | null;
+  installmentName: string | null;
+  /** 1-based position of the stage in the schedule, and the schedule length. */
+  stageNumber: number | null;
+  stageCount: number | null;
+  /** For invoices: where it came from, e.g. "Separate charge · SC-01 Extra site mobilisation". */
+  sourceLabel: string | null;
+  /** Null without financial visibility. */
+  amount: string | null;
+  dueDate: string | null;
+  daysOverdue: number | null;
+  /** READY_TO_INVOICE / BLOCKED_STAGE: what releases (or will release) the stage. */
+  releasedBy: InstallmentReleasedBy | null;
+  /** BLOCKED_STAGE: why it cannot be raised yet. */
+  blocker: InstallmentBillingBlockerCode | null;
+  /** READY_TO_INVOICE: client-approved variations not yet billed that can ride on this invoice. */
+  unbilledVariations: { count: number; amount: string | null; references: string[] } | null;
+  /** DRAFT_INVOICE: when the draft was created. */
+  createdAt: string | null;
+}
+
+export interface CommercialWorkspaceCapabilities {
+  /** `create:contract` + `approve:contract`, and no current main contract. */
+  canRecordContract: boolean;
+  /** `approve:contract`, contract ACTIVE. */
+  canReopenContract: boolean;
+  /** `view:contract` + `manage:receivable` — prepare drafts, issue, send. */
+  canBill: boolean;
+  /** May record a client payment against this contract. */
+  canRecordPayment: boolean;
+  /** `manage:contract` — back-fill a missing signed date. */
+  canRecordSignedDate: boolean;
+  /** `manage:contract` — re-profile un-invoiced stages. */
+  canReprofileSchedule: boolean;
+  /** May export the client statement. */
+  canExportStatement: boolean;
+}
+
+export interface CommercialWorkspaceContract {
+  id: string;
+  contractNumber: string;
+  /** The short reference for the bar, e.g. "C1" (the suffix after the project code). */
+  shortRef: string;
+  status: `${ContractStatus}`;
+  billingModel: `${BillingModel}`;
+  clientId: string | null;
+  clientName: string | null;
+  signedDate: string | null;
+  startDate: string | null;
+  expectedEndDate: string | null;
+  paymentTermsDays: number | null;
+  /** Null without financial visibility. */
+  signedValue: string | null;
+  /** Σ client-approved variations. Null without financial visibility. */
+  approvedVariationsValue: string | null;
+  approvedVariationCount: number;
+  /** Signed value + approved variations. Null without financial visibility. */
+  currentValue: string | null;
+  /** The immutable BOQ snapshot the contract was signed against. */
+  signedBoq: { versionId: string; versionNumber: number } | null;
+  /** The uploaded signed agreement, if any. */
+  signedAgreement: { fileId: string; fileName: string } | null;
+}
+
+export interface CommercialWorkspaceResponse {
+  projectId: string;
+  currency: string;
+  financialsVisible: boolean;
+  /** Null when the project has no current main contract. */
+  contract: CommercialWorkspaceContract | null;
+  /** No-contract state: the live BOQ version that recording the contract will snapshot. */
+  signBoq: { versionId: string; versionNumber: number } | null;
+  /** Bar facts. Each null when unknown or hidden (the page shows the hidden state, not $0). */
+  facts: {
+    contractValue: string | null;
+    invoiced: string | null;
+    collected: string | null;
+    outstanding: string | null;
+    overdue: string | null;
+  };
+  /** Ranked, most urgent first. */
+  todo: CommercialTodoItem[];
+  capabilities: CommercialWorkspaceCapabilities;
+  asOf: string;
+}
+
+/** GET …/commercial/installments/:installmentId/prepare-preview — the Prepare invoice dialog. */
+export interface CommercialPreparePreviewResponse {
+  installmentId: string;
+  stageNumber: number;
+  stageCount: number;
+  stageName: string;
+  /** Fraction string, e.g. "0.3000". */
+  percentage: string;
+  releasedBy: InstallmentReleasedBy;
+  /** Must be null for the dialog to offer "Create draft invoice". */
+  blocker: InstallmentBillingBlockerCode | null;
+  currency: string;
+  /** Null without financial visibility. */
+  stageAmount: string | null;
+  /** Client-approved variations not yet billed: INVOICE adds a line, STAGE_REDUCTION reduces. */
+  variations: Array<{
+    variationId: string;
+    reference: string;
+    title: string;
+    treatment: 'INVOICE' | 'STAGE_REDUCTION';
+    /** Signed: negative for a reduction. Null without financial visibility. */
+    amount: string | null;
+    defaultSelected: boolean;
+  }>;
+  /** Server-side sales-tax rate as a fraction string (e.g. "0.05"); null when none applies. */
+  taxRate: string | null;
+}
+
+/** POST …/commercial/installments/:installmentId/prepare-package — creates drafts only. */
+export interface CommercialPreparePackageRequest {
+  selectedVariationIds?: string[];
+  invoiceDate?: string;
+  dueDate?: string;
+  paymentTermsDays?: number;
+  notes?: string;
+}
+
+export interface CommercialPreparePackageResponse {
+  /** The stage's draft invoice — the page to open. */
+  invoiceId: string;
+  /** Every draft created (stage + variation invoices). */
+  invoiceIds: string[];
+}
+
+/** DELETE …/commercial/invoices/:invoiceId — the drafts cancelled (the target and its package drafts). */
+export interface CommercialDeleteDraftInvoiceResponse {
+  cancelledInvoiceIds: string[];
+}
+
+/** POST …/commercial/invoices/:invoiceId/issue — approve + number + post the draft (and its package). */
+export interface CommercialIssueInvoiceResponse {
+  invoiceIds: string[];
+  invoiceNumbers: string[];
+}
+
+export type CommercialInvoiceLifecycle = 'DRAFT' | 'ISSUED' | 'SENT' | 'PAID' | 'CANCELLED';
+
+/** GET …/commercial/invoices/:invoiceId — the invoice as a document (same data the PDF uses). */
+export interface CommercialInvoiceDocumentResponse {
+  id: string;
+  projectId: string;
+  invoiceNumber: string | null;
+  documentStatus: ClientInvoiceDocStatus;
+  postingStatus: ArPostingStatus;
+  settlementStatus: ClientInvoiceSettlementStatus;
+  lifecycle: CommercialInvoiceLifecycle;
+  /** Issuing legal entity. Drafts show the organisation's current branding; issued invoices their frozen snapshot. */
+  issuer: {
+    name: string;
+    legalAddress: string | null;
+    taxRegistrationNumber: string | null;
+    /** Short-lived URL for the logo image, or null. */
+    logoUrl: string | null;
+    footerNote: string | null;
+  };
+  billTo: { name: string; address: string | null };
+  invoiceDate: string | null;
+  dueDate: string | null;
+  paymentTermsDays: number | null;
+  projectCode: string | null;
+  contractNumber: string | null;
+  currency: string;
+  lines: Array<{ description: string; detail: string | null; amount: string | null }>;
+  subtotal: string | null;
+  /** e.g. "Sales tax 5%". */
+  taxLabel: string | null;
+  taxAmount: string | null;
+  total: string | null;
+  balanceDue: string | null;
+  source: ClientInvoiceSource;
+  journalEntryId: string | null;
+  deliveries: CommercialDeliveryRecord[];
+  createdAt: string;
+  createdBy: string | null;
+  financialsVisible: boolean;
+  capabilities: {
+    canIssue: boolean;
+    canSend: boolean;
+    canRecordPayment: boolean;
+    canEditDraft: boolean;
+    canDeleteDraft: boolean;
+    canIssueCreditNote: boolean;
+    canDownloadPdf: boolean;
+  };
+}
+
+/** GET …/commercial/statement — the client statement for this contract, oldest first. */
+export interface CommercialClientStatementResponse {
+  projectId: string;
+  contractNumber: string | null;
+  clientName: string | null;
+  currency: string;
+  asOf: string;
+  lines: Array<{
+    date: string;
+    kind: 'INVOICE' | 'CREDIT_NOTE' | 'RECEIPT';
+    reference: string | null;
+    description: string;
+    debit: string | null;
+    credit: string | null;
+    balance: string | null;
+  }>;
+  closingBalance: string | null;
 }

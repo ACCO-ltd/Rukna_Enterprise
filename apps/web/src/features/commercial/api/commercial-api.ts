@@ -28,7 +28,7 @@ import { apiClient } from '@/lib/api-client';
 
 /** Slice 7 — authoritative commercial overview read model. */
 export function getCommercialOverview(projectId: string): Promise<CommercialOverviewResponse> {
-  return apiClient<CommercialOverviewResponse>(`/projects/${projectId}/commercial/overview`);
+  return apiClient<CommercialOverviewResponse>(`/projects/${projectId}/commercial`);
 }
 
 /** Permission-aware commercial summary for a project. */
@@ -291,6 +291,8 @@ export interface RecordProjectPaymentPayload {
   reference?: string;
   notes?: string;
   allocations: Array<{ clientInvoiceId: string; amount: number }>;
+  /** One per dialog open, so a double submit or a retry cannot record the payment twice. */
+  idempotencyKey?: string;
 }
 
 export function recordProjectPayment(
@@ -320,13 +322,22 @@ export interface RecordFollowUpPayload {
   occurredAt: string;
 }
 
+/**
+ * The collection routes live under the invoice (`…/commercial/invoices/:invoiceId/…`); the server
+ * takes the invoice from the path and rejects it in the body (`forbidNonWhitelisted`), so the
+ * payload's `invoiceId` is used for the URL only.
+ */
+function invoicePath(projectId: string, invoiceId: string, rest: string): string {
+  return `/projects/${projectId}/commercial/invoices/${invoiceId}/${rest}`;
+}
+
 export function recordFollowUp(
   projectId: string,
-  payload: RecordFollowUpPayload,
+  { invoiceId, ...body }: RecordFollowUpPayload,
 ): Promise<{ id: string }> {
-  return apiClient<{ id: string }>(`/projects/${projectId}/commercial/follow-ups`, {
+  return apiClient<{ id: string }>(invoicePath(projectId, invoiceId, 'follow-ups'), {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
@@ -341,11 +352,11 @@ export interface RecordPromisePayload {
 
 export function recordPromise(
   projectId: string,
-  payload: RecordPromisePayload,
+  { invoiceId, ...body }: RecordPromisePayload,
 ): Promise<{ id: string }> {
-  return apiClient<{ id: string }>(`/projects/${projectId}/commercial/promises`, {
+  return apiClient<{ id: string }>(invoicePath(projectId, invoiceId, 'promises'), {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
@@ -359,11 +370,11 @@ export interface OpenDisputePayload {
 
 export function openDispute(
   projectId: string,
-  payload: OpenDisputePayload,
+  { invoiceId, ...body }: OpenDisputePayload,
 ): Promise<{ id: string }> {
-  return apiClient<{ id: string }>(`/projects/${projectId}/commercial/disputes`, {
+  return apiClient<{ id: string }>(invoicePath(projectId, invoiceId, 'disputes'), {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 
@@ -373,13 +384,14 @@ export interface ResolveDisputePayload {
 
 export function resolveDispute(
   projectId: string,
+  invoiceId: string,
   disputeId: string,
   payload: ResolveDisputePayload = {},
 ): Promise<{ id: string }> {
-  return apiClient<{ id: string }>(
-    `/projects/${projectId}/commercial/disputes/${disputeId}/resolve`,
-    { method: 'PATCH', body: JSON.stringify(payload) },
-  );
+  return apiClient<{ id: string }>(invoicePath(projectId, invoiceId, `disputes/${disputeId}/resolve`), {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
 }
 
 export interface CreateCreditNotePayload {
@@ -395,20 +407,21 @@ export interface CreateCreditNotePayload {
 
 export function createCreditNote(
   projectId: string,
-  payload: CreateCreditNotePayload,
+  { invoiceId, ...body }: CreateCreditNotePayload,
 ): Promise<{ id: string; postingStatus: string }> {
-  return apiClient<{ id: string; postingStatus: string }>(
-    `/projects/${projectId}/commercial/credit-notes`,
-    { method: 'POST', body: JSON.stringify(payload) },
-  );
+  return apiClient<{ id: string; postingStatus: string }>(invoicePath(projectId, invoiceId, 'credit-notes'), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export function postCreditNote(
   projectId: string,
+  invoiceId: string,
   creditNoteId: string,
 ): Promise<{ id: string; postingStatus: string; creditNoteNumber: string }> {
   return apiClient<{ id: string; postingStatus: string; creditNoteNumber: string }>(
-    `/projects/${projectId}/commercial/credit-notes/${creditNoteId}/post`,
+    invoicePath(projectId, invoiceId, `credit-notes/${creditNoteId}/post`),
     { method: 'POST', body: JSON.stringify({}) },
   );
 }

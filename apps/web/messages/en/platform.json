@@ -2324,7 +2324,7 @@
       "signedDate": "Date signed",
       "signedDateRequired": "Choose the date the contract was signed",
       "contractValue": "Signed contract value (USD)",
-      "valueInvalid": "Enter a valid amount with no more than two decimal places",
+      "valueInvalid": "Enter the signed value, with no more than two decimal places.",
       "startDate": "Start date",
       "endDate": "Expected completion",
       "endBeforeStart": "Expected completion cannot be before the start date",
@@ -2350,7 +2350,95 @@
       "summaryMilestones": "Payment milestones",
       "summaryDocument": "Signed document",
       "summaryDocumentNone": "Not attached",
-      "boqSnapshotNote": "Recording this contract protects a signed snapshot of the current BOQ. The live BOQ stays editable for project delivery."
+      "boqSnapshotNote": "Recording this contract protects a signed snapshot of the current BOQ. The live BOQ stays editable for project delivery.",
+      "back": "Commercial",
+      "eyebrow": "Main contract",
+      "title": "Record signed contract",
+      "subtitle": "Recording makes the contract Active and freezes a signed copy of BOQ version {version} as its scope.",
+      "subtitleNoBoq": "Recording makes the contract Active and keeps the current BOQ as the signed scope.",
+      "recording": "Recording…",
+      "fixTitle": "Fix these to record the contract",
+      "noClient": "The project has no client. Assign one on the project before recording its contract.",
+      "referenceHint": "Leave blank to number it automatically.",
+      "valueHint": "USD, before sales tax.",
+      "state": {
+        "new": "Not recorded",
+        "dirty": "Not recorded yet",
+        "clean": "Recorded"
+      },
+      "sections": {
+        "contract": "Contract",
+        "schedule": "Payment schedule",
+        "agreement": "Signed agreement"
+      },
+      "labels": {
+        "client": "Client",
+        "contractNumber": "Contract reference",
+        "signedDate": "Date signed",
+        "contractValue": "Signed contract value",
+        "startDate": "Start date",
+        "expectedEndDate": "Expected completion",
+        "paymentTerms": "Payment terms"
+      },
+      "terms": {
+        "DUE_ON_RECEIPT": "Due on receipt",
+        "NET_7": "Net 7 days",
+        "NET_14": "Net 14 days",
+        "NET_30": "Net 30 days",
+        "NET_45": "Net 45 days",
+        "NET_60": "Net 60 days"
+      },
+      "schedule": {
+        "hint": "Starts from the ACCO standard schedule. Milestone stages bill only after their programme milestone is verified — you link them in Progress › Plan & setup.",
+        "name": "Stage",
+        "billedOn": "Billed on",
+        "dueDate": "Due date",
+        "share": "Share",
+        "amount": "Amount",
+        "percentage": "Share",
+        "advance": "Advance",
+        "milestone": "Milestone",
+        "date": "Date",
+        "add": "Add a stage",
+        "remove": "Remove stage {number}",
+        "untitled": "New stage",
+        "allocated": "Allocated",
+        "nameRequired": "Name the stage.",
+        "percentInvalid": "Enter a share above 0, with up to two decimals.",
+        "dateRequired": "Choose the date this stage bills on.",
+        "empty": "Add at least one stage.",
+        "totalMismatch": "The stages add up to {total}%. They must total 100%.",
+        "oneAdvance": "Only one stage can be the advance.",
+        "stageField": "Stage {number} · {field}"
+      },
+      "agreement": {
+        "title": "Drop the signed agreement here, or choose it",
+        "hint": "PDF or Word. Optional now; it’s locked with the contract once attached.",
+        "choose": "Choose file",
+        "remove": "Remove"
+      },
+      "rail": {
+        "title": "What gets recorded",
+        "contract": "Contract",
+        "contractValue": "{ref} · Active",
+        "auto": "Numbered automatically",
+        "scope": "Signed scope",
+        "boq": "Copy of BOQ version {version}",
+        "value": "Value",
+        "schedule": "Schedule",
+        "allocated": "{percent}% allocated",
+        "billable": "Billable at once",
+        "advance": "The advance",
+        "nothing": "Nothing until a milestone is verified"
+      },
+      "confirm": {
+        "title": "Record the signed contract?",
+        "body": "This records {value} as the signed value, freezes a signed copy of BOQ version {version} as the scope, and makes the contract Active.",
+        "advance": "The advance of {amount} becomes billable at once.",
+        "noAdvance": "Nothing is billable until a milestone is verified.",
+        "submit": "Record contract",
+        "cancel": "Go back"
+      }
     },
     "terms": {
       "tabs": {

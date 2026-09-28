@@ -111,7 +111,7 @@ describe('ProjectContractEdit', () => {
     expect(mocks.ContractEdit).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: /back to contract/i })).toHaveAttribute(
       'href',
-      `/projects/${PROJECT_ID}/commercial/contract-security`,
+      `/projects/${PROJECT_ID}/commercial/contract`,
     );
   });
 });

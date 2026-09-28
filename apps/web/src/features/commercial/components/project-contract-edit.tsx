@@ -22,7 +22,7 @@ export function ProjectContractEdit({ projectId }: { projectId: string }) {
   const tCommon = useTranslations('common');
   const summary = useCommercialSummary(projectId);
 
-  const backHref = `/projects/${projectId}/commercial/contract-security`;
+  const backHref = `/projects/${projectId}/commercial/contract`;
 
   if (summary.isPending) {
     return (

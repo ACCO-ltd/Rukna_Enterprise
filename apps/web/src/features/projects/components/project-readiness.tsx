@@ -44,12 +44,12 @@ const STEP_CONFIG: Record<
   BOQ_BASELINED: { path: 'boq', permission: 'view:boq', owner: 'quantitySurveyor' },
   // Straight to the page that does the job, not to a route that redirects to it.
   ACTIVE_MAIN_CONTRACT: {
-    path: 'commercial/contract-milestones',
+    path: 'commercial/contract',
     permission: 'view:contract',
     owner: 'commercialTeam',
   },
   CONTRACT_START_DATE: {
-    path: 'commercial/contract-milestones',
+    path: 'commercial/contract',
     permission: 'view:contract',
     owner: 'commercialTeam',
   },

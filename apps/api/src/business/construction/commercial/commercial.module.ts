@@ -4,9 +4,11 @@ import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.
 import { AccountsReceivableModule } from '../../accounting/accounts-receivable/accounts-receivable.module.js';
 import { VariationsModule } from '../variations/variations.module.js';
 import { BoqModule } from '../boq/boq.module.js';
+import { FilesModule } from '../../../platform/files/files.module.js';
 import { CommercialPrismaRepository } from './infrastructure/commercial-prisma.repository.js';
 import { CommercialService } from './application/commercial.service.js';
 import { CommercialBillingService } from './application/commercial-billing.service.js';
+import { CommercialWorkspaceService } from './application/commercial-workspace.service.js';
 import { CommercialController } from './presentation/commercial.controller.js';
 
 /**
@@ -27,8 +29,21 @@ import { CommercialController } from './presentation/commercial.controller.js';
  * for the collection-event write endpoints and the billing read model enrichment.
  */
 @Module({
-  imports: [TenancyModule, AuditLogsModule, AccountsReceivableModule, VariationsModule, BoqModule],
-  providers: [CommercialPrismaRepository, CommercialService, CommercialBillingService],
+  imports: [
+    TenancyModule,
+    AuditLogsModule,
+    AccountsReceivableModule,
+    VariationsModule,
+    BoqModule,
+    // Commercial redesign 2026-09-28 — short-lived logo URL on the invoice document read model.
+    FilesModule,
+  ],
+  providers: [
+    CommercialPrismaRepository,
+    CommercialService,
+    CommercialBillingService,
+    CommercialWorkspaceService,
+  ],
   controllers: [CommercialController],
   exports: [CommercialService, CommercialBillingService],
 })

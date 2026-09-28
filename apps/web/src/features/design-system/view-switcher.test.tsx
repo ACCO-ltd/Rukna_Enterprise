@@ -107,7 +107,7 @@ const LINK_ITEMS = [
   {
     value: 'contract-security',
     label: 'Contract & Security',
-    href: '/projects/p1/commercial/contract-security',
+    href: '/projects/p1/commercial/contract',
   },
   { value: 'applications', label: 'Applications', href: '/projects/p1/commercial/applications' },
 ];

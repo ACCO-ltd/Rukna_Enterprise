@@ -67,6 +67,8 @@ export {
   RecordLayout,
   RecordPanel,
 } from './components/record-layout';
+export { ActionList } from './components/action-list';
+export type { ActionListItem } from './components/action-list';
 export { ContextBar } from './components/context-bar';
 export type { ContextBarMetric, ContextBarNoteTone, ContextBarProps } from './components/context-bar';
 export { FileDrop } from './components/file-drop';
@@ -179,6 +181,15 @@ export type {
   LifecycleStep,
   LifecycleStepperProps,
 } from './components/document';
+export { DocumentPaper } from './components/document-paper';
+export type {
+  DocumentPaperFact,
+  DocumentPaperIssuer,
+  DocumentPaperLine,
+  DocumentPaperParty,
+  DocumentPaperProps,
+  DocumentPaperTotalRow,
+} from './components/document-paper';
 export {
   ActivityTimeline,
   DefinitionGrid,
