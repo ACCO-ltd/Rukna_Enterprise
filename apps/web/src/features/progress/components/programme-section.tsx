@@ -25,6 +25,8 @@ function useSetupStep(projectId: string) {
   const hasAllocation = (rollup.data?.packages ?? []).some((p) => p.leafCount > 0);
   const weightsComplete = rollup.data?.weightsComplete ?? false;
 
+  // Unknown is not "unset up": no notice until both answers are in, or it flashes on load.
+  if (rollup.isPending || workPackages.isPending) return null;
   if (!hasPackages) return 'workPackages' as const;
   if (!hasAllocation) return 'allocate' as const;
   if (!weightsComplete) return 'weights' as const;
@@ -82,7 +84,7 @@ export function PlanView({ projectId }: { projectId: string }) {
       <MilestonesSection projectId={projectId} />
 
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <h3 className="text-sm font-semibold text-foreground">{t('schedule.title')}</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('masterSchedule.title')}</h3>
         <DownloadMasterScheduleButton projectId={projectId} />
       </div>
 

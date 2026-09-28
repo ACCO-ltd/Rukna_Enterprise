@@ -19,19 +19,16 @@ import { PerformanceView, PlanView } from './programme-section';
 export type ProgressView = 'today' | 'review' | 'performance' | 'plan';
 
 /**
- * Programme & Progress workspace — three role-aware views (ADR-021, ADR-022).
+ * Programme & Progress workspace — four role-aware views (ADR-021, ADR-022, flow plan PR 5).
  *
- *  Today     — SE's primary entry point: today's DPR state + recent reports
- *  Review    — PM's primary entry point: DPR approval queue + returns
- *  Programme — Configuration and analytics: work packages, baseline, milestones,
- *              schedule timeline, activities, S-curve, verified progress
+ *  Today        — SE's primary entry point: today's DPR state + recent reports
+ *  Review       — PM's primary entry point: DPR approval queue + returns
+ *  Performance  — read-only: S-curve, needs attention, work-package and verified progress
+ *  Plan & setup — work packages, baseline, milestones, master schedule, activities
  *
  * Default tab: if the user holds `approve:progress` (PM) → Review; otherwise → Today.
- * Both roles can navigate to any tab they are permitted to read. Programme setup actions
- * (create work package, approve baseline) are gated on `manage:project` inside each component.
- *
- * The global setup checklist that previously blocked the tab header is removed.
- * A compact notice inside the Programme view replaces it.
+ * Setup actions (create work package, approve baseline) are gated on `manage:project` inside
+ * each component. A compact setup notice on Performance and Plan replaces the old checklist.
  */
 export function ProgressTab({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
