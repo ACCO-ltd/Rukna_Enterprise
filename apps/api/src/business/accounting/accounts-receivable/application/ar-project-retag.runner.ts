@@ -52,6 +52,7 @@ interface Row {
   intended_project_id: string;
   intended_project_code: string | null;
   already_corrected: boolean;
+  prior_corrections: number;
 }
 
 /** Revenue = the account's latest version is INCOME — the same test `sumPostedRevenue` uses. */
@@ -60,14 +61,24 @@ const INCOME_ACCOUNT = `(
   WHERE av.account_id = l.account_id ORDER BY av.effective_from DESC LIMIT 1
 ) = 'INCOME'`;
 
+/** A posted correction journal for the audited line `a` (base key or a versioned re-correction). */
+const CORRECTION_OF_LINE = `c.organization_id = $1 AND c.source_document_type = '${RETAG_SOURCE_TYPE}'
+  AND c.status = 'POSTED'
+  AND (c.source_document_id = 'ar-project-retag:' || a.line_id
+       OR c.source_document_id LIKE 'ar-project-retag:' || a.line_id || ':v%')`;
+/** …that has itself been reversed (e.g. from Manual Journals) — it no longer corrects anything. */
+const IS_REVERSED = `EXISTS (SELECT 1 FROM journal_entries r
+  WHERE r.reversal_of_journal_entry_id = c.id AND r.status = 'POSTED')`;
+
 /** Every untagged reversal / credit-note revenue line, with what it should have carried. Read-only. */
 export async function auditRetag(prisma: Tx, orgId: string): Promise<RetagLine[]> {
   const rows = await prisma.$queryRawUnsafe<Row[]>(
     `
     WITH affected AS (
-      -- Invoice reversals: the reversing line mirrors the original line (same number, same account)
-      -- whose project it should have carried.
-      SELECT l.id AS line_id, l.line_number, e.id AS journal_entry_id, e.journal_number,
+      -- Invoice reversals: the reversing line mirrors an original line — same account, debit and
+      -- credit swapped — whose project it should have carried. Matched on the mirror, not on line
+      -- order (reverse() does not guarantee order); one match per line, preferring the same number.
+      (SELECT DISTINCT ON (l.id) l.id AS line_id, l.line_number, e.id AS journal_entry_id, e.journal_number,
              e.accounting_date, e.accounting_period_id AS period_id, l.account_id,
              l.account_code_snapshot AS account_code, l.account_name_snapshot AS account_name,
              l.debit_amount::text AS debit, l.credit_amount::text AS credit, l.client_id, l.contract_id,
@@ -77,11 +88,13 @@ export async function auditRetag(prisma: Tx, orgId: string): Promise<RetagLine[]
       FROM journal_entries e
       JOIN journal_lines l ON l.journal_entry_id = e.id
       JOIN journal_lines ol ON ol.journal_entry_id = e.reversal_of_journal_entry_id
-                           AND ol.line_number = l.line_number AND ol.account_id = l.account_id
+                           AND ol.account_id = l.account_id
+                           AND ol.debit_amount = l.credit_amount AND ol.credit_amount = l.debit_amount
       JOIN client_invoices ci ON ci.posted_journal_entry_id = e.reversal_of_journal_entry_id
       WHERE e.organization_id = $1 AND e.status = 'POSTED'
         AND e.source_document_type = 'CLIENT_INVOICE' AND e.accounting_event_id = 'EVT-AR-002'
         AND l.project_id IS NULL AND ol.project_id IS NOT NULL AND ${INCOME_ACCOUNT}
+      ORDER BY l.id, (ol.line_number = l.line_number) DESC)
       UNION ALL
       -- Credit notes: the revenue debit should carry the credited invoice's project.
       SELECT l.id, l.line_number, e.id, e.journal_number, e.accounting_date, e.accounting_period_id,
@@ -100,9 +113,10 @@ export async function auditRetag(prisma: Tx, orgId: string): Promise<RetagLine[]
            p.code AS intended_project_code,
            EXISTS (
              SELECT 1 FROM journal_entries c
-             WHERE c.organization_id = $1 AND c.source_document_type = '${RETAG_SOURCE_TYPE}'
-               AND c.source_document_id = 'ar-project-retag:' || a.line_id AND c.status = 'POSTED'
-           ) AS already_corrected
+             WHERE ${CORRECTION_OF_LINE} AND NOT ${IS_REVERSED}
+           ) AS already_corrected,
+           (SELECT COUNT(*) FROM journal_entries c
+            WHERE ${CORRECTION_OF_LINE} AND ${IS_REVERSED})::int AS prior_corrections
     FROM affected a
     LEFT JOIN accounting_periods ap ON ap.id = a.period_id
     LEFT JOIN projects p ON p.id = a.intended_project_id
@@ -134,6 +148,7 @@ export async function auditRetag(prisma: Tx, orgId: string): Promise<RetagLine[]
     intendedProjectId: r.intended_project_id,
     intendedProjectCode: r.intended_project_code,
     alreadyCorrected: r.already_corrected,
+    priorCorrections: Number(r.prior_corrections),
   }));
 }
 
@@ -142,7 +157,7 @@ export async function accountNets(prisma: Tx, orgId: string): Promise<Map<string
   const rows = await prisma.$queryRawUnsafe<{ account_id: string; net: string }[]>(
     `SELECT l.account_id, (SUM(l.debit_amount) - SUM(l.credit_amount))::text AS net
      FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
-     WHERE e.organization_id = $1 AND e.status IN ('POSTED','REVERSED')
+     WHERE e.organization_id = $1 AND e.status = 'POSTED'
      GROUP BY l.account_id`,
     orgId,
   );
@@ -154,7 +169,7 @@ export async function revenueByProject(prisma: Tx, orgId: string): Promise<Map<s
   const rows = await prisma.$queryRawUnsafe<{ project_id: string | null; revenue: string }[]>(
     `SELECT l.project_id, (SUM(l.credit_amount) - SUM(l.debit_amount))::text AS revenue
      FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
-     WHERE e.organization_id = $1 AND e.status IN ('POSTED','REVERSED')
+     WHERE e.organization_id = $1 AND e.status = 'POSTED'
        AND e.entry_purpose <> 'CLOSING' AND ${INCOME_ACCOUNT}
      GROUP BY l.project_id`,
     orgId,
@@ -188,10 +203,45 @@ export interface ApprovedRetagReport {
   ready: RetagLine[];
 }
 
+export interface RetagGap {
+  projectId: string;
+  before: Decimal;
+  after: Decimal;
+  /** The gap is fully explained by the corrected lines (after = 0). */
+  cleared: boolean;
+}
+
 export interface RetagApplySummary {
   posted: string[];
   stale: string[];
-  gapBefore: Map<string, Decimal>;
+  gaps: RetagGap[];
+}
+
+/**
+ * The accountant's approval is enforced, not assumed: the approver must be an active user of this
+ * organization who holds `manage:journal` (create, approve, post and reverse journals), and must
+ * not be the person running the apply — the same separation of duties manual journals follow.
+ */
+export async function assertApprover(prisma: Tx, orgId: string, approvedBy: string, actor: string): Promise<void> {
+  if (approvedBy === actor) {
+    throw new Error('The approver must be someone other than the person applying the corrections.');
+  }
+  const approver = await prisma.user.findFirst({
+    where: {
+      id: approvedBy,
+      organizationId: orgId,
+      status: 'ACTIVE',
+      userRoles: {
+        some: { role: { rolePermissions: { some: { permission: { action: 'manage', resource: 'journal' } } } } },
+      },
+    },
+    select: { id: true },
+  });
+  if (!approver) {
+    throw new Error(
+      `Approver ${approvedBy} is not an active user of this organization with journal approval rights (manage:journal).`,
+    );
+  }
 }
 
 /**
@@ -206,7 +256,8 @@ export async function applyRetag(
 ): Promise<RetagApplySummary> {
   const { orgId, approved } = input;
   if (approved.organizationId !== orgId) throw new Error('Approved report is for a different organization.');
-  if (approved.ready.length === 0) return { posted: [], stale: [], gapBefore: new Map() };
+  if (approved.ready.length === 0) return { posted: [], stale: [], gaps: [] };
+  await assertApprover(prisma, orgId, input.approvedBy, input.actor);
 
   const lines = await auditRetag(prisma, orgId);
   const ready = lines.filter((l) => retagStatus(l) === 'READY');
@@ -220,13 +271,13 @@ export async function applyRetag(
   }
 
   const deltas = expectedProjectDeltas(toPost);
-  const gapBefore = new Map<string, Decimal>();
-  for (const project of deltas.keys()) gapBefore.set(project, await billingGap(prisma, orgId, project));
 
   const result = await prisma.$transaction(
     async (tx) => {
       const accountNetBefore = await accountNets(tx, orgId);
       const projectRevenueBefore = await revenueByProject(tx, orgId);
+      const gapBefore = new Map<string, Decimal>();
+      for (const project of deltas.keys()) gapBefore.set(project, await billingGap(tx, orgId, project));
 
       const posted: string[] = [];
       for (const line of toPost) {
@@ -239,7 +290,7 @@ export async function applyRetag(
           currencyCode: 'USD', // single-currency (ADR-024)
           eventType: RETAG_EVENT,
           sourceDocumentType: RETAG_SOURCE_TYPE,
-          sourceDocumentId: retagSourceId(line.lineId),
+          sourceDocumentId: retagSourceId(line.lineId, line.priorCorrections),
           journalCategory: 'GENERAL',
           entryPurpose: 'NORMAL',
           postingOrigin: 'MANUAL',
@@ -257,6 +308,28 @@ export async function applyRetag(
         };
         const res = await posting.post(command, tx as unknown as TxClient);
         posted.push(`${line.journalNumber ?? line.journalEntryId}/${line.lineNumber} → ${res.journalNumber}`);
+        await tx.auditLog.create({
+          data: {
+            userId: input.actor,
+            orgId,
+            action: 'AR_PROJECT_RETAG_POSTED',
+            resource: 'journal',
+            resourceId: res.journalEntryId,
+            reason: command.description,
+            sourceCommand: 'scripts/ar-project-retag.ts',
+            correlationId: approved.fingerprint,
+            after: {
+              correctsJournalLineId: line.lineId,
+              correctsJournalEntryId: line.journalEntryId,
+              sourceInvoiceId: line.sourceInvoiceId,
+              creditNoteId: line.creditNoteId,
+              intendedProjectId: line.intendedProjectId,
+              debit: line.debit,
+              credit: line.credit,
+              approvedBy: input.approvedBy,
+            },
+          },
+        });
       }
 
       const proof = proveRetag({
@@ -266,7 +339,18 @@ export async function applyRetag(
         projectRevenueAfter: await revenueByProject(tx, orgId),
         expectedDeltas: deltas,
       });
-      if (!proof.ok) {
+      // Billing–GL: each affected project's gap (billed − revenue) must move by exactly the
+      // corrected amount. What remains afterwards is not caused by missing tags and is reported.
+      const gaps: RetagGap[] = [];
+      for (const [project, delta] of deltas) {
+        const before = gapBefore.get(project)!;
+        const after = await billingGap(tx, orgId, project);
+        if (!after.equals(before.minus(delta))) {
+          proof.failures.push(`Billing–GL gap for ${project} moved ${after.minus(before)}, expected ${delta.negated()}`);
+        }
+        gaps.push({ projectId: project, before, after, cleared: after.isZero() });
+      }
+      if (proof.failures.length > 0) {
         throw new Error(`Proof failed — rolling back, nothing posted:\n  ${proof.failures.join('\n  ')}`);
       }
 
@@ -289,9 +373,9 @@ export async function applyRetag(
         });
         if (res.count > 0) stale.push(...affected.map((p) => p.name));
       }
-      return { posted, stale: [...new Set(stale)] };
+      return { posted, stale: [...new Set(stale)], gaps };
     },
     { timeout: 120_000 },
   );
-  return { ...result, gapBefore };
+  return result;
 }

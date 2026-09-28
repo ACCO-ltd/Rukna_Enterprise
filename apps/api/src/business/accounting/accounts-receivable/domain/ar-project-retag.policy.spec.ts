@@ -36,6 +36,7 @@ function line(overrides: Partial<RetagLine> = {}): RetagLine {
     intendedProjectId: 'proj-A',
     intendedProjectCode: 'ACCO-A',
     alreadyCorrected: false,
+    priorCorrections: 0,
     ...overrides,
   };
 }
@@ -68,6 +69,8 @@ describe('AR project-tag reclassification policy', () => {
 
   it('keys each correction to its line, so a re-run is a no-op', () => {
     expect(retagSourceId('l1')).toBe('ar-project-retag:l1');
+    // A correction that was later reversed no longer counts; the next one gets its own key.
+    expect(retagSourceId('l1', 1)).toBe('ar-project-retag:l1:v2');
   });
 
   it('fingerprints what was approved, independent of order and sensitive to amounts', () => {

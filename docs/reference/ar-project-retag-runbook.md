@@ -64,7 +64,13 @@ If any check fails, the whole transaction is rolled back.
 
 2. **Accountant review.** Send `retag-report.json`, together with the printed summary, to the accountant. They approve every READY line. For any BLOCKED line, they decide separately whether its period should be reopened.
 
-3. **Apply the approved report.**
+3. **Apply the approved report.** Do this in a quiet window. If another AR posting lands while it runs, the checks fail safe and nothing is posted; run it again.
+
+   The tool enforces the approval:
+   - `--approved-by` must be an active user with `manage:journal` permission.
+   - It must be a different person from `--actor`.
+   - Each correction is written to the audit log, together with the report's fingerprint.
+
    ```
    pnpm tsx scripts/ar-project-retag.ts --slug=acco --apply \
      --approved-report=retag-report.json --approved-by=<accountant userId> --actor=<your userId>
@@ -72,7 +78,7 @@ If any check fails, the whole transaction is rolled back.
    The output lists:
    - each correction's journal number
    - the proof result
-   - the Billing–GL gap for each affected project, before and after (0.00 means it has cleared)
+   - the Billing–GL gap for each affected project, before and after. Each gap must move by exactly the corrected amount, or nothing is kept. If any gap is left afterwards, it isn't caused by missing tags and is reported for separate review.
    - any snapshots that need rebuilding
 
 4. **Check again later (read-only).**

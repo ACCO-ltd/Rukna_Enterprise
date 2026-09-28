@@ -17,9 +17,14 @@ import { Decimal } from '@prisma/client/runtime/library';
 export const RETAG_EVENT = 'RECLASS-AR-PROJECT-TAG';
 export const RETAG_SOURCE_TYPE = 'MANUAL_JOURNAL';
 
-/** One correction per affected line, and the key that makes re-running a no-op. */
-export function retagSourceId(lineId: string): string {
-  return `ar-project-retag:${lineId}`;
+/**
+ * One correction per affected line, and the key that makes re-running a no-op. If an earlier
+ * correction was itself reversed (e.g. from Manual Journals), the line is affected again and the
+ * next correction gets a versioned key, so the posting service's idempotency never mistakes the
+ * reversed one for a live correction.
+ */
+export function retagSourceId(lineId: string, priorCorrections = 0): string {
+  return priorCorrections === 0 ? `ar-project-retag:${lineId}` : `ar-project-retag:${lineId}:v${priorCorrections + 1}`;
 }
 
 export type RetagSourceKind = 'INVOICE_REVERSAL' | 'CREDIT_NOTE';
@@ -55,7 +60,10 @@ export interface RetagLine {
   creditNoteNumber: string | null;
   intendedProjectId: string;
   intendedProjectCode: string | null;
+  /** A live (posted, not reversed) correction exists. */
   alreadyCorrected: boolean;
+  /** Corrections posted for this line and later reversed — they no longer count. */
+  priorCorrections: number;
 }
 
 export function retagStatus(line: RetagLine): RetagStatus {
@@ -124,7 +132,7 @@ export function correctionDescription(line: RetagLine, approvedBy: string): stri
   return (
     `Reclassification: revenue line ${line.journalNumber ?? line.journalEntryId}/${line.lineNumber} ` +
     `(${source}) was posted without project ${line.intendedProjectCode ?? line.intendedProjectId}. ` +
-    `Approved by ${approvedBy}. Ref ${retagSourceId(line.lineId)}.`
+    `Approved by ${approvedBy}. Ref ${retagSourceId(line.lineId, line.priorCorrections)}.`
   );
 }
 
@@ -132,7 +140,9 @@ export function correctionDescription(line: RetagLine, approvedBy: string): stri
 export function retagFingerprint(lines: RetagLine[]): string {
   const canonical = [...lines]
     .sort((a, b) => a.lineId.localeCompare(b.lineId))
-    .map((l) => [l.lineId, l.accountId, l.debit, l.credit, l.intendedProjectId, l.accountingDate].join('|'))
+    .map((l) =>
+      [l.lineId, l.accountId, l.debit, l.credit, l.intendedProjectId, l.accountingDate, l.priorCorrections].join('|'),
+    )
     .join('\n');
   return createHash('sha256').update(canonical).digest('hex');
 }

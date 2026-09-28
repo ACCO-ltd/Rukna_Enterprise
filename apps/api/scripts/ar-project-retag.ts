@@ -24,8 +24,11 @@
  *   pnpm tsx scripts/ar-project-retag.ts --slug=acco --verify --approved-report=retag-report.json
  *
  * Guarantees:
- * - Idempotent: each correction is keyed `ar-project-retag:<lineId>`; corrected lines are excluded
- *   from the audit, and the posting service returns the existing journal on a repeat.
+ * - Idempotent: each correction is keyed `ar-project-retag:<lineId>`; corrected lines drop out of
+ *   the audit, so repeating an apply is refused (the ledger no longer matches the report) and posts
+ *   nothing. A correction later reversed stops counting; the line reappears for a new approval.
+ * - Approval is enforced: --approved-by must be an active user with manage:journal who is not
+ *   --actor; every correction is written to the audit log with the report's fingerprint.
  * - Period policy: a correction is dated on the corrected line's own accounting date. A line in a
  *   CLOSED or LOCKED period is reported as BLOCKED and never posted — no period is reopened here.
  * - All corrections, their proofs and snapshot invalidation run in ONE transaction; if any proof
@@ -197,10 +200,14 @@ async function main(): Promise<void> {
     console.log(`\n  Posted ${summary.posted.length} reclassification(s):`);
     for (const p of summary.posted) console.log(`    ${p}`);
     console.log('  Proof passed: every account net unchanged (trial balance and company revenue unchanged);');
-    console.log('  each affected project moved by exactly its expected amount; no other project moved.');
-    console.log('\n  Billing–GL gap per affected project (before → after; 0.00 = clears):');
-    for (const [project, before] of summary.gapBefore) {
-      console.log(`    ${project}: ${before.toFixed(2)} → ${(await billingGap(prisma, org.id, project)).toFixed(2)}`);
+    console.log('  each affected project moved by exactly its expected amount; no other project moved;');
+    console.log("  each affected project's Billing–GL gap moved by exactly the corrected amount.");
+    console.log('\n  Billing–GL gap per affected project (before → after):');
+    for (const gap of summary.gaps) {
+      console.log(
+        `    ${gap.projectId}: ${gap.before.toFixed(2)} → ${gap.after.toFixed(2)}  ` +
+          (gap.cleared ? 'CLEARED' : 'remaining difference is NOT from missing project tags — review separately'),
+      );
     }
     console.log(
       summary.stale.length
