@@ -966,6 +966,11 @@ model DailyProgressReport {
   approvedBy     String?   @map("approved_by")
   approvedAt     DateTime? @map("approved_at")
   returnReason   String?   @map("return_reason")
+  // Who returned the report for revision, and when (2026-09-28). Like returnReason, these hold the
+  // MOST RECENT return: a resubmit keeps them (history of the last return stays visible) and the
+  // next return overwrites them.
+  returnedBy     String?   @map("returned_by")
+  returnedAt     DateTime? @map("returned_at")
   // ADR-021 CONST-PROG-010 — a controlled, authorised, audited reopen of an APPROVED report for
   // correction (no silent edits). While reopened, its measurements are not counted as verified.
   reopenedBy     String?   @map("reopened_by")
@@ -1002,6 +1007,10 @@ model ProgressMeasurement {
   // this is per work entry, since one report can cover several locations).
   locationArea   String? @map("location_area")
   createdBy      String  @map("created_by")
+  // When the entry was recorded (2026-09-28). In a REOPENED report, entries created before the
+  // reopen were approved and may not be deleted (CONST-PROG-010 supersede, don't overwrite).
+  // Backfilled from the report's created_at for rows that predate the column.
+  createdAt      DateTime @default(now()) @map("created_at")
 
   dpr         DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
   boqNode     BoqNode             @relation(fields: [boqNodeId], references: [id])
@@ -1120,9 +1129,12 @@ model WorkPackage {
   createdBy        String    @map("created_by")
   createdAt        DateTime  @default(now()) @map("created_at")
 
-  project    Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  boqLinks   WorkPackageBoqNode[]
-  activities ProgrammeActivity[]
+  project        Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  boqLinks       WorkPackageBoqNode[]
+  activities     ProgrammeActivity[]
+  // The programme milestones whose readiness this package's verified % feeds (ADR-021 amendment
+  // 2026-09-28).
+  milestoneLinks ProgrammeMilestoneWorkPackage[]
 
   @@unique([projectId, code])
   @@index([projectId])
@@ -1199,13 +1211,35 @@ model ProgrammeMilestone {
   createdBy             String                   @map("created_by")
   createdAt             DateTime                 @default(now()) @map("created_at")
 
-  project             Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contractDeliverable ContractDeliverable?         @relation(fields: [contractDeliverableId], references: [id], onDelete: SetNull)
+  project             Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractDeliverable ContractDeliverable?            @relation(fields: [contractDeliverableId], references: [id], onDelete: SetNull)
   installments        ContractPaymentInstallment[]
+  // ADR-021 amendment (2026-09-28): the work packages that make up this stage. The milestone is
+  // ready to verify once every linked package is 100% verified (server-computed on read).
+  workPackageLinks    ProgrammeMilestoneWorkPackage[]
 
   @@unique([projectId, code])
   @@index([projectId])
   @@map("programme_milestones")
+}
+
+// ADR-021 amendment (2026-09-28): milestone <-> work package link. A milestone names the packages that
+// make up its stage; readiness (`readyToVerify`) is derived from their verified physical %, never
+// stored. Both sides belong to the same project (validated in ProgrammeService). A package may feed
+// more than one milestone. Removing either side removes the link.
+model ProgrammeMilestoneWorkPackage {
+  id            String   @id @default(cuid())
+  milestoneId   String   @map("milestone_id")
+  workPackageId String   @map("work_package_id")
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  milestone   ProgrammeMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  workPackage WorkPackage        @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+
+  @@unique([milestoneId, workPackageId])
+  @@index([workPackageId])
+  @@map("programme_milestone_work_packages")
 }
 
 model ProjectCodeSequence {

@@ -42,6 +42,8 @@ function milestone(overrides: Partial<ProgrammeMilestoneResponse> = {}): Program
     verifiedBy: null,
     verifiedAt: null,
     releases: [],
+    workPackages: [],
+    readyToVerify: false,
     ...overrides,
   };
 }
@@ -129,6 +131,16 @@ describe('MilestonesSection — Releases affordance (P2 milestone → payment br
 
     expect(screen.getByText(/Structure/)).toHaveTextContent('40%');
     expect(screen.getByText(/Fit-out/)).toHaveTextContent('20%');
+  });
+
+  it('shows a neutral "restricted" state — never $0 — when the server hides the amount', () => {
+    stubList([milestone({ releases: [release({ amount: null })] })]);
+    renderWithProviders(<MilestonesSection projectId="p-1" />);
+
+    const line = screen.getByText(/Structure/);
+    expect(line).toHaveTextContent('40%');
+    expect(line).toHaveTextContent('amount restricted');
+    expect(line).not.toHaveTextContent(/\$|0\.00/);
   });
 });
 

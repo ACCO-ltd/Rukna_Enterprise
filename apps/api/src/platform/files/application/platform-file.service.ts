@@ -245,9 +245,22 @@ export class PlatformFileService {
   }
 
   /** Freeze every file attached to a record that has just finalised. */
-  async markManyImmutable(fileIds: string[], reason: string): Promise<number> {
+  /**
+   * `client` lets a caller freeze files inside its own transaction (e.g. DPR approval, so the
+   * status flip and the freeze commit or roll back together). Defaults to the tenant client.
+   */
+  async markManyImmutable(
+    fileIds: string[],
+    reason: string,
+    client?: ReturnType<TenancyService['getClient']>,
+  ): Promise<number> {
     if (fileIds.length === 0) return 0;
-    return this.repo.setLifecycleMany(this.tenancy.getClient(), fileIds, 'IMMUTABLE', reason);
+    return this.repo.setLifecycleMany(
+      client ?? this.tenancy.getClient(),
+      fileIds,
+      'IMMUTABLE',
+      reason,
+    );
   }
 
   /**

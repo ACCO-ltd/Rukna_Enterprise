@@ -25,6 +25,9 @@ type BaselineWithPoints = {
   points: { targetDate: Date; cumulativePercent: Decimal }[];
 };
 
+/** The one variation status that means "adopted into the contract" (raise-and-adopt lands here). */
+const ADOPTED_VARIATION_STATUS = 'CLIENT_APPROVED';
+
 export interface RebaselineInput {
   variationOrderId: string;
   note?: string;
@@ -140,13 +143,16 @@ export class ProgrammeBaselineService {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
-    // The Variation must belong to this project (VO -> contract -> project). A foreign VO cannot
-    // justify moving this project's plan.
+    // The Variation must belong to this project (VO -> contract -> project) AND be adopted. A
+    // foreign VO cannot justify moving this project's plan, and neither can one that was never
+    // adopted or has since been reversed (WITHDRAWN) — the plan may only move for scope that is
+    // actually in the contract. Variations are raised-and-adopted in one step, landing
+    // CLIENT_APPROVED; Reverse moves them to WITHDRAWN.
     const vo = await this.repo.findVariationOrderProject(prisma, orgId, variationOrderId);
     if (!vo) throw new NotFoundException(`Variation order ${variationOrderId} not found`);
-    if (vo.contract.projectId !== projectId) {
+    if (vo.contract.projectId !== projectId || vo.status !== ADOPTED_VARIATION_STATUS) {
       throw new BadRequestException(
-        `Variation order ${variationOrderId} does not belong to project ${projectId}.`,
+        "Rebaselining must cite an adopted variation on this project's contract.",
       );
     }
 

@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { ProgressService, type SaveDeliveryPlanDto } from './progress.service.js';
@@ -169,5 +170,37 @@ describe('ProgressService.saveDeliveryPlan', () => {
     // Postgres transaction is what erases those writes, which this mock cannot simulate but which
     // `prisma.$transaction` — the same primitive `applyScheduleTemplate` already relies on — guarantees.
     expect(repo.createWorkPackage).toHaveBeenCalledTimes(2);
+  });
+
+  it('maps the unique-leaf backstop (P2002 on boq_node_id) to 409 BOQ_ITEM_ALREADY_ALLOCATED', async () => {
+    // Two PMs saved overlapping plans: validation passed for both, the second insert hit the index.
+    const racingAllocate = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'wpn-1' })
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'x',
+          meta: { target: ['boq_node_id'] },
+        }),
+      )
+      .mockResolvedValue({ id: 'wpn-3' });
+    const { service } = build({ allocateBoqNode: racingAllocate });
+
+    const err = await service.saveDeliveryPlan(identity, 'p-1', plan()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+    });
+  });
+
+  it('leaves a unique violation on another column (the package code) unmapped', async () => {
+    const codeClash = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'x',
+      meta: { target: ['project_id', 'code'] },
+    });
+    const { service } = build({ allocateBoqNode: jest.fn().mockRejectedValue(codeClash) });
+    await expect(service.saveDeliveryPlan(identity, 'p-1', plan())).rejects.toBe(codeClash);
   });
 });

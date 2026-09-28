@@ -490,6 +490,7 @@
     "releases": {
       "none": "—",
       "line": "Releases {percent} · {name} · {amount}",
+      "amountHidden": "amount restricted",
       "invoiced": "invoiced",
       "invoicedLabel": "already invoiced",
       "viewInCommercial": "View in Commercial"

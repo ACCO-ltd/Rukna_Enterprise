@@ -50,3 +50,41 @@ export function weightedPackagePercent(
   // Nothing in this package carries a value yet — see "the unpriced case" above.
   return leafIds.reduce((sum, id) => sum + (percentByLeaf.get(id) ?? 0), 0) / leafIds.length;
 }
+
+/**
+ * A BOQ leaf's verified % — verified ÷ measurable quantity, rounded to a whole percent and capped at
+ * 100. Null when the leaf has no measurable quantity (nothing to measure against). The roll-up
+ * treats a null leaf as 0 when weighting a package.
+ */
+export function leafPercentComplete(verified: Decimal, quantity: Decimal): number | null {
+  if (!quantity.greaterThan(ZERO)) return null;
+  return Math.min(100, Math.round(verified.div(quantity).mul(100).toNumber()));
+}
+
+/**
+ * The value each leaf carries in the progress weighting. ADR-029 CONST-BOQ-028 / spec P-1: a
+ * CONTINGENCY leaf is a held reserve, not physical work, so it is dropped — `weightedPackagePercent`
+ * then treats it as a zero-value leaf. SEPARATE_CHARGE and ABSORBED leaves are WORK and keep their
+ * value.
+ */
+export function progressValueByLeaf(
+  leaves: readonly { id: string; totalAmount: { toString(): string } | null; nodeRole: string }[],
+): Map<string, Decimal> {
+  return new Map<string, Decimal>(
+    leaves
+      .filter((v) => v.nodeRole !== 'CONTINGENCY')
+      .map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
+  );
+}
+
+/**
+ * A measurable work package's whole-number verified % — the figure the roll-up reports as the
+ * package's `percentComplete` and the one milestone readiness reads, so the two never disagree.
+ */
+export function packagePercentComplete(
+  leafIds: readonly string[],
+  percentByLeaf: ReadonlyMap<string, number>,
+  valueByLeaf: ReadonlyMap<string, Decimal>,
+): number {
+  return Math.round(weightedPackagePercent(leafIds, percentByLeaf, valueByLeaf));
+}

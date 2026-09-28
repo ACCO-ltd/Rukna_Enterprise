@@ -1,9 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   DprStatus,
   type RequestIdentity,
   type ApplyScheduleTemplateResponse,
+  type CollectionProgressSignalResponse,
+  type PhysicalFinancialSignalResponse,
   type ProgressActualPoint,
   type ProgressCurvePoint,
   type ProgressCurveResponse,
@@ -18,6 +21,12 @@ import {
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
 import { classifyDivergence } from '../domain/divergence.js';
 import { validateDeliveryPlanBatch, type DeliveryPlanPackageInput } from '../domain/delivery-plan.js';
+import {
+  DPR_EXCEEDS_BOQ_QUANTITY,
+  findOverQuantityLines,
+  overQuantityMessage,
+  type OverQuantityInput,
+} from '../domain/over-quantity.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -29,15 +38,125 @@ import {
   CommandGovernanceService,
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
-import { weightedPackagePercent } from '../domain/progress-rollup.js';
+import {
+  leafPercentComplete,
+  packagePercentComplete,
+  progressValueByLeaf,
+  weightedPackagePercent,
+} from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
+// The single server-owned money-visibility definition (ADR-029 §8 A-2) — reused, not re-derived, so
+// the Progress signals hide money from exactly the roles the BOQ and Commercial read models do.
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 
 const ZERO = new Decimal(0);
+
+/** Wire code for a BOQ leaf that is already allocated to a work package (CONST-PROG-012). */
+export const BOQ_ITEM_ALREADY_ALLOCATED = 'BOQ_ITEM_ALREADY_ALLOCATED';
+
+function boqItemAlreadyAllocated(): ConflictException {
+  return new ConflictException({
+    message:
+      'This BOQ item is already allocated to another work package. Refresh the plan and pick an unallocated item.',
+    errorCode: BOQ_ITEM_ALREADY_ALLOCATED,
+  });
+}
+
+/**
+ * True when a write hit the work-package allocation table's unique leaf index
+ * (`WorkPackageBoqNode @@unique([boqNodeId])`) — a leaf allocated by a racing request between our
+ * pre-check and the insert. Prisma reports P2002 with either `meta.modelName` or a `meta.target`
+ * that is a column array (`['boq_node_id']`) or the constraint name as a string
+ * (`work_package_boq_nodes_boq_node_id_key`) depending on version and query path, so any of those
+ * counts. A P2002 on another model (e.g. the package code) propagates unchanged.
+ */
+function isLeafAllocationConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
+  }
+  const meta = (error.meta ?? {}) as { modelName?: unknown; target?: unknown };
+  if (meta.modelName === 'WorkPackageBoqNode') return true;
+  const target = Array.isArray(meta.target) ? meta.target.join(',') : String(meta.target ?? '');
+  return /work_package_boq_nodes|boq_node_id|boqNodeId/.test(target);
+}
 
 // ADR-021: the statuses in which a DPR's measurements may be added/edited and it can be submitted —
 // a fresh draft, one returned before approval, or one reopened for correction (CONST-PROG-010).
 function isEditableDprStatus(status: string): boolean {
   return status === DprStatus.DRAFT || status === DprStatus.RETURNED || status === DprStatus.REOPENED;
+}
+
+/**
+ * Evidence may be added while the report is editable AND while it is SUBMITTED (the Progress UI
+ * lets the preparer / reviewer add photos during review — `canUpload = !isApproved`). It is closed
+ * once APPROVED: approval freezes the evidence set (CONST-PROG-008).
+ */
+function canAttachEvidence(status: string): boolean {
+  return isEditableDprStatus(status) || status === DprStatus.SUBMITTED;
+}
+
+function evidenceClosed(status: string): ConflictException {
+  return new ConflictException(
+    `Evidence can no longer be added to this report (it is ${status}). Reopen it to add corrections.`,
+  );
+}
+
+/** 409 when a report moved between our read and our write (a concurrent command won). */
+function reportChanged(action: string): ConflictException {
+  return new ConflictException({
+    message: `This report changed while you were ${action} it — reload it and try again.`,
+    errorCode: 'DPR_CHANGED',
+  });
+}
+
+/** Locked DPR transactions give up after this long rather than hold rows indefinitely. */
+const LOCKED_TX_TIMEOUT_MS = 15000; // same bound as the commercial billing transactions
+
+/**
+ * True for lock contention on a locked DPR transaction: Prisma's interactive-transaction timeout
+ * (P2028), a write conflict / deadlock (P2034), or Postgres deadlock_detected (40P01) surfaced
+ * through a raw query (P2010 with meta.code) or in the message.
+ */
+function isLockContention(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return error instanceof Error && error.message.includes('40P01');
+  }
+  if (error.code === 'P2028' || error.code === 'P2034') return true;
+  const metaCode = (error.meta as { code?: unknown } | undefined)?.code;
+  return metaCode === '40P01' || error.message.includes('40P01');
+}
+
+/** 409 when a locked DPR transaction timed out or deadlocked — safe to retry. */
+function reportBusy(): ConflictException {
+  return new ConflictException({
+    message: 'This report is busy — try again.',
+    errorCode: 'DPR_CHANGED',
+  });
+}
+
+/** Run a delete; a row that vanished between our read and the delete (P2025) is a plain 404. */
+async function deleteOr404<T>(write: Promise<T>, notFoundMessage: string): Promise<T> {
+  try {
+    return await write;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw new NotFoundException(notFoundMessage);
+    }
+    throw error;
+  }
+}
+
+/** ADR-022 CONST-DOA-008 SoD: the preparer or submitter cannot approve their own report. */
+function assertNotSelfApproval(
+  dpr: { preparedBy: string; submittedBy: string | null },
+  userId: string,
+): void {
+  // Applies to reopened reports too — reopening and re-submitting does not reset the check.
+  if (dpr.preparedBy === userId || dpr.submittedBy === userId) {
+    throw new ForbiddenException(
+      'A preparer or submitter cannot approve their own daily progress report.',
+    );
+  }
 }
 
 export interface CreateDprDto {
@@ -110,15 +229,62 @@ export class ProgressService {
     if (!node) throw new NotFoundException('BOQ node not found for this project.');
     if (!node.isLeaf) throw new BadRequestException('Measure against a BOQ leaf item, not a section.');
 
-    return this.repo.addMeasurement(prisma, {
-      organizationId: identity.activeOrganizationId,
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      boqNodeId: dto.boqNodeId,
-      quantity: dto.quantity,
-      notes: dto.notes ?? null,
-      locationArea: dto.locationArea ?? null,
-      createdBy: identity.userId,
-    });
+      () =>
+        new BadRequestException('Measurements can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addMeasurement(tx, {
+          organizationId: identity.activeOrganizationId,
+          dprId,
+          boqNodeId: dto.boqNodeId,
+          quantity: dto.quantity,
+          notes: dto.notes ?? null,
+          locationArea: dto.locationArea ?? null,
+          createdBy: identity.userId,
+        }),
+    );
+  }
+
+  /**
+   * Remove a work entry from a report still in the preparer's hands (DRAFT / RETURNED / REOPENED) —
+   * e.g. a typo'd quantity. Once submitted or approved the entry is under review / verified, so the
+   * delete is refused with 409. Evidence tagged to the entry is NOT deleted: the schema's SetNull
+   * on `DprAttachment.measurementId` detaches it, so the file stays on the report as general
+   * evidence (removing a tag never destroys evidence).
+   */
+  async removeMeasurement(identity: RequestIdentity, dprId: string, measurementId: string) {
+    await this.requireDpr(identity, dprId);
+    return this.inLockedEditableDpr(
+      identity,
+      dprId,
+      (status) =>
+        new ConflictException(
+          `Work entries can only be removed from a DRAFT, RETURNED or REOPENED report (is ${status}).`,
+        ),
+      async (tx, dpr) => {
+        const entry = dpr.measurements.find((m) => m.id === measurementId);
+        if (!entry) {
+          throw new NotFoundException(`Work entry ${measurementId} not found on this report.`);
+        }
+        // CONST-PROG-010 supersede, don't overwrite: in a reopened report the entries that were
+        // approved are part of the record. Only entries added since the reopen may be deleted.
+        if (
+          dpr.status === DprStatus.REOPENED &&
+          dpr.reopenedAt &&
+          entry.createdAt.getTime() <= dpr.reopenedAt.getTime()
+        ) {
+          throw new ConflictException(
+            'This work entry was part of the approved report, so it cannot be deleted while the report is reopened. Add a correcting entry instead.',
+          );
+        }
+        return deleteOr404(
+          this.repo.deleteMeasurement(tx, measurementId),
+          `Work entry ${measurementId} not found on this report.`,
+        );
+      },
+    );
   }
 
   async attachEvidence(
@@ -129,6 +295,7 @@ export class ProgressService {
   ) {
     const prisma = this.tenancy.getClient();
     const dpr = await this.requireDpr(identity, dprId);
+    if (!canAttachEvidence(dpr.status)) throw evidenceClosed(dpr.status);
     const file = await this.repo.findFileStatus(prisma, identity.activeOrganizationId, platformFileId);
     if (!file) throw new NotFoundException(`File ${platformFileId} not found`);
     if (file.status !== 'READY') {
@@ -138,14 +305,27 @@ export class ProgressService {
       const belongs = dpr.measurements.some((m) => m.id === measurementId);
       if (!belongs) throw new BadRequestException('That work entry does not belong to this report.');
     }
+    // Under the DPR row lock, so evidence cannot land on a report an approval has just frozen:
+    // either it is attached first (and frozen with the rest) or it sees APPROVED and is refused.
+    const attachment = await this.inLockedEditableDpr(
+      identity,
+      dprId,
+      evidenceClosed,
+      async (tx, fresh) => {
+        if (measurementId && !fresh.measurements.some((m) => m.id === measurementId)) {
+          throw new BadRequestException('That work entry does not belong to this report.');
+        }
+        return this.repo.createAttachment(tx, {
+          dprId,
+          platformFileId,
+          measurementId: measurementId ?? null,
+          createdBy: identity.userId,
+        });
+      },
+      canAttachEvidence,
+    );
     // Binding takes the file out of reach of the abandoned-upload sweep and of DELETE /files/:id:
     // from here it is evidence on a report, and only the report can release it.
-    const attachment = await this.repo.createAttachment(prisma, {
-      dprId,
-      platformFileId,
-      measurementId: measurementId ?? null,
-      createdBy: identity.userId,
-    });
     await this.files.bind(platformFileId, `DPR evidence ${attachment.id}`);
     return attachment;
   }
@@ -171,7 +351,13 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Context fields can only be updated on a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.patchDprContext(this.tenancy.getClient(), dprId, dto);
+    return this.inLockedEditableDpr(
+      identity,
+      dprId,
+      () =>
+        new BadRequestException('Context fields can only be updated on a DRAFT, RETURNED or REOPENED report.'),
+      (tx) => this.repo.patchDprContext(tx, dprId, dto),
+    );
   }
 
   async addLabourRow(identity: RequestIdentity, dprId: string, dto: { trade: string; headcount: number; contractor?: string; hours?: number }) {
@@ -179,24 +365,33 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Labour rows can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.addLabourRow(this.tenancy.getClient(), {
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      trade: dto.trade,
-      headcount: dto.headcount,
-      contractor: dto.contractor ?? null,
-      hours: dto.hours ?? null,
-    });
+      () => new BadRequestException('Labour rows can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addLabourRow(tx, {
+          dprId,
+          trade: dto.trade,
+          headcount: dto.headcount,
+          contractor: dto.contractor ?? null,
+          hours: dto.hours ?? null,
+        }),
+    );
   }
 
   async removeLabourRow(identity: RequestIdentity, dprId: string, rowId: string) {
     const prisma = this.tenancy.getClient();
     const row = await this.repo.findLabourRow(prisma, rowId);
     if (!row || row.dprId !== dprId) throw new NotFoundException(`Labour row ${rowId} not found on this report.`);
-    const dpr = await this.requireDpr(identity, dprId);
-    if (!isEditableDprStatus(dpr.status)) {
-      throw new BadRequestException('Labour rows can only be removed from a DRAFT, RETURNED or REOPENED report.');
-    }
-    return this.repo.deleteLabourRow(prisma, rowId);
+    await this.requireDpr(identity, dprId);
+    return this.inLockedEditableDpr(
+      identity,
+      dprId,
+      () =>
+        new BadRequestException('Labour rows can only be removed from a DRAFT, RETURNED or REOPENED report.'),
+      (tx) => deleteOr404(this.repo.deleteLabourRow(tx, rowId), `Labour row ${rowId} not found on this report.`),
+    );
   }
 
   async addEquipmentRow(
@@ -208,25 +403,36 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Equipment rows can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.addEquipmentRow(this.tenancy.getClient(), {
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      equipmentType: dto.equipmentType,
-      count: dto.count,
-      hoursWorked: dto.hoursWorked ?? null,
-      condition: dto.condition ?? null,
-      notes: dto.notes ?? null,
-    });
+      () =>
+        new BadRequestException('Equipment rows can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addEquipmentRow(tx, {
+          dprId,
+          equipmentType: dto.equipmentType,
+          count: dto.count,
+          hoursWorked: dto.hoursWorked ?? null,
+          condition: dto.condition ?? null,
+          notes: dto.notes ?? null,
+        }),
+    );
   }
 
   async removeEquipmentRow(identity: RequestIdentity, dprId: string, rowId: string) {
     const prisma = this.tenancy.getClient();
     const row = await this.repo.findEquipmentRow(prisma, rowId);
     if (!row || row.dprId !== dprId) throw new NotFoundException(`Equipment row ${rowId} not found on this report.`);
-    const dpr = await this.requireDpr(identity, dprId);
-    if (!isEditableDprStatus(dpr.status)) {
-      throw new BadRequestException('Equipment rows can only be removed from a DRAFT, RETURNED or REOPENED report.');
-    }
-    return this.repo.deleteEquipmentRow(prisma, rowId);
+    await this.requireDpr(identity, dprId);
+    return this.inLockedEditableDpr(
+      identity,
+      dprId,
+      () =>
+        new BadRequestException('Equipment rows can only be removed from a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        deleteOr404(this.repo.deleteEquipmentRow(tx, rowId), `Equipment row ${rowId} not found on this report.`),
+    );
   }
 
   async addObservation(
@@ -238,26 +444,35 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException('Observations can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
-    return this.repo.addObservation(this.tenancy.getClient(), {
+    return this.inLockedEditableDpr(
+      identity,
       dprId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      category: dto.category as any,
-      description: dto.description,
-      affectedWork: dto.affectedWork ?? null,
-      severity: dto.severity ?? null,
-      followUpOwner: dto.followUpOwner ?? null,
-    });
+      () => new BadRequestException('Observations can only be added to a DRAFT, RETURNED or REOPENED report.'),
+      (tx) =>
+        this.repo.addObservation(tx, {
+          dprId,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          category: dto.category as any,
+          description: dto.description,
+          affectedWork: dto.affectedWork ?? null,
+          severity: dto.severity ?? null,
+          followUpOwner: dto.followUpOwner ?? null,
+        }),
+    );
   }
 
   async removeObservation(identity: RequestIdentity, dprId: string, obsId: string) {
     const prisma = this.tenancy.getClient();
     const obs = await this.repo.findObservation(prisma, obsId);
     if (!obs || obs.dprId !== dprId) throw new NotFoundException(`Observation ${obsId} not found on this report.`);
-    const dpr = await this.requireDpr(identity, dprId);
-    if (!isEditableDprStatus(dpr.status)) {
-      throw new BadRequestException('Observations can only be removed from a DRAFT, RETURNED or REOPENED report.');
-    }
-    return this.repo.deleteObservation(prisma, obsId);
+    await this.requireDpr(identity, dprId);
+    return this.inLockedEditableDpr(
+      identity,
+      dprId,
+      () =>
+        new BadRequestException('Observations can only be removed from a DRAFT, RETURNED or REOPENED report.'),
+      (tx) => deleteOr404(this.repo.deleteObservation(tx, obsId), `Observation ${obsId} not found on this report.`),
+    );
   }
 
   // ─── End Phase 3 ───────────────────────────────────────────────────────────────
@@ -267,32 +482,43 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException(`Cannot submit a ${dpr.status} report.`);
     }
-    return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
+    // Catch an over-quantity entry while the report is still in the preparer's hands, rather than
+    // letting it bounce at approval. Approve re-runs the same check and stays authoritative.
+    await this.assertWithinBoqQuantity(identity, dpr);
+    // Conditional on the status we read, so a submit cannot overwrite a concurrent transition.
+    return this.transition(this.tenancy.getClient(), dprId, dpr.status, 'submitting', {
       status: DprStatus.SUBMITTED,
       submittedBy: identity.userId,
       submittedAt: new Date(),
     });
   }
 
-  /** Approve → measurements become verified. Enforces the cumulative ≤ BOQ-scope invariant first. */
+  /**
+   * Approve → measurements become verified. Race-safe (CONST-PROG-002/008/009):
+   *  - fast, unlocked pre-checks (status, SoD, governance gate, over-quantity) fail the common
+   *    mistakes early;
+   *  - then ONE transaction takes locks in a fixed order — the DPR row, then its BOQ leaves sorted by
+   *    id — re-reads the report (status, preparer/submitter, measurements) from the transaction, and
+   *    re-runs SoD and the over-quantity check on that fresh read. A return + edit + resubmit that
+   *    slipped in after the pre-check is therefore checked, not the stale copy;
+   *  - evidence is frozen and the status flipped inside the same transaction; the flip is conditional
+   *    on the report still being SUBMITTED, so a concurrent approve/return loses with 409.
+   */
   async approve(identity: RequestIdentity, dprId: string) {
-    const prisma = this.tenancy.getClient();
-    const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== DprStatus.SUBMITTED) {
-      throw new BadRequestException(`Only a SUBMITTED report can be approved (is ${dpr.status}).`);
+    const pre = await this.requireDpr(identity, dprId);
+    if (pre.status !== DprStatus.SUBMITTED) {
+      // 409, like the in-transaction re-check: the report is not (or no longer) awaiting approval.
+      throw new ConflictException({
+        message: `Only a SUBMITTED report can be approved (is ${pre.status}) — reload it.`,
+        errorCode: 'DPR_CHANGED',
+      });
     }
-
-    // ADR-022 CONST-DOA-008 SoD: the preparer or submitter cannot approve their own report.
-    // This applies to reopened reports too — reopening and re-submitting does not reset the check.
-    if (dpr.preparedBy === identity.userId || dpr.submittedBy === identity.userId) {
-      throw new ForbiddenException(
-        'A preparer or submitter cannot approve their own daily progress report.',
-      );
-    }
+    assertNotSelfApproval(pre, identity.userId);
 
     // ADR-022 CONST-DOA-008 governance seam: a DPR is approved by the Project Manager. With no
     // active binding this resolves to null and approval proceeds unchanged; an active binding
     // opens the approval instance and returns 409 for the client to drive (backward-compatible).
+    // A read + possible instance creation, so it stays outside the approve transaction.
     throwIfGated(
       await this.commandGovernance.gateStateTransition(
         identity,
@@ -304,36 +530,150 @@ export class ProgressService {
       'Approving this progress report requires workflow approval.',
     );
 
+    // Fast, unlocked pre-check: fail an obviously over-quantity report before opening the transaction.
+    await this.assertWithinBoqQuantity(identity, pre);
+
+    return this.lockedTx(async (tx) => {
+      // Lock order: DPR row first, then BOQ leaves by id — every approver takes them the same way.
+      const dpr = await this.lockAndReadDpr(tx, identity, dprId);
+      if (dpr.status !== DprStatus.SUBMITTED) throw reportChanged('approving');
+      assertNotSelfApproval(dpr, identity.userId);
+
+      const nodeIds = [...new Set(dpr.measurements.map((m) => m.boqNodeId))].sort();
+      await this.repo.lockBoqNodes(tx, nodeIds);
+      await this.assertWithinBoqQuantity(identity, dpr, tx);
+
+      // CONST-PROG-008: approval is what makes these measurements verified, so from here the
+      // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
+      // never releases the old (supersede, don't overwrite). Frozen in the same transaction as the
+      // status flip: either both happen or neither.
+      const evidence = await this.repo.findAttachmentFileIds(tx, dprId);
+      await this.files.markManyImmutable(evidence, `evidence on approved report ${dprId}`, tx);
+
+      return this.transition(tx, dprId, DprStatus.SUBMITTED, 'approving', {
+        status: DprStatus.APPROVED,
+        approvedBy: identity.userId,
+        approvedAt: new Date(),
+      });
+    });
+  }
+
+  /** Lock the DPR row for the rest of the transaction, then read it fresh through the transaction. */
+  private async lockAndReadDpr(
+    tx: ReturnType<TenancyService['getClient']>,
+    identity: RequestIdentity,
+    dprId: string,
+  ) {
+    const locked = await this.repo.lockDpr(tx, identity.activeOrganizationId, dprId);
+    const dpr = locked ? await this.repo.findDpr(tx, identity.activeOrganizationId, dprId) : null;
+    if (!dpr) throw new NotFoundException(`Daily report ${dprId} not found`);
+    return dpr;
+  }
+
+  /**
+   * Conditional status change: applies only if the report is still in `from`, else 409 — the report
+   * moved under us (a concurrent approve / return / reopen / submit). Returns the updated row.
+   */
+  private async transition(
+    prisma: ReturnType<TenancyService['getClient']>,
+    dprId: string,
+    from: string,
+    action: string,
+    data: Prisma.DailyProgressReportUncheckedUpdateManyInput,
+  ) {
+    const count = await this.repo.transitionDprStatus(prisma, dprId, from, data);
+    if (count !== 1) throw reportChanged(action);
+    return this.repo.findDprRow(prisma, dprId);
+  }
+
+  /**
+   * Run a row-level edit of an editable report under the DPR row lock, re-checking the editable
+   * status on a fresh read — so an edit cannot land after a concurrent submit / approve.
+   */
+  private async inLockedEditableDpr<T>(
+    identity: RequestIdentity,
+    dprId: string,
+    notEditable: (status: string) => Error,
+    fn: (
+      tx: ReturnType<TenancyService['getClient']>,
+      dpr: Awaited<ReturnType<ProgressService['lockAndReadDpr']>>,
+    ) => Promise<T>,
+    allowed: (status: string) => boolean = isEditableDprStatus,
+  ): Promise<T> {
+    return this.lockedTx(async (tx) => {
+      const dpr = await this.lockAndReadDpr(tx, identity, dprId);
+      if (!allowed(dpr.status)) throw notEditable(dpr.status);
+      return fn(tx, dpr);
+    });
+  }
+
+  /**
+   * An interactive transaction for the DPR row-locking paths: bounded by LOCKED_TX_TIMEOUT_MS, and
+   * lock contention (timeout / deadlock) surfaces as a retryable 409 instead of a 500.
+   */
+  private async lockedTx<T>(
+    fn: (tx: ReturnType<TenancyService['getClient']>) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.tenancy
+        .getClient()
+        .$transaction(async (txClient) => fn(txClient as never), { timeout: LOCKED_TX_TIMEOUT_MS });
+    } catch (error) {
+      if (isLockContention(error)) throw reportBusy();
+      throw error;
+    }
+  }
+
+  /**
+   * CONST-PROG-002/009: cumulative verified quantity per BOQ leaf may not exceed the leaf's
+   * measurable quantity. Sums this report's measurements per line, adds what OTHER approved reports
+   * have verified, and — when any line would go over — throws 400 `DPR_EXCEEDS_BOQ_QUANTITY` with
+   * every offending line in `details.lines` and a message naming the first one.
+   */
+  private async assertWithinBoqQuantity(
+    identity: RequestIdentity,
+    dpr: {
+      id: string;
+      projectId: string;
+      measurements: { boqNodeId: string; quantity: { toString(): string } }[];
+    },
+    // The approve transaction passes its client so the reads see the rows it has locked.
+    client?: ReturnType<TenancyService['getClient']>,
+  ): Promise<void> {
+    const prisma = client ?? this.tenancy.getClient();
     const byNode = new Map<string, Decimal>();
     for (const m of dpr.measurements) {
       byNode.set(m.boqNodeId, (byNode.get(m.boqNodeId) ?? ZERO).plus(new Decimal(m.quantity.toString())));
     }
+
+    const inputs: OverQuantityInput[] = [];
     for (const [nodeId, thisReport] of byNode) {
       const node = await this.repo.findBoqNodeForProject(prisma, dpr.projectId, nodeId);
-      const scope = new Decimal(node?.quantity?.toString() ?? '0');
-      const prior = await this.repo.sumVerifiedForNode(prisma, identity.activeOrganizationId, nodeId, dprId);
-      const priorQty = new Decimal(prior._sum.quantity?.toString() ?? '0');
-      if (priorQty.plus(thisReport).greaterThan(scope)) {
-        throw new BadRequestException(
-          `Approving would exceed the BOQ scope for a line ` +
-            `(${priorQty.plus(thisReport).toString()} > ${scope.toString()}). ` +
-            'Route the excess through an unplanned-requirement classification.',
-        );
-      }
+      const prior = await this.repo.sumVerifiedForNode(
+        prisma,
+        identity.activeOrganizationId,
+        nodeId,
+        dpr.id,
+      );
+      inputs.push({
+        boqNodeId: nodeId,
+        boqCode: node?.code ?? null,
+        description: node?.description ?? null,
+        unit: node?.unit ?? null,
+        boqQuantity: new Decimal(node?.quantity?.toString() ?? '0'),
+        verifiedToDate: new Decimal(prior._sum.quantity?.toString() ?? '0'),
+        thisReport,
+      });
     }
 
-    // CONST-PROG-008: approval is what makes these measurements verified, so from here the
-    // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
-    // never releases the old, which is the same supersede-don't-overwrite rule the BOQ and the
-    // programme already follow.
-    const evidence = await this.repo.findAttachmentFileIds(prisma, dprId);
-    await this.files.markManyImmutable(evidence, `evidence on approved report ${dprId}`);
-
-    return this.repo.updateDprStatus(prisma, dprId, {
-      status: DprStatus.APPROVED,
-      approvedBy: identity.userId,
-      approvedAt: new Date(),
-    });
+    const lines = findOverQuantityLines(inputs);
+    if (lines.length > 0) {
+      throw new BadRequestException({
+        message: overQuantityMessage(lines),
+        errorCode: DPR_EXCEEDS_BOQ_QUANTITY,
+        details: { lines },
+      });
+    }
   }
 
   async returnForRevision(identity: RequestIdentity, dprId: string, reason: string) {
@@ -341,9 +681,14 @@ export class ProgressService {
     if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException('Only a SUBMITTED report can be returned.');
     }
-    return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
+    // returnedBy/At record the most recent return alongside returnReason; like the reason, a
+    // resubmit keeps them and the next return overwrites them.
+    // Conditional: a return racing an approve cannot leave an APPROVED report RETURNED (or vice versa).
+    return this.transition(this.tenancy.getClient(), dprId, DprStatus.SUBMITTED, 'returning', {
       status: DprStatus.RETURNED,
       returnReason: reason,
+      returnedBy: identity.userId,
+      returnedAt: new Date(),
     });
   }
 
@@ -374,7 +719,7 @@ export class ProgressService {
       'Reopening this progress report requires workflow approval.',
     );
 
-    return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
+    return this.transition(this.tenancy.getClient(), dprId, DprStatus.APPROVED, 'reopening', {
       status: DprStatus.REOPENED,
       reopenedBy: identity.userId,
       reopenedAt: new Date(),
@@ -386,26 +731,83 @@ export class ProgressService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
     const dprs = await this.repo.findDprsByProject(prisma, identity.activeOrganizationId, projectId);
-    // Resolve the preparer id → name once for the whole list (one users query, not N).
-    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
-    const names = await this.resolveUserNames(
-      prisma,
-      identity.activeOrganizationId,
-      dprs.map((d) => d.preparedBy),
-    );
-    return dprs.map((d) => ({ ...d, preparedByName: names.get(d.preparedBy) }));
+    return this.withReadModelFields(identity, dprs);
   }
 
   async getDpr(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    // Resolve this one DPR's preparer id → name (read-side, tenant-scoped). Undefined if not found.
-    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
-    const names = await this.resolveUserNames(
-      this.tenancy.getClient(),
-      identity.activeOrganizationId,
-      [dpr.preparedBy],
-    );
-    return { ...dpr, preparedByName: names.get(dpr.preparedBy) };
+    const [enriched] = await this.withReadModelFields(identity, [dpr]);
+    return enriched!;
+  }
+
+  /**
+   * Read-model enrichment shared by the DPR list and detail, batched for the whole set:
+   *  - one users query resolves preparedByName / approvedByName / returnedByName / reviewedByName
+   *    (the reviewer is the approver for APPROVED, the reopener for REOPENED, the returner for
+   *    RETURNED);
+   *  - one measurements query resolves `workPackages` — the distinct work packages the report's
+   *    measured BOQ leaves are allocated to, ordered by code.
+   */
+  private async withReadModelFields<
+    T extends {
+      id: string;
+      status: string;
+      preparedBy: string;
+      approvedBy: string | null;
+      returnedBy: string | null;
+      reopenedBy: string | null;
+    },
+  >(identity: RequestIdentity, dprs: T[]) {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const [names, packageRows] = await Promise.all([
+      this.resolveUserNames(
+        prisma,
+        orgId,
+        dprs.flatMap((d) => [
+          d.preparedBy,
+          d.approvedBy ?? '',
+          d.returnedBy ?? '',
+          d.reopenedBy ?? '',
+        ]),
+      ),
+      this.repo.findWorkPackagesForDprs(
+        prisma,
+        orgId,
+        dprs.map((d) => d.id),
+      ),
+    ]);
+
+    const packagesByDpr = new Map<string, Map<string, { id: string; code: string; name: string }>>();
+    for (const row of packageRows) {
+      const byId = packagesByDpr.get(row.dprId) ?? new Map();
+      for (const link of row.boqNode.workPackageLinks) byId.set(link.workPackage.id, link.workPackage);
+      packagesByDpr.set(row.dprId, byId);
+    }
+    const nameOf = (id: string | null) => (id ? names.get(id) : undefined);
+
+    return dprs.map((d) => {
+      // The latest reviewer: the approver of an APPROVED report, the reopener of a REOPENED one,
+      // the returner of a RETURNED one; nobody yet for DRAFT / SUBMITTED.
+      const reviewer =
+        d.status === DprStatus.APPROVED
+          ? d.approvedBy
+          : d.status === DprStatus.REOPENED
+            ? d.reopenedBy
+            : d.status === DprStatus.RETURNED
+              ? d.returnedBy
+              : null;
+      return {
+        ...d,
+        preparedByName: names.get(d.preparedBy),
+        approvedByName: nameOf(d.approvedBy),
+        returnedByName: nameOf(d.returnedBy),
+        reviewedByName: nameOf(reviewer),
+        workPackages: [...(packagesByDpr.get(d.id)?.values() ?? [])].sort((a, b) =>
+          a.code.localeCompare(b.code),
+        ),
+      };
+    });
   }
 
   /**
@@ -454,9 +856,7 @@ export class ProgressService {
       description: e.description,
       measurableQuantity: e.quantity.toString(),
       verifiedToDate: e.verified.toString(),
-      percentComplete: e.quantity.greaterThan(ZERO)
-        ? Math.min(100, Math.round(e.verified.div(e.quantity).mul(100).toNumber()))
-        : null,
+      percentComplete: leafPercentComplete(e.verified, e.quantity),
     }));
   }
 
@@ -489,10 +889,16 @@ export class ProgressService {
     // counted once in the roll-up. Surface the clash rather than let the unique index 500.
     const existing = await this.repo.findLeafAllocation(prisma, boqNodeId);
     if (existing && existing.workPackageId !== workPackageId) {
-      throw new BadRequestException('This BOQ item is already allocated to another work package.');
+      throw boqItemAlreadyAllocated();
     }
 
-    return this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+    try {
+      return await this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+    } catch (error) {
+      // A racing allocation of the same leaf landed between the check above and this insert.
+      if (isLeafAllocationConflict(error)) throw boqItemAlreadyAllocated();
+      throw error;
+    }
   }
 
   async listWorkPackages(identity: RequestIdentity, projectId: string) {
@@ -583,6 +989,11 @@ export class ProgressService {
         ),
       );
       return packages;
+    }).catch((error: unknown) => {
+      // The unique-leaf backstop fired: another plan claimed a leaf after validation. The whole
+      // transaction has rolled back; tell the caller plainly rather than surfacing a raw 500.
+      if (isLeafAllocationConflict(error)) throw boqItemAlreadyAllocated();
+      throw error;
     });
 
     return {
@@ -795,11 +1206,7 @@ export class ProgressService {
     // treat it as an absent (zero-value) leaf, and a package that is *only* contingency falls through
     // to the existing unpriced-package plain-average fallback rather than reading 0%. SEPARATE_CHARGE
     // and ABSORBED leaves are `nodeRole = WORK`, so they keep their value and roll up normally (P-2).
-    const valueByNode = new Map<string, Decimal>(
-      leafValues
-        .filter((v) => v.nodeRole !== 'CONTINGENCY')
-        .map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
-    );
+    const valueByNode = progressValueByLeaf(leafValues);
 
     // P1-b: one batched read of the APPROVED-DPR report dates across every allocated leaf, folded to
     // per-node min/max. Each package then reads its own actual window from its leaves.
@@ -848,9 +1255,10 @@ export class ProgressService {
           scheduleStatus: deriveScheduleOnlyStatus(wp.plannedStart, wp.plannedEnd, at),
         };
       }
-      // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
+      // Value-weighted, not a plain average — see `progress-rollup.ts` for why. The rounded figure
+      // comes from the same helper milestone readiness reads (ProgrammeService), so they agree.
       const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
-      const percentComplete = Math.round(pct);
+      const percentComplete = packagePercentComplete(leaves, pctByNode, valueByNode);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));
@@ -897,7 +1305,10 @@ export class ProgressService {
    * A project that has set no budget has not consumed 0% of it, so INSUFFICIENT_DATA is the
    * honest answer rather than a ratio against a number nobody agreed.
    */
-  async getPhysicalFinancialSignal(identity: RequestIdentity, projectId: string) {
+  async getPhysicalFinancialSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<PhysicalFinancialSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -917,11 +1328,16 @@ export class ProgressService {
       'COST_AHEAD',
     );
 
+    // Money-blind callers (PM / Site Engineer, per the owner's financial-visibility decision) get
+    // the ratio and status but never the amounts behind them — the cost tier gates cost figures.
+    const { canViewCost } = resolveBoqVisibility(identity);
+
     return {
       projectId,
       physicalPercent,
-      actualCost: fp.actualCost,
-      budgetTotal: fp.budgetTotal,
+      actualCost: canViewCost ? fp.actualCost : null,
+      budgetTotal: canViewCost ? fp.budgetTotal : null,
+      moneyVisible: canViewCost,
       costConsumedPercent,
       divergence,
       status,
@@ -936,7 +1352,10 @@ export class ProgressService {
    * exposure if the advance is spent before the work is delivered; a large negative gap (work ahead of
    * cash) is ACCO financing the client. The revenue read crosses into accounting — the allowed direction.
    */
-  async getCollectionProgressSignal(identity: RequestIdentity, projectId: string) {
+  async getCollectionProgressSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<CollectionProgressSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -956,11 +1375,16 @@ export class ProgressService {
       'WORK_AHEAD',
     );
 
+    // Contract value and client revenue are the commercial (margin) tier — hidden from money-blind
+    // callers; the collected % and status stay, since a ratio discloses no amount.
+    const { canViewMargin } = resolveBoqVisibility(identity);
+
     return {
       projectId,
       physicalPercent,
-      contractValue: fp.contractValue,
-      receivedRevenue: fp.receivedRevenue,
+      contractValue: canViewMargin ? fp.contractValue : null,
+      receivedRevenue: canViewMargin ? fp.receivedRevenue : null,
+      moneyVisible: canViewMargin,
       collectedPercent,
       divergence,
       status,

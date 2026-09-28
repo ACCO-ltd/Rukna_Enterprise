@@ -121,6 +121,8 @@ const milestones: ProgrammeMilestoneResponse[] = [
     contractDeliverableId: null,
     verifiedBy: null,
     verifiedAt: null,
+    workPackages: [],
+    readyToVerify: false,
     releases: [
       {
         installmentId: 'i1',

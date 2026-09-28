@@ -46,11 +46,14 @@ export class ProgrammeBaselineRepository {
     });
   }
 
-  /** A Variation resolved to its owning project (via its contract), for the re-baseline provenance check. */
+  /**
+   * A Variation resolved to its owning project (via its contract) and its status, for the
+   * re-baseline provenance check — the service accepts only an adopted one.
+   */
   findVariationOrderProject(prisma: TenantPrisma, organizationId: string, variationOrderId: string) {
     return prisma.variationOrder.findFirst({
       where: { id: variationOrderId, organizationId },
-      select: { id: true, contract: { select: { projectId: true } } },
+      select: { id: true, status: true, contract: { select: { projectId: true } } },
     });
   }
 

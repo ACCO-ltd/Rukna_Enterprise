@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 
 type TenantPrisma = Omit<
   PrismaClient,
@@ -37,6 +37,28 @@ export class ProgressRepository {
   }
 
   /**
+   * The work packages each report's measured BOQ leaves are allocated to — ONE query for a whole
+   * list of reports (Prisma batches the nested relations; no per-report round trip). The service
+   * folds the rows into a distinct, code-ordered set per report.
+   */
+  findWorkPackagesForDprs(prisma: TenantPrisma, organizationId: string, dprIds: string[]) {
+    if (dprIds.length === 0) return Promise.resolve([]);
+    return prisma.progressMeasurement.findMany({
+      where: { organizationId, dprId: { in: dprIds } },
+      select: {
+        dprId: true,
+        boqNode: {
+          select: {
+            workPackageLinks: {
+              select: { workPackage: { select: { id: true, code: true, name: true } } },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
    * Batch-resolve users by id, tenant-scoped. Read-side only: the DPR's preparedBy/submittedBy/
    * approvedBy are plain string columns (not Prisma relations), so the service resolves the id→name
    * map from these rows. Empty input short-circuits to avoid a needless query.
@@ -53,16 +75,46 @@ export class ProgressRepository {
     });
   }
 
-  updateDprStatus(
+  /**
+   * Row-lock a report for the rest of the transaction (SELECT … FOR UPDATE). True when it exists
+   * in this organization. Always taken BEFORE any BOQ-node lock (fixed lock order).
+   */
+  async lockDpr(prisma: TenantPrisma, organizationId: string, id: string): Promise<boolean> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM daily_progress_reports
+      WHERE id = ${id} AND organization_id = ${organizationId}
+      FOR UPDATE`;
+    return rows.length === 1;
+  }
+
+  /**
+   * Conditional status transition: updates only while the report is still in `fromStatus`.
+   * Returns the number of rows changed (1 on success, 0 when a concurrent command moved it first).
+   */
+  async transitionDprStatus(
     prisma: TenantPrisma,
     id: string,
-    data: Prisma.DailyProgressReportUncheckedUpdateInput,
-  ) {
-    return prisma.dailyProgressReport.update({ where: { id }, data });
+    fromStatus: string,
+    data: Prisma.DailyProgressReportUncheckedUpdateManyInput,
+  ): Promise<number> {
+    const { count } = await prisma.dailyProgressReport.updateMany({
+      where: { id, status: fromStatus as Prisma.EnumDprStatusFilter['equals'] },
+      data,
+    });
+    return count;
+  }
+
+  findDprRow(prisma: TenantPrisma, id: string) {
+    return prisma.dailyProgressReport.findUniqueOrThrow({ where: { id } });
   }
 
   addMeasurement(prisma: TenantPrisma, data: Prisma.ProgressMeasurementUncheckedCreateInput) {
     return prisma.progressMeasurement.create({ data });
+  }
+
+  /** Delete one work entry. Evidence tagged to it is detached by the FK's ON DELETE SET NULL. */
+  deleteMeasurement(prisma: TenantPrisma, id: string) {
+    return prisma.progressMeasurement.delete({ where: { id } });
   }
 
   createAttachment(prisma: TenantPrisma, data: Prisma.DprAttachmentUncheckedCreateInput) {
@@ -78,12 +130,27 @@ export class ProgressRepository {
     return rows.map((row) => row.platformFileId);
   }
 
-  /** The BOQ leaf must belong to this project's BOQ. Returns the measurable quantity + leaf flag. */
+  /**
+   * The BOQ leaf must belong to this project's BOQ. Returns the measurable quantity + leaf flag,
+   * plus the code/description/unit an over-quantity error names the line by.
+   */
   findBoqNodeForProject(prisma: TenantPrisma, projectId: string, boqNodeId: string) {
     return prisma.boqNode.findFirst({
       where: { id: boqNodeId, version: { boq: { projectId } } },
-      select: { id: true, quantity: true, isLeaf: true },
+      select: { id: true, quantity: true, isLeaf: true, code: true, description: true, unit: true },
     });
+  }
+
+  /**
+   * Row-lock BOQ nodes for the rest of the transaction (SELECT … FOR UPDATE), in id order so
+   * concurrent lockers acquire them in the same sequence and cannot deadlock. Serialises DPR
+   * approvals that touch the same BOQ line, so the over-quantity check reads a settled total.
+   */
+  async lockBoqNodes(prisma: TenantPrisma, boqNodeIds: string[]): Promise<void> {
+    if (boqNodeIds.length === 0) return;
+    const ids = [...boqNodeIds].sort();
+    await prisma.$queryRaw`
+      SELECT id FROM boq_nodes WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
   }
 
   /** Σ of verified (APPROVED-DPR) measured quantity for a BOQ node, optionally excluding one DPR. */
