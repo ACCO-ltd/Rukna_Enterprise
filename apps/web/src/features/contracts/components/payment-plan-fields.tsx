@@ -20,17 +20,22 @@ import {
 } from '../contract-form-payload';
 
 /**
- * ACCO's canonical milestone schedule (commercial-billing-model-refinement §4.2): Structure 40%
- * paid as the advance, then three stages of 30/20/10 that sum to 100%. Offered as a one-click
- * quick-fill so a user profiling a milestone contract does not retype the house standard.
+ * ACCO's canonical milestone schedule (commercial-billing-model-refinement §4.2): a 40% advance the
+ * client pays before any work starts, to fund the project's initial costs, then three work stages of
+ * 30/20/10 that sum to 100%. Offered as a one-click quick-fill so a user profiling a milestone
+ * contract does not retype the house standard.
+ *
+ * The first row is named for what it is — an advance — not "Structure": it is billable once the
+ * contract is executed and is not evidence of finished work (owner decision 2026-09-28, ADR-023).
+ * The work stages bill only on a linked, site-verified programme milestone.
  *
  * A plain data constant so both the create builder and the tab editor seed the exact same rows;
  * the `%` are whole percents (the form's on-screen unit) and reconcile to 100 via
- * `paymentPlanTotalPercent`. The house standard marks the Structure stage as the advance
- * (`isAdvance`); the user can re-designate which stage is the advance, so this is only the default.
+ * `paymentPlanTotalPercent`. The user can re-designate which stage is the advance, so this is only
+ * the default.
  */
 export const ACCO_STANDARD_PLAN: PaymentPlanRow[] = [
-  { name: 'Structure', percentage: '40', isAdvance: true, dueDate: '' },
+  { name: 'Advance (mobilisation)', percentage: '40', isAdvance: true, dueDate: '' },
   { name: 'Partition & Plastering', percentage: '30', isAdvance: false, dueDate: '' },
   { name: 'Installation & Paint', percentage: '20', isAdvance: false, dueDate: '' },
   { name: 'Inspection & Handover', percentage: '10', isAdvance: false, dueDate: '' },

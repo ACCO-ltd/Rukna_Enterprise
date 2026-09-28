@@ -773,7 +773,9 @@ export class CommercialService {
       const nextInstallment = built.schedule.installments.find((i) => i.status === 'NEXT');
       // CONST-COM-011 (strict): the same rule the invoice generator and markReadyToBill enforce,
       // so the ribbon and the Overview card can never offer what the server would refuse.
-      const billingBlocker = nextInstallment ? installmentBillingBlocker(nextInstallment) : null;
+      const billingBlocker = nextInstallment
+        ? installmentBillingBlocker({ ...nextInstallment, contractStatus: contract.status })
+        : null;
       const milestoneBlocked = billingBlocker !== null;
       const milestoneHref = `/projects/${projectId}/commercial/contract-milestones`;
       return {
@@ -1180,8 +1182,10 @@ export class CommercialService {
         readyToBillAt: inst.readyToBillAt?.toISOString() ?? null,
         // Same strict CONST-COM-011 rule the commands enforce: a flag must never offer what the
         // server refuses (e.g. a stage marked ready under the old soft gate, or unlinked since).
-        canMarkReadyToBill: status === 'NEXT' && !isReady && installmentBillingBlocker(inst) === null,
-        canPrepareInvoice: status === 'NEXT' && isReady && installmentBillingBlocker(inst) === null,
+        canMarkReadyToBill:
+          status === 'NEXT' && !isReady && installmentBillingBlocker({ ...inst, contractStatus: contract.status }) === null,
+        canPrepareInvoice:
+          status === 'NEXT' && isReady && installmentBillingBlocker({ ...inst, contractStatus: contract.status }) === null,
         status,
         // CONST-COM-011: the linked programme milestone, so the UI can show the evidence gate
         // and block "Generate invoice" until the milestone is verified. Null when unlinked.

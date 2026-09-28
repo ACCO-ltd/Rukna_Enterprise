@@ -766,7 +766,9 @@ hidden. Each `billing-packages` document carries `postingStatus`: a stage whose 
 billable only when linked to a VERIFIED programme milestone. `POST …/installments/:id/ready-to-bill`,
 `POST /invoices/from-installment` and `issue-package` return `400` otherwise, and `current-cycle`
 reports `blockers: ['MILESTONE_NOT_LINKED']` or `['MILESTONE_NOT_VERIFIED']`. `ADVANCE` and
-`TIME_BASED` installments are not gated by this rule.
+An `ADVANCE` installment is billable once the contract is executed (`ACTIVE`) —
+otherwise `400` with reason `CONTRACT_NOT_ACTIVE`; no site evidence is required. `TIME_BASED`
+installments are not gated by this rule.
 
 **Project finance overview — billing control (2026-09-28).** `GET /projects/:projectId/finance/overview`
 now returns `controls.billing` and `billingReconciliation { invoicedNet, glRevenue, variance,
