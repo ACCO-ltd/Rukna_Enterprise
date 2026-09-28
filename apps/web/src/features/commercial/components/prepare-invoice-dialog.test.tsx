@@ -1,250 +1,186 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { CommercialPreparePreviewResponse } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
-import { pickDate } from '@/test/pick-date';
-import * as commercialApi from '../api/commercial-api';
 
-import type { InvoiceJourneyPhase, MilestoneItemViewModel } from '../milestone-journey.adapter';
-import type { CommercialSummaryResponse } from '@erp/types';
-
+import * as invoiceApi from '../api/commercial-invoice-api';
+import { prepareTotals, taxMinor } from './prepare-invoice-dialog.model';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
 
-vi.mock('../api/commercial-api', async (importOriginal) => {
-  const actual = await importOriginal<typeof commercialApi>();
-  return { ...actual, issuePackage: vi.fn() };
-});
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
-// ─── Factories ────────────────────────────────────────────────────────────────
+vi.mock('../api/commercial-invoice-api', () => ({
+  getPreparePreview: vi.fn(),
+  preparePackage: vi.fn(),
+}));
 
-function makeMilestone(
-  overrides: Partial<MilestoneItemViewModel> = {},
-): MilestoneItemViewModel {
+function makePreview(overrides: Partial<CommercialPreparePreviewResponse> = {}): CommercialPreparePreviewResponse {
   return {
-    id: 'inst-1',
-    sortOrder: 1,
-    name: 'Structure payment',
-    percentage: '0.4000',
-    baseAmount: '200000.00',
-    triggerType: 'MILESTONE',
-    userState: 'ready-to-bill',
-    expectedDate: null,
-    dateLabel: null,
-    programmeMilestone: null,
-    variationAllocations: [],
-    readyToBill: true,
-    invoiceReference: null,
-    invoiceJourney: null,
+    installmentId: 'inst-2',
+    stageNumber: 2,
+    stageCount: 4,
+    stageName: 'Structure complete',
+    percentage: '0.3000',
+    releasedBy: {
+      kind: 'MILESTONE',
+      milestoneId: 'm-2',
+      milestoneCode: 'M2',
+      milestoneName: 'Frame topped out',
+      verifiedAt: '2026-09-18T00:00:00.000Z',
+    },
+    blocker: null,
+    currency: 'USD',
+    stageAmount: '150000.00',
+    variations: [
+      {
+        variationId: 'vo-3',
+        reference: 'VO-03',
+        title: 'Extra parking level',
+        treatment: 'INVOICE',
+        amount: '12000.00',
+        defaultSelected: true,
+      },
+      {
+        variationId: 'vo-4',
+        reference: 'VO-04',
+        title: 'Omit roof garden',
+        treatment: 'STAGE_REDUCTION',
+        amount: '-2000.00',
+        defaultSelected: false,
+      },
+    ],
+    taxRate: '0.05',
     ...overrides,
   };
 }
 
-function makeSummary(
-  overrides: Partial<CommercialSummaryResponse> = {},
-): CommercialSummaryResponse {
-  return {
-    projectId: 'p-1',
-    currency: 'USD',
-    financialsVisible: true,
-    mainContract: {
-      id: 'c-1',
-      contractNumber: 'CNT-001',
-      status: 'ACTIVE',
-      currency: 'USD',
-      clientName: 'Test Client',
-      billingModel: 'MILESTONE',
-      executedAt: null,
-    },
-    client: null,
-    contractValue: null,
-    receivables: {
-      outstandingInvoices: [],
-      overdueInvoices: [],
-    },
-    recentActivity: [],
-    ...overrides,
-  } as CommercialSummaryResponse;
-}
-
-function renderDialog({
-  open = true,
-  milestone = makeMilestone() as MilestoneItemViewModel | null,
-  summary = makeSummary(),
-  onInvoiceIssued = vi.fn(),
-  onClose = vi.fn(),
-}: {
-  open?: boolean;
-  milestone?: MilestoneItemViewModel | null;
-  summary?: CommercialSummaryResponse;
-  onInvoiceIssued?: (id: string, j: InvoiceJourneyPhase) => void;
-  onClose?: () => void;
-} = {}) {
-  return renderWithProviders(
-    <PrepareInvoiceDialog
-      open={open}
-      milestone={milestone}
-      summary={summary}
-      onInvoiceIssued={onInvoiceIssued}
-      onClose={onClose}
-    />,
+function renderDialog(onClose = vi.fn()) {
+  renderWithProviders(
+    <PrepareInvoiceDialog projectId="p1" installmentId="inst-2" open onClose={onClose} />,
   );
+  return onClose;
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
-describe('PrepareInvoiceDialog', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe('prepare-invoice-dialog.model — totals in minor units with the server rate', () => {
+  it('rounds tax half away from zero to the cent', () => {
+    expect(taxMinor(10001, '0.05')).toBe(500); // 500.05 → 500
+    expect(taxMinor(10010, '0.05')).toBe(501); // 500.5 → 501
+    expect(taxMinor(-10010, '0.05')).toBe(-501);
+    expect(taxMinor(10000, null)).toBe(0);
   });
 
-  it('1. Guard: returns null (nothing rendered) when milestone is null', () => {
-    const { container } = renderDialog({ milestone: null });
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('2. Composition: milestone base amount and each VO render in separate rows', () => {
-    const milestone = makeMilestone({
-      baseAmount: '200000.00',
-      variationAllocations: [
-        {
-          variationId: 'vo-1',
-          reference: 'VO-001',
-          title: 'Boundary Wall',
-          amount: '15000.00',
-          isOmission: false,
-        },
-        {
-          variationId: 'vo-2',
-          reference: 'VO-002',
-          title: 'Extra Drainage',
-          amount: '5000.00',
-          isOmission: false,
-        },
-      ],
+  it('adds selected lines (a reduction is negative) and applies the given rate — no hardcoded 5%', () => {
+    expect(prepareTotals('150000.00', ['12000.00', '-2000.00'], '0.05')).toEqual({
+      subtotal: '160000.00',
+      tax: '8000.00',
+      total: '168000.00',
     });
-    renderDialog({ milestone });
-    expect(screen.getAllByText('Milestone base').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('VO-001').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('VO-002').length).toBeGreaterThanOrEqual(1);
+    expect(prepareTotals('100.00', [], '0.075')).toEqual({ subtotal: '100.00', tax: '7.50', total: '107.50' });
+    expect(prepareTotals('100.00', [], null)).toEqual({ subtotal: '100.00', tax: null, total: '100.00' });
   });
+});
 
-  it('3. Draft: preview shows "DRAFT PREVIEW" label while form is open', () => {
-    renderDialog();
-    expect(screen.getAllByText(/draft preview/i).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('4. Null due date: "Issue invoice" button is disabled when dueDate is empty', () => {
-    renderDialog();
-    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
-    expect(issueBtn).toBeDisabled();
-  });
-
-  it('5. Fields: typing into payment terms and due date updates the form', async () => {
-    const user = userEvent.setup();
+describe('PrepareInvoiceDialog — creates a draft from the server preview', () => {
+  it('shows the stage, what released it, and the totals with the server tax rate', async () => {
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
     renderDialog();
 
-    await pickDate(user, screen.getByLabelText(/due date/i), '2026-10-31');
-
-    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
-    expect(issueBtn).not.toBeDisabled();
-
-    const termsInput = screen.getByLabelText(/payment terms/i);
-    await user.type(termsInput, 'Net 30');
-    expect(termsInput).toHaveValue('Net 30');
+    expect(await screen.findByText('Structure complete')).toBeInTheDocument();
+    expect(screen.getByText('2 of 4 · 30% of the contract')).toBeInTheDocument();
+    expect(screen.getByText('M2 Frame topped out')).toBeInTheDocument();
+    expect(screen.getByText('Verified Sep 18, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Sales tax 5%')).toBeInTheDocument();
+    // 150,000 + VO-03 12,000 (ticked by default) = 162,000; tax 8,100.
+    expect(screen.getByTestId('prepare-total')).toHaveTextContent('$170,100.00');
+    expect(invoiceApi.getPreparePreview).toHaveBeenCalledWith('p1', 'inst-2');
   });
 
-  it('6. Distinct CTAs: "Issue invoice" (disabled until due date) and "Cancel"', () => {
-    renderDialog();
-    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
-    const cancelBtn = screen.getByRole('button', { name: /cancel/i });
-    expect(issueBtn).toBeInTheDocument();
-    expect(cancelBtn).toBeInTheDocument();
-    // Issue invoice is disabled until dueDate is set
-    expect(issueBtn).toBeDisabled();
-  });
-
-  it('7. Issue success: onInvoiceIssued called with correct installmentId and invoiceJourney', async () => {
-    const user = userEvent.setup();
-    const onInvoiceIssued = vi.fn();
-
-    vi.mocked(commercialApi.issuePackage).mockResolvedValueOnce({
-      milestoneInvoice: { id: 'inv-abc' },
-      documents: [
-        {
-          invoiceId: 'inv-abc',
-          invoiceNumber: 'INV-0001',
-          sourceType: 'MILESTONE',
-          sourceReference: 'Structure payment',
-          subtotal: '200000.00',
-          salesTax: '10000.00',
-          total: '210000.00',
-          dueDate: '2026-10-31',
-          outstanding: '210000.00',
-          deliveries: [],
-        },
-        {
-          invoiceId: 'inv-vo-1',
-          invoiceNumber: 'INV-0002',
-          sourceType: 'VARIATION',
-          sourceReference: 'VO-001 — Boundary Wall',
-          subtotal: '2000.00',
-          salesTax: '100.00',
-          total: '2100.00',
-          dueDate: '2026-10-31',
-          outstanding: '2100.00',
-          deliveries: [],
-        },
-      ],
-    } as unknown as Awaited<ReturnType<typeof commercialApi.issuePackage>>);
-
-    renderDialog({ onInvoiceIssued });
-
-    await pickDate(user, screen.getByLabelText(/due date/i), '2026-10-31');
-
-    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
-    await user.click(issueBtn);
-
-    await waitFor(() => {
-      expect(onInvoiceIssued).toHaveBeenCalledTimes(1);
-    });
-
-    const [calledId, calledJourney] = onInvoiceIssued.mock.calls[0] as [string, InvoiceJourneyPhase];
-    expect(calledId).toBe('inst-1');
-    expect(calledJourney.phase).toBe('issued');
-    expect(calledJourney.invoiceId).toBe('inv-abc');
-    expect(calledJourney.dueDate).toBe('2026-10-31');
-    expect(calledJourney.documents.map((document) => document.invoiceNumber)).toEqual([
-      'INV-0001',
-      'INV-0002',
-    ]);
-  });
-
-  it('8. Issue error: API error message shown in form body, not toast', async () => {
-    const user = userEvent.setup();
-
-    vi.mocked(commercialApi.issuePackage).mockRejectedValueOnce(
-      new Error('Milestone not yet verified'),
+  it('an advance says it is billable while the contract is active', async () => {
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(
+      makePreview({ releasedBy: { kind: 'ADVANCE' }, variations: [] }),
     );
-
     renderDialog();
-
-    await pickDate(user, screen.getByLabelText(/due date/i), '2026-10-31');
-
-    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
-    await user.click(issueBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText(/milestone not yet verified/i)).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText('Advance — billable while the contract is active'),
+    ).toBeInTheDocument();
   });
 
-  it('9. No accounting terminology in rendered DOM', () => {
-    const { container } = renderDialog();
-    const html = container.innerHTML;
-    expect(html).not.toMatch(/\bAPPROVED\b/);
-    expect(html).not.toMatch(/\bPOSTED\b/);
-    expect(html).not.toMatch(/\bNOT_POSTED\b/);
-    expect(html).not.toMatch(/\bDRAFT\b/); // DRAFT is an accounting state; "Draft Preview" label is allowed
+  it('variation toggles change the total using the server tax rate', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview({ taxRate: '0.1' }));
+    renderDialog();
+
+    const total = await screen.findByTestId('prepare-total');
+    expect(total).toHaveTextContent('$178,200.00'); // (150,000 + 12,000) × 1.1
+
+    await user.click(screen.getByRole('checkbox', { name: /VO-03/ }));
+    expect(total).toHaveTextContent('$165,000.00'); // 150,000 × 1.1
+
+    await user.click(screen.getByRole('checkbox', { name: /VO-04/ }));
+    expect(total).toHaveTextContent('$162,800.00'); // (150,000 − 2,000) × 1.1
+    expect(screen.getByText('Reduces this stage')).toBeInTheDocument();
+  });
+
+  it('a blocked stage is explained in words and offers no primary', async () => {
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(
+      makePreview({
+        blocker: 'MILESTONE_NOT_VERIFIED',
+        releasedBy: {
+          kind: 'MILESTONE',
+          milestoneId: 'm-2',
+          milestoneCode: 'M2',
+          milestoneName: 'Frame topped out',
+          verifiedAt: null,
+        },
+      }),
+    );
+    renderDialog();
+
+    expect(await screen.findByText("This stage can't be invoiced yet")).toBeInTheDocument();
+    expect(screen.getByText(/hasn't been verified yet/)).toBeInTheDocument();
+    expect(screen.getByText('Not verified yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create draft invoice' })).not.toBeInTheDocument();
+    // The footer's Close plus the dialog's own close control.
+    expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
+  });
+
+  it('create: sends the ticked variations, then opens the draft invoice page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    vi.mocked(invoiceApi.preparePackage).mockResolvedValue({ invoiceId: 'inv-9', invoiceIds: ['inv-9', 'inv-10'] });
+    const onClose = renderDialog();
+
+    const dialog = await screen.findByRole('dialog', { name: 'Prepare invoice' });
+    await within(dialog).findByText('Structure complete');
+    await user.click(within(dialog).getByRole('button', { name: 'Create draft invoice' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/projects/p1/commercial/invoices/inv-9'));
+    expect(invoiceApi.preparePackage).toHaveBeenCalledWith('p1', 'inst-2', { selectedVariationIds: ['vo-3'] });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('money-blind: stage amount is hidden and there are no totals — never $0', async () => {
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(
+      makePreview({
+        stageAmount: null,
+        variations: [{ ...makePreview().variations[0]!, amount: null }],
+      }),
+    );
+    renderDialog();
+    expect(await screen.findByText('Amounts are hidden for your role.')).toBeInTheDocument();
+    expect(screen.queryByTestId('prepare-total')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0/)).not.toBeInTheDocument();
+  });
+
+  it('renders nothing without a stage', () => {
+    renderWithProviders(<PrepareInvoiceDialog projectId="p1" installmentId={null} open onClose={vi.fn()} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

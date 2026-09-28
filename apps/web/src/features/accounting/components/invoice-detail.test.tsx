@@ -187,7 +187,7 @@ describe('InvoiceDetail — readable source', () => {
 describe('InvoiceDetail — breadcrumb back-link', () => {
   it('renders the calling page\'s label and link when ?from=/?fromLabel= are present', () => {
     mocks.searchParams = new URLSearchParams({
-      from: '/projects/p-1/commercial/billing-collection?filter=needsAction',
+      from: '/projects/p-1/commercial/billing?filter=needsAction',
       fromLabel: 'Billing & Collection',
     });
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
@@ -195,7 +195,7 @@ describe('InvoiceDetail — breadcrumb back-link', () => {
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
 
     const back = screen.getByRole('link', { name: /Billing & Collection/ });
-    expect(back).toHaveAttribute('href', '/projects/p-1/commercial/billing-collection?filter=needsAction');
+    expect(back).toHaveAttribute('href', '/projects/p-1/commercial/billing?filter=needsAction');
   });
 
   it('renders no breadcrumb when the caller passes no ?from=', () => {
