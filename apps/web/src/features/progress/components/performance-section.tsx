@@ -14,7 +14,7 @@ import { CollectionProgressSignalBanner } from './collection-progress-signal-ban
 import { PhysicalFinancialSignalBanner } from './physical-financial-signal-banner';
 import { NeedsAttentionPanel } from './needs-attention-panel';
 import { WorkPackageProgressPanel } from './work-package-progress-panel';
-import type { ProgressView } from './progress-tab';
+import type { ProgressView } from '../domain/progress-views';
 import { ProgressCurveChart } from './progress-curve-chart';
 import { RefButton, RefCard, RefCardBody, RefCardHeader, RefEmpty, RefPill, RefStatTile, type RefTone } from './ref-ui';
 

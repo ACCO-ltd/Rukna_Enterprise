@@ -5,7 +5,7 @@ import { AlertCircle, ChevronRight } from 'lucide-react';
 
 import { useBoqLeaves } from '../hooks/use-boq-leaves';
 import { useDprs, useProjectRollup, useWorkPackages } from '../hooks/use-progress';
-import type { ProgressView } from './progress-tab';
+import type { ProgressView } from '../domain/progress-views';
 import { RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
 
 interface AttentionItem {
@@ -65,7 +65,7 @@ export function NeedsAttentionPanel({
       count: 1,
       title: t('attention.weightsIncomplete', { total }),
       hint: t('attention.weightsIncompleteHint'),
-      goTo: 'plan',
+      goTo: 'setup',
     });
   }
 
@@ -81,7 +81,7 @@ export function NeedsAttentionPanel({
       count: unallocated,
       title: t('attention.unallocated', { count: unallocated }),
       hint: t('attention.unallocatedHint'),
-      goTo: 'plan',
+      goTo: 'setup',
     });
   }
   const loading = dprs.isPending || rollup.isPending || workPackages.isPending;

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
@@ -10,7 +11,7 @@ import { ScheduleSetupCard } from '@/features/programme/components/schedule-setu
 import { DownloadMasterScheduleButton } from '@/features/programme/components/download-master-schedule-button';
 
 import { useProjectRollup, useWorkPackages } from '../hooks/use-progress';
-import type { ProgressView } from './progress-tab';
+import { progressViewHref } from '../domain/progress-views';
 import { PerformanceSection } from './performance-section';
 import { VerifiedProgressSection } from './verified-progress-section';
 import { WorkPackagesSection } from './work-packages-section';
@@ -35,22 +36,18 @@ function useSetupStep(projectId: string) {
 
 /**
  * Performance — what the numbers say: the progress curve, what needs attention, work-package
- * progress and verified progress. Read-only; every "fix this" link goes to Plan & setup.
+ * progress and verified progress. Read-only; every "fix this" link goes to its own view's route.
+ * The setup-incomplete state is handled by the view gate, not here.
  */
-export function PerformanceView({
-  projectId,
-  onGoTo,
-}: {
-  projectId: string;
-  onGoTo: (view: ProgressView) => void;
-}) {
-  const t = useTranslations('progress');
-  const setupStep = useSetupStep(projectId);
+export function PerformanceView({ projectId }: { projectId: string }) {
+  const router = useRouter();
 
   return (
     <div className="space-y-8">
-      {setupStep ? <SetupNotice step={setupStep} t={t} onAction={() => onGoTo('plan')} /> : null}
-      <PerformanceSection projectId={projectId} onGoTo={onGoTo} />
+      <PerformanceSection
+        projectId={projectId}
+        onGoTo={(view) => router.push(progressViewHref(projectId, view))}
+      />
       <VerifiedProgressSection projectId={projectId} />
     </div>
   );

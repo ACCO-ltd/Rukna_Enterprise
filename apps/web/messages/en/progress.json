@@ -6,12 +6,21 @@
     "link": "Open Progress"
   },
   "tabs": {
-    "label": "Progress sections",
+    "label": "Progress views",
     "today": "Today",
     "review": "Review",
     "milestones": "Milestones",
     "performance": "Performance",
-    "plan": "Plan & setup"
+    "setup": "Plan & setup"
+  },
+  "gate": {
+    "title": "Progress isn't set up yet",
+    "boq": "Progress is measured against the BOQ, and this project has no baselined BOQ yet.",
+    "workPackages": "There are no work packages yet. Daily reports and performance start once the scope is split into work packages.",
+    "allocation": "Some work packages have no BOQ items allocated, so their progress can't be measured yet.",
+    "weights": "Work-package weights don't add up to 100% yet, so overall progress would be understated.",
+    "continueSetup": "Continue setup",
+    "askManager": "The project manager finishes this in Plan & setup."
   },
   "review": {
     "title": "Reports",
