@@ -114,8 +114,10 @@
     "col": {
       "date": "Date",
       "reviewedBy": "Reviewed by",
-      "status": "Status"
-    }
+      "status": "Status",
+      "workPackages": "Work packages"
+    },
+    "returnedBody": "{name}: “{reason}”"
   },
   "headline": {
     "physical": "Overall physical progress",

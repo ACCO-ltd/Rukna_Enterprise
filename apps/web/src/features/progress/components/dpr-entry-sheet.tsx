@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ProgressMeasurementResponse } from '@erp/types';
 import {
@@ -21,6 +22,7 @@ import {
   useToast,
 } from '@erp/ui';
 
+import { ApiError } from '@/lib/api-client';
 import { formatDate, formatNumber } from '@/lib/format';
 
 import { isEditableDpr } from '../domain/my-reports';
@@ -30,6 +32,7 @@ import {
   useAddMeasurement,
   useDpr,
   usePatchDprContext,
+  progressKeys,
   useProjectProgress,
   useRemoveMeasurement,
   useSubmitDpr,
@@ -138,6 +141,7 @@ function EntryForm({
   const progress = useProjectProgress(projectId);
   const submit = useSubmitDpr(projectId, dpr.id);
   const patch = usePatchDprContext(dpr.id);
+  const queryClient = useQueryClient();
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, DprQuantityFieldError>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -245,6 +249,12 @@ function EntryForm({
         const mapped = mapDprError(error, t('entry.saveFailed'), describeExceeds);
         setFieldErrors(mapped.fieldErrors);
         setFormError(mapped.formError);
+        // 409: the report changed under us (someone else acted on it). Say so plainly and reload
+        // it, so what the sheet shows is the current report.
+        if (error instanceof ApiError && error.status === 409) {
+          void queryClient.invalidateQueries({ queryKey: progressKeys.report(dpr.id) });
+          void queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) });
+        }
         if (Object.keys(mapped.fieldErrors).length > 0) setFocusRequest((n) => n + 1);
       },
     });
@@ -456,8 +466,8 @@ function EntryItemRow({
       // The item's over-quantity error was about what is recorded here; removing an entry changes
       // that, so the stale error goes and a resubmit re-checks.
       onSuccess: () => onFieldError(null),
-      // Not hidden: until the backend route ships this answers 404, and the reader must know the
-      // entry is still on the report.
+      // Not hidden: a refused removal (409 once the report is no longer editable) leaves the entry
+      // on the report, and the reader must know that.
       onError: (error) =>
         onRowError(t('entry.removeFailed', { message: mapDprError(error, t('entry.saveFailed')).formError })),
     });

@@ -10,12 +10,10 @@ import { localIsoDate } from '../domain/my-reports';
 const mocks = vi.hoisted(() => ({
   useDprs: vi.fn(),
   useCreateDpr: vi.fn(),
-  useProjectMembers: vi.fn(),
   create: vi.fn(),
 }));
 
 vi.mock('../hooks/use-progress', () => ({ useDprs: mocks.useDprs, useCreateDpr: mocks.useCreateDpr }));
-vi.mock('@/features/projects/hooks/use-project-members', () => ({ useProjectMembers: mocks.useProjectMembers }));
 // The sheet has its own test; here it only reports which report it was asked to open.
 vi.mock('./dpr-entry-sheet', () => ({
   DprEntrySheet: ({ dprId }: { dprId: string | null }) => (dprId ? <p>sheet open: {dprId}</p> : null),
@@ -40,9 +38,6 @@ function load(reports: DailyProgressReportResponse[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.useCreateDpr.mockReturnValue({ mutate: mocks.create, isPending: false });
-  mocks.useProjectMembers.mockReturnValue({
-    data: [{ userId: 'pm-1', user: { firstName: 'Amina', lastName: 'Yusuf' } }],
-  });
 });
 
 const SE = { permissions: ['record:progress'] };
@@ -85,14 +80,17 @@ describe('TodaySection', () => {
   it('shows one attention notice per returned report of mine, with the reason and "Fix and resubmit"', async () => {
     const user = userEvent.setup();
     load([
-      dpr('r1', '2026-09-20', 'RETURNED', { returnReason: 'Slab quantity is over the pour record' }),
+      dpr('r1', '2026-09-20', 'RETURNED', {
+        returnReason: 'Slab quantity is over the pour record',
+        returnedByName: 'Amina Yusuf',
+      }),
       dpr('r2', '2026-09-21', 'RETURNED'),
       dpr('other', '2026-09-22', 'RETURNED', { preparedBy: 'someone-else', returnReason: 'Not mine' }),
     ]);
     renderWithProviders(<TodaySection projectId="p1" />, SE);
 
     expect(screen.getAllByRole('button', { name: 'Fix and resubmit' })).toHaveLength(2);
-    expect(screen.getByText('Slab quantity is over the pour record')).toBeInTheDocument();
+    expect(screen.getByText('Amina Yusuf: “Slab quantity is over the pour record”')).toBeInTheDocument();
     expect(screen.getByText("The reviewer didn't give a reason.")).toBeInTheDocument();
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument();
 
@@ -100,9 +98,13 @@ describe('TodaySection', () => {
     expect(screen.getByText('sheet open: r2')).toBeInTheDocument();
   });
 
-  it('lists my reports with anything needing my action first and the reviewer by name', () => {
+  it('lists my reports with anything needing my action first, their work packages and the reviewer by name', () => {
     load([
-      dpr('approved', '2026-09-25', 'APPROVED', { approvedBy: 'pm-1' }),
+      dpr('approved', '2026-09-25', 'APPROVED', {
+        approvedBy: 'pm-1',
+        reviewedByName: 'Amina Yusuf',
+        workPackages: [{ id: 'wp2', code: 'WP-02', name: 'Frame' }],
+      }),
       dpr('draft', '2026-09-10', 'DRAFT'),
       dpr('theirs', '2026-09-26', 'DRAFT', { preparedBy: 'someone-else' }),
     ]);
@@ -113,6 +115,7 @@ describe('TodaySection', () => {
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText('Draft')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Amina Yusuf')).toBeInTheDocument();
+    expect(within(rows[1]!).getByText('WP-02 Frame')).toBeInTheDocument();
   });
 
   it('starts a report for another day from the kebab', async () => {

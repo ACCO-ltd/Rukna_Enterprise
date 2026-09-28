@@ -28,6 +28,10 @@ vi.mock('../hooks/use-progress', () => ({
   useAddMeasurement: mocks.useAddMeasurement,
   usePatchDprContext: mocks.usePatchDprContext,
   useRemoveMeasurement: mocks.useRemoveMeasurement,
+  progressKeys: {
+    report: (id: string) => ['progress-report', id],
+    reports: (projectId: string) => ['progress', projectId, 'reports'],
+  },
 }));
 vi.mock('../hooks/use-boq-leaves', () => ({
   useBoqLeaves: mocks.useBoqLeaves,

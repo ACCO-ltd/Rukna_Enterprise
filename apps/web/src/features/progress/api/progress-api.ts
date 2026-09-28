@@ -153,8 +153,7 @@ export function addMeasurement(
 
 /**
  * Remove one measurement from a report that is still editable (DRAFT / RETURNED / REOPENED); the
- * server answers `409` otherwise. Added by the backend in PR #233 — until that is deployed the
- * route answers `404`, which the caller surfaces rather than hides.
+ * server answers `409` otherwise, which the caller surfaces rather than hides.
  */
 export function removeMeasurement(dprId: string, measurementId: string): Promise<void> {
   return apiClient<void>(`/progress/reports/${dprId}/measurements/${measurementId}`, { method: 'DELETE' });

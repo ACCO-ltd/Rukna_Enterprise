@@ -26,7 +26,6 @@ import { ClipboardList, Ellipsis } from 'lucide-react';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate } from '@/lib/format';
 import { useSession } from '@/features/auth/session/use-session';
-import { useProjectMembers } from '@/features/projects/hooks/use-project-members';
 
 import { isEditableDpr, localIsoDate, myReports, sortMyReports } from '../domain/my-reports';
 import { mapDprError } from '../domain/dpr-errors';
@@ -181,11 +180,15 @@ export function TodaySection({ projectId }: { projectId: string }) {
             </Button>
           }
         >
-          {dpr.returnReason ?? t('today.returnedNoReason')}
+          {dpr.returnReason
+            ? dpr.returnedByName
+              ? t('today.returnedBody', { name: dpr.returnedByName, reason: dpr.returnReason })
+              : dpr.returnReason
+            : t('today.returnedNoReason')}
         </Notice>
       ))}
 
-      <MyReports projectId={projectId} reports={mine} onOpen={setOpenDprId} />
+      <MyReports reports={mine} onOpen={setOpenDprId} />
 
       <OtherDayDialog
         open={otherDayOpen}
@@ -205,27 +208,14 @@ export function TodaySection({ projectId }: { projectId: string }) {
 }
 
 function MyReports({
-  projectId,
   reports,
   onOpen,
 }: {
-  projectId: string;
   reports: DailyProgressReportResponse[];
   onOpen: (id: string) => void;
 }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
-  const members = useProjectMembers(projectId);
-
-  // The list carries the approver's id only; resolve it from the project's members, and show a
-  // dash rather than a raw id when they are not a member any more.
-  const nameById = useMemo(
-    () =>
-      new Map(
-        (members.data ?? []).map((m) => [m.userId, `${m.user.firstName} ${m.user.lastName}`.trim()]),
-      ),
-    [members.data],
-  );
 
   const columns: GridColumn<DailyProgressReportResponse>[] = [
     {
@@ -245,13 +235,22 @@ function MyReports({
       ),
     },
     {
+      key: 'workPackages',
+      header: t('today.col.workPackages'),
+      card: 'subtitle',
+      plainValue: (r) => r.workPackages.map((wp) => wp.code).join(', '),
+      render: (r) => (
+        <span className="text-muted-foreground">
+          {r.workPackages.length > 0 ? r.workPackages.map((wp) => `${wp.code} ${wp.name}`).join(', ') : '—'}
+        </span>
+      ),
+    },
+    {
       key: 'reviewedBy',
       header: t('today.col.reviewedBy'),
       card: 'meta',
-      plainValue: (r) => (r.approvedBy ? nameById.get(r.approvedBy) : undefined),
-      render: (r) => (
-        <span className="text-muted-foreground">{(r.approvedBy && nameById.get(r.approvedBy)) || '—'}</span>
-      ),
+      plainValue: (r) => r.reviewedByName,
+      render: (r) => <span className="text-muted-foreground">{r.reviewedByName ?? '—'}</span>,
     },
     {
       key: 'status',
