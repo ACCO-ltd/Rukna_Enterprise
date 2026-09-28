@@ -2564,7 +2564,14 @@ evidence and flips the status — all in one transaction. Two reports approved a
 exceed a line, and an edit that slipped in after the approver opened the report is checked. Submit,
 approve, return and reopen are conditional on the status the command read: if another command moved
 the report first, the loser gets **409** `DPR_CHANGED` ("This report changed while you were …
-it — reload it and try again.").
+it — reload it and try again."). Approving a report that is not SUBMITTED is also **409**
+`DPR_CHANGED`. Locked transactions are bounded at 15 s; a lock timeout or deadlock returns **409**
+`DPR_CHANGED` ("This report is busy — try again.").
+
+All DPR write paths (add / edit / delete of work entries, labour, equipment, observations, context,
+and evidence) run under the report's row lock with a fresh status re-check. Evidence
+(`POST /progress/reports/:dprId/evidence`) is accepted while DRAFT / RETURNED / REOPENED / SUBMITTED
+and refused with **409** once APPROVED.
 
 #### DPR read model, returns and work-entry delete
 
