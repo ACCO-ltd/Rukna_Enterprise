@@ -125,6 +125,16 @@
     "blocked": "Blocked",
     "optional": "Optional"
   },
+  "stepSection": {
+    "doneLabel": "Done",
+    "lockedLabel": "Waiting",
+    "open": "Open",
+    "edit": "Edit",
+    "hide": "Hide",
+    "show": "Show",
+    "optional": "Optional",
+    "waitsFor": "Waits for {what}."
+  },
   "unsavedChanges": {
     "title": "Leave without saving?",
     "body": "Your changes will be lost if you leave this page.",

@@ -25,6 +25,11 @@ export interface Metric {
   value: string | number | null | undefined;
   /** Optional sublabel — use only when it adds real meaning; prefer label+value for calm. */
   sublabel?: string;
+  /**
+   * Colours the sublabel (not the value) when the sublabel is the thing to act on — "3 behind
+   * plan" under a neutral figure. Same rule as `tone`: only for a real variance.
+   */
+  sublabelTone?: 'attention';
   /** Makes the whole segment a link to the list behind the figure. */
   href?: string;
   /**
@@ -98,7 +103,7 @@ function MetricSegment({
   index: number;
   columns: 2 | 3 | 4 | 5;
 }) {
-  const { label, value, sublabel, href, tone } = metric;
+  const { label, value, sublabel, sublabelTone, href, tone } = metric;
   const unavailable = value === null || value === undefined;
 
   // Hairlines per breakpoint: a left rule on every segment that is not first in its row, a top
@@ -125,7 +130,13 @@ function MetricSegment({
         {unavailable ? '—' : value}
       </LtrValue>
       {sublabel ? (
-        <dd className="mt-1 text-caption text-muted-foreground">{sublabel}</dd>
+        <dd
+          className={`mt-1 text-caption ${
+            sublabelTone === 'attention' ? 'font-medium text-warning' : 'text-muted-foreground'
+          }`}
+        >
+          {sublabel}
+        </dd>
       ) : null}
     </>
   );

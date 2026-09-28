@@ -94,4 +94,18 @@ describe('MetricStrip — rules and tone (ADR-038)', () => {
     expect(screen.getByText('$10.00')).toHaveClass('text-warning');
     expect(screen.getByText('$5.00')).toHaveClass('text-foreground');
   });
+
+  it('tones only the sublabel when sublabelTone is attention', () => {
+    render(
+      <MetricStrip
+        metrics={[
+          { label: 'Packages', value: '6', sublabel: '2 behind plan', sublabelTone: 'attention' },
+          { label: 'Reports', value: '4', sublabel: 'this week' },
+        ]}
+      />,
+    );
+    expect(screen.getByText('2 behind plan')).toHaveClass('text-warning');
+    expect(screen.getByText('6')).toHaveClass('text-foreground');
+    expect(screen.getByText('this week')).toHaveClass('text-muted-foreground');
+  });
 });

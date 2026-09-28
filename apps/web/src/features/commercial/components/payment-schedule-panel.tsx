@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 import { statusTone } from '@/lib/status-registry';
+import { StatusBadge } from '@/components/status-badge';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
@@ -409,11 +410,11 @@ function MilestoneCell({
   return (
     <div className="flex items-center gap-2">
       <span className="font-mono text-xs text-foreground">{milestone.code}</span>
-      <StatusPill tone={statusTone(milestone.status, 'programmeMilestone')}>
-        {verified
-          ? t('paymentSchedule.milestone.verified')
-          : t('paymentSchedule.milestone.planned')}
-      </StatusPill>
+      <StatusBadge
+        vocabulary="programmeMilestone"
+        status={milestone.status}
+        label={verified ? t('paymentSchedule.milestone.verified') : t('paymentSchedule.milestone.planned')}
+      />
       {canManageLink ? (
         <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onLink}>
           {t('paymentSchedule.milestone.change')}

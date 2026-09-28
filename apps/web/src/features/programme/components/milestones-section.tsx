@@ -14,14 +14,13 @@ import {
   DialogTitle,
   FormField,
   Input,
-  StatusPill,
 } from '@erp/ui';
 import { Flag } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
-import { statusTone } from '@/lib/status-registry';
+import { StatusBadge } from '@/components/status-badge';
 
 import { useCreateMilestone, useMilestones, useVerifyMilestone } from '../hooks/use-programme';
 import {
@@ -143,7 +142,7 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
                       <ReleasesCell releases={m.releases} locale={locale} t={t} projectId={projectId} />
                     </RefTd>
                     <RefTd>
-                      <StatusPill tone={statusTone(m.status, 'programmeMilestone')}>{t(`programme.status.${m.status}`)}</StatusPill>
+                      <StatusBadge vocabulary="programmeMilestone" status={m.status} label={t(`programme.status.${m.status}`)} />
                     </RefTd>
                     <RefTd className="text-end">
                       {m.status === 'PLANNED' ? (
