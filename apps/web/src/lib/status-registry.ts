@@ -338,13 +338,6 @@ export const STATUS_REGISTRY = {
     PLANNED: 'neutral',
     VERIFIED: 'success',
   },
-  /** One project-preparation readiness step (`ReadinessStepState`, derived from the step flags). */
-  readinessStep: {
-    BLOCKED: 'neutral',
-    READY: 'progress',
-    OPTIONAL: 'attention',
-    COMPLETE: 'success',
-  },
   /** ADR-027 approval-policy version lifecycle (`ApprovalPolicyStatus`). */
   approvalPolicy: {
     DRAFT: 'neutral',

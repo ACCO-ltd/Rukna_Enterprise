@@ -1,5 +1,6 @@
 import type {
   ProjectLifecycleCommand,
+  ProjectReadinessCallerResponse,
   ProjectReadinessConditionResponse,
   ProjectReadinessResponse,
   ReadinessConditionSeverity,
@@ -27,7 +28,42 @@ export interface ReadinessSnapshot {
   activeContract: { status: string; startDate: Date | null } | null; // effective client contract
   hasBaselinedBoq: boolean;
   activeMemberCount: number; // active members incl. the auto-enrolled project manager
+  /**
+   * When each fact became true, from sources the repository trusts (ADR-019 amendment 2026-09-28).
+   * Optional: without it every `satisfiedAt` is null — the policy never invents a time.
+   */
+  evidence?: ReadinessEvidence;
 }
+
+/**
+ * The timestamps behind `satisfiedAt`. Each is null when no trustworthy source exists; see
+ * `docs/design/project-overview-implementation.md` §6.2 for the source of each.
+ */
+export interface ReadinessEvidence {
+  /** Earliest `baselinedAt` among the BOQ versions that are currently committed/baselined. */
+  boqCommittedAt: Date | null;
+  /** The effective contract's latest `record-signed` / `activate` audit event. */
+  contractActivatedAt: Date | null;
+  /** The effective contract's `record-signed` audit event (that command always sets the date). */
+  contractStartDateSetAt: Date | null;
+  /** Every membership row of the project, removed ones included. */
+  memberships: ReadonlyArray<{ joinedAt: Date; removedAt: Date | null }>;
+}
+
+/**
+ * Genuine server-side data dependencies between Start conditions: the key cannot be satisfied
+ * until every listed code is. Only a dependency the data itself imposes belongs here.
+ *
+ * - CONTRACT_START_DATE is read off the effective main contract, and the one command that records
+ *   that contract (`record-signed`) writes the start date with it.
+ *
+ * Deliberately absent: BOQ_BASELINED -> ACTIVE_MAIN_CONTRACT. Since ADR-032 `recordSigned` needs a
+ * live BOQ whose operational version passes BOQ readiness, not a committed one. And CLIENT_ACTIVE ->
+ * ACTIVE_MAIN_CONTRACT: `recordSigned` takes the client in its own body.
+ */
+export const READINESS_DEPENDENCIES: Readonly<Record<string, readonly string[]>> = {
+  CONTRACT_START_DATE: ['ACTIVE_MAIN_CONTRACT'],
+};
 
 const TARGET_STATUS: Record<ProjectLifecycleCommand, string> = {
   start: 'ACTIVE',
@@ -59,8 +95,56 @@ function condition(
   severity: ReadinessConditionSeverity,
   satisfied: boolean,
   detail: string,
+  satisfiedAt: Date | null = null,
 ): ProjectReadinessConditionResponse {
-  return { code, severity, satisfied, detail };
+  return {
+    code,
+    severity,
+    satisfied,
+    detail,
+    blockedBy: [], // resolved against the emitted set in `withDependencies`
+    // A time is reported only for a condition that is satisfied now.
+    satisfiedAt: satisfied && satisfiedAt ? satisfiedAt.toISOString() : null,
+  };
+}
+
+/** Attach each condition's dependencies, limited to codes present in the same response. */
+function withDependencies(
+  conditions: ProjectReadinessConditionResponse[],
+): ProjectReadinessConditionResponse[] {
+  const present = new Set(conditions.map((c) => c.code));
+  return conditions.map((c) => ({
+    ...c,
+    blockedBy: (READINESS_DEPENDENCIES[c.code] ?? []).filter((code) => present.has(code)),
+  }));
+}
+
+/**
+ * When the current uninterrupted period with more than one active member began — i.e. the join
+ * that formed the delivery team, provided no removal has broken it since. Null when the team is
+ * not formed now. Events at the same instant are applied together before the count is read.
+ */
+export function teamFormedAt(
+  memberships: ReadonlyArray<{ joinedAt: Date; removedAt: Date | null }>,
+): Date | null {
+  const deltas = new Map<number, number>();
+  for (const m of memberships) {
+    const joined = m.joinedAt.getTime();
+    deltas.set(joined, (deltas.get(joined) ?? 0) + 1);
+    if (m.removedAt) {
+      const removed = m.removedAt.getTime();
+      deltas.set(removed, (deltas.get(removed) ?? 0) - 1);
+    }
+  }
+  let count = 0;
+  let formedAt: number | null = null;
+  for (const at of [...deltas.keys()].sort((a, b) => a - b)) {
+    const before = count;
+    count += deltas.get(at) ?? 0;
+    if (before <= 1 && count > 1) formedAt = at;
+    else if (count <= 1) formedAt = null;
+  }
+  return formedAt === null ? null : new Date(formedAt);
 }
 
 // CONST-PLC-008 — readiness asserts that Preparation-stage prerequisites already exist; it does not
@@ -70,6 +154,7 @@ function condition(
 function startConditions(s: ReadinessSnapshot): { conditions: ProjectReadinessConditionResponse[]; deferred: string[] } {
   const conditions: ProjectReadinessConditionResponse[] = [];
   const deferred: string[] = [];
+  const evidence = s.evidence;
 
   if (s.commercialModel === 'CLIENT_CONTRACT') {
     conditions.push(
@@ -78,18 +163,21 @@ function startConditions(s: ReadinessSnapshot): { conditions: ProjectReadinessCo
         'MANDATORY',
         s.clientId !== null && s.clientStatus === 'ACTIVE',
         'An active client must be assigned to the project.',
+        null, // no honest source: assigned by create/PATCH without field-level history
       ),
       condition(
         'ACTIVE_MAIN_CONTRACT',
         'MANDATORY',
         s.activeContract?.status === 'ACTIVE',
         'An executed (ACTIVE) main client contract must exist for the project.',
+        evidence?.contractActivatedAt ?? null,
       ),
       condition(
         'CONTRACT_START_DATE',
         'MANDATORY',
         s.activeContract?.startDate != null,
         'The main contract must carry a contractual start date (commencement evidence).',
+        evidence?.contractStartDateSetAt ?? null,
       ),
     );
   } else {
@@ -104,22 +192,25 @@ function startConditions(s: ReadinessSnapshot): { conditions: ProjectReadinessCo
       'MANDATORY',
       s.hasBaselinedBoq,
       'A baselined BOQ version fixes the scope the project executes against.',
+      evidence?.boqCommittedAt ?? null,
     ),
     condition(
       'PROGRAMME_DATES',
       'WAIVABLE',
       s.startDate != null && s.expectedEndDate != null,
       'Planned start and expected end dates should be set before execution begins.',
+      null, // no honest source: set by create/PATCH without field-level history
     ),
     condition(
       'DELIVERY_TEAM',
       'WAIVABLE',
       s.activeMemberCount > 1,
       'At least one delivery-team member beyond the project manager should be enrolled.',
+      evidence ? teamFormedAt(evidence.memberships) : null,
     ),
   );
 
-  return { conditions, deferred };
+  return { conditions: withDependencies(conditions), deferred };
 }
 
 /**
@@ -135,6 +226,7 @@ function startConditions(s: ReadinessSnapshot): { conditions: ProjectReadinessCo
 export function evaluateReadiness(
   snapshot: ReadinessSnapshot,
   command: ProjectLifecycleCommand,
+  authority: CallerAuthority = NO_AUTHORITY,
 ): ProjectReadinessResponse {
   const { conditions, deferred } =
     command === 'start'
@@ -147,7 +239,48 @@ export function evaluateReadiness(
     ready: conditions.every((c) => c.satisfied),
     conditions,
     deferred,
+    caller: evaluateCaller(conditions, authority),
   };
+}
+
+// ── ADR-019 amendment 2026-09-28: readiness as seen by the caller ─────────────────
+
+/**
+ * What the service knows about the caller. `mayRun` = holds the command's permission;
+ * `apexAuthority` = Start-chain apex (only ever true for `start`). Both are decided by the service
+ * from the identity — the same inputs `enforceReadiness` uses — so the UI needs no role names.
+ */
+export interface CallerAuthority {
+  mayRun: boolean;
+  apexAuthority: boolean;
+}
+
+/** Fail-closed default: a readiness evaluated without a caller says the caller cannot run it. */
+const NO_AUTHORITY: CallerAuthority = { mayRun: false, apexAuthority: false };
+
+/**
+ * `canRun` is exactly "would `planEnforcement` allow this caller, given a reason for every
+ * condition they may waive" — the enforcement function itself is reused, so the read and the
+ * command cannot disagree. Governance approval and lifecycle status are out of scope here.
+ */
+export function evaluateCaller(
+  conditions: readonly ProjectReadinessConditionResponse[],
+  authority: CallerAuthority,
+): ProjectReadinessCallerResponse {
+  const waivableConditions = conditions
+    .filter(
+      (c) =>
+        !c.satisfied &&
+        (c.severity === 'WAIVABLE' ||
+          (authority.apexAuthority && APEX_WAIVABLE_START_CONDITIONS.has(c.code))),
+    )
+    .map((c) => c.code);
+  const plan = planEnforcement(
+    { conditions: [...conditions] },
+    waivableConditions.map((code) => ({ condition: code, reason: 'reason supplied' })),
+    { apexAuthority: authority.apexAuthority },
+  );
+  return { canRun: authority.mayRun && plan.allowed, waivableConditions };
 }
 
 // ── ADR-019 Phase B2 (CONST-PLC-004/006): turning readiness into enforcement ──────
@@ -206,7 +339,7 @@ export interface EnforcementOptions {
  * Without apex authority these conditions remain hard MANDATORY blockers, exactly as before.
  */
 export function planEnforcement(
-  readiness: ProjectReadinessResponse,
+  readiness: Pick<ProjectReadinessResponse, 'conditions'>,
   overrides: WaiverInput[],
   options: EnforcementOptions = {},
 ): EnforcementPlan {

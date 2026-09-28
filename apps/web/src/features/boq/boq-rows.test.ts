@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildRows, collectSectionIds, countTree, isIncomplete, type RowOptions } from './boq-rows';
+import {
+  buildRows,
+  collectSectionIds,
+  countTree,
+  isIncomplete,
+  siblingBounds,
+  withAddRows,
+  type RowOptions,
+} from './boq-rows';
 import { testNode } from './test-node';
 
 /**
@@ -225,5 +233,34 @@ describe('source filter (Phase 6 — original vs variation scope)', () => {
   it('keeps only original scope', () => {
     const rows = buildRows(mixed(), { ...defaults, pricing: 'original' });
     expect(rows.map((row) => row.node.code)).toEqual(['01', '01.001']);
+  });
+});
+
+describe('Unpriced view + search together (BOQ toolbar)', () => {
+  it('keeps the parent sections of every unpriced line that matches the search', () => {
+    const rows = buildRows(tree(), { ...defaults, pricing: 'incomplete', search: 'fencing' });
+    expect(rows.map((row) => row.node.code)).toEqual(['01', '01.002']);
+  });
+});
+
+describe('withAddRows', () => {
+  it('closes each open section that takes items with an add line, after its last row', () => {
+    const entries = withAddRows(buildRows(tree(), defaults));
+    expect(
+      entries.map((entry) => (entry.type === 'node' ? entry.row.node.code : `+${entry.parent.code}`)),
+    ).toEqual(['01', '01.001', '01.002', '+01', '02', '02.01', '02.01.001', '+02.01']);
+  });
+
+  it('adds nothing under a collapsed section', () => {
+    const entries = withAddRows(buildRows(tree(), { ...defaults, collapsed: new Set(['s1']) }));
+    expect(entries.some((entry) => entry.type === 'add' && entry.parent.code === '01')).toBe(false);
+  });
+});
+
+describe('siblingBounds', () => {
+  it('knows the first and last sibling, so the menu can hide the move it cannot make', () => {
+    const nodes = tree();
+    expect(siblingBounds(nodes, nodes[0]!)).toEqual({ first: true, last: false });
+    expect(siblingBounds(nodes, nodes[1]!)).toEqual({ first: false, last: true });
   });
 });

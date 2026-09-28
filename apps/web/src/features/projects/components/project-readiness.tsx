@@ -1,15 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, cn, StatusPill } from '@erp/ui';
+import { useLocale, useTranslations } from 'next-intl';
+import { Alert, Button, ReadinessChecklist, type ReadinessStep } from '@erp/ui';
 
-import { statusTone } from '@/lib/status-registry';
-import { Check, LockKeyhole } from 'lucide-react';
 import { usePermissions, type PermissionKey } from '@/features/auth/permissions/can';
+import { formatDate } from '@/lib/format';
+import type { ProjectReadinessConditionResponse } from '@erp/types';
 import { useProjectReadiness } from '../hooks/use-project';
+import { PROJECT_PERMISSIONS } from '../permissions';
+import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail } from '../types';
 
+/** The business order the steps are read in. Codes the server adds later are appended. */
 const PREPARATION_ORDER = [
   'CLIENT_ACTIVE',
   'BOQ_BASELINED',
@@ -21,61 +24,65 @@ const PREPARATION_ORDER = [
 
 type PreparationCode = (typeof PREPARATION_ORDER)[number];
 
+/**
+ * Where each step's work is done, who may open that place, and who owns the step.
+ *
+ * There is deliberately no dependency map here: which step waits for which is the server's
+ * `blockedBy` on each condition (only genuine data dependencies — e.g. the contract start date
+ * waits for the executed contract; since ADR-032 the contract does NOT wait for a baselined BOQ).
+ * A client-side map would be a rule the API does not enforce.
+ */
 const STEP_CONFIG: Record<
   PreparationCode,
   {
     path: string;
     permission: PermissionKey;
     owner: 'projectManager' | 'commercialTeam' | 'quantitySurveyor';
-    dependsOn: PreparationCode[];
   }
 > = {
-  CLIENT_ACTIVE: {
-    path: 'edit',
-    permission: 'manage:project',
-    owner: 'projectManager',
-    dependsOn: [],
-  },
-  BOQ_BASELINED: {
-    path: 'boq',
-    permission: 'view:boq',
-    owner: 'quantitySurveyor',
-    dependsOn: ['CLIENT_ACTIVE'],
-  },
+  CLIENT_ACTIVE: { path: 'edit', permission: 'manage:project', owner: 'projectManager' },
+  BOQ_BASELINED: { path: 'boq', permission: 'view:boq', owner: 'quantitySurveyor' },
   // Straight to the page that does the job, not to a route that redirects to it.
   ACTIVE_MAIN_CONTRACT: {
     path: 'commercial/contract-milestones',
     permission: 'view:contract',
     owner: 'commercialTeam',
-    dependsOn: ['CLIENT_ACTIVE', 'BOQ_BASELINED'],
   },
   CONTRACT_START_DATE: {
     path: 'commercial/contract-milestones',
     permission: 'view:contract',
     owner: 'commercialTeam',
-    dependsOn: ['ACTIVE_MAIN_CONTRACT'],
   },
   DELIVERY_TEAM: {
     path: 'members?add=1',
     permission: 'manage:project-member',
     owner: 'projectManager',
-    dependsOn: [],
   },
-  PROGRAMME_DATES: {
-    path: 'edit',
-    permission: 'manage:project',
-    owner: 'projectManager',
-    dependsOn: [],
-  },
+  PROGRAMME_DATES: { path: 'edit', permission: 'manage:project', owner: 'projectManager' },
 };
 
+function isKnown(code: string): code is PreparationCode {
+  return (PREPARATION_ORDER as readonly string[]).includes(code);
+}
+
+/** Known codes in business order, then any the server added that this client does not know. */
+export function orderConditions(
+  conditions: readonly ProjectReadinessConditionResponse[],
+): ProjectReadinessConditionResponse[] {
+  const rank = (code: string) =>
+    isKnown(code) ? PREPARATION_ORDER.indexOf(code) : PREPARATION_ORDER.length;
+  return [...conditions].sort((a, b) => rank(a.code) - rank(b.code));
+}
+
 /**
- * The server owns readiness truth. This component only adds the business sequence and
- * presentation dependencies that help a person understand what to do next.
+ * The Preparation-stage question — what is left before this project can start? — answered from
+ * the server's readiness contract. The server owns the truth (which conditions exist, which are
+ * met, which are waivable); this adds the reading order, the owner, and where to go to do it.
  */
 export function ProjectReadiness({ project }: { project: ProjectDetail }) {
   const t = useTranslations('platform.projects.preparation');
   const common = useTranslations('common');
+  const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
   const query = useProjectReadiness(project.id);
 
@@ -89,140 +96,95 @@ export function ProjectReadiness({ project }: { project: ProjectDetail }) {
       </Alert>
     );
 
-  const conditions = new Map(query.data.conditions.map((condition) => [condition.code, condition]));
-  const ordered = PREPARATION_ORDER.flatMap((code) => {
-    const condition = conditions.get(code);
-    return condition ? [{ code, condition }] : [];
+  const titleOf = (condition: ProjectReadinessConditionResponse) =>
+    isKnown(condition.code) && t.has(`conditions.${condition.code}`)
+      ? t(`conditions.${condition.code}`)
+      : condition.detail;
+  const byCode = new Map(query.data.conditions.map((condition) => [condition.code, condition]));
+
+  const steps: ReadinessStep[] = orderConditions(query.data.conditions).map((condition) => {
+    const config = isKnown(condition.code) ? STEP_CONFIG[condition.code] : null;
+    const href = config ? `/projects/${project.id}/${config.path}` : undefined;
+    const title = titleOf(condition);
+    // Waiting = an unmet step whose server-declared prerequisite is itself unmet. It gets no
+    // action: the work cannot be done until the prerequisite is.
+    const blocker = condition.satisfied
+      ? undefined
+      : (condition.blockedBy ?? [])
+          .map((code) => byCode.get(code))
+          .find((dependency) => dependency && !dependency.satisfied);
+    const doneAt =
+      condition.satisfied && condition.satisfiedAt
+        ? (formatDate(condition.satisfiedAt, locale) ?? undefined)
+        : undefined;
+
+    return {
+      key: condition.code,
+      title,
+      description:
+        config && t.has(`descriptions.${condition.code}`)
+          ? t(`descriptions.${condition.code}`)
+          : undefined,
+      owner: config ? t(config.owner) : undefined,
+      state: condition.satisfied ? 'done' : blocker ? 'waiting' : 'open',
+      waitingFor: blocker ? titleOf(blocker) : undefined,
+      doneAt,
+      optional: condition.severity === 'WAIVABLE',
+      // A done row links to where the work was done only when the reader can open that place.
+      href: config && can(config.permission) ? href : undefined,
+      action:
+        !condition.satisfied && !blocker && config && href && can(config.permission) ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={href}>{t(`action.${condition.code}`)}</Link>
+          </Button>
+        ) : undefined,
+    };
   });
-  const completedCount = ordered.filter(({ condition }) => condition.satisfied).length;
+
+  const requiredOpen = steps.some((step) => step.state !== 'done' && !step.optional);
+  const optionalOpen = steps.some((step) => step.state !== 'done' && step.optional);
+  // The footnote talks about the header's Start button, so it only does so to someone the
+  // button can appear for; everyone else gets the plain statement of what starting does.
+  const mayStart = can(PROJECT_PERMISSIONS.manage) && getAvailableActions(project).advance === 'start';
+  const footnote = !mayStart
+    ? t('footnoteReadOnly')
+    : requiredOpen
+      ? t('footnoteRequired')
+      : optionalOpen
+        ? t('footnoteOptional')
+        : t('footnoteReady');
 
   return (
-    <section
-      className="rounded-panel border border-border bg-surface"
-      aria-labelledby="project-readiness-title"
-    >
-      <div className="border-b border-border px-5 py-5 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="project-readiness-title" className="text-h2 font-semibold">
-            {t('title')}
-          </h2>
-          <span className="text-caption font-medium tabular-nums text-muted-foreground">
-            {t('progress', { complete: completedCount, total: ordered.length })}
-          </span>
-        </div>
-        <p className="mt-2 max-w-3xl text-body-sm text-muted-foreground">
-          {query.data.ready ? t('ready') : t('hint')}
-        </p>
-      </div>
-
-      <ol className="px-5 sm:px-6">
-        {ordered.map(({ code, condition }, index) => {
-          const config = STEP_CONFIG[code];
-          const unmetDependency = config.dependsOn.find(
-            (dependency) => conditions.get(dependency)?.satisfied === false,
-          );
-          const blocked = !condition.satisfied && Boolean(unmetDependency);
-          const actionable = !condition.satisfied && !blocked;
-
-          return (
-            <li
-              key={code}
-              className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 border-b border-border py-4 last:border-b-0 sm:grid-cols-[2rem_minmax(0,1fr)_auto] sm:items-center"
-            >
-              <span
-                className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-full border text-caption font-semibold tabular-nums',
-                  condition.satisfied
-                    ? 'border-success/25 bg-success-subtle text-success'
-                    : actionable
-                      ? 'border-brand-primary bg-brand-primary text-brand-on-primary'
-                      : 'border-border bg-surface-subtle text-muted-foreground',
-                )}
-                aria-hidden="true"
-              >
-                {condition.satisfied ? <Check size={15} strokeWidth={3} /> : index + 1}
-              </span>
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-body-sm font-semibold">{t(`conditions.${code}`)}</p>
-                  <ReadinessStatusPill
-                    complete={condition.satisfied}
-                    blocked={blocked}
-                    waivable={condition.severity === 'WAIVABLE'}
-                  />
-                </div>
-                <p className="mt-1 text-caption leading-5 text-muted-foreground">
-                  {t(`descriptions.${code}`)}
-                </p>
-                <p className="mt-1 text-caption text-muted-foreground">{t(config.owner)}</p>
-                {blocked && unmetDependency ? (
-                  <p className="mt-2 flex items-center gap-1.5 text-caption font-medium text-warning">
-                    <LockKeyhole size={13} aria-hidden="true" />
-                    {t('blockedBy', { task: t(`conditions.${unmetDependency}`) })}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="col-start-2 mt-3 sm:col-start-3 sm:row-start-1 sm:mt-0">
-                {actionable && can(config.permission) ? (
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/projects/${project.id}/${config.path}`}>{t('resolve')}</Link>
-                  </Button>
-                ) : actionable ? (
-                  <Badge tone="neutral">{t('ownerAction')}</Badge>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="border-t border-border bg-surface-subtle px-5 py-4 sm:px-6">
-        <p className="text-body-sm font-medium">
-          {query.data.ready ? t('finalReady') : t('finalBlocked')}
-        </p>
-        <p className="mt-1 text-caption text-muted-foreground">{t('finalHint')}</p>
-      </div>
-
-      {query.data.deferred.length > 0 ? (
-        <p className="border-t border-border px-5 py-4 text-caption text-muted-foreground sm:px-6">
-          {t('deferred')}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-/** One step's readiness — keys of the registry's `readinessStep` vocabulary (ADR-034). */
-type ReadinessStepState = 'COMPLETE' | 'BLOCKED' | 'OPTIONAL' | 'READY';
-
-const STATE_LABEL_KEY = {
-  COMPLETE: 'status.complete',
-  BLOCKED: 'status.blocked',
-  OPTIONAL: 'status.optional',
-  READY: 'status.ready',
-} as const;
-
-function ReadinessStatusPill({
-  complete,
-  blocked,
-  waivable,
-}: {
-  complete: boolean;
-  blocked: boolean;
-  waivable: boolean;
-}) {
-  const t = useTranslations('platform.projects.preparation');
-  const state: ReadinessStepState = complete
-    ? 'COMPLETE'
-    : blocked
-      ? 'BLOCKED'
-      : waivable
-        ? 'OPTIONAL'
-        : 'READY';
-
-  return (
-    <StatusPill tone={statusTone(state, 'readinessStep')}>{t(STATE_LABEL_KEY[state])}</StatusPill>
+    <ReadinessChecklist
+      headingId="project-readiness-title"
+      title={t('title')}
+      steps={steps}
+      linkAs={Link}
+      footnote={
+        <>
+          {footnote}
+          {query.data.deferred.length > 0 ? (
+            <span className="mt-1 block">{t('deferred')}</span>
+          ) : null}
+        </>
+      }
+      labels={{
+        countOf: (total) => t('countOf', { total }),
+        progress: (done, total) => t('progressLabel', { done, total }),
+        summaryRequired: (count) => t('summaryRequired', { count }),
+        summaryOptional: (count) => t('summaryOptional', { count }),
+        summaryAllDone: t('summaryAllDone'),
+        optional: t('optional'),
+        skippable: t('skippable'),
+        waitsFor: (step) =>
+          t.rich('waitsFor', {
+            step: typeof step === 'string' ? step : '',
+            b: (chunks) => <strong className="font-medium text-foreground">{chunks}</strong>,
+          }),
+        doneToggle: (count) => t('doneToggle', { count }),
+        show: t('show'),
+        hide: t('hide'),
+      }}
+    />
   );
 }

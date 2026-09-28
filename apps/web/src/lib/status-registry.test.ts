@@ -108,7 +108,6 @@ describe('vocabularies added when per-feature tone maps were retired (ADR-034)',
       { ALIGNED: 'success', CASH_AHEAD: 'progress', WORK_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral' },
     ],
     ['programmeMilestone', { PLANNED: 'neutral', VERIFIED: 'success' }],
-    ['readinessStep', { BLOCKED: 'neutral', READY: 'progress', OPTIONAL: 'attention', COMPLETE: 'success' }],
     [
       'approvalPolicy',
       {
