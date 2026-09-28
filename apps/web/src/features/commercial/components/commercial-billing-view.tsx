@@ -52,7 +52,8 @@ export function CommercialBillingView({
   const [prepareFor, setPrepareFor] = useState<string | null>(null);
   const [paymentFor, setPaymentFor] = useState<ClientReceivableView | null | 'none'>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  // D5: one overdue rule on the server clock — the billing read model's asOf, never the browser's date.
+  const today = billing.data?.asOf.slice(0, 10) ?? '';
   const receivables = useMemo(
     () => (billing.data?.invoices ?? []).map((row) => toClientReceivableView(row, today)),
     [billing.data, today],

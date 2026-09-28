@@ -97,12 +97,18 @@ describe('Contract view — payment schedule', () => {
   });
 });
 
+const TODAY = '2026-09-28';
+
 describe('installmentDisplayState', () => {
   it('maps the backend statuses and the blocker to one display word', () => {
-    expect(installmentDisplayState(stageFixture({ id: 'a', status: 'NEXT' }))).toBe('READY');
-    expect(installmentDisplayState(stageFixture({ id: 'b', status: 'NEXT', billingBlocker: 'MILESTONE_NOT_VERIFIED' }))).toBe('UPCOMING');
-    expect(installmentDisplayState(stageFixture({ id: 'c', status: 'BILLED', invoiceState: 'DRAFT' }))).toBe('DRAFT');
-    expect(installmentDisplayState(stageFixture({ id: 'd', status: 'BILLED', invoiceState: 'ISSUED' }))).toBe('BILLED');
-    expect(installmentDisplayState(stageFixture({ id: 'e', status: 'PARTIALLY_PAID' }))).toBe('PARTIALLY_PAID');
+    expect(installmentDisplayState(stageFixture({ id: 'a', status: 'NEXT' }), TODAY)).toBe('READY');
+    expect(installmentDisplayState(stageFixture({ id: 'b', status: 'NEXT', billingBlocker: 'MILESTONE_NOT_VERIFIED' }), TODAY)).toBe('UPCOMING');
+    expect(installmentDisplayState(stageFixture({ id: 'c', status: 'BILLED', invoiceState: 'DRAFT' }), TODAY)).toBe('DRAFT');
+    expect(installmentDisplayState(stageFixture({ id: 'd', status: 'BILLED', invoiceState: 'ISSUED' }), TODAY)).toBe('BILLED');
+    expect(installmentDisplayState(stageFixture({ id: 'e', status: 'PARTIALLY_PAID' }), TODAY)).toBe('PARTIALLY_PAID');
+    // A Date stage is Upcoming until its date (server day), then Ready.
+    const dated = { triggerType: 'TIME_BASED' as const, status: 'NEXT' as const };
+    expect(installmentDisplayState(stageFixture({ id: 'f', ...dated, expectedDate: '2026-12-01' }), TODAY)).toBe('UPCOMING');
+    expect(installmentDisplayState(stageFixture({ id: 'g', ...dated, expectedDate: '2026-09-28' }), TODAY)).toBe('READY');
   });
 });

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
@@ -51,6 +52,16 @@ const ZERO = new Decimal(0);
  * A refused command: 400 whose body carries a machine `code` (the convention elsewhere) and
  * `errorCode` (what the global exception filter lifts into the envelope's `error.code`).
  */
+/**
+ * An audit idempotency key for a set of invoices. The ids are sorted so the same set always gives
+ * the same key, and hashed rather than cut to the column's length — a truncated list of ids could
+ * make two different packages share a key and the second event be dropped as a duplicate.
+ */
+function invoiceSetKey(prefix: string, invoiceIds: readonly string[]): string {
+  const digest = createHash('sha256').update([...invoiceIds].sort().join(',')).digest('hex');
+  return `${prefix}-${digest}`;
+}
+
 function refuse(code: string, message: string): BadRequestException {
   return new BadRequestException({ message, code, errorCode: code });
 }
@@ -851,7 +862,7 @@ export class CommercialBillingService {
             resourceId: header.contractId ?? projectId,
             sourceCommand: 'commercial.issueInvoice',
             eventType: 'COMMERCIAL_INVOICE_ISSUED',
-            idempotencyKey: `issue-invoice-${pending.map((i) => i.id).join('-')}`.slice(0, 250),
+            idempotencyKey: invoiceSetKey('issue-invoice', pending.map((i) => i.id)),
             after: { invoiceIds: pending.map((i) => i.id), installmentId: pkg.installmentId },
           });
         },
@@ -922,7 +933,7 @@ export class CommercialBillingService {
           resourceId: header.contractId ?? projectId,
           sourceCommand: 'commercial.deleteDraftInvoice',
           eventType: 'COMMERCIAL_DRAFT_DELETED',
-          idempotencyKey: `delete-draft-${targets.join('-')}`.slice(0, 250),
+          idempotencyKey: invoiceSetKey('delete-draft', targets),
           before: {
             invoiceIds: targets,
             installmentId: pkg.installmentId,

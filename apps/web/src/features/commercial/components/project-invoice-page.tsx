@@ -142,7 +142,10 @@ function InvoiceDocumentView({
   // Delivery is recorded per stage package, keyed by the installment. A separate charge has no
   // delivery route, so it is never offered Send.
   const canSend = caps.canSend && installmentId !== null && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
-  const canPay = caps.canRecordPayment && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
+  // A payment posts a receipt, so it waits for the ledger just like Issue (hidden, and said why).
+  const payable = caps.canRecordPayment && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
+  const canPay = payable && !ledgerBlocked;
+  const paymentBlockedBySetup = payable && ledgerBlocked;
 
   const primary: 'issue' | 'send' | 'payment' | null =
     canIssue ? 'issue' : lifecycle === 'ISSUED' && canSend ? 'send' : canPay ? 'payment' : null;
@@ -278,7 +281,8 @@ function InvoiceDocumentView({
 
           {actionError ? <Alert variant="error" messages={[actionError]} /> : null}
 
-          {issueBlockedBySetup ? <SetupBlockedNotice /> : null}
+          {issueBlockedBySetup ? <SetupBlockedNotice step="issue" /> : null}
+          {paymentBlockedBySetup ? <SetupBlockedNotice step="payment" /> : null}
 
           {lifecycle === 'DRAFT' && !issueBlockedBySetup && caps.canIssue ? (
             <p className="text-body-sm text-muted-foreground">{t('draftExplainer')}</p>
@@ -453,7 +457,8 @@ function PaymentDialog({
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // D5: one overdue rule on the server clock — the billing read model's asOf, never the browser's date.
+  const today = billing.data.asOf.slice(0, 10);
   const invoices = billing.data.invoices.map((row) => toClientReceivableView(row, today));
   const preselected = invoices.find((invoice) => invoice.invoiceId === invoiceId) ?? null;
 
@@ -470,7 +475,7 @@ function PaymentDialog({
 }
 
 /** Issue is hidden while the ledger cannot post; this says why and where to fix it. */
-function SetupBlockedNotice() {
+function SetupBlockedNotice({ step }: { step: 'issue' | 'payment' }) {
   const t = useTranslations('commercial.invoicePage');
   const readiness = useAccountingReadiness();
   const first = readiness.data?.blockers[0]?.code;
@@ -479,14 +484,14 @@ function SetupBlockedNotice() {
   return (
     <Notice
       tone="attention"
-      title={t('setupBlockedTitle')}
+      title={step === 'issue' ? t('setupBlockedTitle') : t('paymentBlockedTitle')}
       action={
         <Button asChild variant="outline">
           <Link href={href}>{t('setupBlockedAction')}</Link>
         </Button>
       }
     >
-      {t('setupBlockedBody')}
+      {step === 'issue' ? t('setupBlockedBody') : t('paymentBlockedBody')}
     </Notice>
   );
 }

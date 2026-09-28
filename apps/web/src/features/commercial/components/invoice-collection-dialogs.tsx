@@ -73,7 +73,8 @@ export function InvoiceCollectionDialogs({
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // D5: one overdue rule on the server clock — the billing read model's asOf, never the browser's date.
+  const today = billing.data.asOf.slice(0, 10);
   const invoice = toClientReceivableView(row, today);
   const currency = billing.data.currency ?? row.currency;
 

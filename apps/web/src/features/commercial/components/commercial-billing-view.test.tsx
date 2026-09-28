@@ -26,7 +26,7 @@ vi.mock('../hooks/use-commercial', () => ({
   useCommercialBilling: () => ({
     isPending: false,
     isError: false,
-    data: { invoices: billing.invoices, receipts: billing.receipts },
+    data: { invoices: billing.invoices, receipts: billing.receipts, asOf: '2026-09-28T00:00:00.000Z' },
   }),
 }));
 

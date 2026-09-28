@@ -199,11 +199,17 @@ function ContractFacts({ projectId, workspace }: { projectId: string; workspace:
 // ─── Payment schedule ───────────────────────────────────────────────────────
 
 /** The word the schedule shows, from the read model's own fields (see the registry note). */
-export function installmentDisplayState(inst: CommercialPaymentScheduleInstallment): string {
+/**
+ * `today` is the server's day (`workspace.asOf`, `yyyy-MM-dd`). A Date stage has no raise blocker,
+ * but it bills on its date — until then it is Upcoming with its date as the reason.
+ */
+export function installmentDisplayState(inst: CommercialPaymentScheduleInstallment, today: string): string {
   if (inst.status === 'PAID' || inst.status === 'PARTIALLY_PAID') return inst.status;
   if (inst.invoiceState === 'DRAFT') return 'DRAFT';
   if (inst.status === 'BILLED' || inst.invoiceState === 'ISSUED') return 'BILLED';
-  return inst.billingBlocker === null ? 'READY' : 'UPCOMING';
+  if (inst.billingBlocker !== null) return 'UPCOMING';
+  const notYetDue = inst.triggerType === 'TIME_BASED' && inst.expectedDate !== null && inst.expectedDate.slice(0, 10) > today;
+  return notYetDue ? 'UPCOMING' : 'READY';
 }
 
 function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; workspace: CommercialWorkspaceResponse }) {
@@ -214,6 +220,7 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
   const [reprofiling, setReprofiling] = useState(false);
   const { financialsVisible, capabilities } = workspace;
   const contract = workspace.contract!;
+  const today = workspace.asOf.slice(0, 10);
 
   if (cycle.isPending) return <Skeleton className="h-48 w-full" />;
   if (cycle.isError || !cycle.data?.paymentSchedule) {
@@ -235,7 +242,7 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
   };
 
   const reason = (inst: CommercialPaymentScheduleInstallment): React.ReactNode => {
-    const state = installmentDisplayState(inst);
+    const state = installmentDisplayState(inst, today);
     if (state === 'READY') {
       const released = inst.releasedBy;
       if (released.kind === 'MILESTONE') return t('reasonVerified', { code: released.milestoneCode ?? '', date: date(released.verifiedAt) });
@@ -301,7 +308,7 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
       header: t('status'),
       card: 'status',
       render: (inst) => {
-        const state = installmentDisplayState(inst);
+        const state = installmentDisplayState(inst, today);
         const why = reason(inst);
         return (
           <div className="min-w-0 space-y-0.5">

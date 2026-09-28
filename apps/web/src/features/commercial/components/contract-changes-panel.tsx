@@ -28,6 +28,7 @@ import {
   useProjectSeparateCharges,
   useVariations,
 } from '../hooks/use-commercial';
+import { useCommercialWorkspace } from '../hooks/use-commercial-workspace';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
 import { VariationsTab } from './variations-tab';
 
@@ -114,6 +115,8 @@ function SeparateChargesSection({ projectId }: { projectId: string }) {
   const t = useTranslations('commercial.contractMilestones.separateCharges');
   const locale = useLocale() as 'en' | 'ar';
   const query = useProjectSeparateCharges(projectId);
+  // Invoicing a separate charge is the billing permission; everyone else sees the row, no command.
+  const canBill = useCommercialWorkspace(projectId).data?.capabilities.canBill ?? false;
   const [creatingFor, setCreatingFor] = useState<Extract<
     SeparateChargeNode,
     { source: 'BOQ_LEAF' }
@@ -146,9 +149,9 @@ function SeparateChargesSection({ projectId }: { projectId: string }) {
               item={item}
               locale={locale}
               t={t}
-              onCreateInvoice={() => {
-                if (item.source === 'BOQ_LEAF') setCreatingFor(item);
-              }}
+              onCreateInvoice={
+                canBill && item.source === 'BOQ_LEAF' ? () => setCreatingFor(item) : undefined
+              }
             />
           ))}
         </ul>
@@ -173,7 +176,8 @@ function SeparateChargeRow({
 }: {
   item: SeparateChargeNode;
   locale: string;
-  onCreateInvoice: () => void;
+  /** Absent when the viewer cannot bill: the row shows its state and no command. */
+  onCreateInvoice?: () => void;
   t: (key: string) => string;
 }) {
   const fmtMoney = (v: string | null) =>
@@ -198,9 +202,11 @@ function SeparateChargeRow({
         ) : (
           <>
             <Badge tone="neutral" className="text-caption">{t('statusNotBilled')}</Badge>
-            <Button type="button" variant="outline" size="sm" onClick={onCreateInvoice}>
-              {t('createInvoice')}
-            </Button>
+            {onCreateInvoice ? (
+              <Button type="button" variant="outline" size="sm" onClick={onCreateInvoice}>
+                {t('createInvoice')}
+              </Button>
+            ) : null}
           </>
         )}
       </div>

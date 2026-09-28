@@ -219,6 +219,17 @@ describe('CommercialWorkspaceService.getWorkspace', () => {
     expect(ws.todo.some((t) => t.kind === 'READY_TO_INVOICE')).toBe(false);
   });
 
+  it('keeps a Date stage out of To do until its date arrives (server clock)', async () => {
+    const { service } = build({
+      installments: [
+        installment({ id: 'st-past', triggerType: 'TIME_BASED', dueDate: daysAgo(1).toISOString().slice(0, 10) }),
+        installment({ id: 'st-future', triggerType: 'TIME_BASED', dueDate: daysAgo(-30).toISOString().slice(0, 10) }),
+      ],
+    });
+    const ws = await service.getWorkspace(moneyViewer, 'p-1');
+    expect(ws.todo.filter((t) => t.kind === 'READY_TO_INVOICE').map((t) => t.id)).toEqual(['ready:st-past']);
+  });
+
   it('no contract: the live BOQ version to sign against, nothing else', async () => {
     const { service, repo } = build();
     repo.findMainContract.mockResolvedValue(null);

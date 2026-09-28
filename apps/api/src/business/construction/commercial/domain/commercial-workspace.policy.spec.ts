@@ -156,7 +156,7 @@ describe('commercial-workspace.policy — capabilities', () => {
   });
 
   it('invoice document: by state and permission', () => {
-    const draft = invoiceDocumentCapabilities(biller, 'DRAFT', new Decimal(100));
+    const draft = invoiceDocumentCapabilities(biller, 'DRAFT', new Decimal(100), true);
     expect(draft).toEqual({
       canIssue: true,
       canSend: false,
@@ -166,12 +166,14 @@ describe('commercial-workspace.policy — capabilities', () => {
       canIssueCreditNote: false,
       canDownloadPdf: true,
     });
-    const sent = invoiceDocumentCapabilities(biller, 'SENT', new Decimal(100));
+    const sent = invoiceDocumentCapabilities(biller, 'SENT', new Decimal(100), true);
     expect(sent).toMatchObject({ canIssue: false, canSend: true, canRecordPayment: true, canIssueCreditNote: true });
-    expect(invoiceDocumentCapabilities(biller, 'PAID', new Decimal(0)).canRecordPayment).toBe(false);
-    const viewer = invoiceDocumentCapabilities([PERMISSIONS.contractsView], 'DRAFT', new Decimal(100));
+    expect(invoiceDocumentCapabilities(biller, 'PAID', new Decimal(0), true).canRecordPayment).toBe(false);
+    // A reopened contract (DRAFT) takes no payments, so the page must not offer one.
+    expect(invoiceDocumentCapabilities(biller, 'SENT', new Decimal(100), false).canRecordPayment).toBe(false);
+    const viewer = invoiceDocumentCapabilities([PERMISSIONS.contractsView], 'DRAFT', new Decimal(100), true);
     expect(viewer).toMatchObject({ canIssue: false, canDeleteDraft: false, canDownloadPdf: true });
-    expect(invoiceDocumentCapabilities(biller, 'CANCELLED', new Decimal(0))).toMatchObject({
+    expect(invoiceDocumentCapabilities(biller, 'CANCELLED', new Decimal(0), true)).toMatchObject({
       canIssue: false,
       canSend: false,
       canDeleteDraft: false,

@@ -41,6 +41,8 @@
     "setupBlockedTitle": "Invoices can't be issued until accounting setup is finished.",
     "setupBlockedBody": "Finish the accounting setup, then come back to issue this draft.",
     "setupBlockedAction": "Finish accounting setup",
+    "paymentBlockedTitle": "Payments can't be recorded until accounting setup is finished.",
+    "paymentBlockedBody": "A payment posts a receipt to the ledger. Finish the accounting setup, then record it here.",
     "summary": "Summary",
     "source": "Source",
     "sourceKind": {

@@ -114,6 +114,13 @@ ADR-030 has an amendment dated 2026-09-28, and api-reference §6.9b documents th
   sequences, so Issue / Send / Record payment were browser-checked with patched API responses; the
   commands themselves are covered by `commercial-prepare-issue.db.spec.ts` (real DB).
 - **`deliveries[].sentBy`** is still a user id.
+- **Issue date of a late draft (owner decision).** A draft keeps the invoice date it was prepared
+  with, and Issue posts on that date. A draft issued weeks later posts into the earlier period (or is
+  refused if that period is closed). Alternative: Issue re-dates the invoice to the day it is issued.
+- **"shamiito" test lines.** Not in any seed file on `main` — they are rows in a database (entered
+  by hand or by an earlier script). Removing them is a data clean-up on that environment, not code.
+- **Date stages** have no raise blocker (`installmentBillingBlocker` unchanged), so Prepare accepts
+  one early; the page keeps it Upcoming ("Expected {date}", server day) and out of To do until due.
 - **Contract-changes switcher at 375px** scrolls horizontally inside its track (design-system
   behaviour), so "Time" sits just off-screen until scrolled.
 

@@ -263,6 +263,8 @@ export function invoiceDocumentCapabilities(
   permissions: readonly string[],
   lifecycle: CommercialInvoiceLifecycle,
   balance: Decimal,
+  /** The project has an ACTIVE contract — `recordProjectPayment` refuses otherwise (e.g. after a reopen). */
+  contractActive: boolean,
 ): CommercialInvoiceDocumentResponse['capabilities'] {
   const has = (p: string) => permissions.includes(p);
   const canBill = has(PERMISSIONS.contractsView) && has(PERMISSIONS.receivablesManage);
@@ -271,7 +273,7 @@ export function invoiceDocumentCapabilities(
   return {
     canIssue: draft && canBill,
     canSend: posted && canBill,
-    canRecordPayment: posted && balance.gt(0) && canBill,
+    canRecordPayment: posted && balance.gt(0) && canBill && contractActive,
     canEditDraft: draft && canBill,
     canDeleteDraft: draft && canBill,
     canIssueCreditNote: posted && has(PERMISSIONS.receivablesManage),

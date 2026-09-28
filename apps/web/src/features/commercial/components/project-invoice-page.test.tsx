@@ -173,6 +173,18 @@ describe('ProjectInvoicePage — the invoice as a document inside the project', 
     expect(screen.queryByRole('button', { name: 'Send to client' })).not.toBeInTheDocument();
   });
 
+  it('sent, ledger blocked: Record payment is hidden and the reason is said', async () => {
+    ledgerBlocked = true;
+    getDocument.mockResolvedValue(
+      makeInvoiceDocument({ ...ISSUED, lifecycle: 'SENT', capabilities: ISSUED_CAPS }),
+    );
+    renderPage();
+    expect(
+      await screen.findByText("Payments can't be recorded until accounting setup is finished."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record payment' })).not.toBeInTheDocument();
+  });
+
   it('paid: no primary command at all', async () => {
     getDocument.mockResolvedValue(
       makeInvoiceDocument({

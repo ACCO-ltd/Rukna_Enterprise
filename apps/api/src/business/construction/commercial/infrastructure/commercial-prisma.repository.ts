@@ -870,6 +870,15 @@ export class CommercialPrismaRepository {
   }
 
   /** A contract's number, org-scoped (an invoice carries only the bare `contractId`). */
+  /** Same lookup `recordProjectPayment` guards on: a payment needs an ACTIVE contract on the project. */
+  async hasActiveContract(prisma: TenantPrisma, organizationId: string, projectId: string): Promise<boolean> {
+    const contract = await prisma.contract.findFirst({
+      where: { organizationId, projectId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    return contract !== null;
+  }
+
   async findContractNumber(prisma: TenantPrisma, organizationId: string, contractId: string) {
     const contract = await prisma.contract.findFirst({
       where: { id: contractId, organizationId },
@@ -1062,9 +1071,9 @@ export class CommercialPrismaRepository {
   }
 
   /** Display name for a user id, or null. */
-  async findUserName(prisma: TenantPrisma, userId: string): Promise<string | null> {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+  async findUserName(prisma: TenantPrisma, organizationId: string, userId: string): Promise<string | null> {
+    const user = await prisma.user.findFirst({
+      where: { id: userId, organizationId },
       select: { firstName: true, lastName: true },
     });
     return user ? `${user.firstName} ${user.lastName}`.trim() || null : null;

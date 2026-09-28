@@ -20,6 +20,7 @@ import { PlatformFileService } from '../../../../platform/files/application/plat
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
 import { deriveContractValue, netPrice } from '../../variations/domain/variation-order.policy.js';
+import { VariationBillingAllocationPolicy } from '../../variations/domain/variation-billing-allocation.policy.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import { installmentBillingBlocker } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 import { CLIENT_INVOICE_SALES_TAX_RATE } from '../../../accounting/accounts-receivable/domain/client-invoice-tax.js';
@@ -305,9 +306,7 @@ export class CommercialWorkspaceService {
       .filter((v) => v.status === 'CLIENT_APPROVED')
       .map((v) => ({
         reference: v.reference,
-        remaining: netPrice(v.lines.map((l) => ({ amount: dec(l.amount) }))).minus(
-          allocatedByVariation.get(v.id) ?? ZERO,
-        ),
+        remaining: remainingToBill(v.lines, allocatedByVariation.get(v.id)),
       }))
       .filter((v) => !v.remaining.isZero());
     const unbilledVariations =
@@ -335,6 +334,8 @@ export class CommercialWorkspaceService {
       if (inst.billingBlocker === null) {
         // Prepare refuses unless the contract is ACTIVE; never offer what the server refuses.
         if (input.contractStatus !== 'ACTIVE') continue;
+        // A Date stage bills on its date: it has no raise blocker, but it is not work to do yet.
+        if (!stageDue(inst, asOf)) continue;
         items.push({ ...stage, id: `ready:${inst.id}`, kind: 'READY_TO_INVOICE', unbilledVariations });
       } else if (!blockedAdded) {
         blockedAdded = true;
@@ -390,9 +391,7 @@ export class CommercialWorkspaceService {
       .filter((v) => v.status === 'CLIENT_APPROVED')
       .map((v) => ({
         v,
-        remaining: netPrice(v.lines.map((l) => ({ amount: dec(l.amount) })))
-          .minus(allocated.get(v.id) ?? ZERO)
-          .toDecimalPlaces(2),
+        remaining: remainingToBill(v.lines, allocated.get(v.id)),
       }))
       .filter(({ remaining }) => !remaining.isZero())
       .map(({ v, remaining }) => ({
@@ -443,13 +442,14 @@ export class CommercialWorkspaceService {
     const posted = !isUnposted(inv.postingStatus);
     const snapshot = (inv.billingAddressSnapshot ?? {}) as InvoiceSnapshot;
 
-    const [liveOrg, project, contractNumber, createdByName] = await Promise.all([
+    const [liveOrg, project, contractNumber, createdByName, paymentsOpen] = await Promise.all([
       // D5: drafts show the organisation's CURRENT branding; issued invoices their frozen snapshot
       // (falling back to live only for pre-snapshot invoices that never froze one).
       posted && snapshot.org ? Promise.resolve(null) : this.repo.findOrgBranding(prisma, orgId),
       this.repo.findProjectHeader(prisma, orgId, projectId),
       inv.contractId ? this.repo.findContractNumber(prisma, orgId, inv.contractId) : Promise.resolve(null),
-      this.repo.findUserName(prisma, inv.createdBy).catch(() => null),
+      this.repo.findUserName(prisma, orgId, inv.createdBy).catch(() => null),
+      this.repo.hasActiveContract(prisma, orgId, projectId),
     ]);
     const org = posted && snapshot.org ? snapshot.org : liveOrg;
     const logoUrl = org?.logoFileId
@@ -556,7 +556,7 @@ export class CommercialWorkspaceService {
       createdAt: inv.createdAt.toISOString(),
       createdBy: createdByName ?? inv.createdBy,
       financialsVisible: canViewMargin,
-      capabilities: invoiceDocumentCapabilities(identity.permissions, lifecycle, balance),
+      capabilities: invoiceDocumentCapabilities(identity.permissions, lifecycle, balance, paymentsOpen),
     };
   }
 
@@ -622,4 +622,19 @@ export class CommercialWorkspaceService {
       ...buildStatementLines(entries, canViewMargin),
     };
   }
+}
+
+/**
+ * What of a client-approved variation is still to bill. Goes through the same allocation policy
+ * the prepare command uses, so the To do row, the preview and the invoice cannot disagree by a cent.
+ */
+function remainingToBill(lines: ReadonlyArray<{ amount: Decimal | string | number }>, allocated: Decimal | undefined): Decimal {
+  const net = netPrice(lines.map((l) => ({ amount: dec(l.amount) })));
+  return VariationBillingAllocationPolicy.remainingUnallocated(net, allocated ? [{ amount: allocated }] : []);
+}
+
+/** A TIME_BASED stage is due once its date (server clock, UTC day) has arrived; other stages are due when unblocked. */
+function stageDue(inst: { triggerType: string; dueDate: string | null }, asOf: Date): boolean {
+  if (inst.triggerType !== 'TIME_BASED' || !inst.dueDate) return true;
+  return inst.dueDate.slice(0, 10) <= asOf.toISOString().slice(0, 10);
 }
