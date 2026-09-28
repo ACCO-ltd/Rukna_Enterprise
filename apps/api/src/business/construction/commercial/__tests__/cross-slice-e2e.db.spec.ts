@@ -24,6 +24,7 @@ import {
   type AccountingTestEnv,
 } from '../../../accounting/__tests__/helpers/fixture.factory.js';
 import { buildServices } from '../../../accounting/__tests__/helpers/build-services.js';
+import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
 
 /**
  * Cross-slice E2E: verifies the full commercial chain from a DRAFT BOQ through to payment
@@ -193,6 +194,7 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
         },
       });
     inst1Id = (await makeInstallment('Handover', 0)).id;
+    await linkVerifiedMilestones(prisma, contractId);
 
     // Activate the contract (DRAFT → ACTIVE). issuePackage requires ACTIVE status.
     await contractService.transition(identity, contractId, 'activate');
@@ -244,6 +246,7 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
     // Having two 100% installments is intentional: each test scenario owns one (inst1 was
     // created pre-activation above; this mirrors it for T7's independent scenario).
     inst2Id = (await makeInstallment('Handover-2', 1)).id;
+    await linkVerifiedMilestones(prisma, contractId);
   }
 
   afterAll(async () => {

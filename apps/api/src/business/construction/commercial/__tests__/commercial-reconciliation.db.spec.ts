@@ -16,6 +16,7 @@ import { VariationOrderPrismaRepository } from '../../variations/infrastructure/
 import { VariationOrderService } from '../../variations/application/variation-order.service.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
+import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
 
 /**
  * Commercial reconciliation DB tests.
@@ -224,6 +225,7 @@ describe('CommercialBillingService — post-lifecycle reconciliation', () => {
     r2 = (await makeInst('R2 Structure',    '0.3000', 1)).id;
     r3 = (await makeInst('R3 Finishing',    '0.2000', 2)).id;
     r4 = (await makeInst('R4 Handover',     '0.1000', 3)).id;
+    await linkVerifiedMilestones(prisma, contract.id);
   }
 
   async function issueAllInstallments() {

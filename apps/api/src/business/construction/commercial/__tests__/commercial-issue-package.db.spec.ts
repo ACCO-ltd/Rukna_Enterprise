@@ -16,6 +16,7 @@ import { VariationOrderPrismaRepository } from '../../variations/infrastructure/
 import { VariationOrderService } from '../../variations/application/variation-order.service.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
+import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
 
 /**
  * Slice 4B — Issue billing package + record delivery (live-DB).
@@ -190,6 +191,7 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
 
     instA = (await makeInst('Mobilisation', '0.4000', 0)).id;
     instB = (await makeInst('Structure', '0.3000', 1)).id;
+    await linkVerifiedMilestones(prisma, contract.id);
 
     // VO-A: +10,000 USD, CLIENT_APPROVED — will be allocated on instA
     const voARecord = await prisma.variationOrder.create({
@@ -565,6 +567,7 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
         milestoneLabel: 'Rollback Stage',
       },
     })).id;
+    await linkVerifiedMilestones(prisma, contract2.id);
 
     const rbVo = (await prisma.variationOrder.create({
       data: {

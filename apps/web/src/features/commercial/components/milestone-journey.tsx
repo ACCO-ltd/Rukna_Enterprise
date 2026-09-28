@@ -29,6 +29,8 @@ interface MilestoneJourneyProps {
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (milestone: MilestoneItemViewModel) => void;
+  /** Opens the link dialog for a work stage with no programme milestone. Omit when not permitted. */
+  onLinkMilestone?: (milestone: MilestoneItemViewModel) => void;
   /** Where a stage's unposted invoice is reviewed and posted. Omit to show no action. */
   draftInvoiceHref?: (invoiceId: string) => string;
   /**
@@ -51,6 +53,7 @@ export function MilestoneJourney({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  onLinkMilestone,
   draftInvoiceHref,
   billingBlocked = false,
   title,
@@ -111,6 +114,7 @@ export function MilestoneJourney({
             onPrepareInvoice={onPrepareInvoice}
             onSendInvoice={onSendInvoice}
             onVerifyMilestone={onVerifyMilestone}
+            onLinkMilestone={onLinkMilestone}
             draftInvoiceHref={draftInvoiceHref}
             billingBlocked={billingBlocked}
           />
@@ -141,6 +145,7 @@ function MilestoneItem({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  onLinkMilestone,
   draftInvoiceHref,
   billingBlocked,
 }: {
@@ -154,6 +159,7 @@ function MilestoneItem({
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (m: MilestoneItemViewModel) => void;
+  onLinkMilestone?: (m: MilestoneItemViewModel) => void;
   draftInvoiceHref?: (invoiceId: string) => string;
   billingBlocked: boolean;
 }) {
@@ -189,8 +195,16 @@ function MilestoneItem({
   // One compact control per row — the reference's "Action" column. Everything else the
   // journey needs to say (ready-to-bill note, awaiting-payment total, VO breakdown, linked
   // programme milestone) moves to the detail strip below the row instead of stacking here.
+  const needsLink =
+    milestone.userState === 'in-progress' &&
+    milestone.triggerType === 'MILESTONE' &&
+    !milestone.programmeMilestone;
   const action =
-    milestone.userState === 'in-progress' && milestone.programmeMilestone?.status === 'PLANNED' ? (
+    needsLink && onLinkMilestone ? (
+      <Button type="button" variant="outline" size="sm" onClick={() => onLinkMilestone(milestone)}>
+        {t('cta.linkMilestone')}
+      </Button>
+    ) : milestone.userState === 'in-progress' && milestone.programmeMilestone?.status === 'PLANNED' ? (
       <Button type="button" variant="outline" size="sm" onClick={() => onVerifyMilestone?.(milestone)}>
         {t('cta.verifyMilestone')}
       </Button>
@@ -220,6 +234,7 @@ function MilestoneItem({
     milestone.userState === 'ready-to-bill' ||
     milestone.userState === 'awaiting-payment' ||
     (!isDone && milestone.programmeMilestone) ||
+    needsLink ||
     milestone.variationAllocations.length > 0;
 
   return (
@@ -270,6 +285,12 @@ function MilestoneItem({
           ) : null}
           {milestone.userState === 'awaiting-payment' ? (
             <AwaitingPaymentDisplay milestone={milestone} currency={currency} locale={locale} t={t} />
+          ) : null}
+          {needsLink ? (
+            <p className="flex items-center gap-1.5 text-caption text-warning">
+              <Clock size={12} aria-hidden="true" />
+              {t('milestone.linkRequired')}
+            </p>
           ) : null}
           {!isDone && milestone.programmeMilestone ? (
             <p className="flex items-center gap-1.5 text-caption text-muted-foreground">

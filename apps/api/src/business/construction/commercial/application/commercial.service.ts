@@ -53,6 +53,7 @@ import {
 } from '../../variations/domain/variation-order.policy.js';
 import type { CommercialContractValue } from '@erp/types';
 import { CollectionEventsService } from '../../../accounting/accounts-receivable/application/collection-events.service.js';
+import { installmentBillingBlocker } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 
 const ZERO = new Decimal(0);
 
@@ -770,9 +771,10 @@ export class CommercialService {
       // surface it as a cycle blocker (the ribbon renders the reason + a verify link derived from the
       // installment) instead of offering a next action the API would refuse.
       const nextInstallment = built.schedule.installments.find((i) => i.status === 'NEXT');
-      const milestoneBlocked =
-        nextInstallment?.triggerType === 'MILESTONE' &&
-        nextInstallment.programmeMilestone?.status !== 'VERIFIED';
+      // CONST-COM-011 (strict): the same rule the invoice generator and markReadyToBill enforce,
+      // so the ribbon and the Overview card can never offer what the server would refuse.
+      const billingBlocker = nextInstallment ? installmentBillingBlocker(nextInstallment) : null;
+      const milestoneBlocked = billingBlocker !== null;
       const milestoneHref = `/projects/${projectId}/commercial/contract-milestones`;
       return {
         projectId,
@@ -789,7 +791,7 @@ export class CommercialService {
                 href: `${milestoneHref}?installment=${nextInstallment.id}`,
               }
             : null,
-        blockers: milestoneBlocked ? ['MILESTONE_NOT_VERIFIED'] : [],
+        blockers: billingBlocker ? [billingBlocker] : [],
         capabilities: result.capabilities,
         responsibleRole: 'COMMERCIAL_MANAGER',
         asOf,
@@ -1694,14 +1696,11 @@ export class CommercialService {
         // blocks billing while the linked milestone is unverified and withholds the action from
         // a viewer who cannot generate invoices. The card must never offer what the ribbon above
         // it says is blocked.
-        const milestoneBlocked = cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
-        // The cycle also blocks a milestone stage with NO linked programme milestone ("missing
-        // evidence is not verification"). Say so — "waiting for verification" there points the
-        // reader at nothing to verify.
-        const description = milestoneBlocked
-          ? nextInst.programmeMilestone
+        // The reason comes from the cycle's blocker — the same code the ribbon renders.
+        const description = cycle.blockers.includes('MILESTONE_NOT_LINKED')
+          ? 'Link this stage to a programme milestone and verify it before billing.'
+          : cycle.blockers.includes('MILESTONE_NOT_VERIFIED')
             ? 'Waiting for work verification before billing.'
-            : 'Link this stage to a programme milestone and verify it before billing.'
           : nextInst.readyToBill
             ? 'Marked ready — billing package can be prepared.'
             : 'Commercial review required before billing.';

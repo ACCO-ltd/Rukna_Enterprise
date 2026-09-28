@@ -209,6 +209,11 @@ function resolveUserState(
     case 'BILLED':
       return 'invoiced';
     case 'NEXT':
+      // Strict CONST-COM-011: a work-completion stage without a linked, site-verified milestone is
+      // not billable, whatever an earlier ready flag says — the server refuses it too.
+      if (inst.triggerType === 'MILESTONE' && inst.programmeMilestone?.status !== 'VERIFIED') {
+        return 'in-progress';
+      }
       if (inst.readyToBill) return 'ready-to-bill';
       if (inst.programmeMilestone?.status === 'VERIFIED') return 'review-for-billing';
       return 'in-progress';

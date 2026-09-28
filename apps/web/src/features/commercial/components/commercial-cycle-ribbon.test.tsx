@@ -271,3 +271,27 @@ describe('CommercialCycleRibbon — loading', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
+
+describe('CommercialCycleRibbon — MILESTONE_NOT_LINKED blocker (strict CONST-COM-011)', () => {
+  it('says there is nothing to verify yet and links to linking the stage, not to Progress', () => {
+    stubCycle({
+      stage: 'MILESTONE_SCHEDULE',
+      nextAction: null,
+      blockers: ['MILESTONE_NOT_LINKED'] as CommercialCycleBlocker[],
+      paymentSchedule: {
+        currency: 'USD',
+        contractValue: '750000.00',
+        totalCollected: '0.00',
+        variationLines: [],
+        installments: [installment({ id: 'b', status: 'NEXT', name: 'Structure', programmeMilestone: null })],
+      },
+    } as Partial<CommercialCurrentCycleResponse>);
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
+
+    expect(screen.getByText('Blocked: this stage has no programme milestone to verify')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Link milestone/ })).toHaveAttribute(
+      'href',
+      '/projects/p-1/commercial/contract-milestones?installment=b&action=link',
+    );
+  });
+});

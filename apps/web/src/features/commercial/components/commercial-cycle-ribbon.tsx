@@ -62,7 +62,10 @@ function Ribbon({
   const isMilestone = cycle.stage === 'MILESTONE_SCHEDULE';
 
   const focus = isMilestone ? nextInstallment(cycle) : null;
-  const blocked = cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
+  // Strict CONST-COM-011: two reasons, each with its own fix. Not linked → link a milestone here;
+  // linked but not verified → verify it in Progress.
+  const notLinked = cycle.blockers.includes('MILESTONE_NOT_LINKED');
+  const blocked = notLinked || cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
   // The blocker's evidence is the NEXT installment's linked programme milestone.
   const gatedMilestone = blocked ? (focus?.programmeMilestone ?? null) : null;
   // A due-date cue for the NEXT stage — "due in 5 days" / "overdue" — so the ribbon prompts billing
@@ -119,15 +122,21 @@ function Ribbon({
               <Dot />
               <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-warning">
                 <span className="min-w-0">
-                  {gatedMilestone
-                    ? t('ribbon.blockedNamed', { name: gatedMilestone.name })
-                    : t('ribbon.blocked')}
+                  {notLinked
+                    ? t('ribbon.blockedNotLinked')
+                    : gatedMilestone
+                      ? t('ribbon.blockedNamed', { name: gatedMilestone.name })
+                      : t('ribbon.blocked')}
                 </span>
                 <Link
-                  href={`/projects/${projectId}/progress`}
+                  href={
+                    notLinked && focus
+                      ? `/projects/${projectId}/commercial/contract-milestones?installment=${focus.id}&action=link`
+                      : `/projects/${projectId}/progress`
+                  }
                   className="inline-flex shrink-0 items-center gap-0.5 font-medium text-warning underline underline-offset-2 hover:text-warning/80"
                 >
-                  {t('ribbon.goVerify')}
+                  {notLinked ? t('ribbon.goLink') : t('ribbon.goVerify')}
                   <ArrowRight size={12} aria-hidden="true" />
                 </Link>
               </span>

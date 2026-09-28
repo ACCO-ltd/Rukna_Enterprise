@@ -423,7 +423,7 @@ function MilestoneCell({
   );
 }
 
-function LinkMilestoneDialog({
+export function LinkMilestoneDialog({
   projectId,
   contractId,
   installment,
@@ -433,7 +433,8 @@ function LinkMilestoneDialog({
 }: {
   projectId: string;
   contractId: string;
-  installment: Installment;
+  /** A payment-schedule stage — its id, name and current link are all the dialog needs. */
+  installment: Pick<Installment, 'id' | 'name'> & { programmeMilestone?: { id: string } | null };
   milestones: ProgrammeMilestoneResponse[];
   milestonesLoading: boolean;
   onDismiss: () => void;
