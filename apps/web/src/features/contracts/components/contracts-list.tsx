@@ -84,7 +84,7 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
         isError={isError}
         errorMessage={t('loadFailed')}
         onRetry={() => void refetch()}
-        rowHref={(contract) => `/projects/${contract.projectId}/commercial/contract-security`}
+        rowHref={(contract) => `/projects/${contract.projectId}/commercial/contract`}
         emptyState={
           (data?.length ?? 0) === 0 ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">

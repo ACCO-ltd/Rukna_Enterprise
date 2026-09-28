@@ -25,7 +25,7 @@ export function ContractRedirect({ contractId }: { contractId: string }) {
 
   useEffect(() => {
     if (data) {
-      router.replace(`/projects/${data.projectId}/commercial/contract-security`);
+      router.replace(`/projects/${data.projectId}/commercial/contract`);
     }
   }, [data, router]);
 

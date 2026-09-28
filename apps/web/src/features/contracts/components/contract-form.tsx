@@ -224,7 +224,7 @@ export function ContractForm({ contract, projectId }: ContractFormProps) {
         cancelLabel={t('cancel')}
         cancelHref={
           projectId
-            ? `/projects/${projectId}/commercial/contract-security`
+            ? `/projects/${projectId}/commercial/contract`
             : `/contracts/${contract.id}`
         }
       />

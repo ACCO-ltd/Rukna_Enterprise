@@ -75,7 +75,7 @@ describe('ContractsList (read-only portfolio index)', () => {
     const link = screen.getByRole('link', { name: CONTRACT.contractNumber });
     expect(link).toHaveAttribute(
       'href',
-      `/projects/${CONTRACT.projectId}/commercial/contract-security`,
+      `/projects/${CONTRACT.projectId}/commercial/contract`,
     );
   });
 

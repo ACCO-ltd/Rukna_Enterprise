@@ -54,7 +54,7 @@ describe('ProjectApplicationBoundary', () => {
     expect(screen.queryByTestId('mounted')).not.toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute(
       'href',
-      '/projects/p-1/commercial/contract-security',
+      '/projects/p-1/commercial/contract',
     );
   });
 

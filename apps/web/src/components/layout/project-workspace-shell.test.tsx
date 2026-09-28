@@ -277,7 +277,7 @@ describe('ProjectWorkspaceShell — actions', () => {
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 
-  it.each(['boq', 'progress', 'commercial/overview', 'documents', 'edit'])(
+  it.each(['boq', 'progress', 'commercial', 'documents', 'edit'])(
     'keeps one primary per screen: on /%s the header has only its overflow',
     (tab) => {
       // The tab's own bar owns the next step there (the BOQ bar's Create contract, say); a second

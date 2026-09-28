@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { ClipboardList, Download, FileSpreadsheet, Plus } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, EmptyState, Notice, Skeleton, useToast } from '@erp/ui';
@@ -76,7 +76,10 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<BoqTreeNodeResponse | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [reviseOpen, setReviseOpen] = useState(false);
-  const [classifierOpen, setClassifierOpen] = useState(false);
+  // `?extraWork=1` — arriving from Commercial's "New separate charge…": open the who-pays decision
+  // straight away (it is only rendered for someone who may edit the BOQ, below).
+  const searchParams = useSearchParams();
+  const [classifierOpen, setClassifierOpen] = useState(() => searchParams?.get('extraWork') === '1');
   const [compareOpen, setCompareOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [imported, setImported] = useState<ImportOutcome | null>(null);
@@ -428,7 +431,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         />
       ) : null}
 
-      {classifierOpen ? (
+      {classifierOpen && canEdit ? (
         <BoqClassifierDrawer
           open
           currency={workspace.currency}
@@ -528,7 +531,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   duration: 9000,
                   action: {
                     label: t('classifier.reviewInBilling'),
-                    onClick: () => router.push(`/projects/${projectId}/commercial/billing-collection`),
+                    onClick: () => router.push(`/projects/${projectId}/commercial/billing`),
                   },
                 }
               : {}),

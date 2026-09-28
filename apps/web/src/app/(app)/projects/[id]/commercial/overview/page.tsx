@@ -1,10 +1,7 @@
-import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
+import { redirect } from 'next/navigation';
 
-export default async function CommercialOverviewPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+/** The Overview view was folded into the bar and Billing's To do (2026-09-28). */
+export default async function CommercialOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <CommercialWorkspace projectId={id} active="overview" />;
+  redirect(`/projects/${id}/commercial`);
 }

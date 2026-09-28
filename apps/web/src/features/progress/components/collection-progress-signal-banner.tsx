@@ -54,7 +54,7 @@ export function CollectionProgressSignalBanner({ projectId }: { projectId: strin
         { label: t('signal.variance'), value: formatSignedPct(s.divergence), variance: true },
       ]}
       link={{
-        href: `/projects/${projectId}/commercial/billing-collection`,
+        href: `/projects/${projectId}/commercial/billing`,
         label: t('collectionSignal.link'),
       }}
       insufficient={s.status === 'INSUFFICIENT_DATA'}

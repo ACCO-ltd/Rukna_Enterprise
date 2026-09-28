@@ -131,7 +131,7 @@ export function IpaDetail({
             {/* The standalone contract page is retired; the workspace equivalent is Contract
                 & Security, keyed by the project the contract belongs to. */}
             <Link
-              href={`/projects/${contract.data.projectId}/commercial/contract-security`}
+              href={`/projects/${contract.data.projectId}/commercial/contract`}
               className="underline-offset-4 hover:underline"
             >
               {contract.data.contractNumber}
