@@ -286,12 +286,30 @@ describe('CommercialCycleRibbon — MILESTONE_NOT_LINKED blocker (strict CONST-C
         installments: [installment({ id: 'b', status: 'NEXT', name: 'Structure', programmeMilestone: null })],
       },
     } as Partial<CommercialCurrentCycleResponse>);
-    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />, { permissions: ['manage:contract'] });
 
     expect(screen.getByText('Blocked: this stage has no programme milestone to verify')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Link milestone/ })).toHaveAttribute(
       'href',
       '/projects/p-1/commercial/contract-milestones?installment=b&action=link',
     );
+  });
+
+  it('states the reason but offers no link to a viewer who cannot link milestones', () => {
+    stubCycle({
+      stage: 'MILESTONE_SCHEDULE',
+      nextAction: null,
+      blockers: ['MILESTONE_NOT_LINKED'] as CommercialCycleBlocker[],
+      paymentSchedule: {
+        currency: 'USD',
+        contractValue: '750000.00',
+        totalCollected: '0.00',
+        variationLines: [],
+        installments: [installment({ id: 'b', status: 'NEXT', name: 'Structure', programmeMilestone: null })],
+      },
+    } as Partial<CommercialCurrentCycleResponse>);
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />, { permissions: [] });
+    expect(screen.getByText('Blocked: this stage has no programme milestone to verify')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Link milestone/ })).not.toBeInTheDocument();
   });
 });

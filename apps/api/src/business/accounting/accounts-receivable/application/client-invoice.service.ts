@@ -539,6 +539,16 @@ export class ClientInvoiceService {
     if (invoice.postingStatus === 'POSTED') {
       throw new ConflictException(`Invoice ${dto.invoiceId} is already posted`);
     }
+    // Strict CONST-COM-011 at the point of posting: a stage invoice drafted before the rule (or
+    // whose milestone was unlinked since) must not reach the ledger without site-verified evidence.
+    // Covers the invoice screen's Post and the billing package, which posts through here.
+    if (invoice.sourceInstallmentId) {
+      const stage = await this.repo.findInstallmentForBilling(readPrisma, orgId, invoice.sourceInstallmentId);
+      const stageBlocker = stage ? installmentBillingBlocker(stage) : null;
+      if (stage && stageBlocker) {
+        throw new BadRequestException(installmentBillingBlockerMessage(stageBlocker, stage.name));
+      }
+    }
 
     // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
     // DTO still works as an explicit override (backward-compatible) but is no longer required.

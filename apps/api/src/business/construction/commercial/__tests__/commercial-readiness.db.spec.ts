@@ -24,8 +24,11 @@ import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
  * Fixture: one ACTIVE MILESTONE contract (base 500,000 USD) with four installments:
  *   instA  (40% = 200,000) — unlinked, then linked to a VERIFIED milestone in R-02c
  *   instB  (30% = 150,000) — linked to a programme milestone (starts PLANNED)
- *   instC  (20% = 100,000) — unlinked   → revoke + issuePackage-gate tests
- *   instD  (10% =  50,000) — unlinked   → DB-invariant probe
+ *   instC  (20% = 100,000) — unlinked, then VERIFIED-linked in R-02c → revoke + issuePackage-gate tests
+ *   instD  (10% =  50,000) — unlinked, then VERIFIED-linked in R-02c → DB-invariant probe
+ *
+ * Tests run in order against this one fixture: R-03 onwards depend on R-02c's links (strict
+ * CONST-COM-011 — an unlinked work stage is refused, which R-02b proves).
  *
  * A separate DRAFT contract carries instDraft for the "inactive contract" guard test.
  */
@@ -487,7 +490,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     // So the NEXT un-invoiced installment (lowest sortOrder without invoice) after instA is invoiced
     // is instB (it has readyToBillAt set but no invoice yet).
 
-    // canMarkReadyToBill: status=NEXT AND (no milestone OR VERIFIED) AND no invoice
+    // canMarkReadyToBill: status=NEXT AND linked+VERIFIED (strict CONST-COM-011) AND no invoice
     // instB: status=NEXT (first un-invoiced by sortOrder), linked to VERIFIED milestone, not invoiced
     //   → canMarkReadyToBill: NEXT && VERIFIED && !inv → BUT instB is ALREADY marked ready, so
     //     canMarkReadyToBill should still be true (the derivation only checks invoice, not readyToBillAt)
@@ -507,7 +510,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     // readyToBillAt being already set does NOT block canMarkReadyToBill (you could re-mark)
     expect(instBRow.readyToBillAt).not.toBeNull(); // already ready — idempotent mark allowed
 
-    // canPrepareInvoice: readyToBillAt != null AND NEXT AND (no milestone OR VERIFIED)
+    // canPrepareInvoice: readyToBillAt != null AND NEXT AND linked+VERIFIED
     // instB meets all conditions
     expect(instBRow.readyToBillAt).not.toBeNull(); // readyToBillAt set → canPrepareInvoice=true
   });

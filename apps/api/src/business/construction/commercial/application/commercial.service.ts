@@ -1178,8 +1178,10 @@ export class CommercialService {
         dueDate: inst.dueDate ? inst.dueDate.toISOString().slice(0, 10) : null,
         readyToBill: isReady,
         readyToBillAt: inst.readyToBillAt?.toISOString() ?? null,
-        canMarkReadyToBill: status === 'NEXT' && !isReady,
-        canPrepareInvoice: status === 'NEXT' && isReady,
+        // Same strict CONST-COM-011 rule the commands enforce: a flag must never offer what the
+        // server refuses (e.g. a stage marked ready under the old soft gate, or unlinked since).
+        canMarkReadyToBill: status === 'NEXT' && !isReady && installmentBillingBlocker(inst) === null,
+        canPrepareInvoice: status === 'NEXT' && isReady && installmentBillingBlocker(inst) === null,
         status,
         // CONST-COM-011: the linked programme milestone, so the UI can show the evidence gate
         // and block "Generate invoice" until the milestone is verified. Null when unlinked.
