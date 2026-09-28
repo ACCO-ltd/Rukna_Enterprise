@@ -188,7 +188,9 @@ describe('ReviewSection — reports', () => {
     renderWithProviders(<ReviewSection projectId="p1" />, REVIEWER);
 
     await user.click(screen.getByRole('button', { name: 'Approve' }));
-    expect(screen.getByText('This report changed — reload it and try again.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/was changed by someone else — the queue has been refreshed\. This report changed — reload it and try again\./),
+    ).toBeInTheDocument();
   });
 
   it('keeps my own submitted reports out of the queue and says why', () => {
@@ -261,6 +263,55 @@ describe('ReviewSection — milestones ready to verify', () => {
       ),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText(/\$/)).not.toBeInTheDocument();
+  });
+
+  it('keeps every other PLANNED milestone reachable, collapsed, with the reason it is not flagged ready', async () => {
+    const user = userEvent.setup();
+    mocks.useMilestones.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: [
+        milestone({ id: 'm-none', code: 'M1', name: 'Mobilisation', readyToVerify: false, workPackages: [] }),
+        milestone({
+          id: 'm-part',
+          code: 'M3',
+          name: 'Roof',
+          readyToVerify: false,
+          workPackages: [
+            { id: 'wp1', code: 'WP-01', name: 'Frame', percentComplete: 100 },
+            { id: 'wp2', code: 'WP-02', name: 'Roof', percentComplete: 60 },
+          ],
+          releases: [
+            { installmentId: 'i', name: 'Roof stage', percentage: '0.2', triggerType: 'MILESTONE', amount: null, currency: 'USD', invoiced: false },
+          ],
+        }),
+        milestone({ id: 'm-done', code: 'M0', name: 'Site handover', status: 'VERIFIED', readyToVerify: false }),
+      ],
+    });
+    renderWithProviders(<ReviewSection projectId="p1" />, MANAGER);
+
+    expect(screen.getByText('No milestones are ready to verify.')).toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: /2 other planned milestones/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Roof')).not.toBeInTheDocument();
+    // A verified milestone is never offered again.
+    expect(screen.queryByText('Site handover')).not.toBeInTheDocument();
+
+    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: 'Verify Mobilisation' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('No work packages linked — you confirm on site that the stage is complete.'),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await user.click(screen.getByRole('button', { name: 'Verify Roof' }));
+    dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(
+        'Roof stage becomes billable and Finance can raise the invoice. WP-02 is at 60% verified — you confirm the work is complete on site anyway.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows milestones only to managers, and reports only to reviewers', () => {

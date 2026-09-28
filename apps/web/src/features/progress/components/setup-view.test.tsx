@@ -262,6 +262,51 @@ describe('SetupView', () => {
     expect(mocks.setPackages).toHaveBeenCalledWith({ milestoneId: 'm1', workPackageIds: ['wp1'] }, expect.anything());
   });
 
+  it('can clear the links, and never re-sends a linked package it cannot offer', async () => {
+    const user = userEvent.setup();
+    setup({
+      packages: [{ id: 'wp1', code: 'WP-01', leafCount: 3 }],
+      weightsTotal: '1',
+      weightsComplete: true,
+      allocatedIds: ['l1', 'l2', 'l3'],
+      milestones: [
+        {
+          id: 'm1',
+          code: 'M1',
+          name: 'Frame complete',
+          status: 'PLANNED',
+          baselineDate: '2026-12-01',
+          releases: [],
+          workPackages: [
+            { id: 'wp1', code: 'WP-01', name: 'Frame', percentComplete: 40 },
+            { id: 'wp9', code: 'WP-09', name: 'Mobilisation', percentComplete: 0 },
+          ],
+          readyToVerify: false,
+        },
+      ],
+    });
+    mocks.useProjectRollup.mockReturnValue(
+      loaded({
+        weightsTotal: '1',
+        weightsComplete: true,
+        packages: [
+          { id: 'wp1', code: 'WP-01', name: 'Frame', leafCount: 3, scheduleOnly: false },
+          { id: 'wp9', code: 'WP-09', name: 'Mobilisation', leafCount: 0, scheduleOnly: true },
+        ],
+      }),
+    );
+    renderWithProviders(<SetupView projectId="p1" />, PM);
+
+    await user.click(within(screen.getByRole('region', { name: 'Milestones' })).getByRole('button', { name: /Edit/ }));
+    await user.click(screen.getByRole('button', { name: 'Set the packages Frame complete needs' }));
+    expect(screen.getByText('WP-09 Mobilisation — unavailable (schedule-only)')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('WP-01 Frame'));
+    expect(screen.getByText(/Saving with nothing ticked clears/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save packages' }));
+    expect(mocks.setPackages).toHaveBeenCalledWith({ milestoneId: 'm1', workPackageIds: [] }, expect.anything());
+  });
+
   it('keeps the schedule in one collapsed section below the steps', async () => {
     const user = userEvent.setup();
     setup();

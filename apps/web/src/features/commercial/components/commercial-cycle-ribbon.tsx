@@ -69,8 +69,10 @@ function Ribbon({
   const notLinked = cycle.blockers.includes('MILESTONE_NOT_LINKED');
   // Linking needs manage:contract (the PATCH endpoint's permission). Without it the reason still
   // shows, but no link that would lead nowhere.
+  // Verifying needs manage:project (Progress › Review). A reader who cannot do either fix is told
+  // the stage waits on site verification, not handed a link that leads nowhere.
   const { can } = usePermissions();
-  const showFix = !notLinked || can('manage:contract');
+  const showFix = notLinked ? can('manage:contract') : can('manage:project');
   const blocked = notLinked || cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
   // The blocker's evidence is the NEXT installment's linked programme milestone.
   const gatedMilestone = blocked ? (focus?.programmeMilestone ?? null) : null;
@@ -134,6 +136,9 @@ function Ribbon({
                       ? t('ribbon.blockedNamed', { name: gatedMilestone.name })
                       : t('ribbon.blocked')}
                 </span>
+                {!notLinked && !showFix ? (
+                  <span className="shrink-0 font-medium">{t('ribbon.waitingVerification')}</span>
+                ) : null}
                 {showFix ? (
                   <Link
                     href={

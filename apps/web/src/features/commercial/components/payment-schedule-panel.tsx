@@ -168,6 +168,7 @@ export function PaymentSchedulePanel({
                         locale={locale}
                         money={money}
                         canManageLink={canManageLink}
+                        canVerify={can('manage:project')}
                         onLink={() => setLinking(inst)}
                         t={t}
                       />
@@ -226,10 +227,13 @@ function InstallmentRow({
   locale,
   money,
   canManageLink,
+  canVerify,
   onLink,
   t,
 }: {
   inst: Installment;
+  /** manage:project — the verify link leads somewhere only for a reader who can verify. */
+  canVerify: boolean;
   projectId: string;
   locale: 'en' | 'ar';
   money: (value: string | null) => string | null;
@@ -276,7 +280,12 @@ function InstallmentRow({
             "⛔ Verify "<milestone>" →" links straight into Programme & Progress (the same target
             the cycle ribbon uses). Billing itself now happens exclusively through the milestone-
             journey "Issue" flow (Contract & Milestones tab) — this panel only surfaces the gate. */}
-        {inst.status === 'NEXT' && blocked && inst.programmeMilestone ? (
+        {inst.status === 'NEXT' && blocked && inst.programmeMilestone && !canVerify ? (
+          <span className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning">
+            <Ban size={13} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{t('paymentSchedule.milestone.waitingVerification')}</span>
+          </span>
+        ) : inst.status === 'NEXT' && blocked && inst.programmeMilestone ? (
           <Link
             href={`/projects/${projectId}/progress/review`}
             className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning underline underline-offset-2 hover:text-warning/80"

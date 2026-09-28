@@ -220,13 +220,19 @@ function ProvisionalNotice({
   canManage: boolean;
 }) {
   const t = useTranslations('progress');
-  const message =
+  // Both can be true at once; each says its own thing. Weights short of 100% always shows here,
+  // whichever gap setup reports first.
+  const parts = [
     gap === 'allocation'
       ? t('gate.provisionalAllocation', {
           codes: facts.unallocatedPackageCodes.join(', '),
           count: facts.unallocatedPackageCodes.length,
         })
-      : t('gate.provisionalWeights', { total: facts.weightsPercent });
+      : null,
+    !facts.weightsComplete ? t('gate.provisionalWeights', { total: facts.weightsPercent }) : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  const message = parts.join(' ');
   return (
     <Notice
       tone="attention"

@@ -114,8 +114,13 @@ export function PerformanceView({ projectId }: { projectId: string }) {
     .filter((d) => d.status === 'APPROVED')
     .sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
   const plannedToday = hasBaseline ? plannedPercentAt(plannedPoints, today) : null;
+  // A baseline whose first point is still ahead: the plan has not started (null), which is not 0%.
+  const planNotStarted = hasBaseline && plannedToday === null;
   const variance = plannedToday === null ? null : physical - plannedToday;
   const position = variance === null ? null : planPosition(variance);
+  // With weights short of 100% the physical figure is understated, so a variance built on it is
+  // not a real signal: shown, but in the neutral tone (the view's notice says why).
+  const flagBehind = position === 'behind' && rollup.data.weightsComplete;
   const milestoneList = milestones.data ?? [];
 
   const metrics: Metric[] = [
@@ -129,16 +134,23 @@ export function PerformanceView({ projectId }: { projectId: string }) {
     {
       label: t('performance.planned'),
       value: plannedToday === null ? null : pct(plannedToday),
-      sublabel: hasBaseline
-        ? t('performance.baselineOf', { date: formatDate(baseline.data!.approvedAt, locale) ?? '' })
-        : t('performance.noBaseline'),
+      sublabel: !hasBaseline
+        ? t('performance.noBaseline')
+        : planNotStarted
+          ? t('performance.planNotStarted')
+          : t('performance.baselineOf', { date: formatDate(baseline.data!.approvedAt, locale) ?? '' }),
     },
     {
       label: t('performance.variance'),
       value: variance === null ? null : t('performance.variancePts', { value: signed(variance) }),
-      tone: position === 'behind' ? 'warning' : undefined,
-      sublabel: position === null ? t('performance.noBaseline') : t(`performance.${position}`),
-      sublabelTone: position === 'behind' ? 'attention' : undefined,
+      tone: flagBehind ? 'warning' : undefined,
+      sublabel:
+        position !== null
+          ? t(`performance.${position}`)
+          : planNotStarted
+            ? t('performance.planNotStarted')
+            : t('performance.noBaseline'),
+      sublabelTone: flagBehind ? 'attention' : undefined,
     },
     {
       label: t('performance.milestones'),
@@ -162,6 +174,7 @@ export function PerformanceView({ projectId }: { projectId: string }) {
           <CurvePanel
             projectId={projectId}
             plannedPoints={hasBaseline ? plannedPoints : []}
+            plannedToday={plannedToday}
             curve={curve}
             today={today}
           />
@@ -178,11 +191,13 @@ export function PerformanceView({ projectId }: { projectId: string }) {
 function CurvePanel({
   projectId,
   plannedPoints,
+  plannedToday,
   curve,
   today,
 }: {
   projectId: string;
   plannedPoints: ProgressCurvePoint[];
+  plannedToday: number | null;
   curve: ReturnType<typeof useProgressCurve>;
   today: string;
 }) {
@@ -238,7 +253,13 @@ function CurvePanel({
         ) : actual.length === 0 && plannedPoints.length === 0 ? (
           <p className="text-body-sm text-muted-foreground">{t('performance.curveEmpty')}</p>
         ) : (
-          <ProgressCurveChart baseline={plannedPoints} actual={actual} actualSeries="verified" today={today} />
+          <ProgressCurveChart
+            baseline={plannedPoints}
+            actual={actual}
+            actualSeries="verified"
+            today={today}
+            plannedToday={plannedToday}
+          />
         )}
         {plannedPoints.length === 0 ? (
           <p className="text-caption text-muted-foreground">{t('performance.curveNoBaseline')}</p>
@@ -383,6 +404,14 @@ function AttentionRail({
   });
 
   const linkClass = 'text-body-sm font-medium text-brand-primary hover:underline';
+  // Only a real warning is "needs attention": cost running ahead of what is built, or cash and
+  // work out of step either way. ALIGNED / PROGRESS_AHEAD / INSUFFICIENT_DATA are left out, so the
+  // rail can honestly say nothing needs attention.
+  const costWarning = cost.data && cost.data.status === 'COST_AHEAD' ? cost.data : null;
+  const collectionWarning =
+    collection.data && (collection.data.status === 'WORK_AHEAD' || collection.data.status === 'CASH_AHEAD')
+      ? collection.data
+      : null;
 
   return (
     <aside aria-labelledby="performance-attention-title" className="min-w-0 space-y-3">
@@ -405,12 +434,12 @@ function AttentionRail({
           </li>
         ) : null}
 
-        {cost.data ? (
+        {costWarning ? (
           <li className="space-y-1 px-4 py-3">
             <p className="text-body-sm font-semibold text-foreground">{t('performance.costTitle')}</p>
-            <p className="text-body-sm text-muted-foreground">{t(`signal.status.${cost.data.status}`)}</p>
+            <p className="text-body-sm text-muted-foreground">{t(`signal.status.${costWarning.status}`)}</p>
             <p className="text-body-sm text-foreground">
-              {t('performance.costLine', { built: pct(cost.data.physicalPercent), cost: pct(cost.data.costConsumedPercent) })}
+              {t('performance.costLine', { built: pct(costWarning.physicalPercent), cost: pct(costWarning.costConsumedPercent) })}
             </p>
             {can('view:financial-position') ? (
               <Link href={`/projects/${projectId}/finance`} className={linkClass}>
@@ -420,14 +449,14 @@ function AttentionRail({
           </li>
         ) : null}
 
-        {collection.data ? (
+        {collectionWarning ? (
           <li className="space-y-1 px-4 py-3">
             <p className="text-body-sm font-semibold text-foreground">{t('performance.collectionTitle')}</p>
-            <p className="text-body-sm text-muted-foreground">{t(`collectionSignal.status.${collection.data.status}`)}</p>
+            <p className="text-body-sm text-muted-foreground">{t(`collectionSignal.status.${collectionWarning.status}`)}</p>
             <p className="text-body-sm text-foreground">
               {t('performance.collectionLine', {
-                collected: pct(collection.data.collectedPercent),
-                built: pct(collection.data.physicalPercent),
+                collected: pct(collectionWarning.collectedPercent),
+                built: pct(collectionWarning.physicalPercent),
               })}
             </p>
             {can('view:contract') ? (
@@ -438,7 +467,7 @@ function AttentionRail({
           </li>
         ) : null}
 
-        {behind.length === 0 && !cost.data && !collection.data ? (
+        {behind.length === 0 && !costWarning && !collectionWarning ? (
           <li className="px-4 py-3 text-body-sm text-muted-foreground">{t('performance.attentionClear')}</li>
         ) : null}
       </ul>

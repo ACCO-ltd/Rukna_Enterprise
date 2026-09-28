@@ -25,7 +25,7 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import { ClipboardCheck, Flag } from 'lucide-react';
+import { ChevronDown, ChevronRight, ClipboardCheck, Flag } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { QueueList, joinQueueMeta } from '@/components/queue-list';
@@ -59,10 +59,26 @@ import { DprEvidence } from './dpr-detail';
  *   `readyToVerify` (every linked package verified at 100%). Verifying is still a human act.
  */
 export function ReviewSection({ projectId }: { projectId: string }) {
+  const t = useTranslations('progress');
   const access = useProgressAccess();
+  // Held here, above the queue and the report panel, so it survives the refetch that follows a
+  // 409: the panel that raised it may unmount (the report left the queue) — the notice must not.
+  const [conflict, setConflict] = useState<string | null>(null);
   return (
     <div className="space-y-10">
-      {access.canApprove ? <ReportReview projectId={projectId} /> : null}
+      {conflict ? (
+        <Notice
+          tone="attention"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => setConflict(null)}>
+              {t('review.dismiss')}
+            </Button>
+          }
+        >
+          {conflict}
+        </Notice>
+      ) : null}
+      {access.canApprove ? <ReportReview projectId={projectId} onConflict={setConflict} /> : null}
       {access.canManage ? <MilestonesReady projectId={projectId} /> : null}
     </div>
   );
@@ -78,7 +94,7 @@ export function reviewQueue(
     .sort((a, b) => a.reportDate.localeCompare(b.reportDate));
 }
 
-function ReportReview({ projectId }: { projectId: string }) {
+function ReportReview({ projectId, onConflict }: { projectId: string; onConflict: (message: string) => void }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
   const userId = useSession().user?.id ?? null;
@@ -155,6 +171,7 @@ function ReportReview({ projectId }: { projectId: string }) {
                 report={selected}
                 isOwn={selected.preparedBy === userId}
                 onDone={(kind) => onDone(kind, selected)}
+                onConflict={onConflict}
               />
             ) : null}
           </div>
@@ -169,11 +186,13 @@ function ReportPanel({
   report,
   isOwn,
   onDone,
+  onConflict,
 }: {
   projectId: string;
   report: DailyProgressReportResponse;
   isOwn: boolean;
   onDone: (kind: 'approved' | 'returned') => void;
+  onConflict: (message: string) => void;
 }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
@@ -194,16 +213,24 @@ function ReportPanel({
     [progress.data],
   );
 
-  /** 409 = the report changed while it was open: say so plainly and reload what is on screen. */
+  const date = formatDate(report.reportDate, locale) ?? report.reportDate;
+
+  /**
+   * 409 (DPR_CHANGED, or the server busy): someone else acted on the report. The notice goes up to
+   * ReviewSection — this panel may unmount once the refreshed queue no longer holds the report —
+   * with the server's own words, then the queue and report are reloaded.
+   */
   function onActionError(err: unknown) {
-    setError(mapDprError(err, t('review.actionFailed')).formError);
+    const message = mapDprError(err, t('review.actionFailed')).formError;
     if (err instanceof ApiError && err.status === 409) {
+      onConflict(t('review.changedNotice', { date, message }));
       void queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) });
       void queryClient.invalidateQueries({ queryKey: progressKeys.report(report.id) });
+      return;
     }
+    setError(message);
   }
 
-  const date = formatDate(report.reportDate, locale) ?? report.reportDate;
   const d = detail.data;
 
   // Today's quantity per item (a report may measure one item more than once).
@@ -401,8 +428,45 @@ function MilestonesReady({ projectId }: { projectId: string }) {
   const milestones = useMilestones(projectId);
   const [verifying, setVerifying] = useState<ProgrammeMilestoneResponse | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showOthers, setShowOthers] = useState(false);
 
-  const ready = (milestones.data ?? []).filter((m) => m.readyToVerify);
+  // Readiness is a prompt, not a gate (ADR-021 amendment): the server verifies any PLANNED
+  // milestone. Ready ones lead; every other planned milestone stays reachable below, collapsed.
+  const planned = (milestones.data ?? []).filter((m) => m.status === 'PLANNED');
+  const ready = planned.filter((m) => m.readyToVerify);
+  const others = planned.filter((m) => !m.readyToVerify);
+
+  function row(m: ProgrammeMilestoneResponse) {
+    const names = releaseNames(m, locale);
+    return (
+      <li key={m.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
+        <Flag size={16} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-body-sm font-semibold text-foreground">
+            <span className="me-2 font-mono text-caption text-muted-foreground">{m.code}</span>
+            {m.name}
+          </p>
+          <p className="text-body-sm text-muted-foreground">
+            {m.readyToVerify
+              ? t('review.milestones.packagesDone', { list: m.workPackages.map((wp) => wp.code).join(', ') })
+              : notReadyReason(m, t)}{' '}
+            {names ? t('review.milestones.releases', { names }) : t('review.milestones.noRelease')}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setSuccess(null);
+            setVerifying(m);
+          }}
+          aria-label={t('review.milestones.verifyLabel', { name: m.name })}
+        >
+          {t('review.milestones.verify')}
+        </Button>
+      </li>
+    );
+  }
 
   return (
     <section aria-labelledby="review-milestones-title" className="space-y-3">
@@ -419,40 +483,38 @@ function MilestonesReady({ projectId }: { projectId: string }) {
         <Skeleton className="h-20 w-full rounded-panel" aria-hidden="true" />
       ) : milestones.isError ? (
         <Alert variant="error" messages={[t('states.loadFailed')]} />
-      ) : ready.length === 0 ? (
-        <p className="text-body-sm text-muted-foreground">{t('review.milestones.empty')}</p>
       ) : (
-        <ul className="divide-y divide-border rounded-panel border border-border bg-surface">
-          {ready.map((m) => {
-            const names = releaseNames(m, locale);
-            return (
-              <li key={m.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-                <Flag size={16} className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-body-sm font-semibold text-foreground">
-                    <span className="me-2 font-mono text-caption text-muted-foreground">{m.code}</span>
-                    {m.name}
-                  </p>
-                  <p className="text-body-sm text-muted-foreground">
-                    {t('review.milestones.packagesDone', { list: m.workPackages.map((wp) => wp.code).join(', ') })}{' '}
-                    {names ? t('review.milestones.releases', { names }) : t('review.milestones.noRelease')}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSuccess(null);
-                    setVerifying(m);
-                  }}
-                  aria-label={t('review.milestones.verifyLabel', { name: m.name })}
-                >
-                  {t('review.milestones.verify')}
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {ready.length === 0 ? (
+            <p className="text-body-sm text-muted-foreground">{t('review.milestones.empty')}</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-panel border border-border bg-surface">{ready.map(row)}</ul>
+          )}
+
+          {others.length > 0 ? (
+            <div className="space-y-2">
+              <button
+                type="button"
+                aria-expanded={showOthers}
+                aria-controls="review-other-milestones"
+                onClick={() => setShowOthers((v) => !v)}
+                className="inline-flex min-h-11 items-center gap-1 rounded-control text-body-sm font-medium text-brand-primary hover:underline focus-visible:outline-none focus-visible:shadow-ring"
+              >
+                {showOthers ? (
+                  <ChevronDown size={14} aria-hidden="true" />
+                ) : (
+                  <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
+                )}
+                {t('review.milestones.others', { count: others.length })}
+              </button>
+              {showOthers ? (
+                <ul id="review-other-milestones" className="divide-y divide-border rounded-panel border border-border bg-surface">
+                  {others.map(row)}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       )}
 
       {verifying ? (
@@ -468,6 +530,21 @@ function MilestonesReady({ projectId }: { projectId: string }) {
       ) : null}
     </section>
   );
+}
+
+/**
+ * Why a planned milestone is not flagged ready, in words: no linked packages, or which packages
+ * are short of 100% verified — and that verifying it anyway is the reviewer's own on-site call.
+ */
+export function notReadyReason(
+  milestone: ProgrammeMilestoneResponse,
+  t: ReturnType<typeof useTranslations<'progress'>>,
+): string {
+  if (milestone.workPackages.length === 0) return t('review.milestones.reasonNoPackages');
+  const short = milestone.workPackages
+    .filter((wp) => wp.percentComplete < 100)
+    .map((wp) => t('review.milestones.reasonPackage', { code: wp.code, percent: wp.percentComplete }));
+  return t('review.milestones.reasonPartial', { list: short.join(', ') });
 }
 
 export function VerifyMilestoneDialog({
@@ -498,7 +575,13 @@ export function VerifyMilestoneDialog({
       <DialogContent size="sm">
         <DialogTitle>{t('review.milestones.dialogTitle', { name: milestone.name })}</DialogTitle>
         <DialogDescription>
-          {names ? t('review.milestones.dialogBillable', { names }) : t('review.milestones.dialogNoRelease')}
+          {milestone.readyToVerify
+            ? names
+              ? t('review.milestones.dialogBillable', { names })
+              : t('review.milestones.dialogNoRelease')
+            : [names ? t('review.milestones.dialogBillableOnly', { names }) : null, notReadyReason(milestone, t)]
+                .filter(Boolean)
+                .join(' ')}
         </DialogDescription>
 
         {verify.isError ? (

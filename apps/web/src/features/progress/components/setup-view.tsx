@@ -416,7 +416,14 @@ function MilestonePackagesDialog({
 }) {
   const t = useTranslations('progress');
   const save = useSetMilestoneWorkPackages(projectId);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(milestone.workPackages.map((wp) => wp.id)));
+  const available = new Set(packages.map((p) => p.id));
+  // Linked packages no longer offered here (schedule-only, so they cannot count toward readiness)
+  // are shown as unavailable and are NOT re-sent: saving drops them rather than silently keeping
+  // ids the reader cannot see or change.
+  const unavailable = milestone.workPackages.filter((wp) => !available.has(wp.id));
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(milestone.workPackages.map((wp) => wp.id).filter((id) => available.has(id))),
+  );
 
   function toggle(id: string, checked: boolean) {
     setSelected((prev) => {
@@ -461,6 +468,21 @@ function MilestonePackagesDialog({
               />
             ))
           )}
+          {unavailable.length > 0 ? (
+            <div className="pt-2">
+              <p className="text-caption font-medium text-muted-foreground">
+                {t('setupView.milestones.packagesUnavailable')}
+              </p>
+              <ul className="text-caption text-muted-foreground">
+                {unavailable.map((wp) => (
+                  <li key={wp.id}>{t('setupView.milestones.packageUnavailable', { name: `${wp.code} ${wp.name}` })}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {selected.size === 0 ? (
+            <p className="pt-2 text-caption text-muted-foreground">{t('setupView.milestones.packagesClearHint')}</p>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -471,7 +493,7 @@ function MilestonePackagesDialog({
                 { onSuccess: onDismiss },
               )
             }
-            disabled={save.isPending || packages.length === 0}
+            disabled={save.isPending}
           >
             {t('setupView.milestones.packagesSave')}
           </Button>

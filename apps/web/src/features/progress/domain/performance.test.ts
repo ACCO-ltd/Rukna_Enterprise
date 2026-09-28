@@ -17,7 +17,23 @@ describe('plannedPercentAt', () => {
     expect(plannedPercentAt(CURVE, '2026-01-31')).toBe(10);
     expect(plannedPercentAt(CURVE, '2026-03-01')).toBeCloseTo(24.7, 1);
     expect(plannedPercentAt(CURVE, '2026-09-01')).toBe(100);
-    expect(plannedPercentAt(CURVE, '2025-12-01')).toBe(0);
+  });
+
+  it('is null before the plan starts — not started is not 0% planned', () => {
+    expect(plannedPercentAt(CURVE, '2025-12-01')).toBeNull();
+  });
+
+  it('accepts unsorted points and collapses same-date points to the later one', () => {
+    const unsorted = [CURVE[2]!, CURVE[0]!, CURVE[1]!];
+    expect(plannedPercentAt(unsorted, '2026-03-31')).toBe(40);
+    expect(plannedPercentAt(unsorted, '2026-03-01')).toBeCloseTo(24.7, 1);
+    const sameDate = [
+      { periodEndDate: '2026-01-31', plannedPercent: 10 },
+      { periodEndDate: '2026-01-31', plannedPercent: 15 },
+      { periodEndDate: '2026-02-28', plannedPercent: 50 },
+    ];
+    expect(plannedPercentAt(sameDate, '2026-01-31')).toBe(15);
+    expect(plannedPercentAt(sameDate, '2026-02-28')).toBe(50);
   });
 });
 

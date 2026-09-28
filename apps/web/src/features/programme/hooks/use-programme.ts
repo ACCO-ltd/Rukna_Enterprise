@@ -6,6 +6,10 @@ import type { ProgrammeMilestoneResponse } from '@erp/types';
 import type { ScheduleTemplateKey } from '@erp/types';
 
 import { progressKeys } from '@/features/progress/hooks/use-progress';
+import { commercialKeys } from '@/features/commercial/hooks/use-commercial';
+import { contractKeys } from '@/features/contracts/hooks/use-contracts';
+
+import { programmeKeys } from './programme-keys';
 
 import {
   applyScheduleTemplate,
@@ -27,10 +31,7 @@ import {
   type UpdateWorkPackageBody,
 } from '../api/programme-api';
 
-export const programmeKeys = {
-  milestones: (projectId: string) => ['programme', projectId, 'milestones'] as const,
-  activities: (projectId: string) => ['programme', projectId, 'activities'] as const,
-};
+export { programmeKeys } from './programme-keys';
 
 export function useMilestones(
   projectId: string,
@@ -58,8 +59,14 @@ export function useVerifyMilestone(projectId: string) {
   return useMutation({
     mutationFn: ({ milestoneId, actualDate }: { milestoneId: string; actualDate: string }) =>
       verifyMilestone(milestoneId, actualDate),
+    // Verifying clears MILESTONE_NOT_VERIFIED on the billing side: the commercial overview, the
+    // current cycle and the payment schedule (read through the contract) all have to refetch.
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) }),
+        queryClient.invalidateQueries({ queryKey: commercialKeys.all(projectId) }),
+        queryClient.invalidateQueries({ queryKey: contractKeys.all }),
+      ]);
     },
   });
 }

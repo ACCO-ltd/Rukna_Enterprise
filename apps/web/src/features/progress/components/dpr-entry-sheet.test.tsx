@@ -201,6 +201,11 @@ describe('DprEntrySheet', () => {
     render();
     expect(screen.getByText(/2.000 m3 on this report/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
+    // The entry itself is still listed, and one line says why it cannot be removed.
+    expect(screen.getByRole('list', { name: '2.000 m3 on this report' })).toHaveTextContent('2.000 m3');
+    expect(
+      screen.getByText("Entries approved before the reopen can't be removed; add a correction note instead."),
+    ).toBeInTheDocument();
   });
 
   it('falls back to a form-level message for any other error', async () => {

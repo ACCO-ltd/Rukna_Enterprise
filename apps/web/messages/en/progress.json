@@ -77,7 +77,10 @@
       "packagesSave": "Save packages",
       "packagesCancel": "Cancel",
       "packagesNoneAvailable": "There are no measurable work packages to link yet.",
-      "packagesFailed": "Could not save the packages."
+      "packagesFailed": "Could not save the packages.",
+      "packagesUnavailable": "No longer linkable — saving removes these:",
+      "packageUnavailable": "{name} — unavailable (schedule-only)",
+      "packagesClearHint": "Saving with nothing ticked clears the linked packages."
     },
     "schedule": {
       "title": "Schedule",
@@ -125,7 +128,7 @@
     "actionFailed": "The action could not be completed.",
     "milestones": {
       "title": "Milestones ready to verify",
-      "description": "Every work package these milestones need is verified at 100%. Verifying confirms the stage is complete on site.",
+      "description": "Milestones whose every linked work package is verified at 100% come first. Verifying confirms the stage is complete on site.",
       "empty": "No milestones are ready to verify.",
       "packagesDone": "{list} verified at 100%.",
       "releases": "Verifying releases {names} for billing.",
@@ -138,8 +141,15 @@
       "actualDate": "Actual completion date",
       "confirm": "Verify milestone",
       "cancel": "Cancel",
-      "verified": "{name} verified."
-    }
+      "verified": "{name} verified.",
+      "others": "{count, plural, one {# other planned milestone} other {# other planned milestones}}",
+      "reasonNoPackages": "No work packages linked — you confirm on site that the stage is complete.",
+      "reasonPackage": "{code} is at {percent}%",
+      "reasonPartial": "{list} verified — you confirm the work is complete on site anyway.",
+      "dialogBillableOnly": "{names} becomes billable and Finance can raise the invoice."
+    },
+    "dismiss": "Dismiss",
+    "changedNotice": "The report for {date} was changed by someone else — the queue has been refreshed. {message}"
   },
   "today": {
     "contextTitle": "Today · {date}",
@@ -387,7 +397,8 @@
       "failed": "Could not record the snapshot. Try again."
     },
     "actualVerified": "Verified (approved reports)",
-    "today": "Today"
+    "today": "Today",
+    "ariaSummaryToday": "Progress curve over {points, plural, one {# period} other {# periods}}. Planned by today {planned}, latest verified {physical}."
   },
   "comparison": {
     "title": "Period comparison",
@@ -875,7 +886,8 @@
     "remove": "Remove {quantity}",
     "removeLabel": "Remove {quantity} from {item}",
     "removeFailed": "Could not remove the entry: {message}",
-    "notesFailed": "Site notes could not be saved: {message}"
+    "notesFailed": "Site notes could not be saved: {message}",
+    "reopenedNote": "Entries approved before the reopen can't be removed; add a correction note instead."
   },
   "performance": {
     "metricsLabel": "Progress against plan",
@@ -925,6 +937,7 @@
     "collectionTitle": "Collected vs built",
     "collectionLine": "Collected {collected} · built {built}",
     "openFinance": "Open Finance",
-    "openBilling": "Open Billing & collection"
+    "openBilling": "Open Billing & collection",
+    "planNotStarted": "Plan not started"
   }
 }

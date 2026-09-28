@@ -698,7 +698,8 @@
       "createFailed": "Could not create the milestone",
       "save": "Save link",
       "cancel": "Cancel",
-      "failed": "Could not update the milestone link"
+      "failed": "Could not update the milestone link",
+      "waitingVerification": "Waiting for site verification"
     }
   },
   "paymentScheduleTab": {
@@ -809,7 +810,8 @@
       "blockedNotLinked": "Blocked: this stage has no programme milestone to verify",
       "goLink": "Link milestone",
       "goVerify": "Go verify",
-      "restricted": "Restricted"
+      "restricted": "Restricted",
+      "waitingVerification": "Waiting for site verification"
     },
     "restricted": "Restricted",
     "application": "Application {n}",

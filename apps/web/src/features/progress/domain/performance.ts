@@ -11,31 +11,29 @@ function toTime(isoDate: string): number {
 
 /**
  * The planned cumulative % on `date`, read off the baseline curve: linear between the two points
- * either side, 0 before the first point is due, the last point's value after it. `null` without a
- * curve.
+ * either side, the last point's value after it. `null` without a curve, and `null` before the first
+ * point — the plan has not started, which is not the same as "0% planned". Points need not be
+ * sorted; two points on the same date collapse to the later one given.
  */
 export function plannedPercentAt(points: ProgressCurvePoint[], date: string): number | null {
   if (points.length === 0) return null;
-  const sorted = [...points].sort((a, b) => a.periodEndDate.localeCompare(b.periodEndDate));
+  const byDate = new Map<string, number>();
+  for (const p of points) byDate.set(p.periodEndDate.slice(0, 10), p.plannedPercent);
+  const sorted = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
   const at = toTime(date);
-  const first = sorted[0]!;
-  const last = sorted[sorted.length - 1]!;
-  if (at <= toTime(first.periodEndDate)) {
-    // Before the first point the plan has not reached it yet; ramp from 0 would be a guess.
-    return at === toTime(first.periodEndDate) ? first.plannedPercent : 0;
-  }
-  if (at >= toTime(last.periodEndDate)) return last.plannedPercent;
+  const [firstDate, firstValue] = sorted[0]!;
+  const [lastDate, lastValue] = sorted[sorted.length - 1]!;
+  if (at < toTime(firstDate)) return null;
+  if (at >= toTime(lastDate)) return lastValue;
+  if (at === toTime(firstDate)) return firstValue;
   for (let i = 1; i < sorted.length; i += 1) {
-    const prev = sorted[i - 1]!;
-    const next = sorted[i]!;
-    const t0 = toTime(prev.periodEndDate);
-    const t1 = toTime(next.periodEndDate);
-    if (at <= t1) {
-      const f = t1 === t0 ? 1 : (at - t0) / (t1 - t0);
-      return round1(prev.plannedPercent + f * (next.plannedPercent - prev.plannedPercent));
-    }
+    const [d0, v0] = sorted[i - 1]!;
+    const [d1, v1] = sorted[i]!;
+    const t0 = toTime(d0);
+    const t1 = toTime(d1);
+    if (at <= t1) return round1(v0 + ((at - t0) / (t1 - t0)) * (v1 - v0));
   }
-  return last.plannedPercent;
+  return lastValue;
 }
 
 /**

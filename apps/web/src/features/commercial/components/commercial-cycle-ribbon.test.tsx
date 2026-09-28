@@ -143,9 +143,16 @@ describe('CommercialCycleRibbon — MILESTONE_NOT_VERIFIED blocker (CONST-COM-02
     } as Partial<CommercialCurrentCycleResponse>);
   }
 
+  it('tells a reader who cannot verify that the stage waits on site verification, with no link', () => {
+    stubBlocked();
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />, { permissions: ['view:contract'] });
+    expect(screen.getByText('Waiting for site verification')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Go verify/i })).not.toBeInTheDocument();
+  });
+
   it('states the reason naming the milestone and offers a verify link into Progress', () => {
     stubBlocked();
-    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />, { permissions: ['manage:project'] });
 
     // The reason names the gating milestone (derived from the NEXT installment).
     expect(screen.getByText('Blocked: verify “Partition complete”')).toBeInTheDocument();

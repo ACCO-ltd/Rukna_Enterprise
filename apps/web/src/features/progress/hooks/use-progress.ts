@@ -66,6 +66,7 @@ import {
   type SaveDeliveryPlanBody,
   type WorkPackageResponse,
 } from '../api/progress-api';
+import { programmeKeys } from '@/features/programme/hooks/programme-keys';
 
 export const progressKeys = {
   all: (projectId: string) => ['progress', projectId] as const,
@@ -282,6 +283,8 @@ export function useApproveDpr(projectId: string, dprId: string) {
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
         queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) }),
         invalidateVerifiedDerived(queryClient, projectId),
+        // Verified quantities move package %, and with it a milestone's readyToVerify.
+        queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) }),
       ]);
     },
   });

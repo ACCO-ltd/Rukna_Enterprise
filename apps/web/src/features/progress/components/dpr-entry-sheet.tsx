@@ -285,6 +285,9 @@ function EntryForm({
               {t('entry.workDone')}
             </h3>
             <p className="text-body-sm text-muted-foreground">{t('entry.workDoneHint')}</p>
+            {dpr.status === 'REOPENED' ? (
+              <p className="mt-1 text-body-sm text-foreground">{t('entry.reopenedNote')}</p>
+            ) : null}
           </div>
 
           {loading ? (
@@ -524,6 +527,15 @@ function EntryItemRow({
           </Button>
         </div>
       </form>
+      {!canRemove && measurements.length > 0 ? (
+        <ul className="mt-2 flex flex-wrap gap-2 text-caption text-muted-foreground" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
+          {measurements.map((m) => (
+            <li key={m.id} className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+              {withUnit(m.quantity)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {canRemove && measurements.length > 0 ? (
         <ul className="mt-2 flex flex-wrap gap-2" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
           {measurements.map((m) => (

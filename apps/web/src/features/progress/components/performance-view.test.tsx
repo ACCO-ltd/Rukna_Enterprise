@@ -80,10 +80,10 @@ beforeEach(() => {
   );
   mocks.useDprs.mockReturnValue(loaded([{ id: 'd1', status: 'APPROVED', reportDate: '2026-09-20' }]));
   mocks.usePhysicalFinancialSignal.mockReturnValue(
-    loaded({ physicalPercent: 30, actualCost: null, budgetTotal: null, moneyVisible: false, costConsumedPercent: 22, divergence: 8, status: 'PROGRESS_AHEAD', weightsComplete: true }),
+    loaded({ physicalPercent: 30, actualCost: null, budgetTotal: null, moneyVisible: false, costConsumedPercent: 42, divergence: -12, status: 'COST_AHEAD', weightsComplete: true }),
   );
   mocks.useCollectionProgressSignal.mockReturnValue(
-    loaded({ physicalPercent: 30, contractValue: null, receivedRevenue: null, moneyVisible: false, collectedPercent: null, divergence: null, status: 'INSUFFICIENT_DATA' }),
+    loaded({ physicalPercent: 30, contractValue: null, receivedRevenue: null, moneyVisible: false, collectedPercent: null, divergence: null, status: 'WORK_AHEAD' }),
   );
   mocks.useCaptureProgressSnapshot.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
   mocks.useMilestones.mockReturnValue(
@@ -130,6 +130,49 @@ describe('PerformanceView — metrics', () => {
   });
 });
 
+describe('PerformanceView — weights and plan start', () => {
+  const lockedBehind = () =>
+    mocks.useProgrammeBaseline.mockReturnValue(
+      loaded({
+        version: 1,
+        approvedAt: '2026-06-01T00:00:00.000Z',
+        points: [
+          { targetDate: daysFromToday(-100), cumulativePercent: 50 },
+          { targetDate: daysFromToday(100), cumulativePercent: 50 },
+        ],
+      }),
+    );
+
+  it('keeps variance neutral while weights are incomplete', () => {
+    lockedBehind();
+    const current = mocks.useProjectRollup() as { data: Record<string, unknown> };
+    mocks.useProjectRollup.mockReturnValue(loaded({ ...current.data, weightsComplete: false }));
+    renderWithProviders(<PerformanceView projectId="p1" />, { permissions: ['view:project'] });
+
+    const strip = within(screen.getByLabelText('Progress against plan'));
+    expect(strip.getByText('−20 pts')).not.toHaveClass('text-warning');
+    expect(strip.getByText('Behind plan')).not.toHaveClass('text-warning');
+  });
+
+  it('says "Plan not started" before the baseline\'s first point, not 0%', () => {
+    mocks.useProgrammeBaseline.mockReturnValue(
+      loaded({
+        version: 1,
+        approvedAt: '2026-06-01T00:00:00.000Z',
+        points: [
+          { targetDate: daysFromToday(10), cumulativePercent: 10 },
+          { targetDate: daysFromToday(100), cumulativePercent: 100 },
+        ],
+      }),
+    );
+    renderWithProviders(<PerformanceView projectId="p1" />, { permissions: ['view:project'] });
+
+    const strip = within(screen.getByLabelText('Progress against plan'));
+    expect(strip.getAllByText('Plan not started')).toHaveLength(2);
+    expect(strip.queryByText('0%')).not.toBeInTheDocument();
+  });
+});
+
 describe('PerformanceView — packages and attention', () => {
   it('shows planned %, contribution in points, and lists packages behind plan', () => {
     renderWithProviders(<PerformanceView projectId="p1" />, { permissions: ['view:project'] });
@@ -150,8 +193,26 @@ describe('PerformanceView — packages and attention', () => {
     });
 
     expect(container.textContent).not.toMatch(/\$|USD/);
-    expect(screen.getByText('Built 30% · cost consumed 22%')).toBeInTheDocument();
+    expect(screen.getByText('Built 30% · cost consumed 42%')).toBeInTheDocument();
     expect(screen.getByText('Collected — · built 30%')).toBeInTheDocument();
+  });
+
+  it('leaves aligned or insufficient signals out, so nothing-needs-attention can show', () => {
+    mocks.useProjectRollup.mockReturnValue(
+      loaded({ physicalPercent: 30, weightsTotal: '1', weightsComplete: true, packages: [] }),
+    );
+    mocks.usePhysicalFinancialSignal.mockReturnValue(
+      loaded({ physicalPercent: 30, actualCost: null, budgetTotal: null, moneyVisible: false, costConsumedPercent: 28, divergence: 2, status: 'ALIGNED', weightsComplete: true }),
+    );
+    mocks.useCollectionProgressSignal.mockReturnValue(
+      loaded({ physicalPercent: 30, contractValue: null, receivedRevenue: null, moneyVisible: false, collectedPercent: null, divergence: null, status: 'INSUFFICIENT_DATA' }),
+    );
+    renderWithProviders(<PerformanceView projectId="p1" />, { permissions: ['view:project'] });
+
+    const rail = within(screen.getByRole('complementary'));
+    expect(rail.getByText('Nothing needs attention.')).toBeInTheDocument();
+    expect(rail.queryByText('Built vs cost')).not.toBeInTheDocument();
+    expect(rail.queryByText('Collected vs built')).not.toBeInTheDocument();
   });
 
   it('links the signals only for readers who can open their targets', () => {

@@ -237,7 +237,8 @@ describe('ProgressViewGate', () => {
       </ProgressViewGate>,
       { permissions: ['record:progress'] },
     );
-    expect(screen.getByText(/WP-07 has no BOQ items/)).toBeInTheDocument();
+    // Allocation AND weights are short: the notice says both.
+    expect(screen.getByText(/WP-07 has no BOQ items.*Weights total 85%/)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Continue setup' })).not.toBeInTheDocument();
   });
 
