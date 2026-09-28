@@ -164,8 +164,9 @@ export class CustomerReceiptService {
         tx as never,
       );
 
-      // Written with the journal entry, in the same transaction (it used the outer client before,
-      // so a failure after this point could leave a POSTED receipt without its allocations).
+      // Everything below runs on `tx`, with the journal entry: it used the outer client before, so
+      // a failure part-way could leave a POSTED receipt without its allocations (and the receipt row
+      // locked by this transaction would block the outer client's allocation writes).
       const receiptNumber = await this.claimReceiptNumber(tx, orgId);
       await this.receiptRepo.markPosted(
         tx as never, receipt.id, postResult.journalEntryId, userId,
@@ -174,11 +175,11 @@ export class CustomerReceiptService {
 
       // Create initial allocation records
       for (const alloc of initialAllocations) {
-        const invoice = await this.invoiceRepo.findById(prisma, orgId, alloc.clientInvoiceId);
+        const invoice = await this.invoiceRepo.findById(tx as never, orgId, alloc.clientInvoiceId);
         if (!invoice) throw new NotFoundException(`Invoice ${alloc.clientInvoiceId} not found`);
         this.assertAllocatable(receipt, invoice, new Decimal(alloc.amount));
 
-        await this.receiptRepo.createAllocation(prisma, {
+        await this.receiptRepo.createAllocation(tx as never, {
           organizationId: orgId,
           paymentReceiptId: receipt.id,
           clientInvoiceId: alloc.clientInvoiceId,
@@ -191,7 +192,7 @@ export class CustomerReceiptService {
 
         // Update invoice outstanding
         const newOutstanding = new Decimal(invoice.outstandingAmount.toString()).minus(new Decimal(alloc.amount));
-        await this.invoiceRepo.updateOutstandingAmount(prisma, invoice.id, newOutstanding);
+        await this.invoiceRepo.updateOutstandingAmount(tx as never, invoice.id, newOutstanding);
       }
 
       return postResult;
