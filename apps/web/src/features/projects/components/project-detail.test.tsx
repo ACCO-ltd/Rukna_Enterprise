@@ -20,6 +20,9 @@ vi.mock('@/features/projects/api/projects-api', () => ({
   listProjects: vi.fn(),
 }));
 
+let searchParams = new URLSearchParams();
+vi.mock('next/navigation', () => ({ useSearchParams: () => searchParams }));
+
 vi.mock('next/link', () => ({
   default: ({
     href,
@@ -93,16 +96,19 @@ describe('ProjectDetail — loading and failure', () => {
       }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading...');
+    // The toast region is also a status region; the loading one is the one that says so.
+    expect(
+      screen.getAllByRole('status').some((node) => node.textContent?.includes('Loading...')),
+    ).toBe(true);
   });
 
   // 403 and 404 are the same thing to the user, and the difference is not worth leaking.
   it.each([403, 404])('reports %s as not found', async (status) => {
     vi.mocked(getProject).mockRejectedValue(new ApiError(status, 'nope'));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     expect(
       await screen.findByText('This project does not exist, or you do not have access to it.'),
@@ -112,7 +118,7 @@ describe('ProjectDetail — loading and failure', () => {
   it('reports other failures as a load error', async () => {
     vi.mocked(getProject).mockRejectedValue(new ApiError(500, 'boom'));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     expect(await screen.findByText('Could not load this project.')).toBeInTheDocument();
   });
@@ -126,7 +132,7 @@ describe('ProjectDetail — project lifecycle', () => {
   it('renders the rail with every stage and marks the current one', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const rail = await screen.findByRole('list', { name: 'Project lifecycle' });
     expect(within(rail).getAllByRole('listitem').map((step) => step.textContent)).toEqual([
@@ -150,7 +156,7 @@ describe('ProjectDetail — project lifecycle', () => {
   it('drops the rail for a cancelled project, which left it rather than reaching a point on it', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.CANCELLED }));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     await screen.findByRole('heading', { name: 'Project information' });
     expect(screen.queryByRole('list', { name: 'Project lifecycle' })).not.toBeInTheDocument();
@@ -161,7 +167,7 @@ describe('ProjectDetail — project lifecycle', () => {
   it('offers no history control it cannot honour', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     await screen.findByRole('list', { name: 'Project lifecycle' });
     expect(screen.queryByText(/View history/i)).not.toBeInTheDocument();
@@ -172,7 +178,7 @@ describe('ProjectDetail — project readiness', () => {
   it('leads a draft with what is left to set up, above the identity facts', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const readiness = await screen.findByRole('heading', { name: 'Preparation sequence' });
     const information = await screen.findByRole('heading', { name: 'Project information' });
@@ -188,7 +194,7 @@ describe('ProjectDetail — project readiness', () => {
    */
   it('shows server conditions and their owner when the reader cannot act', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
     const section = (await screen.findByRole('heading', {name: 'Preparation sequence'})).closest('section')!;
     expect(within(section).getAllByRole('listitem')).toHaveLength(3);
     expect(within(section).queryByText('25%')).not.toBeInTheDocument();
@@ -200,7 +206,7 @@ describe('ProjectDetail — project readiness', () => {
   it('uses the readiness response instead of the legacy completed-step count', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
     vi.mocked(getProjectReadiness).mockResolvedValue({command: 'start', targetStatus: 'ACTIVE', ready: true, conditions: [], deferred: []});
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
     expect(await screen.findByText('The current start conditions are satisfied. Record commencement to start the project.')).toBeInTheDocument();
   });
 
@@ -211,7 +217,7 @@ describe('ProjectDetail — project readiness', () => {
   it('disappears entirely once the project is no longer in preparation', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     await screen.findByRole('heading', { name: 'Project information' });
     expect(screen.queryByRole('heading', { name: 'Preparation sequence' })).not.toBeInTheDocument();
@@ -226,7 +232,7 @@ describe('ProjectDetail — project information', () => {
   it('hides the contextual Edit link without manage:project', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['view:project'] });
+    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['view:project'], withToast: true });
 
     const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
       'section',
@@ -237,7 +243,7 @@ describe('ProjectDetail — project information', () => {
   it('offers it to a draft when the reader may write to it', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['manage:project'] });
+    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['manage:project'], withToast: true });
 
     const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
       'section',
@@ -257,7 +263,7 @@ describe('ProjectDetail — project information', () => {
       project({ status: ProjectStatus.ACTIVE, clientName: 'Baraka Real Estate LLC' }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
       'section',
@@ -280,7 +286,7 @@ describe('ProjectDetail — project information', () => {
       }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
       'section',
@@ -298,7 +304,7 @@ describe('ProjectDetail — project information', () => {
   it('drops optional fields that are empty rather than rendering a dash', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
       'section',
@@ -317,7 +323,7 @@ describe('ProjectDetail — commercial foundation', () => {
   it('says what has not happened yet instead of showing a dash', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (
       await screen.findByRole('heading', { name: 'Commercial foundation' })
@@ -340,7 +346,7 @@ describe('ProjectDetail — commercial foundation', () => {
   it('drops the currency row entirely when no contract has defined one', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ currency: null }));
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (
       await screen.findByRole('heading', { name: 'Commercial foundation' })
@@ -366,7 +372,7 @@ describe('ProjectDetail — commercial foundation', () => {
       }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (
       await screen.findByRole('heading', { name: 'Commercial foundation' })
@@ -390,7 +396,7 @@ describe('ProjectDetail — commercial foundation', () => {
       }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (
       await screen.findByRole('heading', { name: 'Commercial foundation' })
@@ -420,7 +426,7 @@ describe('ProjectDetail — recent activity', () => {
       }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = (await screen.findByRole('heading', { name: 'Recent activity' })).closest(
       'section',
@@ -436,7 +442,7 @@ describe('ProjectDetail — recent activity', () => {
   it('says so when nothing has happened yet', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     expect(
       await screen.findByText('No project activity has been recorded yet.'),
@@ -452,10 +458,21 @@ describe('ProjectDetail — actions belong to the shell', () => {
   it('renders no lifecycle controls of its own', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     await screen.findByRole('heading', { name: 'Preparation sequence' });
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail — arriving from create', () => {
+  it('confirms the new project with the app toast, once', async () => {
+    searchParams = new URLSearchParams('created=1');
+    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
+
+    expect(await screen.findByText('Project created')).toBeInTheDocument();
+    searchParams = new URLSearchParams();
   });
 });

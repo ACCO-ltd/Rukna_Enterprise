@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
 const usersMocks = vi.hoisted(() => ({ useUsers: vi.fn() }));
 const sessionMocks = vi.hoisted(() => ({ useSession: vi.fn() }));
 
+let searchParams = new URLSearchParams();
+vi.mock('next/navigation', () => ({ useSearchParams: () => searchParams }));
 vi.mock('../hooks/use-project-members', () => mocks);
 vi.mock('@/features/users/hooks/use-users', () => usersMocks);
 vi.mock('@/features/auth/session/use-session', () => sessionMocks);
@@ -241,5 +243,23 @@ describe('ProjectMembers', () => {
     });
 
     expect(screen.getByText(/No members on this project/i)).toBeInTheDocument();
+  });
+});
+
+describe('ProjectMembers — deep link from the preparation checklist', () => {
+  it('opens the add form straight away with ?add=1', () => {
+    searchParams = new URLSearchParams('add=1');
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    searchParams = new URLSearchParams();
+  });
+
+  it('does not open it without the flag', () => {
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });
 });

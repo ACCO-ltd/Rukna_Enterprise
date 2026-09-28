@@ -42,20 +42,21 @@ const STEP_CONFIG: Record<
     owner: 'quantitySurveyor',
     dependsOn: ['CLIENT_ACTIVE'],
   },
+  // Straight to the page that does the job, not to a route that redirects to it.
   ACTIVE_MAIN_CONTRACT: {
-    path: 'commercial/contract-security',
+    path: 'commercial/contract-milestones',
     permission: 'view:contract',
     owner: 'commercialTeam',
     dependsOn: ['CLIENT_ACTIVE', 'BOQ_BASELINED'],
   },
   CONTRACT_START_DATE: {
-    path: 'commercial/contract-security',
+    path: 'commercial/contract-milestones',
     permission: 'view:contract',
     owner: 'commercialTeam',
     dependsOn: ['ACTIVE_MAIN_CONTRACT'],
   },
   DELIVERY_TEAM: {
-    path: 'members',
+    path: 'members?add=1',
     permission: 'manage:project-member',
     owner: 'projectManager',
     dependsOn: [],

@@ -108,7 +108,7 @@ describe('ProjectReadiness preparation sequence', () => {
     expect(screen.getAllByText('Complete')).toHaveLength(2);
     expect(
       screen.getByRole('link', { name: 'Open task' }),
-    ).toHaveAttribute('href', '/projects/p1/commercial/contract-security');
+    ).toHaveAttribute('href', '/projects/p1/commercial/contract-milestones');
   });
 
   it('never shows a lock message on a step that is already complete', async () => {
