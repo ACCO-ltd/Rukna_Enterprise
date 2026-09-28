@@ -124,10 +124,15 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
     status: 'ACTIVE',
     client: { name: 'ACCO' },
   };
+  // A work-completion stage: billable only on a linked, site-verified milestone (strict
+  // CONST-COM-011). The default fixture is eligible; tests override the link to probe the gate.
   const structureInstallment = {
     id: 'inst-1',
     name: 'Structure',
     percentage: '0.3',
+    triggerType: 'MILESTONE',
+    programmeMilestoneId: 'ms-ok',
+    programmeMilestone: { id: 'ms-ok', status: 'VERIFIED' },
     contract: milestoneContract,
   };
 
@@ -228,6 +233,29 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
       BadRequestException,
     );
     expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('CONST-COM-011 (strict): refuses a work-completion stage with no milestone linked', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      programmeMilestoneId: null,
+      programmeMilestone: null,
+    });
+    await expect(service.generateFromInstallment(identity, instDto)).rejects.toThrow(
+      /no programme milestone linked/,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('does not gate an advance stage on a milestone', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      triggerType: 'ADVANCE',
+      programmeMilestoneId: null,
+      programmeMilestone: null,
+    });
+    await service.generateFromInstallment(identity, instDto).catch(() => undefined);
+    expect(repo.create).toHaveBeenCalled();
   });
 
   it('CONST-COM-011: bills when the linked programme milestone is verified', async () => {

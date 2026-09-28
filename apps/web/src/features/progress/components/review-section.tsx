@@ -82,7 +82,9 @@ export function ReviewSection({ projectId }: { projectId: string }) {
           <div className="px-5 pt-2">
             <TabsList aria-label={t('review.tabsLabel')}>
               {(Object.keys(groups) as QueueTab[]).map((key) => (
-                <TabsTrigger key={key} value={key}>
+                // Three filters in a 340px rail: tighter padding keeps them on one line
+                // instead of scrolling behind a scrollbar.
+                <TabsTrigger key={key} value={key} className="px-2">
                   {tabLabels[key]}
                   <TabCount value={groups[key].length} />
                 </TabsTrigger>

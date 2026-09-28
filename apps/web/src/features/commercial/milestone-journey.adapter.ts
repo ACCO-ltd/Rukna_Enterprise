@@ -26,6 +26,7 @@ export type MilestoneUserState =
   | 'in-progress'         // NEXT + no linked milestone, or milestone PLANNED
   | 'review-for-billing'  // NEXT + linked milestone VERIFIED → CTA: "Review for billing"
   | 'ready-to-bill'       // NEXT + readyToBill === true (derived from backend field)
+  | 'invoice-draft'       // invoice raised but not yet posted (unnumbered) — review + post in Accounting
   | 'invoice-issued'      // invoice issued (POSTED), not yet sent to client
   | 'awaiting-payment'    // invoice sent to client (delivery recorded), awaiting collection
   | 'invoiced'            // BILLED (invoice exists, not yet collected)
@@ -59,6 +60,11 @@ export interface MilestoneVariationItem {
 
 export interface MilestoneItemViewModel {
   id: string;
+  /**
+   * The stage's own (milestone) invoice when it is raised but not yet posted — the target of
+   * "Review draft". Undefined otherwise. Set by ContractMilestonesTab from billing packages.
+   */
+  draftInvoiceId?: string;
   sortOrder: number;
   name: string;
   /** Fraction string, e.g. "0.4000" */
@@ -203,6 +209,11 @@ function resolveUserState(
     case 'BILLED':
       return 'invoiced';
     case 'NEXT':
+      // Strict CONST-COM-011: a work-completion stage without a linked, site-verified milestone is
+      // not billable, whatever an earlier ready flag says — the server refuses it too.
+      if (inst.triggerType === 'MILESTONE' && inst.programmeMilestone?.status !== 'VERIFIED') {
+        return 'in-progress';
+      }
       if (inst.readyToBill) return 'ready-to-bill';
       if (inst.programmeMilestone?.status === 'VERIFIED') return 'review-for-billing';
       return 'in-progress';

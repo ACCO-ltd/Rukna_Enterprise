@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { cn, Button, StatusPill } from '@erp/ui';
 import {
@@ -28,6 +29,15 @@ interface MilestoneJourneyProps {
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (milestone: MilestoneItemViewModel) => void;
+  /** Opens the link dialog for a work stage with no programme milestone. Omit when not permitted. */
+  onLinkMilestone?: (milestone: MilestoneItemViewModel) => void;
+  /** Where a stage's unposted invoice is reviewed and posted. Omit to show no action. */
+  draftInvoiceHref?: (invoiceId: string) => string;
+  /**
+   * The ledger cannot post yet (accounting setup incomplete). "Prepare invoice" issues and posts
+   * in one step, so it is withheld; the tab's setup notice states why (flow plan A7).
+   */
+  billingBlocked?: boolean;
   /** Panel title + trailing action, rendered as one bordered header on the list — so the
    * schedule reads as one titled panel rather than a floating, unlabeled list of cards. */
   title?: ReactNode;
@@ -43,6 +53,9 @@ export function MilestoneJourney({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  onLinkMilestone,
+  draftInvoiceHref,
+  billingBlocked = false,
   title,
   action,
 }: MilestoneJourneyProps) {
@@ -66,7 +79,7 @@ export function MilestoneJourney({
   }
 
   const billedStates: MilestoneUserState[] = [
-    'invoiced', 'paid', 'partially-paid', 'invoice-issued', 'awaiting-payment',
+    'invoiced', 'paid', 'partially-paid', 'invoice-draft', 'invoice-issued', 'awaiting-payment',
   ];
   const unassignedCount = viewModel.milestones
     .flatMap((m) => m.variationAllocations)
@@ -101,6 +114,9 @@ export function MilestoneJourney({
             onPrepareInvoice={onPrepareInvoice}
             onSendInvoice={onSendInvoice}
             onVerifyMilestone={onVerifyMilestone}
+            onLinkMilestone={onLinkMilestone}
+            draftInvoiceHref={draftInvoiceHref}
+            billingBlocked={billingBlocked}
           />
         ))}
         </ol>
@@ -129,6 +145,9 @@ function MilestoneItem({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  onLinkMilestone,
+  draftInvoiceHref,
+  billingBlocked,
 }: {
   milestone: MilestoneItemViewModel;
   stepNumber: number;
@@ -140,6 +159,9 @@ function MilestoneItem({
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (m: MilestoneItemViewModel) => void;
+  onLinkMilestone?: (m: MilestoneItemViewModel) => void;
+  draftInvoiceHref?: (invoiceId: string) => string;
+  billingBlocked: boolean;
 }) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
@@ -148,6 +170,7 @@ function MilestoneItem({
     milestone.userState === 'in-progress' ||
     milestone.userState === 'review-for-billing' ||
     milestone.userState === 'ready-to-bill' ||
+    milestone.userState === 'invoice-draft' ||
     milestone.userState === 'invoice-issued';
   const isDone =
     milestone.userState === 'paid' ||
@@ -172,8 +195,16 @@ function MilestoneItem({
   // One compact control per row — the reference's "Action" column. Everything else the
   // journey needs to say (ready-to-bill note, awaiting-payment total, VO breakdown, linked
   // programme milestone) moves to the detail strip below the row instead of stacking here.
+  const needsLink =
+    milestone.userState === 'in-progress' &&
+    milestone.triggerType === 'MILESTONE' &&
+    !milestone.programmeMilestone;
   const action =
-    milestone.userState === 'in-progress' && milestone.programmeMilestone?.status === 'PLANNED' ? (
+    needsLink && onLinkMilestone ? (
+      <Button type="button" variant="outline" size="sm" onClick={() => onLinkMilestone(milestone)}>
+        {t('cta.linkMilestone')}
+      </Button>
+    ) : milestone.userState === 'in-progress' && milestone.programmeMilestone?.status === 'PLANNED' ? (
       <Button type="button" variant="outline" size="sm" onClick={() => onVerifyMilestone?.(milestone)}>
         {t('cta.verifyMilestone')}
       </Button>
@@ -181,9 +212,13 @@ function MilestoneItem({
       <Button type="button" size="sm" onClick={() => onReviewForBilling(milestone)}>
         {t('cta.reviewForBilling')}
       </Button>
-    ) : milestone.userState === 'ready-to-bill' ? (
+    ) : milestone.userState === 'ready-to-bill' && !billingBlocked ? (
       <Button type="button" size="sm" onClick={() => onPrepareInvoice(milestone)}>
         {t('cta.prepareInvoice')}
+      </Button>
+    ) : milestone.userState === 'invoice-draft' && draftInvoiceHref && milestone.draftInvoiceId ? (
+      <Button asChild variant="outline" size="sm">
+        <Link href={draftInvoiceHref(milestone.draftInvoiceId)}>{t('cta.reviewDraft')}</Link>
       </Button>
     ) : milestone.userState === 'invoice-issued' ? (
       <Button type="button" size="sm" onClick={() => onSendInvoice(milestone)}>
@@ -197,9 +232,9 @@ function MilestoneItem({
 
   const hasDetail =
     milestone.userState === 'ready-to-bill' ||
-    milestone.userState === 'invoice-issued' ||
     milestone.userState === 'awaiting-payment' ||
     (!isDone && milestone.programmeMilestone) ||
+    needsLink ||
     milestone.variationAllocations.length > 0;
 
   return (
@@ -248,13 +283,14 @@ function MilestoneItem({
               {t('cta.readyNote')}
             </p>
           ) : null}
-          {milestone.userState === 'invoice-issued' ? (
-            <StatusPill tone={statusTone('invoice-issued', 'milestoneJourney')} className="text-caption">
-              {t('state.invoice-issued')}
-            </StatusPill>
-          ) : null}
           {milestone.userState === 'awaiting-payment' ? (
             <AwaitingPaymentDisplay milestone={milestone} currency={currency} locale={locale} t={t} />
+          ) : null}
+          {needsLink ? (
+            <p className="flex items-center gap-1.5 text-caption text-warning">
+              <Clock size={12} aria-hidden="true" />
+              {t('milestone.linkRequired')}
+            </p>
           ) : null}
           {!isDone && milestone.programmeMilestone ? (
             <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
@@ -306,6 +342,7 @@ function StepIcon({
     state === 'in-progress' ||
     state === 'review-for-billing' ||
     state === 'ready-to-bill' ||
+    state === 'invoice-draft' ||
     state === 'invoice-issued';
 
   if (isDone) {

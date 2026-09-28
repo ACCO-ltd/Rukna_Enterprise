@@ -24,7 +24,7 @@
     "subtitle": "Review project cost, posted accounting position and financial controls.",
     "views": {
       "overview": "Overview",
-      "costControl": "Cost Control",
+      "costControl": "Cost control",
       "profitLoss": "Profit & Loss",
       "ledger": "Ledger"
     }
@@ -54,9 +54,9 @@
       "title": "Accounting position",
       "description": "From posted general ledger entries carrying this project.",
       "revenue": "Revenue",
-      "revenueBasis": "Posted, excludes VAT",
+      "revenueBasis": "Posted, excludes sales tax",
       "projectCost": "Project cost",
-      "projectCostBasis": "Posted, includes non-recoverable VAT",
+      "projectCostBasis": "Posted, includes non-recoverable sales tax",
       "grossProfit": "Gross profit",
       "margin": "Margin",
       "marginBasis": "Gross profit / revenue",
@@ -70,6 +70,8 @@
       "description": "Whether the figures above can be relied on.",
       "reconciliation": "Procurement and general ledger",
       "reconciliationDetail": "Supplier-bill variance {variance}",
+      "billing": "Billing and general ledger",
+      "billingDetail": "Invoiced {invoiced} (excl. sales tax) · Revenue posted {revenue}",
       "accountingSetup": "Accounting setup",
       "costBudget": "Cost budget",
       "budgetDetail": "Version {version}, baselined {date}",
@@ -93,7 +95,7 @@
       "budget": "Budget",
       "openCommitment": "Open commitment",
       "actual": "Actual",
-      "openCostControl": "Cost Control",
+      "openCostControl": "Cost control",
       "empty": "No cost has been coded to this project yet."
     },
     "activity": {
@@ -109,7 +111,7 @@
       "actual": "Actual / Budget"
     },
     "position": {
-      "title": "Cost Control",
+      "title": "Cost control",
       "description": "Manage the project cost budget and compare planned cost with commitment, accrual and actual cost.",
       "budget": "Budget",
       "budgetBasis": "Baselined version {version}",
@@ -298,5 +300,10 @@
       "contract": "Contract",
       "openSource": "Open source document"
     }
+  },
+  "setupNotice": {
+    "title": "Invoices can't be posted until accounting setup is finished",
+    "body": "Still to set up: {items}. Preparing or posting an invoice is unavailable until then.",
+    "action": "Open accounting setup"
   }
 }

@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, DefinitionList, DefinitionRow, RecordPanel } from '@erp/ui';
-import { ArrowRight, Building2, CircleCheck, FileText, History, PencilLine } from 'lucide-react';
+import { Alert, Button, DefinitionList, DefinitionRow, RecordPanel, useToast } from '@erp/ui';
+import { ArrowRight, Building2, FileText, History, PencilLine } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -28,16 +28,25 @@ export function ProjectDetail({ id }: { id: string }) {
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const searchParams = useSearchParams();
-  const [showCreated, setShowCreated] = useState(searchParams?.get('created') === '1');
+  const { toast } = useToast();
   const { data: project, isPending, isError, error } = useProject(id);
   const summary = useProjectWorkspaceSummary(id);
 
+  // Arriving from "Save project" (`?created=1`): confirm with the app's toast — the same one the
+  // client form uses — rather than a hand-rolled fixed card (flow plan B8). Once, then drop the
+  // flag so a reload does not repeat it.
+  const announced = useRef(false);
+  const justCreated = searchParams?.get('created') === '1';
   useEffect(() => {
-    if (!showCreated) return;
-    const timer = window.setTimeout(() => setShowCreated(false), 6000);
+    if (!justCreated || !project || announced.current) return;
+    announced.current = true;
+    toast({
+      tone: 'success',
+      title: t('createdTitle'),
+      description: `${project.name} · ${project.code}`,
+    });
     window.history.replaceState(null, '', window.location.pathname);
-    return () => window.clearTimeout(timer);
-  }, [showCreated]);
+  }, [justCreated, project, t, toast]);
 
   if (isPending) {
     return (
@@ -65,21 +74,6 @@ export function ProjectDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      {showCreated ? (
-        <div
-          className="fixed end-5 top-5 z-50 flex max-w-sm items-start gap-3 rounded-control border border-success/30 bg-surface px-4 py-3 shadow-e3"
-          role="status"
-          aria-live="polite"
-        >
-          <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">{t('createdTitle')}</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">{project.name}</p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">{project.code}</p>
-          </div>
-        </div>
-      ) : null}
-
       <Overview
         project={project}
         locale={locale}

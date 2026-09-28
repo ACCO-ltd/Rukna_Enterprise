@@ -1901,6 +1901,11 @@ export interface CommercialBillingPackageDocument {
   total: string | null;
   dueDate: string | null;
   outstanding: string | null;
+  /**
+   * The invoice's posting status. Only a POSTED invoice is numbered and issued; anything else is a
+   * draft that still needs review and posting in Accounting — the stage must not read "issued".
+   */
+  postingStatus: ArPostingStatus;
   deliveries: CommercialDeliveryRecord[];
 }
 
@@ -1993,6 +1998,10 @@ export type CommercialCycleAction =
   | 'ALLOCATE_RECEIPT'
   | 'VIEW_HISTORY';
 
+/**
+ * `MILESTONE_NOT_LINKED` — a work-completion stage with no programme milestone linked (strict
+ * CONST-COM-011, 2026-09-28). `MILESTONE_NOT_VERIFIED` — linked, but not yet verified on site.
+ */
 export type CommercialCycleBlocker =
   | 'MAIN_CONTRACT_MISSING'
   | 'CONTRACT_NOT_ACTIVE'
@@ -2004,7 +2013,8 @@ export type CommercialCycleBlocker =
   // CONST-COM-011 / ADR-030 S-SH-3: a MILESTONE contract's NEXT installment is billing-gated on a
   // linked programme milestone that is not yet VERIFIED. The ribbon shows the reason + a verify link.
   | 'MILESTONE_NOT_VERIFIED'
-  | 'PERMISSION_REQUIRED';
+  | 'PERMISSION_REQUIRED'
+  | 'MILESTONE_NOT_LINKED';
 
 export interface CommercialCurrentCycleResponse {
   projectId: string;
@@ -2378,6 +2388,12 @@ export interface CommercialOverviewResponse {
     collected: string | null;
     outstanding: string | null;
     overdue: string | null;
+    /**
+     * Invoices raised but not yet posted (draft or approved). They are not billed yet, so they
+     * sit outside netBilled — the count tells the reader why "Net billed" can be $0 while
+     * Billing & Collection lists invoices. Null when the caller cannot view financials.
+     */
+    draftInvoiceCount: number | null;
   };
   /**
    * The current commercial stage, derived from the NEXT installment (or its absence).
@@ -2636,9 +2652,22 @@ export interface ProjectFinanceOverviewResponse {
   accountingPosition: ProjectAccountingPosition;
   controls: {
     reconciliation: FinanceControlStatus;
+    /**
+     * Billing and general ledger (flow plan PR 4): what Commercial invoiced for this project
+     * (posted invoice subtotals less posted credit notes, excluding sales tax) against the
+     * revenue the ledger recognised for it. They should agree; a difference is named, not hidden.
+     */
+    billing: FinanceControlStatus;
     accountingSetup: FinanceControlStatus;
     costBudget: FinanceControlStatus;
     period: FinanceControlStatus;
+  };
+  /** Figures behind `controls.billing`. Null when the caller cannot view money. */
+  billingReconciliation: {
+    invoicedNet: string | null;
+    glRevenue: string | null;
+    variance: string | null;
+    reconciled: boolean;
   };
   reconciliation: ProjectCostReconciliationResponse;
   period: ProjectFinancePeriod | null;

@@ -13,7 +13,7 @@
  */
 
 import { useId, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, DatePicker, FormField, Input, RadioGroup, Select, Textarea } from '@erp/ui';
 
@@ -42,10 +42,13 @@ export function MrForm() {
   // The module header owns the page's h1 (ADR-035); the form names itself in the breadcrumb.
   useModuleTrail(t('createTitle'));
   const router = useRouter();
+  // Started from a project's Procurement tab (`?projectId=`, flow plan PR 4): the project is
+  // already chosen, and saving returns to that project rather than to the buyer's list.
+  const fromProjectId = useSearchParams()?.get('projectId') ?? '';
 
   const [step, setStep] = useState<1 | 2>(1);
   const [scope, setScope] = useState<MaterialRequestScope>('PROJECT');
-  const [projectId, setProjectId] = useState('');
+  const [projectId, setProjectId] = useState(fromProjectId);
   const [requestedDate, setRequestedDate] = useState(today);
   const [requiredByDate, setRequiredByDate] = useState('');
   const [title, setTitle] = useState('');
@@ -119,7 +122,12 @@ export function MrForm() {
     };
 
     create.mutate(payload, {
-      onSuccess: (mr) => router.push(`/procurement/requests/${mr.id}`),
+      onSuccess: (mr) =>
+        router.push(
+          fromProjectId && scope === 'PROJECT' && projectId
+            ? `/projects/${projectId}/procurement/requests`
+            : `/procurement/requests/${mr.id}`,
+        ),
     });
   }
 

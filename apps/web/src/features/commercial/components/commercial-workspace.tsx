@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Alert, Button, EmptyState, Skeleton } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
+import { WorkspaceSectionHeader } from '@/components/layout/workspace-section-header';
 
 import { useCommercialSummary } from '../hooks/use-commercial';
 import {
@@ -129,12 +130,7 @@ export function CommercialWorkspace({
  */
 function Heading() {
   const t = useTranslations('commercial');
-  return (
-    <div>
-      <h2 className="text-h2 font-bold text-foreground">{t('title')}</h2>
-      <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
-    </div>
-  );
+  return <WorkspaceSectionHeader title={t('title')} description={t('subtitle')} />;
 }
 
 function UnavailableView({ projectId }: { projectId: string }) {

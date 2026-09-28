@@ -23,6 +23,8 @@ import type {
   OverviewAttentionItem,
 } from '@erp/types';
 
+import { MetricStrip } from '@/components/widget/metric-strip';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
@@ -122,90 +124,34 @@ function FinancialStrip({ overview }: { overview: CommercialOverviewResponse }) 
   const locale = useLocale() as 'en' | 'ar';
   const { financialPosition: fp, contract, currency } = overview;
 
-  const money = (v: string | null) =>
-    v === null ? '—' : (formatMoney(v, currency, locale) ?? v);
+  const money = (v: string | null) => (v === null ? null : (formatMoney(v, currency, locale) ?? v));
 
   const postedCreditNotes = fp.postedCreditNotes !== null && parseFloat(fp.postedCreditNotes) > 0;
-
-  const hasOutstanding = fp.outstanding !== null && parseFloat(fp.outstanding) > 0;
   const hasOverdue = fp.overdue !== null && parseFloat(fp.overdue) > 0;
 
-  return (
-    <dl className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-2 lg:grid-cols-5">
-      <MetricCell
-        label={t('contractValue')}
-        value={money(contract.currentContractValue)}
-      />
-      <MetricCell
-        label={t('netBilled')}
-        value={money(fp.netBilled)}
-        note={
-          postedCreditNotes
-            ? t('creditNoteNote', { amount: money(fp.postedCreditNotes) })
-            : undefined
-        }
-      />
-      <MetricCell label={t('collected')} value={money(fp.collected)} accent="success" />
-      <MetricCell
-        label={t('outstanding')}
-        value={money(fp.outstanding)}
-        highlight={hasOutstanding}
-        accent={hasOutstanding ? 'brand' : undefined}
-      />
-      <MetricCell
-        label={t('overdue')}
-        value={money(fp.overdue)}
-        highlight={hasOverdue}
-        highlightColor="warning"
-        accent={hasOverdue ? 'warning' : undefined}
-      />
-    </dl>
-  );
-}
-
-function MetricCell({
-  label,
-  value,
-  note,
-  highlight,
-  highlightColor = 'default',
-  accent,
-}: {
-  label: string;
-  value: string;
-  note?: string;
-  highlight?: boolean;
-  highlightColor?: 'default' | 'warning';
-  accent?: 'brand' | 'success' | 'warning';
-}) {
-  const accentClass = accent === 'brand'
-    ? 'border-t-2 border-t-brand-primary'
-    : accent === 'success'
-      ? 'border-t-2 border-t-success'
-      : accent === 'warning'
-        ? 'border-t-2 border-t-warning'
-        : '';
+  const netBilledNote =
+    [
+      postedCreditNotes ? t('creditNoteNote', { amount: money(fp.postedCreditNotes) ?? '' }) : null,
+      fp.draftInvoiceCount ? t('draftsNote', { count: fp.draftInvoiceCount }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || undefined;
 
   return (
-    <div
-      className={cn(
-        'border-b border-border p-4 last:border-b-0 sm:nth-last-2:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e',
-        accentClass,
-      )}
-    >
-      <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1.5">
-        <LtrValue
-          className={cn(
-            'text-h2 font-semibold tabular-nums',
-            highlight && highlightColor === 'warning' ? 'text-warning' : 'text-foreground',
-          )}
-        >
-          {value}
-        </LtrValue>
-      </dd>
-      {note ? <dd className="mt-1 text-caption text-muted-foreground">{note}</dd> : null}
-    </div>
+    <MetricStrip
+      columns={5}
+      metrics={[
+        { label: t('contractValue'), value: money(contract.currentContractValue) },
+        { label: t('netBilled'), value: money(fp.netBilled), sublabel: netBilledNote },
+        { label: t('collected'), value: money(fp.collected) },
+        { label: t('outstanding'), value: money(fp.outstanding) },
+        {
+          label: t('overdue'),
+          value: money(fp.overdue),
+          tone: hasOverdue ? 'warning' : undefined,
+        },
+      ]}
+    />
   );
 }
 
@@ -229,13 +175,22 @@ function CurrentPositionCard({
     return `${base}?installment=${cc.nextAction.targetId}&action=${action}`;
   })();
 
-  const isActionable = cc.stage === 'REVIEW_FOR_BILLING' || cc.stage === 'READY_TO_BILL';
+  // The server withholds nextAction while the cycle is blocked or the viewer cannot bill, so the
+  // card only asks for attention when there is something this viewer can actually do.
+  // Preparing issues and posts in one step; while the ledger cannot post, the card offers it
+  // no more than the schedule does (flow plan A7).
+  const ledgerBlocked = useLedgerBlocked();
+  const isActionable =
+    cc.nextAction !== null &&
+    cc.nextAction.kind !== 'NONE' &&
+    cc.stage !== 'NO_CONTRACT' &&
+    !(ledgerBlocked && cc.nextAction.kind === 'PREPARE_INVOICE');
 
   return (
     <div
       className={cn(
         'rounded-panel border bg-surface p-5 shadow-e1',
-        isActionable ? 'border-amber-300/60 bg-amber-50/30' : 'border-border',
+        isActionable ? 'border-warning/30 bg-warning-subtle' : 'border-border',
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -259,10 +214,10 @@ function CurrentPositionCard({
           </div>
         ) : null}
       </div>
-      {cc.nextAction && cc.stage !== 'NO_CONTRACT' ? (
+      {cc.nextAction && isActionable ? (
         <div className="mt-4">
           <Button asChild size="sm">
-            <Link href={ctaHref}>{cc.nextAction.label}</Link>
+            <Link href={ctaHref}>{t(`overview.currentPosition.action.${cc.nextAction.kind}`)}</Link>
           </Button>
         </div>
       ) : cc.stage === 'NO_CONTRACT' ? (

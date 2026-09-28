@@ -1,6 +1,7 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ProjectRole } from '@erp/types';
 import { Ellipsis, Plus } from 'lucide-react';
@@ -28,6 +29,7 @@ import {
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { WorkspaceSectionHeader } from '@/components/layout/workspace-section-header';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 import { useUsers } from '@/features/users/hooks/use-users';
@@ -60,7 +62,15 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
   const setRoles = useSetProjectMemberRoles(projectId);
   const { user } = useSession();
   const { can } = usePermissions();
-  const [adding, setAdding] = useState(false);
+  // `?add=1` opens the add form straight away — the preparation checklist's "Assign the
+  // delivery team" task lands here, and should not make the reader find the button.
+  const searchParams = useSearchParams();
+  const [adding, setAdding] = useState(() => searchParams?.get('add') === '1');
+  // Consume the flag: a reload or Back must not reopen the form after it was used or closed.
+  useEffect(() => {
+    if (searchParams?.get('add') !== '1') return;
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [searchParams]);
 
   const [pending, setPending] = useState<ProjectMember | null>(null);
   const [editing, setEditing] = useState<ProjectMember | null>(null);
@@ -79,18 +89,18 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-h2 font-semibold text-foreground">{t('title')}</h2>
-          <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-        {canManage ? (
-          <Button onClick={() => setAdding(true)}>
-            <Plus size={16} aria-hidden="true" />
-            {t('addTitle')}
-          </Button>
-        ) : null}
-      </div>
+      <WorkspaceSectionHeader
+        title={t('title')}
+        description={t('subtitle')}
+        action={
+          canManage ? (
+            <Button onClick={() => setAdding(true)}>
+              <Plus size={16} aria-hidden="true" />
+              {t('addTitle')}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {members.isPending ? (
         <div role="status" aria-live="polite">

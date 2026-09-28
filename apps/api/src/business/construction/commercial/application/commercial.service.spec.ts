@@ -193,7 +193,8 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
   it('S-SH-3: an unlinked MILESTONE installment is blocked because missing evidence is not verification', async () => {
     const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
     const res = await service.getCurrentCycle(financeIdentity, 'p-1');
-    expect(res.blockers).toContain('MILESTONE_NOT_VERIFIED');
+    // Its own reason, so the ribbon says "link a milestone", not "verify" a milestone that isn't there.
+    expect(res.blockers).toEqual(['MILESTONE_NOT_LINKED']);
     expect(res.nextAction).toBeNull();
   });
 

@@ -220,6 +220,8 @@ function renderJourney(
   opts?: {
     financialsVisible?: boolean;
     onSendInvoice?: (milestone: MilestoneItemViewModel) => void;
+    draftInvoiceHref?: (invoiceId: string) => string;
+    billingBlocked?: boolean;
   },
 ) {
   const vm: MilestoneJourneyViewModel = {
@@ -246,6 +248,7 @@ function renderJourney(
           readyToBill: m.readyToBill ?? false,
           invoiceReference: m.invoiceReference ?? null,
           invoiceJourney: m.invoiceJourney ?? null,
+          ...(m.draftInvoiceId ? { draftInvoiceId: m.draftInvoiceId } : {}),
         }) satisfies MilestoneItemViewModel,
     ),
   };
@@ -256,6 +259,8 @@ function renderJourney(
       onReviewForBilling={vi.fn()}
       onPrepareInvoice={vi.fn()}
       onSendInvoice={opts?.onSendInvoice ?? vi.fn()}
+      draftInvoiceHref={opts?.draftInvoiceHref}
+      billingBlocked={opts?.billingBlocked}
     />,
   );
 }
@@ -304,6 +309,36 @@ describe('MilestoneJourney — rendering', () => {
     expect(onSendInvoice).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'inst-1', userState: 'invoice-issued' }),
     );
+  });
+
+  it('sends a stage with an unposted invoice to review the draft, not to the client', () => {
+    renderJourney(
+      [
+        {
+          userState: 'invoice-draft',
+          name: 'Structure',
+          draftInvoiceId: 'inv-9',
+        },
+      ],
+      { draftInvoiceHref: (id) => `/finance/accounting/invoices/${id}` },
+    );
+
+    expect(screen.getByText('Draft invoice')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review draft' })).toHaveAttribute(
+      'href',
+      '/finance/accounting/invoices/inv-9',
+    );
+    expect(screen.queryByRole('button', { name: /send to client/i })).not.toBeInTheDocument();
+  });
+
+  it('withholds "Prepare invoice" while the ledger cannot post (the tab notice says why)', () => {
+    renderJourney([{ userState: 'ready-to-bill', name: 'Structure' }], { billingBlocked: true });
+    expect(screen.queryByRole('button', { name: /prepare invoice/i })).not.toBeInTheDocument();
+  });
+
+  it('says "Invoice issued" once per stage, not twice', () => {
+    renderJourney([{ userState: 'invoice-issued', name: 'Structure' }]);
+    expect(screen.getAllByText('Invoice issued')).toHaveLength(1);
   });
 
   it('contains no "Bill Stage" text anywhere', () => {
@@ -356,5 +391,64 @@ describe('MilestoneJourney — rendering', () => {
   it('empty milestones renders empty state, not a crash', () => {
     renderJourney([]);
     expect(screen.getByText(/no milestones set/i)).toBeInTheDocument();
+  });
+});
+
+describe('strict milestone evidence (CONST-COM-011, 2026-09-28)', () => {
+  it('never shows an unlinked work stage as ready to bill, even with an old ready flag', () => {
+    const schedule = makeSchedule([{ id: 'inst-1', status: 'NEXT', programmeMilestone: null }]);
+    (schedule.installments[0] as Record<string, unknown>).readyToBill = true;
+    const vm = toMilestoneJourneyViewModel(schedule as never, true);
+    expect(vm.milestones[0]!.userState).toBe('in-progress');
+  });
+
+  it('still lets an advance stage marked ready be billed', () => {
+    const schedule = makeSchedule([{ id: 'inst-1', status: 'NEXT', triggerType: 'ADVANCE' }]);
+    (schedule.installments[0] as Record<string, unknown>).readyToBill = true;
+    const vm = toMilestoneJourneyViewModel(schedule as never, true);
+    expect(vm.milestones[0]!.userState).toBe('ready-to-bill');
+  });
+
+  it('offers "Link milestone" on an unlinked work stage and says why', async () => {
+    const user = userEvent.setup();
+    const onLinkMilestone = vi.fn();
+    renderWithProviders(
+      <MilestoneJourney
+        viewModel={{
+          currency: 'USD',
+          originalContractValue: '500000.00',
+          approvedVariationsTotal: null,
+          governingContractValue: null,
+          financialsVisible: true,
+          currentIndex: 0,
+          milestones: [
+            {
+              id: 'inst-1',
+              sortOrder: 1,
+              name: 'Structure',
+              percentage: '0.3000',
+              baseAmount: '150000.00',
+              triggerType: 'MILESTONE',
+              userState: 'in-progress',
+              expectedDate: null,
+              dateLabel: null,
+              programmeMilestone: null,
+              variationAllocations: [],
+              readyToBill: false,
+              invoiceReference: null,
+              invoiceJourney: null,
+            },
+          ],
+        }}
+        onMilestoneClick={vi.fn()}
+        onReviewForBilling={vi.fn()}
+        onPrepareInvoice={vi.fn()}
+        onSendInvoice={vi.fn()}
+        onLinkMilestone={onLinkMilestone}
+      />,
+    );
+    expect(screen.getByText(/Link a programme milestone and verify it on site/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Link milestone' }));
+    expect(onLinkMilestone).toHaveBeenCalledWith(expect.objectContaining({ id: 'inst-1' }));
   });
 });

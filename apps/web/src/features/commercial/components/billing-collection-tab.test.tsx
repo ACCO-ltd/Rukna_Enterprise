@@ -200,7 +200,7 @@ describe('BillingCollectionTab — receivables summary strip', () => {
   it('shows billed, collected, outstanding, and overdue labels from position data', () => {
     renderTab();
 
-    expect(screen.getByText('Billed')).toBeInTheDocument();
+    expect(screen.getByText('Invoiced')).toBeInTheDocument();
     expect(screen.getByText('Collected')).toBeInTheDocument();
     expect(screen.getByText('Outstanding')).toBeInTheDocument();
     expect(screen.getByText('Overdue')).toBeInTheDocument();
@@ -417,9 +417,10 @@ describe('BillingCollectionTab — state-aware row action', () => {
 
     const link = screen.getByRole('link', { name: 'Review draft' });
     const href = link.getAttribute('href') ?? '';
-    expect(href).toContain('/finance/accounting/invoices/inv-draft');
+    // Opens inside the project (flow plan PR 4), keeping the list filter for the way back.
+    expect(href).toContain('/commercial/invoices/inv-draft');
+    expect(href).not.toContain('/finance/accounting/');
     expect(href).toContain('from=');
-    expect(href).toContain('fromLabel=');
   });
 
   it('offers "Post invoice" for an approved invoice still awaiting posting', () => {

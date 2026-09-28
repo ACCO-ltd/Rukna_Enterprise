@@ -228,7 +228,7 @@
     "detailLoadFailed": "Could not load this document",
     "notFound": "This document was not found on the project.",
     "emptyTitle": "No controlled documents yet",
-    "emptyHint": "Register drawings, permits, guarantees and other documents that must remain traceable throughout the project.",
+    "emptyHint": "Register drawings, permits, contracts and other documents that must remain traceable throughout the project.",
     "noMatchTitle": "No documents match these filters",
     "noMatchHint": "Clear a filter or widen the search to see more of the register.",
     "uploading": "Uploading…",

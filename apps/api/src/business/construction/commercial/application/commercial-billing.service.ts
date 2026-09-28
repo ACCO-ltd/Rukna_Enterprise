@@ -34,6 +34,10 @@ import { netPrice as computeNetPrice } from '../../variations/domain/variation-o
 import { VariationBillingAllocationPolicy } from '../../variations/domain/variation-billing-allocation.policy.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
 import { CustomerReceiptService } from '../../../accounting/accounts-receivable/application/customer-receipt.service.js';
+import {
+  installmentBillingBlocker,
+  installmentBillingBlockerMessage,
+} from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 
 const ZERO = new Decimal(0);
 
@@ -187,6 +191,7 @@ export class CommercialBillingService {
       total: money(new Decimal(inv.totalAmount.toString())),
       dueDate: inv.dueDate ? inv.dueDate.toISOString() : null,
       outstanding: money(new Decimal(inv.outstandingAmount.toString())),
+      postingStatus: inv.postingStatus as ArPostingStatus,
       deliveries: toDeliveries(inv),
     });
 
@@ -334,13 +339,10 @@ export class CommercialBillingService {
         `Installment "${installment.name}" already has an invoice — readiness cannot be set after billing.`,
       );
     }
-    if (
-      installment.programmeMilestoneId &&
-      installment.programmeMilestone?.status !== 'VERIFIED'
-    ) {
-      throw new BadRequestException(
-        `The linked programme milestone is not yet verified; "${installment.name}" cannot be marked ready to bill.`,
-      );
+    // CONST-COM-011 (strict): the same rule the invoice generator and the cycle apply.
+    const blocker = installmentBillingBlocker(installment);
+    if (blocker) {
+      throw new BadRequestException(installmentBillingBlockerMessage(blocker, installment.name));
     }
 
     // Idempotent: already-ready is a no-op (no error, no duplicate audit event).

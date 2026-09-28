@@ -254,6 +254,7 @@ export class CommercialPrismaRepository {
         name: true,
         percentage: true,
         sortOrder: true,
+        triggerType: true,
         programmeMilestoneId: true,
         programmeMilestone: { select: { id: true, code: true, name: true, status: true } },
         readyToBillAt: true,
@@ -775,7 +776,17 @@ export class CommercialPrismaRepository {
     postedCreditNotesSum: Decimal;
     collectedSum: Decimal;
     collectionData: CollectionDataByInvoice;
+    /** Live invoices not yet posted (draft or approved) — raised, but not billed yet. */
+    draftInvoiceCount: number;
   }> {
+    const draftInvoiceCount = await prisma.clientInvoice.count({
+      where: {
+        organizationId,
+        projectId,
+        documentStatus: { in: ['DRAFT', 'APPROVED'] },
+        postingStatus: { in: ['NOT_POSTED', 'PENDING', 'FAILED'] },
+      },
+    });
     const rawInvoices = await prisma.clientInvoice.findMany({
       where: { organizationId, projectId, postingStatus: 'POSTED' },
       select: {
@@ -809,6 +820,7 @@ export class CommercialPrismaRepository {
         postedCreditNotesSum: new Decimal(0),
         collectedSum: new Decimal(0),
         collectionData: new Map(),
+        draftInvoiceCount,
       };
     }
 
@@ -829,6 +841,7 @@ export class CommercialPrismaRepository {
       postedCreditNotesSum: new Decimal(cnAggregate._sum.totalAmount?.toString() ?? 0),
       collectedSum: new Decimal(allocationAggregate._sum.allocatedAmount?.toString() ?? 0),
       collectionData,
+      draftInvoiceCount,
     };
   }
 

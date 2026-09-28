@@ -280,7 +280,8 @@
       "saveProject": "Save project",
       "saving": "Saving...",
       "discard": "Discard",
-      "backToList": "Projects"
+      "backToList": "Projects",
+      "backToClient": "Back to {client}"
     },
     "detail": {
       "notFound": "This project does not exist, or you do not have access to it.",
@@ -644,6 +645,8 @@
       "variationCreated": "Draft variation created — sent to Commercial for approval",
       "absorbed": "Extra work recorded as internal cost.",
       "separateAdded": "Separate charge added.",
+      "separateDraftCreated": "A draft invoice for it is waiting for review in Billing & collection.",
+      "reviewInBilling": "Review invoice",
       "unavailable": "This route is not available yet.",
       "cancel": "Cancel"
     },
@@ -1161,7 +1164,7 @@
     "logoTooLarge": "Logo must be under 5 MB.",
     "logoUploadFailed": "Could not upload the logo. Try again.",
     "addressLabel": "Legal address",
-    "taxLabel": "Tax / VAT registration number",
+    "taxLabel": "Tax registration number",
     "colorLabel": "Brand color",
     "footerLabel": "Invoice footer note",
     "footerPlaceholder": "e.g. payment instructions or a thank-you note",

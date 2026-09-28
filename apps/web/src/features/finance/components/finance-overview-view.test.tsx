@@ -44,9 +44,16 @@ function overview(
     },
     controls: {
       reconciliation: { state: 'OK', label: 'Reconciled', detail: null },
+      billing: { state: 'OK', label: 'Reconciled', detail: null },
       accountingSetup: { state: 'OK', label: 'Ready', detail: null },
       costBudget: { state: 'OK', label: 'Baselined', detail: null },
       period: { state: 'OK', label: 'Open', detail: null },
+    },
+    billingReconciliation: {
+      invoicedNet: '310000.00',
+      glRevenue: '310000.00',
+      variance: '0.00',
+      reconciled: true,
     },
     reconciliation: {
       projectId: 'p1',
@@ -233,7 +240,8 @@ describe('FinanceOverviewView', () => {
     );
     renderWithProviders(<FinanceOverviewView projectId="p1" />);
 
-    expect(screen.getByText('Reconciled')).toBeInTheDocument();
+    // Procurement and billing both reconcile in this fixture.
+    expect(screen.getAllByText('Reconciled').length).toBeGreaterThan(0);
     expect(screen.getByText(/not a reconciliation variance/i)).toBeInTheDocument();
   });
 
@@ -302,5 +310,14 @@ describe('FinanceOverviewView', () => {
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+});
+
+describe('FinanceOverviewView — billing and general ledger (flow plan PR 4)', () => {
+  it('names what Commercial invoiced against the revenue the ledger posted', async () => {
+    hookMocks.useFinanceOverview.mockReturnValue(ready(overview()));
+    renderWithProviders(<FinanceOverviewView projectId="p1" />);
+    expect(screen.getByText('Billing and general ledger')).toBeInTheDocument();
+    expect(screen.getByText(/Invoiced \$310,000\.00 \(excl\. sales tax\) · Revenue posted \$310,000\.00/)).toBeInTheDocument();
   });
 });

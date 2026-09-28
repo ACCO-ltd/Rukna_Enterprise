@@ -79,9 +79,15 @@ export function BillDocumentHeader({
   bill,
   facts,
   rail,
+  back,
   children,
 }: {
   bill: SupplierBill;
+  /**
+   * Where "back" goes. Defaults to the Accounting bills list; a project workspace passes its
+   * own tab so a bill opened inside a project returns there (flow plan PR 4).
+   */
+  back?: { href: string; label: string };
   /** Facts under the identity — see `useBillFacts`. */
   facts?: DefinitionFact[];
   /** The summary rail, beside the body from `lg`, under it below. */
@@ -164,9 +170,9 @@ export function BillDocumentHeader({
       <DocumentActionBar
         back={
           <Button asChild variant="ghost" className="gap-1.5 px-2">
-            <Link href="/finance/accounting/bills">
+            <Link href={back?.href ?? '/finance/accounting/bills'}>
               <ArrowLeft size={16} aria-hidden="true" />
-              {t('backToList')}
+              {back?.label ?? t('backToList')}
             </Link>
           </Button>
         }

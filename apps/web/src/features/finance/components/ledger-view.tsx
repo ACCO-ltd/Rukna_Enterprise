@@ -268,7 +268,7 @@ export function LedgerView({ projectId }: { projectId: string }) {
         </div>
 
         {selected ? (
-          <EntryDetail line={selected} locale={locale} money={money} onClose={() => setSelected(null)} />
+          <EntryDetail projectId={projectId} line={selected} locale={locale} money={money} onClose={() => setSelected(null)} />
         ) : (
           <aside className="hidden rounded-panel border border-dashed border-border bg-surface px-5 py-6 xl:block">
             <p className="text-body-sm text-muted-foreground">{t('selectHint')}</p>
@@ -314,11 +314,13 @@ function TotalsStrip({
  * somebody failed to fill it in.
  */
 function EntryDetail({
+  projectId,
   line,
   locale,
   money,
   onClose,
 }: {
+  projectId: string;
   line: ProjectLedgerLine;
   locale: 'en' | 'ar';
   money: (amount: string) => string;
@@ -350,9 +352,9 @@ function EntryDetail({
   // people to stop following them.
   const sourceHref =
     line.sourceDocumentType === 'SUPPLIER_BILL' && line.sourceDocumentId
-      ? `/finance/accounting/bills/${line.sourceDocumentId}`
+      ? `/projects/${projectId}/finance/ledger/bills/${line.sourceDocumentId}`
       : line.sourceDocumentType === 'CLIENT_INVOICE' && line.sourceDocumentId
-        ? `/finance/accounting/invoices/${line.sourceDocumentId}`
+        ? `/projects/${projectId}/commercial/invoices/${line.sourceDocumentId}`
         : line.sourceDocumentType === 'MANUAL_JOURNAL'
           ? `/finance/accounting/journals/${line.journalEntryId}`
           : null;

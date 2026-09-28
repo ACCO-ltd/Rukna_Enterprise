@@ -42,20 +42,21 @@ const STEP_CONFIG: Record<
     owner: 'quantitySurveyor',
     dependsOn: ['CLIENT_ACTIVE'],
   },
+  // Straight to the page that does the job, not to a route that redirects to it.
   ACTIVE_MAIN_CONTRACT: {
-    path: 'commercial/contract-security',
+    path: 'commercial/contract-milestones',
     permission: 'view:contract',
     owner: 'commercialTeam',
     dependsOn: ['CLIENT_ACTIVE', 'BOQ_BASELINED'],
   },
   CONTRACT_START_DATE: {
-    path: 'commercial/contract-security',
+    path: 'commercial/contract-milestones',
     permission: 'view:contract',
     owner: 'commercialTeam',
     dependsOn: ['ACTIVE_MAIN_CONTRACT'],
   },
   DELIVERY_TEAM: {
-    path: 'members',
+    path: 'members?add=1',
     permission: 'manage:project-member',
     owner: 'projectManager',
     dependsOn: [],
@@ -155,7 +156,7 @@ export function ProjectReadiness({ project }: { project: ProjectDetail }) {
                   {t(`descriptions.${code}`)}
                 </p>
                 <p className="mt-1 text-caption text-muted-foreground">{t(config.owner)}</p>
-                {unmetDependency ? (
+                {blocked && unmetDependency ? (
                   <p className="mt-2 flex items-center gap-1.5 text-caption font-medium text-warning">
                     <LockKeyhole size={13} aria-hidden="true" />
                     {t('blockedBy', { task: t(`conditions.${unmetDependency}`) })}

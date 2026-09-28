@@ -29,7 +29,8 @@ import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 import { useRecordSignedDate } from '@/features/contracts/hooks/use-contracts';
-import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
+import { useMilestones, useVerifyMilestone } from '@/features/programme/hooks/use-programme';
+import { usePermissions } from '@/features/auth/permissions/can';
 
 import {
   commercialKeys,
@@ -46,8 +47,10 @@ import {
   type InvoiceJourneyPhase,
   type MilestoneItemViewModel,
 } from '../milestone-journey.adapter';
-import { CommercialActivity } from './commercial-activity';
+import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { MilestoneJourney } from './milestone-journey';
+import { LinkMilestoneDialog } from './payment-schedule-panel';
 import { MilestoneDetailPanel } from './milestone-detail-panel';
 import { ReviewForBillingDrawer } from './review-for-billing-drawer';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
@@ -92,6 +95,10 @@ export function ContractMilestonesTab({
   // Slice 3B: real mutation; invalidates current-cycle on success so the adapter
   // re-derives readyToBill from the refreshed API data.
   const markReadyMutation = useMarkReadyToBill(projectId);
+  // Preparing an invoice issues and posts it in one step, so it needs a ledger that can post.
+  // Every route to it — the row button, the detail panel, the Overview card's deep link —
+  // passes through handlePrepareInvoice, so the guard lives here (flow plan A7).
+  const ledgerBlockedForPrepare = useLedgerBlocked();
 
   // Invoice journey state: tracks the issued/sent phase after issuePackage succeeds.
   // The adapter never produces 'invoice-issued' or 'awaiting-payment' — these are
@@ -102,6 +109,12 @@ export function ContractMilestonesTab({
   const [preparingMilestone, setPreparingMilestone] = useState<MilestoneItemViewModel | null>(null);
   const [sendingMilestone, setSendingMilestone] = useState<MilestoneItemViewModel | null>(null);
   const [verifyingMilestone, setVerifyingMilestone] = useState<MilestoneItemViewModel | null>(null);
+  // Strict CONST-COM-011: a work stage bills only on a linked, verified milestone, so linking has
+  // to be possible right here — it used to live only on the retired Payment Schedule tab.
+  const [linkingMilestone, setLinkingMilestone] = useState<MilestoneItemViewModel | null>(null);
+  const { can } = usePermissions();
+  const canLinkMilestones = can('manage:contract');
+  const programmeMilestones = useMilestones(projectId);
 
   function handleMilestoneClick(milestone: MilestoneItemViewModel) {
     setDetailMilestone(milestone);
@@ -119,6 +132,7 @@ export function ContractMilestonesTab({
   }
 
   function handlePrepareInvoice(milestone: MilestoneItemViewModel) {
+    if (ledgerBlockedForPrepare && milestone.userState === 'ready-to-bill') return;
     setDetailOpen(false);
     setPreparingMilestone(milestone);
   }
@@ -185,6 +199,7 @@ export function ContractMilestonesTab({
           onPrepareInvoice={handlePrepareInvoice}
           onSendInvoice={handleSendInvoice}
           onVerifyMilestone={setVerifyingMilestone}
+          onLinkMilestone={canLinkMilestones ? setLinkingMilestone : undefined}
         />
         {/* Money content next — variations and separate charges directly affect what gets
             billed, so a finance reader meets them right after the schedule. Contract-lifecycle
@@ -197,7 +212,7 @@ export function ContractMilestonesTab({
           status={contract.status}
         />
         <ContractSecurityBody projectId={projectId} summary={summary} />
-        <CommercialActivity items={summary.recentActivity} />
+        {/* The activity feed lives on Overview only (flow plan B6) — it was repeated here. */}
       </div>
 
       {/* Detail panel */}
@@ -209,6 +224,7 @@ export function ContractMilestonesTab({
         onOpenChange={setDetailOpen}
         onReviewForBilling={handleReviewForBilling}
         onPrepareInvoice={handlePrepareInvoice}
+        billingBlocked={ledgerBlockedForPrepare}
       />
 
       {/* Review drawer */}
@@ -253,6 +269,17 @@ export function ContractMilestonesTab({
         milestone={verifyingMilestone}
         onClose={() => setVerifyingMilestone(null)}
       />
+
+      {linkingMilestone ? (
+        <LinkMilestoneDialog
+          projectId={projectId}
+          contractId={contract.id}
+          installment={linkingMilestone}
+          milestones={programmeMilestones.data ?? []}
+          milestonesLoading={programmeMilestones.isPending}
+          onDismiss={() => setLinkingMilestone(null)}
+        />
+      ) : null}
     </>
   );
 }
@@ -471,6 +498,10 @@ function HeaderCell({
 
 // ─── Schedule body (data-fetching layer) ──────────────────────────────────────
 
+/** Posting statuses of an invoice that is raised but still to be posted (matches the API's
+ * `draftInvoiceCount`). POSTED is issued; REVERSED is finished, not a draft. */
+const DRAFT_POSTING_STATUSES = new Set<string>(['NOT_POSTED', 'PENDING', 'FAILED']);
+
 function ScheduleBody({
   projectId,
   summary,
@@ -481,6 +512,7 @@ function ScheduleBody({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  onLinkMilestone,
 }: {
   projectId: string;
   summary: CommercialSummaryResponse;
@@ -491,10 +523,12 @@ function ScheduleBody({
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
   onVerifyMilestone: (m: MilestoneItemViewModel) => void;
+  onLinkMilestone?: (m: MilestoneItemViewModel) => void;
 }) {
   const t = useTranslations('commercial');
   const cycleQuery = useCommercialCurrentCycle(projectId);
   const packagesQuery = useBillingPackages(projectId, contractId);
+  const ledgerBlocked = useLedgerBlocked();
 
   if (cycleQuery.isPending) {
     return <Skeleton className="h-48 w-full" />;
@@ -560,15 +594,31 @@ function ScheduleBody({
           }
         : null;
       const journey = invoiceJourneyMap.get(m.id) ?? persistedJourney;
+      // The stage's own invoice exists but is not posted: it has no number and the client has
+      // not been issued anything. The stage must say "Draft invoice", never "Invoice issued" —
+      // Billing & Collection lists the same invoice as a draft, and the two screens must agree.
+      // Only the MILESTONE document decides it: a draft variation invoice on an issued stage
+      // does not un-issue the stage. REVERSED is not a draft (nothing left to post).
+      const draftMilestoneInvoice = billingPackage?.documents.find(
+        (document) =>
+          document.sourceType === 'MILESTONE' && DRAFT_POSTING_STATUSES.has(document.postingStatus),
+      );
+      const hasDraftInvoice = draftMilestoneInvoice !== undefined;
 
       let userState = m.userState;
       // Settlement is authoritative. Delivery describes how an open invoice reached the client;
       // it must never make a partly-paid or paid stage look unpaid again.
       const isSettled = m.userState === 'partially-paid' || m.userState === 'paid';
-      if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
-      if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
+      if (!isSettled && hasDraftInvoice) userState = 'invoice-draft' as const;
+      else if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
+      else if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
 
-      return { ...m, userState, invoiceJourney: journey };
+      return {
+        ...m,
+        userState,
+        invoiceJourney: journey,
+        ...(draftMilestoneInvoice ? { draftInvoiceId: draftMilestoneInvoice.invoiceId } : {}),
+      };
     }),
   };
 
@@ -583,8 +633,11 @@ function ScheduleBody({
         onReviewForBilling={onReviewForBilling}
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
+        onLinkMilestone={onLinkMilestone}
       />
+      <AccountingSetupNotice />
       <MilestoneJourney
+        billingBlocked={ledgerBlocked}
         title={t('contractMilestones.paymentScheduleTitle')}
         viewModel={viewModel}
         onMilestoneClick={onMilestoneClick}
@@ -592,6 +645,12 @@ function ScheduleBody({
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
+        onLinkMilestone={onLinkMilestone}
+        draftInvoiceHref={(invoiceId) =>
+          `/projects/${projectId}/commercial/invoices/${invoiceId}?from=${encodeURIComponent(
+            `/projects/${projectId}/commercial/contract-milestones`,
+          )}`
+        }
       />
       {allBilled && <AllMilestonesBilledBanner projectId={projectId} />}
     </>
@@ -603,11 +662,13 @@ function CommercialDeepLinkAction({
   onReviewForBilling,
   onPrepareInvoice,
   onSendInvoice,
+  onLinkMilestone,
 }: {
   milestones: MilestoneItemViewModel[];
   onReviewForBilling: (milestone: MilestoneItemViewModel) => void;
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
+  onLinkMilestone?: (milestone: MilestoneItemViewModel) => void;
 }) {
   const searchParams = useSearchParams();
   const consumedAction = useRef<string | null>(null);
@@ -630,8 +691,11 @@ function CommercialDeepLinkAction({
       // dialog (SendInvoiceDialog) needs the same milestone view-model the schedule body
       // already built, which is why this is a deep link rather than a duplicated dialog.
       onSendInvoice(milestone);
+    } else if (requestedAction === 'link' && onLinkMilestone && !milestone.programmeMilestone) {
+      // The ribbon's "Link milestone" (strict CONST-COM-011) lands here.
+      onLinkMilestone(milestone);
     }
-  }, [milestones, onPrepareInvoice, onReviewForBilling, onSendInvoice, requestedAction, requestedInstallmentId]);
+  }, [milestones, onLinkMilestone, onPrepareInvoice, onReviewForBilling, onSendInvoice, requestedAction, requestedInstallmentId]);
 
   return null;
 }

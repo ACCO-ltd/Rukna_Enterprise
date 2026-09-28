@@ -173,3 +173,15 @@ credit-note formatting before Phase 2; a committed-BOQ tie-break during the `COM
 overlap (Abdulsalam, non-blocking). Superseding/refining: refines ADR-017 (tab model) and the
 contract-creation-form spec; hardens ADR-023 CONST-COM-012; extends ADR-026 with CONST-COM-023..029;
 consumes ADR-029's tie-out and committed-BOQ model.
+
+## Amendment — 2026-09-27: the tab model follows what shipped
+
+Owner-approved with the project workspace flow plan (`docs/design/project-workspace-flow-plan.md`,
+decision 1). CD-level tab rule **CONST-COM-026 is amended**: a MILESTONE contract shows **three**
+tabs — **Overview · Contract & milestones · Billing & collection** — not the four named above
+(Contract · Payment schedule · Variations · Billing). Slices 7–8 made Overview the universal landing
+tab and folded the payment schedule into Contract & milestones; variations and separate charges
+live in that tab's Contract changes panel. MEASURED_IPC keeps Overview · Applications · Billing &
+collection. Everything else in this ADR stands, including CONST-COM-025 (a blocked action shows its
+reason at the point of action): the Overview card now takes its next action from the current cycle,
+so it never offers what the cycle ribbon says is blocked.

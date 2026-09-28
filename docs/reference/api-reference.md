@@ -750,6 +750,30 @@ project membership.
 | `GET` | `/projects/:projectId/commercial/summary` | Permission-aware commercial summary |
 | `GET` | `/projects/:projectId/commercial/current-cycle` | Server-owned lifecycle stage, blocker and permitted next action |
 | `GET` | `/projects/:projectId/commercial/applications` | IPA → IPC → invoice → settlement chain |
+| `GET` | `/projects/:projectId/commercial/overview` | Commercial overview: contract, financial position, current position, attention |
+| `GET` | `/projects/:projectId/commercial/billing-packages` | Invoices grouped per milestone stage (milestone invoice + variation lines) |
+
+**Overview agrees with the cycle (2026-09-27).** `overview.currentCycle.nextAction` is taken
+from `current-cycle`: it is `null` whenever the cycle is blocked (`MILESTONE_NOT_VERIFIED`) or
+the caller cannot bill (`manage:receivable`), so the card never offers what the ribbon says is
+blocked. `nextAction.label` is kept for compatibility; the web renders its own label from
+`nextAction.kind`. `financialPosition.draftInvoiceCount` counts live invoices raised but not
+yet posted (DRAFT/APPROVED, not POSTED) — they are outside `netBilled`; `null` when money is
+hidden. Each `billing-packages` document carries `postingStatus`: a stage whose invoice is not
+`POSTED` is a draft, never "issued".
+
+**Strict milestone evidence (2026-09-28, ADR-023 amendment).** A `MILESTONE`-trigger installment is
+billable only when linked to a VERIFIED programme milestone. `POST …/installments/:id/ready-to-bill`,
+`POST /invoices/from-installment` and `issue-package` return `400` otherwise, and `current-cycle`
+reports `blockers: ['MILESTONE_NOT_LINKED']` or `['MILESTONE_NOT_VERIFIED']`. `ADVANCE` and
+`TIME_BASED` installments are not gated by this rule.
+
+**Project finance overview — billing control (2026-09-28).** `GET /projects/:projectId/finance/overview`
+now returns `controls.billing` and `billingReconciliation { invoicedNet, glRevenue, variance,
+reconciled }`: posted client-invoice subtotals less posted credit notes (excluding sales tax)
+against the revenue the ledger posted for the project. Money fields are `null` without
+`view:financial-position`. The `ACCOUNTING_SETUP_INCOMPLETE` attention item's `href` now points at
+the page that fixes the first blocker (`/finance/accounting/periods` or `/chart-of-accounts`).
 
 **Metric provenance.** Every money figure in `/summary.metrics` is a `CommercialMetric`
 carrying `{ state, amount, currency, sourceCount, drillTo, asOf }`. `state` distinguishes:
@@ -1387,7 +1411,7 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/invoices` | List client invoices (`?clientId=...&status=...`) |
+| `GET` | `/invoices` | List client invoices (`?clientId=...&projectId=...`; `status` is not implemented — filter client-side). `projectId` added 2026-09-28 (flow plan PR 4). |
 | `POST` | `/invoices/from-ipc` | Generate invoice from a certified IPC |
 | `GET` | `/invoices/:id` | Get invoice with GL status |
 | `POST` | `/invoices/:id/approve` | Approve the invoice |
@@ -1487,7 +1511,7 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/bills` | List supplier bills (`?supplierId=...&status=...`) |
+| `GET` | `/bills` | List supplier bills (`?supplierId=...&projectId=...`). `projectId` matches a bill coded to the project on its header **or any line** (2026-09-28, flow plan PR 4). |
 | `POST` | `/bills` | Create a new supplier bill |
 | `GET` | `/bills/:id` | Get bill with lines and GL status; includes `postedJournalNumber` / `reversalJournalNumber` (ADR-036) |
 | `GET` | `/bills/:id/approvals` | Approval chain(s) raised for the bill — `{ instances: [{ policyName, evaluatedAmount, steps: [{ roleRequired, state, actor, actedAt, notes }] }], directApproval }`. `state`: APPROVED, REJECTED, CURRENT, UPCOMING, SKIPPED, CANCELLED (ADR-036) |

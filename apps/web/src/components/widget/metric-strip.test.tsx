@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { MetricStrip } from './metric-strip';
+import { MetricStrip, segmentRules } from './metric-strip';
 
 vi.mock('next/link', () => ({
   default: ({
@@ -69,5 +69,29 @@ describe('MetricStrip', () => {
       '[class*="border "][class*="rounded"], [class*="shadow-e"], [class*="shadow-panel"]',
     );
     expect(boxed).toHaveLength(0);
+  });
+});
+
+describe('MetricStrip — rules and tone (ADR-038)', () => {
+  it('rules wrapped rows with a top line and never a stray left line', () => {
+    // Four segments: 2 per row at base and sm, 4 in one row at lg.
+    expect(segmentRules(0, 4)).toContain('border-s-0');
+    expect(segmentRules(2, 4)).toMatch(/(^| )border-s-0/); // first of row 2 at base
+    expect(segmentRules(2, 4)).toMatch(/(^| )border-t( |$)/);
+    expect(segmentRules(2, 4)).toContain('lg:border-s');
+    expect(segmentRules(2, 4)).toContain('lg:border-t-0');
+  });
+
+  it('colours a value only when a tone is given', () => {
+    render(
+      <MetricStrip
+        metrics={[
+          { label: 'Overdue', value: '$10.00', tone: 'warning' },
+          { label: 'Collected', value: '$5.00' },
+        ]}
+      />,
+    );
+    expect(screen.getByText('$10.00')).toHaveClass('text-warning');
+    expect(screen.getByText('$5.00')).toHaveClass('text-foreground');
   });
 });

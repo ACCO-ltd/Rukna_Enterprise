@@ -22,6 +22,13 @@ import { ProjectFinancialPositionRepository } from '../infrastructure/project-fi
 const PERIOD_CLOSING_WARNING_DAYS = 14;
 const ACTIVITY_LIMIT = 8;
 
+/** Where an administrator fixes an accounting-readiness blocker. */
+export function accountingSetupHref(code: string | undefined): string {
+  return code === 'NO_OPEN_PERIOD'
+    ? '/finance/accounting/periods'
+    : '/finance/accounting/chart-of-accounts';
+}
+
 /**
  * Everything the Finance Overview shows, in one read.
  *
@@ -59,7 +66,7 @@ export class ProjectFinanceOverviewService {
     const orgId = identity.activeOrganizationId;
     const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
 
-    const [cost, reconciliation, readiness, budgets, period, revenue, unpostedBills] =
+    const [cost, reconciliation, readiness, budgets, period, revenue, unpostedBills, billedNet] =
       await Promise.all([
         this.procurement.getCost(identity, projectId),
         this.reconciliation.getForProject(identity, projectId),
@@ -68,7 +75,11 @@ export class ProjectFinanceOverviewService {
         this.repo.findCurrentPeriod(prisma, orgId),
         this.repo.sumPostedRevenue(prisma, orgId, projectId),
         this.repo.countApprovedUnpostedBills(prisma, orgId, projectId),
+        this.repo.sumPostedBillingNet(prisma, orgId, projectId),
       ]);
+
+    const billingVariance = billedNet.minus(revenue);
+    const billingReconciled = billingVariance.isZero();
 
     const accountingPosition = this.buildAccountingPosition(
       readiness.ready,
@@ -100,11 +111,20 @@ export class ProjectFinanceOverviewService {
       accountingPosition,
       controls: {
         reconciliation: this.reconciliationStatus(reconciliation),
+        billing: billingReconciled
+          ? { state: 'OK', label: 'Reconciled', detail: null }
+          : { state: 'ATTENTION', label: 'Needs review', detail: null },
         accountingSetup: this.setupStatus(readiness),
         costBudget: this.budgetStatus(baselined, draft),
         period: this.periodStatus(periodInfo),
       },
       reconciliation,
+      billingReconciliation: {
+        invoicedNet: mayViewFinancials ? billedNet.toFixed(2) : null,
+        glRevenue: mayViewFinancials ? revenue.toFixed(2) : null,
+        variance: mayViewFinancials ? billingVariance.toFixed(2) : null,
+        reconciled: billingReconciled,
+      },
       period: periodInfo,
       budget: {
         versionNumber: baselined?.versionNumber ?? draft?.versionNumber ?? null,
@@ -247,7 +267,7 @@ export class ProjectFinanceOverviewService {
 
   private buildAttention(input: {
     reconciliation: ProjectFinanceOverviewResponse['reconciliation'];
-    readiness: { ready: boolean; blockers: Array<{ label: string }> };
+    readiness: { ready: boolean; blockers: Array<{ code: string; label: string }> };
     baselined: boolean;
     draft: { versionNumber: number } | null;
     periodInfo: ProjectFinancePeriod | null;
@@ -284,7 +304,9 @@ export class ProjectFinanceOverviewService {
         severity: 'WARNING',
         title: 'Accounting setup is incomplete',
         detail: readiness.blockers.map((b) => b.label).join(', '),
-        href: null,
+        // The page that fixes the first blocker — the "configure" button never rendered while
+        // this was null (flow plan A7).
+        href: accountingSetupHref(readiness.blockers[0]?.code),
       });
     }
 

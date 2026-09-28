@@ -137,3 +137,23 @@ is intentional, not drift:
 **Tracked tech-debt (not blocking):** `ipa.service.ts::getPrefill` reads `contract`/`certificate` via Prisma
 directly in the application layer (an in-file pattern predating this ADR). It should route through
 `IpaPrismaRepository` when that repo's reads are consolidated.
+
+## Amendment — 2026-09-28: CONST-COM-011 is strict for work-completion stages
+
+Owner decision (Abdulsalam, option A). A payment-schedule stage whose trigger is completed work
+(`PaymentTrigger.MILESTONE` — Structure, Partition & Plastering, Installation & Paint …) is billable
+**only** when it is linked to a programme milestone that has been **verified on site**. A missing link
+is not a pass: leaving the link empty would bypass site verification, so it blocks billing exactly as
+an unverified milestone does. There is deliberately no "commercial review is enough" fallback.
+
+- One rule, `installmentBillingBlocker` (`accounts-receivable/domain/installment-billing-eligibility.ts`),
+  applied by the invoice generator (which the billing package also goes through), `markReadyToBill`,
+  and the commercial cycle the ribbon and Overview card read. Reasons: `MILESTONE_NOT_LINKED`,
+  `MILESTONE_NOT_VERIFIED`.
+- Stages whose trigger is not completed work (`ADVANCE`, `TIME_BASED`) are **not** gated by this rule.
+  They need their own trigger and supporting evidence, to be defined separately.
+- Linking a stage to a milestone is available on Contract & milestones ("Link milestone"); it used to
+  exist only on the retired Payment Schedule tab.
+- Open (reported, not changed): ACCO's standard template (`ACCO_STANDARD_PLAN`) marks **Structure 40%**
+  as the advance, so that stage is saved as `ADVANCE` and is not gated. Whether Structure is an advance
+  or a work-completion stage is a decision for the owner and Eng Ahmed.

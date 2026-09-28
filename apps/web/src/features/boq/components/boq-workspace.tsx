@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, History, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Skeleton, useToast } from '@erp/ui';
 
@@ -77,6 +78,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
   const { toast } = useToast();
+  const router = useRouter();
 
   const guidance = useProjectGuidance(projectId);
   const workspaceQuery = useBoqWorkspace(projectId);
@@ -613,6 +615,19 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   ? 'classifier.absorbed'
                   : 'classifier.separateAdded',
             ),
+            // A separate charge raises a draft client invoice as a side effect. Say so, and take
+            // the reader to where it waits for review (flow plan PR 4) — it used to appear in
+            // Billing & collection without a word.
+            ...(result.route === 'SEPARATE'
+              ? {
+                  description: t('classifier.separateDraftCreated'),
+                  duration: 9000,
+                  action: {
+                    label: t('classifier.reviewInBilling'),
+                    onClick: () => router.push(`/projects/${projectId}/commercial/billing-collection`),
+                  },
+                }
+              : {}),
           });
         },
       },

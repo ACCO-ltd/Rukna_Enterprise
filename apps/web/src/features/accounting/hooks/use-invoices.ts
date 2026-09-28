@@ -26,14 +26,17 @@ import type {
  */
 export const invoiceKeys = {
   all: [...accountingKeys.all, 'invoices'] as const,
-  list: (clientId?: string) => [...invoiceKeys.all, 'list', clientId ?? 'all'] as const,
+  list: (filters: { clientId?: string; projectId?: string } = {}) =>
+    [...invoiceKeys.all, 'list', filters.clientId ?? 'all', filters.projectId ?? 'all'] as const,
   detail: (id: string) => [...invoiceKeys.all, 'detail', id] as const,
 };
 
-export function useInvoices(clientId?: string): UseQueryResult<ClientInvoice[], Error> {
+export function useInvoices(
+  filters: { clientId?: string; projectId?: string } = {},
+): UseQueryResult<ClientInvoice[], Error> {
   return useQuery({
-    queryKey: invoiceKeys.list(clientId),
-    queryFn: () => listInvoices(clientId),
+    queryKey: invoiceKeys.list(filters),
+    queryFn: () => listInvoices(filters),
   });
 }
 

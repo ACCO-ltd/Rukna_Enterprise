@@ -24,8 +24,10 @@ import type {
 } from '@erp/types';
 
 import { useOpenInvoiceDocument } from '@/features/accounting/hooks/use-invoices';
+import { MetricStrip } from '@/components/widget/metric-strip';
 import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
+import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 
 import { useCommercialBilling } from '../hooks/use-commercial';
 import {
@@ -231,6 +233,7 @@ function BillingCollectionInner({
     <div className="space-y-4">
       <AttentionList items={summary.attention} />
 
+      <AccountingSetupNotice />
       <ReceivablesSummaryStrip
         position={billing.position}
         financialsVisible={billing.financialsVisible}
@@ -283,35 +286,22 @@ function ReceivablesSummaryStrip({
       ? null
       : (formatMoney(value, currency, locale) ?? null);
 
+  const hasOverdue = position.overdue !== null && parseFloat(position.overdue) > 0;
+
   return (
-    <dl className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-2 lg:grid-cols-4">
-      {(
-        [
-          [t('billed'), money(position.invoiced)],
-          [t('collected'), money(position.collected)],
-          [t('outstanding'), money(position.outstanding)],
-          [t('overdue'), money(position.overdue)],
-        ] as [string, string | null][]
-      ).map(([label, value]) => (
-        <div
-          key={label}
-          className="border-b border-border p-4 last:border-b-0 sm:nth-last-2:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e"
-        >
-          <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            {label}
-          </dt>
-          <dd className="mt-2">
-            {value !== null ? (
-              <LtrValue className="text-h2 font-semibold tabular-nums text-foreground">
-                {value}
-              </LtrValue>
-            ) : (
-              <span className="text-body-sm text-muted-foreground">—</span>
-            )}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <MetricStrip
+      columns={4}
+      metrics={[
+        { label: t('billed'), value: money(position.invoiced) },
+        { label: t('collected'), value: money(position.collected) },
+        { label: t('outstanding'), value: money(position.outstanding) },
+        {
+          label: t('overdue'),
+          value: money(position.overdue),
+          tone: financialsVisible && hasOverdue ? 'warning' : undefined,
+        },
+      ]}
+    />
   );
 }
 
@@ -825,7 +815,9 @@ function OpenInvoiceRow({
       : inv.documentStatus === 'APPROVED' && inv.postingStatus !== 'POSTED'
         ? 'postInvoice'
         : null;
-  const invoiceWorkspaceHref = `/finance/accounting/invoices/${inv.invoiceId}?from=${encodeURIComponent(fromHref)}&fromLabel=${encodeURIComponent(tBilling('title'))}`;
+  // Opens inside the project (flow plan PR 4). The Accounting route still takes ?from= for
+  // the filtered list the reader came from; the project route knows its own way back.
+  const invoiceWorkspaceHref = `/projects/${projectId}/commercial/invoices/${inv.invoiceId}?from=${encodeURIComponent(fromHref)}`;
 
   // Due-status chip display for approaching deadlines
   const dueBadge = (() => {

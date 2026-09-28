@@ -9,8 +9,9 @@
     "label": "Progress sections",
     "today": "Today",
     "review": "Review",
-    "programme": "Programme",
-    "milestones": "Milestones"
+    "milestones": "Milestones",
+    "performance": "Performance",
+    "plan": "Plan & setup"
   },
   "review": {
     "title": "Reports",
@@ -170,7 +171,8 @@
       "submittedBy": "Submitted by",
       "submittedAt": "Submitted",
       "approvedBy": "Approved by",
-      "returnReason": "Return reason"
+      "returnReason": "Return reason",
+      "previousReturnReason": "Previously returned for"
     }
   },
   "measurement": {
@@ -716,6 +718,7 @@
   "masterSchedule": {
     "download": "Download PDF",
     "downloading": "Generating…",
-    "downloadFailed": "Could not generate the master schedule PDF. Please try again."
+    "downloadFailed": "Could not generate the master schedule PDF. Please try again.",
+    "title": "Master schedule"
   }
 }

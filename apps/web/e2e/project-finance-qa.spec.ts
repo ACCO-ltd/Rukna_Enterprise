@@ -90,7 +90,7 @@ async function useTheme(app: Page, theme: string, width: number, height: number)
  *
  * Not on a heading: the four views do not name themselves consistently. Profit & Loss and
  * Ledger open with an `h2` carrying the view name; Cost Control opens with a panel titled
- * "Cost Control" at `h3`; Overview has no heading of its own at all, only the shell's `h1`.
+ * "Cost Control" at `h3`; Overview has no heading of its own at all, only the shell's `h2` (ADR-038).
  * That inconsistency is a real finding and is reported as one, but a QA suite for charts
  * should not be the thing that trips over it — so the anchor is the nav link the shell marks
  * `aria-current="page"`, which every view has and only the current one carries.

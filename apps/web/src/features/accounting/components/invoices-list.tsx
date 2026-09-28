@@ -24,6 +24,8 @@ import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissi
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate } from '@/lib/format';
 
+import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
+
 import { useInvoices, useOpenInvoiceDocument } from '../hooks/use-invoices';
 import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
 import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
@@ -54,10 +56,15 @@ export function InvoicesList() {
     </Button>
   ) : null;
 
-  const invoices = useInvoices();
+  const projectFilter = useProjectFilter();
+  const [filters, setFilters] = useState<FilterValues>(() => {
+    const initial: FilterValues = {};
+    if (projectFilter.initialProjectId) initial.project = projectFilter.initialProjectId;
+    return initial;
+  });
+  const invoices = useInvoices({ projectId: filters.project || undefined });
   // Joined here because `GET /invoices` embeds no client relation.
   const clients = useClients();
-  const [filters, setFilters] = useState<FilterValues>({});
   const today = todayWireDate();
 
   const clientNames = useMemo(() => {
@@ -100,6 +107,7 @@ export function InvoicesList() {
       options: POSTING_STATUSES.map((s) => ({ value: s, label: t(`postingStatus.${s}`) })),
     },
     { key: 'client', type: 'select', label: t('colClient'), options: clientOptions },
+    { key: 'project', type: 'select', label: t('filterByProject'), options: projectFilter.options },
   ];
 
   const sourceText = (invoice: ClientInvoice) => {

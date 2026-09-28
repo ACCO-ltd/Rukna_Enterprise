@@ -778,9 +778,10 @@ export class SupplierBillService {
     });
   }
 
-  async findAll(identity: RequestIdentity, supplierId?: string) {
+  /** Org-wide list, optionally narrowed to a supplier and/or a project (flow plan PR 4). */
+  async findAll(identity: RequestIdentity, filter: { supplierId?: string; projectId?: string } = {}) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, supplierId);
+    return this.repo.findAll(prisma, identity.activeOrganizationId, filter);
   }
 
   async findById(identity: RequestIdentity, id: string) {

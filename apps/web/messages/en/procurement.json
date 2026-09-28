@@ -53,7 +53,8 @@
     "blockedTitle": "Not available yet",
     "permissionDenied": "You do not have permission to perform this action.",
     "moreActions": "More actions",
-    "loading": "Loading"
+    "loading": "Loading",
+    "notInProject": "This bill is not coded to this project."
   },
   "lineType": {
     "MATERIAL": "Material",
@@ -425,7 +426,7 @@
     "billDate": "Bill Date",
     "dueDate": "Due Date",
     "subtotal": "Subtotal",
-    "vat": "VAT",
+    "vat": "Sales tax",
     "totalAmount": "Total",
     "matchStatus": "Matching",
     "empty": "No supplier bills yet.",
@@ -461,8 +462,8 @@
     "noProfilesBody": "A bill line has to name a posting profile that resolves to an expense or cost-of-sales account. None of the profiles in this organisation does. An administrator has to add one before a bill can be created.",
     "invoiceNumberHint": "The supplier's own invoice number, as printed on their document.",
     "netAmount": "Net",
-    "vatAmount": "VAT",
-    "vatHint": "Required. Enter 0 when the line carries no VAT.",
+    "vatAmount": "Sales tax",
+    "vatHint": "Required. Enter 0 when the line carries no sales tax.",
     "expenseProfile": "Expense posting profile",
     "expenseProfileHint": "Determines the GL account debited when this bill is posted. Revenue profiles are not offered.",
     "netDiffers": "Net {net} is {diff} {direction, select, more {more} other {less}} than {qty} × {price} ({computed}), as entered from the supplier's invoice.",
@@ -471,7 +472,7 @@
       "quantity": "Enter a quantity greater than zero.",
       "unitPrice": "Enter a unit price of zero or more.",
       "net": "Enter a net amount of zero or more.",
-      "vat": "Enter a VAT amount of zero or more. Enter 0 if there is none.",
+      "vat": "Enter a sales tax amount of zero or more. Enter 0 if there is none.",
       "profile": "Choose an expense posting profile.",
       "costTarget": "Say where this cost belongs: a project with a BOQ item or a cost category, or mark it not chargeable to a project."
     },
@@ -561,7 +562,7 @@
         "received": "Received",
         "billedQty": "Billed qty",
         "unitPrice": "Unit price",
-        "vat": "VAT",
+        "vat": "Sales tax",
         "amount": "Amount",
         "description": "Description",
         "expenseProfile": "Expense profile",

@@ -53,6 +53,7 @@ import {
 } from '../../variations/domain/variation-order.policy.js';
 import type { CommercialContractValue } from '@erp/types';
 import { CollectionEventsService } from '../../../accounting/accounts-receivable/application/collection-events.service.js';
+import { installmentBillingBlocker } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 
 const ZERO = new Decimal(0);
 
@@ -770,9 +771,10 @@ export class CommercialService {
       // surface it as a cycle blocker (the ribbon renders the reason + a verify link derived from the
       // installment) instead of offering a next action the API would refuse.
       const nextInstallment = built.schedule.installments.find((i) => i.status === 'NEXT');
-      const milestoneBlocked =
-        nextInstallment?.triggerType === 'MILESTONE' &&
-        nextInstallment.programmeMilestone?.status !== 'VERIFIED';
+      // CONST-COM-011 (strict): the same rule the invoice generator and markReadyToBill enforce,
+      // so the ribbon and the Overview card can never offer what the server would refuse.
+      const billingBlocker = nextInstallment ? installmentBillingBlocker(nextInstallment) : null;
+      const milestoneBlocked = billingBlocker !== null;
       const milestoneHref = `/projects/${projectId}/commercial/contract-milestones`;
       return {
         projectId,
@@ -789,7 +791,7 @@ export class CommercialService {
                 href: `${milestoneHref}?installment=${nextInstallment.id}`,
               }
             : null,
-        blockers: milestoneBlocked ? ['MILESTONE_NOT_VERIFIED'] : [],
+        blockers: billingBlocker ? [billingBlocker] : [],
         capabilities: result.capabilities,
         responsibleRole: 'COMMERCIAL_MANAGER',
         asOf,
@@ -1176,8 +1178,10 @@ export class CommercialService {
         dueDate: inst.dueDate ? inst.dueDate.toISOString().slice(0, 10) : null,
         readyToBill: isReady,
         readyToBillAt: inst.readyToBillAt?.toISOString() ?? null,
-        canMarkReadyToBill: status === 'NEXT' && !isReady,
-        canPrepareInvoice: status === 'NEXT' && isReady,
+        // Same strict CONST-COM-011 rule the commands enforce: a flag must never offer what the
+        // server refuses (e.g. a stage marked ready under the old soft gate, or unlinked since).
+        canMarkReadyToBill: status === 'NEXT' && !isReady && installmentBillingBlocker(inst) === null,
+        canPrepareInvoice: status === 'NEXT' && isReady && installmentBillingBlocker(inst) === null,
         status,
         // CONST-COM-011: the linked programme milestone, so the UI can show the evidence gate
         // and block "Generate invoice" until the milestone is verified. Null when unlinked.
@@ -1630,6 +1634,7 @@ export class CommercialService {
         collected: null,
         outstanding: null,
         overdue: null,
+        draftInvoiceCount: null,
       };
     } else {
       const grossIssued = overviewData.invoices.reduce((s, i) => s.plus(i.totalAmount), ZERO);
@@ -1646,6 +1651,7 @@ export class CommercialService {
         collected: overviewData.collectedSum.toFixed(2),
         outstanding: outstanding.toFixed(2),
         overdue: overdue.toFixed(2),
+        draftInvoiceCount: overviewData.draftInvoiceCount,
       };
     }
 
@@ -1688,11 +1694,17 @@ export class CommercialService {
           nextAction: null,
         };
       } else {
-        const milestoneVerified = nextInst.programmeMilestone?.status === 'VERIFIED';
-        const description = nextInst.readyToBill
-          ? 'Marked ready — billing package can be prepared.'
-          : nextInst.programmeMilestone && !milestoneVerified
+        // The cycle is the single source of truth for what may happen next (CONST-COM-011): it
+        // blocks billing while the linked milestone is unverified and withholds the action from
+        // a viewer who cannot generate invoices. The card must never offer what the ribbon above
+        // it says is blocked.
+        // The reason comes from the cycle's blocker — the same code the ribbon renders.
+        const description = cycle.blockers.includes('MILESTONE_NOT_LINKED')
+          ? 'Link this stage to a programme milestone and verify it before billing.'
+          : cycle.blockers.includes('MILESTONE_NOT_VERIFIED')
             ? 'Waiting for work verification before billing.'
+          : nextInst.readyToBill
+            ? 'Marked ready — billing package can be prepared.'
             : 'Commercial review required before billing.';
         currentCycle = {
           installmentId: nextInst.id,
@@ -1701,11 +1713,13 @@ export class CommercialService {
           stage: nextInst.readyToBill ? 'READY_TO_BILL' : 'REVIEW_FOR_BILLING',
           description,
           amount: nextInst.amount,
-          nextAction: {
-            kind: nextInst.readyToBill ? 'PREPARE_INVOICE' : 'MARK_READY',
-            label: nextInst.readyToBill ? 'Prepare billing package' : 'Review for billing',
-            targetId: nextInst.id,
-          },
+          nextAction: cycle.nextAction
+            ? {
+                kind: nextInst.readyToBill ? 'PREPARE_INVOICE' : 'MARK_READY',
+                label: nextInst.readyToBill ? 'Prepare billing package' : 'Review for billing',
+                targetId: nextInst.id,
+              }
+            : null,
         };
       }
     } else if (cycle.stage === 'TERMINAL') {

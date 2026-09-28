@@ -74,13 +74,13 @@
         "FIXED_ASSETS": "Fixed assets",
         "ACCUMULATED_DEPRECIATION": "Accumulated depreciation",
         "PREPAYMENTS": "Prepayments",
-        "VAT_INPUT_RECOVERABLE": "VAT input (recoverable)",
+        "VAT_INPUT_RECOVERABLE": "Sales tax input (recoverable)",
         "OTHER_CURRENT_ASSET": "Other current asset",
         "OTHER_NON_CURRENT_ASSET": "Other non-current asset",
         "ACCOUNTS_PAYABLE": "Accounts payable",
         "UNAPPLIED_CLIENT_RECEIPTS": "Unapplied client receipts",
         "CLIENT_ADVANCE_LIABILITY": "Client advance",
-        "VAT_OUTPUT_PAYABLE": "VAT output (payable)",
+        "VAT_OUTPUT_PAYABLE": "Sales tax output (payable)",
         "OTHER_CURRENT_LIABILITY": "Other current liability",
         "OTHER_NON_CURRENT_LIABILITY": "Other non-current liability",
         "SHARE_CAPITAL": "Share capital",
@@ -102,7 +102,7 @@
       "normalBalanceHint": "Set from the account class. Change it only for a contra account.",
       "contraWarning": "This is the opposite side to what the account class normally carries. That is correct for a contra account such as accumulated depreciation, and wrong for anything else — it inverts the account’s sign in every report while the trial balance still ties.",
       "postingPolicy": "Posting policy",
-      "postingPolicyHint": "A third policy — posting engine or CFO-approved adjustment — exists in the database and is used by the seeded bank and VAT accounts, but the API does not accept it (issue A6). Bank and VAT accounts created here cannot yet be given it.",
+      "postingPolicyHint": "A third policy — posting engine or CFO-approved adjustment — exists in the database and is used by the seeded bank and sales tax accounts, but the API does not accept it (issue A6). Bank and sales tax accounts created here cannot yet be given it.",
       "policy": {
         "UNRESTRICTED": "Unrestricted — manual journals may post here",
         "SYSTEM_ONLY": "System only — posting engine may post here"
@@ -318,7 +318,7 @@
     "colDescription": "Description",
     "colStatus": "Status",
     "colAmount": "Amount",
-    "unnumbered": "Not numbered",
+    "unnumbered": "Not yet numbered",
     "status": {
       "DRAFT": "Draft",
       "SUBMITTED": "Submitted",
@@ -481,7 +481,7 @@
     "actualCostHint": "Posted to the general ledger",
     "uncommittedBudget": "Uncommitted budget",
     "uncommittedBudgetHint": "Budget still free to spend",
-    "basisNote": "Certified is net of retention and advance recovery and excludes VAT. Invoiced, received and outstanding include VAT, so they are not directly comparable with certified."
+    "basisNote": "Certified is net of retention and advance recovery and excludes sales tax. Invoiced, received and outstanding include sales tax, so they are not directly comparable with certified."
   },
   "balanceSheet": {
     "title": "Balance Sheet",
@@ -580,6 +580,7 @@
     "filterByStatus": "Approval status",
     "allStatuses": "All statuses",
     "filterByPostingStatus": "Posting status",
+    "filterByProject": "Project",
     "allPostingStatuses": "All posting statuses",
     "countLabel": "{count, plural, =0 {No invoices} one {# invoice} other {# invoices}}",
     "colNumber": "Number",
@@ -616,7 +617,7 @@
     "fieldInvoiceDate": "Invoice date",
     "fieldDueDate": "Due date",
     "fieldSubtotal": "Subtotal",
-    "fieldVat": "VAT",
+    "fieldVat": "Sales tax",
     "fieldTotal": "Total",
     "fieldOutstanding": "Outstanding",
     "fieldDraftTotal": "Draft total",
@@ -676,13 +677,13 @@
       "colCredit": "Credit",
       "totals": "Totals",
       "confirm": "Post to GL",
-      "unbalanced": "This invoice does not balance — its total differs from its subtotal plus VAT. Posting is blocked. Contact your administrator.",
+      "unbalanced": "This invoice does not balance — its total differs from its subtotal plus sales tax. Posting is blocked. Contact your administrator.",
       "notConfigured": "Cannot post — no account is configured as {role}. Ask your administrator to set one up.",
       "ambiguous": "Cannot post — {codes} are both configured as {role}. Exactly one is required. Ask your administrator to correct the chart of accounts.",
       "role": {
         "AR_CONTROL": "Accounts Receivable",
         "REVENUE": "Revenue",
-        "VAT_OUTPUT": "Output VAT",
+        "VAT_OUTPUT": "Output sales tax",
         "UNAPPLIED_RECEIPTS": "Unapplied Receipts",
         "AP_CONTROL": "Accounts Payable",
         "SUPPLIER_ADVANCE": "Supplier Advance"
@@ -793,8 +794,8 @@
       "lineCard": "Line {n}",
       "emptyLinesTitle": "Choose a source to add its line",
       "emptyLinesHint": "The line and its amount are copied from the IPC, milestone or separate charge you pick.",
-      "totalBeforeVat": "Amount before VAT",
-      "vatNote": "VAT is calculated when the invoice is created.",
+      "totalBeforeVat": "Amount before sales tax",
+      "vatNote": "Sales tax is calculated when the invoice is created.",
       "amountsHidden": "Amounts are hidden for your role.",
       "errors": {
         "kindRequired": "Choose what you're invoicing.",
@@ -807,7 +808,8 @@
       "saveFailed": "The invoice could not be saved.",
       "noPermissionTitle": "You can't raise client invoices",
       "noPermissionBody": "Creating a client invoice needs permission to manage receivables."
-    }
+    },
+    "notInProject": "This invoice does not belong to this project."
   },
   "openingBalance": {
     "title": "Opening Balance Migration",
