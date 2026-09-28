@@ -5,6 +5,8 @@ import {
   DprStatus,
   type RequestIdentity,
   type ApplyScheduleTemplateResponse,
+  type CollectionProgressSignalResponse,
+  type PhysicalFinancialSignalResponse,
   type ProgressActualPoint,
   type ProgressCurvePoint,
   type ProgressCurveResponse,
@@ -38,6 +40,9 @@ import {
 } from '../../../../platform/workflows/application/command-governance.service.js';
 import { weightedPackagePercent } from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
+// The single server-owned money-visibility definition (ADR-029 §8 A-2) — reused, not re-derived, so
+// the Progress signals hide money from exactly the roles the BOQ and Commercial read models do.
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 
 const ZERO = new Decimal(0);
 
@@ -978,7 +983,10 @@ export class ProgressService {
    * A project that has set no budget has not consumed 0% of it, so INSUFFICIENT_DATA is the
    * honest answer rather than a ratio against a number nobody agreed.
    */
-  async getPhysicalFinancialSignal(identity: RequestIdentity, projectId: string) {
+  async getPhysicalFinancialSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<PhysicalFinancialSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -998,11 +1006,16 @@ export class ProgressService {
       'COST_AHEAD',
     );
 
+    // Money-blind callers (PM / Site Engineer, per the owner's financial-visibility decision) get
+    // the ratio and status but never the amounts behind them — the cost tier gates cost figures.
+    const { canViewCost } = resolveBoqVisibility(identity);
+
     return {
       projectId,
       physicalPercent,
-      actualCost: fp.actualCost,
-      budgetTotal: fp.budgetTotal,
+      actualCost: canViewCost ? fp.actualCost : null,
+      budgetTotal: canViewCost ? fp.budgetTotal : null,
+      moneyVisible: canViewCost,
       costConsumedPercent,
       divergence,
       status,
@@ -1017,7 +1030,10 @@ export class ProgressService {
    * exposure if the advance is spent before the work is delivered; a large negative gap (work ahead of
    * cash) is ACCO financing the client. The revenue read crosses into accounting — the allowed direction.
    */
-  async getCollectionProgressSignal(identity: RequestIdentity, projectId: string) {
+  async getCollectionProgressSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<CollectionProgressSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -1037,11 +1053,16 @@ export class ProgressService {
       'WORK_AHEAD',
     );
 
+    // Contract value and client revenue are the commercial (margin) tier — hidden from money-blind
+    // callers; the collected % and status stay, since a ratio discloses no amount.
+    const { canViewMargin } = resolveBoqVisibility(identity);
+
     return {
       projectId,
       physicalPercent,
-      contractValue: fp.contractValue,
-      receivedRevenue: fp.receivedRevenue,
+      contractValue: canViewMargin ? fp.contractValue : null,
+      receivedRevenue: canViewMargin ? fp.receivedRevenue : null,
+      moneyVisible: canViewMargin,
       collectedPercent,
       divergence,
       status,

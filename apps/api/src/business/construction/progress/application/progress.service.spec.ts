@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgressService } from './progress.service.js';
 
@@ -995,6 +995,63 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.collectedPercent).toBeNull();
     expect(res.status).toBe('INSUFFICIENT_DATA');
+  });
+
+  // ── Money visibility (Progress redesign): PM / Site Engineer are money-blind ──────────────
+
+  const signalFixture = {
+    workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+    measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
+    fp: { actualCost: '510', budgetTotal: '1000', contractValue: '1000', receivedRevenue: '700' },
+  };
+  /** A finance caller: the legacy commercial gate carries both money tiers. */
+  const financeIdentity: RequestIdentity = {
+    ...identity,
+    permissions: [PERMISSIONS.projectsView, PERMISSIONS.financialPositionView],
+  };
+  /** A money-blind caller (PM / Site Engineer): view:project only, no cost or margin tier. */
+  const moneyBlindIdentity: RequestIdentity = { ...identity, permissions: [PERMISSIONS.projectsView] };
+
+  it('signal: shows cost amounts to a caller with the cost tier', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(financeIdentity, 'p-1');
+    expect(res).toMatchObject({ actualCost: '510', budgetTotal: '1000', moneyVisible: true, costConsumedPercent: 51 });
+  });
+
+  it('signal: nulls cost amounts for a money-blind caller but keeps the ratio and status', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(moneyBlindIdentity, 'p-1');
+    expect(res.actualCost).toBeNull();
+    expect(res.budgetTotal).toBeNull();
+    expect(res.moneyVisible).toBe(false);
+    expect(res.costConsumedPercent).toBe(51);
+    expect(res.status).toBe('COST_AHEAD');
+  });
+
+  it('collection signal: shows contract value and revenue to a caller with the commercial tier', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(financeIdentity, 'p-1');
+    expect(res).toMatchObject({ contractValue: '1000', receivedRevenue: '700', moneyVisible: true, collectedPercent: 70 });
+  });
+
+  it('collection signal: nulls contract value and revenue for a money-blind caller but keeps the ratio and status', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(moneyBlindIdentity, 'p-1');
+    expect(res.contractValue).toBeNull();
+    expect(res.receivedRevenue).toBeNull();
+    expect(res.moneyVisible).toBe(false);
+    expect(res.collectedPercent).toBe(70);
+    expect(res.status).toBe('CASH_AHEAD');
+  });
+
+  it('collection signal: the cost tier alone (Construction Director) does not reveal contract revenue', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(
+      { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost] },
+      'p-1',
+    );
+    expect(res.contractValue).toBeNull();
+    expect(res.receivedRevenue).toBeNull();
   });
 
   it('listDprs: resolves preparedByName for a known preparer and leaves unknown ids undefined', async () => {

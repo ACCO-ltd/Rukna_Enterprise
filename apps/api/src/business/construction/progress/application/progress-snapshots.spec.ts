@@ -9,7 +9,8 @@ import { ProgressService } from './progress.service.js';
  * module (tested separately). These specs mock the repo to prove orchestration + tenancy + the
  * unique-per-period guard.
  */
-const identity = { userId: 'u1', activeOrganizationId: 'o1' } as never;
+// `permissions` is read by the signal's money-visibility check; the snapshot only freezes the ratio.
+const identity = { userId: 'u1', activeOrganizationId: 'o1', permissions: [] } as never;
 
 interface SnapshotRow {
   id: string;

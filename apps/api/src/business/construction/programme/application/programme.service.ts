@@ -5,6 +5,9 @@ import type { MilestoneReleaseLine, ProgrammeMilestoneResponse, RequestIdentity 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgrammeRepository } from '../infrastructure/programme.repository.js';
+// The single server-owned money-visibility definition (ADR-029 §8 A-2). Release amounts are contract
+// revenue — the commercial (margin) tier — so money-blind roles (PM / Site Engineer) see the % only.
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import type { CreateMilestoneDto, VerifyMilestoneDto } from '../presentation/dto/programme.dto.js';
 
 /**
@@ -46,7 +49,8 @@ export class ProgrammeService {
       identity.activeOrganizationId,
       projectId,
     );
-    return milestones.map((m) => toMilestoneResponse(m));
+    const { canViewMargin } = resolveBoqVisibility(identity);
+    return milestones.map((m) => toMilestoneResponse(m, canViewMargin));
   }
 
   /** Verify a milestone — the stage is complete. Only a PLANNED milestone can be verified. */
@@ -108,8 +112,9 @@ function isoDate(value: Date | null): string | null {
  * Derive one release line. `amount` = contractValue × percentage, fixed to 2 decimals with Decimal —
  * identical rounding to the commercial payment schedule (buildPaymentSchedule). `invoiced` reflects
  * whether a ClientInvoice was generated from this installment (the 1:1 clientInvoice relation exists).
+ * `amount` is null when the caller may not see commercial money; the percentage stays.
  */
-function toReleaseLine(inst: IncludedReleaseInstallment): MilestoneReleaseLine {
+function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean): MilestoneReleaseLine {
   const amount = new Decimal(inst.contract.contractValue.toString()).mul(
     new Decimal(inst.percentage.toString()),
   );
@@ -118,13 +123,16 @@ function toReleaseLine(inst: IncludedReleaseInstallment): MilestoneReleaseLine {
     name: inst.name,
     percentage: inst.percentage.toString(),
     triggerType: inst.triggerType,
-    amount: amount.toFixed(2),
+    amount: moneyVisible ? amount.toFixed(2) : null,
     currency: inst.contract.currency,
     invoiced: inst.clientInvoice !== null,
   };
 }
 
-function toMilestoneResponse(m: StoredMilestoneWithReleases): ProgrammeMilestoneResponse {
+function toMilestoneResponse(
+  m: StoredMilestoneWithReleases,
+  moneyVisible: boolean,
+): ProgrammeMilestoneResponse {
   return {
     id: m.id,
     projectId: m.projectId,
@@ -139,6 +147,6 @@ function toMilestoneResponse(m: StoredMilestoneWithReleases): ProgrammeMilestone
     verifiedBy: m.verifiedBy,
     verifiedAt: m.verifiedAt ? m.verifiedAt.toISOString() : null,
     // Installments are already ordered by (sortOrder, name) in the repo query.
-    releases: m.installments.map(toReleaseLine),
+    releases: m.installments.map((inst) => toReleaseLine(inst, moneyVisible)),
   };
 }

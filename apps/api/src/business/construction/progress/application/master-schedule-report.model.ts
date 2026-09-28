@@ -153,8 +153,12 @@ function toPercentLabel(fraction: string): string {
   return `${Number(pct.toFixed(2))}%`;
 }
 
-/** "100000.00" + "USD" → "USD 100,000.00" (thousands-grouped, 2dp). */
-function toAmountLabel(amount: string, currency: string): string {
+/**
+ * "100000.00" + "USD" → "USD 100,000.00" (thousands-grouped, 2dp). A null amount means the caller
+ * may not see commercial money — shown as a neutral dash, never as 0.
+ */
+function toAmountLabel(amount: string | null, currency: string): string {
+  if (amount === null) return '—';
   const n = Number(amount);
   if (Number.isNaN(n)) return `${currency} ${amount}`;
   const grouped = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

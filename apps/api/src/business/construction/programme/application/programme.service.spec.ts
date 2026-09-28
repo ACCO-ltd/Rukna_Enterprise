@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgrammeService } from './programme.service.js';
 
@@ -9,6 +9,12 @@ const identity: RequestIdentity = {
   tenantSlug: 'acco',
   roles: [],
   permissions: [],
+};
+
+/** A caller with the commercial money tier (finance / exec): release amounts are visible. */
+const financeIdentity: RequestIdentity = {
+  ...identity,
+  permissions: [PERMISSIONS.projectsView, PERMISSIONS.financialPositionView],
 };
 
 function build(over: { milestone?: unknown; milestones?: unknown[] } = {}) {
@@ -114,7 +120,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
         milestones: [storedMilestone({ installments: [releaseInstallment()] })],
       });
 
-      const [milestone] = await service.listMilestones(identity, 'p-1');
+      const [milestone] = await service.listMilestones(financeIdentity, 'p-1');
 
       expect(milestone.releases).toEqual([
         {
@@ -138,7 +144,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
         ],
       });
 
-      const [milestone] = await service.listMilestones(identity, 'p-1');
+      const [milestone] = await service.listMilestones(financeIdentity, 'p-1');
 
       expect(milestone.releases).toHaveLength(1);
       expect(milestone.releases[0].invoiced).toBe(true);
@@ -149,7 +155,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
         milestones: [storedMilestone({ installments: [] })],
       });
 
-      const [milestone] = await service.listMilestones(identity, 'p-1');
+      const [milestone] = await service.listMilestones(financeIdentity, 'p-1');
 
       expect(milestone.releases).toEqual([]);
     });
@@ -170,9 +176,44 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
         ],
       });
 
-      const [milestone] = await service.listMilestones(identity, 'p-1');
+      const [milestone] = await service.listMilestones(financeIdentity, 'p-1');
 
       expect(milestone.releases[0].amount).toBe('33.36');
+    });
+
+    it('money-blind caller (PM / Site Engineer): amount is null, percentage and invoiced stay', async () => {
+      const { service } = build({
+        milestones: [
+          storedMilestone({
+            installments: [releaseInstallment({ clientInvoice: { id: 'inv-1' } })],
+          }),
+        ],
+      });
+
+      const [milestone] = await service.listMilestones(
+        { ...identity, permissions: [PERMISSIONS.projectsView] },
+        'p-1',
+      );
+
+      expect(milestone.releases[0]).toMatchObject({
+        amount: null,
+        percentage: '0.3000',
+        currency: 'USD',
+        invoiced: true,
+      });
+    });
+
+    it('the cost tier alone (Construction Director) does not reveal release amounts', async () => {
+      const { service } = build({
+        milestones: [storedMilestone({ installments: [releaseInstallment()] })],
+      });
+
+      const [milestone] = await service.listMilestones(
+        { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost] },
+        'p-1',
+      );
+
+      expect(milestone.releases[0].amount).toBeNull();
     });
 
     it('preserves the repo order of releases across installments', async () => {
@@ -187,7 +228,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
         ],
       });
 
-      const [milestone] = await service.listMilestones(identity, 'p-1');
+      const [milestone] = await service.listMilestones(financeIdentity, 'p-1');
 
       expect(milestone.releases.map((r) => r.installmentId)).toEqual(['a', 'b']);
       expect(milestone.releases.map((r) => r.triggerType)).toEqual(['ADVANCE', 'TIME_BASED']);

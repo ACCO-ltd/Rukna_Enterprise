@@ -251,12 +251,22 @@ export interface IpaPrefillResponse {
 }
 
 // ADR-021/023: physical-vs-financial early warning for the Finance/Overview cockpit.
+//
+// Money visibility (Progress redesign): the money fields are null when the caller lacks the cost
+// tier (`resolveBoqVisibility(...).canViewCost` — PM / Site Engineer are money-blind). Ratios and
+// status stay populated; `moneyVisible` says which reading of a null applies.
 export interface PhysicalFinancialSignalResponse {
   projectId: string;
   physicalPercent: number;
-  actualCost: string;
-  /** Total of the BASELINED cost budget. Null when the project has never baselined one. */
+  /** Posted actual cost. Null only when money is hidden from the caller (`moneyVisible: false`). */
+  actualCost: string | null;
+  /**
+   * Total of the BASELINED cost budget. Null when the project has never baselined one, or when
+   * money is hidden from the caller.
+   */
   budgetTotal: string | null;
+  /** False when the caller may not see money: the amount fields above are then null. */
+  moneyVisible: boolean;
   /**
    * actualCost ÷ budgetTotal × 100. Null without a baselined budget — a project with no
    * budget has not consumed 0% of it, and the signal reads INSUFFICIENT_DATA instead.
@@ -270,11 +280,18 @@ export interface PhysicalFinancialSignalResponse {
 }
 
 // ADR-021/023: collection-vs-progress early warning — cash collected vs work built.
+//
+// Money visibility (Progress redesign): contractValue / receivedRevenue are null when the caller
+// lacks the commercial tier (`resolveBoqVisibility(...).canViewMargin`). Ratios and status remain.
 export interface CollectionProgressSignalResponse {
   projectId: string;
   physicalPercent: number;
+  /** Null when there is no contract value yet, or when money is hidden from the caller. */
   contractValue: string | null;
+  /** Null when there is no contract yet, or when money is hidden from the caller. */
   receivedRevenue: string | null;
+  /** False when the caller may not see money: contractValue / receivedRevenue are then null. */
+  moneyVisible: boolean;
   /** receivedRevenue ÷ contractValue × 100. Null when there is no contract value yet. */
   collectedPercent: number | null;
   /** collectedPercent − physicalPercent (positive = cash ahead of work). */
@@ -592,8 +609,11 @@ export interface MilestoneReleaseLine {
   /** Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage. */
   percentage: string;
   triggerType: `${PaymentTrigger}`;
-  /** contractValue × percentage, fixed to 2 decimals (money). */
-  amount: string;
+  /**
+   * contractValue × percentage, fixed to 2 decimals (money). Null when the caller lacks the
+   * commercial money tier (`resolveBoqVisibility(...).canViewMargin`) — percentage stays visible.
+   */
+  amount: string | null;
   currency: string;
   /** True when a ClientInvoice has been generated from this installment. */
   invoiced: boolean;
