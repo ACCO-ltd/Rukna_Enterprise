@@ -545,6 +545,69 @@ export class VariationOrderService {
    * client. Extracted so both the orchestrator's shared-tx path and the standalone `$transaction`
    * path write identically; the invariant is already validated by the caller before this runs.
    */
+  /**
+   * Commercial redesign 2026-09-28 — undo the billing realization recorded against DRAFT invoices that
+   * are being cancelled ("Delete draft"), so each variation reads unbilled again and can ride a later
+   * package.
+   *
+   * A realization row against a draft is not yet a claim on the client: the draft never reached the
+   * ledger, it has no number, and the invoice is being cancelled in the same transaction. Removing the
+   * row (rather than appending a reversing one) is what keeps the `@@unique([variationId,
+   * installmentId])` exactly-once backstop usable for the re-prepared package. Each removal is audited
+   * with the full row, so the history is kept in the audit log.
+   *
+   * Refuses — and changes nothing — if any matching row names a POSTED (or otherwise ledger-bound)
+   * invoice: posted billing is undone by a credit note, never by deleting its ledger row. Must run in
+   * the caller's transaction (the one cancelling the drafts).
+   */
+  async releaseBillingForCancelledDrafts(
+    identity: RequestIdentity,
+    clientInvoiceIds: string[],
+    tx: Prisma.TransactionClient,
+  ): Promise<Array<{ variationId: string; amount: string; treatment: VariationAllocationTreatment }>> {
+    if (clientInvoiceIds.length === 0) return [];
+    const orgId = identity.activeOrganizationId;
+    const rows = await this.repo.findAllocationsForInvoices(tx, orgId, clientInvoiceIds);
+    const bound = rows.filter(
+      (r) => r.clientInvoice && !['NOT_POSTED', 'FAILED'].includes(r.clientInvoice.postingStatus),
+    );
+    if (bound.length > 0) {
+      throw new ConflictException(
+        'A variation billing line belongs to an issued invoice and cannot be released; issue a credit note instead.',
+      );
+    }
+    if (rows.length === 0) return [];
+    await this.repo.deleteAllocations(
+      tx,
+      orgId,
+      rows.map((r) => r.id),
+    );
+    for (const r of rows) {
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'DELETE',
+        resourceType: 'VariationOrder',
+        resourceId: r.variationId,
+        sourceCommand: 'variation.releaseDraftBilling',
+        eventType: 'VARIATION_BILLING_RELEASED',
+        idempotencyKey: `variation-billing-release-${r.id}`,
+        before: {
+          allocationId: r.id,
+          amount: new Decimal(r.amount.toString()).toFixed(2),
+          treatment: r.treatment,
+          clientInvoiceId: r.clientInvoiceId,
+          installmentId: r.installmentId,
+        },
+      });
+    }
+    return rows.map((r) => ({
+      variationId: r.variationId,
+      amount: new Decimal(r.amount.toString()).toFixed(2),
+      treatment: r.treatment,
+    }));
+  }
+
   private async writeAllocation(
     client: Prisma.TransactionClient,
     data: {

@@ -690,6 +690,12 @@ The `409` approval path follows ADR-015 re-drive: approve the instance, then re-
 
 > `FINAL_ACCOUNT_PENDING` is set automatically when the parent project reaches `PRACTICAL_COMPLETION`. The user cannot set it manually.
 
+> **Activation requires the signed date (D3, 2026-09-28).** `POST /contracts/:id/activate` returns
+> **`400`** with `error.code = CONTRACT_SIGNED_DATE_REQUIRED` when the contract has no `signedDate`.
+> Record it first with `PATCH /contracts/:id/signed-date` (`{ "signedDate": "YYYY-MM-DD" }`, allowed on
+> DRAFT and on any non-terminal contract). `POST /contracts/record-signed` captures the date up front
+> and is unaffected.
+
 > **Commercial term lifecycle gate (CONST-COM-001 / ADR-017).** The retention, advance,
 > guarantee (add), and milestone (add) endpoints below, and `PATCH /contracts/:id`, mutate
 > the commercial **baseline** and are accepted only while the contract is `DRAFT`. On any
@@ -812,6 +818,35 @@ reports `blockers: ['MILESTONE_NOT_LINKED']` or `['MILESTONE_NOT_VERIFIED']`. `A
 An `ADVANCE` installment is billable once the contract is executed (`ACTIVE`) —
 otherwise `400` with reason `CONTRACT_NOT_ACTIVE`; no site evidence is required. `TIME_BASED`
 installments are not gated by this rule.
+
+**Commercial tab redesign (2026-09-28, `docs/design/commercial-tab-implementation.md`).** All
+additive; types in `@erp/types` (`construction.ts`, section "Commercial tab redesign"). Money is
+`null` without the margin tier (`resolveBoqVisibility(identity).canViewMargin` — `view-margin:boq` or
+`view:financial-position`), never `"0"`. Refusals are `400` with the reason in `error.code`.
+
+| Method | Path | Permission | Returns |
+|---|---|---|---|
+| `GET` | `/projects/:projectId/commercial/workspace` | `view:contract` | `CommercialWorkspaceResponse` — contract facts, bar facts, ranked `todo`, capabilities |
+| `GET` | `/projects/:projectId/commercial/installments/:installmentId/prepare-preview` | `view:contract` + `manage:receivable` | `CommercialPreparePreviewResponse` (`taxRate` = the AR invoice rate); `400 STAGE_ALREADY_INVOICED` |
+| `POST` | `/projects/:projectId/commercial/installments/:installmentId/prepare-package` | `view:contract` + `manage:receivable` | `201` `CommercialPreparePackageResponse` — DRAFTS only (stage + one per selected VO addition; omissions net into the stage). Records `readyToBillAt/By` when unset. `400`: `CONTRACT_NOT_ACTIVE`, `MILESTONE_NOT_LINKED`, `MILESTONE_NOT_VERIFIED`, `STAGE_ALREADY_INVOICED`, `VARIATION_NOT_BILLABLE`, `INVALID_DUE_DATE` |
+| `POST` | `/projects/:projectId/commercial/invoices/:invoiceId/issue` | `view:contract` + `manage:receivable` | `CommercialIssueInvoiceResponse` — approve + number + post the draft and every draft of its stage package (a separate charge alone) in one transaction; org branding re-snapshotted first. Idempotent. `400 INVOICE_CANCELLED`, or the posting gate (`installmentBillingBlocker(at:'post')`) |
+| `DELETE` | `/projects/:projectId/commercial/invoices/:invoiceId` | `view:contract` + `manage:receivable` | `CommercialDeleteDraftInvoiceResponse` — cancels the draft and its package drafts, releases their variation allocations, frees the stage to be prepared again. `400 INVOICE_ALREADY_ISSUED` / `INVOICE_CANCELLED` |
+| `GET` | `/projects/:projectId/commercial/invoices/:invoiceId` | `view:contract` | `CommercialInvoiceDocumentResponse` — issuer (live branding for drafts, frozen snapshot once posted; `logoUrl` short-lived), lines, lifecycle `DRAFT → ISSUED → SENT → PAID` / `CANCELLED`, capabilities |
+| `GET` | `/projects/:projectId/commercial/statement` | `view:contract` | `CommercialClientStatementResponse` — posted invoices (debit), posted credit notes and receipt allocations (credit), running balance, oldest first |
+
+- `POST …/installments/:installmentId/issue-package` is **deprecated** (kept one release): it now
+  also posts drafts created by `prepare-package`, so a prepared VO draft is never orphaned.
+- Every route asserts the installment / invoice belongs to `:projectId` (`404` otherwise).
+- Payment schedule rows (`current-cycle.paymentSchedule.installments[]`) gain `billingBlocker`
+  (raise gate, `null` once invoiced), `expectedDate` (MILESTONE → milestone forecast ?? baseline;
+  TIME_BASED → due date; ADVANCE → null), `releasedBy` (`verifiedAt` = `ProgrammeMilestone.verifiedAt`,
+  falling back to `actualDate`), `invoiceId`, `invoiceState` (`DRAFT` | `ISSUED`; cancelled ignored).
+- Money leaks closed: `overview.contract.baseContractValue/currentContractValue` and
+  `overview.attention[].amount/disputedAmount/promisedAmount` are now `string | null`;
+  `billing-packages` uses the margin-tier rule. One overdue rule everywhere: whole UTC days past
+  `dueDate` > 0, server clock.
+- `billing.receipts[]` gain `depositAccountLabel` ("Bank · CUR ···1234") and `receiptNumber`
+  (always `null` today — receipts carry no document number column yet).
 
 **Project finance overview — billing control (2026-09-28).** `GET /projects/:projectId/finance/overview`
 now returns `controls.billing` and `billingReconciliation { invoicedNet, glRevenue, variance,

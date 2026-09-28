@@ -185,3 +185,40 @@ live in that tab's Contract changes panel. MEASURED_IPC keeps Overview · Applic
 collection. Everything else in this ADR stands, including CONST-COM-025 (a blocked action shows its
 reason at the point of action): the Overview card now takes its next action from the current cycle,
 so it never offers what the cycle ribbon says is blocked.
+
+## Amendment 2026-09-28: prepare / issue split, activation needs a signed date
+
+Owner-approved with the Commercial tab redesign (`docs/design/commercial-tab-implementation.md`,
+decisions D1–D8).
+
+- **D1: Prepare ≠ Issue.** `issuePackage` is split. `POST …/installments/:id/prepare-package` creates
+  the stage's DRAFT invoice plus one DRAFT per selected variation addition (omissions net into the
+  stage subtotal) and records the variation allocations, but approves and posts nothing. `POST
+  …/invoices/:id/issue` approves, numbers and posts the draft and every draft of its stage package in
+  one transaction (a separate charge on its own). The draft review is the human checkpoint.
+  `issue-package` stays for one release, deprecated. It now posts every unposted draft of the package
+  read back from the allocation ledger, so a prepared VO draft can never be orphaned (the defect that
+  retired the old two-step flow).
+- **Delete draft.** `DELETE …/invoices/:id` cancels an unposted draft and the rest of its package
+  (`documentStatus = CANCELLED`, `cancelledAt/By/Reason`). It releases the unique source tag
+  (`sourceInstallmentId` / `sourceBoqNodeId` set to null) so the stage or separate charge can be
+  prepared again, and it removes the variation-billing allocation rows recorded against those drafts
+  (each removal audited as `VARIATION_BILLING_RELEASED`). This refines CONST-COM-028's append-only
+  ledger for one case only: a draft never reached the GL. Rows behind a posted invoice are never
+  removed; posted billing is undone by a credit note. The command refuses if any such row matches.
+- **D2.** Preparing a stage sets `readyToBillAt/By` when unset, with its `MILESTONE_READY_TO_BILL`
+  audit event. The ready-to-bill routes remain for one release.
+- **D3.** `activate` refuses without `signedDate` (`400 CONTRACT_SIGNED_DATE_REQUIRED`).
+  `record-signed` is unaffected. Gaps are back-filled with `PATCH /contracts/:id/signed-date`.
+- **D5: money visibility.** Every Commercial money figure follows the margin tier
+  (`resolveBoqVisibility`), including the overview's contract values and attention amounts and the
+  billing-packages read. The overdue rule is the same in every read model: whole UTC days past the
+  due date > 0, measured against the server clock.
+- **D8: branding.** Issue re-snapshots the organisation branding onto each draft before posting and
+  drops any draft PDF rendered earlier. Posted invoices keep their frozen snapshot.
+- **Tax rate source.** The 5% sales-tax literal that was repeated in four AR generation paths now
+  lives once in `accounts-receivable/domain/client-invoice-tax.ts`. The prepare preview reads it from
+  there. `TaxCode` / `defaultOutputTaxCodeId` are still not wired into AR invoicing; wiring them would
+  change posting behaviour and needs its own decision.
+
+No migration, no new status, no new permission. `installmentBillingBlocker()` semantics are unchanged.
