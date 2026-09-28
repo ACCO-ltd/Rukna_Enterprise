@@ -35,6 +35,7 @@ function build(over: BuildOver = {}) {
     verifyMilestone: jest.fn().mockResolvedValue({ id: 'ms-1', status: 'VERIFIED' }),
     findWorkPackagesForProject: jest.fn().mockResolvedValue(over.workPackages ?? []),
     replaceMilestoneWorkPackages: jest.fn().mockResolvedValue(undefined),
+    lockMilestoneStatus: jest.fn().mockResolvedValue('PLANNED'),
     findLeafProgressInputs: jest
       .fn()
       .mockResolvedValue({ leaves: over.leaves ?? [], verified: over.verified ?? [] }),
@@ -301,6 +302,19 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       );
     });
 
+    it('is NOT readyToVerify at 199.1 of 200 even though the package displays 100%', async () => {
+      const { service } = build({
+        milestones: [storedMilestone({ workPackageLinks: [linkedPackage('wp-a', ['l1'])] })],
+        leaves: [leaf('l1', '200', '1000')],
+        verified: [verifiedSum('l1', '199.1')],
+      });
+
+      const [milestone] = await service.listMilestones(identity, 'p-1');
+
+      expect(milestone.workPackages[0]!.percentComplete).toBe(100); // display rounds
+      expect(milestone.readyToVerify).toBe(false); // readiness does not
+    });
+
     it('is readyToVerify once every linked package reads 100%', async () => {
       const { service } = build({
         milestones: [
@@ -459,6 +473,20 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       await expect(
         service.setMilestoneWorkPackages(identity, 'p-1', 'ms-1', ['wp-a']),
       ).rejects.toBeInstanceOf(ConflictException);
+      expect(repo.replaceMilestoneWorkPackages).not.toHaveBeenCalled();
+    });
+
+    it('re-checks under the row lock: a verify that landed first wins (409, no swap)', async () => {
+      const { service, repo } = build({
+        workPackages: [{ id: 'wp-a', code: 'WP-A', scheduleOnly: false }],
+      });
+      // Read outside the transaction said PLANNED; by the time the lock is taken it is VERIFIED.
+      repo.lockMilestoneStatus.mockResolvedValue('VERIFIED');
+
+      await expect(
+        service.setMilestoneWorkPackages(identity, 'p-1', 'ms-1', ['wp-a']),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(repo.lockMilestoneStatus).toHaveBeenCalledWith(expect.anything(), 'ms-1');
       expect(repo.replaceMilestoneWorkPackages).not.toHaveBeenCalled();
     });
 

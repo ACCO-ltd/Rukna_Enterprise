@@ -86,6 +86,16 @@ export class ProgrammeRepository {
     });
   }
 
+  /**
+   * Lock a milestone row for the rest of the transaction and return its current status (null when
+   * gone). Used by the link swap so a concurrent verify cannot interleave with it.
+   */
+  async lockMilestoneStatus(prisma: TenantPrisma, milestoneId: string): Promise<string | null> {
+    const rows = await prisma.$queryRaw<Array<{ status: string }>>`
+      SELECT status::text AS status FROM programme_milestones WHERE id = ${milestoneId} FOR UPDATE`;
+    return rows[0]?.status ?? null;
+  }
+
   /** Replace a milestone's linked set. Call inside a transaction so the swap is all-or-nothing. */
   async replaceMilestoneWorkPackages(
     prisma: TenantPrisma,

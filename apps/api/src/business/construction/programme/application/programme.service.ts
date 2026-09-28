@@ -25,10 +25,16 @@ import {
   packagePercentComplete,
   progressValueByLeaf,
 } from '../../progress/domain/progress-rollup.js';
-import { isMilestoneReadyToVerify } from '../domain/milestone-readiness.js';
+import { isMilestoneReadyToVerify, isPackageFullyVerified } from '../domain/milestone-readiness.js';
 import type { CreateMilestoneDto, VerifyMilestoneDto } from '../presentation/dto/programme.dto.js';
 
 const ZERO = new Decimal(0);
+
+function milestoneAlreadyVerified(): ConflictException {
+  return new ConflictException(
+    'This milestone is already verified, so the work packages behind it can no longer change.',
+  );
+}
 
 /**
  * ADR-021 phase 2 — programme delivery milestones. A milestone is a named construction stage with a
@@ -109,16 +115,20 @@ export class ProgrammeService {
     if (!milestone || milestone.projectId !== projectId) {
       throw new NotFoundException(`Milestone ${milestoneId} not found on this project`);
     }
-    if (milestone.status === 'VERIFIED') {
-      throw new ConflictException(
-        'This milestone is already verified, so the work packages behind it can no longer change.',
-      );
-    }
+    if (milestone.status === 'VERIFIED') throw milestoneAlreadyVerified();
 
     const ids = await this.linkableWorkPackageIds(identity, projectId, workPackageIds);
-    await prisma.$transaction(async (tx) =>
-      this.repo.replaceMilestoneWorkPackages(tx as never, milestoneId, ids, identity.userId),
-    );
+    await prisma.$transaction(async (tx) => {
+      // Re-check under a row lock: a verify that committed after the read above must win, and a
+      // verify that arrives now waits for this swap to commit. Either way the set of packages
+      // behind a VERIFIED milestone never changes.
+      const status = await this.repo.lockMilestoneStatus(tx as never, milestoneId);
+      if (status === null) {
+        throw new NotFoundException(`Milestone ${milestoneId} not found on this project`);
+      }
+      if (status === 'VERIFIED') throw milestoneAlreadyVerified();
+      await this.repo.replaceMilestoneWorkPackages(tx as never, milestoneId, ids, identity.userId);
+    });
 
     const rows = await this.repo.findMilestones(
       prisma,
@@ -187,21 +197,25 @@ export class ProgrammeService {
   ): Promise<ProgrammeMilestoneResponse[]> {
     const { canViewMargin } = resolveBoqVisibility(identity);
     const packages = rows.flatMap((m) => m.workPackageLinks.map((link) => link.workPackage));
-    const percentByPackage = await this.packagePercents(identity, projectId, packages);
-    return rows.map((m) => toMilestoneResponse(m, canViewMargin, percentByPackage));
+    const progressByPackage = await this.packageProgress(identity, projectId, packages);
+    return rows.map((m) => toMilestoneResponse(m, canViewMargin, progressByPackage));
   }
 
   /**
-   * Each package's whole-number verified % — computed exactly as the progress roll-up computes it:
-   * per-leaf verified ÷ quantity from APPROVED reports (`leafPercentComplete`), value-weighted across
-   * the package's leaves with CONTINGENCY dropped (`progressValueByLeaf`, `packagePercentComplete`).
-   * A schedule-only package has no measurable scope and reads 0. One batched read for all packages.
+   * Per package, two figures from one batched read:
+   *  - `percentComplete` (display): the whole-number verified % computed exactly as the progress
+   *    roll-up computes it — per-leaf verified ÷ quantity from APPROVED reports
+   *    (`leafPercentComplete`), value-weighted with CONTINGENCY dropped (`progressValueByLeaf`,
+   *    `packagePercentComplete`);
+   *  - `fullyVerified` (readiness): every work leaf has verified ≥ quantity on EXACT decimals
+   *    (`isPackageFullyVerified`) — never the rounded %, which reads 100 at 199.1 of 200.
+   * A schedule-only package has no measurable scope: 0% and never fully verified.
    */
-  private async packagePercents(
+  private async packageProgress(
     identity: RequestIdentity,
     projectId: string,
     packages: StoredLinkedWorkPackage[],
-  ): Promise<Map<string, number>> {
+  ): Promise<Map<string, PackageProgress>> {
     const measurable = packages.filter((wp) => !wp.scheduleOnly);
     const leafIds = [...new Set(measurable.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId)))];
     const { leaves, verified } = await this.repo.findLeafProgressInputs(
@@ -223,19 +237,29 @@ export class ProgrammeService {
       );
     }
     const valueByLeaf = progressValueByLeaf(leaves);
+    const leafById = new Map(leaves.map((leaf) => [leaf.id, leaf] as const));
 
-    const result = new Map<string, number>();
+    const result = new Map<string, PackageProgress>();
     for (const wp of packages) {
-      result.set(
-        wp.id,
-        wp.scheduleOnly
-          ? 0
-          : packagePercentComplete(
-              wp.boqLinks.map((b) => b.boqNodeId),
-              percentByLeaf,
-              valueByLeaf,
-            ),
-      );
+      if (wp.scheduleOnly) {
+        result.set(wp.id, { percentComplete: 0, fullyVerified: false });
+        continue;
+      }
+      const leafIds = wp.boqLinks.map((b) => b.boqNodeId);
+      result.set(wp.id, {
+        percentComplete: packagePercentComplete(leafIds, percentByLeaf, valueByLeaf),
+        fullyVerified: isPackageFullyVerified(
+          leafIds.map((id) => {
+            const stored = leafById.get(id);
+            return {
+              // A leaf not found on this project's BOQ counts as not done.
+              quantity: stored?.quantity ? new Decimal(stored.quantity.toString()) : null,
+              nodeRole: stored?.nodeRole ?? 'WORK',
+              verified: verifiedByLeaf.get(id) ?? ZERO,
+            };
+          }),
+        ),
+      });
     }
     return result;
   }
@@ -255,6 +279,12 @@ interface IncludedReleaseInstallment {
   triggerType: MilestoneReleaseLine['triggerType'];
   contract: { contractValue: Decimal; currency: string };
   clientInvoice: { id: string } | null;
+}
+
+/** A linked package's display % and whether it is fully verified on exact quantities. */
+interface PackageProgress {
+  percentComplete: number;
+  fullyVerified: boolean;
 }
 
 /** One linked work package as selected by ProgrammeRepository.findMilestones. */
@@ -313,13 +343,13 @@ function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean):
 function toMilestoneResponse(
   m: StoredMilestoneWithReleases,
   moneyVisible: boolean,
-  percentByPackage: ReadonlyMap<string, number>,
+  progressByPackage: ReadonlyMap<string, PackageProgress>,
 ): ProgrammeMilestoneResponse {
   const workPackages: MilestoneWorkPackageLine[] = m.workPackageLinks.map(({ workPackage }) => ({
     id: workPackage.id,
     code: workPackage.code,
     name: workPackage.name,
-    percentComplete: percentByPackage.get(workPackage.id) ?? 0,
+    percentComplete: progressByPackage.get(workPackage.id)?.percentComplete ?? 0,
   }));
   return {
     id: m.id,
@@ -337,6 +367,12 @@ function toMilestoneResponse(
     // Installments are already ordered by (sortOrder, name) in the repo query.
     releases: m.installments.map((inst) => toReleaseLine(inst, moneyVisible)),
     workPackages,
-    readyToVerify: isMilestoneReadyToVerify(m.status, workPackages),
+    // Readiness reads the exact per-package verdict, never the rounded display %.
+    readyToVerify: isMilestoneReadyToVerify(
+      m.status,
+      m.workPackageLinks.map(({ workPackage }) => ({
+        fullyVerified: progressByPackage.get(workPackage.id)?.fullyVerified ?? false,
+      })),
+    ),
   };
 }
