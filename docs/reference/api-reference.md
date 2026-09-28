@@ -2556,7 +2556,24 @@ Both return **400** with `error.code = "DPR_EXCEEDS_BOQ_QUANTITY"`:
 
 All quantities are decimal strings. `verifiedToDate` counts OTHER approved reports only;
 `maxForThisReport = max(0, boqQuantity − verifiedToDate)`. The message names the first line; every
-offending line is in `details.lines`.
+offending line is in `details.lines`. Approve runs the check under a row lock on the measured BOQ
+lines, in the same transaction as the status change, so two reports approved at once cannot
+together exceed a line.
+
+#### DPR read model, returns and work-entry delete
+
+| Method | Path | Change |
+|---|---|---|
+| `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName` |
+| `POST` | `/progress/reports/:dprId/return` | Also records `returnedBy` / `returnedAt` (kept on resubmit, overwritten by the next return — same as `returnReason`) |
+| `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. Evidence tagged to the entry is detached, not deleted |
+
+```ts
+workPackages: Array<{ id: string; code: string; name: string }>; // distinct packages of the measured leaves, by code
+approvedByName?: string;
+reviewedByName?: string;   // approver for APPROVED/REOPENED, returner for RETURNED, else undefined
+returnedBy?: string; returnedAt?: string; returnedByName?: string;
+```
 
 #### Work-package allocation race
 
@@ -2579,8 +2596,13 @@ Project membership is checked on every call. Rules: every package must be on the
 
 ```ts
 workPackages: Array<{ id: string; code: string; name: string; percentComplete: number }>; // 0..100, ordered by code
-readyToVerify: boolean; // status PLANNED && workPackages.length > 0 && every percentComplete >= 100
+readyToVerify: boolean; // status PLANNED && workPackages.length > 0 && every package FULLY verified
 ```
+
+"Fully verified" is decided on exact quantities: every work leaf of the package has verified ≥
+its measurable quantity (contingency leaves ignored). `percentComplete` is the rounded display
+figure only — 199.1 of 200 displays 100 but is not ready. A link change re-checks VERIFIED under a
+row lock, so it cannot follow a concurrent verify.
 
 `percentComplete` is the package's verified physical % — the same figure `GET
 /projects/:projectId/progress/rollup` reports for it (APPROVED reports only, value-weighted,

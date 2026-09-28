@@ -9,7 +9,7 @@ The older CEO memos and frontend-blocker lists live in [`backend-requests/`](bac
 
 | # | Ask | Status | Notes |
 |---|---|---|---|
-| 1 | Returned DPR + the reason it was returned | **Already existed** | `POST /progress/reports/:dprId/return` with `{ reason }` moves SUBMITTED → RETURNED and stores `returnReason`; the report read models carry it. Nothing new built. |
+| 1 | Returned DPR + the reason it was returned | **Existed; extended** | `POST /progress/reports/:dprId/return` with `{ reason }` moves SUBMITTED → RETURNED and stores `returnReason`. Now also records `returnedBy` / `returnedAt` (migration `20260928110000_dpr_returned_by`) and the read models add `returnedByName`. |
 | 2 | Milestone "ready to verify" | **Done** | Milestones link to work packages (`ProgrammeMilestoneWorkPackage`, migration `20260928100000_programme_milestone_work_packages`). `POST …/programme/milestones` accepts `workPackageIds`; `PUT …/programme/milestones/:milestoneId/work-packages` replaces the set. The milestone list returns `workPackages[]` (with verified %) and a server-computed `readyToVerify`. No separate filter endpoint — the flag is on the existing list. |
 | 3 | Per-user "my DPRs" + a review count | **Not built** | The frontend derives both from the full `GET /projects/:projectId/progress/reports` list (filter by `preparedBy`, count `SUBMITTED`). Fine at today's volumes; revisit with a server filter/count if a project's report list grows large. |
 | 4 | Per-view capability flags | **Not built** | The frontend gates views on the same permission keys the route guards enforce: `record:progress`, `approve:progress`, `manage:project`, `approve:project`. Money visibility is the exception — it is decided server-side and signalled in the payload (see 5). |
@@ -17,3 +17,6 @@ The older CEO memos and frontend-blocker lists live in [`backend-requests/`](bac
 | 5b | Money redaction | **Done** | `progress/signal` (`actualCost`, `budgetTotal`), `progress/collection-signal` (`contractValue`, `receivedRevenue`) and milestone `releases[].amount` are `null` for callers without the BOQ money tier; both signals carry `moneyVisible`. |
 | 5c | Re-baseline cites an adopted variation | **Done** | Only a `CLIENT_APPROVED` variation on this project's contract is accepted; otherwise 400. |
 | 5d | Work-package allocation race | **Done** | A duplicate leaf allocation (including a concurrent one) is 409 `BOQ_ITEM_ALREADY_ALLOCATED`. |
+| 6 | DPR list shows the work packages a report touches, and who approved / reviewed it | **Done** | List and detail add `workPackages[] {id, code, name}`, `approvedByName` and `reviewedByName` (approver for APPROVED/REOPENED, returner for RETURNED), all batched — no per-report queries. |
+| 7 | Fix a typo in a draft work entry | **Done** | `DELETE /progress/reports/:dprId/measurements/:measurementId` while DRAFT / RETURNED / REOPENED (409 otherwise). Tagged evidence is detached, not deleted. |
+| 8 | DPR document number | **Not built (by decision)** | Reports are identified by project + date; no number is added. |

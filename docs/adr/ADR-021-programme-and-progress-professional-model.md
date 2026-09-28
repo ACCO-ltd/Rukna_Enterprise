@@ -78,14 +78,17 @@ than the target curve) is a possible later refinement.
    the roll-up's own pure helpers (`leafPercentComplete`, `progressValueByLeaf`,
    `packagePercentComplete`), so it always equals the package's `percentComplete` in
    `GET …/progress/rollup` — and a derived **`readyToVerify`** = status PLANNED ∧ ≥1 package linked ∧
-   every linked package ≥ 100%. Readiness is a prompt, never a gate: verifying stays a deliberate
-   human act (the milestone is billing evidence, ADR-023 CONST-COM-011), and a milestone with no
-   packages linked is simply never "ready". A VERIFIED milestone's package set is frozen (409). The
-   package % is the rounded whole-number figure the roll-up already reports, so a leaf at 99.5%
-   reads 100 — the same rounding the roll-up has always used.
+   every linked package **fully verified on exact quantities** (every work leaf's verified ≥ its
+   measurable quantity, Decimal; contingency ignored). The displayed % is the rounded whole number
+   the roll-up reports (199.1 of 200 shows 100), so readiness deliberately never reads it — the
+   milestone is billing evidence (ADR-023 CONST-COM-011) and must not be prompted early. Readiness
+   is a prompt, never a gate: verifying stays a deliberate human act, and a milestone with no
+   packages linked is simply never "ready". A VERIFIED milestone's package set is frozen (409),
+   re-checked under a row lock inside the swap transaction.
 2. *Over-quantity at submit.* CONST-PROG-002/009 (cumulative verified ≤ BOQ measurable quantity) is
    now checked at DPR **submit** as well as approve; approve stays authoritative because other
-   reports may be approved in between. Both raise `DPR_EXCEEDS_BOQ_QUANTITY` with the offending lines.
+   reports may be approved in between, and runs under a row lock on the measured BOQ lines in the
+   same transaction as the status change. Both raise `DPR_EXCEEDS_BOQ_QUANTITY` with the offending lines.
 3. *Re-baseline provenance.* A re-baseline must cite a variation that is **adopted**
    (`CLIENT_APPROVED`) on this project's contract; a draft, rejected or reversed (`WITHDRAWN`)
    variation cannot justify moving the frozen plan.
