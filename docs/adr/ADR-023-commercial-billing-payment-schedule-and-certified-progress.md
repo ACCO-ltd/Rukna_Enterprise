@@ -154,6 +154,9 @@ an unverified milestone does. There is deliberately no "commercial review is eno
   They need their own trigger and supporting evidence, to be defined separately.
 - Linking a stage to a milestone is available on Contract & milestones ("Link milestone"); it used to
   exist only on the retired Payment Schedule tab.
-- Open (reported, not changed): ACCO's standard template (`ACCO_STANDARD_PLAN`) marks **Structure 40%**
-  as the advance, so that stage is saved as `ADVANCE` and is not gated. Whether Structure is an advance
-  or a work-completion stage is a decision for the owner and Eng Ahmed.
+- **Resolved 2026-09-28 (owner, confirming ACCO practice):** the first 40% of ACCO's standard plan is a
+  genuine **up-front advance**. The client pays it before any work starts, to fund the project's initial
+  costs, and the milestone work stages follow. It therefore stays `ADVANCE` in `ACCO_STANDARD_PLAN` and
+  is correctly **not** gated by milestone verification. Its own trigger and supporting evidence (for
+  example the executed contract, or a mobilisation notice) are still to be defined, per the rule
+  above for non-work stages.
