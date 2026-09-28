@@ -167,6 +167,26 @@ export class ProgressService {
     });
   }
 
+  /**
+   * Remove a work entry from a report still in the preparer's hands (DRAFT / RETURNED / REOPENED) —
+   * e.g. a typo'd quantity. Once submitted or approved the entry is under review / verified, so the
+   * delete is refused with 409. Evidence tagged to the entry is NOT deleted: the schema's SetNull
+   * on `DprAttachment.measurementId` detaches it, so the file stays on the report as general
+   * evidence (removing a tag never destroys evidence).
+   */
+  async removeMeasurement(identity: RequestIdentity, dprId: string, measurementId: string) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!dpr.measurements.some((m) => m.id === measurementId)) {
+      throw new NotFoundException(`Work entry ${measurementId} not found on this report.`);
+    }
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new ConflictException(
+        `Work entries can only be removed from a DRAFT, RETURNED or REOPENED report (is ${dpr.status}).`,
+      );
+    }
+    return this.repo.deleteMeasurement(this.tenancy.getClient(), measurementId);
+  }
+
   async attachEvidence(
     identity: RequestIdentity,
     dprId: string,

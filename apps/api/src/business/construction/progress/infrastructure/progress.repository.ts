@@ -87,6 +87,11 @@ export class ProgressRepository {
     return prisma.progressMeasurement.create({ data });
   }
 
+  /** Delete one work entry. Evidence tagged to it is detached by the FK's ON DELETE SET NULL. */
+  deleteMeasurement(prisma: TenantPrisma, id: string) {
+    return prisma.progressMeasurement.delete({ where: { id } });
+  }
+
   createAttachment(prisma: TenantPrisma, data: Prisma.DprAttachmentUncheckedCreateInput) {
     return prisma.dprAttachment.create({ data });
   }

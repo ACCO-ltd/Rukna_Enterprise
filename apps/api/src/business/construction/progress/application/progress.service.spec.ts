@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
@@ -66,6 +66,7 @@ function build(over: Over = {}) {
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
     lockBoqNodes: jest.fn().mockResolvedValue(undefined),
+    deleteMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
     findWorkPackagesForDprs: jest.fn().mockResolvedValue(over.dprWorkPackages ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
@@ -375,6 +376,40 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'dpr-1',
       expect.objectContaining({ status: 'SUBMITTED' }),
     );
+  });
+
+  it.each(['DRAFT', 'RETURNED', 'REOPENED'])(
+    'removeMeasurement: deletes a work entry on a %s report',
+    async (status) => {
+      const { repo, service } = build({
+        dpr: { id: 'dpr-1', status, projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] },
+      });
+      await service.removeMeasurement(identity, 'dpr-1', 'm-1');
+      expect(repo.deleteMeasurement).toHaveBeenCalledWith(expect.anything(), 'm-1');
+    },
+  );
+
+  it.each(['SUBMITTED', 'APPROVED'])(
+    'removeMeasurement: 409 on a %s report, nothing deleted',
+    async (status) => {
+      const { repo, service } = build({
+        dpr: { id: 'dpr-1', status, projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] },
+      });
+      await expect(service.removeMeasurement(identity, 'dpr-1', 'm-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(repo.deleteMeasurement).not.toHaveBeenCalled();
+    },
+  );
+
+  it('removeMeasurement: 404 for an entry that is not on this report', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1', quantity: 5 }], attachments: [] },
+    });
+    await expect(service.removeMeasurement(identity, 'dpr-1', 'm-OTHER')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(repo.deleteMeasurement).not.toHaveBeenCalled();
   });
 
   it('attachEvidence: rejects a file that is not READY', async () => {
