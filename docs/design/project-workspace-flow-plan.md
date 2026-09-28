@@ -123,6 +123,17 @@ Reviewed from the 14 production screenshots (project `ACCO-HDN-26-0005`) and the
 - D3: when the contract is active and mandatory steps are done, the header primary becomes **Start project**; the Overview checklist shows the final step as the next action.
 - Edit project information → side sheet (ADR-037).
 
+**Delivered (branch `feat/client-project-flow`).**
+- Client detail now uses `RecordHeader` (h2). "New project" is its one primary action; Edit and Deactivate sit in the kebab, with the status change last. The summary uses `MetricStrip` (new `columns={2}`) and the sections use the shared underline switcher.
+- The project form's back link names the client when the form was opened from a client.
+- "Project created" uses the app toast.
+- Checklist links go straight to their pages:
+  - The contract steps open Contract & milestones, with no redirect hop.
+  - The delivery-team step opens Team with the add form already open (`?add=1`).
+  - Team uses `WorkspaceSectionHeader`.
+- D3 needed no change: once mandatory preparation is done, `ProjectActionsPanel` already offers **Start project**, and since PR 2 it does so on every tab.
+- **Not done, deliberately:** a side sheet for editing project information. ADR-037's container rule puts master data on a full page, and `/projects/:id/edit` already is one.
+
 ### PR 4 — Money flow: Commercial ↔ Finance ↔ Accounting
 - **API:** `GET /invoices?projectId=`, `GET /bills?projectId=` (org-scoped, permission-checked, tests); project column on both lists.
 - **Project-scoped document routes:** `/projects/[id]/commercial/invoices/[invoiceId]` and `/projects/[id]/finance/bills/[billId]` render the existing document pages bare under the tab with a context back link (C1, C2). Accounting routes unchanged.

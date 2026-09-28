@@ -280,7 +280,8 @@
       "saveProject": "Save project",
       "saving": "Saving...",
       "discard": "Discard",
-      "backToList": "Projects"
+      "backToList": "Projects",
+      "backToClient": "Back to {client}"
     },
     "detail": {
       "notFound": "This project does not exist, or you do not have access to it.",

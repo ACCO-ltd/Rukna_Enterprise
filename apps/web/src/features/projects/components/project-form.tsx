@@ -283,9 +283,17 @@ function ProjectCreateForm() {
         <FormActionBar
           back={
             <Button asChild variant="ghost" className="gap-1.5 px-2">
-              <Link href="/projects">
+              {/* Back goes where the reader came from — the client, when the project was started
+                  from one — and says so. */}
+              <Link href={discardHref}>
                 <ArrowLeft size={16} aria-hidden="true" />
-                {t('backToList')}
+                {/* Label and target always agree: a locked client goes back to that client, even
+                    before its name has loaded. */}
+                {isClientLocked
+                  ? lockedClientName
+                    ? t('backToClient', { client: lockedClientName })
+                    : t('wizard.backToClients')
+                  : t('backToList')}
               </Link>
             </Button>
           }

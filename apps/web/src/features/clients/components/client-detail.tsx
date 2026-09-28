@@ -5,10 +5,21 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
-import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  RecordHeader,
+  ViewSwitcher,
+} from '@erp/ui';
 import { EllipsisVertical } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { MetricStrip } from '@/components/widget/metric-strip';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
@@ -52,40 +63,77 @@ export function ClientDetail({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-7">
-      <header>
-        <Link href="/clients" className="text-sm text-muted-foreground underline-offset-4 hover:underline">{t('back')}</Link>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-2xl font-semibold text-foreground">{client.name}</h2>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span className="font-mono text-xs">{client.code}</span><span aria-hidden="true">·</span>
-              <span>{client.type ? tCreate(`clientTypes.${client.type}`) : tClients('notSet')}</span><span aria-hidden="true">·</span>
-              <ClientStatusBadge status={client.status} />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {can('create:project') && isActive ? <Button asChild><Link href={`/projects/new?clientId=${client.id}`}>{t('newProject')}</Link></Button> : null}
-            {can('manage:client') ? <Button variant="outline" asChild><Link href={`/clients/${client.id}/edit`}>{t('edit')}</Link></Button> : null}
-            {can('manage:client') ? <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={t('more')}><EllipsisVertical size={20} aria-hidden="true" /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setConfirmingStatus(true)}>{isActive ? t('deactivate') : t('reactivate')}</DropdownMenuItem></DropdownMenuContent>
-            </DropdownMenu> : null}
-          </div>
-        </div>
-      </header>
+      {/* Record detail anatomy (brief §6.4, ADR-035): back link, identifier + status, name, one
+          primary action — "New project", the next step in client → project — and a kebab with
+          Edit, then the status change last. */}
+      <RecordHeader
+        headingLevel="h2"
+        breadcrumb={
+          <Link href="/clients" className="text-body-sm text-muted-foreground underline-offset-4 hover:underline">
+            {t('back')}
+          </Link>
+        }
+        identifier={client.code}
+        status={<ClientStatusBadge status={client.status} />}
+        title={client.name}
+        subtitle={client.type ? tCreate(`clientTypes.${client.type}`) : tClients('notSet')}
+        actions={
+          <>
+            {can('create:project') && isActive ? (
+              <Button asChild>
+                <Link href={`/projects/new?clientId=${client.id}`}>{t('newProject')}</Link>
+              </Button>
+            ) : null}
+            {can('manage:client') ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label={t('more')}>
+                    <EllipsisVertical size={20} aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href={`/clients/${client.id}/edit`}>{t('edit')}</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem destructive={isActive} onSelect={() => setConfirmingStatus(true)}>
+                    {isActive ? t('deactivate') : t('reactivate')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </>
+        }
+      />
 
       {searchParams.get('contact') === 'needs-attention' ? <Alert variant="info" messages={[t('contactNeedsAttention')]} /> : null}
 
-      <section className="grid overflow-hidden rounded-panel border border-border bg-surface sm:grid-cols-2" aria-label={t('summary')}>
-        <SummaryMetric label={t('activeProjects')} value={summary ? String(summary.activeProjectCount) : '—'} />
-        <SummaryMetric label={t('outstandingBalance')} value={summary?.outstandingBalance === null ? tClients('restricted') : (formatMoney(summary?.outstandingBalance, 'USD') ?? '—')} />
-      </section>
+      <MetricStrip
+        aria-label={t('summary')}
+        columns={2}
+        metrics={[
+          { label: t('activeProjects'), value: summary ? String(summary.activeProjectCount) : null },
+          {
+            label: t('outstandingBalance'),
+            value:
+              summary?.outstandingBalance === null
+                ? tClients('restricted')
+                : (formatMoney(summary?.outstandingBalance, 'USD') ?? null),
+          },
+        ]}
+      />
 
       <section className="rounded-panel border border-border bg-surface px-4 sm:px-6">
-        <nav className="flex gap-5 overflow-x-auto border-b border-border" aria-label={t('sections')}>
-          <TabButton active={section === 'overview'} onClick={() => setSection('overview')}>{t('overview')}</TabButton>
-          <TabButton active={section === 'projects'} onClick={() => setSection('projects')}>{t('projects')}</TabButton>
-        </nav>
+        <ViewSwitcher
+          appearance="underline"
+          aria-label={t('sections')}
+          value={section}
+          onValueChange={(next) => setSection(next as Section)}
+          items={[
+            { value: 'overview', label: t('overview') },
+            { value: 'projects', label: t('projects') },
+          ]}
+        />
         <div className="py-5">
           {section === 'overview' ? (
             <div>
@@ -108,8 +156,6 @@ export function ClientDetail({ clientId }: { clientId: string }) {
   );
 }
 
-function SummaryMetric({ label, value }: { label: string; value: string }) { return <div className="border-b border-border px-5 py-4 last:border-b-0 sm:border-b-0 sm:border-e sm:last:border-e-0"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</p></div>; }
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button type="button" onClick={onClick} className={`min-h-12 shrink-0 border-b-2 text-sm font-medium ${active ? 'border-brand-primary text-brand-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>{children}</button>; }
 function Info({ label, value, dir }: { label: string; value?: string | null; dir?: 'ltr' }) { const t = useTranslations('platform.clients'); return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-all text-sm text-foreground" dir={dir}>{value || <span className="text-muted-foreground">{t('notSet')}</span>}</dd></div>; }
 
 function ClientProjects({ clientId }: { clientId: string }) {
