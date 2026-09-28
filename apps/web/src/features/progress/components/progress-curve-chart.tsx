@@ -53,6 +53,13 @@ export interface ProgressCurveChartProps {
    * fainter and labels the legend "estimate" so a reader never mistakes it for a committed plan.
    */
   plannedProvisional?: boolean;
+  /**
+   * Which reading the solid "actual" line draws. `verified` plots only what approved reports
+   * support (Performance's rule); `physical` is the live roll-up. Defaults to `physical`.
+   */
+  actualSeries?: 'physical' | 'verified';
+  /** ISO date for a vertical "today" marker; it joins the date axis so it lands in order. */
+  today?: string;
 }
 
 /** Map a value on 0..100 to a Y pixel (inverted — 100% is at the top). */
@@ -82,6 +89,8 @@ export function ProgressCurveChart({
   actual,
   showVerified = false,
   plannedProvisional = false,
+  actualSeries = 'physical',
+  today,
 }: ProgressCurveChartProps) {
   const t = useTranslations('progress');
   const titleId = useId();
@@ -90,7 +99,11 @@ export function ProgressCurveChart({
   // The shared X axis is the union of every date across both series, in order. A planned point
   // and an actual point on the same date land on the same X, which is what makes them comparable.
   const dates = Array.from(
-    new Set([...baseline.map((b) => b.periodEndDate), ...actual.map((a) => a.periodEndDate)]),
+    new Set([
+      ...baseline.map((b) => b.periodEndDate),
+      ...actual.map((a) => a.periodEndDate),
+      ...(today ? [today] : []),
+    ]),
   ).sort();
 
   // Zero actual points: nothing to draw. The caller shows the insufficient-data state.
@@ -102,8 +115,9 @@ export function ProgressCurveChart({
   }));
   const physicalSeries: Series[] = actual.map((a) => ({
     periodEndDate: a.periodEndDate,
-    value: a.physicalPercent,
+    value: actualSeries === 'verified' ? a.verifiedPercent : a.physicalPercent,
   }));
+  const actualLabel = actualSeries === 'verified' ? t('curve.actualVerified') : t('curve.actual');
   const verifiedSeries: Series[] = actual.map((a) => ({
     periodEndDate: a.periodEndDate,
     value: a.verifiedPercent,
@@ -115,7 +129,9 @@ export function ProgressCurveChart({
   // A screen reader gets the numbers that matter, not the SVG path geometry.
   const ariaSummary = t('curve.ariaSummary', {
     planned: latestPlanned ? `${latestPlanned.plannedPercent}%` : '—',
-    physical: latestActual ? `${latestActual.physicalPercent}%` : '—',
+    physical: latestActual
+      ? `${actualSeries === 'verified' ? latestActual.verifiedPercent : latestActual.physicalPercent}%`
+      : '—',
     points: actual.length,
   });
 
@@ -205,7 +221,23 @@ export function ProgressCurveChart({
           />
         ) : null}
 
-        {/* Actual physical — the primary series, chart-1. One point ⇒ a dot, never a line. */}
+        {/* Today marker — a hairline, labelled in the legend. */}
+        {today ? (
+          <line
+            x1={xPos(dates.indexOf(today), dates.length)}
+            y1={PAD_TOP}
+            x2={xPos(dates.indexOf(today), dates.length)}
+            y2={PAD_TOP + PLOT_H}
+            className="stroke-muted-foreground"
+            strokeWidth={1}
+            strokeDasharray="2 3"
+            vectorEffect="non-scaling-stroke"
+            aria-hidden="true"
+            data-testid="curve-today"
+          />
+        ) : null}
+
+        {/* Actual — the primary series, chart-1. One point ⇒ a dot, never a line. */}
         {physicalSeries.length >= 2 ? (
           <path
             d={toPath(physicalSeries, dates)}
@@ -235,17 +267,25 @@ export function ProgressCurveChart({
 
       {/* Legend — small, legible, tabular. Colour + word, never colour alone. */}
       <figcaption className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="inline-block h-0.5 w-4 border-t-2 border-dashed border-disabled-foreground"
-            aria-hidden="true"
-          />
-          {plannedLabel}
-        </span>
+        {plannedSeries.length >= 2 ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-0.5 w-4 border-t-2 border-dashed border-disabled-foreground"
+              aria-hidden="true"
+            />
+            {plannedLabel}
+          </span>
+        ) : null}
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 rounded-full bg-chart-1" aria-hidden="true" />
-          {t('curve.actual')}
+          {actualLabel}
         </span>
+        {today ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-0 border-s border-dashed border-muted-foreground" aria-hidden="true" />
+            {t('curve.today')}
+          </span>
+        ) : null}
         {showVerified ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-4 rounded-full bg-chart-2" aria-hidden="true" />

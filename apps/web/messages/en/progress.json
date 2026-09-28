@@ -385,7 +385,9 @@
       "recorded": "Progress snapshot recorded.",
       "alreadyRecorded": "A snapshot is already recorded for this date.",
       "failed": "Could not record the snapshot. Try again."
-    }
+    },
+    "actualVerified": "Verified (approved reports)",
+    "today": "Today"
   },
   "comparison": {
     "title": "Period comparison",
@@ -874,5 +876,55 @@
     "removeLabel": "Remove {quantity} from {item}",
     "removeFailed": "Could not remove the entry: {message}",
     "notesFailed": "Site notes could not be saved: {message}"
+  },
+  "performance": {
+    "metricsLabel": "Progress against plan",
+    "physical": "Physical progress",
+    "verifiedTo": "Verified to {date}",
+    "noVerified": "No approved reports yet",
+    "planned": "Planned by today",
+    "baselineOf": "Baseline {date}",
+    "noBaseline": "No planned baseline",
+    "variance": "Variance",
+    "variancePts": "{value} pts",
+    "behind": "Behind plan",
+    "on": "On plan",
+    "ahead": "Ahead of plan",
+    "milestones": "Milestones verified",
+    "milestonesValue": "{verified} of {total}",
+    "curveTitle": "Progress curve",
+    "curveNoBaseline": "No planned baseline is locked, so there is no planned line. Lock one in Plan & setup.",
+    "curveEmpty": "The curve begins once a progress snapshot is recorded.",
+    "more": "More curve actions",
+    "recordSnapshot": "Record snapshot…",
+    "export": "Export CSV",
+    "csvDate": "Date",
+    "csvPlanned": "Planned %",
+    "csvVerified": "Verified %",
+    "snapshotTitle": "Record a progress snapshot",
+    "snapshotHint": "Freezes today's verified figures as of the date you choose, so the curve has a point for it.",
+    "snapshotDate": "As of",
+    "snapshotConfirm": "Record snapshot",
+    "snapshotCancel": "Cancel",
+    "packagesTitle": "By work package",
+    "packagesNote": "Planned % assumes even progress between a package's planned start and end.",
+    "col": {
+      "package": "Work package",
+      "weight": "Weight",
+      "done": "% done",
+      "planned": "Planned %",
+      "contribution": "Contribution"
+    },
+    "contributionValue": "{value} pts",
+    "attentionTitle": "Needs attention",
+    "attentionClear": "Nothing needs attention.",
+    "behindPackage": "{code} {name}: {done}% done, {planned}% planned",
+    "behindCount": "{count, plural, one {# package is} other {# packages are}} behind plan",
+    "costTitle": "Built vs cost",
+    "costLine": "Built {built} · cost consumed {cost}",
+    "collectionTitle": "Collected vs built",
+    "collectionLine": "Collected {collected} · built {built}",
+    "openFinance": "Open Finance",
+    "openBilling": "Open Billing & collection"
   }
 }

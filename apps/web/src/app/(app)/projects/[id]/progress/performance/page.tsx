@@ -1,5 +1,5 @@
 import { ProgressViewGate } from '@/features/progress/components/progress-shell';
-import { PerformanceView } from '@/features/progress/components/programme-section';
+import { PerformanceView } from '@/features/progress/components/performance-view';
 
 export default async function ProgressPerformancePage({
   params,
