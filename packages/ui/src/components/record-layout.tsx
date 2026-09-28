@@ -77,9 +77,28 @@ export function RecordHeader({
   figure,
   actions,
   lifecycle,
+  meta,
+  statusPlacement = 'identifier',
+  surface = 'panel',
   headingLevel = 'h1',
   className,
 }: {
+  /**
+   * One identity line under the title — code · client · site. Pass the items already
+   * separated; each item should carry its own accessible label.
+   */
+  meta?: React.ReactNode;
+  /**
+   * Where the status pill sits. `identifier` (default) puts it on the reference line above the
+   * title — right for documents whose reference is the handle. `title` puts it beside the
+   * title — right for a workspace record (a project) whose name is the handle.
+   */
+  statusPlacement?: 'identifier' | 'title';
+  /**
+   * `panel` (default) draws the header as its own bordered card. `plain` drops the chrome for a
+   * header that sits inside a surface someone else draws (the project workspace shell).
+   */
+  surface?: 'panel' | 'plain';
   /**
    * The title's heading level. Inside a module (ADR-035) the module header owns the page's
    * `h1`, so a record there passes `h2`; a workspace with no module header keeps `h1`.
@@ -106,27 +125,49 @@ export function RecordHeader({
   className?: string;
 }) {
   const Heading = headingLevel;
+  const statusOnTitle = statusPlacement === 'title';
   return (
     <div
       className={cn(
-        'rounded-panel border border-border bg-surface shadow-e1',
+        surface === 'panel' && 'rounded-panel border border-border bg-surface shadow-e1',
         className,
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4 p-6">
+      {/* Below 480px the actions always drop under the identity block rather than squeezing
+          beside a wrapped title — a phone reads name, status, meta, then what to do. */}
+      <div
+        className={cn(
+          'flex flex-col items-start gap-x-6 gap-y-4 min-[480px]:flex-row min-[480px]:flex-wrap min-[480px]:justify-between',
+          surface === 'panel' && 'p-6',
+        )}
+      >
         <div className="min-w-0">
           {breadcrumb ? <div className="mb-2">{breadcrumb}</div> : null}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {identifier ? (
-              <LtrValue as="code" className="font-mono text-caption text-muted-foreground">
-                {identifier}
-              </LtrValue>
-            ) : null}
-            {status}
-          </div>
-          <Heading className="mt-1.5 text-h1 font-bold text-foreground">{title}</Heading>
+          {identifier || (status && !statusOnTitle) ? (
+            <div className="flex flex-wrap items-center gap-2.5">
+              {identifier ? (
+                <LtrValue as="code" className="font-mono text-caption text-muted-foreground">
+                  {identifier}
+                </LtrValue>
+              ) : null}
+              {statusOnTitle ? null : status}
+            </div>
+          ) : null}
+          {statusOnTitle ? (
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <Heading className="min-w-0 text-h1 font-bold text-foreground">{title}</Heading>
+              {status}
+            </div>
+          ) : (
+            <Heading className="mt-1.5 text-h1 font-bold text-foreground">{title}</Heading>
+          )}
           {subtitle ? (
             <p className="mt-1 text-body-sm text-muted-foreground">{subtitle}</p>
+          ) : null}
+          {meta ? (
+            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-muted-foreground">
+              {meta}
+            </div>
           ) : null}
         </div>
 
