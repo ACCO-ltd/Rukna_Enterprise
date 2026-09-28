@@ -289,7 +289,7 @@ export class ClientInvoiceService {
     }
     // CONST-COM-011 (strict, 2026-09-28): a work-completion stage bills only on a linked programme
     // milestone verified on site. The one shared rule — see installment-billing-eligibility.ts.
-    const blocker = installmentBillingBlocker(installment);
+    const blocker = installmentBillingBlocker({ ...installment, contractStatus: installment.contract.status });
     if (blocker) {
       throw new BadRequestException(installmentBillingBlockerMessage(blocker, installment.name));
     }
@@ -544,7 +544,9 @@ export class ClientInvoiceService {
     // Covers the invoice screen's Post and the billing package, which posts through here.
     if (invoice.sourceInstallmentId) {
       const stage = await this.repo.findInstallmentForBilling(readPrisma, orgId, invoice.sourceInstallmentId);
-      const stageBlocker = stage ? installmentBillingBlocker(stage) : null;
+      const stageBlocker = stage
+        ? installmentBillingBlocker({ ...stage, contractStatus: stage.contract.status })
+        : null;
       if (stage && stageBlocker) {
         throw new BadRequestException(installmentBillingBlockerMessage(stageBlocker, stage.name));
       }

@@ -340,7 +340,7 @@ export class CommercialBillingService {
       );
     }
     // CONST-COM-011 (strict): the same rule the invoice generator and the cycle apply.
-    const blocker = installmentBillingBlocker(installment);
+    const blocker = installmentBillingBlocker({ ...installment, contractStatus: installment.contract.status });
     if (blocker) {
       throw new BadRequestException(installmentBillingBlockerMessage(blocker, installment.name));
     }

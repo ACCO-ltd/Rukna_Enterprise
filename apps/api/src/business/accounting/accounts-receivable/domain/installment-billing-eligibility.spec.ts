@@ -14,8 +14,16 @@ describe('installmentBillingBlocker — strict CONST-COM-011 (owner decision 202
     expect(installmentBillingBlocker({ triggerType: 'MILESTONE', programmeMilestoneId: 'm1', programmeMilestone: { status: 'PLANNED' } })).toBe('MILESTONE_NOT_VERIFIED');
   });
 
-  it('does not gate stages whose trigger is not completed work', () => {
-    expect(installmentBillingBlocker({ triggerType: 'ADVANCE' })).toBeNull();
+  it('bills an advance once the contract is executed, with no site evidence', () => {
+    expect(installmentBillingBlocker({ triggerType: 'ADVANCE', contractStatus: 'ACTIVE' })).toBeNull();
+  });
+
+  it('refuses an advance before the contract is executed', () => {
+    expect(installmentBillingBlocker({ triggerType: 'ADVANCE', contractStatus: 'DRAFT' })).toBe('CONTRACT_NOT_ACTIVE');
+    expect(installmentBillingBlocker({ triggerType: 'ADVANCE' })).toBe('CONTRACT_NOT_ACTIVE');
+  });
+
+  it('does not gate a time-based stage here', () => {
     expect(installmentBillingBlocker({ triggerType: 'TIME_BASED' })).toBeNull();
   });
 });

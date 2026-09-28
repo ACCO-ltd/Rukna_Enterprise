@@ -245,7 +245,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     await user.click(screen.getByRole('button', { name: 'Use ACCO standard schedule' }));
 
     // The four house-standard stages, seeded verbatim.
-    for (const name of ['Structure', 'Partition & Plastering', 'Installation & Paint', 'Inspection & Handover']) {
+    for (const name of ['Advance (mobilisation)', 'Partition & Plastering', 'Installation & Paint', 'Inspection & Handover']) {
       expect(screen.getByDisplayValue(name)).toBeInTheDocument();
     }
     for (const pct of ['40', '30', '20', '10']) {
@@ -272,7 +272,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     const [installments] = replaceMutate.mock.calls[0]!;
     // Four installments, fractions summing to 1, ADVANCE first (Structure 40%).
     expect(installments).toHaveLength(4);
-    expect(installments[0]).toMatchObject({ name: 'Structure', percentage: 0.4, triggerType: 'ADVANCE' });
+    expect(installments[0]).toMatchObject({ name: 'Advance (mobilisation)', percentage: 0.4, triggerType: 'ADVANCE' });
     const total = (installments as Array<{ percentage: number }>).reduce((s, r) => s + r.percentage, 0);
     expect(total).toBeCloseTo(1, 5);
   });

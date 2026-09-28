@@ -32,13 +32,13 @@ describe('ClientInvoiceService.post — milestone evidence gate', () => {
   const identity = { userId: 'u1', activeOrganizationId: 'o1', roles: [], permissions: [] } as never;
 
   it('refuses to post the invoice of a work stage with no milestone linked', async () => {
-    const { service, postingPort } = build({ name: 'Structure', triggerType: 'MILESTONE', programmeMilestoneId: null, programmeMilestone: null });
+    const { service, postingPort } = build({ name: 'Structure', contract: { status: 'ACTIVE' }, triggerType: 'MILESTONE', programmeMilestoneId: null, programmeMilestone: null });
     await expect(service.post(identity, { invoiceId: 'inv1' } as never)).rejects.toBeInstanceOf(BadRequestException);
     expect(postingPort.post).not.toHaveBeenCalled();
   });
 
   it('refuses while the linked milestone is not verified', async () => {
-    const { service } = build({ name: 'Structure', triggerType: 'MILESTONE', programmeMilestoneId: 'm1', programmeMilestone: { status: 'PLANNED' } });
+    const { service } = build({ name: 'Structure', contract: { status: 'ACTIVE' }, triggerType: 'MILESTONE', programmeMilestoneId: 'm1', programmeMilestone: { status: 'PLANNED' } });
     await expect(service.post(identity, { invoiceId: 'inv1' } as never)).rejects.toThrow(/not yet verified/);
   });
 });

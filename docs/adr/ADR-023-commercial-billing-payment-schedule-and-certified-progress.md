@@ -157,6 +157,10 @@ an unverified milestone does. There is deliberately no "commercial review is eno
 - **Resolved 2026-09-28 (owner, confirming ACCO practice):** the first 40% of ACCO's standard plan is a
   genuine **up-front advance**. The client pays it before any work starts, to fund the project's initial
   costs, and the milestone work stages follow. It therefore stays `ADVANCE` in `ACCO_STANDARD_PLAN` and
-  is correctly **not** gated by milestone verification. Its own trigger and supporting evidence (for
-  example the executed contract, or a mobilisation notice) are still to be defined, per the rule
-  above for non-work stages.
+  is correctly **not** gated by milestone verification.
+- **Advance rule (owner decision 2026-09-28):** an `ADVANCE` stage is billable once the contract is
+  **executed** (`ACTIVE`), and not before; no site evidence is required. It is part of the same shared
+  rule (`installmentBillingBlocker`, reason `CONTRACT_NOT_ACTIVE`), so the invoice generator,
+  mark-ready, posting and the cycle all agree. The standard template's first row is named
+  **"Advance (mobilisation)"** so the schedule never reads as if 40% paid for verified structure work.
+  `TIME_BASED` stages remain ungated by this rule.
