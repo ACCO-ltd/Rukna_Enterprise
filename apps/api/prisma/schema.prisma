@@ -966,6 +966,11 @@ model DailyProgressReport {
   approvedBy     String?   @map("approved_by")
   approvedAt     DateTime? @map("approved_at")
   returnReason   String?   @map("return_reason")
+  // Who returned the report for revision, and when (2026-09-28). Like returnReason, these hold the
+  // MOST RECENT return: a resubmit keeps them (history of the last return stays visible) and the
+  // next return overwrites them.
+  returnedBy     String?   @map("returned_by")
+  returnedAt     DateTime? @map("returned_at")
   // ADR-021 CONST-PROG-010 — a controlled, authorised, audited reopen of an APPROVED report for
   // correction (no silent edits). While reopened, its measurements are not counted as verified.
   reopenedBy     String?   @map("reopened_by")

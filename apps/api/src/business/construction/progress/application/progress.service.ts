@@ -438,9 +438,13 @@ export class ProgressService {
     if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException('Only a SUBMITTED report can be returned.');
     }
+    // returnedBy/At record the most recent return alongside returnReason; like the reason, a
+    // resubmit keeps them and the next return overwrites them.
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
       status: DprStatus.RETURNED,
       returnReason: reason,
+      returnedBy: identity.userId,
+      returnedAt: new Date(),
     });
   }
 
@@ -483,26 +487,32 @@ export class ProgressService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
     const dprs = await this.repo.findDprsByProject(prisma, identity.activeOrganizationId, projectId);
-    // Resolve the preparer id → name once for the whole list (one users query, not N).
-    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
+    // Resolve the preparer / returner ids → names once for the whole list (one users query, not N).
     const names = await this.resolveUserNames(
       prisma,
       identity.activeOrganizationId,
-      dprs.map((d) => d.preparedBy),
+      dprs.flatMap((d) => [d.preparedBy, d.returnedBy ?? '']),
     );
-    return dprs.map((d) => ({ ...d, preparedByName: names.get(d.preparedBy) }));
+    return dprs.map((d) => ({
+      ...d,
+      preparedByName: names.get(d.preparedBy),
+      returnedByName: d.returnedBy ? names.get(d.returnedBy) : undefined,
+    }));
   }
 
   async getDpr(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    // Resolve this one DPR's preparer id → name (read-side, tenant-scoped). Undefined if not found.
-    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
+    // Resolve this one DPR's preparer / returner ids → names (read-side, tenant-scoped).
     const names = await this.resolveUserNames(
       this.tenancy.getClient(),
       identity.activeOrganizationId,
-      [dpr.preparedBy],
+      [dpr.preparedBy, dpr.returnedBy ?? ''],
     );
-    return { ...dpr, preparedByName: names.get(dpr.preparedBy) };
+    return {
+      ...dpr,
+      preparedByName: names.get(dpr.preparedBy),
+      returnedByName: dpr.returnedBy ? names.get(dpr.returnedBy) : undefined,
+    };
   }
 
   /**

@@ -285,6 +285,34 @@ describe('ProgressService (ADR-021 MVP)', () => {
     );
   });
 
+  it('returnForRevision: records the reason, who returned it and when', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.returnForRevision(identity, 'dpr-1', 'Photos missing for grid 5');
+    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      expect.objectContaining({
+        status: 'RETURNED',
+        returnReason: 'Photos missing for grid 5',
+        returnedBy: 'user-1',
+        returnedAt: expect.any(Date),
+      }),
+    );
+  });
+
+  it('submit: a resubmit keeps the last return record (same as returnReason)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'RETURNED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.submit(identity, 'dpr-1');
+    const data = repo.updateDprStatus.mock.calls[0]![2] as Record<string, unknown>;
+    expect(data).not.toHaveProperty('returnedBy');
+    expect(data).not.toHaveProperty('returnedAt');
+    expect(data).not.toHaveProperty('returnReason');
+  });
+
   it('reopen: moves an APPROVED report to REOPENED with the reopen audit trail (CONST-PROG-010)', async () => {
     const { repo, service } = build({
       dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
@@ -1146,6 +1174,19 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'org-1',
       expect.arrayContaining(['user-1', 'ghost-user']),
     );
+  });
+
+  it('listDprs: resolves returnedByName in the same batched users query', async () => {
+    const { repo, service } = build({
+      dprs: [{ id: 'dpr-1', projectId: 'p-1', status: 'RETURNED', preparedBy: 'user-2', returnedBy: 'user-1' }],
+      users: [
+        { id: 'user-1', firstName: 'Ahmed', lastName: 'Shirie' },
+        { id: 'user-2', firstName: 'Site', lastName: 'Engineer' },
+      ],
+    });
+    const res = await service.listDprs(identity, 'p-1');
+    expect(res[0]).toMatchObject({ preparedByName: 'Site Engineer', returnedByName: 'Ahmed Shirie' });
+    expect(repo.findUserNamesByIds).toHaveBeenCalledTimes(1);
   });
 
   it('getDpr: resolves the single report preparedByName', async () => {

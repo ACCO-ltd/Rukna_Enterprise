@@ -593,6 +593,12 @@ export interface DailyProgressReportResponse {
   approvedBy?: string;
   /** The reason the report was most recently returned to the author. */
   returnReason?: string;
+  /** Who most recently returned the report (user id). Kept on resubmit, overwritten by the next return. */
+  returnedBy?: string;
+  /** ISO datetime of the most recent return. */
+  returnedAt?: string;
+  /** The returner's "firstName lastName", resolved like preparedByName. */
+  returnedByName?: string;
   // Phase 3 structured row collections — present only on the getDpr endpoint (not on list).
   labourRows?: DprLabourRowResponse[];
   equipmentRows?: DprEquipmentRowResponse[];
