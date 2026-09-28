@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   DprStatus,
@@ -18,6 +19,12 @@ import {
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
 import { classifyDivergence } from '../domain/divergence.js';
 import { validateDeliveryPlanBatch, type DeliveryPlanPackageInput } from '../domain/delivery-plan.js';
+import {
+  DPR_EXCEEDS_BOQ_QUANTITY,
+  findOverQuantityLines,
+  overQuantityMessage,
+  type OverQuantityInput,
+} from '../domain/over-quantity.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -33,6 +40,31 @@ import { weightedPackagePercent } from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
 
 const ZERO = new Decimal(0);
+
+/** Wire code for a BOQ leaf that is already allocated to a work package (CONST-PROG-012). */
+export const BOQ_ITEM_ALREADY_ALLOCATED = 'BOQ_ITEM_ALREADY_ALLOCATED';
+
+function boqItemAlreadyAllocated(): ConflictException {
+  return new ConflictException({
+    message:
+      'This BOQ item is already allocated to another work package. Refresh the plan and pick an unallocated item.',
+    errorCode: BOQ_ITEM_ALREADY_ALLOCATED,
+  });
+}
+
+/**
+ * True when a write hit `WorkPackageBoqNode @@unique([boqNodeId])` — a leaf allocated by a racing
+ * request between our pre-check and the insert. Other unique violations propagate unchanged.
+ */
+function isLeafAllocationConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    /boq_node_id|boqNodeId/.test(
+      String((error.meta as { target?: unknown } | undefined)?.target ?? ''),
+    )
+  );
+}
 
 // ADR-021: the statuses in which a DPR's measurements may be added/edited and it can be submitted —
 // a fresh draft, one returned before approval, or one reopened for correction (CONST-PROG-010).
@@ -267,6 +299,9 @@ export class ProgressService {
     if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException(`Cannot submit a ${dpr.status} report.`);
     }
+    // Catch an over-quantity entry while the report is still in the preparer's hands, rather than
+    // letting it bounce at approval. Approve re-runs the same check and stays authoritative.
+    await this.assertWithinBoqQuantity(identity, dpr);
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
       status: DprStatus.SUBMITTED,
       submittedBy: identity.userId,
@@ -304,23 +339,8 @@ export class ProgressService {
       'Approving this progress report requires workflow approval.',
     );
 
-    const byNode = new Map<string, Decimal>();
-    for (const m of dpr.measurements) {
-      byNode.set(m.boqNodeId, (byNode.get(m.boqNodeId) ?? ZERO).plus(new Decimal(m.quantity.toString())));
-    }
-    for (const [nodeId, thisReport] of byNode) {
-      const node = await this.repo.findBoqNodeForProject(prisma, dpr.projectId, nodeId);
-      const scope = new Decimal(node?.quantity?.toString() ?? '0');
-      const prior = await this.repo.sumVerifiedForNode(prisma, identity.activeOrganizationId, nodeId, dprId);
-      const priorQty = new Decimal(prior._sum.quantity?.toString() ?? '0');
-      if (priorQty.plus(thisReport).greaterThan(scope)) {
-        throw new BadRequestException(
-          `Approving would exceed the BOQ scope for a line ` +
-            `(${priorQty.plus(thisReport).toString()} > ${scope.toString()}). ` +
-            'Route the excess through an unplanned-requirement classification.',
-        );
-      }
-    }
+    // Authoritative re-check: other reports may have been approved since this one was submitted.
+    await this.assertWithinBoqQuantity(identity, dpr);
 
     // CONST-PROG-008: approval is what makes these measurements verified, so from here the
     // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
@@ -334,6 +354,56 @@ export class ProgressService {
       approvedBy: identity.userId,
       approvedAt: new Date(),
     });
+  }
+
+  /**
+   * CONST-PROG-002/009: cumulative verified quantity per BOQ leaf may not exceed the leaf's
+   * measurable quantity. Sums this report's measurements per line, adds what OTHER approved reports
+   * have verified, and — when any line would go over — throws 400 `DPR_EXCEEDS_BOQ_QUANTITY` with
+   * every offending line in `details.lines` and a message naming the first one.
+   */
+  private async assertWithinBoqQuantity(
+    identity: RequestIdentity,
+    dpr: {
+      id: string;
+      projectId: string;
+      measurements: { boqNodeId: string; quantity: { toString(): string } }[];
+    },
+  ): Promise<void> {
+    const prisma = this.tenancy.getClient();
+    const byNode = new Map<string, Decimal>();
+    for (const m of dpr.measurements) {
+      byNode.set(m.boqNodeId, (byNode.get(m.boqNodeId) ?? ZERO).plus(new Decimal(m.quantity.toString())));
+    }
+
+    const inputs: OverQuantityInput[] = [];
+    for (const [nodeId, thisReport] of byNode) {
+      const node = await this.repo.findBoqNodeForProject(prisma, dpr.projectId, nodeId);
+      const prior = await this.repo.sumVerifiedForNode(
+        prisma,
+        identity.activeOrganizationId,
+        nodeId,
+        dpr.id,
+      );
+      inputs.push({
+        boqNodeId: nodeId,
+        boqCode: node?.code ?? null,
+        description: node?.description ?? null,
+        unit: node?.unit ?? null,
+        boqQuantity: new Decimal(node?.quantity?.toString() ?? '0'),
+        verifiedToDate: new Decimal(prior._sum.quantity?.toString() ?? '0'),
+        thisReport,
+      });
+    }
+
+    const lines = findOverQuantityLines(inputs);
+    if (lines.length > 0) {
+      throw new BadRequestException({
+        message: overQuantityMessage(lines),
+        errorCode: DPR_EXCEEDS_BOQ_QUANTITY,
+        details: { lines },
+      });
+    }
   }
 
   async returnForRevision(identity: RequestIdentity, dprId: string, reason: string) {
@@ -489,10 +559,16 @@ export class ProgressService {
     // counted once in the roll-up. Surface the clash rather than let the unique index 500.
     const existing = await this.repo.findLeafAllocation(prisma, boqNodeId);
     if (existing && existing.workPackageId !== workPackageId) {
-      throw new BadRequestException('This BOQ item is already allocated to another work package.');
+      throw boqItemAlreadyAllocated();
     }
 
-    return this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+    try {
+      return await this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+    } catch (error) {
+      // A racing allocation of the same leaf landed between the check above and this insert.
+      if (isLeafAllocationConflict(error)) throw boqItemAlreadyAllocated();
+      throw error;
+    }
   }
 
   async listWorkPackages(identity: RequestIdentity, projectId: string) {
@@ -583,6 +659,11 @@ export class ProgressService {
         ),
       );
       return packages;
+    }).catch((error: unknown) => {
+      // The unique-leaf backstop fired: another plan claimed a leaf after validation. The whole
+      // transaction has rolled back; tell the caller plainly rather than surfacing a raw 500.
+      if (isLeafAllocationConflict(error)) throw boqItemAlreadyAllocated();
+      throw error;
     });
 
     return {

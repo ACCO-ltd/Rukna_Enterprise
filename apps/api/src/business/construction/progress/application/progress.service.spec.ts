@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { ProgressService } from './progress.service.js';
@@ -175,8 +176,70 @@ describe('ProgressService (ADR-021 MVP)', () => {
       node: { id: 'n1', quantity: 1000, isLeaf: true },
       prior: { _sum: { quantity: '600' } }, // 600 + 500 = 1100 > 1000
     });
-    await expect(service.approve(identity, 'dpr-1')).rejects.toBeInstanceOf(BadRequestException);
+    const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+      details: { lines: [expect.objectContaining({ boqNodeId: 'n1', maxForThisReport: '400' })] },
+    });
+    // The "prior" figure excludes this report itself — only OTHER approved reports count.
+    expect(repo.sumVerifiedForNode).toHaveBeenCalledWith(expect.anything(), 'org-1', 'n1', 'dpr-1');
     expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('submit: rejects an over-quantity report with a structured DPR_EXCEEDS_BOQ_QUANTITY error naming the line', async () => {
+    const { repo, service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'DRAFT',
+        projectId: 'p-1',
+        measurements: [
+          { boqNodeId: 'n1', quantity: 5 },
+          { boqNodeId: 'n1', quantity: 7 },
+        ],
+        attachments: [],
+      },
+      node: { id: 'n1', quantity: '60', isLeaf: true, code: '2.2', description: 'RC C30 slab', unit: 'm³' },
+      prior: { _sum: { quantity: '58' } },
+    });
+
+    const err = await service.submit(identity, 'dpr-1').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toEqual({
+      message:
+        '2.2 RC C30 slab: this report brings the total to 70 m³ but the BOQ has 60 m³. Enter 2 or less, or raise a variation.',
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+      details: {
+        lines: [
+          {
+            boqNodeId: 'n1',
+            boqCode: '2.2',
+            description: 'RC C30 slab',
+            unit: 'm³',
+            boqQuantity: '60',
+            verifiedToDate: '58',
+            thisReport: '12',
+            maxForThisReport: '2',
+          },
+        ],
+      },
+    });
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('submit: submits a report that stays within every BOQ line', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ boqNodeId: 'n1', quantity: 2 }], attachments: [] },
+      node: { id: 'n1', quantity: '60', isLeaf: true, code: '2.2', description: 'RC C30 slab', unit: 'm³' },
+      prior: { _sum: { quantity: '58' } },
+    });
+    await service.submit(identity, 'dpr-1');
+    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      expect.objectContaining({ status: 'SUBMITTED' }),
+    );
   });
 
   it('reopen: moves an APPROVED report to REOPENED with the reopen audit trail (CONST-PROG-010)', async () => {
@@ -499,12 +562,38 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(repo.allocateBoqNode).toHaveBeenCalledWith(expect.anything(), 'wp-1', 'n1');
   });
 
-  it('allocateBoqNode: rejects a leaf already allocated to another package (CONST-PROG-012)', async () => {
+  it('allocateBoqNode: rejects a leaf already allocated to another package (CONST-PROG-012) with 409 BOQ_ITEM_ALREADY_ALLOCATED', async () => {
     const { repo, service } = build({ leafAllocation: { workPackageId: 'wp-OTHER' } });
-    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    const err = await service.allocateBoqNode(identity, 'wp-1', 'n1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+    });
     expect(repo.allocateBoqNode).not.toHaveBeenCalled();
+  });
+
+  it('allocateBoqNode: maps a racing unique-leaf violation (P2002) to 409 BOQ_ITEM_ALREADY_ALLOCATED, not a 500', async () => {
+    const { repo, service } = build();
+    repo.allocateBoqNode.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: { target: ['boq_node_id'] },
+      }),
+    );
+    const err = await service.allocateBoqNode(identity, 'wp-1', 'n1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+      message: expect.stringContaining('already allocated'),
+    });
+  });
+
+  it('allocateBoqNode: lets an unrelated database error propagate unchanged', async () => {
+    const { repo, service } = build();
+    const boom = new Error('connection reset');
+    repo.allocateBoqNode.mockRejectedValue(boom);
+    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBe(boom);
   });
 
   // ── Master Schedule P1-a (ADR-029): WorkPackage schedule window + update guards ──

@@ -78,11 +78,14 @@ export class ProgressRepository {
     return rows.map((row) => row.platformFileId);
   }
 
-  /** The BOQ leaf must belong to this project's BOQ. Returns the measurable quantity + leaf flag. */
+  /**
+   * The BOQ leaf must belong to this project's BOQ. Returns the measurable quantity + leaf flag,
+   * plus the code/description/unit an over-quantity error names the line by.
+   */
   findBoqNodeForProject(prisma: TenantPrisma, projectId: string, boqNodeId: string) {
     return prisma.boqNode.findFirst({
       where: { id: boqNodeId, version: { boq: { projectId } } },
-      select: { id: true, quantity: true, isLeaf: true },
+      select: { id: true, quantity: true, isLeaf: true, code: true, description: true, unit: true },
     });
   }
 
