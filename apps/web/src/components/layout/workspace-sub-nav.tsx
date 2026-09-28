@@ -9,6 +9,8 @@ export interface WorkspaceSubNavItem {
   value: string;
   label: string;
   href: string;
+  /** A count shown beside the label, e.g. open To do rows. Omitted or 0 → no badge. */
+  count?: number;
 }
 
 /**
@@ -38,6 +40,7 @@ export function WorkspaceSubNav({
 }) {
   const pathname = usePathname();
   const current = value ?? currentView(items, pathname);
+  const counts = new Map(items.map((item) => [item.href, item.count ?? 0]));
 
   return (
     <ViewSwitcher
@@ -53,6 +56,11 @@ export function WorkspaceSubNav({
       renderLink={({ href, active, className: linkClass, children, key }) => (
         <Link key={key} href={href} aria-current={active ? 'page' : undefined} className={linkClass}>
           {children}
+          {counts.get(href) ? (
+            <span className="ms-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-caption font-semibold tabular-nums text-foreground">
+              {counts.get(href)}
+            </span>
+          ) : null}
         </Link>
       )}
     />

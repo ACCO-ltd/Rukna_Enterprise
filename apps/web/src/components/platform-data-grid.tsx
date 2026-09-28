@@ -490,6 +490,11 @@ export interface PlatformDataGridProps<T> {
    * table scrolls sideways. Pass `false` for a list whose order is fixed and meaningful.
    */
   sortControl?: boolean;
+  /**
+   * Render the toolbar (search · filters · actions). `false` for a short list — a project's
+   * handful of invoices — where a search box is furniture, not a tool.
+   */
+  toolbar?: boolean;
 
   /**
    * The order the list is in before anyone touches a header.
@@ -550,6 +555,7 @@ export function PlatformDataGrid<T>({
   rowHref,
   onClearFilters,
   sortControl = true,
+  toolbar = true,
   defaultSort,
   filters,
   filterValues,
@@ -802,7 +808,10 @@ export function PlatformDataGrid<T>({
       {savedViews}
 
       {/* ── Toolbar (ADR-035): scoped search · filters · one create ─────── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-panel border border-border bg-surface p-3">
+      <div
+        hidden={!toolbar}
+        className="flex flex-wrap items-center gap-2 rounded-panel border border-border bg-surface p-3"
+      >
         <div className="relative min-w-0 flex-1 basis-56 sm:max-w-md">
           <Label htmlFor={searchId} className="sr-only">
             {searchLabel ?? t('searchLabel')}

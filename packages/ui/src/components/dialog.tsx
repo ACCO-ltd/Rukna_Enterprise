@@ -64,40 +64,83 @@ export const DialogContent = React.forwardRef<
     /** Max-width tier. Defaults to 'sm' (448px). Use 'md' for 4–6 field forms. */
     size?: keyof typeof dialogSizeClass;
   }
->(({ className, children, closeLabel = 'Close', size = 'sm', ...props }, ref) => (
-  <DialogPrimitive.Portal>
-    {/* Blurred as well as dimmed. A flat scrim separates the dialog from the page; blurring
+>(
+  (
+    {
+      className,
+      children,
+      closeLabel = 'Close',
+      size = 'sm',
+      onOpenAutoFocus,
+      onCloseAutoFocus,
+      ...props
+    },
+    ref,
+  ) => {
+    // Radix returns focus to a <DialogTrigger>. Most dialogs here are opened from state (a row
+    // action, a menu item) with no trigger, so focus fell to <body> on close and a keyboard user
+    // lost their place. Remember what had focus when the dialog opened and go back to it.
+    const returnFocusTo = React.useRef<HTMLElement | null>(null);
+    return (
+      <DialogPrimitive.Portal>
+        {/* Blurred as well as dimmed. A flat scrim separates the dialog from the page; blurring
         what is behind it also stops a dense table competing for attention through the tint. */}
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm" />
-    <DialogPrimitive.Content
-      ref={ref}
-      // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
-      // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
-      // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
-      className={cn(
-        'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
-        'rounded-t-container sm:rounded-container',
-        'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-8',
-        dialogSizeClass[size],
-        className,
-      )}
-      {...props}
-    >
-      {children}
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm" />
+        <DialogPrimitive.Content
+          ref={ref}
+          // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
+          // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
+          // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
+          className={cn(
+            'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
+            'rounded-t-container sm:rounded-container',
+            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-8',
+            dialogSizeClass[size],
+            className,
+          )}
+          onOpenAutoFocus={(event) => {
+            const active = document.activeElement;
+            returnFocusTo.current =
+              active instanceof HTMLElement && active !== document.body ? active : null;
+            onOpenAutoFocus?.(event);
+          }}
+          onCloseAutoFocus={(event) => {
+            onCloseAutoFocus?.(event);
+            if (event.defaultPrevented) return;
+            const target = returnFocusTo.current;
+            if (target?.isConnected) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
+          {...props}
+        >
+          {children}
 
-      {/* Routed through onOpenChange like every other dismissal, so a dialog that blocks
+          {/* Routed through onOpenChange like every other dismissal, so a dialog that blocks
           closing while a request is in flight blocks this too, without knowing it exists. */}
-      <DialogPrimitive.Close
-        aria-label={closeLabel}
-        className="absolute end-4 top-4 flex h-8 w-8 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPrimitive.Portal>
-));
+          <DialogPrimitive.Close
+            aria-label={closeLabel}
+            className="absolute end-4 top-4 flex h-8 w-8 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </DialogPrimitive.Close>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    );
+  },
+);
 DialogContent.displayName = 'DialogContent';
 
 export const DialogTitle = React.forwardRef<
@@ -142,10 +185,7 @@ export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLD
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn(
-        'mt-6 flex flex-col gap-3 sm:flex-row-reverse sm:justify-start',
-        className,
-      )}
+      className={cn('mt-6 flex flex-col gap-3 sm:flex-row-reverse sm:justify-start', className)}
       {...props}
     />
   );
