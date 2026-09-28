@@ -619,6 +619,22 @@ export interface MilestoneReleaseLine {
   invoiced: boolean;
 }
 
+// ADR-021 amendment (2026-09-28): a work package linked to a milestone, with its verified physical %
+// (0..100, whole number) — the same figure the progress roll-up reports for the package. A
+// schedule-only phase cannot be linked; a linked package with no BOQ leaves reads 0.
+export interface MilestoneWorkPackageLine {
+  id: string;
+  code: string;
+  name: string;
+  percentComplete: number;
+}
+
+// ADR-021 amendment (2026-09-28): body of PUT projects/:projectId/programme/milestones/:milestoneId/
+// work-packages — replaces the milestone's linked set (an empty array clears it).
+export interface SetMilestoneWorkPackagesRequest {
+  workPackageIds: string[];
+}
+
 // ADR-021 phase 2: a programme delivery milestone (baseline/forecast/actual dates, PLANNED -> VERIFIED).
 export interface ProgrammeMilestoneResponse {
   id: string;
@@ -636,6 +652,13 @@ export interface ProgrammeMilestoneResponse {
   // Master Schedule P2 — the contract payment installment(s) this milestone releases. `[]` when none
   // link to it (ContractPaymentInstallment.programmeMilestoneId is null for every installment).
   releases: MilestoneReleaseLine[];
+  /** ADR-021 amendment (2026-09-28): the work packages that make up this stage, ordered by code. */
+  workPackages: MilestoneWorkPackageLine[];
+  /**
+   * Server-computed: status is PLANNED, at least one package is linked, and every linked package's
+   * percentComplete is >= 100. A prompt to verify — verification itself stays a human act.
+   */
+  readyToVerify: boolean;
 }
 
 // --- Documents (Phase 7A): the controlled project register ---------------------

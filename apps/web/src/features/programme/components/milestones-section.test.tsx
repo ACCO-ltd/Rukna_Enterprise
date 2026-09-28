@@ -42,6 +42,8 @@ function milestone(overrides: Partial<ProgrammeMilestoneResponse> = {}): Program
     verifiedBy: null,
     verifiedAt: null,
     releases: [],
+    workPackages: [],
+    readyToVerify: false,
     ...overrides,
   };
 }

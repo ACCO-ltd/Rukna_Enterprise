@@ -38,7 +38,12 @@ import {
   CommandGovernanceService,
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
-import { weightedPackagePercent } from '../domain/progress-rollup.js';
+import {
+  leafPercentComplete,
+  packagePercentComplete,
+  progressValueByLeaf,
+  weightedPackagePercent,
+} from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
 // The single server-owned money-visibility definition (ADR-029 §8 A-2) — reused, not re-derived, so
 // the Progress signals hide money from exactly the roles the BOQ and Commercial read models do.
@@ -529,9 +534,7 @@ export class ProgressService {
       description: e.description,
       measurableQuantity: e.quantity.toString(),
       verifiedToDate: e.verified.toString(),
-      percentComplete: e.quantity.greaterThan(ZERO)
-        ? Math.min(100, Math.round(e.verified.div(e.quantity).mul(100).toNumber()))
-        : null,
+      percentComplete: leafPercentComplete(e.verified, e.quantity),
     }));
   }
 
@@ -881,11 +884,7 @@ export class ProgressService {
     // treat it as an absent (zero-value) leaf, and a package that is *only* contingency falls through
     // to the existing unpriced-package plain-average fallback rather than reading 0%. SEPARATE_CHARGE
     // and ABSORBED leaves are `nodeRole = WORK`, so they keep their value and roll up normally (P-2).
-    const valueByNode = new Map<string, Decimal>(
-      leafValues
-        .filter((v) => v.nodeRole !== 'CONTINGENCY')
-        .map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
-    );
+    const valueByNode = progressValueByLeaf(leafValues);
 
     // P1-b: one batched read of the APPROVED-DPR report dates across every allocated leaf, folded to
     // per-node min/max. Each package then reads its own actual window from its leaves.
@@ -934,9 +933,10 @@ export class ProgressService {
           scheduleStatus: deriveScheduleOnlyStatus(wp.plannedStart, wp.plannedEnd, at),
         };
       }
-      // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
+      // Value-weighted, not a plain average — see `progress-rollup.ts` for why. The rounded figure
+      // comes from the same helper milestone readiness reads (ProgrammeService), so they agree.
       const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
-      const percentComplete = Math.round(pct);
+      const percentComplete = packagePercentComplete(leaves, pctByNode, valueByNode);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));
