@@ -194,6 +194,12 @@ function EntryForm({
     }
   }, [focusRequest, groups, fieldErrors]);
 
+  /** A 409 (DPR_CHANGED, or the server busy) means what is on screen is stale: reload it. */
+  function refetchReport() {
+    void queryClient.invalidateQueries({ queryKey: progressKeys.report(dpr.id) });
+    void queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) });
+  }
+
   /** "1 item exceeds its BOQ quantity: 2.2 RC C30 slab — enter 2 or less". */
   function describeExceeds(errors: Record<string, DprQuantityFieldError>): string {
     const lines = Object.entries(errors).map(([id, e]) =>
@@ -251,10 +257,7 @@ function EntryForm({
         setFormError(mapped.formError);
         // 409: the report changed under us (someone else acted on it). Say so plainly and reload
         // it, so what the sheet shows is the current report.
-        if (error instanceof ApiError && error.status === 409) {
-          void queryClient.invalidateQueries({ queryKey: progressKeys.report(dpr.id) });
-          void queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) });
-        }
+        if (error instanceof ApiError && error.status === 409) refetchReport();
         if (Object.keys(mapped.fieldErrors).length > 0) setFocusRequest((n) => n + 1);
       },
     });
@@ -302,6 +305,11 @@ function EntryForm({
                       verifiedToDate={Number(verifiedByNode.get(leaf.id)?.verifiedToDate ?? 0)}
                       scope={verifiedByNode.get(leaf.id)?.measurableQuantity ?? leaf.quantity}
                       measurements={measurementsByNode.get(leaf.id) ?? []}
+                      // A reopened report keeps its approved entries: the server refuses (409) to
+                      // delete one made before the reopen, and the response does not say which
+                      // entries came after it — so none offers Remove on a reopened report.
+                      canRemove={dpr.status !== 'REOPENED'}
+                      onConflict={refetchReport}
                       fieldError={fieldErrors[leaf.id]}
                       rowError={rowErrors[leaf.id]}
                       onRowError={(message) =>
@@ -393,6 +401,8 @@ function EntryItemRow({
   verifiedToDate,
   scope,
   measurements,
+  canRemove,
+  onConflict,
   fieldError,
   rowError,
   onRowError,
@@ -404,6 +414,8 @@ function EntryItemRow({
   verifiedToDate: number;
   scope: string | null;
   measurements: ProgressMeasurementResponse[];
+  canRemove: boolean;
+  onConflict: () => void;
   fieldError: DprQuantityFieldError | undefined;
   rowError: string | undefined;
   onRowError: (message: string | null) => void;
@@ -432,7 +444,7 @@ function EntryItemRow({
     ? `${formatNumber(fieldError.max, locale, 3) ?? fieldError.max}${fieldError.unit ? ` ${fieldError.unit}` : unit ? ` ${unit}` : ''}`
     : '';
   const errorText = fieldError
-    ? recordedHere > 0
+    ? recordedHere > 0 && canRemove
       ? t('entry.exceedsRemove', { max: maxText, quantity: withUnit(recordedHere) })
       : t('entry.exceeds', { max: maxText })
     : rowError;
@@ -451,6 +463,7 @@ function EntryItemRow({
       {
         onSuccess: () => setQuantity(''),
         onError: (error) => {
+          if (error instanceof ApiError && error.status === 409) onConflict();
           const mapped = mapDprError(error, t('entry.saveFailed'));
           const mine = mapped.fieldErrors[leaf.id];
           if (mine) onFieldError(mine);
@@ -468,8 +481,10 @@ function EntryItemRow({
       onSuccess: () => onFieldError(null),
       // Not hidden: a refused removal (409 once the report is no longer editable) leaves the entry
       // on the report, and the reader must know that.
-      onError: (error) =>
-        onRowError(t('entry.removeFailed', { message: mapDprError(error, t('entry.saveFailed')).formError })),
+      onError: (error) => {
+        if (error instanceof ApiError && error.status === 409) onConflict();
+        onRowError(t('entry.removeFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
+      },
     });
   }
 
@@ -509,7 +524,7 @@ function EntryItemRow({
           </Button>
         </div>
       </form>
-      {measurements.length > 0 ? (
+      {canRemove && measurements.length > 0 ? (
         <ul className="mt-2 flex flex-wrap gap-2" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
           {measurements.map((m) => (
             <li key={m.id}>

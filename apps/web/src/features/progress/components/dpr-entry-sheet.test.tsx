@@ -196,6 +196,13 @@ describe('DprEntrySheet', () => {
     expect((await screen.findAllByText('Site notes could not be saved: Server down')).length).toBeGreaterThan(0);
   });
 
+  it('offers no Remove on a reopened report, whose earlier entries the server keeps', () => {
+    mocks.useDpr.mockReturnValue({ data: { ...DPR, status: 'REOPENED' }, isPending: false, isError: false });
+    render();
+    expect(screen.getByText(/2.000 m3 on this report/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
+  });
+
   it('falls back to a form-level message for any other error', async () => {
     const user = userEvent.setup();
     mocks.submit.mockImplementation((_v, opts) => opts.onError(new ApiError(409, 'Already submitted', 'CONFLICT')));
