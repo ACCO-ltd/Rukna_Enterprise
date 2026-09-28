@@ -46,7 +46,9 @@ export function useRecordSignedContract(projectId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: commercialKeys.summary(projectId) });
       void queryClient.invalidateQueries({ queryKey: contractKeys.list(projectId) });
-      router.push(`/projects/${projectId}/commercial/contract-security`);
+      // Land where the next step is: billers on Billing, where the advance now waits in To do.
+      void queryClient.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
+      router.push(`/projects/${projectId}/commercial`);
     },
   });
 }
