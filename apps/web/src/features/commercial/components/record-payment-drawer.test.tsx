@@ -1,57 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CommercialInvoiceRow, DepositAccountOption } from '@erp/types';
 
-import { renderWithProviders } from '@/test/render';
 import { chooseOption } from '@/test/choose-option';
+import { renderWithProviders } from '@/test/render';
 
-import { toClientReceivableView, type ClientReceivableView } from '../lib/collection-view-model';
 import * as commercialHooks from '../hooks/use-commercial';
+import { toClientReceivableView, type ClientReceivableView } from '../lib/collection-view-model';
 import { RecordPaymentDrawer, type RecordPaymentDrawerProps } from './record-payment-drawer';
+import {
+  allocationPayload,
+  checkAllocations,
+  payableInvoices,
+  prefillAllocations,
+} from './record-payment-drawer.model';
 
 vi.mock('../hooks/use-commercial', () => ({
   useProjectDepositAccounts: vi.fn(),
   useRecordProjectPayment: vi.fn(),
-  commercialKeys: {
-    billing: (id: string) => ['commercial', id, 'billing'],
-  },
 }));
 
-// ─── Factories ───────────────────────────────────────────────────────────────
+const TODAY = '2026-09-28';
 
-const TODAY = '2026-09-17';
-
-const MOCK_BANK_ACCOUNTS: DepositAccountOption[] = [
-  {
-    id: 'bank-1',
-    bankName: 'Alinma Bank',
-    accountName: 'Main Account',
-    accountNumber: 'SA11-0000-0001',
-    currencyCode: 'SAR',
-  },
-  {
-    id: 'bank-2',
-    bankName: 'Riyad Bank',
-    accountName: 'Operations',
-    accountNumber: 'SA22-0000-0002',
-    currencyCode: 'SAR',
-  },
+const ACCOUNTS: DepositAccountOption[] = [
+  { id: 'bank-1', bankName: 'Premier Bank', accountName: 'Main', accountNumber: '0001', currencyCode: 'USD' },
 ];
 
-function makeInvoiceRow(overrides: Partial<CommercialInvoiceRow> = {}): CommercialInvoiceRow {
+function row(overrides: Partial<CommercialInvoiceRow>): CommercialInvoiceRow {
   return {
-    id: 'inv-1',
-    invoiceNumber: 'INV-0001',
-    source: { kind: 'INSTALLMENT', label: null, id: 'inst-1' },
+    id: 'inv-x',
+    invoiceNumber: 'INV-X',
+    source: { kind: 'INSTALLMENT', label: 'Stage', id: 'inst-x' },
     invoiceDate: '2026-08-01',
-    dueDate: '2026-10-01',
+    dueDate: '2026-09-01',
     currency: 'USD',
-    subtotal: '100000.00',
-    vatAmount: '5000.00',
-    totalAmount: '105000.00',
+    subtotal: '1000.00',
+    vatAmount: '50.00',
+    totalAmount: '1050.00',
     paidAmount: '0.00',
-    outstandingAmount: '105000.00',
+    outstandingAmount: '1050.00',
     documentStatus: 'APPROVED',
     postingStatus: 'POSTED',
     status: 'UNPAID',
@@ -60,192 +48,194 @@ function makeInvoiceRow(overrides: Partial<CommercialInvoiceRow> = {}): Commerci
   } as CommercialInvoiceRow;
 }
 
-function makeReceivable(overrides: Partial<CommercialInvoiceRow> = {}): ClientReceivableView {
-  return toClientReceivableView(makeInvoiceRow(overrides), TODAY);
-}
+const view = (overrides: Partial<CommercialInvoiceRow>): ClientReceivableView =>
+  toClientReceivableView(row(overrides), TODAY);
 
-function makeDrawerProps(
-  overrides: Partial<RecordPaymentDrawerProps> = {},
-): RecordPaymentDrawerProps {
-  const invoice = makeReceivable();
-  return {
-    open: true,
-    onOpenChange: vi.fn(),
-    projectId: 'p-1',
-    currency: 'USD',
-    preselectedInvoice: invoice,
-    allInvoices: [invoice],
-    ...overrides,
-  };
-}
+// Listed newest-due first on purpose: the dialog must re-order them oldest due first.
+const NEWER = view({ id: 'inv-new', invoiceNumber: 'INV-0003', dueDate: '2026-10-15', outstandingAmount: '300.00' });
+const OLDEST = view({ id: 'inv-old', invoiceNumber: 'INV-0001', dueDate: '2026-08-15', outstandingAmount: '100.00' });
+const MIDDLE = view({ id: 'inv-mid', invoiceNumber: 'INV-0002', dueDate: '2026-09-15', outstandingAmount: '200.00' });
+const PAID = view({ id: 'inv-paid', invoiceNumber: 'INV-0000', status: 'PAID', outstandingAmount: '0.00', paidAmount: '1050.00' });
 
-function renderDrawer(props: RecordPaymentDrawerProps) {
-  return renderWithProviders(<RecordPaymentDrawer {...props} />, { permissions: [] });
-}
-
-// ─── Stub helpers ─────────────────────────────────────────────────────────────
-
-function stubDepositAccounts(data: DepositAccountOption[] = MOCK_BANK_ACCOUNTS) {
+function stubHooks(mutate = vi.fn()) {
   vi.mocked(commercialHooks.useProjectDepositAccounts).mockReturnValue({
-    data,
+    data: ACCOUNTS,
     isPending: false,
-    isError: false,
   } as never);
-}
-
-function stubMutation(mutate = vi.fn()) {
   vi.mocked(commercialHooks.useRecordProjectPayment).mockReturnValue({
     mutate,
     reset: vi.fn(),
     isPending: false,
     isError: false,
-    isSuccess: false,
     error: null,
   } as never);
   return mutate;
 }
 
+function renderDialog(overrides: Partial<RecordPaymentDrawerProps> = {}) {
+  const props: RecordPaymentDrawerProps = {
+    open: true,
+    onOpenChange: vi.fn(),
+    projectId: 'p1',
+    currency: 'USD',
+    preselectedInvoice: null,
+    allInvoices: [NEWER, OLDEST, MIDDLE, PAID],
+    ...overrides,
+  };
+  renderWithProviders(<RecordPaymentDrawer {...props} />);
+  return props;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  stubDepositAccounts();
-  stubMutation();
 });
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
-
-describe('RecordPaymentDrawer', () => {
-  it('renders the drawer title and form fields', () => {
-    renderDrawer(makeDrawerProps());
-    expect(screen.getByText('Record payment')).toBeInTheDocument();
-    expect(screen.getByLabelText('Deposit account')).toBeInTheDocument();
-    expect(screen.getByLabelText('Amount received')).toBeInTheDocument();
-    expect(screen.getByLabelText('Date received')).toBeInTheDocument();
+describe('record-payment-drawer.model', () => {
+  it('orders payable invoices oldest due first, the preselected one on top, and drops settled ones', () => {
+    expect(payableInvoices([NEWER, OLDEST, MIDDLE, PAID]).map((i) => i.invoiceId)).toEqual([
+      'inv-old',
+      'inv-mid',
+      'inv-new',
+    ]);
+    expect(payableInvoices([NEWER, OLDEST, MIDDLE], 'inv-new').map((i) => i.invoiceId)).toEqual([
+      'inv-new',
+      'inv-old',
+      'inv-mid',
+    ]);
   });
 
-  it('shows deposit account options when the selector is opened', async () => {
-    const user = userEvent.setup();
-    renderDrawer(makeDrawerProps());
-    const trigger = screen.getByLabelText('Deposit account');
-    await user.click(trigger);
-    expect(await screen.findByRole('option', { name: /Alinma Bank/ })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Riyad Bank/ })).toBeInTheDocument();
-  });
-
-  it('shows allocation preview for a single invoice with default outstanding amount', () => {
-    const invoice = makeReceivable({ outstandingAmount: '105000.00' });
-    renderDrawer(makeDrawerProps({ allInvoices: [invoice], preselectedInvoice: invoice }));
-    expect(screen.getByText('INV-0001')).toBeInTheDocument();
-    expect(screen.getByText('Allocated')).toBeInTheDocument();
-  });
-
-  it('distributes one payment across two invoices in the allocation preview (spec §15 test 6)', async () => {
-    const user = userEvent.setup();
-    const inv1 = makeReceivable({ id: 'inv-a', invoiceNumber: 'INV-0001', outstandingAmount: '40000.00' });
-    const inv2 = makeReceivable({ id: 'inv-b', invoiceNumber: 'INV-0002', outstandingAmount: '30000.00' });
-    renderDrawer(makeDrawerProps({ allInvoices: [inv1, inv2], preselectedInvoice: inv1 }));
-
-    const amountInput = screen.getByLabelText('Amount received');
-    await user.clear(amountInput);
-    await user.type(amountInput, '60000');
-
-    expect(screen.getByText('INV-0001')).toBeInTheDocument();
-    expect(screen.getByText('INV-0002')).toBeInTheDocument();
-  });
-
-  it('total suggested allocation does not exceed receipt amount (spec §15 test 7)', async () => {
-    const user = userEvent.setup();
-    const inv1 = makeReceivable({ id: 'inv-a', invoiceNumber: 'INV-0001', outstandingAmount: '40000.00' });
-    const inv2 = makeReceivable({ id: 'inv-b', invoiceNumber: 'INV-0002', outstandingAmount: '30000.00' });
-    renderDrawer(makeDrawerProps({ allInvoices: [inv1, inv2], preselectedInvoice: inv1 }));
-
-    const amountInput = screen.getByLabelText('Amount received');
-    await user.clear(amountInput);
-    await user.type(amountInput, '50000');
-
-    expect(screen.getByText('INV-0001')).toBeInTheDocument();
-    expect(screen.queryByText('Unallocated')).not.toBeInTheDocument();
-  });
-
-  it('per-invoice allocation is capped at its outstanding — never exceeds max (spec §15 test 8)', async () => {
-    const user = userEvent.setup();
-    const invoice = makeReceivable({ outstandingAmount: '20000.00', invoiceNumber: 'INV-0001' });
-    renderDrawer(makeDrawerProps({ allInvoices: [invoice], preselectedInvoice: invoice }));
-
-    const amountInput = screen.getByLabelText('Amount received');
-    await user.clear(amountInput);
-    await user.type(amountInput, '50000');
-
-    expect(screen.getByText('Unallocated')).toBeInTheDocument();
-  });
-
-  it('shows Unallocated line when amount exceeds total invoice outstanding (spec §15 test 9)', async () => {
-    const user = userEvent.setup();
-    const invoice = makeReceivable({ outstandingAmount: '60000.00' });
-    renderDrawer(makeDrawerProps({ allInvoices: [invoice], preselectedInvoice: invoice }));
-
-    const amountInput = screen.getByLabelText('Amount received');
-    await user.clear(amountInput);
-    await user.type(amountInput, '100000');
-
-    expect(screen.getByText('Unallocated')).toBeInTheDocument();
-    expect(screen.getByText('Unallocated amount goes to client unapplied cash.')).toBeInTheDocument();
-  });
-
-  it('submit button is disabled when no bank account is selected', () => {
-    const invoice = makeReceivable({ outstandingAmount: '50000.00' });
-    renderDrawer(makeDrawerProps({ preselectedInvoice: invoice, allInvoices: [invoice] }));
-    expect(screen.getByRole('button', { name: 'Save payment' })).toBeDisabled();
-  });
-
-  it('calls mutation.mutate with bankAccountId and allocations on submit', async () => {
-    const user = userEvent.setup();
-    const mutate = stubMutation();
-
-    const invoice = makeReceivable({ id: 'inv-1', invoiceNumber: 'INV-0001', outstandingAmount: '50000.00' });
-    renderDrawer(makeDrawerProps({ preselectedInvoice: invoice, allInvoices: [invoice] }));
-
-    await chooseOption(user, screen.getByLabelText('Deposit account'), 'bank-1');
-
-    const amountInput = screen.getByLabelText('Amount received');
-    await user.clear(amountInput);
-    await user.type(amountInput, '50000');
-
-    await user.type(screen.getByLabelText('Reference'), 'TT-999');
-    await user.click(screen.getByRole('button', { name: 'Save payment' }));
-
-    expect(mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bankAccountId: 'bank-1',
-        amount: '50000',
-        currency: 'USD',
-        reference: 'TT-999',
-        allocations: expect.arrayContaining([
-          expect.objectContaining({ clientInvoiceId: 'inv-1' }),
-        ]),
-      }),
-      expect.anything(),
-    );
-  });
-
-  it('closes the drawer when onSuccess callback is invoked', async () => {
-    const user = userEvent.setup();
-    const onOpenChange = vi.fn();
-    const mutate = vi.fn().mockImplementation((_payload: unknown, opts: { onSuccess?: () => void }) => {
-      opts?.onSuccess?.();
+  it('prefills oldest first until the receipt runs out, then checks it in cents', () => {
+    const invoices = payableInvoices([NEWER, OLDEST, MIDDLE]);
+    const amounts = prefillAllocations(25000, invoices); // $250.00
+    expect(amounts).toEqual({ 'inv-old': '100.00', 'inv-mid': '150.00', 'inv-new': '' });
+    expect(checkAllocations('250.00', invoices, amounts)).toMatchObject({
+      appliedMinor: 25000,
+      unappliedMinor: 0,
+      valid: true,
     });
-    stubMutation(mutate);
+    expect(checkAllocations('300.00', invoices, amounts).unappliedMinor).toBe(5000);
+    expect(checkAllocations('200.00', invoices, amounts)).toMatchObject({ overApplied: true, valid: false });
+    expect(
+      checkAllocations('500.00', invoices, { 'inv-old': '100.01' }).lineErrors,
+    ).toEqual({ 'inv-old': 'OVER_BALANCE' });
+    expect(allocationPayload(invoices, amounts)).toEqual([
+      { clientInvoiceId: 'inv-old', amount: 100 },
+      { clientInvoiceId: 'inv-mid', amount: 150 },
+    ]);
+  });
+});
 
-    const invoice = makeReceivable({ outstandingAmount: '50000.00' });
-    renderDrawer(makeDrawerProps({ onOpenChange, preselectedInvoice: invoice, allInvoices: [invoice] }));
+describe('RecordPaymentDrawer — a Dialog that applies a receipt oldest due first', () => {
+  it('lists invoices oldest due first and prefills from the amount received', async () => {
+    const user = userEvent.setup();
+    stubHooks();
+    renderDialog();
 
-    await chooseOption(user, screen.getByLabelText('Deposit account'), 'bank-1');
+    const dialog = screen.getByRole('dialog', { name: 'Record payment' });
+    const labels = within(dialog)
+      .getAllByText(/^INV-000\d$/)
+      .map((node) => node.textContent);
+    expect(labels).toEqual(['INV-0001', 'INV-0002', 'INV-0003']);
 
-    const amountInput = screen.getByLabelText('Amount received');
-    await user.clear(amountInput);
-    await user.type(amountInput, '50000');
+    await user.type(screen.getByLabelText('Amount received'), '250');
+    expect(screen.getByLabelText('INV-0001')).toHaveValue('100.00');
+    expect(screen.getByLabelText('INV-0002')).toHaveValue('150.00');
+    expect(screen.getByLabelText('INV-0003')).toHaveValue('');
+  });
 
-    await user.click(screen.getByRole('button', { name: 'Save payment' }));
+  it('puts the invoice it was opened from first and prefills its balance', () => {
+    stubHooks();
+    renderDialog({ preselectedInvoice: NEWER });
+    expect(screen.getByLabelText('Amount received')).toHaveValue('300.00');
+    expect(screen.getByLabelText('INV-0003')).toHaveValue('300.00');
+    expect(screen.getByLabelText('INV-0001')).toHaveValue('');
+  });
 
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+  it('says what is not applied stays as client credit', async () => {
+    const user = userEvent.setup();
+    stubHooks();
+    renderDialog({ preselectedInvoice: OLDEST });
+    // $100 balance; receive $150 with only the oldest line kept.
+    const amount = screen.getByLabelText('Amount received');
+    await user.clear(amount);
+    await user.type(amount, '150');
+    await user.clear(screen.getByLabelText('INV-0002'));
+    expect(screen.getByText('Unapplied $50.00 stays as client credit.')).toBeInTheDocument();
+  });
+
+  it('applied more than received: an inline error, and submit does not post', async () => {
+    const user = userEvent.setup();
+    const mutate = stubHooks();
+    renderDialog({ preselectedInvoice: OLDEST });
+
+    await chooseOption(user, screen.getByLabelText('Received into'), 'bank-1');
+    await user.clear(screen.getByLabelText('INV-0002'));
+    await user.type(screen.getByLabelText('INV-0002'), '50');
+    expect(
+      screen.getByText('Applied is more than the amount received. Reduce a line or raise the amount received.'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Record payment' }));
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('a line above its balance is flagged', async () => {
+    const user = userEvent.setup();
+    stubHooks();
+    renderDialog({ preselectedInvoice: OLDEST });
+    const line = screen.getByLabelText('INV-0001');
+    await user.clear(line);
+    await user.type(line, '120');
+    expect(screen.getByText("More than this invoice's balance.")).toBeInTheDocument();
+  });
+
+  it('posts the receipt with its allocations and an idempotency key', async () => {
+    const user = userEvent.setup();
+    const mutate = stubHooks();
+    renderDialog();
+
+    await chooseOption(user, screen.getByLabelText('Received into'), 'bank-1');
+    await user.type(screen.getByLabelText('Amount received'), '350');
+    await user.type(screen.getByLabelText('Bank reference'), 'TT-7781');
+    await user.click(screen.getByRole('button', { name: 'Record payment' }));
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    const payload = mutate.mock.calls[0]![0];
+    expect(payload).toMatchObject({
+      bankAccountId: 'bank-1',
+      amount: '350.00',
+      currency: 'USD',
+      reference: 'TT-7781',
+      allocations: [
+        { clientInvoiceId: 'inv-old', amount: 100 },
+        { clientInvoiceId: 'inv-mid', amount: 200 },
+        { clientInvoiceId: 'inv-new', amount: 50 },
+      ],
+    });
+    expect(typeof payload.idempotencyKey).toBe('string');
+    expect(payload.idempotencyKey.length).toBeGreaterThan(8);
+    expect(payload.receiptDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('asks for the account in words instead of a disabled button', async () => {
+    const user = userEvent.setup();
+    const mutate = stubHooks();
+    renderDialog({ preselectedInvoice: OLDEST });
+    const submit = screen.getByRole('button', { name: 'Record payment' });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    expect(screen.getByText('Choose the account the money was received into.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('money-blind: no form and never $0', () => {
+    stubHooks();
+    const hidden = view({ id: 'inv-h', outstandingAmount: null, totalAmount: null, paidAmount: null });
+    renderDialog({ allInvoices: [hidden], preselectedInvoice: hidden });
+    expect(
+      screen.getByText("Amounts are hidden for your role, so payments can't be recorded here."),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Amount received')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0/)).not.toBeInTheDocument();
   });
 });
