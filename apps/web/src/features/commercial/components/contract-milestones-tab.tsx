@@ -29,7 +29,8 @@ import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 import { useRecordSignedDate } from '@/features/contracts/hooks/use-contracts';
-import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
+import { useMilestones, useVerifyMilestone } from '@/features/programme/hooks/use-programme';
+import { usePermissions } from '@/features/auth/permissions/can';
 
 import {
   commercialKeys,
@@ -49,6 +50,7 @@ import {
 import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { MilestoneJourney } from './milestone-journey';
+import { LinkMilestoneDialog } from './payment-schedule-panel';
 import { MilestoneDetailPanel } from './milestone-detail-panel';
 import { ReviewForBillingDrawer } from './review-for-billing-drawer';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
@@ -107,6 +109,12 @@ export function ContractMilestonesTab({
   const [preparingMilestone, setPreparingMilestone] = useState<MilestoneItemViewModel | null>(null);
   const [sendingMilestone, setSendingMilestone] = useState<MilestoneItemViewModel | null>(null);
   const [verifyingMilestone, setVerifyingMilestone] = useState<MilestoneItemViewModel | null>(null);
+  // Strict CONST-COM-011: a work stage bills only on a linked, verified milestone, so linking has
+  // to be possible right here — it used to live only on the retired Payment Schedule tab.
+  const [linkingMilestone, setLinkingMilestone] = useState<MilestoneItemViewModel | null>(null);
+  const { can } = usePermissions();
+  const canLinkMilestones = can('manage:contract');
+  const programmeMilestones = useMilestones(projectId);
 
   function handleMilestoneClick(milestone: MilestoneItemViewModel) {
     setDetailMilestone(milestone);
@@ -191,6 +199,7 @@ export function ContractMilestonesTab({
           onPrepareInvoice={handlePrepareInvoice}
           onSendInvoice={handleSendInvoice}
           onVerifyMilestone={setVerifyingMilestone}
+          onLinkMilestone={canLinkMilestones ? setLinkingMilestone : undefined}
         />
         {/* Money content next — variations and separate charges directly affect what gets
             billed, so a finance reader meets them right after the schedule. Contract-lifecycle
@@ -260,6 +269,17 @@ export function ContractMilestonesTab({
         milestone={verifyingMilestone}
         onClose={() => setVerifyingMilestone(null)}
       />
+
+      {linkingMilestone ? (
+        <LinkMilestoneDialog
+          projectId={projectId}
+          contractId={contract.id}
+          installment={linkingMilestone}
+          milestones={programmeMilestones.data ?? []}
+          milestonesLoading={programmeMilestones.isPending}
+          onDismiss={() => setLinkingMilestone(null)}
+        />
+      ) : null}
     </>
   );
 }
@@ -492,6 +512,7 @@ function ScheduleBody({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  onLinkMilestone,
 }: {
   projectId: string;
   summary: CommercialSummaryResponse;
@@ -502,6 +523,7 @@ function ScheduleBody({
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
   onVerifyMilestone: (m: MilestoneItemViewModel) => void;
+  onLinkMilestone?: (m: MilestoneItemViewModel) => void;
 }) {
   const t = useTranslations('commercial');
   const cycleQuery = useCommercialCurrentCycle(projectId);
@@ -611,6 +633,7 @@ function ScheduleBody({
         onReviewForBilling={onReviewForBilling}
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
+        onLinkMilestone={onLinkMilestone}
       />
       <AccountingSetupNotice />
       <MilestoneJourney
@@ -622,6 +645,7 @@ function ScheduleBody({
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
+        onLinkMilestone={onLinkMilestone}
         draftInvoiceHref={(invoiceId) =>
           `/projects/${projectId}/commercial/invoices/${invoiceId}?from=${encodeURIComponent(
             `/projects/${projectId}/commercial/contract-milestones`,
@@ -638,11 +662,13 @@ function CommercialDeepLinkAction({
   onReviewForBilling,
   onPrepareInvoice,
   onSendInvoice,
+  onLinkMilestone,
 }: {
   milestones: MilestoneItemViewModel[];
   onReviewForBilling: (milestone: MilestoneItemViewModel) => void;
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
+  onLinkMilestone?: (milestone: MilestoneItemViewModel) => void;
 }) {
   const searchParams = useSearchParams();
   const consumedAction = useRef<string | null>(null);
@@ -665,8 +691,11 @@ function CommercialDeepLinkAction({
       // dialog (SendInvoiceDialog) needs the same milestone view-model the schedule body
       // already built, which is why this is a deep link rather than a duplicated dialog.
       onSendInvoice(milestone);
+    } else if (requestedAction === 'link' && onLinkMilestone && !milestone.programmeMilestone) {
+      // The ribbon's "Link milestone" (strict CONST-COM-011) lands here.
+      onLinkMilestone(milestone);
     }
-  }, [milestones, onPrepareInvoice, onReviewForBilling, onSendInvoice, requestedAction, requestedInstallmentId]);
+  }, [milestones, onLinkMilestone, onPrepareInvoice, onReviewForBilling, onSendInvoice, requestedAction, requestedInstallmentId]);
 
   return null;
 }

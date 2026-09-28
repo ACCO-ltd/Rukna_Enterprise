@@ -1998,6 +1998,10 @@ export type CommercialCycleAction =
   | 'ALLOCATE_RECEIPT'
   | 'VIEW_HISTORY';
 
+/**
+ * `MILESTONE_NOT_LINKED` — a work-completion stage with no programme milestone linked (strict
+ * CONST-COM-011, 2026-09-28). `MILESTONE_NOT_VERIFIED` — linked, but not yet verified on site.
+ */
 export type CommercialCycleBlocker =
   | 'MAIN_CONTRACT_MISSING'
   | 'CONTRACT_NOT_ACTIVE'
@@ -2009,7 +2013,8 @@ export type CommercialCycleBlocker =
   // CONST-COM-011 / ADR-030 S-SH-3: a MILESTONE contract's NEXT installment is billing-gated on a
   // linked programme milestone that is not yet VERIFIED. The ribbon shows the reason + a verify link.
   | 'MILESTONE_NOT_VERIFIED'
-  | 'PERMISSION_REQUIRED';
+  | 'PERMISSION_REQUIRED'
+  | 'MILESTONE_NOT_LINKED';
 
 export interface CommercialCurrentCycleResponse {
   projectId: string;

@@ -584,7 +584,7 @@ function ActionsPanel({
         {/* The buyer's workspace. Named as somewhere else, not as another view of this one. */}
         <li>
           <Link
-            href="/procurement/orders"
+            href={`/procurement/orders?projectId=${data.projectId}`}
             className="flex min-h-11 items-center gap-3 px-4 py-3 hover:bg-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary sm:px-5"
           >
             <span className="text-muted-foreground" aria-hidden="true">

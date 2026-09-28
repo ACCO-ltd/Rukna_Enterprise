@@ -16,15 +16,19 @@ import { VariationOrderPrismaRepository } from '../../variations/infrastructure/
 import { VariationOrderService } from '../../variations/application/variation-order.service.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
+import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
 
 /**
  * Slice 3B — commercial readiness lifecycle (live-DB).
  *
  * Fixture: one ACTIVE MILESTONE contract (base 500,000 USD) with four installments:
- *   instA  (40% = 200,000) — unlinked   → primary test subject
+ *   instA  (40% = 200,000) — unlinked, then linked to a VERIFIED milestone in R-02c
  *   instB  (30% = 150,000) — linked to a programme milestone (starts PLANNED)
- *   instC  (20% = 100,000) — unlinked   → revoke + issuePackage-gate tests
- *   instD  (10% =  50,000) — unlinked   → DB-invariant probe
+ *   instC  (20% = 100,000) — unlinked, then VERIFIED-linked in R-02c → revoke + issuePackage-gate tests
+ *   instD  (10% =  50,000) — unlinked, then VERIFIED-linked in R-02c → DB-invariant probe
+ *
+ * Tests run in order against this one fixture: R-03 onwards depend on R-02c's links (strict
+ * CONST-COM-011 — an unlinked work stage is refused, which R-02b proves).
  *
  * A separate DRAFT contract carries instDraft for the "inactive contract" guard test.
  */
@@ -295,7 +299,24 @@ describe('CommercialReadiness (Slice 3B)', () => {
 
   // ─── Group 2: markReadyToBill success ───────────────────────────────────────
 
-  it('R-03: marks instA (NEXT, unlinked) ready — readyToBillAt set, invoice not created', async () => {
+  it('R-02b: rejects markReadyToBill on a work-completion stage with NO milestone linked (strict CONST-COM-011)', async () => {
+    // Owner decision 2026-09-28: a missing link is not a pass — leaving it empty must never
+    // bypass site verification.
+    await expect(service.markReadyToBill(identity, instA)).rejects.toThrow(/no programme milestone linked/);
+    const row = await prisma.contractPaymentInstallment.findUniqueOrThrow({ where: { id: instA } });
+    expect(row.readyToBillAt).toBeNull();
+  });
+
+  it('R-02c: linking each work stage to a VERIFIED milestone makes it eligible', async () => {
+    await linkVerifiedMilestones(prisma, contractId);
+    const row = await prisma.contractPaymentInstallment.findUniqueOrThrow({
+      where: { id: instA },
+      include: { programmeMilestone: true },
+    });
+    expect(row.programmeMilestone?.status).toBe('VERIFIED');
+  });
+
+  it('R-03: marks instA (NEXT, linked + verified) ready — readyToBillAt set, invoice not created', async () => {
     const before = Date.now();
     const result = await service.markReadyToBill(identity, instA, 'QA passed');
     const after = Date.now();
@@ -469,7 +490,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     // So the NEXT un-invoiced installment (lowest sortOrder without invoice) after instA is invoiced
     // is instB (it has readyToBillAt set but no invoice yet).
 
-    // canMarkReadyToBill: status=NEXT AND (no milestone OR VERIFIED) AND no invoice
+    // canMarkReadyToBill: status=NEXT AND linked+VERIFIED (strict CONST-COM-011) AND no invoice
     // instB: status=NEXT (first un-invoiced by sortOrder), linked to VERIFIED milestone, not invoiced
     //   → canMarkReadyToBill: NEXT && VERIFIED && !inv → BUT instB is ALREADY marked ready, so
     //     canMarkReadyToBill should still be true (the derivation only checks invoice, not readyToBillAt)
@@ -489,7 +510,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     // readyToBillAt being already set does NOT block canMarkReadyToBill (you could re-mark)
     expect(instBRow.readyToBillAt).not.toBeNull(); // already ready — idempotent mark allowed
 
-    // canPrepareInvoice: readyToBillAt != null AND NEXT AND (no milestone OR VERIFIED)
+    // canPrepareInvoice: readyToBillAt != null AND NEXT AND linked+VERIFIED
     // instB meets all conditions
     expect(instBRow.readyToBillAt).not.toBeNull(); // readyToBillAt set → canPrepareInvoice=true
   });

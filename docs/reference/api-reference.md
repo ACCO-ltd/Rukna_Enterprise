@@ -762,6 +762,12 @@ yet posted (DRAFT/APPROVED, not POSTED) — they are outside `netBilled`; `null`
 hidden. Each `billing-packages` document carries `postingStatus`: a stage whose invoice is not
 `POSTED` is a draft, never "issued".
 
+**Strict milestone evidence (2026-09-28, ADR-023 amendment).** A `MILESTONE`-trigger installment is
+billable only when linked to a VERIFIED programme milestone. `POST …/installments/:id/ready-to-bill`,
+`POST /invoices/from-installment` and `issue-package` return `400` otherwise, and `current-cycle`
+reports `blockers: ['MILESTONE_NOT_LINKED']` or `['MILESTONE_NOT_VERIFIED']`. `ADVANCE` and
+`TIME_BASED` installments are not gated by this rule.
+
 **Project finance overview — billing control (2026-09-28).** `GET /projects/:projectId/finance/overview`
 now returns `controls.billing` and `billingReconciliation { invoicedNet, glRevenue, variance,
 reconciled }`: posted client-invoice subtotals less posted credit notes (excluding sales tax)

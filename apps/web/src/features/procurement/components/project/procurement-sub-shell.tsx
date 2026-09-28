@@ -53,7 +53,8 @@ export function ProcurementSubShell({
         description={t('subtitle')}
         action={
           <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
-            <Link href="/procurement/orders">
+            {/* The buyer's workspace, already narrowed to this project's orders. */}
+            <Link href={`/procurement/orders?projectId=${projectId}`}>
               {t('openProcurement')}
               <ExternalLink size={14} aria-hidden="true" />
             </Link>

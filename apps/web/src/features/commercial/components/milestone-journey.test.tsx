@@ -393,3 +393,62 @@ describe('MilestoneJourney — rendering', () => {
     expect(screen.getByText(/no milestones set/i)).toBeInTheDocument();
   });
 });
+
+describe('strict milestone evidence (CONST-COM-011, 2026-09-28)', () => {
+  it('never shows an unlinked work stage as ready to bill, even with an old ready flag', () => {
+    const schedule = makeSchedule([{ id: 'inst-1', status: 'NEXT', programmeMilestone: null }]);
+    (schedule.installments[0] as Record<string, unknown>).readyToBill = true;
+    const vm = toMilestoneJourneyViewModel(schedule as never, true);
+    expect(vm.milestones[0]!.userState).toBe('in-progress');
+  });
+
+  it('still lets an advance stage marked ready be billed', () => {
+    const schedule = makeSchedule([{ id: 'inst-1', status: 'NEXT', triggerType: 'ADVANCE' }]);
+    (schedule.installments[0] as Record<string, unknown>).readyToBill = true;
+    const vm = toMilestoneJourneyViewModel(schedule as never, true);
+    expect(vm.milestones[0]!.userState).toBe('ready-to-bill');
+  });
+
+  it('offers "Link milestone" on an unlinked work stage and says why', async () => {
+    const user = userEvent.setup();
+    const onLinkMilestone = vi.fn();
+    renderWithProviders(
+      <MilestoneJourney
+        viewModel={{
+          currency: 'USD',
+          originalContractValue: '500000.00',
+          approvedVariationsTotal: null,
+          governingContractValue: null,
+          financialsVisible: true,
+          currentIndex: 0,
+          milestones: [
+            {
+              id: 'inst-1',
+              sortOrder: 1,
+              name: 'Structure',
+              percentage: '0.3000',
+              baseAmount: '150000.00',
+              triggerType: 'MILESTONE',
+              userState: 'in-progress',
+              expectedDate: null,
+              dateLabel: null,
+              programmeMilestone: null,
+              variationAllocations: [],
+              readyToBill: false,
+              invoiceReference: null,
+              invoiceJourney: null,
+            },
+          ],
+        }}
+        onMilestoneClick={vi.fn()}
+        onReviewForBilling={vi.fn()}
+        onPrepareInvoice={vi.fn()}
+        onSendInvoice={vi.fn()}
+        onLinkMilestone={onLinkMilestone}
+      />,
+    );
+    expect(screen.getByText(/Link a programme milestone and verify it on site/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Link milestone' }));
+    expect(onLinkMilestone).toHaveBeenCalledWith(expect.objectContaining({ id: 'inst-1' }));
+  });
+});

@@ -254,6 +254,7 @@ export class CommercialPrismaRepository {
         name: true,
         percentage: true,
         sortOrder: true,
+        triggerType: true,
         programmeMilestoneId: true,
         programmeMilestone: { select: { id: true, code: true, name: true, status: true } },
         readyToBillAt: true,

@@ -806,6 +806,8 @@
       "milestoneStage": "Milestone {n} of {total} · {name}",
       "blocked": "Blocked: the linked milestone must be verified first",
       "blockedNamed": "Blocked: verify “{name}”",
+      "blockedNotLinked": "Blocked: this stage has no programme milestone to verify",
+      "goLink": "Link milestone",
       "goVerify": "Go verify",
       "restricted": "Restricted"
     },
@@ -1204,7 +1206,8 @@
       "linked": "{code} — {name}",
       "verified": "Verified",
       "planned": "Awaiting verification",
-      "advance": "Advance payment"
+      "advance": "Advance payment",
+      "linkRequired": "Link a programme milestone and verify it on site to bill this stage."
     },
     "cta": {
       "verifyMilestone": "Verify milestone",
@@ -1216,7 +1219,8 @@
       "reviewDraft": "Review draft",
       "awaitingPayment": "Awaiting payment",
       "dueDate": "Due {date}",
-      "openDetail": "Open"
+      "openDetail": "Open",
+      "linkMilestone": "Link milestone"
     },
     "state": {
       "upcoming": "Upcoming",

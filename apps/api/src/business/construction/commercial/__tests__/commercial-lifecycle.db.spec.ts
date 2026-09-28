@@ -18,6 +18,7 @@ import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
 import { buildServices } from '../../../accounting/__tests__/helpers/build-services.js';
 import { AccountingFixtureFactory, type AccountingTestEnv } from '../../../accounting/__tests__/helpers/fixture.factory.js';
+import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
 
 /**
  * Commercial lifecycle DB integration tests.
@@ -235,6 +236,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
     m2 = (await makeInst('M2 Structure',      '0.3000', 1)).id; // 150,000
     m3 = (await makeInst('M3 Finishing',      '0.2000', 2)).id; // 100,000
     m4 = (await makeInst('M4 Handover',       '0.1000', 3)).id; //  50,000
+    await linkVerifiedMilestones(prisma, contract.id);
 
     // VO addition: +2,000 CLIENT_APPROVED
     const voAddRecord = await prisma.variationOrder.create({
@@ -639,6 +641,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
           readyToBillBy: 'u1',
         },
       });
+      await linkVerifiedMilestones(prisma, contractId);
 
       // voOmission is -5,000 from base. It should be applied as STAGE_REDUCTION.
       // But voOmission was not yet allocated (only voAddition was used on m2).
@@ -757,6 +760,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
           readyToBillBy: 'u1',
         },
       });
+      await linkVerifiedMilestones(prisma, contractId);
 
       await expect(
         service.issuePackage(identity, freshInstL.id, {

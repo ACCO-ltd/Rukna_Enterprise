@@ -9,6 +9,8 @@ import { formatDate } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 
+import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
+
 import { usePurchaseOrders } from '../hooks/use-procurement';
 import { latestRevision } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../types';
@@ -40,8 +42,16 @@ export function PoList() {
 
   const [status, setStatus] = useState<PurchaseOrderStatus | ''>('');
   const statusId = useId();
+  // Project filter (flow plan follow-up): pre-set from `?projectId=` so a project's
+  // "Open Procurement" lands on its own orders. Server-side — a PO matches on any line.
+  const projectFilter = useProjectFilter();
+  const [projectId, setProjectId] = useState(projectFilter.initialProjectId ?? '');
+  const projectFieldId = useId();
 
-  const orders = usePurchaseOrders(status ? { status } : undefined);
+  const orders = usePurchaseOrders({
+    ...(status ? { status } : {}),
+    ...(projectId ? { projectId } : {}),
+  });
 
   const columns: GridColumn<PurchaseOrder>[] = [
     {
@@ -129,9 +139,22 @@ export function PoList() {
                 ))}
               </Select>
             </FilterField>
+            <FilterField id={projectFieldId} label={tc('project')}>
+              <Select id={projectFieldId} value={projectId} onChange={(value) => setProjectId(value)}>
+                <option value="">{tc('all')}</option>
+                {projectFilter.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
           </FilterBar>
         }
-        onClearFilters={() => setStatus('')}
+        onClearFilters={() => {
+          setStatus('');
+          setProjectId('');
+        }}
       />
 
       <div className="space-y-1 text-xs text-muted-foreground">

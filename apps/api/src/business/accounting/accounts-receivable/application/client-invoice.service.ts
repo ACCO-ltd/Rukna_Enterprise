@@ -24,6 +24,10 @@ import {
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { InvoiceDocumentService } from './invoice-document.service.js';
+import {
+  installmentBillingBlocker,
+  installmentBillingBlockerMessage,
+} from '../domain/installment-billing-eligibility.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
 interface OrgBrandingSnapshot {
@@ -283,13 +287,11 @@ export class ClientInvoiceService {
         `Contract ${contract.contractNumber} must be ACTIVE to bill an installment (currently ${contract.status}).`,
       );
     }
-    // ADR-023 CONST-COM-011 (soft gate): when an installment is linked to a programme milestone, the
-    // milestone is its billing evidence — it must be VERIFIED before the invoice can be raised.
-    // Unlinked installments bill on their label as before.
-    if (installment.programmeMilestoneId && installment.programmeMilestone?.status !== 'VERIFIED') {
-      throw new BadRequestException(
-        'The linked programme milestone is not yet verified; this installment cannot be billed.',
-      );
+    // CONST-COM-011 (strict, 2026-09-28): a work-completion stage bills only on a linked programme
+    // milestone verified on site. The one shared rule — see installment-billing-eligibility.ts.
+    const blocker = installmentBillingBlocker(installment);
+    if (blocker) {
+      throw new BadRequestException(installmentBillingBlockerMessage(blocker, installment.name));
     }
 
     const scheduleBase = contract.baseContractValue ?? contract.contractValue;
@@ -536,6 +538,16 @@ export class ClientInvoiceService {
     }
     if (invoice.postingStatus === 'POSTED') {
       throw new ConflictException(`Invoice ${dto.invoiceId} is already posted`);
+    }
+    // Strict CONST-COM-011 at the point of posting: a stage invoice drafted before the rule (or
+    // whose milestone was unlinked since) must not reach the ledger without site-verified evidence.
+    // Covers the invoice screen's Post and the billing package, which posts through here.
+    if (invoice.sourceInstallmentId) {
+      const stage = await this.repo.findInstallmentForBilling(readPrisma, orgId, invoice.sourceInstallmentId);
+      const stageBlocker = stage ? installmentBillingBlocker(stage) : null;
+      if (stage && stageBlocker) {
+        throw new BadRequestException(installmentBillingBlockerMessage(stageBlocker, stage.name));
+      }
     }
 
     // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
