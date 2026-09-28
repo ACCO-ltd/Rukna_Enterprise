@@ -63,17 +63,21 @@ function boqItemAlreadyAllocated(): ConflictException {
 }
 
 /**
- * True when a write hit `WorkPackageBoqNode @@unique([boqNodeId])` — a leaf allocated by a racing
- * request between our pre-check and the insert. Other unique violations propagate unchanged.
+ * True when a write hit the work-package allocation table's unique leaf index
+ * (`WorkPackageBoqNode @@unique([boqNodeId])`) — a leaf allocated by a racing request between our
+ * pre-check and the insert. Prisma reports P2002 with either `meta.modelName` or a `meta.target`
+ * that is a column array (`['boq_node_id']`) or the constraint name as a string
+ * (`work_package_boq_nodes_boq_node_id_key`) depending on version and query path, so any of those
+ * counts. A P2002 on another model (e.g. the package code) propagates unchanged.
  */
 function isLeafAllocationConflict(error: unknown): boolean {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === 'P2002' &&
-    /boq_node_id|boqNodeId/.test(
-      String((error.meta as { target?: unknown } | undefined)?.target ?? ''),
-    )
-  );
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
+  }
+  const meta = (error.meta ?? {}) as { modelName?: unknown; target?: unknown };
+  if (meta.modelName === 'WorkPackageBoqNode') return true;
+  const target = Array.isArray(meta.target) ? meta.target.join(',') : String(meta.target ?? '');
+  return /work_package_boq_nodes|boq_node_id|boqNodeId/.test(target);
 }
 
 // ADR-021: the statuses in which a DPR's measurements may be added/edited and it can be submitted —
@@ -349,20 +353,31 @@ export class ProgressService {
       'Approving this progress report requires workflow approval.',
     );
 
-    // Authoritative re-check: other reports may have been approved since this one was submitted.
+    // Fast, unlocked pre-check: fail an obviously over-quantity report before touching evidence.
     await this.assertWithinBoqQuantity(identity, dpr);
 
     // CONST-PROG-008: approval is what makes these measurements verified, so from here the
     // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
     // never releases the old, which is the same supersede-don't-overwrite rule the BOQ and the
-    // programme already follow.
+    // programme already follow. Frozen before the status flips, so an APPROVED report never has
+    // unfrozen evidence.
     const evidence = await this.repo.findAttachmentFileIds(prisma, dprId);
     await this.files.markManyImmutable(evidence, `evidence on approved report ${dprId}`);
 
-    return this.repo.updateDprStatus(prisma, dprId, {
-      status: DprStatus.APPROVED,
-      approvedBy: identity.userId,
-      approvedAt: new Date(),
+    // Authoritative re-check, race-safe: two reports approved at the same moment must not together
+    // exceed a BOQ line. Lock the BOQ leaf rows this report measures (sorted, so concurrent
+    // approvals take them in the same order and cannot deadlock), re-read the verified totals, and
+    // flip the status in the same transaction. A concurrent approver on an overlapping line waits
+    // for our commit and then sees our quantities.
+    const nodeIds = [...new Set(dpr.measurements.map((m) => m.boqNodeId))].sort();
+    return prisma.$transaction(async (tx) => {
+      await this.repo.lockBoqNodes(tx as never, nodeIds);
+      await this.assertWithinBoqQuantity(identity, dpr, tx as never);
+      return this.repo.updateDprStatus(tx as never, dprId, {
+        status: DprStatus.APPROVED,
+        approvedBy: identity.userId,
+        approvedAt: new Date(),
+      });
     });
   }
 
@@ -379,8 +394,10 @@ export class ProgressService {
       projectId: string;
       measurements: { boqNodeId: string; quantity: { toString(): string } }[];
     },
+    // The approve transaction passes its client so the reads see the rows it has locked.
+    client?: ReturnType<TenancyService['getClient']>,
   ): Promise<void> {
-    const prisma = this.tenancy.getClient();
+    const prisma = client ?? this.tenancy.getClient();
     const byNode = new Map<string, Decimal>();
     for (const m of dpr.measurements) {
       byNode.set(m.boqNodeId, (byNode.get(m.boqNodeId) ?? ZERO).plus(new Decimal(m.quantity.toString())));

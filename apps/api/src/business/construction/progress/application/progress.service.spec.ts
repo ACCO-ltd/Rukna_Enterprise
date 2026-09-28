@@ -64,9 +64,12 @@ function build(over: Over = {}) {
     approvedReportDatesForLeaves: jest.fn().mockResolvedValue(over.reportDates ?? []),
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
+    lockBoqNodes: jest.fn().mockResolvedValue(undefined),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
-  const tenancy = { getClient: () => ({}) };
+  // The approve path runs its locked re-check + status flip inside a transaction.
+  const client = { $transaction: (fn: (tx: unknown) => unknown) => fn(client) };
+  const tenancy = { getClient: () => client };
   const financialPosition = {
     getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', budgetTotal: null }),
   };
@@ -149,6 +152,46 @@ describe('ProgressService (ADR-021 MVP)', () => {
       ['file-a', 'file-b'],
       expect.stringContaining('dpr-1'),
     );
+  });
+
+  it('approve: locks the measured BOQ lines (sorted) and re-checks before flipping the status', async () => {
+    const { repo, service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'SUBMITTED',
+        projectId: 'p-1',
+        measurements: [
+          { boqNodeId: 'n2', quantity: 1 },
+          { boqNodeId: 'n1', quantity: 1 },
+          { boqNodeId: 'n2', quantity: 1 },
+        ],
+        attachments: [],
+      },
+    });
+    await service.approve(identity, 'dpr-1');
+    expect(repo.lockBoqNodes).toHaveBeenCalledWith(expect.anything(), ['n1', 'n2']);
+    const lockOrder = repo.lockBoqNodes.mock.invocationCallOrder[0]!;
+    // The re-check's reads come after the lock, and the status write after those.
+    const lastSumRead = Math.max(...repo.sumVerifiedForNode.mock.invocationCallOrder);
+    expect(lastSumRead).toBeGreaterThan(lockOrder);
+    expect(repo.updateDprStatus.mock.invocationCallOrder[0]!).toBeGreaterThan(lastSumRead);
+  });
+
+  it('approve: a concurrent approval that lands first makes the locked re-check refuse (no status flip)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [{ boqNodeId: 'n1', quantity: 500 }], attachments: [] },
+      node: { id: 'n1', quantity: 1000, isLeaf: true },
+    });
+    // Unlocked pre-check sees 400 prior; by the time the lock is held another report added 300.
+    repo.sumVerifiedForNode
+      .mockResolvedValueOnce({ _sum: { quantity: '400' } })
+      .mockResolvedValueOnce({ _sum: { quantity: '700' } });
+    const err = await service.approve(identity, 'dpr-1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({
+      errorCode: 'DPR_EXCEEDS_BOQ_QUANTITY',
+    });
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
   });
 
   it('approve: gates (409) and does not verify when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
@@ -587,6 +630,37 @@ describe('ProgressService (ADR-021 MVP)', () => {
       errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
       message: expect.stringContaining('already allocated'),
     });
+  });
+
+  it.each([
+    ['meta.modelName', { modelName: 'WorkPackageBoqNode', target: undefined }],
+    ['a column-array target', { target: ['boq_node_id'] }],
+    ['a constraint-name string target', { target: 'work_package_boq_nodes_boq_node_id_key' }],
+  ])('allocateBoqNode: maps P2002 identified by %s to 409', async (_label, meta) => {
+    const { repo, service } = build();
+    repo.allocateBoqNode.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta,
+      }),
+    );
+    const err = await service.allocateBoqNode(identity, 'wp-1', 'n1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      errorCode: 'BOQ_ITEM_ALREADY_ALLOCATED',
+    });
+  });
+
+  it('allocateBoqNode: a P2002 on another model (WorkPackage code) is not remapped', async () => {
+    const { repo, service } = build();
+    const codeClash = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'x',
+      meta: { modelName: 'WorkPackage', target: 'work_packages_project_id_code_key' },
+    });
+    repo.allocateBoqNode.mockRejectedValue(codeClash);
+    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBe(codeClash);
   });
 
   it('allocateBoqNode: lets an unrelated database error propagate unchanged', async () => {

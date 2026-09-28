@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 
 type TenantPrisma = Omit<
   PrismaClient,
@@ -87,6 +87,18 @@ export class ProgressRepository {
       where: { id: boqNodeId, version: { boq: { projectId } } },
       select: { id: true, quantity: true, isLeaf: true, code: true, description: true, unit: true },
     });
+  }
+
+  /**
+   * Row-lock BOQ nodes for the rest of the transaction (SELECT … FOR UPDATE), in id order so
+   * concurrent lockers acquire them in the same sequence and cannot deadlock. Serialises DPR
+   * approvals that touch the same BOQ line, so the over-quantity check reads a settled total.
+   */
+  async lockBoqNodes(prisma: TenantPrisma, boqNodeIds: string[]): Promise<void> {
+    if (boqNodeIds.length === 0) return;
+    const ids = [...boqNodeIds].sort();
+    await prisma.$queryRaw`
+      SELECT id FROM boq_nodes WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
   }
 
   /** Σ of verified (APPROVED-DPR) measured quantity for a BOQ node, optionally excluding one DPR. */
