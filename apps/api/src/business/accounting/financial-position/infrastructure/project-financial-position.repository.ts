@@ -281,11 +281,12 @@ export class ProjectFinancialPositionRepository {
 
   // ─── Finance Overview ─────────────────────────────────────────────────────────
 
-  /** Posted revenue carrying this project: credit-normal, excluding CLOSING entries. */
   /**
    * What the project billed, net of tax and credit notes: posted client-invoice subtotals less
    * posted credit notes (total minus their tax). The figure the ledger's project revenue should
-   * equal. Reversed invoices are excluded — their reversal took the revenue back out.
+   * equal. Reversed invoices are excluded: their reversal takes the revenue back out of the
+   * project. (Reversals and credit notes posted before 2026-09-28 dropped the project tag on
+   * the revenue line, so a project with one of those shows a real, explainable difference.)
    */
   async sumPostedBillingNet(
     prisma: TenantPrisma,
@@ -309,6 +310,7 @@ export class ProjectFinancialPositionRepository {
     return invoiced.minus(credited);
   }
 
+  /** Posted revenue carrying this project: credit-normal, excluding CLOSING entries. */
   async sumPostedRevenue(
     prisma: TenantPrisma,
     organizationId: string,

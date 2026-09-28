@@ -702,6 +702,10 @@ export class ClientInvoiceService {
             creditAmount: l.debitAmount as unknown as Decimal,
             sourceSubledgerType: l.sourceSubledgerType ?? undefined,
             clientId: l.clientId ?? undefined,
+            // The reversal carries every dimension the original carried. Dropping projectId left
+            // the original revenue credit on the project and the reversing debit off it, so
+            // project revenue (and the project P&L) kept a reversed invoice.
+            projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),

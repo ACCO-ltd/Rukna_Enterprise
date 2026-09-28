@@ -22,6 +22,13 @@ import { ProjectFinancialPositionRepository } from '../infrastructure/project-fi
 const PERIOD_CLOSING_WARNING_DAYS = 14;
 const ACTIVITY_LIMIT = 8;
 
+/** Where an administrator fixes an accounting-readiness blocker. */
+export function accountingSetupHref(code: string | undefined): string {
+  return code === 'NO_OPEN_PERIOD'
+    ? '/finance/accounting/periods'
+    : '/finance/accounting/chart-of-accounts';
+}
+
 /**
  * Everything the Finance Overview shows, in one read.
  *
@@ -39,13 +46,6 @@ const ACTIVITY_LIMIT = 8;
  * it sounds: the whole point of the control strip is to tell a reader whether the money figures
  * above it can be trusted, and a status the frontend invented would defeat it.
  */
-/** Where an administrator fixes an accounting-readiness blocker. */
-export function accountingSetupHref(code: string | undefined): string {
-  return code === 'NO_OPEN_PERIOD'
-    ? '/finance/accounting/periods'
-    : '/finance/accounting/chart-of-accounts';
-}
-
 @Injectable()
 export class ProjectFinanceOverviewService {
   constructor(

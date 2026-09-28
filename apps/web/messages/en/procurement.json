@@ -53,7 +53,8 @@
     "blockedTitle": "Not available yet",
     "permissionDenied": "You do not have permission to perform this action.",
     "moreActions": "More actions",
-    "loading": "Loading"
+    "loading": "Loading",
+    "notInProject": "This bill is not coded to this project."
   },
   "lineType": {
     "MATERIAL": "Material",

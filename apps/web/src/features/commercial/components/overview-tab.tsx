@@ -24,6 +24,7 @@ import type {
 } from '@erp/types';
 
 import { MetricStrip } from '@/components/widget/metric-strip';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
@@ -176,8 +177,14 @@ function CurrentPositionCard({
 
   // The server withholds nextAction while the cycle is blocked or the viewer cannot bill, so the
   // card only asks for attention when there is something this viewer can actually do.
+  // Preparing issues and posts in one step; while the ledger cannot post, the card offers it
+  // no more than the schedule does (flow plan A7).
+  const ledgerBlocked = useLedgerBlocked();
   const isActionable =
-    cc.nextAction !== null && cc.nextAction.kind !== 'NONE' && cc.stage !== 'NO_CONTRACT';
+    cc.nextAction !== null &&
+    cc.nextAction.kind !== 'NONE' &&
+    cc.stage !== 'NO_CONTRACT' &&
+    !(ledgerBlocked && cc.nextAction.kind === 'PREPARE_INVOICE');
 
   return (
     <div

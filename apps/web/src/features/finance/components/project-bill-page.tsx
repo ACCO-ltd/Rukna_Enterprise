@@ -13,6 +13,7 @@ export function ProjectBillPage({ projectId, billId }: { projectId: string; bill
   return (
     <SupplierBillDetail
       id={billId}
+      projectId={projectId}
       back={{ href: `/projects/${projectId}/finance/ledger`, label: t('views.ledger') }}
     />
   );

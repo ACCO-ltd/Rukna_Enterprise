@@ -229,7 +229,7 @@ export class CreditNoteService {
     // Invoice lookup for AR client/contract tags plus immutable tax fields for cap re-check
     const invoice = await outerPrisma.clientInvoice.findFirst({
       where: { id: creditNote.invoiceId, organizationId: orgId },
-      select: { clientId: true, contractId: true, currencyCode: true, subtotal: true, vatAmount: true },
+      select: { clientId: true, contractId: true, projectId: true, currencyCode: true, subtotal: true, vatAmount: true },
     });
 
     // Pre-compute vatRate and variationCap from immutable invoice/variation fields (outside tx)
@@ -307,7 +307,9 @@ export class CreditNoteService {
           accountId: revAccount.id,
           debitAmount: netAmount,
           creditAmount: new Decimal(0),
-          projectId: undefined,
+          // The credit takes revenue back from the project the invoice recognised it on — the
+          // invoice posts its revenue credit with the same projectId (EVT-AR-001).
+          projectId: invoice?.projectId ?? undefined,
           contractId: invoice?.contractId ?? undefined,
         },
       ];

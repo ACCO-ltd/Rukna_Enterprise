@@ -257,3 +257,18 @@ describe('InvoiceDetail — embedded document preview', () => {
     );
   });
 });
+
+describe('InvoiceDetail — project-scoped route and safe back-link (flow plan PR 4 review)', () => {
+  it('shows another project’s invoice as not found under this project', () => {
+    mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" projectId="other-project" />, { permissions: [] });
+    expect(screen.getByText('This invoice does not belong to this project.')).toBeInTheDocument();
+  });
+
+  it('never follows a `from` that leaves the site', () => {
+    mocks.searchParams = new URLSearchParams({ from: '//evil.example/phish', fromLabel: 'Back' });
+    mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
+    expect(screen.queryByRole('link', { name: /Back/ })).not.toBeInTheDocument();
+  });
+});

@@ -23,5 +23,5 @@ export function ProjectInvoicePage({ projectId, invoiceId }: { projectId: string
   const label = href.includes('/commercial/contract-milestones')
     ? tTabs('contract-milestones')
     : t('title');
-  return <InvoiceDetail invoiceId={invoiceId} back={{ href, label }} />;
+  return <InvoiceDetail invoiceId={invoiceId} projectId={projectId} back={{ href, label }} />;
 }

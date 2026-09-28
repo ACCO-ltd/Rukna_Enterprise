@@ -264,7 +264,16 @@ export function SupplierBillsList() {
 
 // ─── Detail ──────────────────────────────────────────────────────────────────────
 
-export function SupplierBillDetail({ id, back }: { id: string; back?: { href: string; label: string } }) {
+export function SupplierBillDetail({
+  id,
+  back,
+  projectId,
+}: {
+  id: string;
+  back?: { href: string; label: string };
+  /** Set by a project route: a bill not coded to this project (header or line) is not shown. */
+  projectId?: string;
+}) {
   const tc = useTranslations('procurement.common');
   const query = useSupplierBill(id);
   const tStatusTrail = useTranslations('procurement.status');
@@ -278,6 +287,14 @@ export function SupplierBillDetail({ id, back }: { id: string; back?: { href: st
 
   if (query.isError || !query.data) {
     return <Alert variant="error" messages={[tc('loadFailed')]} />;
+  }
+
+  if (
+    projectId &&
+    query.data.projectId !== projectId &&
+    !(query.data.lines ?? []).some((line) => line.projectId === projectId)
+  ) {
+    return <Alert variant="error" messages={[tc('notInProject')]} />;
   }
 
   return <SupplierBillDocument bill={query.data} back={back} />;

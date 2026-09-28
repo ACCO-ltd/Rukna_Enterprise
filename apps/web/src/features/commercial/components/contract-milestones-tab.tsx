@@ -93,6 +93,10 @@ export function ContractMilestonesTab({
   // Slice 3B: real mutation; invalidates current-cycle on success so the adapter
   // re-derives readyToBill from the refreshed API data.
   const markReadyMutation = useMarkReadyToBill(projectId);
+  // Preparing an invoice issues and posts it in one step, so it needs a ledger that can post.
+  // Every route to it — the row button, the detail panel, the Overview card's deep link —
+  // passes through handlePrepareInvoice, so the guard lives here (flow plan A7).
+  const ledgerBlockedForPrepare = useLedgerBlocked();
 
   // Invoice journey state: tracks the issued/sent phase after issuePackage succeeds.
   // The adapter never produces 'invoice-issued' or 'awaiting-payment' — these are
@@ -120,6 +124,7 @@ export function ContractMilestonesTab({
   }
 
   function handlePrepareInvoice(milestone: MilestoneItemViewModel) {
+    if (ledgerBlockedForPrepare && milestone.userState === 'ready-to-bill') return;
     setDetailOpen(false);
     setPreparingMilestone(milestone);
   }
@@ -210,6 +215,7 @@ export function ContractMilestonesTab({
         onOpenChange={setDetailOpen}
         onReviewForBilling={handleReviewForBilling}
         onPrepareInvoice={handlePrepareInvoice}
+        billingBlocked={ledgerBlockedForPrepare}
       />
 
       {/* Review drawer */}

@@ -35,10 +35,16 @@ type OpenDialog = 'approve' | 'post' | 'reverse' | null;
 export function InvoiceDetail({
   invoiceId,
   back,
+  projectId,
 }: {
   invoiceId: string;
   /** Set by a project-scoped route: the invoice returns to the project tab it was opened from. */
   back?: { href: string; label: string };
+  /**
+   * Set by a project-scoped route. An invoice of another project is shown as not found there,
+   * never under the wrong project's header (flow plan PR 4 review).
+   */
+  projectId?: string;
 }) {
   const t = useTranslations('accounting.invoices');
   const tCommon = useTranslations('common');
@@ -76,6 +82,9 @@ export function InvoiceDetail({
   }
 
   const data = invoice.data;
+  if (projectId && data.projectId !== projectId) {
+    return <Alert variant="error" messages={[t('notInProject')]} />;
+  }
   const client = (clients.data ?? []).find((c) => c.id === data.clientId);
   const clientName = client ? client.name : null;
   const state = invoiceWorkspaceState(data);
@@ -89,7 +98,10 @@ export function InvoiceDetail({
     ? tLifecycle(lifecycleErrorKey(toLifecycleError(action.error).kind))
     : undefined;
 
-  const backHref = back?.href ?? searchParams.get('from');
+  // `from` is only followed when it is a same-origin path — never `//host` or an absolute URL.
+  const fromParam = searchParams.get('from');
+  const safeFrom = fromParam && fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : null;
+  const backHref = back?.href ?? safeFrom;
   const backLabel = back?.label ?? searchParams.get('fromLabel') ?? t('backToInvoices');
 
   const title =

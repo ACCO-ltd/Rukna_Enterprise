@@ -124,8 +124,8 @@ export function MrForm() {
     create.mutate(payload, {
       onSuccess: (mr) =>
         router.push(
-          fromProjectId
-            ? `/projects/${fromProjectId}/procurement/requests`
+          fromProjectId && scope === 'PROJECT' && projectId
+            ? `/projects/${projectId}/procurement/requests`
             : `/procurement/requests/${mr.id}`,
         ),
     });

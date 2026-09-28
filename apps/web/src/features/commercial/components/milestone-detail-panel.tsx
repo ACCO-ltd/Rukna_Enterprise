@@ -32,6 +32,8 @@ interface MilestoneDetailPanelProps {
   onOpenChange: (open: boolean) => void;
   onReviewForBilling?: (milestone: MilestoneItemViewModel) => void;
   onPrepareInvoice?: (milestone: MilestoneItemViewModel) => void;
+  /** The ledger cannot post yet: withhold "Prepare invoice" (the tab's notice says why). */
+  billingBlocked?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ export function MilestoneDetailPanel({
   onOpenChange,
   onReviewForBilling,
   onPrepareInvoice,
+  billingBlocked = false,
 }: MilestoneDetailPanelProps) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
@@ -197,7 +200,9 @@ export function MilestoneDetailPanel({
                 >
                   {t('detail.reviewCta')}
                 </Button>
-              ) : (milestone.userState === 'ready-to-bill' || milestone.userState === 'invoice-issued') && onPrepareInvoice ? (
+              ) : ((milestone.userState === 'ready-to-bill' && !billingBlocked) ||
+                  milestone.userState === 'invoice-issued') &&
+                onPrepareInvoice ? (
                 <Button
                   variant="default"
                   onClick={() => {

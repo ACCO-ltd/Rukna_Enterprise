@@ -808,7 +808,8 @@
       "saveFailed": "The invoice could not be saved.",
       "noPermissionTitle": "You can't raise client invoices",
       "noPermissionBody": "Creating a client invoice needs permission to manage receivables."
-    }
+    },
+    "notInProject": "This invoice does not belong to this project."
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

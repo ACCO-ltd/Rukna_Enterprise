@@ -18,7 +18,7 @@ export function useAccountingReadiness() {
     queryKey: ['accounting', 'readiness'] as const,
     queryFn: getAccountingReadiness,
     enabled: can('view:accounting'),
-    staleTime: 60_000,
+    staleTime: 15_000,
   });
 }
 
