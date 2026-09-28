@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -21,9 +22,6 @@ import { ApiError } from '@/lib/api-client';
 import { useCommercialSummary, useVariations } from '@/features/commercial/hooks/use-commercial';
 
 import { useRebaseline } from '../hooks/use-progress';
-import { RefButton } from './ref-ui';
-
-const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 /**
  * Re-baseline dialog (Master Schedule P3, ADR-029). A re-baseline supersedes the governing
@@ -115,7 +113,7 @@ export function RebaselineDialog({
                   value={variationOrderId}
                   onChange={setVariationOrderId}
                   placeholder={t('baseline.governing.variationPlaceholder')}
-                  className={refFieldClass}
+                 
                 >
                   <option value="">{t('baseline.governing.variationPlaceholder')}</option>
                   {variations.map((vo) => (
@@ -137,7 +135,7 @@ export function RebaselineDialog({
                   onChange={(e) => setNote(e.target.value)}
                   maxLength={1000}
                   rows={3}
-                  className={refFieldClass}
+                 
                 />
                 <p className="text-caption text-muted-foreground">{t('baseline.governing.noteHint')}</p>
               </div>
@@ -146,18 +144,18 @@ export function RebaselineDialog({
 
           <DialogFooter>
             {canPick ? (
-              <RefButton type="submit" disabled={!canSubmit}>
+              <Button type="submit" disabled={!canSubmit}>
                 {rebaseline.isPending ? tCommon('saving') : t('baseline.governing.rebaselineConfirm')}
-              </RefButton>
+              </Button>
             ) : null}
-            <RefButton
+            <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={rebaseline.isPending}
             >
               {tCommon('cancel')}
-            </RefButton>
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

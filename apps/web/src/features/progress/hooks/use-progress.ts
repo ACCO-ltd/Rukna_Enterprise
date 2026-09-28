@@ -40,6 +40,7 @@ import {
   listDprs,
   listWorkPackages,
   rebaselineProgramme,
+  removeMeasurement,
   returnDpr,
   saveDeliveryPlan,
   setProgressTargets,
@@ -65,6 +66,7 @@ import {
   type SaveDeliveryPlanBody,
   type WorkPackageResponse,
 } from '../api/progress-api';
+import { programmeKeys } from '@/features/programme/hooks/programme-keys';
 
 export const progressKeys = {
   all: (projectId: string) => ['progress', projectId] as const,
@@ -233,6 +235,20 @@ export function useAddMeasurement(dprId: string) {
   });
 }
 
+/** Remove a measurement from an editable report. The report and the roll-up both move. */
+export function useRemoveMeasurement(projectId: string, dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (measurementId: string) => removeMeasurement(dprId, measurementId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
+      ]);
+    },
+  });
+}
+
 export function useAttachDprEvidence(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -267,6 +283,8 @@ export function useApproveDpr(projectId: string, dprId: string) {
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
         queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) }),
         invalidateVerifiedDerived(queryClient, projectId),
+        // Verified quantities move package %, and with it a milestone's readyToVerify.
+        queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) }),
       ]);
     },
   });

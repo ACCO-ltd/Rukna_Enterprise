@@ -69,4 +69,39 @@ describe('ProgressCurveChart', () => {
 
     expect(container.querySelector('svg')).toBeNull();
   });
+
+  it('spaces points by time, not by index', () => {
+    const { container } = renderWithProviders(
+      <ProgressCurveChart
+        baseline={[]}
+        actual={[
+          { periodEndDate: '2026-01-01', physicalPercent: 10, verifiedPercent: 10, costPercent: null },
+          { periodEndDate: '2026-01-02', physicalPercent: 20, verifiedPercent: 20, costPercent: null },
+          { periodEndDate: '2026-01-31', physicalPercent: 30, verifiedPercent: 30, costPercent: null },
+        ]}
+      />,
+    );
+    const xs = Array.from(container.querySelectorAll('circle.fill-chart-1')).map((c) => Number(c.getAttribute('cx')));
+    // One day, then 29 days: the second gap is far wider than the first.
+    expect(xs[2]! - xs[1]!).toBeGreaterThan((xs[1]! - xs[0]!) * 20);
+  });
+
+  it('summarises planned-by-today for assistive tech when given', () => {
+    renderWithProviders(
+      <ProgressCurveChart
+        baseline={[
+          { periodEndDate: '2026-01-01', plannedPercent: 0 },
+          { periodEndDate: '2026-12-31', plannedPercent: 100 },
+        ]}
+        actual={[{ periodEndDate: '2026-06-01', physicalPercent: 40, verifiedPercent: 35, costPercent: null }]}
+        actualSeries="verified"
+        today="2026-06-30"
+        plannedToday={49.6}
+      />,
+    );
+    const chart = screen.getByRole('img');
+    expect(chart).toHaveAccessibleName(/Planned by today 49.6%/);
+    expect(chart).toHaveAccessibleName(/35%/);
+    expect(chart).not.toHaveAccessibleName(/100%/);
+  });
 });

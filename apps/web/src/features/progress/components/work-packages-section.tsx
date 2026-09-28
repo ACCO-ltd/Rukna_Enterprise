@@ -2,53 +2,58 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, FormField, Input, Label, Select, Dialog, DialogContent, DialogHeader, DialogTitle } from '@erp/ui';
-import { Layers } from 'lucide-react';
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  FormField,
+  Input,
+  Label,
+  Progress,
+  Select,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
+} from '@erp/ui';
 
 import type { SuggestedWeightLine } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 
 import { useSuggestWeights, useUpdateWorkPackage } from '@/features/programme/hooks/use-programme';
-import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useAllocateBoqNode, useCreateWorkPackage, useProjectRollup } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
-import { DeliveryPlanDialog } from './delivery-plan-dialog';
-import {
-  RefBar,
-  RefButton,
-  RefCard,
-  RefCardBody,
-  RefCardHeader,
-  RefEmpty,
-  RefStatTile,
-  RefTable,
-  RefTableScroll,
-  RefTbody,
-  RefTd,
-  RefTh,
-  RefThead,
-  RefTr,
-} from './ref-ui';
 
-const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
+/** Which of the editor's actions is the screen's one primary right now, if any. */
+export type WorkPackageEditorPrimary = 'allocate' | 'weights' | null;
 
 /**
- * Work-package control layer: an index that leads with the weighted roll-up and the packages
- * table. The two forms (create a package, allocate a BOQ leaf) used to sit always-on above the
- * table; they now live behind primaries (`+ New work package`, `Allocate item`) in `Dialog`s, so
- * the view opens on the data — the project figure and the packages behind it — not two forms.
+ * The work-package editor, embedded in Plan & setup's "Work packages" step: the packages with
+ * their weights and allocated BOQ items, plus the three editing actions (suggest weights from BOQ
+ * values, allocate an item, add a package). The step decides which action is the primary — the
+ * one that closes the current gap — and the rest render as secondary, so the screen never shows
+ * two primaries.
  */
-export function WorkPackagesSection({ projectId }: { projectId: string }) {
+export function WorkPackageEditor({
+  projectId,
+  primary,
+}: {
+  projectId: string;
+  primary: WorkPackageEditorPrimary;
+}) {
   const t = useTranslations('progress');
-  const tCommon = useTranslations('common');
   const { data, isPending, isError, refetch, isFetching } = useProjectRollup(projectId);
-  const { hasBaseline } = useBoqLeaves(projectId);
-  const workspace = useBoqWorkspace(projectId);
 
   const [creating, setCreating] = useState(false);
   const [allocating, setAllocating] = useState(false);
-  const [planning, setPlanning] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedWeightLine[] | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
@@ -94,206 +99,160 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
     setSuggestions(null);
   }
 
-  if (isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-48 animate-pulse rounded-container bg-muted" aria-hidden="true" />
-      </div>
-    );
-  }
+  if (isPending) return <Skeleton className="h-40 w-full rounded-panel" aria-hidden="true" />;
 
   if (isError) {
     return (
       <Alert variant="error" messages={[t('states.loadFailed')]}>
         <div className="mt-3">
-          <RefButton variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
             {t('actions.retry')}
-          </RefButton>
+          </Button>
         </div>
       </Alert>
     );
   }
 
   const packages = data.packages.map((p) => ({ id: p.id, code: p.code, name: p.name }));
-  // Reduce blank-guessing: suggest the next sequential code, and show how much weight is still free.
   const nextCode = `WP-${String(data.packages.length + 1).padStart(2, '0')}`;
   const existingWeightPercent = Math.round(Number(data.weightsTotal) * 100);
+  const hasPackages = data.packages.length > 0;
 
   return (
-    <RefCard>
-      <RefCardHeader
-        icon={<Layers size={17} strokeWidth={1.9} />}
-        title={t('workPackage.title')}
-        subtitle={t('workPackage.subtitle')}
-        divider
-        action={
-          <>
-            <RefButton
-              variant="ghost"
-              size="sm"
-              onClick={handleSuggest}
-              disabled={suggest.isPending || data.packages.length === 0}
-            >
-              {t('workPackage.suggestWeights')}
-            </RefButton>
-            <RefButton
-              variant="outline"
-              size="sm"
-              onClick={() => setAllocating(true)}
-              disabled={data.packages.length === 0}
-            >
-              {t('actions.allocate')}
-            </RefButton>
-            <RefButton
-              variant="outline"
-              size="sm"
-              onClick={() => setPlanning(true)}
-              disabled={!hasBaseline}
-              title={!hasBaseline ? t('deliveryPlan.noBaseline') : undefined}
-            >
-              {t('deliveryPlan.action')}
-            </RefButton>
-            <RefButton size="sm" onClick={() => setCreating(true)}>
-              {t('actions.newWorkPackage')}
-            </RefButton>
-          </>
-        }
-      />
-      <RefCardBody className="space-y-4 pt-4">
-        <div className="grid grid-cols-2 gap-4 rounded-panel border border-border p-4 sm:w-fit sm:grid-cols-2">
-          <RefStatTile label={t('rollup.physicalPercent')} value={`${data.physicalPercent}%`} />
-          <RefStatTile
-            label={t('rollup.weightsLabel')}
-            value={`${Math.round(Number(data.weightsTotal) * 100)}%`}
-            tone={data.weightsComplete ? 'green' : 'amber'}
-          />
-        </div>
-
-        {suggestError ? (
-          <Alert variant="error" messages={[suggestError]}>
-            <div className="mt-2">
-              <RefButton variant="ghost" size="sm" onClick={() => setSuggestError(null)}>
-                {t('actions.cancel')}
-              </RefButton>
-            </div>
-          </Alert>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {hasPackages ? (
+          <Button
+            variant={primary === 'allocate' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAllocating(true)}
+          >
+            {t('actions.allocate')}
+          </Button>
         ) : null}
+        {hasPackages ? (
+          <Button
+            variant={primary === 'weights' ? 'default' : 'outline'}
+            size="sm"
+            onClick={handleSuggest}
+            disabled={suggest.isPending}
+          >
+            {t('workPackage.suggestWeights')}
+          </Button>
+        ) : null}
+        <Button variant="ghost" size="sm" onClick={() => setCreating(true)}>
+          {t('setupView.workPackages.addManually')}
+        </Button>
+      </div>
 
-        {suggestions !== null ? (
-          <div className="rounded-panel border border-border bg-surface-subtle p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-body font-medium text-foreground">{t('workPackage.proposed.title')}</p>
-                <p className="mt-0.5 text-caption text-muted-foreground">{t('workPackage.proposed.hint')}</p>
-              </div>
-              <RefButton variant="ghost" size="sm" onClick={() => setSuggestions(null)}>
-                {t('workPackage.proposed.dismiss')}
-              </RefButton>
+      {suggestError ? <Alert variant="error" messages={[suggestError]} /> : null}
+
+      {suggestions !== null ? (
+        <div className="space-y-3 rounded-panel border border-border bg-surface-subtle p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-body font-medium text-foreground">{t('workPackage.proposed.title')}</p>
+              <p className="mt-0.5 text-caption text-muted-foreground">{t('workPackage.proposed.hint')}</p>
             </div>
-            <div className="space-y-1">
-              {suggestions.map((s) => {
-                const pkg = data.packages.find((p) => p.id === s.workPackageId);
-                const proposedPercent = Math.round(s.suggestedWeight * 100);
-                return (
-                  <div key={s.workPackageId} className="flex items-center justify-between gap-4 py-1.5">
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <span className="shrink-0 font-mono text-caption text-muted-foreground">
-                        {pkg?.code ?? s.workPackageId}
-                      </span>
-                      <span className="truncate text-body text-foreground">{pkg?.name ?? s.workPackageId}</span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="w-10 text-right tabular-nums text-body font-medium text-foreground">
-                        {`${proposedPercent}%`}
-                      </span>
-                      <RefButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAcceptOne(s.workPackageId, s.suggestedWeight)}
-                        disabled={updateWp.isPending}
-                      >
-                        {t('workPackage.proposed.accept')}
-                      </RefButton>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {suggestions.length > 1 ? (
-              <div className="border-t border-border pt-2">
-                <RefButton size="sm" onClick={handleAcceptAll} disabled={updateWp.isPending}>
-                  {t('workPackage.proposed.acceptAll')}
-                </RefButton>
-              </div>
-            ) : null}
+            <Button variant="ghost" size="sm" onClick={() => setSuggestions(null)}>
+              {t('workPackage.proposed.dismiss')}
+            </Button>
           </div>
-        ) : null}
+          <ul className="space-y-1">
+            {suggestions.map((s) => {
+              const pkg = data.packages.find((p) => p.id === s.workPackageId);
+              return (
+                <li key={s.workPackageId} className="flex items-center justify-between gap-4 py-1.5">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="shrink-0 font-mono text-caption text-muted-foreground">
+                      {pkg?.code ?? s.workPackageId}
+                    </span>
+                    <span className="truncate text-body text-foreground">{pkg?.name ?? s.workPackageId}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="w-10 text-end text-body font-medium tabular-nums text-foreground">
+                      {`${Math.round(s.suggestedWeight * 100)}%`}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAcceptOne(s.workPackageId, s.suggestedWeight)}
+                      disabled={updateWp.isPending}
+                    >
+                      {t('workPackage.proposed.accept')}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {suggestions.length > 1 ? (
+            <div className="border-t border-border pt-2">
+              <Button variant="outline" size="sm" onClick={handleAcceptAll} disabled={updateWp.isPending}>
+                {t('workPackage.proposed.acceptAll')}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
-        {data.packages.length === 0 ? (
-          <RefEmpty
-            title={t('workPackage.emptyTitle')}
-            hint={hasBaseline ? t('workPackage.emptyHint') : t('deliveryPlan.noBaseline')}
-            action={
-              hasBaseline ? (
-                <RefButton onClick={() => setPlanning(true)}>{t('deliveryPlan.action')}</RefButton>
-              ) : undefined
-            }
-          />
-        ) : (
-          <RefTableScroll aria-label={t('workPackage.title')}>
-            <RefTable>
-              <RefThead>
-                <RefTr>
-                  <RefTh>{t('workPackage.col.code')}</RefTh>
-                  <RefTh>{t('workPackage.col.name')}</RefTh>
-                  <RefTh>{t('workPackage.col.owner')}</RefTh>
-                  <RefTh numeric>{t('workPackage.col.weight')}</RefTh>
-                  <RefTh numeric>{t('workPackage.col.items')}</RefTh>
-                  <RefTh>{t('workPackage.col.percent')}</RefTh>
-                </RefTr>
-              </RefThead>
-              <RefTbody>
-                {data.packages.map((p) => (
-                  <RefTr key={p.id}>
-                    <RefTd className="whitespace-nowrap font-mono text-xs">{p.code}</RefTd>
-                    <RefTd className="font-medium">{p.name}</RefTd>
-                    <RefTd>
-                      {p.responsibleOwner ?? <span className="text-disabled-foreground">—</span>}
-                    </RefTd>
-                    <RefTd numeric className="whitespace-nowrap tabular-nums">
-                      {`${Math.round(Number(p.weight) * 100)}%`}
-                    </RefTd>
-                    <RefTd numeric className="tabular-nums">{p.leafCount}</RefTd>
-                    <RefTd>
-                      {/* Schedule-only phases have no derived % — dash, not a misleading 0%. */}
-                      {p.percentComplete === null ? (
-                        <span className="text-disabled-foreground">—</span>
-                      ) : (
-                        <RefBar percent={p.percentComplete} tone={p.percentComplete >= 100 ? 'green' : 'blue'} />
-                      )}
-                    </RefTd>
-                  </RefTr>
-                ))}
-              </RefTbody>
-            </RefTable>
-          </RefTableScroll>
-        )}
-      </RefCardBody>
+      {hasPackages ? (
+        <TableScroll aria-label={t('workPackage.title')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('workPackage.col.code')}</TableHead>
+                <TableHead>{t('workPackage.col.name')}</TableHead>
+                <TableHead>{t('workPackage.col.owner')}</TableHead>
+                <TableHead numeric>{t('workPackage.col.weight')}</TableHead>
+                <TableHead numeric>{t('workPackage.col.items')}</TableHead>
+                <TableHead>{t('workPackage.col.percent')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.packages.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="whitespace-nowrap font-mono text-caption">{p.code}</TableCell>
+                  <TableCell className="font-medium">{p.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{p.responsibleOwner ?? '—'}</TableCell>
+                  <TableCell numeric className="whitespace-nowrap">
+                    {`${Math.round(Number(p.weight) * 100)}%`}
+                  </TableCell>
+                  <TableCell numeric className={p.leafCount === 0 && !p.scheduleOnly ? 'text-warning' : undefined}>
+                    {p.leafCount}
+                  </TableCell>
+                  <TableCell className="min-w-28">
+                    {/* Schedule-only phases have no derived % — dash, not a misleading 0%. */}
+                    {p.percentComplete === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Progress
+                          value={p.percentComplete}
+                          size="sm"
+                          tone={p.percentComplete >= 100 ? 'success' : 'default'}
+                          label={`${p.code} ${p.percentComplete}%`}
+                        />
+                        <span className="w-9 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
+                          {`${p.percentComplete}%`}
+                        </span>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableScroll>
+      ) : null}
 
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
-          </DialogHeader>
-          <CreateWorkPackageForm
-            projectId={projectId}
-            suggestedCode={nextCode}
-            existingWeightPercent={existingWeightPercent}
-            onCreated={() => setCreating(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <CreateWorkPackageDialog
+        projectId={projectId}
+        open={creating}
+        onOpenChange={setCreating}
+        suggestedCode={nextCode}
+        existingWeightPercent={existingWeightPercent}
+      />
 
       <Dialog open={allocating} onOpenChange={setAllocating}>
         <DialogContent size="sm">
@@ -303,14 +262,41 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
           <AllocateForm projectId={projectId} packages={packages} onAllocated={() => setAllocating(false)} />
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
 
-      <DeliveryPlanDialog
-        projectId={projectId}
-        currency={workspace.data?.currency ?? null}
-        open={planning}
-        onOpenChange={setPlanning}
-      />
-    </RefCard>
+/** "Add a package manually" — one package with a code, name, owner and weight. */
+export function CreateWorkPackageDialog({
+  projectId,
+  open,
+  onOpenChange,
+  suggestedCode,
+  existingWeightPercent,
+}: {
+  projectId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  suggestedCode: string;
+  existingWeightPercent: number;
+}) {
+  const t = useTranslations('progress');
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
+        </DialogHeader>
+        {open ? (
+          <CreateWorkPackageForm
+            projectId={projectId}
+            suggestedCode={suggestedCode}
+            existingWeightPercent={existingWeightPercent}
+            onCreated={() => onOpenChange(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -372,22 +358,22 @@ function CreateWorkPackageForm({
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField htmlFor="wp-code" label={t('workPackage.form.code')} error={codeError}>
-          <Input id="wp-code" value={code} placeholder={t('workPackage.form.codePlaceholder')} onChange={(e) => setCode(e.target.value)} className={refFieldClass} />
+          <Input id="wp-code" value={code} placeholder={t('workPackage.form.codePlaceholder')} onChange={(e) => setCode(e.target.value)} />
         </FormField>
         <FormField htmlFor="wp-name" label={t('workPackage.form.name')} error={nameError}>
-          <Input id="wp-name" value={name} placeholder={t('workPackage.form.namePlaceholder')} onChange={(e) => setName(e.target.value)} className={refFieldClass} />
+          <Input id="wp-name" value={name} placeholder={t('workPackage.form.namePlaceholder')} onChange={(e) => setName(e.target.value)} />
         </FormField>
         <FormField htmlFor="wp-owner" label={t('workPackage.form.responsibleOwner')}>
-          <Input id="wp-owner" value={owner} onChange={(e) => setOwner(e.target.value)} className={refFieldClass} />
+          <Input id="wp-owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
         </FormField>
         <FormField htmlFor="wp-weight" label={t('workPackage.form.progressWeight')} hint={weightHint}>
-          <Input id="wp-weight" type="number" min="0" max="1" step="0.01" value={weight} onChange={(e) => setWeight(e.target.value)} className={refFieldClass} />
+          <Input id="wp-weight" type="number" min="0" max="1" step="0.01" value={weight} onChange={(e) => setWeight(e.target.value)} />
         </FormField>
       </div>
       <div className="mt-4">
-        <RefButton type="submit" disabled={create.isPending}>
+        <Button type="submit" disabled={create.isPending}>
           {t('workPackage.form.submit')}
-        </RefButton>
+        </Button>
       </div>
     </form>
   );
@@ -424,13 +410,12 @@ function AllocateForm({
     });
   }
 
-  const disabled = packages.length === 0 || !hasBaseline;
+  if (!hasBaseline) {
+    return <p className="text-body text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>;
+  }
 
   return (
     <form onSubmit={onSubmit} aria-label={t('workPackage.allocate.title')}>
-      {!hasBaseline ? (
-        <p className="mb-3 text-body text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>
-      ) : null}
       {error ? (
         <div className="mb-3">
           <Alert variant="error" messages={[error]} />
@@ -439,7 +424,7 @@ function AllocateForm({
       <div className="space-y-3">
         <div>
           <Label htmlFor="alloc-wp">{t('workPackage.allocate.workPackage')}</Label>
-          <Select id="alloc-wp" value={workPackageId} onChange={(value) => setWorkPackageId(value)} disabled={disabled} className={refFieldClass}>
+          <Select id="alloc-wp" value={workPackageId} onChange={(value) => setWorkPackageId(value)}>
             <option value="">—</option>
             {packages.map((p) => (
               <option key={p.id} value={p.id}>
@@ -450,7 +435,7 @@ function AllocateForm({
         </div>
         <div>
           <Label htmlFor="alloc-leaf">{t('workPackage.allocate.boqNode')}</Label>
-          <Select id="alloc-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)} disabled={disabled} className={refFieldClass}>
+          <Select id="alloc-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)}>
             <option value="">—</option>
             {leaves.map((leaf) => (
               <option key={leaf.id} value={leaf.id}>
@@ -459,9 +444,9 @@ function AllocateForm({
             ))}
           </Select>
         </div>
-        <RefButton type="submit" disabled={disabled || allocate.isPending || !workPackageId || !boqNodeId}>
+        <Button type="submit" disabled={allocate.isPending || !workPackageId || !boqNodeId}>
           {t('workPackage.allocate.submit')}
-        </RefButton>
+        </Button>
       </div>
     </form>
   );

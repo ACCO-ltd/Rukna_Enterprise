@@ -50,6 +50,22 @@ export function verifyMilestone(
 }
 
 /**
+ * Replace the work packages a milestone is made of (ADR-021 amendment, 2026-09-28). An empty list
+ * clears them. `manage:project`. The milestone reads `readyToVerify` once every linked package is
+ * verified at 100%.
+ */
+export function setMilestoneWorkPackages(
+  projectId: string,
+  milestoneId: string,
+  workPackageIds: string[],
+): Promise<ProgrammeMilestoneResponse> {
+  return apiClient<ProgrammeMilestoneResponse>(
+    `/projects/${projectId}/programme/milestones/${milestoneId}/work-packages`,
+    { method: 'PUT', body: JSON.stringify({ workPackageIds }) },
+  );
+}
+
+/**
  * Programme activities (ADR-021 CONST-PROG-005) — the time layer under a work package: planned
  * dates + an optional milestone flag. No dependency network (deliberately deferred). Dates come back
  * as ISO datetime strings (the column is @db.Date); slice to YYYY-MM-DD in the UI.

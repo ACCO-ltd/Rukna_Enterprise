@@ -73,14 +73,16 @@ describe('Contract view — facts', () => {
 
 describe('Contract view — payment schedule', () => {
   it('says what bills each stage and why it waits, straight from the read model', () => {
-    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />);
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['manage:project'],
+    });
     const rows = scheduleRows();
     expect(within(rows[0]!).getByText('Advance · billable while the contract is active')).toBeInTheDocument();
     expect(within(rows[0]!).getByText('Paid')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Ready to bill')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('MS-01 verified in Progress on Sep 26, 2026')).toBeInTheDocument();
     expect(within(rows[2]!).getByText('Upcoming')).toBeInTheDocument();
-    expect(within(rows[2]!).getByRole('link', { name: 'Waits for MS-02 to be verified' })).toHaveAttribute('href', '/projects/p1/progress');
+    expect(within(rows[2]!).getByRole('link', { name: 'Waits for MS-02 to be verified' })).toHaveAttribute('href', '/projects/p1/progress/review');
     expect(within(rows[3]!).getByText('Milestone · not linked yet')).toBeInTheDocument();
     expect(within(rows[3]!).getByRole('link', { name: 'Link it to a milestone in Progress › Plan & setup' })).toBeInTheDocument();
     expect(within(rows[0]!).getByText('40%')).toBeInTheDocument();

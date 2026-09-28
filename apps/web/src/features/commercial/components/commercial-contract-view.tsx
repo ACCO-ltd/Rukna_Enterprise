@@ -28,6 +28,7 @@ import {
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate } from '@/lib/format';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { statusTone } from '@/lib/status-registry';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 
@@ -217,6 +218,7 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
   const tState = useTranslations('commercial.contractView.stageStatus');
   const locale = useLocale() as 'en' | 'ar';
   const cycle = useCommercialCurrentCycle(projectId);
+  const canVerify = usePermissions().can('manage:project');
   const [reprofiling, setReprofiling] = useState(false);
   const { financialsVisible, capabilities } = workspace;
   const contract = workspace.contract!;
@@ -251,8 +253,10 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
     }
     if (state === 'UPCOMING') {
       if (inst.billingBlocker === 'MILESTONE_NOT_VERIFIED' && inst.releasedBy.kind === 'MILESTONE') {
+        // Verifying is manage:project, done in Progress → Review; others read the wait as text.
+        if (!canVerify) return t('reasonWaitsFor', { code: inst.releasedBy.milestoneCode ?? '' });
         return (
-          <Link href={progressHref} className="text-brand-primary hover:underline">
+          <Link href={`${progressHref}/review`} className="text-brand-primary hover:underline">
             {t('reasonWaitsFor', { code: inst.releasedBy.milestoneCode ?? '' })}
           </Link>
         );

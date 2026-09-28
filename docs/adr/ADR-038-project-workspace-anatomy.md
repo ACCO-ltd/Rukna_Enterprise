@@ -50,3 +50,32 @@ The underline track of `ViewSwitcher` and `Tabs` draws its rule as an inset shad
   - Moving Progress's views to routes (flow plan PR 5).
   - Project-scoped document routes (PR 4).
   - The brief's dropdown tab bar (decision 4: later).
+
+## Amendment — 2026-09-28: sub-navigation pills; Progress views are routes
+
+Owner-approved as part of the Progress redesign (flow plan PR 5).
+
+- **`WorkspaceSubNav` is a row of quiet pills, on every tab** (Progress, Commercial, Finance,
+  Procurement, Documents). An inactive view is plain muted text; the active view is a filled,
+  primary-tinted pill (`bg-brand-accent`) with strong `brand-ink` text. Items stay text only and
+  stay links, with `aria-current="page"` on the active one. An item may carry a count (a small
+  round pill after the label, e.g. reports awaiting review); a zero count is omitted, never shown
+  as "0". The underline treatment is no longer used for this row: the project tab bar above is
+  the only underlined row, so the two levels never read as the same control. The row still scrolls
+  inside itself at 375px.
+- **Progress's views are routes**, not component state:
+  `/projects/{id}/progress/{today|review|performance|setup}`. A view the reader cannot use is
+  removed from the row, never disabled. The `ViewSwitcher` exception in the table above is retired.
+- **Setup gaps come in two strengths.** A *hard* gap (no baselined BOQ, or no measurable work
+  package — none at all, or only schedule-only phases) means nothing can be recorded, so Today,
+  Review and Performance show one empty state naming the gap. A *soft* gap (a package with no BOQ
+  items, or the server's `weightsComplete` false) never blocks field work: Today and Review render
+  as normal, and Performance shows one notice that its figures are provisional. Plan & setup keeps
+  the step current either way.
+- **Landing.** `/progress` redirects to Plan & setup for a setup manager when there is a hard gap,
+  or when setup is incomplete and they do not hold `record:progress`; otherwise Today for
+  recorders, Review for reviewers, else Performance.
+- **On Progress the tab heading carries no primary action**; each view owns its one primary.
+
+This supersedes the "Views inside a tab" row's "Underline style" wording and closes the open item
+"Moving Progress's views to routes".

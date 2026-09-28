@@ -255,11 +255,24 @@ describe('PaymentSchedulePanel — row-level milestone gate (S-PS-1 / CONST-COM-
         triggerType: 'MILESTONE',
         programmeMilestone: { id: 'ms-2', code: 'MS-02', name: 'Partition complete', status: 'PLANNED' },
       }),
-    ]);
+    ], ['manage:contract', 'manage:project']);
 
     // The reason names the gating milestone and links straight into Programme & Progress.
     const verify = screen.getByRole('link', { name: /Verify “Partition complete”/i });
-    expect(verify).toHaveAttribute('href', '/projects/p-1/progress');
+    expect(verify).toHaveAttribute('href', '/projects/p-1/progress/review');
+  });
+
+  it('shows "Waiting for site verification" without a link to a reader who cannot verify', () => {
+    renderPanel([
+      installment({
+        id: 'gated',
+        status: 'NEXT',
+        triggerType: 'MILESTONE',
+        programmeMilestone: { id: 'ms-2', code: 'MS-02', name: 'Partition complete', status: 'PLANNED' },
+      }),
+    ]);
+    expect(screen.getByText('Waiting for site verification')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Verify “Partition complete”/i })).not.toBeInTheDocument();
   });
 
   it('leaves a NEXT row whose milestone is VERIFIED unblocked (no reason shown)', () => {

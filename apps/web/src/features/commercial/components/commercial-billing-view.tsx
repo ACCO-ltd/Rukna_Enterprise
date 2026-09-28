@@ -14,6 +14,7 @@ import { ActionList, Alert, Button, MoneyDisplay, Notice, Skeleton, StatusPill, 
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate } from '@/lib/format';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { statusTone } from '@/lib/status-registry';
 import { useAccountingReadiness } from '@/features/finance/hooks/use-accounting-readiness';
 
@@ -144,6 +145,8 @@ function TodoPanel({
   const t = useTranslations('commercial.billingView');
   const locale = useLocale() as 'en' | 'ar';
   const { todo, capabilities, financialsVisible } = workspace;
+  // Verifying a milestone is manage:project (Progress → Review); others see the wait in words.
+  const canVerify = usePermissions().can('manage:project');
 
   const items: ActionListItem[] = todo.map((item, index) => {
     // One primary per screen: the first row's command. Everything else is secondary.
@@ -163,6 +166,7 @@ function TodoPanel({
         t,
         ledgerBlocked,
         canBill: capabilities.canBill,
+        canVerify,
         canRecordPayment: capabilities.canRecordPayment && financialsVisible && receivables.some((row) => row.invoiceId === item.invoiceId && row.canRecordPayment),
         onPrepare,
         onRecordPayment,
@@ -253,6 +257,7 @@ function todoAction(
     t: Translate;
     ledgerBlocked: boolean;
     canBill: boolean;
+    canVerify: boolean;
     canRecordPayment: boolean;
     onPrepare: (installmentId: string) => void;
     onRecordPayment: (invoiceId: string) => void;
@@ -293,8 +298,12 @@ function todoAction(
       ) : null;
     case 'BLOCKED_STAGE':
       // No billing button: the work is done in Progress. A link, not a command.
-      return item.blocker === 'CONTRACT_NOT_ACTIVE' ? null : (
-        <Link href={`/projects/${projectId}/progress`} className="inline-flex min-h-11 items-center text-body-sm font-medium text-brand-primary hover:underline">
+      if (item.blocker === 'CONTRACT_NOT_ACTIVE') return null;
+      if (item.blocker === 'MILESTONE_NOT_VERIFIED' && !ctx.canVerify) {
+        return <span className="text-caption text-muted-foreground">{t('todo.waitingVerification')}</span>;
+      }
+      return (
+        <Link href={`/projects/${projectId}/progress${item.blocker === 'MILESTONE_NOT_VERIFIED' ? '/review' : ''}`} className="inline-flex min-h-11 items-center text-body-sm font-medium text-brand-primary hover:underline">
           {item.blocker === 'MILESTONE_NOT_LINKED' ? t('todo.linkInProgress') : t('todo.verifyInProgress')}
         </Link>
       );

@@ -85,7 +85,18 @@ describe('Billing — To do', () => {
     const blocked = screen.getByText('Stage 3 · Frame complete can’t be billed yet').closest('li')!;
     expect(within(blocked).getByText('It waits for MS-02 Frame complete to be verified in Progress.')).toBeInTheDocument();
     expect(within(blocked).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(blocked).getByRole('link', { name: 'Verify in Progress' })).toHaveAttribute('href', '/projects/p1/progress');
+    // Without manage:project the wait is stated, not linked — the reader can't verify.
+    expect(within(blocked).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(blocked).getByText('Waiting for site verification')).toBeInTheDocument();
+  });
+
+  it('links a reader who can verify straight to Progress review', () => {
+    renderWithProviders(
+      <CommercialBillingView projectId="p1" workspace={workspaceFixture({ todo: [OVERDUE, READY, DRAFT, BLOCKED] })} />,
+      { permissions: ['manage:project'] },
+    );
+    const blocked = screen.getByText('Stage 3 · Frame complete can’t be billed yet').closest('li')!;
+    expect(within(blocked).getByRole('link', { name: 'Verify in Progress' })).toHaveAttribute('href', '/projects/p1/progress/review');
   });
 
   it('names the released milestone and the unbilled variation that can ride on the invoice', () => {

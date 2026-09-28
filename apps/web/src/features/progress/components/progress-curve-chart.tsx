@@ -53,6 +53,18 @@ export interface ProgressCurveChartProps {
    * fainter and labels the legend "estimate" so a reader never mistakes it for a committed plan.
    */
   plannedProvisional?: boolean;
+  /**
+   * Which reading the solid "actual" line draws. `verified` plots only what approved reports
+   * support (Performance's rule); `physical` is the live roll-up. Defaults to `physical`.
+   */
+  actualSeries?: 'physical' | 'verified';
+  /** ISO date for a vertical "today" marker; it joins the date axis so it lands in order. */
+  today?: string;
+  /**
+   * The planned % on `today` (read off the baseline by the caller). When given, the screen-reader
+   * summary states planned-by-today rather than the baseline's final point.
+   */
+  plannedToday?: number | null;
 }
 
 /** Map a value on 0..100 to a Y pixel (inverted — 100% is at the top). */
@@ -61,18 +73,25 @@ function yPos(value: number): number {
   return PAD_TOP + PLOT_H * (1 - clamped / 100);
 }
 
-/** Map a point's index across the shared date axis to an X pixel. */
-function xPos(index: number, count: number): number {
-  if (count <= 1) return PAD_LEFT + PLOT_W / 2;
-  return PAD_LEFT + (PLOT_W * index) / (count - 1);
+function dayTime(date: string): number {
+  return new Date(`${date.slice(0, 10)}T00:00:00Z`).getTime();
 }
 
-function toPath(series: Series[], dates: string[]): string {
+/**
+ * Map a date to an X pixel by elapsed TIME across the axis, so a two-week gap between readings
+ * looks like two weeks and not like one step. A single date sits in the middle.
+ */
+function makeX(dates: string[]): (date: string) => number {
+  const times = dates.map(dayTime);
+  const min = Math.min(...times);
+  const max = Math.max(...times);
+  return (date: string) =>
+    max === min ? PAD_LEFT + PLOT_W / 2 : PAD_LEFT + (PLOT_W * (dayTime(date) - min)) / (max - min);
+}
+
+function toPath(series: Series[], x: (date: string) => number): string {
   return series
-    .map((point) => {
-      const index = dates.indexOf(point.periodEndDate);
-      return `${xPos(index, dates.length)},${yPos(point.value)}`;
-    })
+    .map((point) => `${x(point.periodEndDate)},${yPos(point.value)}`)
     .map((coord, i) => `${i === 0 ? 'M' : 'L'}${coord}`)
     .join(' ');
 }
@@ -82,6 +101,9 @@ export function ProgressCurveChart({
   actual,
   showVerified = false,
   plannedProvisional = false,
+  actualSeries = 'physical',
+  today,
+  plannedToday,
 }: ProgressCurveChartProps) {
   const t = useTranslations('progress');
   const titleId = useId();
@@ -90,7 +112,11 @@ export function ProgressCurveChart({
   // The shared X axis is the union of every date across both series, in order. A planned point
   // and an actual point on the same date land on the same X, which is what makes them comparable.
   const dates = Array.from(
-    new Set([...baseline.map((b) => b.periodEndDate), ...actual.map((a) => a.periodEndDate)]),
+    new Set([
+      ...baseline.map((b) => b.periodEndDate),
+      ...actual.map((a) => a.periodEndDate),
+      ...(today ? [today] : []),
+    ]),
   ).sort();
 
   // Zero actual points: nothing to draw. The caller shows the insufficient-data state.
@@ -102,8 +128,9 @@ export function ProgressCurveChart({
   }));
   const physicalSeries: Series[] = actual.map((a) => ({
     periodEndDate: a.periodEndDate,
-    value: a.physicalPercent,
+    value: actualSeries === 'verified' ? a.verifiedPercent : a.physicalPercent,
   }));
+  const actualLabel = actualSeries === 'verified' ? t('curve.actualVerified') : t('curve.actual');
   const verifiedSeries: Series[] = actual.map((a) => ({
     periodEndDate: a.periodEndDate,
     value: a.verifiedPercent,
@@ -112,12 +139,25 @@ export function ProgressCurveChart({
   const latestActual = actual.at(-1) ?? null;
   const latestPlanned = baseline.at(-1) ?? null;
 
-  // A screen reader gets the numbers that matter, not the SVG path geometry.
-  const ariaSummary = t('curve.ariaSummary', {
-    planned: latestPlanned ? `${latestPlanned.plannedPercent}%` : '—',
-    physical: latestActual ? `${latestActual.physicalPercent}%` : '—',
-    points: actual.length,
-  });
+  const x = makeX(dates);
+  const actualLatest = latestActual
+    ? `${actualSeries === 'verified' ? latestActual.verifiedPercent : latestActual.physicalPercent}%`
+    : '—';
+
+  // A screen reader gets the numbers that matter, not the SVG path geometry: planned BY TODAY when
+  // the caller knows it (not the baseline's last point, which is the end of the project).
+  const ariaSummary =
+    today && plannedToday !== undefined
+      ? t('curve.ariaSummaryToday', {
+          planned: plannedToday === null ? '—' : `${plannedToday}%`,
+          physical: actualLatest,
+          points: actual.length,
+        })
+      : t('curve.ariaSummary', {
+          planned: latestPlanned ? `${latestPlanned.plannedPercent}%` : '—',
+          physical: actualLatest,
+          points: actual.length,
+        });
 
   // Only label a subset of X ticks when there are many, so labels never collide at 375px.
   const labelEvery = Math.ceil(dates.length / 4);
@@ -167,7 +207,7 @@ export function ProgressCurveChart({
             return (
               <text
                 key={date}
-                x={xPos(index, dates.length)}
+                x={x(date)}
                 y={VIEW_H - 8}
                 textAnchor="middle"
                 className="fill-gray-400 text-[10px] tabular-nums tracking-normal"
@@ -181,7 +221,7 @@ export function ProgressCurveChart({
         {/* Planned baseline — dashed muted reference line (a backdrop, not a series hue). */}
         {plannedSeries.length >= 2 ? (
           <path
-            d={toPath(plannedSeries, dates)}
+            d={toPath(plannedSeries, x)}
             fill="none"
             className="stroke-disabled-foreground"
             strokeWidth={1.5}
@@ -195,7 +235,7 @@ export function ProgressCurveChart({
         {/* Verified (optional, faint) — chart-2. */}
         {showVerified && verifiedSeries.length >= 2 ? (
           <path
-            d={toPath(verifiedSeries, dates)}
+            d={toPath(verifiedSeries, x)}
             fill="none"
             className="stroke-chart-2"
             strokeWidth={1.5}
@@ -205,10 +245,26 @@ export function ProgressCurveChart({
           />
         ) : null}
 
-        {/* Actual physical — the primary series, chart-1. One point ⇒ a dot, never a line. */}
+        {/* Today marker — a hairline, labelled in the legend. */}
+        {today ? (
+          <line
+            x1={x(today)}
+            y1={PAD_TOP}
+            x2={x(today)}
+            y2={PAD_TOP + PLOT_H}
+            className="stroke-muted-foreground"
+            strokeWidth={1}
+            strokeDasharray="2 3"
+            vectorEffect="non-scaling-stroke"
+            aria-hidden="true"
+            data-testid="curve-today"
+          />
+        ) : null}
+
+        {/* Actual — the primary series, chart-1. One point ⇒ a dot, never a line. */}
         {physicalSeries.length >= 2 ? (
           <path
-            d={toPath(physicalSeries, dates)}
+            d={toPath(physicalSeries, x)}
             fill="none"
             className="stroke-chart-1"
             strokeWidth={2}
@@ -219,11 +275,10 @@ export function ProgressCurveChart({
           />
         ) : null}
         {physicalSeries.map((point) => {
-          const index = dates.indexOf(point.periodEndDate);
           return (
             <circle
               key={`p-${point.periodEndDate}`}
-              cx={xPos(index, dates.length)}
+              cx={x(point.periodEndDate)}
               cy={yPos(point.value)}
               r={3}
               className="fill-chart-1"
@@ -235,17 +290,25 @@ export function ProgressCurveChart({
 
       {/* Legend — small, legible, tabular. Colour + word, never colour alone. */}
       <figcaption className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="inline-block h-0.5 w-4 border-t-2 border-dashed border-disabled-foreground"
-            aria-hidden="true"
-          />
-          {plannedLabel}
-        </span>
+        {plannedSeries.length >= 2 ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-0.5 w-4 border-t-2 border-dashed border-disabled-foreground"
+              aria-hidden="true"
+            />
+            {plannedLabel}
+          </span>
+        ) : null}
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 rounded-full bg-chart-1" aria-hidden="true" />
-          {t('curve.actual')}
+          {actualLabel}
         </span>
+        {today ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-0 border-s border-dashed border-muted-foreground" aria-hidden="true" />
+            {t('curve.today')}
+          </span>
+        ) : null}
         {showVerified ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-4 rounded-full bg-chart-2" aria-hidden="true" />

@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 import { statusTone } from '@/lib/status-registry';
+import { StatusBadge } from '@/components/status-badge';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
@@ -167,6 +168,7 @@ export function PaymentSchedulePanel({
                         locale={locale}
                         money={money}
                         canManageLink={canManageLink}
+                        canVerify={can('manage:project')}
                         onLink={() => setLinking(inst)}
                         t={t}
                       />
@@ -225,10 +227,13 @@ function InstallmentRow({
   locale,
   money,
   canManageLink,
+  canVerify,
   onLink,
   t,
 }: {
   inst: Installment;
+  /** manage:project — the verify link leads somewhere only for a reader who can verify. */
+  canVerify: boolean;
   projectId: string;
   locale: 'en' | 'ar';
   money: (value: string | null) => string | null;
@@ -275,9 +280,14 @@ function InstallmentRow({
             "⛔ Verify "<milestone>" →" links straight into Programme & Progress (the same target
             the cycle ribbon uses). Billing itself now happens exclusively through the milestone-
             journey "Issue" flow (Contract & Milestones tab) — this panel only surfaces the gate. */}
-        {inst.status === 'NEXT' && blocked && inst.programmeMilestone ? (
+        {inst.status === 'NEXT' && blocked && inst.programmeMilestone && !canVerify ? (
+          <span className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning">
+            <Ban size={13} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{t('paymentSchedule.milestone.waitingVerification')}</span>
+          </span>
+        ) : inst.status === 'NEXT' && blocked && inst.programmeMilestone ? (
           <Link
-            href={`/projects/${projectId}/progress`}
+            href={`/projects/${projectId}/progress/review`}
             className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning underline underline-offset-2 hover:text-warning/80"
           >
             <Ban size={13} className="shrink-0" aria-hidden="true" />
@@ -409,11 +419,11 @@ function MilestoneCell({
   return (
     <div className="flex items-center gap-2">
       <span className="font-mono text-xs text-foreground">{milestone.code}</span>
-      <StatusPill tone={statusTone(milestone.status, 'programmeMilestone')}>
-        {verified
-          ? t('paymentSchedule.milestone.verified')
-          : t('paymentSchedule.milestone.planned')}
-      </StatusPill>
+      <StatusBadge
+        vocabulary="programmeMilestone"
+        status={milestone.status}
+        label={verified ? t('paymentSchedule.milestone.verified') : t('paymentSchedule.milestone.planned')}
+      />
       {canManageLink ? (
         <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onLink}>
           {t('paymentSchedule.milestone.change')}

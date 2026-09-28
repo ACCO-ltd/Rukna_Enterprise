@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Skeleton, useToast } from '@erp/ui';
+import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, MoneyDisplay, Skeleton, StatusPill, useToast } from '@erp/ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { BoqTreeNodeResponse } from '@erp/types';
 
@@ -12,7 +12,7 @@ import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 
 import { suggestDeliveryPlan } from '../domain/suggest-delivery-plan';
 import { useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
-import { RefButton, RefPill, RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
+import { RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
 
 const refFieldClass = 'rounded-control border-border px-2 py-1 text-body focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
@@ -36,11 +36,17 @@ interface PlanRow {
 export function DeliveryPlanDialog({
   projectId,
   currency,
+  moneyHidden = false,
   open,
   onOpenChange,
 }: {
   projectId: string;
   currency: string | null;
+  /**
+   * The viewer may not see BOQ money (ADR-029 money-blind roles): the server omits amounts, so a
+   * section value would read as a false "$0.00". Render the hidden state instead.
+   */
+  moneyHidden?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -219,6 +225,7 @@ export function DeliveryPlanDialog({
                         key={row.key}
                         row={row}
                         currency={currency}
+                        moneyHidden={moneyHidden}
                         isExpanded={expanded.has(row.key)}
                         onToggleExpand={() => toggleExpanded(row.key)}
                         onChange={(patch) => update(row.key, patch)}
@@ -243,13 +250,13 @@ export function DeliveryPlanDialog({
         </div>
 
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
-          <RefButton variant="outline" onClick={() => onOpenChange(false)} disabled={save.isPending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={save.isPending}>
             {t('deliveryPlan.cancel')}
-          </RefButton>
+          </Button>
           {suggestion && suggestion.packages.length > 0 ? (
-            <RefButton onClick={onSave} disabled={save.isPending}>
+            <Button onClick={onSave} disabled={save.isPending}>
               {save.isPending ? t('deliveryPlan.saving') : t('deliveryPlan.saveDraft')}
-            </RefButton>
+            </Button>
           ) : null}
         </div>
       </DialogContent>
@@ -260,6 +267,7 @@ export function DeliveryPlanDialog({
 function RowGroup({
   row,
   currency,
+  moneyHidden,
   isExpanded,
   onToggleExpand,
   onChange,
@@ -271,6 +279,7 @@ function RowGroup({
 }: {
   row: PlanRow;
   currency: string | null;
+  moneyHidden: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onChange: (patch: Partial<PlanRow>) => void;
@@ -324,7 +333,9 @@ function RowGroup({
             )}
             <span>{t('deliveryPlan.coverageCount', { count: row.leafIds.length })}</span>
           </button>
-          <div className="text-caption text-muted-foreground">{formatMoney(String(totalValue), currency, 'en')}</div>
+          <div className="text-caption text-muted-foreground">
+            {moneyHidden ? <MoneyDisplay value={null} hidden /> : formatMoney(String(totalValue), currency, 'en')}
+          </div>
         </RefTd>
         <RefTd>
           <input
@@ -351,15 +362,15 @@ function RowGroup({
         </RefTd>
         <RefTd>
           {!row.included ? (
-            <RefPill tone="gray">{t('deliveryPlan.excluded')}</RefPill>
+            <StatusPill tone="historical">{t('deliveryPlan.excluded')}</StatusPill>
           ) : row.leafIds.length === 0 ? (
-            <RefPill tone="gray">{t('deliveryPlan.noItems')}</RefPill>
+            <StatusPill tone="historical">{t('deliveryPlan.noItems')}</StatusPill>
           ) : hasUnpriced ? (
-            <RefPill tone="amber" title={t('deliveryPlan.unpricedHint')}>
+            <StatusPill tone="attention" title={t('deliveryPlan.unpricedHint')}>
               {t('deliveryPlan.unpriced')}
-            </RefPill>
+            </StatusPill>
           ) : (
-            <RefPill tone="green">{t('deliveryPlan.ready')}</RefPill>
+            <StatusPill tone="success">{t('deliveryPlan.ready')}</StatusPill>
           )}
         </RefTd>
       </RefTr>
