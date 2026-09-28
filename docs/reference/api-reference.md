@@ -846,7 +846,9 @@ additive; types in `@erp/types` (`construction.ts`, section "Commercial tab rede
   `billing-packages` uses the margin-tier rule. One overdue rule everywhere: whole UTC days past
   `dueDate` > 0, server clock.
 - `billing.receipts[]` gain `depositAccountLabel` ("Bank · CUR ···1234") and `receiptNumber`
-  (always `null` today — receipts carry no document number column yet).
+  (`RCP-000123`, claimed when the receipt posts; null only while unposted).
+- `POST …/invoices/:invoiceId/issue` dates the invoice the day it is issued: a draft prepared
+  earlier moves to the issue day and its due date moves by the same number of days.
 
 **Project finance overview — billing control (2026-09-28).** `GET /projects/:projectId/finance/overview`
 now returns `controls.billing` and `billingReconciliation { invoicedNet, glRevenue, variance,

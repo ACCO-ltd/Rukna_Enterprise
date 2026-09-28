@@ -113,7 +113,7 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const invoiceDocumentServiceStub = {} as unknown as import('../../accounts-receivable/application/invoice-document.service.js').InvoiceDocumentService;
   const platformFileServiceStub = {} as unknown as import('../../../../platform/files/application/platform-file.service.js').PlatformFileService;
   const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService, invoiceDocumentServiceStub, platformFileServiceStub);
-  const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingAccountResolver, postingService);
+  const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingAccountResolver, postingService, sequenceRepo);
 
   // AP
   const supplierBillRepo    = new SupplierBillRepository();

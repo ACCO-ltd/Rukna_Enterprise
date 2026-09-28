@@ -2359,9 +2359,8 @@ export interface CommercialReceiptRow {
   paymentMethod: string | null;
   reference: string | null;
   /**
-   * Commercial redesign 2026-09-28 — the receipt's document number. Always null today: customer
-   * receipts carry no document-number column (adding one needs a migration). Reserved so the
-   * Payments panel can show it the day it exists.
+   * The receipt's document number (RCP-000123), claimed when it posts. Null only for a receipt
+   * not posted yet.
    */
   receiptNumber: string | null;
   /** The deposit account it landed in, e.g. "Premier Bank · USD ···4410". Null when not recorded. */

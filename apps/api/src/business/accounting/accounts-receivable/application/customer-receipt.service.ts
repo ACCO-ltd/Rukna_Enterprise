@@ -18,6 +18,7 @@ import { PostingAccountResolver } from '../../accounting-core/application/postin
 import type { CreateReceiptDto } from '../presentation/dto/create-receipt.dto.js';
 import { PaymentReceiptArRepository } from '../infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
+import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 
 // ADR-024 ACC-POST-001: bankAccountCode is an explicit choice (which account received the
 // money); arAccountCode/unappliedAccountCode are optional overrides, resolved by role when absent.
@@ -57,7 +58,18 @@ export class CustomerReceiptService {
     private readonly resolver: PostingAccountResolver,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    private readonly sequenceRepo: DocumentSequenceRepository,
   ) {}
+
+  /**
+   * The receipt's document number (RCP-000123), claimed in the transaction that posts it so a
+   * rolled-back post never burns a number. The sequence is created on first use.
+   */
+  private async claimReceiptNumber(tx: Prisma.TransactionClient, orgId: string): Promise<string> {
+    await this.sequenceRepo.ensureSequence(tx as never, orgId, 'PAYMENT_RECEIPT', 'RCP-');
+    const claimed = await this.sequenceRepo.claimNext(tx as never, orgId, 'PAYMENT_RECEIPT');
+    return claimed.formattedNumber;
+  }
 
   /**
    * Post a PaymentReceipt to the GL.
@@ -152,9 +164,12 @@ export class CustomerReceiptService {
         tx as never,
       );
 
+      // Written with the journal entry, in the same transaction (it used the outer client before,
+      // so a failure after this point could leave a POSTED receipt without its allocations).
+      const receiptNumber = await this.claimReceiptNumber(tx, orgId);
       await this.receiptRepo.markPosted(
-        prisma, receipt.id, postResult.journalEntryId, userId,
-        allocatedAmount, unallocatedAmount,
+        tx as never, receipt.id, postResult.journalEntryId, userId,
+        allocatedAmount, unallocatedAmount, receiptNumber,
       );
 
       // Create initial allocation records
@@ -620,10 +635,12 @@ export class CustomerReceiptService {
       tx as never,
     );
 
-    // 4. Mark receipt POSTED
+    // 4. Mark receipt POSTED, with its document number
+    const receiptNumber = await this.claimReceiptNumber(tx, orgId);
     await tx.paymentReceipt.update({
       where: { id: receipt.id },
       data: {
+        receiptNumber,
         postingStatus: 'POSTED',
         postedJournalEntryId: postResult.journalEntryId,
         postedAt: new Date(),

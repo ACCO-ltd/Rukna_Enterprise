@@ -313,6 +313,11 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
       expect(inv.documentStatus).toBe('APPROVED');
       expect(inv.postedJournalEntryId).not.toBeNull();
       expect((inv.billingAddressSnapshot as { org: { name: string } }).org.name).toBe(`Renamed Org ${suffix}`);
+      // Prepared 2026-09-20 (due 2026-10-20): dated the day it is issued, 30-day terms kept.
+      const today = new Date().toISOString().slice(0, 10);
+      const due = new Date(Date.parse(`${today}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
+      expect(inv.invoiceDate.toISOString().slice(0, 10)).toBe(today);
+      expect(inv.dueDate?.toISOString().slice(0, 10)).toBe(due);
     }
   });
 

@@ -550,6 +550,7 @@ export class CommercialPrismaRepository {
         paymentMethod: true,
         reference: true,
         bankReference: true,
+        receiptNumber: true,
         postingStatus: true,
         // Commercial redesign 2026-09-28 — the deposit account the payment landed in.
         bankAccount: { select: { bankName: true, accountNumber: true, currencyCode: true } },
@@ -870,6 +871,22 @@ export class CommercialPrismaRepository {
   }
 
   /** A contract's number, org-scoped (an invoice carries only the bare `contractId`). */
+  /** A draft's dates, read inside the issue transaction. */
+  findDraftDates(prisma: TenantPrisma, organizationId: string, invoiceId: string) {
+    return prisma.clientInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { invoiceDate: true, dueDate: true },
+    });
+  }
+
+  /** Re-date a draft at issue (still NOT_POSTED — a posted invoice's dates are frozen). */
+  redateDraft(prisma: TenantPrisma, organizationId: string, invoiceId: string, invoiceDate: Date, dueDate: Date | null) {
+    return prisma.clientInvoice.updateMany({
+      where: { id: invoiceId, organizationId, postingStatus: 'NOT_POSTED' },
+      data: { invoiceDate, dueDate },
+    });
+  }
+
   /** Same lookup `recordProjectPayment` guards on: a payment needs an ACTIVE contract on the project. */
   async hasActiveContract(prisma: TenantPrisma, organizationId: string, projectId: string): Promise<boolean> {
     const contract = await prisma.contract.findFirst({
@@ -1118,7 +1135,7 @@ export class CommercialPrismaRepository {
           clientInvoiceId: true,
           allocatedAmount: true,
           allocationDate: true,
-          receipt: { select: { reference: true, bankReference: true } },
+          receipt: { select: { receiptNumber: true, reference: true, bankReference: true } },
         },
       }),
     ]);

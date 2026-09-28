@@ -246,7 +246,7 @@ export function InvoiceDetail({
 }
 
 /**
- * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · shamiito". Falls
+ * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · Temporary site power". Falls
  * back to the bare kind word only for a migration-loaded invoice, which has no reference to show.
  */
 function humanSource(invoice: ClientInvoice, t: ReturnType<typeof useTranslations<'accounting.invoices'>>): string {

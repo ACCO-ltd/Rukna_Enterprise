@@ -3039,6 +3039,9 @@ model PaymentReceipt {
   notes                String?
   documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
   postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
+  // RCP-000123, claimed from the PAYMENT_RECEIPT sequence in the transaction that posts the receipt.
+  // Null while unposted (and for opening-balance receipts).
+  receiptNumber        String?          @map("receipt_number") @db.VarChar(50)
   postedJournalEntryId String?          @map("posted_journal_entry_id")
   postedAt             DateTime?        @map("posted_at")
   postedBy             String?          @map("posted_by")
@@ -3063,6 +3066,7 @@ model PaymentReceipt {
   // Accounting subledger (receipt ↔ ClientInvoice) — the sole allocation ledger (ACC-SET-001).
   clientAllocations ClientReceiptAllocation[]
 
+  @@unique([organizationId, receiptNumber])
   @@index([organizationId, clientId])
   @@index([organizationId, postingStatus])
   @@index([receiptDate])

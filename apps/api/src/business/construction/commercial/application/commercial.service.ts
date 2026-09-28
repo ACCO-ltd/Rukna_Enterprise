@@ -1036,9 +1036,8 @@ export class CommercialService {
         // The bank's own reference is what reconciles against a statement; fall back to the
         // free-text reference only when there is no bank one.
         reference: receipt.bankReference ?? receipt.reference ?? null,
-        // Customer receipts have no document-number column yet (it needs a migration) — null, never
-        // a borrowed number from another document.
-        receiptNumber: null,
+        // Claimed when the receipt posts (RCP-000123); null only for one not posted yet.
+        receiptNumber: receipt.receiptNumber ?? null,
         depositAccountLabel: receipt.bankAccount
           ? `${receipt.bankAccount.bankName} · ${receipt.bankAccount.currencyCode} ···${receipt.bankAccount.accountNumber.slice(-4)}`
           : null,

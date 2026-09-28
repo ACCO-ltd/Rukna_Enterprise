@@ -162,7 +162,7 @@ function sourceKindText(kind: ClientInvoiceSourceKind): string {
 }
 
 /**
- * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · shamiito". A
+ * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · Temporary site power". A
  * migration-loaded invoice (`NONE`, no reference) falls back to the bare kind word.
  */
 function deriveSourceLabel(row: CommercialInvoiceRow): string {
