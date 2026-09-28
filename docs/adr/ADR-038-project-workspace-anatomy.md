@@ -35,7 +35,7 @@ A project tab is built from these parts. Nothing else is used for these jobs.
 
 **Wording** (English catalogue):
 - **Sales tax**, never "VAT". API fields (`vatAmount`) and account codes (`VAT_OUTPUT_PAYABLE`) keep their names.
-- **Invoiced** for the posted figure. The Overview note says when it is net of credit notes, and counts invoices not yet posted.
+- **Invoiced** is the gross of posted invoices, as shown on Billing & collection. **Net invoiced** is that figure less posted credit notes, as shown on the Overview. The two figures differ, so they must never share a label. The Overview note also counts the invoices not yet posted.
 - **Not yet numbered** for a draft invoice.
 - Titles and labels in sentence case.
 

@@ -39,10 +39,35 @@ interface MetricStripProps {
   /** Labels each segment for assistive tech; omit if a nearby heading already names the group. */
   'aria-label'?: string;
   /** Segments per row from `lg`, so the row fills instead of leaving a gap. Defaults to 5. */
-  columns?: 3 | 4 | 5;
+  columns?: 2 | 3 | 4 | 5;
 }
 
-const LG_COLUMNS = { 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4', 5: 'lg:grid-cols-5' } as const;
+const LG_COLUMNS = {
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+} as const;
+const SM_COLUMNS = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3' } as const;
+
+/** Two or four segments pair up at `sm`; three or five sit three to a row. */
+function smColumns(columns: 2 | 3 | 4 | 5): 2 | 3 {
+  return columns === 2 || columns === 4 ? 2 : 3;
+}
+
+// Literal class names, so Tailwind's scanner sees every one it needs to generate.
+const RULES = {
+  base: { s: 'border-s', s0: 'border-s-0', t: 'border-t', t0: 'border-t-0' },
+  sm: { s: 'sm:border-s', s0: 'sm:border-s-0', t: 'sm:border-t', t0: 'sm:border-t-0' },
+  lg: { s: 'lg:border-s', s0: 'lg:border-s-0', t: 'lg:border-t', t0: 'lg:border-t-0' },
+} as const;
+
+/** Hairline classes for the segment at `index`, per breakpoint. Exported for tests. */
+export function segmentRules(index: number, columns: 2 | 3 | 4 | 5): string {
+  const at = (bp: keyof typeof RULES, cols: number) =>
+    `${index % cols === 0 ? RULES[bp].s0 : RULES[bp].s} ${index >= cols ? RULES[bp].t : RULES[bp].t0}`;
+  return `border-border ${at('base', 2)} ${at('sm', smColumns(columns))} ${at('lg', columns)}`;
+}
 
 /**
  * The one metric strip for workspaces (flow plan B4): Commercial overview, Billing & collection
@@ -55,23 +80,32 @@ export function MetricStrip({ metrics, 'aria-label': ariaLabel, columns = 5 }: M
     // hairline-separated, so it never overflows at 375px (DoD §8.2).
     <dl
       aria-label={ariaLabel}
-      className={`grid grid-cols-2 border-y border-border sm:grid-cols-3 ${LG_COLUMNS[columns]}`}
+      className={`grid grid-cols-2 border-y border-border ${SM_COLUMNS[smColumns(columns)]} ${LG_COLUMNS[columns]}`}
     >
       {metrics.map((metric, index) => (
-        <MetricSegment key={metric.label} metric={metric} index={index} />
+        <MetricSegment key={metric.label} metric={metric} index={index} columns={columns} />
       ))}
     </dl>
   );
 }
 
-function MetricSegment({ metric, index }: { metric: Metric; index: number }) {
+function MetricSegment({
+  metric,
+  index,
+  columns,
+}: {
+  metric: Metric;
+  index: number;
+  columns: 2 | 3 | 4 | 5;
+}) {
   const { label, value, sublabel, href, tone } = metric;
   const unavailable = value === null || value === undefined;
 
-  // Hairline between segments. A left rule on every segment except the first in its row
-  // would need to know the column count; instead draw a left rule on all but the very first
-  // and let the grid's own wrapping hide the seam — top rules come from the row borders.
-  const divider = index === 0 ? '' : 'border-s border-border';
+  // Hairlines per breakpoint: a left rule on every segment that is not first in its row, a top
+  // rule on every segment below the first row. Computed from the column count at each
+  // breakpoint — a single "left rule on all but index 0" left a stray rule on the first
+  // segment of every wrapped row and no rule between rows.
+  const divider = segmentRules(index, columns);
 
   const body = (
     <>

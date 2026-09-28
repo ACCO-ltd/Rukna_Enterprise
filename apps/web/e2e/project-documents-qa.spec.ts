@@ -66,7 +66,7 @@ async function useTheme(app: Page, theme: string, width: number, height: number)
 /** The register's own nav, which is a link list rather than a tablist. */
 async function gotoRegister(app: Page) {
   await app.goto(`/projects/${PROJECT}/documents`);
-  await expect(app.getByRole('heading', { name: 'Documents', level: 1 })).toBeVisible();
+  await expect(app.getByRole('heading', { name: 'Documents', level: 2 })).toBeVisible();
 }
 
 async function gotoAttachments(app: Page) {
