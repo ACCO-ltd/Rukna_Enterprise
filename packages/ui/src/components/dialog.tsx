@@ -34,6 +34,38 @@ import { cn } from '../lib/utils';
  * behaviour as the dialog it replaces.
  */
 export const Dialog = DialogPrimitive.Root;
+
+/**
+ * Radix returns focus to a `<DialogTrigger>`. Most dialogs here are opened from state (a row
+ * action, a menu item) with no trigger, so focus fell to `<body>` on close and a keyboard user
+ * lost their place. Remember what had focus when the dialog opened and go back to it.
+ *
+ * Shared by `DialogContent` and `FormDialog`; not exported from the package.
+ */
+export function useReturnFocus(
+  onOpenAutoFocus?: (event: Event) => void,
+  onCloseAutoFocus?: (event: Event) => void,
+) {
+  const returnFocusTo = React.useRef<HTMLElement | null>(null);
+  return {
+    onOpenAutoFocus: (event: Event) => {
+      const active = document.activeElement;
+      returnFocusTo.current =
+        active instanceof HTMLElement && active !== document.body ? active : null;
+      onOpenAutoFocus?.(event);
+    },
+    onCloseAutoFocus: (event: Event) => {
+      onCloseAutoFocus?.(event);
+      if (event.defaultPrevented) return;
+      const target = returnFocusTo.current;
+      if (target?.isConnected) {
+        event.preventDefault();
+        target.focus();
+      }
+    },
+  };
+}
+
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
@@ -42,7 +74,7 @@ export const DialogClose = DialogPrimitive.Close;
  *
  *  sm   448px  destructive confirm, 1–3 fields (default)
  *  md   512px  4–6 field form
- *  lg   672px  edge case — prefer Sheet for anything larger
+ *  lg   672px  edge case — for a record form, use `FormDialog` (ADR-039)
  *  xl   896px  2-column document-preparation layouts (form + a short, text-summary preview)
  *  2xl 1152px  2-column layouts where the preview is a real rendered document (an embedded
  *              PDF, a page-scale invoice) rather than a summary card — it needs page-reading
@@ -77,10 +109,7 @@ export const DialogContent = React.forwardRef<
     },
     ref,
   ) => {
-    // Radix returns focus to a <DialogTrigger>. Most dialogs here are opened from state (a row
-    // action, a menu item) with no trigger, so focus fell to <body> on close and a keyboard user
-    // lost their place. Remember what had focus when the dialog opened and go back to it.
-    const returnFocusTo = React.useRef<HTMLElement | null>(null);
+    const returnFocus = useReturnFocus(onOpenAutoFocus, onCloseAutoFocus);
     return (
       <DialogPrimitive.Portal>
         {/* Blurred as well as dimmed. A flat scrim separates the dialog from the page; blurring
@@ -98,21 +127,8 @@ export const DialogContent = React.forwardRef<
             dialogSizeClass[size],
             className,
           )}
-          onOpenAutoFocus={(event) => {
-            const active = document.activeElement;
-            returnFocusTo.current =
-              active instanceof HTMLElement && active !== document.body ? active : null;
-            onOpenAutoFocus?.(event);
-          }}
-          onCloseAutoFocus={(event) => {
-            onCloseAutoFocus?.(event);
-            if (event.defaultPrevented) return;
-            const target = returnFocusTo.current;
-            if (target?.isConnected) {
-              event.preventDefault();
-              target.focus();
-            }
-          }}
+          onOpenAutoFocus={returnFocus.onOpenAutoFocus}
+          onCloseAutoFocus={returnFocus.onCloseAutoFocus}
           {...props}
         >
           {children}
