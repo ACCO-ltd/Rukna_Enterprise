@@ -707,6 +707,19 @@ export class ClientInvoiceService {
       );
     }
 
+    // Guard: no posted credit notes. A credit note (Dr Revenue / Cr AR) has already reduced this
+    // invoice's AR; reversing the full original journal on top of it would over-credit AR (driving
+    // it negative) and double-reduce revenue, and would orphan the credit note's own journal.
+    const activeCreditNotes = await prisma.creditNote.count({
+      where: { invoiceId, postingStatus: 'POSTED' },
+    });
+    if (activeCreditNotes > 0) {
+      throw new BadRequestException(
+        `Cannot reverse invoice ${invoiceId} — it has ${activeCreditNotes} posted credit note(s) against it. ` +
+        `A credit note has already partially reversed this invoice; resolve the credit note(s) first.`,
+      );
+    }
+
     if (!invoice.postedJournalEntryId) {
       throw new BadRequestException(`Invoice ${invoiceId} has no posted journal to reverse`);
     }

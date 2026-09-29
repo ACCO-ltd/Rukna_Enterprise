@@ -16,6 +16,8 @@ describe('ClientInvoiceService.reverse — dimensions', () => {
     ];
     const prisma = {
       clientReceiptAllocation: { count: jest.fn().mockResolvedValue(0) },
+      // reverse() now also blocks on posted credit notes; no credit note exists in this scenario.
+      creditNote: { count: jest.fn().mockResolvedValue(0) },
       journalEntry: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'je1', lines: originalLines }) },
       clientInvoice: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation((cb: (tx: unknown) => unknown) => cb(prisma)),

@@ -573,7 +573,11 @@ export class SupplierBillService {
         );
 
         const billNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_BILL');
-        await this.repo.markPosted(prisma, bill.id, postResult.journalEntryId, billNum.formattedNumber, userId);
+        // markPosted runs on `tx` so the POSTED flip commits atomically with the journal and the
+        // commitment-ledger movement below. On the outer `prisma` client it committed independently,
+        // leaving a POSTED bill pointing at a journalEntryId that a later rollback discarded (mirror
+        // of the AR receipt-post fix in 4eb64e1).
+        await this.repo.markPosted(tx as never, bill.id, postResult.journalEntryId, billNum.formattedNumber, userId);
 
         // ACCRUED → ACTUAL commitment movement (ADR-007, Rule CL-003; A14/D7).
         // Only for procurement-linked bills (purchaseOrderRevisionId present).

@@ -91,27 +91,47 @@ export class PeriodManagementService {
       );
     }
 
-    const gate = await this.checkCloseGate(prisma, orgId, period);
-    if (!gate.passed) {
-      throw new BadRequestException(
-        `Period cannot be closed: ${gate.blockers.join('; ')}`,
-      );
-    }
+    // Close atomically under a row lock on the period. PeriodValidator.resolve takes the same
+    // FOR UPDATE lock on the posting path, so an in-flight post serializes against this close:
+    // either it commits first (its journal is visible to the gate + snapshot below) or it blocks
+    // until we mark CLOSED and is then rejected — it can never land after the snapshot is frozen.
+    // The gate re-check, snapshot, and status flip all run on `tx`, so they commit together (a crash
+    // can no longer leave a snapshot written but the period still LOCKED, or vice versa).
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM accounting_periods WHERE id = ${periodId} AND organization_id = ${orgId} FOR UPDATE`;
 
-    // Generate snapshot BEFORE marking CLOSED
-    const snapshot = await this.snapshotService.generateForPeriod(orgId, periodId, userId);
+      const locked = await tx.accountingPeriod.findFirst({
+        where: { id: periodId, organizationId: orgId },
+        include: { fiscalYear: true },
+      });
+      if (!locked) throw new NotFoundException(`Period ${periodId} not found`);
+      if (locked.status !== 'LOCKED') {
+        throw new BadRequestException(
+          `Period must be LOCKED before closing (current: ${locked.status})`,
+        );
+      }
 
-    await prisma.accountingPeriod.update({
-      where: { id: periodId },
-      data: { status: 'CLOSED' },
-    });
+      const gate = await this.checkCloseGate(tx as never, orgId, locked);
+      if (!gate.passed) {
+        throw new BadRequestException(
+          `Period cannot be closed: ${gate.blockers.join('; ')}`,
+        );
+      }
 
-    return {
-      periodId,
-      previousStatus: 'LOCKED',
-      newStatus: 'CLOSED',
-      snapshotAccountsCount: snapshot.accountsSnapshotted,
-    };
+      const snapshot = await this.snapshotService.generateForPeriod(orgId, periodId, userId, tx as never);
+
+      await tx.accountingPeriod.update({
+        where: { id: periodId },
+        data: { status: 'CLOSED' },
+      });
+
+      return {
+        periodId,
+        previousStatus: 'LOCKED' as const,
+        newStatus: 'CLOSED' as const,
+        snapshotAccountsCount: snapshot.accountsSnapshotted,
+      };
+    }, { timeout: 120_000 });
   }
 
   /**
@@ -136,22 +156,29 @@ export class PeriodManagementService {
       );
     }
 
-    const invalidated = await this.snapshotService.invalidateDownstream(orgId, dto.periodId);
+    // Downstream invalidation, own-period invalidation, and the status flip commit together — a
+    // crash between them previously left later periods marked INVALID with no reopened period to
+    // explain it.
+    const invalidated = await prisma.$transaction(async (tx) => {
+      const count = await this.snapshotService.invalidateDownstream(orgId, dto.periodId, tx as never);
 
-    // Invalidate this period's own snapshots too
-    await prisma.periodAccountBalance.updateMany({
-      where: { organizationId: orgId, accountingPeriodId: dto.periodId },
-      data: { status: 'INVALID' },
-    });
+      // Invalidate this period's own snapshots too
+      await tx.periodAccountBalance.updateMany({
+        where: { organizationId: orgId, accountingPeriodId: dto.periodId },
+        data: { status: 'INVALID' },
+      });
 
-    await prisma.accountingPeriod.update({
-      where: { id: dto.periodId },
-      data: {
-        status: 'REOPENED',
-        reopenReason: dto.reason,
-        reopenedBy: userId,
-        reopenedAt: new Date(),
-      },
+      await tx.accountingPeriod.update({
+        where: { id: dto.periodId },
+        data: {
+          status: 'REOPENED',
+          reopenReason: dto.reason,
+          reopenedBy: userId,
+          reopenedAt: new Date(),
+        },
+      });
+
+      return count;
     });
 
     return {

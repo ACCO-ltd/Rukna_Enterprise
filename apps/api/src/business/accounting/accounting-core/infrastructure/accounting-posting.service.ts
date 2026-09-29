@@ -1,5 +1,6 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import type {
   IAccountingPostingPort,
   PostingCommand,
@@ -35,7 +36,9 @@ export class AccountingPostingService implements IAccountingPostingPort {
           journalNumber: existing.journalNumber ?? '',
         };
       }
-      throw new InternalServerErrorException(
+      // A non-terminal duplicate (DRAFT/SUBMITTED/APPROVED/REJECTED) is a state conflict, not a
+      // server fault — 409 so monitoring and clients don't read it as an outage.
+      throw new ConflictException(
         `Duplicate posting detected for ${command.sourceDocumentType}/${command.sourceDocumentId} ` +
         `event ${command.eventType} — existing journal ${existing.id} is in status ${existing.status}`,
       );
@@ -62,7 +65,9 @@ export class AccountingPostingService implements IAccountingPostingPort {
           command.accountingDate,
         );
         if (!version) {
-          throw new InternalServerErrorException(
+          // Missing effective version is a chart-of-accounts/config condition, not an internal
+          // fault — 422 so it is actionable (fix the account's effective dating) rather than a 500.
+          throw new UnprocessableEntityException(
             `No effective account version found for account ${line.accountId} on ${command.accountingDate.toISOString().slice(0, 10)}`,
           );
         }
@@ -108,33 +113,49 @@ export class AccountingPostingService implements IAccountingPostingPort {
 
     // ── Create journal entry + lines atomically ────────────────────────────────
     const now = new Date();
-    const entry = await tx.journalEntry.create({
-      data: {
-        organizationId: command.organizationId,
-        journalNumber: formattedNumber,
-        accountingPeriodId: period.id,
-        journalCategory: command.journalCategory,
-        entryPurpose: command.entryPurpose,
-        status: 'POSTED',
-        documentDate: command.documentDate,
-        accountingDate: command.accountingDate,
-        postedAt: now,
-        description: command.description,
-        currencyCode: command.currencyCode,
-        sourceDocumentType: command.sourceDocumentType,
-        sourceDocumentId: command.sourceDocumentId,
-        accountingEventId: command.eventType,
-        reversalOfJournalEntryId: command.reversalOfJournalEntryId ?? null,
-        createdBy: command.createdBy,
-        approvedBy: command.approvedBy ?? null,
-        approvedAt: command.approvedBy ? now : null,
-        postedBy: command.createdBy,
-        lines: {
-          create: resolvedLines,
+    let entry: { id: string; journalNumber: string | null };
+    try {
+      entry = await tx.journalEntry.create({
+        data: {
+          organizationId: command.organizationId,
+          journalNumber: formattedNumber,
+          accountingPeriodId: period.id,
+          journalCategory: command.journalCategory,
+          entryPurpose: command.entryPurpose,
+          status: 'POSTED',
+          documentDate: command.documentDate,
+          accountingDate: command.accountingDate,
+          postedAt: now,
+          description: command.description,
+          currencyCode: command.currencyCode,
+          sourceDocumentType: command.sourceDocumentType,
+          sourceDocumentId: command.sourceDocumentId,
+          accountingEventId: command.eventType,
+          reversalOfJournalEntryId: command.reversalOfJournalEntryId ?? null,
+          createdBy: command.createdBy,
+          approvedBy: command.approvedBy ?? null,
+          approvedAt: command.approvedBy ? now : null,
+          postedBy: command.createdBy,
+          lines: {
+            create: resolvedLines,
+          },
         },
-      },
-      select: { id: true, journalNumber: true },
-    });
+        select: { id: true, journalNumber: true },
+      });
+    } catch (err) {
+      // Two concurrent posts of the same source event both passed the idempotency SELECT above
+      // (neither saw the other's uncommitted row under READ COMMITTED); the loser hits the unique
+      // key (org, sourceDocumentType, sourceDocumentId, accountingEventId). Surface a 409 (the
+      // winner's journal is committed; the transaction is now aborted so we cannot re-read it here)
+      // — retrying routes cleanly through the idempotency guard and returns the committed journal.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(
+          `Concurrent posting conflict for ${command.sourceDocumentType}/${command.sourceDocumentId} ` +
+          `event ${command.eventType} — another transaction posted this journal first; retry to obtain it.`,
+        );
+      }
+      throw err;
+    }
 
     return {
       journalEntryId: entry.id,
