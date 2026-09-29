@@ -217,8 +217,11 @@ export class BoqController {
 
   @Get('versions/:versionId/contingency')
   // ADR-029 CONST-BOQ-028 / spec C-2 — contingency remaining, derived from the live allowance
-  // leaves. Read behind the base `view:boq`; the tiered money-visibility redaction is R10.
-  @ApiOperation({ summary: 'Contingency remaining on a version (derived, decimal string)' })
+  // leaves. Read behind the base `view:boq`; the figure itself needs the margin tier.
+  @ApiOperation({
+    summary:
+      'Contingency remaining on a version: { versionId, contingencyRemaining (decimal string, null when none or withheld), canViewMargin }',
+  })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
   async contingency(
@@ -227,8 +230,10 @@ export class BoqController {
     @Param('versionId') versionId: string,
   ) {
     const remaining = await this.versioningService.getContingencyRemaining(identity, projectId, versionId);
-    // Contingency is a margin-tier figure (ADR-029 §8 A-2), as on the workspace money band.
-    return resolveBoqVisibility(identity).canViewMargin ? remaining : null;
+    // Contingency is a margin-tier figure (ADR-029 §8 A-2), as on the workspace money band. Every
+    // caller gets the same shape; `canViewMargin` says whether a null means "none" or "withheld".
+    const { canViewMargin } = resolveBoqVisibility(identity);
+    return { versionId, contingencyRemaining: canViewMargin ? remaining : null, canViewMargin };
   }
 
   @Post('versions/:versionId/contingency/draw')

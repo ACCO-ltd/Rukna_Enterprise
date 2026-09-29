@@ -1155,6 +1155,18 @@ export interface BoqTreeNodeResponse {
   // Server-computed — always present on GET …/tree
   /** Leaf: its own amount. Section: the sum of its descendants. Null when unpriced. */
   computedTotal: string | null;
+  /**
+   * Leaf: unit, quantity and rate are all present (the readiness rule, `missingPricingFields`).
+   * Section: false. Sent to every tier — it states whether a line is priced, not at what price, so
+   * a money-blind reader can still see "Unpriced" without the rate it is judged from.
+   */
+  priced: boolean;
+  /**
+   * This node's share (0..1) of the version's total leaf value — a ratio, not a figure, so it is
+   * sent to every tier (as `programme/suggest-weights` sends ratios). Weights a delivery plan by
+   * BOQ value for a reader who may not see the value. Null when the node carries no value.
+   */
+  valueShare: number | null;
 }
 
 export type BoqReadinessBlockerKind =

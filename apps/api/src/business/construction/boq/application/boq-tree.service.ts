@@ -36,7 +36,7 @@ import {
   contributesToInContractTotal,
   isContingencyLeaf,
 } from '../domain/boq-contract-value.policy.js';
-import { MAX_DEPTH, validateNodeWrite } from '../domain/boq-node.policy.js';
+import { MAX_DEPTH, missingPricingFields, validateNodeWrite } from '../domain/boq-node.policy.js';
 import { assertMayChangeBoqMoney } from '../domain/boq-money-redaction.js';
 import { proposeNodeCode } from '../domain/boq-code.policy.js';
 import type { CreateNodeDto } from '../presentation/dto/create-node.dto.js';
@@ -80,6 +80,10 @@ export interface BoqTreeNodeView {
   children: BoqTreeNodeView[];
   /** Leaf: its own amount. Section: the sum of its descendants. Null when unpriced. */
   computedTotal: DecimalString | null;
+  /** Leaf: unit, quantity and rate all present (`missingPricingFields`). Section: false. Every tier. */
+  priced: boolean;
+  /** Share 0..1 of the version's total leaf value — a ratio, sent to every tier. Null when none. */
+  valueShare: number | null;
 }
 
 @Injectable()
@@ -285,8 +289,14 @@ export class BoqTreeService {
     // amount; an unchanged echo of the stored values is not a change.
     assertMayChangeBoqMoney(
       identity,
-      { unitRate: dto.unitRate, pricingBasis: dto.pricingBasis, quantity: dto.quantity },
-      { unitRate: node.unitRate, pricingBasis: node.pricingBasis, quantity: node.quantity },
+      { isLeaf: dto.isLeaf, unitRate: dto.unitRate, pricingBasis: dto.pricingBasis, quantity: dto.quantity },
+      {
+        isLeaf: node.isLeaf,
+        totalAmount: node.totalAmount,
+        unitRate: node.unitRate,
+        pricingBasis: node.pricingBasis,
+        quantity: node.quantity,
+      },
     );
 
     // The proposed state after the patch, not the patch itself — the rules are about what
@@ -1096,6 +1106,8 @@ export function buildTree(nodes: BoqNode[], boqCurrency: string): BoqTreeNodeVie
       updatedAt: node.updatedAt,
       children: [],
       computedTotal: formatAmount(toDecimal(node.totalAmount)),
+      priced: node.isLeaf && missingPricingFields(node).length === 0,
+      valueShare: null,
     });
   }
 
@@ -1112,7 +1124,23 @@ export function buildTree(nodes: BoqNode[], boqCurrency: string): BoqTreeNodeVie
   roots.sort((a, b) => a.sortOrder - b.sortOrder);
 
   sumSectionTotals(roots);
+  assignValueShares(roots);
   return roots;
+}
+
+/**
+ * Each node's share of the version's total value, as a 0..1 ratio (rounded to 6 places). The
+ * denominator is the sum of the root totals, so a section's share is the sum of its children's.
+ */
+function assignValueShares(roots: BoqTreeNodeView[]): void {
+  const total = sumAmounts(roots.map((root) => toDecimal(root.computedTotal)));
+  if (!total || !total.greaterThan(0)) return;
+  const visit = (node: BoqTreeNodeView) => {
+    const amount = toDecimal(node.computedTotal);
+    node.valueShare = amount && amount.greaterThan(0) ? amount.div(total).toDecimalPlaces(6).toNumber() : null;
+    node.children.forEach(visit);
+  };
+  roots.forEach(visit);
 }
 
 function sumSectionTotals(nodes: BoqTreeNodeView[]): void {

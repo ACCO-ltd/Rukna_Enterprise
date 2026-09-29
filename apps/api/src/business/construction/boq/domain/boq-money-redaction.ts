@@ -116,6 +116,7 @@ function sameDecimal(a: DecimalLike, b: DecimalLike): boolean {
 
 /** What a write proposes for the money-bearing fields; absent fields are `undefined`. */
 export interface ProposedMoney {
+  isLeaf?: boolean | undefined;
   unitRate?: string | null | undefined;
   pricingBasis?: string | undefined;
   quantity?: string | null | undefined;
@@ -123,6 +124,8 @@ export interface ProposedMoney {
 
 /** The node as stored, or null for a create. */
 export interface StoredMoney {
+  isLeaf?: boolean;
+  totalAmount?: DecimalLike;
   unitRate: DecimalLike;
   pricingBasis: string;
   quantity: DecimalLike;
@@ -133,7 +136,8 @@ export interface StoredMoney {
  *  - the unit rate,
  *  - the pricing basis,
  *  - a lump sum's amount — which is its quantity × rate (quantity 1, rate = amount), so on a
- *    lump-sum line the quantity is money too.
+ *    lump-sum line the quantity is money too;
+ *  - flipping a priced node between item and section (`isLeaf`), which drops or restores its money.
  *
  * Absent fields are ignored, and a present field that equals the stored value (an unchanged echo
  * of the row) is allowed — only an actual change is refused. A create compares against an empty
@@ -157,6 +161,19 @@ export function assertMayChangeBoqMoney(
   const lumpSum = (proposed.pricingBasis ?? before.pricingBasis) === 'LUMP_SUM';
   if (lumpSum && proposed.quantity !== undefined && !sameDecimal(proposed.quantity, before.quantity)) {
     changed.push('lump-sum amount');
+  }
+
+  // Turning a priced item into a section drops its rate and amount; turning it back re-prices it.
+  // Either way the money moves, so the flip is a money change.
+  const pricedBefore =
+    !sameDecimal(before.unitRate, null) || !sameDecimal(before.totalAmount ?? null, null);
+  if (
+    stored &&
+    proposed.isLeaf !== undefined &&
+    proposed.isLeaf !== stored.isLeaf &&
+    pricedBefore
+  ) {
+    changed.push('line type of a priced item');
   }
 
   if (changed.length > 0) {

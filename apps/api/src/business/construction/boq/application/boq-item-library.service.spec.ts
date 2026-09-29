@@ -61,4 +61,16 @@ describe('BoqItemLibraryService', () => {
     const { svc } = build({ itemById: null });
     await expect(svc.recordUsage(identity, 'nope', { rate: '1' })).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('withholds the last-used rate from a caller without the cost tier (ADR-029 §8 A-2)', async () => {
+    const row = { id: 'item1', code: 'RC-C25', lastUsedRate: new Decimal('102.50'), lastUsedProjectId: 'p1' };
+    const { svc, repo } = build();
+    repo.search.mockResolvedValue([row]);
+
+    const blind = await svc.search({ userId: 'u1', activeOrganizationId: 'o1', permissions: ['view:boq', 'edit-scope:boq'] } as never);
+    expect(blind).toEqual([{ ...row, lastUsedRate: null }]);
+
+    const costTier = await svc.search({ userId: 'u1', activeOrganizationId: 'o1', permissions: ['view:boq', 'view-cost:boq'] } as never);
+    expect(costTier).toEqual([row]);
+  });
 });
