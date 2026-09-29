@@ -41,8 +41,12 @@ const ALIASES: Record<string, string> = {
 };
 
 /**
- * The registry unit a stored value means, or null when it is truly unknown. Matches on the unit's
- * symbol, code or name (case-insensitively, `unitKey`), then through the alias table.
+ * The registry unit a stored value means, or null when it is truly unknown.
+ *
+ * Precedence, first hit wins: the exact symbol; then the symbol, the code and the name by key
+ * (`unitKey`), in that order across the whole list; then the alias table. A unit whose symbol
+ * matches therefore always beats another whose code or name happens to match — `t` is the tonne
+ * whose symbol is `t`, not a unit coded `T`.
  */
 export function resolveListedUnit(
   units: readonly UnitOfMeasureOption[],
@@ -53,10 +57,10 @@ export function resolveListedUnit(
   if (exact) return exact;
 
   const key = unitKey(value);
-  const direct = units.find(
-    (unit) => unitKey(unit.symbol) === key || unitKey(unit.code) === key || unitKey(unit.name) === key,
-  );
-  if (direct) return direct;
+  for (const field of ['symbol', 'code', 'name'] as const) {
+    const match = units.find((unit) => unitKey(unit[field]) === key);
+    if (match) return match;
+  }
 
   const alias = ALIASES[key];
   return alias ? (units.find((unit) => unitKey(unit.symbol) === alias) ?? null) : null;

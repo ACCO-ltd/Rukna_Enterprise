@@ -110,18 +110,73 @@ describe('toCreateNodePayload — items', () => {
 });
 
 describe('toUpdateNodePayload', () => {
+  /** An imported lump sum stored as 5 x 100: the amount is 500 whatever the quantity says. */
+  const importedLumpSum = () =>
+    toNodeFormValues(
+      testNode({
+        id: 'n1',
+        code: '1.1',
+        description: 'Site office',
+        isLeaf: true,
+        pricingBasis: 'LUMP_SUM',
+        unit: 'LS',
+        quantity: '5.000',
+        unitRate: '100.00',
+      }),
+    );
+
+  it('sends only what changed: a description edit on a 5 x 100 lump sum sends the description alone', () => {
+    const initial = importedLumpSum();
+    expect(initial.lumpSumAmount).toBe('500.00');
+    const payload = toUpdateNodePayload({ ...initial, description: 'Site office and stores' }, { kind: 'item', initial });
+    expect(payload).toEqual({ description: 'Site office and stores' });
+  });
+
+  it('rewrites a lump sum as 1 x amount only when the amount or the basis changed', () => {
+    const initial = importedLumpSum();
+    expect(toUpdateNodePayload({ ...initial, lumpSumAmount: '650' }, { kind: 'item', initial })).toEqual({
+      quantity: '1',
+      unitRate: '650',
+    });
+    const measured = form({ unit: 'm²', quantity: '42', unitRate: '160' });
+    expect(
+      toUpdateNodePayload({ ...measured, pricingBasis: 'LUMP_SUM', lumpSumAmount: '6720.00' }, { kind: 'item', initial: measured }),
+    ).toEqual({ pricingBasis: 'LUMP_SUM', quantity: '1', unitRate: '6720.00' });
+  });
+
+  it('sends a unit only when it changed, and never a stored spelling the user left alone', () => {
+    const initial = form({ unit: 'm2', quantity: '10', unitRate: '5' });
+    expect(toUpdateNodePayload({ ...initial, description: 'Tiling' }, { kind: 'item', initial })).not.toHaveProperty('unit');
+    expect(toUpdateNodePayload({ ...initial, unit: 'm²' }, { kind: 'item', initial })).toEqual({ unit: 'm²' });
+  });
+
+  it('without the cost tier, sends a measured quantity but never a rate, basis or lump-sum amount', () => {
+    const initial = form({ unit: 'm²', quantity: '10', unitRate: '' });
+    expect(
+      toUpdateNodePayload({ ...initial, unitRate: '9', pricingBasis: 'LUMP_SUM', lumpSumAmount: '5' }, {
+        kind: 'item',
+        initial,
+        pricing: false,
+      }),
+    ).toEqual({});
+    expect(toUpdateNodePayload({ ...initial, quantity: '12' }, { kind: 'item', initial, pricing: false })).toEqual({
+      quantity: '12',
+    });
+  });
+
   /**
    * Changing a section into an item is refused by the server once it has children, and the
    * two shapes collect different fields. Changing kind means delete and re-add, which is
    * explicit about what happens to the children.
    */
   it('never sends isLeaf', () => {
-    expect(toUpdateNodePayload(form(), { kind: 'item' })).not.toHaveProperty('isLeaf');
+    expect(toUpdateNodePayload(form(), { kind: 'item', initial: form({ description: 'Old' }) })).not.toHaveProperty('isLeaf');
   });
 
   it('never sends a currency', () => {
     const payload = toUpdateNodePayload(form({ quantity: '10', unitRate: '5.00' }), {
       kind: 'item',
+      initial: form(),
     });
 
     expect(payload).not.toHaveProperty('currency');
@@ -193,7 +248,11 @@ describe('lump sum', () => {
       quantity: '1',
       unitRate: '25000.00',
     });
-    expect(toUpdateNodePayload(values, { kind: 'item' })).toMatchObject({ quantity: '1', unitRate: '25000.00' });
+    expect(toUpdateNodePayload(values, { kind: 'item', initial: form() })).toMatchObject({
+      pricingBasis: 'LUMP_SUM',
+      quantity: '1',
+      unitRate: '25000.00',
+    });
   });
 
   it('sends neither quantity nor rate when no amount was typed — never a confident zero', () => {
@@ -210,6 +269,13 @@ describe('lump sum', () => {
     expect(toNodeFormValues(testNode({ ...base, quantity: null, unitRate: '900.00' })).lumpSumAmount).toBe('900.00');
     expect(toNodeFormValues(testNode({ ...base, quantity: '3.000', unitRate: '100.00' })).lumpSumAmount).toBe('300.00');
     expect(lumpSumOf(null, null)).toBe('');
+  });
+
+  it('without the cost tier, a create carries no rate, basis or lump-sum amount', () => {
+    const payload = toCreateNodePayload(form({ unit: 'm²', quantity: '3', unitRate: '9' }), { kind: 'item', pricing: false });
+    expect(payload).toMatchObject({ quantity: '3', unit: 'm²' });
+    expect(payload).not.toHaveProperty('unitRate');
+    expect(payload).not.toHaveProperty('pricingBasis');
   });
 
   it('previews the lump-sum amount itself', () => {

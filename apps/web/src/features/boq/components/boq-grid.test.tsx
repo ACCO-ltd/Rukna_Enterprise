@@ -130,7 +130,7 @@ describe('BoqGrid — reading', () => {
     expect(screen.queryByText(/Showing/)).not.toBeInTheDocument();
   });
 
-  /** Money-blind roles: the figures never reached the browser, so neither do their columns. */
+  /** Money-blind roles: the server withholds the figures, and the columns are not drawn either. */
   it('drops the rate, amount and total for a reader who may not see money', () => {
     render({ canViewCommercials: false, totalAmount: null });
     expect(screen.queryByRole('columnheader', { name: /Rate/ })).not.toBeInTheDocument();
@@ -368,6 +368,32 @@ describe('BoqGrid — the unit cell', () => {
     expect(cmds.onEditField).not.toHaveBeenCalled();
   });
 
+  it('keeps focus on the unit cell after a pick, so Tab moves on to the quantity', async () => {
+    const user = userEvent.setup();
+    let resolve: () => void = () => {};
+    const cmds = commands({ onEditField: vi.fn(() => new Promise<void>((done) => { resolve = done; })) });
+    render({ commands: cmds, units: UNITS });
+
+    const unit = screen.getByRole('combobox', { name: 'Unit of 1.1' });
+    await chooseOption(user, unit, 'm²');
+    // Saving: announced as busy, never disabled, so focus stays put.
+    expect(unit).toHaveAttribute('aria-disabled', 'true');
+    expect(unit).not.toBeDisabled();
+    expect(unit).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('textbox', { name: 'Edit quantity of 1.1' })).toHaveFocus();
+    resolve();
+    await waitFor(() => expect(unit).not.toHaveAttribute('aria-disabled'));
+  });
+
+  it('offers no empty choice on a line that already has a unit', async () => {
+    const user = userEvent.setup();
+    render({ commands: commands(), units: UNITS });
+    await user.click(screen.getByRole('combobox', { name: 'Unit of 1.1' }));
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.getAttribute('data-value'))).toEqual(['m³', 'm²']);
+  });
+
   it('shows the stored unit as text when there is no registry to pick from', () => {
     render({ commands: commands(), units: [] });
     expect(screen.queryByRole('combobox', { name: 'Unit of 1.1' })).not.toBeInTheDocument();
@@ -384,5 +410,68 @@ describe('BoqGrid — the unit cell', () => {
     expect(screen.getByRole('combobox', { name: 'Unit of 1.1' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('textbox', { name: 'Edit quantity of 1.1' })).toHaveFocus();
+  });
+});
+
+describe('BoqGrid — a lump sum stored with a quantity other than 1', () => {
+  const bill = () => [
+    testNode({
+      id: 's1',
+      code: '1',
+      description: 'Preliminaries',
+      children: [
+        testNode({
+          id: 'ls',
+          parentId: 's1',
+          code: '1.1',
+          description: 'Site office',
+          isLeaf: true,
+          pricingBasis: 'LUMP_SUM',
+          unit: 'LS',
+          quantity: '5.000',
+          unitRate: '100.00',
+          computedTotal: '500.00',
+        }),
+      ],
+    }),
+  ];
+
+  it('reads and edits as one fixed amount, with no editable quantity', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    render({ commands: cmds, rows: buildRows(bill(), { collapsed: new Set(), search: '', pricing: 'all' }) });
+
+    const row = screen.getByRole('textbox', { name: 'Edit description of 1.1' }).closest('tr')!;
+    expect(within(row).getAllByText('Lump sum').length).toBeGreaterThan(0);
+    expect(within(row).queryByRole('textbox', { name: 'Edit quantity of 1.1' })).not.toBeInTheDocument();
+
+    // The rate column carries the amount (500), not the stored per-unit rate (100).
+    const amount = within(row).getByRole('textbox', { name: 'Edit rate of 1.1' });
+    expect(amount).toHaveValue('500');
+    await user.clear(amount);
+    await user.type(amount, '650');
+    await user.tab();
+    await waitFor(() =>
+      expect(cmds.onEditField).toHaveBeenCalledWith(expect.objectContaining({ id: 'ls' }), 'lumpSumAmount', '650'),
+    );
+  });
+
+  it('sends only the description for a description edit', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    render({ commands: cmds, rows: buildRows(bill(), { collapsed: new Set(), search: '', pricing: 'all' }) });
+
+    const description = screen.getByRole('textbox', { name: 'Edit description of 1.1' });
+    await user.clear(description);
+    await user.type(description, 'Site office and stores');
+    await user.tab();
+    await waitFor(() =>
+      expect(cmds.onEditField).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ls' }),
+        'description',
+        'Site office and stores',
+      ),
+    );
+    expect(cmds.onEditField).toHaveBeenCalledTimes(1);
   });
 });

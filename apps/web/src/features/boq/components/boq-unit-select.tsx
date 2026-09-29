@@ -38,6 +38,7 @@ export function BoqUnitSelect({
   placeholder,
   ariaLabel,
   ariaDescribedBy,
+  busy = false,
   invalid = false,
   attention = false,
   className,
@@ -56,6 +57,8 @@ export function BoqUnitSelect({
   placeholder?: string;
   ariaLabel?: string;
   ariaDescribedBy?: string;
+  /** Saving: announced as unavailable but still focusable (see `UnitCellEditor`). */
+  busy?: boolean;
   /** A failed save, outside a FormField (the grid). Inside one, the field's error drives it. */
   invalid?: boolean;
   /** The grid's attention border — a legacy unit, as an unpriced rate is flagged beside it. */
@@ -74,6 +77,7 @@ export function BoqUnitSelect({
       disabled={disabled}
       aria-label={ariaLabel}
       aria-describedby={ariaDescribedBy}
+      aria-disabled={busy}
       placeholder={placeholder ?? t('placeholder')}
       // A unit list is scanned by symbol, and the filtering Combobox flattens each row to text —
       // it would print "LS Lump sum" in a grid cell. The standard set (nine units) stays a plain
@@ -89,7 +93,10 @@ export function BoqUnitSelect({
         className,
       )}
     >
-      <option value="">{placeholder ?? t('placeholder')}</option>
+      {/* The empty choice exists only while there is no unit: the node API cannot clear a unit
+          (no null on the DTO), so offering "—" on a line that has one would promise a save that
+          silently does nothing. */}
+      {value === '' ? <option value="">{placeholder ?? t('placeholder')}</option> : null}
       {legacy ? (
         <option value={value}>
           {value}{' '}
@@ -168,6 +175,9 @@ export function UnitCellEditor({
   const legacy = !isListedUnit(units, draft);
 
   const choose = async (next: string) => {
+    // Busy, not disabled: a disabled trigger loses focus when the list closes, and Tab from the
+    // cell would start again at the top of the page. Input is ignored instead.
+    if (saving) return;
     setDraft(next);
     // Picking the unit a stored alias already resolves to changes nothing worth a request.
     if (next === canonicalUnit(units, stored)) {
@@ -197,7 +207,7 @@ export function UnitCellEditor({
         value={draft}
         units={units}
         compact
-        disabled={saving}
+        busy={saving}
         placeholder="—"
         ariaLabel={ariaLabel}
         ariaDescribedBy={failed ? errorId : legacy ? noteId : undefined}

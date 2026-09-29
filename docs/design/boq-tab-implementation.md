@@ -173,3 +173,26 @@ drawer/sheet/panel):
 | `add-extra-work-drawer.tsx` | `add-extra-work-dialog.tsx` | `lg` |
 | `boq-compare-signed-panel.tsx` | `boq-compare-signed-dialog.tsx` | `xl` |
 | `components/lifecycle-command-drawer.tsx` (shared with IPC) | `components/lifecycle-command-dialog.tsx`, same props | `md` |
+
+### 6.1 Review follow-ups (PR #241)
+
+- **Partial saves.** `PATCH …/nodes/:id` is partial, so the dialog sends only the fields that
+  changed (`toUpdateNodePayload(values, { initial })`) and a grid cell sends only its own field
+  (`cell-edit-payload.ts`). A description edit on an imported `5 × 100` lump sum no longer rewrites
+  it as `1 × 500`, and a stored unit spelling (`m2`) is normalised to the listed symbol only when the
+  unit itself was changed.
+- **Lump sums in the grid** are recognised by `pricingBasis` alone. The rate column carries the
+  line's amount (500 for `5 × 100`), editing it writes quantity 1 × rate = amount, and the quantity
+  is not editable.
+- **Units.** Clearing a unit is not supported by the node DTO, so the picker offers no empty choice
+  once a line has a unit. The grid cell stays focusable while saving (`aria-disabled`, input
+  ignored), so Tab carries on to the quantity. `resolveListedUnit` resolves exact symbol, then
+  symbol / code / name by key, then aliases. The seed's `normaliseUnitSymbol` ignores dots (`L.S.`).
+- **Money on the server (ADR-029 §8 A-1/A-2).** The BOQ controller withholds rates and amounts from
+  a caller without the cost tier on the tree, node create/update/move responses, the change log,
+  the peer compare and readiness (`domain/boq-money-redaction.ts`); contingency remaining needs the
+  margin tier. A scope-only editor (`edit-scope:boq` without `edit-cost:boq` / `manage:boq`) gets 403
+  `BOQ_COST_EDIT_FORBIDDEN` for a change to the unit rate, the pricing basis or a lump sum's amount;
+  absent fields and unchanged echoes are allowed.
+- **Money-blind client.** Without the cost tier the dialog states the pricing basis as text instead
+  of offering the cards, and the payload builders send no rate, basis or lump-sum amount.

@@ -91,8 +91,18 @@ export function lumpSumOf(quantity: string | null, unitRate: string | null): str
  */
 export function toCreateNodePayload(
   values: NodeFormValues,
-  options: { kind: NodeKind; parentId?: string | undefined },
+  options: {
+    kind: NodeKind;
+    parentId?: string | undefined;
+    /**
+     * False for a reader without the cost tier: the rate, the pricing basis and a lump sum's
+     * amount were never shown, so none of them is sent (the server would refuse a scope-only
+     * editor pricing a line anyway — ADR-029 §8 A-1).
+     */
+    pricing?: boolean;
+  },
 ): CreateNodePayload {
+  const pricing = options.pricing ?? true;
   const payload: CreateNodePayload = {
     description: values.description.trim(),
     isLeaf: options.kind === 'item',
@@ -105,51 +115,100 @@ export function toCreateNodePayload(
 
   if (options.parentId) payload.parentId = options.parentId;
 
-
   // Sections carry no measurement or pricing: the server rejects them outright, and a rate
   // on a section would either be ignored or double-counted against its children's total.
   if (options.kind === 'item') {
     const unit = values.unit.trim();
     if (unit) payload.unit = unit;
-
-    const { quantity, unitRate } = pricedFields(values);
-    if (quantity !== null) payload.quantity = quantity;
-    if (unitRate !== null) payload.unitRate = unitRate;
-
     payload.measurementMethod = values.measurementMethod;
-    payload.pricingBasis = values.pricingBasis;
+
+    if (pricing) {
+      const { quantity, unitRate } = pricedFields(values);
+      if (quantity !== null) payload.quantity = quantity;
+      if (unitRate !== null) payload.unitRate = unitRate;
+      payload.pricingBasis = values.pricingBasis;
+    } else if (values.pricingBasis === 'UNIT_RATE') {
+      // A measured quantity is scope, not money.
+      const quantity = normaliseDecimal(values.quantity);
+      if (quantity !== null) payload.quantity = quantity;
+    }
   }
 
   return payload;
 }
 
 /**
- * Builds the update payload.
+ * Builds the update payload: **only what the user changed.**
  *
- * `isLeaf` is deliberately absent: switching a section to an item is refused by the server
- * once it has children, and the two shapes collect different fields. Changing kind means
- * deleting and re-adding, which is explicit about what happens to the children.
+ * `PATCH …/nodes/:id` is partial — an absent field keeps its stored value — so a field the user did
+ * not touch is not sent. That matters for three reasons the old "re-send the whole row" did not
+ * honour:
+ *  - a lump sum stored as some quantity other than 1 (an imported `5 × 100`) is not rewritten to
+ *    `1 × 500` by a description edit;
+ *  - a stored unit spelling (`m2`) is not normalised behind the user's back — it is only sent, as
+ *    the listed symbol, when the user picked a unit;
+ *  - a reader without the cost tier never sends a rate, basis or amount it was not shown.
+ *
+ * `isLeaf` is deliberately absent: switching a section to an item is refused by the server once it
+ * has children. Clearing a unit is not offered either (the DTO has no null for it).
  */
 export function toUpdateNodePayload(
   values: NodeFormValues,
-  options: { kind: NodeKind },
+  options: {
+    kind: NodeKind;
+    /** What the form opened with — `toNodeFormValues(node)`. */
+    initial: NodeFormValues;
+    /** False without the cost tier — see `toCreateNodePayload`. */
+    pricing?: boolean;
+  },
 ): UpdateNodePayload {
-  const payload: UpdateNodePayload = {
-    code: values.code.trim(),
-    description: values.description.trim(),
-  };
+  const { initial } = options;
+  const pricing = options.pricing ?? true;
+  const payload: UpdateNodePayload = {};
 
-  if (options.kind === 'item') {
-    payload.unit = values.unit.trim() || undefined;
+  const code = values.code.trim();
+  if (code !== initial.code.trim()) payload.code = code;
+  const description = values.description.trim();
+  if (description !== initial.description.trim()) payload.description = description;
 
-    const { quantity, unitRate } = pricedFields(values);
-    if (quantity !== null) payload.quantity = quantity;
-    if (unitRate !== null) payload.unitRate = unitRate;
+  if (options.kind !== 'item') return payload;
 
+  const unit = values.unit.trim();
+  if (unit && unit !== initial.unit.trim()) payload.unit = unit;
+  if (values.measurementMethod !== initial.measurementMethod) {
     payload.measurementMethod = values.measurementMethod;
-    payload.pricingBasis = values.pricingBasis;
   }
 
+  const basisChanged = values.pricingBasis !== initial.pricingBasis;
+  if (!pricing) {
+    // Scope only: a measured quantity. Never the basis, the rate or a lump sum's amount.
+    if (values.pricingBasis === 'UNIT_RATE' && values.quantity !== initial.quantity) {
+      const quantity = normaliseDecimal(values.quantity);
+      if (quantity !== null) payload.quantity = quantity;
+    }
+    return payload;
+  }
+
+  if (basisChanged) payload.pricingBasis = values.pricingBasis;
+
+  if (values.pricingBasis === 'LUMP_SUM') {
+    // quantity 1 × rate = amount, written only when the amount (or the basis) actually changed.
+    if (basisChanged || values.lumpSumAmount !== initial.lumpSumAmount) {
+      const { quantity, unitRate } = pricedFields(values);
+      if (quantity !== null) payload.quantity = quantity;
+      if (unitRate !== null) payload.unitRate = unitRate;
+    }
+    return payload;
+  }
+
+  if (basisChanged || values.quantity !== initial.quantity) {
+    const quantity = normaliseDecimal(values.quantity);
+    if (quantity !== null) payload.quantity = quantity;
+  }
+  if (basisChanged || values.unitRate !== initial.unitRate) {
+    const unitRate = normaliseDecimal(values.unitRate);
+    if (unitRate !== null) payload.unitRate = unitRate;
+  }
   return payload;
 }
 

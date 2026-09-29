@@ -102,6 +102,12 @@ export interface SelectProps {
   className?: string;
   'aria-label'?: string;
   'aria-describedby'?: string;
+  /**
+   * Announced as unavailable without `disabled` — for a control that is briefly busy (saving) and
+   * must keep focus. `disabled` would drop focus to the page when the list closes; the caller
+   * ignores input while this is set.
+   */
+  'aria-disabled'?: boolean;
 }
 
 interface ParsedOption {
@@ -195,6 +201,7 @@ export function Select({
   className,
   'aria-label': ariaLabel,
   'aria-describedby': describedByProp,
+  'aria-disabled': ariaDisabled,
 }: SelectProps) {
   const field = React.useContext(FormFieldContext);
   const { entries, placeholder: fromOption } = parseOptions(children);
@@ -282,6 +289,7 @@ export function Select({
         id={id}
         aria-label={ariaLabel}
         aria-describedby={describedBy}
+        aria-disabled={ariaDisabled || undefined}
         aria-invalid={isInvalid}
         className={cn(
           'flex h-control w-full items-center justify-between gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-start text-body-sm text-foreground shadow-e1',

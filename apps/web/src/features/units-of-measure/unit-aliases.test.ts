@@ -48,4 +48,16 @@ describe('unit aliases', () => {
     expect(unitKey(' M^3 ')).toBe('m³');
     expect(unitKey('m2')).toBe('m²');
   });
+
+  it('prefers an exact symbol, then symbol, code and name in that order', () => {
+    const units = [
+      { code: 'T', name: 'Truckload', symbol: 'trk' },
+      { code: 'TON', name: 'Tonne', symbol: 't' },
+    ];
+    // "t" is the unit whose symbol is t, not the one coded T that happens to come first.
+    expect(resolveListedUnit(units, 't')?.code).toBe('TON');
+    expect(resolveListedUnit(units, 'T')?.code).toBe('TON');
+    // The name is the last resort before aliases.
+    expect(resolveListedUnit([{ code: 'A', name: 'box', symbol: 'bx' }, { code: 'BOX', name: 'Crate', symbol: 'box' }], 'Box')?.code).toBe('BOX');
+  });
 });

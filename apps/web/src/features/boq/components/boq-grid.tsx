@@ -36,10 +36,15 @@ import {
   type GridEntry,
 } from '../boq-rows';
 import { currencySymbol } from '../currency-symbol';
+import { lumpSumOf } from '../node-form';
 import { CellEditor } from './boq-cell-editor';
 import { UnitCellEditor } from './boq-unit-select';
 
-export type EditableField = 'description' | 'unit' | 'quantity' | 'unitRate';
+/**
+ * `lumpSumAmount`: the rate cell of a lump-sum line edits its one fixed amount, which is saved as
+ * quantity 1 × rate = amount (node-form.ts).
+ */
+export type EditableField = 'description' | 'unit' | 'quantity' | 'unitRate' | 'lumpSumAmount';
 
 export interface BoqRowCommands {
   /** "Edit details…" — the item dialog with pricing basis, measurement method and library. */
@@ -80,7 +85,9 @@ export interface PendingLine {
  * description, and tapping it opens the item dialog — a phone is no place for a four-field row.
  *
  * Money follows the server's visibility tiers: without `canViewCommercials` the rate and amount
- * columns and the total are not drawn at all — the figures never reached the browser.
+ * columns and the total are not drawn at all. The server withholds the figures too — the BOQ
+ * controller nulls rates and amounts on the tree for a caller without the cost tier (ADR-029 §8
+ * A-2) — so hiding the columns is presentation, not the protection.
  */
 export function BoqGrid({
   rows,
@@ -312,8 +319,12 @@ function indentStyle(depth: number): React.CSSProperties {
   return { paddingInlineStart: `${depth * 1.25}rem` };
 }
 
+/**
+ * A lump-sum line reads and behaves as one whatever quantity it was stored with — an imported
+ * `5 × 100` is still one fixed amount, not five of something. Its quantity is not editable here.
+ */
 function isLumpSum(node: BoqTreeNodeResponse): boolean {
-  return node.pricingBasis === 'LUMP_SUM' && (node.quantity === null || Number(node.quantity) === 1);
+  return node.pricingBasis === 'LUMP_SUM';
 }
 
 function GridRow({
@@ -365,7 +376,9 @@ function GridRow({
   const commit = (field: EditableField) => (value: string) => commands!.onEditField(node, field, value);
 
   const quantityText = node.quantity ? formatNumber(Number(node.quantity), locale, 3) : null;
-  const rateText = node.unitRate ? formatMoney(node.unitRate, currency, locale) : null;
+  // A lump sum's "rate" column carries its amount (an imported 5 × 100 reads 500, not 100).
+  const rateValue = lumpSum ? lumpSumOf(node.quantity, node.unitRate) || null : node.unitRate;
+  const rateText = rateValue ? formatMoney(rateValue, currency, locale) : null;
   // The phone line: "180 m³ × $6.50" — what the hidden columns would have said.
   const mobileSummary = node.isLeaf
     ? [
@@ -496,14 +509,14 @@ function GridRow({
             ) : editValues ? (
               <CellEditor
                 className="ms-auto w-32"
-                value={node.unitRate}
+                value={rateValue}
                 kind="rate"
                 attention={unpriced}
                 currencySymbol={currencySymbol(currency)}
                 ariaLabel={t('editRate', { code: node.code })}
                 placeholder={t('noRate')}
                 errorText={saveFailed}
-                onCommit={commit('unitRate')}
+                onCommit={commit(lumpSum ? 'lumpSumAmount' : 'unitRate')}
               />
             ) : unpriced ? (
               <span className="text-caption font-medium text-warning">{t('noRate')}</span>

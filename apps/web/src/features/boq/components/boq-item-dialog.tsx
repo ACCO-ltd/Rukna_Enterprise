@@ -225,6 +225,17 @@ export function BoqItemDialog({
       description: item.description,
       unit: item.defaultUnit ?? current.unit,
       measurementMethod: item.measurementMethod,
+      // Without the cost tier the basis and rate are not this reader's to set.
+      ...(canViewCommercials ? {} : { pricingBasis: current.pricingBasis }),
+    }));
+    if (!canViewCommercials) {
+      setPickedItemId(item.id);
+      setSaveToLibrary(false);
+      setShowPicker(false);
+      return;
+    }
+    setValues((current) => ({
+      ...current,
       pricingBasis: item.pricingBasis,
       // Last-used rate is a starting point, never authoritative (CONST-BOQ-021). For a lump sum
       // the rate IS the amount (quantity 1).
@@ -244,8 +255,10 @@ export function BoqItemDialog({
     setTouched(true);
     if (Object.keys(clientErrors).length > 0) return;
     // On an add that did not override the code, send it empty so the server auto-numbers (D2).
-    // A stored alias (`m2`) is saved as the listed symbol it resolves to (`m²`).
-    const withUnit = { ...values, unit: canonicalUnit(unitsQuery.data, values.unit) };
+    // A unit the user picked is saved as the listed symbol. A stored spelling (`m2`) they left
+    // alone is not touched — the update payload only carries what changed.
+    const withUnit =
+      values.unit !== initial.unit ? { ...values, unit: canonicalUnit(unitsQuery.data, values.unit) } : values;
     const submitted = isAdd && !advancedCode ? { ...withUnit, code: '' } : withUnit;
     onSubmit(submitted, target, {
       pickedItemId: showLibrary ? pickedItemId : null,
@@ -426,17 +439,26 @@ export function BoqItemDialog({
 
           {isItem ? (
             <>
-              <ChoiceCards<PricingBasisValue>
-                label={t('pricingBasis')}
-                value={values.pricingBasis}
-                onChange={choosePricingBasis}
-                disabled={locked}
-                columns={2}
-                options={[
-                  { value: 'UNIT_RATE', label: t('basis.UNIT_RATE'), hint: t('basisHint.UNIT_RATE') },
-                  { value: 'LUMP_SUM', label: t('basis.LUMP_SUM'), hint: t('basisHint.LUMP_SUM') },
-                ]}
-              />
+              {canViewCommercials ? (
+                <ChoiceCards<PricingBasisValue>
+                  label={t('pricingBasis')}
+                  value={values.pricingBasis}
+                  onChange={choosePricingBasis}
+                  disabled={locked}
+                  columns={2}
+                  options={[
+                    { value: 'UNIT_RATE', label: t('basis.UNIT_RATE'), hint: t('basisHint.UNIT_RATE') },
+                    { value: 'LUMP_SUM', label: t('basis.LUMP_SUM'), hint: t('basisHint.LUMP_SUM') },
+                  ]}
+                />
+              ) : (
+                // Choosing the basis decides how the line is priced — a cost decision this reader
+                // does not make (ADR-029 §8 A-1). Stated, not offered.
+                <div className="space-y-1.5">
+                  <span className="text-body-sm font-medium text-foreground">{t('pricingBasis')}</span>
+                  <p className="text-body-sm text-foreground">{t(`basis.${values.pricingBasis}`)}</p>
+                </div>
+              )}
 
               {!lumpSum ? (
                 <>

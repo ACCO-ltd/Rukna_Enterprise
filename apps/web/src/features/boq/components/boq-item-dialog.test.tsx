@@ -8,7 +8,7 @@ import { chooseOption, openSelect } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
 
 import type { BoqLibraryItem } from '../api/boq-item-library-api';
-import { toCreateNodePayload, toUpdateNodePayload, type NodeFormValues } from '../node-form';
+import { toCreateNodePayload, toNodeFormValues, toUpdateNodePayload, type NodeFormValues } from '../node-form';
 import { testNode } from '../test-node';
 import type { ItemDialogTarget, LibraryIntent } from './boq-item-dialog';
 
@@ -187,8 +187,8 @@ describe('BoqItemDialog — pricing basis', () => {
 
     const [values] = onSubmit.mock.calls[0]!;
     expect(values.pricingBasis).toBe('LUMP_SUM');
-    const payload = toUpdateNodePayload(values, { kind: 'item' });
-    expect(payload).toMatchObject({ pricingBasis: 'LUMP_SUM', quantity: '1', unitRate: '9000' });
+    const payload = toUpdateNodePayload(values, { kind: 'item', initial: toNodeFormValues(itemNode()) });
+    expect(payload).toEqual({ pricingBasis: 'LUMP_SUM', quantity: '1', unitRate: '9000' });
   });
 
   it('maps the measurement method choices onto the existing enum', async () => {
@@ -247,9 +247,28 @@ describe('BoqItemDialog — unit dropdown', () => {
     expect(screen.queryByText(/Not in the units list/)).not.toBeInTheDocument();
     expect(screen.getByText(/42 m² × \$160\.00 =/)).toBeInTheDocument();
 
-    // Opening and closing an untouched line is not an edit.
+    // Saving without touching the unit leaves the stored spelling alone: nothing is sent for it.
     await userEvent.click(screen.getByRole('button', { name: 'Save item' }));
-    expect(onSubmit.mock.calls[0]![0].unit).toBe('m²');
+    const [values] = onSubmit.mock.calls[0]!;
+    expect(values.unit).toBe('m2');
+    expect(
+      toUpdateNodePayload(values, { kind: 'item', initial: toNodeFormValues(itemNode({ unit: 'm2' })) }),
+    ).not.toHaveProperty('unit');
+  });
+
+  it('sends the listed symbol when the unit was changed', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderDialog(edit(itemNode({ unit: 'm2' })));
+    await chooseOption(user, unitTrigger(), 'm³');
+    await user.click(screen.getByRole('button', { name: 'Save item' }));
+    expect(onSubmit.mock.calls[0]![0].unit).toBe('m³');
+  });
+
+  it('offers no empty choice once a line has a unit, because the API cannot clear one', async () => {
+    const user = userEvent.setup();
+    renderDialog(edit());
+    await openSelect(user, unitTrigger());
+    expect(screen.queryByRole('option', { name: 'Choose a unit' })).not.toBeInTheDocument();
   });
 
   it('says so when no units are set up, and links an administrator to Procurement setup', () => {
@@ -284,12 +303,25 @@ describe('BoqItemDialog — money-blind', () => {
     expect(screen.getByLabelText(/^Quantity/)).toHaveValue('42.000');
   });
 
-  it('draws no lump-sum amount either', async () => {
-    renderDialog(edit(), { canViewCommercials: false });
-    await userEvent.click(screen.getByRole('radio', { name: 'Lump sum' }));
+  it('states the pricing basis instead of offering it, and sends no pricing', async () => {
+    const { onSubmit } = renderDialog(edit(itemNode({ unitRate: null, totalAmount: null, computedTotal: null })), {
+      canViewCommercials: false,
+    });
 
-    expect(screen.queryByRole('textbox', { name: /^Lump sum/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Pricing basis' })).not.toBeInTheDocument();
+    expect(screen.getByText('Unit rate')).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText(/^Quantity/));
+    await userEvent.type(screen.getByLabelText(/^Quantity/), '50');
+    await userEvent.click(screen.getByRole('button', { name: 'Save item' }));
+    const [values] = onSubmit.mock.calls[0]!;
+    expect(
+      toUpdateNodePayload(values, {
+        kind: 'item',
+        initial: toNodeFormValues(itemNode({ unitRate: null })),
+        pricing: false,
+      }),
+    ).toEqual({ quantity: '50' });
   });
 });
 
