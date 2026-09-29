@@ -2721,11 +2721,15 @@ withheld as well. Physical and verified progress % are not money and are always 
 | Endpoint | Fields nulled | Tier required |
 |---|---|---|
 | `GET /projects/:projectId/progress/signal` | `actualCost`, `budgetTotal`, `costConsumedPercent`, `divergence`; `status` = `'HIDDEN'` | cost (`view-cost:boq`, `manage:boq`, or a margin grant) |
-| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue`, `collectedPercent`, `divergence`; `status` = `'HIDDEN'` | margin (`view-margin:boq` or `view:financial-position`) |
-| `GET /projects/:projectId/programme/milestones` | `releases[].amount`, `releases[].percentage` | margin |
+| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue`, `collectedPercent`, `divergence`; `status` = `'HIDDEN'` | contract figures: margin (`view-margin:boq` or `view:financial-position`) **or `view:contract`** |
+| `GET /projects/:projectId/programme/milestones` | `releases[].amount`, `releases[].percentage` | contract figures (as above) |
 | `GET /projects/:projectId/progress/curve` | `actual[].costPercent` | cost |
 | `POST /projects/:projectId/progress/snapshots` (response only) | `costConsumedPercent` — the stored snapshot keeps the true value | cost |
-| `GET /projects/:projectId/programme/master-schedule.pdf` | the release share and amount are left out of the milestone table | margin |
+| `GET /projects/:projectId/programme/master-schedule.pdf` | the release share and amount are left out of the milestone table | contract figures (as above) |
+
+"Contract figures" is one server rule, `canViewContractFigures` (owner decision 2026-09-29): the
+margin tier or `view:contract`, the permission that already shows these figures on Commercial. The
+Construction Director therefore sees them; Project Manager and Site Engineer do not.
 
 Both signals also carry `moneyVisible: boolean`, so a hidden `null` is not mistaken for "no budget"
 or "no contract". `status: 'HIDDEN'` is distinct from `INSUFFICIENT_DATA` ("no budget / no contract

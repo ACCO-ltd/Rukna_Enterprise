@@ -243,7 +243,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       });
     });
 
-    it('the cost tier alone (Construction Director) does not reveal release amounts', async () => {
+    it('the cost tier alone (no view:contract, no margin) does not reveal release amounts', async () => {
       const { service } = build({
         milestones: [storedMilestone({ installments: [releaseInstallment()] })],
       });
@@ -255,6 +255,36 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
 
       expect(milestone.releases[0].amount).toBeNull();
       expect(milestone.releases[0].percentage).toBeNull();
+    });
+
+    it('Construction Director-like (view:contract, no margin) sees the share and amount', async () => {
+      const { service } = build({
+        milestones: [storedMilestone({ installments: [releaseInstallment()] })],
+      });
+
+      const [milestone] = await service.listMilestones(
+        {
+          ...identity,
+          permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost, PERMISSIONS.contractsView],
+        },
+        'p-1',
+      );
+
+      expect(milestone.releases[0]).toMatchObject({ percentage: '0.3000', amount: expect.any(String) });
+    });
+
+    it('margin tier alone sees the share and amount', async () => {
+      const { service } = build({
+        milestones: [storedMilestone({ installments: [releaseInstallment()] })],
+      });
+
+      const [milestone] = await service.listMilestones(
+        { ...identity, permissions: [PERMISSIONS.boqViewMargin] },
+        'p-1',
+      );
+
+      expect(milestone.releases[0].percentage).toBe('0.3000');
+      expect(milestone.releases[0].amount).not.toBeNull();
     });
 
     it('preserves the repo order of releases across installments', async () => {

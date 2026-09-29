@@ -62,3 +62,21 @@ export function canEditBoq(identity: RequestIdentity): boolean {
     identity.permissions.includes(PERMISSIONS.boqEditCost)
   );
 }
+
+/**
+ * Whether the caller may see figures derived from the client contract on Progress: the contract
+ * value, revenue received, the collected % and its divergence / status, and each milestone
+ * release's share of the contract and its amount.
+ *
+ * Owner decision 2026-09-29: the margin tier, OR `view:contract` — the permission that already
+ * shows these same figures on Commercial. The Construction Director holds `view:contract` without
+ * the margin tier, so sees them here as on Commercial; the Project Manager and Site Engineer hold
+ * neither (acco-team-roles.seed.ts, revoke-acco-role-perms.ts), so they stay hidden. The cost-signal
+ * figures are NOT covered here: they stay on `resolveBoqVisibility(...).canViewCost`.
+ */
+export function canViewContractFigures(identity: RequestIdentity): boolean {
+  return (
+    resolveBoqVisibility(identity).canViewMargin ||
+    identity.permissions.includes(PERMISSIONS.contractsView)
+  );
+}

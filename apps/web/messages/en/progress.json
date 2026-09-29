@@ -554,7 +554,8 @@
       "ALIGNED": "On track",
       "COST_AHEAD": "Cost ahead of progress",
       "PROGRESS_AHEAD": "Progress ahead of cost",
-      "INSUFFICIENT_DATA": "Not enough data"
+      "INSUFFICIENT_DATA": "Not enough data",
+      "HIDDEN": "Restricted"
     },
     "costAheadHint": "Spending is running ahead of physical progress — investigate the variance.",
     "progressAheadHint": "Physical progress is ahead of recorded cost.",
@@ -571,7 +572,8 @@
       "ALIGNED": "On track",
       "CASH_AHEAD": "Cash ahead of work",
       "WORK_AHEAD": "Work ahead of cash",
-      "INSUFFICIENT_DATA": "Not enough data"
+      "INSUFFICIENT_DATA": "Not enough data",
+      "HIDDEN": "Restricted"
     },
     "alignedHint": "Collection and physical progress are broadly aligned.",
     "cashAheadHint": "Collection is running ahead of physical progress — the client is financing the work; watch advance exposure.",

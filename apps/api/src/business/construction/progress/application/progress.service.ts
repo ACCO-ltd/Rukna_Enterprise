@@ -47,7 +47,10 @@ import {
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
 // The single server-owned money-visibility definition (ADR-029 §8 A-2) — reused, not re-derived, so
 // the Progress signals hide money from exactly the roles the BOQ and Commercial read models do.
-import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
+import {
+  canViewContractFigures,
+  resolveBoqVisibility,
+} from '../../boq/domain/boq-visibility.policy.js';
 
 const ZERO = new Decimal(0);
 
@@ -1402,11 +1405,11 @@ export class ProgressService {
       'WORK_AHEAD',
     );
 
-    // Contract value and client revenue are the commercial (margin) tier. A money-blind caller sees
-    // neither them nor the collected % (received ÷ contract), nor the divergence / status computed
-    // from it (owner decision 2026-09-29) — only the physical %, which is not money.
-    const { canViewMargin } = resolveBoqVisibility(identity);
-    if (!canViewMargin) {
+    // Contract value and client revenue are contract figures: visible with the margin tier or
+    // view:contract (owner decision 2026-09-29 — the Construction Director sees them here as on
+    // Commercial). Otherwise the caller sees neither them nor the collected % (received ÷ contract),
+    // nor the divergence / status computed from it — only the physical %, which is not money.
+    if (!canViewContractFigures(identity)) {
       return {
         projectId,
         physicalPercent,

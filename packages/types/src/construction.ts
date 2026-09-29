@@ -326,9 +326,9 @@ export interface PhysicalFinancialSignalResponse {
 
 // ADR-021/023: collection-vs-progress early warning — cash collected vs work built.
 //
-// Money visibility (Progress redesign): contractValue / receivedRevenue are null when the caller
-// lacks the commercial tier (`resolveBoqVisibility(...).canViewMargin`). Since the owner decision of
-// 2026-09-29 collectedPercent and divergence are null too and status is 'HIDDEN'.
+// Money visibility (Progress redesign): contractValue / receivedRevenue, collectedPercent and
+// divergence are null, and status is 'HIDDEN', when the caller may not see contract figures
+// (`canViewContractFigures`: the margin tier or `view:contract` — owner decisions 2026-09-29).
 export interface CollectionProgressSignalResponse {
   projectId: string;
   physicalPercent: number;
@@ -345,7 +345,7 @@ export interface CollectionProgressSignalResponse {
   collectedPercent: number | null;
   /** collectedPercent − physicalPercent (positive = cash ahead of work). Null when hidden. */
   divergence: number | null;
-  /** 'HIDDEN' = the caller lacks the commercial tier; no comparison is disclosed (not "no data"). */
+  /** 'HIDDEN' = the caller may not see contract figures; no comparison is disclosed (not "no data"). */
   status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA' | 'HIDDEN';
   /** From the roll-up: false when work-package weights don't total 100%. */
   weightsComplete: boolean;
@@ -699,14 +699,15 @@ export interface MilestoneReleaseLine {
   name: string;
   /**
    * Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage.
-   * Null when the caller lacks the commercial money tier: a share of the contract value is
-   * money-derived (owner decision 2026-09-29), hidden with `amount`.
+   * Null when the caller may not see contract figures (`canViewContractFigures`: the margin tier
+   * or `view:contract`): a share of the contract value is money-derived (owner decision
+   * 2026-09-29), hidden with `amount`.
    */
   percentage: string | null;
   triggerType: `${PaymentTrigger}`;
   /**
-   * contractValue × percentage, fixed to 2 decimals (money). Null when the caller lacks the
-   * commercial money tier (`resolveBoqVisibility(...).canViewMargin`) — `percentage` is then null too.
+   * contractValue × percentage, fixed to 2 decimals (money). Null when the caller may not see
+   * contract figures (`canViewContractFigures`) — `percentage` is then null too.
    */
   amount: string | null;
   currency: string;

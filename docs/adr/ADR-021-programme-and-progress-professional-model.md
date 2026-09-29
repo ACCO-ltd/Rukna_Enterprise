@@ -107,6 +107,10 @@ caller without the margin tier, `progress/collection-signal` nulls `collectedPer
 `divergence` (`status: 'HIDDEN'`), and milestone `releases[].percentage` (share of contract value)
 is null. `HIDDEN` is not `INSUFFICIENT_DATA` — that would be a false claim about the project.
 Physical and verified progress % are not money and stay visible to everyone.
+*Same day, second owner decision:* contract-derived figures (the collection signal and milestone
+release share + amount) follow **`canViewContractFigures`** = the margin tier **or `view:contract`**
+— the permission that already shows them on Commercial — so the Construction Director sees them on
+Progress too. PM / Site Engineer hold neither and stay hidden. The cost signal stays on the cost tier.
 
 Engineering shape owned by Abdulsalam; the domain rules are gated on **Eng Ahmed Shirie**. This
 ADR **extends** ADR-002's `CONST-PROG-001/002/003` (it must not silently change them) and depends
