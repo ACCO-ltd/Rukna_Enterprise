@@ -8,12 +8,11 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   EmptyState,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Notice,
   Skeleton,
@@ -24,10 +23,10 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  Textarea,
 } from '@erp/ui';
 import { ChevronDown, ChevronRight, ClipboardCheck, Flag } from 'lucide-react';
 
-import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { QueueList, joinQueueMeta } from '@/components/queue-list';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
@@ -383,11 +382,7 @@ function ReportPanel({
       </footer>
 
       {returning ? (
-        <ConfirmActionDialog
-          title={t('review.returnTitle')}
-          description={t('review.returnBody')}
-          confirmLabel={t('review.returnConfirm')}
-          reason={{ required: true, label: t('review.returnReason'), hint: t('review.returnReasonHint'), maxLength: 255 }}
+        <ReturnReportDialog
           isPending={returnDpr.isPending}
           errorMessage={returnDpr.isError ? mapDprError(returnDpr.error, t('review.actionFailed')).formError : undefined}
           onConfirm={(reason) =>
@@ -559,6 +554,7 @@ export function VerifyMilestoneDialog({
   onVerified: () => void;
 }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
   const locale = useLocale() as 'en';
   const verify = useVerifyMilestone(projectId);
   const [actualDate, setActualDate] = useState(localIsoDate());
@@ -566,48 +562,132 @@ export function VerifyMilestoneDialog({
   const names = releaseNames(milestone, locale);
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(open) => {
-        if (!open && !verify.isPending) onDismiss();
+        if (!open) onDismiss();
       }}
+      title={t('review.milestones.dialogTitle', { name: milestone.name })}
+      subtitle={
+        milestone.readyToVerify
+          ? names
+            ? t('review.milestones.dialogBillable', { names })
+            : t('review.milestones.dialogNoRelease')
+          : [names ? t('review.milestones.dialogBillableOnly', { names }) : null, notReadyReason(milestone, t)]
+              .filter(Boolean)
+              .join(' ')
+      }
+      size="md"
+      busy={verify.isPending}
+      onSubmit={() => {
+        if (actualDate) verify.mutate({ milestoneId: milestone.id, actualDate }, { onSuccess: onVerified });
+      }}
+      closeLabel={tCommon('close')}
     >
-      <DialogContent size="sm">
-        <DialogTitle>{t('review.milestones.dialogTitle', { name: milestone.name })}</DialogTitle>
-        <DialogDescription>
-          {milestone.readyToVerify
-            ? names
-              ? t('review.milestones.dialogBillable', { names })
-              : t('review.milestones.dialogNoRelease')
-            : [names ? t('review.milestones.dialogBillableOnly', { names }) : null, notReadyReason(milestone, t)]
-                .filter(Boolean)
-                .join(' ')}
-        </DialogDescription>
-
+      <FormDialogBody>
         {verify.isError ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[mapDprError(verify.error, t('review.actionFailed')).formError]} />
-          </div>
+          <Alert variant="error" messages={[mapDprError(verify.error, t('review.actionFailed')).formError]} />
         ) : null}
+        <FormField htmlFor="verify-actual-date" label={t('review.milestones.actualDate')}>
+          <DatePicker id="verify-actual-date" value={actualDate} max={localIsoDate()} onChange={setActualDate} />
+        </FormField>
+      </FormDialogBody>
 
-        <div className="mt-4">
-          <FormField htmlFor="verify-actual-date" label={t('review.milestones.actualDate')}>
-            <DatePicker id="verify-actual-date" value={actualDate} max={localIsoDate()} onChange={setActualDate} />
-          </FormField>
-        </div>
-
-        <DialogFooter>
-          <Button
-            onClick={() => verify.mutate({ milestoneId: milestone.id, actualDate }, { onSuccess: onVerified })}
-            disabled={verify.isPending || !actualDate}
-          >
-            {t('review.milestones.confirm')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={verify.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={verify.isPending}>
             {t('review.milestones.cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="submit" disabled={verify.isPending || !actualDate}>
+          {t('review.milestones.confirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
+  );
+}
+
+/** Return reasons are stored on the report (the DTO's @MaxLength). */
+const RETURN_REASON_MAX = 255;
+
+/**
+ * "Return to preparer": a `FormDialog` md asking for the required reason the preparer will see.
+ * Nothing dismisses it while the return is in flight, and a typed reason is not thrown away without
+ * asking.
+ */
+function ReturnReportDialog({
+  isPending,
+  errorMessage,
+  onConfirm,
+  onDismiss,
+}: {
+  isPending: boolean;
+  errorMessage: string | undefined;
+  onConfirm: (reason: string) => void;
+  onDismiss: () => void;
+}) {
+  const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
+  const tConfirm = useTranslations('common.confirmDialog');
+  const tDiscard = useTranslations('common.discardChanges');
+  const [text, setText] = useState('');
+  const [touched, setTouched] = useState(false);
+
+  const trimmed = text.trim();
+  const textError =
+    touched && !trimmed
+      ? tConfirm('reasonRequired')
+      : text.length > RETURN_REASON_MAX
+        ? tConfirm('reasonTooLong', { max: RETURN_REASON_MAX })
+        : undefined;
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onDismiss();
+      }}
+      title={t('review.returnTitle')}
+      subtitle={t('review.returnBody')}
+      size="md"
+      dirty={trimmed.length > 0}
+      busy={isPending}
+      onSubmit={() => {
+        setTouched(true);
+        if (!trimmed || text.length > RETURN_REASON_MAX) return;
+        onConfirm(trimmed);
+      }}
+      closeLabel={tCommon('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
+      }}
+    >
+      <FormDialogBody>
+        {errorMessage ? <Alert variant="error" messages={[errorMessage]} /> : null}
+        <FormField htmlFor="return-reason" label={t('review.returnReason')} error={textError}>
+          <Textarea
+            id="return-reason"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => setTouched(true)}
+            aria-invalid={Boolean(textError)}
+          />
+          <p className="text-caption text-muted-foreground">{t('review.returnReasonHint')}</p>
+        </FormField>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
+            {tConfirm('dismiss')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={isPending}>
+          {isPending ? tConfirm('working') : t('review.returnConfirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

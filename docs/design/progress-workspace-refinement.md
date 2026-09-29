@@ -242,6 +242,12 @@ On create → open the draft DPR detail focused on measurements.
 > differs from what the table shows. A complete set is displayed with the shared largest-remainder
 > helper; schedule-only phases take no weight. Creating a package and allocating an item stay
 > `FormDialog` md.
+>
+> **Every other Progress and programme dialog is a `FormDialog`** (pinned header and footer, one
+> primary last, guarded dismissal): the delivery plan (`xl`), the schedule-setup wizard (`lg`, stepper
+> pinned under the header, Back on the footer's start edge), and re-baseline, return a report, verify a
+> milestone (Review and programme), a milestone's packages, record a snapshot, report for another day
+> and add/edit activity (all `md`). Behaviour is unchanged.
 
 ### 5.2 Structured, not free-text — "no blank guessing"
 

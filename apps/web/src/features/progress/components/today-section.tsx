@@ -7,16 +7,15 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   EmptyState,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Notice,
   Skeleton,
@@ -301,31 +300,38 @@ function OtherDayDialog({
   onStart: (date: string) => void;
 }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
   const [date, setDate] = useState('');
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm">
-        <DialogHeader>
-          <DialogTitle>{t('today.otherDayTitle')}</DialogTitle>
-          <DialogDescription>{t('today.otherDayHint')}</DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (date) onStart(date);
-          }}
-          className="mt-4 space-y-4"
-        >
-          {error ? <Alert variant="error" messages={[error]} /> : null}
-          <FormField htmlFor="dpr-other-day" label={t('report.fields.reportDate')}>
-            <DatePicker id="dpr-other-day" value={date} max={max} onChange={setDate} />
-          </FormField>
-          <Button type="submit" className="w-full" disabled={pending || !date}>
-            {t('today.otherDaySubmit')}
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('today.otherDayTitle')}
+      subtitle={t('today.otherDayHint')}
+      size="md"
+      busy={pending}
+      onSubmit={() => {
+        if (date) onStart(date);
+      }}
+      closeLabel={tCommon('close')}
+    >
+      <FormDialogBody>
+        {error ? <Alert variant="error" messages={[error]} /> : null}
+        <FormField htmlFor="dpr-other-day" label={t('report.fields.reportDate')}>
+          <DatePicker id="dpr-other-day" value={date} max={max} onChange={setDate} />
+        </FormField>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={pending}>
+            {tCommon('cancel')}
           </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="submit" disabled={pending || !date}>
+          {t('today.otherDaySubmit')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -8,15 +8,14 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Progress,
   Skeleton,
@@ -272,6 +271,7 @@ function CurvePanel({
 
 function SnapshotDialog({ projectId, onDismiss }: { projectId: string; onDismiss: () => void }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
   const capture = useCaptureProgressSnapshot(projectId);
   const [date, setDate] = useState(localIsoDate());
 
@@ -282,38 +282,37 @@ function SnapshotDialog({ projectId, onDismiss }: { projectId: string; onDismiss
     : null;
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(open) => {
-        if (!open && !capture.isPending) onDismiss();
+        if (!open) onDismiss();
       }}
+      title={t('performance.snapshotTitle')}
+      subtitle={t('performance.snapshotHint')}
+      size="md"
+      busy={capture.isPending}
+      onSubmit={() => {
+        if (date) capture.mutate({ periodEndDate: date }, { onSuccess: onDismiss });
+      }}
+      closeLabel={tCommon('close')}
     >
-      <DialogContent size="sm">
-        <DialogTitle>{t('performance.snapshotTitle')}</DialogTitle>
-        <DialogDescription>{t('performance.snapshotHint')}</DialogDescription>
-        {error ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[error]} />
-          </div>
-        ) : null}
-        <div className="mt-4">
-          <FormField htmlFor="snapshot-as-of" label={t('performance.snapshotDate')}>
-            <DatePicker id="snapshot-as-of" value={date} max={localIsoDate()} onChange={setDate} />
-          </FormField>
-        </div>
-        <DialogFooter>
-          <Button
-            onClick={() => capture.mutate({ periodEndDate: date }, { onSuccess: onDismiss })}
-            disabled={capture.isPending || !date}
-          >
-            {t('performance.snapshotConfirm')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={capture.isPending}>
+      <FormDialogBody>
+        {error ? <Alert variant="error" messages={[error]} /> : null}
+        <FormField htmlFor="snapshot-as-of" label={t('performance.snapshotDate')}>
+          <DatePicker id="snapshot-as-of" value={date} max={localIsoDate()} onChange={setDate} />
+        </FormField>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={capture.isPending}>
             {t('performance.snapshotCancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="submit" disabled={capture.isPending || !date}>
+          {t('performance.snapshotConfirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
