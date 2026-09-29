@@ -2706,6 +2706,17 @@ On a REOPENED report an entry is removable only when `createdAt > reopenedAt` �
 | `POST` | `/work-packages/:workPackageId/boq-nodes` | A leaf already in another package → **409** `BOQ_ITEM_ALREADY_ALLOCATED` (was 400; a concurrent insert was a raw 500) |
 | `POST` | `/projects/:projectId/work-packages/delivery-plan` | A leaf claimed by a concurrent save → **409** `BOQ_ITEM_ALREADY_ALLOCATED` (whole batch rolled back) |
 
+#### Work-package weights and BOQ money visibility (PR #241, owner decision 2026-09-29)
+
+| Method | Path | Permission | Change |
+|---|---|---|---|
+| `POST` | `/projects/:projectId/work-packages/delivery-plan/weights` | `manage:project` | **New.** Body `{ "packages": [{ "key": string, "boqNodeIds": string[] }] }` (a proposed Delivery Plan grouping). Returns `{ projectId, weights: [{ key, weight }], valueWeighted, unpricedLeafIds }`: weights 0..1 summing to 1. **Cost-tier callers** (`resolveBoqVisibility().canViewCost`) get BOQ-value weights, contingency excluded, `valueWeighted: true`. **Anyone else** gets an even split across packages holding a non-contingency leaf (others 0), `valueWeighted: false` — a one-leaf package would otherwise reveal that leaf's share. No amounts or per-leaf ratios for anyone. |
+| `POST` | `/projects/:projectId/programme/suggest-weights` | `manage:project` | Response gains `valueWeighted`. Without the cost tier: an even split across non-`scheduleOnly` packages holding a non-contingency leaf (others 0), `valueWeighted: false`. Cost tier: unchanged value weighting, `valueWeighted: true`. |
+| `GET` | `/projects/:projectId/boq/versions/:versionId/tree` | `view:boq` | Each node gains `priced: boolean` (sent to every tier). Without the cost tier `unitRate`, `totalAmount` and `computedTotal` are `null` (also on node create/update/move responses, the version history, peer compare and readiness `totalAmount`). |
+| `GET` | `/projects/:projectId/boq/versions/:versionId/contingency` | `view:boq` | Now `{ versionId, contingencyRemaining, canViewMargin }`; the figure is `null` without the margin tier. |
+| `PATCH`/`POST` | `/projects/:projectId/boq/versions/:versionId/nodes[/:nodeId]` | edit-scope / edit-cost / manage | An `edit-scope:boq`-only caller changing the unit rate, pricing basis, a lump sum's amount, or a priced node's `isLeaf` → **403** `BOQ_COST_EDIT_FORBIDDEN` (absent fields and unchanged echoes pass). |
+| `GET` | `/boq-item-library` | `view:boq` | `lastUsedRate` is `null` without the cost tier. |
+
 #### Programme milestones ↔ work packages + readiness
 
 | Method | Path | Permission | Change |

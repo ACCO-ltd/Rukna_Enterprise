@@ -450,6 +450,12 @@ export interface SuggestedWeightLine {
 export interface SuggestWeightsResponse {
   projectId: string;
   weights: SuggestedWeightLine[];
+  /**
+   * False for a caller without the BOQ cost tier: the weights are an even split across the packages
+   * that hold measurable scope, never value-based (owner decision 2026-09-29 — even package weights
+   * can be probed by giving one leaf a package of its own).
+   */
+  valueWeighted: boolean;
 }
 
 /**
@@ -466,6 +472,12 @@ export interface ProposedPackageWeightsResponse {
   projectId: string;
   /** One per requested package, 0..1, summing to 1 (an equal split when nothing is priced). */
   weights: { key: string; weight: number }[];
+  /**
+   * True: weighted by BOQ value (cost-tier callers). False: an even split across the packages with
+   * measurable scope — a caller without the cost tier never gets value-based weights, since a
+   * one-leaf package would reveal that leaf's share (owner decision 2026-09-29).
+   */
+  valueWeighted: boolean;
   /** Requested leaves that are not fully priced (no unit, quantity or rate). */
   unpricedLeafIds: string[];
 }

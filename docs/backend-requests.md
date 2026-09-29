@@ -35,3 +35,14 @@ Left as it is on purpose — deleting scope is arguably a scope decision, and a 
 block tidying an imported bill. **Decision needed (Eng Ahmed / owner):** should deleting a line that
 carries a rate or amount require the cost-edit permission too?
 
+## Decided 2026-09-29 (owner): no value-based weights for money-blind callers
+
+Even package-level weights can be probed — put one leaf in a package on its own and its weight is
+that leaf's share of the BOQ value. So a caller without the BOQ cost tier gets an **even split**
+(across packages holding measurable, non-contingency scope; weights still sum to 1) from both
+`POST …/work-packages/delivery-plan/weights` and `POST …/programme/suggest-weights`, flagged
+`valueWeighted: false`. Cost-tier callers keep value weighting (`valueWeighted: true`). The unpriced
+leaf ids are still returned, since `priced` is visible to every tier. The Delivery Plan, the work
+packages section and the schedule wizard show one quiet note: "Weights are split evenly. Value-based
+weighting needs cost access — adjust the weights, or ask the Construction Director."
+

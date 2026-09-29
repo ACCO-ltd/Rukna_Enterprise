@@ -1096,6 +1096,23 @@ export class ProgressService {
     const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
     const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
     const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+
+    // Owner decision 2026-09-29: no value-based weight for a caller without the BOQ cost tier — even
+    // at package level a one-leaf package would reveal that leaf's share. They get an even split
+    // across the packages that hold measurable scope (not scheduleOnly, at least one non-contingency
+    // leaf); the rest suggest 0.
+    if (!resolveBoqVisibility(identity).canViewCost) {
+      const workLeaf = new Set(leafValues.filter((v) => v.nodeRole !== 'CONTINGENCY').map((v) => v.id));
+      const measurable = packages.map(
+        (wp) => !wp.scheduleOnly && wp.boqLinks.some((b) => workLeaf.has(b.boqNodeId)),
+      );
+      const share = evenShares(measurable);
+      return {
+        projectId,
+        weights: packages.map((wp, index) => ({ workPackageId: wp.id, suggestedWeight: share[index]! })),
+        valueWeighted: false,
+      };
+    }
     const valueByNode = new Map<string, Decimal>(
       leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
     );
@@ -1124,6 +1141,7 @@ export class ProgressService {
         const suggestedWeight = totalPositive ? value.div(totalValue).toNumber() : 0;
         return { workPackageId: wp.id, suggestedWeight };
       }),
+      valueWeighted: true,
     };
   }
 
@@ -1131,9 +1149,10 @@ export class ProgressService {
    * The Delivery Plan's weights for a PROPOSED grouping, before anything is saved. Same rule as
    * `suggestWeights` — each package's share of the assigned BOQ value, CONTINGENCY leaves excluded —
    * but over the caller's grouping rather than saved packages, so the dialog can re-weigh after the
-   * PM moves a leaf. Only package ratios leave the server; no amount and no per-leaf share
-   * (owner decision 2026-09-29: money-derived percentages below package level stay hidden from
-   * PM/SE). When nothing in the grouping is priced the weights split equally, so they still sum to 1.
+   * PM moves a leaf. Only package ratios leave the server; no amount and no per-leaf share. A caller
+   * without the BOQ cost tier gets an even split instead (`valueWeighted: false`) — owner decision
+   * 2026-09-29: even package weights can be probed with a one-leaf package. When nothing in the
+   * grouping is priced the weights split equally, so they still sum to 1.
    */
   async weighProposedPackages(
     identity: RequestIdentity,
@@ -1152,6 +1171,29 @@ export class ProgressService {
       if (!leaf || leaf.nodeRole === 'CONTINGENCY' || leaf.totalAmount === null) return ZERO;
       return new Decimal(leaf.totalAmount.toString());
     };
+    const unpricedLeafIds = leaves
+      .filter((leaf) => missingPricingFields(leaf).length > 0)
+      .map((leaf) => leaf.id);
+
+    // Owner decision 2026-09-29: without the cost tier, an even split — never value-based, since a
+    // one-leaf package would reveal that leaf's share. Packages with no measurable (non-contingency)
+    // leaf get 0; the rest share 1 equally.
+    if (!resolveBoqVisibility(identity).canViewCost) {
+      const measurable = packages.map((p) =>
+        p.boqNodeIds.some((id) => {
+          const leaf = byId.get(id);
+          return leaf !== undefined && leaf.nodeRole !== 'CONTINGENCY';
+        }),
+      );
+      const share = evenShares(measurable);
+      return {
+        projectId,
+        weights: packages.map((p, index) => ({ key: p.key, weight: share[index]! })),
+        valueWeighted: false,
+        unpricedLeafIds,
+      };
+    }
+
     const values = packages.map((p) => p.boqNodeIds.reduce((sum, id) => sum.plus(valueOf(id)), ZERO));
     const total = values.reduce((sum, v) => sum.plus(v), ZERO);
 
@@ -1163,11 +1205,7 @@ export class ProgressService {
           ? 1 / packages.length
           : 0,
     }));
-    const unpricedLeafIds = leaves
-      .filter((leaf) => missingPricingFields(leaf).length > 0)
-      .map((leaf) => leaf.id);
-
-    return { projectId, weights, unpricedLeafIds };
+    return { projectId, weights, valueWeighted: true, unpricedLeafIds };
   }
 
   /**
@@ -2098,4 +2136,14 @@ function toSnapshotResponse(row: {
     capturedAt: row.capturedAt.toISOString(),
     capturedById: row.capturedById,
   };
+}
+
+/**
+ * 1/n for each of the n eligible entries, 0 for the rest; with none eligible, 1/n across all, so the
+ * weights still sum to 1 whenever there is anything to weigh.
+ */
+function evenShares(eligible: readonly boolean[]): number[] {
+  const count = eligible.filter(Boolean).length;
+  if (count === 0) return eligible.map(() => (eligible.length > 0 ? 1 / eligible.length : 0));
+  return eligible.map((ok) => (ok ? 1 / count : 0));
 }

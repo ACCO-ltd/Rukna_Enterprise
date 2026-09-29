@@ -7,8 +7,8 @@ import { buildTree } from '../../boq/application/boq-tree.service.js';
 
 /**
  * The Delivery Plan's weights for a proposed grouping (owner decision 2026-09-29): package-level
- * ratios only, value-weighted on the server, identical for a money-blind PM and a cost-tier reader —
- * and no per-leaf share of the BOQ value on the tree for anyone.
+ * ratios only: value-weighted for a cost-tier caller, an even split for anyone else (a one-leaf
+ * package would otherwise reveal that leaf's share) — and no per-leaf share on the tree for anyone.
  */
 const who = (...permissions: string[]): RequestIdentity => ({
   userId: 'u1',
@@ -58,9 +58,10 @@ describe('ProgressService.weighProposedPackages', () => {
     { key: 'sec-2', boqNodeIds: ['b', 'c', 'cont'] },
   ];
 
-  it('returns package weights summing to 1, contingency excluded, plus unpriced leaves', async () => {
+  it('value-weights for a cost-tier caller, contingency excluded, plus unpriced leaves', async () => {
     const { svc } = service(leaves);
-    const result = await svc.weighProposedPackages(pmLike, 'p', grouping);
+    const result = await svc.weighProposedPackages(costTier, 'p', grouping);
+    expect(result.valueWeighted).toBe(true);
     expect(result.weights).toEqual([
       { key: 'sec-1', weight: 0.6 },
       { key: 'sec-2', weight: 0.4 },
@@ -70,15 +71,42 @@ describe('ProgressService.weighProposedPackages', () => {
     expect(JSON.stringify(result)).not.toMatch(/600|300|100|valueShare|amount/i);
   });
 
-  it('gives a PM-like caller exactly what a cost-tier caller gets', async () => {
-    const pm = await service(leaves).svc.weighProposedPackages(pmLike, 'p', grouping);
-    const cost = await service(leaves).svc.weighProposedPackages(costTier, 'p', grouping);
-    expect(pm).toEqual(cost);
+  it('gives a PM-like caller an even split, valueWeighted false, and still the unpriced leaves', async () => {
+    const { svc } = service(leaves);
+    const result = await svc.weighProposedPackages(pmLike, 'p', grouping);
+    expect(result).toEqual({
+      projectId: 'p',
+      weights: [
+        { key: 'sec-1', weight: 0.5 },
+        { key: 'sec-2', weight: 0.5 },
+      ],
+      valueWeighted: false,
+      unpricedLeafIds: ['u'],
+    });
   });
 
-  it('re-weighs a regrouping (a leaf moved between packages)', async () => {
+  it('defeats the single-leaf probe: a one-leaf package gets the same even share', async () => {
     const { svc } = service(leaves);
-    const result = await svc.weighProposedPackages(pmLike, 'p', [
+    const probe = await svc.weighProposedPackages(pmLike, 'p', [
+      { key: 'probe', boqNodeIds: ['b'] },
+      { key: 'rest', boqNodeIds: ['a', 'c', 'u'] },
+      { key: 'reserve', boqNodeIds: ['cont'] },
+    ]);
+    expect(probe.weights).toEqual([
+      { key: 'probe', weight: 0.5 },
+      { key: 'rest', weight: 0.5 },
+      { key: 'reserve', weight: 0 }, // contingency only: not measurable scope
+    ]);
+    const regrouped = await svc.weighProposedPackages(pmLike, 'p', [
+      { key: 'probe', boqNodeIds: ['a'] },
+      { key: 'rest', boqNodeIds: ['b', 'c', 'u'] },
+    ]);
+    expect(regrouped.weights.map((w) => w.weight)).toEqual([0.5, 0.5]);
+  });
+
+  it('re-weighs a regrouping by value for a cost-tier caller', async () => {
+    const { svc } = service(leaves);
+    const result = await svc.weighProposedPackages(costTier, 'p', [
       { key: 'sec-1', boqNodeIds: ['a', 'b'] },
       { key: 'sec-2', boqNodeIds: ['c'] },
     ]);
@@ -87,7 +115,7 @@ describe('ProgressService.weighProposedPackages', () => {
 
   it('splits equally when nothing is priced, so the weights still sum to 1', async () => {
     const { svc } = service([leaf('u1', null), leaf('u2', null)]);
-    const result = await svc.weighProposedPackages(pmLike, 'p', [
+    const result = await svc.weighProposedPackages(costTier, 'p', [
       { key: 'x', boqNodeIds: ['u1'] },
       { key: 'y', boqNodeIds: ['u2'] },
     ]);
