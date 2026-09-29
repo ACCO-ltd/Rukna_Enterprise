@@ -319,9 +319,9 @@ describe('BoqGrid — the unit cell', () => {
     render({ commands: commands(), units: UNITS });
     // 1.2 is stored as "nr", which this registry does not hold.
     const unit = screen.getByRole('combobox', { name: 'Unit of 1.2' });
-    const row = unit.closest('tr')!;
     expect(unit).toHaveTextContent('nr');
-    expect(within(row).getByText('Not in the units list')).toBeInTheDocument();
+    expect(unit).toHaveAccessibleDescription('Not in the units list');
+    expect(unit).toHaveClass('border-warning');
   });
 
   it('shows the stored unit as text when there is no registry to pick from', () => {

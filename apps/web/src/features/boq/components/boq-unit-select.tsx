@@ -34,6 +34,7 @@ export function BoqUnitSelect({
   ariaLabel,
   ariaDescribedBy,
   invalid = false,
+  attention = false,
   className,
 }: {
   id?: string;
@@ -52,6 +53,8 @@ export function BoqUnitSelect({
   ariaDescribedBy?: string;
   /** A failed save, outside a FormField (the grid). Inside one, the field's error drives it. */
   invalid?: boolean;
+  /** The grid's attention border — a legacy unit, as an unpriced rate is flagged beside it. */
+  attention?: boolean;
   className?: string;
 }) {
   const t = useTranslations('platform.boq.units');
@@ -69,8 +72,10 @@ export function BoqUnitSelect({
       searchPlaceholder={t('search')}
       noMatchLabel={t('noMatch')}
       className={cn(
-        compact && 'h-8 px-2 [&_[data-unit-name]]:hidden',
-        invalid && 'border-danger',
+        // `h-control` is not a height tailwind-merge recognises, so the grid's shorter row is a
+        // cap rather than a competing `h-*`.
+        compact && 'max-h-8 px-2 py-1 [&_[data-unit-name]]:hidden',
+        invalid ? 'border-danger' : attention && 'border-warning',
         className,
       )}
     >
@@ -110,7 +115,8 @@ function uniqueBySymbol(units: readonly UnitOfMeasureOption[]): UnitOfMeasureOpt
  * choice through the one node-update endpoint — the unit's counterpart of `CellEditor`.
  *
  * States: saving (disabled, `aria-busy`), failed (danger caption; the chosen unit stays so the
- * next choice retries), legacy (the stored unit is kept and captioned "Not listed"). With no
+ * next choice retries), legacy (the stored unit is kept, with an attention border, "Not listed" in
+ * the trigger's description and the full note as a tooltip). With no
  * registry to choose from — loading, empty, or unreadable — it shows the stored unit as text; the
  * workspace says why once, above the grid, rather than in every row.
  */
@@ -171,6 +177,7 @@ export function UnitCellEditor({
   return (
     // The row opens the dialog on a phone tap; a choice here is not that.
     <div
+      title={legacy && !failed ? t('legacyNote') : undefined}
       className={cn('min-w-0', saving && 'opacity-70', className)}
       aria-busy={saving || undefined}
       onClick={(event) => event.stopPropagation()}
@@ -184,6 +191,7 @@ export function UnitCellEditor({
         ariaLabel={ariaLabel}
         ariaDescribedBy={failed ? errorId : legacy ? noteId : undefined}
         invalid={failed}
+        attention={legacy}
         onChange={(next) => void choose(next)}
       />
       {failed ? (
@@ -191,9 +199,11 @@ export function UnitCellEditor({
           {errorText}
         </p>
       ) : legacy ? (
-        <p id={noteId} className="mt-1 text-caption text-warning" title={t('legacyNote')}>
+        // Old bills carry many typed units; a caption under every one would bury the grid. The
+        // cell gets the attention border the unpriced rate uses, and the reason is its description.
+        <span id={noteId} className="sr-only">
           {t('legacyShort')}
-        </p>
+        </span>
       ) : null}
     </div>
   );

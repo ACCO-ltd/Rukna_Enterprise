@@ -259,7 +259,8 @@ export function BoqItemDialog({
 
   const units = unitsQuery.data ?? [];
   const unitsUnavailable = unitsQuery.isError || (unitsQuery.isSuccess && units.length === 0);
-  const legacyUnit = values.unit !== '' && !isListedUnit(units, values.unit) && unitsQuery.isSuccess;
+  // With no list at all, the notice below says so; flagging the unit as "not in it" would repeat it.
+  const legacyUnit = values.unit !== '' && units.length > 0 && !isListedUnit(units, values.unit);
 
   const preview = isItem && canViewCommercials && !lumpSum ? previewLineTotal(values) : null;
   const quantityText = values.quantity.trim()
