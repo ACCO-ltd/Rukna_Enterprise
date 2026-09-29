@@ -9,25 +9,16 @@ const node = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse => ({
   measurementMethod: 'QUANTITY', pricingBasis: 'UNIT_RATE', unit: null, quantity: null,
   unitRate: null, currency: 'USD', totalAmount: null, computedTotal: null, originNodeId: null,
   sourceType: 'BASELINE', sourceChangeOrderId: null, nodeRole: 'WORK',
-  commercialTreatment: 'IN_CONTRACT', isActive: true, priced: false, valueShare: null,
+  commercialTreatment: 'IN_CONTRACT', isActive: true, priced: false,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   ...over,
 });
 
-/**
- * A leaf as the server sends it: `priced` and `valueShare` (share of a 1,000,000 version) derived
- * from its amount, both of which a money-blind reader still receives.
- */
+/** A leaf as the server sends it: `priced` derived from its amount, sent to every tier. */
 const leaf = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse =>
-  node({
-    isLeaf: true,
-    children: [],
-    priced: Boolean(over.totalAmount),
-    valueShare: over.totalAmount ? Number(over.totalAmount) / 1_000_000 : null,
-    ...over,
-  });
+  node({ isLeaf: true, children: [], priced: Boolean(over.totalAmount), ...over });
 
-/** The same leaf as a money-blind PM receives it: no rate, no amount, the ratio and verdict kept. */
+/** The same leaf as a money-blind PM receives it: no rate, no amount; the priced verdict kept. */
 const moneyBlind = (n: BoqTreeNodeResponse): BoqTreeNodeResponse => ({
   ...n,
   unitRate: null,
@@ -57,16 +48,11 @@ describe('suggestDeliveryPlan', () => {
     expect(sub.name).toBe('Substructure');
     expect(sub.leafIds.sort()).toEqual(['leaf-1', 'leaf-2']);
     expect(sub.totalValue).toBe(100000);
-    // 100k of 150k total.
-    expect(sub.suggestedWeight).toBeCloseTo(100000 / 150000, 6);
 
     expect(sup.name).toBe('Superstructure');
     expect(sup.leafIds).toEqual(['leaf-3']);
-    expect(sup.suggestedWeight).toBeCloseTo(50000 / 150000, 6);
-
-    // Weights sum to 1 across all suggestions.
-    const totalWeight = result.packages.reduce((sum, p) => sum + p.suggestedWeight, 0);
-    expect(totalWeight).toBeCloseTo(1, 6);
+    // Weights are not computed here: the server value-weights the grouping.
+    expect(sub).not.toHaveProperty('suggestedWeight');
   });
 
   it('auto-generates codes that do not collide with existing work packages', () => {
@@ -89,7 +75,7 @@ describe('suggestDeliveryPlan', () => {
   });
 
   it('flags an unpriced leaf without excluding it, and does not let it poison the weight math', () => {
-    const unpriced = { ...leaf2, totalAmount: null, priced: false, valueShare: null };
+    const unpriced = { ...leaf2, totalAmount: null, priced: false };
     const section = { ...substructure, children: [leaf1, unpriced] };
     const result = suggestDeliveryPlan([section, superstructure], new Set(), new Set());
     expect(result.unpricedLeafIds).toEqual(['leaf-2']);
@@ -134,12 +120,10 @@ describe('suggestDeliveryPlan', () => {
     expect(result.orphanLeafIds).toEqual([]);
   });
 
-  it('weights a money-blind PM\'s plan exactly like a cost-tier reader\'s, from the server ratios', () => {
+  it('groups a money-blind PM\'s tree the same way, without flagging withheld amounts as unpriced', () => {
     const full = suggestDeliveryPlan([substructure, superstructure], new Set(), new Set());
     const blind = suggestDeliveryPlan([substructure, superstructure].map(moneyBlind), new Set(), new Set());
-    expect(blind.packages.map((p) => p.suggestedWeight)).toEqual(full.packages.map((p) => p.suggestedWeight));
-    expect(blind.packages.find((p) => p.sectionNodeId === 'sec-1')!.suggestedWeight).toBeCloseTo(100000 / 150000);
-    // Nothing is unpriced just because the amount was withheld.
+    expect(blind.packages.map((p) => p.leafIds)).toEqual(full.packages.map((p) => p.leafIds));
     expect(blind.unpricedLeafIds).toEqual([]);
   });
 });

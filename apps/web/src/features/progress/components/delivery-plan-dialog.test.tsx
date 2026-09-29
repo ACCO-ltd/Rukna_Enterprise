@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BoqTreeNodeResponse } from '@erp/types';
@@ -6,6 +6,7 @@ import type { BoqTreeNodeResponse } from '@erp/types';
 import { renderWithProviders } from '@/test/render';
 
 const mocks = vi.hoisted(() => ({
+  useProposedPackageWeights: vi.fn(),
   useBoqWorkspace: vi.fn(),
   useBoqTree: vi.fn(),
   useWorkPackages: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/features/boq/hooks/use-boq', () => ({
 vi.mock('../hooks/use-progress', () => ({
   useWorkPackages: mocks.useWorkPackages,
   useSaveDeliveryPlan: mocks.useSaveDeliveryPlan,
+  useProposedPackageWeights: mocks.useProposedPackageWeights,
 }));
 
 import { DeliveryPlanDialog } from './delivery-plan-dialog';
@@ -30,24 +32,15 @@ const node = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse => ({
   measurementMethod: 'QUANTITY', pricingBasis: 'UNIT_RATE', unit: null, quantity: null,
   unitRate: null, currency: 'USD', totalAmount: null, computedTotal: null, originNodeId: null,
   sourceType: 'BASELINE', sourceChangeOrderId: null, nodeRole: 'WORK',
-  commercialTreatment: 'IN_CONTRACT', isActive: true, priced: false, valueShare: null,
+  commercialTreatment: 'IN_CONTRACT', isActive: true, priced: false,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   ...over,
 });
-/**
- * A leaf as the server sends it: `priced` and `valueShare` (share of a 1,000,000 version) derived
- * from its amount, both of which a money-blind reader still receives.
- */
+/** A leaf as the server sends it: `priced` derived from its amount, sent to every tier. */
 const leaf = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse =>
-  node({
-    isLeaf: true,
-    children: [],
-    priced: Boolean(over.totalAmount),
-    valueShare: over.totalAmount ? Number(over.totalAmount) / 1_000_000 : null,
-    ...over,
-  });
+  node({ isLeaf: true, children: [], priced: Boolean(over.totalAmount), ...over });
 
-/** The same leaf as a money-blind PM receives it: no rate, no amount, the ratio and verdict kept. */
+/** The same leaf as a money-blind PM receives it: no rate, no amount; the priced verdict kept. */
 const moneyBlind = (n: BoqTreeNodeResponse): BoqTreeNodeResponse => ({
   ...n,
   unitRate: null,
@@ -70,6 +63,23 @@ beforeEach(() => {
   mocks.useBoqTree.mockReturnValue(loaded([substructure, superstructure]));
   mocks.useWorkPackages.mockReturnValue(loaded([]));
   mocks.useSaveDeliveryPlan.mockReturnValue({ mutate: mocks.mutate, isPending: false });
+  // The server's value weighting for whatever grouping is asked: 100k / 50k of 150k per section,
+  // re-derived from the leaves each package holds (so moving a leaf changes the answer).
+  mocks.useProposedPackageWeights.mockImplementation(
+    (_projectId: string, packages: { key: string; boqNodeIds: string[] }[]) => {
+      const value: Record<string, number> = { 'leaf-1': 60000, 'leaf-2': 40000, 'leaf-3': 50000 };
+      const sums = packages.map((p) => p.boqNodeIds.reduce((sum, id) => sum + (value[id] ?? 0), 0));
+      const total = sums.reduce((a, b) => a + b, 0);
+      return {
+        data: {
+          projectId: 'p-1',
+          weights: packages.map((p, i) => ({ key: p.key, weight: total ? sums[i]! / total : 0 })),
+          unpricedLeafIds: [],
+        },
+        isPending: false,
+      };
+    },
+  );
 });
 
 describe('DeliveryPlanDialog', () => {
@@ -108,6 +118,10 @@ describe('DeliveryPlanDialog', () => {
     const moveSelect = within(leaf1Row).getByRole('combobox');
     await user.selectOptions(moveSelect, 'sec-2');
 
+    // The server re-weighs the new grouping (after the debounce): 40k vs 110k of 150k.
+    await waitFor(() => expect(screen.getByDisplayValue('73')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('27')).toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: 'Save draft plan' }));
 
     const payload = mocks.mutate.mock.calls[0][0];
@@ -115,20 +129,46 @@ describe('DeliveryPlanDialog', () => {
     const sup = payload.packages.find((p: { name: string }) => p.name === 'Superstructure');
     expect(sub.boqNodeIds).toEqual(['leaf-2']);
     expect(sup.boqNodeIds).toEqual(['leaf-3', 'leaf-1']);
+    expect([sub.progressWeight, sup.progressWeight]).toEqual([0.27, 0.73]);
   });
 
-  it('works for a money-blind PM: server ratios drive the weights, no amounts, no false Unpriced', async () => {
-    mocks.useBoqTree.mockReturnValue(loaded([substructure, superstructure].map(moneyBlind)));
+  it('keeps a weight the PM typed when the grouping is re-weighed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DeliveryPlanDialog projectId="p-1" currency="USD" open onOpenChange={() => {}} />, { withToast: true });
+
+    const typed = await screen.findByDisplayValue('67');
+    await user.clear(typed);
+    await user.type(typed, '50');
+    await user.click(screen.getByText('2 items'));
+    const leaf2Row = screen.getByText((_, el) => el?.textContent === '1.2 — Foundation concrete').closest('li')!;
+    await user.selectOptions(within(leaf2Row).getByRole('combobox'), 'sec-2');
+
+    // Superstructure follows the server (90k of 150k = 60%); Substructure keeps the typed 50.
+    await waitFor(() => expect(screen.getByDisplayValue('60')).toBeInTheDocument());
+    expect(screen.getByDisplayValue('50')).toBeInTheDocument();
+  });
+
+  it('works for a money-blind PM: server package weights, no amounts, no per-leaf shares, no false Unpriced', async () => {
+    const blindTree = [substructure, superstructure].map(moneyBlind);
+    mocks.useBoqTree.mockReturnValue(loaded(blindTree));
     renderWithProviders(
       <DeliveryPlanDialog projectId="p-1" currency="USD" moneyHidden open onOpenChange={() => {}} />,
       { withToast: true },
     );
 
-    // 100,000 of 150,000 and 50,000 of 150,000, as for a reader who can see the amounts.
-    expect(screen.getByDisplayValue('67')).toBeInTheDocument();
+    // 100,000 of 150,000 and 50,000 of 150,000 — the same as a reader who can see the amounts.
+    expect(await screen.findByDisplayValue('67')).toBeInTheDocument();
     expect(screen.getByDisplayValue('33')).toBeInTheDocument();
     expect(screen.queryByText('Unpriced')).not.toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+    // The tree the browser holds carries no share of value to derive prices from.
+    expect(JSON.stringify(blindTree)).not.toMatch(/valueShare|60000|40000|50000/);
+    // Only package groupings are sent for weighting.
+    const [, packages] = mocks.useProposedPackageWeights.mock.calls.at(-1)!;
+    expect(packages).toEqual([
+      { key: 'sec-1', boqNodeIds: ['leaf-1', 'leaf-2'] },
+      { key: 'sec-2', boqNodeIds: ['leaf-3'] },
+    ]);
   });
 
   it('shows nothing to propose once every BOQ section is already fully allocated', () => {

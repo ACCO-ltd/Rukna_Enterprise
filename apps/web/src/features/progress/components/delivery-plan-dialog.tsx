@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, MoneyDisplay, Skeleton, StatusPill, useToast } from '@erp/ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -11,7 +11,7 @@ import { formatMoney } from '@/lib/format';
 import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 
 import { suggestDeliveryPlan } from '../domain/suggest-delivery-plan';
-import { useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
+import { useProposedPackageWeights, useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
 import { RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
 
 const refFieldClass = 'rounded-control border-border px-2 py-1 text-body focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
@@ -30,6 +30,11 @@ interface PlanRow {
   responsibleOwner: string;
   /** Edited as a whole-number percent string in the UI; converted to a 0..1 fraction on save. */
   weightPercent: string;
+  /**
+   * True once the PM typed a weight. Until then the row follows the server's value weighting for
+   * the current grouping, which is recomputed whenever leaves move between rows.
+   */
+  weightEdited: boolean;
   leafIds: string[];
 }
 
@@ -106,14 +111,15 @@ export function DeliveryPlanDialog({
           code: p.code,
           name: p.name,
           responsibleOwner: '',
-          weightPercent: String(Math.round(p.suggestedWeight * 100)),
+          weightPercent: '',
+          weightEdited: false,
           leafIds: p.leafIds,
         }))
       : []);
 
   function update(key: string, patch: Partial<PlanRow>) {
     setError(null);
-    setRows(current.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setRows(current.map((r) => (r.key === key ? { ...r, ...patch, ...('weightPercent' in patch ? { weightEdited: true } : {}) } : r)));
   }
 
   /** Moves one leaf from wherever it currently sits (if anywhere in this plan) onto `toKey`. */
@@ -138,7 +144,26 @@ export function DeliveryPlanDialog({
     });
   }
 
-  const included = current.filter((r) => r.included);
+  // Value weights come from the server for the grouping as it stands (debounced, so dragging several
+  // leaves is one request). Package ratios only — no per-leaf share reaches the browser.
+  // Serialised so the debounce compares content: a fresh array each render is not a new grouping.
+  const groupingKey = JSON.stringify(
+    current.filter((r) => r.included).map((r) => ({ key: r.key, boqNodeIds: r.leafIds })),
+  );
+  const settledKey = useDebounced(groupingKey, 400);
+  const grouping = useMemo(
+    () => JSON.parse(settledKey) as { key: string; boqNodeIds: string[] }[],
+    [settledKey],
+  );
+  const weights = useProposedPackageWeights(projectId, grouping, open);
+  const serverPercent = new Map(
+    (weights.data?.weights ?? []).map((w) => [w.key, String(Math.round(w.weight * 100))] as const),
+  );
+  const withWeights = current.map((r) =>
+    r.weightEdited ? r : { ...r, weightPercent: serverPercent.get(r.key) ?? r.weightPercent },
+  );
+
+  const included = withWeights.filter((r) => r.included);
   const totalWeightPercent = included.reduce((sum, r) => sum + (Number(r.weightPercent) || 0), 0);
 
   function onSave() {
@@ -220,7 +245,7 @@ export function DeliveryPlanDialog({
                     </RefTr>
                   </RefThead>
                   <RefTbody>
-                    {current.map((row) => (
+                    {withWeights.map((row) => (
                       <RowGroup
                         key={row.key}
                         row={row}
@@ -254,7 +279,7 @@ export function DeliveryPlanDialog({
             {t('deliveryPlan.cancel')}
           </Button>
           {suggestion && suggestion.packages.length > 0 ? (
-            <Button onClick={onSave} disabled={save.isPending}>
+            <Button onClick={onSave} disabled={save.isPending || (weights.isPending && grouping.length > 0)}>
               {save.isPending ? t('deliveryPlan.saving') : t('deliveryPlan.saveDraft')}
             </Button>
           ) : null}
@@ -417,4 +442,14 @@ function RowGroup({
       ) : null}
     </>
   );
+}
+
+/** `value`, once it has stopped changing for `delayMs`. */
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const handle = window.setTimeout(() => setSettled(value), delayMs);
+    return () => window.clearTimeout(handle);
+  }, [value, delayMs]);
+  return settled;
 }

@@ -158,7 +158,6 @@ function boqNode(): BoqTreeNode {
     // JSON number on this shape (B7).
     computedTotal: '60000.00',
     priced: true,
-    valueShare: 1,
   };
 }
 

@@ -8,7 +8,7 @@ import type { BoqTreeNodeResponse } from '@erp/types';
  *
  * Nothing here writes anything. A suggestion is a starting point the PM edits (name, code, owner,
  * weight, which leaves) before any Save — this module never decides what gets persisted, only what
- * gets proposed. BOQ-value weight is a suggestion, never treated as an approved physical weight
+ * gets proposed. BOQ-value weight (computed on the server for the proposed grouping) is a suggestion, never treated as an approved physical weight
  * (the caller/UI must keep every suggested weight editable).
  */
 
@@ -23,15 +23,11 @@ export interface SuggestedPackage {
   leafIds: string[];
   /**
    * Σ totalAmount of the suggested leaves, in the BOQ's currency. 0 for a reader without the cost
-   * tier (the server withholds amounts) — display only, never used for the weight.
+   * tier (the server withholds amounts) — display only. Weights are NOT computed here: the server
+   * value-weights the grouping (`useProposedPackageWeights`), so no per-leaf share of the BOQ value
+   * ever has to reach a money-blind browser.
    */
   totalValue: number;
-  /**
-   * Fraction 0..1 of the suggested (unallocated) value across ALL suggested packages. Computed from
-   * the server's `valueShare` ratios, not from amounts, so it is the same for a money-blind PM as
-   * for a cost-tier reader.
-   */
-  suggestedWeight: number;
 }
 
 export interface DeliveryPlanSuggestion {
@@ -72,12 +68,10 @@ export function suggestDeliveryPlan(
     if (leaves.length > 0) candidates.push({ section: root, leaves });
   }
 
-  const totalShare = candidates.reduce((sum, c) => sum + sumShare(c.leaves), 0);
   const codes = assignCodes(candidates.length, existingCodes);
   const unpricedLeafIds: string[] = [];
 
   const packages: SuggestedPackage[] = candidates.map((c, index) => {
-    const share = sumShare(c.leaves);
     for (const leaf of c.leaves) {
       // The server's verdict, sent to every tier — not inferred from a (possibly withheld) amount.
       if (!leaf.priced) unpricedLeafIds.push(leaf.id);
@@ -89,7 +83,6 @@ export function suggestDeliveryPlan(
       sectionCode: c.section.code,
       leafIds: c.leaves.map((l) => l.id),
       totalValue: sumValue(c.leaves),
-      suggestedWeight: totalShare > 0 ? share / totalShare : 0,
     };
   });
 
@@ -113,10 +106,6 @@ function collectUnallocatedWorkLeaves(
 
 function leafValue(leaf: BoqTreeNodeResponse): number {
   return leaf.totalAmount ? Number(leaf.totalAmount) : 0;
-}
-
-function sumShare(leaves: readonly BoqTreeNodeResponse[]): number {
-  return leaves.reduce((sum, l) => sum + (l.valueShare ?? 0), 0);
 }
 
 function sumValue(leaves: readonly BoqTreeNodeResponse[]): number {

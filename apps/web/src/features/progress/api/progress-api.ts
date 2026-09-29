@@ -1,3 +1,4 @@
+import type { ProposedPackageWeightsRequest, ProposedPackageWeightsResponse } from '@erp/types';
 import type {
   CollectionProgressSignalResponse,
   DailyProgressReportResponse,
@@ -434,4 +435,19 @@ export function saveDeliveryPlan(
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Value-weights a PROPOSED Delivery Plan grouping on the server (read-only). Only package weights
+ * (0..1, summing to 1) and the unpriced leaf ids come back — never an amount or a per-leaf share,
+ * which a money-blind PM must not be able to derive prices from (owner decision 2026-09-29).
+ */
+export function weighProposedPackages(
+  projectId: string,
+  body: ProposedPackageWeightsRequest,
+): Promise<ProposedPackageWeightsResponse> {
+  return apiClient<ProposedPackageWeightsResponse>(
+    `/projects/${projectId}/work-packages/delivery-plan/weights`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
 }

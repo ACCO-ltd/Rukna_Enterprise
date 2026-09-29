@@ -47,7 +47,6 @@ export function testNode(
       Boolean(overrides.unit) &&
       (overrides.quantity ?? null) !== null &&
       (overrides.unitRate ?? null) !== null,
-    valueShare: null,
     ...overrides,
   };
 }
