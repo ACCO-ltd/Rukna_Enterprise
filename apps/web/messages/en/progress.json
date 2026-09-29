@@ -895,7 +895,22 @@
     "removeLabel": "Remove {quantity} from {item}",
     "removeFailed": "Could not remove the entry: {message}",
     "notesFailed": "Site notes could not be saved: {message}",
-    "reopenedNote": "Entries approved before the reopen can't be removed; add a correction note instead."
+    "reopenedNote": "Entries approved before the reopen can't be removed; add a correction note instead.",
+    "noItemsSetupLink": "Allocate BOQ items in Plan & setup",
+    "col": {
+      "item": "BOQ item",
+      "quantity": "Quantity today",
+      "recorded": "On this report"
+    },
+    "nothingRecorded": "Nothing recorded yet",
+    "labourTable": {
+      "trade": "Trade",
+      "headcount": "Headcount",
+      "contractor": "Contractor",
+      "hours": "Hours per worker",
+      "addRow": "Add row",
+      "removeLabel": "Remove the {trade} row"
+    }
   },
   "performance": {
     "metricsLabel": "Progress against plan",

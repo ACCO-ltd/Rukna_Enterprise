@@ -30,7 +30,7 @@ import { useSession } from '@/features/auth/session/use-session';
 import { isEditableDpr, localIsoDate, myReports, sortMyReports } from '../domain/my-reports';
 import { mapDprError } from '../domain/dpr-errors';
 import { useCreateDpr, useDprs } from '../hooks/use-progress';
-import { DprEntrySheet } from './dpr-entry-sheet';
+import { DprEntryDialog } from './dpr-entry-dialog';
 import { DprStatusBadge } from './dpr-status-badge';
 
 /**
@@ -202,7 +202,7 @@ export function TodaySection({ projectId }: { projectId: string }) {
         onStart={(date) => startReport(date, () => setOtherDayOpen(false))}
       />
 
-      <DprEntrySheet projectId={projectId} dprId={openDprId} onClose={() => setOpenDprId(null)} />
+      <DprEntryDialog projectId={projectId} dprId={openDprId} onClose={() => setOpenDprId(null)} />
     </div>
   );
 }

@@ -15,8 +15,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../hooks/use-progress', () => ({ useDprs: mocks.useDprs, useCreateDpr: mocks.useCreateDpr }));
 // The sheet has its own test; here it only reports which report it was asked to open.
-vi.mock('./dpr-entry-sheet', () => ({
-  DprEntrySheet: ({ dprId }: { dprId: string | null }) => (dprId ? <p>sheet open: {dprId}</p> : null),
+vi.mock('./dpr-entry-dialog', () => ({
+  DprEntryDialog: ({ dprId }: { dprId: string | null }) => (dprId ? <p>dialog open: {dprId}</p> : null),
 }));
 
 import { TodaySection } from './today-section';
@@ -54,7 +54,7 @@ describe('TodaySection', () => {
     expect(primary).toHaveClass('bg-brand-ink');
     await user.click(primary);
     expect(mocks.create).toHaveBeenCalledWith({ reportDate: TODAY }, expect.anything());
-    expect(screen.getByText('sheet open: new-dpr')).toBeInTheDocument();
+    expect(screen.getByText('dialog open: new-dpr')).toBeInTheDocument();
   });
 
   it("offers \"Continue today's report\" for today's draft, and opens it without creating another", async () => {
@@ -64,7 +64,7 @@ describe('TodaySection', () => {
 
     await user.click(screen.getByRole('button', { name: "Continue today's report" }));
     expect(mocks.create).not.toHaveBeenCalled();
-    expect(screen.getByText('sheet open: today-draft')).toBeInTheDocument();
+    expect(screen.getByText('dialog open: today-draft')).toBeInTheDocument();
   });
 
   it('offers "Open" once today\'s report is submitted, with its status pill in the context bar', () => {
@@ -95,7 +95,7 @@ describe('TodaySection', () => {
     expect(screen.queryByText('Not mine')).not.toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: 'Fix and resubmit' })[0]!);
-    expect(screen.getByText('sheet open: r2')).toBeInTheDocument();
+    expect(screen.getByText('dialog open: r2')).toBeInTheDocument();
   });
 
   it('lists my reports with anything needing my action first, their work packages and the reviewer by name', () => {

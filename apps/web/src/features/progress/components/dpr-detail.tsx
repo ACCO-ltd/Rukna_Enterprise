@@ -120,7 +120,7 @@ const DELAY_OPTIONS = [
 ] as const;
 
 /** Bounded trade list — same reasoning as weather/delay: a known set analysis can group by. */
-const TRADE_OPTIONS = [
+export const TRADE_OPTIONS = [
   'Mason',
   'Carpenter',
   'Steel fixer',
@@ -769,7 +769,7 @@ export function DprEvidence({
   attachments: Array<{ id: string; platformFileId: string; measurementId?: string }>;
   measurements: ProgressMeasurementResponse[];
   leafLabel: Map<string, string>;
-  /** Render without its card chrome — for the DPR entry sheet, which supplies its own heading. */
+  /** Render without its card chrome — for the DPR entry dialog, which supplies its own heading. */
   bare?: boolean;
 }) {
   const t = useTranslations('progress');

@@ -37,14 +37,20 @@ vi.mock('../hooks/use-boq-leaves', () => ({
   useBoqLeaves: mocks.useBoqLeaves,
   lineLabel: (l: { code: string; description: string }) => `${l.code} ${l.description}`,
 }));
-// Labour, evidence and the read-only detail reuse dpr-detail's own (separately tested) pieces.
+// Evidence and the read-only detail reuse dpr-detail's own (separately tested) pieces; labour has its own table.
 vi.mock('./dpr-detail', () => ({
   DprDetail: () => <p>read-only report</p>,
   DprEvidence: () => <p>photos</p>,
-  LabourSection: () => <p>labour rows</p>,
+}));
+vi.mock('./dpr-labour-table', () => ({
+  DprLabourTable: ({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) => (
+    <button type="button" onClick={() => onDirtyChange?.(true)}>
+      labour rows
+    </button>
+  ),
 }));
 
-import { DprEntrySheet } from './dpr-entry-sheet';
+import { DprEntryDialog } from './dpr-entry-dialog';
 
 const DPR = {
   id: 'dpr-1',
@@ -89,12 +95,12 @@ beforeEach(() => {
 });
 
 const render = (onClose = vi.fn()) =>
-  renderWithProviders(<DprEntrySheet projectId="p1" dprId="dpr-1" onClose={onClose} />, {
+  renderWithProviders(<DprEntryDialog projectId="p1" dprId="dpr-1" onClose={onClose} />, {
     permissions: ['record:progress'],
     withToast: true,
   });
 
-describe('DprEntrySheet', () => {
+describe('DprEntryDialog', () => {
   it('groups every item by work package with a to-date hint', () => {
     render();
 
@@ -181,7 +187,7 @@ describe('DprEntrySheet', () => {
     expect(order).toContain('patch');
   });
 
-  it('keeps the sheet open with the error when the notes cannot be saved', async () => {
+  it('keeps the dialog open with the error when the notes cannot be saved', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     mocks.patch.mockRejectedValue(new ApiError(500, 'Server down', 'INTERNAL'));
@@ -270,5 +276,76 @@ describe('DprEntrySheet', () => {
     render();
     expect(screen.getByText('read-only report')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit for review' })).not.toBeInTheDocument();
+  });
+  it('is a dialog titled with the date, and shows the status only once it is not a draft', () => {
+    const { unmount } = render();
+    const dialog = screen.getByRole('dialog', { name: /Daily report/ });
+    expect(within(dialog).queryByText('Returned for revision')).not.toBeInTheDocument();
+    unmount();
+
+    mocks.useDpr.mockReturnValue({
+      data: { ...DPR, status: 'RETURNED', returnReason: 'Add photos' },
+      isPending: false,
+      isError: false,
+    });
+    render();
+    expect(within(screen.getByRole('dialog')).getAllByText('Returned for revision').length).toBeGreaterThan(0);
+  });
+
+  it('puts Save draft before the one primary, Submit for review, in the footer', () => {
+    render();
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent);
+    expect(buttons.indexOf('Save draft')).toBeLessThan(buttons.indexOf('Submit for review'));
+  });
+
+  it('with nothing allocated, points a setup manager to Plan & setup', () => {
+    mocks.useWorkPackages.mockReturnValue({ isPending: false, data: [] });
+    renderWithProviders(<DprEntryDialog projectId="p1" dprId="dpr-1" onClose={vi.fn()} />, {
+      permissions: ['record:progress', 'manage:project'],
+      withToast: true,
+    });
+    expect(
+      screen.getByText('No BOQ items are allocated to work packages yet, so there is nothing to measure.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Allocate BOQ items in Plan & setup' })).toHaveAttribute(
+      'href',
+      '/projects/p1/progress/setup',
+    );
+  });
+
+  it('with nothing allocated, offers a site engineer no setup link', () => {
+    mocks.useWorkPackages.mockReturnValue({ isPending: false, data: [] });
+    render();
+    expect(screen.queryByRole('link', { name: 'Allocate BOQ items in Plan & setup' })).not.toBeInTheDocument();
+  });
+
+  it('asks before discarding a quantity typed but not added', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(onClose);
+
+    await user.type(screen.getByRole('spinbutton', { name: 'Quantity today for 2.1 Columns' }), '5');
+    await user.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument();
+  });
+
+  it('asks before discarding a half-filled labour row', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(onClose);
+
+    await user.click(screen.getByRole('button', { name: 'labour rows' }));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument();
+  });
+
+  it('closes without asking when nothing is pending', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(onClose);
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
   });
 });
