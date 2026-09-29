@@ -777,7 +777,8 @@
       "separateDraftCreated": "A draft invoice for it is waiting for review in Billing & collection.",
       "reviewInBilling": "Review invoice",
       "unavailable": "This route is not available yet.",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "close": "Close"
     },
     "addExtraWork": {
       "title": "Add extra work",
@@ -816,7 +817,8 @@
         "variationDesc": "Contract increased to {value}",
         "separateTitle": "Separate charge added",
         "separateDesc": "Draft invoice created"
-      }
+      },
+      "close": "Close"
     },
     "draw": {
       "title": "Draw from contingency",

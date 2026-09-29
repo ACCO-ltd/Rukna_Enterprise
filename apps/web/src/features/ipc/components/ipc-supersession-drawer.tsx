@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
+import { LifecycleCommandDialog } from '@/components/lifecycle-command-dialog';
 import { ApiError } from '@/lib/api-client';
 
 import { useSupersede } from '../hooks/use-ipc';
@@ -47,7 +47,7 @@ export function IpcSupersessionDrawer({
     : undefined;
 
   return (
-    <LifecycleCommandDrawer
+    <LifecycleCommandDialog
       open={open}
       onClose={handleClose}
       commandName={t('commandName')}

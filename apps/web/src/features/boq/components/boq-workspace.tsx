@@ -8,7 +8,7 @@ import { Alert, Button, EmptyState, Notice, Skeleton, useToast } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
-import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
+import { LifecycleCommandDialog } from '@/components/lifecycle-command-dialog';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useUnitsOfMeasure } from '@/features/units-of-measure/hooks/use-units-of-measure';
@@ -41,8 +41,8 @@ import {
 } from '../node-form';
 import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
-import { BoqClassifierDrawer, type ClassifierResult } from './boq-classifier-drawer';
-import { BoqCompareSignedPanel } from './boq-compare-signed-panel';
+import { BoqClassifierDialog, type ClassifierResult } from './boq-classifier-dialog';
+import { BoqCompareSignedDialog } from './boq-compare-signed-dialog';
 import { BoqContextBar } from './boq-context-bar';
 import { BoqGrid, type BoqRowCommands, type PendingLine } from './boq-grid';
 import { BoqImportView, type ImportOutcome } from './boq-import-view';
@@ -79,7 +79,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [filter, setFilter] = useState<LineFilter>('all');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<PendingLine | null>(null);
-  const [drawer, setDrawer] = useState<ItemDialogTarget | null>(null);
+  const [itemDialog, setItemDialog] = useState<ItemDialogTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BoqTreeNodeResponse | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [reviseOpen, setReviseOpen] = useState(false);
@@ -226,9 +226,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   const rowCommands: BoqRowCommands | null = canManage
     ? {
-        onEdit: (node) => setDrawer({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node }),
+        onEdit: (node) => setItemDialog({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node }),
         onAddFromLibrary: (parent) =>
-          setDrawer({ mode: 'add', kind: 'item', parent, node: null, siblingCodes: parent.children.map((c) => c.code) }),
+          setItemDialog({ mode: 'add', kind: 'item', parent, node: null, siblingCodes: parent.children.map((c) => c.code) }),
         onAddSection: (parent) => {
           if (collapsed.has(parent.id)) toggleCollapsed(parent.id);
           setPending({ parentId: parent.id, kind: 'section' });
@@ -340,7 +340,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             collapsed={collapsed}
             onToggle={toggleCollapsed}
             onPinnedCellEdit={committed || (signed && canEdit) ? () => setClassifierOpen(true) : undefined}
-            onSelect={(node) => setDrawer({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node })}
+            onSelect={(node) => setItemDialog({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node })}
             commands={rowCommands}
             pending={pending}
             onPendingChange={setPending}
@@ -364,8 +364,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       </div>
 
       <BoqItemDialog
-        key={drawer ? `${drawer.mode}-${drawer.kind}-${drawer.node?.id ?? drawer.parent?.id ?? 'root'}` : 'closed'}
-        target={drawer}
+        key={itemDialog ? `${itemDialog.mode}-${itemDialog.kind}-${itemDialog.node?.id ?? itemDialog.parent?.id ?? 'root'}` : 'closed'}
+        target={itemDialog}
         currency={workspace.currency}
         readOnly={!canManage}
         isPending={addNode.isPending || updateNode.isPending}
@@ -373,11 +373,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         canViewCommercials={canViewCost}
         canSaveToLibrary={canManage}
         unitsAdminHref={unitsAdminHref}
-        error={drawer ? (addNode.error ?? updateNode.error ?? undefined) : undefined}
+        error={itemDialog ? (addNode.error ?? updateNode.error ?? undefined) : undefined}
         onClose={() => {
           addNode.reset();
           updateNode.reset();
-          setDrawer(null);
+          setItemDialog(null);
         }}
         onSubmit={(values, target, library) => handleSave(values, target, library)}
       />
@@ -409,7 +409,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       ) : null}
 
       {reviseOpen ? (
-        <LifecycleCommandDrawer
+        <LifecycleCommandDialog
           open
           onClose={() => {
             revise.reset();
@@ -429,7 +429,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       ) : null}
 
       {classifierOpen && canEdit ? (
-        <BoqClassifierDrawer
+        <BoqClassifierDialog
           open
           currency={workspace.currency}
           contingencyRemaining={workspace.moneyBand?.contingencyRemaining ?? null}
@@ -452,7 +452,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       ) : null}
 
       {compareOpen ? (
-        <BoqCompareSignedPanel
+        <BoqCompareSignedDialog
           data={compareQuery.data}
           currency={workspace.currency}
           canViewCost={canViewCost}
@@ -483,7 +483,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     if (target.mode === 'edit' && target.node) {
       updateNode.mutate(
         { nodeId: target.node.id, payload: toUpdateNodePayload(values, { kind: target.kind }) },
-        { onSuccess: () => setDrawer(null) },
+        { onSuccess: () => setItemDialog(null) },
       );
       return;
     }
@@ -492,7 +492,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     addNode.mutate(payload, {
       onSuccess: () => {
         runLibrarySideEffects(values, library, payload.unitRate ?? null);
-        setDrawer(null);
+        setItemDialog(null);
       },
     });
   }

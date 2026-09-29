@@ -1,23 +1,22 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   Textarea,
 } from '@erp/ui';
 
 import { StatusBadge } from '@/components/status-badge';
 import type { StatusVocabulary } from '@/lib/status-registry';
 
-// ─── Drawer ───────────────────────────────────────────────────────────────────
+// ─── Dialog ───────────────────────────────────────────────────────────────────
 
 export interface LifecycleReasonField {
   /** When true the confirm button is disabled until text is entered. */
@@ -28,7 +27,7 @@ export interface LifecycleReasonField {
   maxLength?: number;
 }
 
-export interface LifecycleCommandDrawerProps {
+export interface LifecycleCommandDialogProps {
   open: boolean;
   onClose: () => void;
 
@@ -74,17 +73,18 @@ export interface LifecycleCommandDrawerProps {
 /**
  * The standard shell for every lifecycle transition in the platform.
  *
- * Wraps a Dialog (right-anchored panel) with the command header, status transition
- * indicator, optional business impact copy, a customisable form area, and a
- * sticky footer. Callers bring their own lifecycle hook (`useLifecycleCommand`)
+ * A `FormDialog` (ADR-039, size `md`): the command as the title, the status transition and
+ * the business impact at the top of the scrolling body, a customisable form area, and the
+ * pinned footer. Callers bring their own lifecycle hook (`useLifecycleCommand`)
  * and pass `isPending`, `errorMessage`, and `onConfirm` down to this shell.
  *
- * Nothing dismisses the drawer while a request is in flight.
+ * Nothing dismisses the dialog while a request is in flight (`busy`), and a typed reason is not
+ * thrown away without asking (`dirty`).
  *
  * @example
  * const submit = useIpaCommand(ipa.id);
  *
- * <LifecycleCommandDrawer
+ * <LifecycleCommandDialog
  *   open={open}
  *   onClose={() => { submit.reset(); setOpen(false); }}
  *   commandName="Submit for Approval"
@@ -97,7 +97,7 @@ export interface LifecycleCommandDrawerProps {
  *   onConfirm={() => submit.mutate('submit', { onSuccess: () => setOpen(false) })}
  * />
  */
-export function LifecycleCommandDrawer({
+export function LifecycleCommandDialog({
   open,
   onClose,
   commandName,
@@ -112,9 +112,9 @@ export function LifecycleCommandDrawer({
   isPending,
   errorMessage,
   onConfirm,
-}: LifecycleCommandDrawerProps) {
+}: LifecycleCommandDialogProps) {
   const t = useTranslations('common.confirmDialog');
-  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const tDiscard = useTranslations('common.discardChanges');
 
   const [text, setText] = useState('');
   const [touched, setTouched] = useState(false);
@@ -129,13 +129,9 @@ export function LifecycleCommandDrawer({
         ? t('reasonTooLong', { max: maxLength })
         : undefined;
 
-  /** Blocks every dismissal path (Escape, overlay, outside click) while pending. */
-  const preventWhilePending = (event: { preventDefault: () => void }) => {
-    if (isPending) event.preventDefault();
-  };
-
   const handleOpenChange = (next: boolean) => {
-    if (!next && !isPending) {
+    // FormDialog's guard has already refused this while pending, and asked about a typed reason.
+    if (!next) {
       // Reset local form state on close so a re-open starts fresh.
       setText('');
       setTouched(false);
@@ -151,81 +147,73 @@ export function LifecycleCommandDrawer({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg"
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-        onOpenAutoFocus={(event: Event) => {
-          if (!reason) return;
-          // Focus the reason textarea immediately so keyboard users can type without tabbing.
-          event.preventDefault();
-          reasonRef.current?.focus();
-        }}
-      >
-        {/* Header */}
-        <div className="px-5 pb-4 pt-10">
-          <DialogTitle>{commandName}</DialogTitle>
-
-          {/* Status transition indicator */}
-          <div className="mt-3 flex items-center gap-2 text-sm">
-            <StatusBadge status={currentStatus} vocabulary={statusVocabulary} />
-            <span className="text-muted-foreground" aria-hidden="true">→</span>
-            <StatusBadge status={nextStatus} vocabulary={statusVocabulary} />
-          </div>
-
-          {/* Business impact */}
-          {businessImpact ? (
-            <DialogDescription className="mt-4">{businessImpact}</DialogDescription>
-          ) : null}
+    <FormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={commandName}
+      size="md"
+      busy={isPending}
+      dirty={trimmed.length > 0}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
+      }}
+    >
+      <FormDialogBody>
+        {/* Status transition indicator */}
+        <div className="flex items-center gap-2 text-sm">
+          <StatusBadge status={currentStatus} vocabulary={statusVocabulary} />
+          <span className="text-muted-foreground" aria-hidden="true">→</span>
+          <StatusBadge status={nextStatus} vocabulary={statusVocabulary} />
         </div>
 
-        {/* Divider */}
-        <div className="border-t border-border" />
+        {/* Business impact, before any field, so the consequence is read before typing. */}
+        {businessImpact ? <p className="text-body-sm text-muted-foreground">{businessImpact}</p> : null}
 
-        {/* Form area */}
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {errorMessage ? <Alert variant="error" messages={[errorMessage]} /> : null}
+        {errorMessage ? <Alert variant="error" messages={[errorMessage]} /> : null}
 
-          {/* Custom command-specific fields (notes, exchange rate, etc.) */}
-          {children}
+        {/* Custom command-specific fields (notes, exchange rate, etc.) */}
+        {children}
 
-          {reason ? (
-            <FormField
-              htmlFor="lifecycle-reason"
-              label={reason.label ?? t('reasonLabel')}
-              error={reasonError}
-            >
-              <Textarea
-                id="lifecycle-reason"
-                ref={reasonRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onBlur={() => setTouched(true)}
-                aria-invalid={Boolean(reasonError)}
-                disabled={isPending}
-              />
-              {reason.hint ? (
-                <p className="text-xs text-muted-foreground">{reason.hint}</p>
-              ) : null}
-            </FormField>
-          ) : null}
-        </div>
-
-        {/* Sticky footer */}
-        <DialogFooter>
-          <Button
-            variant={isDestructive ? 'destructive' : 'default'}
-            onClick={handleConfirm}
-            disabled={isPending}
+        {reason ? (
+          <FormField
+            htmlFor="lifecycle-reason"
+            label={reason.label ?? t('reasonLabel')}
+            error={reasonError}
           >
-            {isPending ? t('working') : confirmLabel}
-          </Button>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            <Textarea
+              id="lifecycle-reason"
+              // Focus lands here on open, so a keyboard user types the reason without tabbing.
+              data-autofocus=""
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onBlur={() => setTouched(true)}
+              aria-invalid={Boolean(reasonError)}
+              disabled={isPending}
+            />
+            {reason.hint ? (
+              <p className="text-xs text-muted-foreground">{reason.hint}</p>
+            ) : null}
+          </FormField>
+        ) : null}
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
             {t('dismiss')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          variant={isDestructive ? 'destructive' : 'default'}
+          onClick={handleConfirm}
+          disabled={isPending}
+        >
+          {isPending ? t('working') : confirmLabel}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

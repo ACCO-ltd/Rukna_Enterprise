@@ -5,10 +5,10 @@ import { CircleDollarSign, GitPullRequestArrow, Receipt } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Input,
   Label,
   MoneyInput,
@@ -47,7 +47,7 @@ export interface AddExtraWorkResult {
 /**
  * The full Add Extra Work form (Slice 2).
  *
- * Adds on top of the lean `BoqClassifierDrawer`:
+ * Adds on top of the lean `BoqClassifierDialog`:
  *   - Pricing mode toggle: lump sum OR rate × quantity (UI calc only — API receives `amount`)
  *   - BOQ parent section picker for ABSORB/SEPARATE (`parentId` on the line)
  *   - Variation title field (`variationTitle` on the DTO, VARIATION only)
@@ -56,7 +56,7 @@ export interface AddExtraWorkResult {
  * Not integrated into the BOQ workspace yet — consumed via component tests until Slice 1 merges.
  * Fields omitted (no API support): client approval date, attachment, notes.
  */
-export function AddExtraWorkDrawer({
+export function AddExtraWorkDialog({
   open,
   currency,
   contractId: _contractId,
@@ -93,6 +93,7 @@ export function AddExtraWorkDrawer({
   const t = useTranslations('platform.boq.addExtraWork');
   // Route names, taglines, details, CTAs, and unavailable note are shared with the classifier.
   const tClassifier = useTranslations('platform.boq.classifier');
+  const tDiscard = useTranslations('common.discardChanges');
   const locale = useLocale() as 'en' | 'ar';
 
   const [route, setRoute] = useState<ClassifierRoute | ''>('VARIATION');
@@ -229,15 +230,34 @@ export function AddExtraWorkDrawer({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogTitle>
-          {t('title')}
-          <span className="mt-0.5 block text-body-sm font-normal text-muted-foreground">
-            {t('subtitle')}
-          </span>
-        </DialogTitle>
-
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('title')}
+      subtitle={t('subtitle')}
+      size="lg"
+      busy={isPending}
+      dirty={Boolean(
+        description.trim() ||
+          lumpAmount ||
+          quantity ||
+          unitRate ||
+          unit.trim() ||
+          parentId ||
+          clientApprovalReference.trim() ||
+          variationTitle.trim(),
+      )}
+      closeLabel={t('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
+      }}
+    >
+      <FormDialogBody>
         <div className="space-y-4">
           {/* ── 1. Who pays? ─────────────────────────────────────── */}
           <RadioGroup
@@ -380,17 +400,19 @@ export function AddExtraWorkDrawer({
             </p>
           ) : null}
         </div>
+      </FormDialogBody>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
             {t('cancel')}
           </Button>
-          <Button disabled={!canSubmit || isPending} onClick={handleSubmit}>
-            {cta}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button disabled={!canSubmit || isPending} onClick={handleSubmit}>
+          {cta}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 

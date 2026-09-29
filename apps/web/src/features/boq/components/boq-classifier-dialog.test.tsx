@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
-import { BoqClassifierDrawer } from './boq-classifier-drawer';
+import { BoqClassifierDialog } from './boq-classifier-dialog';
 
-function render(overrides: Partial<Parameters<typeof BoqClassifierDrawer>[0]> = {}) {
+function render(overrides: Partial<Parameters<typeof BoqClassifierDialog>[0]> = {}) {
   const onSubmit = vi.fn();
   const onClose = vi.fn();
   renderWithProviders(
-    <BoqClassifierDrawer
+    <BoqClassifierDialog
       open
       currency="USD"
       contingencyRemaining="120000.00"
@@ -33,7 +33,7 @@ async function selectVariationSection(user: ReturnType<typeof userEvent.setup>) 
   await user.click(await screen.findByRole('option', { name: /Preliminaries/i }));
 }
 
-describe('BoqClassifierDrawer — decision-first who-pays', () => {
+describe('BoqClassifierDialog — decision-first who-pays', () => {
   it('offers all three routes with their consequence previews', () => {
     render();
     expect(screen.getByText(/Absorb/)).toBeInTheDocument();

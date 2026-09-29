@@ -65,6 +65,12 @@
     "working": "Working...",
     "dismiss": "Cancel"
   },
+  "discardChanges": {
+    "title": "Discard unsaved changes?",
+    "description": "Your changes in this form will be lost.",
+    "confirm": "Discard changes",
+    "cancel": "Keep editing"
+  },
   "grid": {
     "searchPlaceholder": "Search...",
     "searchLabel": "Search",
