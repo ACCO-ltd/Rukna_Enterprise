@@ -201,8 +201,9 @@ drawer/sheet/panel):
   (owner decision 2026-09-29: a leaf share lets a PM who knows one price derive the rest). The
   Delivery Plan instead asks `POST /projects/:id/work-packages/delivery-plan/weights`
   (`manage:project`) for package weights of its proposed grouping — 0..1, summing to 1,
-  value-weighted on the server, contingency excluded — again (debounced) after leaves move; a weight
-  the PM typed is kept. The library's `lastUsedRate` is withheld without the cost tier; contingency returns
+  value-weighted on the server for cost-tier callers, contingency excluded — again (debounced) after
+  leaves move; a weight the PM typed is kept. A caller without the cost tier gets an even split
+  (`valueWeighted: false`, owner decision 2026-09-29) and one quiet note saying so. The library's `lastUsedRate` is withheld without the cost tier; contingency returns
   `{ versionId, contingencyRemaining, canViewMargin }`; flipping a priced item to a section is a
   money change for a scope-only editor. The dialog says "Enter a quantity / rate / amount" rather
   than silently keeping a cleared value. Scope-only DELETE of priced lines is an open owner question

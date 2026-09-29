@@ -74,6 +74,7 @@ beforeEach(() => {
         data: {
           projectId: 'p-1',
           weights: packages.map((p, i) => ({ key: p.key, weight: total ? sums[i]! / total : 0 })),
+          valueWeighted: true,
           unpricedLeafIds: [],
         },
         isPending: false,
@@ -148,27 +149,48 @@ describe('DeliveryPlanDialog', () => {
     expect(screen.getByDisplayValue('50')).toBeInTheDocument();
   });
 
-  it('works for a money-blind PM: server package weights, no amounts, no per-leaf shares, no false Unpriced', async () => {
+  it('works for a money-blind PM: an even split with one quiet note, no amounts, no false Unpriced', async () => {
+    const user = userEvent.setup();
     const blindTree = [substructure, superstructure].map(moneyBlind);
     mocks.useBoqTree.mockReturnValue(loaded(blindTree));
+    // The server splits evenly for a caller without the cost tier (owner decision 2026-09-29).
+    mocks.useProposedPackageWeights.mockImplementation(
+      (_projectId: string, packages: { key: string; boqNodeIds: string[] }[]) => ({
+        data: {
+          projectId: 'p-1',
+          weights: packages.map((p) => ({ key: p.key, weight: 1 / packages.length })),
+          valueWeighted: false,
+          unpricedLeafIds: [],
+        },
+        isPending: false,
+      }),
+    );
     renderWithProviders(
       <DeliveryPlanDialog projectId="p-1" currency="USD" moneyHidden open onOpenChange={() => {}} />,
       { withToast: true },
     );
 
-    // 100,000 of 150,000 and 50,000 of 150,000 — the same as a reader who can see the amounts.
-    expect(await screen.findByDisplayValue('67')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('33')).toBeInTheDocument();
+    expect(await screen.findAllByDisplayValue('50')).toHaveLength(2);
+    expect(
+      screen.getByText(
+        'Weights are split evenly. Value-based weighting needs cost access — adjust the weights, or ask the Construction Director.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Unpriced')).not.toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
-    // The tree the browser holds carries no share of value to derive prices from.
     expect(JSON.stringify(blindTree)).not.toMatch(/valueShare|60000|40000|50000/);
-    // Only package groupings are sent for weighting.
-    const [, packages] = mocks.useProposedPackageWeights.mock.calls.at(-1)!;
-    expect(packages).toEqual([
-      { key: 'sec-1', boqNodeIds: ['leaf-1', 'leaf-2'] },
-      { key: 'sec-2', boqNodeIds: ['leaf-3'] },
-    ]);
+
+    // A weight the PM typed is kept.
+    const [first] = screen.getAllByDisplayValue('50');
+    await user.clear(first!);
+    await user.type(first!, '70');
+    expect(screen.getByDisplayValue('70')).toBeInTheDocument();
+  });
+
+  it('shows no even-split note when the weights are value-based', async () => {
+    renderWithProviders(<DeliveryPlanDialog projectId="p-1" currency="USD" open onOpenChange={() => {}} />, { withToast: true });
+    expect(await screen.findByDisplayValue('67')).toBeInTheDocument();
+    expect(screen.queryByText(/split evenly/)).not.toBeInTheDocument();
   });
 
   it('shows nothing to propose once every BOQ section is already fully allocated', () => {

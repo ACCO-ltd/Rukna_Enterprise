@@ -265,6 +265,12 @@ export function DeliveryPlanDialog({
                 </RefTable>
               </RefTableScroll>
 
+              {/* Without the cost tier the server splits evenly rather than by value (owner decision
+                  2026-09-29). One quiet line; weights the PM typed are kept either way. */}
+              {weights.data && !weights.data.valueWeighted ? (
+                <p className="mt-3 text-caption text-muted-foreground">{t('deliveryPlan.evenWeightsNote')}</p>
+              ) : null}
+
               <p className={`mt-3 text-caption ${totalWeightPercent > 100 ? 'text-warning' : 'text-muted-foreground'}`}>
                 {totalWeightPercent > 100
                   ? t('deliveryPlan.weightTotalOver', { total: totalWeightPercent })

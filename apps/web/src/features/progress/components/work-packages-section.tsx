@@ -56,6 +56,8 @@ export function WorkPackageEditor({
   const [allocating, setAllocating] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedWeightLine[] | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  // False when the server split evenly (no cost tier) rather than by BOQ value.
+  const [valueWeighted, setValueWeighted] = useState(true);
 
   const suggest = useSuggestWeights(projectId);
   const updateWp = useUpdateWorkPackage(projectId);
@@ -63,7 +65,10 @@ export function WorkPackageEditor({
   function handleSuggest() {
     setSuggestError(null);
     suggest.mutate(undefined, {
-      onSuccess: (res) => setSuggestions(res.weights),
+      onSuccess: (res) => {
+        setSuggestions(res.weights);
+        setValueWeighted(res.valueWeighted);
+      },
       onError: (e) =>
         setSuggestError(e instanceof ApiError ? e.message : t('workPackage.suggestFailed')),
     });
@@ -146,6 +151,9 @@ export function WorkPackageEditor({
       </div>
 
       {suggestError ? <Alert variant="error" messages={[suggestError]} /> : null}
+      {suggestions !== null && !valueWeighted ? (
+        <p className="text-caption text-muted-foreground">{t('workPackage.evenWeightsNote')}</p>
+      ) : null}
 
       {suggestions !== null ? (
         <div className="space-y-3 rounded-panel border border-border bg-surface-subtle p-4">
