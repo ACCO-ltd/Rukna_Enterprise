@@ -70,6 +70,12 @@ export { ChoiceCards } from './components/choice-cards';
 export type { ChoiceCardOption, ChoiceCardsProps } from './components/choice-cards';
 export { useDialogDismissGuard } from './lib/use-dialog-dismiss-guard';
 export type { DialogDismissGuard, DialogDismissGuardOptions } from './lib/use-dialog-dismiss-guard';
+export { ActivityTimeline } from './components/activity-timeline';
+export type {
+  ActivityTimelineEntry,
+  ActivityTimelineEntry as ActivityEntry,
+  ActivityTimelineProps,
+} from './components/activity-timeline';
 export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
@@ -208,14 +214,12 @@ export type {
   DocumentPaperTotalRow,
 } from './components/document-paper';
 export {
-  ActivityTimeline,
   DefinitionGrid,
   DocumentTabs,
   SummaryRail,
   TotalsBlock,
 } from './components/document-body';
 export type {
-  ActivityEntry,
   DefinitionFact,
   DocumentTab,
   TotalsRow,

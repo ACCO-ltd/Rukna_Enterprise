@@ -22,6 +22,7 @@ import { ArrowLeft, ClipboardCheck, Receipt, Signpost, Users } from 'lucide-reac
 import { FormErrorSummary } from '@/components/form-error-summary';
 
 import { Section, Specimen } from './gallery-chrome';
+import { RecordDialogSpecimen } from './record-dialog-specimen';
 
 interface DemoLine {
   id: string;
@@ -224,6 +225,7 @@ export function FormsSection() {
         />
       </Specimen>
 
+      <RecordDialogSpecimen />
     </Section>
   );
 }
