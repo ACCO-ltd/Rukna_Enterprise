@@ -64,7 +64,7 @@ export const ACCOUNTING_PERMISSIONS = {
    * existing `accountSubtype` turns a resolved control account into an AMBIGUOUS one — it can
    * block posting across every AR and AP screen. That is administrator work.
    */
-  manageChart: 'manage:account',
+  manageChart: 'manage:accounting',
   /** Create, submit, approve, post and reverse manual journals. */
   manageJournals: 'manage:journal',
   /** Post client invoices; post and allocate customer receipts. */
