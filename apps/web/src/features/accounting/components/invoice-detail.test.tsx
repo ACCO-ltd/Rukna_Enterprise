@@ -46,7 +46,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
     dueDate: '2026-10-18',
     clientId: 'client-1',
     sourceIpcId: null,
-    source: { kind: 'SEPARATE_CHARGE', label: 'shamiito', id: 'node-9' },
+    source: { kind: 'SEPARATE_CHARGE', label: 'Temporary site power', id: 'node-9' },
     projectId: 'proj-1',
     contractId: 'con-1',
     currencyCode: 'USD',
@@ -161,14 +161,14 @@ describe('InvoiceDetail — permission gating', () => {
 describe('InvoiceDetail — readable source', () => {
   it('reads a separate charge as "Separate charge · {description}", not a bare code', () => {
     mocks.useInvoice.mockReturnValue({
-      data: invoice({ source: { kind: 'SEPARATE_CHARGE', label: 'shamiito', id: 'node-9' } }),
+      data: invoice({ source: { kind: 'SEPARATE_CHARGE', label: 'Temporary site power', id: 'node-9' } }),
       isPending: false,
       isError: false,
     });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
 
-    expect(screen.getByText('Separate charge · shamiito')).toBeInTheDocument();
+    expect(screen.getByText('Separate charge · Temporary site power')).toBeInTheDocument();
   });
 
   it('falls back to the bare kind for a migration-loaded invoice with no source reference', () => {

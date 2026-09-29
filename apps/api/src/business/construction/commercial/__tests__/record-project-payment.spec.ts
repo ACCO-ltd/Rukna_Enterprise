@@ -10,6 +10,7 @@ import type { TransactionalAuditOutboxService } from '../../../../platform/audit
 import type { IAccountingPostingPort } from '../../../accounting/accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../../accounting/accounting-core/infrastructure/account.repository.js';
 import { PostingAccountResolver } from '../../../accounting/accounting-core/application/posting-account-resolver.service.js';
+import { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import { PaymentReceiptArRepository } from '../../../accounting/accounts-receivable/infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceRepository } from '../../../accounting/accounts-receivable/infrastructure/client-invoice.repository.js';
 import { CustomerReceiptService } from '../../../accounting/accounts-receivable/application/customer-receipt.service.js';
@@ -147,6 +148,7 @@ describe('CommercialBillingService.recordProjectPayment (Slice 5B)', () => {
       new AccountRepository(),
       new PostingAccountResolver(new AccountRepository()),
       failingPostingPort,
+      new DocumentSequenceRepository(),
     );
     failingService = new CommercialBillingService(
       tenancy,
@@ -256,6 +258,8 @@ describe('CommercialBillingService.recordProjectPayment (Slice 5B)', () => {
 
     const receipt = await prisma.paymentReceipt.findUniqueOrThrow({ where: { id: result.receiptId } });
     expect(receipt.postingStatus).toBe('POSTED');
+    // Numbered from the PAYMENT_RECEIPT sequence in the posting transaction.
+    expect(receipt.receiptNumber).toMatch(/^RCP-\d{6}$/);
     expect(receipt.allocatedAmount.toFixed(2)).toBe('40000.00');
     expect(receipt.unallocatedAmount.toFixed(2)).toBe('0.00');
   });

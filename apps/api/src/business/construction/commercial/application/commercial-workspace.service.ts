@@ -606,7 +606,7 @@ export class CommercialWorkspaceService {
       ...data.allocations.map((a) => ({
         date: a.allocationDate,
         kind: 'RECEIPT' as const,
-        reference: a.receipt.bankReference ?? a.receipt.reference ?? null,
+        reference: a.receipt.receiptNumber ?? a.receipt.bankReference ?? a.receipt.reference ?? null,
         description: `Payment against ${numberOf.get(a.clientInvoiceId) ?? 'invoice'}`,
         amount: dec(a.allocatedAmount),
         sequence: seq++,

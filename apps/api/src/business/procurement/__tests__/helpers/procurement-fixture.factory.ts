@@ -33,7 +33,9 @@ export interface ProcurementTestEnv {
 
 export class ProcurementFixtureFactory {
   static async create(prisma: PrismaClient): Promise<ProcurementTestEnv> {
-    const suffix = `p${Date.now().toString(36)}`;
+    // Timestamp alone collides when sibling suites (a14-bill-matching, rec) hit
+    // beforeAll in the same millisecond under parallel workers; add randomness.
+    const suffix = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const orgId = `proc-org-${suffix}`;
     const userId = `${orgId}-user`;
 

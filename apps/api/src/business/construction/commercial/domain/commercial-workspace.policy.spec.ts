@@ -12,6 +12,7 @@ import {
   overdueDays,
   parsePaymentTermsDays,
   rankTodo,
+  redateForIssue,
   resolveInvoiceDates,
   shortContractRef,
   taxLabelFor,
@@ -290,5 +291,23 @@ describe('commercial-workspace.policy — client statement', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ debit: null, credit: null, balance: null, reference: 'INV-1' });
     expect(closingBalance).toBeNull();
+  });
+});
+
+describe('commercial-workspace.policy — a late draft is dated the day it is issued', () => {
+  const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
+  const today = new Date('2026-10-20T15:30:00Z');
+
+  it('moves the invoice date to today and the due date by the same days (terms kept)', () => {
+    expect(redateForIssue(d('2026-09-28'), d('2026-10-28'), today)).toEqual({
+      invoiceDate: d('2026-10-20'),
+      dueDate: d('2026-11-19'),
+    });
+  });
+
+  it('leaves a draft dated today (or later) alone, and copes with no due date', () => {
+    expect(redateForIssue(d('2026-10-20'), d('2026-11-19'), today)).toBeNull();
+    expect(redateForIssue(d('2026-10-25'), null, today)).toBeNull();
+    expect(redateForIssue(d('2026-10-01'), null, today)).toEqual({ invoiceDate: d('2026-10-20'), dueDate: null });
   });
 });

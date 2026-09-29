@@ -108,17 +108,10 @@ ADR-030 has an amendment dated 2026-09-28, and api-reference §6.9b documents th
 
 ### Open
 
-- **Receipt numbers.** `PaymentReceipt` has no document number; the Payments list shows the bank
-  reference. Needs a migration + sequence (backend).
 - **Local ledger.** The local `rukna_acco` tenant has no chart of accounts, open period or document
   sequences, so Issue / Send / Record payment were browser-checked with patched API responses; the
   commands themselves are covered by `commercial-prepare-issue.db.spec.ts` (real DB).
 - **`deliveries[].sentBy`** is still a user id.
-- **Issue date of a late draft (owner decision).** A draft keeps the invoice date it was prepared
-  with, and Issue posts on that date. A draft issued weeks later posts into the earlier period (or is
-  refused if that period is closed). Alternative: Issue re-dates the invoice to the day it is issued.
-- **"shamiito" test lines.** Not in any seed file on `main` — they are rows in a database (entered
-  by hand or by an earlier script). Removing them is a data clean-up on that environment, not code.
 - **Date stages** have no raise blocker (`installmentBillingBlocker` unchanged), so Prepare accepts
   one early; the page keeps it Upcoming ("Expected {date}", server day) and out of To do until due.
 - **Contract-changes switcher at 375px** scrolls horizontally inside its track (design-system
@@ -134,3 +127,20 @@ ADR-030 has an amendment dated 2026-09-28, and api-reference §6.9b documents th
 - Patched responses: overdue + part-paid invoices, a $50,000 payment split oldest-first across two
   invoices, invoice page Issued / Sent / Paid, money-blind view (no commands, hidden amounts),
   keyboard focus returning to the opener after Escape / Cancel.
+
+### Follow-ups done (2026-09-28, after #235)
+
+- **Receipt numbers.** `payment_receipts.receipt_number` (migration `20260928140000_payment_receipt_number`),
+  unique per organisation. A receipt is numbered `RCP-000123` from the PAYMENT_RECEIPT sequence in the
+  transaction that posts it (both `post` and `createAndPost`); the migration numbers receipts already
+  posted, in posting order, and advances the sequence past them. The Payments list and the client
+  statement show it. `post` now marks the receipt posted inside its transaction (it used the outer
+  client).
+- **Late drafts (owner decision: re-date).** Issue dates an invoice the day it is issued: a draft
+  prepared earlier moves to the issue day and its due date moves by the same days (terms kept), so it
+  posts in the current period. The deprecated `issue-package` route keeps the date the user chose.
+- **"shamiito".** Not in any local database or seed. The name was only a test fixture / code-comment
+  example (now "Temporary site power"). If it exists on production it is a separate-charge BOQ line
+  someone typed; find it with
+  `SELECT id, code, description FROM boq_nodes WHERE description ILIKE '%shamiito%';` and remove or
+  rename it in the BOQ (an invoice already issued against it must be credited, not deleted).

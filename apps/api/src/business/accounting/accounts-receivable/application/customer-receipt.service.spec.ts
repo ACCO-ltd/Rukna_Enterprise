@@ -53,6 +53,7 @@ function build(invoice: unknown) {
     accountRepo as never,
     resolver as never,
     postingPort as never,
+    { ensureSequence: jest.fn(), claimNext: jest.fn().mockResolvedValue({ formattedNumber: 'RCP-000001', rawNumber: 1 }) } as never,
   );
   return { service, accountRepo };
 }

@@ -532,12 +532,12 @@ describe('findById — readable source (detail read path)', () => {
       sourceIpcId: null,
       sourceIpc: null,
       sourceBoqNodeId: 'node-9',
-      sourceBoqNode: { id: 'node-9', code: '11', description: 'shamiito' },
+      sourceBoqNode: { id: 'node-9', code: '11', description: 'Temporary site power' },
     });
 
     const result = await service.findById(identity, 'inv-1');
 
-    expect(result.source).toEqual({ kind: 'SEPARATE_CHARGE', label: 'shamiito', id: 'node-9' });
+    expect(result.source).toEqual({ kind: 'SEPARATE_CHARGE', label: 'Temporary site power', id: 'node-9' });
     // The raw relation objects are internal — the DTO carries only the resolved `source`.
     expect(result).not.toHaveProperty('sourceBoqNode');
     expect(result).not.toHaveProperty('sourceInstallment');

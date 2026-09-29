@@ -160,6 +160,27 @@ export function resolveInvoiceDates(
   return { invoiceDate, dueDate, termsDays, error };
 }
 
+/**
+ * Owner decision (2026-09-28): an invoice is dated the day it is issued. A draft prepared earlier and
+ * issued later moves to the issue day, and its due date moves by the same number of days so the
+ * client keeps the payment terms it was prepared with. It then posts on the issue day (the posting
+ * uses the invoice's own date) instead of landing in a past — possibly closed — period.
+ * Returns null when the draft is already dated today or later (nothing to change).
+ */
+export function redateForIssue(
+  invoiceDate: Date,
+  dueDate: Date | null,
+  today: Date,
+): { invoiceDate: Date; dueDate: Date | null } | null {
+  const day = (d: Date) => Date.parse(d.toISOString().slice(0, 10) + 'T00:00:00Z');
+  const shift = day(today) - day(invoiceDate);
+  if (shift <= 0) return null;
+  return {
+    invoiceDate: new Date(day(today)),
+    dueDate: dueDate ? new Date(day(dueDate) + shift) : null,
+  };
+}
+
 // ─── To do ranking ───────────────────────────────────────────────────────────────
 
 const KIND_ORDER: Record<CommercialTodoKind, number> = {

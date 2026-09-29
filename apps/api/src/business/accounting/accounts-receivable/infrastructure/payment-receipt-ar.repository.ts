@@ -58,10 +58,12 @@ export class PaymentReceiptArRepository {
     postedBy: string,
     allocatedAmount: Decimal,
     unallocatedAmount: Decimal,
+    receiptNumber: string,
   ) {
     return prisma.paymentReceipt.update({
       where: { id },
       data: {
+        receiptNumber,
         postingStatus: 'POSTED',
         postedJournalEntryId: journalEntryId,
         postedAt: new Date(),

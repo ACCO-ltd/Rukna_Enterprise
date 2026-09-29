@@ -44,7 +44,7 @@ import {
   installmentBillingBlockerMessage,
 } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
-import { isUnposted, resolveInvoiceDates } from '../domain/commercial-workspace.policy.js';
+import { isUnposted, redateForIssue, resolveInvoiceDates } from '../domain/commercial-workspace.policy.js';
 
 const ZERO = new Decimal(0);
 
@@ -853,7 +853,7 @@ export class CommercialBillingService {
     if (pending.length > 0) {
       await prisma.$transaction(
         async (tx) => {
-          await this.issueDrafts(identity, pending, tx);
+          await this.issueDrafts(identity, pending, tx, { redateToToday: true });
           await this.auditOutbox.record(tx, {
             organizationId: orgId,
             actorUserId: identity.userId,
@@ -1470,8 +1470,20 @@ export class CommercialBillingService {
     identity: RequestIdentity,
     drafts: PackageInvoice[],
     tx: Prisma.TransactionClient,
+    // Only the Issue command re-dates: its drafts may have waited. The deprecated issue-package
+    // route creates and issues in one step with the date the user chose, which stands.
+    opts: { redateToToday?: boolean } = {},
   ): Promise<void> {
+    const today = new Date();
     for (const draft of drafts) {
+      // Dated the day it is issued (owner decision); the post below reads these dates through `tx`.
+      const dates = opts.redateToToday
+        ? await this.repo.findDraftDates(tx as never, identity.activeOrganizationId, draft.id)
+        : null;
+      const redated = dates ? redateForIssue(dates.invoiceDate, dates.dueDate, today) : null;
+      if (redated) {
+        await this.repo.redateDraft(tx as never, identity.activeOrganizationId, draft.id, redated.invoiceDate, redated.dueDate);
+      }
       await this.clientInvoiceService.refreshBrandingSnapshot(identity, draft.id, tx);
       if (draft.documentStatus === 'DRAFT') {
         await this.clientInvoiceService.approve(identity, draft.id, tx);

@@ -199,8 +199,8 @@ describe('toClientReceivableView', () => {
   });
 
   it('composes the SEPARATE_CHARGE kind with its BOQ leaf description', () => {
-    const row = makeInvoiceRow({ source: { kind: 'SEPARATE_CHARGE', label: 'shamiito', id: 'node-9' } });
-    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('Separate charge · shamiito');
+    const row = makeInvoiceRow({ source: { kind: 'SEPARATE_CHARGE', label: 'Temporary site power', id: 'node-9' } });
+    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('Separate charge · Temporary site power');
   });
 
   it('falls back to the bare kind word when source.label is null', () => {
