@@ -870,5 +870,47 @@
       "colVariance": "Variance",
       "cfoApproval": "The migration reports itself ready for CFO approval. That is advisory — there is no approval step in the system, so the sign-off happens outside it."
     }
+  },
+  "guide": {
+    "title": "Get started",
+    "description": "The accounting cycle, cycle by cycle. Each step is checked against your live data — do the highlighted next step, and the rest follows.",
+    "notReadyNote": "Finish setup below before daily posting, month-end or year-end open up.",
+    "readyNote": "Setup is complete — the ledger can accept postings. This page stays here as a launchpad; the sections you use every day are one tab away.",
+    "loadFailed": "Could not load the guide.",
+    "retry": "Try again",
+    "openStep": "Open",
+    "lockedCycle": "Finish setup first",
+    "cycleStatus": {
+      "LOCKED": "Locked",
+      "IN_PROGRESS": "In progress",
+      "READY": "Ready",
+      "ATTENTION": "Needs attention",
+      "DONE": "Done"
+    },
+    "stepStatus": {
+      "DONE": "Done",
+      "NEXT": "Do this next",
+      "TODO": "To do",
+      "BLOCKED": "Blocked",
+      "ATTENTION": "Needs attention",
+      "RESTRICTED": "Handled by another role",
+      "NA": "Not applicable"
+    },
+    "attentionCount": "{count, plural, =1 {1 item awaits you} other {# items await you}}",
+    "strip": {
+      "label": "Accounting cycle",
+      "noPeriod": "No open period",
+      "noPeriodHint": "Open a fiscal period before posting.",
+      "period": "Period",
+      "clear": "Nothing awaits you",
+      "awaiting": "{count, plural, =1 {1 item awaits you} other {# items await you}}",
+      "openGuide": "Get started"
+    },
+    "hint": {
+      "attention": "{count, plural, =0 {Items on this screen need action} =1 {1 item here needs action} other {# items here need action}}",
+      "next": "This is your next step in the accounting cycle.",
+      "dismiss": "Dismiss",
+      "open": "Open guide"
+    }
   }
 }
