@@ -9,13 +9,20 @@ import { MaterialCategoryService } from './application/material-category.service
 import { SpendCategoryService } from './application/spend-category.service.js';
 import { MaterialService } from './application/material.service.js';
 import { UomController } from './presentation/uom.controller.js';
+import { UnitsOfMeasureController } from './presentation/units-of-measure.controller.js';
 import { MaterialCategoryController } from './presentation/material-category.controller.js';
 import { SpendCategoryController } from './presentation/spend-category.controller.js';
 import { MaterialController } from './presentation/material.controller.js';
 
 @Module({
   imports: [TenancyModule],
-  controllers: [UomController, MaterialCategoryController, SpendCategoryController, MaterialController],
+  controllers: [
+    UomController,
+    UnitsOfMeasureController,
+    MaterialCategoryController,
+    SpendCategoryController,
+    MaterialController,
+  ],
   providers: [
     UomRepository,
     MaterialCategoryRepository,

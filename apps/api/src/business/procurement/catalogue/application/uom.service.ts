@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import type { RequestIdentity, UnitOfMeasureLookupStatus, UnitOfMeasureOption } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { UomRepository } from '../infrastructure/uom.repository.js';
 
@@ -19,6 +19,18 @@ export class UomService {
   findAll(identity: RequestIdentity) {
     const prisma = this.tenancy.getClient();
     return this.repo.findAll(prisma, identity.activeOrganizationId, 'ACTIVE');
+  }
+
+  /**
+   * The registry as a lookup for any member of the organization (`GET /units-of-measure`). Scoped
+   * to the caller's active organization like every other read here; returns the projection only.
+   */
+  listLookup(
+    identity: RequestIdentity,
+    status: UnitOfMeasureLookupStatus = 'ACTIVE',
+  ): Promise<UnitOfMeasureOption[]> {
+    const prisma = this.tenancy.getClient();
+    return this.repo.findLookup(prisma, identity.activeOrganizationId, status);
   }
 
   async findById(identity: RequestIdentity, id: string) {
