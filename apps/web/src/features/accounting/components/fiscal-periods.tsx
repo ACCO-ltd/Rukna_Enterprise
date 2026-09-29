@@ -60,7 +60,7 @@ export function FiscalPeriods() {
 
   return (
     <div className="space-y-6">
-      {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+      {can(ACCOUNTING_PERMISSIONS.manageYearEnd) ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" onClick={() => setCreating(true)}>
             {t('create.new')}

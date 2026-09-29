@@ -32,6 +32,14 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
   listFiscalYears: vi.fn(),
 }));
 
+// The balance sheet and ledger drill into the ledger / journals, so they call `useRouter`, and
+// the ledger reads `useSearchParams` to prefill from a drill-down link. The test harness does
+// not mount the app router; mock it, as the journal and invoice tests do.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 function account(): Account {
   return {
     id: 'acc-bank',

@@ -91,6 +91,7 @@
     "APPROVED": "Approved",
     "REJECTED": "Rejected",
     "ACTIVE": "Active",
+    "RELEASED": "Released",
     "PARTIALLY_ORDERED": "Partially ordered",
     "FULLY_ORDERED": "Fully ordered",
     "POSTED": "Posted",
@@ -735,10 +736,17 @@
       "MOBILE_MONEY": "Mobile money"
     },
     "approve": "Approve",
+    "release": "Release",
     "post": "Post",
     "reverse": "Reverse",
     "approveTitle": "Approve this payment?",
-    "approveBody": "Approving clears the payment for posting. There is no reject action over the API, so this cannot be undone from the UI.",
+    "approveBody": "Approving clears the payment for release. There is no reject action over the API, so this cannot be undone from the UI.",
+    "releaseTitle": "Sign to release this payment?",
+    "releaseBody": "The bank account this payment draws on is under dual control: two authorised signatories must sign before it can be posted. Signing records your signature; the second signature releases the payment for posting. The approver cannot also release, and a signatory who approved a bill this payment settles cannot sign.",
+    "releaseDualControlNote": "This payment draws on a bank account under dual control (ADR-022). It must be released by two authorised signatories before it can be posted.",
+    "releaseNotSignatory": "You are not an authorised signatory of this payment's bank account, or signing would breach segregation of duties. Another signatory must release it.",
+    "releaseAlreadySigned": "You have already signed the release for this payment. A second, different signatory is needed.",
+    "released": "Released for posting.",
     "postTitle": "Post this payment to the general ledger?",
     "postBody": "This writes the journal below. It can only be undone by a reversal.",
     "postPreview": "Journal to be written",
@@ -753,10 +761,23 @@
     "blockReason": {
       "not-draft": "Only a draft payment can be approved.",
       "not-approved": "The payment has to be approved before it can be posted.",
+      "not-approved-for-release": "Only an approved payment can be released.",
+      "already-released": "This payment has already been released.",
+      "not-released": "This payment must be released by two signatories before it can be posted.",
       "already-posted": "This payment is already posted.",
       "not-posted": "Only a posted payment can be reversed.",
       "already-reversed": "This payment has already been reversed.",
       "has-allocations": "Reverse the advance allocations against this payment first."
+    },
+    "list": {
+      "search": "Search payments",
+      "searchPlaceholder": "Payment number, supplier, reference",
+      "count": "{count, plural, =0 {No payments} one {# payment} other {# payments}}",
+      "noMatches": "No payment matches these filters.",
+      "filterByStatus": "Status",
+      "filterByPosting": "Posting",
+      "emptyHint": "A payment records money paid to a supplier and how it settles against their bills.",
+      "colTotal": "Amount"
     }
   },
   "allocation": {

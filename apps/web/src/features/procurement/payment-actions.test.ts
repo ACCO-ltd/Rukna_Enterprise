@@ -6,6 +6,7 @@ import {
   availablePaymentActions,
   bankAccountLabel,
   canPost,
+  canRelease,
   canReverse,
   payableBankAccounts,
   paymentBlockReason,
@@ -128,29 +129,69 @@ describe('bankAccountLabel', () => {
 });
 
 describe('payment lifecycle gates', () => {
-  it('walks DRAFT → APPROVED → POSTED, one action at a time', () => {
-    expect(availablePaymentActions(payment({ documentStatus: 'DRAFT' }))).toEqual(['approve']);
-    expect(availablePaymentActions(payment({ documentStatus: 'APPROVED' }))).toEqual(['post']);
+  // No dual control: the account behind the payment has no signatories, so release does not
+  // apply and APPROVED posts directly.
+  const NO_DUAL = false;
+  const DUAL = true;
+
+  it('walks DRAFT → APPROVED → POSTED, one action at a time, without dual control', () => {
+    expect(availablePaymentActions(payment({ documentStatus: 'DRAFT' }), NO_DUAL)).toEqual([
+      'approve',
+    ]);
+    expect(availablePaymentActions(payment({ documentStatus: 'APPROVED' }), NO_DUAL)).toEqual([
+      'post',
+    ]);
     expect(
-      availablePaymentActions(payment({ documentStatus: 'APPROVED', postingStatus: 'POSTED' })),
+      availablePaymentActions(
+        payment({ documentStatus: 'APPROVED', postingStatus: 'POSTED' }),
+        NO_DUAL,
+      ),
     ).toEqual(['reverse']);
   });
 
+  it('inserts release between approve and post under dual control', () => {
+    // APPROVED under dual control offers Release, not Post.
+    expect(availablePaymentActions(payment({ documentStatus: 'APPROVED' }), DUAL)).toEqual([
+      'release',
+    ]);
+    // Post is blocked until the payment is RELEASED.
+    expect(canPost(payment({ documentStatus: 'APPROVED' }), DUAL)).toBe(false);
+    expect(paymentBlockReason(payment({ documentStatus: 'APPROVED' }), 'post', DUAL)).toBe(
+      'not-released',
+    );
+    // Once RELEASED, Post is available.
+    expect(availablePaymentActions(payment({ documentStatus: 'RELEASED' }), DUAL)).toEqual([
+      'post',
+    ]);
+    expect(canPost(payment({ documentStatus: 'RELEASED' }), DUAL)).toBe(true);
+  });
+
+  it('offers release only on an APPROVED payment under dual control', () => {
+    expect(canRelease(payment({ documentStatus: 'APPROVED' }), DUAL)).toBe(true);
+    // Without dual control, release never applies.
+    expect(canRelease(payment({ documentStatus: 'APPROVED' }), NO_DUAL)).toBe(false);
+    // A DRAFT cannot be released.
+    expect(canRelease(payment({ documentStatus: 'DRAFT' }), DUAL)).toBe(false);
+    expect(paymentBlockReason(payment({ documentStatus: 'RELEASED' }), 'release', DUAL)).toBe(
+      'already-released',
+    );
+  });
+
   it('offers post again after a FAILED attempt', () => {
-    expect(canPost(payment({ postingStatus: 'FAILED' }))).toBe(true);
+    expect(canPost(payment({ postingStatus: 'FAILED' }), NO_DUAL)).toBe(true);
   });
 
   /** Same divergence as bills and invoices: the server would re-post a REVERSED payment. */
   it('refuses to re-post a REVERSED payment, unlike the server', () => {
     const reversed = payment({ postingStatus: 'REVERSED' });
 
-    expect(canPost(reversed)).toBe(false);
-    expect(paymentBlockReason(reversed, 'post')).toBe('already-reversed');
+    expect(canPost(reversed, NO_DUAL)).toBe(false);
+    expect(paymentBlockReason(reversed, 'post', NO_DUAL)).toBe('already-reversed');
   });
 
   it('only offers reverse on a posted payment', () => {
     expect(canReverse(payment({ postingStatus: 'POSTED' }))).toBe(true);
-    expect(paymentBlockReason(payment({ postingStatus: 'NOT_POSTED' }), 'reverse')).toBe(
+    expect(paymentBlockReason(payment({ postingStatus: 'NOT_POSTED' }), 'reverse', NO_DUAL)).toBe(
       'not-posted',
     );
   });

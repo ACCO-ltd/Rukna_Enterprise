@@ -28,6 +28,14 @@ export interface ImportCoaRow extends CreateAccountDto {
   // same shape; batch import uses this type
 }
 
+export interface UpdateAccountInput {
+  name?: string;
+  isPostingAllowed?: boolean;
+  /** Parent account code; '' or null detaches. Undefined leaves the parent unchanged. */
+  parentAccountCode?: string | null;
+  changeReason?: string;
+}
+
 export interface ImportCoaResult {
   created: number;
   updated: number;
@@ -74,6 +82,69 @@ export class AccountService {
         effectiveFrom: new Date(dto.effectiveFrom),
         changedBy: userId,
       },
+    });
+  }
+
+  /**
+   * Edit a GL account (rename / re-parent / toggle posting-allowed) by superseding its current
+   * AccountVersion with a new effective-dated one. The prior version's effectiveTo is closed to the
+   * new version's effectiveFrom IN THE SAME TRANSACTION — otherwise two open-ended versions would
+   * overlap and the account_versions non-overlap exclusion constraint rejects the write. Posted
+   * journal lines keep their name snapshot, so history is untouched.
+   */
+  async update(identity: RequestIdentity, id: string, dto: UpdateAccountInput) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const account = await this.repo.findById(prisma, orgId, id);
+    if (!account) throw new NotFoundException(`Account ${id} not found`);
+    const current = account.versions[0];
+    if (!current) throw new NotFoundException(`Account ${id} has no version to edit`);
+
+    let parentAccountId: string | undefined = current.parentAccountId ?? undefined;
+    if (dto.parentAccountCode !== undefined) {
+      if (!dto.parentAccountCode) {
+        parentAccountId = undefined; // detach
+      } else {
+        const parent = await this.repo.findByCode(prisma, orgId, dto.parentAccountCode);
+        if (!parent) throw new NotFoundException(`Parent account ${dto.parentAccountCode} not found`);
+        if (parent.id === id) throw new ConflictException('An account cannot be its own parent');
+        parentAccountId = parent.id;
+      }
+    }
+
+    const name = dto.name ?? current.name;
+    const isPostingAllowed = dto.isPostingAllowed ?? current.isPostingAllowed;
+
+    const unchanged =
+      name === current.name &&
+      isPostingAllowed === current.isPostingAllowed &&
+      parentAccountId === (current.parentAccountId ?? undefined);
+    if (unchanged) return account;
+
+    const effectiveFrom = new Date();
+
+    return prisma.$transaction(async (tx) => {
+      // Close the current version so the non-overlap exclusion constraint holds.
+      await tx.accountVersion.update({
+        where: { id: current.id },
+        data: { effectiveTo: effectiveFrom },
+      });
+      await this.repo.addVersion(tx as never, id, {
+        versionNumber: current.versionNumber + 1,
+        name,
+        parentAccountId,
+        accountClass: current.accountClass,
+        accountSubtype: current.accountSubtype,
+        isPostingAllowed,
+        isControlAccount: current.isControlAccount,
+        controlledSubledgerType: current.controlledSubledgerType ?? undefined,
+        controlPostingPolicy: current.controlPostingPolicy,
+        effectiveFrom,
+        changedBy: userId,
+        changeReason: dto.changeReason ?? 'Account edited',
+      });
+      return this.repo.findById(tx as never, orgId, id);
     });
   }
 

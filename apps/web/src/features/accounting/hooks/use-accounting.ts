@@ -14,6 +14,7 @@ import {
   closePeriod,
   configureBankAccount,
   createAccount,
+  importChartOfAccounts,
   createFiscalYear,
   getAccountLedger,
   getBalanceSheet,
@@ -23,6 +24,7 @@ import {
   reopenPeriod,
   runOpeningBalance,
   runReconciliation,
+  updateAccount,
   createJournal,
   getFiscalYear,
   getJournal,
@@ -43,7 +45,7 @@ import {
   submitJournal,
 } from '../api/accounting-api';
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
-import type { CreateAccountBody } from '../coa-setup';
+import type { CreateAccountBody, UpdateAccountBody } from '../coa-setup';
 import type { ProjectFinancialPositionResponse } from '@erp/types';
 
 import type { OpeningBalanceBody } from '../opening-balance';
@@ -137,6 +139,45 @@ export function useCreateAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateAccountBody) => createAccount(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
+      void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
+    },
+  });
+}
+
+/**
+ * Editing an account invalidates the same surfaces as creating one, and for the same reason.
+ *
+ * A rename changes what every report and ledger prints for the account, and turning posting off
+ * (or re-parenting) changes what the journal editor's account picker offers and what the reports
+ * roll up — so the chart and the trial balance are both invalidated, exactly as `useCreateAccount`
+ * does. Narrower invalidation would leave a stale name or a stale posting flag on screen.
+ */
+export function useUpdateAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAccountBody }) => updateAccount(id, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
+      void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
+    },
+  });
+}
+
+/**
+ * Bulk-importing the chart invalidates the same as a single create, for the same reason.
+ *
+ * An import can add many accounts at once, and adding an account with a subtype that already
+ * resolves a control role turns that role AMBIGUOUS — which gates Post across every AR and AP
+ * screen. So the chart and every report drawn from it are invalidated, exactly as
+ * `useCreateAccount` does, rather than a narrower key that would leave a stale chart offering
+ * Post the import has just blocked.
+ */
+export function useImportChartOfAccounts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (accounts: CreateAccountBody[]) => importChartOfAccounts(accounts),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });

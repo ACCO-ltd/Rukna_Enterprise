@@ -8,18 +8,27 @@ import type { SupplierPayment, PostSupplierPaymentPayload } from './types';
 /**
  * ─── What a supplier payment will let you do ────────────────────────────────────
  *
- * Sibling of `bill-actions.ts`, and a step shorter — a payment has no SUBMITTED state:
+ * Sibling of `bill-actions.ts`. A payment has no SUBMITTED state, but under bank-signatory
+ * dual control (ADR-022 CONST-DOA-005) it gains a RELEASE step between APPROVED and POSTED:
  *
- *   DRAFT ──approve──▶ APPROVED ──post──▶ (POSTED) ──reverse──▶ (REVERSED)
+ *   without dual control:  DRAFT ─approve─▶ APPROVED ───────────────post─▶ (POSTED) ─reverse─▶ (REVERSED)
+ *   under dual control:     DRAFT ─approve─▶ APPROVED ─release×2─▶ RELEASED ─post─▶ (POSTED) ─reverse─▶ (REVERSED)
  *
- * The parenthesised states are `postingStatus`; the rest are `documentStatus`.
+ * "Under dual control" is a property of the payment's *bank account* — it has ≥1 active
+ * signatory. The frontend cannot read that from the payment (the response carries no signatory
+ * count), so every guard that depends on it takes an explicit `underDualControl` flag the
+ * action bar derives from the account's signatory list. The parenthesised states are
+ * `postingStatus`; the rest are `documentStatus`.
  */
 
-export type PaymentAction = 'approve' | 'post' | 'reverse';
+export type PaymentAction = 'approve' | 'release' | 'post' | 'reverse';
 
 export type PaymentBlockReason =
   | 'not-draft'
   | 'not-approved'
+  | 'not-approved-for-release'
+  | 'already-released'
+  | 'not-released'
   | 'already-posted'
   | 'not-posted'
   | 'already-reversed'
@@ -30,19 +39,31 @@ export function canApprove(payment: SupplierPayment): boolean {
   return payment.documentStatus === 'DRAFT';
 }
 
+/**
+ * `supplier-payment.service.ts:214` — release requires APPROVED, and is only meaningful when the
+ * payment's bank account is under dual control. Whether *this* user may sign (signatory, not the
+ * approver, no SoD conflict) is enforced server-side and surfaced as a 403 — this only decides
+ * whether the action is offered at all.
+ */
+export function canRelease(payment: SupplierPayment, underDualControl: boolean): boolean {
+  return underDualControl && payment.documentStatus === 'APPROVED';
+}
+
 const POSTABLE_STATUSES: readonly SupplierPayment['postingStatus'][] = ['NOT_POSTED', 'FAILED'];
 
 /**
- * `supplier-payment.service.ts:117,120`.
+ * `supplier-payment.service.ts:280-289`.
  *
- * Stricter than the server on `postingStatus`, exactly as `canPost` is for bills and invoices:
- * the server rejects only POSTED, so a REVERSED payment passes its guard and can be posted a
- * second time. Do not relax this — fix the server.
+ * Under dual control the payment must reach RELEASED before it can post; without it, APPROVED is
+ * enough. Stricter than the server on `postingStatus`, exactly as `canPost` is for bills and
+ * invoices: the server rejects only POSTED, so a REVERSED payment passes its guard and can be
+ * posted a second time. Do not relax this — fix the server.
  */
-export function canPost(payment: SupplierPayment): boolean {
-  return (
-    payment.documentStatus === 'APPROVED' && POSTABLE_STATUSES.includes(payment.postingStatus)
-  );
+export function canPost(payment: SupplierPayment, underDualControl: boolean): boolean {
+  const documentReady = underDualControl
+    ? payment.documentStatus === 'RELEASED'
+    : payment.documentStatus === 'APPROVED';
+  return documentReady && POSTABLE_STATUSES.includes(payment.postingStatus);
 }
 
 /**
@@ -58,10 +79,14 @@ export function canReverse(payment: SupplierPayment): boolean {
   return payment.postingStatus === 'POSTED';
 }
 
-export function availablePaymentActions(payment: SupplierPayment): PaymentAction[] {
+export function availablePaymentActions(
+  payment: SupplierPayment,
+  underDualControl: boolean,
+): PaymentAction[] {
   const actions: PaymentAction[] = [];
   if (canApprove(payment)) actions.push('approve');
-  if (canPost(payment)) actions.push('post');
+  if (canRelease(payment, underDualControl)) actions.push('release');
+  if (canPost(payment, underDualControl)) actions.push('post');
   if (canReverse(payment)) actions.push('reverse');
   return actions;
 }
@@ -69,15 +94,24 @@ export function availablePaymentActions(payment: SupplierPayment): PaymentAction
 export function paymentBlockReason(
   payment: SupplierPayment,
   action: PaymentAction,
+  underDualControl: boolean,
 ): PaymentBlockReason | null {
   switch (action) {
     case 'approve':
       return canApprove(payment) ? null : 'not-draft';
 
+    case 'release': {
+      if (canRelease(payment, underDualControl)) return null;
+      if (payment.documentStatus === 'RELEASED') return 'already-released';
+      return 'not-approved-for-release';
+    }
+
     case 'post': {
-      if (canPost(payment)) return null;
+      if (canPost(payment, underDualControl)) return null;
       if (payment.postingStatus === 'POSTED') return 'already-posted';
       if (payment.postingStatus === 'REVERSED') return 'already-reversed';
+      // Under dual control an APPROVED-but-not-RELEASED payment is blocked on the release step.
+      if (underDualControl && payment.documentStatus === 'APPROVED') return 'not-released';
       return 'not-approved';
     }
 

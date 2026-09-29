@@ -1,13 +1,17 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Card, CardHeader, CardTitle, DatePicker, FilterBar, FilterField } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useBalanceSheet } from '../hooks/use-accounting';
-import type { BalanceSheetSection } from '../types';
+import { exportCsv, reportFilename } from '../lib/export-csv';
+import { ledgerHref } from '../lib/report-links';
+import type { BalanceSheet, BalanceSheetSection } from '../types';
+import { ReportActions } from './report-actions';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -18,6 +22,7 @@ export function BalanceSheetReport() {
   const tCommon = useTranslations('accounting.common');
   const tShared = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
+  const router = useRouter();
 
   const [asOfDate, setAsOfDate] = useState(today);
   const [comparativeDate, setComparativeDate] = useState('');
@@ -25,25 +30,40 @@ export function BalanceSheetReport() {
   const report = useBalanceSheet(asOfDate, comparativeDate || undefined);
   const comparing = Boolean(comparativeDate) && Boolean(report.data?.comparativeDate);
 
+  const hasLines =
+    (report.data?.assets.lines.length ?? 0) +
+      (report.data?.liabilities.lines.length ?? 0) +
+      (report.data?.equity.lines.length ?? 0) >
+    0;
+
+  const handleExport = () => {
+    if (!report.data) return;
+    exportBalanceSheet(report.data, asOfDate, comparing, t);
+  };
+
   return (
     <div className="space-y-6">
-      <FilterBar>
-        <FilterField id="bs-date" label={tCommon('asOfDate')}>
-          <DatePicker
-            id="bs-date"
-            value={asOfDate}
-            onChange={(value) => setAsOfDate(value)}
-          />
-        </FilterField>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <FilterBar>
+          <FilterField id="bs-date" label={tCommon('asOfDate')}>
+            <DatePicker
+              id="bs-date"
+              value={asOfDate}
+              onChange={(value) => setAsOfDate(value)}
+            />
+          </FilterField>
 
-        <FilterField id="bs-comparative" label={t('comparativeLabel')}>
-          <DatePicker
-            id="bs-comparative"
-            value={comparativeDate}
-            onChange={(value) => setComparativeDate(value)}
-          />
-        </FilterField>
-      </FilterBar>
+          <FilterField id="bs-comparative" label={t('comparativeLabel')}>
+            <DatePicker
+              id="bs-comparative"
+              value={comparativeDate}
+              onChange={(value) => setComparativeDate(value)}
+            />
+          </FilterField>
+        </FilterBar>
+
+        <ReportActions onExport={handleExport} exportDisabled={!hasLines} />
+      </div>
 
       {report.isPending ? (
         <div role="status" aria-live="polite">
@@ -80,11 +100,10 @@ export function BalanceSheetReport() {
             {tCommon('generatedAt', {
               timestamp: formatDate(report.data.generatedAt, locale) ?? report.data.generatedAt,
             })}
+            {hasLines ? ` · ${t('drillHint')}` : ''}
           </p>
 
-          {report.data.assets.lines.length === 0 &&
-          report.data.liabilities.lines.length === 0 &&
-          report.data.equity.lines.length === 0 ? (
+          {!hasLines ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
@@ -98,18 +117,24 @@ export function BalanceSheetReport() {
                 label={t('assets')}
                 locale={locale}
                 comparing={comparing}
+                asOfDate={asOfDate}
+                onOpen={(href) => router.push(href)}
               />
               <Section
                 section={report.data.liabilities}
                 label={t('liabilities')}
                 locale={locale}
                 comparing={comparing}
+                asOfDate={asOfDate}
+                onOpen={(href) => router.push(href)}
               />
               <Section
                 section={report.data.equity}
                 label={t('equity')}
                 locale={locale}
                 comparing={comparing}
+                asOfDate={asOfDate}
+                onOpen={(href) => router.push(href)}
               />
 
               <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-panel border-2 border-brand-primary/30 bg-brand-primary/5 px-4 py-4">
@@ -152,11 +177,15 @@ function Section({
   label,
   locale,
   comparing,
+  asOfDate,
+  onOpen,
 }: {
   section: BalanceSheetSection;
   label: string;
   locale: 'en' | 'ar';
   comparing: boolean;
+  asOfDate: string;
+  onOpen: (href: string) => void;
 }) {
   const t = useTranslations('accounting.balanceSheet');
 
@@ -182,35 +211,82 @@ function Section({
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('sectionEmpty')}</p>
       ) : (
         <ul className="divide-y divide-border">
-          {section.lines.map((line) => (
-            <li
-              key={line.accountId}
-              className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
-            >
-              <div className="min-w-0">
-                <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                  {line.accountCode}
-                </span>
-                <span className="ms-2 text-sm text-foreground">{line.accountName}</span>
-              </div>
-              <div className="flex items-baseline gap-6">
-                {comparing ? (
-                  <span className="text-sm text-muted-foreground">
-                    <bdi className="tabular-nums">
-                      {formatMoney(line.comparativeBalance, undefined, locale)}
-                    </bdi>
-                  </span>
-                ) : null}
-                <span className="text-sm text-foreground">
-                  <bdi className="tabular-nums">
-                    {formatMoney(line.balance, undefined, locale)}
-                  </bdi>
-                </span>
-              </div>
-            </li>
-          ))}
+          {section.lines.map((line) => {
+            // A balance-sheet figure is cumulative to the as-of date, like a trial-balance
+            // closing balance: `to = asOfDate`, `from` = inception.
+            const href = ledgerHref(line.accountId, { to: asOfDate });
+            return (
+              <li
+                key={line.accountId}
+                className="cursor-pointer px-4 py-2.5 hover:bg-surface-subtle"
+                onClick={() => onOpen(href)}
+              >
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    {/* The line's one real link; the row click mirrors it for the whole width. */}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpen(href);
+                      }}
+                      className="rounded-control text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                      aria-label={t('openLedger', { account: line.accountName })}
+                    >
+                      <span className="font-mono text-xs text-brand-primary tabular-nums">
+                        {line.accountCode}
+                      </span>
+                      <span className="ms-2 text-sm text-brand-primary underline-offset-2 hover:underline">
+                        {line.accountName}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex items-baseline gap-6">
+                    {comparing ? (
+                      <span className="text-sm text-muted-foreground">
+                        <bdi className="tabular-nums">
+                          {formatMoney(line.comparativeBalance, undefined, locale)}
+                        </bdi>
+                      </span>
+                    ) : null}
+                    <span className="text-sm text-foreground">
+                      <bdi className="tabular-nums">
+                        {formatMoney(line.balance, undefined, locale)}
+                      </bdi>
+                    </span>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>
   );
+}
+
+/** Serialises the three sections into one CSV, tagged by section, with an optional comparative. */
+function exportBalanceSheet(
+  data: BalanceSheet,
+  asOfDate: string,
+  comparing: boolean,
+  t: ReturnType<typeof useTranslations<'accounting.balanceSheet'>>,
+): void {
+  const headers = [t('csvSection'), t('csvCode'), t('csvName'), t('csvBalance')];
+  if (comparing) headers.push(t('csvComparative'));
+
+  const sectionRows = (label: string, section: BalanceSheetSection) =>
+    section.lines.map((line) => {
+      const row: (string | undefined)[] = [label, line.accountCode, line.accountName, line.balance];
+      if (comparing) row.push(line.comparativeBalance ?? '');
+      return row;
+    });
+
+  const rows = [
+    ...sectionRows(t('assets'), data.assets),
+    ...sectionRows(t('liabilities'), data.liabilities),
+    ...sectionRows(t('equity'), data.equity),
+  ];
+
+  exportCsv(reportFilename('balance-sheet', asOfDate), headers, rows);
 }

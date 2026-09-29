@@ -394,6 +394,56 @@ textarea {
   background: color-mix(in srgb, var(--brand-primary) 28%, transparent);
 }
 
+/* ── Print — accounting statements ────────────────────────────────────────────
+   "Print" on a report (Trial Balance, Balance Sheet, P&L, Monthly Comparison,
+   Account Ledger) opens the browser print dialog, from which the reader can save
+   a PDF. The report table is already on screen; these rules strip the app chrome
+   so the printout is the statement rather than a screenshot of the whole app.
+
+   - The docked sidebar and the sticky top bar are removed, and the content column
+     loses its sidebar offset, so the report runs edge to edge.
+   - `print:hidden` (Tailwind) drops the report's own filter bar and the
+     Export/Print buttons — they are tools for making the printout, not part of it.
+   - Tables are told not to break a row across pages, and their header repeats on
+     each page, so a long ledger stays readable.
+   The rules are scoped to print only and never affect the on-screen layout. */
+@media print {
+  /* App chrome: docked sidebar, sticky top bar, and anything opted out explicitly. */
+  aside,
+  header.sticky,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* The content column is offset by the sidebar on screen; on paper there is none. */
+  .md\:ps-16,
+  .lg\:ps-\[var\(--sidebar-width\)\] {
+    padding-inline-start: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  /* Statements read better on the plain surface than on the app's tinted canvas. */
+  body {
+    background: var(--surface) !important;
+  }
+
+  /* Keep a ledger or trial-balance row whole, and repeat the header on every page. */
+  table {
+    break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+}
+
 /* One global reduced-motion rule, so no component has to remember it.
    Durations collapse rather than animations being disabled outright: a
    transition that completes in 1ms still fires `transitionend`, which some

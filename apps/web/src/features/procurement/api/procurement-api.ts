@@ -794,6 +794,22 @@ export function approveSupplierPayment(id: string): Promise<SupplierPayment> {
 }
 
 /**
+ * `POST /payments/:id/release` — one authorised signatory signs to release an APPROVED payment
+ * (ADR-022 CONST-DOA-005). The second distinct signature flips it APPROVED → RELEASED, which is
+ * the state Post then requires under dual control.
+ *
+ * Returns the payment. Errors the caller must surface rather than swallow:
+ *   • 403 — the signer is not an authorised signatory of the payment's bank account, or signing
+ *     would breach segregation of duties (the approver cannot also release).
+ *   • 409 — this user has already signed; a second, different signatory is needed.
+ *   • 400 — the payment is not APPROVED.
+ * The response carries no signature count, so the UI cannot show "1 of 2" — see the action bar.
+ */
+export function releaseSupplierPayment(id: string): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}/release`, { method: 'POST' });
+}
+
+/**
  * `POST /payments/:id/post`
  *
  * Writes Dr AP (allocated) / Dr Supplier Advance (unallocated) / Cr Bank (total). All three
