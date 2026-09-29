@@ -34,7 +34,7 @@ describe('seedUnitsOfMeasure', () => {
     const result = await seedUnitsOfMeasure(prisma as never, 'org-1');
 
     expect(result).toEqual({ created: STANDARD_UNITS_OF_MEASURE.length, alreadyPresent: 0 });
-    expect(prisma.rows.map((r) => r.symbol)).toEqual(['m³', 'm²', 'm', 'kg', 't', 'nr', 'item']);
+    expect(prisma.rows.map((r) => r.symbol)).toEqual(['m³', 'm²', 'm', 'kg', 't', 'nr', 'item', 'LS', 'sum']);
     expect(prisma.rows.every((r) => r.organizationId === 'org-1')).toBe(true);
   });
 
@@ -99,5 +99,12 @@ describe('seedUnitsOfMeasure', () => {
       created: STANDARD_UNITS_OF_MEASURE.length - 2,
       alreadyPresent: 2,
     });
+  });
+
+  it('adds LS and sum without duplicating a lump-sum unit an organization already typed as ls', async () => {
+    const prisma = fakePrisma([{ organizationId: 'org-1', code: 'LUMP', name: 'Lump', symbol: 'ls' }]);
+    await seedUnitsOfMeasure(prisma as never, 'org-1');
+    expect(prisma.rows.filter((r) => r.symbol.toLowerCase() === 'ls')).toHaveLength(1);
+    expect(prisma.rows.filter((r) => r.symbol === 'sum')).toHaveLength(1);
   });
 });

@@ -142,9 +142,18 @@ with another quantity. The grid's rate cell on a lump-sum line edits the amount 
 
 **Units — list only (owner decision).** `boq-unit-select.tsx`: `BoqUnitSelect` over
 `useUnitsOfMeasure()` (active units), stores the unit's **symbol**, shows the name as secondary
-text. A stored unit that is not in the list (legacy free text, e.g. `m3`) stays selected as an extra
-row flagged "Not listed", with the note "Not in the units list — ask an admin to add it, or pick a
-listed unit"; it is never cleared. An empty or failed list says so, and links to
+text (a plain list up to 20 units; a longer registry gets the filter).
+
+*Aliases.* Imported bills spell units many ways. `features/units-of-measure/unit-aliases.ts`
+resolves a stored unit to the listed one by symbol, code or name (case-insensitive, spaces/dots
+removed, `m2`/`m^2` → `m²` as the seed's `normaliseUnitSymbol` does) and by an alias table:
+sqm/sq.m → m², cum/cu.m → m³, lm/rm → m, kgs → kg, ton/tons/tonne → t, no/nos/No. → nr. A resolved
+alias shows as the listed unit with no warning. Nothing is rewritten on read; saving the row or
+the dialog sends the listed symbol. The seed now also installs `LS` (Lump sum) and `sum` (Sum).
+
+Only a truly unknown unit (e.g. `bags`) stays selected as an extra row flagged "Not listed", with
+the note "Not in the units list — ask an admin to add it, or pick a listed unit" in the dialog and
+an attention border in the grid; it is never cleared. An empty or failed list says so, and links to
 `/procurement/setup/uom` for `manage:procurement-config` holders ("Ask an administrator to add
 units" otherwise).
 

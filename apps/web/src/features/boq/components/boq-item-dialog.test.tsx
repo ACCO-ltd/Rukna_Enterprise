@@ -229,15 +229,27 @@ describe('BoqItemDialog — unit dropdown', () => {
   });
 
   it('keeps a legacy unit that is not in the list, flagged, and never clears it', async () => {
-    const { onSubmit } = renderDialog(edit(itemNode({ unit: 'm3' })));
+    const { onSubmit } = renderDialog(edit(itemNode({ unit: 'bags' })));
 
-    expect(unitTrigger()).toHaveTextContent('m3');
+    expect(unitTrigger()).toHaveTextContent('bags');
     expect(
       screen.getByText('Not in the units list — ask an admin to add it, or pick a listed unit.'),
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save item' }));
-    expect(onSubmit.mock.calls[0]![0].unit).toBe('m3');
+    expect(onSubmit.mock.calls[0]![0].unit).toBe('bags');
+  });
+
+  it('shows an imported spelling (m2) as the listed unit, unflagged, and saves the listed symbol', async () => {
+    const { onSubmit } = renderDialog(edit(itemNode({ unit: 'm2' })));
+
+    expect(unitTrigger()).toHaveTextContent('m²');
+    expect(screen.queryByText(/Not in the units list/)).not.toBeInTheDocument();
+    expect(screen.getByText(/42 m² × \$160\.00 =/)).toBeInTheDocument();
+
+    // Opening and closing an untouched line is not an edit.
+    await userEvent.click(screen.getByRole('button', { name: 'Save item' }));
+    expect(onSubmit.mock.calls[0]![0].unit).toBe('m²');
   });
 
   it('says so when no units are set up, and links an administrator to Procurement setup', () => {

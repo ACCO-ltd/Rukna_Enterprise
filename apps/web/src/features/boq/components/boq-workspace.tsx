@@ -12,6 +12,7 @@ import { LifecycleCommandDialog } from '@/components/lifecycle-command-dialog';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useUnitsOfMeasure } from '@/features/units-of-measure/hooks/use-units-of-measure';
+import { canonicalUnit } from '@/features/units-of-measure/unit-aliases';
 
 import { buildRows, collectSectionIds, countTree, flattenTree, siblingBounds } from '../boq-rows';
 import { computeRollup } from '../boq-totals';
@@ -246,6 +247,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         bounds,
         onEditField: async (node, field, value) => {
           const values: NodeFormValues = { ...toNodeFormValues(node), [field]: value };
+          // Every cell save re-sends the row's unit; a stored alias (`m2`) goes as its listed symbol.
+          values.unit = canonicalUnit(unitsQuery.data, values.unit);
           // A lump sum is saved as quantity 1 × rate = amount, so a rate typed into its cell is
           // its new amount (node-form.ts, `lumpSumAmount`).
           if (values.pricingBasis === 'LUMP_SUM') values.lumpSumAmount = lumpSumOf(values.quantity, values.unitRate);

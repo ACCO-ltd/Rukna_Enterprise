@@ -6,6 +6,8 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Notice, Select, cn } from '@erp/ui';
 
+import { canonicalUnit, resolveListedUnit } from '@/features/units-of-measure/unit-aliases';
+
 /**
  * The BOQ unit picker — the org's unit registry (`useUnitsOfMeasure`), never free text.
  *
@@ -15,13 +17,16 @@ import { Notice, Select, cn } from '@erp/ui';
  *
  * ─── Legacy units ────────────────────────────────────────────────────────────────
  *
- * Bills written before the registry was readable hold whatever was typed (`m3`, `Nos`). Such a
- * value is still shown as the selection — as an extra row marked "Not listed" — so opening an
- * old line never silently blanks its unit. The caller says why it is flagged (`isListedUnit`).
+ * Bills written before the registry was readable hold whatever was typed. A spelling of a listed
+ * unit (`m2`, `sqm`, `Nos`, `LS`) resolves to it (`unit-aliases.ts`) and shows as that unit, with
+ * no warning; saving the line then sends the listed symbol. Only a truly unknown unit is shown as
+ * an extra row marked "Not listed" — kept, so opening an old line never silently blanks it.
  */
 export function isListedUnit(units: readonly UnitOfMeasureOption[], value: string): boolean {
-  return value === '' || units.some((unit) => unit.symbol === value);
+  return value === '' || resolveListedUnit(units, value) !== null;
 }
+
+const SEARCHABLE_UNITS_FROM = 20;
 
 export function BoqUnitSelect({
   id,
@@ -59,16 +64,21 @@ export function BoqUnitSelect({
 }) {
   const t = useTranslations('platform.boq.units');
   const legacy = !isListedUnit(units, value);
+  const shown = canonicalUnit(units, value);
 
   return (
     <Select
       id={id}
-      value={value}
+      value={shown}
       onChange={onChange}
       disabled={disabled}
       aria-label={ariaLabel}
       aria-describedby={ariaDescribedBy}
       placeholder={placeholder ?? t('placeholder')}
+      // A unit list is scanned by symbol, and the filtering Combobox flattens each row to text —
+      // it would print "LS Lump sum" in a grid cell. The standard set (nine units) stays a plain
+      // list; only a registry long enough to need a filter gets one.
+      searchable={units.length > SEARCHABLE_UNITS_FROM}
       searchPlaceholder={t('search')}
       noMatchLabel={t('noMatch')}
       className={cn(
@@ -159,7 +169,8 @@ export function UnitCellEditor({
 
   const choose = async (next: string) => {
     setDraft(next);
-    if (next === stored) {
+    // Picking the unit a stored alias already resolves to changes nothing worth a request.
+    if (next === canonicalUnit(units, stored)) {
       setFailed(false);
       return;
     }

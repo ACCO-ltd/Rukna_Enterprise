@@ -26,6 +26,7 @@ import {
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { useUnitsOfMeasure } from '@/features/units-of-measure/hooks/use-units-of-measure';
+import { canonicalUnit } from '@/features/units-of-measure/unit-aliases';
 
 import type { BoqLibraryItem } from '../api/boq-item-library-api';
 import { currencySymbol } from '../currency-symbol';
@@ -243,7 +244,9 @@ export function BoqItemDialog({
     setTouched(true);
     if (Object.keys(clientErrors).length > 0) return;
     // On an add that did not override the code, send it empty so the server auto-numbers (D2).
-    const submitted = isAdd && !advancedCode ? { ...values, code: '' } : values;
+    // A stored alias (`m2`) is saved as the listed symbol it resolves to (`m²`).
+    const withUnit = { ...values, unit: canonicalUnit(unitsQuery.data, values.unit) };
+    const submitted = isAdd && !advancedCode ? { ...withUnit, code: '' } : withUnit;
     onSubmit(submitted, target, {
       pickedItemId: showLibrary ? pickedItemId : null,
       saveToLibrary: showLibrary && saveToLibrary,
@@ -262,6 +265,7 @@ export function BoqItemDialog({
   // With no list at all, the notice below says so; flagging the unit as "not in it" would repeat it.
   const legacyUnit = values.unit !== '' && units.length > 0 && !isListedUnit(units, values.unit);
 
+  const shownUnit = canonicalUnit(units, values.unit);
   const preview = isItem && canViewCommercials && !lumpSum ? previewLineTotal(values) : null;
   const quantityText = values.quantity.trim()
     ? formatNumber(values.quantity, locale)
@@ -469,7 +473,7 @@ export function BoqItemDialog({
                       <QuantityInput
                         id="boq-quantity"
                         dir="ltr"
-                        unit={values.unit || undefined}
+                        unit={shownUnit || undefined}
                         maxFractionDigits={NODE_LIMITS.quantityDecimals}
                         value={values.quantity}
                         disabled={locked}
@@ -505,7 +509,7 @@ export function BoqItemDialog({
                       aria-live="polite"
                     >
                       <LtrValue>
-                        {`${quantityText}${values.unit ? ` ${values.unit}` : ''} × ${formatMoney(values.unitRate, currency, locale) ?? ''} = `}
+                        {`${quantityText}${shownUnit ? ` ${shownUnit}` : ''} × ${formatMoney(values.unitRate, currency, locale) ?? ''} = `}
                         <span className="font-semibold text-foreground">{formatMoney(preview, currency, locale)}</span>
                       </LtrValue>
                     </p>

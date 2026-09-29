@@ -324,6 +324,50 @@ describe('BoqGrid — the unit cell', () => {
     expect(unit).toHaveClass('border-warning');
   });
 
+  it('reads an imported m2 / LS bill as listed units, with no warnings', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    const units = [
+      ...UNITS,
+      { code: 'M', name: 'Metre', symbol: 'm' },
+      { code: 'KG', name: 'Kilogram', symbol: 'kg' },
+      { code: 'TON', name: 'Tonne', symbol: 't' },
+      { code: 'NR', name: 'Number', symbol: 'nr' },
+      { code: 'ITEM', name: 'Item', symbol: 'item' },
+      { code: 'LS', name: 'Lump sum', symbol: 'LS' },
+      { code: 'SUM', name: 'Sum', symbol: 'sum' },
+    ];
+    const bill = [
+      testNode({
+        id: 's1',
+        code: '1',
+        description: 'Preliminaries',
+        children: [
+          testNode({ id: 'a', parentId: 's1', code: '1.1', description: 'Clearance', isLeaf: true, unit: 'm2', quantity: '180.000', unitRate: '1.25', sortOrder: 0 }),
+          testNode({ id: 'b', parentId: 's1', code: '1.2', description: 'Setting out', isLeaf: true, unit: 'LS', quantity: '1.000', unitRate: '250.00', sortOrder: 1 }),
+          testNode({ id: 'c', parentId: 's1', code: '1.3', description: 'Cement', isLeaf: true, unit: 'bags', quantity: '10.000', unitRate: '9.00', sortOrder: 2 }),
+        ],
+      }),
+    ];
+    render({ commands: cmds, units, rows: buildRows(bill, { collapsed: new Set(), search: '', pricing: 'all' }) });
+
+    const m2 = screen.getByRole('combobox', { name: 'Unit of 1.1' });
+    expect(m2).toHaveTextContent('m²');
+    expect(m2).not.toHaveClass('border-warning');
+    expect(m2).not.toHaveAccessibleDescription();
+    const ls = screen.getByRole('combobox', { name: 'Unit of 1.2' });
+    expect(ls).toHaveTextContent('LS');
+    // The whole standard set (nine units) is a plain list, so the cell shows the symbol alone.
+    expect(m2.querySelector('[data-unit-name]')).toHaveClass('ms-1');
+    expect(ls).not.toHaveClass('border-warning');
+    // Only the truly unknown unit keeps the marker.
+    expect(screen.getByRole('combobox', { name: 'Unit of 1.3' })).toHaveClass('border-warning');
+
+    // Nothing is rewritten on read; choosing the unit it already resolves to sends nothing.
+    await chooseOption(user, m2, 'm²');
+    expect(cmds.onEditField).not.toHaveBeenCalled();
+  });
+
   it('shows the stored unit as text when there is no registry to pick from', () => {
     render({ commands: commands(), units: [] });
     expect(screen.queryByRole('combobox', { name: 'Unit of 1.1' })).not.toBeInTheDocument();
