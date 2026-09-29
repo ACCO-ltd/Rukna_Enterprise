@@ -10,7 +10,18 @@ import type {
   CommercialPaymentScheduleInstallment,
   CommercialSummaryResponse,
 } from '@erp/types';
-import { Alert, Button, cn, EmptyState, FormSection, Skeleton } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  cn,
+  EmptyState,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormSection,
+  Skeleton,
+} from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import {
@@ -330,6 +341,7 @@ export function ScheduleForm({
   contractValue,
   currency,
   onDone,
+  dialog,
 }: {
   projectId: string;
   contractId: string;
@@ -341,6 +353,11 @@ export function ScheduleForm({
   contractValue: string | null;
   currency: string;
   onDone: () => void;
+  /**
+   * Render as a `FormDialog` (ADR-039, size `xl`: the plan's rows are a table) with this title and
+   * subtitle — the re-profile entry on the contract view. Omitted: the inline form of the tab.
+   */
+  dialog?: { title: string; subtitle: string };
 }) {
   const t = useTranslations('commercial.paymentScheduleTab');
   const tPlan = useTranslations('platform.contracts.create');
@@ -373,7 +390,7 @@ export function ScheduleForm({
     register,
     setValue,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<EditorValues>({
     resolver: zodResolver(
       schema.superRefine((values, ctx) => {
@@ -435,14 +452,8 @@ export function ScheduleForm({
       : t('saveFailed')
     : null;
 
-  return (
-    <form
-      onSubmit={(e) => {
-        void handleSubmit(onSubmit)(e);
-      }}
-      className="space-y-4"
-      noValidate
-    >
+  const fields = (
+    <>
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
       {planError ? <Alert variant="error" messages={[planError]} /> : null}
 
@@ -496,6 +507,48 @@ export function ScheduleForm({
           />
         </div>
       </FormSection>
+    </>
+  );
+
+  if (dialog) {
+    return (
+      <FormDialog
+        open
+        onOpenChange={(next) => !next && onDone()}
+        title={dialog.title}
+        subtitle={dialog.subtitle}
+        size="xl"
+        dirty={isDirty}
+        busy={save.isPending}
+        onSubmit={(e) => {
+          void handleSubmit(onSubmit)(e);
+        }}
+      >
+        <FormDialogBody className="space-y-4">{fields}</FormDialogBody>
+        <FormDialogFooter>
+          <FormDialogClose asChild>
+            <Button type="button" variant="outline" disabled={save.isPending}>
+              {tCommon('cancel')}
+            </Button>
+          </FormDialogClose>
+          {/* Save is hard-stopped until the rows reconcile — see the inline form's note below. */}
+          <Button type="submit" disabled={save.isPending || !balanced}>
+            {save.isPending ? tCommon('loading') : t('save')}
+          </Button>
+        </FormDialogFooter>
+      </FormDialog>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
+      }}
+      className="space-y-4"
+      noValidate
+    >
+      {fields}
 
       <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
         {/* S-PS-2 / CONST-COM-024: Save is hard-stopped whenever the editable rows do not reconcile

@@ -8,7 +8,7 @@ import { pickDate } from '@/test/pick-date';
 import { ApiError } from '@/lib/api-client';
 import * as hooks from '../hooks/use-commercial';
 
-import { VariationDetailSheet } from './variation-detail-sheet';
+import { VariationDetailDialog } from './variation-detail-dialog';
 import type { VariationBilling } from './variation-billing-chip';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
 
@@ -79,10 +79,10 @@ beforeEach(() => {
 });
 
 function renderDetail(
-  props: Partial<Parameters<typeof VariationDetailSheet>[0]> = {},
+  props: Partial<Parameters<typeof VariationDetailDialog>[0]> = {},
 ) {
   return renderWithProviders(
-    <VariationDetailSheet
+    <VariationDetailDialog
       variationId="vo-1"
       contractId="c-1"
       projectId="p-1"
@@ -97,7 +97,7 @@ function renderDetail(
   );
 }
 
-describe('VariationDetailSheet — read-only ledger (variation-collapse)', () => {
+describe('VariationDetailDialog — read-only ledger (variation-collapse)', () => {
   it('shows no approval-chain actions — the workflow is gone', () => {
     stubVariation(variation({ status: 'CLIENT_APPROVED' }));
     renderDetail();
@@ -118,7 +118,7 @@ describe('VariationDetailSheet — read-only ledger (variation-collapse)', () =>
   });
 });
 
-describe('VariationDetailSheet — Reverse action', () => {
+describe('VariationDetailDialog — Reverse action', () => {
   it('offers Reverse for an adopted, unbilled, client-approved VO when permitted', () => {
     stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true }));
     renderDetail({ canReverse: true, billing: null });

@@ -6,10 +6,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   Select,
@@ -194,6 +194,7 @@ interface ClaimFormValues {
   cumulativeClaimed: string;
 }
 
+/** Claim a BOQ line on the application — a `FormDialog` (ADR-039), size `md`. */
 function ClaimLineDialog({
   ipaId,
   projectId,
@@ -223,7 +224,7 @@ function ClaimLineDialog({
     control,
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<ClaimFormValues>({
     defaultValues: { boqNodeId: '', cumulativeClaimed: '' },
   });
@@ -251,121 +252,112 @@ function ClaimLineDialog({
   const hasNoLines = !tree.isPending && available.length === 0;
 
   return (
-    <Dialog
+    <FormDialog
       open
-      onOpenChange={(next) => {
-        if (!next && !add.isPending) onClose();
+      onOpenChange={(next) => !next && onClose()}
+      title={t('add')}
+      size="md"
+      dirty={isDirty}
+      busy={add.isPending}
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('add')}</DialogTitle>
+      <FormDialogBody className="space-y-4">
+        {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
+        {hasNoLines ? (
+          <Alert
+            variant="info"
+            messages={[claimedNodeIds.length > 0 ? t('allClaimed') : t('noLines')]}
+          />
+        ) : null}
 
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
+        <FormField htmlFor="claim-line" label={t('line')} error={errors.boqNodeId?.message}>
+          <Controller
+            control={control}
+            name="boqNodeId"
+            rules={{ required: t('linePlaceholder') }}
+            render={({ field }) => (
+              <Select
+                id="claim-line"
+                disabled={tree.isPending || hasNoLines}
+                value={field.value}
+                onChange={field.onChange}
+              >
+                <option value="">{tree.isPending ? tCommon('loading') : t('linePlaceholder')}</option>
+                {available.map((line) => (
+                  // An unpriced leaf stays in the list, disabled. Dropping it silently from
+                  // a BOQ the surveyor is reading alongside would look like missing data.
+                  <option key={line.id} value={line.id} disabled={!isClaimable(line)}>
+                    {lineLabel(line)}
+                    {isClaimable(line) ? '' : ` — ${t('unpriced')}`}
+                  </option>
+                ))}
+              </Select>
+            )}
+          />
+        </FormField>
+
+        {selected ? (
+          <dl className="grid gap-3 rounded-control border border-border bg-surface-subtle p-3 text-xs sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">{t('unitRate')}</dt>
+              <dd className="mt-0.5 font-medium text-foreground">
+                <bdi>{formatMoney(selected.unitRate, selected.currency, locale) ?? '—'}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">{t('contractQuantity')}</dt>
+              <dd className="mt-0.5 font-medium text-foreground">
+                <bdi>
+                  {formatNumber(selected.quantity, locale) ?? '—'}
+                  {selected.unit ? ` ${selected.unit}` : ''}
+                </bdi>
+              </dd>
+            </div>
+            <div className="sm:col-span-3">
+              <p className="text-muted-foreground">{t('serverDerived')}</p>
+            </div>
+          </dl>
+        ) : null}
+
+        <FormField
+          htmlFor="claim-cumulative"
+          label={t('cumulativeClaimed')}
+          error={errors.cumulativeClaimed?.message}
         >
-          {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
-          {hasNoLines ? (
-            <Alert
-              variant="info"
-              messages={[claimedNodeIds.length > 0 ? t('allClaimed') : t('noLines')]}
-            />
-          ) : null}
+          <Input
+            id="claim-cumulative"
+            inputMode="decimal"
+            aria-describedby="claim-cumulative-hint"
+            aria-invalid={Boolean(errors.cumulativeClaimed)}
+            {...register('cumulativeClaimed', {
+              validate: (v) => {
+                if (v.trim() === '') return t('quantityRequired');
+                return Number.isFinite(Number(v)) || t('quantityInvalid');
+              },
+            })}
+          />
+          {/* The single most misread field on this screen: it is the total to date, not
+              this period. The server subtracts what was previously certified to get the
+              period figure. */}
+          <p id="claim-cumulative-hint" className="text-xs text-muted-foreground">
+            {t('cumulativeHint')}
+          </p>
+        </FormField>
 
-          <FormField htmlFor="claim-line" label={t('line')} error={errors.boqNodeId?.message}>
-            <Controller
-              control={control}
-              name="boqNodeId"
-              rules={{ required: t('linePlaceholder') }}
-              render={({ field }) => (
-                <Select
-                  id="claim-line"
-                  disabled={tree.isPending || hasNoLines}
-                  value={field.value}
-                  onChange={field.onChange}
-                >
-                  <option value="">{tree.isPending ? tCommon('loading') : t('linePlaceholder')}</option>
-                  {available.map((line) => (
-                    // An unpriced leaf stays in the list, disabled. Dropping it silently from
-                    // a BOQ the surveyor is reading alongside would look like missing data.
-                    <option key={line.id} value={line.id} disabled={!isClaimable(line)}>
-                      {lineLabel(line)}
-                      {isClaimable(line) ? '' : ` — ${t('unpriced')}`}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-          </FormField>
+      </FormDialogBody>
 
-          {selected ? (
-            <dl className="grid gap-3 rounded-control border border-border bg-surface-subtle p-3 text-xs sm:grid-cols-3">
-              <div>
-                <dt className="text-muted-foreground">{t('unitRate')}</dt>
-                <dd className="mt-0.5 font-medium text-foreground">
-                  <bdi>{formatMoney(selected.unitRate, selected.currency, locale) ?? '—'}</bdi>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">{t('contractQuantity')}</dt>
-                <dd className="mt-0.5 font-medium text-foreground">
-                  <bdi>
-                    {formatNumber(selected.quantity, locale) ?? '—'}
-                    {selected.unit ? ` ${selected.unit}` : ''}
-                  </bdi>
-                </dd>
-              </div>
-              <div className="sm:col-span-3">
-                <p className="text-muted-foreground">{t('serverDerived')}</p>
-              </div>
-            </dl>
-          ) : null}
-
-          <FormField
-            htmlFor="claim-cumulative"
-            label={t('cumulativeClaimed')}
-            error={errors.cumulativeClaimed?.message}
-          >
-            <Input
-              id="claim-cumulative"
-              inputMode="decimal"
-              aria-describedby="claim-cumulative-hint"
-              aria-invalid={Boolean(errors.cumulativeClaimed)}
-              {...register('cumulativeClaimed', {
-                validate: (v) => {
-                  if (v.trim() === '') return t('quantityRequired');
-                  return Number.isFinite(Number(v)) || t('quantityInvalid');
-                },
-              })}
-            />
-            {/* The single most misread field on this screen: it is the total to date, not
-                this period. The server subtracts what was previously certified to get the
-                period figure. */}
-            <p id="claim-cumulative-hint" className="text-xs text-muted-foreground">
-              {t('cumulativeHint')}
-            </p>
-          </FormField>
-
-          <DialogFooter>
-            <Button type="submit" disabled={add.isPending || hasNoLines}>
-              {add.isPending ? tCommon('loading') : t('save')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={add.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={add.isPending || hasNoLines}>
+          {add.isPending ? tCommon('loading') : t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

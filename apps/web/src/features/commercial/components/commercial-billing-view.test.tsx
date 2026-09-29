@@ -33,8 +33,8 @@ vi.mock('../hooks/use-commercial', () => ({
 vi.mock('./prepare-invoice-dialog', () => ({
   PrepareInvoiceDialog: ({ installmentId }: { installmentId: string }) => <div role="dialog">prepare {installmentId}</div>,
 }));
-vi.mock('./record-payment-drawer', () => ({
-  RecordPaymentDrawer: ({ preselectedInvoice }: { preselectedInvoice: { invoiceId: string } | null }) => (
+vi.mock('./record-payment-dialog', () => ({
+  RecordPaymentDialog: ({ preselectedInvoice }: { preselectedInvoice: { invoiceId: string } | null }) => (
     <div role="dialog">payment {preselectedInvoice?.invoiceId ?? 'none'}</div>
   ),
 }));

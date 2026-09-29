@@ -6,12 +6,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   MoneyDisplay,
@@ -30,9 +28,9 @@ import {
   checkAllocations,
   payableInvoices,
   prefillAllocations,
-} from './record-payment-drawer.model';
+} from './record-payment-dialog.model';
 
-export interface RecordPaymentDrawerProps {
+export interface RecordPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
@@ -52,8 +50,7 @@ function newIdempotencyKey(): string {
 }
 
 /**
- * Record a client payment (decision D9: a Dialog). The name is historical — callers keep
- * importing `RecordPaymentDrawer`.
+ * Record a client payment (decision D9: a Dialog) — a `FormDialog` (ADR-039), size `lg`.
  *
  * The receipt is applied to invoices OLDEST DUE FIRST (the invoice the user started from goes
  * first), pre-filled and editable per line. Whatever is received but not applied stays on the
@@ -63,14 +60,14 @@ function newIdempotencyKey(): string {
  * One idempotency key per opening: a retry after a network failure cannot record the receipt
  * twice (the API de-duplicates on it).
  */
-export function RecordPaymentDrawer({
+export function RecordPaymentDialog({
   open,
   onOpenChange,
   projectId,
   currency,
   preselectedInvoice,
   allInvoices,
-}: RecordPaymentDrawerProps) {
+}: RecordPaymentDialogProps) {
   const t = useTranslations('commercial.recordPayment');
   const locale = useLocale() as 'en';
 
@@ -116,11 +113,25 @@ export function RecordPaymentDrawer({
     mutation.reset();
   }
 
+  // Reached only once the FormDialog guard lets a dismissal through (not busy; dirty confirmed).
   function handleOpenChange(next: boolean) {
     if (!next && mutation.isPending) return;
     if (!next) reset();
     onOpenChange(next);
   }
+
+  // Unsaved edits: anything the user has typed or picked beyond what the dialog opened with.
+  const openingAmount = initialAmount();
+  const openingAmounts = prefillAllocations(parseMinorUnits(openingAmount, MONEY_SCALE) ?? 0, invoices);
+  const dirty =
+    !moneyHidden &&
+    (bankAccountId !== '' ||
+      amount !== openingAmount ||
+      date !== today() ||
+      reference !== '' ||
+      invoices.some(
+        (invoice) => (amounts[invoice.invoiceId] ?? '') !== (openingAmounts[invoice.invoiceId] ?? ''),
+      ));
 
   function handleAmountChange(next: string) {
     setAmount(next);
@@ -157,17 +168,20 @@ export function RecordPaymentDrawer({
   const money = (minor: number) => <MoneyDisplay value={fromMinorUnits(minor, MONEY_SCALE)} />;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
-
+    <FormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t('title')}
+      subtitle={t('description')}
+      size="lg"
+      dirty={dirty}
+      busy={mutation.isPending}
+    >
+      <FormDialogBody>
         {moneyHidden ? (
-          <p className="mt-4 text-body-sm text-muted-foreground">{t('moneyHidden')}</p>
+          <p className="text-body-sm text-muted-foreground">{t('moneyHidden')}</p>
         ) : (
-          <div className="mt-4 space-y-5">
+          <div className="space-y-5">
             {mutation.isError ? (
               <Alert variant="error" messages={[mutation.error.message || t('failed')]} />
             ) : null}
@@ -302,18 +316,20 @@ export function RecordPaymentDrawer({
             </section>
           </div>
         )}
+      </FormDialogBody>
 
-        <DialogFooter>
-          {moneyHidden ? null : (
-            <Button onClick={submit} disabled={mutation.isPending}>
-              {mutation.isPending ? t('saving') : t('submit')}
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        {moneyHidden ? null : (
+          <Button type="button" onClick={submit} disabled={mutation.isPending}>
+            {mutation.isPending ? t('saving') : t('submit')}
+          </Button>
+        )}
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -184,3 +184,44 @@ describe('PrepareInvoiceDialog — creates a draft from the server preview', () 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
+
+describe('PrepareInvoiceDialog — dismissal (ADR-039 FormDialog)', () => {
+  it('closes straight away when the ticks are as the server suggested', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    const onClose = renderDialog();
+    await screen.findByText('Structure complete');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before discarding changed variation ticks', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    const onClose = renderDialog();
+    await screen.findByText('Structure complete');
+
+    await user.click(screen.getByRole('checkbox', { name: /VO-04/ }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByText('Discard unsaved changes?')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('cannot be dismissed while the draft is being created', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    // Never settles: the create stays in flight for the rest of the test.
+    vi.mocked(invoiceApi.preparePackage).mockReturnValue(new Promise(() => {}));
+    const onClose = renderDialog();
+    await screen.findByText('Structure complete');
+
+    await user.click(screen.getByRole('button', { name: 'Create draft invoice' }));
+    expect(await screen.findByRole('button', { name: 'Creating…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

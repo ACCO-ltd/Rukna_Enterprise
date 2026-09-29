@@ -6,10 +6,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   MoneyInput,
@@ -151,6 +151,7 @@ interface DeductionFormValues {
   amount: string;
 }
 
+/** Add a deduction to the application — a `FormDialog` (ADR-039), size `md`. */
 function AddDeductionDialog({
   ipaId,
   periodTotal,
@@ -173,7 +174,7 @@ function AddDeductionDialog({
     control,
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<DeductionFormValues>({
     // Basis defaults to the period total, which is what the DTO describes it as. The
     // amount is left empty on purpose — see the note below.
@@ -223,111 +224,62 @@ function AddDeductionDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open
-      onOpenChange={(next) => {
-        if (!next && !add.isPending) onClose();
+      onOpenChange={(next) => !next && onClose()}
+      title={t('add')}
+      size="md"
+      dirty={isDirty}
+      busy={add.isPending}
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('add')}</DialogTitle>
+      <FormDialogBody className="space-y-4">
+        {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
 
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
+        {/* Said plainly: this amount is stored exactly as typed. Nothing checks it
+            against the contract, so the person entering it is the only control. */}
+        <Alert variant="warning" messages={[t('authoredHere')]} />
+
+        {contractRates.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {t('contractRates', { rates: contractRates.join(' · ') })}
+          </p>
+        ) : null}
+
+        <FormField
+          htmlFor="deduction-type"
+          label={t('type')}
+          error={errors.deductionType?.message}
         >
-          {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
+          <Input
+            id="deduction-type"
+            aria-describedby="deduction-type-hint"
+            aria-invalid={Boolean(errors.deductionType)}
+            {...register('deductionType', {
+              validate: (v) => v.trim() !== '' || t('typeRequired'),
+            })}
+          />
+          <p id="deduction-type-hint" className="text-xs text-muted-foreground">
+            {t('typeHint')}
+          </p>
+        </FormField>
 
-          {/* Said plainly: this amount is stored exactly as typed. Nothing checks it
-              against the contract, so the person entering it is the only control. */}
-          <Alert variant="warning" messages={[t('authoredHere')]} />
-
-          {contractRates.length > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {t('contractRates', { rates: contractRates.join(' · ') })}
-            </p>
-          ) : null}
-
-          <FormField
-            htmlFor="deduction-type"
-            label={t('type')}
-            error={errors.deductionType?.message}
-          >
-            <Input
-              id="deduction-type"
-              aria-describedby="deduction-type-hint"
-              aria-invalid={Boolean(errors.deductionType)}
-              {...register('deductionType', {
-                validate: (v) => v.trim() !== '' || t('typeRequired'),
-              })}
-            />
-            <p id="deduction-type-hint" className="text-xs text-muted-foreground">
-              {t('typeHint')}
-            </p>
-          </FormField>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField htmlFor="deduction-basis" label={t('basis')} error={errors.basis?.message}>
-              <Controller
-                name="basis"
-                control={control}
-                rules={{
-                  validate: (v) =>
-                    (v.trim() !== '' && Number.isFinite(Number(v))) || t('basisRequired'),
-                }}
-                render={({ field }) => (
-                  <MoneyInput
-                    id="deduction-basis"
-                    aria-describedby="deduction-basis-hint"
-                    aria-invalid={Boolean(errors.basis)}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                    name={field.name}
-                  />
-                )}
-              />
-              <p id="deduction-basis-hint" className="text-xs text-muted-foreground">
-                {t('basisHint')}
-              </p>
-            </FormField>
-
-            <FormField htmlFor="deduction-rate" label={t('rate')}>
-              <Input
-                id="deduction-rate"
-                inputMode="decimal"
-                aria-describedby="deduction-rate-hint"
-                {...register('rate')}
-              />
-              <p id="deduction-rate-hint" className="text-xs text-muted-foreground">
-                {t('rateHint')}
-              </p>
-            </FormField>
-          </div>
-
-          <FormField htmlFor="deduction-amount" label={t('amount')} error={errors.amount?.message}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor="deduction-basis" label={t('basis')} error={errors.basis?.message}>
             <Controller
-              name="amount"
+              name="basis"
               control={control}
               rules={{
                 validate: (v) =>
-                  (v.trim() !== '' && Number.isFinite(Number(v))) || t('amountRequired'),
+                  (v.trim() !== '' && Number.isFinite(Number(v))) || t('basisRequired'),
               }}
               render={({ field }) => (
                 <MoneyInput
-                  id="deduction-amount"
-                  aria-invalid={Boolean(errors.amount)}
+                  id="deduction-basis"
+                  aria-describedby="deduction-basis-hint"
+                  aria-invalid={Boolean(errors.basis)}
                   value={field.value}
                   onValueChange={field.onChange}
                   onBlur={field.onBlur}
@@ -336,29 +288,69 @@ function AddDeductionDialog({
                 />
               )}
             />
-            {preview ? (
-              <p className="text-xs text-muted-foreground">
-                <bdi>
-                  {t('computedHint', {
-                    basis: formatMoney(basis, currency, locale) ?? basis,
-                    rate,
-                    amount: formatMoney(preview, currency, locale) ?? preview,
-                  })}
-                </bdi>
-              </p>
-            ) : null}
+            <p id="deduction-basis-hint" className="text-xs text-muted-foreground">
+              {t('basisHint')}
+            </p>
           </FormField>
 
-          <DialogFooter>
-            <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? tCommon('loading') : t('save')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <FormField htmlFor="deduction-rate" label={t('rate')}>
+            <Input
+              id="deduction-rate"
+              inputMode="decimal"
+              aria-describedby="deduction-rate-hint"
+              {...register('rate')}
+            />
+            <p id="deduction-rate-hint" className="text-xs text-muted-foreground">
+              {t('rateHint')}
+            </p>
+          </FormField>
+        </div>
+
+        <FormField htmlFor="deduction-amount" label={t('amount')} error={errors.amount?.message}>
+          <Controller
+            name="amount"
+            control={control}
+            rules={{
+              validate: (v) =>
+                (v.trim() !== '' && Number.isFinite(Number(v))) || t('amountRequired'),
+            }}
+            render={({ field }) => (
+              <MoneyInput
+                id="deduction-amount"
+                aria-invalid={Boolean(errors.amount)}
+                value={field.value}
+                onValueChange={field.onChange}
+                onBlur={field.onBlur}
+                ref={field.ref}
+                name={field.name}
+              />
+            )}
+          />
+          {preview ? (
+            <p className="text-xs text-muted-foreground">
+              <bdi>
+                {t('computedHint', {
+                  basis: formatMoney(basis, currency, locale) ?? basis,
+                  rate,
+                  amount: formatMoney(preview, currency, locale) ?? preview,
+                })}
+              </bdi>
+            </p>
+          ) : null}
+        </FormField>
+
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={add.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={add.isPending}>
+          {add.isPending ? tCommon('loading') : t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

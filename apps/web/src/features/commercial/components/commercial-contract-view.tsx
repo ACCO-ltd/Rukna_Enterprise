@@ -12,10 +12,6 @@ import {
   Alert,
   Button,
   DefinitionGrid,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -367,24 +363,17 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
       />
 
       {reprofiling ? (
-        <Dialog open onOpenChange={(open) => !open && setReprofiling(false)}>
-          <DialogContent className="sm:max-w-3xl">
-            <DialogTitle>{t('reprofileTitle')}</DialogTitle>
-            <DialogDescription>{t('reprofileBody')}</DialogDescription>
-            <div className="mt-4 max-h-[70vh] overflow-y-auto">
-              <ScheduleForm
-                projectId={projectId}
-                contractId={contract.id}
-                isReprofile={contract.status === 'ACTIVE'}
-                frozen={frozen}
-                editable={editable}
-                contractValue={schedule.contractValue}
-                currency={schedule.currency}
-                onDone={() => setReprofiling(false)}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
+        <ScheduleForm
+          projectId={projectId}
+          contractId={contract.id}
+          isReprofile={contract.status === 'ACTIVE'}
+          frozen={frozen}
+          editable={editable}
+          contractValue={schedule.contractValue}
+          currency={schedule.currency}
+          onDone={() => setReprofiling(false)}
+          dialog={{ title: t('reprofileTitle'), subtitle: t('reprofileBody') }}
+        />
       ) : null}
     </section>
   );

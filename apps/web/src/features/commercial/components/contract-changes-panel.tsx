@@ -9,11 +9,10 @@ import {
   Badge,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   Skeleton,
@@ -214,6 +213,7 @@ function SeparateChargeRow({
   );
 }
 
+/** Invoice one separate charge — a `FormDialog` (ADR-039), size `md`: three fields. */
 function CreateSeparateChargeInvoiceDialog({
   projectId,
   node,
@@ -243,11 +243,19 @@ function CreateSeparateChargeInvoiceDialog({
     onClose();
   }
 
+  const dirty = invoiceDate !== today || dueDate !== '' || paymentTerms !== '';
+
   return (
-    <Dialog open onOpenChange={(open) => !open && !mutation.isPending && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription>{t('description')}</DialogDescription>
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t('title')}
+      subtitle={t('description')}
+      size="md"
+      dirty={dirty}
+      busy={mutation.isPending}
+    >
+      <FormDialogBody>
         {mutation.error && (
           <Alert variant="error" messages={[(mutation.error as Error).message]} />
         )}
@@ -277,18 +285,21 @@ function CreateSeparateChargeInvoiceDialog({
             disabled={mutation.isPending}
           />
         </FormField>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
-          <Button
-            onClick={() => void handleSubmit()}
-            disabled={!dueDate || mutation.isPending}
-          >
-            {mutation.isPending ? t('submitting') : t('submit')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="button"
+          onClick={() => void handleSubmit()}
+          disabled={!dueDate || mutation.isPending}
+        >
+          {mutation.isPending ? t('submitting') : t('submit')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -12,13 +12,7 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-react';
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from '@erp/ui';
+import { Button, FormDialog, FormDialogBody, FormDialogClose, FormDialogFooter } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -35,32 +29,35 @@ interface Props {
   currency: string;
 }
 
+/** An invoice's collection history — a read-only `FormDialog` (ADR-039), size `md`, with Close. */
 export function InvoiceTimelineDialog({ open, onOpenChange, invoice, entries, currency }: Props) {
   const t = useTranslations('commercial.billing.collection.timeline');
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogTitle>
-          {t('title')}
-          {invoice.invoiceNumber ? ` — ${invoice.invoiceNumber}` : ''}
-        </DialogTitle>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`${t('title')}${invoice.invoiceNumber ? ` — ${invoice.invoiceNumber}` : ''}`}
+      size="md"
+      initialFocus="dialog"
+      closeLabel={t('close')}
+    >
+      <FormDialogBody>
+        {entries.length === 0 ? (
+          <p className="py-4 text-center text-body-sm text-muted-foreground">{t('noHistory')}</p>
+        ) : (
+          <TimelineList entries={entries} currency={currency} />
+        )}
+      </FormDialogBody>
 
-        <div className="py-2">
-          {entries.length === 0 ? (
-            <p className="py-4 text-center text-body-sm text-muted-foreground">{t('noHistory')}</p>
-          ) : (
-            <TimelineList entries={entries} currency={currency} />
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline">
             {t('close')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
