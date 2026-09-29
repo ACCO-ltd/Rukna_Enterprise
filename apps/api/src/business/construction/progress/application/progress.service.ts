@@ -17,6 +17,8 @@ import {
   type ScheduleTemplateKey,
   type SuggestWeightsResponse,
   type ProposedPackageWeightsResponse,
+  apportionWeights,
+  PROGRESS_WEIGHT_DECIMALS,
 } from '@erp/types';
 
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
@@ -1100,13 +1102,14 @@ export class ProgressService {
     // Owner decision 2026-09-29: no value-based weight for a caller without the BOQ cost tier — even
     // at package level a one-leaf package would reveal that leaf's share. They get an even split
     // across the packages that hold measurable scope (not scheduleOnly, at least one non-contingency
-    // leaf); the rest suggest 0.
+    // leaf); the rest — schedule-only phases included — suggest 0. With nothing measurable every
+    // suggestion is 0, exactly as the cost-tier path answers an all-unpriced plan.
     if (!resolveBoqVisibility(identity).canViewCost) {
       const workLeaf = new Set(leafValues.filter((v) => v.nodeRole !== 'CONTINGENCY').map((v) => v.id));
       const measurable = packages.map(
         (wp) => !wp.scheduleOnly && wp.boqLinks.some((b) => workLeaf.has(b.boqNodeId)),
       );
-      const share = evenShares(measurable);
+      const share = evenShares(measurable, 'zeros');
       return {
         projectId,
         weights: packages.map((wp, index) => ({ workPackageId: wp.id, suggestedWeight: share[index]! })),
@@ -1132,15 +1135,15 @@ export class ProgressService {
       totalValue = totalValue.plus(value);
     }
 
-    const totalPositive = totalValue.greaterThan(ZERO);
+    // Rounded to the stored precision by largest remainder, so the accepted weights sum to exactly 1.
+    // No total value anywhere (all-unpriced / empty) ⇒ every suggestion is 0, never ÷0.
+    const rounded = apportionWeights(
+      packages.map((wp) => (valueByPackage.get(wp.id) ?? ZERO).toNumber()),
+      PROGRESS_WEIGHT_DECIMALS,
+    );
     return {
       projectId,
-      weights: packages.map((wp) => {
-        const value = valueByPackage.get(wp.id) ?? ZERO;
-        // No total value anywhere (all-unpriced / empty) ⇒ every suggestion is 0, never ÷0.
-        const suggestedWeight = totalPositive ? value.div(totalValue).toNumber() : 0;
-        return { workPackageId: wp.id, suggestedWeight };
-      }),
+      weights: packages.map((wp, index) => ({ workPackageId: wp.id, suggestedWeight: rounded[index]! })),
       valueWeighted: true,
     };
   }
@@ -1185,7 +1188,7 @@ export class ProgressService {
           return leaf !== undefined && leaf.nodeRole !== 'CONTINGENCY';
         }),
       );
-      const share = evenShares(measurable);
+      const share = evenShares(measurable, 'equal');
       return {
         projectId,
         weights: packages.map((p, index) => ({ key: p.key, weight: share[index]! })),
@@ -1197,14 +1200,12 @@ export class ProgressService {
     const values = packages.map((p) => p.boqNodeIds.reduce((sum, id) => sum.plus(valueOf(id)), ZERO));
     const total = values.reduce((sum, v) => sum.plus(v), ZERO);
 
-    const weights = packages.map((p, index) => ({
-      key: p.key,
-      weight: total.greaterThan(ZERO)
-        ? values[index]!.div(total).toNumber()
-        : packages.length > 0
-          ? 1 / packages.length
-          : 0,
-    }));
+    // Nothing priced ⇒ an equal split, so the weights still sum to 1. Either way rounded to the stored
+    // precision by largest remainder, so they sum to exactly 1.0000.
+    const rounded = total.greaterThan(ZERO)
+      ? apportionWeights(values.map((v) => v.toNumber()), PROGRESS_WEIGHT_DECIMALS)
+      : apportionWeights(packages.map(() => 1), PROGRESS_WEIGHT_DECIMALS);
+    const weights = packages.map((p, index) => ({ key: p.key, weight: rounded[index]! }));
     return { projectId, weights, valueWeighted: true, unpricedLeafIds };
   }
 
@@ -2139,11 +2140,15 @@ function toSnapshotResponse(row: {
 }
 
 /**
- * 1/n for each of the n eligible entries, 0 for the rest; with none eligible, 1/n across all, so the
- * weights still sum to 1 whenever there is anything to weigh.
+ * An even split, rounded to the stored precision by largest remainder (so it sums to exactly 1):
+ * equal shares for the eligible entries, 0 for the rest. With none eligible, `whenNone` decides —
+ * `'zeros'` (nothing measurable, nothing to weigh) or `'equal'` (spread across all).
  */
-function evenShares(eligible: readonly boolean[]): number[] {
-  const count = eligible.filter(Boolean).length;
-  if (count === 0) return eligible.map(() => (eligible.length > 0 ? 1 / eligible.length : 0));
-  return eligible.map((ok) => (ok ? 1 / count : 0));
+function evenShares(eligible: readonly boolean[], whenNone: 'zeros' | 'equal'): number[] {
+  const any = eligible.some(Boolean);
+  if (!any && whenNone === 'zeros') return eligible.map(() => 0);
+  return apportionWeights(
+    eligible.map((ok) => (ok || !any ? 1 : 0)),
+    PROGRESS_WEIGHT_DECIMALS,
+  );
 }

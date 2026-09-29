@@ -85,6 +85,30 @@ describe('ProgressService.weighProposedPackages', () => {
     });
   });
 
+  it.each([3, 6, 7])('splits %i packages evenly to exactly 1.0000 for a PM-like caller', async (n) => {
+    const many = Array.from({ length: n }, (_, i) => leaf(`w${i}`, String(100 * (i + 1))));
+    const { svc } = service(many);
+    const result = await svc.weighProposedPackages(
+      pmLike,
+      'p',
+      many.map((l, i) => ({ key: `k${i}`, boqNodeIds: [l.id] })),
+    );
+    const units = result.weights.reduce((sum, w) => sum + Math.round(w.weight * 10_000), 0);
+    expect(units).toBe(10_000);
+    expect(result.weights.every((w) => Number(w.weight.toFixed(4)) === w.weight)).toBe(true);
+  });
+
+  it('rounds value weights to exactly 1.0000 for a cost-tier caller', async () => {
+    const thirds = [leaf('x', '100'), leaf('y', '100'), leaf('z', '100')];
+    const { svc } = service(thirds);
+    const result = await svc.weighProposedPackages(
+      costTier,
+      'p',
+      thirds.map((l) => ({ key: l.id, boqNodeIds: [l.id] })),
+    );
+    expect(result.weights.map((w) => w.weight)).toEqual([0.3334, 0.3333, 0.3333]);
+  });
+
   it('defeats the single-leaf probe: a one-leaf package gets the same even share', async () => {
     const { svc } = service(leaves);
     const probe = await svc.weighProposedPackages(pmLike, 'p', [

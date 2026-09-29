@@ -230,6 +230,9 @@ describe('ADR-029 §8 A-1 — scope-only editors cannot change money', () => {
     expect(() => assertMayChangeBoqMoney(scopeOnly, { isLeaf: false }, pricedItem)).toThrow(ForbiddenException);
     const unpricedItem = { isLeaf: true, totalAmount: null, unitRate: null, pricingBasis: 'UNIT_RATE', quantity: null };
     expect(() => assertMayChangeBoqMoney(scopeOnly, { isLeaf: false }, unpricedItem)).not.toThrow();
+    // Priced by amount alone (an absorbed or imported line with no rate) still counts as priced.
+    const amountOnly = { isLeaf: true, totalAmount: '500.00', unitRate: null, pricingBasis: 'LUMP_SUM', quantity: null };
+    expect(() => assertMayChangeBoqMoney(scopeOnly, { isLeaf: false }, amountOnly)).toThrow(ForbiddenException);
     // Unchanged echo of isLeaf is not a change.
     expect(() => assertMayChangeBoqMoney(scopeOnly, { isLeaf: true }, pricedItem)).not.toThrow();
     expect(() => assertMayChangeBoqMoney(manager, { isLeaf: false }, pricedItem)).not.toThrow();

@@ -248,12 +248,45 @@ describe('ProgressService.suggestWeights (Master Schedule P1-d)', () => {
       expect(byId.get('cont')).toBe(0); // contingency-only: not measurable scope
     });
 
+    it('gives schedule-only phases 0 and splits 3 measurable packages to exactly 1.0000', async () => {
+      const { service } = build({
+        workPackages: [
+          { id: 'mob', scheduleOnly: true, boqLinks: [] },
+          { id: 'a', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n1' }] },
+          { id: 'b', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n2' }] },
+          { id: 'c', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n3' }] },
+        ],
+        leafValues,
+      });
+      const res = await service.suggestWeights(pmLike, 'p-1');
+      expect(res.weights.map((w) => w.suggestedWeight)).toEqual([0, 0.3334, 0.3333, 0.3333]);
+      const units = res.weights.reduce((sum, w) => sum + Math.round(w.suggestedWeight * 10_000), 0);
+      expect(units).toBe(10_000);
+    });
+
+    it('answers all zeros when nothing is measurable, as the cost tier does', async () => {
+      const { service } = build({
+        workPackages: [
+          { id: 'mob', scheduleOnly: true, boqLinks: [] },
+          { id: 'cont', scheduleOnly: false, boqLinks: [{ boqNodeId: 'c' }] },
+          { id: 'empty', scheduleOnly: false, boqLinks: [] },
+        ],
+        leafValues,
+      });
+      const res = await service.suggestWeights(pmLike, 'p-1');
+      expect(res.valueWeighted).toBe(false);
+      expect(res.weights.map((w) => w.suggestedWeight)).toEqual([0, 0, 0]);
+    });
+
     it('still value-weights for a cost-tier caller', async () => {
       const { service } = build({ workPackages: packages, leafValues });
       const res = await service.suggestWeights(costTier, 'p-1');
       expect(res.valueWeighted).toBe(true);
       const byId = new Map(res.weights.map((w) => [w.workPackageId, w.suggestedWeight]));
-      expect(byId.get('probe')).toBeCloseTo(10000 / 450000, 6);
+      expect(byId.get('probe')).toBeCloseTo(10000 / 450000, 4);
+      // Rounded to the stored four places, summing to exactly 1.0000.
+      const units = res.weights.reduce((sum, w) => sum + Math.round(w.suggestedWeight * 10_000), 0);
+      expect(units).toBe(10_000);
     });
   });
 });
