@@ -122,9 +122,9 @@ Compares built % against cost consumed % — an early-warning, **not** EVM.
   actualCost,                           // string | null (null = money hidden from this caller)
   budgetTotal,                          // string | null (null = no baselined budget, or money hidden)
   moneyVisible,                         // boolean — false for money-blind roles (PM / Site Engineer)
-  costConsumedPercent,                  // number | null (null = no baselined budget yet)
-  divergence,                           // number | null: physical − cost (positive = built ahead of spend)
-  status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA',
+  costConsumedPercent,                  // number | null (null = no baselined budget yet, or hidden)
+  divergence,                           // number | null: physical − cost (positive = built ahead of spend); null when hidden
+  status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA' | 'HIDDEN', // HIDDEN = caller lacks the cost tier
   weightsComplete                       // boolean (from the roll-up)
 }
 ```

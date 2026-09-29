@@ -25,7 +25,7 @@ import {
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatNumber } from '@/lib/format';
 
-import { isEditableDpr } from '../domain/my-reports';
+import { canRemoveEntry, isEditableDpr } from '../domain/my-reports';
 import { mapDprError, type DprQuantityFieldError } from '../domain/dpr-errors';
 import type { DailyProgressReportDetail } from '../api/progress-api';
 import {
@@ -309,9 +309,8 @@ function EntryForm({
                       scope={verifiedByNode.get(leaf.id)?.measurableQuantity ?? leaf.quantity}
                       measurements={measurementsByNode.get(leaf.id) ?? []}
                       // A reopened report keeps its approved entries: the server refuses (409) to
-                      // delete one made before the reopen, and the response does not say which
-                      // entries came after it — so none offers Remove on a reopened report.
-                      canRemove={dpr.status !== 'REOPENED'}
+                      // delete one recorded before the reopen, so only later entries offer Remove.
+                      canRemove={(m) => canRemoveEntry(dpr, m)}
                       onConflict={refetchReport}
                       fieldError={fieldErrors[leaf.id]}
                       rowError={rowErrors[leaf.id]}
@@ -417,7 +416,7 @@ function EntryItemRow({
   verifiedToDate: number;
   scope: string | null;
   measurements: ProgressMeasurementResponse[];
-  canRemove: boolean;
+  canRemove: (entry: ProgressMeasurementResponse) => boolean;
   onConflict: () => void;
   fieldError: DprQuantityFieldError | undefined;
   rowError: string | undefined;
@@ -433,6 +432,9 @@ function EntryItemRow({
   const unit = leaf.unit ?? '';
   const withUnit = (n: number | string) => `${formatNumber(n, locale, 3) ?? n}${unit ? ` ${unit}` : ''}`;
   const recordedHere = measurements.reduce((sum, m) => sum + Number(m.quantity), 0);
+  const removable = measurements.filter((m) => canRemove(m));
+  const kept = measurements.filter((m) => !canRemove(m));
+  const removableHere = removable.reduce((sum, m) => sum + Number(m.quantity), 0);
   const cumulative = verifiedToDate + recordedHere;
   const scopeNum = scope != null && scope !== '' ? Number(scope) : null;
   const hint =
@@ -447,8 +449,8 @@ function EntryItemRow({
     ? `${formatNumber(fieldError.max, locale, 3) ?? fieldError.max}${fieldError.unit ? ` ${fieldError.unit}` : unit ? ` ${unit}` : ''}`
     : '';
   const errorText = fieldError
-    ? recordedHere > 0 && canRemove
-      ? t('entry.exceedsRemove', { max: maxText, quantity: withUnit(recordedHere) })
+    ? removableHere > 0
+      ? t('entry.exceedsRemove', { max: maxText, quantity: withUnit(removableHere) })
       : t('entry.exceeds', { max: maxText })
     : rowError;
 
@@ -527,18 +529,18 @@ function EntryItemRow({
           </Button>
         </div>
       </form>
-      {!canRemove && measurements.length > 0 ? (
-        <ul className="mt-2 flex flex-wrap gap-2 text-caption text-muted-foreground" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
-          {measurements.map((m) => (
-            <li key={m.id} className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+      {measurements.length > 0 ? (
+        <ul className="mt-2 flex flex-wrap items-center gap-2" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
+          {/* Entries the approved report already carried: listed, never removable. */}
+          {kept.map((m) => (
+            <li
+              key={m.id}
+              className="rounded-full border border-border px-2 py-0.5 text-caption tabular-nums text-muted-foreground"
+            >
               {withUnit(m.quantity)}
             </li>
           ))}
-        </ul>
-      ) : null}
-      {canRemove && measurements.length > 0 ? (
-        <ul className="mt-2 flex flex-wrap gap-2" aria-label={t('entry.recordedHere', { quantity: withUnit(recordedHere) })}>
-          {measurements.map((m) => (
+          {removable.map((m) => (
             <li key={m.id}>
               <Button
                 variant="ghost"

@@ -342,6 +342,8 @@ export const STATUS_REGISTRY = {
     PROGRESS_AHEAD: 'progress',
     COST_AHEAD: 'attention',
     INSUFFICIENT_DATA: 'neutral',
+    // Withheld from a caller without the cost tier — never rendered as a status pill.
+    HIDDEN: 'neutral',
   },
   /** Collection-vs-progress signal (`CollectionProgressSignalResponse['status']`). */
   collectionSignal: {
@@ -349,6 +351,8 @@ export const STATUS_REGISTRY = {
     CASH_AHEAD: 'progress',
     WORK_AHEAD: 'attention',
     INSUFFICIENT_DATA: 'neutral',
+    // Withheld from a caller without the commercial tier — never rendered as a status pill.
+    HIDDEN: 'neutral',
   },
   /** A programme milestone (`ProgrammeMilestoneResponse['status']`). */
   programmeMilestone: {

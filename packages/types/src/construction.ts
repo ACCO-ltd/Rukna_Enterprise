@@ -294,8 +294,10 @@ export interface IpaPrefillResponse {
 // ADR-021/023: physical-vs-financial early warning for the Finance/Overview cockpit.
 //
 // Money visibility (Progress redesign): the money fields are null when the caller lacks the cost
-// tier (`resolveBoqVisibility(...).canViewCost` — PM / Site Engineer are money-blind). Ratios and
-// status stay populated; `moneyVisible` says which reading of a null applies.
+// tier (`resolveBoqVisibility(...).canViewCost` — PM / Site Engineer are money-blind). Since the
+// owner decision of 2026-09-29 everything derived from them is withheld too: costConsumedPercent
+// and divergence are null and status is 'HIDDEN'. Only physicalPercent (not money) stays.
+// `moneyVisible` says which reading of a null applies.
 export interface PhysicalFinancialSignalResponse {
   projectId: string;
   physicalPercent: number;
@@ -310,20 +312,23 @@ export interface PhysicalFinancialSignalResponse {
   moneyVisible: boolean;
   /**
    * actualCost ÷ budgetTotal × 100. Null without a baselined budget — a project with no
-   * budget has not consumed 0% of it, and the signal reads INSUFFICIENT_DATA instead.
+   * budget has not consumed 0% of it, and the signal reads INSUFFICIENT_DATA instead. Also null
+   * when money is hidden from the caller (`status: 'HIDDEN'`).
    */
   costConsumedPercent: number | null;
-  /** physicalPercent − costConsumedPercent (positive = built ahead of spend). */
+  /** physicalPercent − costConsumedPercent (positive = built ahead of spend). Null when hidden. */
   divergence: number | null;
-  status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA';
+  /** 'HIDDEN' = the caller lacks the cost tier; no comparison is disclosed (not "no data"). */
+  status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA' | 'HIDDEN';
   /** From the roll-up: false when work-package weights don't total 100%. */
   weightsComplete: boolean;
 }
 
 // ADR-021/023: collection-vs-progress early warning — cash collected vs work built.
 //
-// Money visibility (Progress redesign): contractValue / receivedRevenue are null when the caller
-// lacks the commercial tier (`resolveBoqVisibility(...).canViewMargin`). Ratios and status remain.
+// Money visibility (Progress redesign): contractValue / receivedRevenue, collectedPercent and
+// divergence are null, and status is 'HIDDEN', when the caller may not see contract figures
+// (`canViewContractFigures`: the margin tier or `view:contract` — owner decisions 2026-09-29).
 export interface CollectionProgressSignalResponse {
   projectId: string;
   physicalPercent: number;
@@ -333,11 +338,15 @@ export interface CollectionProgressSignalResponse {
   receivedRevenue: string | null;
   /** False when the caller may not see money: contractValue / receivedRevenue are then null. */
   moneyVisible: boolean;
-  /** receivedRevenue ÷ contractValue × 100. Null when there is no contract value yet. */
+  /**
+   * receivedRevenue ÷ contractValue × 100. Null when there is no contract value yet, or when money
+   * is hidden from the caller (`status: 'HIDDEN'`).
+   */
   collectedPercent: number | null;
-  /** collectedPercent − physicalPercent (positive = cash ahead of work). */
+  /** collectedPercent − physicalPercent (positive = cash ahead of work). Null when hidden. */
   divergence: number | null;
-  status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA';
+  /** 'HIDDEN' = the caller may not see contract figures; no comparison is disclosed (not "no data"). */
+  status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA' | 'HIDDEN';
   /** From the roll-up: false when work-package weights don't total 100%. */
   weightsComplete: boolean;
 }
@@ -462,7 +471,10 @@ export interface ProgressSnapshotResponse {
   accountingPeriodId: string | null;
   physicalPercent: number;
   verifiedPercent: number;
-  /** From the physical-vs-financial signal; null when there is no cost data. */
+  /**
+   * From the physical-vs-financial signal; null when there is no cost data. The stored value is
+   * always the true one; the capture response nulls it for a caller without the cost tier.
+   */
   costConsumedPercent: number | null;
   source: ProgressSnapshotSourceType;
   capturedAt: string;
@@ -483,7 +495,7 @@ export interface ProgressActualPoint {
   periodEndDate: string;
   physicalPercent: number;
   verifiedPercent: number;
-  /** Null when the snapshot had no cost data. */
+  /** Null when the snapshot had no cost data, or when the caller lacks the cost tier. */
   costPercent: number | null;
 }
 
@@ -582,6 +594,11 @@ export interface ProgressMeasurementResponse {
   /** Where on site this quantity was measured, e.g. "Units 301-308" — distinct from the DPR's own
    * whole-report `locationArea`, since one report can cover several work entries in different spots. */
   locationArea?: string;
+  /**
+   * ISO datetime the entry was recorded. On a REOPENED report only entries created after the
+   * report's `reopenedAt` can be removed; earlier ones were approved and are superseded, not deleted.
+   */
+  createdAt: string;
 }
 
 // Phase 3 structured DPR row types (Section C + D).
@@ -659,6 +676,14 @@ export interface DailyProgressReportResponse {
   returnedAt?: string;
   /** The returner's "firstName lastName", resolved like preparedByName. */
   returnedByName?: string;
+  /** Who most recently reopened the approved report (user id); null/absent if never reopened. */
+  reopenedBy?: string | null;
+  /** ISO datetime of the most recent reopen; null/absent if never reopened. */
+  reopenedAt?: string | null;
+  /** Why the report was most recently reopened. */
+  reopenReason?: string | null;
+  /** The reopener's "firstName lastName", resolved like preparedByName. */
+  reopenedByName?: string;
   // Phase 3 structured row collections — present only on the getDpr endpoint (not on list).
   labourRows?: DprLabourRowResponse[];
   equipmentRows?: DprEquipmentRowResponse[];
@@ -672,12 +697,17 @@ export interface DailyProgressReportResponse {
 export interface MilestoneReleaseLine {
   installmentId: string;
   name: string;
-  /** Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage. */
-  percentage: string;
+  /**
+   * Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage.
+   * Null when the caller may not see contract figures (`canViewContractFigures`: the margin tier
+   * or `view:contract`): a share of the contract value is money-derived (owner decision
+   * 2026-09-29), hidden with `amount`.
+   */
+  percentage: string | null;
   triggerType: `${PaymentTrigger}`;
   /**
-   * contractValue × percentage, fixed to 2 decimals (money). Null when the caller lacks the
-   * commercial money tier (`resolveBoqVisibility(...).canViewMargin`) — percentage stays visible.
+   * contractValue × percentage, fixed to 2 decimals (money). Null when the caller may not see
+   * contract figures (`canViewContractFigures`) — `percentage` is then null too.
    */
   amount: string | null;
   currency: string;

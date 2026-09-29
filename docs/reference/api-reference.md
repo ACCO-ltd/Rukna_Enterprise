@@ -2657,7 +2657,7 @@ and refused with **409** once APPROVED.
 
 | Method | Path | Change |
 |---|---|---|
-| `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName` |
+| `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName`, and (2026-09-29) `reopenedBy`, `reopenedAt`, `reopenReason`, `reopenedByName`. The detail's `measurements[]` carry `createdAt` |
 | `POST` | `/progress/reports/:dprId/return` | Also records `returnedBy` / `returnedAt` (kept on resubmit, overwritten by the next return — same as `returnReason`) |
 | `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. In a **REOPENED** report, entries created before the reopen were approved and are refused with **409** (CONST-PROG-010 supersede, don't overwrite) — only entries added since the reopen can be deleted. Evidence tagged to the entry is detached, not deleted. Runs under the report row lock, re-checking the status |
 
@@ -2669,7 +2669,13 @@ workPackages: Array<{ id: string; code: string; name: string }>; // distinct pac
 approvedByName?: string;
 reviewedByName?: string;   // approver for APPROVED, reopener for REOPENED, returner for RETURNED, else undefined
 returnedBy?: string; returnedAt?: string; returnedByName?: string;
+reopenedBy?: string | null; reopenedAt?: string | null; reopenReason?: string | null; reopenedByName?: string;
+// detail only — each work entry:
+measurements: Array<{ id: string; boqNodeId: string; quantity: string; createdAt: string; /* … */ }>;
 ```
+
+On a REOPENED report an entry is removable only when `createdAt > reopenedAt` — the exact rule the
+`DELETE` above enforces, so the editor offers Remove only where the server will accept it.
 
 #### Work-package allocation race
 
@@ -2708,16 +2714,26 @@ contingency excluded). `readyToVerify` is a prompt; verifying is still `POST
 #### Money redaction for money-blind roles
 
 Visibility reuses the BOQ money tiers (`resolveBoqVisibility`, ADR-029 §8 A-2). When the caller
-lacks the tier, the amount is `null`; percentages, ratios and `status` are unchanged.
+lacks the tier, the amount is `null` — and, since the owner decision of 2026-09-29 (ADR-021
+amendment), so is every percentage derived from money, with the signal's `divergence` and `status`
+withheld as well. Physical and verified progress % are not money and are always returned.
 
 | Endpoint | Fields nulled | Tier required |
 |---|---|---|
-| `GET /projects/:projectId/progress/signal` | `actualCost`, `budgetTotal` | cost (`view-cost:boq`, `manage:boq`, or a margin grant) |
-| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue` | margin (`view-margin:boq` or `view:financial-position`) |
-| `GET /projects/:projectId/programme/milestones` | `releases[].amount` | margin |
+| `GET /projects/:projectId/progress/signal` | `actualCost`, `budgetTotal`, `costConsumedPercent`, `divergence`; `status` = `'HIDDEN'` | cost (`view-cost:boq`, `manage:boq`, or a margin grant) |
+| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue`, `collectedPercent`, `divergence`; `status` = `'HIDDEN'` | contract figures: margin (`view-margin:boq` or `view:financial-position`) **or `view:contract`** |
+| `GET /projects/:projectId/programme/milestones` | `releases[].amount`, `releases[].percentage` | contract figures (as above) |
+| `GET /projects/:projectId/progress/curve` | `actual[].costPercent` | cost |
+| `POST /projects/:projectId/progress/snapshots` (response only) | `costConsumedPercent` — the stored snapshot keeps the true value | cost |
+| `GET /projects/:projectId/programme/master-schedule.pdf` | the release share and amount are left out of the milestone table | contract figures (as above) |
+
+"Contract figures" is one server rule, `canViewContractFigures` (owner decision 2026-09-29): the
+margin tier or `view:contract`, the permission that already shows these figures on Commercial. The
+Construction Director therefore sees them; Project Manager and Site Engineer do not.
 
 Both signals also carry `moneyVisible: boolean`, so a hidden `null` is not mistaken for "no budget"
-or "no contract". Render a neutral hidden/restricted state, never `$0`.
+or "no contract". `status: 'HIDDEN'` is distinct from `INSUFFICIENT_DATA` ("no budget / no contract
+yet"). Render a neutral hidden/restricted state or omit the item — never `$0`, `0%` or `—%`.
 
 #### Re-baseline must cite an adopted variation
 

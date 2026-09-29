@@ -1,6 +1,8 @@
 import { ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 
+import { PERMISSIONS } from '@erp/types';
+
 import { ProgressService } from './progress.service.js';
 
 /**
@@ -9,8 +11,14 @@ import { ProgressService } from './progress.service.js';
  * module (tested separately). These specs mock the repo to prove orchestration + tenancy + the
  * unique-per-period guard.
  */
-// `permissions` is read by the signal's money-visibility check; the snapshot only freezes the ratio.
+// `permissions` is read by the money-visibility check. No money tier: a money-blind caller.
 const identity = { userId: 'u1', activeOrganizationId: 'o1', permissions: [] } as never;
+/** A caller with the cost tier (finance): the cost-consumed % is disclosed. */
+const costIdentity = {
+  userId: 'u1',
+  activeOrganizationId: 'o1',
+  permissions: [PERMISSIONS.projectsView, PERMISSIONS.financialPositionView],
+} as never;
 
 interface SnapshotRow {
   id: string;
@@ -161,12 +169,29 @@ describe('ProgressService.captureSnapshot (BE-1)', () => {
 
   it('freezes the live cost-consumed % from the physical-financial signal', async () => {
     const { svc } = build({ financialPosition: { actualCost: '40', budgetTotal: '100' } });
-    const res = await svc.captureSnapshot(identity, 'p1', '2026-08-31');
+    const res = await svc.captureSnapshot(costIdentity, 'p1', '2026-08-31');
     expect(res.costConsumedPercent).toBe(40);
+  });
+
+  it('a money-blind capturer still freezes the TRUE cost % but is not shown it', async () => {
+    const { svc, created } = build({ financialPosition: { actualCost: '40', budgetTotal: '100' } });
+    const res = await svc.captureSnapshot(identity, 'p1', '2026-08-31');
+    // History is a fact about the project, not about who captured it.
+    expect(created[0].costConsumedPercent?.toNumber()).toBe(40);
+    // ...but the response withholds the budget ratio (owner decision 2026-09-29).
+    expect(res.costConsumedPercent).toBeNull();
   });
 });
 
 describe('ProgressService.getCurve (BE-1)', () => {
+  it('withholds the frozen cost % from a caller without the cost tier; physical/verified stay', async () => {
+    const { svc } = build({ snapshots: [snap('s1', '2026-04-01', 10, 8, 45)] });
+    const blind = await svc.getCurve(identity, 'p1');
+    expect(blind.actual[0]).toMatchObject({ physicalPercent: 10, verifiedPercent: 8, costPercent: null });
+    const finance = await svc.getCurve(costIdentity, 'p1');
+    expect(finance.actual[0].costPercent).toBe(45);
+  });
+
   it('returns baseline + actual + status when the project has dates and snapshots', async () => {
     const { svc } = build({
       snapshots: [snap('s1', '2026-04-01', 10, 8), snap('s2', '2026-07-02', 20, 18)],

@@ -76,6 +76,26 @@ function releaseAmount(
   return formatMoney(release.amount, release.currency, locale) ?? release.amount;
 }
 
+/**
+ * One release line. A null `percentage` means the server withheld the share of the contract value
+ * from a money-blind caller (owner decision 2026-09-29) — the amount is then hidden too, so the line
+ * names the installment and says the amount is restricted; never a 0 or a "—%".
+ */
+function releaseLine(
+  release: MilestoneReleaseLine,
+  locale: 'en' | 'ar',
+  t: ReturnType<typeof useTranslations>,
+): string {
+  if (release.percentage === null) {
+    return t('programme.releases.lineHidden', { name: release.name });
+  }
+  return t('programme.releases.line', {
+    percent: formatFraction(release.percentage, locale),
+    name: release.name,
+    amount: releaseAmount(release, locale, t('programme.releases.amountHidden')),
+  });
+}
+
 export function MilestonesSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const tCommon = useTranslations('common');
@@ -204,13 +224,7 @@ function ReleasesCell({
     <ul className="flex flex-col gap-1">
       {releases.map((r) => (
         <li key={r.installmentId} className="flex flex-wrap items-center gap-1.5">
-          <span className="text-body text-foreground">
-            {t('programme.releases.line', {
-              percent: formatFraction(r.percentage, locale),
-              name: r.name,
-              amount: releaseAmount(r, locale, t('programme.releases.amountHidden')),
-            })}
-          </span>
+          <span className="text-body text-foreground">{releaseLine(r, locale, t)}</span>
           {r.invoiced ? (
             <RefPill tone="green" aria-label={t('programme.releases.invoicedLabel')}>
               {t('programme.releases.invoiced')}
@@ -319,16 +333,23 @@ export function VerifyMilestoneDialog({
     verifyNote = t('programme.verify.hint');
   } else if (releases.length === 1) {
     const r = releases[0]!;
-    verifyNote = t('programme.verify.hintReleaseOne', {
-      percent: formatFraction(r.percentage, locale),
-      name: r.name,
-      amount: releaseAmount(r, locale, t('programme.releases.amountHidden')),
-    });
+    verifyNote =
+      r.percentage === null
+        ? t('programme.verify.hintReleaseOneHidden', { name: r.name })
+        : t('programme.verify.hintReleaseOne', {
+            percent: formatFraction(r.percentage, locale),
+            name: r.name,
+            amount: releaseAmount(r, locale, t('programme.releases.amountHidden')),
+          });
   } else {
     verifyNote = t('programme.verify.hintReleaseMany', {
       count: releases.length,
       list: releases
-        .map((r) => `${formatFraction(r.percentage, locale)} ${r.name} (${releaseAmount(r, locale, t('programme.releases.amountHidden'))})`)
+        .map((r) =>
+          r.percentage === null
+            ? r.name
+            : `${formatFraction(r.percentage, locale)} ${r.name} (${releaseAmount(r, locale, t('programme.releases.amountHidden'))})`,
+        )
         .join(', '),
     });
   }

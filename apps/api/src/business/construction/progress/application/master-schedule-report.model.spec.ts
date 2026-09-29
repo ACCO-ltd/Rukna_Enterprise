@@ -186,6 +186,19 @@ describe('composeMasterScheduleReportModel', () => {
     });
   });
 
+  it('keeps a hidden share and amount null (money-blind caller) — never 0 or a fabricated label', () => {
+    const hidden: ProgrammeMilestoneResponse[] = [
+      { ...milestones[0], releases: [{ ...milestones[0].releases[0], percentage: null, amount: null }] },
+    ];
+    const model = composeMasterScheduleReportModel(baseInput({ milestones: hidden }));
+    expect(model.milestones[0].releases[0]).toEqual({
+      name: '30% Partition & Plastering',
+      percentLabel: null,
+      amountLabel: null,
+      invoiced: false,
+    });
+  });
+
   it('builds the S-curve from the curve point arrays (planned + actual), sorted, with a shared domain', () => {
     const model = composeMasterScheduleReportModel(baseInput());
     expect(model.sCurve.planned).toHaveLength(3);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DailyProgressReportResponse } from '@erp/types';
 
-import { isEditableDpr, localIsoDate, myReports, sortMyReports } from './my-reports';
+import { canRemoveEntry, isEditableDpr, localIsoDate, myReports, sortMyReports } from './my-reports';
 
 const r = (id: string, reportDate: string, status: DailyProgressReportResponse['status'], preparedBy = 'me') =>
   ({ id, projectId: 'p', reportDate, status, preparedBy }) as DailyProgressReportResponse;
@@ -30,6 +30,23 @@ describe('my reports', () => {
     expect(isEditableDpr('REOPENED')).toBe(true);
     expect(isEditableDpr('SUBMITTED')).toBe(false);
     expect(isEditableDpr('APPROVED')).toBe(false);
+  });
+
+  it('removal: any entry on a draft or returned report; none once submitted or approved', () => {
+    const entry = { createdAt: '2026-09-20T10:00:00.000Z' };
+    expect(canRemoveEntry({ status: 'DRAFT' }, entry)).toBe(true);
+    expect(canRemoveEntry({ status: 'RETURNED' }, entry)).toBe(true);
+    expect(canRemoveEntry({ status: 'SUBMITTED' }, entry)).toBe(false);
+    expect(canRemoveEntry({ status: 'APPROVED' }, entry)).toBe(false);
+  });
+
+  it('removal on a reopened report: only entries recorded strictly after the reopen (the server rule)', () => {
+    const report = { status: 'REOPENED' as const, reopenedAt: '2026-09-20T10:00:00.000Z' };
+    expect(canRemoveEntry(report, { createdAt: '2026-09-18T08:00:00.000Z' })).toBe(false);
+    expect(canRemoveEntry(report, { createdAt: '2026-09-20T10:00:00.000Z' })).toBe(false); // equal = approved
+    expect(canRemoveEntry(report, { createdAt: '2026-09-20T10:00:00.001Z' })).toBe(true);
+    // No creation date on the entry: assume it was approved, never offer a delete the server refuses.
+    expect(canRemoveEntry(report, {})).toBe(false);
   });
 
   it('formats the local calendar date', () => {

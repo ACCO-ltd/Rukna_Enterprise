@@ -121,10 +121,10 @@ describe('vocabularies added when per-feature tone maps were retired (ADR-034)',
     ['severity', { INFO: 'neutral', WARNING: 'attention', URGENT: 'danger', CRITICAL: 'danger' }],
     ['financeControl', { OK: 'success', ATTENTION: 'attention', UNAVAILABLE: 'neutral' }],
     ['scheduleHealth', { AHEAD: 'success', ON_TRACK: 'success', BEHIND: 'attention', INSUFFICIENT_DATA: 'neutral' }],
-    ['costSignal', { ALIGNED: 'success', PROGRESS_AHEAD: 'progress', COST_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral' }],
+    ['costSignal', { ALIGNED: 'success', PROGRESS_AHEAD: 'progress', COST_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral', HIDDEN: 'neutral' }],
     [
       'collectionSignal',
-      { ALIGNED: 'success', CASH_AHEAD: 'progress', WORK_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral' },
+      { ALIGNED: 'success', CASH_AHEAD: 'progress', WORK_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral', HIDDEN: 'neutral' },
     ],
     ['programmeMilestone', { PLANNED: 'neutral', VERIFIED: 'success' }],
     [

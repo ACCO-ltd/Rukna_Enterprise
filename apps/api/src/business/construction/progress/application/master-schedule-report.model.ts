@@ -91,10 +91,10 @@ export interface MasterScheduleSCurve {
 /** One payment stage a milestone releases (from ProgrammeMilestoneResponse.releases). */
 export interface MasterScheduleReleaseLine {
   name: string;
-  /** Percentage as a display string, e.g. "40%". */
-  percentLabel: string;
-  /** Money amount + currency, e.g. "USD 100,000.00". */
-  amountLabel: string;
+  /** Percentage as a display string, e.g. "40%". Null when hidden from the caller (money tier). */
+  percentLabel: string | null;
+  /** Money amount + currency, e.g. "USD 100,000.00". Null when hidden from the caller (money tier). */
+  amountLabel: string | null;
   invoiced: boolean;
 }
 
@@ -144,8 +144,12 @@ export interface ComposeMasterScheduleInput {
   asOf: string;
 }
 
-/** A `percentage` fraction string ("0.4000") → a display "40%". Falls back to the raw string. */
-function toPercentLabel(fraction: string): string {
+/**
+ * A `percentage` fraction string ("0.4000") → a display "40%". Falls back to the raw string. A null
+ * share is hidden from the caller (commercial money tier) and stays null — the renderer omits it.
+ */
+function toPercentLabel(fraction: string | null): string | null {
+  if (fraction === null) return null;
   const n = Number(fraction);
   if (Number.isNaN(n)) return fraction;
   // 0.4 → "40%", 0.075 → "7.5%". Trim trailing zeros.
@@ -155,10 +159,10 @@ function toPercentLabel(fraction: string): string {
 
 /**
  * "100000.00" + "USD" → "USD 100,000.00" (thousands-grouped, 2dp). A null amount means the caller
- * may not see commercial money — shown as a neutral dash, never as 0.
+ * may not see commercial money — it stays null and the renderer omits it, never shows 0.
  */
-function toAmountLabel(amount: string | null, currency: string): string {
-  if (amount === null) return '—';
+function toAmountLabel(amount: string | null, currency: string): string | null {
+  if (amount === null) return null;
   const n = Number(amount);
   if (Number.isNaN(n)) return `${currency} ${amount}`;
   const grouped = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

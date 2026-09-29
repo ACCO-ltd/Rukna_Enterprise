@@ -15,9 +15,9 @@ import type {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgrammeRepository } from '../infrastructure/programme.repository.js';
-// The single server-owned money-visibility definition (ADR-029 §8 A-2). Release amounts are contract
-// revenue — the commercial (margin) tier — so money-blind roles (PM / Site Engineer) see the % only.
-import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
+// The single server-owned rule for contract-derived figures (margin tier or view:contract, owner
+// decision 2026-09-29). A release's share and amount are contract figures, hidden from PM / SE.
+import { canViewContractFigures } from '../../boq/domain/boq-visibility.policy.js';
 // A work package's verified % comes from the progress roll-up's own pure helpers (construction ->
 // construction, no module import), so a milestone's readiness can never disagree with the roll-up.
 import {
@@ -195,10 +195,10 @@ export class ProgrammeService {
     projectId: string,
     rows: StoredMilestoneWithReleases[],
   ): Promise<ProgrammeMilestoneResponse[]> {
-    const { canViewMargin } = resolveBoqVisibility(identity);
+    const contractVisible = canViewContractFigures(identity);
     const packages = rows.flatMap((m) => m.workPackageLinks.map((link) => link.workPackage));
     const progressByPackage = await this.packageProgress(identity, projectId, packages);
-    return rows.map((m) => toMilestoneResponse(m, canViewMargin, progressByPackage));
+    return rows.map((m) => toMilestoneResponse(m, contractVisible, progressByPackage));
   }
 
   /**
@@ -323,7 +323,8 @@ function isoDate(value: Date | null): string | null {
  * Derive one release line. `amount` = contractValue × percentage, fixed to 2 decimals with Decimal —
  * identical rounding to the commercial payment schedule (buildPaymentSchedule). `invoiced` reflects
  * whether a ClientInvoice was generated from this installment (the 1:1 clientInvoice relation exists).
- * `amount` is null when the caller may not see commercial money; the percentage stays.
+ * `amount` and `percentage` are null when the caller may not see contract figures
+ * (`canViewContractFigures`): a share of the contract value is money-derived (owner decision 2026-09-29). Name, trigger and `invoiced` stay.
  */
 function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean): MilestoneReleaseLine {
   const amount = new Decimal(inst.contract.contractValue.toString()).mul(
@@ -332,7 +333,7 @@ function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean):
   return {
     installmentId: inst.id,
     name: inst.name,
-    percentage: inst.percentage.toString(),
+    percentage: moneyVisible ? inst.percentage.toString() : null,
     triggerType: inst.triggerType,
     amount: moneyVisible ? amount.toFixed(2) : null,
     currency: inst.contract.currency,

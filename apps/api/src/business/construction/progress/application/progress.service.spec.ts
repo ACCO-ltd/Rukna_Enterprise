@@ -1287,7 +1287,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
       fp: { actualCost: '510', budgetTotal: '1000' }, // 51% cost consumed
     });
-    const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
+    const res = await service.getPhysicalFinancialSignal(financeIdentity, 'p-1');
     expect(res.physicalPercent).toBe(20);
     expect(res.costConsumedPercent).toBe(51);
     expect(res.divergence).toBe(-31);
@@ -1300,7 +1300,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20%
       fp: { actualCost: '250', budgetTotal: '1000' }, // 25%
     });
-    const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
+    const res = await service.getPhysicalFinancialSignal(financeIdentity, 'p-1');
     expect(res.status).toBe('ALIGNED');
   });
 
@@ -1310,7 +1310,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
       fp: { actualCost: '0', budgetTotal: null, contractValue: '1000', receivedRevenue: '700' }, // 70% collected
     });
-    const res = await service.getCollectionProgressSignal(identity, 'p-1');
+    const res = await service.getCollectionProgressSignal(financeIdentity, 'p-1');
     expect(res.physicalPercent).toBe(20);
     expect(res.collectedPercent).toBe(70);
     expect(res.divergence).toBe(50);
@@ -1323,7 +1323,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       measurements: [{ boqNodeId: 'n1', quantity: 800, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 80% built
       fp: { actualCost: '0', budgetTotal: null, contractValue: '1000', receivedRevenue: '100' }, // 10% collected
     });
-    const res = await service.getCollectionProgressSignal(identity, 'p-1');
+    const res = await service.getCollectionProgressSignal(financeIdentity, 'p-1');
     expect(res.status).toBe('WORK_AHEAD');
     expect(res.divergence).toBe(-70);
   });
@@ -1334,7 +1334,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }],
       fp: { actualCost: '0', budgetTotal: null, contractValue: null, receivedRevenue: null },
     });
-    const res = await service.getCollectionProgressSignal(identity, 'p-1');
+    const res = await service.getCollectionProgressSignal(financeIdentity, 'p-1');
     expect(res.collectedPercent).toBeNull();
     expect(res.status).toBe('INSUFFICIENT_DATA');
   });
@@ -1360,12 +1360,34 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(res).toMatchObject({ actualCost: '510', budgetTotal: '1000', moneyVisible: true, costConsumedPercent: 51 });
   });
 
-  it('signal: nulls cost amounts for a money-blind caller but keeps the ratio and status', async () => {
+  it('signal: a caller with the cost tier gets the ratio, divergence and status', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(financeIdentity, 'p-1');
+    expect(res).toMatchObject({ physicalPercent: 20, divergence: -31, status: 'COST_AHEAD' });
+  });
+
+  it('signal: a money-blind caller gets no amount, ratio, divergence or status — only physical %', async () => {
     const { service } = build(signalFixture);
     const res = await service.getPhysicalFinancialSignal(moneyBlindIdentity, 'p-1');
-    expect(res.actualCost).toBeNull();
-    expect(res.budgetTotal).toBeNull();
-    expect(res.moneyVisible).toBe(false);
+    expect(res).toEqual({
+      projectId: 'p-1',
+      physicalPercent: 20,
+      actualCost: null,
+      budgetTotal: null,
+      moneyVisible: false,
+      costConsumedPercent: null,
+      divergence: null,
+      status: 'HIDDEN',
+      weightsComplete: true,
+    });
+  });
+
+  it('signal: the cost tier alone (Construction Director) reveals the cost ratio', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(
+      { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost] },
+      'p-1',
+    );
     expect(res.costConsumedPercent).toBe(51);
     expect(res.status).toBe('COST_AHEAD');
   });
@@ -1376,17 +1398,29 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(res).toMatchObject({ contractValue: '1000', receivedRevenue: '700', moneyVisible: true, collectedPercent: 70 });
   });
 
-  it('collection signal: nulls contract value and revenue for a money-blind caller but keeps the ratio and status', async () => {
+  it('collection signal: a caller with the commercial tier gets the ratio, divergence and status', async () => {
     const { service } = build(signalFixture);
-    const res = await service.getCollectionProgressSignal(moneyBlindIdentity, 'p-1');
-    expect(res.contractValue).toBeNull();
-    expect(res.receivedRevenue).toBeNull();
-    expect(res.moneyVisible).toBe(false);
-    expect(res.collectedPercent).toBe(70);
-    expect(res.status).toBe('CASH_AHEAD');
+    const res = await service.getCollectionProgressSignal(financeIdentity, 'p-1');
+    expect(res).toMatchObject({ physicalPercent: 20, divergence: 50, status: 'CASH_AHEAD' });
   });
 
-  it('collection signal: the cost tier alone (Construction Director) does not reveal contract revenue', async () => {
+  it('collection signal: a money-blind caller gets no amount, collected %, divergence or status', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(moneyBlindIdentity, 'p-1');
+    expect(res).toEqual({
+      projectId: 'p-1',
+      physicalPercent: 20,
+      contractValue: null,
+      receivedRevenue: null,
+      moneyVisible: false,
+      collectedPercent: null,
+      divergence: null,
+      status: 'HIDDEN',
+      weightsComplete: true,
+    });
+  });
+
+  it('collection signal: the cost tier alone (no view:contract, no margin) does not reveal contract revenue', async () => {
     const { service } = build(signalFixture);
     const res = await service.getCollectionProgressSignal(
       { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost] },
@@ -1394,6 +1428,54 @@ describe('ProgressService (ADR-021 MVP)', () => {
     );
     expect(res.contractValue).toBeNull();
     expect(res.receivedRevenue).toBeNull();
+    expect(res.collectedPercent).toBeNull();
+    expect(res.status).toBe('HIDDEN');
+  });
+
+  it('collection signal: Construction Director-like (view:contract, no margin) sees the contract figures', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(
+      {
+        ...identity,
+        permissions: [PERMISSIONS.projectsView, PERMISSIONS.boqViewCost, PERMISSIONS.contractsView],
+      },
+      'p-1',
+    );
+    expect(res).toMatchObject({
+      contractValue: '1000',
+      receivedRevenue: '700',
+      moneyVisible: true,
+      collectedPercent: 70,
+      divergence: 50,
+      status: 'CASH_AHEAD',
+    });
+  });
+
+  it('collection signal: Project Manager-like (view:procurement, no view:contract) stays hidden', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(
+      { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.procurementView] },
+      'p-1',
+    );
+    expect(res).toMatchObject({ contractValue: null, collectedPercent: null, divergence: null, status: 'HIDDEN' });
+  });
+
+  it('collection signal: the margin tier alone sees the contract figures', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getCollectionProgressSignal(
+      { ...identity, permissions: [PERMISSIONS.boqViewMargin] },
+      'p-1',
+    );
+    expect(res).toMatchObject({ collectedPercent: 70, status: 'CASH_AHEAD' });
+  });
+
+  it('cost signal: view:contract alone does not reveal the cost ratio (stays on the cost tier)', async () => {
+    const { service } = build(signalFixture);
+    const res = await service.getPhysicalFinancialSignal(
+      { ...identity, permissions: [PERMISSIONS.projectsView, PERMISSIONS.contractsView] },
+      'p-1',
+    );
+    expect(res).toMatchObject({ costConsumedPercent: null, status: 'HIDDEN' });
   });
 
   it('listDprs: resolves preparedByName for a known preparer and leaves unknown ids undefined', async () => {
@@ -1489,5 +1571,46 @@ describe('ProgressService (ADR-021 MVP)', () => {
     });
     const res = await service.getDpr(identity, 'dpr-1');
     expect(res.preparedByName).toBe('Ahmed Shirie');
+  });
+
+  it('getDpr: a REOPENED report exposes reopenedAt, reopenedByName and each entry createdAt', async () => {
+    const reopenedAt = new Date('2026-09-20T10:00:00.000Z');
+    const before = new Date('2026-09-18T08:00:00.000Z');
+    const after = new Date('2026-09-21T08:00:00.000Z');
+    const { service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'REOPENED',
+        projectId: 'p-1',
+        preparedBy: 'user-1',
+        approvedBy: 'pm',
+        reopenedBy: 'pm',
+        reopenedAt,
+        measurements: [
+          { id: 'm-old', boqNodeId: 'n1', quantity: 5, createdAt: before },
+          { id: 'm-new', boqNodeId: 'n1', quantity: 2, createdAt: after },
+        ],
+        attachments: [],
+      },
+      users: [
+        { id: 'user-1', firstName: 'Site', lastName: 'Eng' },
+        { id: 'pm', firstName: 'Project', lastName: 'Manager' },
+      ],
+    });
+
+    const res = (await service.getDpr(identity, 'dpr-1')) as unknown as {
+      reopenedAt: Date;
+      reopenedByName: string;
+      measurements: Array<{ id: string; createdAt: Date }>;
+    };
+
+    expect(res.reopenedAt).toEqual(reopenedAt);
+    expect(res.reopenedByName).toBe('Project Manager');
+    // Serialised as ISO strings on the wire; the editor compares each entry against the reopen.
+    expect(JSON.parse(JSON.stringify(res.measurements))).toEqual([
+      expect.objectContaining({ id: 'm-old', createdAt: before.toISOString() }),
+      expect.objectContaining({ id: 'm-new', createdAt: after.toISOString() }),
+    ]);
+    expect(JSON.parse(JSON.stringify(res)).reopenedAt).toBe(reopenedAt.toISOString());
   });
 });

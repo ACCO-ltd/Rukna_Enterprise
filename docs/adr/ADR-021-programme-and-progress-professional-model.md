@@ -98,6 +98,20 @@ than the target curve) is a possible later refinement.
 5. *Allocation race.* A concurrent allocation of the same BOQ leaf (the `@@unique([boqNodeId])`
    backstop, CONST-PROG-012) is a 409 `BOQ_ITEM_ALREADY_ALLOCATED`, not a 500.
 
+**Amendment 2026-09-29 — money-derived percentages are money (owner decision).** Refines item 4
+above: a ratio of two amounts discloses the amounts' relationship, so it follows the same tier as
+the amounts. For a caller without the cost tier, `progress/signal` nulls `costConsumedPercent` and
+`divergence` and reports `status: 'HIDDEN'`; the S-curve's `actual[].costPercent` and a snapshot
+capture's `costConsumedPercent` are nulled too (the stored snapshot keeps the true figure). For a
+caller without the margin tier, `progress/collection-signal` nulls `collectedPercent` and
+`divergence` (`status: 'HIDDEN'`), and milestone `releases[].percentage` (share of contract value)
+is null. `HIDDEN` is not `INSUFFICIENT_DATA` — that would be a false claim about the project.
+Physical and verified progress % are not money and stay visible to everyone.
+*Same day, second owner decision:* contract-derived figures (the collection signal and milestone
+release share + amount) follow **`canViewContractFigures`** = the margin tier **or `view:contract`**
+— the permission that already shows them on Commercial — so the Construction Director sees them on
+Progress too. PM / Site Engineer hold neither and stay hidden. The cost signal stays on the cost tier.
+
 Engineering shape owned by Abdulsalam; the domain rules are gated on **Eng Ahmed Shirie**. This
 ADR **extends** ADR-002's `CONST-PROG-001/002/003` (it must not silently change them) and depends
 on **PlatformFile (ADR-014)**, which is unbuilt and is a hard prerequisite. It refines the

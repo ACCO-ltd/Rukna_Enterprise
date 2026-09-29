@@ -142,6 +142,15 @@ describe('MilestonesSection — Releases affordance (P2 milestone → payment br
     expect(line).toHaveTextContent('amount restricted');
     expect(line).not.toHaveTextContent(/\$|0\.00/);
   });
+
+  it('a money-blind caller (share and amount hidden) sees the name and "restricted" — no %', () => {
+    stubList([milestone({ releases: [release({ amount: null, percentage: null })] })]);
+    renderWithProviders(<MilestonesSection projectId="p-1" />);
+
+    const line = screen.getByText(/Structure/);
+    expect(line).toHaveTextContent('Releases Structure · amount restricted');
+    expect(line).not.toHaveTextContent(/%|\$|0\.00/);
+  });
 });
 
 describe('MilestonesSection — Verify note names the consequence (P2)', () => {
@@ -167,6 +176,17 @@ describe('MilestonesSection — Verify note names the consequence (P2)', () => {
     expect(note).toHaveTextContent('Structure');
     expect(note).toHaveTextContent(/\$300,000\.00/);
     expect(note).toHaveTextContent(/for invoicing/i);
+  });
+
+  it('names a hidden release by name only — no share, no amount', async () => {
+    const user = userEvent.setup();
+    stubList([milestone({ releases: [release({ amount: null, percentage: null })] })]);
+    renderWithProviders(<MilestonesSection projectId="p-1" />);
+
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    const note = screen.getByText(/Verifying this releases the/i);
+    expect(note).toHaveTextContent('Verifying this releases the Structure payment for invoicing.');
+    expect(note).not.toHaveTextContent(/%|\$/);
   });
 
   it('names the count and each release when a milestone gates several installments', async () => {

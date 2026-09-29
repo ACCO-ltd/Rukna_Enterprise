@@ -10,7 +10,8 @@ import { statusTone } from '@/lib/status-registry';
 
 import { usePhysicalFinancialSignal, useProjectRollup } from '../hooks/use-progress';
 
-type SignalStatus = PhysicalFinancialSignalResponse['status'];
+// 'HIDDEN' (a caller without the cost tier) has no pill and no hint: the comparison is withheld.
+type SignalStatus = Exclude<PhysicalFinancialSignalResponse['status'], 'HIDDEN'>;
 
 const STATUS_HINT: Record<SignalStatus, string> = {
   ALIGNED: 'signal.alignedHint',
@@ -59,13 +60,17 @@ export function ProjectProgressCard({ projectId }: { projectId: string }) {
                 {signal.data.physicalPercent}%
               </p>
             </div>
-            <StatusPill tone={statusTone(signal.data.status, 'costSignal')}>
-              {t(`signal.status.${signal.data.status}`)}
-            </StatusPill>
+            {signal.data.status !== 'HIDDEN' ? (
+              <StatusPill tone={statusTone(signal.data.status, 'costSignal')}>
+                {t(`signal.status.${signal.data.status}`)}
+              </StatusPill>
+            ) : null}
           </div>
-          <p className="mt-2 text-caption text-muted-foreground">
-            {t(STATUS_HINT[signal.data.status])}
-          </p>
+          {signal.data.status !== 'HIDDEN' ? (
+            <p className="mt-2 text-caption text-muted-foreground">
+              {t(STATUS_HINT[signal.data.status])}
+            </p>
+          ) : null}
           {rollup.data && !rollup.data.weightsComplete ? (
             <p className="mt-2 text-micro font-medium text-warning">
               {t('rollup.weightsIncomplete', { total: rollup.data.weightsTotal })}
