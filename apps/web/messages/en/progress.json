@@ -461,7 +461,11 @@
       "save": "Save weights",
       "saving": "Saving…",
       "saved": "Weights saved.",
-      "inputLabel": "Weight for {code}"
+      "inputLabel": "Weight for {code}",
+      "balance": "Balance to 100%",
+      "balanceAll": "Include rows I have not edited",
+      "conflict": "{code} was changed by someone else (now {now}%) — review and save again.",
+      "partialFailure": "Could not save {codes}: {message} Your values are kept — save again to retry."
     }
   },
   "deliveryPlan": {

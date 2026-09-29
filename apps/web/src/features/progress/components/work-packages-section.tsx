@@ -1,28 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  cn,
   FormDialog,
   FormDialogBody,
   FormDialogClose,
   FormDialogFooter,
   FormField,
   Input,
-  Progress,
   Select,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-  useToast,
 } from '@erp/ui';
 
 import {
@@ -30,7 +20,6 @@ import {
   apportionWeights,
   PROGRESS_WEIGHT_DECIMALS,
   type SuggestedWeightLine,
-  type WorkPackageRollupLine,
 } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
@@ -39,6 +28,7 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { useSuggestWeights, useUpdateWorkPackage } from '@/features/programme/hooks/use-programme';
 import { useAllocateBoqNode, useCreateWorkPackage, useProjectRollup } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
+import { PackageWeightsTable } from './package-weights-table';
 
 /** Which of the editor's actions is the screen's one primary right now, if any. */
 export type WorkPackageEditorPrimary = 'allocate' | 'weights' | null;
@@ -251,225 +241,6 @@ export function WorkPackageEditor({
         open={allocating}
         onOpenChange={setAllocating}
       />
-    </div>
-  );
-}
-
-// ─── Weights, edited in the table (ADR-039 §2) ─────────────────────────────────────────────
-
-/** A weight as the table edits it: a percent of the project, up to two places (the stored 4dp). */
-const PERCENT_PLACES = 2;
-
-/** The percent each measurable package shows before any edit. */
-export function displayPercents(packages: readonly WorkPackageRollupLine[]): Map<string, number> {
-  const measurable = packages.filter((p) => !p.scheduleOnly);
-  const weights = measurable.map((p) => Number(p.weight) || 0);
-  const total = weights.reduce((sum, w) => sum + w, 0);
-  // Weights that add up to the whole show as whole percents by largest remainder (shared with the
-  // API), so 0.3334/0.3333/0.3333 read 34/33/33 and the total reads exactly 100. A set that does not
-  // add up is shown as it is — normalising it would hide the gap the total line exists to show.
-  const percents =
-    Math.abs(total - 1) < 1e-9
-      ? apportionUnits(weights, 2)
-      : weights.map((w) => Number((w * 100).toFixed(PERCENT_PLACES)));
-  return new Map(measurable.map((p, index) => [p.id, percents[index]!] as const));
-}
-
-/** "85", "33.5" — a percent without float noise or trailing zeros. */
-function percentText(value: number): string {
-  return String(Number(value.toFixed(PERCENT_PLACES)));
-}
-
-function parsePercent(text: string): number | null {
-  if (text.trim() === '') return null;
-  const value = Number(text);
-  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
-  return Number(value.toFixed(PERCENT_PLACES));
-}
-
-/**
- * The work packages with their weights edited in place: a percent input per measurable package, a
- * live total ("Total 100%" / "Total 85% — must be 100%") and one "Save weights" action once a value
- * differs from what is shown. Saving PATCHes each package whose stored weight differs from what the
- * table shows; the server only reports whether the set is complete, so rows save one by one.
- *
- * Only `manage:project` edits; everyone else reads the same table with plain percents.
- */
-export function PackageWeightsTable({
-  projectId,
-  packages,
-  canEdit,
-  savePrimary = false,
-  onDirtyChange,
-}: {
-  projectId: string;
-  packages: WorkPackageRollupLine[];
-  canEdit: boolean;
-  /** The step is current, so its one primary is "Save weights" while there are edits. */
-  savePrimary?: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
-}) {
-  const t = useTranslations('progress');
-  const { toast } = useToast();
-  const update = useUpdateWorkPackage(projectId);
-
-  // Only the rows the user typed in; every other row follows the server.
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const shown = displayPercents(packages);
-  const shownText = (id: string) => percentText(shown.get(id) ?? 0);
-  const valueOf = (id: string) => drafts[id] ?? shownText(id);
-
-  const measurable = packages.filter((p) => !p.scheduleOnly);
-  const invalid = new Set(measurable.filter((p) => parsePercent(valueOf(p.id)) === null).map((p) => p.id));
-  const dirty = measurable.some((p) => drafts[p.id] !== undefined && drafts[p.id] !== shownText(p.id));
-  const total = measurable.reduce((sum, p) => sum + (parsePercent(valueOf(p.id)) ?? 0), 0);
-  const exact = Math.abs(total - 100) < 1e-9;
-
-  useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-
-  async function onSave() {
-    if (invalid.size > 0) return;
-    setError(null);
-    setSaving(true);
-    // Every row whose stored weight differs from what the table shows — an untouched row shown
-    // rounded included — so what is saved is exactly the set on screen.
-    const changes = measurable
-      .map((p) => ({
-        id: p.id,
-        stored: Number(p.weight) || 0,
-        weight: Number(((parsePercent(valueOf(p.id)) ?? 0) / 100).toFixed(PROGRESS_WEIGHT_DECIMALS)),
-      }))
-      .filter((c) => Math.abs(c.stored - c.weight) > 1e-9);
-    const results = await Promise.allSettled(
-      changes.map((c) => update.mutateAsync({ workPackageId: c.id, body: { progressWeight: c.weight } })),
-    );
-    setSaving(false);
-    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
-    if (failed) {
-      setError(failed.reason instanceof ApiError ? failed.reason.message : t('workPackage.saveFailed'));
-      // Keep only the rows that did not save, so the retry sends just those.
-      setDrafts((prev) => {
-        const next: Record<string, string> = {};
-        changes.forEach((c, index) => {
-          const draft = prev[c.id];
-          if (results[index]!.status === 'rejected' && draft !== undefined) next[c.id] = draft;
-        });
-        return next;
-      });
-      return;
-    }
-    setDrafts({});
-    toast({ tone: 'success', title: t('workPackage.weights.saved') });
-  }
-
-  return (
-    <div className="space-y-3">
-      {error ? <Alert variant="error" messages={[error]} /> : null}
-      <TableScroll aria-label={t('workPackage.title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('workPackage.col.code')}</TableHead>
-              <TableHead>{t('workPackage.col.name')}</TableHead>
-              <TableHead>{t('workPackage.col.owner')}</TableHead>
-              <TableHead numeric>{t('workPackage.col.weight')}</TableHead>
-              <TableHead numeric>{t('workPackage.col.items')}</TableHead>
-              <TableHead>{t('workPackage.col.percent')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {packages.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell className="whitespace-nowrap font-mono text-caption">{p.code}</TableCell>
-                <TableCell className="font-medium">{p.name}</TableCell>
-                <TableCell className="text-muted-foreground">{p.responsibleOwner ?? '—'}</TableCell>
-                <TableCell numeric className="whitespace-nowrap">
-                  {p.scheduleOnly ? (
-                    // A schedule-only phase takes no part in the weighting.
-                    <span className="text-muted-foreground">—</span>
-                  ) : canEdit ? (
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={valueOf(p.id)}
-                      onChange={(e) => {
-                        setError(null);
-                        setDrafts((prev) => ({ ...prev, [p.id]: e.target.value }));
-                      }}
-                      disabled={saving}
-                      aria-label={t('workPackage.weights.inputLabel', { code: p.code })}
-                      aria-invalid={invalid.has(p.id) ? true : undefined}
-                      endSlot={<span className="text-caption text-muted-foreground">%</span>}
-                      className="ms-auto h-9 w-24 text-end tabular-nums"
-                    />
-                  ) : (
-                    `${shownText(p.id)}%`
-                  )}
-                </TableCell>
-                <TableCell numeric className={p.leafCount === 0 && !p.scheduleOnly ? 'text-warning' : undefined}>
-                  {p.leafCount}
-                </TableCell>
-                <TableCell className="min-w-28">
-                  {/* Schedule-only phases have no derived % — dash, not a misleading 0%. */}
-                  {p.percentComplete === null ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Progress
-                        value={p.percentComplete}
-                        size="sm"
-                        tone={p.percentComplete >= 100 ? 'success' : 'default'}
-                        label={`${p.code} ${p.percentComplete}%`}
-                      />
-                      <span className="w-9 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
-                        {`${p.percentComplete}%`}
-                      </span>
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableScroll>
-
-      {measurable.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p
-            role="status"
-            aria-live="polite"
-            className={cn('text-body-sm font-medium tabular-nums', exact ? 'text-success' : 'text-warning')}
-          >
-            {exact
-              ? t('workPackage.weights.total', { total: percentText(total) })
-              : t('workPackage.weights.totalOff', { total: percentText(total) })}
-            {invalid.size > 0 ? (
-              <span className="ms-2 font-normal text-danger">{t('workPackage.weights.invalid')}</span>
-            ) : null}
-          </p>
-          {canEdit && dirty ? (
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setDrafts({})} disabled={saving}>
-                {t('workPackage.weights.undo')}
-              </Button>
-              <Button
-                variant={savePrimary ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => void onSave()} disabled={saving || invalid.size > 0}>
-                {saving ? t('workPackage.weights.saving') : t('workPackage.weights.save')}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
