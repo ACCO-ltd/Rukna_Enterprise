@@ -82,6 +82,7 @@ import {
   useRemoveObservation,
 } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
+import { useUnitLabel } from '../hooks/use-unit-label';
 import { DprStatusBadge } from './dpr-status-badge';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useSuppliers } from '@/features/procurement/hooks/use-procurement';
@@ -120,7 +121,7 @@ const DELAY_OPTIONS = [
 ] as const;
 
 /** Bounded trade list — same reasoning as weather/delay: a known set analysis can group by. */
-const TRADE_OPTIONS = [
+export const TRADE_OPTIONS = [
   'Mason',
   'Carpenter',
   'Steel fixer',
@@ -175,6 +176,7 @@ export function DprDetail({
   const { leaves } = useBoqLeaves(projectId);
   const leafLabel = useMemo(() => new Map(leaves.map((l) => [l.id, lineLabel(l)])), [leaves]);
   const leafMap = useMemo(() => new Map(leaves.map((l) => [l.id, l])), [leaves]);
+  const unitLabel = useUnitLabel();
 
   const submit = useSubmitDpr(projectId, dprId);
   const approve = useApproveDpr(projectId, dprId);
@@ -358,7 +360,7 @@ export function DprDetail({
                 const cumulative = priorVerified + today;
                 const scope = Number(line?.measurableQuantity ?? leaf?.quantity ?? 0);
                 const exceeds = scope > 0 && cumulative > scope;
-                const unit = leaf?.unit ? ` ${leaf.unit}` : '';
+                const unit = leaf?.unit ? ` ${unitLabel(leaf.unit)}` : '';
                 return (
                   <div key={m.id} className="rounded-panel border border-border p-3">
                     <p className="text-body font-medium text-foreground">{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</p>
@@ -637,6 +639,7 @@ function AddMeasurementForm({
   const locale = useLocale() as 'en' | 'ar';
   const add = useAddMeasurement(dprId);
   const progress = useProjectProgress(projectId);
+  const unitLabel = useUnitLabel();
 
   const [boqNodeId, setBoqNodeId] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -646,8 +649,8 @@ function AddMeasurementForm({
   const [error, setError] = useState<string | null>(null);
 
   const options = useMemo(
-    () => leaves.map((leaf) => ({ value: leaf.id, label: lineLabel(leaf), hint: leaf.unit ?? undefined })),
-    [leaves],
+    () => leaves.map((leaf) => ({ value: leaf.id, label: lineLabel(leaf), hint: leaf.unit ? unitLabel(leaf.unit) : undefined })),
+    [leaves, unitLabel],
   );
   const progressByNode = useMemo(
     () => new Map((progress.data ?? []).map((line) => [line.boqNodeId, line])),
@@ -665,7 +668,7 @@ function AddMeasurementForm({
   const scopeNum = scopeStr != null ? Number(scopeStr) : null;
   const verifiedNum = line ? Number(line.verifiedToDate) : 0;
   const remainingNum = scopeNum != null ? scopeNum - verifiedNum : null;
-  const unit = selectedLeaf?.unit ?? '';
+  const unit = unitLabel(selectedLeaf?.unit);
   const exceeds = remainingNum != null && Number(quantity) > remainingNum;
   const withUnit = (n: number) => `${formatNumber(n, locale, 3)}${unit ? ` ${unit}` : ''}`;
 
@@ -769,7 +772,7 @@ export function DprEvidence({
   attachments: Array<{ id: string; platformFileId: string; measurementId?: string }>;
   measurements: ProgressMeasurementResponse[];
   leafLabel: Map<string, string>;
-  /** Render without its card chrome — for the DPR entry sheet, which supplies its own heading. */
+  /** Render without its card chrome — for the DPR entry dialog, which supplies its own heading. */
   bare?: boolean;
 }) {
   const t = useTranslations('progress');

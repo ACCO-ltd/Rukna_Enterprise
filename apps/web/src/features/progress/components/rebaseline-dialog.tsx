@@ -5,12 +5,10 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Label,
   Select,
   Skeleton,
@@ -45,6 +43,7 @@ export function RebaselineDialog({
   const t = useTranslations('progress');
   const tVo = useTranslations('commercial.variations');
   const tCommon = useTranslations('common');
+  const tDiscard = useTranslations('common.discardChanges');
   const { toast } = useToast();
 
   const summary = useCommercialSummary(projectId);
@@ -68,8 +67,7 @@ export function RebaselineDialog({
   const canPick = !loading && !noContract && !noVariations;
   const canSubmit = canPick && variationOrderId !== '' && !rebaseline.isPending;
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  function handleSubmit() {
     if (!canSubmit) return;
     setError(null);
     rebaseline.mutate(
@@ -86,79 +84,81 @@ export function RebaselineDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>{t('baseline.governing.rebaselineTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('baseline.governing.rebaselineSubtitle')}
-            </DialogDescription>
-          </DialogHeader>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('baseline.governing.rebaselineTitle')}
+      subtitle={t('baseline.governing.rebaselineSubtitle')}
+      size="md"
+      dirty={variationOrderId !== '' || note.trim() !== ''}
+      busy={rebaseline.isPending}
+      onSubmit={handleSubmit}
+      closeLabel={tCommon('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
+      }}
+    >
+      <FormDialogBody>
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-          <div className="space-y-5">
-            {error ? <Alert variant="error" messages={[error]} /> : null}
-
-            {loading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : noContract ? (
-              <Alert variant="info" messages={[t('baseline.governing.noContract')]} />
-            ) : noVariations ? (
-              <Alert variant="info" messages={[t('baseline.governing.noVariations')]} />
-            ) : (
-              <div className="space-y-1.5">
-                <Label htmlFor="rebaseline-vo">{t('baseline.governing.variationLabel')}</Label>
-                <Select
-                  id="rebaseline-vo"
-                  value={variationOrderId}
-                  onChange={setVariationOrderId}
-                  placeholder={t('baseline.governing.variationPlaceholder')}
+        {loading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : noContract ? (
+          <Alert variant="info" messages={[t('baseline.governing.noContract')]} />
+        ) : noVariations ? (
+          <Alert variant="info" messages={[t('baseline.governing.noVariations')]} />
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor="rebaseline-vo">{t('baseline.governing.variationLabel')}</Label>
+            <Select
+              id="rebaseline-vo"
+              value={variationOrderId}
+              onChange={setVariationOrderId}
+              placeholder={t('baseline.governing.variationPlaceholder')}
                  
-                >
-                  <option value="">{t('baseline.governing.variationPlaceholder')}</option>
-                  {variations.map((vo) => (
-                    <option key={vo.id} value={vo.id}>
-                      {vo.reference} — {vo.title} ({tVo(`status.${vo.status}`)})
-                    </option>
-                  ))}
-                </Select>
-                <p className="text-caption text-muted-foreground">{t('baseline.governing.variationHint')}</p>
-              </div>
-            )}
-
-            {canPick ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="rebaseline-note">{t('baseline.governing.noteLabel')}</Label>
-                <Textarea
-                  id="rebaseline-note"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  maxLength={1000}
-                  rows={3}
-                 
-                />
-                <p className="text-caption text-muted-foreground">{t('baseline.governing.noteHint')}</p>
-              </div>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-            {canPick ? (
-              <Button type="submit" disabled={!canSubmit}>
-                {rebaseline.isPending ? tCommon('saving') : t('baseline.governing.rebaselineConfirm')}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={rebaseline.isPending}
             >
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              <option value="">{t('baseline.governing.variationPlaceholder')}</option>
+              {variations.map((vo) => (
+                <option key={vo.id} value={vo.id}>
+                  {vo.reference} — {vo.title} ({tVo(`status.${vo.status}`)})
+                </option>
+              ))}
+            </Select>
+            <p className="text-caption text-muted-foreground">{t('baseline.governing.variationHint')}</p>
+          </div>
+        )}
+
+        {canPick ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="rebaseline-note">{t('baseline.governing.noteLabel')}</Label>
+            <Textarea
+              id="rebaseline-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={1000}
+              rows={3}
+                 
+            />
+            <p className="text-caption text-muted-foreground">{t('baseline.governing.noteHint')}</p>
+          </div>
+        ) : null}
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={rebaseline.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        {canPick ? (
+          <Button type="submit" disabled={!canSubmit}>
+            {rebaseline.isPending ? tCommon('saving') : t('baseline.governing.rebaselineConfirm')}
+          </Button>
+        ) : null}
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

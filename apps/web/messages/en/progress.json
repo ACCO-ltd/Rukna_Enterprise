@@ -452,7 +452,21 @@
       "acceptAll": "Accept all",
       "dismiss": "Dismiss"
     },
-    "evenWeightsNote": "Weights are split evenly. Value-based weighting needs cost access — adjust the weights, or ask the Construction Director."
+    "evenWeightsNote": "Weights are split evenly. Value-based weighting needs cost access — adjust the weights, or ask the Construction Director.",
+    "weights": {
+      "total": "Total {total}%",
+      "totalOff": "Total {total}% — must be 100%",
+      "invalid": "Enter a weight from 0 to 100.",
+      "undo": "Undo changes",
+      "save": "Save weights",
+      "saving": "Saving…",
+      "saved": "Weights saved.",
+      "inputLabel": "Weight for {code}",
+      "balance": "Balance to 100%",
+      "balanceAll": "Include rows I have not edited",
+      "conflict": "{code} was changed by someone else (now {now}%) — review and save again.",
+      "partialFailure": "Could not save {codes}: {message} Your values are kept — save again to retry."
+    }
   },
   "deliveryPlan": {
     "action": "Create delivery plan from BOQ",
@@ -891,11 +905,36 @@
     "exceedsRemove": "Enter {max} or less, or raise a variation. Remove {quantity} recorded here to correct it.",
     "exceedsSummary": "{count, plural, one {# item exceeds} other {# items exceed}} {count, plural, one {its} other {their}} BOQ quantity: {list}",
     "exceedsSummaryLine": "{item} — enter {max} or less",
-    "remove": "Remove {quantity}",
+    "remove": "Remove",
     "removeLabel": "Remove {quantity} from {item}",
     "removeFailed": "Could not remove the entry: {message}",
     "notesFailed": "Site notes could not be saved: {message}",
-    "reopenedNote": "Entries approved before the reopen can't be removed; add a correction note instead."
+    "reopenedNote": "Entries approved before the reopen can't be removed; add a correction note instead.",
+    "noItemsSetupLink": "Allocate BOQ items in Plan & setup",
+    "col": {
+      "item": "BOQ item",
+      "quantity": "Quantity today",
+      "recorded": "On this report"
+    },
+    "nothingRecorded": "Nothing recorded yet",
+    "labourTable": {
+      "trade": "Trade",
+      "headcount": "Headcount",
+      "contractor": "Contractor",
+      "hours": "Hours per worker",
+      "addRow": "Add row",
+      "removeLabel": "Remove the {trade} row"
+    },
+    "unrecorded": {
+      "title": "Unrecorded entries",
+      "body": "You have unrecorded entries ({list}). Add them, or discard and continue?",
+      "labourLine": "Labour: {trade} × {headcount}",
+      "labourPartial": "Labour: a row not yet complete",
+      "add": "Add and continue",
+      "discard": "Discard and continue",
+      "back": "Go back",
+      "labourFailed": "The labour row could not be added: {message}"
+    }
   },
   "performance": {
     "metricsLabel": "Progress against plan",

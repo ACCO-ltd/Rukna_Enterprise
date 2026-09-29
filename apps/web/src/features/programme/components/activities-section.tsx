@@ -2,7 +2,21 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, CheckboxField, DatePicker, Dialog, DialogContent, DialogHeader, DialogTitle, EmptyState, FormField, Input, SectionHeader, Skeleton } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  DatePicker,
+  EmptyState,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormField,
+  Input,
+  SectionHeader,
+  Skeleton,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { useProject } from '@/features/projects/hooks/use-project';
@@ -16,8 +30,6 @@ import {
   useUpdateActivity,
 } from '../hooks/use-programme';
 import type { ProgrammeActivityResponse } from '../api/programme-api';
-
-const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 const dateOnly = (iso: string | null): string => (iso ? iso.slice(0, 10) : '');
 const isoOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
@@ -237,6 +249,8 @@ function ActivityDialog({
   onClose: () => void;
 }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
+  const tDiscard = useTranslations('common.discardChanges');
   const isEdit = activity !== null;
   const create = useCreateActivity(projectId);
   const update = useUpdateActivity(projectId);
@@ -259,8 +273,20 @@ function ActivityDialog({
   const onError = (e: unknown) =>
     setError(e instanceof ApiError ? e.message : t('states.loadFailed'));
 
-  function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  const initial = {
+    name: activity?.name ?? '',
+    start: dateOnly(activity?.plannedStart ?? null),
+    end: dateOnly(activity?.plannedEnd ?? null),
+    isMilestone: activity?.isMilestone ?? false,
+  };
+  const dirty =
+    code !== (activity?.code ?? '') ||
+    name !== initial.name ||
+    start !== initial.start ||
+    end !== initial.end ||
+    isMilestone !== initial.isMilestone;
+
+  function onSubmit() {
     setTouched(true);
     setError(null);
     if (!code.trim() || !name.trim() || dateError) return;
@@ -304,80 +330,90 @@ function ActivityDialog({
   }
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(o) => {
-        if (!o && !busy) onClose();
+        if (!o) onClose();
+      }}
+      title={isEdit ? t('activity.editTitle') : t('activity.addTitle')}
+      size="md"
+      dirty={dirty}
+      busy={busy}
+      onSubmit={onSubmit}
+      closeLabel={tCommon('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
       }}
     >
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? t('activity.editTitle') : t('activity.addTitle')}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={onSubmit}>
-          {error ? (
-            <div className="mb-3">
-              <Alert variant="error" messages={[error]} />
-            </div>
-          ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FormField htmlFor="act-code" label={t('activity.form.code')} error={codeError}>
-              <Input
-                id="act-code"
-                value={code}
-                disabled={isEdit}
-                onChange={(e) => setCode(e.target.value)}
-                className={refFieldClass}
-              />
-            </FormField>
-            <FormField htmlFor="act-name" label={t('activity.form.name')} error={nameError}>
-              <Input id="act-name" value={name} onChange={(e) => setName(e.target.value)} className={refFieldClass} />
-            </FormField>
-            <FormField htmlFor="act-start" label={t('activity.form.start')}>
-              <DatePicker
-                id="act-start"
-                value={start}
-                min={projectStart ?? undefined}
-                max={projectEnd ?? undefined}
-                onChange={setStart}
-                className={refFieldClass}
-              />
-            </FormField>
-            <FormField htmlFor="act-end" label={t('activity.form.end')} error={dateError}>
-              <DatePicker
-                id="act-end"
-                value={end}
-                min={start || projectStart || undefined}
-                max={projectEnd ?? undefined}
-                onChange={setEnd}
-                className={refFieldClass}
-              />
-            </FormField>
-          </div>
-          <CheckboxField
-            id="act-milestone"
-            className="mt-3"
-            label={t('activity.form.milestone')}
-            checked={isMilestone}
-            onChange={(e) => setIsMilestone(e.target.checked)}
-          />
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <RefButton type="submit" disabled={busy}>
-              {t('activity.save')}
-            </RefButton>
-            {isEdit ? (
-              <RefButton
-                type="button"
-                variant={confirmDelete ? 'danger' : 'ghost'}
-                onClick={onDelete}
-                disabled={busy}
-              >
-                {confirmDelete ? t('activity.confirmDelete') : t('activity.delete')}
-              </RefButton>
-            ) : null}
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <FormDialogBody className="space-y-4">
+        {error ? <Alert variant="error" messages={[error]} /> : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor="act-code" label={t('activity.form.code')} error={codeError}>
+            <Input
+              id="act-code"
+              value={code}
+              disabled={isEdit}
+              onChange={(e) => setCode(e.target.value)}
+               
+            />
+          </FormField>
+          <FormField htmlFor="act-name" label={t('activity.form.name')} error={nameError}>
+            <Input id="act-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="act-start" label={t('activity.form.start')}>
+            <DatePicker
+              id="act-start"
+              value={start}
+              min={projectStart ?? undefined}
+              max={projectEnd ?? undefined}
+              onChange={setStart}
+               
+            />
+          </FormField>
+          <FormField htmlFor="act-end" label={t('activity.form.end')} error={dateError}>
+            <DatePicker
+              id="act-end"
+              value={end}
+              min={start || projectStart || undefined}
+              max={projectEnd ?? undefined}
+              onChange={setEnd}
+               
+            />
+          </FormField>
+        </div>
+        <CheckboxField
+          id="act-milestone"
+          label={t('activity.form.milestone')}
+          checked={isMilestone}
+          onChange={(e) => setIsMilestone(e.target.checked)}
+        />
+      </FormDialogBody>
+      <FormDialogFooter
+        start={
+          isEdit ? (
+            <Button
+              type="button"
+              variant={confirmDelete ? 'destructive' : 'ghost'}
+              onClick={onDelete}
+              disabled={busy}
+            >
+              {confirmDelete ? t('activity.confirmDelete') : t('activity.delete')}
+            </Button>
+          ) : undefined
+        }
+      >
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={busy}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={busy}>
+          {t('activity.save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
