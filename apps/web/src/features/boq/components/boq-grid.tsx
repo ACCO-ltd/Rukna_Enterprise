@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { BoqTreeNodeResponse } from '@erp/types';
+import type { BoqTreeNodeResponse, UnitOfMeasureOption } from '@erp/types';
 import { ChevronRight, CircleDollarSign, Diamond, Lock, MoreHorizontal, Plus, Receipt } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -35,15 +35,22 @@ import {
   type BoqRow,
   type GridEntry,
 } from '../boq-rows';
+import { currencySymbol } from '../currency-symbol';
+import { lumpSumOf } from '../node-form';
 import { CellEditor } from './boq-cell-editor';
+import { UnitCellEditor } from './boq-unit-select';
 
-export type EditableField = 'description' | 'unit' | 'quantity' | 'unitRate';
+/**
+ * `lumpSumAmount`: the rate cell of a lump-sum line edits its one fixed amount, which is saved as
+ * quantity 1 × rate = amount (node-form.ts).
+ */
+export type EditableField = 'description' | 'unit' | 'quantity' | 'unitRate' | 'lumpSumAmount';
 
 export interface BoqRowCommands {
-  /** "Edit details…" — the side sheet with pricing basis, measurement method and library. */
+  /** "Edit details…" — the item dialog with pricing basis, measurement method and library. */
   onEdit: (node: BoqTreeNodeResponse) => void;
   onAddSection: (parent: BoqTreeNodeResponse) => void;
-  /** "Add from library…" — the sheet in add mode with the library picker. */
+  /** "Add from library…" — the item dialog in add mode with the library picker. */
   onAddFromLibrary: (parent: BoqTreeNodeResponse) => void;
   onDelete: (node: BoqTreeNodeResponse) => void;
   onMove: (node: BoqTreeNodeResponse, direction: -1 | 1) => void;
@@ -75,10 +82,12 @@ export interface PendingLine {
  *    under the table.
  *
  * Below 640px the unit, quantity and rate columns go; the line reads "180 m³ × $6.50" under its
- * description, and tapping it opens the details sheet — a phone is no place for a four-field row.
+ * description, and tapping it opens the item dialog — a phone is no place for a four-field row.
  *
  * Money follows the server's visibility tiers: without `canViewCommercials` the rate and amount
- * columns and the total are not drawn at all — the figures never reached the browser.
+ * columns and the total are not drawn at all. The server withholds the figures too — the BOQ
+ * controller nulls rates and amounts on the tree for a caller without the cost tier (ADR-029 §8
+ * A-2) — so hiding the columns is presentation, not the protection.
  */
 export function BoqGrid({
   rows,
@@ -97,7 +106,7 @@ export function BoqGrid({
   commands,
   pending = null,
   onPendingChange,
-  unitsListId,
+  units,
   emptyMessage,
   footer = true,
 }: {
@@ -120,7 +129,8 @@ export function BoqGrid({
   commands: BoqRowCommands | null;
   pending?: PendingLine | null;
   onPendingChange?: (next: PendingLine | null) => void;
-  unitsListId?: string;
+  /** The unit registry for the unit cell's picker; undefined while unavailable. */
+  units?: readonly UnitOfMeasureOption[] | undefined;
   emptyMessage: string;
   /** The BOQ-total footer row. Off for the import preview. */
   footer?: boolean;
@@ -231,7 +241,7 @@ export function BoqGrid({
                     onSelect={onSelect}
                     onPinnedCellEdit={onPinnedCellEdit}
                     commands={commands}
-                    unitsListId={unitsListId}
+                    units={units}
                     onAddItemInline={() => {
                       if (collapsed.has(row.node.id)) onToggle(row.node.id);
                       onPendingChange?.({ parentId: row.node.id, kind: 'item' });
@@ -305,25 +315,16 @@ export function BoqGrid({
   );
 }
 
-/** "$" for USD — the rate adornment follows the BOQ's currency. */
-function currencySymbol(currency: string): string {
-  try {
-    return (
-      new Intl.NumberFormat('en', { style: 'currency', currency })
-        .formatToParts(0)
-        .find((part) => part.type === 'currency')?.value ?? currency
-    );
-  } catch {
-    return currency;
-  }
-}
-
 function indentStyle(depth: number): React.CSSProperties {
   return { paddingInlineStart: `${depth * 1.25}rem` };
 }
 
+/**
+ * A lump-sum line reads and behaves as one whatever quantity it was stored with — an imported
+ * `5 × 100` is still one fixed amount, not five of something. Its quantity is not editable here.
+ */
 function isLumpSum(node: BoqTreeNodeResponse): boolean {
-  return node.pricingBasis === 'LUMP_SUM' && (node.quantity === null || Number(node.quantity) === 1);
+  return node.pricingBasis === 'LUMP_SUM';
 }
 
 function GridRow({
@@ -342,7 +343,7 @@ function GridRow({
   onSelect,
   onPinnedCellEdit,
   commands,
-  unitsListId,
+  units,
   onAddItemInline,
 }: {
   row: BoqRow;
@@ -360,7 +361,7 @@ function GridRow({
   onSelect: (node: BoqTreeNodeResponse) => void;
   onPinnedCellEdit?: () => void;
   commands: BoqRowCommands | null;
-  unitsListId?: string;
+  units: readonly UnitOfMeasureOption[] | undefined;
   onAddItemInline: () => void;
 }) {
   const t = useTranslations('platform.boq.grid');
@@ -375,7 +376,9 @@ function GridRow({
   const commit = (field: EditableField) => (value: string) => commands!.onEditField(node, field, value);
 
   const quantityText = node.quantity ? formatNumber(Number(node.quantity), locale, 3) : null;
-  const rateText = node.unitRate ? formatMoney(node.unitRate, currency, locale) : null;
+  // A lump sum's "rate" column carries its amount (an imported 5 × 100 reads 500, not 100).
+  const rateValue = lumpSum ? lumpSumOf(node.quantity, node.unitRate) || null : node.unitRate;
+  const rateText = rateValue ? formatMoney(rateValue, currency, locale) : null;
   // The phone line: "180 m³ × $6.50" — what the hidden columns would have said.
   const mobileSummary = node.isLeaf
     ? [
@@ -466,11 +469,10 @@ function GridRow({
         {!node.isLeaf ? null : lumpSum ? (
           <span className="text-muted-foreground">—</span>
         ) : editValues ? (
-          <CellEditor
+          <UnitCellEditor
             className="w-24"
             value={node.unit}
-            kind="unit"
-            unitsListId={unitsListId}
+            units={units}
             ariaLabel={t('editUnit', { code: node.code })}
             errorText={saveFailed}
             onCommit={commit('unit')}
@@ -507,14 +509,14 @@ function GridRow({
             ) : editValues ? (
               <CellEditor
                 className="ms-auto w-32"
-                value={node.unitRate}
+                value={rateValue}
                 kind="rate"
                 attention={unpriced}
                 currencySymbol={currencySymbol(currency)}
                 ariaLabel={t('editRate', { code: node.code })}
                 placeholder={t('noRate')}
                 errorText={saveFailed}
-                onCommit={commit('unitRate')}
+                onCommit={commit(lumpSum ? 'lumpSumAmount' : 'unitRate')}
               />
             ) : unpriced ? (
               <span className="text-caption font-medium text-warning">{t('noRate')}</span>

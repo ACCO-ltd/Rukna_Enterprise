@@ -5,18 +5,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { chooseOption } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
 
-import { AddExtraWorkDrawer, type BoqSectionOption } from './add-extra-work-drawer';
+import { AddExtraWorkDialog, type BoqSectionOption } from './add-extra-work-dialog';
 
 const SECTIONS: BoqSectionOption[] = [
   { id: 's1', code: '01', description: 'Substructure' },
   { id: 's2', code: '02', description: 'Superstructure' },
 ];
 
-function render(overrides: Partial<Parameters<typeof AddExtraWorkDrawer>[0]> = {}) {
+function render(overrides: Partial<Parameters<typeof AddExtraWorkDialog>[0]> = {}) {
   const onSubmit = vi.fn();
   const onClose = vi.fn();
   renderWithProviders(
-    <AddExtraWorkDrawer
+    <AddExtraWorkDialog
       open
       currency="USD"
       contractId="contract-1"
@@ -48,7 +48,7 @@ function fillVariation(description = 'Steel canopy', amount = '2000') {
   fireEvent.change(screen.getByLabelText(/Amount \(USD\)/i), { target: { value: amount } });
 }
 
-describe('AddExtraWorkDrawer', () => {
+describe('AddExtraWorkDialog', () => {
   // ── Route rendering ──────────────────────────────────────────────────────────
 
   it('renders all three route options', () => {

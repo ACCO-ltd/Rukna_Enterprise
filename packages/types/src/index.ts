@@ -9,3 +9,4 @@ export * from './permissions';
 export * from './admin';
 export * from './notifications';
 export * from './units-of-measure';
+export * from './weights';

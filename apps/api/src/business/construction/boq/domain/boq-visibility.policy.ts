@@ -29,7 +29,7 @@ export interface BoqVisibility {
 }
 
 export function resolveBoqVisibility(identity: RequestIdentity): BoqVisibility {
-  const has = (permission: string): boolean => identity.permissions.includes(permission);
+  const has = (permission: string): boolean => (identity.permissions ?? []).includes(permission);
 
   // Margin: the top tier. `financialPositionView` is the legacy commercial/finance gate — carried
   // over so existing finance/exec roles are not silently downgraded when the caps are introduced.

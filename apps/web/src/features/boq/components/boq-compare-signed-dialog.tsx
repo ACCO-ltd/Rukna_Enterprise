@@ -6,10 +6,10 @@ import {
   Alert,
   Badge,
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   LtrValue,
   Skeleton,
   Table,
@@ -32,10 +32,11 @@ import { formatMoney } from '@/lib/format';
  * client owes" (VALUE_CHANGING); this panel groups on exactly that. Totals are `canViewCost`-gated
  * decimal strings rendered verbatim — never re-summed.
  *
- * Implemented as an overlay dialog rather than a route (Decision 6). A future iteration can render
+ * Implemented as an overlay dialog rather than a route (Decision 6) — a read-only `FormDialog`
+ * size `xl` (ADR-039: a record with a short list), the change table scrolling inside the body. A future iteration can render
  * it as an in-grid gutter lens; the grouped-by-class summary is the load-bearing part today.
  */
-export function BoqCompareSignedPanel({
+export function BoqCompareSignedDialog({
   data,
   currency,
   canViewCost,
@@ -56,10 +57,17 @@ export function BoqCompareSignedPanel({
   const money = (v: string | null): string | null => formatMoney(v, currency, locale);
 
   return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogTitle>{t('heading')}</DialogTitle>
-
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('heading')}
+      size="xl"
+      initialFocus="dialog"
+      closeLabel={t('exit')}
+    >
+      <FormDialogBody>
         {isPending ? (
           <Skeleton className="h-64 w-full" />
         ) : isError ? (
@@ -137,13 +145,15 @@ export function BoqCompareSignedPanel({
             )}
           </div>
         )}
+      </FormDialogBody>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button">
             {t('exit')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

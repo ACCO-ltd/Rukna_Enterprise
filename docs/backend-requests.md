@@ -23,3 +23,26 @@ The older CEO memos and frontend-blocker lists live in [`backend-requests/`](bac
 | 7a | Backfill side effect of `created_at` | **Known, accepted** | The migration backfills existing work entries with their report's `created_at`. For a report that is **already REOPENED** when the migration runs, any correction entries added after that reopen also get the report's (earlier) date, so they read as "before the reopen" and become undeletable until the report is re-approved. Only reports reopened before the deploy are affected; entries added after the deploy are dated correctly. Workaround: re-approve and, if needed, reopen again. |
 | 7b | Write paths vs concurrent submit / approve | **Done** | Every DPR add / edit / delete (work entries, labour, equipment, observations, context, evidence) runs under the report's row lock with a fresh status re-check, inside a 15 s transaction. Lock timeout / deadlock → 409 `DPR_CHANGED` ("busy — try again"). Evidence can be added while DRAFT / RETURNED / REOPENED **and SUBMITTED** (the UI lets photos be added during review); it is refused (409) once APPROVED. |
 | 8 | DPR document number | **Not built (by decision)** | Reports are identified by project + date; no number is added. |
+
+## Open question for the owner: may a scope-only editor delete a priced BOQ line? (2026-09-29)
+
+PR #241 (ADR-029 §8 A-1) stops an `edit-scope:boq`-only editor (no `edit-cost:boq`, no `manage:boq`)
+from changing a line's unit rate, pricing basis, lump-sum amount, or flipping a priced item to a
+section. `DELETE …/boq/versions/:vid/nodes/:id` is unchanged: a scope-only editor can still delete
+a priced draft line, which removes its amount from the BOQ total.
+
+Left as it is on purpose — deleting scope is arguably a scope decision, and a guard here would also
+block tidying an imported bill. **Decision needed (Eng Ahmed / owner):** should deleting a line that
+carries a rate or amount require the cost-edit permission too?
+
+## Decided 2026-09-29 (owner): no value-based weights for money-blind callers
+
+Even package-level weights can be probed — put one leaf in a package on its own and its weight is
+that leaf's share of the BOQ value. So a caller without the BOQ cost tier gets an **even split**
+(across packages holding measurable, non-contingency scope; weights still sum to 1) from both
+`POST …/work-packages/delivery-plan/weights` and `POST …/programme/suggest-weights`, flagged
+`valueWeighted: false`. Cost-tier callers keep value weighting (`valueWeighted: true`). The unpriced
+leaf ids are still returned, since `priced` is visible to every tier. The Delivery Plan, the work
+packages section and the schedule wizard show one quiet note: "Weights are split evenly. Value-based
+weighting needs cost access — adjust the weights, or ask the Construction Director."
+

@@ -16,6 +16,9 @@ import {
   type ProgressSnapshotResponse,
   type ScheduleTemplateKey,
   type SuggestWeightsResponse,
+  type ProposedPackageWeightsResponse,
+  apportionWeights,
+  PROGRESS_WEIGHT_DECIMALS,
 } from '@erp/types';
 
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
@@ -31,6 +34,7 @@ import {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { missingPricingFields } from '../../boq/domain/boq-node.policy.js';
 import { ProgrammeBaselineRepository } from '../infrastructure/programme-baseline.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
@@ -1094,6 +1098,24 @@ export class ProgressService {
     const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
     const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
     const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+
+    // Owner decision 2026-09-29: no value-based weight for a caller without the BOQ cost tier — even
+    // at package level a one-leaf package would reveal that leaf's share. They get an even split
+    // across the packages that hold measurable scope (not scheduleOnly, at least one non-contingency
+    // leaf); the rest — schedule-only phases included — suggest 0. With nothing measurable every
+    // suggestion is 0, exactly as the cost-tier path answers an all-unpriced plan.
+    if (!resolveBoqVisibility(identity).canViewCost) {
+      const workLeaf = new Set(leafValues.filter((v) => v.nodeRole !== 'CONTINGENCY').map((v) => v.id));
+      const measurable = packages.map(
+        (wp) => !wp.scheduleOnly && wp.boqLinks.some((b) => workLeaf.has(b.boqNodeId)),
+      );
+      const share = evenShares(measurable, 'zeros');
+      return {
+        projectId,
+        weights: packages.map((wp, index) => ({ workPackageId: wp.id, suggestedWeight: share[index]! })),
+        valueWeighted: false,
+      };
+    }
     const valueByNode = new Map<string, Decimal>(
       leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
     );
@@ -1113,16 +1135,78 @@ export class ProgressService {
       totalValue = totalValue.plus(value);
     }
 
-    const totalPositive = totalValue.greaterThan(ZERO);
+    // Rounded to the stored precision by largest remainder, so the accepted weights sum to exactly 1.
+    // No total value anywhere (all-unpriced / empty) ⇒ every suggestion is 0, never ÷0.
+    const rounded = apportionWeights(
+      packages.map((wp) => (valueByPackage.get(wp.id) ?? ZERO).toNumber()),
+      PROGRESS_WEIGHT_DECIMALS,
+    );
     return {
       projectId,
-      weights: packages.map((wp) => {
-        const value = valueByPackage.get(wp.id) ?? ZERO;
-        // No total value anywhere (all-unpriced / empty) ⇒ every suggestion is 0, never ÷0.
-        const suggestedWeight = totalPositive ? value.div(totalValue).toNumber() : 0;
-        return { workPackageId: wp.id, suggestedWeight };
-      }),
+      weights: packages.map((wp, index) => ({ workPackageId: wp.id, suggestedWeight: rounded[index]! })),
+      valueWeighted: true,
     };
+  }
+
+  /**
+   * The Delivery Plan's weights for a PROPOSED grouping, before anything is saved. Same rule as
+   * `suggestWeights` — each package's share of the assigned BOQ value, CONTINGENCY leaves excluded —
+   * but over the caller's grouping rather than saved packages, so the dialog can re-weigh after the
+   * PM moves a leaf. Only package ratios leave the server; no amount and no per-leaf share. A caller
+   * without the BOQ cost tier gets an even split instead (`valueWeighted: false`) — owner decision
+   * 2026-09-29: even package weights can be probed with a one-leaf package. When nothing in the
+   * grouping is priced the weights split equally, so they still sum to 1.
+   */
+  async weighProposedPackages(
+    identity: RequestIdentity,
+    projectId: string,
+    packages: { key: string; boqNodeIds: string[] }[],
+  ): Promise<ProposedPackageWeightsResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const ids = [...new Set(packages.flatMap((p) => p.boqNodeIds))];
+    const leaves = await this.repo.findLeavesForWeighting(prisma, projectId, ids);
+    const byId = new Map(leaves.map((leaf) => [leaf.id, leaf] as const));
+
+    const valueOf = (id: string): Decimal => {
+      const leaf = byId.get(id);
+      if (!leaf || leaf.nodeRole === 'CONTINGENCY' || leaf.totalAmount === null) return ZERO;
+      return new Decimal(leaf.totalAmount.toString());
+    };
+    const unpricedLeafIds = leaves
+      .filter((leaf) => missingPricingFields(leaf).length > 0)
+      .map((leaf) => leaf.id);
+
+    // Owner decision 2026-09-29: without the cost tier, an even split — never value-based, since a
+    // one-leaf package would reveal that leaf's share. Packages with no measurable (non-contingency)
+    // leaf get 0; the rest share 1 equally.
+    if (!resolveBoqVisibility(identity).canViewCost) {
+      const measurable = packages.map((p) =>
+        p.boqNodeIds.some((id) => {
+          const leaf = byId.get(id);
+          return leaf !== undefined && leaf.nodeRole !== 'CONTINGENCY';
+        }),
+      );
+      const share = evenShares(measurable, 'equal');
+      return {
+        projectId,
+        weights: packages.map((p, index) => ({ key: p.key, weight: share[index]! })),
+        valueWeighted: false,
+        unpricedLeafIds,
+      };
+    }
+
+    const values = packages.map((p) => p.boqNodeIds.reduce((sum, id) => sum.plus(valueOf(id)), ZERO));
+    const total = values.reduce((sum, v) => sum.plus(v), ZERO);
+
+    // Nothing priced ⇒ an equal split, so the weights still sum to 1. Either way rounded to the stored
+    // precision by largest remainder, so they sum to exactly 1.0000.
+    const rounded = total.greaterThan(ZERO)
+      ? apportionWeights(values.map((v) => v.toNumber()), PROGRESS_WEIGHT_DECIMALS)
+      : apportionWeights(packages.map(() => 1), PROGRESS_WEIGHT_DECIMALS);
+    const weights = packages.map((p, index) => ({ key: p.key, weight: rounded[index]! }));
+    return { projectId, weights, valueWeighted: true, unpricedLeafIds };
   }
 
   /**
@@ -2053,4 +2137,18 @@ function toSnapshotResponse(row: {
     capturedAt: row.capturedAt.toISOString(),
     capturedById: row.capturedById,
   };
+}
+
+/**
+ * An even split, rounded to the stored precision by largest remainder (so it sums to exactly 1):
+ * equal shares for the eligible entries, 0 for the rest. With none eligible, `whenNone` decides —
+ * `'zeros'` (nothing measurable, nothing to weigh) or `'equal'` (spread across all).
+ */
+function evenShares(eligible: readonly boolean[], whenNone: 'zeros' | 'equal'): number[] {
+  const any = eligible.some(Boolean);
+  if (!any && whenNone === 'zeros') return eligible.map(() => 0);
+  return apportionWeights(
+    eligible.map((ok) => (ok || !any ? 1 : 0)),
+    PROGRESS_WEIGHT_DECIMALS,
+  );
 }

@@ -232,6 +232,25 @@ export class DeliveryPlanPackageDto {
   boqNodeIds!: string[];
 }
 
+export class ProposedPackageDto {
+  @ApiProperty({ example: 'sec-1', description: 'The caller\'s own key for the proposed package' })
+  @IsString() @IsNotEmpty() @MaxLength(100)
+  key!: string;
+
+  @ApiProperty({ type: [String] })
+  @IsString({ each: true })
+  @ArrayMaxSize(2000)
+  boqNodeIds!: string[];
+}
+
+export class ProposedPackageWeightsDto {
+  @ApiProperty({ type: [ProposedPackageDto] })
+  @ValidateNested({ each: true })
+  @Type(() => ProposedPackageDto)
+  @ArrayMaxSize(100)
+  packages!: ProposedPackageDto[];
+}
+
 export class SaveDeliveryPlanDto {
   @ApiProperty({ type: [DeliveryPlanPackageDto] })
   @ValidateNested({ each: true })

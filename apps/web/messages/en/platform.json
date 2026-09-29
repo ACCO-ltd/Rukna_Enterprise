@@ -778,7 +778,8 @@
       "separateDraftCreated": "A draft invoice for it is waiting for review in Billing & collection.",
       "reviewInBilling": "Review invoice",
       "unavailable": "This route is not available yet.",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "close": "Close"
     },
     "addExtraWork": {
       "title": "Add extra work",
@@ -817,7 +818,8 @@
         "variationDesc": "Contract increased to {value}",
         "separateTitle": "Separate charge added",
         "separateDesc": "Draft invoice created"
-      }
+      },
+      "close": "Close"
     },
     "draw": {
       "title": "Draw from contingency",
@@ -857,16 +859,19 @@
     },
     "timeline": {
       "action": "Timeline",
-      "heading": "Timeline",
-      "close": "Close timeline",
+      "heading": "BOQ history",
+      "subtitle": "Who changed this BOQ, and when",
+      "close": "Close history",
+      "closeAction": "Close",
       "empty": "Nothing has happened on this BOQ yet.",
-      "loadFailed": "Could not load the timeline.",
+      "loadFailed": "Could not load the history.",
+      "loading": "Loading history…",
+      "unknownActor": "Someone",
       "kind": {
         "COMMITTED": "Committed to contract",
         "VARIATION_SNAPSHOT": "Variation adopted",
         "CHANGE_EVENT": "Change"
-      },
-      "by": "by {name}"
+      }
     },
     "import": {
       "action": "Import from spreadsheet",
@@ -1152,16 +1157,16 @@
       "deleteFailed": "Couldn't delete this line."
     },
     "editor": {
-      "addItem": "Add BOQ item",
-      "addSection": "Add section",
-      "editItem": "Edit BOQ item",
-      "editSection": "Edit section",
-      "under": "Under {code}",
-      "atRoot": "Top level",
+      "titleItem": "Item {code}",
+      "titleSection": "Section {code}",
+      "titleNewItem": "New item",
+      "titleNewSection": "New section",
+      "titleNewItemIn": "New item in {code} · {name}",
+      "titleNewSectionIn": "New section in {code} · {name}",
+      "subtitleItem": "Measurement and pricing",
+      "subtitleItemNoPricing": "Measurement",
+      "subtitleSection": "Section details",
       "readOnly": "This version is baselined and cannot be edited. Start a revision to make changes.",
-      "identity": "Identity",
-      "measurement": "Measurement",
-      "pricing": "Pricing",
       "changeSource": "Change source",
       "code": "Item code",
       "sectionCode": "Section code",
@@ -1184,19 +1189,23 @@
       "unit": "Unit",
       "quantity": "Quantity",
       "rate": "Unit rate ({currency})",
-      "amount": "Amount",
-      "amountHint": "Quantity × rate, in {currency}. Calculated by the server on save.",
+      "lumpSumAmount": "Lump sum",
+      "lumpSumHint": "{currency}. The amount is recalculated on save.",
       "measurementMethod": "Measurement method",
-      "measurementMethodHint": "How this item is measured for payment. Payment applications inherit it.",
+      "measurementMethodHint": "How progress on this item is measured for payment.",
       "pricingBasis": "Pricing basis",
       "method": {
-        "QUANTITY": "Quantity",
-        "PERCENTAGE": "Percentage",
-        "MILESTONE": "Milestone"
+        "QUANTITY": "Measured quantity",
+        "PERCENTAGE": "Percentage complete",
+        "MILESTONE": "On completion"
       },
       "basis": {
         "UNIT_RATE": "Unit rate",
         "LUMP_SUM": "Lump sum"
+      },
+      "basisHint": {
+        "UNIT_RATE": "Quantity × rate.",
+        "LUMP_SUM": "One fixed amount."
       },
       "source": "Source",
       "baseline": "Baseline",
@@ -1205,19 +1214,42 @@
       "carriedForward": "Carried forward from the previous version",
       "newInThisVersion": "New in this version",
       "updated": "Last updated",
-      "save": "Save changes",
+      "saveItem": "Save item",
+      "saveSection": "Save section",
       "saving": "Saving…",
       "cancel": "Cancel",
       "close": "Close",
-      "saveFailed": "Could not save this item.",
+      "saveFailed": "Could not save this line.",
+      "discard": {
+        "title": "Discard unsaved changes?",
+        "description": "Your changes to this line will be lost.",
+        "confirm": "Discard changes",
+        "cancel": "Keep editing"
+      },
       "errors": {
         "codeRequired": "An item code is required.",
         "codeTooLong": "Item code is too long.",
         "descriptionRequired": "A description is required.",
         "unitTooLong": "Unit is too long.",
         "quantityFormat": "Quantity accepts up to {decimals} decimal places.",
-        "rateFormat": "Rate accepts up to {decimals} decimal places."
+        "rateFormat": "Rate accepts up to {decimals} decimal places.",
+        "quantityRequired": "Enter a quantity.",
+        "rateRequired": "Enter a rate.",
+        "amountRequired": "Enter an amount."
       }
+    },
+    "units": {
+      "placeholder": "Choose a unit",
+      "search": "Search units",
+      "noMatch": "No unit matches",
+      "notListed": "Not listed",
+      "loading": "Loading units…",
+      "legacyNote": "Not in the units list — ask an admin to add it, or pick a listed unit.",
+      "legacyShort": "Not in the units list",
+      "empty": "No units of measure are set up yet.",
+      "loadFailed": "Could not load the units of measure.",
+      "manageLink": "Manage units in Procurement setup",
+      "askAdmin": "Ask an administrator to add units."
     },
     "versions": {
       "heading": "Versions",

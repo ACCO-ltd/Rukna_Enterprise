@@ -46,6 +46,8 @@ export function previewToTree(nodes: readonly BoqImportPreviewNode[], currency: 
       updatedAt: now,
       children: [],
       computedTotal: node.isLeaf ? node.totalAmount : null,
+      // The preview is the importer's own file — its figures are already on screen.
+      priced: node.isLeaf && Boolean(node.unit) && node.quantity !== null && node.unitRate !== null,
     });
   }
 

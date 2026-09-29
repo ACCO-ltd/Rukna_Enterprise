@@ -450,6 +450,36 @@ export interface SuggestedWeightLine {
 export interface SuggestWeightsResponse {
   projectId: string;
   weights: SuggestedWeightLine[];
+  /**
+   * False for a caller without the BOQ cost tier: the weights are an even split across the packages
+   * that hold measurable scope, never value-based (owner decision 2026-09-29 — even package weights
+   * can be probed by giving one leaf a package of its own).
+   */
+  valueWeighted: boolean;
+}
+
+/**
+ * `POST /projects/:projectId/work-packages/delivery-plan/weights` — value-weight a PROPOSED grouping
+ * (the Delivery Plan before it is saved). Only package-level ratios come back: a per-leaf share of the
+ * BOQ value would let anyone who knows one price work out the rest (owner decision 2026-09-29), while
+ * package weights are something a PM already sees and sets.
+ */
+export interface ProposedPackageWeightsRequest {
+  packages: { key: string; boqNodeIds: string[] }[];
+}
+
+export interface ProposedPackageWeightsResponse {
+  projectId: string;
+  /** One per requested package, 0..1, summing to 1 (an equal split when nothing is priced). */
+  weights: { key: string; weight: number }[];
+  /**
+   * True: weighted by BOQ value (cost-tier callers). False: an even split across the packages with
+   * measurable scope — a caller without the cost tier never gets value-based weights, since a
+   * one-leaf package would reveal that leaf's share (owner decision 2026-09-29).
+   */
+  valueWeighted: boolean;
+  /** Requested leaves that are not fully priced (no unit, quantity or rate). */
+  unpricedLeafIds: string[];
 }
 
 // ─── Progress over time (Round-2 BE-1): snapshots + provisional planned baseline ──
@@ -1155,6 +1185,12 @@ export interface BoqTreeNodeResponse {
   // Server-computed — always present on GET …/tree
   /** Leaf: its own amount. Section: the sum of its descendants. Null when unpriced. */
   computedTotal: string | null;
+  /**
+   * Leaf: unit, quantity and rate are all present (the readiness rule, `missingPricingFields`).
+   * Section: false. Sent to every tier — it states whether a line is priced, not at what price, so
+   * a money-blind reader can still see "Unpriced" without the rate it is judged from.
+   */
+  priced: boolean;
 }
 
 export type BoqReadinessBlockerKind =

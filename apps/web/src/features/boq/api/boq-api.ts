@@ -128,8 +128,11 @@ export interface CreateNodePayload {
   pricingBasis?: 'UNIT_RATE' | 'LUMP_SUM';
 }
 
-/** Body for `PATCH .../nodes/:id`. `parentId` and `sortOrder` are not accepted — use move. */
-export type UpdateNodePayload = Omit<CreateNodePayload, 'parentId' | 'sortOrder'>;
+/**
+ * Body for `PATCH .../nodes/:id`. Partial: an absent field keeps its stored value. `parentId` and
+ * `sortOrder` are not accepted — use move.
+ */
+export type UpdateNodePayload = Partial<Omit<CreateNodePayload, 'parentId' | 'sortOrder'>>;
 
 export function addBoqNode(
   projectId: string,

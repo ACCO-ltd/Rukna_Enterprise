@@ -157,6 +157,7 @@ function boqNode(): BoqTreeNode {
     // A decimal string like every other money field since ADR-016 — it used to be the one
     // JSON number on this shape (B7).
     computedTotal: '60000.00',
+    priced: true,
   };
 }
 

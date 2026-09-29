@@ -323,6 +323,18 @@ export class ProgressRepository {
   }
 
   /**
+   * The leaves a proposed Delivery Plan groups, with what the value weighting and the "priced"
+   * verdict need. Scoped to the project; unknown ids are simply absent.
+   */
+  async findLeavesForWeighting(prisma: TenantPrisma, projectId: string, boqNodeIds: string[]) {
+    if (boqNodeIds.length === 0) return [];
+    return prisma.boqNode.findMany({
+      where: { id: { in: boqNodeIds }, isLeaf: true, version: { boq: { projectId } } },
+      select: { id: true, isLeaf: true, nodeRole: true, totalAmount: true, unit: true, quantity: true, unitRate: true },
+    });
+  }
+
+  /**
    * Batched existence + leaf-ness check for a Delivery Plan save — every `boqNodeId` a submitted
    * batch references, scoped to this project, so the service can reject an id that doesn't exist
    * or names a section rather than a leaf BEFORE opening the write transaction.

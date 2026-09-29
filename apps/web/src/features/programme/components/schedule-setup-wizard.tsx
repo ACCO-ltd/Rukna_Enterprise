@@ -17,7 +17,7 @@ import {
   cn,
 } from '@erp/ui';
 import { LayoutTemplate, PencilRuler } from 'lucide-react';
-import type { WorkPackageRollupLine } from '@erp/types';
+import { apportionWeights, PROGRESS_WEIGHT_DECIMALS, type WorkPackageRollupLine } from '@erp/types';
 
 import { ProgressStepper, type Step as StepperStep } from '@/components/progress-stepper';
 import { useProject } from '@/features/projects/hooks/use-project';
@@ -591,6 +591,8 @@ function StepWeights({
   const suggest = useSuggestWeights(projectId);
   const update = useUpdateWorkPackage(projectId);
   const [error, setError] = useState<string | null>(null);
+  // False when the server split evenly (no cost tier) rather than by BOQ value.
+  const [valueWeighted, setValueWeighted] = useState(true);
 
   const totalPercent = Math.round(Number(weightsTotal) * 100);
 
@@ -601,12 +603,19 @@ function StepWeights({
     setError(null);
     suggest.mutate(undefined, {
       onSuccess: (res) => {
-        for (const w of res.weights) {
+        setValueWeighted(res.valueWeighted);
+        // Largest remainder at the stored four places, so the saved weights sum to exactly 1.0000
+        // and the roll-up reads them as complete (rounding each one alone can leave 0.9999).
+        const stored = apportionWeights(
+          res.weights.map((w) => w.suggestedWeight),
+          PROGRESS_WEIGHT_DECIMALS,
+        );
+        res.weights.forEach((w, index) => {
           update.mutate(
-            { workPackageId: w.workPackageId, body: { progressWeight: Number(w.suggestedWeight.toFixed(4)) } },
+            { workPackageId: w.workPackageId, body: { progressWeight: stored[index]! } },
             { onError: (e) => setError(e instanceof ApiError ? e.message : tw('weights.saveFailed')) },
           );
-        }
+        });
       },
       onError: (e) => setError(e instanceof ApiError ? e.message : tw('weights.suggestFailed')),
     });
@@ -617,6 +626,9 @@ function StepWeights({
   return (
     <div className="space-y-4">
       <p className="text-body-sm text-muted-foreground">{tw('weights.lead')}</p>
+      {!valueWeighted ? (
+        <p className="text-caption text-muted-foreground">{tw('weights.evenWeightsNote')}</p>
+      ) : null}
 
       {error ? <Alert variant="error" messages={[error]} /> : null}
 

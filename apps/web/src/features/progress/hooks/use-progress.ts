@@ -21,6 +21,7 @@ import type {
 
 import {
   addMeasurement,
+  weighProposedPackages,
   allocateBoqNode,
   approveDpr,
   approveProgrammeBaseline,
@@ -82,6 +83,8 @@ export const progressKeys = {
   targets: (projectId: string) => [...progressKeys.all(projectId), 'targets'] as const,
   baseline: (projectId: string) => [...progressKeys.all(projectId), 'baseline'] as const,
   workPackages: (projectId: string) => [...progressKeys.all(projectId), 'work-packages'] as const,
+  proposedWeights: (projectId: string, grouping: string) =>
+    [...progressKeys.all(projectId), 'proposed-weights', grouping] as const,
   /** A DPR detail is keyed by its own id, not the project. */
   report: (dprId: string) => ['progress-report', dprId] as const,
 };
@@ -408,6 +411,25 @@ export function useAllocateBoqNode(projectId: string, workPackageId: string) {
 }
 
 /** Saves a reviewed Delivery Plan — every package + its leaf allocations, created atomically. */
+/**
+ * Server-side value weights for the Delivery Plan's proposed grouping. `packages` should already be
+ * debounced by the caller — each change of grouping is a request. Disabled while empty.
+ */
+export function useProposedPackageWeights(
+  projectId: string,
+  packages: { key: string; boqNodeIds: string[] }[],
+  enabled: boolean,
+) {
+  const grouping = JSON.stringify(packages);
+  return useQuery({
+    queryKey: progressKeys.proposedWeights(projectId, grouping),
+    queryFn: () => weighProposedPackages(projectId, { packages }),
+    enabled: enabled && packages.length > 0,
+    staleTime: 60_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useSaveDeliveryPlan(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({

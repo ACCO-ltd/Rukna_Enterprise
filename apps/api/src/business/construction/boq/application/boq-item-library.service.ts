@@ -5,6 +5,7 @@ import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { BoqItemLibraryRepository } from '../infrastructure/boq-item-library.repository.js';
+import { resolveBoqVisibility } from '../domain/boq-visibility.policy.js';
 
 export interface CreateBoqItemDto {
   code: string;
@@ -32,9 +33,15 @@ export class BoqItemLibraryService {
     private readonly repo: BoqItemLibraryRepository,
   ) {}
 
-  search(identity: RequestIdentity, query?: string) {
+  /**
+   * The library is readable with `view:boq`, but its last-used rate is money: a caller without the
+   * cost tier (ADR-029 §8 A-2) gets every row with `lastUsedRate` withheld.
+   */
+  async search(identity: RequestIdentity, query?: string) {
     const prisma = this.tenancy.getClient();
-    return this.repo.search(prisma, identity.activeOrganizationId, query);
+    const rows = await this.repo.search(prisma, identity.activeOrganizationId, query);
+    if (resolveBoqVisibility(identity).canViewCost) return rows;
+    return rows.map((row) => ({ ...row, lastUsedRate: null }));
   }
 
   async create(identity: RequestIdentity, dto: CreateBoqItemDto) {

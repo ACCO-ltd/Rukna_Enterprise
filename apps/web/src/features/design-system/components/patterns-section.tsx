@@ -652,11 +652,12 @@ export function PatternsSection() {
         </Specimen>
 
         <Rule>
-          Reach for <code className="font-mono text-caption">Dialog</code> first —{' '}
-          <code className="font-mono text-caption">Sheet</code> is for a screen genuinely built
-          as list-on-one-side, detail-on-the-other, not a default replacement for a confirmation
-          or a create form. See the component&rsquo;s own doc comment for why (
-          <code className="font-mono text-caption">boq-item-drawer.tsx</code>&rsquo;s history).
+          <code className="font-mono text-caption">Sheet</code> is retired (ADR-039): no new
+          screen uses it. Record forms, previews and history open in a{' '}
+          <code className="font-mono text-caption">FormDialog</code>; values already in a table
+          are edited in the table. The BOQ item editor (
+          <code className="font-mono text-caption">boq-item-dialog.tsx</code>) is the worked
+          example.
         </Rule>
 
         <Specimen label="Tooltip" token="<Tooltip> · <TooltipTrigger> · <TooltipContent>">

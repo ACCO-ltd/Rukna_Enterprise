@@ -8,7 +8,7 @@ import type { BoqTreeNodeResponse } from '@erp/types';
  *
  * Nothing here writes anything. A suggestion is a starting point the PM edits (name, code, owner,
  * weight, which leaves) before any Save — this module never decides what gets persisted, only what
- * gets proposed. BOQ-value weight is a suggestion, never treated as an approved physical weight
+ * gets proposed. BOQ-value weight (computed on the server for the proposed grouping) is a suggestion, never treated as an approved physical weight
  * (the caller/UI must keep every suggested weight editable).
  */
 
@@ -21,10 +21,13 @@ export interface SuggestedPackage {
   sectionNodeId: string;
   sectionCode: string;
   leafIds: string[];
-  /** Σ totalAmount of the suggested leaves, in the BOQ's currency. */
+  /**
+   * Σ totalAmount of the suggested leaves, in the BOQ's currency. 0 for a reader without the cost
+   * tier (the server withholds amounts) — display only. Weights are NOT computed here: the server
+   * value-weights the grouping (`useProposedPackageWeights`), so no per-leaf share of the BOQ value
+   * ever has to reach a money-blind browser.
+   */
   totalValue: number;
-  /** Fraction 0..1 of the suggested (unallocated) value across ALL suggested packages. */
-  suggestedWeight: number;
 }
 
 export interface DeliveryPlanSuggestion {
@@ -65,14 +68,13 @@ export function suggestDeliveryPlan(
     if (leaves.length > 0) candidates.push({ section: root, leaves });
   }
 
-  const totalValue = candidates.reduce((sum, c) => sum + sumValue(c.leaves), 0);
   const codes = assignCodes(candidates.length, existingCodes);
   const unpricedLeafIds: string[] = [];
 
   const packages: SuggestedPackage[] = candidates.map((c, index) => {
-    const value = sumValue(c.leaves);
     for (const leaf of c.leaves) {
-      if (!leafValue(leaf)) unpricedLeafIds.push(leaf.id);
+      // The server's verdict, sent to every tier — not inferred from a (possibly withheld) amount.
+      if (!leaf.priced) unpricedLeafIds.push(leaf.id);
     }
     return {
       code: codes[index]!,
@@ -80,8 +82,7 @@ export function suggestDeliveryPlan(
       sectionNodeId: c.section.id,
       sectionCode: c.section.code,
       leafIds: c.leaves.map((l) => l.id),
-      totalValue: value,
-      suggestedWeight: totalValue > 0 ? value / totalValue : 0,
+      totalValue: sumValue(c.leaves),
     };
   });
 

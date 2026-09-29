@@ -24,7 +24,7 @@ import {
   TableScroll,
 } from '@erp/ui';
 
-import type { SuggestedWeightLine } from '@erp/types';
+import { apportionUnits, apportionWeights, PROGRESS_WEIGHT_DECIMALS, type SuggestedWeightLine } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -56,6 +56,8 @@ export function WorkPackageEditor({
   const [allocating, setAllocating] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedWeightLine[] | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  // False when the server split evenly (no cost tier) rather than by BOQ value.
+  const [valueWeighted, setValueWeighted] = useState(true);
 
   const suggest = useSuggestWeights(projectId);
   const updateWp = useUpdateWorkPackage(projectId);
@@ -63,7 +65,10 @@ export function WorkPackageEditor({
   function handleSuggest() {
     setSuggestError(null);
     suggest.mutate(undefined, {
-      onSuccess: (res) => setSuggestions(res.weights),
+      onSuccess: (res) => {
+        setSuggestions(res.weights);
+        setValueWeighted(res.valueWeighted);
+      },
       onError: (e) =>
         setSuggestError(e instanceof ApiError ? e.message : t('workPackage.suggestFailed')),
     });
@@ -87,9 +92,14 @@ export function WorkPackageEditor({
   function handleAcceptAll() {
     if (!suggestions) return;
     setSuggestError(null);
-    for (const w of suggestions) {
+    // Largest remainder at the stored four places, so the accepted set sums to exactly 1.0000.
+    const stored = apportionWeights(
+      suggestions.map((w) => w.suggestedWeight),
+      PROGRESS_WEIGHT_DECIMALS,
+    );
+    for (const [index, w] of suggestions.entries()) {
       updateWp.mutate(
-        { workPackageId: w.workPackageId, body: { progressWeight: Number(w.suggestedWeight.toFixed(4)) } },
+        { workPackageId: w.workPackageId, body: { progressWeight: stored[index]! } },
         {
           onError: (e) =>
             setSuggestError(e instanceof ApiError ? e.message : t('workPackage.saveFailed')),
@@ -116,6 +126,8 @@ export function WorkPackageEditor({
   const packages = data.packages.map((p) => ({ id: p.id, code: p.code, name: p.name }));
   const nextCode = `WP-${String(data.packages.length + 1).padStart(2, '0')}`;
   const existingWeightPercent = Math.round(Number(data.weightsTotal) * 100);
+  // Shown as whole percents that add up to exactly 100 (largest remainder, shared with the API).
+  const suggestedPercents = apportionUnits((suggestions ?? []).map((w) => w.suggestedWeight), 2);
   const hasPackages = data.packages.length > 0;
 
   return (
@@ -146,6 +158,9 @@ export function WorkPackageEditor({
       </div>
 
       {suggestError ? <Alert variant="error" messages={[suggestError]} /> : null}
+      {suggestions !== null && !valueWeighted ? (
+        <p className="text-caption text-muted-foreground">{t('workPackage.evenWeightsNote')}</p>
+      ) : null}
 
       {suggestions !== null ? (
         <div className="space-y-3 rounded-panel border border-border bg-surface-subtle p-4">
@@ -159,7 +174,7 @@ export function WorkPackageEditor({
             </Button>
           </div>
           <ul className="space-y-1">
-            {suggestions.map((s) => {
+            {suggestions.map((s, index) => {
               const pkg = data.packages.find((p) => p.id === s.workPackageId);
               return (
                 <li key={s.workPackageId} className="flex items-center justify-between gap-4 py-1.5">
@@ -171,7 +186,7 @@ export function WorkPackageEditor({
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
                     <span className="w-10 text-end text-body font-medium tabular-nums text-foreground">
-                      {`${Math.round(s.suggestedWeight * 100)}%`}
+                      {`${suggestedPercents[index]}%`}
                     </span>
                     <Button
                       variant="outline"

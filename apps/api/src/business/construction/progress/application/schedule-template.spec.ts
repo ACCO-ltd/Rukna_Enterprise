@@ -18,6 +18,11 @@ const identity: RequestIdentity = {
   permissions: [],
 };
 
+/** A caller with the BOQ cost tier: value-based weights. */
+const costTier: RequestIdentity = { ...identity, permissions: ['view:boq', 'view-cost:boq'] };
+/** A money-blind PM (manage:project + edit-scope:boq, no cost tier): even split only. */
+const pmLike: RequestIdentity = { ...identity, permissions: ['manage:project', 'view:boq', 'edit-scope:boq'] };
+
 function files() {
   return {
     bind: jest.fn().mockResolvedValue(undefined),
@@ -149,7 +154,7 @@ describe('ProgressService.suggestWeights (Master Schedule P1-d)', () => {
         { id: 'n3', totalAmount: '100000.00' }, // b = 100,000; total = 400,000
       ],
     });
-    const res = await service.suggestWeights(identity, 'p-1');
+    const res = await service.suggestWeights(costTier, 'p-1');
     const byId = new Map(res.weights.map((w) => [w.workPackageId, w.suggestedWeight]));
     expect(byId.get('a')).toBeCloseTo(0.75, 6); // 300k / 400k
     expect(byId.get('b')).toBeCloseTo(0.25, 6); // 100k / 400k
@@ -169,7 +174,7 @@ describe('ProgressService.suggestWeights (Master Schedule P1-d)', () => {
         { id: 'n2', totalAmount: '300000.00' },
       ],
     });
-    const res = await service.suggestWeights(identity, 'p-1');
+    const res = await service.suggestWeights(costTier, 'p-1');
     const byId = new Map(res.weights.map((w) => [w.workPackageId, w.suggestedWeight]));
     expect(byId.get('mob')).toBe(0);
     expect(byId.get('exc')).toBeCloseTo(0.25, 6); // 100k / 400k (mob excluded)
@@ -186,7 +191,7 @@ describe('ProgressService.suggestWeights (Master Schedule P1-d)', () => {
       ],
       leafValues: [{ id: 'n1', totalAmount: '100000.00' }],
     });
-    const res = await service.suggestWeights(identity, 'p-1');
+    const res = await service.suggestWeights(costTier, 'p-1');
     const byId = new Map(res.weights.map((w) => [w.workPackageId, w.suggestedWeight]));
     expect(byId.get('empty')).toBe(0);
     expect(byId.get('a')).toBeCloseTo(1.0, 6);
@@ -203,7 +208,7 @@ describe('ProgressService.suggestWeights (Master Schedule P1-d)', () => {
         { id: 'n2', totalAmount: null },
       ],
     });
-    const res = await service.suggestWeights(identity, 'p-1');
+    const res = await service.suggestWeights(costTier, 'p-1');
     expect(res.weights).toHaveLength(2);
     for (const w of res.weights) {
       expect(w.suggestedWeight).toBe(0);
@@ -213,8 +218,75 @@ describe('ProgressService.suggestWeights (Master Schedule P1-d)', () => {
 
   it('returns an empty weights list for a project with no work packages', async () => {
     const { service } = build({ workPackages: [], leafValues: [] });
-    const res = await service.suggestWeights(identity, 'p-1');
+    const res = await service.suggestWeights(costTier, 'p-1');
     expect(res.weights).toEqual([]);
     expect(res.projectId).toBe('p-1');
+  });
+
+  describe('without the BOQ cost tier (owner decision 2026-09-29)', () => {
+    const packages = [
+      { id: 'mob', scheduleOnly: true, boqLinks: [] },
+      { id: 'probe', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n1' }] }, // one leaf on its own
+      { id: 'rest', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n2' }, { boqNodeId: 'n3' }] },
+      { id: 'cont', scheduleOnly: false, boqLinks: [{ boqNodeId: 'c' }] },
+    ];
+    const leafValues = [
+      { id: 'n1', totalAmount: '10000.00', nodeRole: 'WORK' },
+      { id: 'n2', totalAmount: '300000.00', nodeRole: 'WORK' },
+      { id: 'n3', totalAmount: '90000.00', nodeRole: 'WORK' },
+      { id: 'c', totalAmount: '50000.00', nodeRole: 'CONTINGENCY' },
+    ];
+
+    it('splits evenly across measurable packages — a one-leaf package reveals nothing', async () => {
+      const { service } = build({ workPackages: packages, leafValues });
+      const res = await service.suggestWeights(pmLike, 'p-1');
+      expect(res.valueWeighted).toBe(false);
+      const byId = new Map(res.weights.map((w) => [w.workPackageId, w.suggestedWeight]));
+      expect(byId.get('probe')).toBe(0.5);
+      expect(byId.get('rest')).toBe(0.5);
+      expect(byId.get('mob')).toBe(0);
+      expect(byId.get('cont')).toBe(0); // contingency-only: not measurable scope
+    });
+
+    it('gives schedule-only phases 0 and splits 3 measurable packages to exactly 1.0000', async () => {
+      const { service } = build({
+        workPackages: [
+          { id: 'mob', scheduleOnly: true, boqLinks: [] },
+          { id: 'a', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n1' }] },
+          { id: 'b', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n2' }] },
+          { id: 'c', scheduleOnly: false, boqLinks: [{ boqNodeId: 'n3' }] },
+        ],
+        leafValues,
+      });
+      const res = await service.suggestWeights(pmLike, 'p-1');
+      expect(res.weights.map((w) => w.suggestedWeight)).toEqual([0, 0.3334, 0.3333, 0.3333]);
+      const units = res.weights.reduce((sum, w) => sum + Math.round(w.suggestedWeight * 10_000), 0);
+      expect(units).toBe(10_000);
+    });
+
+    it('answers all zeros when nothing is measurable, as the cost tier does', async () => {
+      const { service } = build({
+        workPackages: [
+          { id: 'mob', scheduleOnly: true, boqLinks: [] },
+          { id: 'cont', scheduleOnly: false, boqLinks: [{ boqNodeId: 'c' }] },
+          { id: 'empty', scheduleOnly: false, boqLinks: [] },
+        ],
+        leafValues,
+      });
+      const res = await service.suggestWeights(pmLike, 'p-1');
+      expect(res.valueWeighted).toBe(false);
+      expect(res.weights.map((w) => w.suggestedWeight)).toEqual([0, 0, 0]);
+    });
+
+    it('still value-weights for a cost-tier caller', async () => {
+      const { service } = build({ workPackages: packages, leafValues });
+      const res = await service.suggestWeights(costTier, 'p-1');
+      expect(res.valueWeighted).toBe(true);
+      const byId = new Map(res.weights.map((w) => [w.workPackageId, w.suggestedWeight]));
+      expect(byId.get('probe')).toBeCloseTo(10000 / 450000, 4);
+      // Rounded to the stored four places, summing to exactly 1.0000.
+      const units = res.weights.reduce((sum, w) => sum + Math.round(w.suggestedWeight * 10_000), 0);
+      expect(units).toBe(10_000);
+    });
   });
 });

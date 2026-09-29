@@ -29,18 +29,25 @@ export const STANDARD_UNITS_OF_MEASURE: readonly { code: string; name: string; s
   { code: 'TON', name: 'Tonne', symbol: 't' },
   { code: 'NR', name: 'Number', symbol: 'nr' },
   { code: 'ITEM', name: 'Item', symbol: 'item' },
+  // Lump-sum lines: imported bills write their unit as LS (or "sum"). Without these every such
+  // line would read as an unknown unit in the BOQ picker.
+  { code: 'LS', name: 'Lump sum', symbol: 'LS' },
+  { code: 'SUM', name: 'Sum', symbol: 'sum' },
 ];
 
 /**
- * A symbol as a comparison key: trimmed, lower-cased, whitespace removed, and ASCII powers folded
+ * A symbol as a comparison key: trimmed, lower-cased, whitespace and dots removed (`L.S.` is `ls`),
+ * and ASCII powers folded
  * to superscripts, so `m3`, `M3`, `m^3` and `m³` are one unit (and the same for `2`). Without this
  * a tenant that typed `m3` would get a second cubic metre beside it.
  */
+// The web's BOQ unit picker matches stored units against the registry with a wider alias set
+// (sqm → m², nos → nr, …) built on the same rule: apps/web/src/features/units-of-measure/unit-aliases.ts.
 export function normaliseUnitSymbol(symbol: string): string {
   return symbol
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, '')
+    .replace(/[\s.]+/g, '')
     .replace(/\^?3$/, '³')
     .replace(/\^?2$/, '²');
 }

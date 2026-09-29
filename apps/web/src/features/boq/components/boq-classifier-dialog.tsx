@@ -6,12 +6,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Input,
   Label,
   MoneyInput,
@@ -52,7 +50,7 @@ export interface ClassifierResult {
  * When `absorbEnabled`/`separateEnabled` is false the route still previews its consequence but the
  * CTA is disabled with an honest "not available yet" note — never a fake success.
  */
-export function BoqClassifierDrawer({
+export function BoqClassifierDialog({
   open,
   currency,
   contingencyRemaining,
@@ -80,6 +78,7 @@ export function BoqClassifierDrawer({
   onClose: () => void;
 }) {
   const t = useTranslations('platform.boq.classifier');
+  const tDiscard = useTranslations('common.discardChanges');
   const locale = useLocale() as 'en' | 'ar';
 
   const [route, setRoute] = useState<ClassifierRoute | ''>('VARIATION');
@@ -186,13 +185,25 @@ export function BoqClassifierDrawer({
         : t('variation.cta');
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('subtitle')}</DialogDescription>
-        </DialogHeader>
-
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('title')}
+      subtitle={t('subtitle')}
+      size="md"
+      busy={isPending}
+      dirty={Boolean(description.trim() || amount || clientApprovalReference.trim() || parentId)}
+      closeLabel={t('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
+      }}
+    >
+      <FormDialogBody>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="classifier-desc">{t('descriptionLabel')}</Label>
@@ -255,30 +266,32 @@ export function BoqClassifierDrawer({
             <Alert variant="error">{errorMessage}</Alert>
           ) : null}
         </div>
+      </FormDialogBody>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
             {t('cancel')}
           </Button>
-          <Button
-            disabled={!canSubmit || isPending}
-            onClick={() => {
-              if (route === '') return;
-              const ref = clientApprovalReference.trim();
-              onSubmit({
-                route,
-                description: description.trim(),
-                amount: normalize(amount),
-                ...(route === 'VARIATION' && parentId ? { parentId } : {}),
-                ...(route === 'VARIATION' && ref ? { clientApprovalReference: ref } : {}),
-              });
-            }}
-          >
-            {cta}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          disabled={!canSubmit || isPending}
+          onClick={() => {
+            if (route === '') return;
+            const ref = clientApprovalReference.trim();
+            onSubmit({
+              route,
+              description: description.trim(),
+              amount: normalize(amount),
+              ...(route === 'VARIATION' && parentId ? { parentId } : {}),
+              ...(route === 'VARIATION' && ref ? { clientApprovalReference: ref } : {}),
+            });
+          }}
+        >
+          {cta}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
