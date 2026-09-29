@@ -483,6 +483,7 @@
     "ownerPlaceholder": "Optional",
     "weightTotal": "Total weight of included packages: {total}%",
     "weightTotalOver": "Total weight of included packages: {total}% — over 100%.",
+    "weightTotalUnder": "Total weight of included packages: {total}% — under 100%.",
     "saveDraft": "Save draft plan",
     "saving": "Saving…",
     "saved": "Delivery plan saved. {count, plural, one {# work package} other {# work packages}} created.",

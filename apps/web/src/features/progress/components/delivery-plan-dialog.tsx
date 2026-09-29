@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, MoneyDisplay, Skeleton, StatusPill, useToast } from '@erp/ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { BoqTreeNodeResponse } from '@erp/types';
+import { apportionUnits, type BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
@@ -13,6 +13,9 @@ import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { suggestDeliveryPlan } from '../domain/suggest-delivery-plan';
 import { useProposedPackageWeights, useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
 import { RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
+
+/** Weights are edited as whole percents: two decimal places of the stored 0..1 fraction. */
+const WHOLE_PERCENT_DECIMALS = 2;
 
 const refFieldClass = 'rounded-control border-border px-2 py-1 text-body focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
@@ -156,9 +159,14 @@ export function DeliveryPlanDialog({
     [settledKey],
   );
   const weights = useProposedPackageWeights(projectId, grouping, open);
-  const serverPercent = new Map(
-    (weights.data?.weights ?? []).map((w) => [w.key, String(Math.round(w.weight * 100))] as const),
+  // Whole percents by largest remainder (shared with the API), so the untouched rows add up to
+  // exactly 100 rather than 99 or 101 from rounding each one on its own.
+  const serverWeights = weights.data?.weights ?? [];
+  const serverUnits = apportionUnits(
+    serverWeights.map((w) => w.weight),
+    WHOLE_PERCENT_DECIMALS,
   );
+  const serverPercent = new Map(serverWeights.map((w, i) => [w.key, String(serverUnits[i])] as const));
   const withWeights = current.map((r) =>
     r.weightEdited ? r : { ...r, weightPercent: serverPercent.get(r.key) ?? r.weightPercent },
   );
@@ -178,7 +186,8 @@ export function DeliveryPlanDialog({
           code: r.code.trim(),
           name: r.name.trim(),
           responsibleOwner: r.responsibleOwner.trim() || undefined,
-          progressWeight: Number(r.weightPercent) / 100,
+          // A whole percent is exactly two places of the stored fraction; toFixed drops float noise.
+          progressWeight: Number((Number(r.weightPercent) / 100).toFixed(WHOLE_PERCENT_DECIMALS)),
           boqNodeIds: r.leafIds,
         })),
       },
@@ -271,10 +280,12 @@ export function DeliveryPlanDialog({
                 <p className="mt-3 text-caption text-muted-foreground">{t('deliveryPlan.evenWeightsNote')}</p>
               ) : null}
 
-              <p className={`mt-3 text-caption ${totalWeightPercent > 100 ? 'text-warning' : 'text-muted-foreground'}`}>
+              <p className={`mt-3 text-caption ${totalWeightPercent !== 100 ? 'text-warning' : 'text-muted-foreground'}`}>
                 {totalWeightPercent > 100
                   ? t('deliveryPlan.weightTotalOver', { total: totalWeightPercent })
-                  : t('deliveryPlan.weightTotal', { total: totalWeightPercent })}
+                  : totalWeightPercent < 100
+                    ? t('deliveryPlan.weightTotalUnder', { total: totalWeightPercent })
+                    : t('deliveryPlan.weightTotal', { total: totalWeightPercent })}
               </p>
             </>
           )}

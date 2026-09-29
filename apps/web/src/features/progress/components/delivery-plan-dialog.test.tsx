@@ -187,6 +187,44 @@ describe('DeliveryPlanDialog', () => {
     expect(screen.getByDisplayValue('70')).toBeInTheDocument();
   });
 
+  it('saves three even weights that sum to exactly 1 (34/33/33), so the roll-up reads them complete', async () => {
+    const user = userEvent.setup();
+    const leaf4 = leaf({ id: 'leaf-4', code: '3.1', description: 'Roofing', totalAmount: '10000' });
+    const roof = node({ id: 'sec-3', code: '3', description: 'Roof', children: [leaf4] });
+    mocks.useBoqTree.mockReturnValue(loaded([substructure, superstructure, roof]));
+    mocks.useProposedPackageWeights.mockImplementation(
+      (_projectId: string, packages: { key: string; boqNodeIds: string[] }[]) => ({
+        data: {
+          projectId: 'p-1',
+          weights: packages.map((p) => ({ key: p.key, weight: 1 / 3 })),
+          valueWeighted: false,
+          unpricedLeafIds: [],
+        },
+        isPending: false,
+      }),
+    );
+    renderWithProviders(<DeliveryPlanDialog projectId="p-1" currency="USD" open onOpenChange={() => {}} />, { withToast: true });
+
+    expect(await screen.findByDisplayValue('34')).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('33')).toHaveLength(2);
+    expect(screen.getByText('Total weight of included packages: 100%')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save draft plan' }));
+    const weights: number[] = mocks.mutate.mock.calls[0][0].packages.map((p: { progressWeight: number }) => p.progressWeight);
+    expect(weights).toEqual([0.34, 0.33, 0.33]);
+    // The roll-up's weightsComplete: |Σ − 1| < 0.0001.
+    expect(Math.abs(weights.reduce((a, b) => a + b, 0) - 1)).toBeLessThan(0.0001);
+  });
+
+  it('warns when the total is under 100%, not only over', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DeliveryPlanDialog projectId="p-1" currency="USD" open onOpenChange={() => {}} />, { withToast: true });
+    const typed = await screen.findByDisplayValue('67');
+    await user.clear(typed);
+    await user.type(typed, '50');
+    expect(screen.getByText('Total weight of included packages: 83% — under 100%.')).toHaveClass('text-warning');
+  });
+
   it('shows no even-split note when the weights are value-based', async () => {
     renderWithProviders(<DeliveryPlanDialog projectId="p-1" currency="USD" open onOpenChange={() => {}} />, { withToast: true });
     expect(await screen.findByDisplayValue('67')).toBeInTheDocument();
