@@ -50,6 +50,12 @@ A field-by-field check against the API found that several designed fields contra
 
 Use a **full page** for anything with line items and for master-data creation. Use a **centred dialog** for confirmations and actions of one to four fields. Use a **side sheet** for quick edits of a related record and for previews.
 
+> **Amended 2026-09-29 — superseded by [ADR-039](ADR-039-dialogs-inline-editing-no-side-sheets.md).**
+> Side sheets are retired. Quick edits of a record and previews now open in a `FormDialog`
+> (sized `md` / `lg` / `xl` / `2xl`, full screen on phones); values already in a table are edited
+> inline; the full-page rule for line items and master-data creation is unchanged. The sentence
+> above is kept as the record of what was decided on 2026-09-27.
+
 ### Design conflicts resolved (approved 2026-09-27)
 
 | Designed | Decision | Rule |

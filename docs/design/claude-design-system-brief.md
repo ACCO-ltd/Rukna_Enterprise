@@ -364,6 +364,12 @@ suggested React prop API using our naming.
   - a **centred dialog:** confirmations and 1–4 field actions (e.g. record payment date, reason
     for cancel)
 
+  > **Amended 2026-09-29 — superseded by
+  > [ADR-039](../adr/ADR-039-dialogs-inline-editing-no-side-sheets.md).** Side sheets are retired.
+  > A dialog (`FormDialog`, sized md/lg/xl/2xl, full screen on phones) is the default for creating
+  > or editing one record, confirmations, previews and history; values in a table are edited
+  > inline; long line-item documents stay on a full page. Filters on mobile are not a sheet either.
+
 ### 6.3 The Document editor shell (second most important deliverable)
 
 One shell for **every** transactional document: Client invoice, Supplier bill, Receipt,
