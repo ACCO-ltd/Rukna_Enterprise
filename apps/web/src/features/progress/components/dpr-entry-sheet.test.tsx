@@ -196,13 +196,51 @@ describe('DprEntrySheet', () => {
     expect((await screen.findAllByText('Site notes could not be saved: Server down')).length).toBeGreaterThan(0);
   });
 
-  it('offers no Remove on a reopened report, whose earlier entries the server keeps', () => {
-    mocks.useDpr.mockReturnValue({ data: { ...DPR, status: 'REOPENED' }, isPending: false, isError: false });
+  it('offers no Remove on a reopened report for entries the approved report carried', () => {
+    mocks.useDpr.mockReturnValue({
+      data: {
+        ...DPR,
+        status: 'REOPENED',
+        reopenedAt: '2026-09-20T10:00:00.000Z',
+        measurements: [{ ...DPR.measurements[0], createdAt: '2026-09-18T08:00:00.000Z' }],
+      },
+      isPending: false,
+      isError: false,
+    });
     render();
     expect(screen.getByText(/2.000 m3 on this report/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
     // The entry itself is still listed, and one line says why it cannot be removed.
     expect(screen.getByRole('list', { name: '2.000 m3 on this report' })).toHaveTextContent('2.000 m3');
+    expect(
+      screen.getByText("Entries approved before the reopen can't be removed; add a correction note instead."),
+    ).toBeInTheDocument();
+  });
+
+  it('on a reopened report, offers Remove only for entries added since the reopen', async () => {
+    const user = userEvent.setup();
+    mocks.useDpr.mockReturnValue({
+      data: {
+        ...DPR,
+        status: 'REOPENED',
+        reopenedAt: '2026-09-20T10:00:00.000Z',
+        measurements: [
+          { id: 'm-old', dprId: 'dpr-1', boqNodeId: 'n1', quantity: '2', createdAt: '2026-09-18T08:00:00.000Z' },
+          { id: 'm-new', dprId: 'dpr-1', boqNodeId: 'n1', quantity: '3', createdAt: '2026-09-21T08:00:00.000Z' },
+        ],
+      },
+      isPending: false,
+      isError: false,
+    });
+    render();
+
+    const list = screen.getByRole('list', { name: '5.000 m3 on this report' });
+    // The approved 2 m3 is listed without a Remove; the correction added after the reopen has one.
+    expect(list).toHaveTextContent('2.000 m3');
+    expect(screen.queryByRole('button', { name: 'Remove 2.000 m3 from 1.1 Excavation' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove 3.000 m3 from 1.1 Excavation' }));
+    expect(mocks.remove).toHaveBeenCalledWith('m-new', expect.anything());
+    // The explanatory line for the protected entries stays.
     expect(
       screen.getByText("Entries approved before the reopen can't be removed; add a correction note instead."),
     ).toBeInTheDocument();

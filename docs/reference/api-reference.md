@@ -2657,7 +2657,7 @@ and refused with **409** once APPROVED.
 
 | Method | Path | Change |
 |---|---|---|
-| `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName` |
+| `GET` | `/projects/:projectId/progress/reports` and `/progress/reports/:dprId` | Each report adds `workPackages`, `approvedByName`, `reviewedByName`, `returnedBy`, `returnedAt`, `returnedByName`, and (2026-09-29) `reopenedBy`, `reopenedAt`, `reopenReason`, `reopenedByName`. The detail's `measurements[]` carry `createdAt` |
 | `POST` | `/progress/reports/:dprId/return` | Also records `returnedBy` / `returnedAt` (kept on resubmit, overwritten by the next return — same as `returnReason`) |
 | `DELETE` | `/progress/reports/:dprId/measurements/:measurementId` | **New** (`record:progress` + membership). **204**. Only while DRAFT / RETURNED / REOPENED, else **409**; 404 if the entry is not on the report. In a **REOPENED** report, entries created before the reopen were approved and are refused with **409** (CONST-PROG-010 supersede, don't overwrite) — only entries added since the reopen can be deleted. Evidence tagged to the entry is detached, not deleted. Runs under the report row lock, re-checking the status |
 
@@ -2669,7 +2669,13 @@ workPackages: Array<{ id: string; code: string; name: string }>; // distinct pac
 approvedByName?: string;
 reviewedByName?: string;   // approver for APPROVED, reopener for REOPENED, returner for RETURNED, else undefined
 returnedBy?: string; returnedAt?: string; returnedByName?: string;
+reopenedBy?: string | null; reopenedAt?: string | null; reopenReason?: string | null; reopenedByName?: string;
+// detail only — each work entry:
+measurements: Array<{ id: string; boqNodeId: string; quantity: string; createdAt: string; /* … */ }>;
 ```
+
+On a REOPENED report an entry is removable only when `createdAt > reopenedAt` — the exact rule the
+`DELETE` above enforces, so the editor offers Remove only where the server will accept it.
 
 #### Work-package allocation race
 

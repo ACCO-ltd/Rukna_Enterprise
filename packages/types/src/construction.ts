@@ -594,6 +594,11 @@ export interface ProgressMeasurementResponse {
   /** Where on site this quantity was measured, e.g. "Units 301-308" — distinct from the DPR's own
    * whole-report `locationArea`, since one report can cover several work entries in different spots. */
   locationArea?: string;
+  /**
+   * ISO datetime the entry was recorded. On a REOPENED report only entries created after the
+   * report's `reopenedAt` can be removed; earlier ones were approved and are superseded, not deleted.
+   */
+  createdAt: string;
 }
 
 // Phase 3 structured DPR row types (Section C + D).
@@ -671,6 +676,14 @@ export interface DailyProgressReportResponse {
   returnedAt?: string;
   /** The returner's "firstName lastName", resolved like preparedByName. */
   returnedByName?: string;
+  /** Who most recently reopened the approved report (user id); null/absent if never reopened. */
+  reopenedBy?: string | null;
+  /** ISO datetime of the most recent reopen; null/absent if never reopened. */
+  reopenedAt?: string | null;
+  /** Why the report was most recently reopened. */
+  reopenReason?: string | null;
+  /** The reopener's "firstName lastName", resolved like preparedByName. */
+  reopenedByName?: string;
   // Phase 3 structured row collections — present only on the getDpr endpoint (not on list).
   labourRows?: DprLabourRowResponse[];
   equipmentRows?: DprEquipmentRowResponse[];

@@ -742,9 +742,12 @@ export class ProgressService {
 
   /**
    * Read-model enrichment shared by the DPR list and detail, batched for the whole set:
-   *  - one users query resolves preparedByName / approvedByName / returnedByName / reviewedByName
-   *    (the reviewer is the approver for APPROVED, the reopener for REOPENED, the returner for
-   *    RETURNED);
+   *  - one users query resolves preparedByName / approvedByName / returnedByName / reopenedByName /
+   *    reviewedByName (the reviewer is the approver for APPROVED, the reopener for REOPENED, the
+   *    returner for RETURNED);
+   *  - the row's own `reopenedAt` and each measurement's `createdAt` pass through unchanged: the
+   *    editor offers Remove on a REOPENED report only for entries created after the reopen — the
+   *    same rule `removeMeasurement` enforces (409 otherwise).
    *  - one measurements query resolves `workPackages` — the distinct work packages the report's
    *    measured BOQ leaves are allocated to, ordered by code.
    */
@@ -802,6 +805,7 @@ export class ProgressService {
         preparedByName: names.get(d.preparedBy),
         approvedByName: nameOf(d.approvedBy),
         returnedByName: nameOf(d.returnedBy),
+        reopenedByName: nameOf(d.reopenedBy),
         reviewedByName: nameOf(reviewer),
         workPackages: [...(packagesByDpr.get(d.id)?.values() ?? [])].sort((a, b) =>
           a.code.localeCompare(b.code),

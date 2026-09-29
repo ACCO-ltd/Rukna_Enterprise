@@ -1526,4 +1526,45 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getDpr(identity, 'dpr-1');
     expect(res.preparedByName).toBe('Ahmed Shirie');
   });
+
+  it('getDpr: a REOPENED report exposes reopenedAt, reopenedByName and each entry createdAt', async () => {
+    const reopenedAt = new Date('2026-09-20T10:00:00.000Z');
+    const before = new Date('2026-09-18T08:00:00.000Z');
+    const after = new Date('2026-09-21T08:00:00.000Z');
+    const { service } = build({
+      dpr: {
+        id: 'dpr-1',
+        status: 'REOPENED',
+        projectId: 'p-1',
+        preparedBy: 'user-1',
+        approvedBy: 'pm',
+        reopenedBy: 'pm',
+        reopenedAt,
+        measurements: [
+          { id: 'm-old', boqNodeId: 'n1', quantity: 5, createdAt: before },
+          { id: 'm-new', boqNodeId: 'n1', quantity: 2, createdAt: after },
+        ],
+        attachments: [],
+      },
+      users: [
+        { id: 'user-1', firstName: 'Site', lastName: 'Eng' },
+        { id: 'pm', firstName: 'Project', lastName: 'Manager' },
+      ],
+    });
+
+    const res = (await service.getDpr(identity, 'dpr-1')) as unknown as {
+      reopenedAt: Date;
+      reopenedByName: string;
+      measurements: Array<{ id: string; createdAt: Date }>;
+    };
+
+    expect(res.reopenedAt).toEqual(reopenedAt);
+    expect(res.reopenedByName).toBe('Project Manager');
+    // Serialised as ISO strings on the wire; the editor compares each entry against the reopen.
+    expect(JSON.parse(JSON.stringify(res.measurements))).toEqual([
+      expect.objectContaining({ id: 'm-old', createdAt: before.toISOString() }),
+      expect.objectContaining({ id: 'm-new', createdAt: after.toISOString() }),
+    ]);
+    expect(JSON.parse(JSON.stringify(res)).reopenedAt).toBe(reopenedAt.toISOString());
+  });
 });

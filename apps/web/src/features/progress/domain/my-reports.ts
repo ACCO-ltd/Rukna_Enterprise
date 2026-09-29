@@ -10,6 +10,26 @@ export function isEditableDpr(status: Status): boolean {
   return NEEDS_MY_ACTION.has(status);
 }
 
+/**
+ * Whether a work entry may be removed from an editable report. The server's rule, mirrored: on a
+ * REOPENED report an entry recorded at or before `reopenedAt` was part of the approved report and
+ * is superseded, never deleted (409) — only entries added since the reopen can go. Any other
+ * editable status allows removal. A reopened report without a `reopenedAt` (never expected) falls
+ * back to what the server does: it does not block.
+ */
+export function canRemoveEntry(
+  report: { status: Status; reopenedAt?: string | null },
+  entry: { createdAt?: string | null },
+): boolean {
+  if (!isEditableDpr(report.status)) return false;
+  if (report.status !== 'REOPENED' || !report.reopenedAt) return true;
+  if (!entry.createdAt) return false;
+  const created = Date.parse(entry.createdAt);
+  const reopened = Date.parse(report.reopenedAt);
+  if (!Number.isFinite(created) || !Number.isFinite(reopened)) return false;
+  return created > reopened;
+}
+
 /** The reports this user prepared. Derived client-side from the project list (owner-approved). */
 export function myReports(
   reports: DailyProgressReportResponse[],
