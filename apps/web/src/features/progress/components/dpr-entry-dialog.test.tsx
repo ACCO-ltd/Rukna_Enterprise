@@ -1,8 +1,10 @@
-import { screen, within } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api-client';
+import { chooseOption } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   add: vi.fn(),
   remove: vi.fn(),
   patch: vi.fn(),
+  addAsync: vi.fn(),
+  addLabour: vi.fn(),
+  addLabourAsync: vi.fn(),
 }));
 
 vi.mock('../hooks/use-progress', () => ({
@@ -28,6 +33,8 @@ vi.mock('../hooks/use-progress', () => ({
   useAddMeasurement: mocks.useAddMeasurement,
   usePatchDprContext: mocks.usePatchDprContext,
   useRemoveMeasurement: mocks.useRemoveMeasurement,
+  useAddLabourRow: () => ({ mutate: mocks.addLabour, mutateAsync: mocks.addLabourAsync, isPending: false }),
+  useRemoveLabourRow: () => ({ mutate: vi.fn(), isPending: false }),
   progressKeys: {
     report: (id: string) => ['progress-report', id],
     reports: (projectId: string) => ['progress', projectId, 'reports'],
@@ -37,17 +44,19 @@ vi.mock('../hooks/use-boq-leaves', () => ({
   useBoqLeaves: mocks.useBoqLeaves,
   lineLabel: (l: { code: string; description: string }) => `${l.code} ${l.description}`,
 }));
-// Evidence and the read-only detail reuse dpr-detail's own (separately tested) pieces; labour has its own table.
+// Evidence and the read-only detail reuse dpr-detail's own (separately tested) pieces. The labour
+// table is the real one.
 vi.mock('./dpr-detail', () => ({
   DprDetail: () => <p>read-only report</p>,
   DprEvidence: () => <p>photos</p>,
+  TRADE_OPTIONS: ['Mason', 'Carpenter'],
 }));
-vi.mock('./dpr-labour-table', () => ({
-  DprLabourTable: ({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) => (
-    <button type="button" onClick={() => onDirtyChange?.(true)}>
-      labour rows
-    </button>
-  ),
+vi.mock('@/features/procurement/hooks/use-procurement', () => ({
+  useSuppliers: () => ({ data: [], isPending: false }),
+}));
+// The registry lists m³; BOQ lines store "m3".
+vi.mock('@/features/units-of-measure/hooks/use-units-of-measure', () => ({
+  useUnitsOfMeasure: () => ({ data: [{ code: 'M3', name: 'Cubic metre', symbol: 'm³' }] }),
 }));
 
 import { DprEntryDialog } from './dpr-entry-dialog';
@@ -88,7 +97,9 @@ beforeEach(() => {
     data: [{ boqNodeId: 'n1', measurableQuantity: '100', verifiedToDate: '10' }],
   });
   mocks.useSubmitDpr.mockReturnValue({ mutate: mocks.submit, isPending: false });
-  mocks.useAddMeasurement.mockReturnValue({ mutate: mocks.add, isPending: false });
+  mocks.useAddMeasurement.mockReturnValue({ mutate: mocks.add, mutateAsync: mocks.addAsync, isPending: false });
+  mocks.addAsync.mockResolvedValue({});
+  mocks.addLabourAsync.mockResolvedValue({});
   mocks.patch.mockResolvedValue({});
   mocks.usePatchDprContext.mockReturnValue({ mutateAsync: mocks.patch, isPending: false });
   mocks.useRemoveMeasurement.mockReturnValue({ mutate: mocks.remove, isPending: false });
@@ -108,10 +119,12 @@ describe('DprEntryDialog', () => {
     expect(screen.getByText('WP-02 Frame')).toBeInTheDocument();
     expect(screen.getByText('Not in a work package')).toBeInTheDocument();
     // verified 10 + 2 already on this report, of 100.
-    expect(screen.getByText(/To date 12.000 m3 of 100.000 m3/)).toBeInTheDocument();
-    expect(screen.getByText(/2.000 m3 on this report/)).toBeInTheDocument();
-    expect(screen.getByText('labour rows')).toBeInTheDocument();
+    expect(screen.getByText(/To date 12.000 m³ of 100.000 m³/)).toBeInTheDocument();
+    expect(screen.getByText(/2.000 m³ on this report/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Labour and hours' })).toBeInTheDocument();
     expect(screen.getByText('photos')).toBeInTheDocument();
+    // The BOQ stores "m3"; the listed symbol is shown.
+    expect(screen.queryByText(/m3/)).not.toBeInTheDocument();
   });
 
   it('saves a quantity as it is entered', async () => {
@@ -149,13 +162,13 @@ describe('DprEntryDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Submit for review' }));
     // Inline, with a direct "remove what is recorded here" hint…
     expect(
-      screen.getByText('Enter 88.000 m3 or less, or raise a variation. Remove 2.000 m3 recorded here to correct it.'),
+      screen.getByText('Enter 88.000 m³ or less, or raise a variation. Remove 2.000 m³ recorded here to correct it.'),
     ).toBeInTheDocument();
     const input = screen.getByRole('spinbutton', { name: 'Quantity today for 1.1 Excavation' });
     expect(input).toHaveAttribute('aria-invalid', 'true');
     // …a form-level summary naming the item…
     expect(
-      screen.getByText('1 item exceeds its BOQ quantity: 1.1 Excavation — enter 88.000 m3 or less'),
+      screen.getByText('1 item exceeds its BOQ quantity: 1.1 Excavation — enter 88.000 m³ or less'),
     ).toBeInTheDocument();
     // …and focus on the first errored field.
     expect(input).toHaveFocus();
@@ -166,7 +179,7 @@ describe('DprEntryDialog', () => {
     mocks.remove.mockImplementation((_id, opts) => opts.onError(new ApiError(404, 'Not found', 'NOT_FOUND')));
     render();
 
-    await user.click(screen.getByRole('button', { name: 'Remove 2.000 m3 from 1.1 Excavation' }));
+    await user.click(screen.getByRole('button', { name: 'Remove 2.000 m³ from 1.1 Excavation' }));
     expect(mocks.remove).toHaveBeenCalledWith('m1', expect.anything());
     expect(screen.getByText('Could not remove the entry: Not found')).toBeInTheDocument();
   });
@@ -214,10 +227,10 @@ describe('DprEntryDialog', () => {
       isError: false,
     });
     render();
-    expect(screen.getByText(/2.000 m3 on this report/)).toBeInTheDocument();
+    expect(screen.getByText(/2.000 m³ on this report/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
     // The entry itself is still listed, and one line says why it cannot be removed.
-    expect(screen.getByRole('list', { name: '2.000 m3 on this report' })).toHaveTextContent('2.000 m3');
+    expect(screen.getByRole('list', { name: '2.000 m³ on this report' })).toHaveTextContent('2.000 m³');
     expect(
       screen.getByText("Entries approved before the reopen can't be removed; add a correction note instead."),
     ).toBeInTheDocument();
@@ -240,11 +253,11 @@ describe('DprEntryDialog', () => {
     });
     render();
 
-    const list = screen.getByRole('list', { name: '5.000 m3 on this report' });
-    // The approved 2 m3 is listed without a Remove; the correction added after the reopen has one.
-    expect(list).toHaveTextContent('2.000 m3');
-    expect(screen.queryByRole('button', { name: 'Remove 2.000 m3 from 1.1 Excavation' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Remove 3.000 m3 from 1.1 Excavation' }));
+    const list = screen.getByRole('list', { name: '5.000 m³ on this report' });
+    // The approved 2 m³ is listed without a Remove; the correction added after the reopen has one.
+    expect(list).toHaveTextContent('2.000 m³');
+    expect(screen.queryByRole('button', { name: 'Remove 2.000 m³ from 1.1 Excavation' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove 3.000 m³ from 1.1 Excavation' }));
     expect(mocks.remove).toHaveBeenCalledWith('m-new', expect.anything());
     // The explanatory line for the protected entries stays.
     expect(
@@ -252,13 +265,26 @@ describe('DprEntryDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it('falls back to a form-level message for any other error', async () => {
+  it('falls back to a form-level message for any other error, and reloads the report on a 409', async () => {
     const user = userEvent.setup();
-    mocks.submit.mockImplementation((_v, opts) => opts.onError(new ApiError(409, 'Already submitted', 'CONFLICT')));
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    mocks.submit.mockImplementation((_v, opts) => opts.onError(new ApiError(409, 'Already submitted', 'DPR_CHANGED')));
     render();
 
     await user.click(screen.getByRole('button', { name: 'Submit for review' }));
     expect(screen.getByText('Already submitted')).toBeInTheDocument();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['progress-report', 'dpr-1'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['progress', 'p1', 'reports'] });
+    invalidate.mockRestore();
+  });
+
+  it('sends an explicit clear when the notes are emptied', async () => {
+    const user = userEvent.setup();
+    mocks.useDpr.mockReturnValue({ data: { ...DPR, narrative: 'Old note' }, isPending: false, isError: false });
+    render();
+    await user.clear(screen.getByRole('textbox', { name: 'Site notes' }));
+    await user.tab();
+    expect(mocks.patch).toHaveBeenCalledWith({ narrative: '' });
   });
 
   it('shows the reviewer reason on a returned report', () => {
@@ -335,7 +361,8 @@ describe('DprEntryDialog', () => {
     const onClose = vi.fn();
     render(onClose);
 
-    await user.click(screen.getByRole('button', { name: 'labour rows' }));
+    // The real labour table: a headcount typed, no trade yet.
+    await user.type(screen.getByLabelText('Headcount'), '4');
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument();
@@ -347,5 +374,72 @@ describe('DprEntryDialog', () => {
     render(onClose);
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe('unrecorded entries on Save draft / Submit', () => {
+    it('asks, then adds them and continues', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(onClose);
+
+      await user.type(screen.getByRole('spinbutton', { name: 'Quantity today for 2.1 Columns' }), '12');
+      await chooseOption(user, screen.getByLabelText('Trade'), 'Mason');
+      await user.type(screen.getByLabelText('Headcount'), '4');
+      await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+      expect(
+        screen.getByText(
+          'You have unrecorded entries (2.1 Columns: 12.000 m³; Labour: Mason × 4). Add them, or discard and continue?',
+        ),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Add and continue' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(mocks.addAsync).toHaveBeenCalledWith({ boqNodeId: 'n2', quantity: 12 });
+      expect(mocks.addLabourAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ trade: 'Mason', headcount: 4 }),
+      );
+    });
+
+    it('discards them and submits', async () => {
+      const user = userEvent.setup();
+      render();
+
+      await user.type(screen.getByRole('spinbutton', { name: 'Quantity today for 2.1 Columns' }), '12');
+      await user.click(screen.getByRole('button', { name: 'Submit for review' }));
+      await user.click(screen.getByRole('button', { name: 'Discard and continue' }));
+
+      await waitFor(() => expect(mocks.submit).toHaveBeenCalled());
+      expect(mocks.addAsync).not.toHaveBeenCalled();
+    });
+
+    it('offers only Go back / Discard when a labour row cannot be added as it stands', async () => {
+      const user = userEvent.setup();
+      render();
+
+      await user.type(screen.getByLabelText('Headcount'), '4');
+      await user.click(screen.getByRole('button', { name: 'Submit for review' }));
+      expect(screen.getByText(/Labour: a row not yet complete/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Add and continue' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Go back' }));
+      expect(mocks.submit).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Headcount')).toHaveValue(4);
+    });
+
+    it('stops at a quantity the server refuses, and says why on the item', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      mocks.addAsync.mockRejectedValue(new ApiError(400, 'Too much', 'VALIDATION'));
+      render(onClose);
+
+      await user.type(screen.getByRole('spinbutton', { name: 'Quantity today for 2.1 Columns' }), '12');
+      await user.click(screen.getByRole('button', { name: 'Save draft' }));
+      await user.click(screen.getByRole('button', { name: 'Add and continue' }));
+
+      expect(await screen.findByText('Too much')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 });

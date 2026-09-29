@@ -32,6 +32,7 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { useSession } from '@/features/auth/session/use-session';
 import { useMilestones, useVerifyMilestone } from '@/features/programme/hooks/use-programme';
+import { useUnitLabel } from '../hooks/use-unit-label';
 
 import { localIsoDate } from '../domain/my-reports';
 import { mapDprError } from '../domain/dpr-errors';
@@ -206,6 +207,7 @@ function ReportPanel({
   const [error, setError] = useState<string | null>(null);
 
   const leafById = useMemo(() => new Map(leaves.map((l) => [l.id, l])), [leaves]);
+  const unitLabel = useUnitLabel();
   const leafLabel = useMemo(() => new Map(leaves.map((l) => [l.id, lineLabel(l)])), [leaves]);
   const lineById = useMemo(
     () => new Map((progress.data ?? []).map((line) => [line.boqNodeId, line])),
@@ -246,14 +248,14 @@ function ReportPanel({
       return {
         boqNodeId,
         label: leafLabel.get(boqNodeId) ?? boqNodeId,
-        unit: leaf?.unit ?? '',
+        unit: unitLabel(leaf?.unit),
         today: qty,
         toDate,
         boq,
         done: boq && boq > 0 ? Math.round((toDate / boq) * 100) : null,
       };
     });
-  }, [d?.measurements, lineById, leafById, leafLabel]);
+  }, [d?.measurements, lineById, leafById, leafLabel, unitLabel]);
 
   const qty = (n: number, unit: string) => `${formatNumber(n, locale, 3) ?? n}${unit ? ` ${unit}` : ''}`;
 

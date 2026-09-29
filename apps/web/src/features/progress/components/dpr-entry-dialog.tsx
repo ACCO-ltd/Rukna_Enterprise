@@ -8,6 +8,12 @@ import type { ProgressMeasurementResponse } from '@erp/types';
 import {
   Alert,
   Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   FormDialog,
   FormDialogBody,
   FormDialogClose,
@@ -29,6 +35,7 @@ import { mapDprError, type DprQuantityFieldError } from '../domain/dpr-errors';
 import { progressViewHref } from '../domain/progress-views';
 import type { DailyProgressReportDetail } from '../api/progress-api';
 import {
+  useAddLabourRow,
   useAddMeasurement,
   useDpr,
   usePatchDprContext,
@@ -39,9 +46,17 @@ import {
   useWorkPackages,
 } from '../hooks/use-progress';
 import { useProgressAccess } from '../hooks/use-progress-access';
+import { useUnitLabel } from '../hooks/use-unit-label';
 import { lineLabel, useBoqLeaves, type ClaimableLine } from '../hooks/use-boq-leaves';
 import { DprDetail, DprEvidence } from './dpr-detail';
-import { DprLabourTable } from './dpr-labour-table';
+import {
+  DprLabourTable,
+  emptyLabourDraft,
+  isLabourDraftComplete,
+  isLabourDraftDirty,
+  labourDraftBody,
+  type LabourDraft,
+} from './dpr-labour-table';
 import { DprStatusBadge } from './dpr-status-badge';
 
 /**
@@ -182,54 +197,57 @@ function EntryForm({
   const locale = useLocale() as 'en';
   const { toast } = useToast();
   const access = useProgressAccess();
+  const unitLabel = useUnitLabel();
 
   const { leaves, isPending: leavesPending } = useBoqLeaves(projectId);
   const workPackages = useWorkPackages(projectId);
   const progress = useProjectProgress(projectId);
   const submit = useSubmitDpr(projectId, dpr.id);
   const patch = usePatchDprContext(dpr.id);
+  const addMeasurement = useAddMeasurement(dpr.id);
+  const addLabour = useAddLabourRow(dpr.id);
   const queryClient = useQueryClient();
 
+  const directLabel = t('labour.fields.contractorDefault');
   const [fieldErrors, setFieldErrors] = useState<Record<string, DprQuantityFieldError>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [notes, setNotes] = useState(dpr.narrative ?? '');
   const [notesError, setNotesError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Items with a quantity typed but not yet added, and whether the labour add-row line holds input.
-  const [typedItems, setTypedItems] = useState<ReadonlySet<string>>(new Set());
-  const [labourDirty, setLabourDirty] = useState(false);
+  // Quantities typed against items but not yet added, and the labour add-row line. Held here, not
+  // in the rows, so Save draft / Submit can see them and offer to add them first.
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [labourDraft, setLabourDraft] = useState<LabourDraft>(() => emptyLabourDraft(directLabel));
+  // Save draft / Submit held while the user decides what to do with unrecorded entries.
+  const [pendingAction, setPendingAction] = useState<'draft' | 'submit' | null>(null);
   // Bumped when a submit comes back with item errors, so focus moves to the first one.
   const [focusRequest, setFocusRequest] = useState(0);
 
+  const typedLeafIds = Object.keys(quantities).filter((id) => quantities[id]!.trim() !== '');
+  const labourDirty = isLabourDraftDirty(labourDraft);
   const notesDirty = notes.trim() !== (dpr.narrative ?? '').trim();
-  const dirty = typedItems.size > 0 || notesDirty || labourDirty;
+  const dirty = typedLeafIds.length > 0 || notesDirty || labourDirty;
   const guardBusy = busy || submit.isPending;
   useEffect(() => {
     onGuardChange({ dirty, busy: guardBusy });
   }, [dirty, guardBusy, onGuardChange]);
 
-  const onItemTyped = useCallback((leafId: string, typed: boolean) => {
-    setTypedItems((prev) => {
-      if (prev.has(leafId) === typed) return prev;
-      const next = new Set(prev);
-      if (typed) next.add(leafId);
-      else next.delete(leafId);
-      return next;
-    });
+  const setQuantity = useCallback((leafId: string, value: string) => {
+    setQuantities((prev) => ({ ...prev, [leafId]: value }));
   }, []);
 
   const leafLabel = useMemo(() => new Map(leaves.map((l) => [l.id, lineLabel(l)])), [leaves]);
+  const leafById = useMemo(() => new Map(leaves.map((l) => [l.id, l])), [leaves]);
 
   // All items, grouped by the work package they are allocated to, in package order; anything
   // allocated nowhere goes last under its own heading so nothing measurable is hidden.
   const groups = useMemo<ItemGroup[]>(() => {
-    const byId = new Map(leaves.map((l) => [l.id, l]));
     const placed = new Set<string>();
     const out: ItemGroup[] = [];
     for (const wp of workPackages.data ?? []) {
       const items = (wp.boqNodeIds ?? [])
-        .map((id) => byId.get(id))
+        .map((id) => leafById.get(id))
         .filter((l): l is ClaimableLine => Boolean(l));
       items.forEach((l) => placed.add(l.id));
       if (items.length > 0) out.push({ key: wp.id, label: `${wp.code} ${wp.name}`, items });
@@ -237,7 +255,7 @@ function EntryForm({
     const rest = leaves.filter((l) => !placed.has(l.id));
     if (rest.length > 0 && out.length > 0) out.push({ key: 'unassigned', label: t('entry.unassigned'), items: rest });
     return out;
-  }, [leaves, workPackages.data, t]);
+  }, [leaves, leafById, workPackages.data, t]);
 
   const verifiedByNode = useMemo(
     () => new Map((progress.data ?? []).map((line) => [line.boqNodeId, line])),
@@ -253,13 +271,13 @@ function EntryForm({
   useEffect(() => {
     if (focusRequest === 0) return;
     for (const group of groups) {
-      const first = group.items.find((leaf) => fieldErrors[leaf.id]);
+      const first = group.items.find((leaf) => fieldErrors[leaf.id] || rowErrors[leaf.id]);
       if (first) {
         document.getElementById(`entry-qty-${first.id}`)?.focus();
         return;
       }
     }
-  }, [focusRequest, groups, fieldErrors]);
+  }, [focusRequest, groups, fieldErrors, rowErrors]);
 
   /** A 409 (DPR_CHANGED, or the server busy) means what is on screen is stale: reload it. */
   function refetchReport() {
@@ -267,27 +285,102 @@ function EntryForm({
     void queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) });
   }
 
+  const quantityText = (n: number | string, unit: string | null | undefined) => {
+    const shown = unitLabel(unit);
+    return `${formatNumber(n, locale, 3) ?? n}${shown ? ` ${shown}` : ''}`;
+  };
+
   /** "1 item exceeds its BOQ quantity: 2.2 RC C30 slab — enter 2 or less". */
   function describeExceeds(errors: Record<string, DprQuantityFieldError>): string {
     const lines = Object.entries(errors).map(([id, e]) =>
-      t('entry.exceedsSummaryLine', {
-        item: leafLabel.get(id) ?? id,
-        max: `${formatNumber(e.max, locale, 3) ?? e.max}${e.unit ? ` ${e.unit}` : ''}`,
-      }),
+      t('entry.exceedsSummaryLine', { item: leafLabel.get(id) ?? id, max: quantityText(e.max, e.unit) }),
     );
     return t('entry.exceedsSummary', { count: lines.length, list: lines.join('; ') });
   }
 
+  // ─── Unrecorded entries ──────────────────────────────────────────────────────────
+
+  /** "2.2 RC slab: 12 m³; Labour: Mason × 4" — what Save draft / Submit would leave behind. */
+  const unrecordedList = [
+    ...typedLeafIds.map((id) => {
+      const leaf = leafById.get(id);
+      const qty = quantities[id]!.trim();
+      const shown = Number.isFinite(Number(qty)) ? quantityText(qty, leaf?.unit) : qty;
+      return `${leaf ? `${leaf.code} ${leaf.description}` : id}: ${shown}`;
+    }),
+    ...(labourDirty
+      ? [
+          labourDraft.trade.trim() && labourDraft.headcount !== ''
+            ? t('entry.unrecorded.labourLine', { trade: labourDraft.trade.trim(), headcount: labourDraft.headcount })
+            : t('entry.unrecorded.labourPartial'),
+        ]
+      : []),
+  ].join('; ');
+  // "Add and continue" is only offered when every unrecorded entry can be added as it stands.
+  const canAddUnrecorded =
+    typedLeafIds.every((id) => Number(quantities[id]) > 0) && (!labourDirty || isLabourDraftComplete(labourDraft));
+
+  function requestAction(action: 'draft' | 'submit') {
+    if (typedLeafIds.length > 0 || labourDirty) {
+      setPendingAction(action);
+      return;
+    }
+    void (action === 'draft' ? onSaveDraft() : onSubmit());
+  }
+
+  function discardAndContinue() {
+    const action = pendingAction;
+    setPendingAction(null);
+    setQuantities({});
+    setLabourDraft(emptyLabourDraft(directLabel));
+    if (action) void (action === 'draft' ? onSaveDraft() : onSubmit());
+  }
+
+  /** Records every unrecorded entry, then carries on. Stops, and shows why, at the first failure. */
+  async function addAndContinue() {
+    const action = pendingAction;
+    setPendingAction(null);
+    setBusy(true);
+    setFormError(null);
+    for (const id of typedLeafIds) {
+      try {
+        await addMeasurement.mutateAsync({ boqNodeId: id, quantity: Number(quantities[id]) });
+        setQuantities((prev) => ({ ...prev, [id]: '' }));
+      } catch (error) {
+        setBusy(false);
+        if (error instanceof ApiError && error.status === 409) refetchReport();
+        const mapped = mapDprError(error, t('entry.saveFailed'));
+        if (mapped.fieldErrors[id]) setFieldErrors((prev) => ({ ...prev, [id]: mapped.fieldErrors[id]! }));
+        else setRowErrors((prev) => ({ ...prev, [id]: mapped.formError }));
+        setFocusRequest((n) => n + 1);
+        return;
+      }
+    }
+    if (labourDirty) {
+      try {
+        await addLabour.mutateAsync(labourDraftBody(labourDraft));
+        setLabourDraft(emptyLabourDraft(directLabel));
+      } catch (error) {
+        setBusy(false);
+        setFormError(t('entry.unrecorded.labourFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
+        return;
+      }
+    }
+    setBusy(false);
+    if (action) void (action === 'draft' ? onSaveDraft() : onSubmit());
+  }
+
   /**
    * Saves site notes that have not been saved yet and waits for the answer. Returns false when the
-   * save failed — the caller then keeps the dialog open so nothing typed is lost.
+   * save failed — the caller then keeps the dialog open so nothing typed is lost. Clearing the notes
+   * is a save too: an empty string clears them on the server.
    */
   async function flushNotes(): Promise<boolean> {
     const next = notes.trim();
     if (next === (dpr.narrative ?? '').trim()) return true;
     setNotesError(null);
     try {
-      await patch.mutateAsync({ narrative: next || undefined });
+      await patch.mutateAsync({ narrative: next });
       return true;
     } catch (error) {
       setNotesError(t('entry.notesFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
@@ -397,7 +490,9 @@ function EntryForm({
                           // delete one recorded before the reopen, so only later entries offer Remove.
                           canRemove={(m) => canRemoveEntry(dpr, m)}
                           onConflict={refetchReport}
-                          onTypedChange={onItemTyped}
+                          quantity={quantities[leaf.id] ?? ''}
+                          onQuantityChange={setQuantity}
+                          unitLabel={unitLabel}
                           fieldError={fieldErrors[leaf.id]}
                           rowError={rowErrors[leaf.id]}
                           onRowError={(message) =>
@@ -427,7 +522,12 @@ function EntryForm({
         </FormDialogSection>
 
         <FormDialogSection title={t('entry.labour')}>
-          <DprLabourTable dprId={dpr.id} rows={dpr.labourRows ?? []} onDirtyChange={setLabourDirty} />
+          <DprLabourTable
+            dprId={dpr.id}
+            rows={dpr.labourRows ?? []}
+            draft={labourDraft}
+            onDraftChange={setLabourDraft}
+          />
         </FormDialogSection>
 
         <FormDialogSection title={t('entry.notes')}>
@@ -468,13 +568,45 @@ function EntryForm({
       </FormDialogBody>
 
       <FormDialogFooter>
-        <Button type="button" variant="outline" onClick={() => void onSaveDraft()} disabled={guardBusy}>
+        <Button type="button" variant="outline" onClick={() => requestAction('draft')} disabled={guardBusy}>
           {t('entry.saveDraft')}
         </Button>
-        <Button type="button" onClick={() => void onSubmit()} disabled={guardBusy}>
+        <Button type="button" onClick={() => requestAction('submit')} disabled={guardBusy}>
           {t('entry.submit')}
         </Button>
       </FormDialogFooter>
+
+      {/* Save draft / Submit with entries typed but not recorded: ask, never drop them silently. */}
+      <Dialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAction(null);
+        }}
+      >
+        <DialogContent size="sm">
+          <DialogTitle>{t('entry.unrecorded.title')}</DialogTitle>
+          <DialogDescription>{t('entry.unrecorded.body', { list: unrecordedList })}</DialogDescription>
+          <DialogFooter>
+            {canAddUnrecorded ? (
+              <Button type="button" onClick={() => void addAndContinue()}>
+                {t('entry.unrecorded.add')}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant={canAddUnrecorded ? 'outline' : 'default'}
+              onClick={discardAndContinue}
+            >
+              {t('entry.unrecorded.discard')}
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">
+                {t('entry.unrecorded.back')}
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -491,7 +623,9 @@ function EntryItemRow({
   measurements,
   canRemove,
   onConflict,
-  onTypedChange,
+  quantity,
+  onQuantityChange,
+  unitLabel,
   fieldError,
   rowError,
   onRowError,
@@ -505,7 +639,10 @@ function EntryItemRow({
   measurements: ProgressMeasurementResponse[];
   canRemove: (entry: ProgressMeasurementResponse) => boolean;
   onConflict: () => void;
-  onTypedChange: (leafId: string, typed: boolean) => void;
+  /** The quantity typed but not yet added — held by the form so Save/Submit can see it. */
+  quantity: string;
+  onQuantityChange: (leafId: string, value: string) => void;
+  unitLabel: (unit: string | null | undefined) => string;
   fieldError: DprQuantityFieldError | undefined;
   rowError: string | undefined;
   onRowError: (message: string | null) => void;
@@ -515,16 +652,10 @@ function EntryItemRow({
   const locale = useLocale() as 'en';
   const add = useAddMeasurement(dprId);
   const remove = useRemoveMeasurement(projectId, dprId);
-  const [quantity, setQuantity] = useState('');
+  const setQuantity = (value: string) => onQuantityChange(leaf.id, value);
 
-  const typed = quantity.trim() !== '';
-  useEffect(() => {
-    onTypedChange(leaf.id, typed);
-  }, [leaf.id, typed, onTypedChange]);
-  // Unmounting (another report, or the item left the plan) takes its typed value with it.
-  useEffect(() => () => onTypedChange(leaf.id, false), [leaf.id, onTypedChange]);
-
-  const unit = leaf.unit ?? '';
+  // The listed symbol ("m³"), display only.
+  const unit = unitLabel(leaf.unit);
   const withUnit = (n: number | string) => `${formatNumber(n, locale, 3) ?? n}${unit ? ` ${unit}` : ''}`;
   const recordedHere = measurements.reduce((sum, m) => sum + Number(m.quantity), 0);
   const removable = measurements.filter((m) => canRemove(m));
@@ -541,7 +672,7 @@ function EntryItemRow({
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
   const maxText = fieldError
-    ? `${formatNumber(fieldError.max, locale, 3) ?? fieldError.max}${fieldError.unit ? ` ${fieldError.unit}` : unit ? ` ${unit}` : ''}`
+    ? `${formatNumber(fieldError.max, locale, 3) ?? fieldError.max}${fieldError.unit ? ` ${unitLabel(fieldError.unit)}` : unit ? ` ${unit}` : ''}`
     : '';
   const errorText = fieldError
     ? removableHere > 0

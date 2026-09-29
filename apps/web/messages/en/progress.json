@@ -924,6 +924,16 @@
       "hours": "Hours per worker",
       "addRow": "Add row",
       "removeLabel": "Remove the {trade} row"
+    },
+    "unrecorded": {
+      "title": "Unrecorded entries",
+      "body": "You have unrecorded entries ({list}). Add them, or discard and continue?",
+      "labourLine": "Labour: {trade} × {headcount}",
+      "labourPartial": "Labour: a row not yet complete",
+      "add": "Add and continue",
+      "discard": "Discard and continue",
+      "back": "Go back",
+      "labourFailed": "The labour row could not be added: {message}"
     }
   },
   "performance": {
