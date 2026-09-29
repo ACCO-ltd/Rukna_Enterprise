@@ -901,7 +901,7 @@
     "exceedsRemove": "Enter {max} or less, or raise a variation. Remove {quantity} recorded here to correct it.",
     "exceedsSummary": "{count, plural, one {# item exceeds} other {# items exceed}} {count, plural, one {its} other {their}} BOQ quantity: {list}",
     "exceedsSummaryLine": "{item} — enter {max} or less",
-    "remove": "Remove {quantity}",
+    "remove": "Remove",
     "removeLabel": "Remove {quantity} from {item}",
     "removeFailed": "Could not remove the entry: {message}",
     "notesFailed": "Site notes could not be saved: {message}",

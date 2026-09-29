@@ -644,8 +644,13 @@ function EntryItemRow({
                 {withUnit(m.quantity)}
               </li>
             ))}
+            {/* Entries added on this report: the quantity, and Remove beside it. */}
             {removable.map((m) => (
-              <li key={m.id}>
+              <li
+                key={m.id}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-surface ps-2.5 text-caption tabular-nums text-foreground"
+              >
+                {withUnit(m.quantity)}
                 <Button
                   type="button"
                   variant="ghost"
@@ -653,8 +658,9 @@ function EntryItemRow({
                   onClick={() => onRemove(m.id)}
                   disabled={remove.isPending}
                   aria-label={t('entry.removeLabel', { quantity: withUnit(m.quantity), item: lineLabel(leaf) })}
+                  className="h-7 rounded-full px-2 text-caption font-medium text-muted-foreground hover:text-danger"
                 >
-                  {t('entry.remove', { quantity: withUnit(m.quantity) })}
+                  {t('entry.remove')}
                 </Button>
               </li>
             ))}
