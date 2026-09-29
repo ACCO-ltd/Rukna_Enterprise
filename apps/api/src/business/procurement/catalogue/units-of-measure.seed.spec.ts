@@ -107,4 +107,12 @@ describe('seedUnitsOfMeasure', () => {
     expect(prisma.rows.filter((r) => r.symbol.toLowerCase() === 'ls')).toHaveLength(1);
     expect(prisma.rows.filter((r) => r.symbol === 'sum')).toHaveLength(1);
   });
+
+  it('ignores dots when comparing symbols, so an existing L.S. counts as LS', async () => {
+    expect(normaliseUnitSymbol('L.S.')).toBe('ls');
+    expect(normaliseUnitSymbol('cu. m3')).toBe('cum³');
+    const prisma = fakePrisma([{ organizationId: 'org-1', code: 'LUMPSUM', name: 'Lump sum', symbol: 'L.S.' }]);
+    await seedUnitsOfMeasure(prisma as never, 'org-1');
+    expect(prisma.rows.filter((r) => normaliseUnitSymbol(r.symbol) === 'ls')).toHaveLength(1);
+  });
 });

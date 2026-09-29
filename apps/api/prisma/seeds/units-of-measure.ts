@@ -36,7 +36,8 @@ export const STANDARD_UNITS_OF_MEASURE: readonly { code: string; name: string; s
 ];
 
 /**
- * A symbol as a comparison key: trimmed, lower-cased, whitespace removed, and ASCII powers folded
+ * A symbol as a comparison key: trimmed, lower-cased, whitespace and dots removed (`L.S.` is `ls`),
+ * and ASCII powers folded
  * to superscripts, so `m3`, `M3`, `m^3` and `m³` are one unit (and the same for `2`). Without this
  * a tenant that typed `m3` would get a second cubic metre beside it.
  */
@@ -46,7 +47,7 @@ export function normaliseUnitSymbol(symbol: string): string {
   return symbol
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, '')
+    .replace(/[\s.]+/g, '')
     .replace(/\^?3$/, '³')
     .replace(/\^?2$/, '²');
 }

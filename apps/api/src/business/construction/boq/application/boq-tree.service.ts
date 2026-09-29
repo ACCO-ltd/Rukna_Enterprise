@@ -37,6 +37,7 @@ import {
   isContingencyLeaf,
 } from '../domain/boq-contract-value.policy.js';
 import { MAX_DEPTH, validateNodeWrite } from '../domain/boq-node.policy.js';
+import { assertMayChangeBoqMoney } from '../domain/boq-money-redaction.js';
 import { proposeNodeCode } from '../domain/boq-code.policy.js';
 import type { CreateNodeDto } from '../presentation/dto/create-node.dto.js';
 import type { UpdateNodeDto } from '../presentation/dto/update-node.dto.js';
@@ -157,6 +158,12 @@ export class BoqTreeService {
 
     const isLeaf = dto.isLeaf ?? false;
     const overrideCode = dto.code?.trim();
+    // ADR-029 §8 A-1 — a scope-only editor may add lines, not price them.
+    assertMayChangeBoqMoney(
+      identity,
+      { unitRate: dto.unitRate, pricingBasis: dto.pricingBasis, quantity: dto.quantity },
+      null,
+    );
 
     // L-5 — a new node defaults to WORK / IN_CONTRACT (schema defaults). The R5 classifier passes a
     // server-only `commercialTreatment` to mint SEPARATE_CHARGE / ABSORBED leaves (E-1/E-3). On a
@@ -274,6 +281,13 @@ export class BoqTreeService {
 
     const node = await this.requireNode(prisma, nodeId, versionId);
     const childCount = await this.repo.countChildren(prisma, nodeId, versionId);
+    // ADR-029 §8 A-1 — a scope-only editor may not change the rate, the basis or a lump sum's
+    // amount; an unchanged echo of the stored values is not a change.
+    assertMayChangeBoqMoney(
+      identity,
+      { unitRate: dto.unitRate, pricingBasis: dto.pricingBasis, quantity: dto.quantity },
+      { unitRate: node.unitRate, pricingBasis: node.pricingBasis, quantity: node.quantity },
+    );
 
     // The proposed state after the patch, not the patch itself — the rules are about what
     // the node ends up being.

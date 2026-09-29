@@ -40,6 +40,17 @@ import { UpdateNodeDto } from './dto/update-node.dto.js';
 import { MoveNodeDto } from './dto/move-node.dto.js';
 import { ImportBoqDto } from './dto/import-boq.dto.js';
 import { DrawContingencyDto } from './dto/draw-contingency.dto.js';
+import { resolveBoqVisibility } from '../domain/boq-visibility.policy.js';
+import {
+  redactCompareMoney,
+  redactHistoryMoney,
+  redactNodeMoney,
+  redactReadinessMoney,
+  redactTreeMoney,
+} from '../domain/boq-money-redaction.js';
+
+/** ADR-029 §8 A-2 — whether this caller may receive BOQ rates and amounts. */
+const seesCost = (identity: RequestIdentity): boolean => resolveBoqVisibility(identity).canViewCost;
 
 @ApiTags('BOQ')
 @ApiBearerAuth('access-token')
@@ -96,13 +107,14 @@ export class BoqController {
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'leftId', description: 'The older version' })
   @ApiParam({ name: 'rightId', description: 'The newer version' })
-  compare(
+  async compare(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('leftId') leftId: string,
     @Param('rightId') rightId: string,
   ) {
-    return this.workspaceService.compare(identity, projectId, leftId, rightId);
+    const response = await this.workspaceService.compare(identity, projectId, leftId, rightId);
+    return seesCost(identity) ? response : redactCompareMoney(response);
   }
 
   // ─── BOQ lifecycle ────────────────────────────────────────────────────────────
@@ -157,7 +169,7 @@ export class BoqController {
   @ApiOperation({ summary: 'The version change log (newest first); optional ?nodeId= narrows to one line' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
-  getHistory(
+  async getHistory(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
@@ -165,11 +177,12 @@ export class BoqController {
     @Query('take') take?: string,
     @Query('skip') skip?: string,
   ) {
-    return this.treeService.getHistory(identity, projectId, versionId, {
+    const events = await this.treeService.getHistory(identity, projectId, versionId, {
       ...(nodeId ? { nodeId } : {}),
       take: Math.min(200, Math.max(1, take ? parseInt(take, 10) || 100 : 100)),
       skip: skip ? Math.max(0, parseInt(skip, 10) || 0) : 0,
     });
+    return seesCost(identity) ? events : redactHistoryMoney(events);
   }
 
   @Post('draft')
@@ -193,12 +206,13 @@ export class BoqController {
   })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
-  readiness(
+  async readiness(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
   ) {
-    return this.versioningService.getReadiness(identity, projectId, versionId);
+    const readiness = await this.versioningService.getReadiness(identity, projectId, versionId);
+    return seesCost(identity) ? readiness : redactReadinessMoney(readiness);
   }
 
   @Get('versions/:versionId/contingency')
@@ -207,12 +221,14 @@ export class BoqController {
   @ApiOperation({ summary: 'Contingency remaining on a version (derived, decimal string)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
-  contingency(
+  async contingency(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
   ) {
-    return this.versioningService.getContingencyRemaining(identity, projectId, versionId);
+    const remaining = await this.versioningService.getContingencyRemaining(identity, projectId, versionId);
+    // Contingency is a margin-tier figure (ADR-029 §8 A-2), as on the workspace money band.
+    return resolveBoqVisibility(identity).canViewMargin ? remaining : null;
   }
 
   @Post('versions/:versionId/contingency/draw')
@@ -310,12 +326,13 @@ export class BoqController {
   @ApiOperation({ summary: 'Get the full BOQ tree for a version with computed totals' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
-  getTree(
+  async getTree(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
   ) {
-    return this.treeService.getTree(identity, projectId, versionId);
+    const nodes = await this.treeService.getTree(identity, projectId, versionId);
+    return seesCost(identity) ? nodes : redactTreeMoney(nodes);
   }
 
   @Post('versions/:versionId/nodes')
@@ -324,13 +341,14 @@ export class BoqController {
   @ApiOperation({ summary: 'Add a node to the BOQ tree (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
-  addNode(
+  async addNode(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
     @Body() dto: CreateNodeDto,
   ) {
-    return this.treeService.addNode(identity, projectId, versionId, dto);
+    const node = await this.treeService.addNode(identity, projectId, versionId, dto);
+    return seesCost(identity) ? node : redactNodeMoney(node);
   }
 
   @Patch('versions/:versionId/nodes/:nodeId')
@@ -339,14 +357,15 @@ export class BoqController {
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
   @ApiParam({ name: 'nodeId' })
-  updateNode(
+  async updateNode(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
     @Param('nodeId') nodeId: string,
     @Body() dto: UpdateNodeDto,
   ) {
-    return this.treeService.updateNode(identity, projectId, versionId, nodeId, dto);
+    const node = await this.treeService.updateNode(identity, projectId, versionId, nodeId, dto);
+    return seesCost(identity) ? node : redactNodeMoney(node);
   }
 
   @Post('versions/:versionId/nodes/:nodeId/move')
@@ -360,14 +379,15 @@ export class BoqController {
   @ApiParam({ name: 'versionId' })
   @ApiParam({ name: 'nodeId' })
   @ApiResponse({ status: 400, description: 'Circular move, target is an item, or depth exceeded' })
-  moveNode(
+  async moveNode(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
     @Param('nodeId') nodeId: string,
     @Body() dto: MoveNodeDto,
   ) {
-    return this.treeService.moveNode(identity, projectId, versionId, nodeId, dto);
+    const nodes = await this.treeService.moveNode(identity, projectId, versionId, nodeId, dto);
+    return seesCost(identity) ? nodes : redactTreeMoney(nodes);
   }
 
   @Delete('versions/:versionId/nodes/:nodeId')
