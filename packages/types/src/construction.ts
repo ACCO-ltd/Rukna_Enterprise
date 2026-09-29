@@ -452,6 +452,24 @@ export interface SuggestWeightsResponse {
   weights: SuggestedWeightLine[];
 }
 
+/**
+ * `POST /projects/:projectId/work-packages/delivery-plan/weights` — value-weight a PROPOSED grouping
+ * (the Delivery Plan before it is saved). Only package-level ratios come back: a per-leaf share of the
+ * BOQ value would let anyone who knows one price work out the rest (owner decision 2026-09-29), while
+ * package weights are something a PM already sees and sets.
+ */
+export interface ProposedPackageWeightsRequest {
+  packages: { key: string; boqNodeIds: string[] }[];
+}
+
+export interface ProposedPackageWeightsResponse {
+  projectId: string;
+  /** One per requested package, 0..1, summing to 1 (an equal split when nothing is priced). */
+  weights: { key: string; weight: number }[];
+  /** Requested leaves that are not fully priced (no unit, quantity or rate). */
+  unpricedLeafIds: string[];
+}
+
 // ─── Progress over time (Round-2 BE-1): snapshots + provisional planned baseline ──
 //
 // A ProgressSnapshot freezes what ADR-021 already computes (weighted physical roll-up,
@@ -1161,12 +1179,6 @@ export interface BoqTreeNodeResponse {
    * a money-blind reader can still see "Unpriced" without the rate it is judged from.
    */
   priced: boolean;
-  /**
-   * This node's share (0..1) of the version's total leaf value — a ratio, not a figure, so it is
-   * sent to every tier (as `programme/suggest-weights` sends ratios). Weights a delivery plan by
-   * BOQ value for a reader who may not see the value. Null when the node carries no value.
-   */
-  valueShare: number | null;
 }
 
 export type BoqReadinessBlockerKind =

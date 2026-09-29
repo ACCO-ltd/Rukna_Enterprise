@@ -16,6 +16,7 @@ import {
   type ProgressSnapshotResponse,
   type ScheduleTemplateKey,
   type SuggestWeightsResponse,
+  type ProposedPackageWeightsResponse,
 } from '@erp/types';
 
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
@@ -31,6 +32,7 @@ import {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { missingPricingFields } from '../../boq/domain/boq-node.policy.js';
 import { ProgrammeBaselineRepository } from '../infrastructure/programme-baseline.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
@@ -1123,6 +1125,49 @@ export class ProgressService {
         return { workPackageId: wp.id, suggestedWeight };
       }),
     };
+  }
+
+  /**
+   * The Delivery Plan's weights for a PROPOSED grouping, before anything is saved. Same rule as
+   * `suggestWeights` — each package's share of the assigned BOQ value, CONTINGENCY leaves excluded —
+   * but over the caller's grouping rather than saved packages, so the dialog can re-weigh after the
+   * PM moves a leaf. Only package ratios leave the server; no amount and no per-leaf share
+   * (owner decision 2026-09-29: money-derived percentages below package level stay hidden from
+   * PM/SE). When nothing in the grouping is priced the weights split equally, so they still sum to 1.
+   */
+  async weighProposedPackages(
+    identity: RequestIdentity,
+    projectId: string,
+    packages: { key: string; boqNodeIds: string[] }[],
+  ): Promise<ProposedPackageWeightsResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const ids = [...new Set(packages.flatMap((p) => p.boqNodeIds))];
+    const leaves = await this.repo.findLeavesForWeighting(prisma, projectId, ids);
+    const byId = new Map(leaves.map((leaf) => [leaf.id, leaf] as const));
+
+    const valueOf = (id: string): Decimal => {
+      const leaf = byId.get(id);
+      if (!leaf || leaf.nodeRole === 'CONTINGENCY' || leaf.totalAmount === null) return ZERO;
+      return new Decimal(leaf.totalAmount.toString());
+    };
+    const values = packages.map((p) => p.boqNodeIds.reduce((sum, id) => sum.plus(valueOf(id)), ZERO));
+    const total = values.reduce((sum, v) => sum.plus(v), ZERO);
+
+    const weights = packages.map((p, index) => ({
+      key: p.key,
+      weight: total.greaterThan(ZERO)
+        ? values[index]!.div(total).toNumber()
+        : packages.length > 0
+          ? 1 / packages.length
+          : 0,
+    }));
+    const unpricedLeafIds = leaves
+      .filter((leaf) => missingPricingFields(leaf).length > 0)
+      .map((leaf) => leaf.id);
+
+    return { projectId, weights, unpricedLeafIds };
   }
 
   /**

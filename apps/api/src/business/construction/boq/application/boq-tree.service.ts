@@ -82,8 +82,6 @@ export interface BoqTreeNodeView {
   computedTotal: DecimalString | null;
   /** Leaf: unit, quantity and rate all present (`missingPricingFields`). Section: false. Every tier. */
   priced: boolean;
-  /** Share 0..1 of the version's total leaf value — a ratio, sent to every tier. Null when none. */
-  valueShare: number | null;
 }
 
 @Injectable()
@@ -1107,7 +1105,6 @@ export function buildTree(nodes: BoqNode[], boqCurrency: string): BoqTreeNodeVie
       children: [],
       computedTotal: formatAmount(toDecimal(node.totalAmount)),
       priced: node.isLeaf && missingPricingFields(node).length === 0,
-      valueShare: null,
     });
   }
 
@@ -1124,24 +1121,9 @@ export function buildTree(nodes: BoqNode[], boqCurrency: string): BoqTreeNodeVie
   roots.sort((a, b) => a.sortOrder - b.sortOrder);
 
   sumSectionTotals(roots);
-  assignValueShares(roots);
   return roots;
 }
 
-/**
- * Each node's share of the version's total value, as a 0..1 ratio (rounded to 6 places). The
- * denominator is the sum of the root totals, so a section's share is the sum of its children's.
- */
-function assignValueShares(roots: BoqTreeNodeView[]): void {
-  const total = sumAmounts(roots.map((root) => toDecimal(root.computedTotal)));
-  if (!total || !total.greaterThan(0)) return;
-  const visit = (node: BoqTreeNodeView) => {
-    const amount = toDecimal(node.computedTotal);
-    node.valueShare = amount && amount.greaterThan(0) ? amount.div(total).toDecimalPlaces(6).toNumber() : null;
-    node.children.forEach(visit);
-  };
-  roots.forEach(visit);
-}
 
 function sumSectionTotals(nodes: BoqTreeNodeView[]): void {
   for (const node of nodes) {

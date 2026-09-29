@@ -16,6 +16,7 @@ import {
   ReopenDprDto,
   CreateWorkPackageDto,
   SaveDeliveryPlanDto,
+  ProposedPackageWeightsDto,
   UpdateWorkPackageDto,
   AllocateBoqNodeDto,
   ApplyScheduleTemplateDto,
@@ -345,6 +346,23 @@ export class ProgressController {
     @Body() dto: SaveDeliveryPlanDto,
   ) {
     return this.service.saveDeliveryPlan(identity, projectId, dto);
+  }
+
+  @Post('projects/:projectId/work-packages/delivery-plan/weights')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Value-weight a proposed Delivery Plan grouping (read-only): package weights 0..1 summing to 1, ' +
+      'plus the unpriced leaf ids. No amounts and no per-leaf shares are returned.',
+  })
+  weighProposedPackages(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: ProposedPackageWeightsDto,
+  ) {
+    return this.service.weighProposedPackages(identity, projectId, dto.packages);
   }
 
   @Patch('work-packages/:workPackageId')

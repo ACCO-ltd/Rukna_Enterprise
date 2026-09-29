@@ -270,7 +270,7 @@ describe('ADR-029 §8 A-1 — scope-only editors cannot change money', () => {
   });
 });
 
-describe('priced and valueShare on the tree — visible to every tier', () => {
+describe('priced on the tree — visible to every tier', () => {
   const row = (over: Record<string, unknown>) => ({
     boqId: 'b', versionId: 'v', path: '', depth: 0, sortOrder: 0, description: 'x', measurementMethod: 'QUANTITY',
     pricingBasis: 'UNIT_RATE', unit: null, quantity: null, unitRate: null, currency: 'USD', totalAmount: null,
@@ -285,15 +285,15 @@ describe('priced and valueShare on the tree — visible to every tier', () => {
     row({ id: 'c', code: '1.3', isLeaf: true, parentId: 's1', sortOrder: 2, unit: 'nr' }),
   ];
 
-  it('marks priced leaves and gives each node its share of the version value', () => {
+  it('marks priced leaves (sections are never priced)', () => {
     const [section] = buildTree(nodes as never, 'USD');
     const [a, b, c] = section!.children;
     expect([a!.priced, b!.priced, c!.priced, section!.priced]).toEqual([true, true, false, false]);
-    expect([a!.valueShare, b!.valueShare, c!.valueShare, section!.valueShare]).toEqual([0.75, 0.25, null, 1]);
   });
 
-  it('keeps both through the money-blind redaction', () => {
+  it('keeps priced through the money-blind redaction, and carries no per-leaf share of value', () => {
     const [section] = redactTreeMoney(buildTree(nodes as never, 'USD'));
-    expect(section!.children[0]).toMatchObject({ unitRate: null, totalAmount: null, priced: true, valueShare: 0.75 });
+    expect(section!.children[0]).toMatchObject({ unitRate: null, totalAmount: null, priced: true });
+    expect(section!.children[0]).not.toHaveProperty('valueShare');
   });
 });
