@@ -214,6 +214,54 @@ describe('SetupView', () => {
     for (const region of screen.getAllByRole('region')) expect(region).not.toHaveAttribute('aria-current');
   });
 
+  it('names a release by share when shown, and by name only when the server hides the share', async () => {
+    const user = userEvent.setup();
+    const release = (installmentId: string, name: string, percentage: string | null) => ({
+      installmentId,
+      name,
+      percentage,
+      triggerType: 'MILESTONE',
+      amount: null,
+      currency: 'USD',
+      invoiced: false,
+    });
+    setup({
+      packages: [{ id: 'wp1', code: 'WP-01', leafCount: 3 }],
+      weightsTotal: '1',
+      weightsComplete: true,
+      allocatedIds: ['l1'],
+      milestones: [
+        {
+          id: 'm1',
+          code: 'M1',
+          name: 'Frame complete',
+          status: 'PLANNED',
+          baselineDate: '2026-12-01',
+          releases: [release('i1', 'Frame payment', '0.3000')],
+          workPackages: [],
+          readyToVerify: false,
+        },
+        {
+          id: 'm2',
+          code: 'M2',
+          name: 'Roof complete',
+          status: 'PLANNED',
+          baselineDate: '2027-01-01',
+          releases: [release('i2', 'Roof payment', null)],
+          workPackages: [],
+          readyToVerify: false,
+        },
+      ],
+    });
+    renderWithProviders(<SetupView projectId="p1" />, PM);
+    await user.click(within(screen.getByRole('region', { name: 'Milestones' })).getByRole('button', { name: /Edit/ }));
+
+    expect(screen.getByText('30% · Frame payment')).toBeInTheDocument();
+    const hidden = screen.getByText('Roof payment');
+    expect(hidden.textContent).toBe('Roof payment');
+    expect(document.body.textContent).not.toMatch(/0% · Roof|—% · Roof|NaN/);
+  });
+
   it('sets the packages a planned milestone needs, and never offers Verify in setup', async () => {
     const user = userEvent.setup();
     setup({

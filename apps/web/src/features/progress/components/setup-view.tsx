@@ -357,10 +357,13 @@ function MilestonesTable({
                     ? t('setupView.milestones.releasesNone')
                     : m.releases
                         .map((r) =>
-                          t('setupView.milestones.releaseLine', {
-                            percent: `${Math.round(Number(r.percentage) * 100)}%`,
-                            name: r.name,
-                          }),
+                          // A null share is withheld from a money-blind caller: name only, no "—%".
+                          r.percentage === null
+                            ? r.name
+                            : t('setupView.milestones.releaseLine', {
+                                percent: `${Math.round(Number(r.percentage) * 100)}%`,
+                                name: r.name,
+                              }),
                         )
                         .join(', ')}
                 </TableCell>

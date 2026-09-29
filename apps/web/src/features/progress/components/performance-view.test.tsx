@@ -83,7 +83,7 @@ beforeEach(() => {
     loaded({ physicalPercent: 30, actualCost: null, budgetTotal: null, moneyVisible: false, costConsumedPercent: 42, divergence: -12, status: 'COST_AHEAD', weightsComplete: true }),
   );
   mocks.useCollectionProgressSignal.mockReturnValue(
-    loaded({ physicalPercent: 30, contractValue: null, receivedRevenue: null, moneyVisible: false, collectedPercent: null, divergence: null, status: 'WORK_AHEAD' }),
+    loaded({ physicalPercent: 30, contractValue: null, receivedRevenue: null, moneyVisible: false, collectedPercent: 5, divergence: -25, status: 'WORK_AHEAD' }),
   );
   mocks.useCaptureProgressSnapshot.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
   mocks.useMilestones.mockReturnValue(
@@ -187,14 +187,33 @@ describe('PerformanceView — packages and attention', () => {
     expect(rail.getByText('WP-02 Frame: 10% done, 100% planned')).toBeInTheDocument();
   });
 
-  it('never shows a money figure, and shows a dash rather than 0 for a missing ratio', () => {
+  it('never shows a money figure; a visible signal shows its ratios', () => {
     const { container } = renderWithProviders(<PerformanceView projectId="p1" />, {
       permissions: ['view:project'],
     });
 
     expect(container.textContent).not.toMatch(/\$|USD/);
     expect(screen.getByText('Built 30% · cost consumed 42%')).toBeInTheDocument();
-    expect(screen.getByText('Collected — · built 30%')).toBeInTheDocument();
+    expect(screen.getByText('Collected 5% · built 30%')).toBeInTheDocument();
+  });
+
+  it('omits the money-derived items when the server hides them (HIDDEN) — no 0, no dash', () => {
+    mocks.useProjectRollup.mockReturnValue(
+      loaded({ physicalPercent: 30, weightsTotal: '1', weightsComplete: true, packages: [] }),
+    );
+    mocks.usePhysicalFinancialSignal.mockReturnValue(
+      loaded({ physicalPercent: 30, actualCost: null, budgetTotal: null, moneyVisible: false, costConsumedPercent: null, divergence: null, status: 'HIDDEN', weightsComplete: true }),
+    );
+    mocks.useCollectionProgressSignal.mockReturnValue(
+      loaded({ physicalPercent: 30, contractValue: null, receivedRevenue: null, moneyVisible: false, collectedPercent: null, divergence: null, status: 'HIDDEN', weightsComplete: true }),
+    );
+    renderWithProviders(<PerformanceView projectId="p1" />, { permissions: ['view:project'] });
+
+    const rail = within(screen.getByRole('complementary'));
+    expect(rail.queryByText('Built vs cost')).not.toBeInTheDocument();
+    expect(rail.queryByText('Collected vs built')).not.toBeInTheDocument();
+    expect(rail.queryByText(/cost consumed|Collected/)).not.toBeInTheDocument();
+    expect(rail.getByText('Nothing needs attention.')).toBeInTheDocument();
   });
 
   it('leaves aligned or insufficient signals out, so nothing-needs-attention can show', () => {

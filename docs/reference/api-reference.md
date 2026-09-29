@@ -2708,16 +2708,22 @@ contingency excluded). `readyToVerify` is a prompt; verifying is still `POST
 #### Money redaction for money-blind roles
 
 Visibility reuses the BOQ money tiers (`resolveBoqVisibility`, ADR-029 §8 A-2). When the caller
-lacks the tier, the amount is `null`; percentages, ratios and `status` are unchanged.
+lacks the tier, the amount is `null` — and, since the owner decision of 2026-09-29 (ADR-021
+amendment), so is every percentage derived from money, with the signal's `divergence` and `status`
+withheld as well. Physical and verified progress % are not money and are always returned.
 
 | Endpoint | Fields nulled | Tier required |
 |---|---|---|
-| `GET /projects/:projectId/progress/signal` | `actualCost`, `budgetTotal` | cost (`view-cost:boq`, `manage:boq`, or a margin grant) |
-| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue` | margin (`view-margin:boq` or `view:financial-position`) |
-| `GET /projects/:projectId/programme/milestones` | `releases[].amount` | margin |
+| `GET /projects/:projectId/progress/signal` | `actualCost`, `budgetTotal`, `costConsumedPercent`, `divergence`; `status` = `'HIDDEN'` | cost (`view-cost:boq`, `manage:boq`, or a margin grant) |
+| `GET /projects/:projectId/progress/collection-signal` | `contractValue`, `receivedRevenue`, `collectedPercent`, `divergence`; `status` = `'HIDDEN'` | margin (`view-margin:boq` or `view:financial-position`) |
+| `GET /projects/:projectId/programme/milestones` | `releases[].amount`, `releases[].percentage` | margin |
+| `GET /projects/:projectId/progress/curve` | `actual[].costPercent` | cost |
+| `POST /projects/:projectId/progress/snapshots` (response only) | `costConsumedPercent` — the stored snapshot keeps the true value | cost |
+| `GET /projects/:projectId/programme/master-schedule.pdf` | the release share and amount are left out of the milestone table | margin |
 
 Both signals also carry `moneyVisible: boolean`, so a hidden `null` is not mistaken for "no budget"
-or "no contract". Render a neutral hidden/restricted state, never `$0`.
+or "no contract". `status: 'HIDDEN'` is distinct from `INSUFFICIENT_DATA` ("no budget / no contract
+yet"). Render a neutral hidden/restricted state or omit the item — never `$0`, `0%` or `—%`.
 
 #### Re-baseline must cite an adopted variation
 

@@ -221,7 +221,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       expect(milestone.releases[0].amount).toBe('33.36');
     });
 
-    it('money-blind caller (PM / Site Engineer): amount is null, percentage and invoiced stay', async () => {
+    it('money-blind caller (PM / Site Engineer): amount and percentage are null, name and invoiced stay', async () => {
       const { service } = build({
         milestones: [
           storedMilestone({
@@ -237,7 +237,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
 
       expect(milestone.releases[0]).toMatchObject({
         amount: null,
-        percentage: '0.3000',
+        percentage: null,
         currency: 'USD',
         invoiced: true,
       });
@@ -254,6 +254,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       );
 
       expect(milestone.releases[0].amount).toBeNull();
+      expect(milestone.releases[0].percentage).toBeNull();
     });
 
     it('preserves the repo order of releases across installments', async () => {

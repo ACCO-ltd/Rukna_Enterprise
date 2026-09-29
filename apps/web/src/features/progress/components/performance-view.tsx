@@ -406,7 +406,9 @@ function AttentionRail({
   const linkClass = 'text-body-sm font-medium text-brand-primary hover:underline';
   // Only a real warning is "needs attention": cost running ahead of what is built, or cash and
   // work out of step either way. ALIGNED / PROGRESS_AHEAD / INSUFFICIENT_DATA are left out, so the
-  // rail can honestly say nothing needs attention.
+  // rail can honestly say nothing needs attention. HIDDEN (a money-blind caller: the server withholds
+  // the ratio, its divergence and its status) is left out too — the item is omitted, never shown
+  // as 0 or "—%".
   const costWarning = cost.data && cost.data.status === 'COST_AHEAD' ? cost.data : null;
   const collectionWarning =
     collection.data && (collection.data.status === 'WORK_AHEAD' || collection.data.status === 'CASH_AHEAD')

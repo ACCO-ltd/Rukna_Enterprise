@@ -323,7 +323,8 @@ function isoDate(value: Date | null): string | null {
  * Derive one release line. `amount` = contractValue × percentage, fixed to 2 decimals with Decimal —
  * identical rounding to the commercial payment schedule (buildPaymentSchedule). `invoiced` reflects
  * whether a ClientInvoice was generated from this installment (the 1:1 clientInvoice relation exists).
- * `amount` is null when the caller may not see commercial money; the percentage stays.
+ * `amount` and `percentage` are null when the caller may not see commercial money: a share of the
+ * contract value is money-derived (owner decision 2026-09-29). Name, trigger and `invoiced` stay.
  */
 function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean): MilestoneReleaseLine {
   const amount = new Decimal(inst.contract.contractValue.toString()).mul(
@@ -332,7 +333,7 @@ function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean):
   return {
     installmentId: inst.id,
     name: inst.name,
-    percentage: inst.percentage.toString(),
+    percentage: moneyVisible ? inst.percentage.toString() : null,
     triggerType: inst.triggerType,
     amount: moneyVisible ? amount.toFixed(2) : null,
     currency: inst.contract.currency,

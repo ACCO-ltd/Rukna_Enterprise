@@ -1309,6 +1309,33 @@ export class ProgressService {
     identity: RequestIdentity,
     projectId: string,
   ): Promise<PhysicalFinancialSignalResponse> {
+    const signal = await this.computePhysicalFinancialSignal(identity, projectId);
+    // Money-blind callers (PM / Site Engineer, per the owner's financial-visibility decision) see
+    // neither the cost amounts nor anything derived from them (owner decision 2026-09-29): the cost
+    // consumed %, the divergence and the status would each disclose the budget ratio. Only the
+    // physical % — not money — stays. `status: 'HIDDEN'` is distinct from INSUFFICIENT_DATA ("no
+    // budget yet"), which would be a false statement about the project.
+    const { canViewCost } = resolveBoqVisibility(identity);
+    if (canViewCost) return signal;
+    return {
+      ...signal,
+      actualCost: null,
+      budgetTotal: null,
+      moneyVisible: false,
+      costConsumedPercent: null,
+      divergence: null,
+      status: 'HIDDEN',
+    };
+  }
+
+  /**
+   * The unredacted physical-vs-financial signal. Internal only: the snapshot capture freezes the
+   * true cost-consumed % whoever captures it; every response goes through the redacting wrapper.
+   */
+  private async computePhysicalFinancialSignal(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<PhysicalFinancialSignalResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
@@ -1328,16 +1355,12 @@ export class ProgressService {
       'COST_AHEAD',
     );
 
-    // Money-blind callers (PM / Site Engineer, per the owner's financial-visibility decision) get
-    // the ratio and status but never the amounts behind them — the cost tier gates cost figures.
-    const { canViewCost } = resolveBoqVisibility(identity);
-
     return {
       projectId,
       physicalPercent,
-      actualCost: canViewCost ? fp.actualCost : null,
-      budgetTotal: canViewCost ? fp.budgetTotal : null,
-      moneyVisible: canViewCost,
+      actualCost: fp.actualCost,
+      budgetTotal: fp.budgetTotal,
+      moneyVisible: true,
       costConsumedPercent,
       divergence,
       status,
@@ -1375,16 +1398,30 @@ export class ProgressService {
       'WORK_AHEAD',
     );
 
-    // Contract value and client revenue are the commercial (margin) tier — hidden from money-blind
-    // callers; the collected % and status stay, since a ratio discloses no amount.
+    // Contract value and client revenue are the commercial (margin) tier. A money-blind caller sees
+    // neither them nor the collected % (received ÷ contract), nor the divergence / status computed
+    // from it (owner decision 2026-09-29) — only the physical %, which is not money.
     const { canViewMargin } = resolveBoqVisibility(identity);
+    if (!canViewMargin) {
+      return {
+        projectId,
+        physicalPercent,
+        contractValue: null,
+        receivedRevenue: null,
+        moneyVisible: false,
+        collectedPercent: null,
+        divergence: null,
+        status: 'HIDDEN',
+        weightsComplete: rollup.weightsComplete,
+      };
+    }
 
     return {
       projectId,
       physicalPercent,
-      contractValue: canViewMargin ? fp.contractValue : null,
-      receivedRevenue: canViewMargin ? fp.receivedRevenue : null,
-      moneyVisible: canViewMargin,
+      contractValue: fp.contractValue,
+      receivedRevenue: fp.receivedRevenue,
+      moneyVisible: true,
       collectedPercent,
       divergence,
       status,
@@ -1615,7 +1652,9 @@ export class ProgressService {
       );
     }
 
-    const signal = await this.getPhysicalFinancialSignal(identity, projectId);
+    // The unredacted reading: a snapshot is a frozen fact about the project, not about who captured
+    // it — a money-blind capturer must not freeze a null cost % into history.
+    const signal = await this.computePhysicalFinancialSignal(identity, projectId);
     const verifiedPercent = await this.computeVerifiedPercent(identity, projectId);
 
     const row = await this.repo.createSnapshot(prisma, {
@@ -1630,7 +1669,9 @@ export class ProgressService {
       source: 'MANUAL',
       capturedById: identity.userId,
     });
-    return toSnapshotResponse(row);
+    const snapshot = toSnapshotResponse(row);
+    // The stored row keeps the true figure; the response hides it from a cost-blind capturer.
+    return resolveBoqVisibility(identity).canViewCost ? snapshot : { ...snapshot, costConsumedPercent: null };
   }
 
   private async loadActualSeries(
@@ -1640,11 +1681,14 @@ export class ProgressService {
     const prisma = this.tenancy.getClient();
     const rows = await this.repo.findSnapshotsForProject(prisma, identity.activeOrganizationId, projectId);
     const snapshots = rows.map(toSnapshotResponse);
+    // The frozen cost-consumed % is the same budget ratio the live signal hides from a cost-blind
+    // caller (owner decision 2026-09-29), so the curve withholds it too.
+    const { canViewCost } = resolveBoqVisibility(identity);
     const actual: ProgressActualPoint[] = snapshots.map((s) => ({
       periodEndDate: s.periodEndDate,
       physicalPercent: s.physicalPercent,
       verifiedPercent: s.verifiedPercent,
-      costPercent: s.costConsumedPercent,
+      costPercent: canViewCost ? s.costConsumedPercent : null,
     }));
     return { snapshots, actual };
   }

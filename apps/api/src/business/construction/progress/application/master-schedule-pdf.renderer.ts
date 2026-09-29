@@ -458,7 +458,9 @@ function renderMilestoneTable(pdf: ReactPdf, s: Styles, milestones: MasterSchedu
         : m.releases
             .map(
               (r) =>
-                `${r.name} · ${r.percentLabel} · ${r.amountLabel}${r.invoiced ? ' (invoiced)' : ''}`,
+                // A hidden share / amount (money-blind caller) is omitted, never shown as 0 or a dash.
+                [r.name, r.percentLabel, r.amountLabel].filter((part) => part !== null).join(' · ') +
+                (r.invoiced ? ' (invoiced)' : ''),
             )
             .join('\n');
     return h(
