@@ -1231,7 +1231,10 @@
         "descriptionRequired": "A description is required.",
         "unitTooLong": "Unit is too long.",
         "quantityFormat": "Quantity accepts up to {decimals} decimal places.",
-        "rateFormat": "Rate accepts up to {decimals} decimal places."
+        "rateFormat": "Rate accepts up to {decimals} decimal places.",
+        "quantityRequired": "Enter a quantity.",
+        "rateRequired": "Enter a rate.",
+        "amountRequired": "Enter an amount."
       }
     },
     "units": {

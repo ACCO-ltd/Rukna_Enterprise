@@ -9,13 +9,32 @@ const node = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse => ({
   measurementMethod: 'QUANTITY', pricingBasis: 'UNIT_RATE', unit: null, quantity: null,
   unitRate: null, currency: 'USD', totalAmount: null, computedTotal: null, originNodeId: null,
   sourceType: 'BASELINE', sourceChangeOrderId: null, nodeRole: 'WORK',
-  commercialTreatment: 'IN_CONTRACT', isActive: true,
+  commercialTreatment: 'IN_CONTRACT', isActive: true, priced: false, valueShare: null,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   ...over,
 });
 
+/**
+ * A leaf as the server sends it: `priced` and `valueShare` (share of a 1,000,000 version) derived
+ * from its amount, both of which a money-blind reader still receives.
+ */
 const leaf = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse =>
-  node({ isLeaf: true, children: [], ...over });
+  node({
+    isLeaf: true,
+    children: [],
+    priced: Boolean(over.totalAmount),
+    valueShare: over.totalAmount ? Number(over.totalAmount) / 1_000_000 : null,
+    ...over,
+  });
+
+/** The same leaf as a money-blind PM receives it: no rate, no amount, the ratio and verdict kept. */
+const moneyBlind = (n: BoqTreeNodeResponse): BoqTreeNodeResponse => ({
+  ...n,
+  unitRate: null,
+  totalAmount: null,
+  computedTotal: null,
+  children: n.children.map(moneyBlind),
+});
 
 // A two-section BOQ: 1 Substructure (2 leaves), 2 Superstructure (1 leaf).
 const leaf1 = leaf({ id: 'leaf-1', code: '1.1', description: 'Excavation', totalAmount: '60000' });
@@ -70,7 +89,7 @@ describe('suggestDeliveryPlan', () => {
   });
 
   it('flags an unpriced leaf without excluding it, and does not let it poison the weight math', () => {
-    const unpriced = { ...leaf2, totalAmount: null };
+    const unpriced = { ...leaf2, totalAmount: null, priced: false, valueShare: null };
     const section = { ...substructure, children: [leaf1, unpriced] };
     const result = suggestDeliveryPlan([section, superstructure], new Set(), new Set());
     expect(result.unpricedLeafIds).toEqual(['leaf-2']);
@@ -113,5 +132,14 @@ describe('suggestDeliveryPlan', () => {
     const dangling = leaf({ id: 'leaf-5', code: '9.9', description: 'Dangling', totalAmount: '1000' });
     const result = suggestDeliveryPlan([dangling], new Set(), new Set(['leaf-5']));
     expect(result.orphanLeafIds).toEqual([]);
+  });
+
+  it('weights a money-blind PM\'s plan exactly like a cost-tier reader\'s, from the server ratios', () => {
+    const full = suggestDeliveryPlan([substructure, superstructure], new Set(), new Set());
+    const blind = suggestDeliveryPlan([substructure, superstructure].map(moneyBlind), new Set(), new Set());
+    expect(blind.packages.map((p) => p.suggestedWeight)).toEqual(full.packages.map((p) => p.suggestedWeight));
+    expect(blind.packages.find((p) => p.sectionNodeId === 'sec-1')!.suggestedWeight).toBeCloseTo(100000 / 150000);
+    // Nothing is unpriced just because the amount was withheld.
+    expect(blind.unpricedLeafIds).toEqual([]);
   });
 });

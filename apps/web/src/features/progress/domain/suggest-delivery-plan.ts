@@ -21,9 +21,16 @@ export interface SuggestedPackage {
   sectionNodeId: string;
   sectionCode: string;
   leafIds: string[];
-  /** Σ totalAmount of the suggested leaves, in the BOQ's currency. */
+  /**
+   * Σ totalAmount of the suggested leaves, in the BOQ's currency. 0 for a reader without the cost
+   * tier (the server withholds amounts) — display only, never used for the weight.
+   */
   totalValue: number;
-  /** Fraction 0..1 of the suggested (unallocated) value across ALL suggested packages. */
+  /**
+   * Fraction 0..1 of the suggested (unallocated) value across ALL suggested packages. Computed from
+   * the server's `valueShare` ratios, not from amounts, so it is the same for a money-blind PM as
+   * for a cost-tier reader.
+   */
   suggestedWeight: number;
 }
 
@@ -65,14 +72,15 @@ export function suggestDeliveryPlan(
     if (leaves.length > 0) candidates.push({ section: root, leaves });
   }
 
-  const totalValue = candidates.reduce((sum, c) => sum + sumValue(c.leaves), 0);
+  const totalShare = candidates.reduce((sum, c) => sum + sumShare(c.leaves), 0);
   const codes = assignCodes(candidates.length, existingCodes);
   const unpricedLeafIds: string[] = [];
 
   const packages: SuggestedPackage[] = candidates.map((c, index) => {
-    const value = sumValue(c.leaves);
+    const share = sumShare(c.leaves);
     for (const leaf of c.leaves) {
-      if (!leafValue(leaf)) unpricedLeafIds.push(leaf.id);
+      // The server's verdict, sent to every tier — not inferred from a (possibly withheld) amount.
+      if (!leaf.priced) unpricedLeafIds.push(leaf.id);
     }
     return {
       code: codes[index]!,
@@ -80,8 +88,8 @@ export function suggestDeliveryPlan(
       sectionNodeId: c.section.id,
       sectionCode: c.section.code,
       leafIds: c.leaves.map((l) => l.id),
-      totalValue: value,
-      suggestedWeight: totalValue > 0 ? value / totalValue : 0,
+      totalValue: sumValue(c.leaves),
+      suggestedWeight: totalShare > 0 ? share / totalShare : 0,
     };
   });
 
@@ -105,6 +113,10 @@ function collectUnallocatedWorkLeaves(
 
 function leafValue(leaf: BoqTreeNodeResponse): number {
   return leaf.totalAmount ? Number(leaf.totalAmount) : 0;
+}
+
+function sumShare(leaves: readonly BoqTreeNodeResponse[]): number {
+  return leaves.reduce((sum, l) => sum + (l.valueShare ?? 0), 0);
 }
 
 function sumValue(leaves: readonly BoqTreeNodeResponse[]): number {

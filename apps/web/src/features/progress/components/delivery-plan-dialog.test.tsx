@@ -30,11 +30,31 @@ const node = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse => ({
   measurementMethod: 'QUANTITY', pricingBasis: 'UNIT_RATE', unit: null, quantity: null,
   unitRate: null, currency: 'USD', totalAmount: null, computedTotal: null, originNodeId: null,
   sourceType: 'BASELINE', sourceChangeOrderId: null, nodeRole: 'WORK',
-  commercialTreatment: 'IN_CONTRACT', isActive: true,
+  commercialTreatment: 'IN_CONTRACT', isActive: true, priced: false, valueShare: null,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   ...over,
 });
-const leaf = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse => node({ isLeaf: true, children: [], ...over });
+/**
+ * A leaf as the server sends it: `priced` and `valueShare` (share of a 1,000,000 version) derived
+ * from its amount, both of which a money-blind reader still receives.
+ */
+const leaf = (over: Partial<BoqTreeNodeResponse>): BoqTreeNodeResponse =>
+  node({
+    isLeaf: true,
+    children: [],
+    priced: Boolean(over.totalAmount),
+    valueShare: over.totalAmount ? Number(over.totalAmount) / 1_000_000 : null,
+    ...over,
+  });
+
+/** The same leaf as a money-blind PM receives it: no rate, no amount, the ratio and verdict kept. */
+const moneyBlind = (n: BoqTreeNodeResponse): BoqTreeNodeResponse => ({
+  ...n,
+  unitRate: null,
+  totalAmount: null,
+  computedTotal: null,
+  children: n.children.map(moneyBlind),
+});
 
 const leaf1 = leaf({ id: 'leaf-1', code: '1.1', description: 'Excavation', totalAmount: '60000' });
 const leaf2 = leaf({ id: 'leaf-2', code: '1.2', description: 'Foundation concrete', totalAmount: '40000' });
@@ -95,6 +115,20 @@ describe('DeliveryPlanDialog', () => {
     const sup = payload.packages.find((p: { name: string }) => p.name === 'Superstructure');
     expect(sub.boqNodeIds).toEqual(['leaf-2']);
     expect(sup.boqNodeIds).toEqual(['leaf-3', 'leaf-1']);
+  });
+
+  it('works for a money-blind PM: server ratios drive the weights, no amounts, no false Unpriced', async () => {
+    mocks.useBoqTree.mockReturnValue(loaded([substructure, superstructure].map(moneyBlind)));
+    renderWithProviders(
+      <DeliveryPlanDialog projectId="p-1" currency="USD" moneyHidden open onOpenChange={() => {}} />,
+      { withToast: true },
+    );
+
+    // 100,000 of 150,000 and 50,000 of 150,000, as for a reader who can see the amounts.
+    expect(screen.getByDisplayValue('67')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('33')).toBeInTheDocument();
+    expect(screen.queryByText('Unpriced')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
 
   it('shows nothing to propose once every BOQ section is already fully allocated', () => {

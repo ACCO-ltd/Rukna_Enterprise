@@ -456,6 +456,25 @@ describe('BoqItemDialog — library fast entry', () => {
     expect(screen.queryByRole('button', { name: /Add from library/i })).not.toBeInTheDocument();
   });
 
+  it('says "Enter a quantity" / "Enter a rate" instead of silently keeping a cleared value', async () => {
+    const { onSubmit } = renderDialog(edit());
+    await userEvent.clear(screen.getByLabelText(/^Quantity/));
+    await userEvent.clear(rateField());
+    await userEvent.click(screen.getByRole('button', { name: 'Save item' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a quantity.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a rate.')).toBeInTheDocument();
+  });
+
+  it('says "Enter an amount" when a lump sum is cleared', async () => {
+    const { onSubmit } = renderDialog(edit(itemNode({ pricingBasis: 'LUMP_SUM', quantity: '1.000', unitRate: '900.00' })));
+    await userEvent.clear(lumpSumField());
+    await userEvent.click(screen.getByRole('button', { name: 'Save item' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter an amount.')).toBeInTheDocument();
+  });
+
   it('refuses to submit without a description', async () => {
     const { onSubmit } = renderDialog(ADD_ITEM);
     await userEvent.click(screen.getByRole('button', { name: 'Add item' }));

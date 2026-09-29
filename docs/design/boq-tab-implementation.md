@@ -196,3 +196,11 @@ drawer/sheet/panel):
   absent fields and unchanged echoes are allowed.
 - **Money-blind client.** Without the cost tier the dialog states the pricing basis as text instead
   of offering the cards, and the payload builders send no rate, basis or lump-sum amount.
+- **Re-review (PR #241).** Tree nodes now carry `priced` (the readiness rule) and `valueShare` (a
+  0..1 ratio of the version value), sent to every tier. `isPriced` and the Progress delivery plan
+  use them, so a money-blind PM gets correct "Unpriced" pills and BOQ-value weights without
+  amounts. The library's `lastUsedRate` is withheld without the cost tier; contingency returns
+  `{ versionId, contingencyRemaining, canViewMargin }`; flipping a priced item to a section is a
+  money change for a scope-only editor. The dialog says "Enter a quantity / rate / amount" rather
+  than silently keeping a cleared value. Scope-only DELETE of priced lines is an open owner question
+  (docs/backend-requests.md).

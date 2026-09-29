@@ -41,6 +41,13 @@ export function testNode(
     updatedAt: '2026-01-01T00:00:00.000Z',
     children: [],
     computedTotal: null,
+    // As the server derives it: a leaf with unit, quantity and rate.
+    priced:
+      Boolean(overrides.isLeaf) &&
+      Boolean(overrides.unit) &&
+      (overrides.quantity ?? null) !== null &&
+      (overrides.unitRate ?? null) !== null,
+    valueShare: null,
     ...overrides,
   };
 }

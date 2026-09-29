@@ -184,7 +184,7 @@ export function BoqItemDialog({
   // The library only assists adding a NEW item, and only for someone who can manage the BOQ.
   const showLibrary = libraryEnabled && isItem && isAdd && !readOnly;
 
-  const clientErrors = validate(values, target.kind, t);
+  const clientErrors = validate(values, initial, target.kind, t);
   const server = serverErrors(error, lumpSum);
   const fieldError = (key: FieldKey): string | undefined =>
     (touched ? clientErrors[key] : undefined) ??
@@ -694,6 +694,7 @@ function serverErrors(
  */
 function validate(
   values: NodeFormValues,
+  initial: NodeFormValues,
   kind: NodeKind,
   t: (key: string, values?: Record<string, string | number>) => string,
 ): Partial<Record<FieldKey, string>> {
@@ -709,12 +710,20 @@ function validate(
     const decimals = (text: string, places: number) =>
       new RegExp(`^\\d+(\\.\\d{1,${places}})?$`).test(text.trim());
 
+    // The node API cannot clear a quantity, rate or amount (an absent field keeps its value), so
+    // emptying one that was set would save nothing while looking saved. Say so instead.
+    const cleared = (key: 'quantity' | 'unitRate' | 'lumpSumAmount') =>
+      values.pricingBasis === initial.pricingBasis && initial[key].trim() !== '' && values[key].trim() === '';
+
     if (values.pricingBasis === 'LUMP_SUM') {
+      if (cleared('lumpSumAmount')) errors.lumpSumAmount = t('errors.amountRequired');
       const amount = values.lumpSumAmount.trim();
       if (amount && !decimals(amount, NODE_LIMITS.rateDecimals)) {
         errors.lumpSumAmount = t('errors.rateFormat', { decimals: NODE_LIMITS.rateDecimals });
       }
     } else {
+      if (cleared('quantity')) errors.quantity = t('errors.quantityRequired');
+      if (cleared('unitRate')) errors.unitRate = t('errors.rateRequired');
       const quantity = values.quantity.trim();
       if (quantity && !decimals(quantity, NODE_LIMITS.quantityDecimals)) {
         errors.quantity = t('errors.quantityFormat', { decimals: NODE_LIMITS.quantityDecimals });

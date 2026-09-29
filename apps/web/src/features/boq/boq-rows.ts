@@ -35,7 +35,9 @@ export interface RowOptions {
 
 /** A billable item is priced when it can produce a line amount. */
 export function isPriced(node: BoqTreeNodeResponse): boolean {
-  return Boolean(node.unit) && node.quantity !== null && node.unitRate !== null;
+  // The server's verdict (unit, quantity and rate all present), sent to every tier. Inferring it
+  // from `unitRate` read every line as unpriced for a money-blind reader, whose rates are withheld.
+  return node.priced;
 }
 
 export function isIncomplete(node: BoqTreeNodeResponse): boolean {
