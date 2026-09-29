@@ -363,7 +363,12 @@ export class ProgressService {
       dprId,
       () =>
         new BadRequestException('Context fields can only be updated on a DRAFT, RETURNED or REOPENED report.'),
-      (tx) => this.repo.patchDprContext(tx, dprId, dto),
+      // Site notes sent empty are a clear, stored as no notes rather than an empty string.
+      (tx) =>
+        this.repo.patchDprContext(tx, dprId, {
+          ...dto,
+          ...(dto.narrative !== undefined ? { narrative: dto.narrative.trim() || null } : {}),
+        }),
     );
   }
 

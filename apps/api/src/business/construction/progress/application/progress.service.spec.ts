@@ -103,6 +103,18 @@ function build(over: Over = {}) {
 }
 
 describe('ProgressService (ADR-021 MVP)', () => {
+  it('patchDprContext: empty site notes clear them (stored as null), other fields pass through', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.patchDprContext(identity, 'dpr-1', { narrative: '  ', shift: 'Day' });
+    expect(repo.patchDprContext).toHaveBeenCalledWith(expect.anything(), 'dpr-1', { narrative: null, shift: 'Day' });
+
+    repo.patchDprContext.mockClear();
+    await service.patchDprContext(identity, 'dpr-1', { shift: 'Night' });
+    expect(repo.patchDprContext).toHaveBeenCalledWith(expect.anything(), 'dpr-1', { shift: 'Night' });
+  });
+
   it('createDpr: creates a DRAFT report for the project', async () => {
     const { repo, service } = build();
     await service.createDpr(identity, 'p-1', { reportDate: '2026-08-18', weather: 'Clear' });

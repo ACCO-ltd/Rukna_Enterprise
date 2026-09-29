@@ -388,7 +388,7 @@ export class PatchDprContextDto {
   @IsOptional() @IsString() @MaxLength(255)
   equipmentNote?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Site notes. An empty string clears them.' })
   @IsOptional() @IsString()
   narrative?: string;
 
