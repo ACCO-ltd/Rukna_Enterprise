@@ -20,7 +20,9 @@ import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits, sumMinorUnits } from '@/lib/money';
 
 import { useFiscalYears, useMonthlyPL } from '../hooks/use-accounting';
+import { exportCsv, reportFilename } from '../lib/export-csv';
 import type { MonthlyPLColumn } from '../types';
+import { ReportActions } from './report-actions';
 
 export function MonthlyComparisonReport() {
   const t = useTranslations('accounting.monthlyPL');
@@ -37,6 +39,33 @@ export function MonthlyComparisonReport() {
   const fiscalYearId = chosenId || years.data?.[0]?.id || '';
 
   const report = useMonthlyPL(fiscalYearId);
+  const yearName = (years.data ?? []).find((y) => y.id === fiscalYearId)?.name;
+
+  const columns = report.data && report.data !== null ? report.data.columns : [];
+
+  const handleExport = () => {
+    if (columns.length === 0) return;
+    const rows = columns.map((column) => [
+      column.periodName,
+      column.revenue,
+      column.costOfSales,
+      column.grossProfit,
+      column.expenses,
+      column.netIncome,
+    ]);
+    exportCsv(
+      reportFilename('monthly-comparison', yearName),
+      [
+        t('csvPeriod'),
+        t('colRevenue'),
+        t('colCostOfSales'),
+        t('colGrossProfit'),
+        t('colExpenses'),
+        t('colNetIncome'),
+      ],
+      rows,
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -57,22 +86,26 @@ export function MonthlyComparisonReport() {
         </div>
       ) : (
         <>
-          <FilterBar>
-            <FilterField id="mpl-year" label={t('fiscalYearLabel')}>
-              <Select
-                id="mpl-year"
-                value={fiscalYearId}
-                onChange={(value) => setChosenId(value)}
-              >
-                <option value="">{t('selectFiscalYear')}</option>
-                {(years.data ?? []).map((year) => (
-                  <option key={year.id} value={year.id}>
-                    {year.name}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-          </FilterBar>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <FilterBar>
+              <FilterField id="mpl-year" label={t('fiscalYearLabel')}>
+                <Select
+                  id="mpl-year"
+                  value={fiscalYearId}
+                  onChange={(value) => setChosenId(value)}
+                >
+                  <option value="">{t('selectFiscalYear')}</option>
+                  {(years.data ?? []).map((year) => (
+                    <option key={year.id} value={year.id}>
+                      {year.name}
+                    </option>
+                  ))}
+                </Select>
+              </FilterField>
+            </FilterBar>
+
+            <ReportActions onExport={handleExport} exportDisabled={columns.length === 0} />
+          </div>
 
           {report.isPending ? (
             <div role="status" aria-live="polite">

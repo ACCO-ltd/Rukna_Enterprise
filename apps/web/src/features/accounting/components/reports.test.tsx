@@ -20,6 +20,13 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
   getProfitLoss: vi.fn(),
 }));
 
+// The reports now drill into the ledger, so they call `useRouter`. The test harness does not
+// mount the app router; mock it, as the journal and invoice tests do.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 function tbLine(overrides: Partial<TrialBalanceLine> = {}): TrialBalanceLine {
   return {
     accountId: 'acc-1',

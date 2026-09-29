@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -331,7 +331,10 @@ describe('SupplierPaymentsList', () => {
     });
     renderWithProviders(<SupplierPaymentsList />);
 
-    expect(screen.getByRole('link', { name: /not yet numbered/i })).toBeInTheDocument();
-    expect(screen.getByText('Al-Rashid Trading')).toBeInTheDocument();
+    // Scope to the desktop table — the grid also renders a phone-card copy of every row, so a
+    // bare getByRole('link') would match twice (invoices/bills lists are asserted the same way).
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Not yet numbered')).toBeInTheDocument();
+    expect(within(table).getByText('Al-Rashid Trading')).toBeInTheDocument();
   });
 });

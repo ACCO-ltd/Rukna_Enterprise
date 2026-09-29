@@ -12,21 +12,20 @@
  * `useBankAccounts` are called here rather than only in the form.
  */
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
+  EmptyState,
+  type FilterValues,
+  type ListFilterField,
+  MoneyDisplay,
 } from '@erp/ui';
+import { Banknote } from 'lucide-react';
 
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -34,95 +33,200 @@ import { formatDate, formatMoney } from '@/lib/format';
 
 import { useSupplierPayment, useSupplierPayments, useSuppliers } from '../hooks/use-procurement';
 import { bankAccountLabel } from '../payment-actions';
-import type { SupplierPayment } from '../types';
+import type { PaymentDocumentStatus, SupplierPayment } from '../types';
 import { AllocationPanel } from './allocation-panel';
 import { PaymentActionBar } from './payment-actions-bar';
 import { PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
+const DOC_STATUSES: PaymentDocumentStatus[] = [
+  'DRAFT',
+  'APPROVED',
+  'RELEASED',
+  'REJECTED',
+  'CANCELLED',
+];
+const POSTING_STATUSES: SupplierPayment['postingStatus'][] = [
+  'NOT_POSTED',
+  'PENDING',
+  'POSTED',
+  'REVERSED',
+  'FAILED',
+];
+
+const detailHref = (payment: SupplierPayment) => `/finance/accounting/payments/${payment.id}`;
+
+/**
+ * The supplier payments list, rebuilt onto `PlatformDataGrid` to match the invoices and bills
+ * lists (ADR-035): row navigation to the detail, an empty-state CTA, and status filters. The
+ * response embeds no supplier, so the name is joined against `GET /suppliers` the screen holds.
+ */
 export function SupplierPaymentsList() {
   const t = useTranslations('procurement.payments');
+  const tList = useTranslations('procurement.payments.list');
   const tc = useTranslations('procurement.common');
-  const locale = useLocale() as 'en' | 'ar';
+  const tStatus = useTranslations('procurement.status');
   const { can } = usePermissions();
 
   const payments = useSupplierPayments();
   const suppliers = useSuppliers();
 
-  const supplierById = new Map((suppliers.data ?? []).map((s) => [s.id, s]));
+  const [filters, setFilters] = useState<FilterValues>({});
+
+  const supplierNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const supplier of suppliers.data ?? []) map.set(supplier.id, supplier.name);
+    return map;
+  }, [suppliers.data]);
+
+  const all = useMemo(() => payments.data ?? [], [payments.data]);
+  const visible = useMemo(
+    () =>
+      all.filter(
+        (payment) =>
+          (!filters.status || payment.documentStatus === filters.status) &&
+          (!filters.posting || payment.postingStatus === filters.posting),
+      ),
+    [all, filters],
+  );
+
+  const createAction = can(ACCOUNTING_PERMISSIONS.managePayables) ? (
+    <Button asChild>
+      <Link href="/finance/accounting/payments/new">{t('new')}</Link>
+    </Button>
+  ) : null;
+
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'status',
+      type: 'select',
+      label: tList('filterByStatus'),
+      options: DOC_STATUSES.map((s) => ({ value: s, label: tStatus(s) })),
+    },
+    {
+      key: 'posting',
+      type: 'select',
+      label: tList('filterByPosting'),
+      options: POSTING_STATUSES.map((s) => ({ value: s, label: s })),
+    },
+  ];
+
+  const columns: GridColumn<SupplierPayment>[] = [
+    {
+      key: 'number',
+      header: t('number'),
+      sticky: true,
+      sortable: true,
+      card: 'title',
+      // Null until the payment posts — the PMT- sequence is claimed inside the posting
+      // transaction, so every draft is unnumbered. Nothing may key a row on it.
+      plainValue: (payment) => payment.paymentNumber ?? '',
+      render: (payment) => (
+        <span className="block font-mono text-caption font-semibold text-brand-primary">
+          {payment.paymentNumber ?? t('unnumbered')}
+        </span>
+      ),
+    },
+    {
+      key: 'supplier',
+      header: tc('supplier'),
+      sortable: true,
+      card: 'subtitle',
+      plainValue: (payment) => supplierNames.get(payment.supplierId) ?? '',
+      render: (payment) => (
+        <span className="block max-w-[16rem] truncate">
+          {supplierNames.get(payment.supplierId) ?? tc('notAvailable')}
+        </span>
+      ),
+    },
+    {
+      key: 'paymentDate',
+      header: t('paymentDate'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (payment) => payment.paymentDate ?? '',
+      render: (payment, ctx) => (
+        <span className="text-muted-foreground">
+          <bdi>{formatDate(payment.paymentDate, ctx.locale) ?? tc('notAvailable')}</bdi>
+        </span>
+      ),
+    },
+    {
+      key: 'method',
+      header: t('method'),
+      render: (payment) => (
+        <span className="text-sm text-muted-foreground">{payment.paymentMethod}</span>
+      ),
+    },
+    {
+      key: 'total',
+      header: tList('colTotal'),
+      numeric: true,
+      sortable: true,
+      card: 'amount',
+      plainValue: (payment) => Number(payment.totalAmount),
+      // MoneyDisplay formats USD (ADR-024), like the invoices and bills lists it mirrors; the
+      // detail page renders the payment's own currency in full.
+      render: (payment) => <MoneyDisplay value={payment.totalAmount} />,
+    },
+    {
+      key: 'unallocated',
+      header: t('unallocated'),
+      numeric: true,
+      sortable: true,
+      plainValue: (payment) => Number(payment.unallocatedAmount),
+      render: (payment) => (
+        <span className="text-muted-foreground">
+          <MoneyDisplay value={payment.unallocatedAmount} />
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: tc('status'),
+      card: 'status',
+      render: (payment) => (
+        <span className="flex flex-col items-start gap-1">
+          <ProcurementStatusBadge vocabulary="payment" status={payment.documentStatus} />
+          <PostingStatusBadge showAxis status={payment.postingStatus} />
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      {can(ACCOUNTING_PERMISSIONS.managePayables) ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button asChild>
-            <Link href="/finance/accounting/payments/new">{t('new')}</Link>
-          </Button>
-        </div>
-      ) : null}
-
-      {payments.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('number')}</TableHead>
-              <TableHead>{tc('supplier')}</TableHead>
-              <TableHead>{t('paymentDate')}</TableHead>
-              <TableHead>{t('method')}</TableHead>
-              <TableHead className="text-end">{t('totalAmount')}</TableHead>
-              <TableHead className="text-end">{t('unallocated')}</TableHead>
-              <TableHead>{tc('status')}</TableHead>
-              <TableHead>{t('postingStatus')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(payments.data ?? []).length === 0 ? (
-              <TableEmpty colSpan={8}>{t('empty')}</TableEmpty>
-            ) : (
-              (payments.data ?? []).map((payment) => (
-                <TableRow key={payment.id}>
-                  <TableCell>
-                    <Link
-                      href={`/finance/accounting/payments/${payment.id}`}
-                      className="font-mono text-xs font-medium text-brand-primary underline-offset-2 hover:underline"
-                    >
-                      {/* Null until the payment posts — the PMT- sequence is claimed inside
-                          the posting transaction, so every draft is unnumbered. Nothing may
-                          key a row on it. */}
-                      {payment.paymentNumber ?? t('unnumbered')}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {supplierById.get(payment.supplierId)?.name ?? tc('notAvailable')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <bdi>{formatDate(payment.paymentDate, locale) ?? tc('notAvailable')}</bdi>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {payment.paymentMethod}
-                  </TableCell>
-                  <TableCell className="text-end font-medium tabular-nums">
-                    {formatMoney(payment.totalAmount, payment.currencyCode, locale)}
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums text-muted-foreground">
-                    {formatMoney(payment.unallocatedAmount, payment.currencyCode, locale)}
-                  </TableCell>
-                  <TableCell>
-                    <ProcurementStatusBadge vocabulary="payment" status={payment.documentStatus} />
-                  </TableCell>
-                  <TableCell>
-                    <PostingStatusBadge showAxis status={payment.postingStatus} />
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
-    </div>
+    <PlatformDataGrid
+      columns={columns}
+      data={visible}
+      rowKey={(payment) => payment.id}
+      label={t('title')}
+      isLoading={payments.isPending}
+      isError={payments.isError}
+      onRetry={() => void payments.refetch()}
+      errorMessage={tc('loadFailed')}
+      rowHref={detailHref}
+      emptyState={
+        all.length === 0 ? (
+          <EmptyState
+            icon={<Banknote size={20} aria-hidden="true" />}
+            title={t('empty')}
+            description={tList('emptyHint')}
+            action={createAction ?? undefined}
+          />
+        ) : undefined
+      }
+      noMatchMessage={tList('noMatches')}
+      resultLabel={(count) => tList('count', { count })}
+      pagination={{ defaultPageSize: 25 }}
+      defaultSort={{ key: 'paymentDate', direction: 'desc' }}
+      searchPlaceholder={tList('searchPlaceholder')}
+      searchLabel={tList('search')}
+      filters={filterFields}
+      filterValues={filters}
+      onFilterValuesChange={setFilters}
+      toolbarActions={createAction ?? undefined}
+    />
   );
 }
 

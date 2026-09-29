@@ -2,8 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Ellipsis } from 'lucide-react';
 import {
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   FilterBar,
   FilterField,
   Input,
@@ -21,6 +26,8 @@ import { useAccounts } from '../hooks/use-accounting';
 import type { Account, AccountClass } from '../types';
 import { AccountClassBadge, NormalBalanceLabel, PostingPolicyBadge } from './account-badges';
 import { CreateAccountForm } from './create-account-form';
+import { EditAccountForm } from './edit-account-form';
+import { ImportCoaForm } from './import-coa-form';
 
 const ACCOUNT_CLASSES: AccountClass[] = [
   'ASSET',
@@ -39,7 +46,13 @@ export function ChartOfAccounts() {
   const [search, setSearch] = useState('');
   const [accountClass, setAccountClass] = useState<AccountClass | ''>('');
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
   const { can } = usePermissions();
+
+  // Both write actions — create and edit — are gated on the same permission every account
+  // write endpoint requires (`manage:account`).
+  const mayManage = can(ACCOUNTING_PERMISSIONS.manageChart);
 
   // Filtered in the browser: `GET /accounts` takes no query parameters and a chart of accounts
   // is a few hundred rows, so the whole thing is already here.
@@ -113,12 +126,51 @@ export function ChartOfAccounts() {
         ) : null;
       },
     },
+    // The row overflow menu. Present only when the user may manage the chart, and only for an
+    // account that has a version to edit — a broken versionless record has nothing to edit.
+    ...(mayManage
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            render: (account: Account) =>
+              currentVersion(account) ? (
+                <div className="flex justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('rowMenu', { code: account.code })}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Ellipsis size={20} aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setEditing(account)}>
+                        {t('edit.action')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : null,
+          } satisfies GridColumn<Account>,
+        ]
+      : []),
   ];
 
-  const createAction = can(ACCOUNTING_PERMISSIONS.manageChart) ? (
-    <Button type="button" onClick={() => setCreating(true)}>
-      {t('create.new')}
-    </Button>
+  // Import sits beside New account: a fresh org brings in a whole chart at once, then maintains
+  // it one account at a time.
+  const createAction = mayManage ? (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button type="button" variant="outline" onClick={() => setImporting(true)}>
+        {t('import.action')}
+      </Button>
+      <Button type="button" onClick={() => setCreating(true)}>
+        {t('create.new')}
+      </Button>
+    </div>
   ) : null;
 
   return (
@@ -131,6 +183,36 @@ export function ChartOfAccounts() {
           </DialogTitle>
           <div className="mt-5">
             <CreateAccountForm onDone={() => setCreating(false)} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importing} onOpenChange={setImporting}>
+        <DialogContent className="p-6 sm:max-w-xl">
+          <DialogTitle className="text-lg font-semibold text-foreground">
+            {t('import.title')}
+          </DialogTitle>
+          <div className="mt-5">
+            <ImportCoaForm onDone={() => setImporting(false)} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+        <DialogContent className="p-6 sm:max-w-lg">
+          <DialogTitle className="text-lg font-semibold text-foreground">
+            {editing ? t('edit.title', { name: accountName(editing) }) : t('edit.action')}
+          </DialogTitle>
+          <div className="mt-5">
+            {editing ? (
+              // Keyed so switching from one account's menu to another re-seeds the form from the
+              // new account rather than keeping the first one's draft.
+              <EditAccountForm
+                key={editing.id}
+                account={editing}
+                onDone={() => setEditing(null)}
+              />
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

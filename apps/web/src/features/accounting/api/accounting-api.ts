@@ -3,7 +3,7 @@ import type { ProjectFinancialPositionResponse } from '@erp/types';
 import { apiClient } from '@/lib/api-client';
 
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
-import type { CreateAccountBody } from '../coa-setup';
+import type { CreateAccountBody, ImportChartResult, UpdateAccountBody } from '../coa-setup';
 import type { OpeningBalanceBody } from '../opening-balance';
 import type {
   Account,
@@ -58,6 +58,43 @@ export function createAccount(payload: CreateAccountBody): Promise<Account> {
 
 export function getAccount(id: string): Promise<Account> {
   return apiClient<Account>(`/accounts/${id}`);
+}
+
+/**
+ * `PATCH /accounts/:id` — edits an account's safe fields and returns the updated account.
+ *
+ * The body is deliberately narrow: `name`, `isPostingAllowed`, `parentAccountCode` and an optional
+ * `changeReason`. Class, subtype and control-role are **not** editable — reclassifying an account
+ * that already has postings changes how prior years roll up, which is a domain decision, not a form.
+ * The service applies the change as a new effective-dated `AccountVersion`, so posted journals keep
+ * the name they were posted under. An empty-string `parentAccountCode` detaches the account.
+ */
+export function updateAccount(id: string, body: UpdateAccountBody): Promise<Account> {
+  return apiClient<Account>(`/accounts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * `POST /accounts/import` — bulk upsert of the chart of accounts, keyed by code.
+ *
+ * The body is `{ accounts: CreateAccountBody[] }`, each row the same shape `POST /accounts`
+ * takes. The service upserts: a code it has not seen is created; a code it has is left
+ * untouched unless the name differs, in which case a new version is added. It never throws for
+ * a bad row — it collects the failure into `errors[]` and carries on, so the response reports
+ * created / updated / skipped counts and a per-row error list. Parents are created before their
+ * children, so an import that lists both in one go resolves `parentCode` correctly.
+ */
+export function importChartOfAccounts(
+  accounts: CreateAccountBody[],
+): Promise<ImportChartResult> {
+  return apiClient<ImportChartResult>('/accounts/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accounts }),
+  });
 }
 
 // ─── Opening balance migration ───────────────────────────────────────────────────

@@ -755,8 +755,15 @@ export interface ApproveExceptionPayload {
 
 // ─── Supplier payments (AP) ──────────────────────────────────────────────────────
 
-/** `PaymentDocStatus` in `schema.prisma`. Shorter than a bill's — there is no SUBMITTED step. */
-export type PaymentDocumentStatus = 'DRAFT' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+/**
+ * `PaymentDocStatus` in `schema.prisma`. Shorter than a bill's — there is no SUBMITTED step.
+ *
+ * `RELEASED` sits between APPROVED and POSTED and applies only under bank-signatory dual control
+ * (ADR-022 CONST-DOA-005): a payment drawn on an account with active signatories must be signed
+ * by two of them, which flips it APPROVED → RELEASED, before it can post. An account with no
+ * signatories skips the step and posts straight from APPROVED.
+ */
+export type PaymentDocumentStatus = 'DRAFT' | 'APPROVED' | 'RELEASED' | 'REJECTED' | 'CANCELLED';
 
 /**
  * `GET /payments` and `GET /payments/:id`.

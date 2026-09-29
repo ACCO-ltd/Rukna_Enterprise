@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -7,6 +7,7 @@ import { CurrentUser } from '../../../../common/decorators/current-user.decorato
 import type { RequestIdentity } from '@erp/types';
 import { AccountService } from '../application/account.service.js';
 import { CreateAccountDto } from './dto/create-account.dto.js';
+import { UpdateAccountDto } from './dto/update-account.dto.js';
 import { ImportCoaDto } from './dto/import-coa.dto.js';
 
 @ApiTags('Chart of Accounts')
@@ -41,6 +42,22 @@ export class AccountController {
   @ApiOperation({ summary: 'Look up GL account by code' })
   findByCode(@CurrentUser() identity: RequestIdentity, @Param('code') code: string) {
     return this.accountService.findByCode(identity, code);
+  }
+
+  @Patch(':id')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Edit a GL account (rename / re-parent / toggle posting-allowed)',
+    description:
+      'Applies the change as a new effective-dated AccountVersion. Class, subtype and control-role ' +
+      'are not editable here (reclassifying a posted account is a domain decision).',
+  })
+  update(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: UpdateAccountDto,
+  ) {
+    return this.accountService.update(identity, id, dto);
   }
 
   @Post('import')

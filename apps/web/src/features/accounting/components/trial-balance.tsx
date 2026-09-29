@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -20,7 +21,10 @@ import {
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useTrialBalance } from '../hooks/use-accounting';
+import { exportCsv, reportFilename } from '../lib/export-csv';
+import { ledgerHref } from '../lib/report-links';
 import type { TrialBalanceLine } from '../types';
+import { ReportActions } from './report-actions';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -31,6 +35,7 @@ export function TrialBalanceReport() {
   const tCommon = useTranslations('accounting.common');
   const tShared = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
+  const router = useRouter();
 
   const [asOfDate, setAsOfDate] = useState(today);
   const [includeZero, setIncludeZero] = useState(false);
@@ -38,24 +43,56 @@ export function TrialBalanceReport() {
 
   const report = useTrialBalance(asOfDate, includeZero);
 
+  const handleExport = () => {
+    if (!report.data) return;
+    const rows = report.data.lines.map((line) => [
+      line.accountCode,
+      line.accountName,
+      line.openingDebit,
+      line.openingCredit,
+      line.periodDebit,
+      line.periodCredit,
+      line.closingDebit,
+      line.closingCredit,
+    ]);
+    exportCsv(
+      reportFilename('trial-balance', asOfDate),
+      [
+        t('csvCode'),
+        t('csvName'),
+        t('colOpeningDebit'),
+        t('colOpeningCredit'),
+        t('colPeriodDebit'),
+        t('colPeriodCredit'),
+        t('colClosingDebit'),
+        t('colClosingCredit'),
+      ],
+      rows,
+    );
+  };
+
   return (
     <div className="space-y-6">
-      <FilterBar>
-        <FilterField id="tb-date" label={tCommon('asOfDate')}>
-          <DatePicker
-            id="tb-date"
-            value={asOfDate}
-            onChange={(value) => setAsOfDate(value)}
-          />
-        </FilterField>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <FilterBar>
+          <FilterField id="tb-date" label={tCommon('asOfDate')}>
+            <DatePicker
+              id="tb-date"
+              value={asOfDate}
+              onChange={(value) => setAsOfDate(value)}
+            />
+          </FilterField>
 
-        <CheckboxField
-          id={includeZeroId}
-          label={t('includeZero')}
-          checked={includeZero}
-          onChange={(e) => setIncludeZero(e.target.checked)}
-        />
-      </FilterBar>
+          <CheckboxField
+            id={includeZeroId}
+            label={t('includeZero')}
+            checked={includeZero}
+            onChange={(e) => setIncludeZero(e.target.checked)}
+          />
+        </FilterBar>
+
+        <ReportActions onExport={handleExport} exportDisabled={!report.data?.lines.length} />
+      </div>
 
       {report.isPending ? (
         <div role="status" aria-live="polite">
@@ -94,6 +131,7 @@ export function TrialBalanceReport() {
             })}
             {' · '}
             {t('snapshotNote')}
+            {report.data.lines.length > 0 ? ` · ${t('drillHint')}` : ''}
           </p>
 
           {report.data.lines.length === 0 ? (
@@ -120,7 +158,14 @@ export function TrialBalanceReport() {
 
                 <TableBody>
                   {report.data.lines.map((line) => (
-                    <TrialBalanceRow key={line.accountId} line={line} locale={locale} />
+                    <TrialBalanceRow
+                      key={line.accountId}
+                      line={line}
+                      locale={locale}
+                      asOfDate={asOfDate}
+                      onOpen={(href) => router.push(href)}
+                      openLabel={t('openLedger', { account: line.accountName })}
+                    />
                   ))}
 
                   <TableRow>
@@ -166,17 +211,41 @@ export function TrialBalanceReport() {
 function TrialBalanceRow({
   line,
   locale,
+  asOfDate,
+  onOpen,
+  openLabel,
 }: {
   line: TrialBalanceLine;
   locale: 'en' | 'ar';
+  asOfDate: string;
+  onOpen: (href: string) => void;
+  openLabel: string;
 }) {
+  // A trial-balance figure is cumulative to the as-of date, so its ledger runs from inception
+  // up to that date — `to = asOfDate`, `from` far enough back to include everything.
+  const href = ledgerHref(line.accountId, { to: asOfDate });
+
   return (
-    <TableRow>
+    <TableRow className="cursor-pointer hover:bg-surface-subtle" onClick={() => onOpen(href)}>
       <TableCell className="min-w-50">
-        <span className="font-mono text-xs text-muted-foreground tabular-nums">
-          {line.accountCode}
-        </span>
-        <span className="ms-2 text-sm text-foreground">{line.accountName}</span>
+        {/* The row's one real link — keyboard, screen reader and open-in-new-tab use it; the
+            row click mirrors it for the rest of the width. */}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(href);
+          }}
+          className="rounded-control text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          aria-label={openLabel}
+        >
+          <span className="font-mono text-xs text-brand-primary tabular-nums">
+            {line.accountCode}
+          </span>
+          <span className="ms-2 text-sm text-brand-primary underline-offset-2 hover:underline">
+            {line.accountName}
+          </span>
+        </button>
       </TableCell>
 
       {[

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -22,11 +23,13 @@ import { formatMoney } from '@/lib/format';
 
 import { currentVersion } from '../account-display';
 import { useAccounts, useBankAccounts, useFiscalYears, useRunReconciliation } from '../hooks/use-accounting';
+import { ledgerHref } from '../lib/report-links';
 import type { ControlAccountCheck } from '../types';
 
 export function BankReconciliation() {
   const t = useTranslations('accounting.reconciliation');
   const locale = useLocale() as 'en';
+  const router = useRouter();
 
   const accounts = useAccounts();
   const bankAccounts = useBankAccounts();
@@ -34,6 +37,15 @@ export function BankReconciliation() {
   const reconcile = useRunReconciliation();
 
   const [periodId, setPeriodId] = useState('');
+
+  // A variance row links to the offending control account's ledger. The reconciliation report
+  // names the account by code, but the ledger route keys on the account id, so the chart is the
+  // bridge: code → id.
+  const accountIdByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const account of accounts.data ?? []) map.set(account.code, account.id);
+    return map;
+  }, [accounts.data]);
 
   const arAccount = (accounts.data ?? []).find(
     (a) => a.status === 'ACTIVE' && currentVersion(a)?.accountSubtype === 'ACCOUNTS_RECEIVABLE',
@@ -182,7 +194,14 @@ export function BankReconciliation() {
               </TableHeader>
               <TableBody>
                 {report.checks.map((check) => (
-                  <CheckRow key={`${check.accountCode}-${check.subledgerType}`} check={check} locale={locale} />
+                  <CheckRow
+                    key={`${check.accountCode}-${check.subledgerType}`}
+                    check={check}
+                    locale={locale}
+                    accountId={accountIdByCode.get(check.accountCode)}
+                    onOpen={(href) => router.push(href)}
+                    openLabel={t('openLedger', { account: check.accountName })}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -205,15 +224,55 @@ function DetectedField({ label, code, name }: { label: string; code: string; nam
   );
 }
 
-function CheckRow({ check, locale }: { check: ControlAccountCheck; locale: 'en' }) {
+function CheckRow({
+  check,
+  locale,
+  accountId,
+  onOpen,
+  openLabel,
+}: {
+  check: ControlAccountCheck;
+  locale: 'en';
+  /** The control account's id, resolved from the chart by its code — undefined if not found. */
+  accountId: string | undefined;
+  onOpen: (href: string) => void;
+  openLabel: string;
+}) {
   const t = useTranslations('accounting.reconciliation');
   const variance = parseFloat(check.variance);
 
+  // The account cell links to the control account's ledger so a variance can be chased to the
+  // postings behind it. Scoped to the period when the report was, or cumulative to today
+  // otherwise. Only linked when the code resolves to an account in the chart.
+  const href = accountId ? ledgerHref(accountId) : null;
+
   return (
-    <TableRow>
+    <TableRow
+      className={href ? 'cursor-pointer hover:bg-surface-subtle' : undefined}
+      onClick={href ? () => onOpen(href) : undefined}
+    >
       <TableCell>
-        <span className="font-mono text-xs">{check.accountCode}</span>
-        <span className="ml-2 text-sm text-muted-foreground">{check.accountName}</span>
+        {href ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen(href);
+            }}
+            className="rounded-control text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+            aria-label={openLabel}
+          >
+            <span className="font-mono text-xs text-brand-primary">{check.accountCode}</span>
+            <span className="ml-2 text-sm text-brand-primary underline-offset-2 hover:underline">
+              {check.accountName}
+            </span>
+          </button>
+        ) : (
+          <>
+            <span className="font-mono text-xs">{check.accountCode}</span>
+            <span className="ml-2 text-sm text-muted-foreground">{check.accountName}</span>
+          </>
+        )}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
         {check.subledgerType === 'AR'

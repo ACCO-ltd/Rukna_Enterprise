@@ -15,6 +15,10 @@
     "amount": "Amount",
     "noResults": "Nothing to show for this selection."
   },
+  "reportActions": {
+    "exportCsv": "Export CSV",
+    "print": "Print"
+  },
   "accountClass": {
     "ASSET": "Asset",
     "LIABILITY": "Liability",
@@ -50,6 +54,25 @@
     "unrestricted": "Unrestricted",
     "versionNote": "Name, class and hierarchy come from the account's current version. An account's code and normal balance never change; everything else is versioned.",
     "noVersion": "No version on record",
+    "rowMenu": "Actions for account {code}",
+    "edit": {
+      "action": "Edit",
+      "title": "Edit {name}",
+      "submit": "Save changes",
+      "name": "Account name",
+      "codeFixed": "Code {code} and account class cannot be changed.",
+      "flagsLegend": "Behaviour",
+      "isPostingAllowed": "Allow posting to this account",
+      "isPostingAllowedHint": "Turn off for a heading account that only totals its children.",
+      "parent": "Parent account",
+      "parentNone": "None — top-level account",
+      "parentHint": "Where this account sits in the hierarchy. Choose None to detach it.",
+      "reason": "Reason for the change",
+      "reasonHint": "Kept on the account's history alongside the new version.",
+      "missing": {
+        "name": "Enter an account name."
+      }
+    },
     "create": {
       "new": "New Account",
       "title": "New GL account",
@@ -136,6 +159,34 @@
       "code": "Account code",
       "name": "Account name",
       "accountClass": "Class"
+    },
+    "import": {
+      "action": "Import",
+      "title": "Import chart of accounts",
+      "subtitle": "Bring in many accounts at once. Existing codes are updated when the name differs and left untouched otherwise, so re-running an import is safe.",
+      "pasteLabel": "Paste rows, or upload a CSV",
+      "pasteHint": "One account per line, comma-separated: code, name, class, subtype, normal balance, parent code. A header row is detected and skipped. Class is one of ASSET, LIABILITY, EQUITY, INCOME, COST_OF_SALES, EXPENSE. Normal balance is DEBIT or CREDIT — leave it blank to take the conventional side for the class. Parent code is optional.",
+      "placeholder": "10100,Salaam Bank,ASSET,CASH_AND_BANK,DEBIT,\n42600,Project Revenue,INCOME,PROJECT_REVENUE,CREDIT,",
+      "uploadLabel": "Upload CSV",
+      "submit": "Import accounts",
+      "importing": "Importing…",
+      "rowsParsed": "{count, plural, =0 {No rows to import} one {# account ready to import} other {# accounts ready to import}}",
+      "parseError": "Line {line}: {message}",
+      "parseProblem": {
+        "columns": "expected at least code, name, class and subtype",
+        "code": "missing account code",
+        "name": "missing account name",
+        "accountClass": "class must be one of ASSET, LIABILITY, EQUITY, INCOME, COST_OF_SALES, EXPENSE",
+        "accountSubtype": "missing account subtype",
+        "normalBalance": "normal balance must be DEBIT or CREDIT"
+      },
+      "nothingToImport": "Add at least one valid row before importing.",
+      "failed": "The import could not be completed. No accounts were changed.",
+      "resultTitle": "Import finished",
+      "resultSummary": "{created} created, {updated} updated, {skipped} unchanged.",
+      "resultErrors": "{count, plural, one {# row could not be imported} other {# rows could not be imported}}:",
+      "resultErrorRow": "{code}: {message}",
+      "done": "Close"
     }
   },
   "periods": {
@@ -253,14 +304,20 @@
       "loadFailed": "Could not load signatories.",
       "empty": "No signatories configured.",
       "emptyHint": "Adding a signatory enforces dual authorisation on every payment from this account.",
-      "colUser": "User ID",
+      "colUser": "User",
       "colAddedBy": "Added by",
       "colAddedAt": "Added",
+      "colActions": "Actions",
       "remove": "Remove",
       "removeFailed": "Could not remove signatory.",
       "addTitle": "Add signatory",
-      "userId": "User ID",
-      "userIdHint": "The user must belong to this organisation.",
+      "user": "User",
+      "userPlaceholder": "Choose a user",
+      "userSearch": "Search by name or email",
+      "userEmpty": "No user matches.",
+      "userHint": "Only users in this organisation can be signatories.",
+      "usersLoadFailed": "Could not load users.",
+      "everyoneAdded": "Every user in this organisation is already a signatory.",
       "add": "Add",
       "addFailed": "Could not add signatory.",
       "dualControlNote": "Once a signatory is added, every payment from this account requires two distinct signatories to authorise it."
@@ -299,7 +356,8 @@
     "statusVariance": "Variance",
     "typeAr": "Accounts receivable",
     "typeAp": "Accounts payable",
-    "typeBank": "Bank"
+    "typeBank": "Bank",
+    "openLedger": "Open the ledger for {account}"
   },
   "journals": {
     "title": "Journals",
@@ -432,7 +490,11 @@
     "balanced": "In balance",
     "notBalanced": "Out of balance",
     "notBalancedHint": "Closing debits of {debit} do not equal closing credits of {credit}. A trial balance that does not balance means the ledger has an entry that should not exist — this is not a rounding matter.",
-    "snapshotNote": "A closed period is read from its frozen snapshot rather than recomputed."
+    "snapshotNote": "A closed period is read from its frozen snapshot rather than recomputed.",
+    "openLedger": "Open the ledger for {account}",
+    "drillHint": "Select any account to open its ledger up to this date.",
+    "csvCode": "Account code",
+    "csvName": "Account name"
   },
   "profitLoss": {
     "title": "Profit & Loss",
@@ -450,7 +512,13 @@
     "closingExcludedNote": "Year-end closing entries are excluded, so a closed year still reports the income it earned.",
     "projectFilter": "Project",
     "allProjects": "All projects",
-    "grossMarginLabel": "Gross margin {percent}%"
+    "grossMarginLabel": "Gross margin {percent}%",
+    "openLedger": "Open the ledger for {account}",
+    "drillHint": "Select any line to open that account's ledger for this range.",
+    "csvSection": "Section",
+    "csvCode": "Account code",
+    "csvName": "Account name",
+    "csvAmount": "Amount"
   },
   "projectActualPl": {
     "title": "Project Actual P&L (GL)",
@@ -500,7 +568,14 @@
     "empty": "No account carries a balance at this date.",
     "emptyHint": "Nothing has been posted on or before this date.",
     "sectionEmpty": "No account in this section carries a balance.",
-    "currentYearEarningsNote": "Equity includes the current year’s earnings as a live profit and loss figure, which is why the sheet balances before the year is closed."
+    "currentYearEarningsNote": "Equity includes the current year’s earnings as a live profit and loss figure, which is why the sheet balances before the year is closed.",
+    "openLedger": "Open the ledger for {account}",
+    "drillHint": "Select any line to open that account's ledger up to this date.",
+    "csvSection": "Section",
+    "csvCode": "Account code",
+    "csvName": "Account name",
+    "csvBalance": "Balance",
+    "csvComparative": "Comparative"
   },
   "ledger": {
     "title": "Account Ledger",
@@ -522,7 +597,16 @@
     "colDebit": "Debit",
     "colCredit": "Credit",
     "colBalance": "Balance",
-    "postedOnlyNote": "Posted entries only. A draft or approved journal does not appear here until it is posted."
+    "postedOnlyNote": "Posted entries only. A draft or approved journal does not appear here until it is posted.",
+    "openJournal": "Open journal {journal}",
+    "drillHint": "Select any line to open the journal that posted it.",
+    "csvJournal": "Journal",
+    "csvDate": "Date",
+    "csvDescription": "Description",
+    "csvReference": "Reference",
+    "csvDebit": "Debit",
+    "csvCredit": "Credit",
+    "csvBalance": "Running balance"
   },
   "monthlyPL": {
     "title": "Monthly Comparison",
@@ -540,7 +624,8 @@
     "colExpenses": "Expenses",
     "colNetIncome": "Net Income",
     "total": "Year to date",
-    "empty": "Nothing was posted in any period of this year."
+    "empty": "Nothing was posted in any period of this year.",
+    "csvPeriod": "Period"
   },
   "periodActions": {
     "heading": "Period management",

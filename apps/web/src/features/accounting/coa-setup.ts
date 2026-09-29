@@ -1,4 +1,5 @@
-import type { AccountClass, ControlPostingPolicy, NormalBalance } from './types';
+import type { Account, AccountClass, ControlPostingPolicy, NormalBalance } from './types';
+import { currentVersion } from './account-display';
 
 /**
  * ─── Creating a GL account ──────────────────────────────────────────────────────
@@ -214,6 +215,257 @@ export interface CreateAccountBody {
   controlPostingPolicy: ControlPostingPolicy;
   parentAccountCode?: string;
   effectiveFrom: string;
+}
+
+// ─── Editing a GL account ───────────────────────────────────────────────────────
+//
+// `PATCH /accounts/:id` accepts only the safe fields — a rename, a re-parent, and turning
+// posting on or off — plus an optional `changeReason` kept on the record. Class, subtype and
+// the control-role are intentionally NOT editable: reclassifying an account that already has
+// postings changes how prior years roll up, which is a domain decision, not a form field.
+//
+// Every field is optional. The service applies whatever is sent as a new effective-dated
+// `AccountVersion`, so posted journals keep the name they were posted under.
+
+export interface UpdateAccountBody {
+  name?: string;
+  isPostingAllowed?: boolean;
+  /** Empty string detaches the account from its parent; a code re-parents it. */
+  parentAccountCode?: string;
+  changeReason?: string;
+}
+
+/** The fields the edit form binds to. Mirrors the editable slice of `AccountDraft`. */
+export interface EditAccountDraft {
+  name: string;
+  isPostingAllowed: boolean;
+  /** The parent's account code, or '' for a top-level account. */
+  parentAccountCode: string;
+  changeReason: string;
+}
+
+/**
+ * Pre-fills the edit form from an account's current version.
+ *
+ * The parent is stored on the version as `parentAccountId`, not a code, so the code is resolved
+ * against the chart the form already has. A parent that cannot be resolved (a deleted account,
+ * say) falls back to detached rather than silently binding to nothing.
+ */
+export function editAccountDraftFrom(
+  account: Account,
+  accounts: readonly Account[],
+): EditAccountDraft {
+  const version = currentVersion(account);
+  const parentCode = version?.parentAccountId
+    ? (accounts.find((a) => a.id === version.parentAccountId)?.code ?? '')
+    : '';
+
+  return {
+    name: version?.name ?? '',
+    isPostingAllowed: version?.isPostingAllowed ?? true,
+    parentAccountCode: parentCode,
+    changeReason: '',
+  };
+}
+
+/**
+ * Turns an edit draft into the PATCH body, sending only the fields that actually changed.
+ *
+ * A re-parent to "none" is a real change and must be sent as an empty string — the convention the
+ * server reads as "detach" — so the parent comparison is against the resolved original code, not
+ * against absence. `changeReason` is sent only when supplied, since the API runs
+ * `forbidNonWhitelisted` and an empty optional string is rejected rather than ignored.
+ *
+ * Returns `null` when nothing changed, so the caller can skip a no-op request.
+ */
+export function toUpdateAccountBody(
+  draft: EditAccountDraft,
+  original: EditAccountDraft,
+): UpdateAccountBody | null {
+  const body: UpdateAccountBody = {};
+
+  const name = draft.name.trim();
+  if (name && name !== original.name) body.name = name;
+  if (draft.isPostingAllowed !== original.isPostingAllowed) {
+    body.isPostingAllowed = draft.isPostingAllowed;
+  }
+
+  const parent = draft.parentAccountCode.trim();
+  if (parent !== original.parentAccountCode) body.parentAccountCode = parent;
+
+  const reason = draft.changeReason.trim();
+  if (reason) body.changeReason = reason;
+
+  // A lone `changeReason` with no substantive change is not worth a request.
+  const hasChange =
+    body.name !== undefined ||
+    body.isPostingAllowed !== undefined ||
+    body.parentAccountCode !== undefined;
+  if (!hasChange) return null;
+
+  return body;
+}
+
+/** Whether the draft leaves the account's name empty — the one thing the server will reject. */
+export function editAccountProblem(draft: EditAccountDraft): 'name' | null {
+  return draft.name.trim() ? null : 'name';
+}
+
+// ─── Bulk import ──────────────────────────────────────────────────────────────────
+
+/**
+ * What `POST /accounts/import` returns.
+ *
+ * The service upserts by code and never rejects the whole request for a bad row — it collects
+ * per-row failures into `errors` and reports what it did. `skipped` is a code that already
+ * existed with the same name (nothing to change).
+ */
+export interface ImportChartResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: { code: string; message: string }[];
+}
+
+export type ImportRowProblem =
+  | 'columns'
+  | 'code'
+  | 'name'
+  | 'accountClass'
+  | 'accountSubtype'
+  | 'normalBalance';
+
+export interface ImportRowError {
+  /** 1-based line number in the pasted text, for a message the user can act on. */
+  line: number;
+  problem: ImportRowProblem;
+}
+
+export interface ParsedImport {
+  rows: CreateAccountBody[];
+  errors: ImportRowError[];
+}
+
+/** Whether a header line was pasted (first cell reads "code"), so it can be skipped. */
+function looksLikeHeader(cells: string[]): boolean {
+  return cells[0]?.trim().toLowerCase() === 'code';
+}
+
+/**
+ * Splits one CSV line into cells, honouring double-quoted fields (which may contain commas)
+ * and escaped quotes (`""`). Enough for a pasted chart of accounts; not a full CSV engine.
+ */
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      cells.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
+/**
+ * Parses pasted rows (or an uploaded CSV's text) into import bodies plus per-line errors.
+ *
+ * Column order: `code, name, class, subtype, normalBalance, parentCode`. Normal balance may be
+ * left blank to take the conventional side for the class — a chart pasted from a spreadsheet
+ * often omits it. The account-level flags are not in the paste format: every imported account
+ * is created postable, non-control, `UNRESTRICTED`, which is what an ordinary GL account is —
+ * control accounts are provisioned by the platform, not imported. `effectiveFrom` defaults to
+ * today so a row need not carry a date.
+ *
+ * Blank lines are ignored; a header row (`code,…`) is detected and skipped. A malformed row is
+ * reported by line number and does not stop the rest from parsing, mirroring how the server
+ * treats a bad row on import.
+ */
+export function parseChartImport(text: string, today: string): ParsedImport {
+  const rows: CreateAccountBody[] = [];
+  const errors: ImportRowError[] = [];
+
+  const lines = text.split(/\r?\n/);
+
+  lines.forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line) return;
+
+    const cells = splitCsvLine(raw).map((c) => c.trim());
+    if (index === 0 && looksLikeHeader(cells)) return;
+
+    const lineNumber = index + 1;
+
+    if (cells.length < 4) {
+      errors.push({ line: lineNumber, problem: 'columns' });
+      return;
+    }
+
+    const [code, name, classRaw, subtypeRaw, balanceRaw, parentRaw] = cells;
+    const accountClass = classRaw?.toUpperCase() as AccountClass;
+
+    if (!code) {
+      errors.push({ line: lineNumber, problem: 'code' });
+      return;
+    }
+    if (!name) {
+      errors.push({ line: lineNumber, problem: 'name' });
+      return;
+    }
+    if (!classRaw || !ACCOUNT_CLASSES.includes(accountClass)) {
+      errors.push({ line: lineNumber, problem: 'accountClass' });
+      return;
+    }
+    if (!subtypeRaw) {
+      errors.push({ line: lineNumber, problem: 'accountSubtype' });
+      return;
+    }
+
+    const balance = balanceRaw?.toUpperCase();
+    let normalBalance: NormalBalance;
+    if (!balance) {
+      normalBalance = conventionalBalance(accountClass);
+    } else if (balance === 'DEBIT' || balance === 'CREDIT') {
+      normalBalance = balance;
+    } else {
+      errors.push({ line: lineNumber, problem: 'normalBalance' });
+      return;
+    }
+
+    rows.push({
+      code,
+      name,
+      accountClass,
+      accountSubtype: subtypeRaw.toUpperCase(),
+      normalBalance,
+      isPostingAllowed: true,
+      isControlAccount: false,
+      controlPostingPolicy: 'UNRESTRICTED',
+      effectiveFrom: today,
+      ...(parentRaw ? { parentAccountCode: parentRaw } : {}),
+    });
+  });
+
+  return { rows, errors };
 }
 
 /**

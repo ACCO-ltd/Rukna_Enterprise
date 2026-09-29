@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -16,7 +17,10 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
 import { useProfitLoss } from '../hooks/use-accounting';
-import type { ProfitLossSection } from '../types';
+import { exportCsv, reportFilename } from '../lib/export-csv';
+import { ledgerHref } from '../lib/report-links';
+import type { ProfitLoss, ProfitLossSection } from '../types';
+import { ReportActions } from './report-actions';
 
 /** First and last day of the current month — the range a P&L is asked for most often. */
 function currentMonth(): { from: string; to: string } {
@@ -32,6 +36,7 @@ export function ProfitLossReport() {
   const tCommon = useTranslations('accounting.common');
   const tShared = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
+  const router = useRouter();
 
   const [range, setRange] = useState(currentMonth);
 
@@ -41,18 +46,36 @@ export function ProfitLossReport() {
   const revenueMinor = toMinorUnits(report.data?.revenue.total, MONEY_SCALE);
   const grossMinor = toMinorUnits(report.data?.grossProfit, MONEY_SCALE);
 
+  const hasLines =
+    (report.data?.revenue.lines.length ?? 0) +
+      (report.data?.costOfSales.lines.length ?? 0) +
+      (report.data?.expenses.lines.length ?? 0) >
+    0;
+
+  // A drill-down opens the account's ledger for exactly the P&L's own range.
+  const drill = (accountId: string) => router.push(ledgerHref(accountId, range));
+
+  const handleExport = () => {
+    if (!report.data) return;
+    exportProfitLoss(report.data, range, t);
+  };
+
   return (
     <div className="space-y-6">
-      <FilterBar>
-        <FilterField id="pl-range" label={tCommon('dateRange')}>
-          <DateRangePicker
-            id="pl-range"
-            fromValue={range.from}
-            toValue={range.to}
-            onChange={(next) => setRange(next)}
-          />
-        </FilterField>
-      </FilterBar>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <FilterBar>
+          <FilterField id="pl-range" label={tCommon('dateRange')}>
+            <DateRangePicker
+              id="pl-range"
+              fromValue={range.from}
+              toValue={range.to}
+              onChange={(next) => setRange(next)}
+            />
+          </FilterField>
+        </FilterBar>
+
+        <ReportActions onExport={handleExport} exportDisabled={!hasLines} />
+      </div>
 
       {report.isPending ? (
         <div role="status" aria-live="polite">
@@ -72,13 +95,12 @@ export function ProfitLossReport() {
             })}
             {' · '}
             {t('closingExcludedNote')}
+            {hasLines ? ` · ${t('drillHint')}` : ''}
           </p>
 
           {/* An empty P&L and a P&L of zero are different facts, and the distinguishing
               signal is whether any section carries a line at all. */}
-          {report.data.revenue.lines.length === 0 &&
-          report.data.costOfSales.lines.length === 0 &&
-          report.data.expenses.lines.length === 0 ? (
+          {!hasLines ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
@@ -87,11 +109,17 @@ export function ProfitLossReport() {
             </div>
           ) : (
             <div className="space-y-4">
-              <Section section={report.data.revenue} label={t('revenue')} locale={locale} />
+              <Section
+                section={report.data.revenue}
+                label={t('revenue')}
+                locale={locale}
+                onDrill={drill}
+              />
               <Section
                 section={report.data.costOfSales}
                 label={t('costOfSales')}
                 locale={locale}
+                onDrill={drill}
               />
 
               <Subtotal
@@ -109,7 +137,12 @@ export function ProfitLossReport() {
                 }
               />
 
-              <Section section={report.data.expenses} label={t('expenses')} locale={locale} />
+              <Section
+                section={report.data.expenses}
+                label={t('expenses')}
+                locale={locale}
+                onDrill={drill}
+              />
 
               {/* A loss is named a loss. Rendering "Net Income −40,000" makes the reader do
                   the sign in their head, and that is the line they are looking for. */}
@@ -132,10 +165,16 @@ export function Section({
   section,
   label,
   locale,
+  onDrill,
 }: {
   section: ProfitLossSection;
   label: string;
   locale: 'en' | 'ar';
+  /**
+   * When set, each line becomes a drill-down into that account's ledger. Left undefined by the
+   * project P&L, which has no standalone ledger to open — the lines stay plain there.
+   */
+  onDrill?: (accountId: string) => void;
 }) {
   const t = useTranslations('accounting.profitLoss');
 
@@ -152,22 +191,56 @@ export function Section({
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('sectionEmpty')}</p>
       ) : (
         <ul className="divide-y divide-border">
-          {section.lines.map((line) => (
-            <li
-              key={line.accountId}
-              className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
-            >
-              <div className="min-w-0">
-                <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                  {line.accountCode}
+          {section.lines.map((line) =>
+            onDrill ? (
+              <li
+                key={line.accountId}
+                className="cursor-pointer px-4 py-2.5 hover:bg-surface-subtle"
+                onClick={() => onDrill(line.accountId)}
+              >
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDrill(line.accountId);
+                      }}
+                      className="rounded-control text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                      aria-label={t('openLedger', { account: line.accountName })}
+                    >
+                      <span className="font-mono text-xs text-brand-primary tabular-nums">
+                        {line.accountCode}
+                      </span>
+                      <span className="ms-2 text-sm text-brand-primary underline-offset-2 hover:underline">
+                        {line.accountName}
+                      </span>
+                    </button>
+                  </div>
+                  <span className="text-sm text-foreground">
+                    <bdi className="tabular-nums">
+                      {formatMoney(line.amount, undefined, locale)}
+                    </bdi>
+                  </span>
+                </div>
+              </li>
+            ) : (
+              <li
+                key={line.accountId}
+                className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+              >
+                <div className="min-w-0">
+                  <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                    {line.accountCode}
+                  </span>
+                  <span className="ms-2 text-sm text-foreground">{line.accountName}</span>
+                </div>
+                <span className="text-sm text-foreground">
+                  <bdi className="tabular-nums">{formatMoney(line.amount, undefined, locale)}</bdi>
                 </span>
-                <span className="ms-2 text-sm text-foreground">{line.accountName}</span>
-              </div>
-              <span className="text-sm text-foreground">
-                <bdi className="tabular-nums">{formatMoney(line.amount, undefined, locale)}</bdi>
-              </span>
-            </li>
-          ))}
+              </li>
+            ),
+          )}
         </ul>
       )}
     </Card>
@@ -220,5 +293,30 @@ export function Subtotal({
         <bdi className="tabular-nums">{formatMoney(amount, undefined, locale)}</bdi>
       </p>
     </div>
+  );
+}
+
+/** Serialises the three sections into one CSV, tagged by section, plus the P&L subtotals. */
+function exportProfitLoss(
+  data: ProfitLoss,
+  range: { from: string; to: string },
+  t: ReturnType<typeof useTranslations<'accounting.profitLoss'>>,
+): void {
+  const sectionRows = (label: string, section: ProfitLossSection) =>
+    section.lines.map((line) => [label, line.accountCode, line.accountName, line.amount]);
+
+  const rows: (string | number)[][] = [
+    ...sectionRows(t('revenue'), data.revenue),
+    ...sectionRows(t('costOfSales'), data.costOfSales),
+    // Subtotals carry no account code; the section column names them.
+    [t('grossProfit'), '', '', data.grossProfit],
+    ...sectionRows(t('expenses'), data.expenses),
+    [t('netIncome'), '', '', data.netIncome],
+  ];
+
+  exportCsv(
+    reportFilename('profit-and-loss', range.from, range.to),
+    [t('csvSection'), t('csvCode'), t('csvName'), t('csvAmount')],
+    rows,
   );
 }

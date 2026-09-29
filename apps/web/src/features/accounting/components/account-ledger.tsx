@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -21,6 +22,8 @@ import { formatDate, formatMoney } from '@/lib/format';
 
 import { accountLabel, postableAccounts } from '../account-display';
 import { useAccountLedger, useAccounts } from '../hooks/use-accounting';
+import { exportCsv, reportFilename } from '../lib/export-csv';
+import { ReportActions } from './report-actions';
 
 /** The current month — the range a ledger is read for most often. */
 function currentMonth(): { from: string; to: string } {
@@ -36,10 +39,21 @@ export function AccountLedgerReport() {
   const tCommon = useTranslations('accounting.common');
   const tShared = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
+  const router = useRouter();
 
   const accounts = useAccounts();
-  const [accountId, setAccountId] = useState('');
-  const [range, setRange] = useState(currentMonth);
+
+  // The reports (Trial Balance, Balance Sheet, P&L) link in here already scoped to an account
+  // and — where the report has one — a date range: `?accountId=…&from=…&to=…`. Reading them as
+  // the initial state lets the drill-down land on a prefilled ledger rather than an empty
+  // picker. After first render the user owns the state; the params are the starting point only.
+  const searchParams = useSearchParams();
+  const [accountId, setAccountId] = useState(() => searchParams.get('accountId') ?? '');
+  const [range, setRange] = useState(() => {
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    return from && to ? { from, to } : currentMonth();
+  });
 
   const ledger = useAccountLedger(accountId, range.from, range.to);
 
@@ -47,33 +61,63 @@ export function AccountLedgerReport() {
   // guarantee an empty report and leave the reader wondering which of the two things is wrong.
   const selectable = useMemo(() => postableAccounts(accounts.data ?? []), [accounts.data]);
 
+  const handleExport = () => {
+    if (!ledger.data) return;
+    const rows = ledger.data.lines.map((line) => [
+      line.journalNumber,
+      line.accountingDate.slice(0, 10),
+      line.description,
+      line.reference ?? '',
+      line.debitAmount,
+      line.creditAmount,
+      line.runningBalance,
+    ]);
+    exportCsv(
+      reportFilename('account-ledger', ledger.data.accountCode, range.from, range.to),
+      [
+        t('csvJournal'),
+        t('csvDate'),
+        t('csvDescription'),
+        t('csvReference'),
+        t('csvDebit'),
+        t('csvCredit'),
+        t('csvBalance'),
+      ],
+      rows,
+    );
+  };
+
   return (
     <div className="space-y-6">
-      <FilterBar>
-        <FilterField id="ledger-account" label={t('accountLabel')} grow>
-          <Select
-            id="ledger-account"
-            value={accountId}
-            onChange={(value) => setAccountId(value)}
-          >
-            <option value="">{t('selectAccount')}</option>
-            {selectable.map((account) => (
-              <option key={account.id} value={account.id}>
-                {accountLabel(account, locale)}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <FilterBar>
+          <FilterField id="ledger-account" label={t('accountLabel')} grow>
+            <Select
+              id="ledger-account"
+              value={accountId}
+              onChange={(value) => setAccountId(value)}
+            >
+              <option value="">{t('selectAccount')}</option>
+              {selectable.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {accountLabel(account, locale)}
+                </option>
+              ))}
+            </Select>
+          </FilterField>
 
-        <FilterField id="ledger-range" label={tCommon('dateRange')}>
-          <DateRangePicker
-            id="ledger-range"
-            fromValue={range.from}
-            toValue={range.to}
-            onChange={(next) => setRange(next)}
-          />
-        </FilterField>
-      </FilterBar>
+          <FilterField id="ledger-range" label={tCommon('dateRange')}>
+            <DateRangePicker
+              id="ledger-range"
+              fromValue={range.from}
+              toValue={range.to}
+              onChange={(next) => setRange(next)}
+            />
+          </FilterField>
+        </FilterBar>
+
+        <ReportActions onExport={handleExport} exportDisabled={!ledger.data} />
+      </div>
 
       {!accountId ? (
         <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
@@ -112,7 +156,10 @@ export function AccountLedgerReport() {
             </dl>
           </section>
 
-          <p className="text-xs text-muted-foreground">{t('postedOnlyNote')}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('postedOnlyNote')}
+            {ledger.data.lines.length > 0 ? ` · ${t('drillHint')}` : ''}
+          </p>
 
           {ledger.data.lines.length === 0 ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
@@ -136,43 +183,64 @@ export function AccountLedgerReport() {
                 </TableHeader>
 
                 <TableBody>
-                  {ledger.data.lines.map((line) => (
-                    <TableRow key={`${line.journalEntryId}-${line.accountingDate}`}>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {formatDate(line.accountingDate, locale)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {line.journalNumber}
-                        </span>
-                      </TableCell>
-                      <TableCell className="min-w-50 max-w-80">
-                        <span className="line-clamp-2 text-sm text-foreground">
-                          {line.description}
-                        </span>
-                      </TableCell>
-                      <TableCell numeric>
-                        <bdi className="tabular-nums">
-                          {formatMoney(line.debitAmount, undefined, locale)}
-                        </bdi>
-                      </TableCell>
-                      <TableCell numeric>
-                        <bdi className="tabular-nums">
-                          {formatMoney(line.creditAmount, undefined, locale)}
-                        </bdi>
-                      </TableCell>
-                      {/* The running balance is server-computed and carried forward from the
-                          opening balance. Recomputing it here would be a second opinion on a
-                          figure the ledger already owns. */}
-                      <TableCell numeric>
-                        <bdi className="text-sm font-medium tabular-nums">
-                          {formatMoney(line.runningBalance, undefined, locale)}
-                        </bdi>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {ledger.data.lines.map((line) => {
+                    // Each line drills to the journal that posted it. The ledger always carries a
+                    // `journalEntryId` (these are posted entries), so every row is navigable — to
+                    // the journal detail, the surface that resolves the source document behind it.
+                    const href = `/finance/accounting/journals/${line.journalEntryId}`;
+                    return (
+                      <TableRow
+                        key={`${line.journalEntryId}-${line.accountingDate}`}
+                        className="cursor-pointer hover:bg-surface-subtle"
+                        onClick={() => router.push(href)}
+                      >
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {formatDate(line.accountingDate, locale)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {/* The row's one real link — what a keyboard tabs to, a screen reader
+                              announces, and open-in-new-tab acts on. The row click above mirrors
+                              it for the rest of the row's width. */}
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              router.push(href);
+                            }}
+                            className="rounded-control font-mono text-xs font-medium text-brand-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                            aria-label={t('openJournal', { journal: line.journalNumber })}
+                          >
+                            {line.journalNumber}
+                          </button>
+                        </TableCell>
+                        <TableCell className="min-w-50 max-w-80">
+                          <span className="line-clamp-2 text-sm text-foreground">
+                            {line.description}
+                          </span>
+                        </TableCell>
+                        <TableCell numeric>
+                          <bdi className="tabular-nums">
+                            {formatMoney(line.debitAmount, undefined, locale)}
+                          </bdi>
+                        </TableCell>
+                        <TableCell numeric>
+                          <bdi className="tabular-nums">
+                            {formatMoney(line.creditAmount, undefined, locale)}
+                          </bdi>
+                        </TableCell>
+                        {/* The running balance is server-computed and carried forward from the
+                            opening balance. Recomputing it here would be a second opinion on a
+                            figure the ledger already owns. */}
+                        <TableCell numeric>
+                          <bdi className="text-sm font-medium tabular-nums">
+                            {formatMoney(line.runningBalance, undefined, locale)}
+                          </bdi>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableScroll>

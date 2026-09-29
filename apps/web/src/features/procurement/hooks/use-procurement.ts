@@ -25,6 +25,7 @@ import {
   approveMaterialRequest,
   approveSupplierBill,
   approveSupplierPayment,
+  releaseSupplierPayment,
   approvePurchaseOrder,
   cancelGoodsReceipt,
   cancelMaterialRequest,
@@ -776,6 +777,16 @@ export function useCreateSupplierPayment() {
 
 export function useApproveSupplierPayment() {
   return usePaymentMutation((id: string) => approveSupplierPayment(id));
+}
+
+/**
+ * Signing a release moves the payment's `documentStatus` (to RELEASED on the second signature)
+ * and gates whether Post is available, so it invalidates exactly what the other payment
+ * mutations do — the payment, the list, and the bills. A 403 (not a signatory / SoD) or 409
+ * (already signed) leaves the payment untouched; the caller surfaces the message.
+ */
+export function useReleaseSupplierPayment() {
+  return usePaymentMutation((id: string) => releaseSupplierPayment(id));
 }
 
 export function usePostSupplierPayment() {

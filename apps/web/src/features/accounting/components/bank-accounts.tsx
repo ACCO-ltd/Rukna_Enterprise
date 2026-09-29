@@ -19,6 +19,8 @@ import {
   Badge,
   Button,
   CheckboxField,
+  Combobox,
+  type ComboboxOption,
   FormField,
   Input,
   Select,
@@ -43,6 +45,7 @@ import {
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { useUsers } from '@/features/users/hooks/use-users';
 import { ApiError } from '@/lib/api-client';
 import { statusTone } from '@/lib/status-registry';
 import { formatDate } from '@/lib/format';
@@ -64,7 +67,7 @@ import {
   useRemoveSignatory,
   useSignatories,
 } from '../hooks/use-accounting';
-import type { BankAccount, BankAccountSignatory } from '../types';
+import type { BankAccount } from '../types';
 
 export function BankAccounts() {
   const t = useTranslations('accounting.bankAccounts');
@@ -208,6 +211,12 @@ export function BankAccounts() {
 
 // ─── Signatories ─────────────────────────────────────────────────────────────────
 
+/** `firstName lastName`, falling back to the email when the name is blank. */
+function signatoryUserLabel(user: { firstName: string; lastName: string; email: string }): string {
+  const full = `${user.firstName} ${user.lastName}`.trim();
+  return full || user.email;
+}
+
 function SignatoriesPanel({ bank }: { bank: BankAccount }) {
   const t = useTranslations('accounting.bankAccounts.signatories');
   const locale = useLocale() as 'en';
@@ -215,16 +224,37 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
   const query = useSignatories(bank.id);
   const add = useAddSignatory(bank.id);
   const remove = useRemoveSignatory(bank.id);
+  // Reuses the admin Users hook (`GET /users`) rather than a second users source — the same one
+  // the project-member picker consumes.
+  const users = useUsers();
 
   const [userId, setUserId] = useState('');
+
+  const signatories = (query.data ?? []).filter((s) => s.isActive);
+
+  // Resolve a signatory's id to a readable name for the table. A user missing from the list (a
+  // deactivated account, say) falls back to the id so the row is never blank.
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const user of users.data ?? []) map.set(user.id, signatoryUserLabel(user));
+    return map;
+  }, [users.data]);
+
+  // The picker offers every org user who is not already an active signatory of this account —
+  // adding one who is answers an error, so they are filtered out rather than offered and refused.
+  const options = useMemo<ComboboxOption[]>(() => {
+    const taken = new Set(signatories.map((s) => s.userId));
+    return (users.data ?? [])
+      .filter((user) => !taken.has(user.id))
+      .map((user) => ({ value: user.id, label: signatoryUserLabel(user), hint: user.email }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [users.data, signatories]);
 
   function handleAdd() {
     const trimmed = userId.trim();
     if (!trimmed) return;
     add.mutate(trimmed, { onSuccess: () => setUserId('') });
   }
-
-  const signatories = (query.data ?? []).filter((s) => s.isActive);
 
   return (
     <div className="space-y-6">
@@ -250,25 +280,30 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {signatories.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-mono text-xs">{s.userId}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(s.addedAt, locale)}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={remove.isPending}
-                      onClick={() => remove.mutate(s.userId)}
-                    >
-                      {t('remove')}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {signatories.map((s) => {
+                const name = nameById.get(s.userId);
+                return (
+                  <TableRow key={s.id}>
+                    <TableCell className="text-sm text-foreground">
+                      {name ?? <span className="font-mono text-xs text-muted-foreground">{s.userId}</span>}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(s.addedAt, locale)}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={remove.isPending}
+                        onClick={() => remove.mutate(s.userId)}
+                      >
+                        {t('remove')}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableScroll>
@@ -280,16 +315,26 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
 
       <div className="space-y-3 rounded-panel border border-border p-4">
         <p className="text-sm font-medium text-foreground">{t('addTitle')}</p>
-        <FormField htmlFor="sig-user-id" label={t('userId')}>
-          <Input
-            id="sig-user-id"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder="cuid…"
-            autoComplete="off"
-          />
-          <p className="text-xs text-muted-foreground">{t('userIdHint')}</p>
-        </FormField>
+        {users.isError ? (
+          <Alert variant="error" messages={[t('usersLoadFailed')]} />
+        ) : !users.isPending && options.length === 0 ? (
+          <Alert variant="info" messages={[t('everyoneAdded')]} />
+        ) : (
+          <FormField htmlFor="sig-user" label={t('user')}>
+            <Combobox
+              id="sig-user"
+              value={userId}
+              onChange={setUserId}
+              options={options}
+              placeholder={t('userPlaceholder')}
+              searchPlaceholder={t('userSearch')}
+              emptyLabel={t('userEmpty')}
+              loading={users.isPending}
+              disabled={users.isPending || add.isPending}
+            />
+            <p className="text-xs text-muted-foreground">{t('userHint')}</p>
+          </FormField>
+        )}
         {add.isError && (
           <Alert variant="error" messages={[add.error instanceof ApiError ? add.error.message : t('addFailed')]} />
         )}
@@ -297,7 +342,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
           <Button
             type="button"
             onClick={handleAdd}
-            disabled={!userId.trim() || add.isPending}
+            disabled={!userId.trim() || add.isPending || users.isPending || users.isError}
           >
             {t('add')}
           </Button>
