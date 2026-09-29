@@ -3558,6 +3558,10 @@ model PeriodAccountBalance {
 
   accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id])
 
+  // One snapshot row per (period, account) — generateForPeriod deletes+recreates per period, so a
+  // concurrent/retried close or rebuild could otherwise double-insert, and SUM-based reports would
+  // double-count. The DB unique makes a double-insert fail loudly instead of silently corrupting.
+  @@unique([accountingPeriodId, accountId])
   @@index([organizationId, accountingPeriodId, accountId])
   @@index([accountingPeriodId, status])
   @@map("period_account_balances")

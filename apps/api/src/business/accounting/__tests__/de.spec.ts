@@ -205,3 +205,54 @@ it('DE-05: reversal produces a balanced journal with swapped Dr/Cr', async () =>
   const totalCr = entry!.lines.reduce((s, l) => s.plus(l.creditAmount as unknown as Decimal), new Decimal(0));
   expect(totalDr.eq(totalCr)).toBe(true);
 });
+
+// ─── DE-06 ────────────────────────────────────────────────────────────────────
+// Defense-in-depth: the posting engine INSERTs journal_entries already at status='POSTED', so the
+// historical BEFORE UPDATE balance trigger never fired for a real posting. The deferred constraint
+// trigger added in 20260929120000 enforces ∑Dr=∑Cr at COMMIT even when a caller bypasses the
+// in-process validator and writes the rows directly.
+it('DE-06: DB rejects an imbalanced POSTED journal inserted directly (bypassing the app validator)', async () => {
+  const revVer = await prisma.accountVersion.findFirst({
+    where: { accountId: env.accounts.revId }, orderBy: { effectiveFrom: 'desc' },
+  });
+  const expVer = await prisma.accountVersion.findFirst({
+    where: { accountId: env.accounts.expId }, orderBy: { effectiveFrom: 'desc' },
+  });
+
+  await expect(
+    prisma.journalEntry.create({
+      data: {
+        organizationId: env.orgId,
+        journalNumber: `JE-TRIG-${Date.now()}`,
+        accountingPeriodId: env.periods.openId,
+        journalCategory: 'GENERAL',
+        entryPurpose: 'NORMAL',
+        status: 'POSTED',
+        documentDate: env.periods.openStart,
+        accountingDate: env.periods.openStart,
+        postedAt: new Date(),
+        description: 'Direct imbalanced insert — must be rejected by the DB',
+        currencyCode: 'USD',
+        sourceDocumentType: 'MANUAL_JOURNAL',
+        sourceDocumentId: `de-06-${Date.now()}`,
+        accountingEventId: 'EVT-DE-006',
+        createdBy: env.identity.userId,
+        postedBy: env.identity.userId,
+        lines: {
+          create: [
+            {
+              lineNumber: 1, accountId: env.accounts.revId, accountVersionId: revVer!.id,
+              accountCodeSnapshot: 'REV-TEST', accountNameSnapshot: 'REV', accountVersionNumber: revVer!.versionNumber,
+              debitAmount: new Decimal('1000'), creditAmount: new Decimal(0), postingOrigin: 'MANUAL',
+            },
+            {
+              lineNumber: 2, accountId: env.accounts.expId, accountVersionId: expVer!.id,
+              accountCodeSnapshot: 'EXP-TEST', accountNameSnapshot: 'EXP', accountVersionNumber: expVer!.versionNumber,
+              debitAmount: new Decimal(0), creditAmount: new Decimal('999'), postingOrigin: 'MANUAL',
+            },
+          ],
+        },
+      },
+    }),
+  ).rejects.toThrow(/IMBALANCED_JOURNAL/);
+});

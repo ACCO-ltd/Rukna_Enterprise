@@ -72,9 +72,12 @@ export class SnapshotService {
           openingDebit = new Decimal(prev.closingDebit.toString());
           openingCredit = new Decimal(prev.closingCredit.toString());
         } else {
+          // Opening = everything strictly BEFORE the period start. Use an exclusive date comparison
+          // (accountingDate < startDate) rather than subtracting 1ms from a @db.Date — the ms trick
+          // is wall-clock arithmetic that can shift the boundary a day on a non-UTC server.
           const opening = await this.sumJournalLines(
             prisma, orgId, accountId,
-            undefined, new Date(period.startDate.getTime() - 1),
+            undefined, period.startDate, true,
           );
           openingDebit = opening.debit;
           openingCredit = opening.credit;
@@ -120,19 +123,26 @@ export class SnapshotService {
    * Mark snapshots for all periods AFTER the given period as INVALID.
    * Called when a period is reopened — the opening chain is broken.
    */
-  async invalidateDownstream(orgId: string, reopenedPeriodId: string): Promise<number> {
-    const prisma = this.tenancyService.getClient();
+  async invalidateDownstream(
+    orgId: string,
+    reopenedPeriodId: string,
+    client?: TenantPrisma,
+  ): Promise<number> {
+    const prisma = client ?? this.tenancyService.getClient();
 
     const period = await prisma.accountingPeriod.findFirst({
       where: { id: reopenedPeriodId, organizationId: orgId },
     });
     if (!period) return 0;
 
+    // Every period that starts AFTER the reopened one — across ALL fiscal years, not just this one.
+    // A reopened prior-year period feeds later years' opening balances (year-end retained-earnings
+    // roll + period-1 opening chains), so their frozen snapshots are no longer trustworthy either.
+    // The old fiscalYear-scoped filter left next year's snapshots VALID and silently stale.
     const laterPeriods = await prisma.accountingPeriod.findMany({
       where: {
         organizationId: orgId,
-        fiscalYearId: period.fiscalYearId,
-        periodNumber: { gt: period.periodNumber },
+        startDate: { gt: period.startDate },
       },
       select: { id: true },
     });
@@ -150,7 +160,8 @@ export class SnapshotService {
 
   /**
    * Rebuild snapshots sequentially from startPeriodId through all later
-   * CLOSED periods in the same fiscal year.
+   * CLOSED periods — chronologically, across fiscal-year boundaries, so a rebuild after a
+   * prior-year reopen actually restores the downstream chain in later years too.
    */
   async rebuildFromPeriod(
     orgId: string,
@@ -167,11 +178,10 @@ export class SnapshotService {
     const periodsToRebuild = await prisma.accountingPeriod.findMany({
       where: {
         organizationId: orgId,
-        fiscalYearId: startPeriod.fiscalYearId,
-        periodNumber: { gte: startPeriod.periodNumber },
+        startDate: { gte: startPeriod.startDate },
         status: { in: ['CLOSED'] },
       },
-      orderBy: { periodNumber: 'asc' },
+      orderBy: { startDate: 'asc' },
     });
 
     const results: SnapshotSummary[] = [];
@@ -220,6 +230,7 @@ export class SnapshotService {
     accountId: string,
     fromDate: Date | undefined,
     toDate: Date,
+    toExclusive = false,
   ): Promise<{ debit: Decimal; credit: Decimal }> {
     const where: Record<string, unknown> = {
       accountId,
@@ -228,7 +239,7 @@ export class SnapshotService {
         status: 'POSTED',
         accountingDate: {
           ...(fromDate ? { gte: fromDate } : {}),
-          lte: toDate,
+          ...(toExclusive ? { lt: toDate } : { lte: toDate }),
         },
       },
     };

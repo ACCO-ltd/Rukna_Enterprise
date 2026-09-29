@@ -252,6 +252,45 @@ it('AL-05: reversed receipt cannot be subsequently allocated', async () => {
   ).rejects.toThrow(/posted|reversed|status/i);
 });
 
+// ─── AL-12 ────────────────────────────────────────────────────────────────────
+// A subsequent-allocation reversal (EVT-AR-006) must be dated on the SOURCE receipt's accounting
+// date, never new Date(). A `new Date()` mis-periods AR and would be rejected outright once the
+// current period is closed. Enforces feedback-accounting-date-rule.
+it('AL-12: reverseAllocation dates the EVT-AR-006 journal on the receipt accounting date, not today', async () => {
+  const invoice = await createAndPostInvoice(5000);
+  const receipt = await createApprovedReceipt(5000);
+
+  await svc.customerReceiptService.post(env.identity, {
+    receiptId:            receipt.id,
+    bankAccountCode:      env.accounts.bankCode,
+    arAccountCode:        env.accounts.arCode,
+    unappliedAccountCode: env.accounts.unaplCode,
+    allocations:          [],
+  });
+  await svc.customerReceiptService.allocate(env.identity, {
+    receiptId:            receipt.id,
+    clientInvoiceId:      invoice.id,
+    amount:               5000,
+    arAccountCode:        env.accounts.arCode,
+    unappliedAccountCode: env.accounts.unaplCode,
+  });
+
+  const alloc = await prisma.clientReceiptAllocation.findFirstOrThrow({
+    where: { paymentReceiptId: receipt.id, postingStatus: 'POSTED' },
+  });
+
+  await svc.customerReceiptService.reverseAllocation(env.identity, alloc.id, {
+    arAccountCode:        env.accounts.arCode,
+    unappliedAccountCode: env.accounts.unaplCode,
+  });
+
+  const reversal = await prisma.journalEntry.findFirstOrThrow({
+    where: { organizationId: env.orgId, accountingEventId: 'EVT-AR-006', sourceDocumentId: `alloc-reversal-${alloc.id}` },
+  });
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  expect(iso(reversal.accountingDate)).toBe(iso(env.periods.openStart));
+});
+
 // ─── AL-06 ────────────────────────────────────────────────────────────────────
 it('AL-06: posting an already-POSTED invoice is rejected', async () => {
   const inv = await prisma.clientInvoice.create({

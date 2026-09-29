@@ -448,18 +448,37 @@ export class SupplierPaymentService {
         supplierPaymentId: payment.id,
         supplierBillId: bill.id,
         allocatedAmount: amount,
-        allocationDate: new Date(),
+        // Dated on the source payment's accounting date (matches the EVT-AP-005 journal above),
+        // never `new Date()` — feedback-accounting-date-rule.
+        allocationDate: payment.accountingDate,
         journalEntryId: postResult.journalEntryId,
         postingStatus: 'POSTED',
         createdBy: userId,
       });
 
-      const newUnallocated = unallocated.minus(amount);
-      const newAllocated = new Decimal(payment.allocatedAmount.toString()).plus(amount);
-      await this.paymentRepo.updateAllocations(tx as never, payment.id, newAllocated, newUnallocated);
+      // Guarded atomic decrements so two concurrent allocations cannot over-draw the payment's
+      // unallocated balance or over-pay the same bill: the `gte` predicate + decrement run as one
+      // row-locked statement; an exhausted balance matches zero rows and rolls back the whole
+      // allocation (journal included). Replaces a read-then-blind-write lost-update.
+      const paymentUpd = await tx.supplierPayment.updateMany({
+        where: { id: payment.id, unallocatedAmount: { gte: amount } },
+        data: { unallocatedAmount: { decrement: amount }, allocatedAmount: { increment: amount } },
+      });
+      if (paymentUpd.count === 0) {
+        throw new ConflictException(
+          `Payment ${payment.id} unallocated balance changed concurrently — advance ${amount.toFixed(2)} no longer fits. Retry.`,
+        );
+      }
 
-      const newBillOutstanding = new Decimal(bill.outstandingAmount.toString()).minus(amount);
-      await this.billRepo.updateOutstandingAmount(tx as never, bill.id, newBillOutstanding);
+      const billUpd = await tx.supplierBill.updateMany({
+        where: { id: bill.id, outstandingAmount: { gte: amount } },
+        data: { outstandingAmount: { decrement: amount } },
+      });
+      if (billUpd.count === 0) {
+        throw new ConflictException(
+          `Bill ${bill.id} outstanding changed concurrently — advance ${amount.toFixed(2)} exceeds it now. Retry.`,
+        );
+      }
 
       return { ...postResult, allocationId: allocation.id };
     });
@@ -598,8 +617,11 @@ export class SupplierPaymentService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: new Date(),
-          documentDate: new Date(),
+          // Reversal mirrors the source allocation's period (payment.accountingDate), never today —
+          // a `new Date()` here mis-periods AP and is rejected outright if the current period is
+          // closed, stranding the reversal. Enforces feedback-accounting-date-rule.
+          accountingDate: payment.accountingDate,
+          documentDate: payment.paymentDate,
           description: `Advance Allocation Reversal — Allocation ${allocationId}`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-006',
@@ -628,10 +650,17 @@ export class SupplierPaymentService {
         tx as never,
       );
 
-      await tx.supplierPaymentAllocation.update({
-        where: { id: allocationId },
+      // Guard the flip on the pre-read status so a concurrent double-reverse cannot double-restore
+      // the payment/bill balances: only the transaction that actually flips POSTED→REVERSED runs the
+      // increments below. (The EVT-AP-006 journal's unique key also backstops this, but correctness
+      // must not depend on that ordering.)
+      const flipped = await tx.supplierPaymentAllocation.updateMany({
+        where: { id: allocationId, postingStatus: 'POSTED' },
         data: { postingStatus: 'REVERSED', reversalJournalEntryId: postResult.journalEntryId },
       });
+      if (flipped.count === 0) {
+        throw new ConflictException(`Allocation ${allocationId} was already reversed`);
+      }
 
       await tx.supplierPayment.update({
         where: { id: payment.id },

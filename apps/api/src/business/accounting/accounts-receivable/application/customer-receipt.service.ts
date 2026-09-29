@@ -304,23 +304,45 @@ export class CustomerReceiptService {
         tx as never,
       );
 
-      await this.receiptRepo.createAllocation(prisma, {
+      // All subledger side-effects run on `tx` (not the outer `prisma` client) so they commit or
+      // roll back with the GL journal above. Writing them on `prisma` left the allocation row,
+      // receipt balances, and invoice outstanding committed independently of a rolled-back journal
+      // — the same defect fixed for the receipt-post path in 4eb64e1. The allocation is dated on the
+      // source receipt's accountingDate (never `new Date()`), per the accounting-date rule.
+      await this.receiptRepo.createAllocation(tx as never, {
         organizationId: orgId,
         paymentReceiptId: receipt.id,
         clientInvoiceId: invoice.id,
         allocatedAmount: amount,
-        allocationDate: new Date(),
+        allocationDate: receipt.accountingDate,
         journalEntryId: postResult.journalEntryId,
         postingStatus: 'POSTED',
         createdBy: userId,
       });
 
-      const newUnallocated = unallocated.minus(amount);
-      const newAllocated = new Decimal(receipt.allocatedAmount.toString()).plus(amount);
-      await this.receiptRepo.updateAllocations(prisma, receipt.id, newAllocated, newUnallocated);
+      // Guarded atomic decrements: the `gte` predicate + decrement execute as one row-locked
+      // statement, so two concurrent allocations of the same receipt (or against the same invoice)
+      // cannot both draw down the same balance. Once a balance is exhausted the WHERE matches zero
+      // rows and we roll back. Replaces a read-then-blind-write that lost updates under concurrency.
+      const receiptUpd = await tx.paymentReceipt.updateMany({
+        where: { id: receipt.id, unallocatedAmount: { gte: amount } },
+        data: { unallocatedAmount: { decrement: amount }, allocatedAmount: { increment: amount } },
+      });
+      if (receiptUpd.count === 0) {
+        throw new ConflictException(
+          `Receipt ${receipt.id} unallocated balance changed concurrently — allocation ${amount.toFixed(2)} no longer fits. Retry.`,
+        );
+      }
 
-      const newOutstanding = new Decimal(invoice.outstandingAmount.toString()).minus(amount);
-      await this.invoiceRepo.updateOutstandingAmount(prisma, invoice.id, newOutstanding);
+      const invoiceUpd = await tx.clientInvoice.updateMany({
+        where: { id: invoice.id, outstandingAmount: { gte: amount } },
+        data: { outstandingAmount: { decrement: amount } },
+      });
+      if (invoiceUpd.count === 0) {
+        throw new ConflictException(
+          `Invoice ${invoice.id} outstanding changed concurrently — allocation ${amount.toFixed(2)} exceeds it now. Retry.`,
+        );
+      }
 
       return postResult;
     });
@@ -473,8 +495,11 @@ export class CustomerReceiptService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: new Date(),
-          documentDate: new Date(),
+          // Reversal mirrors the source allocation's period (receipt.accountingDate), never today's
+          // date — a `new Date()` here mis-periods AR and can be rejected outright when the current
+          // period is closed. Enforces feedback-accounting-date-rule.
+          accountingDate: receipt.accountingDate,
+          documentDate: receipt.receiptDate,
           description: `Allocation Reversal — Allocation ${allocationId}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-006',

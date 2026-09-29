@@ -364,12 +364,14 @@ export class CreditNoteService {
         },
       });
 
-      // Reduce invoice.outstandingAmount — the ONE correct AR impact of a posted credit note
+      // Reduce invoice.outstandingAmount — the ONE correct AR impact of a posted credit note.
+      // Pass the Decimal directly (never .toNumber(), which drops to IEEE-754 float and reintroduces
+      // the rounding drift the Decimal discipline exists to prevent on a 2-dp money column).
       await (tx as unknown as TenantPrisma).clientInvoice.update({
         where: { id: creditNote.invoiceId },
         data: {
           outstandingAmount: {
-            decrement: totalAmount.toNumber(),
+            decrement: totalAmount,
           },
         },
       });
