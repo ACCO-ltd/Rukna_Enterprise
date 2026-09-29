@@ -856,16 +856,19 @@
     },
     "timeline": {
       "action": "Timeline",
-      "heading": "Timeline",
-      "close": "Close timeline",
+      "heading": "BOQ history",
+      "subtitle": "Who changed this BOQ, and when",
+      "close": "Close history",
+      "closeAction": "Close",
       "empty": "Nothing has happened on this BOQ yet.",
-      "loadFailed": "Could not load the timeline.",
+      "loadFailed": "Could not load the history.",
+      "loading": "Loading history…",
+      "unknownActor": "Someone",
       "kind": {
         "COMMITTED": "Committed to contract",
         "VARIATION_SNAPSHOT": "Variation adopted",
         "CHANGE_EVENT": "Change"
-      },
-      "by": "by {name}"
+      }
     },
     "import": {
       "action": "Import from spreadsheet",

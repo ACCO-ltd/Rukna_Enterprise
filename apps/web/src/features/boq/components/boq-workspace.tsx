@@ -47,7 +47,7 @@ import { BoqContextBar } from './boq-context-bar';
 import { BoqGrid, type BoqRowCommands, type PendingLine } from './boq-grid';
 import { BoqImportView, type ImportOutcome } from './boq-import-view';
 import { BoqItemDialog, type ItemDialogTarget, type LibraryIntent } from './boq-item-dialog';
-import { BoqTimelineDrawer } from './boq-timeline-drawer';
+import { BoqHistoryDialog } from './boq-history-dialog';
 import { UnitsUnavailableNotice } from './boq-unit-select';
 import { BoqToolbar, type LineFilter } from './boq-toolbar';
 import type { BoqTreeNodeResponse } from '@erp/types';
@@ -463,7 +463,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       ) : null}
 
       {timelineOpen ? (
-        <BoqTimelineDrawer
+        <BoqHistoryDialog
           data={timelineQuery.data}
           currency={workspace.currency}
           canViewMargin={capabilities.canViewMargin}
