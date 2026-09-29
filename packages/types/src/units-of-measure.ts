@@ -1,6 +1,6 @@
 /**
- * `GET /units-of-measure` — the org's unit registry as a read-only lookup, for any signed-in
- * member of the organization (the BOQ unit picker, and anywhere else a unit is chosen).
+ * `GET /units-of-measure` — the org's unit registry as a read-only lookup, for anyone
+ * holding `view:project` (the BOQ unit picker, and anywhere else a unit is chosen).
  *
  * A projection, not the record: no id, no timestamps. Managing units stays on
  * `/procurement/uom` behind `manage:procurement-config`.

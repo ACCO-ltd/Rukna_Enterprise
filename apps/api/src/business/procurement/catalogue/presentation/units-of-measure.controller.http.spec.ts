@@ -18,7 +18,7 @@ import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../../../common/guards/permissions.guard.js';
 
 /**
- * `GET /units-of-measure` is readable by any signed-in member (the BOQ unit picker), while the
+ * `GET /units-of-measure` is readable with `view:project` (the BOQ unit picker), while the
  * registry's management routes on `/procurement/uom` keep `manage:procurement-config`. Stands in
  * for the JWT with an `x-perms` header and runs the real global PermissionsGuard. No database.
  */
@@ -72,13 +72,24 @@ describe('UnitsOfMeasureController — GET /units-of-measure', () => {
     await app.close();
   });
 
-  it('is readable with no permissions at all, and returns the projection', async () => {
-    const res = await request(app.getHttpServer()).get('/units-of-measure').expect(200);
+  const VIEW = PERMISSIONS.projectsView;
+
+  it('is readable with view:project alone, and returns the projection', async () => {
+    const res = await request(app.getHttpServer()).get('/units-of-measure').set('x-perms', VIEW).expect(200);
     expect(res.body).toEqual([{ code: 'M3', name: 'Cubic metre', symbol: 'm³' }]);
   });
 
+  it('refuses a caller without view:project', async () => {
+    await request(app.getHttpServer()).get('/units-of-measure').expect(403);
+    expect(listLookup).not.toHaveBeenCalled();
+  });
+
   it('defaults to ACTIVE and reads the caller’s own organization', async () => {
-    await request(app.getHttpServer()).get('/units-of-measure').set('x-org', 'org-acco').expect(200);
+    await request(app.getHttpServer())
+      .get('/units-of-measure')
+      .set('x-perms', VIEW)
+      .set('x-org', 'org-acco')
+      .expect(200);
     expect(listLookup).toHaveBeenCalledWith(
       expect.objectContaining({ activeOrganizationId: 'org-acco' }),
       'ACTIVE',
@@ -86,26 +97,28 @@ describe('UnitsOfMeasureController — GET /units-of-measure', () => {
   });
 
   it('passes status=INACTIVE through', async () => {
-    await request(app.getHttpServer()).get('/units-of-measure?status=INACTIVE').expect(200);
+    await request(app.getHttpServer()).get('/units-of-measure?status=INACTIVE').set('x-perms', VIEW).expect(200);
     expect(listLookup).toHaveBeenCalledWith(expect.anything(), 'INACTIVE');
   });
 
   it('rejects an unknown status with 400', async () => {
-    await request(app.getHttpServer()).get('/units-of-measure?status=DELETED').expect(400);
+    await request(app.getHttpServer()).get('/units-of-measure?status=DELETED').set('x-perms', VIEW).expect(400);
     expect(listLookup).not.toHaveBeenCalled();
   });
 
   it('exposes no write route', async () => {
     await request(app.getHttpServer())
       .post('/units-of-measure')
+      .set('x-perms', VIEW)
       .send({ code: 'X', name: 'X', symbol: 'x' })
       .expect(404);
   });
 
   it('leaves the management surface gated on manage:procurement-config', async () => {
-    await request(app.getHttpServer()).get('/procurement/uom').expect(403);
+    await request(app.getHttpServer()).get('/procurement/uom').set('x-perms', VIEW).expect(403);
     await request(app.getHttpServer())
       .post('/procurement/uom')
+      .set('x-perms', VIEW)
       .send({ code: 'X', name: 'X', symbol: 'x' })
       .expect(403);
     expect(create).not.toHaveBeenCalled();

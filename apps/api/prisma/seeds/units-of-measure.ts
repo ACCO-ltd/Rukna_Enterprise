@@ -31,6 +31,20 @@ export const STANDARD_UNITS_OF_MEASURE: readonly { code: string; name: string; s
   { code: 'ITEM', name: 'Item', symbol: 'item' },
 ];
 
+/**
+ * A symbol as a comparison key: trimmed, lower-cased, whitespace removed, and ASCII powers folded
+ * to superscripts, so `m3`, `M3`, `m^3` and `m³` are one unit (and the same for `2`). Without this
+ * a tenant that typed `m3` would get a second cubic metre beside it.
+ */
+export function normaliseUnitSymbol(symbol: string): string {
+  return symbol
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/\^?3$/, '³')
+    .replace(/\^?2$/, '²');
+}
+
 export interface UnitOfMeasureSeedResult {
   created: number;
   alreadyPresent: number;
@@ -46,20 +60,25 @@ export async function seedUnitsOfMeasure(
     select: { code: true, symbol: true },
   });
   const codes = new Set(existing.map((unit) => unit.code.trim().toLowerCase()));
-  const symbols = new Set(existing.map((unit) => unit.symbol.trim().toLowerCase()));
+  const symbols = new Set(existing.map((unit) => normaliseUnitSymbol(unit.symbol)));
 
   const missing = STANDARD_UNITS_OF_MEASURE.filter(
-    (unit) => !codes.has(unit.code.toLowerCase()) && !symbols.has(unit.symbol.toLowerCase()),
+    (unit) => !codes.has(unit.code.toLowerCase()) && !symbols.has(normaliseUnitSymbol(unit.symbol)),
   );
-  if (missing.length > 0) {
-    await prisma.unitOfMeasure.createMany({
-      data: missing.map((unit) => ({ ...unit, organizationId })),
-      skipDuplicates: true,
-    });
-  }
+  // The count Postgres reports, not the length of what was asked for: `skipDuplicates` drops a row
+  // that a concurrent run inserted between the read above and this write.
+  const created =
+    missing.length > 0
+      ? (
+          await prisma.unitOfMeasure.createMany({
+            data: missing.map((unit) => ({ ...unit, organizationId })),
+            skipDuplicates: true,
+          })
+        ).count
+      : 0;
 
   return {
-    created: missing.length,
-    alreadyPresent: STANDARD_UNITS_OF_MEASURE.length - missing.length,
+    created,
+    alreadyPresent: STANDARD_UNITS_OF_MEASURE.length - created,
   };
 }

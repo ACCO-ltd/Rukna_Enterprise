@@ -2060,13 +2060,13 @@ All MATERIAL procurement lines use a UoM from this table. `MATERIAL` lines are l
 | `POST` | `/procurement/uom` | Create a UoM |
 | `GET` | `/procurement/uom/:id` | Get single UoM |
 | `POST` | `/procurement/uom/:id/deactivate` | Deactivate |
-| `GET` | `/units-of-measure?status=ACTIVE` | Read-only lookup for pickers (any signed-in member) |
+| `GET` | `/units-of-measure?status=ACTIVE` | Read-only lookup for pickers (`view:project`) |
 
 The four `/procurement/uom` routes require `manage:procurement-config`.
 
 **`GET /units-of-measure`** (ADR-039) is the registry as a lookup for anyone in the organization
-who picks a unit — the BOQ unit column first. No permission beyond authentication; scoped to the
-caller's active organization. `status` is `ACTIVE` (default) or `INACTIVE`; anything else is
+who picks a unit — the BOQ unit column first. Requires `view:project` (like `GET /districts`;
+every BOQ-editing role holds it); scoped to the caller's active organization. `status` is `ACTIVE` (default) or `INACTIVE`; anything else is
 `400`. It returns the projection only, ordered by code — no ids, no timestamps — and has no write
 route:
 
@@ -2080,7 +2080,8 @@ route:
 Every tenant is seeded with the standard construction units — `M3` m³, `M2` m², `M` m, `KG` kg,
 `TON` t, `NR` nr, `ITEM` item — by `prisma/seeds/units-of-measure.ts`, run at provisioning and on
 every deploy by `migrate-deploy`. It is additive only: a unit is skipped when the organization
-already has its code or its symbol, and existing units are never edited or reactivated.
+already has its code or its symbol (symbols compared with `m3`/`m^3` = `m³` and `m2`/`m^2` = `m²`),
+and existing units are never edited or reactivated.
 
 **Create body:**
 ```json
