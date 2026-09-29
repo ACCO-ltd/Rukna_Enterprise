@@ -2723,6 +2723,76 @@ export interface AccountingReadinessResponse {
   checkedAt: string;
 }
 
+// ─── Guided finance flow ────────────────────────────────────────────────────────
+
+/**
+ * Per-step state on the Accounting "Get started" guide. Derived live from real data, never a
+ * stored flag, so it is always truthful.
+ *  DONE       — satisfied.
+ *  NEXT       — the immediate next action the user should take in this cycle.
+ *  TODO       — not done, and not yet the next step (a later step in the sequence).
+ *  BLOCKED    — cannot proceed until a named blocker clears (detail says which).
+ *  ATTENTION  — something is waiting on the user (items in a queue, a failing close-gate).
+ *  RESTRICTED — the user lacks the permission; the step names who performs it.
+ *  NA         — not applicable right now (e.g. year-end mid-year).
+ */
+export type GuideStepStatus =
+  | 'DONE'
+  | 'NEXT'
+  | 'TODO'
+  | 'BLOCKED'
+  | 'ATTENTION'
+  | 'RESTRICTED'
+  | 'NA';
+
+export interface GuideStep {
+  /** Stable identifier, e.g. 'chart-of-accounts'. */
+  key: string;
+  label: string;
+  /** One line of what/why. */
+  detail: string;
+  status: GuideStepStatus;
+  /** Deep-link to the screen (and, where useful, the action). Null when RESTRICTED/NA. */
+  href: string | null;
+  /** For queue-style daily steps: how many items await the user. */
+  count?: number;
+}
+
+export type GuideCycleKey = 'setup' | 'daily' | 'month_end' | 'year_end';
+
+/**
+ * LOCKED      — the cycle is not yet actionable (setup incomplete).
+ * IN_PROGRESS — has a next step to do.
+ * READY       — preconditions met, waiting on the user to run it (e.g. period ready to close).
+ * ATTENTION   — needs the user's attention (queue items, blockers).
+ * DONE        — nothing outstanding right now.
+ */
+export type GuideCycleStatus = 'LOCKED' | 'IN_PROGRESS' | 'READY' | 'ATTENTION' | 'DONE';
+
+export interface GuideCycle {
+  key: GuideCycleKey;
+  title: string;
+  /** One-line status the card shows, e.g. "5 of 6 done" or "Period open · 3 items await you". */
+  summary: string;
+  status: GuideCycleStatus;
+  steps: GuideStep[];
+}
+
+/**
+ * The read-model behind the Accounting "Get started" hub and the cycle-status strip. Assembled
+ * from {@link AccountingReadinessResponse} (setup), pending-document counts (daily), current
+ * period + close-gate (month-end) and fiscal-year state (year-end). Steps the signed-in user
+ * cannot perform come back RESTRICTED so the UI shows who does them rather than a dead button.
+ */
+export interface AccountingGuideResponse {
+  /** Mirrors readiness.ready — setup is complete and the ledger can accept postings. */
+  ready: boolean;
+  cycles: GuideCycle[];
+  currentPeriod: { id: string; name: string; status: string; endDate: string } | null;
+  fiscalYear: { id: string; name: string; status: string } | null;
+  checkedAt: string;
+}
+
 // ─── Project Finance workspace ──────────────────────────────────────────────────
 
 /** A control state Finance reports on itself, so a reader knows whether to trust the figures. */

@@ -52,6 +52,8 @@ describe('moduleTabs', () => {
   it('turns groups into dropdown tabs in declared order', () => {
     const tabs = moduleTabs(domain('accounting'), '/finance/accounting/bills', allowAll);
     expect(tabs.map((t) => `${t.kind}:${t.key}`)).toEqual([
+      // The guided "Get started" hub is the one ungrouped item, so it leads the tab bar.
+      'link:/finance/accounting/guide',
       'menu:receivables',
       'menu:payables',
       'menu:ledger',

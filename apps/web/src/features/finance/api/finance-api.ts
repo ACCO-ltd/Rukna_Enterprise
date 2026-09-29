@@ -1,4 +1,5 @@
 import type {
+  AccountingGuideResponse,
   AccountingReadinessResponse,
   ProjectCostReconciliationResponse,
   ProjectFinanceOverviewResponse,
@@ -35,6 +36,18 @@ export function getCostReconciliation(
 /** Whether the ledger can accept a posting at all, and what is missing when it cannot. */
 export function getAccountingReadiness(): Promise<AccountingReadinessResponse> {
   return apiClient<AccountingReadinessResponse>('/accounting/readiness');
+}
+
+/**
+ * The Accounting "Get started" guide: the four cycles (setup, daily, month-end, year-end),
+ * each with per-step state derived live from real data, plus the current period and fiscal year.
+ *
+ * Powers the guide hub, the cycle-status strip and the inline next-step hints. Steps the
+ * signed-in user cannot perform come back RESTRICTED (no `href`), so the UI names who does them
+ * rather than offering a dead link. Gated on `view:accounting`, the same permission as readiness.
+ */
+export function getAccountingGuide(): Promise<AccountingGuideResponse> {
+  return apiClient<AccountingGuideResponse>('/accounting/guide');
 }
 
 export interface ProjectPlParams {

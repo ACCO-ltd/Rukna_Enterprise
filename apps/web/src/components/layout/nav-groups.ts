@@ -116,9 +116,11 @@ export const NAV_DOMAINS: NavDomain[] = [
     moduleKey: 'accounting',
     iconKey: 'chart-bar',
     // Six named sections mirror the module's logical structure. The groupKey controls the
-    // micro-label divider rendered by NavItemList; ungrouped items always lead, so we start
-    // with the first section directly — no ungrouped spine items.
+    // micro-label divider rendered by NavItemList; ungrouped items always lead — the guided
+    // "Get started" hub is the one ungrouped spine item, so it heads the tab bar before the
+    // grouped sections, and it is the module's default landing while setup is incomplete.
     items: [
+      { href: '/finance/accounting/guide', labelKey: 'getStarted', iconKey: 'check-circle' },
       // Receivables
       { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text', groupKey: 'receivables' },
       { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt', groupKey: 'receivables' },
