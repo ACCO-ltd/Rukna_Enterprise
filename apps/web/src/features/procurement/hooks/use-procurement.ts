@@ -17,6 +17,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 
+import { unitOfMeasureKeys } from '@/features/units-of-measure/hooks/use-units-of-measure';
 import {
   allocateAdvance,
   approveGoodsReceiptException,
@@ -282,11 +283,23 @@ export function useUpdateSupplier() {
 
 // ─── Catalogue mutations ─────────────────────────────────────────────────────────
 
+/**
+ * A unit change refreshes both reads of the registry: this admin list and the open lookup the
+ * BOQ unit picker uses (`useUnitsOfMeasure`), which would otherwise keep offering a deactivated
+ * unit, or miss a new one, for its whole stale time.
+ */
+function invalidateUnitLists(qc: ReturnType<typeof useQueryClient>) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: procurementKeys.uoms() }),
+    qc.invalidateQueries({ queryKey: unitOfMeasureKeys.all }),
+  ]);
+}
+
 export function useCreateUom() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateUomPayload) => createUom(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.uoms() }),
+    onSuccess: () => invalidateUnitLists(qc),
   });
 }
 
@@ -294,7 +307,7 @@ export function useDeactivateUom() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deactivateUom(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.uoms() }),
+    onSuccess: () => invalidateUnitLists(qc),
   });
 }
 

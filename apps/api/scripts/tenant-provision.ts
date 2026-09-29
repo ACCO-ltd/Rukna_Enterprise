@@ -6,6 +6,7 @@ import { PrismaClient as PlatformPrismaClient } from '../src/generated/platform-
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { seedDistricts } from '../prisma/seeds/districts.js';
+import { seedUnitsOfMeasure } from '../prisma/seeds/units-of-measure.js';
 import { seedAccoWorkflows } from '../src/platform/workflows/seeders/acco-workflows.seed.js';
 import { seedUserAccess } from './tenant-access.js';
 import { seedGovernedSystemRoles } from './governed-roles.js';
@@ -115,6 +116,11 @@ async function main() {
   // empty, required picker — which is exactly what happened before this line existed.
   const districts = await seedDistricts(tenantPrisma, org.id);
   console.log(`  ✓ Districts seeded: ${districts.created}`);
+
+  // ADR-039: the unit registry backs the BOQ unit picker (GET /units-of-measure). Seed the
+  // standard construction units so a new tenant's first bill has units to choose from.
+  const units = await seedUnitsOfMeasure(tenantPrisma, org.id);
+  console.log(`  ✓ Units of measure seeded: ${units.created}`);
 
   const adminRole = await tenantPrisma.role.create({
     data: { name: 'ADMIN', description: 'System administrator', organizationId: org.id },

@@ -13,6 +13,7 @@ import { execFileSync } from 'child_process';
 import { PrismaClient } from '@prisma/client';
 import { PrismaClient as PlatformPrismaClient } from '../src/generated/platform-client/index.js';
 import { seedDistricts } from '../prisma/seeds/districts.js';
+import { seedUnitsOfMeasure } from '../prisma/seeds/units-of-measure.js';
 import { grantAllPermissionsToRole } from './tenant-access.js';
 
 const PLATFORM_DB_URL = process.env.PLATFORM_DATABASE_URL;
@@ -57,6 +58,33 @@ async function backfillDistricts(slug: string, dbUrl: string): Promise<void> {
   } catch (error) {
     console.warn(
       `  ! District backfill skipped for '${slug}': ${error instanceof Error ? error.message : error}`,
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/**
+ * Add any standard construction unit (m³, m², m, kg, t, nr, item) a tenant does not have.
+ *
+ * Runs every deploy, unlike the district backfill, because it is safe to: `seedUnitsOfMeasure`
+ * only adds a unit whose code AND symbol are both absent, and never edits, reactivates or deletes.
+ * A unit an administrator deactivated keeps its row, so it is not re-added. ADR-039: the BOQ unit
+ * picker reads this registry, and the live tenant predates any seed of it.
+ *
+ * Never fatal, for the same reason as the district backfill.
+ */
+async function backfillUnitsOfMeasure(slug: string, dbUrl: string): Promise<void> {
+  const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
+  try {
+    const org = await prisma.organization.findFirst({ where: { slug } });
+    if (!org) return;
+
+    const { created } = await seedUnitsOfMeasure(prisma, org.id);
+    if (created > 0) console.log(`  ✓ Units of measure seeded (${created})`);
+  } catch (error) {
+    console.warn(
+      `  ! Units-of-measure backfill skipped for '${slug}': ${error instanceof Error ? error.message : error}`,
     );
   } finally {
     await prisma.$disconnect();
@@ -129,6 +157,7 @@ async function main(): Promise<void> {
     try {
       migrate('prisma/schema.prisma', 'DATABASE_URL', tenant.dbUrl);
       await backfillDistricts(tenant.slug, tenant.dbUrl);
+      await backfillUnitsOfMeasure(tenant.slug, tenant.dbUrl);
       await refreshAdminPermissions(tenant.slug, tenant.dbUrl);
     } catch {
       // Keep going: one broken tenant must not block migrations for the rest.

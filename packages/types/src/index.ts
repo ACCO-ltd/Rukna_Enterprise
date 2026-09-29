@@ -8,3 +8,4 @@ export * from './construction';
 export * from './permissions';
 export * from './admin';
 export * from './notifications';
+export * from './units-of-measure';

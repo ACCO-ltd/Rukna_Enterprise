@@ -29,6 +29,15 @@ export class UomRepository {
     });
   }
 
+  /** The lookup projection: code, name and symbol only, ordered by code. */
+  findLookup(prisma: TenantPrisma, organizationId: string, status: MasterDataStatus) {
+    return prisma.unitOfMeasure.findMany({
+      where: { organizationId, status },
+      select: { code: true, name: true, symbol: true },
+      orderBy: { code: 'asc' },
+    });
+  }
+
   create(prisma: TenantPrisma, data: CreateUomData) {
     return prisma.unitOfMeasure.create({ data });
   }

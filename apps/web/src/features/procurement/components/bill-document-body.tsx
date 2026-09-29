@@ -426,7 +426,7 @@ export function BillActivityTab({ bill }: { bill: SupplierBill }) {
       entries={activity.data.map((entry) => ({
         id: entry.id,
         actor: entry.actor.name,
-        summary: (
+        action: (
           <>
             {KNOWN_CODES.has(entry.code)
               ? t(`activity.code.${codeKey(entry.code)}` as 'activity.code.bills_create', {

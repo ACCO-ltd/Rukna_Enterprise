@@ -403,9 +403,9 @@ export function ShellSection() {
                     content: (
                       <ActivityTimeline
                         entries={[
-                          { id: '3', actor: 'Hodan Abdi', summary: 'approved as Finance Manager', at: '15 Sep 2026, 09:12', code: 'bill.approve' },
-                          { id: '2', actor: 'Faarax Nuur', summary: 'submitted the bill for approval', at: '14 Sep 2026, 10:20', code: 'bill.submit' },
-                          { id: '1', actor: 'Faarax Nuur', summary: 'created the bill from PO-2026-0311', at: '14 Sep 2026, 10:05', code: 'bill.create' },
+                          { id: '3', actor: 'Hodan Abdi', action: 'approved as Finance Manager', at: '15 Sep 2026, 09:12', code: 'bill.approve' },
+                          { id: '2', actor: 'Faarax Nuur', action: 'submitted the bill for approval', at: '14 Sep 2026, 10:20', code: 'bill.submit' },
+                          { id: '1', actor: 'Faarax Nuur', action: 'created the bill from PO-2026-0311', at: '14 Sep 2026, 10:05', code: 'bill.create' },
                         ]}
                       />
                     ),

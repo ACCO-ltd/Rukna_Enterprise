@@ -3,7 +3,6 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { Lock } from 'lucide-react';
 
 import { cn } from '../lib/utils';
-import { initialsFromName } from './avatar';
 
 // ─── Definition grid ──────────────────────────────────────────────────────────
 
@@ -191,43 +190,7 @@ export function SummaryRail({
 
 // ─── Activity timeline ────────────────────────────────────────────────────────
 
-export interface ActivityEntry {
-  id: string;
-  actor: string;
-  /** What happened, after the actor's name — "approved as Finance Manager". */
-  summary: React.ReactNode;
-  /** Already formatted — "15 Sep 2026, 09:12". */
-  at: string;
-  /** Machine event code — `bill.approve`. */
-  code?: string;
-}
-
-/** A record's history, newest first: actor, what happened, when, and the event code. */
-export function ActivityTimeline({ entries, className }: { entries: ActivityEntry[]; className?: string }) {
-  return (
-    <ol className={cn('space-y-0', className)}>
-      {entries.map((entry, index) => (
-        <li key={entry.id} className="relative flex gap-3 pb-5 last:pb-0">
-          {index < entries.length - 1 ? (
-            <span aria-hidden="true" className="absolute start-3.5 top-8 bottom-0 w-px bg-border" />
-          ) : null}
-          <span
-            aria-hidden="true"
-            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface-subtle text-micro font-semibold text-muted-foreground"
-          >
-            {initialsFromName(entry.actor)}
-          </span>
-          <div className="min-w-0 text-body-sm">
-            <p className="text-foreground">
-              <span className="font-semibold">{entry.actor}</span> {entry.summary}
-            </p>
-            <p className="text-caption text-muted-foreground">
-              {entry.at}
-              {entry.code ? <span className="font-mono"> · {entry.code}</span> : null}
-            </p>
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
-}
+// Promoted to its own module (ADR-039) so rails and dialogs can use it outside a document.
+// Re-exported here so existing imports from this file keep working.
+export { ActivityTimeline } from './activity-timeline';
+export type { ActivityTimelineEntry as ActivityEntry } from './activity-timeline';

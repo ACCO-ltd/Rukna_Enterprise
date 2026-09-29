@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { seedDistricts } from '../prisma/seeds/districts.js';
+import { seedUnitsOfMeasure } from '../prisma/seeds/units-of-measure.js';
 import { seedAccoWorkflows } from '../src/platform/workflows/seeders/acco-workflows.seed.js';
 import { seedUserAccess } from './tenant-access.js';
 import { seedGovernedSystemRoles } from './governed-roles.js';
@@ -24,6 +25,9 @@ async function main() {
 
   const { created: districtCount } = await seedDistricts(prisma, org.id);
   console.log(`  ✓ Districts: ${districtCount}`);
+
+  const { created: unitCount } = await seedUnitsOfMeasure(prisma, org.id);
+  console.log(`  ✓ Units of measure: ${unitCount}`);
 
   const adminRole = await prisma.role.create({
     data: { name: 'ADMIN', description: 'System administrator', organizationId: org.id },

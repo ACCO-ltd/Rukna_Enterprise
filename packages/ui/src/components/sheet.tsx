@@ -6,20 +6,20 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cn } from '../lib/utils';
 
 /**
- * A full-height panel anchored to the start or end edge, for reviewing a record alongside
- * a list rather than as a blocking step. Built on the same `@radix-ui/react-dialog` primitive
- * as `Dialog` — see dialog.tsx for why that dependency earns its place (focus trap, `aria-hidden`
- * management on the page behind it, every dismissal path guarded consistently, RTL-safe focus
- * order). `Sheet` only changes the content's position and size, not its accessibility model.
+ * ─── RETIRED (ADR-039, 2026-09-29) ───────────────────────────────────────────────
  *
- * ─── Reach for `Dialog` first ─────────────────────────────────────────────────────
+ * Side sheets are retired. Do not use `Sheet` in new code. Creating or editing one record,
+ * previews and history use `FormDialog`; values in a table are edited inline; long line-item
+ * documents stay on a full page. The screens that still use this are listed in ADR-039's
+ * migration inventory and move in PRs 2–5, after which this file is deleted.
  *
- * This is not a drop-in replacement for every screen with "drawer" or "panel" in its name.
- * Nine such screens already exist and are `Dialog` underneath, correctly — and one,
- * `boq-item-drawer.tsx`, was deliberately moved OFF a hand-rolled side panel back onto a
- * centered `Dialog`, because a 420px side panel covered the rate column it needed to compare
- * against. Use `Sheet` where a screen is genuinely built as list-on-one-side,
- * detail-on-the-other — not as a default replacement for a confirmation or a create form.
+ * ─── What it was ─────────────────────────────────────────────────────────────────
+ *
+ * A full-height panel anchored to the start or end edge, for reviewing a record alongside a list.
+ * Built on the same `@radix-ui/react-dialog` primitive as `Dialog`; it only changes the content's
+ * position and size, not its accessibility model.
+ *
+ * @deprecated Retired by ADR-039. Use `FormDialog`.
  */
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;

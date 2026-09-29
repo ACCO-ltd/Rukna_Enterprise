@@ -24,6 +24,17 @@ export interface ConfirmDialogProps {
    */
   confirmLabel: string;
   onConfirm: () => void;
+  /**
+   * The way out, when "Cancel" would be ambiguous. A discard confirmation has two cancels in
+   * play — the dialog being closed and the closing itself — so it says "Keep editing".
+   */
+  cancelLabel?: string;
+  /**
+   * Which button has focus when the dialog opens. Defaults to `'confirm'` (unchanged behaviour).
+   * Use `'cancel'` when Enter on the confirm button would destroy work the user did not mean to
+   * lose — the discard-unsaved-changes question, where the safe answer should be the easy one.
+   */
+  initialFocus?: 'confirm' | 'cancel';
   /** Set true while the mutation is in flight — disables both buttons. */
   isPending?: boolean;
   /** Defaults to 'destructive'. Use 'default' for non-destructive confirmations. */
@@ -37,12 +48,23 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   onConfirm,
+  cancelLabel = 'Cancel',
+  initialFocus = 'confirm',
   isPending = false,
   variant = 'destructive',
 }: ConfirmDialogProps) {
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
   return (
     <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
-      <DialogContent size="sm" closeLabel="Cancel">
+      <DialogContent
+        size="sm"
+        closeLabel={cancelLabel}
+        onOpenAutoFocus={(event) => {
+          if (initialFocus !== 'cancel') return;
+          event.preventDefault();
+          cancelRef.current?.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
@@ -56,8 +78,8 @@ export function ConfirmDialog({
             {confirmLabel}
           </Button>
           <DialogClose asChild>
-            <Button variant="outline" disabled={isPending}>
-              Cancel
+            <Button ref={cancelRef} variant="outline" disabled={isPending}>
+              {cancelLabel}
             </Button>
           </DialogClose>
         </DialogFooter>
