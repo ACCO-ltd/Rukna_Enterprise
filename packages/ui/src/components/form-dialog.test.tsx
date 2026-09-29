@@ -215,4 +215,120 @@ describe('FormDialog', () => {
       .filter(Boolean);
     expect(names).toEqual(['Delete item', 'Cancel', 'Save']);
   });
+
+  it('submits only itself when rendered inside a page-level form', async () => {
+    const outerSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
+    const dialogSubmit = vi.fn();
+    render(
+      <form onSubmit={outerSubmit}>
+        <FormDialog open onOpenChange={() => {}} title="New unit" onSubmit={dialogSubmit}>
+          <FormDialogBody>
+            <label htmlFor="code">Code</label>
+            <input id="code" />
+          </FormDialogBody>
+          <FormDialogFooter>
+            <button type="submit">Save</button>
+          </FormDialogFooter>
+        </FormDialog>
+      </form>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(dialogSubmit).toHaveBeenCalledTimes(1);
+    expect(dialogSubmit.mock.calls[0]![0].defaultPrevented).toBe(true);
+    expect(outerSubmit).not.toHaveBeenCalled();
+  });
+
+  it('pads the pinned header and footer for the safe area on phones', () => {
+    render(<Harness />);
+    const heading = screen.getByRole('heading', { name: 'Item 2.1' });
+    expect(heading.closest('div.shrink-0')!.className).toContain('pt-[max(1rem,env(safe-area-inset-top))]');
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save.parentElement!.className).toContain('pb-[max(1rem,env(safe-area-inset-bottom))]');
+  });
+
+  describe('when the parent drives open and dirty', () => {
+    function Controlled({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) {
+      const [open, setOpen] = React.useState(true);
+      const [dirty, setDirty] = React.useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen((o) => !o)}>
+            Toggle from parent
+          </button>
+          <button type="button" onClick={() => setDirty((d) => !d)}>
+            Toggle dirty
+          </button>
+          <FormDialog
+            open={open}
+            onOpenChange={(next) => {
+              setOpen(next);
+              onOpenChange?.(next);
+            }}
+            title="Item 2.1"
+            dirty={dirty}
+          >
+            <FormDialogBody>
+              <label htmlFor="qty">Quantity</label>
+              <input id="qty" />
+            </FormDialogBody>
+          </FormDialog>
+        </>
+      );
+    }
+
+    // The toggles sit behind the modal (Radix hides them from pointer and a11y), so they are
+    // clicked through the DOM, the way a parent's own state change would arrive.
+    const parentClick = (name: string) =>
+      (screen.getByText(name) as HTMLButtonElement).click();
+
+    it('closes without a prompt when the parent sets open=false while dirty', async () => {
+      const onOpenChange = vi.fn();
+      render(<Controlled onOpenChange={onOpenChange} />);
+      React.act(() => parentClick('Toggle from parent'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(onOpenChange).not.toHaveBeenCalled();
+    });
+
+    it('drops a pending discard question when the parent closes the dialog, and does not reshow it on reopen', async () => {
+      render(<Controlled />);
+      await userEvent.keyboard('{Escape}');
+      expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument();
+
+      React.act(() => parentClick('Toggle from parent'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      React.act(() => parentClick('Toggle from parent'));
+      expect(await screen.findByRole('dialog', { name: 'Item 2.1' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).not.toBeInTheDocument();
+    });
+
+    it('drops a pending discard question when the form stops being dirty, and does not revive it', async () => {
+      render(<Controlled />);
+      await userEvent.keyboard('{Escape}');
+      expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument();
+
+      React.act(() => parentClick('Toggle dirty'));
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).not.toBeInTheDocument(),
+      );
+
+      React.act(() => parentClick('Toggle dirty'));
+      expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).not.toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: 'Item 2.1' })).toBeInTheDocument();
+    });
+
+    it('Escape on the discard question closes only the question', async () => {
+      const onOpenChange = vi.fn();
+      render(<Controlled onOpenChange={onOpenChange} />);
+      await userEvent.keyboard('{Escape}');
+      expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument();
+
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).not.toBeInTheDocument(),
+      );
+      expect(screen.getByRole('dialog', { name: 'Item 2.1' })).toBeInTheDocument();
+      expect(onOpenChange).not.toHaveBeenCalled();
+    });
+  });
 });

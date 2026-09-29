@@ -9,6 +9,12 @@ export interface DialogDismissGuardOptions {
    * can ask "Discard unsaved changes?" before anything is thrown away.
    */
   dirty?: boolean;
+  /**
+   * Whether the dialog is open. Pass it so a pending discard question is dropped when the parent
+   * closes the dialog itself (after a save) — otherwise it would reappear on the next open.
+   * Defaults to true for callers that unmount the dialog instead.
+   */
+  open?: boolean;
 }
 
 export interface DialogDismissGuard {
@@ -49,7 +55,19 @@ export function useDialogDismissGuard(
   options: DialogDismissGuardOptions = {},
 ): DialogDismissGuard {
   const dirty = options.dirty ?? false;
+  const open = options.open ?? true;
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+
+  // A question about discarding only makes sense while the dialog is open AND holds edits. When
+  // either stops being true (the parent closed it after a save, or the edits were saved or undone)
+  // the pending question is dropped, so it cannot resurface on the next open. Adjusted during
+  // render rather than in an effect, the React-documented way to reset state on a prop change.
+  const guarding = open && dirty;
+  const [wasGuarding, setWasGuarding] = useState(guarding);
+  if (wasGuarding !== guarding) {
+    setWasGuarding(guarding);
+    if (!guarding) setConfirmingDiscard(false);
+  }
 
   const preventWhileBusy = useCallback(
     (event: Event) => {
@@ -84,8 +102,6 @@ export function useDialogDismissGuard(
       onPointerDownOutside: preventWhileBusy,
       onInteractOutside: preventWhileBusy,
     },
-    // Derived, not stored: a form that stops being dirty (saved, or edited back to where it
-    // started) has nothing left to discard, so the question must not stay on screen.
-    discard: { open: confirmingDiscard && dirty, confirm, cancel },
+    discard: { open: confirmingDiscard && guarding, confirm, cancel },
   };
 }

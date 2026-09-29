@@ -92,6 +92,7 @@ export interface FormDialogProps {
   /**
    * When set, the body and footer are wrapped in a `<form>` (without breaking the scrolling
    * layout), so a `type="submit"` button in the footer submits it and Enter in a field does too.
+   * The native submit is already prevented and does not propagate to an enclosing page form.
    */
   onSubmit?: React.FormEventHandler<HTMLFormElement>;
   /** Accessible name for the ✕. */
@@ -124,7 +125,7 @@ export function FormDialog({
 }: FormDialogProps) {
   const contentRef = React.useRef<HTMLDivElement>(null);
   const dismiss = React.useCallback(() => onOpenChange(false), [onOpenChange]);
-  const guard = useDialogDismissGuard(busy, dismiss, { dirty });
+  const guard = useDialogDismissGuard(busy, dismiss, { dirty, open });
 
   const returnFocus = useReturnFocus((event) => {
     // Take focus placement over from Radix, whose default is "first tabbable" — which, with the
@@ -143,7 +144,17 @@ export function FormDialog({
   });
 
   const inner = onSubmit ? (
-    <form noValidate onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+    <form
+      noValidate
+      onSubmit={(event) => {
+        // React bubbles synthetic events through portals, so without this a FormDialog opened
+        // from inside a page-level <form> would submit that page form as well.
+        event.preventDefault();
+        event.stopPropagation();
+        onSubmit(event);
+      }}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       {children}
     </form>
   ) : (
@@ -178,7 +189,7 @@ export function FormDialog({
           onOpenAutoFocus={returnFocus.onOpenAutoFocus}
           onCloseAutoFocus={returnFocus.onCloseAutoFocus}
         >
-          <div className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-4 sm:px-6">
+          <div className="flex shrink-0 items-start gap-3 border-b border-border px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pt-4">
             <div className="min-w-0 flex-1">
               <DialogPrimitive.Title className="text-h2 font-semibold text-foreground">
                 {title}
