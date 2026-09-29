@@ -234,6 +234,14 @@ On create → open the draft DPR detail focused on measurements.
 > still saves as it is entered; a quantity, note or labour row typed but not saved makes the dialog ask
 > before closing, and nothing closes it while a submit is in flight. With no items allocated, Work
 > done says so and gives a setup manager a link to Plan & setup.
+>
+> **Work-package weights are edited inline** in Plan & setup's work-package table (ADR-039 §2): a
+> percent input per measurable package (`manage:project` only; everyone else reads plain percents),
+> a live total ("Total 100%" in success tone, otherwise "Total 85% — must be 100%" in attention tone)
+> and one "Save weights" action once a value is edited. It PATCHes every package whose stored weight
+> differs from what the table shows. A complete set is displayed with the shared largest-remainder
+> helper; schedule-only phases take no weight. Creating a package and allocating an item stay
+> `FormDialog` md.
 
 ### 5.2 Structured, not free-text — "no blank guessing"
 

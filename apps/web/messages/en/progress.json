@@ -452,7 +452,17 @@
       "acceptAll": "Accept all",
       "dismiss": "Dismiss"
     },
-    "evenWeightsNote": "Weights are split evenly. Value-based weighting needs cost access — adjust the weights, or ask the Construction Director."
+    "evenWeightsNote": "Weights are split evenly. Value-based weighting needs cost access — adjust the weights, or ask the Construction Director.",
+    "weights": {
+      "total": "Total {total}%",
+      "totalOff": "Total {total}% — must be 100%",
+      "invalid": "Enter a weight from 0 to 100.",
+      "undo": "Undo changes",
+      "save": "Save weights",
+      "saving": "Saving…",
+      "saved": "Weights saved.",
+      "inputLabel": "Weight for {code}"
+    }
   },
   "deliveryPlan": {
     "action": "Create delivery plan from BOQ",
