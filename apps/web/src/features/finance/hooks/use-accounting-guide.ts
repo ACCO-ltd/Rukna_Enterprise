@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import type { AccountingGuideResponse, GuideCycle, GuideCycleKey, GuideStep } from '@erp/types';
+import type { AccountingGuideResponse, GuideCycle, GuideCycleKey } from '@erp/types';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 
@@ -33,15 +33,6 @@ export function findCycle(
   key: GuideCycleKey,
 ): GuideCycle | undefined {
   return guide?.cycles.find((cycle) => cycle.key === key);
-}
-
-/** The one step within a cycle by key, or undefined while the guide is unknown. */
-export function findStep(
-  guide: AccountingGuideResponse | undefined,
-  cycleKey: GuideCycleKey,
-  stepKey: string,
-): GuideStep | undefined {
-  return findCycle(guide, cycleKey)?.steps.find((step) => step.key === stepKey);
 }
 
 /**
