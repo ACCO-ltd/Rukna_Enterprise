@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { ClipboardList, Download, FileSpreadsheet, Plus } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, EmptyState, Notice, Skeleton, useToast } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
@@ -12,7 +11,7 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
-import { listUoms } from '@/features/procurement/api/procurement-api';
+import { useUnitsOfMeasure } from '@/features/units-of-measure/hooks/use-units-of-measure';
 
 import { buildRows, collectSectionIds, countTree, flattenTree, siblingBounds } from '../boq-rows';
 import { computeRollup } from '../boq-totals';
@@ -33,7 +32,13 @@ import {
   useUpdateNode,
 } from '../hooks/use-boq';
 import { useCreateLibraryItem, useRecordLibraryUsage } from '../hooks/use-boq-item-library';
-import { toCreateNodePayload, toNodeFormValues, toUpdateNodePayload, type NodeFormValues } from '../node-form';
+import {
+  lumpSumOf,
+  toCreateNodePayload,
+  toNodeFormValues,
+  toUpdateNodePayload,
+  type NodeFormValues,
+} from '../node-form';
 import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqClassifierDrawer, type ClassifierResult } from './boq-classifier-drawer';
@@ -41,12 +46,14 @@ import { BoqCompareSignedPanel } from './boq-compare-signed-panel';
 import { BoqContextBar } from './boq-context-bar';
 import { BoqGrid, type BoqRowCommands, type PendingLine } from './boq-grid';
 import { BoqImportView, type ImportOutcome } from './boq-import-view';
-import { BoqItemDrawer, type DrawerTarget, type LibraryIntent } from './boq-item-drawer';
+import { BoqItemDialog, type ItemDialogTarget, type LibraryIntent } from './boq-item-dialog';
 import { BoqTimelineDrawer } from './boq-timeline-drawer';
+import { UnitsUnavailableNotice } from './boq-unit-select';
 import { BoqToolbar, type LineFilter } from './boq-toolbar';
 import type { BoqTreeNodeResponse } from '@erp/types';
 
-const UNITS_LIST_ID = 'boq-units';
+/** Procurement setup's unit registry (nav-groups.ts), behind `manage:procurement-config`. */
+const UNITS_ADMIN_HREF = '/procurement/setup/uom';
 
 /**
  * The BOQ tab.
@@ -72,7 +79,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [filter, setFilter] = useState<LineFilter>('all');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<PendingLine | null>(null);
-  const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
+  const [drawer, setDrawer] = useState<ItemDialogTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BoqTreeNodeResponse | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [reviseOpen, setReviseOpen] = useState(false);
@@ -103,15 +110,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const recordLibraryUsage = useRecordLibraryUsage();
   const saveLibraryItem = useCreateLibraryItem();
 
-  // Units master: suggestions only. `GET /procurement/uom` needs procurement-config rights, so it
-  // is asked for only by someone who holds them; everyone else gets the units already in the bill.
-  const canReadUnits = can('manage:procurement-config');
-  const unitsQuery = useQuery({
-    queryKey: ['procurement', 'uom'],
-    queryFn: listUoms,
-    enabled: canReadUnits,
-    retry: false,
-  });
+  // The unit registry (`GET /units-of-measure`, view:project) — the grid's unit picker and the
+  // item dialog's. Units come from the list only (ADR-039 owner decision); managing them is
+  // Procurement setup, for whoever holds procurement-config rights.
+  const unitsQuery = useUnitsOfMeasure();
+  const unitsAdminHref = can('manage:procurement-config') ? UNITS_ADMIN_HREF : null;
 
   const nodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const counts = useMemo(() => countTree(nodes), [nodes]);
@@ -121,11 +124,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     () => buildRows(nodes, { collapsed, search, pricing: filter === 'unpriced' ? 'incomplete' : 'all' }),
     [nodes, collapsed, search, filter],
   );
-  const unitOptions = useMemo(() => {
-    const fromBill = flattenTree(nodes).map((node) => node.unit).filter((unit): unit is string => Boolean(unit));
-    const fromMaster = (unitsQuery.data ?? []).map((unit) => unit.symbol || unit.code);
-    return [...new Set([...fromMaster, ...fromBill])].sort();
-  }, [nodes, unitsQuery.data]);
   const bounds = useCallback((node: BoqTreeNodeResponse) => siblingBounds(nodes, node), [nodes]);
 
   if (workspaceQuery.isPending) return <WorkspaceSkeleton label={tCommon('loading')} />;
@@ -247,7 +245,10 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           }),
         bounds,
         onEditField: async (node, field, value) => {
-          const values = { ...toNodeFormValues(node), [field]: value };
+          const values: NodeFormValues = { ...toNodeFormValues(node), [field]: value };
+          // A lump sum is saved as quantity 1 × rate = amount, so a rate typed into its cell is
+          // its new amount (node-form.ts, `lumpSumAmount`).
+          if (values.pricingBasis === 'LUMP_SUM') values.lumpSumAmount = lumpSumOf(values.quantity, values.unitRate);
           const payload = toUpdateNodePayload(values, { kind: node.isLeaf ? 'item' : 'section' });
           await updateNode.mutateAsync({ nodeId: node.id, payload });
         },
@@ -305,6 +306,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         </Notice>
       ) : null}
 
+      {/* The unit cells pick from the registry only; with nothing to pick, say why once here. */}
+      {canManage && (unitsQuery.isError || (unitsQuery.isSuccess && unitsQuery.data.length === 0)) ? (
+        <UnitsUnavailableNotice reason={unitsQuery.isError ? 'error' : 'empty'} adminHref={unitsAdminHref} />
+      ) : null}
+
       <div id="boq-grid" className="scroll-mt-4 space-y-3">
         <BoqToolbar
           search={search}
@@ -338,7 +344,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             commands={rowCommands}
             pending={pending}
             onPendingChange={setPending}
-            unitsListId={UNITS_LIST_ID}
+            units={unitsQuery.data}
             emptyMessage={isFiltered ? t('grid.noMatches') : onDraft ? t('grid.emptyDraft') : t('grid.empty')}
           />
         )}
@@ -357,13 +363,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         ) : null}
       </div>
 
-      <datalist id={UNITS_LIST_ID}>
-        {unitOptions.map((unit) => (
-          <option key={unit} value={unit} />
-        ))}
-      </datalist>
-
-      <BoqItemDrawer
+      <BoqItemDialog
         key={drawer ? `${drawer.mode}-${drawer.kind}-${drawer.node?.id ?? drawer.parent?.id ?? 'root'}` : 'closed'}
         target={drawer}
         currency={workspace.currency}
@@ -372,11 +372,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         libraryEnabled={canManage}
         canViewCommercials={canViewCost}
         canSaveToLibrary={canManage}
-        errorMessage={
-          drawer && (addNode.error || updateNode.error)
-            ? errorText(addNode.error ?? updateNode.error, t('editor.saveFailed'))
-            : undefined
-        }
+        unitsAdminHref={unitsAdminHref}
+        error={drawer ? (addNode.error ?? updateNode.error ?? undefined) : undefined}
         onClose={() => {
           addNode.reset();
           updateNode.reset();
@@ -480,7 +477,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
-  function handleSave(values: NodeFormValues, target: DrawerTarget, library: LibraryIntent) {
+  function handleSave(values: NodeFormValues, target: ItemDialogTarget, library: LibraryIntent) {
     if (!operationalVersionId) return;
 
     if (target.mode === 'edit' && target.node) {

@@ -27,6 +27,16 @@ export interface NodeFormValues {
   unitRate: string;
   measurementMethod: MeasurementMethodValue;
   pricingBasis: PricingBasisValue;
+  /**
+   * The one fixed amount of a lump-sum item. Only read when `pricingBasis` is `LUMP_SUM`.
+   *
+   * Not a server field. A lump sum is stored the way the rest of the BOQ already stores one —
+   * the absorbed-scope line, contingency draws, the grid's "Lump sum" cell — as `quantity = 1`
+   * and `unitRate = amount`, so `totalAmount = quantity × unitRate` stays true everywhere. The
+   * form keeps the amount apart from `quantity`/`unitRate` so switching the pricing basis back
+   * and forth does not throw away a measured quantity the user typed.
+   */
+  lumpSumAmount: string;
 }
 
 export const EMPTY_NODE_FORM: NodeFormValues = {
@@ -37,6 +47,7 @@ export const EMPTY_NODE_FORM: NodeFormValues = {
   unitRate: '',
   measurementMethod: 'QUANTITY',
   pricingBasis: 'UNIT_RATE',
+  lumpSumAmount: '',
 };
 
 export function toNodeFormValues(node: BoqTreeNodeResponse): NodeFormValues {
@@ -48,7 +59,19 @@ export function toNodeFormValues(node: BoqTreeNodeResponse): NodeFormValues {
     unitRate: node.unitRate ?? '',
     measurementMethod: node.measurementMethod,
     pricingBasis: node.pricingBasis,
+    lumpSumAmount: node.pricingBasis === 'LUMP_SUM' ? lumpSumOf(node.quantity, node.unitRate) : '',
   };
+}
+
+/**
+ * The fixed amount a lump-sum item carries: its rate when the quantity is 1 (or unset), which is
+ * how every lump sum is written; otherwise quantity × rate, so a legacy lump sum stored with some
+ * other quantity still shows the amount it actually totals to.
+ */
+export function lumpSumOf(quantity: string | null, unitRate: string | null): string {
+  if (!unitRate) return '';
+  if (quantity === null || quantity.trim() === '' || Number(quantity) === 1) return unitRate;
+  return previewUnitRateTotal(quantity, unitRate) ?? '';
 }
 
 /**
@@ -89,10 +112,8 @@ export function toCreateNodePayload(
     const unit = values.unit.trim();
     if (unit) payload.unit = unit;
 
-    const quantity = normaliseDecimal(values.quantity);
+    const { quantity, unitRate } = pricedFields(values);
     if (quantity !== null) payload.quantity = quantity;
-
-    const unitRate = normaliseDecimal(values.unitRate);
     if (unitRate !== null) payload.unitRate = unitRate;
 
     payload.measurementMethod = values.measurementMethod;
@@ -121,8 +142,7 @@ export function toUpdateNodePayload(
   if (options.kind === 'item') {
     payload.unit = values.unit.trim() || undefined;
 
-    const quantity = normaliseDecimal(values.quantity);
-    const unitRate = normaliseDecimal(values.unitRate);
+    const { quantity, unitRate } = pricedFields(values);
     if (quantity !== null) payload.quantity = quantity;
     if (unitRate !== null) payload.unitRate = unitRate;
 
@@ -131,6 +151,21 @@ export function toUpdateNodePayload(
   }
 
   return payload;
+}
+
+/**
+ * The quantity and rate an item is saved with.
+ *
+ * Unit rate: what was typed. Lump sum: `quantity = 1` and `unitRate = amount` — the existing
+ * model (see `lumpSumAmount`), not a new one. With no amount typed, neither is sent, so a
+ * lump sum is never saved as a confident zero.
+ */
+function pricedFields(values: NodeFormValues): { quantity: string | null; unitRate: string | null } {
+  if (values.pricingBasis === 'LUMP_SUM') {
+    const amount = normaliseDecimal(values.lumpSumAmount);
+    return amount === null ? { quantity: null, unitRate: null } : { quantity: '1', unitRate: amount };
+  }
+  return { quantity: normaliseDecimal(values.quantity), unitRate: normaliseDecimal(values.unitRate) };
 }
 
 /**
@@ -157,8 +192,16 @@ function normaliseDecimal(value: string): string | null {
  * multiplication, so the preview and the saved value agree to the cent.
  */
 export function previewLineTotal(values: NodeFormValues): string | null {
-  const quantity = parseMinorUnits(values.quantity, NODE_LIMITS.quantityDecimals);
-  const unitRate = parseMinorUnits(values.unitRate, NODE_LIMITS.rateDecimals);
+  if (values.pricingBasis === 'LUMP_SUM') {
+    const amount = parseMinorUnits(values.lumpSumAmount, NODE_LIMITS.rateDecimals);
+    return amount === null ? null : fromMinorUnits(amount, NODE_LIMITS.rateDecimals);
+  }
+  return previewUnitRateTotal(values.quantity, values.unitRate);
+}
+
+function previewUnitRateTotal(quantityText: string, unitRateText: string): string | null {
+  const quantity = parseMinorUnits(quantityText, NODE_LIMITS.quantityDecimals);
+  const unitRate = parseMinorUnits(unitRateText, NODE_LIMITS.rateDecimals);
   if (quantity === null || unitRate === null) return null;
 
   // quantity is scaled by 10³ and rate by 10², so the product carries 10⁵. Dividing by 10³

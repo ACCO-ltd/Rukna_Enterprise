@@ -22,7 +22,8 @@ import { cn } from '@erp/ui';
  * (or this row's own) shows the stored figure rather than a stale draft.
  */
 
-export type CellKind = 'text' | 'textarea' | 'unit' | 'quantity' | 'rate';
+/** The unit cell is not one of these: it is a list-only picker (`UnitCellEditor`, boq-unit-select.tsx). */
+export type CellKind = 'text' | 'textarea' | 'quantity' | 'rate';
 
 const PATTERNS: Record<'quantity' | 'rate', RegExp> = {
   quantity: /^\d+(\.\d{1,3})?$/,
@@ -30,7 +31,6 @@ const PATTERNS: Record<'quantity' | 'rate', RegExp> = {
 };
 
 const MAX_TEXT = 500;
-const MAX_UNIT = 20;
 
 export function normalizeCellValue(kind: CellKind, raw: string): string {
   const trimmed = raw.trim();
@@ -58,7 +58,6 @@ export function sameCellValue(kind: CellKind, next: string, stored: string | nul
 
 export function isValidCellValue(kind: CellKind, value: string): boolean {
   if (kind === 'text' || kind === 'textarea') return value.length > 0 && value.length <= MAX_TEXT;
-  if (kind === 'unit') return value.length <= MAX_UNIT;
   return value === '' || PATTERNS[kind].test(value);
 }
 
@@ -71,7 +70,6 @@ export function CellEditor({
   placeholder,
   attention = false,
   autoFocus = false,
-  unitsListId,
   currencySymbol = '$',
   className,
   onEmptyCommit,
@@ -87,8 +85,6 @@ export function CellEditor({
   /** Unpriced rate: an attention border at rest, before anyone has typed. */
   attention?: boolean;
   autoFocus?: boolean;
-  /** `id` of a `<datalist>` of known units, for `kind="unit"`. */
-  unitsListId?: string;
   /** Adornment before a rate — the BOQ's own currency, never assumed. */
   currencySymbol?: string;
   className?: string;
@@ -219,8 +215,7 @@ export function CellEditor({
             {...shared}
             type="text"
             inputMode={numeric ? 'decimal' : undefined}
-            list={kind === 'unit' ? unitsListId : undefined}
-            maxLength={kind === 'unit' ? MAX_UNIT : kind === 'text' ? MAX_TEXT : undefined}
+            maxLength={kind === 'text' ? MAX_TEXT : undefined}
             className={cn(fieldClass, kind === 'rate' && 'ps-5')}
             onChange={(event) => {
               setDraft(event.target.value);

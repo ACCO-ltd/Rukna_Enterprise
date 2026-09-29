@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_NODE_FORM,
+  lumpSumOf,
   previewLineTotal,
   toCreateNodePayload,
   toNodeFormValues,
@@ -176,5 +177,43 @@ describe('previewLineTotal', () => {
     expect(previewLineTotal(form({ quantity: '10' }))).toBeNull();
     expect(previewLineTotal(form({ unitRate: '10' }))).toBeNull();
     expect(previewLineTotal(form({ quantity: 'abc', unitRate: '10' }))).toBeNull();
+  });
+});
+
+/**
+ * A lump sum is stored the way the rest of the BOQ already stores one — quantity 1 and
+ * unitRate = amount — so `totalAmount = quantity × unitRate` holds everywhere.
+ */
+describe('lump sum', () => {
+  it('saves the amount as quantity 1 × rate, on create and update', () => {
+    const values = form({ pricingBasis: 'LUMP_SUM', lumpSumAmount: '25000.00', quantity: '42', unitRate: '160' });
+
+    expect(toCreateNodePayload(values, { kind: 'item' })).toMatchObject({
+      pricingBasis: 'LUMP_SUM',
+      quantity: '1',
+      unitRate: '25000.00',
+    });
+    expect(toUpdateNodePayload(values, { kind: 'item' })).toMatchObject({ quantity: '1', unitRate: '25000.00' });
+  });
+
+  it('sends neither quantity nor rate when no amount was typed — never a confident zero', () => {
+    const payload = toCreateNodePayload(form({ pricingBasis: 'LUMP_SUM', quantity: '42', unitRate: '160' }), {
+      kind: 'item',
+    });
+    expect(payload).not.toHaveProperty('quantity');
+    expect(payload).not.toHaveProperty('unitRate');
+  });
+
+  it('reads a stored lump sum back as its amount, whatever quantity it was written with', () => {
+    const base = { id: 'n1', isLeaf: true, pricingBasis: 'LUMP_SUM' as const };
+    expect(toNodeFormValues(testNode({ ...base, quantity: '1.000', unitRate: '900.00' })).lumpSumAmount).toBe('900.00');
+    expect(toNodeFormValues(testNode({ ...base, quantity: null, unitRate: '900.00' })).lumpSumAmount).toBe('900.00');
+    expect(toNodeFormValues(testNode({ ...base, quantity: '3.000', unitRate: '100.00' })).lumpSumAmount).toBe('300.00');
+    expect(lumpSumOf(null, null)).toBe('');
+  });
+
+  it('previews the lump-sum amount itself', () => {
+    expect(previewLineTotal(form({ pricingBasis: 'LUMP_SUM', lumpSumAmount: '1234.5' }))).toBe('1234.50');
+    expect(previewLineTotal(form({ pricingBasis: 'LUMP_SUM' }))).toBeNull();
   });
 });

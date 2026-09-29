@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { chooseOption } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
 
 import { buildRows, siblingBounds } from '../boq-rows';
@@ -289,5 +290,55 @@ describe('BoqGrid — editing a draft', () => {
     // An item row has no toggle, so its description is the next stop.
     await user.tab();
     expect(screen.getByRole('textbox', { name: 'Edit description of 1.1' })).toHaveFocus();
+  });
+});
+
+describe('BoqGrid — the unit cell', () => {
+  const UNITS = [
+    { code: 'M3', name: 'Cubic metre', symbol: 'm³' },
+    { code: 'M2', name: 'Square metre', symbol: 'm²' },
+  ];
+
+  it('is a list-only picker that saves the chosen symbol', async () => {
+    const user = userEvent.setup();
+    const cmds = commands();
+    render({ commands: cmds, units: UNITS });
+
+    const unit = screen.getByRole('combobox', { name: 'Unit of 1.1' });
+    expect(unit).toHaveTextContent('m³');
+    expect(screen.queryByRole('textbox', { name: 'Unit of 1.1' })).not.toBeInTheDocument();
+    expect(document.querySelector('datalist')).toBeNull();
+
+    await chooseOption(user, unit, 'm²');
+    await waitFor(() =>
+      expect(cmds.onEditField).toHaveBeenCalledWith(expect.objectContaining({ id: 'i1' }), 'unit', 'm²'),
+    );
+  });
+
+  it('keeps a legacy unit that is not in the list, and says so', () => {
+    render({ commands: commands(), units: UNITS });
+    // 1.2 is stored as "nr", which this registry does not hold.
+    const unit = screen.getByRole('combobox', { name: 'Unit of 1.2' });
+    const row = unit.closest('tr')!;
+    expect(unit).toHaveTextContent('nr');
+    expect(within(row).getByText('Not in the units list')).toBeInTheDocument();
+  });
+
+  it('shows the stored unit as text when there is no registry to pick from', () => {
+    render({ commands: commands(), units: [] });
+    expect(screen.queryByRole('combobox', { name: 'Unit of 1.1' })).not.toBeInTheDocument();
+    const row = screen.getByRole('textbox', { name: 'Edit description of 1.1' }).closest('tr')!;
+    expect(within(row).getByText('m³')).toBeInTheDocument();
+  });
+
+  it('keeps Tab moving description → unit → quantity', async () => {
+    const user = userEvent.setup();
+    render({ commands: commands(), units: UNITS });
+
+    await user.click(screen.getByRole('textbox', { name: 'Edit description of 1.1' }));
+    await user.tab();
+    expect(screen.getByRole('combobox', { name: 'Unit of 1.1' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('textbox', { name: 'Edit quantity of 1.1' })).toHaveFocus();
   });
 });
