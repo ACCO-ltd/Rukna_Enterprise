@@ -53,5 +53,7 @@ describe('endpoints that answer null as an empty body', () => {
     ['getApprovalStep', () => getApprovalStep('wf-1')],
   ])('%s resolves to null, never undefined', async (_name, call) => {
     await expect(call()).resolves.toBeNull();
+    // It reached the network — the null came from the empty body, not an early return.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
