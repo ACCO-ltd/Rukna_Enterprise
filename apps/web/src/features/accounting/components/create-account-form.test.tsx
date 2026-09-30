@@ -69,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.useCreateAccount.mockReturnValue({
     mutate,
+    reset: vi.fn(),
     isPending: false,
     isError: false,
     error: null,
