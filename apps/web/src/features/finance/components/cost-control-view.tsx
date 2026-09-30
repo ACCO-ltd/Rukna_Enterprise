@@ -311,6 +311,9 @@ export function CostControlView({ projectId }: { projectId: string }) {
         </div>
       </div>
 
+      {/* While editing, room at the foot of the page so nothing sits under the fixed action bar. */}
+      {editing ? <div aria-hidden="true" className="h-16" /> : null}
+
       {/* Baselining is a freeze the project is then measured against, so it is confirmed
           explicitly and described for what it does — never as an approval. */}
       <ConfirmDialog

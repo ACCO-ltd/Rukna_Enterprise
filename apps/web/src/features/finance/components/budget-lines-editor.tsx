@@ -254,7 +254,7 @@ export function BudgetLinesEditor({
                 const problem = showErrors ? budgetLineProblem(line) : null;
                 const n = index + 1;
                 return (
-                  <TableRow key={line.key} className="align-top">
+                  <TableRow key={line.key} className="[&>td]:align-top">
                     <TableCell className="min-w-40">
                       <Select
                         aria-label={t('targetTypeAria', { number: n })}
@@ -370,9 +370,6 @@ export function BudgetLinesEditor({
           </Table>
         </TableScroll>
       </SectionPanel>
-
-      {/* Spacer, so the last row is never hidden behind the fixed bar. */}
-      <div aria-hidden="true" className="h-16" />
 
       {/* Fixed action bar — present only while editing. One primary. */}
       <div
