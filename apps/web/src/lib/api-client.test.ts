@@ -112,7 +112,9 @@ describe('apiClient — empty response bodies', () => {
   it('resolves undefined for 204 No Content', async () => {
     fetchMock.mockResolvedValue(emptyResponse(204));
 
-    await expect(apiClient('/projects/p1/members/u1', { method: 'DELETE' })).resolves.toBeUndefined();
+    await expect(
+      apiClient('/projects/p1/members/u1', { method: 'DELETE' }),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -124,7 +126,10 @@ describe('apiClient — error envelope', () => {
           success: false,
           error: {
             code: 'INTERNAL_ERROR',
-            message: ['code must be shorter than or equal to 30 characters', 'name should not be empty'],
+            message: [
+              'code must be shorter than or equal to 30 characters',
+              'name should not be empty',
+            ],
           },
         },
         400,
@@ -206,7 +211,14 @@ describe('apiClient — token refresh', () => {
       return jsonResponse({ url });
     });
 
-    const endpoints = ['/projects', '/users/u1', '/roles', '/audit-logs', '/permissions', '/organizations/o1'];
+    const endpoints = [
+      '/projects',
+      '/users/u1',
+      '/roles',
+      '/audit-logs',
+      '/permissions',
+      '/organizations/o1',
+    ];
     const results = await Promise.all(endpoints.map((e) => apiClient<{ url: string }>(e)));
 
     expect(refreshCalls).toBe(1);
@@ -219,9 +231,7 @@ describe('apiClient — token refresh', () => {
   it('ends the session when the refresh itself fails', async () => {
     sessionStore.setFromAccessToken(fakeJwt());
 
-    fetchMock
-      .mockResolvedValueOnce(emptyResponse(401))
-      .mockResolvedValueOnce(emptyResponse(401));
+    fetchMock.mockResolvedValueOnce(emptyResponse(401)).mockResolvedValueOnce(emptyResponse(401));
 
     await expect(apiClient('/projects')).rejects.toMatchObject({
       status: 401,
@@ -251,9 +261,9 @@ describe('apiClient — token refresh', () => {
   it('never refreshes for skipAuth requests', async () => {
     fetchMock.mockResolvedValue(emptyResponse(401));
 
-    await expect(apiClient('/auth/login', { method: 'POST', skipAuth: true })).rejects.toBeInstanceOf(
-      ApiError,
-    );
+    await expect(
+      apiClient('/auth/login', { method: 'POST', skipAuth: true }),
+    ).rejects.toBeInstanceOf(ApiError);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

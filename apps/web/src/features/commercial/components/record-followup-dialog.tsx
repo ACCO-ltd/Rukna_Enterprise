@@ -47,7 +47,8 @@ export function RecordFollowUpDialog({ open, onOpenChange, invoice, projectId }:
     meta: {
       successToast: {
         key: 'commercial.feedback.followUpRecorded',
-        values: () => ({ ref: invoice.invoiceNumber ?? 'none' }),
+        // `||`, not `??`: a blank number is no number either.
+        values: () => ({ ref: invoice.invoiceNumber || 'none' }),
       },
       flashRow: () => invoice.invoiceId,
     },

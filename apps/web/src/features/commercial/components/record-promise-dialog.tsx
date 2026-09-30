@@ -45,7 +45,8 @@ export function RecordPromiseDialog({ open, onOpenChange, invoice, projectId }: 
     meta: {
       successToast: {
         key: 'commercial.feedback.promiseRecorded',
-        values: () => ({ ref: invoice.invoiceNumber ?? 'none' }),
+        // `||`, not `??`: a blank number is no number either.
+        values: () => ({ ref: invoice.invoiceNumber || 'none' }),
       },
       flashRow: () => invoice.invoiceId,
     },
@@ -103,7 +104,9 @@ export function RecordPromiseDialog({ open, onOpenChange, invoice, projectId }: 
         <div className="space-y-1.5">
           <Label htmlFor="pr-amount">
             {t('promisedAmount')}{' '}
-            <span className="text-caption text-muted-foreground">({t('promisedAmountOptional')})</span>
+            <span className="text-caption text-muted-foreground">
+              ({t('promisedAmountOptional')})
+            </span>
           </Label>
           <Input
             id="pr-amount"

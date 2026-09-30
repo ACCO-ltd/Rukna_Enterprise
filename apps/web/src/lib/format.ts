@@ -83,10 +83,7 @@ export function formatNumber(
 }
 
 /** Formats an ISO date string as a short calendar date. Returns null when absent. */
-export function formatDate(
-  value: string | null | undefined,
-  locale: Locale = 'en',
-): string | null {
+export function formatDate(value: string | null | undefined, locale: Locale = 'en'): string | null {
   if (!value) return null;
 
   const date = new Date(value);
@@ -144,7 +141,10 @@ export function relativeTime(
  * A timestamp as "15 Sep 2026, 09:12", for activity and approval trails. Null for absent or
  * unparseable input, like its siblings.
  */
-export function formatDateTime(value: string | null | undefined, locale: Locale = 'en'): string | null {
+export function formatDateTime(
+  value: string | null | undefined,
+  locale: Locale = 'en',
+): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;

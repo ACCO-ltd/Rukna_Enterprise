@@ -1009,6 +1009,7 @@
     "activityAdded": "Activity {name} added",
     "activityUpdated": "Activity {name} updated",
     "activityDeleted": "Activity deleted",
-    "scheduleTemplateApplied": "Schedule template applied. {count, plural, one {# phase} other {# phases}} created"
+    "scheduleTemplateApplied": "Schedule template applied. {count, plural, one {# phase} other {# phases}} created",
+    "dprDraftSaved": "Daily report for {date} saved as a draft"
   }
 }

@@ -14,6 +14,9 @@ import {
 } from '@/lib/mutation-feedback';
 import { makeQueryClient } from '@/lib/query-client';
 
+/** Long enough for a closing FormDialog's exit animation (--motion-exit / --motion-enter). */
+const SUCCESS_DIALOG_DELAY_MS = 200;
+
 interface OpenSuccess {
   title: string;
   description?: string;
@@ -36,7 +39,9 @@ export function QueryProvider({
   const { toast } = useToast();
   const t = useTranslations();
   const tCommon = useTranslations('common.feedback');
+  // Content and open state are kept apart so the dialog keeps its heading while it fades out.
   const [success, setSuccess] = useState<OpenSuccess | null>(null);
+  const [successOpen, setSuccessOpen] = useState(false);
 
   const [queryClient] = useState(() => createClient());
 
@@ -52,25 +57,38 @@ export function QueryProvider({
       const data = event.action.data;
       const variables = event.mutation.state.variables;
 
-      const text = (message: FeedbackMessage) => {
-        const { key, values } = resolveMessage(message, data, variables);
-        return t(key, values);
-      };
+      // TanStack dispatches `success` inside the mutation's own try: a throw here would turn a
+      // command the server already committed into an error — and invite a duplicating retry.
+      // Feedback is decoration; it must never fail the command.
+      try {
+        const text = (message: FeedbackMessage) => {
+          const { key, values } = resolveMessage(message, data, variables);
+          return t(key, values);
+        };
 
-      const dialog = meta.successDialog;
-      if (dialog && (!dialog.when || dialog.when(data, variables))) {
-        setSuccess({
-          title: text(dialog.title),
-          description: dialog.description ? text(dialog.description) : undefined,
-        });
-      } else if (meta.successToast) {
-        toast({ title: text(meta.successToast), tone: 'success' });
-      } else {
-        return;
+        const dialog = meta.successDialog;
+        if (dialog && (!dialog.when || dialog.when(data, variables))) {
+          const content = {
+            title: text(dialog.title),
+            description: dialog.description ? text(dialog.description) : undefined,
+          };
+          // Opened after the command's own dialog has finished closing: two Radix modals swapping
+          // in one commit can leave the page's pointer lock and focus return tangled.
+          window.setTimeout(() => {
+            setSuccess(content);
+            setSuccessOpen(true);
+          }, SUCCESS_DIALOG_DELAY_MS);
+        } else if (meta.successToast) {
+          toast({ title: text(meta.successToast), tone: 'success' });
+        } else {
+          return;
+        }
+
+        const id = flashRowId(meta, data, variables);
+        if (id) markRowSaved(id);
+      } catch (error) {
+        console.error('Mutation feedback failed; the command itself succeeded.', error);
       }
-
-      const id = flashRowId(meta, data, variables);
-      if (id) markRowSaved(id);
     });
   }, [queryClient, toast, t]);
 
@@ -78,10 +96,8 @@ export function QueryProvider({
     <QueryClientProvider client={queryClient}>
       {children}
       <SuccessDialog
-        open={success !== null}
-        onOpenChange={(open) => {
-          if (!open) setSuccess(null);
-        }}
+        open={successOpen}
+        onOpenChange={setSuccessOpen}
         title={success?.title ?? ''}
         description={success?.description}
         doneLabel={tCommon('done')}

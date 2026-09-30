@@ -84,11 +84,66 @@ describe('mutation feedback', () => {
   });
 });
 
+describe('mutation feedback — failure isolation and fallback', () => {
+  function Probe({ meta }: { meta: MutationFeedbackMeta }) {
+    const m = useMutation({ mutationFn: async () => ({ id: 'row-x' }), meta });
+    return (
+      <>
+        <button type="button" onClick={() => m.mutate()}>
+          Save
+        </button>
+        <output aria-label="status">{m.status}</output>
+      </>
+    );
+  }
+
+  it('never turns a committed command into an error when a feedback helper throws', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderWithProviders(
+      <Probe
+        meta={{
+          successToast: {
+            key: 'common.feedback.saved',
+            values: () => {
+              throw new Error('response shape drifted');
+            },
+          },
+        }}
+      />,
+      { withToast: true },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByLabelText('status')).toHaveTextContent('success'));
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('falls back to the toast when this call is not the milestone', async () => {
+    renderWithProviders(
+      <Probe
+        meta={{
+          successToast: 'common.feedback.saved',
+          successDialog: { title: 'common.feedback.created', when: () => false },
+        }}
+      />,
+      { withToast: true },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Changes saved')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
 describe('flashRowId', () => {
   it('defaults to the result id, honours an override, and can be turned off', () => {
     expect(flashRowId({}, { id: 'a' }, undefined)).toBe('a');
     expect(flashRowId({}, 'no-id', undefined)).toBeNull();
     expect(flashRowId({ flashRow: false }, { id: 'a' }, undefined)).toBeNull();
-    expect(flashRowId({ flashRow: (_d, v) => (v as { lineId: string }).lineId }, {}, { lineId: 'l1' })).toBe('l1');
+    expect(
+      flashRowId({ flashRow: (_d, v) => (v as { lineId: string }).lineId }, {}, { lineId: 'l1' }),
+    ).toBe('l1');
   });
 });

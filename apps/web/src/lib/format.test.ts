@@ -37,7 +37,6 @@ describe('formatNumber', () => {
     expect(formatNumber(1200, 'en')).toBe('1,200');
   });
 
-
   it('returns null when there is no value', () => {
     expect(formatNumber(null)).toBeNull();
   });

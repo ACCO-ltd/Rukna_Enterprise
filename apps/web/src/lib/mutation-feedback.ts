@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
  * ─── Mutation feedback — one place that makes a successful command visible ─────────
  *
  * A mutation opts in through its `meta` (typed below via TanStack's `Register`), and the
- * `MutationCache` in `query-client.ts` does the rest. Nothing to remember at the call site, so a
+ * mutation-cache subscription in `providers/query-provider.tsx` does the rest. Nothing to remember at the call site, so a
  * new command cannot ship silent the way 100 of them had:
  *
  *   useMutation({
@@ -92,16 +92,42 @@ function emit() {
   for (const l of listeners) l();
 }
 
-export function markRowSaved(id: string) {
-  savedIds = new Set(savedIds).add(id);
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function setSaved(id: string, saved: boolean) {
+  const next = new Set(savedIds);
+  if (saved) next.add(id);
+  else next.delete(id);
+  savedIds = next;
   emit();
-  setTimeout(() => {
-    if (!savedIds.has(id)) return;
-    const next = new Set(savedIds);
-    next.delete(id);
-    savedIds = next;
-    emit();
-  }, ROW_SAVED_MS);
+}
+
+/**
+ * Tint a row for `ROW_SAVED_MS`. Saving the same row again restarts the tint: the id is cleared
+ * for a tick first so the row drops the animation class and picks it up afresh, and the earlier
+ * timer is cancelled so it cannot cut the new tint short.
+ */
+export function markRowSaved(id: string) {
+  const pending = timers.get(id);
+  if (pending) clearTimeout(pending);
+
+  const start = () => {
+    setSaved(id, true);
+    timers.set(
+      id,
+      setTimeout(() => {
+        timers.delete(id);
+        setSaved(id, false);
+      }, ROW_SAVED_MS),
+    );
+  };
+
+  if (savedIds.has(id)) {
+    setSaved(id, false);
+    timers.set(id, setTimeout(start, 0));
+  } else {
+    start();
+  }
 }
 
 function subscribe(listener: () => void) {

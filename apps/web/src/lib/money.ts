@@ -46,10 +46,7 @@ export const QUANTITY_SCALE = 3;
  * Digits beyond `scale` are truncated rather than rounded, matching how the database stores
  * a value that exceeds its column scale.
  */
-export function parseMinorUnits(
-  value: string | null | undefined,
-  scale: number,
-): number | null {
+export function parseMinorUnits(value: string | null | undefined, scale: number): number | null {
   if (value === null || value === undefined) return null;
 
   const trimmed = value.trim();

@@ -53,13 +53,7 @@ export function ProjectSubtypesManager() {
 
 // ─── One category's group ───────────────────────────────────────────────────────
 
-function CategoryGroup({
-  category,
-  canManage,
-}: {
-  category: ProjectCategory;
-  canManage: boolean;
-}) {
+function CategoryGroup({ category, canManage }: { category: ProjectCategory; canManage: boolean }) {
   const t = useTranslations('projectTypes.manager');
   const tCategory = useTranslations('projectTypes.categories');
 
@@ -86,10 +80,7 @@ function CategoryGroup({
 
   function onCreate() {
     if (!canSubmit) return;
-    create.mutate(
-      { category, name: trimmed },
-      { onSuccess: () => setName('') },
-    );
+    create.mutate({ category, name: trimmed }, { onSuccess: () => setName('') });
   }
 
   return (
@@ -171,6 +162,7 @@ function CategoryGroup({
                     canManage={canManage}
                     onDeactivate={() => deactivate.mutate(subtype.id)}
                     deactivating={deactivate.isPending && deactivate.variables === subtype.id}
+                    busy={deactivate.isPending}
                   />
                 ))
               )}
@@ -187,11 +179,14 @@ function SubtypeRow({
   canManage,
   onDeactivate,
   deactivating,
+  busy,
 }: {
   subtype: ProjectSubtype;
   canManage: boolean;
   onDeactivate: () => void;
   deactivating: boolean;
+  /** Some row's deactivation is in flight — every row's button waits for it. */
+  busy: boolean;
 }) {
   const t = useTranslations('projectTypes.manager');
   const isActive = subtype.status === 'ACTIVE';
@@ -207,7 +202,13 @@ function SubtypeRow({
       {canManage ? (
         <TableCell className="text-end">
           {isActive ? (
-            <Button variant="outline" size="sm" loading={deactivating} onClick={onDeactivate}>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={deactivating}
+              disabled={busy}
+              onClick={onDeactivate}
+            >
               {t('deactivate')}
             </Button>
           ) : null}

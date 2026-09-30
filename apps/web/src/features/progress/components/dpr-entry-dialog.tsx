@@ -24,6 +24,7 @@ import {
   Notice,
   Skeleton,
   Textarea,
+  useToast,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
@@ -85,7 +86,9 @@ export function DprEntryDialog({
   onClose: () => void;
 }) {
   // Keyed by report: opening another report starts from its own state, never the last one's.
-  return dprId ? <DialogInner key={dprId} projectId={projectId} dprId={dprId} onClose={onClose} /> : null;
+  return dprId ? (
+    <DialogInner key={dprId} projectId={projectId} dprId={dprId} onClose={onClose} />
+  ) : null;
 }
 
 interface GuardState {
@@ -93,7 +96,15 @@ interface GuardState {
   busy: boolean;
 }
 
-function DialogInner({ projectId, dprId, onClose }: { projectId: string; dprId: string; onClose: () => void }) {
+function DialogInner({
+  projectId,
+  dprId,
+  onClose,
+}: {
+  projectId: string;
+  dprId: string;
+  onClose: () => void;
+}) {
   const t = useTranslations('progress');
   const tCommon = useTranslations('common');
   const tDiscard = useTranslations('common.discardChanges');
@@ -102,7 +113,9 @@ function DialogInner({ projectId, dprId, onClose }: { projectId: string; dprId: 
   // The entry form owns the edits; it reports them up so the one dialog can guard its dismissal.
   const [guard, setGuard] = useState<GuardState>({ dirty: false, busy: false });
 
-  const dateText = dpr.data ? (formatDate(dpr.data.reportDate, locale) ?? dpr.data.reportDate) : null;
+  const dateText = dpr.data
+    ? (formatDate(dpr.data.reportDate, locale) ?? dpr.data.reportDate)
+    : null;
   const status = dpr.data?.status;
   const editable = status ? isEditableDpr(status) : false;
 
@@ -157,7 +170,12 @@ function DialogInner({ projectId, dprId, onClose }: { projectId: string; dprId: 
           <CloseFooter label={tCommon('close')} />
         </>
       ) : (
-        <EntryForm projectId={projectId} dpr={dpr.data} onClose={onClose} onGuardChange={setGuard} />
+        <EntryForm
+          projectId={projectId}
+          dpr={dpr.data}
+          onClose={onClose}
+          onGuardChange={setGuard}
+        />
       )}
     </FormDialog>
   );
@@ -201,7 +219,9 @@ function EntryForm({
   const workPackages = useWorkPackages(projectId);
   const progress = useProjectProgress(projectId);
   const submit = useSubmitDpr(projectId, dpr.id);
-  // Steps of Save/Submit, which confirms the whole save itself — no toast per step.
+  // Steps of Save/Submit: Submit confirms through its own meta, Save draft below — no toast per step.
+  const { toast } = useToast();
+  const tFeedback = useTranslations('progress.feedback');
   const patch = usePatchDprContext(dpr.id, { silent: true });
   const addMeasurement = useAddMeasurement(dpr.id, { silent: true });
   const addLabour = useAddLabourRow(dpr.id, { silent: true });
@@ -252,7 +272,8 @@ function EntryForm({
       if (items.length > 0) out.push({ key: wp.id, label: `${wp.code} ${wp.name}`, items });
     }
     const rest = leaves.filter((l) => !placed.has(l.id));
-    if (rest.length > 0 && out.length > 0) out.push({ key: 'unassigned', label: t('entry.unassigned'), items: rest });
+    if (rest.length > 0 && out.length > 0)
+      out.push({ key: 'unassigned', label: t('entry.unassigned'), items: rest });
     return out;
   }, [leaves, leafById, workPackages.data, t]);
 
@@ -292,7 +313,10 @@ function EntryForm({
   /** "1 item exceeds its BOQ quantity: 2.2 RC C30 slab — enter 2 or less". */
   function describeExceeds(errors: Record<string, DprQuantityFieldError>): string {
     const lines = Object.entries(errors).map(([id, e]) =>
-      t('entry.exceedsSummaryLine', { item: leafLabel.get(id) ?? id, max: quantityText(e.max, e.unit) }),
+      t('entry.exceedsSummaryLine', {
+        item: leafLabel.get(id) ?? id,
+        max: quantityText(e.max, e.unit),
+      }),
     );
     return t('entry.exceedsSummary', { count: lines.length, list: lines.join('; ') });
   }
@@ -310,14 +334,18 @@ function EntryForm({
     ...(labourDirty
       ? [
           labourDraft.trade.trim() && labourDraft.headcount !== ''
-            ? t('entry.unrecorded.labourLine', { trade: labourDraft.trade.trim(), headcount: labourDraft.headcount })
+            ? t('entry.unrecorded.labourLine', {
+                trade: labourDraft.trade.trim(),
+                headcount: labourDraft.headcount,
+              })
             : t('entry.unrecorded.labourPartial'),
         ]
       : []),
   ].join('; ');
   // "Add and continue" is only offered when every unrecorded entry can be added as it stands.
   const canAddUnrecorded =
-    typedLeafIds.every((id) => Number(quantities[id]) > 0) && (!labourDirty || isLabourDraftComplete(labourDraft));
+    typedLeafIds.every((id) => Number(quantities[id]) > 0) &&
+    (!labourDirty || isLabourDraftComplete(labourDraft));
 
   function requestAction(action: 'draft' | 'submit') {
     if (typedLeafIds.length > 0 || labourDirty) {
@@ -349,7 +377,8 @@ function EntryForm({
         setBusy(false);
         if (error instanceof ApiError && error.status === 409) refetchReport();
         const mapped = mapDprError(error, t('entry.saveFailed'));
-        if (mapped.fieldErrors[id]) setFieldErrors((prev) => ({ ...prev, [id]: mapped.fieldErrors[id]! }));
+        if (mapped.fieldErrors[id])
+          setFieldErrors((prev) => ({ ...prev, [id]: mapped.fieldErrors[id]! }));
         else setRowErrors((prev) => ({ ...prev, [id]: mapped.formError }));
         setFocusRequest((n) => n + 1);
         return;
@@ -361,7 +390,11 @@ function EntryForm({
         setLabourDraft(emptyLabourDraft(directLabel));
       } catch (error) {
         setBusy(false);
-        setFormError(t('entry.unrecorded.labourFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
+        setFormError(
+          t('entry.unrecorded.labourFailed', {
+            message: mapDprError(error, t('entry.saveFailed')).formError,
+          }),
+        );
         return;
       }
     }
@@ -382,7 +415,9 @@ function EntryForm({
       await patch.mutateAsync({ narrative: next });
       return true;
     } catch (error) {
-      setNotesError(t('entry.notesFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
+      setNotesError(
+        t('entry.notesFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }),
+      );
       return false;
     }
   }
@@ -391,7 +426,14 @@ function EntryForm({
     setBusy(true);
     const saved = await flushNotes();
     setBusy(false);
-    if (saved) onClose();
+    if (!saved) return;
+    toast({
+      tone: 'success',
+      title: tFeedback('dprDraftSaved', {
+        date: formatDate(dpr.reportDate, locale) ?? dpr.reportDate,
+      }),
+    });
+    onClose();
   }
 
   async function onSubmit() {
@@ -567,7 +609,12 @@ function EntryForm({
       </FormDialogBody>
 
       <FormDialogFooter>
-        <Button type="button" variant="outline" onClick={() => requestAction('draft')} disabled={guardBusy}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => requestAction('draft')}
+          disabled={guardBusy}
+        >
           {t('entry.saveDraft')}
         </Button>
         <Button type="button" onClick={() => requestAction('submit')} disabled={guardBusy}>
@@ -584,7 +631,9 @@ function EntryForm({
       >
         <DialogContent size="sm">
           <DialogTitle>{t('entry.unrecorded.title')}</DialogTitle>
-          <DialogDescription>{t('entry.unrecorded.body', { list: unrecordedList })}</DialogDescription>
+          <DialogDescription>
+            {t('entry.unrecorded.body', { list: unrecordedList })}
+          </DialogDescription>
           <DialogFooter>
             {canAddUnrecorded ? (
               <Button type="button" onClick={() => void addAndContinue()}>
@@ -655,7 +704,8 @@ function EntryItemRow({
 
   // The listed symbol ("m³"), display only.
   const unit = unitLabel(leaf.unit);
-  const withUnit = (n: number | string) => `${formatNumber(n, locale, 3) ?? n}${unit ? ` ${unit}` : ''}`;
+  const withUnit = (n: number | string) =>
+    `${formatNumber(n, locale, 3) ?? n}${unit ? ` ${unit}` : ''}`;
   const recordedHere = measurements.reduce((sum, m) => sum + Number(m.quantity), 0);
   const removable = measurements.filter((m) => canRemove(m));
   const kept = measurements.filter((m) => !canRemove(m));
@@ -714,7 +764,9 @@ function EntryItemRow({
       // on the report, and the reader must know that.
       onError: (error) => {
         if (error instanceof ApiError && error.status === 409) onConflict();
-        onRowError(t('entry.removeFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }));
+        onRowError(
+          t('entry.removeFailed', { message: mapDprError(error, t('entry.saveFailed')).formError }),
+        );
       },
     });
   }
@@ -728,7 +780,9 @@ function EntryItemRow({
         </Label>
         <p id={hintId} className="mt-0.5 text-caption text-muted-foreground">
           {hint}
-          {recordedHere > 0 ? ` · ${t('entry.recordedHere', { quantity: withUnit(recordedHere) })}` : null}
+          {recordedHere > 0
+            ? ` · ${t('entry.recordedHere', { quantity: withUnit(recordedHere) })}`
+            : null}
         </p>
         {errorText ? (
           <p id={errorId} className="mt-1 text-caption font-medium text-danger">
@@ -750,7 +804,9 @@ function EntryItemRow({
           aria-label={t('entry.quantityLabel', { item: lineLabel(leaf) })}
           aria-describedby={errorText ? `${hintId} ${errorId}` : hintId}
           aria-invalid={errorText ? true : undefined}
-          endSlot={unit ? <span className="text-caption text-muted-foreground">{unit}</span> : undefined}
+          endSlot={
+            unit ? <span className="text-caption text-muted-foreground">{unit}</span> : undefined
+          }
           className="text-end tabular-nums"
         />
         <Button type="submit" variant="outline" loading={add.isPending} className="shrink-0">
@@ -787,7 +843,10 @@ function EntryItemRow({
                   size="sm"
                   onClick={() => onRemove(m.id)}
                   disabled={remove.isPending}
-                  aria-label={t('entry.removeLabel', { quantity: withUnit(m.quantity), item: lineLabel(leaf) })}
+                  aria-label={t('entry.removeLabel', {
+                    quantity: withUnit(m.quantity),
+                    item: lineLabel(leaf),
+                  })}
                   className="h-7 rounded-full px-2 text-caption font-medium text-muted-foreground hover:text-danger"
                 >
                   {t('entry.remove')}
@@ -796,7 +855,9 @@ function EntryItemRow({
             ))}
           </ul>
         ) : (
-          <p className="hidden text-caption text-muted-foreground sm:block sm:pt-2.5">{t('entry.nothingRecorded')}</p>
+          <p className="hidden text-caption text-muted-foreground sm:block sm:pt-2.5">
+            {t('entry.nothingRecorded')}
+          </p>
         )}
       </div>
     </li>

@@ -1856,7 +1856,7 @@
     "variationReversed": "Variation {ref} reversed and removed from the contract",
     "separateChargeInvoiced": "Separate charge invoice created",
     "invoicePrepared": "{count, plural, one {Draft invoice prepared} other {# draft invoices prepared}}",
-    "invoiceIssued": "{count, plural, one {Invoice {numbers} issued} other {Invoices {numbers} issued}}",
+    "invoiceIssued": "{count, plural, =0 {Invoice issued} one {Invoice {numbers} issued} other {Invoices {numbers} issued}}",
     "draftInvoiceDeleted": "Draft invoice deleted",
     "draftInvoiceUpdated": "Draft invoice updated",
     "creditNoteIssued": "{ref, select, none {Credit note issued} other {Credit note {ref} issued}}",

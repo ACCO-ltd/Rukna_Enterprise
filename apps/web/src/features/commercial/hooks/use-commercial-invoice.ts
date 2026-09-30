@@ -170,7 +170,7 @@ export function useIssueCreditNote(projectId: string, invoiceId: string) {
       successToast: {
         key: 'commercial.feedback.creditNoteIssued',
         values: (data) => ({
-          ref: (data as { creditNoteNumber: string | null }).creditNoteNumber ?? 'none',
+          ref: (data as { creditNoteNumber: string | null }).creditNoteNumber || 'none',
         }),
       },
     },

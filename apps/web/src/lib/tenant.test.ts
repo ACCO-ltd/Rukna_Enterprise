@@ -52,8 +52,6 @@ describe('buildApiBaseUrl', () => {
   });
 
   it('throws an actionable error when neither variable is configured', () => {
-    expect(() => buildApiBaseUrl('acco.localhost', {})).toThrow(
-      /NEXT_PUBLIC_API_URL_TEMPLATE/,
-    );
+    expect(() => buildApiBaseUrl('acco.localhost', {})).toThrow(/NEXT_PUBLIC_API_URL_TEMPLATE/);
   });
 });
