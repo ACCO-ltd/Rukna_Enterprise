@@ -360,7 +360,17 @@ export class WorkflowsService {
     return policy;
   }
 
-  async getPolicyHistory(organizationId: string, policyId: string) { return this.repo.findPolicyHistory(organizationId, policyId); }
+  /**
+   * A policy's governance history, newest first. `actorName` names who acted (for the timeline);
+   * null when the user has no name on record — the client shows "Unknown user", never an email.
+   */
+  async getPolicyHistory(organizationId: string, policyId: string) {
+    const rows = await this.repo.findPolicyHistory(organizationId, policyId);
+    return rows.map(({ user, ...row }) => ({
+      ...row,
+      actorName: `${user.firstName} ${user.lastName}`.trim() || null,
+    }));
+  }
 
   async listPolicySodRules(organizationId: string, policyId: string) { if (!await this.repo.findPolicyWithRules(organizationId, policyId)) throw new NotFoundException('Policy not found'); return this.repo.listPolicySodRules(organizationId, policyId); }
   async upsertDraftPolicySodRule(organizationId: string, policyId: string, actorUserId: string, dto: { code: string; description: string; isActive: boolean }) { this.authoring.assertEnabled(); const rule = await this.repo.upsertDraftPolicySodRule(organizationId, policyId, actorUserId, dto); if (!rule) throw new ConflictException('SoD rules can only be changed in a draft policy'); return rule; }

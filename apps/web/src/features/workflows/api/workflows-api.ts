@@ -41,7 +41,8 @@ export interface DraftSimulationRejectedRule { ruleId: string; ruleKey: string; 
  * them is then undefined, which is an authoring defect the author must resolve.
  */
 export interface DraftSimulation { policy: { id: string; policyKey: string; version: number }; input: { transactionType: string; amount?: string; fromState?: string; toState?: string }; matched: boolean; ambiguous: boolean; roleChain: DraftSimulationMatch[]; rejectedRules: DraftSimulationRejectedRule[]; notice: string; }
-export interface PolicyActivity { id: string; action: string; reason: string | null; createdAt: string; userId: string; }
+/** `actorName` names who acted — null when unknown (added 2026-09-30; optional so an older API still renders). */
+export interface PolicyActivity { id: string; action: string; reason: string | null; createdAt: string; userId: string; actorName?: string | null; }
 export interface PolicySodRule { id: string; code: string; description: string; isActive: boolean; }
 
 /** `GET /workflows/policies` — governed policy-version inventory for administration. */

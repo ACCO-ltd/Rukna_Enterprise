@@ -1,11 +1,9 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import {
   ActivityTimeline,
-  type ActivityTimelineEntry,
   Alert,
-  Avatar,
   Button,
   FormDialog,
   FormDialogBody,
@@ -13,11 +11,9 @@ import {
   FormDialogFooter,
   Skeleton,
 } from '@erp/ui';
-import type { ProjectActivityEventResponse } from '@erp/types';
+import { renderNextLink } from '@/components/render-next-link';
 
-import { formatDateTime } from '@/lib/format';
-
-import { useActivityLabel } from '../activity-labels';
+import { useProjectActivityEntries } from '../activity-labels';
 import { useProjectActivity } from '../hooks/use-project';
 
 /**
@@ -39,24 +35,13 @@ export function ProjectActivityDialog({
 }) {
   const t = useTranslations('platform.projects.activity');
   const common = useTranslations('common');
-  const label = useActivityLabel();
-  const locale = useLocale() as 'en' | 'ar';
+  const toEntries = useProjectActivityEntries();
   const query = useProjectActivity(projectId, open);
   const events = query.data?.pages.flatMap((page) => page.items) ?? [];
 
-  // "Name · what happened" — the same reading as the Overview rail, so the two feel like one list.
-  const entries: ActivityTimelineEntry[] = events.map((event) => ({
-    id: event.id,
-    actor: event.actor.name,
-    action: (
-      <>
-        <span className="text-muted-foreground">· </span>
-        {label(event)}
-      </>
-    ),
-    at: formatDateTime(event.occurredAt, locale) ?? '',
-    dateTime: event.occurredAt,
-  }));
+  // One sentence per event — **who** did what to which record (linked when it has a page), then
+  // when — built by the same hook as the Overview rail, so the two read as one list.
+  const entries = toEntries(events);
 
   return (
     <FormDialog
@@ -85,7 +70,7 @@ export function ProjectActivityDialog({
           <p className="text-body-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <div>
-            <ActivityTimeline entries={entries} label={t('title')} />
+            <ActivityTimeline entries={entries} label={t('title')} renderLink={renderNextLink} />
             <div className="mt-4">
               {query.hasNextPage ? (
                 <Button
@@ -116,36 +101,5 @@ export function ProjectActivityDialog({
         </FormDialogClose>
       </FormDialogFooter>
     </FormDialog>
-  );
-}
-
-/**
- * Who · what, then when — the Overview rail's own list. Left as it is here on purpose: the rail
- * moves onto `ActivityTimeline` with the rest of the app's timelines, not in this change.
- */
-export function ActivityList({ events }: { events: readonly ProjectActivityEventResponse[] }) {
-  const label = useActivityLabel();
-  const locale = useLocale() as 'en' | 'ar';
-
-  return (
-    <ol className="flex flex-col gap-3">
-      {events.map((event) => (
-        <li key={event.id} className="flex min-w-0 gap-2.5">
-          <Avatar name={event.actor.name} size="sm" className="mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-body-sm text-foreground">
-              <span className="font-semibold">{event.actor.name}</span>
-              <span className="text-muted-foreground"> · </span>
-              {label(event)}
-            </p>
-            <p className="text-caption text-muted-foreground">
-              <time dateTime={event.occurredAt}>
-                {formatDateTime(event.occurredAt, locale) ?? ''}
-              </time>
-            </p>
-          </div>
-        </li>
-      ))}
-    </ol>
   );
 }

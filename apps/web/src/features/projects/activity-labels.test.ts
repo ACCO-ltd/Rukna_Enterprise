@@ -16,16 +16,26 @@ const event = (command: string, action = 'UPDATE') => ({ action, sourceCommand: 
 
 describe('activity labels', () => {
   it.each([
-    ['project.start', 'Project started'],
-    ['project.addMember', 'Team member added'],
-    ['contract.record-signed', 'Signed contract recorded'],
-    ['variation.raiseAndAdopt', 'Extra work added'],
-    ['projectDocument.issueRevision', 'Document revision issued'],
-    ['programmeBaseline.approve', 'Programme baseline approved'],
-    ['boq.commit', 'BOQ committed'],
-    ['commercial.recordProjectPayment', 'Payment recorded'],
-  ])('%s has a catalog label', (command, label) => {
+    ['project.start', 'started the project'],
+    ['project.addMember', 'added a team member'],
+    ['contract.record-signed', 'executed the contract'],
+    ['variation.raiseAndAdopt', 'added the extra work'],
+    ['projectDocument.issueRevision', 'issued the revision'],
+    ['programmeBaseline.approve', 'approved the programme baseline'],
+    ['boq.commit', 'committed the BOQ'],
+    ['commercial.recordProjectPayment', 'recorded the payment'],
+    ['commercial.issuePackage', 'issued the invoice'],
+  ])('%s has a catalog verb phrase', (command, label) => {
     expect(resolve(activityEventKey(event(command))!)).toBe(label);
+  });
+
+  it('every catalog entry is a lower-case verb phrase that can lead into a target', () => {
+    const phrases = Object.values(catalog.events).flatMap((area) => Object.values(area));
+    expect(phrases.length).toBeGreaterThan(50);
+    for (const phrase of [...phrases, ...Object.values(catalog.fallback)]) {
+      expect(phrase).toMatch(/^[a-z]/);
+      expect(phrase).not.toMatch(/[.:]$/);
+    }
   });
 
   it('labels a waiver by what it is, not by the command it unblocked', () => {

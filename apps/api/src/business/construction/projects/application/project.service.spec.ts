@@ -430,6 +430,59 @@ describe('ProjectService.getActivity (amendment 2026-09-28)', () => {
     expect(repo.findProjectActivity).not.toHaveBeenCalled();
   });
 
+  it("names each event's target from one batched lookup per kind, never an amount", async () => {
+    const outbox = (id: string, resource: string, resourceId: string, sourceCommand: string, after?: unknown) => ({
+      id,
+      action: 'CREATE',
+      resource,
+      resourceId,
+      sourceCommand,
+      after: after ?? null,
+      createdAt: new Date('2026-09-01T00:00:00Z'),
+      user: { id: 'user-2', firstName: 'Asha', lastName: 'Ali' },
+    });
+    const { service, repo } = build([
+      outbox('e1', 'Contract', 'c-1', 'contract.record-signed'),
+      outbox('e2', 'ContractPaymentPlan', 'c-1', 'contract.replacePaymentPlan'),
+      outbox('e3', 'Project', 'project-1', 'commercial.recordProjectPayment', { receiptId: 'r-1', amount: '5000.00' }),
+      outbox('e4', 'VariationOrder', 'vo-gone', 'variation.create'),
+      row('e5', '2026-09-01T00:00:00Z'),
+    ]);
+    const lookup = jest.fn().mockResolvedValue(
+      new Map([
+        ['contract', new Map([['c-1', { reference: 'ACC-HDN-26-0005-C1' }]])],
+        ['receipt', new Map([['r-1', { reference: 'RCT-0007' }]])],
+        ['variation', new Map()],
+      ]),
+    );
+    (repo as Record<string, jest.Mock>).findActivityTargetRecords = lookup;
+
+    const page = await service.getActivity(identity([PERMISSIONS.contractsView]), 'project-1', {});
+
+    expect(lookup).toHaveBeenCalledTimes(1);
+    const [, orgId, projectId, ids] = lookup.mock.calls[0];
+    expect([orgId, projectId]).toEqual(['org-1', 'project-1']);
+    expect(Object.fromEntries(ids)).toEqual({ contract: ['c-1'], receipt: ['r-1'], variation: ['vo-gone'] });
+
+    expect(page.items.map((e) => e.target)).toEqual([
+      { label: 'ACC-HDN-26-0005-C1', href: '/projects/project-1/commercial/contract' },
+      { label: 'ACC-HDN-26-0005-C1', href: '/projects/project-1/commercial/contract' },
+      { label: 'RCT-0007' },
+      null, // deleted record
+      null, // request-logged BOQ commit: the row's id is the project, not a version
+    ]);
+    expect(JSON.stringify(page.items)).not.toContain('5000');
+  });
+
+  it('skips the target lookup when no row names a record', async () => {
+    const { service, repo } = build([row('a1', '2026-09-01T00:00:00Z')]);
+    const lookup = jest.fn();
+    (repo as Record<string, jest.Mock>).findActivityTargetRecords = lookup;
+    const page = await service.getActivity(identity([PERMISSIONS.boqView]), 'project-1', {});
+    expect(lookup).not.toHaveBeenCalled();
+    expect(page.items[0]?.target).toBeNull();
+  });
+
   it('404s for a project that does not exist', async () => {
     const { service } = build([], null);
     await expect(service.getActivity(identity([]), 'missing', {})).rejects.toBeInstanceOf(

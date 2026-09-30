@@ -9,6 +9,11 @@ import {
   type ActivityCursor,
   type ActivityFamily,
 } from '../domain/project-activity.js';
+import type {
+  ActivityTargetKind,
+  ActivityTargetRecord,
+  ActivityTargetRecords,
+} from '../domain/project-activity-targets.js';
 
 type TenantPrisma = Omit<
   PrismaClient,
@@ -122,6 +127,11 @@ const ACTIVITY_SELECT = {
   resource: true,
   resourceId: true,
   sourceCommand: true,
+  // Read only for the ids an invoice/payment command names (`project-activity-targets`: invoice,
+  // receipt and installment ids); never sent to the client (a payment's `after` carries its
+  // amount). Prisma cannot select JSON sub-keys, so the whole column is loaded and the ids are
+  // picked out in the domain module.
+  after: true,
   createdAt: true,
   user: { select: { id: true, firstName: true, lastName: true } },
 } satisfies Prisma.AuditLogSelect;
@@ -313,6 +323,122 @@ export class ProjectPrismaRepository {
       take,
       select: ACTIVITY_SELECT,
     });
+  }
+
+  /**
+   * The records that name a page of activity events, one query per kind present
+   * (`domain/project-activity-targets.ts`). Every lookup is held to this organisation and — where
+   * the record carries it — this project, so an id from another project resolves to nothing.
+   */
+  async findActivityTargetRecords(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+    ids: ReadonlyMap<ActivityTargetKind, readonly string[]>,
+  ): Promise<ActivityTargetRecords> {
+    const ofContract = { projectId, organizationId };
+    const loaders: { [K in ActivityTargetKind]: (ids: string[]) => Promise<[string, ActivityTargetRecord][]> } = {
+      contract: async (in_) =>
+        (
+          await prisma.contract.findMany({
+            where: { id: { in: in_ }, ...ofContract },
+            select: { id: true, contractNumber: true },
+          })
+        ).map((r) => [r.id, { reference: r.contractNumber }]),
+      installment: async (in_) =>
+        (
+          await prisma.contractPaymentInstallment.findMany({
+            where: { id: { in: in_ }, contract: ofContract },
+            select: { id: true, name: true },
+          })
+        ).map((r) => [r.id, { reference: r.name }]),
+      advanceTerm: async (in_) =>
+        (
+          await prisma.contractAdvanceTerm.findMany({
+            where: { id: { in: in_ }, contract: ofContract },
+            select: { id: true, description: true },
+          })
+        ).map((r) => [r.id, { reference: r.description }]),
+      deliverable: async (in_) =>
+        (
+          await prisma.contractDeliverable.findMany({
+            where: { id: { in: in_ }, contract: ofContract },
+            select: { id: true, name: true },
+          })
+        ).map((r) => [r.id, { reference: r.name }]),
+      guarantee: async (in_) =>
+        (
+          await prisma.contractGuarantee.findMany({
+            where: { id: { in: in_ }, contract: ofContract },
+            select: { id: true, reference: true },
+          })
+        ).map((r) => [r.id, { reference: r.reference }]),
+      variation: async (in_) =>
+        (
+          await prisma.variationOrder.findMany({
+            where: { id: { in: in_ }, organizationId, contract: { projectId } },
+            select: { id: true, reference: true },
+          })
+        ).map((r) => [r.id, { reference: r.reference }]),
+      document: async (in_) =>
+        (
+          await prisma.projectDocument.findMany({
+            where: { id: { in: in_ }, projectId, organizationId },
+            select: { id: true, documentNumber: true },
+          })
+        ).map((r) => [r.id, { reference: r.documentNumber }]),
+      revision: async (in_) =>
+        (
+          await prisma.projectDocumentRevision.findMany({
+            where: { id: { in: in_ }, organizationId, document: { projectId } },
+            select: {
+              id: true,
+              revisionNumber: true,
+              revisionCode: true,
+              projectDocumentId: true,
+              document: { select: { documentNumber: true } },
+            },
+          })
+        ).map((r) => [
+          r.id,
+          {
+            reference: `${r.document.documentNumber} rev. ${r.revisionCode ?? r.revisionNumber}`,
+            documentId: r.projectDocumentId,
+          },
+        ]),
+      baseline: async (in_) =>
+        (
+          await prisma.programmeBaseline.findMany({
+            where: { id: { in: in_ }, projectId, organizationId },
+            select: { id: true, version: true },
+          })
+        ).map((r) => [r.id, { reference: `v${r.version}` }]),
+      invoice: async (in_) =>
+        (
+          await prisma.clientInvoice.findMany({
+            where: { id: { in: in_ }, projectId, organizationId },
+            select: { id: true, invoiceNumber: true },
+          })
+        ).map((r) => [r.id, { reference: r.invoiceNumber }]),
+      // A receipt has no project column: it belongs to this project through its allocations to
+      // this project's invoices. A receipt allocated elsewhere only resolves to nothing.
+      receipt: async (in_) =>
+        (
+          await prisma.paymentReceipt.findMany({
+            where: {
+              id: { in: in_ },
+              organizationId,
+              clientAllocations: { some: { invoice: { projectId, organizationId } } },
+            },
+            select: { id: true, receiptNumber: true },
+          })
+        ).map((r) => [r.id, { reference: r.receiptNumber }]),
+    };
+
+    const loaded = await Promise.all(
+      [...ids].map(async ([kind, kindIds]) => [kind, new Map(await loaders[kind]([...kindIds]))] as const),
+    );
+    return new Map(loaded);
   }
 
   async findByCode(

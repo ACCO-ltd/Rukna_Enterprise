@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { ApiError } from '@/lib/api-client';
+import { formatDateTime } from '@/lib/format';
 import {
   getProject,
   getProjectActivity,
@@ -458,6 +459,7 @@ describe('ProjectDetail — latest activity', () => {
     resourceId: 'p1',
     occurredAt: '2026-09-04T09:42:00.000Z',
     actor: { id: 'u1', name },
+    target: null as { label: string; href?: string } | null,
   });
 
   it('reads as a compact feed: who, what, when — three at most, no machine codes', async () => {
@@ -478,9 +480,9 @@ describe('ProjectDetail — latest activity', () => {
 
     const section = await railSection('Latest activity');
     expect(within(section).getAllByRole('listitem')).toHaveLength(3);
-    expect(within(section).getByText('Project created')).toBeInTheDocument();
+    expect(within(section).getByText(/created the project/)).toBeInTheDocument();
     expect(within(section).getByText('Ahmed Warsame')).toBeInTheDocument();
-    expect(within(section).queryByText('Project resumed')).not.toBeInTheDocument();
+    expect(within(section).queryByText(/resumed the project/)).not.toBeInTheDocument();
     expect(within(section).queryByText(/project\./)).not.toBeInTheDocument();
   });
 
@@ -499,10 +501,44 @@ describe('ProjectDetail — latest activity', () => {
     renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = await railSection('Latest activity');
-    expect(within(section).getByText('Signed contract recorded')).toBeInTheDocument();
-    expect(within(section).getByText('Start condition waived')).toBeInTheDocument();
-    expect(within(section).getByText('Contract changed')).toBeInTheDocument();
+    expect(within(section).getByText(/executed the contract/)).toBeInTheDocument();
+    expect(within(section).getByText(/waived a start condition/)).toBeInTheDocument();
+    expect(within(section).getByText(/changed the contract/)).toBeInTheDocument();
     expect(within(section).queryByText(/contract\./)).not.toBeInTheDocument();
+  });
+
+  it('reads each event as one sentence naming its target, linked to its page, with the time under it', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({
+        recentActivity: [
+          {
+            ...event('a1', 'contract.record-signed', 'Abdi Yusuf', 'Contract'),
+            target: { label: 'ACC-HDN-26-0005-C1', href: '/projects/p1/commercial/contract' },
+          },
+          { ...event('a2', 'programmeBaseline.approve', 'Abdi Yusuf', 'ProgrammeBaseline'), target: { label: 'v2' } },
+          event('a3', 'boq.commit', 'Abdi Yusuf', 'Boq'),
+        ],
+      }),
+    );
+
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
+
+    const section = await railSection('Latest activity');
+    const items = within(section).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Abdi Yusuf executed the contract ACC-HDN-26-0005-C1');
+    expect(within(items[0]!).getByRole('link', { name: 'ACC-HDN-26-0005-C1' })).toHaveAttribute(
+      'href',
+      '/projects/p1/commercial/contract',
+    );
+    // The app's absolute date-time format (in the reader's time zone), machine-readable too.
+    const time = items[0]!.querySelector('time');
+    expect(time).toHaveAttribute('dateTime', '2026-09-04T09:42:00.000Z');
+    expect(time).toHaveTextContent(formatDateTime('2026-09-04T09:42:00.000Z', 'en')!);
+    // A target without a page is named, not linked; an event without a target is still a sentence.
+    expect(items[1]).toHaveTextContent('Abdi Yusuf approved the programme baseline v2');
+    expect(within(items[1]!).queryByRole('link')).not.toBeInTheDocument();
+    expect(items[2]).toHaveTextContent('Abdi Yusuf committed the BOQ');
   });
 
   /**
@@ -537,15 +573,45 @@ describe('ProjectDetail — latest activity', () => {
     await user.click(within(section).getByRole('button', { name: 'View all' }));
 
     const dialog = within(await screen.findByRole('dialog', { name: 'Project activity' }));
-    expect(await dialog.findByText('BOQ committed')).toBeInTheDocument();
-    expect(dialog.getByText('Team member added')).toBeInTheDocument();
+    expect(await dialog.findByText(/committed the BOQ/)).toBeInTheDocument();
+    expect(dialog.getByText(/added a team member/)).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenCalledWith('p1', undefined);
 
     await user.click(dialog.getByRole('button', { name: 'Load more' }));
-    expect(await dialog.findByText('Project created')).toBeInTheDocument();
+    expect(await dialog.findByText(/created the project/)).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenLastCalledWith('p1', 'cursor-1');
     expect(dialog.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
     expect(dialog.getByText('That is everything recorded so far.')).toBeInTheDocument();
+  });
+
+  it('View all names each target and links it to its page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({ recentActivity: [event('a1', 'project.create')] }),
+    );
+    vi.mocked(getProjectActivity).mockResolvedValueOnce({
+      items: [
+        {
+          ...event('h1', 'commercial.issuePackage', 'Abdi Yusuf', 'Contract'),
+          target: { label: 'INV-2026-0012', href: '/projects/p1/commercial/invoices/inv-1' },
+        },
+        { ...event('h2', 'programmeBaseline.approve', 'Abdi Yusuf', 'ProgrammeBaseline'), target: { label: 'v2' } },
+      ],
+      nextCursor: null,
+    });
+
+    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['view:project'], withToast: true });
+    const section = await railSection('Latest activity');
+    await user.click(within(section).getByRole('button', { name: 'View all' }));
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Project activity' }));
+    const link = await dialog.findByRole('link', { name: 'INV-2026-0012' });
+    expect(link).toHaveAttribute('href', '/projects/p1/commercial/invoices/inv-1');
+    expect(link.closest('li')).toHaveTextContent('Abdi Yusuf issued the invoice INV-2026-0012');
+    const baseline = dialog.getByText('v2');
+    expect(baseline.closest('a')).toBeNull();
+    expect(baseline.closest('li')).toHaveTextContent('Abdi Yusuf approved the programme baseline v2');
   });
 
   it('does not fetch the full history until it is asked for', async () => {
