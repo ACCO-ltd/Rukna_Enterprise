@@ -112,9 +112,7 @@ export function OpenDisputeDialog({ open, onOpenChange, invoice, currency, proje
         <div className="space-y-1.5">
           <Label htmlFor="dp-amount">
             {t('disputedAmount')}{' '}
-            <span className="text-caption text-muted-foreground">
-              ({t('disputedAmountOptional')})
-            </span>
+            <span className="text-caption text-muted-foreground">({t('disputedAmountOptional')})</span>
           </Label>
           <Input
             id="dp-amount"
@@ -141,7 +139,8 @@ export function OpenDisputeDialog({ open, onOpenChange, invoice, currency, proje
         {/* Invariant note: outstanding balance is NOT adjusted by a dispute */}
         {outstandingFormatted ? (
           <p className="rounded-control bg-surface-raised px-3 py-2 text-caption text-muted-foreground">
-            {t('outstandingNote')}{' '}
+            {t('outstandingNote')}
+            {' '}
             <span className="font-medium tabular-nums">{outstandingFormatted}</span>
           </p>
         ) : null}

@@ -53,7 +53,13 @@ export function ProjectSubtypesManager() {
 
 // ─── One category's group ───────────────────────────────────────────────────────
 
-function CategoryGroup({ category, canManage }: { category: ProjectCategory; canManage: boolean }) {
+function CategoryGroup({
+  category,
+  canManage,
+}: {
+  category: ProjectCategory;
+  canManage: boolean;
+}) {
   const t = useTranslations('projectTypes.manager');
   const tCategory = useTranslations('projectTypes.categories');
 
@@ -80,7 +86,10 @@ function CategoryGroup({ category, canManage }: { category: ProjectCategory; can
 
   function onCreate() {
     if (!canSubmit) return;
-    create.mutate({ category, name: trimmed }, { onSuccess: () => setName('') });
+    create.mutate(
+      { category, name: trimmed },
+      { onSuccess: () => setName('') },
+    );
   }
 
   return (

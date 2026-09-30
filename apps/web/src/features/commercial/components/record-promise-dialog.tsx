@@ -104,9 +104,7 @@ export function RecordPromiseDialog({ open, onOpenChange, invoice, projectId }: 
         <div className="space-y-1.5">
           <Label htmlFor="pr-amount">
             {t('promisedAmount')}{' '}
-            <span className="text-caption text-muted-foreground">
-              ({t('promisedAmountOptional')})
-            </span>
+            <span className="text-caption text-muted-foreground">({t('promisedAmountOptional')})</span>
           </Label>
           <Input
             id="pr-amount"

@@ -3,10 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Stable, like the App Router's own instance.
-const nav = vi.hoisted(() => {
-  const push = vi.fn();
-  return { push, router: { push } };
-});
+const nav = vi.hoisted(() => { const push = vi.fn(); return { push, router: { push } }; });
 vi.mock('next/navigation', () => ({ useRouter: () => nav.router }));
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => (

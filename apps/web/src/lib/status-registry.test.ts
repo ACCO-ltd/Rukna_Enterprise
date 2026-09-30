@@ -42,38 +42,17 @@ describe('statusTone', () => {
 
 describe('vocabularies added when per-feature tone maps were retired (ADR-034)', () => {
   const cases: Array<[StatusVocabulary, Record<string, StatusTone>]> = [
-    [
-      'fiscalYear',
-      { DRAFT: 'neutral', OPEN: 'progress', LOCKED: 'attention', CLOSED: 'historical' },
-    ],
-    [
-      'ipcSettlement',
-      { UNPAID: 'neutral', PARTIALLY_PAID: 'progress', PAID: 'success', OVER_ALLOCATED: 'danger' },
-    ],
+    ['fiscalYear', { DRAFT: 'neutral', OPEN: 'progress', LOCKED: 'attention', CLOSED: 'historical' }],
+    ['ipcSettlement', { UNPAID: 'neutral', PARTIALLY_PAID: 'progress', PAID: 'success', OVER_ALLOCATED: 'danger' }],
     ['ipcEffectiveness', { EFFECTIVE: 'success', SUPERSEDED: 'historical' }],
-    [
-      'documentRevision',
-      { DRAFT: 'neutral', ISSUED: 'success', SUPERSEDED: 'historical', WITHDRAWN: 'historical' },
-    ],
+    ['documentRevision', { DRAFT: 'neutral', ISSUED: 'success', SUPERSEDED: 'historical', WITHDRAWN: 'historical' }],
     [
       'requirementApproval',
-      {
-        DRAFT: 'neutral',
-        SUBMITTED: 'progress',
-        APPROVED: 'success',
-        CANCELLED: 'historical',
-        CLOSED: 'historical',
-      },
+      { DRAFT: 'neutral', SUBMITTED: 'progress', APPROVED: 'success', CANCELLED: 'historical', CLOSED: 'historical' },
     ],
-    [
-      'requirementFulfilment',
-      { NOT_ORDERED: 'neutral', PARTIALLY_ORDERED: 'progress', FULLY_ORDERED: 'success' },
-    ],
+    ['requirementFulfilment', { NOT_ORDERED: 'neutral', PARTIALLY_ORDERED: 'progress', FULLY_ORDERED: 'success' }],
     ['poFunding', { NOT_FUNDED: 'neutral', PARTIALLY_FUNDED: 'progress', FUNDED: 'success' }],
-    [
-      'poReceiving',
-      { NOT_RECEIVED: 'neutral', PARTIALLY_RECEIVED: 'progress', RECEIVED: 'success' },
-    ],
+    ['poReceiving', { NOT_RECEIVED: 'neutral', PARTIALLY_RECEIVED: 'progress', RECEIVED: 'success' }],
     ['poSettlement', { OPEN: 'progress', ACTION_REQUIRED: 'attention', SETTLED: 'success' }],
     ['costBudget', { DRAFT: 'neutral', BASELINED: 'success', SUPERSEDED: 'historical' }],
     [
@@ -137,38 +116,15 @@ describe('vocabularies added when per-feature tone maps were retired (ADR-034)',
     ],
     [
       'variationBilling',
-      {
-        APPROVED_NOT_BILLED: 'attention',
-        INVOICE_DRAFT: 'neutral',
-        INVOICED: 'success',
-        OMISSION_BILLED: 'success',
-      },
+      { APPROVED_NOT_BILLED: 'attention', INVOICE_DRAFT: 'neutral', INVOICED: 'success', OMISSION_BILLED: 'success' },
     ],
     ['severity', { INFO: 'neutral', WARNING: 'attention', URGENT: 'danger', CRITICAL: 'danger' }],
     ['financeControl', { OK: 'success', ATTENTION: 'attention', UNAVAILABLE: 'neutral' }],
-    [
-      'scheduleHealth',
-      { AHEAD: 'success', ON_TRACK: 'success', BEHIND: 'attention', INSUFFICIENT_DATA: 'neutral' },
-    ],
-    [
-      'costSignal',
-      {
-        ALIGNED: 'success',
-        PROGRESS_AHEAD: 'progress',
-        COST_AHEAD: 'attention',
-        INSUFFICIENT_DATA: 'neutral',
-        HIDDEN: 'neutral',
-      },
-    ],
+    ['scheduleHealth', { AHEAD: 'success', ON_TRACK: 'success', BEHIND: 'attention', INSUFFICIENT_DATA: 'neutral' }],
+    ['costSignal', { ALIGNED: 'success', PROGRESS_AHEAD: 'progress', COST_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral', HIDDEN: 'neutral' }],
     [
       'collectionSignal',
-      {
-        ALIGNED: 'success',
-        CASH_AHEAD: 'progress',
-        WORK_AHEAD: 'attention',
-        INSUFFICIENT_DATA: 'neutral',
-        HIDDEN: 'neutral',
-      },
+      { ALIGNED: 'success', CASH_AHEAD: 'progress', WORK_AHEAD: 'attention', INSUFFICIENT_DATA: 'neutral', HIDDEN: 'neutral' },
     ],
     ['programmeMilestone', { PLANNED: 'neutral', VERIFIED: 'success' }],
     [
