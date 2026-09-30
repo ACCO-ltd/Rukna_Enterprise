@@ -8,7 +8,11 @@ import type {
   SetUserRolesRequest,
   UpdateUserRequest,
   ProvisionTemporaryUserRequest,
+  ProvisionTemporaryUserResponse,
+  UserWithRolesResponse,
 } from '@erp/types';
+
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 import {
   createUser,
@@ -26,12 +30,27 @@ const userKeys = {
   all: ['users'] as const,
 };
 
+/** "Amina Yusuf" — the user a toast names, read off the returned user. */
+function userName(data: unknown): { name: string } {
+  const user = data as UserWithRolesResponse;
+  return { name: `${user.firstName} ${user.lastName}`.trim() };
+}
+
+/** Feedback for a command that answers with the saved user (so its row tints by `id`). */
+function userSaved(key: string): MutationFeedbackMeta {
+  return { successToast: { key, values: userName } };
+}
+
 export function useUsers() {
   return useQuery({ queryKey: userKeys.all, queryFn: listUsers });
 }
 
 export function useRegenerateTemporaryPassword() {
-  return useMutation({ mutationFn: regenerateTemporaryPassword });
+  return useMutation({
+    mutationFn: regenerateTemporaryPassword,
+    // The credential comes back without the user; the dialog names them in its subtitle.
+    meta: { successToast: 'platform.feedback.userTemporaryPasswordRegenerated', flashRow: false },
+  });
 }
 
 export function useProvisionTemporaryUser() {
@@ -39,6 +58,13 @@ export function useProvisionTemporaryUser() {
   return useMutation({
     mutationFn: (payload: ProvisionTemporaryUserRequest) => provisionTemporaryUser(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+    meta: {
+      successToast: {
+        key: 'platform.feedback.userCreated',
+        values: (data) => userName((data as ProvisionTemporaryUserResponse).user),
+      },
+      flashRow: (data) => (data as ProvisionTemporaryUserResponse).user.id,
+    },
   });
 }
 
@@ -47,6 +73,7 @@ export function useCreateUser() {
   return useMutation({
     mutationFn: (payload: CreateUserRequest) => createUser(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+    meta: userSaved('platform.feedback.userCreated'),
   });
 }
 
@@ -56,6 +83,7 @@ export function useUpdateUser() {
     mutationFn: ({ id, payload }: { id: string; payload: UpdateUserRequest }) =>
       updateUser(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+    meta: userSaved('platform.feedback.userUpdated'),
   });
 }
 
@@ -64,6 +92,7 @@ export function useDeactivateUser() {
   return useMutation({
     mutationFn: (id: string) => deactivateUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+    meta: userSaved('platform.feedback.userDeactivated'),
   });
 }
 
@@ -72,6 +101,7 @@ export function useReactivateUser() {
   return useMutation({
     mutationFn: (id: string) => reactivateUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+    meta: userSaved('platform.feedback.userReactivated'),
   });
 }
 
@@ -79,6 +109,8 @@ export function useSetUserPassword() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: SetUserPasswordRequest }) =>
       setUserPassword(id, payload),
+    // 204 — nothing to name the user by; the dialog that ran it just closed on them.
+    meta: { successToast: 'platform.feedback.userPasswordSet', flashRow: (_data, v) => (v as { id: string }).id },
   });
 }
 
@@ -88,6 +120,7 @@ export function useSetUserRoles() {
     mutationFn: ({ id, payload }: { id: string; payload: SetUserRolesRequest }) =>
       setUserRoles(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+    meta: userSaved('platform.feedback.userRolesUpdated'),
   });
 }
 
@@ -102,6 +135,9 @@ export interface BulkStatusResult {
  * is invalidated once, after the whole batch, so the table reflects whatever actually applied
  * — including partial success. Self-exclusion is enforced by the caller (`bulkTargets`), not
  * here, because it is a selection rule, not a request rule.
+ *
+ * No feedback `meta`: a batch "succeeds" even when some ids failed, and the caller picks the
+ * success or failure toast from the counts.
  */
 export function useBulkUserStatus() {
   const qc = useQueryClient();

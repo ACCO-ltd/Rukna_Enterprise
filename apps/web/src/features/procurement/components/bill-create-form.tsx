@@ -562,8 +562,13 @@ export function SupplierBillCreateForm({
             </Button>
           }
           save={
-            <Button type="submit" disabled={save.isPending || noProfiles}>
-              {save.isPending ? t('saving') : editing ? t('saveChanges') : t('save')}
+            <Button
+              type="submit"
+              loading={save.isPending}
+              loadingText={t('saving')}
+              disabled={noProfiles}
+            >
+              {editing ? t('saveChanges') : t('save')}
             </Button>
           }
           discard={

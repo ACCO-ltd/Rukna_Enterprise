@@ -310,8 +310,8 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? tCommon('saving') : t('submit')}
+        <Button type="submit" loading={create.isPending} loadingText={tCommon('saving')}>
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

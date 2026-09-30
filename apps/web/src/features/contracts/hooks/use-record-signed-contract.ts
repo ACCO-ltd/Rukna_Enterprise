@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation';
 import { useFileUpload } from '@/features/files/hooks/use-file-upload';
 import { commercialKeys } from '@/features/commercial/hooks/use-commercial';
 
-import { recordSignedContract, type RecordSignedContractPayload } from '../api/record-signed-contract-api';
+import {
+  recordSignedContract,
+  type RecordSignedContractPayload,
+  type RecordSignedContractResponse,
+} from '../api/record-signed-contract-api';
 import { contractKeys } from './use-contracts';
 
 /**
@@ -42,6 +46,17 @@ export function useRecordSignedContract(projectId: string) {
         signedDocumentId = await upload.mutateAsync(file);
       }
       return recordSignedContract({ ...rest, signedDocumentId });
+    },
+    // The contract goes live here — a milestone, so the success dialog rather than a toast.
+    meta: {
+      successDialog: {
+        title: {
+          key: 'commercial.feedback.contractActiveTitle',
+          values: (data) => ({ ref: (data as RecordSignedContractResponse).contract.contractNumber }),
+        },
+        description: 'commercial.feedback.contractActiveDescription',
+      },
+      flashRow: (data) => (data as RecordSignedContractResponse).contract.id,
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: commercialKeys.summary(projectId) });

@@ -299,7 +299,7 @@ export function CreateMilestoneForm({ projectId, primary = true }: { projectId: 
         </FormField>
       </div>
       <div className="mt-3">
-        <Button type="submit" variant={primary ? 'default' : 'outline'} disabled={create.isPending}>
+        <Button type="submit" variant={primary ? 'default' : 'outline'} loading={create.isPending}>
           {t('programme.form.submit')}
         </Button>
       </div>
@@ -384,7 +384,7 @@ export function VerifyMilestoneDialog({
             {t('programme.actions.cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={verify.isPending || !actualDate}>
+        <Button type="submit" disabled={!actualDate} loading={verify.isPending}>
           {t('programme.actions.verify')}
         </Button>
       </FormDialogFooter>

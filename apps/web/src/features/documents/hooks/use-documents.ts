@@ -34,6 +34,7 @@ import {
   type LinkedAttachmentFilters,
   type UpdateDocumentBody,
 } from '../api/documents-api';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 /**
  * Every write returns the whole document detail, and every write invalidates the register.
@@ -108,13 +109,24 @@ export function useLinkedAttachments(
   });
 }
 
+/** The toast names the document by its number; every write but delete returns the detail. */
+function documentToast(key: string): MutationFeedbackMeta {
+  const document = (data: unknown) => (data as ProjectDocumentDetailResponse).document;
+  return {
+    successToast: { key, values: (data) => ({ ref: document(data).documentNumber }) },
+    flashRow: (data) => document(data).id,
+  };
+}
+
 function useDocumentMutation<TVariables>(
   projectId: string,
   mutationFn: (variables: TVariables) => Promise<unknown>,
+  meta: MutationFeedbackMeta,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
+    meta,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: documentKeys.all(projectId) });
     },
@@ -124,18 +136,21 @@ function useDocumentMutation<TVariables>(
 export function useCreateDocument(projectId: string) {
   return useDocumentMutation(projectId, (body: CreateDocumentBody) =>
     createProjectDocument(projectId, body),
+    documentToast('documents.feedback.registered'),
   );
 }
 
 export function useUpdateDocument(projectId: string, documentId: string) {
   return useDocumentMutation(projectId, (body: UpdateDocumentBody) =>
     updateProjectDocument(projectId, documentId, body),
+    documentToast('documents.feedback.updated'),
   );
 }
 
 export function useCreateRevision(projectId: string, documentId: string) {
   return useDocumentMutation(projectId, (body: CreateRevisionBody) =>
     createDocumentRevision(projectId, documentId, body),
+    documentToast('documents.feedback.revisionAdded'),
   );
 }
 
@@ -144,6 +159,7 @@ export function useReplaceRevisionFile(projectId: string, documentId: string) {
     projectId,
     ({ revisionId, platformFileId }: { revisionId: string; platformFileId: string }) =>
       replaceRevisionFile(projectId, documentId, revisionId, platformFileId),
+    documentToast('documents.feedback.revisionFileReplaced'),
   );
 }
 
@@ -152,27 +168,35 @@ export function useIssueRevision(projectId: string, documentId: string) {
     projectId,
     ({ revisionId, ...body }: IssueRevisionBody & { revisionId: string }) =>
       issueDocumentRevision(projectId, documentId, revisionId, body),
+    documentToast('documents.feedback.revisionIssued'),
   );
 }
 
 export function useWithdrawDocument(projectId: string, documentId: string) {
   return useDocumentMutation(projectId, (reason: string) =>
     withdrawProjectDocument(projectId, documentId, reason),
+    documentToast('documents.feedback.withdrawn'),
   );
 }
 
 export function useSupersedeDocument(projectId: string, documentId: string) {
   return useDocumentMutation(projectId, (supersededByDocumentId: string) =>
     supersedeProjectDocument(projectId, documentId, supersededByDocumentId),
+    documentToast('documents.feedback.superseded'),
   );
 }
 
 export function useArchiveDocument(projectId: string, documentId: string) {
-  return useDocumentMutation(projectId, () => archiveProjectDocument(projectId, documentId));
+  return useDocumentMutation(
+    projectId,
+    () => archiveProjectDocument(projectId, documentId),
+    documentToast('documents.feedback.archived'),
+  );
 }
 
 export function useDeleteDocument(projectId: string) {
   return useDocumentMutation(projectId, (documentId: string) =>
     deleteProjectDocument(projectId, documentId),
+    { successToast: 'documents.feedback.deleted', flashRow: false },
   );
 }

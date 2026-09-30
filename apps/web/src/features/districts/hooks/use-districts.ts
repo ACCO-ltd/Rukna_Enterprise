@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { CreateDistrictInput, UpdateDistrictInput } from '@erp/types';
+import type { CreateDistrictInput, DistrictResponse, UpdateDistrictInput } from '@erp/types';
 import { listDistricts, createDistrict, updateDistrict } from '../api/districts-api';
 
 const districtKeys = {
@@ -20,6 +20,12 @@ export function useCreateDistrict() {
   return useMutation({
     mutationFn: (payload: CreateDistrictInput) => createDistrict(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: districtKeys.all }),
+    meta: {
+      successToast: {
+        key: 'platform.feedback.districtAdded',
+        values: (data) => ({ name: (data as DistrictResponse).name, code: (data as DistrictResponse).code }),
+      },
+    },
   });
 }
 
@@ -29,5 +35,11 @@ export function useUpdateDistrict() {
     mutationFn: ({ id, payload }: { id: string; payload: UpdateDistrictInput }) =>
       updateDistrict(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: districtKeys.all }),
+    meta: {
+      successToast: {
+        key: 'platform.feedback.districtStatusChanged',
+        values: (data) => ({ name: (data as DistrictResponse).name, active: String((data as DistrictResponse).active) }),
+      },
+    },
   });
 }

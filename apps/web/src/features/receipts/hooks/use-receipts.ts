@@ -14,6 +14,8 @@ import {
   type CreateReceiptPayload,
   type PostReceiptPayload,
 } from '../api/receipts-api';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+
 import type { Receipt, ReceiptDetail } from '../types';
 
 export const receiptKeys = {
@@ -42,6 +44,7 @@ export function useCreateReceipt() {
 
   return useMutation({
     mutationFn: (payload: CreateReceiptPayload) => createReceipt(payload),
+    meta: { successToast: 'accounting.feedback.receiptRecorded' },
     onSuccess: async (receipt) => {
       await queryClient.invalidateQueries({ queryKey: receiptKeys.all });
       router.push(`/receipts/${receipt.id}`);
@@ -53,11 +56,16 @@ export function useCreateReceipt() {
  * Posting and allocation change the receipt's GL/allocation state, so they invalidate the
  * detail (allocations, unallocated balance, posting status) and the list rows.
  */
-function useReceiptStateMutation<TArgs>(receiptId: string, run: (args: TArgs) => Promise<unknown>) {
+function useReceiptStateMutation<TArgs>(
+  receiptId: string,
+  run: (args: TArgs) => Promise<unknown>,
+  meta: MutationFeedbackMeta,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: run,
+    meta,
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: receiptKeys.detail(receiptId) }),
@@ -68,19 +76,25 @@ function useReceiptStateMutation<TArgs>(receiptId: string, run: (args: TArgs) =>
 }
 
 export function usePostReceipt(receiptId: string) {
-  return useReceiptStateMutation(receiptId, (payload: PostReceiptPayload) =>
-    postReceipt(receiptId, payload),
+  return useReceiptStateMutation(
+    receiptId,
+    (payload: PostReceiptPayload) => postReceipt(receiptId, payload),
+    { successToast: 'accounting.feedback.receiptPosted' },
   );
 }
 
 export function useAllocateToInvoice(receiptId: string) {
-  return useReceiptStateMutation(receiptId, (payload: AllocateToInvoicePayload) =>
-    allocateToInvoice(receiptId, payload),
+  return useReceiptStateMutation(
+    receiptId,
+    (payload: AllocateToInvoicePayload) => allocateToInvoice(receiptId, payload),
+    { successToast: 'accounting.feedback.receiptAllocated' },
   );
 }
 
 export function useReverseAllocation(receiptId: string) {
-  return useReceiptStateMutation(receiptId, (allocationId: string) =>
-    reverseAllocation(receiptId, allocationId),
+  return useReceiptStateMutation(
+    receiptId,
+    (allocationId: string) => reverseAllocation(receiptId, allocationId),
+    { successToast: 'accounting.feedback.allocationReversed', flashRow: false },
   );
 }

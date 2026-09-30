@@ -33,6 +33,8 @@ import {
 import Link from 'next/link';
 import { ArrowUpDown, Columns3, Search } from 'lucide-react';
 
+import { useRecentlySavedRows } from '@/lib/mutation-feedback';
+
 // ─── Column definition ────────────────────────────────────────────────────────
 
 export interface GridRenderContext {
@@ -525,6 +527,16 @@ export interface PlatformDataGridProps<T> {
  * The caller owns data fetching (TanStack Query) and domain filtering; the grid
  * owns text search and column sort.
  */
+/**
+ * A row whose record was just saved (a mutation with feedback `meta`, keyed by `rowKey`):
+ * tinted, then faded out, so the eye lands on what changed once the dialog closes. Reduced
+ * motion gets a static tint held while the row is flagged.
+ */
+const SAVED_ROW = 'motion-safe:animate-row-saved motion-reduce:bg-success-subtle';
+/** The same on a table row's cells — a sticky cell paints its own background over the row's. */
+const SAVED_ROW_CELLS =
+  'motion-safe:[&>td]:animate-row-saved motion-reduce:[&>td]:bg-success-subtle';
+
 export function PlatformDataGrid<T>({
   columns,
   data,
@@ -561,6 +573,7 @@ export function PlatformDataGrid<T>({
   filterValues,
   onFilterValuesChange,
 }: PlatformDataGridProps<T>) {
+  const savedRows = useRecentlySavedRows();
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
   const searchId = useId();
@@ -990,7 +1003,14 @@ export function PlatformDataGrid<T>({
                   const href = rowHref?.(row);
                   const title = cardCell(row, 'title');
                   return (
-                    <li key={rowKey(row)} className="rounded-panel border border-border bg-surface p-3">
+                    <li
+                      key={rowKey(row)}
+                      data-just-saved={savedRows.has(rowKey(row)) || undefined}
+                      className={cn(
+                        'rounded-panel border border-border bg-surface p-3',
+                        savedRows.has(rowKey(row)) && SAVED_ROW,
+                      )}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 space-y-0.5 text-body-sm">
                           {href ? (
@@ -1034,7 +1054,13 @@ export function PlatformDataGrid<T>({
             ) : (
               <ul className="space-y-2" aria-label={label}>
                 {visible.map((row) => (
-                  <li key={rowKey(row)}>{mobileRow(row, renderCtx)}</li>
+                  <li
+                    key={rowKey(row)}
+                    data-just-saved={savedRows.has(rowKey(row)) || undefined}
+                    className={cn(savedRows.has(rowKey(row)) && cn(SAVED_ROW, 'rounded-panel'))}
+                  >
+                    {mobileRow(row, renderCtx)}
+                  </li>
                 ))}
               </ul>
             )}
@@ -1128,7 +1154,11 @@ export function PlatformDataGrid<T>({
                   return (
                     <TableRow
                       key={rowKey(row)}
-                      className={cn(href && 'cursor-pointer hover:bg-surface-subtle')}
+                      data-just-saved={savedRows.has(rowKey(row)) || undefined}
+                      className={cn(
+                        href && 'cursor-pointer hover:bg-surface-subtle',
+                        savedRows.has(rowKey(row)) && SAVED_ROW_CELLS,
+                      )}
                       onClick={href ? navigateRow : undefined}
                     >
                       {/* Selection checkbox cell */}

@@ -144,7 +144,7 @@ export function ProjectsList() {
       searchPlaceholder={t('searchPlaceholder')}
       resultLabel={(count) => t('countLabel', { count })}
       noMatchMessage={t('noMatches')}
-      emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
+      emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="size-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
       toolbarFilters={statusFilter}
       // The one create button. The module header owns the page title (ADR-035), so the action
       // sits with the list it adds to; the empty state carries the same action when there is no
@@ -152,7 +152,7 @@ export function ProjectsList() {
       toolbarActions={mayCreate ? (
         <Button asChild>
           <Link href="/projects/new">
-            <Plus className="me-2 h-4 w-4" aria-hidden="true" />
+            <Plus className="size-4" aria-hidden="true" />
             {t('newProject')}
           </Link>
         </Button>

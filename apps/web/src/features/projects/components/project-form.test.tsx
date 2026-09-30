@@ -65,8 +65,8 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-function renderForm() {
-  return renderWithProviders(<ProjectForm />);
+function renderForm(options: { withToast?: boolean } = {}) {
+  return renderWithProviders(<ProjectForm />, options);
 }
 
 // ── Wizard navigation helpers ──────────────────────────────────────────────────
@@ -223,8 +223,20 @@ describe('ProjectForm — submission', () => {
       });
     });
     await waitFor(() => {
-      expect(push).toHaveBeenCalledWith('/projects/p1?created=1');
+      expect(push).toHaveBeenCalledWith('/projects/p1');
     });
+  });
+
+  it('confirms the new project with a toast naming its code', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createProject).mockResolvedValue({ id: 'p1', code: 'ACCO-HDN-26-0005' } as never);
+
+    renderForm({ withToast: true });
+
+    await fillIdentity(user, { name: 'Al-Baraka Tower' });
+    await submitProject(user);
+
+    expect(await screen.findByText('Project ACCO-HDN-26-0005 created')).toBeInTheDocument();
   });
 
   it('includes the optional fields that were filled in', async () => {

@@ -198,7 +198,7 @@ export function WorkPackageEditor({
                       variant="outline"
                       size="sm"
                       onClick={() => handleAcceptOne(s.workPackageId, s.suggestedWeight)}
-                      disabled={updateWp.isPending}
+                      loading={updateWp.isPending}
                     >
                       {t('workPackage.proposed.accept')}
                     </Button>
@@ -209,7 +209,7 @@ export function WorkPackageEditor({
           </ul>
           {suggestions.length > 1 ? (
             <div className="border-t border-border pt-2">
-              <Button variant="outline" size="sm" onClick={handleAcceptAll} disabled={updateWp.isPending}>
+              <Button variant="outline" size="sm" onClick={handleAcceptAll} loading={updateWp.isPending}>
                 {t('workPackage.proposed.acceptAll')}
               </Button>
             </div>
@@ -392,7 +392,7 @@ function CreateWorkPackageForm({
             {labels.cancelLabel}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={create.isPending}>
+        <Button type="submit" loading={create.isPending}>
           {t('workPackage.form.submit')}
         </Button>
       </FormDialogFooter>
@@ -495,7 +495,7 @@ function AllocateForm({
           </Button>
         </FormDialogClose>
         {hasBaseline ? (
-          <Button type="submit" disabled={allocate.isPending || !workPackageId || !boqNodeId}>
+          <Button type="submit" disabled={!workPackageId || !boqNodeId} loading={allocate.isPending}>
             {t('workPackage.allocate.submit')}
           </Button>
         ) : null}

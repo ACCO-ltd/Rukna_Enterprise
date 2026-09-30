@@ -16,6 +16,8 @@ import {
   type AddDeliverablePayload,
   type SetRetentionTermsPayload,
 } from '../api/contracts-api';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+
 import { contractKeys } from './use-contracts';
 
 /**
@@ -25,11 +27,16 @@ import { contractKeys } from './use-contracts';
  * bare rows with no terms — so there is nothing else to keep in step, and none of these
  * endpoints returns the reshaped contract. Refetching is the only way to see the result.
  */
-function useTermMutation<TArgs>(contractId: string, run: (args: TArgs) => Promise<unknown>) {
+function useTermMutation<TArgs>(
+  contractId: string,
+  run: (args: TArgs) => Promise<unknown>,
+  meta?: MutationFeedbackMeta,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: run,
+    meta,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.detail(contractId) });
     },
@@ -53,8 +60,10 @@ export function useRemoveAdvanceTerm(contractId: string) {
 }
 
 export function useAddGuarantee(contractId: string) {
-  return useTermMutation(contractId, (payload: AddGuaranteePayload) =>
-    addGuarantee(contractId, payload),
+  return useTermMutation(
+    contractId,
+    (payload: AddGuaranteePayload) => addGuarantee(contractId, payload),
+    { successToast: 'commercial.feedback.guaranteeAdded' },
   );
 }
 
@@ -63,6 +72,7 @@ export function useUpdateGuarantee(contractId: string) {
     contractId,
     ({ guaranteeId, ...payload }: { guaranteeId: string; status?: GuaranteeStatus; notes?: string }) =>
       updateGuarantee(contractId, guaranteeId, payload),
+    { successToast: 'commercial.feedback.guaranteeUpdated' },
   );
 }
 

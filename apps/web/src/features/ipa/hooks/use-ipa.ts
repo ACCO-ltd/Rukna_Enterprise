@@ -20,6 +20,8 @@ import {
   type AddIpaItemPayload,
   type CreateIpaPayload,
 } from '../api/ipa-api';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+
 import type { IpaCommand } from '../ipa-actions';
 import type { Ipa, IpaDetail } from '../types';
 
@@ -64,6 +66,7 @@ export function useCreateIpa(contractId: string, basePath: string) {
 
   return useMutation({
     mutationFn: (payload: CreateIpaPayload) => createIpa(payload),
+    meta: { successToast: 'accounting.feedback.applicationCreated' },
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ipaKeys.all });
       router.push(`${basePath}/${created.id}`);
@@ -83,11 +86,23 @@ export function useCreateIpa(contractId: string, basePath: string) {
  * this screen.
  */
 export function useIpaCommand(id: string) {
-  return useLifecycleCommand((command: IpaCommand) => runIpaCommand(id, command), ipaKeys.all);
+  return useLifecycleCommand((command: IpaCommand) => runIpaCommand(id, command), ipaKeys.all, {
+    successToast: {
+      key: 'accounting.feedback.ipaCommand',
+      // ICU select keys cannot contain hyphens — camelCase the command for the message.
+      values: (_result, command) => ({
+        command: (command as IpaCommand).replace(/-(\w)/g, (_m, c: string) => c.toUpperCase()),
+      }),
+    },
+    flashRow: false,
+  });
 }
 
 export function useCancelIpa(id: string) {
-  return useLifecycleCommand(() => cancelIpa(id), ipaKeys.all);
+  return useLifecycleCommand(() => cancelIpa(id), ipaKeys.all, {
+    successToast: 'accounting.feedback.ipaCancelled',
+    flashRow: false,
+  });
 }
 
 /**
@@ -97,11 +112,16 @@ export function useCancelIpa(id: string) {
  * per request from the items and deductions, so adding a line changes figures that are not
  * in the response of the call that added it. Refetching is the only way to see them.
  */
-function useLineMutation<TArgs>(ipaId: string, run: (args: TArgs) => Promise<unknown>) {
+function useLineMutation<TArgs>(
+  ipaId: string,
+  run: (args: TArgs) => Promise<unknown>,
+  meta: MutationFeedbackMeta,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: run,
+    meta,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ipaKeys.detail(ipaId) });
     },
@@ -109,19 +129,30 @@ function useLineMutation<TArgs>(ipaId: string, run: (args: TArgs) => Promise<unk
 }
 
 export function useAddIpaItem(ipaId: string) {
-  return useLineMutation(ipaId, (payload: AddIpaItemPayload) => addIpaItem(ipaId, payload));
+  return useLineMutation(ipaId, (payload: AddIpaItemPayload) => addIpaItem(ipaId, payload), {
+    successToast: 'accounting.feedback.applicationItemAdded',
+    flashRow: false,
+  });
 }
 
 export function useRemoveIpaItem(ipaId: string) {
-  return useLineMutation(ipaId, (itemId: string) => removeIpaItem(ipaId, itemId));
+  return useLineMutation(ipaId, (itemId: string) => removeIpaItem(ipaId, itemId), {
+    successToast: 'accounting.feedback.applicationItemRemoved',
+    flashRow: false,
+  });
 }
 
 export function useAddIpaDeduction(ipaId: string) {
-  return useLineMutation(ipaId, (payload: AddIpaDeductionPayload) =>
-    addIpaDeduction(ipaId, payload),
+  return useLineMutation(
+    ipaId,
+    (payload: AddIpaDeductionPayload) => addIpaDeduction(ipaId, payload),
+    { successToast: 'accounting.feedback.applicationDeductionAdded', flashRow: false },
   );
 }
 
 export function useRemoveIpaDeduction(ipaId: string) {
-  return useLineMutation(ipaId, (deductionId: string) => removeIpaDeduction(ipaId, deductionId));
+  return useLineMutation(ipaId, (deductionId: string) => removeIpaDeduction(ipaId, deductionId), {
+    successToast: 'accounting.feedback.applicationDeductionRemoved',
+    flashRow: false,
+  });
 }

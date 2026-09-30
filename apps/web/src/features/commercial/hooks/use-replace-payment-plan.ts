@@ -23,6 +23,7 @@ export function useReplacePaymentPlan(projectId: string, contractId: string) {
   return useMutation({
     mutationFn: (installments: PaymentInstallmentPayload[]) =>
       replacePaymentPlan(contractId, { installments }),
+    meta: { successToast: 'commercial.feedback.paymentPlanSaved', flashRow: false },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
     },

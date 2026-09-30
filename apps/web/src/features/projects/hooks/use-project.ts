@@ -17,7 +17,7 @@ import {
   runProjectCommand,
   suspendProject,
 } from '../api/projects-api';
-import type { ProjectDetail, ProjectWorkspaceSummary } from '../types';
+import type { Project, ProjectDetail, ProjectWorkspaceSummary } from '../types';
 import { projectKeys } from './use-projects';
 
 export function useProject(id: string): UseQueryResult<ProjectDetail, Error> {
@@ -76,13 +76,26 @@ export function useProjectGuidance(id: string) {
 }
 
 export function useCancelProject(id: string) {
-  return useLifecycleCommand((reason: string) => cancelProject(id, reason), projectKeys.all);
+  return useLifecycleCommand((reason: string) => cancelProject(id, reason), projectKeys.all, {
+    successToast: {
+      key: 'platform.feedback.projectCancelled',
+      values: (data) => ({ code: (data as Project).code }),
+    },
+  });
 }
 
+// Suspend and resume answer with an empty body (B6), so the toast cannot name the project and
+// the row to tint is this one.
 export function useSuspendProject(id: string) {
-  return useLifecycleCommand((reason: string) => suspendProject(id, reason), projectKeys.all);
+  return useLifecycleCommand((reason: string) => suspendProject(id, reason), projectKeys.all, {
+    successToast: 'platform.feedback.projectSuspended',
+    flashRow: () => id,
+  });
 }
 
 export function useResumeProject(id: string) {
-  return useLifecycleCommand(() => resumeProject(id), projectKeys.all);
+  return useLifecycleCommand(() => resumeProject(id), projectKeys.all, {
+    successToast: 'platform.feedback.projectResumed',
+    flashRow: () => id,
+  });
 }

@@ -29,5 +29,6 @@ export function useUpdateOrganizationBranding() {
     mutationFn: (payload: UpdateOrganizationBrandingInput) =>
       updateOrganizationBranding(orgId, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: organizationKeys.detail(orgId) }),
+    meta: { successToast: 'platform.feedback.brandingSaved', flashRow: false },
   });
 }

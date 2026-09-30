@@ -110,8 +110,8 @@ export function InvoiceEditDraftDialog({
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={save} disabled={mutation.isPending}>
-          {mutation.isPending ? t('saving') : t('save')}
+        <Button type="button" onClick={save} loading={mutation.isPending} loadingText={t('saving')}>
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

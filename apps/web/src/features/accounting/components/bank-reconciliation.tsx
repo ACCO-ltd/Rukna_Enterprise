@@ -149,8 +149,14 @@ export function BankReconciliation() {
             </Select>
           </FormField>
         </div>
-        <Button type="button" onClick={handleRun} disabled={!canRun || reconcile.isPending}>
-          {reconcile.isPending ? t('running') : t('runButton')}
+        <Button
+          type="button"
+          onClick={handleRun}
+          loading={reconcile.isPending}
+          loadingText={t('running')}
+          disabled={!canRun}
+        >
+          {t('runButton')}
         </Button>
       </div>
 

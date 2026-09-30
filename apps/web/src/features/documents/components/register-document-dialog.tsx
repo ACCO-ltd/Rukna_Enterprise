@@ -331,8 +331,12 @@ export function RegisterDocumentDialog({
           </section>
 
           <DialogFooter>
-            <Button type="submit" disabled={busy}>
-              {upload.isPending ? t('states.uploading') : t('form.submit')}
+            <Button
+              type="submit"
+              loading={busy}
+              loadingText={upload.isPending ? t('states.uploading') : undefined}
+            >
+              {t('form.submit')}
             </Button>
             <Button
               type="button"

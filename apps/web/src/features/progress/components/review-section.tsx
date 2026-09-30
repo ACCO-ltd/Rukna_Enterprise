@@ -374,7 +374,8 @@ function ReportPanel({
                   setError(null);
                   approve.mutate(undefined, { onSuccess: () => onDone('approved'), onError: onActionError });
                 }}
-                disabled={approve.isPending || detail.isPending}
+                disabled={detail.isPending}
+                loading={approve.isPending}
               >
                 {t('review.approve')}
               </Button>
@@ -601,7 +602,7 @@ export function VerifyMilestoneDialog({
             {t('review.milestones.cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={verify.isPending || !actualDate}>
+        <Button type="submit" disabled={!actualDate} loading={verify.isPending}>
           {t('review.milestones.confirm')}
         </Button>
       </FormDialogFooter>
@@ -686,8 +687,8 @@ function ReturnReportDialog({
             {tConfirm('dismiss')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? tConfirm('working') : t('review.returnConfirm')}
+        <Button type="submit" loading={isPending} loadingText={tConfirm('working')}>
+          {t('review.returnConfirm')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

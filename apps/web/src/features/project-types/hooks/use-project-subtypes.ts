@@ -38,6 +38,12 @@ export function useCreateProjectSubtype() {
     mutationFn: (payload: { category: ProjectCategory; name: string }) =>
       createProjectSubtype(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: subtypeKeys.all }),
+    meta: {
+      successToast: {
+        key: 'projectTypes.feedback.subtypeAdded',
+        values: (_data, variables) => ({ name: (variables as { name: string }).name }),
+      },
+    },
   });
 }
 
@@ -46,5 +52,11 @@ export function useDeactivateProjectSubtype() {
   return useMutation({
     mutationFn: (id: string) => deactivateProjectSubtype(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: subtypeKeys.all }),
+    meta: {
+      successToast: {
+        key: 'projectTypes.feedback.subtypeDeactivated',
+        values: (data) => ({ name: (data as { name: string }).name }),
+      },
+    },
   });
 }

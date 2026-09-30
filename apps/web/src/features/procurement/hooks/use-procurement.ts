@@ -262,6 +262,12 @@ export function useCreateSupplier() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateSupplierPayload) => createSupplier(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.supplierCreated',
+        values: (supplier) => ({ name: (supplier as Supplier).name }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
   });
@@ -277,6 +283,12 @@ export function useUpdateSupplier() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateSupplierPayload }) =>
       updateSupplier(id, payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.supplierUpdated',
+        values: (supplier) => ({ name: (supplier as Supplier).name }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
   });
@@ -300,6 +312,12 @@ export function useCreateUom() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateUomPayload) => createUom(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.uomCreated',
+        values: (uom) => ({ code: (uom as UnitOfMeasure).code }),
+      },
+    },
     onSuccess: () => invalidateUnitLists(qc),
   });
 }
@@ -308,6 +326,7 @@ export function useDeactivateUom() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deactivateUom(id),
+    meta: { successToast: 'procurement.feedback.uomDeactivated' },
     onSuccess: () => invalidateUnitLists(qc),
   });
 }
@@ -316,6 +335,12 @@ export function useCreateMaterialCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateCategoryPayload) => createMaterialCategory(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.materialCategoryCreated',
+        values: (category) => ({ name: (category as MaterialCategory).name }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: procurementKeys.materialCategories() }),
   });
@@ -325,6 +350,7 @@ export function useDeactivateMaterialCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deactivateMaterialCategory(id),
+    meta: { successToast: 'procurement.feedback.materialCategoryDeactivated' },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: procurementKeys.materialCategories() }),
   });
@@ -334,6 +360,12 @@ export function useCreateSpendCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateCategoryPayload) => createSpendCategory(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.spendCategoryCreated',
+        values: (category) => ({ name: (category as SpendCategory).name }),
+      },
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.spendCategories() }),
   });
 }
@@ -342,6 +374,7 @@ export function useDeactivateSpendCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deactivateSpendCategory(id),
+    meta: { successToast: 'procurement.feedback.spendCategoryDeactivated' },
     onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.spendCategories() }),
   });
 }
@@ -350,6 +383,12 @@ export function useCreateMaterial() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateMaterialPayload) => createMaterial(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.materialCreated',
+        values: (material) => ({ code: (material as Material).code }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'materials'] }),
   });
@@ -359,6 +398,7 @@ export function useDiscontinueMaterial() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => discontinueMaterial(id),
+    meta: { successToast: 'procurement.feedback.materialDiscontinued' },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'materials'] }),
   });
@@ -393,6 +433,12 @@ export function useCreateMaterialRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateMaterialRequestPayload) => createMaterialRequest(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.mrCreated',
+        values: (mr) => ({ ref: (mr as MaterialRequest).mrNumber }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'material-requests'] }),
   });
@@ -402,10 +448,19 @@ export function useCreateMaterialRequest() {
  * The three MR lifecycle transitions that exist. There is no close (P4) — `CLOSED` is
  * reachable in the service's state machine and by no route.
  */
-function useMrTransition(action: (id: string) => Promise<MaterialRequest>) {
+function useMrTransition(
+  action: (id: string) => Promise<MaterialRequest>,
+  feedbackKey: string,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => action(id),
+    meta: {
+      successToast: {
+        key: feedbackKey,
+        values: (mr) => ({ ref: (mr as MaterialRequest).mrNumber }),
+      },
+    },
     onSuccess: (mr) => {
       qc.invalidateQueries({ queryKey: procurementKeys.materialRequest(mr.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'material-requests'] });
@@ -413,9 +468,12 @@ function useMrTransition(action: (id: string) => Promise<MaterialRequest>) {
   });
 }
 
-export const useSubmitMaterialRequest = () => useMrTransition(submitMaterialRequest);
-export const useApproveMaterialRequest = () => useMrTransition(approveMaterialRequest);
-export const useCancelMaterialRequest = () => useMrTransition(cancelMaterialRequest);
+export const useSubmitMaterialRequest = () =>
+  useMrTransition(submitMaterialRequest, 'procurement.feedback.mrSubmitted');
+export const useApproveMaterialRequest = () =>
+  useMrTransition(approveMaterialRequest, 'procurement.feedback.mrApproved');
+export const useCancelMaterialRequest = () =>
+  useMrTransition(cancelMaterialRequest, 'procurement.feedback.mrCancelled');
 
 // ─── Purchase orders ─────────────────────────────────────────────────────────────
 
@@ -442,6 +500,12 @@ export function useCreatePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreatePurchaseOrderPayload) => createPurchaseOrder(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.poCreated',
+        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] }),
   });
@@ -451,6 +515,12 @@ export function useSubmitPurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => submitPurchaseOrder(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.poSubmitted',
+        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
+      },
+    },
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
@@ -463,6 +533,12 @@ export function useApprovePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id }: { id: string }) => approvePurchaseOrder(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.poApproved',
+        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
+      },
+    },
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
@@ -476,6 +552,12 @@ export function useRevisePurchaseOrder() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: RevisePurchaseOrderPayload }) =>
       revisePurchaseOrder(id, payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.poRevised',
+        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
+      },
+    },
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
@@ -492,6 +574,12 @@ export function useCancelPurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => cancelPurchaseOrder(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.poCancelled',
+        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
+      },
+    },
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
@@ -505,6 +593,12 @@ export function useConfirmPurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => confirmPurchaseOrder(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.poConfirmed',
+        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
+      },
+    },
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
@@ -569,6 +663,12 @@ export function useCreateGoodsReceipt() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateGoodsReceiptPayload) => createGoodsReceipt(payload),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.grnSaved',
+        values: (grn) => ({ ref: (grn as GoodsReceipt).grnNumber }),
+      },
+    },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] }),
   });
@@ -579,6 +679,12 @@ export function usePostGoodsReceipt() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id }: { id: string }) => postGoodsReceipt(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.grnPosted',
+        values: (grn) => ({ ref: (grn as GoodsReceipt).grnNumber }),
+      },
+    },
     onSuccess: (grn) => {
       qc.invalidateQueries({ queryKey: procurementKeys.goodsReceipt(grn.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] });
@@ -591,6 +697,12 @@ export function useCancelGoodsReceipt() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => cancelGoodsReceipt(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.grnCancelled',
+        values: (grn) => ({ ref: (grn as GoodsReceipt).grnNumber }),
+      },
+    },
     onSuccess: (grn) => {
       qc.invalidateQueries({ queryKey: procurementKeys.goodsReceipt(grn.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] });
@@ -607,6 +719,12 @@ export function useApproveGoodsReceiptException() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => approveGoodsReceiptException(id),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.grnExceptionApproved',
+        values: (grn) => ({ ref: (grn as GoodsReceipt).grnNumber }),
+      },
+    },
     onSuccess: (grn) => {
       qc.invalidateQueries({ queryKey: procurementKeys.goodsReceipt(grn.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] });
@@ -673,10 +791,19 @@ export function useSupplierBillPayments(id: string): UseQueryResult<BillPayments
  * a `purchaseOrderRevisionId` (A14), is exactly why the invalidation should already be here
  * when #33 lands rather than be remembered afterwards.
  */
-function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBill>) {
+function useBillMutation<TArgs>(
+  mutationFn: (args: TArgs) => Promise<SupplierBill>,
+  feedbackKey: string,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
+    meta: {
+      successToast: {
+        key: feedbackKey,
+        values: (bill) => ({ ref: billRef(bill as SupplierBill) }),
+      },
+    },
     onSuccess: (bill) => {
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
       void qc.invalidateQueries({ queryKey: procurementKeys.bill(bill.id) });
@@ -687,46 +814,56 @@ function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBil
   });
 }
 
+/** A draft bill has no number yet; the supplier's own invoice number always identifies it. */
+function billRef(bill: SupplierBill): string {
+  return bill.billNumber ?? bill.supplierInvoiceNumber;
+}
+
 export function useCreateSupplierBill() {
-  return useBillMutation((payload: CreateSupplierBillPayload) => createSupplierBill(payload));
+  return useBillMutation((payload: CreateSupplierBillPayload) => createSupplierBill(payload), 'procurement.feedback.billSaved');
 }
 
 /** `PATCH /bills/:id` — edit a DRAFT bill. */
 export function useUpdateSupplierBill() {
   return useBillMutation((args: { id: string; payload: CreateSupplierBillPayload }) =>
     updateSupplierBill(args.id, args.payload),
+    'procurement.feedback.billUpdated',
   );
 }
 
 export function useReturnSupplierBill() {
   return useBillMutation((args: { id: string; reason: string }) =>
     returnSupplierBill(args.id, args.reason),
+    'procurement.feedback.billReturned',
   );
 }
 
 export function useRejectSupplierBill() {
   return useBillMutation((args: { id: string; reason: string }) =>
     rejectSupplierBill(args.id, args.reason),
+    'procurement.feedback.billRejected',
   );
 }
 
 export function useSubmitSupplierBill() {
-  return useBillMutation((id: string) => submitSupplierBill(id));
+  return useBillMutation((id: string) => submitSupplierBill(id), 'procurement.feedback.billSubmitted');
 }
 
 export function useApproveSupplierBill() {
-  return useBillMutation((id: string) => approveSupplierBill(id));
+  return useBillMutation((id: string) => approveSupplierBill(id), 'procurement.feedback.billApproved');
 }
 
 export function usePostSupplierBill() {
   return useBillMutation((args: { id: string; payload: PostSupplierBillPayload }) =>
     postSupplierBill(args.id, args.payload),
+    'procurement.feedback.billPosted',
   );
 }
 
 export function useReverseSupplierBill() {
   return useBillMutation((args: { id: string; payload: ReverseSupplierBillPayload }) =>
     reverseSupplierBill(args.id, args.payload),
+    'procurement.feedback.billReversed',
   );
 }
 
@@ -757,10 +894,20 @@ export function useSupplierPayment(id: string): UseQueryResult<SupplierPayment> 
  * posts shows a balance the ledger no longer agrees with, which is the one number on that
  * screen a user would act on.
  */
-function usePaymentMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierPayment>) {
+function usePaymentMutation<TArgs>(
+  mutationFn: (args: TArgs) => Promise<SupplierPayment>,
+  feedbackKey: string,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
+    meta: {
+      successToast: {
+        key: feedbackKey,
+        // A draft payment has no number yet; the message reads without one (ICU `select`).
+        values: (payment) => ({ ref: (payment as SupplierPayment).paymentNumber ?? 'none' }),
+      },
+    },
     onSuccess: (payment) => {
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
       void qc.invalidateQueries({ queryKey: procurementKeys.payment(payment.id) });
@@ -772,11 +919,12 @@ function usePaymentMutation<TArgs>(mutationFn: (args: TArgs) => Promise<Supplier
 export function useCreateSupplierPayment() {
   return usePaymentMutation((payload: CreateSupplierPaymentPayload) =>
     createSupplierPayment(payload),
+    'procurement.feedback.paymentSaved',
   );
 }
 
 export function useApproveSupplierPayment() {
-  return usePaymentMutation((id: string) => approveSupplierPayment(id));
+  return usePaymentMutation((id: string) => approveSupplierPayment(id), 'procurement.feedback.paymentApproved');
 }
 
 /**
@@ -786,18 +934,20 @@ export function useApproveSupplierPayment() {
  * (already signed) leaves the payment untouched; the caller surfaces the message.
  */
 export function useReleaseSupplierPayment() {
-  return usePaymentMutation((id: string) => releaseSupplierPayment(id));
+  return usePaymentMutation((id: string) => releaseSupplierPayment(id), 'procurement.feedback.paymentReleaseSigned');
 }
 
 export function usePostSupplierPayment() {
   return usePaymentMutation((args: { id: string; payload: PostSupplierPaymentPayload }) =>
     postSupplierPayment(args.id, args.payload),
+    'procurement.feedback.paymentPosted',
   );
 }
 
 export function useReverseSupplierPayment() {
   return usePaymentMutation((args: { id: string; payload: ReverseSupplierPaymentPayload }) =>
     reverseSupplierPayment(args.id, args.payload),
+    'procurement.feedback.paymentReversed',
   );
 }
 
@@ -813,6 +963,7 @@ export function useAllocateAdvance(paymentId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: AllocateAdvancePayload) => allocateAdvance(paymentId, payload),
+    meta: { successToast: 'procurement.feedback.advanceApplied', flashRow: false },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: procurementKeys.payment(paymentId) });
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
@@ -835,6 +986,10 @@ export function useRunBillMatch() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (billId: string) => runBillMatch(billId),
+    meta: {
+      successToast: 'procurement.feedback.matchRun',
+      flashRow: (result) => (result as BillMatchResult).supplierBillId,
+    },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: procurementKeys.billMatch(result.supplierBillId) });
       qc.invalidateQueries({ queryKey: procurementKeys.bill(result.supplierBillId) });
@@ -848,6 +1003,10 @@ export function useApproveMatchException() {
   return useMutation({
     mutationFn: ({ billId, payload }: { billId: string; payload: ApproveExceptionPayload }) =>
       approveMatchException(billId, payload),
+    meta: {
+      successToast: 'procurement.feedback.matchExceptionApproved',
+      flashRow: (result) => (result as BillMatchResult).supplierBillId,
+    },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: procurementKeys.billMatch(result.supplierBillId) });
       qc.invalidateQueries({ queryKey: procurementKeys.bill(result.supplierBillId) });
@@ -861,6 +1020,10 @@ export function useResolveMatchException() {
   return useMutation({
     mutationFn: ({ billId, payload }: { billId: string; payload: ResolveExceptionPayload }) =>
       resolveMatchException(billId, payload),
+    meta: {
+      successToast: 'procurement.feedback.matchExceptionResolved',
+      flashRow: (result) => (result as BillMatchResult).supplierBillId,
+    },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: procurementKeys.billMatch(result.supplierBillId) });
       qc.invalidateQueries({ queryKey: procurementKeys.bill(result.supplierBillId) });
@@ -913,6 +1076,7 @@ export function useAttachPoRevision(poId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: AttachPoRevisionPayload) => attachPoRevision(poId, payload),
+    meta: { successToast: 'procurement.feedback.quotationAttached' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.poRevisionAttachments(poId) });
     },
@@ -925,6 +1089,7 @@ export function useCreateBuyerAdvance(poId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateBuyerAdvancePayload) => createBuyerAdvance(payload),
+    meta: { successToast: 'procurement.feedback.buyerAdvanceCreated' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
     },
@@ -935,6 +1100,7 @@ export function useCreateAdvanceReturn(advanceId: string, poId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateAdvanceReturnPayload) => createAdvanceReturn(advanceId, payload),
+    meta: { successToast: 'procurement.feedback.advanceReturnRecorded' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
     },
@@ -946,6 +1112,7 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
   return useMutation({
     mutationFn: (payload: CreateEvidenceAllocationPayload) =>
       createEvidenceAllocation(advanceId, payload),
+    meta: { successToast: 'procurement.feedback.evidenceAllocated' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
@@ -971,6 +1138,7 @@ export function usePostBuyerAdvance(advanceId: string, poId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => postBuyerAdvance(advanceId),
+    meta: { successToast: 'procurement.feedback.buyerAdvancePosted' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });

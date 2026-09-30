@@ -184,12 +184,8 @@ export function Step3Review({
         <Button type="button" variant="outline" onClick={onBack} disabled={isPending}>
           {tWiz('nav.back')}
         </Button>
-        <Button type="button" onClick={onIssue} disabled={isPending}>
-          {isPending
-            ? t('working')
-            : isRejected
-              ? t('rejectButton')
-              : t('issueButton')}
+        <Button type="button" onClick={onIssue} loading={isPending} loadingText={t('working')}>
+          {isRejected ? t('rejectButton') : t('issueButton')}
         </Button>
       </div>
     </div>

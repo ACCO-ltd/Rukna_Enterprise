@@ -44,6 +44,14 @@ export function RecordFollowUpDialog({ open, onOpenChange, invoice, projectId }:
         note: note.trim() || undefined,
         occurredAt: new Date().toISOString(),
       }),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.followUpRecorded',
+        // `||`, not `??`: a blank number is no number either.
+        values: () => ({ ref: invoice.invoiceNumber || 'none' }),
+      },
+      flashRow: () => invoice.invoiceId,
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: commercialKeys.billing(projectId) });
       handleOpenChange(false);
@@ -129,8 +137,14 @@ export function RecordFollowUpDialog({ open, onOpenChange, invoice, projectId }:
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-          {mutation.isPending ? t('saving') : t('save')}
+        <Button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          loading={mutation.isPending}
+          loadingText={t('saving')}
+        >
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

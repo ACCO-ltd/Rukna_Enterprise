@@ -166,6 +166,19 @@ describe('JournalForm', () => {
     expect(push).toHaveBeenCalledWith('/finance/accounting/journals/jrn-1');
   });
 
+  it('confirms the save with a toast', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createJournal).mockResolvedValue({ id: 'jrn-3', journalNumber: null } as never);
+
+    renderWithProviders(<JournalForm />, { withToast: true });
+    await screen.findByLabelText('Account 1');
+    await fillBalancedJournal(user);
+
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+    expect(await screen.findByText('Journal saved as a draft')).toBeInTheDocument();
+  });
+
   it('refuses to save an unbalanced journal and says by how much', async () => {
     const user = userEvent.setup();
     renderWithProviders(<JournalForm />);

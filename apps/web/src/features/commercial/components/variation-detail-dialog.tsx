@@ -14,7 +14,6 @@ import {
   Label,
   Skeleton,
   Textarea,
-  useToast,
   StatusPill,
 } from '@erp/ui';
 import type { VariationOrderResponse } from '@erp/types';
@@ -66,7 +65,6 @@ export function VariationDetailDialog({
 }) {
   const t = useTranslations('commercial.variations');
   const tCommon = useTranslations('common');
-  const { toast } = useToast();
   const query = useVariation(open ? variationId : null);
   const reverse = useReverseVariation(variationId ?? '', contractId, projectId);
 
@@ -104,10 +102,8 @@ export function VariationDetailDialog({
     reverse.mutate(
       { reason: reason.trim() || undefined },
       {
-        onSuccess: () => {
-          toast({ title: t('toast.reversed'), tone: 'success' });
-          close();
-        },
+        // The success toast comes from the mutation's feedback meta.
+        onSuccess: () => close(),
         onError: (error) => setServerError(errorMessage(error, t('toast.reverseFailed'))),
       },
     );
@@ -182,7 +178,7 @@ export function VariationDetailDialog({
             <Button variant="outline" onClick={cancelConfirm} disabled={reverse.isPending}>
               {tCommon('cancel')}
             </Button>
-            <Button variant="destructive" onClick={runReverse} disabled={reverse.isPending}>
+            <Button variant="destructive" onClick={runReverse} loading={reverse.isPending}>
               {t('actions.confirmReverse')}
             </Button>
           </>

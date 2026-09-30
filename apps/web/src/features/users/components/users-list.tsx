@@ -123,15 +123,8 @@ export function UsersList() {
   function toggleStatus(user: UserWithRolesResponse) {
     const isActive = user.status === 'ACTIVE';
     const mutation = isActive ? deactivate : reactivate;
+    // Success is confirmed by the mutation's own feedback (`use-users.ts`).
     mutation.mutate(user.id, {
-      onSuccess: () => {
-        toast({
-          tone: 'success',
-          title: isActive
-            ? t('toast.deactivated', { name: `${user.firstName} ${user.lastName}` })
-            : t('toast.reactivated', { name: `${user.firstName} ${user.lastName}` }),
-        });
-      },
       onError: (error) => {
         toast({
           tone: 'error',
@@ -438,9 +431,6 @@ export function UsersList() {
               user={dialog === 'password' ? target : null}
               onOpenChange={(open) => {
                 if (!open) closeDialog();
-              }}
-              onSuccess={() => {
-                toast({ tone: 'success', title: t('toast.passwordSet') });
               }}
             />
             <RegenerateTemporaryDialog

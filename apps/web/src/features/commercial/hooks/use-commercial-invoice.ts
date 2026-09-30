@@ -82,6 +82,13 @@ export function usePreparePackage(projectId: string, installmentId: string) {
   const invalidate = useInvalidateInvoice(projectId);
   return useMutation<CommercialPreparePackageResponse, Error, CommercialPreparePackageRequest>({
     mutationFn: (payload) => preparePackage(projectId, installmentId, payload),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.invoicePrepared',
+        values: (data) => ({ count: (data as CommercialPreparePackageResponse).invoiceIds.length }),
+      },
+      flashRow: (data) => (data as CommercialPreparePackageResponse).invoiceId,
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -92,6 +99,16 @@ export function useIssueInvoice(projectId: string, invoiceId: string) {
   const invalidate = useInvalidateInvoice(projectId);
   return useMutation<CommercialIssueInvoiceResponse, Error, void>({
     mutationFn: () => issueInvoice(projectId, invoiceId),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.invoiceIssued',
+        values: (data) => {
+          const { invoiceNumbers } = data as CommercialIssueInvoiceResponse;
+          return { count: invoiceNumbers.length, numbers: invoiceNumbers.join(', ') };
+        },
+      },
+      flashRow: () => invoiceId,
+    },
     onSuccess: async () => {
       await invalidate();
     },
@@ -102,6 +119,7 @@ export function useDeleteDraftInvoice(projectId: string, invoiceId: string) {
   const qc = useQueryClient();
   return useMutation<unknown, Error, void>({
     mutationFn: () => deleteDraftInvoice(projectId, invoiceId),
+    meta: { successToast: 'commercial.feedback.draftInvoiceDeleted', flashRow: false },
     onSuccess: async () => {
       // The document is gone — drop it rather than refetch a 404.
       qc.removeQueries({ queryKey: commercialInvoiceKeys.document(projectId, invoiceId) });
@@ -117,6 +135,7 @@ export function useEditDraftInvoice(projectId: string, invoiceId: string) {
   const invalidate = useInvalidateInvoice(projectId);
   return useMutation<unknown, Error, PatchDraftInvoicePayload>({
     mutationFn: (payload) => patchDraftInvoice(projectId, invoiceId, payload),
+    meta: { successToast: 'commercial.feedback.draftInvoiceUpdated', flashRow: () => invoiceId },
     onSuccess: async () => {
       await invalidate();
     },
@@ -146,6 +165,14 @@ export function useIssueCreditNote(projectId: string, invoiceId: string) {
         error.creditNoteId = id;
         throw error;
       }
+    },
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.creditNoteIssued',
+        values: (data) => ({
+          ref: (data as { creditNoteNumber: string | null }).creditNoteNumber || 'none',
+        }),
+      },
     },
     onSettled: async () => {
       await invalidate();

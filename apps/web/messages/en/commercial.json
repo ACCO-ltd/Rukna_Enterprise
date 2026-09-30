@@ -1287,7 +1287,6 @@
       "confirmReverse": "Reverse variation"
     },
     "toast": {
-      "reversed": "Variation reversed and removed from the contract.",
       "reverseFailed": "Could not reverse the variation"
     },
     "trace": {
@@ -1341,7 +1340,6 @@
     "proposedImpact": "Proposed impact: {n} days",
     "grantConfirm": "Record extension",
     "toast": {
-      "granted": "Extension of time recorded",
       "grantFailed": "Could not record the extension of time"
     }
   },
@@ -1848,5 +1846,28 @@
       "PAID": "Paid",
       "NEXT": "Upcoming"
     }
+  },
+  "feedback": {
+    "paymentRecorded": "Payment recorded",
+    "disputeOpened": "{ref, select, none {Dispute opened} other {Dispute opened on {ref}}}",
+    "followUpRecorded": "{ref, select, none {Follow-up recorded} other {Follow-up recorded on {ref}}}",
+    "promiseRecorded": "{ref, select, none {Payment promise recorded} other {Payment promise recorded on {ref}}}",
+    "eotGranted": "Extension of time recorded",
+    "variationReversed": "Variation {ref} reversed and removed from the contract",
+    "separateChargeInvoiced": "Separate charge invoice created",
+    "invoicePrepared": "{count, plural, one {Draft invoice prepared} other {# draft invoices prepared}}",
+    "invoiceIssued": "{count, plural, =0 {Invoice issued} one {Invoice {numbers} issued} other {Invoices {numbers} issued}}",
+    "draftInvoiceDeleted": "Draft invoice deleted",
+    "draftInvoiceUpdated": "Draft invoice updated",
+    "creditNoteIssued": "{ref, select, none {Credit note issued} other {Credit note {ref} issued}}",
+    "stageMilestoneLinked": "{linked, select, yes {Milestone linked to the stage} other {Milestone unlinked from the stage}}",
+    "paymentPlanSaved": "Payment plan saved",
+    "contractUpdated": "Contract {ref} updated",
+    "contractReopened": "Contract {ref} reopened for correction",
+    "signedDateRecorded": "Signed date recorded",
+    "guaranteeAdded": "Guarantee added",
+    "guaranteeUpdated": "Guarantee updated",
+    "contractActiveTitle": "Contract {ref} is active",
+    "contractActiveDescription": "Billing is now open: the advance and each payment stage can be invoiced from Billing & Collection."
   }
 }

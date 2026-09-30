@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { ProgrammeMilestoneResponse } from '@erp/types';
 
-import type { ScheduleTemplateKey } from '@erp/types';
+import type { ApplyScheduleTemplateResponse, ScheduleTemplateKey } from '@erp/types';
 
 import { progressKeys } from '@/features/progress/hooks/use-progress';
 import { commercialKeys } from '@/features/commercial/hooks/use-commercial';
@@ -47,6 +47,12 @@ export function useCreateMilestone(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateMilestoneBody) => createMilestone(projectId, body),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.milestoneAdded',
+        values: (data) => ({ name: (data as ProgrammeMilestoneResponse).name }),
+      },
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) });
     },
@@ -59,6 +65,12 @@ export function useVerifyMilestone(projectId: string) {
   return useMutation({
     mutationFn: ({ milestoneId, actualDate }: { milestoneId: string; actualDate: string }) =>
       verifyMilestone(milestoneId, actualDate),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.milestoneVerified',
+        values: (data) => ({ name: (data as ProgrammeMilestoneResponse).name }),
+      },
+    },
     // Verifying clears MILESTONE_NOT_VERIFIED on the billing side: the commercial overview, the
     // current cycle and the payment schedule (read through the contract) all have to refetch.
     onSuccess: async () => {
@@ -77,6 +89,12 @@ export function useSetMilestoneWorkPackages(projectId: string) {
   return useMutation({
     mutationFn: ({ milestoneId, workPackageIds }: { milestoneId: string; workPackageIds: string[] }) =>
       setMilestoneWorkPackages(projectId, milestoneId, workPackageIds),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.milestonePackagesSaved',
+        values: (data) => ({ name: (data as ProgrammeMilestoneResponse).name }),
+      },
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) });
     },
@@ -99,6 +117,12 @@ export function useCreateActivity(projectId: string) {
   return useMutation({
     mutationFn: ({ workPackageId, body }: { workPackageId: string; body: CreateActivityBody }) =>
       createActivity(workPackageId, body),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.activityAdded',
+        values: (data) => ({ name: (data as ProgrammeActivityResponse).name }),
+      },
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.activities(projectId) });
     },
@@ -110,6 +134,12 @@ export function useUpdateActivity(projectId: string) {
   return useMutation({
     mutationFn: ({ activityId, body }: { activityId: string; body: UpdateActivityBody }) =>
       updateActivity(activityId, body),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.activityUpdated',
+        values: (data) => ({ name: (data as ProgrammeActivityResponse).name }),
+      },
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.activities(projectId) });
     },
@@ -120,6 +150,7 @@ export function useDeleteActivity(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (activityId: string) => deleteActivity(activityId),
+    meta: { successToast: 'progress.feedback.activityDeleted', flashRow: false },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.activities(projectId) });
     },
@@ -137,6 +168,13 @@ export function useApplyScheduleTemplate(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (templateKey: ScheduleTemplateKey) => applyScheduleTemplate(projectId, templateKey),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.scheduleTemplateApplied',
+        values: (data) => ({ count: (data as ApplyScheduleTemplateResponse).workPackages.length }),
+      },
+      flashRow: false,
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
@@ -167,6 +205,10 @@ export function useDownloadMasterSchedule(projectId: string) {
   });
 }
 
+/**
+ * No success toast of its own: callers write several packages at once (weights, dates) or edit
+ * inline in the schedule wizard, and confirm the batch themselves where it needs confirming.
+ */
 export function useUpdateWorkPackage(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({

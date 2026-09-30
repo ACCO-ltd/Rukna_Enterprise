@@ -290,6 +290,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
                         type="button"
                         variant="outline"
                         size="sm"
+                        loading={remove.isPending && remove.variables === s.userId}
                         disabled={remove.isPending}
                         onClick={() => remove.mutate(s.userId)}
                       >
@@ -337,7 +338,8 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
           <Button
             type="button"
             onClick={handleAdd}
-            disabled={!userId.trim() || add.isPending || users.isPending || users.isError}
+            loading={add.isPending}
+            disabled={!userId.trim() || users.isPending || users.isError}
           >
             {t('add')}
           </Button>
@@ -511,8 +513,13 @@ function ConfigureBankAccountForm({ title, onDone }: { title: string; onDone: ()
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={configure.isPending || availability !== null}>
-          {configure.isPending ? tCommon('saving') : t('submit')}
+        <Button
+          type="submit"
+          loading={configure.isPending}
+          loadingText={tCommon('saving')}
+          disabled={availability !== null}
+        >
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

@@ -42,5 +42,12 @@ export function useApprovalAction(instanceId: string, onSettled?: () => void) {
       void qc.invalidateQueries({ queryKey: ['procurement'] });
       onSettled?.();
     },
+    meta: {
+      successToast: {
+        key: 'platform.feedback.approvalDecided',
+        values: (_d, v) => ({ decision: (v as { decision: string }).decision }),
+      },
+      flashRow: false,
+    },
   });
 }

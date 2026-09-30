@@ -325,7 +325,7 @@ export function PolicyRulesTab({
                   {t('cancel')}
                 </Button>
               </FormDialogClose>
-              <Button type="submit" disabled={update.isPending}>
+              <Button type="submit" loading={update.isPending}>
                 {t('saveRule')}
               </Button>
             </FormDialogFooter>

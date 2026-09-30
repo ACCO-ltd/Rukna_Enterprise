@@ -113,10 +113,12 @@ export function useProjectCostBudget(
 function useBudgetMutation<TArgs, TResult = ProjectCostBudgetResponse>(
   projectId: string,
   fn: (args: TArgs) => Promise<TResult>,
+  successToast: string,
 ) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
+    meta: { successToast },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: projectProcurementKeys.all(projectId) });
     },
@@ -124,8 +126,10 @@ function useBudgetMutation<TArgs, TResult = ProjectCostBudgetResponse>(
 }
 
 export function useCreateProjectCostBudget(projectId: string) {
-  return useBudgetMutation(projectId, (payload: CreateProjectCostBudgetPayload) =>
-    createProjectCostBudget(projectId, payload),
+  return useBudgetMutation(
+    projectId,
+    (payload: CreateProjectCostBudgetPayload) => createProjectCostBudget(projectId, payload),
+    'procurement.feedback.budgetCreated',
   );
 }
 
@@ -134,17 +138,22 @@ export function useUpdateProjectCostBudget(projectId: string) {
     projectId,
     ({ budgetId, payload }: { budgetId: string; payload: Partial<CreateProjectCostBudgetPayload> }) =>
       updateProjectCostBudget(projectId, budgetId, payload),
+    'procurement.feedback.budgetSaved',
   );
 }
 
 export function useDiscardProjectCostBudget(projectId: string) {
-  return useBudgetMutation<string, void>(projectId, (budgetId) =>
-    discardProjectCostBudget(projectId, budgetId),
+  return useBudgetMutation<string, void>(
+    projectId,
+    (budgetId) => discardProjectCostBudget(projectId, budgetId),
+    'procurement.feedback.budgetDiscarded',
   );
 }
 
 export function useBaselineProjectCostBudget(projectId: string) {
-  return useBudgetMutation(projectId, (budgetId: string) =>
-    baselineProjectCostBudget(projectId, budgetId),
+  return useBudgetMutation(
+    projectId,
+    (budgetId: string) => baselineProjectCostBudget(projectId, budgetId),
+    'procurement.feedback.budgetBaselined',
   );
 }

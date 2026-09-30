@@ -244,9 +244,11 @@ export function OpeningBalanceWizard() {
         <Button
           type="button"
           onClick={handleRun}
-          disabled={!canRun || blockers.length > 0 || run.isPending}
+          loading={run.isPending}
+          loadingText={tCommon('saving')}
+          disabled={!canRun || blockers.length > 0}
         >
-          {run.isPending ? tCommon('saving') : t('run')}
+          {t('run')}
         </Button>
       </div>
     </div>

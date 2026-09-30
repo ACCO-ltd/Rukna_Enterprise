@@ -150,5 +150,12 @@
     "new": "Not saved yet",
     "dirty": "Unsaved changes",
     "clean": "All changes saved"
+  },
+  "feedback": {
+    "done": "Done",
+    "close": "Close",
+    "saved": "Changes saved",
+    "created": "Created",
+    "deleted": "Deleted"
   }
 }

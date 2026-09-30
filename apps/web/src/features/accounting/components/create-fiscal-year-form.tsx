@@ -193,8 +193,13 @@ export function CreateFiscalYearForm({ title, onDone }: { title: string; onDone:
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={create.isPending || noCandidates}>
-          {create.isPending ? tCommon('saving') : t('submit')}
+        <Button
+          type="submit"
+          loading={create.isPending}
+          loadingText={tCommon('saving')}
+          disabled={noCandidates}
+        >
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

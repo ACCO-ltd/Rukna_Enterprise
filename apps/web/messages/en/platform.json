@@ -294,7 +294,6 @@
       "backToProject": "Back to project",
       "backToList": "Back to projects",
       "loadFailed": "Could not load this project.",
-      "createdTitle": "Project created",
       "overview": "Overview",
       "contractValue": "Contract value",
       "startDate": "Start date",
@@ -1430,7 +1429,6 @@
     "loadFailed": "Could not load organization settings.",
     "retry": "Try again",
     "saveFailed": "Could not save branding settings.",
-    "saved": "Saved",
     "noPermission": "You do not have permission to manage organization branding."
   },
   "users": {
@@ -1489,10 +1487,7 @@
       "reactivate": "Reactivate"
     },
     "toast": {
-      "deactivated": "{name} deactivated",
-      "reactivated": "{name} reactivated",
-      "statusFailed": "Could not change the user's status.",
-      "passwordSet": "Password updated"
+      "statusFailed": "Could not change the user's status."
     },
     "roles": {
       "legend": "Roles",
@@ -1584,9 +1579,6 @@
       "managePermissions": "Manage permissions",
       "viewImpact": "View impact & review",
       "delete": "Delete"
-    },
-    "toast": {
-      "deleted": "{name} deleted"
     },
     "form": {
       "createTitle": "Add role",
@@ -3064,5 +3056,54 @@
     "procurement": {
       "description": "Requests, purchase orders, receipts and suppliers."
     }
+  },
+  "feedback": {
+    "boqStarted": "BOQ started",
+    "contingencyDrawn": "Contingency drawn onto the line",
+    "boqDraftDiscarded": "Draft discarded",
+    "boqRevisionOpened": "New draft opened for revision",
+    "boqLineAdded": "{kind, select, item {Item} other {Section}} {code} added",
+    "boqLineUpdated": "{kind, select, item {Item} other {Section}} {code} updated",
+    "boqLineDeleted": "Line deleted",
+    "projectCreated": "Project {code} created",
+    "projectUpdated": "Project {code} updated",
+    "projectCancelled": "Project {code} cancelled",
+    "projectSuspended": "Project suspended",
+    "projectResumed": "Project resumed",
+    "projectStarted": "Project {code} started",
+    "projectPracticallyComplete": "Project {code} marked practically complete",
+    "projectInCloseout": "Project {code} moved to closeout",
+    "projectClosed": "Project {code} closed",
+    "memberAdded": "{name} added to the project",
+    "memberRemoved": "Member removed from the project",
+    "memberRolesUpdated": "Roles updated for {name}",
+    "userCreated": "User {name} created",
+    "userUpdated": "User {name} updated",
+    "userDeactivated": "{name} deactivated",
+    "userReactivated": "{name} reactivated",
+    "userPasswordSet": "Password updated",
+    "userTemporaryPasswordRegenerated": "Temporary password regenerated",
+    "userRolesUpdated": "Roles updated for {name}",
+    "roleCreated": "Role {name} created",
+    "roleSaved": "Role {name} saved",
+    "rolePermissionsSaved": "Permissions saved for {name}",
+    "roleDeleted": "{name} deleted",
+    "roleOwnerReassigned": "Role owner reassigned",
+    "roleAccessReviewRecorded": "Access review recorded",
+    "policyDraftCreated": "Draft v{version} of {policyKey} created",
+    "policyCloned": "Cloned to draft v{version} of {policyKey}",
+    "policyRuleAdded": "Rule {ruleKey} added",
+    "policyRuleUpdated": "Rule {ruleKey} updated",
+    "policyRuleDeleted": "Rule deleted",
+    "policyTransitioned": "{action, select, submit_review {Policy submitted for review} schedule {Policy scheduled} activate {Policy published} other {Policy retired}}",
+    "sodRuleSaved": "Separation-of-duties rule {code} saved",
+    "approvalDecided": "{decision, select, approve {Step approved} other {Step rejected}}",
+    "clientUpdated": "Client {name} updated",
+    "clientStatusChanged": "{status, select, ACTIVE {Client {name} reactivated} other {Client {name} deactivated}}",
+    "contactAdded": "Contact {name} added",
+    "contactRemoved": "Contact removed",
+    "districtAdded": "District {name} ({code}) added",
+    "districtStatusChanged": "{active, select, true {District {name} activated} other {District {name} deactivated}}",
+    "brandingSaved": "Branding saved"
   }
 }

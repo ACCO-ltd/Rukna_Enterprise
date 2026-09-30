@@ -207,8 +207,13 @@ export function EditAccountForm({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={update.isPending || original === null}>
-          {update.isPending ? tCommon('saving') : t('submit')}
+        <Button
+          type="submit"
+          loading={update.isPending}
+          loadingText={tCommon('saving')}
+          disabled={original === null}
+        >
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

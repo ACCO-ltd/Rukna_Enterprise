@@ -275,7 +275,8 @@ export function BoqClassifierDialog({
           </Button>
         </FormDialogClose>
         <Button
-          disabled={!canSubmit || isPending}
+          disabled={!canSubmit}
+          loading={isPending}
           onClick={() => {
             if (route === '') return;
             const ref = clientApprovalReference.trim();

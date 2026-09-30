@@ -140,8 +140,8 @@ export function SupplierCreateForm() {
             </Button>
           }
           save={
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? t('saving') : t('save')}
+            <Button type="submit" loading={create.isPending} loadingText={t('saving')}>
+              {t('save')}
             </Button>
           }
           discard={

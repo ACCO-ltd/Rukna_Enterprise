@@ -2,6 +2,8 @@
 
 import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
 
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+
 import { toLifecycleError, type LifecycleError } from './lifecycle-error';
 
 /**
@@ -26,15 +28,20 @@ import { toLifecycleError, type LifecycleError } from './lifecycle-error';
  *
  * `invalidate` takes the BROAD key for the aggregate (`projectKeys.all`), not the detail
  * key — that is what catches the list and dashboard views alongside the record itself.
+ *
+ * `feedback` is the mutation's success `meta` (`lib/mutation-feedback.ts`) — the toast that
+ * confirms the transition happened.
  */
 export function useLifecycleCommand<TArgs = void>(
   run: (args: TArgs) => Promise<unknown>,
   invalidate: QueryKey | QueryKey[],
+  feedback?: MutationFeedbackMeta,
 ) {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: run,
+    meta: feedback,
     onSuccess: async () => {
       const keys = isKeyList(invalidate) ? invalidate : [invalidate];
       await Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));

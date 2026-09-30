@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 
 import type { ProjectRole } from '@erp/types';
 
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+
 import {
   addProjectMember,
   listProjectMembers,
@@ -40,10 +42,15 @@ export function useProjectMembers(projectId: string): UseQueryResult<ProjectMemb
  * response embeds its own copy of `members`. Leaving that stale is how the overview tab keeps
  * showing someone who was just removed.
  */
-function useMemberMutation<TArgs>(projectId: string, mutationFn: (args: TArgs) => Promise<unknown>) {
+function useMemberMutation<TArgs>(
+  projectId: string,
+  mutationFn: (args: TArgs) => Promise<unknown>,
+  meta: MutationFeedbackMeta,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
+    meta,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: memberKeys.list(projectId) });
       void qc.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
@@ -51,17 +58,26 @@ function useMemberMutation<TArgs>(projectId: string, mutationFn: (args: TArgs) =
   });
 }
 
+/** "Amina Yusuf" — the member a toast names. */
+function memberName(data: unknown): { name: string } {
+  const { user } = data as ProjectMember;
+  return { name: `${user.firstName} ${user.lastName}`.trim() };
+}
+
 export function useAddProjectMember(projectId: string) {
-  return useMemberMutation(projectId, (payload: AddProjectMemberPayload) =>
-    addProjectMember(projectId, payload),
+  return useMemberMutation(
+    projectId,
+    (payload: AddProjectMemberPayload) => addProjectMember(projectId, payload),
+    { successToast: { key: 'platform.feedback.memberAdded', values: memberName } },
   );
 }
 
 /** Keyed on the user id, not the member id — that is what the endpoint takes. */
 export function useRemoveProjectMember(projectId: string) {
-  return useMemberMutation(projectId, (userId: string) =>
-    removeProjectMember(projectId, userId),
-  );
+  return useMemberMutation(projectId, (userId: string) => removeProjectMember(projectId, userId), {
+    successToast: 'platform.feedback.memberRemoved',
+    flashRow: false,
+  });
 }
 
 /** Corrects a member's roles (PATCH …/roles). Keyed on the user id, like remove. */
@@ -70,5 +86,6 @@ export function useSetProjectMemberRoles(projectId: string) {
     projectId,
     ({ userId, roles }: { userId: string; roles: ProjectRole[] }) =>
       setProjectMemberRoles(projectId, userId, roles),
+    { successToast: { key: 'platform.feedback.memberRolesUpdated', values: memberName } },
   );
 }

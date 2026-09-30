@@ -195,7 +195,6 @@ function EntryForm({
 }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
-  const { toast } = useToast();
   const access = useProgressAccess();
   const unitLabel = useUnitLabel();
 
@@ -203,9 +202,12 @@ function EntryForm({
   const workPackages = useWorkPackages(projectId);
   const progress = useProjectProgress(projectId);
   const submit = useSubmitDpr(projectId, dpr.id);
-  const patch = usePatchDprContext(dpr.id);
-  const addMeasurement = useAddMeasurement(dpr.id);
-  const addLabour = useAddLabourRow(dpr.id);
+  // Steps of Save/Submit: Submit confirms through its own meta, Save draft below — no toast per step.
+  const { toast } = useToast();
+  const tFeedback = useTranslations('progress.feedback');
+  const patch = usePatchDprContext(dpr.id, { silent: true });
+  const addMeasurement = useAddMeasurement(dpr.id, { silent: true });
+  const addLabour = useAddLabourRow(dpr.id, { silent: true });
   const queryClient = useQueryClient();
 
   const directLabel = t('labour.fields.contractorDefault');
@@ -392,7 +394,14 @@ function EntryForm({
     setBusy(true);
     const saved = await flushNotes();
     setBusy(false);
-    if (saved) onClose();
+    if (!saved) return;
+    toast({
+      tone: 'success',
+      title: tFeedback('dprDraftSaved', {
+        date: formatDate(dpr.reportDate, locale) ?? dpr.reportDate,
+      }),
+    });
+    onClose();
   }
 
   async function onSubmit() {
@@ -405,9 +414,9 @@ function EntryForm({
       return;
     }
     submit.mutate(undefined, {
+      // The success toast comes from the mutation's feedback meta.
       onSuccess: () => {
         setBusy(false);
-        toast({ tone: 'success', title: t('entry.submitted') });
         onClose();
       },
       onError: (error) => {
@@ -754,7 +763,7 @@ function EntryItemRow({
           endSlot={unit ? <span className="text-caption text-muted-foreground">{unit}</span> : undefined}
           className="text-end tabular-nums"
         />
-        <Button type="submit" variant="outline" disabled={add.isPending} className="shrink-0">
+        <Button type="submit" variant="outline" loading={add.isPending} className="shrink-0">
           {t('entry.record')}
         </Button>
       </form>

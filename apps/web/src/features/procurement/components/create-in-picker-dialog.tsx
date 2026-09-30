@@ -147,8 +147,14 @@ export function CreateInPickerDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={submit} disabled={!canSubmit}>
-          {isPending ? tCommon('formActions.pendingLabel') : submitLabel}
+        <Button
+          type="button"
+          onClick={submit}
+          loading={isPending}
+          loadingText={tCommon('formActions.pendingLabel')}
+          disabled={!canSubmit}
+        >
+          {submitLabel}
         </Button>
       </FormDialogFooter>
     </FormDialog>

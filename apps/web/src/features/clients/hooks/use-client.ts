@@ -14,7 +14,7 @@ import {
   type CreateClientPayload,
   type UpdateClientPayload,
 } from '../api/clients-api';
-import type { ClientDetail } from '../types';
+import type { Client, ClientContact, ClientDetail } from '../types';
 import { clientKeys } from './use-clients';
 
 export function useClient(id: string): UseQueryResult<ClientDetail, Error> {
@@ -27,9 +27,11 @@ export function useClient(id: string): UseQueryResult<ClientDetail, Error> {
 export function useCreateClient() {
   const queryClient = useQueryClient();
 
+  // No feedback `meta`: the form's own success toast carries a "Create project" action, and the
+  // inline create (inside the project form) selects the new client instead.
   return useMutation({
     mutationFn: (payload: CreateClientPayload) => createClient(payload),
-    onSuccess: async (client) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: clientKeys.all });
     },
   });
@@ -46,6 +48,12 @@ export function useUpdateClient(id: string) {
       await queryClient.invalidateQueries({ queryKey: clientKeys.all });
       router.push(`/clients/${id}`);
     },
+    meta: {
+      successToast: {
+        key: 'platform.feedback.clientUpdated',
+        values: (data) => ({ name: (data as Client).name }),
+      },
+    },
   });
 }
 
@@ -61,6 +69,12 @@ export function useSetClientStatus(id: string) {
     mutationFn: (status: ClientStatus) => updateClient(id, { status }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: clientKeys.all });
+    },
+    meta: {
+      successToast: {
+        key: 'platform.feedback.clientStatusChanged',
+        values: (data) => ({ name: (data as Client).name, status: (data as Client).status }),
+      },
     },
   });
 }
@@ -83,6 +97,13 @@ export function useAddContact(clientId: string) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: clientKeys.all });
     },
+    meta: {
+      successToast: {
+        key: 'platform.feedback.contactAdded',
+        values: (data) => ({ name: (data as ClientContact).name }),
+      },
+      flashRow: false,
+    },
   });
 }
 
@@ -94,5 +115,6 @@ export function useRemoveContact(clientId: string) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: clientKeys.all });
     },
+    meta: { successToast: 'platform.feedback.contactRemoved', flashRow: false },
   });
 }

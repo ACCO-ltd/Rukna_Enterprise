@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ToastProvider } from '@/providers/toast-provider';
 
 import { CommandMenu } from '@/features/command-menu/command-menu';
 import { toggleCommandMenu } from '@/features/command-menu/command-menu-store';
@@ -50,7 +49,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const close = () => setMenuOpen(false);
 
   return (
-    <ToastProvider>
     <div className="min-h-screen bg-background">
       <a
         href="#main-content"
@@ -114,6 +112,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Command menu — mounted once, opened by the top-bar chip or Cmd/Ctrl+K */}
       <CommandMenu />
     </div>
-    </ToastProvider>
   );
 }

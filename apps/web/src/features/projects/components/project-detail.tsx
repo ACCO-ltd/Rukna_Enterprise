@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   ActivityTimeline,
@@ -12,7 +11,6 @@ import {
   DefinitionRow,
   MoneyDisplay,
   StatusPill,
-  useToast,
 } from '@erp/ui';
 
 import { renderNextLink } from '@/components/render-next-link';
@@ -38,26 +36,8 @@ export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
-  const searchParams = useSearchParams();
-  const { toast } = useToast();
   const { data: project, isPending, isError, error } = useProject(id);
   const summary = useProjectWorkspaceSummary(id);
-
-  // Arriving from "Save project" (`?created=1`): confirm with the app's toast — the same one the
-  // client form uses — rather than a hand-rolled fixed card (flow plan B8). Once, then drop the
-  // flag so a reload does not repeat it.
-  const announced = useRef(false);
-  const justCreated = searchParams?.get('created') === '1';
-  useEffect(() => {
-    if (!justCreated || !project || announced.current) return;
-    announced.current = true;
-    toast({
-      tone: 'success',
-      title: t('createdTitle'),
-      description: `${project.name} · ${project.code}`,
-    });
-    window.history.replaceState(null, '', window.location.pathname);
-  }, [justCreated, project, t, toast]);
 
   if (isPending) {
     return (

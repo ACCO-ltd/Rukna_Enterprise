@@ -103,8 +103,13 @@ export function PolicySodEditor({ policyId, editable }: { policyId: string; edit
           </div>
           {upsertError ? <Alert variant="error" messages={upsertError} /> : null}
           <div className="flex justify-end">
-            <Button type="submit" disabled={upsert.isPending || !code.trim() || !description.trim()}>
-              {upsert.isPending ? t('adding') : t('add')}
+            <Button
+              type="submit"
+              disabled={!code.trim() || !description.trim()}
+              loading={upsert.isPending}
+              loadingText={t('adding')}
+            >
+              {t('add')}
             </Button>
           </div>
         </form>

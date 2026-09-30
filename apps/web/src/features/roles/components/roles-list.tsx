@@ -24,7 +24,6 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
-  useToast,
 } from '@erp/ui';
 
 import type { RoleSummary } from '@erp/types';
@@ -49,7 +48,6 @@ type ActiveDialog = 'edit' | 'permissions' | 'governance';
 export function RolesList() {
   const t = useTranslations('platform.roles');
   const tCommon = useTranslations('common');
-  const { toast } = useToast();
   const { can } = usePermissions();
   const canManage = can(PERMISSIONS.rolesManage);
   const searchId = useId();
@@ -85,9 +83,8 @@ export function RolesList() {
 
   function confirmDelete() {
     if (!deleteTarget) return;
-    remove.mutate(deleteTarget.id, {
+    remove.mutate(deleteTarget, {
       onSuccess: () => {
-        toast({ tone: 'success', title: t('toast.deleted', { name: deleteTarget.name }) });
         setDeleteTarget(null);
         remove.reset();
       },

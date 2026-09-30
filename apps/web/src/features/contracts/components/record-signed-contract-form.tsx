@@ -279,8 +279,8 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
           </Button>
         }
         save={
-          <Button type="button" onClick={submit} disabled={record.isPending}>
-            {record.isPending ? t('recording') : t('submit')}
+          <Button type="button" onClick={submit} loading={record.isPending} loadingText={t('recording')}>
+            {t('submit')}
           </Button>
         }
         discard={
@@ -417,8 +417,8 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
               <Button variant="outline" onClick={() => setConfirming(false)} disabled={record.isPending}>
                 {t('confirm.cancel')}
               </Button>
-              <Button onClick={confirm} disabled={record.isPending}>
-                {record.isPending ? t('recording') : t('confirm.submit')}
+              <Button onClick={confirm} loading={record.isPending} loadingText={t('recording')}>
+                {t('confirm.submit')}
               </Button>
             </DialogFooter>
           </DialogContent>

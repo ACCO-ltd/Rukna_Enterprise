@@ -120,9 +120,10 @@ export function IpcBillingCard({
             <Button
               variant="outline"
               onClick={() => openDocument.mutate(existing.id)}
-              disabled={openDocument.isPending}
+              loading={openDocument.isPending}
+              loadingText={tCommon('loading')}
             >
-              {openDocument.isPending ? tCommon('loading') : t('viewDocument')}
+              {t('viewDocument')}
             </Button>
           </div>
         </div>
@@ -196,8 +197,8 @@ export function IpcBillingCard({
               </p>
 
               <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={generate.isPending}>
-                  {generate.isPending ? tCommon('saving') : t('generate')}
+                <Button type="submit" loading={generate.isPending} loadingText={tCommon('saving')}>
+                  {t('generate')}
                 </Button>
                 <Button
                   type="button"

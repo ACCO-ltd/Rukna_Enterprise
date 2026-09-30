@@ -133,8 +133,8 @@ export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }
           </Button>
         </FormDialogClose>
         {data && !blocked ? (
-          <Button type="button" onClick={create} disabled={mutation.isPending}>
-            {mutation.isPending ? t('creating') : t('create')}
+          <Button type="button" onClick={create} loading={mutation.isPending} loadingText={t('creating')}>
+            {t('create')}
           </Button>
         ) : null}
       </FormDialogFooter>

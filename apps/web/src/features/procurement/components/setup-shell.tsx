@@ -195,7 +195,7 @@ export function CreateForm({
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" loading={isPending}>
           {submitLabel ?? t('create')}
         </Button>
       </FormDialogFooter>

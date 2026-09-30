@@ -81,8 +81,8 @@ export function RecordSignedDateDialog({
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={() => void handleSubmit()} disabled={!signedDate || mutation.isPending}>
-          {mutation.isPending ? t('submitting') : t('submit')}
+        <Button type="button" onClick={() => void handleSubmit()} disabled={!signedDate} loading={mutation.isPending} loadingText={t('submitting')}>
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

@@ -348,8 +348,8 @@ function AddDeductionDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={add.isPending}>
-          {add.isPending ? tCommon('loading') : t('save')}
+        <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

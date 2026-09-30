@@ -402,7 +402,7 @@ function RerunMatchButton({ billId }: { billId: string }) {
             <DialogFooter>
               <Button
                 type="button"
-                disabled={rerun.isPending}
+                loading={rerun.isPending}
                 onClick={() =>
                   rerun.mutate(billId, { onSuccess: () => setConfirming(false) })
                 }
@@ -634,7 +634,7 @@ export function ResolveExceptionDialog({
             {tc('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" disabled={resolve.isPending} onClick={handleSubmit}>
+        <Button type="button" loading={resolve.isPending} onClick={handleSubmit}>
           {t('resolveException')}
         </Button>
       </FormDialogFooter>

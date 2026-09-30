@@ -45,6 +45,12 @@ export function useIssueIpc(applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: IssueIpcPayload) => issueIpc(payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.certificateIssued',
+        values: (ipc) => ({ number: (ipc as Ipc).certificateNumber }),
+      },
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ipcKeys.list(applicationId) });
     },
@@ -55,6 +61,7 @@ export function useSupersede(applicationId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: SupersedeIpcPayload) => supersedeIpc(applicationId, payload),
+    meta: { successToast: 'accounting.feedback.certificateSuperseded', flashRow: false },
     onSuccess: () => {
       // Invalidate the whole IPC namespace so both list and detail queries refresh.
       void qc.invalidateQueries({ queryKey: ipcKeys.all });

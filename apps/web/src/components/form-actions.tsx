@@ -76,8 +76,8 @@ export function FormActions({
 
         {/* Primary and cancel — end of bar */}
         <div className="flex flex-col gap-2.5 sm:flex-row-reverse sm:items-center">
-          <Button type="submit" disabled={isPending || disabled}>
-            {isPending ? resolvedPending : submitLabel}
+          <Button type="submit" disabled={disabled} loading={isPending} loadingText={resolvedPending}>
+            {submitLabel}
           </Button>
 
           {cancelHref ? (

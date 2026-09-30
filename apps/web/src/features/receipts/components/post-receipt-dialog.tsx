@@ -208,8 +208,14 @@ export function PostReceiptDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={submit} disabled={!canPost}>
-          {post.isPending ? tCommon('loading') : t('post')}
+        <Button
+          type="button"
+          onClick={submit}
+          loading={post.isPending}
+          loadingText={tCommon('loading')}
+          disabled={!canPost}
+        >
+          {t('post')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

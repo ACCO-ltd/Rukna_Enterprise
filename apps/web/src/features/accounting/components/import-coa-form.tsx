@@ -185,9 +185,14 @@ export function ImportCoaForm({ title, onDone }: { title: string; onDone: () => 
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={importMutation.isPending || parsed.rows.length === 0 || parsed.errors.length > 0}
-          title={parsed.rows.length === 0 ? t('nothingToImport') : undefined}>
-          {importMutation.isPending ? t('importing') : t('submit')}
+        <Button
+          type="submit"
+          loading={importMutation.isPending}
+          loadingText={t('importing')}
+          disabled={parsed.rows.length === 0 || parsed.errors.length > 0}
+          title={parsed.rows.length === 0 ? t('nothingToImport') : undefined}
+        >
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

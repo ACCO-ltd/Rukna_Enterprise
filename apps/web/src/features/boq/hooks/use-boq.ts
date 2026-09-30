@@ -12,6 +12,7 @@ import type {
 } from '@erp/types';
 
 import { projectKeys } from '@/features/projects/hooks/use-projects';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 import {
   addBoqNode,
@@ -145,11 +146,16 @@ export function useBoqTimeline(
  * whole BOQ key rather than patching the cache keeps the workspace, the version list and
  * every cached tree consistent with each other.
  */
-function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<unknown>) {
+function useBoqMutation<TArgs>(
+  projectId: string,
+  run: (args: TArgs) => Promise<unknown>,
+  meta?: MutationFeedbackMeta,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: run,
+    meta,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boqKeys.all(projectId) });
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
@@ -159,7 +165,10 @@ function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<
 
 export function useInitializeBoq(projectId: string) {
   // `void` so callers can write `mutate()` — this command takes no variables.
-  return useBoqMutation<void>(projectId, () => initializeBoq(projectId));
+  return useBoqMutation<void>(projectId, () => initializeBoq(projectId), {
+    successToast: 'platform.feedback.boqStarted',
+    flashRow: false,
+  });
 }
 
 /**
@@ -173,17 +182,26 @@ export function useInitializeBoq(projectId: string) {
  * overrun signal.
  */
 export function useDrawContingency(projectId: string, versionId: string) {
-  return useBoqMutation(projectId, (args: { toNodeId: string; amount: string }) =>
-    drawContingency(projectId, versionId, args),
+  return useBoqMutation(
+    projectId,
+    (args: { toNodeId: string; amount: string }) => drawContingency(projectId, versionId, args),
+    // No amount in the message — money-blind readers see these toasts too.
+    { successToast: 'platform.feedback.contingencyDrawn', flashRow: (_data, v) => (v as { toNodeId: string }).toNodeId },
   );
 }
 
 export function useCancelDraftVersion(projectId: string) {
-  return useBoqMutation(projectId, (versionId: string) => cancelDraftVersion(projectId, versionId));
+  return useBoqMutation(projectId, (versionId: string) => cancelDraftVersion(projectId, versionId), {
+    successToast: 'platform.feedback.boqDraftDiscarded',
+    flashRow: false,
+  });
 }
 
 export function useCreateDraftVersion(projectId: string) {
-  return useBoqMutation(projectId, (notes: string) => createDraftVersion(projectId, notes));
+  return useBoqMutation(projectId, (notes: string) => createDraftVersion(projectId, notes), {
+    successToast: 'platform.feedback.boqRevisionOpened',
+    flashRow: false,
+  });
 }
 
 // ─── Import (ADR-016 Phase 2) ────────────────────────────────────────────────────
@@ -215,22 +233,50 @@ export function useImportBoq(projectId: string) {
 
 // ─── Node editing ──────────────────────────────────────────────────────────────
 
-export function useAddNode(projectId: string, versionId: string) {
-  return useBoqMutation(projectId, (payload: CreateNodePayload) =>
-    addBoqNode(projectId, versionId, payload),
+/**
+ * Feedback for a line saved through the item dialog. Inline grid edits pass `{ silent: true }`:
+ * the cell itself shows the new value, and a toast per keystroke-commit would be noise.
+ * Never the rate or amount — money-blind readers get these toasts too.
+ */
+function lineSavedMeta(key: string): MutationFeedbackMeta {
+  return {
+    successToast: {
+      key,
+      values: (data) => {
+        const node = data as BoqTreeNodeResponse;
+        return { kind: node.isLeaf ? 'item' : 'section', code: node.code };
+      },
+    },
+  };
+}
+
+interface NodeCommandOptions {
+  /** No toast — the caller shows the saved state in place (inline grid edits). */
+  silent?: boolean;
+}
+
+export function useAddNode(projectId: string, versionId: string, options: NodeCommandOptions = {}) {
+  return useBoqMutation(
+    projectId,
+    (payload: CreateNodePayload) => addBoqNode(projectId, versionId, payload),
+    options.silent ? undefined : lineSavedMeta('platform.feedback.boqLineAdded'),
   );
 }
 
-export function useUpdateNode(projectId: string, versionId: string) {
-  return useBoqMutation(projectId, (args: { nodeId: string; payload: UpdateNodePayload }) =>
-    updateBoqNode(projectId, versionId, args.nodeId, args.payload),
+export function useUpdateNode(projectId: string, versionId: string, options: NodeCommandOptions = {}) {
+  return useBoqMutation(
+    projectId,
+    (args: { nodeId: string; payload: UpdateNodePayload }) =>
+      updateBoqNode(projectId, versionId, args.nodeId, args.payload),
+    options.silent ? undefined : lineSavedMeta('platform.feedback.boqLineUpdated'),
   );
 }
 
 export function useDeleteNode(projectId: string, versionId: string) {
-  return useBoqMutation(projectId, (nodeId: string) =>
-    deleteBoqNode(projectId, versionId, nodeId),
-  );
+  return useBoqMutation(projectId, (nodeId: string) => deleteBoqNode(projectId, versionId, nodeId), {
+    successToast: 'platform.feedback.boqLineDeleted',
+    flashRow: false,
+  });
 }
 
 /**

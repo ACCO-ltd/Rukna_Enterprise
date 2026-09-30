@@ -116,7 +116,8 @@ export function RoleGovernanceDialog({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={!ownerId || reassign.isPending}
+                    disabled={!ownerId}
+                    loading={reassign.isPending}
                     onClick={() =>
                       role &&
                       reassign.mutate(
@@ -150,7 +151,7 @@ export function RoleGovernanceDialog({
               <div>
                 <Button
                   size="sm"
-                  disabled={review.isPending}
+                  loading={review.isPending}
                   onClick={() =>
                     role &&
                     review.mutate(

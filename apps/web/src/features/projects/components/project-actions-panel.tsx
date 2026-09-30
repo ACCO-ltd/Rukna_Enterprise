@@ -131,9 +131,10 @@ export function ProjectActionsPanel({
             onClick={() => {
               resume.mutate(undefined);
             }}
-            disabled={resume.isPending}
+            loading={resume.isPending}
+            loadingText={t('working')}
           >
-            {resume.isPending ? t('working') : t('resume')}
+            {t('resume')}
           </Button>
         ) : null}
 

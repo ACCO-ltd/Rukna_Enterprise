@@ -65,9 +65,12 @@ import {
   type ProgressTargetItem,
   type RebaselineBody,
   type SaveDeliveryPlanBody,
+  type SaveDeliveryPlanResponse,
   type WorkPackageResponse,
 } from '../api/progress-api';
 import { programmeKeys } from '@/features/programme/hooks/programme-keys';
+import { formatDate } from '@/lib/format';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 export const progressKeys = {
   all: (projectId: string) => ['progress', projectId] as const,
@@ -101,6 +104,32 @@ function invalidateVerifiedDerived(queryClient: QueryClient, projectId: string):
     queryClient.invalidateQueries({ queryKey: progressKeys.signal(projectId) }),
     queryClient.invalidateQueries({ queryKey: progressKeys.collectionSignal(projectId) }),
   ]).then(() => undefined);
+}
+
+/** "Daily report for 30 Sep 2026 …" — a DPR has no number of its own; its date names it. */
+function dprToast(key: string): MutationFeedbackMeta {
+  return {
+    successToast: {
+      key,
+      values: (data) => {
+        const reportDate = (data as DailyProgressReportResponse).reportDate;
+        return { date: formatDate(reportDate) ?? reportDate };
+      },
+    },
+  };
+}
+
+/**
+ * A row edit inside an open report. `silent` is for a caller that runs it as one step of a larger
+ * save (the entry dialog's Save/Submit flushes typed rows first) and confirms the whole save itself.
+ */
+export interface RowEditOptions {
+  silent?: boolean;
+}
+
+function rowToast(key: string, options: RowEditOptions = {}): MutationFeedbackMeta | undefined {
+  // The row appears in (or leaves) the open report; there is no list row to tint.
+  return options.silent ? undefined : { successToast: key, flashRow: false };
 }
 
 // ─── Queries ────────────────────────────────────────────────────────────────────────────
@@ -222,16 +251,18 @@ export function useCreateDpr(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateDprBody) => createDpr(projectId, body),
+    meta: dprToast('progress.feedback.dprStarted'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) });
     },
   });
 }
 
-export function useAddMeasurement(dprId: string) {
+export function useAddMeasurement(dprId: string, options: RowEditOptions = {}) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: AddMeasurementBody) => addMeasurement(dprId, body),
+    meta: rowToast('progress.feedback.quantityRecorded', options),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -243,6 +274,7 @@ export function useRemoveMeasurement(projectId: string, dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (measurementId: string) => removeMeasurement(dprId, measurementId),
+    meta: rowToast('progress.feedback.quantityRemoved'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
@@ -257,6 +289,7 @@ export function useAttachDprEvidence(dprId: string) {
   return useMutation({
     mutationFn: ({ platformFileId, measurementId }: { platformFileId: string; measurementId?: string }) =>
       attachEvidence(dprId, platformFileId, measurementId),
+    meta: rowToast('progress.feedback.evidenceAttached'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -267,6 +300,7 @@ export function useSubmitDpr(projectId: string, dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => submitDpr(dprId),
+    meta: dprToast('progress.feedback.dprSubmitted'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
@@ -281,6 +315,7 @@ export function useApproveDpr(projectId: string, dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => approveDpr(dprId),
+    meta: dprToast('progress.feedback.dprApproved'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
@@ -297,6 +332,7 @@ export function useReturnDpr(projectId: string, dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (reason: string) => returnDpr(dprId, reason),
+    meta: dprToast('progress.feedback.dprReturned'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
@@ -318,6 +354,7 @@ export function useCaptureProgressSnapshot(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation<ProgressSnapshotResponse, Error, CaptureProgressSnapshotBody>({
     mutationFn: (body: CaptureProgressSnapshotBody) => captureProgressSnapshot(projectId, body),
+    meta: { successToast: 'progress.feedback.snapshotCaptured', flashRow: false },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.curve(projectId) }),
@@ -337,6 +374,7 @@ export function useSetProgressTargets(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (targets: ProgressTargetItem[]) => setProgressTargets(projectId, targets),
+    meta: { successToast: 'progress.feedback.targetsSaved', flashRow: false },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.targets(projectId) }),
@@ -368,6 +406,13 @@ export function useApproveBaseline(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation<ProgrammeBaselineResponse, Error, void>({
     mutationFn: () => approveProgrammeBaseline(projectId),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.baselineLocked',
+        values: (data) => ({ version: (data as ProgrammeBaselineResponse).version }),
+      },
+      flashRow: false,
+    },
     onSuccess: () => invalidateBaselineDerived(queryClient, projectId),
   });
 }
@@ -377,6 +422,13 @@ export function useRebaseline(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation<ProgrammeBaselineResponse, Error, RebaselineBody>({
     mutationFn: (body: RebaselineBody) => rebaselineProgramme(projectId, body),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.rebaselined',
+        values: (data) => ({ version: (data as ProgrammeBaselineResponse).version }),
+      },
+      flashRow: false,
+    },
     onSuccess: () => invalidateBaselineDerived(queryClient, projectId),
   });
 }
@@ -388,6 +440,12 @@ export function useCreateWorkPackage(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateWorkPackageBody) => createWorkPackage(projectId, body),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.workPackageCreated',
+        values: (data) => ({ name: (data as WorkPackageResponse).name }),
+      },
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
@@ -401,6 +459,7 @@ export function useAllocateBoqNode(projectId: string, workPackageId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (boqNodeId: string) => allocateBoqNode(workPackageId, boqNodeId),
+    meta: { successToast: 'progress.feedback.scopeAllocated', flashRow: () => workPackageId },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
@@ -434,6 +493,13 @@ export function useSaveDeliveryPlan(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: SaveDeliveryPlanBody) => saveDeliveryPlan(projectId, body),
+    meta: {
+      successToast: {
+        key: 'progress.feedback.deliveryPlanSaved',
+        values: (data) => ({ count: (data as SaveDeliveryPlanResponse).packages.length }),
+      },
+      flashRow: false,
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
@@ -447,6 +513,8 @@ export function useSaveDeliveryPlan(projectId: string) {
  * Allocate a BOQ leaf to any work package (the target is chosen per call, not fixed at hook time).
  * The guided schedule wizard assigns scope across several phases from one surface, so it needs to
  * name the work package in the mutation rather than bind one hook per package.
+ *
+ * No success toast: in the wizard each pick is an inline edit that shows up in place at once.
  */
 export function useAllocateToWorkPackage(projectId: string) {
   const queryClient = useQueryClient();
@@ -464,20 +532,22 @@ export function useAllocateToWorkPackage(projectId: string) {
 
 // ─── Phase 3: structured DPR row mutations ────────────────────────────────────────────────
 
-export function usePatchDprContext(dprId: string) {
+export function usePatchDprContext(dprId: string, options: RowEditOptions = {}) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: PatchDprContextBody) => patchDprContext(dprId, body),
+    meta: rowToast('progress.feedback.detailsSaved', options),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
   });
 }
 
-export function useAddLabourRow(dprId: string) {
+export function useAddLabourRow(dprId: string, options: RowEditOptions = {}) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: AddLabourRowBody) => addLabourRow(dprId, body),
+    meta: rowToast('progress.feedback.labourAdded', options),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -488,6 +558,7 @@ export function useRemoveLabourRow(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (rowId: string) => removeLabourRow(dprId, rowId),
+    meta: rowToast('progress.feedback.labourRemoved'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -498,6 +569,7 @@ export function useAddEquipmentRow(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: AddEquipmentRowBody) => addEquipmentRow(dprId, body),
+    meta: rowToast('progress.feedback.equipmentAdded'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -508,6 +580,7 @@ export function useRemoveEquipmentRow(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (rowId: string) => removeEquipmentRow(dprId, rowId),
+    meta: rowToast('progress.feedback.equipmentRemoved'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -518,6 +591,7 @@ export function useAddObservation(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: AddObservationBody) => addObservation(dprId, body),
+    meta: rowToast('progress.feedback.observationAdded'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
@@ -528,6 +602,7 @@ export function useRemoveObservation(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (obsId: string) => removeObservation(dprId, obsId),
+    meta: rowToast('progress.feedback.observationRemoved'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },

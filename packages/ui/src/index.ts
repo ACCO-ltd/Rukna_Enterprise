@@ -41,6 +41,8 @@ export {
   DialogTrigger,
 } from './components/dialog';
 export { ConfirmDialog } from './components/confirm-dialog';
+export { SuccessDialog } from './components/success-dialog';
+export type { SuccessDialogProps } from './components/success-dialog';
 export type { ConfirmDialogProps } from './components/confirm-dialog';
 export {
   FormDialog,
