@@ -11,16 +11,16 @@
  * ("Setup / Materials") already names the screen (ADR-035).
  */
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
@@ -100,16 +100,13 @@ export function SetupScreen({
       )}
 
       {/* A dialog, not the side panel this was: these setup forms are three or four short
-          fields, and none of them needs the table behind it to stay readable while you type. */}
-      {createForm ? (
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent size="md">
-            <DialogHeader>
-              <DialogTitle>{createTitle}</DialogTitle>
-            </DialogHeader>
-            <div className="mt-5">{createForm(() => setOpen(false))}</div>
-          </DialogContent>
-        </Dialog>
+          fields, and none of them needs the table behind it to stay readable while you type.
+          `CreateForm` draws the FormDialog itself (it owns the pending state the guard needs);
+          the title reaches it through context. */}
+      {createForm && open ? (
+        <CreateDialogTitle.Provider value={createTitle ?? createLabel}>
+          {createForm(() => setOpen(false))}
+        </CreateDialogTitle.Provider>
       ) : null}
     </div>
   );
@@ -117,12 +114,18 @@ export function SetupScreen({
 
 // ─── Create form scaffold ────────────────────────────────────────────────────────
 
+/** The create dialog's title, from `SetupScreen` to the `CreateForm` its render prop returns. */
+const CreateDialogTitle = createContext<string | null>(null);
+
 interface CreateFormProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isPending: boolean;
   error: unknown;
   onCancel: () => void;
   submitLabel?: string;
+  /** Dialog title; defaults to the `SetupScreen`'s `createTitle`. */
+  title?: string;
+  subtitle?: string;
   children: ReactNode;
 }
 
@@ -132,6 +135,11 @@ interface CreateFormProps {
  * A `409` gets its own treatment: every one of these endpoints rejects a duplicate code
  * that way, and "Conflict" tells the user nothing. The server's message names the code,
  * so it is shown as-is rather than replaced with something generic.
+ *
+ * Always shown in a `FormDialog` (ADR-039), size `md`: the fields scroll between a pinned title
+ * and a pinned Cancel · Create. The dialog cannot be dismissed while the create is in flight,
+ * and asks before discarding once something has been typed. The inputs are uncontrolled, so
+ * "something typed" is any input or change event from inside the body.
  */
 export function CreateForm({
   onSubmit,
@@ -139,27 +147,48 @@ export function CreateForm({
   error,
   onCancel,
   submitLabel,
+  title,
+  subtitle,
   children,
 }: CreateFormProps) {
   const t = useTranslations('procurement.common');
+  const contextTitle = useContext(CreateDialogTitle);
+  const [dirty, setDirty] = useState(false);
 
   const message =
     error instanceof ApiError ? error.message : error ? t('loadFailed') : undefined;
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" noValidate>
-      {children}
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onCancel()}
+      title={title ?? contextTitle ?? ''}
+      subtitle={subtitle}
+      size="md"
+      dirty={dirty}
+      busy={isPending}
+      onSubmit={onSubmit}
+    >
+      <FormDialogBody
+        className="space-y-4"
+        onInput={() => setDirty(true)}
+        onChange={() => setDirty(true)}
+      >
+        {children}
 
-      {message ? <Alert variant="error" messages={[message]} /> : null}
+        {message ? <Alert variant="error" messages={[message]} /> : null}
+      </FormDialogBody>
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          {t('cancel')}
-        </Button>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
+            {t('cancel')}
+          </Button>
+        </FormDialogClose>
         <Button type="submit" disabled={isPending}>
           {submitLabel ?? t('create')}
         </Button>
-      </div>
-    </form>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

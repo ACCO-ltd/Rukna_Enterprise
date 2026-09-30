@@ -25,11 +25,6 @@ import {
   Alert,
   FormField,
   Input,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -168,19 +163,9 @@ export function SupplierList() {
         </Table>
       </TableScroll>
 
-      <Dialog open={editing !== null} onOpenChange={(open) => (open ? null : setEditing(null))}>
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>{t('editTitle')}</DialogTitle>
-            <DialogDescription>{t('editSubtitle')}</DialogDescription>
-          </DialogHeader>
-          {editing ? (
-            <div className="mt-5">
-              <SupplierEditForm supplier={editing} onDone={() => setEditing(null)} />
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      {editing ? (
+        <SupplierEditForm supplier={editing} onDone={() => setEditing(null)} />
+      ) : null}
     </SetupScreen>
   );
 }
@@ -281,6 +266,8 @@ function SupplierEditForm({
       error={update.error}
       onCancel={onDone}
       submitLabel={t('saveChanges')}
+      title={t('editTitle')}
+      subtitle={t('editSubtitle')}
     >
       {fieldErrors.form ? (
         <Alert variant="error" messages={[fieldErrors.form]} />
