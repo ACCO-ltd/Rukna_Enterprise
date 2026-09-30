@@ -8,11 +8,10 @@ import {
   Alert,
   Button,
   CheckboxField,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Skeleton,
   Table,
   TableBody,
@@ -418,15 +417,19 @@ function MilestonePackagesDialog({
   onDismiss: () => void;
 }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
+  const tDiscard = useTranslations('common.discardChanges');
   const save = useSetMilestoneWorkPackages(projectId);
   const available = new Set(packages.map((p) => p.id));
   // Linked packages no longer offered here (schedule-only, so they cannot count toward readiness)
   // are shown as unavailable and are NOT re-sent: saving drops them rather than silently keeping
   // ids the reader cannot see or change.
   const unavailable = milestone.workPackages.filter((wp) => !available.has(wp.id));
-  const [selected, setSelected] = useState<Set<string>>(
+  const [initial] = useState(
     () => new Set(milestone.workPackages.map((wp) => wp.id).filter((id) => available.has(id))),
   );
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initial));
+  const dirty = selected.size !== initial.size || [...selected].some((id) => !initial.has(id));
 
   function toggle(id: string, checked: boolean) {
     setSelected((prev) => {
@@ -438,26 +441,33 @@ function MilestonePackagesDialog({
   }
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(open) => {
-        if (!open && !save.isPending) onDismiss();
+        if (!open) onDismiss();
+      }}
+      title={t('setupView.milestones.packagesTitle', { name: milestone.name })}
+      subtitle={t('setupView.milestones.packagesHint')}
+      size="md"
+      dirty={dirty}
+      busy={save.isPending}
+      closeLabel={tCommon('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
       }}
     >
-      <DialogContent size="sm">
-        <DialogTitle>{t('setupView.milestones.packagesTitle', { name: milestone.name })}</DialogTitle>
-        <DialogDescription>{t('setupView.milestones.packagesHint')}</DialogDescription>
-
+      <FormDialogBody className="space-y-4">
         {save.isError ? (
-          <div className="mt-4">
-            <Alert
-              variant="error"
-              messages={[save.error instanceof ApiError ? save.error.message : t('setupView.milestones.packagesFailed')]}
-            />
-          </div>
+          <Alert
+            variant="error"
+            messages={[save.error instanceof ApiError ? save.error.message : t('setupView.milestones.packagesFailed')]}
+          />
         ) : null}
 
-        <div className="mt-4 space-y-1">
+        <div className="space-y-1">
           {packages.length === 0 ? (
             <p className="text-body-sm text-muted-foreground">{t('setupView.milestones.packagesNoneAvailable')}</p>
           ) : (
@@ -487,25 +497,27 @@ function MilestonePackagesDialog({
             <p className="pt-2 text-caption text-muted-foreground">{t('setupView.milestones.packagesClearHint')}</p>
           ) : null}
         </div>
+      </FormDialogBody>
 
-        <DialogFooter>
-          <Button
-            onClick={() =>
-              save.mutate(
-                { milestoneId: milestone.id, workPackageIds: [...selected] },
-                { onSuccess: onDismiss },
-              )
-            }
-            disabled={save.isPending}
-          >
-            {t('setupView.milestones.packagesSave')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={save.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={save.isPending}>
             {t('setupView.milestones.packagesCancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          onClick={() =>
+            save.mutate(
+              { milestoneId: milestone.id, workPackageIds: [...selected] },
+              { onSuccess: onDismiss },
+            )
+          }
+          disabled={save.isPending}
+        >
+          {t('setupView.milestones.packagesSave')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 

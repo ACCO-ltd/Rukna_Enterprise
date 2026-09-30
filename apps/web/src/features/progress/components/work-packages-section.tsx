@@ -5,32 +5,30 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
-  Label,
-  Progress,
   Select,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
 } from '@erp/ui';
 
-import { apportionUnits, apportionWeights, PROGRESS_WEIGHT_DECIMALS, type SuggestedWeightLine } from '@erp/types';
+import {
+  apportionUnits,
+  apportionWeights,
+  PROGRESS_WEIGHT_DECIMALS,
+  type SuggestedWeightLine,
+} from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
+import { usePermissions } from '@/features/auth/permissions/can';
 
 import { useSuggestWeights, useUpdateWorkPackage } from '@/features/programme/hooks/use-programme';
 import { useAllocateBoqNode, useCreateWorkPackage, useProjectRollup } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
+import { PackageWeightsTable } from './package-weights-table';
 
 /** Which of the editor's actions is the screen's one primary right now, if any. */
 export type WorkPackageEditorPrimary = 'allocate' | 'weights' | null;
@@ -40,7 +38,9 @@ export type WorkPackageEditorPrimary = 'allocate' | 'weights' | null;
  * their weights and allocated BOQ items, plus the three editing actions (suggest weights from BOQ
  * values, allocate an item, add a package). The step decides which action is the primary — the
  * one that closes the current gap — and the rest render as secondary, so the screen never shows
- * two primaries.
+ * two primaries. Weights are edited in the table itself (ADR-039: values already in a table are
+ * edited there); once one is typed, "Save weights" takes over as the primary. The action bar and
+ * the weight inputs are for `manage:project` only.
  */
 export function WorkPackageEditor({
   projectId,
@@ -50,8 +50,12 @@ export function WorkPackageEditor({
   primary: WorkPackageEditorPrimary;
 }) {
   const t = useTranslations('progress');
+  const { can } = usePermissions();
+  const canEdit = can('manage:project');
   const { data, isPending, isError, refetch, isFetching } = useProjectRollup(projectId);
 
+  // Weights typed into the table but not saved yet: "Save weights" is then the step's primary.
+  const [weightsDirty, setWeightsDirty] = useState(false);
   const [creating, setCreating] = useState(false);
   const [allocating, setAllocating] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedWeightLine[] | null>(null);
@@ -132,10 +136,11 @@ export function WorkPackageEditor({
 
   return (
     <div className="space-y-4">
+      {canEdit ? (
       <div className="flex flex-wrap items-center gap-2">
         {hasPackages ? (
           <Button
-            variant={primary === 'allocate' ? 'default' : 'outline'}
+            variant={primary === 'allocate' && !weightsDirty ? 'default' : 'outline'}
             size="sm"
             onClick={() => setAllocating(true)}
           >
@@ -144,7 +149,7 @@ export function WorkPackageEditor({
         ) : null}
         {hasPackages ? (
           <Button
-            variant={primary === 'weights' ? 'default' : 'outline'}
+            variant={primary === 'weights' && !weightsDirty ? 'default' : 'outline'}
             size="sm"
             onClick={handleSuggest}
             disabled={suggest.isPending}
@@ -156,6 +161,7 @@ export function WorkPackageEditor({
           {t('setupView.workPackages.addManually')}
         </Button>
       </div>
+      ) : null}
 
       {suggestError ? <Alert variant="error" messages={[suggestError]} /> : null}
       {suggestions !== null && !valueWeighted ? (
@@ -212,53 +218,13 @@ export function WorkPackageEditor({
       ) : null}
 
       {hasPackages ? (
-        <TableScroll aria-label={t('workPackage.title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('workPackage.col.code')}</TableHead>
-                <TableHead>{t('workPackage.col.name')}</TableHead>
-                <TableHead>{t('workPackage.col.owner')}</TableHead>
-                <TableHead numeric>{t('workPackage.col.weight')}</TableHead>
-                <TableHead numeric>{t('workPackage.col.items')}</TableHead>
-                <TableHead>{t('workPackage.col.percent')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.packages.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="whitespace-nowrap font-mono text-caption">{p.code}</TableCell>
-                  <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{p.responsibleOwner ?? '—'}</TableCell>
-                  <TableCell numeric className="whitespace-nowrap">
-                    {`${Math.round(Number(p.weight) * 100)}%`}
-                  </TableCell>
-                  <TableCell numeric className={p.leafCount === 0 && !p.scheduleOnly ? 'text-warning' : undefined}>
-                    {p.leafCount}
-                  </TableCell>
-                  <TableCell className="min-w-28">
-                    {/* Schedule-only phases have no derived % — dash, not a misleading 0%. */}
-                    {p.percentComplete === null ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Progress
-                          value={p.percentComplete}
-                          size="sm"
-                          tone={p.percentComplete >= 100 ? 'success' : 'default'}
-                          label={`${p.code} ${p.percentComplete}%`}
-                        />
-                        <span className="w-9 shrink-0 text-end text-caption tabular-nums text-muted-foreground">
-                          {`${p.percentComplete}%`}
-                        </span>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
+        <PackageWeightsTable
+          projectId={projectId}
+          packages={data.packages}
+          canEdit={canEdit}
+          savePrimary={primary !== null}
+          onDirtyChange={setWeightsDirty}
+        />
       ) : null}
 
       <CreateWorkPackageDialog
@@ -269,19 +235,34 @@ export function WorkPackageEditor({
         existingWeightPercent={existingWeightPercent}
       />
 
-      <Dialog open={allocating} onOpenChange={setAllocating}>
-        <DialogContent size="sm">
-          <DialogHeader>
-            <DialogTitle>{t('workPackage.allocate.title')}</DialogTitle>
-          </DialogHeader>
-          <AllocateForm projectId={projectId} packages={packages} onAllocated={() => setAllocating(false)} />
-        </DialogContent>
-      </Dialog>
+      <AllocateDialog
+        projectId={projectId}
+        packages={packages}
+        open={allocating}
+        onOpenChange={setAllocating}
+      />
     </div>
   );
 }
 
-/** "Add a package manually" — one package with a code, name, owner and weight. */
+// ─── Dialogs ───────────────────────────────────────────────────────────────────────────────
+
+function useDialogLabels() {
+  const tCommon = useTranslations('common');
+  const tDiscard = useTranslations('common.discardChanges');
+  return {
+    closeLabel: tCommon('close'),
+    cancelLabel: tCommon('cancel'),
+    discardLabels: {
+      title: tDiscard('title'),
+      description: tDiscard('description'),
+      confirm: tDiscard('confirm'),
+      cancel: tDiscard('cancel'),
+    },
+  };
+}
+
+/** "Add a package manually" — one package with a code, name, owner and weight. A `FormDialog` md. */
 export function CreateWorkPackageDialog({
   projectId,
   open,
@@ -295,38 +276,30 @@ export function CreateWorkPackageDialog({
   suggestedCode: string;
   existingWeightPercent: number;
 }) {
-  const t = useTranslations('progress');
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
-        </DialogHeader>
-        {open ? (
-          <CreateWorkPackageForm
-            projectId={projectId}
-            suggestedCode={suggestedCode}
-            existingWeightPercent={existingWeightPercent}
-            onCreated={() => onOpenChange(false)}
-          />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
+  // Mounted only while open, so every open starts from a clean form.
+  return open ? (
+    <CreateWorkPackageForm
+      projectId={projectId}
+      suggestedCode={suggestedCode}
+      existingWeightPercent={existingWeightPercent}
+      onClose={() => onOpenChange(false)}
+    />
+  ) : null;
 }
 
 function CreateWorkPackageForm({
   projectId,
   suggestedCode,
   existingWeightPercent,
-  onCreated,
+  onClose,
 }: {
   projectId: string;
   suggestedCode: string;
   existingWeightPercent: number;
-  onCreated: () => void;
+  onClose: () => void;
 }) {
   const t = useTranslations('progress');
+  const labels = useDialogLabels();
   const create = useCreateWorkPackage(projectId);
 
   const [code, setCode] = useState(suggestedCode);
@@ -338,14 +311,14 @@ function CreateWorkPackageForm({
 
   const codeError = touched && !code.trim() ? t('workPackage.form.codeRequired') : undefined;
   const nameError = touched && !name.trim() ? t('workPackage.form.nameRequired') : undefined;
+  const dirty = code !== suggestedCode || name !== '' || owner !== '' || weight !== '';
 
   // Live "how much of the 100% is still free" so weights are entered against a target, not guessed.
   const enteredWeightPercent = weight ? Math.round(Number(weight) * 100) : 0;
   const remainingPercent = Math.max(0, 100 - existingWeightPercent - enteredWeightPercent);
   const weightHint = `${t('workPackage.form.weightHint')} ${t('workPackage.form.weightRemaining', { remaining: remainingPercent })}`;
 
-  function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  function onSubmit() {
     setTouched(true);
     setError(null);
     if (!code.trim() || !name.trim()) return;
@@ -358,52 +331,103 @@ function CreateWorkPackageForm({
         progressWeight: weight ? Number(weight) : undefined,
       },
       {
-        onSuccess: () => onCreated(),
+        onSuccess: () => onClose(),
         onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
       },
     );
   }
 
   return (
-    <form onSubmit={onSubmit} aria-label={t('actions.newWorkPackage')}>
-      {error ? (
-        <div className="mb-3">
-          <Alert variant="error" messages={[error]} />
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('actions.newWorkPackage')}
+      size="md"
+      dirty={dirty}
+      busy={create.isPending}
+      onSubmit={onSubmit}
+      closeLabel={labels.closeLabel}
+      discardLabels={labels.discardLabels}
+    >
+      <FormDialogBody>
+        {error ? <Alert variant="error" messages={[error]} /> : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor="wp-code" label={t('workPackage.form.code')} error={codeError}>
+            <Input
+              id="wp-code"
+              value={code}
+              placeholder={t('workPackage.form.codePlaceholder')}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </FormField>
+          <FormField htmlFor="wp-name" label={t('workPackage.form.name')} error={nameError}>
+            <Input
+              id="wp-name"
+              value={name}
+              placeholder={t('workPackage.form.namePlaceholder')}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </FormField>
+          <FormField htmlFor="wp-owner" label={t('workPackage.form.responsibleOwner')}>
+            <Input id="wp-owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="wp-weight" label={t('workPackage.form.progressWeight')} hint={weightHint}>
+            <Input
+              id="wp-weight"
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+            />
+          </FormField>
         </div>
-      ) : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormField htmlFor="wp-code" label={t('workPackage.form.code')} error={codeError}>
-          <Input id="wp-code" value={code} placeholder={t('workPackage.form.codePlaceholder')} onChange={(e) => setCode(e.target.value)} />
-        </FormField>
-        <FormField htmlFor="wp-name" label={t('workPackage.form.name')} error={nameError}>
-          <Input id="wp-name" value={name} placeholder={t('workPackage.form.namePlaceholder')} onChange={(e) => setName(e.target.value)} />
-        </FormField>
-        <FormField htmlFor="wp-owner" label={t('workPackage.form.responsibleOwner')}>
-          <Input id="wp-owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
-        </FormField>
-        <FormField htmlFor="wp-weight" label={t('workPackage.form.progressWeight')} hint={weightHint}>
-          <Input id="wp-weight" type="number" min="0" max="1" step="0.01" value={weight} onChange={(e) => setWeight(e.target.value)} />
-        </FormField>
-      </div>
-      <div className="mt-4">
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={create.isPending}>
+            {labels.cancelLabel}
+          </Button>
+        </FormDialogClose>
         <Button type="submit" disabled={create.isPending}>
           {t('workPackage.form.submit')}
         </Button>
-      </div>
-    </form>
+      </FormDialogFooter>
+    </FormDialog>
   );
+}
+
+/** Allocate one BOQ item to a package. A `FormDialog` md. */
+function AllocateDialog({
+  projectId,
+  packages,
+  open,
+  onOpenChange,
+}: {
+  projectId: string;
+  packages: Array<{ id: string; code: string; name: string }>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return open ? (
+    <AllocateForm projectId={projectId} packages={packages} onClose={() => onOpenChange(false)} />
+  ) : null;
 }
 
 function AllocateForm({
   projectId,
   packages,
-  onAllocated,
+  onClose,
 }: {
   projectId: string;
   packages: Array<{ id: string; code: string; name: string }>;
-  onAllocated: () => void;
+  onClose: () => void;
 }) {
   const t = useTranslations('progress');
+  const labels = useDialogLabels();
   const { leaves, hasBaseline } = useBoqLeaves(projectId);
 
   const [workPackageId, setWorkPackageId] = useState('');
@@ -412,57 +436,70 @@ function AllocateForm({
 
   const allocate = useAllocateBoqNode(projectId, workPackageId);
 
-  function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  function onSubmit() {
     setError(null);
     if (!workPackageId || !boqNodeId) return;
     allocate.mutate(boqNodeId, {
-      onSuccess: () => {
-        setBoqNodeId('');
-        onAllocated();
-      },
+      onSuccess: () => onClose(),
       onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
     });
   }
 
-  if (!hasBaseline) {
-    return <p className="text-body text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>;
-  }
-
   return (
-    <form onSubmit={onSubmit} aria-label={t('workPackage.allocate.title')}>
-      {error ? (
-        <div className="mb-3">
-          <Alert variant="error" messages={[error]} />
-        </div>
-      ) : null}
-      <div className="space-y-3">
-        <div>
-          <Label htmlFor="alloc-wp">{t('workPackage.allocate.workPackage')}</Label>
-          <Select id="alloc-wp" value={workPackageId} onChange={(value) => setWorkPackageId(value)}>
-            <option value="">—</option>
-            {packages.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code} · {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="alloc-leaf">{t('workPackage.allocate.boqNode')}</Label>
-          <Select id="alloc-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)}>
-            <option value="">—</option>
-            {leaves.map((leaf) => (
-              <option key={leaf.id} value={leaf.id}>
-                {lineLabel(leaf)}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <Button type="submit" disabled={allocate.isPending || !workPackageId || !boqNodeId}>
-          {t('workPackage.allocate.submit')}
-        </Button>
-      </div>
-    </form>
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('workPackage.allocate.title')}
+      size="md"
+      dirty={workPackageId !== '' || boqNodeId !== ''}
+      busy={allocate.isPending}
+      onSubmit={hasBaseline ? onSubmit : undefined}
+      closeLabel={labels.closeLabel}
+      discardLabels={labels.discardLabels}
+    >
+      <FormDialogBody>
+        {!hasBaseline ? (
+          <p className="text-body text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>
+        ) : (
+          <>
+            {error ? <Alert variant="error" messages={[error]} /> : null}
+            <FormField htmlFor="alloc-wp" label={t('workPackage.allocate.workPackage')}>
+              <Select id="alloc-wp" value={workPackageId} onChange={(value) => setWorkPackageId(value)}>
+                <option value="">—</option>
+                {packages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} · {p.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField htmlFor="alloc-leaf" label={t('workPackage.allocate.boqNode')}>
+              <Select id="alloc-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)}>
+                <option value="">—</option>
+                {leaves.map((leaf) => (
+                  <option key={leaf.id} value={leaf.id}>
+                    {lineLabel(leaf)}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          </>
+        )}
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={allocate.isPending}>
+            {labels.cancelLabel}
+          </Button>
+        </FormDialogClose>
+        {hasBaseline ? (
+          <Button type="submit" disabled={allocate.isPending || !workPackageId || !boqNodeId}>
+            {t('workPackage.allocate.submit')}
+          </Button>
+        ) : null}
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

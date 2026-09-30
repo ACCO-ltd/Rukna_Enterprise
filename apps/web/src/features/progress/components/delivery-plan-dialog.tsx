@@ -2,7 +2,25 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, MoneyDisplay, Skeleton, StatusPill, useToast } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  MoneyDisplay,
+  Skeleton,
+  StatusPill,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
+  useToast,
+} from '@erp/ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { apportionUnits, type BoqTreeNodeResponse } from '@erp/types';
 
@@ -12,7 +30,6 @@ import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 
 import { suggestDeliveryPlan } from '../domain/suggest-delivery-plan';
 import { useProposedPackageWeights, useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
-import { RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
 
 /** Weights are edited as whole percents: two decimal places of the stored 0..1 fraction. */
 const WHOLE_PERCENT_DECIMALS = 2;
@@ -59,6 +76,8 @@ export function DeliveryPlanDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
+  const tDiscard = useTranslations('common.discardChanges');
   const { toast } = useToast();
 
   const workspace = useBoqWorkspace(projectId);
@@ -205,104 +224,106 @@ export function DeliveryPlanDialog({
   const loading = workspace.isPending || (versionId !== null && tree.isPending) || workPackages.isPending;
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(o) => {
         if (!o) setRows(null);
         onOpenChange(o);
       }}
+      title={t('deliveryPlan.title')}
+      subtitle={t('deliveryPlan.subtitle')}
+      size="xl"
+      // Rows are seeded lazily from the suggestion, so non-null means the PM has changed the plan.
+      dirty={rows !== null}
+      busy={save.isPending}
+      closeLabel={tCommon('close')}
+      discardLabels={{
+        title: tDiscard('title'),
+        description: tDiscard('description'),
+        confirm: tDiscard('confirm'),
+        cancel: tDiscard('cancel'),
+      }}
     >
-      <DialogContent size="xl">
-        <DialogHeader>
-          <DialogTitle>{t('deliveryPlan.title')}</DialogTitle>
-          <DialogDescription>{t('deliveryPlan.subtitle')}</DialogDescription>
-        </DialogHeader>
+      <FormDialogBody className="space-y-3">
+        {loading ? (
+          <Skeleton className="h-48 w-full" />
+        ) : !suggestion || suggestion.packages.length === 0 ? (
+          <p className="py-8 text-center text-body text-muted-foreground">{t('deliveryPlan.empty')}</p>
+        ) : (
+          <>
+            {suggestion.orphanLeafIds.length > 0 ? (
+              <Alert
+                variant="warning"
+                messages={[t('deliveryPlan.orphanWarning', { count: suggestion.orphanLeafIds.length })]}
+              />
+            ) : null}
 
-        <div className="mt-4 max-h-[65vh] overflow-y-auto">
-          {loading ? (
-            <Skeleton className="h-48 w-full" />
-          ) : !suggestion || suggestion.packages.length === 0 ? (
-            <p className="py-8 text-center text-body text-muted-foreground">{t('deliveryPlan.empty')}</p>
-          ) : (
-            <>
-              {suggestion.orphanLeafIds.length > 0 ? (
-                <div className="mb-3">
-                  <Alert
-                    variant="warning"
-                    messages={[t('deliveryPlan.orphanWarning', { count: suggestion.orphanLeafIds.length })]}
-                  />
-                </div>
-              ) : null}
+            {error ? <Alert variant="error" messages={[error]} /> : null}
 
-              {error ? (
-                <div className="mb-3">
-                  <Alert variant="error" messages={[error]} />
-                </div>
-              ) : null}
+            <TableScroll aria-label={t('deliveryPlan.title')}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('deliveryPlan.col.include')}</TableHead>
+                    <TableHead>{t('deliveryPlan.col.code')}</TableHead>
+                    <TableHead>{t('deliveryPlan.col.name')}</TableHead>
+                    <TableHead>{t('deliveryPlan.col.coverage')}</TableHead>
+                    <TableHead>{t('deliveryPlan.col.owner')}</TableHead>
+                    <TableHead numeric>{t('deliveryPlan.col.weight')}</TableHead>
+                    <TableHead>{t('deliveryPlan.col.status')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {withWeights.map((row) => (
+                    <RowGroup
+                      key={row.key}
+                      row={row}
+                      currency={currency}
+                      moneyHidden={moneyHidden}
+                      isExpanded={expanded.has(row.key)}
+                      onToggleExpand={() => toggleExpanded(row.key)}
+                      onChange={(patch) => update(row.key, patch)}
+                      onMoveLeaf={moveLeaf}
+                      leafInfo={leafInfo}
+                      unpricedLeafIds={unpricedLeafIds}
+                      otherIncludedRows={current.filter((r) => r.key !== row.key && r.included)}
+                      t={t}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </TableScroll>
 
-              <RefTableScroll aria-label={t('deliveryPlan.title')}>
-                <RefTable>
-                  <RefThead>
-                    <RefTr>
-                      <RefTh>{t('deliveryPlan.col.include')}</RefTh>
-                      <RefTh>{t('deliveryPlan.col.code')}</RefTh>
-                      <RefTh>{t('deliveryPlan.col.name')}</RefTh>
-                      <RefTh>{t('deliveryPlan.col.coverage')}</RefTh>
-                      <RefTh>{t('deliveryPlan.col.owner')}</RefTh>
-                      <RefTh numeric>{t('deliveryPlan.col.weight')}</RefTh>
-                      <RefTh>{t('deliveryPlan.col.status')}</RefTh>
-                    </RefTr>
-                  </RefThead>
-                  <RefTbody>
-                    {withWeights.map((row) => (
-                      <RowGroup
-                        key={row.key}
-                        row={row}
-                        currency={currency}
-                        moneyHidden={moneyHidden}
-                        isExpanded={expanded.has(row.key)}
-                        onToggleExpand={() => toggleExpanded(row.key)}
-                        onChange={(patch) => update(row.key, patch)}
-                        onMoveLeaf={moveLeaf}
-                        leafInfo={leafInfo}
-                        unpricedLeafIds={unpricedLeafIds}
-                        otherIncludedRows={current.filter((r) => r.key !== row.key && r.included)}
-                        t={t}
-                      />
-                    ))}
-                  </RefTbody>
-                </RefTable>
-              </RefTableScroll>
+            {/* Without the cost tier the server splits evenly rather than by value (owner decision
+                2026-09-29). One quiet line; weights the PM typed are kept either way. */}
+            {weights.data && !weights.data.valueWeighted ? (
+              <p className="text-caption text-muted-foreground">{t('deliveryPlan.evenWeightsNote')}</p>
+            ) : null}
 
-              {/* Without the cost tier the server splits evenly rather than by value (owner decision
-                  2026-09-29). One quiet line; weights the PM typed are kept either way. */}
-              {weights.data && !weights.data.valueWeighted ? (
-                <p className="mt-3 text-caption text-muted-foreground">{t('deliveryPlan.evenWeightsNote')}</p>
-              ) : null}
+            <p className={`text-caption ${totalWeightPercent !== 100 ? 'text-warning' : 'text-muted-foreground'}`}>
+              {totalWeightPercent > 100
+                ? t('deliveryPlan.weightTotalOver', { total: totalWeightPercent })
+                : totalWeightPercent < 100
+                  ? t('deliveryPlan.weightTotalUnder', { total: totalWeightPercent })
+                  : t('deliveryPlan.weightTotal', { total: totalWeightPercent })}
+            </p>
+          </>
+        )}
+      </FormDialogBody>
 
-              <p className={`mt-3 text-caption ${totalWeightPercent !== 100 ? 'text-warning' : 'text-muted-foreground'}`}>
-                {totalWeightPercent > 100
-                  ? t('deliveryPlan.weightTotalOver', { total: totalWeightPercent })
-                  : totalWeightPercent < 100
-                    ? t('deliveryPlan.weightTotalUnder', { total: totalWeightPercent })
-                    : t('deliveryPlan.weightTotal', { total: totalWeightPercent })}
-              </p>
-            </>
-          )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={save.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={save.isPending}>
             {t('deliveryPlan.cancel')}
           </Button>
-          {suggestion && suggestion.packages.length > 0 ? (
-            <Button onClick={onSave} disabled={save.isPending || (weights.isPending && grouping.length > 0)}>
-              {save.isPending ? t('deliveryPlan.saving') : t('deliveryPlan.saveDraft')}
-            </Button>
-          ) : null}
-        </div>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        {suggestion && suggestion.packages.length > 0 ? (
+          <Button onClick={onSave} disabled={save.isPending || (weights.isPending && grouping.length > 0)}>
+            {save.isPending ? t('deliveryPlan.saving') : t('deliveryPlan.saveDraft')}
+          </Button>
+        ) : null}
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -336,8 +357,8 @@ function RowGroup({
 
   return (
     <>
-      <RefTr className={row.included ? '' : 'opacity-50'}>
-        <RefTd>
+      <TableRow className={row.included ? '' : 'opacity-50'}>
+        <TableCell>
           <input
             type="checkbox"
             checked={row.included}
@@ -345,24 +366,24 @@ function RowGroup({
             aria-label={`${t('deliveryPlan.col.include')} — ${row.name}`}
             className="h-4 w-4 rounded border-border text-brand-primary focus:ring-brand-primary"
           />
-        </RefTd>
-        <RefTd>
+        </TableCell>
+        <TableCell>
           <input
             value={row.code}
             onChange={(e) => onChange({ code: e.target.value })}
             disabled={!row.included}
             className={`${refFieldClass} w-24`}
           />
-        </RefTd>
-        <RefTd>
+        </TableCell>
+        <TableCell>
           <input
             value={row.name}
             onChange={(e) => onChange({ name: e.target.value })}
             disabled={!row.included}
             className={`${refFieldClass} w-full min-w-40`}
           />
-        </RefTd>
-        <RefTd className="whitespace-nowrap">
+        </TableCell>
+        <TableCell className="whitespace-nowrap">
           <button
             type="button"
             onClick={onToggleExpand}
@@ -378,8 +399,8 @@ function RowGroup({
           <div className="text-caption text-muted-foreground">
             {moneyHidden ? <MoneyDisplay value={null} hidden /> : formatMoney(String(totalValue), currency, 'en')}
           </div>
-        </RefTd>
-        <RefTd>
+        </TableCell>
+        <TableCell>
           <input
             value={row.responsibleOwner}
             onChange={(e) => onChange({ responsibleOwner: e.target.value })}
@@ -387,8 +408,8 @@ function RowGroup({
             placeholder={t('deliveryPlan.ownerPlaceholder')}
             className={`${refFieldClass} w-28`}
           />
-        </RefTd>
-        <RefTd numeric>
+        </TableCell>
+        <TableCell numeric>
           <div className="flex items-center justify-end gap-1">
             <input
               type="number"
@@ -401,8 +422,8 @@ function RowGroup({
             />
             <span className="text-muted-foreground">%</span>
           </div>
-        </RefTd>
-        <RefTd>
+        </TableCell>
+        <TableCell>
           {!row.included ? (
             <StatusPill tone="historical">{t('deliveryPlan.excluded')}</StatusPill>
           ) : row.leafIds.length === 0 ? (
@@ -414,11 +435,11 @@ function RowGroup({
           ) : (
             <StatusPill tone="success">{t('deliveryPlan.ready')}</StatusPill>
           )}
-        </RefTd>
-      </RefTr>
+        </TableCell>
+      </TableRow>
       {isExpanded ? (
-        <RefTr>
-          <RefTd colSpan={7} className="bg-surface-subtle">
+        <TableRow>
+          <TableCell colSpan={7} className="bg-surface-subtle">
             <p className="mb-1 text-caption font-medium text-muted-foreground">{t('deliveryPlan.inspect')}</p>
             {row.leafIds.length === 0 ? (
               <p className="text-caption text-disabled-foreground">{t('deliveryPlan.noItemsHint')}</p>
@@ -454,8 +475,8 @@ function RowGroup({
                 })}
               </ul>
             )}
-          </RefTd>
-        </RefTr>
+          </TableCell>
+        </TableRow>
       ) : null}
     </>
   );

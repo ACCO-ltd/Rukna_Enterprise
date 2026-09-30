@@ -106,7 +106,7 @@ This is the owner-approved plan of 2026-09-29. PR 1 (this change) is the foundat
 |---|---|---|
 | BOQ | `boq-item-drawer` | `FormDialog` (unit picker from `useUnitsOfMeasure`) |
 | BOQ | `boq-timeline-drawer` | `FormDialog` + `ActivityTimeline` |
-| Progress | `dpr-entry-sheet` | `FormDialog` |
+| Progress | `dpr-entry-sheet` | `FormDialog size="xl"` — done in PR 3 as `dpr-entry-dialog` |
 | Finance | `budget-editor-dialog` (a `Sheet`) | inline editing in the budget table |
 | Accounting | `bank-accounts` signatories sheet | `FormDialog` |
 | Accounting | `invoice-document-preview` (mobile sheet) | `FormDialog` preview |

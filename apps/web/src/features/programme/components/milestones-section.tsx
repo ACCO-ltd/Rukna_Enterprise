@@ -8,11 +8,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
 } from '@erp/ui';
@@ -20,7 +19,6 @@ import { Flag } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
-import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 import { StatusBadge } from '@/components/status-badge';
 
 import { useCreateMilestone, useMilestones, useVerifyMilestone } from '../hooks/use-programme';
@@ -319,11 +317,10 @@ export function VerifyMilestoneDialog({
   onDismiss: () => void;
 }) {
   const t = useTranslations('progress');
+  const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const verify = useVerifyMilestone(projectId);
   const [actualDate, setActualDate] = useState(new Date().toISOString().slice(0, 10));
-
-  const dismissGuard = useDialogDismissGuard(verify.isPending, onDismiss);
 
   // Name the consequence: when this milestone gates payment installments, say which ones verifying
   // will release for invoicing. Falls back to the generic hint when nothing is linked.
@@ -355,40 +352,42 @@ export function VerifyMilestoneDialog({
   }
 
   return (
-    <Dialog open onOpenChange={dismissGuard.onOpenChange}>
-      <DialogContent {...dismissGuard.contentProps}>
-        <DialogTitle>{t('programme.verify.title', { name: milestone.name })}</DialogTitle>
-        <DialogDescription>{verifyNote}</DialogDescription>
-
+    <FormDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onDismiss();
+      }}
+      title={t('programme.verify.title', { name: milestone.name })}
+      subtitle={verifyNote}
+      size="md"
+      busy={verify.isPending}
+      onSubmit={() => {
+        if (actualDate) verify.mutate({ milestoneId: milestone.id, actualDate }, { onSuccess: onDismiss });
+      }}
+      closeLabel={tCommon('close')}
+    >
+      <FormDialogBody>
         {verify.isError ? (
-          <div className="mt-4">
-            <Alert
-              variant="error"
-              messages={[verify.error instanceof ApiError ? verify.error.message : t('programme.states.loadFailed')]}
-            />
-          </div>
+          <Alert
+            variant="error"
+            messages={[verify.error instanceof ApiError ? verify.error.message : t('programme.states.loadFailed')]}
+          />
         ) : null}
+        <FormField htmlFor="ms-actual" label={t('programme.verify.actualDate')}>
+          <DatePicker id="ms-actual" value={actualDate} onChange={(value) => setActualDate(value)} />
+        </FormField>
+      </FormDialogBody>
 
-        <div className="mt-4">
-          <FormField htmlFor="ms-actual" label={t('programme.verify.actualDate')}>
-            <DatePicker id="ms-actual" value={actualDate} onChange={(value) => setActualDate(value)} className={refFieldClass} />
-          </FormField>
-        </div>
-
-        <DialogFooter>
-          <Button
-            onClick={() =>
-              verify.mutate({ milestoneId: milestone.id, actualDate }, { onSuccess: onDismiss })
-            }
-            disabled={verify.isPending || !actualDate}
-          >
-            {t('programme.actions.verify')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={verify.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={verify.isPending}>
             {t('programme.actions.cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="submit" disabled={verify.isPending || !actualDate}>
+          {t('programme.actions.verify')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

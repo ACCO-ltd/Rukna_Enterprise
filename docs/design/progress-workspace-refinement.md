@@ -223,6 +223,32 @@ On create → open the draft DPR detail focused on measurements.
 | Create milestone | **Inline** | few, added occasionally, above the table |
 | Verify milestone | **Dialog** | discrete, high-stakes; default = today |
 
+> **Amended 2026-09-29 (ADR-039, PR 3).** The daily report entry form, opened from Today, is a
+> `FormDialog` of size `xl` (960px; full screen below `sm`), no longer a side sheet
+> (`dpr-entry-dialog.tsx`). Header "Daily report · {date}" with the status pill once the report is not
+> a draft; four sections: **Work done** (items grouped by work package, one row per item: code +
+> description with "To date {cum} of {boq}", the quantity with its unit inside the field, and the
+> entries already recorded with Remove), **Labour and hours** (inline table Trade · Headcount ·
+> Contractor · Hours per worker with one "Add row" line, a secondary button), **Site notes**,
+> **Photos**. Footer: "Save draft" (secondary) and "Submit for review" (the one primary). Everything
+> still saves as it is entered; a quantity, note or labour row typed but not saved makes the dialog ask
+> before closing, and nothing closes it while a submit is in flight. With no items allocated, Work
+> done says so and gives a setup manager a link to Plan & setup.
+>
+> **Work-package weights are edited inline** in Plan & setup's work-package table (ADR-039 §2): a
+> percent input per measurable package (`manage:project` only; everyone else reads plain percents),
+> a live total ("Total 100%" in success tone, otherwise "Total 85% — must be 100%" in attention tone)
+> and one "Save weights" action once a value is edited. It PATCHes every package whose stored weight
+> differs from what the table shows. A complete set is displayed with the shared largest-remainder
+> helper; schedule-only phases take no weight. Creating a package and allocating an item stay
+> `FormDialog` md.
+>
+> **Every other Progress and programme dialog is a `FormDialog`** (pinned header and footer, one
+> primary last, guarded dismissal): the delivery plan (`xl`), the schedule-setup wizard (`lg`, stepper
+> pinned under the header, Back on the footer's start edge), and re-baseline, return a report, verify a
+> milestone (Review and programme), a milestone's packages, record a snapshot, report for another day
+> and add/edit activity (all `md`). Behaviour is unchanged.
+
 ### 5.2 Structured, not free-text — "no blank guessing"
 
 Principle: **every field is defaulted, chosen from options, or explicitly optional; the UI never presents an ambiguous blank the user has to invent an answer for.** Every empty *metric* states why it's empty (`StatTile.unavailableReason`, `—`).

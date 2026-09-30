@@ -7,11 +7,10 @@ import {
   Badge,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Label,
   Select,
   cn,
@@ -45,7 +44,10 @@ import {
  * the endpoints that already exist: `apply-schedule-template`, `allocate`, the WP PATCH, and the
  * read-only `suggest-weights`. % complete and actual dates are derived on read and never set here.
  *
- * The wizard is a controlled `Dialog`; the caller owns `open` and gates the entry on a BOQ baseline.
+ * The wizard is a controlled `FormDialog` (ADR-039, size `lg`): the stepper is pinned under the
+ * header, each step renders its own scrolling body and its own footer (Back on the start edge, the
+ * step's one primary on the end). The caller owns `open` and gates the entry on a BOQ baseline.
+ * Every step saves as it goes, so there is nothing unsaved to guard on close.
  */
 export function ScheduleSetupWizard({
   projectId,
@@ -58,6 +60,7 @@ export function ScheduleSetupWizard({
 }) {
   const t = useTranslations('progress');
   const tw = useTranslations('progress.scheduleWizard');
+  const tCommon = useTranslations('common');
 
   const rollup = useProjectRollup(projectId);
   const project = useProject(projectId);
@@ -85,72 +88,83 @@ export function ScheduleSetupWizard({
   const ready = !rollup.isPending && !project.isPending && !leavesPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>{tw('title')}</DialogTitle>
-          <DialogDescription>{tw('subtitle')}</DialogDescription>
-        </DialogHeader>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={tw('title')}
+      subtitle={tw('subtitle')}
+      size="lg"
+      closeLabel={tCommon('close')}
+    >
+      {/* Pinned under the header: where the user is stays visible while a step's body scrolls. */}
+      <div className="shrink-0 border-b border-border px-4 py-3 sm:px-6">
+        <ProgressStepper steps={stepperSteps} />
+      </div>
 
-        <div className="mt-5">
-          <ProgressStepper steps={stepperSteps} />
-        </div>
-
-        <div className="mt-6">
-          {!ready ? (
-            <div role="status" aria-live="polite">
-              <span className="sr-only">{t('states.loading')}</span>
-              <div
-                className="h-48 animate-pulse rounded-panel border border-border bg-muted"
-                aria-hidden="true"
-              />
-            </div>
-          ) : rollup.isError ? (
-            <Alert variant="error" messages={[t('states.loadFailed')]} />
-          ) : !hasBaseline ? (
-            // The wizard should not have opened without a baseline (the entry gates on it), but if
-            // the baseline was cleared while open, say so rather than offer a broken flow.
-            <Alert variant="warning" messages={[tw('noBaseline')]} />
-          ) : step === 1 ? (
-            <StepStart
-              projectId={projectId}
-              hasPackages={packages.length > 0}
-              onDone={() => setStep(2)}
-              onCancel={() => onOpenChange(false)}
-            />
-          ) : step === 2 ? (
-            <StepScope
-              projectId={projectId}
-              packages={packages}
-              leaves={leaves}
-              onBack={() => setStep(1)}
-              onNext={() => setStep(3)}
-            />
-          ) : step === 3 ? (
-            <StepDates
-              projectId={projectId}
-              packages={packages}
-              projectStart={projectStart}
-              projectEnd={projectEnd}
-              onBack={() => setStep(2)}
-              onNext={() => setStep(4)}
-            />
-          ) : (
-            <StepWeights
-              projectId={projectId}
-              packages={packages}
-              weightsComplete={rollup.data?.weightsComplete ?? false}
-              weightsTotal={rollup.data?.weightsTotal ?? '0'}
-              onBack={() => setStep(3)}
-              onFinish={() => {
-                setStep(1);
-                onOpenChange(false);
-              }}
-            />
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+      {!ready || rollup.isError || !hasBaseline ? (
+        <>
+          <FormDialogBody>
+            {!ready ? (
+              <div role="status" aria-live="polite">
+                <span className="sr-only">{t('states.loading')}</span>
+                <div
+                  className="h-48 animate-pulse rounded-panel border border-border bg-muted"
+                  aria-hidden="true"
+                />
+              </div>
+            ) : rollup.isError ? (
+              <Alert variant="error" messages={[t('states.loadFailed')]} />
+            ) : (
+              // The wizard should not have opened without a baseline (the entry gates on it), but if
+              // the baseline was cleared while open, say so rather than offer a broken flow.
+              <Alert variant="warning" messages={[tw('noBaseline')]} />
+            )}
+          </FormDialogBody>
+          <FormDialogFooter>
+            <FormDialogClose asChild>
+              <Button type="button" variant="outline">
+                {tw('nav.cancel')}
+              </Button>
+            </FormDialogClose>
+          </FormDialogFooter>
+        </>
+      ) : step === 1 ? (
+        <StepStart
+          projectId={projectId}
+          hasPackages={packages.length > 0}
+          onDone={() => setStep(2)}
+        />
+      ) : step === 2 ? (
+        <StepScope
+          projectId={projectId}
+          packages={packages}
+          leaves={leaves}
+          onBack={() => setStep(1)}
+          onNext={() => setStep(3)}
+        />
+      ) : step === 3 ? (
+        <StepDates
+          projectId={projectId}
+          packages={packages}
+          projectStart={projectStart}
+          projectEnd={projectEnd}
+          onBack={() => setStep(2)}
+          onNext={() => setStep(4)}
+        />
+      ) : (
+        <StepWeights
+          projectId={projectId}
+          packages={packages}
+          weightsComplete={rollup.data?.weightsComplete ?? false}
+          weightsTotal={rollup.data?.weightsTotal ?? '0'}
+          onBack={() => setStep(3)}
+          onFinish={() => {
+            setStep(1);
+            onOpenChange(false);
+          }}
+        />
+      )}
+    </FormDialog>
   );
 }
 
@@ -166,12 +180,10 @@ function StepStart({
   projectId,
   hasPackages,
   onDone,
-  onCancel,
 }: {
   projectId: string;
   hasPackages: boolean;
   onDone: () => void;
-  onCancel: () => void;
 }) {
   const tw = useTranslations('progress.scheduleWizard');
   const apply = useApplyScheduleTemplate(projectId);
@@ -186,54 +198,60 @@ function StepStart({
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-body-sm text-muted-foreground">{tw('start.lead')}</p>
+    <>
+      <FormDialogBody className="space-y-4">
+        <p className="text-body-sm text-muted-foreground">{tw('start.lead')}</p>
 
-      {error ? <Alert variant="error" messages={[error]} /> : null}
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-      {hasPackages ? (
-        <Alert variant="info" messages={[tw('start.alreadyHasPackages')]} />
-      ) : null}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={applyTemplate}
-          disabled={hasPackages || apply.isPending}
-          className={cn(
-            'flex min-h-[7rem] flex-col gap-2 rounded-panel border border-border bg-surface p-4 text-start',
-            'transition-colors hover:border-border-interactive focus-visible:outline-none focus-visible:shadow-ring',
-            'disabled:cursor-not-allowed disabled:opacity-50',
-          )}
-        >
-          <LayoutTemplate size={20} strokeWidth={1.8} aria-hidden="true" className="text-brand-primary" />
-          <span className="text-body-sm font-semibold text-foreground">{tw('start.templateTitle')}</span>
-          <span className="text-caption text-muted-foreground">{tw('start.templateHint')}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onDone}
-          className={cn(
-            'flex min-h-[7rem] flex-col gap-2 rounded-panel border border-border bg-surface p-4 text-start',
-            'transition-colors hover:border-border-interactive focus-visible:outline-none focus-visible:shadow-ring',
-          )}
-        >
-          <PencilRuler size={20} strokeWidth={1.8} aria-hidden="true" className="text-muted-foreground" />
-          <span className="text-body-sm font-semibold text-foreground">{tw('start.blankTitle')}</span>
-          <span className="text-caption text-muted-foreground">{tw('start.blankHint')}</span>
-        </button>
-      </div>
-
-      <div className="flex justify-between pt-1">
-        <Button variant="ghost" onClick={onCancel}>
-          {tw('nav.cancel')}
-        </Button>
-        {apply.isPending ? (
-          <span className="self-center text-caption text-muted-foreground">{tw('start.applying')}</span>
+        {hasPackages ? (
+          <Alert variant="info" messages={[tw('start.alreadyHasPackages')]} />
         ) : null}
-      </div>
-    </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={applyTemplate}
+            disabled={hasPackages || apply.isPending}
+            className={cn(
+              'flex min-h-[7rem] flex-col gap-2 rounded-panel border border-border bg-surface p-4 text-start',
+              'transition-colors hover:border-border-interactive focus-visible:outline-none focus-visible:shadow-ring',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+          >
+            <LayoutTemplate size={20} strokeWidth={1.8} aria-hidden="true" className="text-brand-primary" />
+            <span className="text-body-sm font-semibold text-foreground">{tw('start.templateTitle')}</span>
+            <span className="text-caption text-muted-foreground">{tw('start.templateHint')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onDone}
+            className={cn(
+              'flex min-h-[7rem] flex-col gap-2 rounded-panel border border-border bg-surface p-4 text-start',
+              'transition-colors hover:border-border-interactive focus-visible:outline-none focus-visible:shadow-ring',
+            )}
+          >
+            <PencilRuler size={20} strokeWidth={1.8} aria-hidden="true" className="text-muted-foreground" />
+            <span className="text-body-sm font-semibold text-foreground">{tw('start.blankTitle')}</span>
+            <span className="text-caption text-muted-foreground">{tw('start.blankHint')}</span>
+          </button>
+        </div>
+      </FormDialogBody>
+      <FormDialogFooter
+        start={
+          apply.isPending ? (
+            <span className="self-center text-caption text-muted-foreground">{tw('start.applying')}</span>
+          ) : undefined
+        }
+      >
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline">
+            {tw('nav.cancel')}
+          </Button>
+        </FormDialogClose>
+      </FormDialogFooter>
+    </>
   );
 }
 
@@ -285,36 +303,37 @@ function StepScope({
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-body-sm text-muted-foreground">{tw('scope.lead')}</p>
+    <>
+      <FormDialogBody className="space-y-4">
+        <p className="text-body-sm text-muted-foreground">{tw('scope.lead')}</p>
 
-      {packages.length === 0 ? (
-        <Alert variant="info" messages={[tw('scope.noPackages')]} />
-      ) : null}
+        {packages.length === 0 ? (
+          <Alert variant="info" messages={[tw('scope.noPackages')]} />
+        ) : null}
 
-      {error ? <Alert variant="error" messages={[error]} /> : null}
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-      {unassignedCount > 0 ? (
-        <Alert variant="warning" messages={[tw('scope.unassigned', { count: unassignedCount })]} />
-      ) : leaves.length > 0 ? (
-        <Alert variant="success" messages={[tw('scope.allAssigned')]} />
-      ) : null}
+        {unassignedCount > 0 ? (
+          <Alert variant="warning" messages={[tw('scope.unassigned', { count: unassignedCount })]} />
+        ) : leaves.length > 0 ? (
+          <Alert variant="success" messages={[tw('scope.allAssigned')]} />
+        ) : null}
 
-      <ul className="space-y-2">
-        {packages.map((p) => (
-          <ScopeRow
-            key={p.id}
-            line={p}
-            leaves={leaves}
-            allocating={allocate.isPending}
-            onAllocate={(boqNodeId) => onAllocate(p.id, boqNodeId)}
-            onToggleScheduleOnly={(next) => onToggleScheduleOnly(p.id, next)}
-          />
-        ))}
-      </ul>
-
+        <ul className="space-y-2">
+          {packages.map((p) => (
+            <ScopeRow
+              key={p.id}
+              line={p}
+              leaves={leaves}
+              allocating={allocate.isPending}
+              onAllocate={(boqNodeId) => onAllocate(p.id, boqNodeId)}
+              onToggleScheduleOnly={(next) => onToggleScheduleOnly(p.id, next)}
+            />
+          ))}
+        </ul>
+      </FormDialogBody>
       <StepNav onBack={onBack} onNext={onNext} nextLabel={tw('nav.next')} />
-    </div>
+    </>
   );
 }
 
@@ -464,43 +483,44 @@ function StepDates({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-body-sm text-muted-foreground">{tw('dates.lead')}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={autoSuggest}
-          disabled={!projectStart || update.isPending || packages.length === 0}
-        >
-          {tw('dates.autoSuggest')}
-        </Button>
-      </div>
+    <>
+      <FormDialogBody className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-body-sm text-muted-foreground">{tw('dates.lead')}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={autoSuggest}
+            disabled={!projectStart || update.isPending || packages.length === 0}
+          >
+            {tw('dates.autoSuggest')}
+          </Button>
+        </div>
 
-      {!projectStart ? (
-        <Alert variant="info" messages={[tw('dates.noProjectStart')]} />
-      ) : null}
+        {!projectStart ? (
+          <Alert variant="info" messages={[tw('dates.noProjectStart')]} />
+        ) : null}
 
-      {error ? <Alert variant="error" messages={[error]} /> : null}
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-      <ul className="space-y-2">
-        {packages.map((p) => (
-          <DatesRow
-            key={p.id}
-            line={p}
-            min={projectStart ?? undefined}
-            max={projectEnd ?? undefined}
-            onChange={(start, end) => persist(p.id, start, end)}
-          />
-        ))}
-      </ul>
-
+        <ul className="space-y-2">
+          {packages.map((p) => (
+            <DatesRow
+              key={p.id}
+              line={p}
+              min={projectStart ?? undefined}
+              max={projectEnd ?? undefined}
+              onChange={(start, end) => persist(p.id, start, end)}
+            />
+          ))}
+        </ul>
+      </FormDialogBody>
       <StepNav
         onBack={onBack}
         onNext={onNext}
         nextLabel={undated > 0 ? tw('dates.nextWithUndated', { count: undated }) : tw('nav.next')}
       />
-    </div>
+    </>
   );
 }
 
@@ -624,66 +644,71 @@ function StepWeights({
   const busy = suggest.isPending || update.isPending;
 
   return (
-    <div className="space-y-4">
-      <p className="text-body-sm text-muted-foreground">{tw('weights.lead')}</p>
-      {!valueWeighted ? (
-        <p className="text-caption text-muted-foreground">{tw('weights.evenWeightsNote')}</p>
-      ) : null}
+    <>
+      <FormDialogBody className="space-y-4">
+        <p className="text-body-sm text-muted-foreground">{tw('weights.lead')}</p>
+        {!valueWeighted ? (
+          <p className="text-caption text-muted-foreground">{tw('weights.evenWeightsNote')}</p>
+        ) : null}
 
-      {error ? <Alert variant="error" messages={[error]} /> : null}
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-border bg-surface p-3">
-        <div>
-          <p className="text-caption text-muted-foreground">{tw('weights.totalLabel')}</p>
-          <p className="text-h3 font-semibold tabular-nums text-foreground">{`${totalPercent}%`}</p>
-          <p className="mt-0.5 text-caption">
-            {weightsComplete ? (
-              <span className="text-success">{tw('weights.complete')}</span>
-            ) : (
-              <span className="text-warning">
-                {tw('weights.remaining', { remaining: Math.max(0, 100 - totalPercent) })}
-              </span>
-            )}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-panel border border-border bg-surface p-3">
+          <div>
+            <p className="text-caption text-muted-foreground">{tw('weights.totalLabel')}</p>
+            <p className="text-h3 font-semibold tabular-nums text-foreground">{`${totalPercent}%`}</p>
+            <p className="mt-0.5 text-caption">
+              {weightsComplete ? (
+                <span className="text-success">{tw('weights.complete')}</span>
+              ) : (
+                <span className="text-warning">
+                  {tw('weights.remaining', { remaining: Math.max(0, 100 - totalPercent) })}
+                </span>
+              )}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={distribute} disabled={busy || packages.length === 0}>
+            {tw('weights.distribute')}
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={distribute} disabled={busy || packages.length === 0}>
-          {tw('weights.distribute')}
-        </Button>
-      </div>
 
-      <ul className="space-y-1.5">
-        {packages.map((p) => (
-          <li
-            key={p.id}
-            className="flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2"
-          >
-            <span className="font-mono text-xs text-muted-foreground">{p.code}</span>
-            <span className="min-w-0 flex-1 truncate text-body-sm text-foreground" title={p.name}>
-              {p.name}
-            </span>
-            <span className="tabular-nums text-body-sm font-semibold text-foreground">
-              {`${Math.round(Number(p.weight) * 100)}%`}
-            </span>
-          </li>
-        ))}
-      </ul>
+        <ul className="space-y-1.5">
+          {packages.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2"
+            >
+              <span className="font-mono text-xs text-muted-foreground">{p.code}</span>
+              <span className="min-w-0 flex-1 truncate text-body-sm text-foreground" title={p.name}>
+                {p.name}
+              </span>
+              <span className="tabular-nums text-body-sm font-semibold text-foreground">
+                {`${Math.round(Number(p.weight) * 100)}%`}
+              </span>
+            </li>
+          ))}
+        </ul>
 
-      {missingScope.length > 0 ? (
-        <Alert variant="warning" messages={[tw('weights.missingScope', { count: missingScope.length })]} />
-      ) : null}
-      {missingDates.length > 0 ? (
-        <Alert variant="info" messages={[tw('weights.missingDates', { count: missingDates.length })]} />
-      ) : null}
+        {missingScope.length > 0 ? (
+          <Alert variant="warning" messages={[tw('weights.missingScope', { count: missingScope.length })]} />
+        ) : null}
+        {missingDates.length > 0 ? (
+          <Alert variant="info" messages={[tw('weights.missingDates', { count: missingDates.length })]} />
+        ) : null}
 
-      <div className="flex items-center justify-between pt-1">
-        <Button variant="ghost" onClick={onBack} disabled={busy}>
-          {tw('nav.back')}
-        </Button>
+      </FormDialogBody>
+      <FormDialogFooter
+        start={
+          <Button variant="ghost" onClick={onBack} disabled={busy}>
+            {tw('nav.back')}
+          </Button>
+        }
+      >
         <Button onClick={onFinish} disabled={busy}>
           {tw('nav.finish')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </>
   );
 }
 
@@ -700,11 +725,14 @@ function StepNav({
 }) {
   const tw = useTranslations('progress.scheduleWizard');
   return (
-    <div className="flex items-center justify-between pt-1">
-      <Button variant="ghost" onClick={onBack}>
-        {tw('nav.back')}
-      </Button>
+    <FormDialogFooter
+      start={
+        <Button variant="ghost" onClick={onBack}>
+          {tw('nav.back')}
+        </Button>
+      }
+    >
       <Button onClick={onNext}>{nextLabel}</Button>
-    </div>
+    </FormDialogFooter>
   );
 }
