@@ -7,11 +7,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
 } from '@erp/ui';
 
@@ -22,6 +21,8 @@ import { commercialKeys } from '../hooks/use-commercial';
 /**
  * Back-fills the physically-signed date on an ACTIVE contract that has none — contracts activated
  * before activation required it (legacy create → activate, pre-migration rows).
+ *
+ * A `FormDialog` (ADR-039), size `md`: one field.
  */
 export function RecordSignedDateDialog({
   open,
@@ -35,7 +36,8 @@ export function RecordSignedDateDialog({
   onClose: () => void;
 }) {
   const t = useTranslations('commercial.contractMilestones.recordSignedDate');
-  const [signedDate, setSignedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [initialDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [signedDate, setSignedDate] = useState(initialDate);
   const mutation = useRecordSignedDate(contractId);
   const queryClient = useQueryClient();
 
@@ -51,10 +53,16 @@ export function RecordSignedDateDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && !mutation.isPending && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription>{t('description')}</DialogDescription>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title={t('title')}
+      subtitle={t('description')}
+      size="md"
+      dirty={signedDate !== initialDate}
+      busy={mutation.isPending}
+    >
+      <FormDialogBody>
         {mutation.error ? (
           <Alert variant="error" messages={[(mutation.error as Error).message]} />
         ) : null}
@@ -66,15 +74,17 @@ export function RecordSignedDateDialog({
             disabled={mutation.isPending}
           />
         </FormField>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={!signedDate || mutation.isPending}>
-            {mutation.isPending ? t('submitting') : t('submit')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="button" onClick={() => void handleSubmit()} disabled={!signedDate || mutation.isPending}>
+          {mutation.isPending ? t('submitting') : t('submit')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

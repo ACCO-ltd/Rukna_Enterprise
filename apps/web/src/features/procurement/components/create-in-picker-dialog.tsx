@@ -1,14 +1,14 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
 } from '@erp/ui';
@@ -32,6 +32,9 @@ import { ApiError } from '@/lib/api-client';
  * A caller passes what it wants captured. That keeps the Enter-key handling, the pending
  * state, the error surface and the focus-on-open in one place; a children-based version would
  * hand all four back to every caller to get right again.
+ *
+ * A `FormDialog` (ADR-039), size `md`; it focuses the first field on open and guards dismissal
+ * while the create is in flight or once something has been typed.
  */
 
 export interface CreateField {
@@ -68,10 +71,10 @@ export function CreateInPickerDialog({
   onDismiss: () => void;
 }) {
   const tCommon = useTranslations('common');
-  const firstRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<Record<string, string>>({});
 
   const read = (name: string) => values[name] ?? '';
+  const dirty = fields.some((field) => read(field.name) !== '');
   const complete = fields.every((field) => !field.required || read(field.name).trim().length > 0);
   const canSubmit = complete && !isPending;
 
@@ -86,38 +89,23 @@ export function CreateInPickerDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !isPending) onDismiss();
+        if (!next) onDismiss();
       }}
+      title={title}
+      subtitle={description}
+      size="md"
+      dirty={dirty}
+      busy={isPending}
+      closeLabel={tCommon('close')}
     >
-      <DialogContent
-        closeLabel={tCommon('close')}
-        className="sm:max-w-lg"
-        onEscapeKeyDown={(event) => {
-          if (isPending) event.preventDefault();
-        }}
-        onPointerDownOutside={(event) => {
-          if (isPending) event.preventDefault();
-        }}
-        onOpenAutoFocus={(event) => {
-          // Radix focuses the close control; the point of the dialog is the first field.
-          event.preventDefault();
-          firstRef.current?.focus();
-        }}
-      >
-        <DialogTitle>{title}</DialogTitle>
-        {description ? <p className="mt-2 text-body-sm text-muted-foreground">{description}</p> : null}
-
-        {message ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[message]} />
-          </div>
-        ) : null}
+      <FormDialogBody>
+        {message ? <Alert variant="error" messages={[message]} /> : null}
 
         <div
-          className="mt-5 space-y-4"
+          className="space-y-4"
           // The dialog opens from inside another form. Enter must add the record, not submit
           // whatever is behind it.
           onKeyDown={(event) => {
@@ -126,7 +114,7 @@ export function CreateInPickerDialog({
             submit();
           }}
         >
-          {fields.map((field, index) => (
+          {fields.map((field) => (
             <FormField
               key={field.name}
               htmlFor={`create-${field.name}`}
@@ -137,7 +125,6 @@ export function CreateInPickerDialog({
             >
               <Input
                 id={`create-${field.name}`}
-                ref={index === 0 ? firstRef : undefined}
                 value={read(field.name)}
                 maxLength={field.maxLength}
                 autoComplete="off"
@@ -152,16 +139,18 @@ export function CreateInPickerDialog({
             </FormField>
           ))}
         </div>
+      </FormDialogBody>
 
-        <DialogFooter>
-          <Button type="button" onClick={submit} disabled={!canSubmit}>
-            {isPending ? tCommon('formActions.pendingLabel') : submitLabel}
-          </Button>
-          <Button type="button" variant="outline" onClick={onDismiss} disabled={isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
             {tCommon('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="button" onClick={submit} disabled={!canSubmit}>
+          {isPending ? tCommon('formActions.pendingLabel') : submitLabel}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -6,12 +6,10 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   RadioGroup,
@@ -44,6 +42,8 @@ export interface SendInvoiceDialogProps {
  * `POST …/installments/:installmentId/package-deliveries`, which stamps every invoice of the
  * stage's package. For WhatsApp the dialog can also open a chat with the PDF link — the user
  * still confirms the send, because opening a chat is not proof it was sent.
+ *
+ * A `FormDialog` (ADR-039), size `md`.
  */
 export function SendInvoiceDialog({
   open,
@@ -136,81 +136,84 @@ export function SendInvoiceDialog({
     { value: 'OTHER', label: <IconLabel icon={<MoreHorizontal size={16} aria-hidden="true" />}>{t('method.OTHER')}</IconLabel> },
   ];
 
+  const dirty = method !== '' || recipient !== '' || note !== '';
+
   const recipientLabel = method ? t(`recipientLabel.${method}`) : t('recipientLabel.OTHER');
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (!next ? close() : undefined)}>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>
-            {invoiceNumber ? t('description', { number: invoiceNumber }) : t('descriptionNoNumber')}
-          </DialogDescription>
-        </DialogHeader>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => (!next ? close() : undefined)}
+      title={t('title')}
+      subtitle={invoiceNumber ? t('description', { number: invoiceNumber }) : t('descriptionNoNumber')}
+      size="md"
+      dirty={dirty}
+      busy={pending}
+    >
+      <FormDialogBody>
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-        <div className="mt-4 space-y-5">
-          {error ? <Alert variant="error" messages={[error]} /> : null}
+        <RadioGroup
+          label={t('methodLabel')}
+          name="send-method"
+          value={method}
+          onChange={(value) => setMethod(value)}
+          options={options}
+          variant="card"
+          compact
+          required
+        />
 
-          <RadioGroup
-            label={t('methodLabel')}
-            name="send-method"
-            value={method}
-            onChange={(value) => setMethod(value)}
-            options={options}
-            variant="card"
-            compact
-            required
+        <FormField htmlFor="send-recipient" label={recipientLabel}>
+          <Input
+            id="send-recipient"
+            value={recipient}
+            onChange={(event) => setRecipient(event.target.value)}
+            placeholder={method === 'WHATSAPP' ? t('whatsappPlaceholder') : undefined}
+            inputMode={method === 'WHATSAPP' ? 'tel' : undefined}
+            disabled={pending}
           />
+        </FormField>
 
-          <FormField htmlFor="send-recipient" label={recipientLabel}>
-            <Input
-              id="send-recipient"
-              value={recipient}
-              onChange={(event) => setRecipient(event.target.value)}
-              placeholder={method === 'WHATSAPP' ? t('whatsappPlaceholder') : undefined}
-              inputMode={method === 'WHATSAPP' ? 'tel' : undefined}
-              disabled={pending}
-            />
-          </FormField>
+        <FormField htmlFor="send-note" label={t('note')}>
+          <Textarea
+            id="send-note"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={2}
+            disabled={pending}
+          />
+        </FormField>
 
-          <FormField htmlFor="send-note" label={t('note')}>
-            <Textarea
-              id="send-note"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              rows={2}
-              disabled={pending}
-            />
-          </FormField>
+        {method === 'WHATSAPP' ? (
+          <div className="space-y-2">
+            <p className="text-body-sm text-muted-foreground">{t('whatsappHint')}</p>
+            {canOpenWhatsApp || opening ? (
+              <Button type="button" variant="outline" onClick={openWhatsApp} disabled={opening}>
+                <MessageCircle size={16} aria-hidden="true" className="me-2" />
+                {opening ? t('opening') : t('openWhatsApp')}
+              </Button>
+            ) : (
+              <p className="text-caption text-muted-foreground">{t('whatsappNeedsNumber')}</p>
+            )}
+          </div>
+        ) : null}
+        {!method ? <p className="text-caption text-muted-foreground">{t('chooseMethod')}</p> : null}
+      </FormDialogBody>
 
-          {method === 'WHATSAPP' ? (
-            <div className="space-y-2">
-              <p className="text-body-sm text-muted-foreground">{t('whatsappHint')}</p>
-              {canOpenWhatsApp || opening ? (
-                <Button type="button" variant="outline" onClick={openWhatsApp} disabled={opening}>
-                  <MessageCircle size={16} aria-hidden="true" className="me-2" />
-                  {opening ? t('opening') : t('openWhatsApp')}
-                </Button>
-              ) : (
-                <p className="text-caption text-muted-foreground">{t('whatsappNeedsNumber')}</p>
-              )}
-            </div>
-          ) : null}
-        </div>
-
-        <DialogFooter>
-          {method ? (
-            <Button onClick={markSent} disabled={pending}>
-              {pending ? t('saving') : t('markSent')}
-            </Button>
-          ) : null}
-          <Button variant="outline" onClick={close} disabled={pending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={pending}>
             {t('cancel')}
           </Button>
-        </DialogFooter>
-        {!method ? <p className="mt-2 text-caption text-muted-foreground">{t('chooseMethod')}</p> : null}
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        {method ? (
+          <Button type="button" onClick={markSent} disabled={pending}>
+            {pending ? t('saving') : t('markSent')}
+          </Button>
+        ) : null}
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 

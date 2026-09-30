@@ -21,7 +21,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import type { Ipc } from '@/features/ipc/types';
 
 import { useIpcs } from '../hooks/use-ipc';
-import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
+import { IpcSupersessionDialog } from './ipc-supersession-dialog';
 
 interface IpcListPanelProps {
   applicationId: string;
@@ -144,7 +144,7 @@ export function IpcListPanel({ applicationId, currency, basePath }: IpcListPanel
       )}
 
       {pendingSupersession ? (
-        <IpcSupersessionDrawer
+        <IpcSupersessionDialog
           open
           applicationId={applicationId}
           newCert={pendingSupersession}

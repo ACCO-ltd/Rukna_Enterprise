@@ -116,12 +116,32 @@ This is the owner-approved plan of 2026-09-29. PR 1 (this change) is the foundat
 
 **Ad-hoc dialogs to normalise onto `FormDialog`:**
 
-- `record-payment-drawer`, `variation-detail-sheet`, `add-extra-work-drawer`
+- `add-extra-work-drawer`
 - `boq-classifier-drawer`, `boq-compare-signed-panel`
-- `po-amend-sheet`
-- `contract-changes-panel`, `payment-schedule-panel`
 - `lifecycle-command-drawer`, `role-governance-sheet`
-- `receipt-allocations-panel`, `ipa-items-panel`, `ipa-deductions-panel`
+
+**Done in PR 4 (Commercial + Procurement):**
+
+| Area | Was | Now | Size |
+|---|---|---|---|
+| Commercial | `record-payment-drawer` | `record-payment-dialog` (`RecordPaymentDialog`) | `lg` |
+| Commercial | `variation-detail-sheet` | `variation-detail-dialog` (`VariationDetailDialog`), read-only + Close | `xl` |
+| Commercial | `contract-changes-panel` (separate-charge invoice dialog) | `FormDialog` | `md` |
+| Commercial | `payment-schedule-panel` (`LinkMilestoneDialog`) | `FormDialog` | `md` |
+| Commercial | contract view re-profile dialog | `ScheduleForm` with `dialog` prop | `xl` |
+| Commercial | `prepare-invoice-dialog` | `FormDialog` | `lg` |
+| Commercial | `record-signed-date-dialog`, `send-invoice-dialog`, `credit-note-dialog`, `invoice-edit-draft-dialog`, follow-up / promise / dispute dialogs, `extension-of-time-section` (`GrantExtensionSheet` → `GrantExtensionDialog`) | `FormDialog` | `md` |
+| Commercial | `invoice-timeline` (history) | `FormDialog`, read-only + Close | `md` |
+| IPC | `ipc-supersession-drawer` | `ipc-supersession-dialog` (rename; uses the shared lifecycle dialog) | — |
+| IPA / receipts | `ipa-items-panel`, `ipa-deductions-panel`, `receipt-allocations-panel` dialogs | `FormDialog` | `md` |
+| Receipts | `post-receipt-dialog` | `FormDialog` | `lg` |
+| Procurement | `po-amend-sheet` | `po-amend-dialog` (`PoAmendDialog`) | `xl` |
+| Procurement | `ResolveExceptionDialog`, `create-in-picker-dialog`, setup `CreateForm` (UoM, materials, categories, suppliers) and supplier edit | `FormDialog` | `md` |
+| Procurement | `requirement-detail-dialog` | `FormDialog`, read-only + Close | `xl` |
+
+Left as confirmations on `DialogContent` (not record forms): the collection "info" dialog, the
+re-run match confirmation, the signed-contract confirmation, and the bill / supplier-payment post
+dialogs (journal previews that mirror accounting's `PostInvoiceDialog`; they move with it).
 
 The design-system gallery's `Sheet` specimen (`patterns-section.tsx`) goes when `Sheet` is removed.
 

@@ -10,6 +10,9 @@
  *
  * `reason` is required by the `revise` DTO. `supplierId` is required by the DTO and
  * discarded by the service (P13) — the PO's existing value is resent.
+ *
+ * A `FormDialog` (ADR-039), size `xl`: the revision's header fields and its line table. The
+ * order total sits on the footer's start edge, beside Cancel and the primary.
  */
 
 import { useId, useState } from 'react';
@@ -19,10 +22,12 @@ import {
   Button,
   DatePicker,
   FormField,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormDialogSection,
   Input,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Textarea,
 } from '@erp/ui';
 
@@ -82,7 +87,7 @@ function linesFromRevision(revision: PurchaseOrderRevision | null): PoLineDraft[
   }));
 }
 
-export function PoAmendSheet({
+export function PoAmendDialog({
   order,
   source,
   onClose,
@@ -97,15 +102,18 @@ export function PoAmendSheet({
 
   const revise = useRevisePurchaseOrder();
 
-  const [effectiveFrom, setEffectiveFrom] = useState(
-    source?.effectiveFrom?.slice(0, 10) ?? today(),
-  );
-  const [deliveryAddress, setDeliveryAddress] = useState(source?.deliveryAddress ?? '');
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(
-    source?.expectedDeliveryDate?.slice(0, 10) ?? '',
-  );
+  // What the dialog opened with — seeded once, so the dirty check compares against it.
+  const [initial] = useState(() => ({
+    effectiveFrom: source?.effectiveFrom?.slice(0, 10) ?? today(),
+    deliveryAddress: source?.deliveryAddress ?? '',
+    expectedDeliveryDate: source?.expectedDeliveryDate?.slice(0, 10) ?? '',
+    lines: linesFromRevision(source),
+  }));
+  const [effectiveFrom, setEffectiveFrom] = useState(initial.effectiveFrom);
+  const [deliveryAddress, setDeliveryAddress] = useState(initial.deliveryAddress);
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(initial.expectedDeliveryDate);
   const [reason, setReason] = useState('');
-  const [lines, setLines] = useState<PoLineDraft[]>(() => linesFromRevision(source));
+  const [lines, setLines] = useState<PoLineDraft[]>(initial.lines);
   const [showErrors, setShowErrors] = useState(false);
 
   const ids = { effective: useId(), address: useId(), expected: useId(), reason: useId() };
@@ -158,97 +166,102 @@ export function PoAmendSheet({
     );
   }
 
+  // The line editor replaces the array on every edit, so identity is enough to tell "touched".
+  const dirty =
+    effectiveFrom !== initial.effectiveFrom ||
+    deliveryAddress !== initial.deliveryAddress ||
+    expectedDeliveryDate !== initial.expectedDeliveryDate ||
+    reason !== '' ||
+    lines !== initial.lines;
+
   const serverError =
     revise.error instanceof ApiError ? revise.error.message : revise.error ? tc('loadFailed') : null;
 
   return (
-    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
-      {/* The one panel that was genuinely large: it hosts the same line editor the create
-          screen uses. It had already written `max-w-2xl` inside a 420px drawer that could
-          never honour it — the width it was asking for is what it gets here. */}
-      <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-4xl">
-        <div className="border-b border-border px-5 py-4 sm:px-6">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {t('amendTitle', { number: order.poNumber })}
-          </DialogTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{t('amendBody')}</p>
-        </div>
-
-        <div className="space-y-5 px-5 py-5 sm:px-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField htmlFor={ids.effective} label={t('effectiveFrom')}>
-              <DatePicker
-                id={ids.effective}
-                value={effectiveFrom}
-                onChange={(value) => setEffectiveFrom(value)}
-              />
-            </FormField>
-
-            <FormField htmlFor={ids.expected} label={`${t('expectedDelivery')} (${tc('optional')})`}>
-              <DatePicker
-                id={ids.expected}
-                value={expectedDeliveryDate}
-                onChange={(value) => setExpectedDeliveryDate(value)}
-              />
-            </FormField>
-
-            <FormField
-              htmlFor={ids.address}
-              label={`${t('deliveryAddress')} (${tc('optional')})`}
-              className="sm:col-span-2"
-            >
-              <Input
-                id={ids.address}
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-              />
-            </FormField>
-
-            <FormField htmlFor={ids.reason} label={t('reason')} className="sm:col-span-2">
-              <Textarea
-                id={ids.reason}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                aria-invalid={showErrors && reasonMissing ? true : undefined}
-              />
-              {showErrors && reasonMissing ? (
-                <p className="mt-1 text-xs font-medium text-danger" role="alert">
-                  {t('reasonRequired')}
-                </p>
-              ) : null}
-            </FormField>
-          </div>
-
-          <div>
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              {tc('lines')}
-            </h3>
-            <PoLineEditor
-              lines={lines}
-              onChange={setLines}
-              currencyCode={currencyCode}
-              showErrors={showErrors}
+    <FormDialog
+      open
+      onOpenChange={(next) => (next ? undefined : onClose())}
+      title={t('amendTitle', { number: order.poNumber })}
+      subtitle={t('amendBody')}
+      size="xl"
+      dirty={dirty}
+      busy={revise.isPending}
+    >
+      <FormDialogBody>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor={ids.effective} label={t('effectiveFrom')}>
+            <DatePicker
+              id={ids.effective}
+              value={effectiveFrom}
+              onChange={(value) => setEffectiveFrom(value)}
             />
-          </div>
+          </FormField>
 
-          {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
+          <FormField htmlFor={ids.expected} label={`${t('expectedDelivery')} (${tc('optional')})`}>
+            <DatePicker
+              id={ids.expected}
+              value={expectedDeliveryDate}
+              onChange={(value) => setExpectedDeliveryDate(value)}
+            />
+          </FormField>
+
+          <FormField
+            htmlFor={ids.address}
+            label={`${t('deliveryAddress')} (${tc('optional')})`}
+            className="sm:col-span-2"
+          >
+            <Input
+              id={ids.address}
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+            />
+          </FormField>
+
+          <FormField htmlFor={ids.reason} label={t('reason')} className="sm:col-span-2">
+            <Textarea
+              id={ids.reason}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              aria-invalid={showErrors && reasonMissing ? true : undefined}
+            />
+            {showErrors && reasonMissing ? (
+              <p className="mt-1 text-xs font-medium text-danger" role="alert">
+                {t('reasonRequired')}
+              </p>
+            ) : null}
+          </FormField>
         </div>
 
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-6">
+        {/* The same line editor the create screen uses — the reason this dialog is `xl`. */}
+        <FormDialogSection title={tc('lines')}>
+          <PoLineEditor
+            lines={lines}
+            onChange={setLines}
+            currencyCode={currencyCode}
+            showErrors={showErrors}
+          />
+        </FormDialogSection>
+
+        {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
+      </FormDialogBody>
+
+      <FormDialogFooter
+        start={
           <p className="text-sm">
             <span className="text-muted-foreground">{tc('total')}: </span>
             <span className="font-semibold tabular-nums">{totalLabel}</span>
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={revise.isPending}>
-              {tc('cancel')}
-            </Button>
-            <Button type="button" onClick={handleSubmit} disabled={revise.isPending}>
-              {t('amendConfirm')}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        }
+      >
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={revise.isPending}>
+            {tc('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="button" onClick={handleSubmit} disabled={revise.isPending}>
+          {t('amendConfirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

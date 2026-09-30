@@ -6,12 +6,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   MoneyDisplay,
@@ -30,9 +28,9 @@ import {
   checkAllocations,
   payableInvoices,
   prefillAllocations,
-} from './record-payment-drawer.model';
+} from './record-payment-dialog.model';
 
-export interface RecordPaymentDrawerProps {
+export interface RecordPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
@@ -52,8 +50,7 @@ function newIdempotencyKey(): string {
 }
 
 /**
- * Record a client payment (decision D9: a Dialog). The name is historical — callers keep
- * importing `RecordPaymentDrawer`.
+ * Record a client payment (decision D9: a Dialog) — a `FormDialog` (ADR-039), size `lg`.
  *
  * The receipt is applied to invoices OLDEST DUE FIRST (the invoice the user started from goes
  * first), pre-filled and editable per line. Whatever is received but not applied stays on the
@@ -63,14 +60,14 @@ function newIdempotencyKey(): string {
  * One idempotency key per opening: a retry after a network failure cannot record the receipt
  * twice (the API de-duplicates on it).
  */
-export function RecordPaymentDrawer({
+export function RecordPaymentDialog({
   open,
   onOpenChange,
   projectId,
   currency,
   preselectedInvoice,
   allInvoices,
-}: RecordPaymentDrawerProps) {
+}: RecordPaymentDialogProps) {
   const t = useTranslations('commercial.recordPayment');
   const locale = useLocale() as 'en';
 
@@ -89,13 +86,23 @@ export function RecordPaymentDrawer({
       : '';
   };
 
+  // What the dialog opened with — captured once (and again on reset), so a refetch of the
+  // invoices behind it cannot make an untouched form look edited.
+  const snapshot = () => {
+    const amount = initialAmount();
+    return {
+      amount,
+      date: today(),
+      amounts: prefillAllocations(parseMinorUnits(amount, MONEY_SCALE) ?? 0, invoices),
+    };
+  };
+  const [opening, setOpening] = useState(snapshot);
+
   const [bankAccountId, setBankAccountId] = useState('');
-  const [amount, setAmount] = useState(initialAmount);
-  const [date, setDate] = useState(today);
+  const [amount, setAmount] = useState(opening.amount);
+  const [date, setDate] = useState(opening.date);
   const [reference, setReference] = useState('');
-  const [amounts, setAmounts] = useState<Record<string, string>>(() =>
-    prefillAllocations(parseMinorUnits(initialAmount(), MONEY_SCALE) ?? 0, invoices),
-  );
+  const [amounts, setAmounts] = useState<Record<string, string>>(opening.amounts);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const [attempted, setAttempted] = useState(false);
 
@@ -105,22 +112,34 @@ export function RecordPaymentDrawer({
   const check = checkAllocations(amount, invoices, amounts);
 
   function reset() {
-    const initial = initialAmount();
+    const next = snapshot();
+    setOpening(next);
     setBankAccountId('');
-    setAmount(initial);
-    setDate(today());
+    setAmount(next.amount);
+    setDate(next.date);
     setReference('');
-    setAmounts(prefillAllocations(parseMinorUnits(initial, MONEY_SCALE) ?? 0, invoices));
+    setAmounts(next.amounts);
     setIdempotencyKey(newIdempotencyKey());
     setAttempted(false);
     mutation.reset();
   }
 
+  // Reached only once the FormDialog guard lets a dismissal through (not busy; dirty confirmed).
   function handleOpenChange(next: boolean) {
     if (!next && mutation.isPending) return;
     if (!next) reset();
     onOpenChange(next);
   }
+
+  // Unsaved edits: anything the user has typed or picked beyond what the dialog opened with.
+  const lineKeys = new Set([...Object.keys(amounts), ...Object.keys(opening.amounts)]);
+  const dirty =
+    !moneyHidden &&
+    (bankAccountId !== '' ||
+      amount !== opening.amount ||
+      date !== opening.date ||
+      reference !== '' ||
+      [...lineKeys].some((key) => (amounts[key] ?? '') !== (opening.amounts[key] ?? '')));
 
   function handleAmountChange(next: string) {
     setAmount(next);
@@ -157,17 +176,20 @@ export function RecordPaymentDrawer({
   const money = (minor: number) => <MoneyDisplay value={fromMinorUnits(minor, MONEY_SCALE)} />;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
-
+    <FormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t('title')}
+      subtitle={t('description')}
+      size="lg"
+      dirty={dirty}
+      busy={mutation.isPending}
+    >
+      <FormDialogBody>
         {moneyHidden ? (
-          <p className="mt-4 text-body-sm text-muted-foreground">{t('moneyHidden')}</p>
+          <p className="text-body-sm text-muted-foreground">{t('moneyHidden')}</p>
         ) : (
-          <div className="mt-4 space-y-5">
+          <div className="space-y-5">
             {mutation.isError ? (
               <Alert variant="error" messages={[mutation.error.message || t('failed')]} />
             ) : null}
@@ -302,18 +324,20 @@ export function RecordPaymentDrawer({
             </section>
           </div>
         )}
+      </FormDialogBody>
 
-        <DialogFooter>
-          {moneyHidden ? null : (
-            <Button onClick={submit} disabled={mutation.isPending}>
-              {mutation.isPending ? t('saving') : t('submit')}
-            </Button>
-          )}
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        {moneyHidden ? null : (
+          <Button type="button" onClick={submit} disabled={mutation.isPending}>
+            {mutation.isPending ? t('saving') : t('submit')}
+          </Button>
+        )}
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

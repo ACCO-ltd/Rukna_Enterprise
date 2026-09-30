@@ -60,7 +60,7 @@ import type {
   PurchaseOrderSettlement,
 } from '../../types';
 import { ClassificationChips } from '../classification-chips';
-import { PoAmendSheet } from '../po-amend-sheet';
+import { PoAmendDialog } from '../po-amend-dialog';
 import { ProcurementStatusBadge } from '../procurement-badges';
 import { SectionPanel } from './section-panel';
 
@@ -209,9 +209,9 @@ export function PurchaseDetailShell({
       {tab === 'receiving' && <ReceivingTab poId={poId} locale={locale} isOpen={isOpen} />}
       {tab === 'settlement' && <SettlementTab poId={poId} order={order} locale={locale} />}
 
-      {/* Amend sheet */}
+      {/* Amend dialog */}
       {amending && active ? (
-        <PoAmendSheet order={order} source={active} onClose={() => setAmending(false)} />
+        <PoAmendDialog order={order} source={active} onClose={() => setAmending(false)} />
       ) : null}
     </div>
   );

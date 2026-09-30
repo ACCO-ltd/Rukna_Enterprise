@@ -10,13 +10,12 @@ import type {
   CommercialSummaryResponse,
   ProgrammeMilestoneResponse,
 } from '@erp/types';
-import { Alert, Badge, Button, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
+import { Alert, Badge, Button, DatePicker, EmptyState, FormDialog, FormDialogBody, FormDialogClose, FormDialogFooter, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useCreateMilestone, useMilestones } from '@/features/programme/hooks/use-programme';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
-import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 import { statusTone } from '@/lib/status-registry';
 import { StatusBadge } from '@/components/status-badge';
 
@@ -433,6 +432,7 @@ function MilestoneCell({
   );
 }
 
+/** Link a stage to its programme milestone — a `FormDialog` (ADR-039), size `md`. */
 export function LinkMilestoneDialog({
   projectId,
   contractId,
@@ -465,7 +465,10 @@ export function LinkMilestoneDialog({
   const [newDate, setNewDate] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const dismissGuard = useDialogDismissGuard(link.isPending || create.isPending, onDismiss);
+  const initialSelected = installment.programmeMilestone?.id ?? '';
+  const dirty =
+    selected !== initialSelected ||
+    (creatingNew && (newCode.trim() !== '' || newDate !== '' || newName !== installment.name));
 
   function onCreateAndSelect(event: React.FormEvent) {
     event.preventDefault();
@@ -485,13 +488,18 @@ export function LinkMilestoneDialog({
   }
 
   return (
-    <Dialog open onOpenChange={dismissGuard.onOpenChange}>
-      <DialogContent {...dismissGuard.contentProps}>
-        <DialogTitle>{t('paymentSchedule.milestone.dialogTitle')}</DialogTitle>
-        <DialogDescription>{t('paymentSchedule.milestone.dialogHint')}</DialogDescription>
-
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onDismiss()}
+      title={t('paymentSchedule.milestone.dialogTitle')}
+      subtitle={t('paymentSchedule.milestone.dialogHint')}
+      size="md"
+      dirty={dirty}
+      busy={link.isPending || create.isPending}
+    >
+      <FormDialogBody>
         {link.isError ? (
-          <div className="mt-4">
+          <div>
             <Alert
               variant="error"
               messages={[
@@ -504,7 +512,7 @@ export function LinkMilestoneDialog({
         ) : null}
 
         {creatingNew ? (
-          <form onSubmit={onCreateAndSelect} className="mt-4 space-y-3 rounded-panel border border-border p-3">
+          <form onSubmit={onCreateAndSelect} className="space-y-3 rounded-panel border border-border p-3">
             {createError ? <Alert variant="error" messages={[createError]} /> : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <FormField htmlFor="new-ms-code" label={t('paymentSchedule.milestone.newCode')}>
@@ -533,7 +541,7 @@ export function LinkMilestoneDialog({
             </div>
           </form>
         ) : (
-          <div className="mt-4 space-y-2">
+          <div className="space-y-2">
             {milestones.length === 0 && !milestonesLoading ? (
               <Alert variant="info" messages={[t('paymentSchedule.milestone.noMilestones')]} />
             ) : (
@@ -559,23 +567,27 @@ export function LinkMilestoneDialog({
           </div>
         )}
 
-        <DialogFooter>
-          <Button
-            onClick={() =>
-              link.mutate(
-                { installmentId: installment.id, programmeMilestoneId: selected || null },
-                { onSuccess: onDismiss },
-              )
-            }
-            disabled={link.isPending || creatingNew}
-          >
-            {t('paymentSchedule.milestone.save')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={link.isPending}>
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={link.isPending}>
             {t('paymentSchedule.milestone.cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="button"
+          onClick={() =>
+            link.mutate(
+              { installmentId: installment.id, programmeMilestoneId: selected || null },
+              { onSuccess: onDismiss },
+            )
+          }
+          disabled={link.isPending || creatingNew}
+        >
+          {t('paymentSchedule.milestone.save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -5,11 +5,10 @@ import { useTranslations } from 'next-intl';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Label,
   Select,
   Textarea,
@@ -70,70 +69,70 @@ export function RecordFollowUpDialog({ open, onOpenChange, invoice, projectId }:
   const canSubmit = method !== '' && !mutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogTitle>
-          {t('title')}
-          {invoice.invoiceNumber ? ` — ${invoice.invoiceNumber}` : ''}
-        </DialogTitle>
-        <DialogDescription className="text-body-sm text-muted-foreground">
-          {t('description')}
-        </DialogDescription>
-
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="fu-method">{t('method')}</Label>
-            <Select
-              id="fu-method"
-              value={method}
-              onChange={(v) => setMethod(v as FollowUpMethod | '')}
-            >
-              <option value="">{t('methodRequired')}</option>
-              <option value="WHATSAPP">{t('methods.WHATSAPP')}</option>
-              <option value="EMAIL">{t('methods.EMAIL')}</option>
-              <option value="PHONE">{t('methods.PHONE')}</option>
-              <option value="PHYSICAL">{t('methods.PHYSICAL')}</option>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="fu-contact">{t('contactPerson')}</Label>
-            <Input
-              id="fu-contact"
-              type="text"
-              value={contactPerson}
-              onChange={(e) => setContactPerson(e.target.value)}
-              placeholder={t('contactPersonPlaceholder')}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="fu-note">{t('note')}</Label>
-            <Textarea
-              id="fu-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('notePlaceholder')}
-              rows={3}
-            />
-          </div>
-
-          {mutation.isError ? (
-            <p className="text-caption text-danger">
-              {mutation.error instanceof Error ? mutation.error.message : t('saveError')}
-            </p>
-          ) : null}
+    <FormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={`${t('title')}${invoice.invoiceNumber ? ` — ${invoice.invoiceNumber}` : ''}`}
+      subtitle={t('description')}
+      size="md"
+      dirty={method !== '' || contactPerson !== '' || note !== ''}
+      busy={mutation.isPending}
+    >
+      <FormDialogBody className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="fu-method">{t('method')}</Label>
+          <Select
+            id="fu-method"
+            value={method}
+            onChange={(v) => setMethod(v as FollowUpMethod | '')}
+          >
+            <option value="">{t('methodRequired')}</option>
+            <option value="WHATSAPP">{t('methods.WHATSAPP')}</option>
+            <option value="EMAIL">{t('methods.EMAIL')}</option>
+            <option value="PHONE">{t('methods.PHONE')}</option>
+            <option value="PHYSICAL">{t('methods.PHYSICAL')}</option>
+          </Select>
         </div>
 
-        <DialogFooter>
-          <Button variant="default" onClick={handleSubmit} disabled={!canSubmit}>
-            {mutation.isPending ? t('saving') : t('save')}
-          </Button>
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
+        <div className="space-y-1.5">
+          <Label htmlFor="fu-contact">{t('contactPerson')}</Label>
+          <Input
+            id="fu-contact"
+            type="text"
+            value={contactPerson}
+            onChange={(e) => setContactPerson(e.target.value)}
+            placeholder={t('contactPersonPlaceholder')}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="fu-note">{t('note')}</Label>
+          <Textarea
+            id="fu-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t('notePlaceholder')}
+            rows={3}
+          />
+        </div>
+
+        {mutation.isError ? (
+          <p className="text-caption text-danger">
+            {mutation.error instanceof Error ? mutation.error.message : t('saveError')}
+          </p>
+        ) : null}
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
+          {mutation.isPending ? t('saving') : t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

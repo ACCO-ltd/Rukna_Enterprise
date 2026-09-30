@@ -69,7 +69,7 @@ export function isCostTargetComplete(value: CostTargetValue): boolean {
 /**
  * The cost-target fields to send for a line, as the create/revise DTOs expect them.
  *
- * One place, so the create form and the amend sheet cannot disagree about which of the three
+ * One place, so the create form and the amend dialog cannot disagree about which of the three
  * attributions they are emitting — and so a project can never be sent without a target.
  */
 export function buildCostTargetPayload(value: CostTargetValue): {

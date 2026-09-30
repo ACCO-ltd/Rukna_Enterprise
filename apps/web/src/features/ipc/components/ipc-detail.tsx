@@ -31,7 +31,7 @@ import { useIpc, useIpcs } from '../hooks/use-ipc';
 import { grossDisagreementMinor } from '../settlement';
 import { IpcBillingCard } from './ipc-billing-card';
 import { IpcEffectiveBadge, IpcStatusBadge } from './ipc-status-badge';
-import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
+import { IpcSupersessionDialog } from './ipc-supersession-dialog';
 
 interface IpcDetailProps {
   contractId: string;
@@ -328,7 +328,7 @@ export function IpcDetail({ contractId, ipaId, ipcId, basePath }: IpcDetailProps
       </section>
 
       {isSupersessionCandidate ? (
-        <IpcSupersessionDrawer
+        <IpcSupersessionDialog
           open={supersessionOpen}
           applicationId={ipc.applicationId}
           newCert={ipc}

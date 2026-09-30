@@ -8,13 +8,13 @@ import { renderWithProviders } from '@/test/render';
 
 import * as commercialHooks from '../hooks/use-commercial';
 import { toClientReceivableView, type ClientReceivableView } from '../lib/collection-view-model';
-import { RecordPaymentDrawer, type RecordPaymentDrawerProps } from './record-payment-drawer';
+import { RecordPaymentDialog, type RecordPaymentDialogProps } from './record-payment-dialog';
 import {
   allocationPayload,
   checkAllocations,
   payableInvoices,
   prefillAllocations,
-} from './record-payment-drawer.model';
+} from './record-payment-dialog.model';
 
 vi.mock('../hooks/use-commercial', () => ({
   useProjectDepositAccounts: vi.fn(),
@@ -57,7 +57,7 @@ const OLDEST = view({ id: 'inv-old', invoiceNumber: 'INV-0001', dueDate: '2026-0
 const MIDDLE = view({ id: 'inv-mid', invoiceNumber: 'INV-0002', dueDate: '2026-09-15', outstandingAmount: '200.00' });
 const PAID = view({ id: 'inv-paid', invoiceNumber: 'INV-0000', status: 'PAID', outstandingAmount: '0.00', paidAmount: '1050.00' });
 
-function stubHooks(mutate = vi.fn()) {
+function stubHooks(mutate = vi.fn(), { isPending = false }: { isPending?: boolean } = {}) {
   vi.mocked(commercialHooks.useProjectDepositAccounts).mockReturnValue({
     data: ACCOUNTS,
     isPending: false,
@@ -65,15 +65,15 @@ function stubHooks(mutate = vi.fn()) {
   vi.mocked(commercialHooks.useRecordProjectPayment).mockReturnValue({
     mutate,
     reset: vi.fn(),
-    isPending: false,
+    isPending,
     isError: false,
     error: null,
   } as never);
   return mutate;
 }
 
-function renderDialog(overrides: Partial<RecordPaymentDrawerProps> = {}) {
-  const props: RecordPaymentDrawerProps = {
+function renderDialog(overrides: Partial<RecordPaymentDialogProps> = {}) {
+  const props: RecordPaymentDialogProps = {
     open: true,
     onOpenChange: vi.fn(),
     projectId: 'p1',
@@ -82,7 +82,7 @@ function renderDialog(overrides: Partial<RecordPaymentDrawerProps> = {}) {
     allInvoices: [NEWER, OLDEST, MIDDLE, PAID],
     ...overrides,
   };
-  renderWithProviders(<RecordPaymentDrawer {...props} />);
+  renderWithProviders(<RecordPaymentDialog {...props} />);
   return props;
 }
 
@@ -90,7 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('record-payment-drawer.model', () => {
+describe('record-payment-dialog.model', () => {
   it('orders payable invoices oldest due first, the preselected one on top, and drops settled ones', () => {
     expect(payableInvoices([NEWER, OLDEST, MIDDLE, PAID]).map((i) => i.invoiceId)).toEqual([
       'inv-old',
@@ -125,7 +125,7 @@ describe('record-payment-drawer.model', () => {
   });
 });
 
-describe('RecordPaymentDrawer — a Dialog that applies a receipt oldest due first', () => {
+describe('RecordPaymentDialog — a Dialog that applies a receipt oldest due first', () => {
   it('lists invoices oldest due first and prefills from the amount received', async () => {
     const user = userEvent.setup();
     stubHooks();
@@ -237,5 +237,53 @@ describe('RecordPaymentDrawer — a Dialog that applies a receipt oldest due fir
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Amount received')).not.toBeInTheDocument();
     expect(screen.queryByText(/\$0/)).not.toBeInTheDocument();
+  });
+});
+
+describe('RecordPaymentDialog — dismissal (ADR-039 FormDialog)', () => {
+  it('closes straight away when nothing was changed', async () => {
+    const user = userEvent.setup();
+    stubHooks();
+    const props = renderDialog({ preselectedInvoice: OLDEST });
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(props.onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByText('Discard unsaved changes?')).not.toBeInTheDocument();
+  });
+
+  it('asks before discarding a half-entered receipt', async () => {
+    const user = userEvent.setup();
+    stubHooks();
+    const props = renderDialog({ preselectedInvoice: OLDEST });
+
+    await user.type(screen.getByLabelText('Bank reference'), 'TT-1');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByText('Discard unsaved changes?')).toBeInTheDocument();
+    expect(props.onOpenChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(props.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('cannot be dismissed while the receipt is being recorded', async () => {
+    const user = userEvent.setup();
+    stubHooks(vi.fn(), { isPending: true });
+    const props = renderDialog({ preselectedInvoice: OLDEST });
+
+    expect(screen.getByRole('button', { name: 'Recording…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(props.onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the title and the primary in the fixed header and footer', () => {
+    stubHooks();
+    renderDialog({ preselectedInvoice: OLDEST });
+    const dialog = screen.getByRole('dialog', { name: 'Record payment' });
+    const body = dialog.querySelector('[data-form-dialog-body]');
+    expect(body).not.toBeNull();
+    // The primary sits outside the scrolling body, so it never scrolls away.
+    expect(body!.contains(screen.getByRole('button', { name: 'Record payment' }))).toBe(false);
   });
 });

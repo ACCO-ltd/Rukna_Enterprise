@@ -21,7 +21,7 @@ import { useAccountingReadiness } from '@/features/finance/hooks/use-accounting-
 import { useCommercialBilling } from '../hooks/use-commercial';
 import { toClientReceivableView, type ClientReceivableView } from '../lib/collection-view-model';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
-import { RecordPaymentDrawer } from './record-payment-drawer';
+import { RecordPaymentDialog } from './record-payment-dialog';
 
 type InvoiceView = 'needsAction' | 'unpaid' | 'all';
 
@@ -112,7 +112,7 @@ export function CommercialBillingView({
       ) : null}
 
       {paymentFor !== null ? (
-        <RecordPaymentDrawer
+        <RecordPaymentDialog
           open
           onOpenChange={(open) => !open && setPaymentFor(null)}
           projectId={projectId}

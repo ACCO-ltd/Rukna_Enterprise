@@ -406,7 +406,7 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
 
       {confirming ? (
         <Dialog open onOpenChange={(open) => !open && !record.isPending && setConfirming(false)}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent size="sm">
             <DialogTitle>{t('confirm.title')}</DialogTitle>
             <DialogDescription>
               {t('confirm.body', { value: money(fields.contractValue), version: boqVersion ?? '—' })}{' '}

@@ -38,7 +38,7 @@ import { CreditNoteDialog } from './credit-note-dialog';
 import { InvoiceCollectionDialogs, type CollectionDialogKind } from './invoice-collection-dialogs';
 import { InvoiceEditDraftDialog } from './invoice-edit-draft-dialog';
 import { InvoicePaper } from './invoice-paper';
-import { RecordPaymentDrawer } from './record-payment-drawer';
+import { RecordPaymentDialog } from './record-payment-dialog';
 import { SendInvoiceDialog } from './send-invoice-dialog';
 
 type Pending = 'issue' | 'send' | 'payment' | 'edit' | 'delete' | 'credit' | CollectionDialogKind | null;
@@ -463,7 +463,7 @@ function PaymentDialog({
   const preselected = invoices.find((invoice) => invoice.invoiceId === invoiceId) ?? null;
 
   return (
-    <RecordPaymentDrawer
+    <RecordPaymentDialog
       open
       onOpenChange={(next) => (!next ? onClose() : undefined)}
       projectId={projectId}

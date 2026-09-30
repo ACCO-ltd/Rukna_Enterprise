@@ -13,7 +13,7 @@ import { statusTone } from '@/lib/status-registry';
 import { useBillingPackages, useVariations } from '../hooks/use-commercial';
 import { summariseVariations, variationKind } from '../variations-summary';
 import { errorText } from './commercial-workspace';
-import { VariationDetailSheet } from './variation-detail-sheet';
+import { VariationDetailDialog } from './variation-detail-dialog';
 import {
   VariationBillingChip,
   type VariationBilling,
@@ -29,7 +29,7 @@ import {
  * approved (pending stays as a figure for any historical/in-flight rows), and the list keeps the
  * internal workflow state and the client's approval in different columns. A raised variation is
  * immediately client-approved and adopted; the only mutation the reader can make is to **reverse**
- * an unbilled one, from the detail sheet.
+ * an unbilled one, from the detail dialog.
  *
  * Time is a separate rule: a proposed `+N days` is justification, not effect. The contractual
  * completion date moves only through an Extension of Time — its own audited command, on the
@@ -149,7 +149,7 @@ export function VariationsTab({
         )}
       </section>
 
-      <VariationDetailSheet
+      <VariationDetailDialog
         variationId={detailId}
         contractId={contract.id}
         projectId={projectId}
