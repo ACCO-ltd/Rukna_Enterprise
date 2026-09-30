@@ -30,6 +30,7 @@ import {
   FormField,
   Input,
   Select,
+  Skeleton,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
@@ -60,13 +61,20 @@ export function EditAccountForm({
   const accounts = useAccounts();
   const update = useUpdateAccount();
 
-  // The original snapshot is captured once from the account this form opened on, so a background
-  // refetch of the chart does not shift what "changed" is measured against mid-edit.
-  const original = useMemo<EditAccountDraft>(
-    () => editAccountDraftFrom(account, accounts.data ?? []),
-    [account, accounts.data],
+  // The original is captured once — when the chart is first available, since the parent code is
+  // resolved from it — and never recomputed, so a background refetch of the chart cannot shift what
+  // "changed" is measured against mid-edit. The draft starts from the same snapshot.
+  const [original, setOriginal] = useState<EditAccountDraft | null>(() =>
+    accounts.data ? editAccountDraftFrom(account, accounts.data) : null,
   );
-  const [draft, setDraft] = useState<EditAccountDraft>(original);
+  const [draft, setDraft] = useState<EditAccountDraft>(
+    () => original ?? editAccountDraftFrom(account, []),
+  );
+  if (original === null && accounts.data) {
+    const snapshot = editAccountDraftFrom(account, accounts.data);
+    setOriginal(snapshot);
+    setDraft(snapshot);
+  }
   const [showErrors, setShowErrors] = useState(false);
 
   const ids = {
@@ -94,7 +102,7 @@ export function EditAccountForm({
 
   function handleSubmit() {
     setShowErrors(true);
-    if (problem) return;
+    if (problem || !original) return;
 
     const body = toUpdateAccountBody(draft, original);
     // Nothing changed — close rather than fire a no-op request.
@@ -106,9 +114,9 @@ export function EditAccountForm({
     update.mutate({ id: account.id, body }, { onSuccess: onDone });
   }
 
-  // The raw form against what it opened with: a cleared name or a typed reason is an edit worth
-  // asking about even though neither would produce a request body.
-  const dirty = JSON.stringify(draft) !== JSON.stringify(original);
+  // Every raw field against the captured original — so a cleared name or a typed reason counts as
+  // an edit worth asking about, even though neither would produce a request body.
+  const dirty = original !== null && JSON.stringify(draft) !== JSON.stringify(original);
 
   return (
     <FormDialog
@@ -124,6 +132,13 @@ export function EditAccountForm({
       onSubmit={() => handleSubmit()}
     >
       <FormDialogBody className="space-y-4">
+      {original === null ? (
+        <div role="status" aria-label={tCommon('loading')} className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : (
+      <>
       <FormField htmlFor={ids.name} label={t('name')}>
         <Input
           id={ids.name}
@@ -183,6 +198,8 @@ export function EditAccountForm({
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
+      </>
+      )}
       </FormDialogBody>
       <FormDialogFooter>
         <FormDialogClose asChild>
@@ -190,7 +207,7 @@ export function EditAccountForm({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={update.isPending}>
+        <Button type="submit" disabled={update.isPending || original === null}>
           {update.isPending ? tCommon('saving') : t('submit')}
         </Button>
       </FormDialogFooter>

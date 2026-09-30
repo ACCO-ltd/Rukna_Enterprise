@@ -1501,7 +1501,7 @@
       "createSubmit": "Create user",
       "createPending": "Creating…",
       "createFailed": "Could not create the user.",
-        "emailInvalid": "Enter an email address like name@company.com.",
+      "emailInvalid": "Enter an email address like name@company.com.",
       "createdTitle": "User created",
       "createdHint": "Share these credentials with the user directly — no email is sent. The password is shown only once.",
       "copyCredentials": "Copy credentials",

@@ -69,6 +69,34 @@ describe('EditAccountForm', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it('captures the original once: a chart refetch does not turn an untouched form dirty', async () => {
+    const user = userEvent.setup();
+    const onDone = vi.fn();
+    const { rerender } = renderWithProviders(
+      <EditAccountForm title="Edit Salaam Bank" account={ACCOUNT} onDone={onDone} />,
+    );
+
+    // The chart refetches and now resolves a different parent for the account.
+    const PARENT = { ...ACCOUNT, id: 'p0', code: '10000' } as unknown as Account;
+    const REPARENTED = {
+      ...ACCOUNT,
+      versions: [{ ...(ACCOUNT as unknown as { versions: object[] }).versions[0], parentAccountId: 'p0' }],
+    } as unknown as Account;
+    mocks.useAccounts.mockReturnValue({ data: [REPARENTED, PARENT], isPending: false, isError: false });
+    rerender(<EditAccountForm title="Edit Salaam Bank" account={ACCOUNT} onDone={onDone} />);
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onDone).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).not.toBeInTheDocument();
+  });
+
+  it('waits for the chart before showing the fields', () => {
+    mocks.useAccounts.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    renderForm();
+    expect(screen.queryByLabelText(/Account name/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
+
   it('asks before discarding a typed reason', async () => {
     const user = userEvent.setup();
     const { onDone } = renderForm();

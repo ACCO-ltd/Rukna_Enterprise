@@ -13,8 +13,13 @@ import { useRouter } from 'next/navigation';
  *    the document intercepts a plain left-click on a same-origin link that leads somewhere else.
  *    Modified clicks (new tab/window), `target` other than `_self`, downloads and hash-only links
  *    are left alone.
- *  - **Programmatic navigation** that a component routes through `guardedNavigate()` — the
- *    workspace tabs' narrow-screen picker, which calls `router.push` from a select.
+ *  - **Programmatic navigation** that a component routes through `guardedNavigate()` — today the
+ *    narrow-screen pickers of the workspace tabs (`workspace-tabs.tsx`) and the module tabs
+ *    (`module-tabs.tsx`), which call `router.push` from a select.
+ *
+ * Follow-up: the app has other programmatic `router.push` calls (row navigation in data grids,
+ * post-save redirects, the command menu, …) that do not go through `guardedNavigate()` yet. Any of
+ * them that can fire while a guarded screen has unsaved edits should be wrapped the same way.
  *
  * A reload or tab close is not covered here; pair this with a `beforeunload` listener.
  *
@@ -44,6 +49,8 @@ export interface UnsavedChangesGuard {
 export function useUnsavedChangesGuard(active: boolean): UnsavedChangesGuard {
   const router = useRouter();
   const pending = React.useRef<(() => void) | null>(null);
+  /** Removes this guard's click listener and interceptor; set while the guard is attached. */
+  const detach = React.useRef<(() => void) | null>(null);
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -74,18 +81,22 @@ export function useUnsavedChangesGuard(active: boolean): UnsavedChangesGuard {
     };
 
     document.addEventListener('click', onClick, true);
-    return () => {
+    const remove = () => {
       document.removeEventListener('click', onClick, true);
       if (activeInterceptor === intercept) activeInterceptor = null;
+      detach.current = null;
     };
+    detach.current = remove;
+    return remove;
   }, [active, router]);
 
   const confirm = React.useCallback(() => {
     const go = pending.current;
     pending.current = null;
     setOpen(false);
-    // Drop the guard first so the navigation it releases is not intercepted again.
-    activeInterceptor = null;
+    // Detach first — listener and interceptor — so the navigation this releases, and any click
+    // made while it is on its way, is not intercepted again.
+    detach.current?.();
     go?.();
   }, []);
 
