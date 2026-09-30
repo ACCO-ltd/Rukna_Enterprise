@@ -10,10 +10,10 @@ import {
   Badge,
   Button,
   CheckboxField,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
 } from '@erp/ui';
@@ -172,7 +172,7 @@ function AddContactDialog({ clientId, hasPrimary, onClose }: AddContactDialogPro
     control,
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<ContactFormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: '', role: '', email: '', phone: '', isPrimary: false },
@@ -198,73 +198,66 @@ function AddContactDialog({ clientId, hasPrimary, onClose }: AddContactDialogPro
   };
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !add.isPending) onClose();
+        if (!next) onClose();
+      }}
+      title={t('add')}
+      size="md"
+      dirty={isDirty}
+      busy={add.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('add')}</DialogTitle>
+      <FormDialogBody className="space-y-4">
+        {add.isError ? <Alert variant="error" messages={[t('addFailed')]} /> : null}
 
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
-        >
-          {add.isError ? <Alert variant="error" messages={[t('addFailed')]} /> : null}
+        <FormField htmlFor="contact-name" label={t('name')} error={errors.name?.message}>
+          <Input id="contact-name" aria-invalid={Boolean(errors.name)} {...register('name')} />
+        </FormField>
 
-          <FormField htmlFor="contact-name" label={t('name')} error={errors.name?.message}>
-            <Input id="contact-name" aria-invalid={Boolean(errors.name)} {...register('name')} />
-          </FormField>
+        <FormField htmlFor="contact-role" label={t('role')}>
+          <Input id="contact-role" {...register('role')} />
+        </FormField>
 
-          <FormField htmlFor="contact-role" label={t('role')}>
-            <Input id="contact-role" {...register('role')} />
-          </FormField>
-
-          <FormField htmlFor="contact-email" label={t('email')} error={errors.email?.message}>
-            <Input
-              id="contact-email"
-              type="email"
-              dir="ltr"
-              aria-invalid={Boolean(errors.email)}
-              {...register('email')}
-            />
-          </FormField>
-
-          <FormField htmlFor="contact-phone" label={t('phone')}>
-            <Input id="contact-phone" type="tel" dir="ltr" {...register('phone')} />
-          </FormField>
-
-          {/* The API demotes the existing primary in the same request. That is a change to a
-              record the user did not name, so it is stated before they submit rather than
-              discovered afterwards. */}
-          <CheckboxField
-            id="contact-is-primary"
-            label={t('isPrimary')}
-            description={willDemote ? <span className="text-warning">{t('isPrimaryHint')}</span> : undefined}
-            {...register('isPrimary')}
+        <FormField htmlFor="contact-email" label={t('email')} error={errors.email?.message}>
+          <Input
+            id="contact-email"
+            type="email"
+            dir="ltr"
+            aria-invalid={Boolean(errors.email)}
+            {...register('email')}
           />
+        </FormField>
 
-          <DialogFooter>
-            <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
-              {t('save')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <FormField htmlFor="contact-phone" label={t('phone')}>
+          <Input id="contact-phone" type="tel" dir="ltr" {...register('phone')} />
+        </FormField>
+
+        {/* The API demotes the existing primary in the same request. That is a change to a
+            record the user did not name, so it is stated before they submit rather than
+            discovered afterwards. */}
+        <CheckboxField
+          id="contact-is-primary"
+          label={t('isPrimary')}
+          description={willDemote ? <span className="text-warning">{t('isPrimaryHint')}</span> : undefined}
+          {...register('isPrimary')}
+        />
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={add.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
+          {t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

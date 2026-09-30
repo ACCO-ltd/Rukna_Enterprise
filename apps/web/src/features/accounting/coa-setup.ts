@@ -497,3 +497,47 @@ export function toCreateAccountBody(draft: AccountDraft): CreateAccountBody | nu
       : {}),
   };
 }
+
+/**
+ * The next free code under `parent`, offered as a starting point the user can overwrite.
+ *
+ * Numbered charts step by one digit below the parent's last significant one: under 51000 the
+ * children are 51100, 51200…; under 66000 they are 66100, 66200. So the step is a tenth of the
+ * parent's block, and a suggestion never leaves the block (51000 can't suggest 52000, which would
+ * read as a sibling). It continues after the last child when it can — a new account goes at the
+ * end of its group — and otherwise takes the first gap. `null` when the parent's code is not a
+ * round number or its block is full: the user types a code as before.
+ */
+export function suggestChildCode(parent: Account, accounts: readonly Account[]): string | null {
+  const code = parent.code;
+  // Past 15 digits a code no longer survives the round trip through a number.
+  if (!/^\d+$/.test(code) || code.length > 15) return null;
+  const zeros = code.length - code.replace(/0+$/, '').length;
+  if (zeros === 0) return null;
+
+  const base = Number(code);
+  const step = 10 ** (zeros - 1);
+  const blockEnd = base + 10 ** zeros; // exclusive
+  const width = code.length;
+  const taken = new Set(accounts.map((a) => a.code));
+  const toCode = (n: number) => String(n).padStart(width, '0');
+
+  const children = accounts
+    .filter(
+      (a) =>
+        currentVersion(a)?.parentAccountId === parent.id &&
+        a.code.length === width &&
+        /^\d+$/.test(a.code),
+    )
+    .map((a) => Number(a.code));
+
+  const free = (from: number): string | null => {
+    for (let n = Math.ceil(from / step) * step; n < blockEnd; n += step) {
+      if (n > base && !taken.has(toCode(n))) return toCode(n);
+    }
+    return null;
+  };
+
+  const last = children.length > 0 ? Math.max(...children) : base;
+  return free(last + step) ?? free(base + step);
+}

@@ -13,11 +13,11 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormDialogSection,
   FormField,
   Input,
   Select,
@@ -75,6 +75,20 @@ export function RegisterDocumentDialog({
   const upload = useFileUpload();
   const create = useCreateDocument(projectId);
   const busy = upload.isPending || create.isPending;
+  const dirty =
+    documentNumber !== '' ||
+    title !== '' ||
+    category !== DocumentCategory.DRAWING ||
+    discipline !== '' ||
+    responsibleUserId !== '' ||
+    issuerName !== '' ||
+    issuedAt !== '' ||
+    validFrom !== '' ||
+    expiresAt !== '' ||
+    revisionCode !== '' ||
+    purpose !== '' ||
+    notes !== '' ||
+    file !== null;
 
   // Purpose is drawing vocabulary. "Issued for construction" on an insurance certificate would
   // tell the site to build from a policy document, so the field is not offered at all elsewhere —
@@ -99,8 +113,7 @@ export function RegisterDocumentDialog({
     if (fileInput.current) fileInput.current.value = '';
   }
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function onSubmit() {
     setError(null);
 
     if (!documentNumber.trim() || !title.trim() || !file) {
@@ -138,217 +151,210 @@ export function RegisterDocumentDialog({
   }
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(next) => {
         if (!next) reset();
         onOpenChange(next);
       }}
+      title={t('form.registerTitle')}
+      subtitle={t('form.registerHint')}
+      size="lg"
+      dirty={dirty}
+      busy={busy}
+      closeLabel={t('actions.cancel')}
+      onSubmit={() => {
+        void onSubmit();
+      }}
     >
-      <DialogContent closeLabel={t('actions.cancel')} className="sm:max-w-2xl">
-        <DialogTitle>{t('form.registerTitle')}</DialogTitle>
-        <DialogDescription>{t('form.registerHint')}</DialogDescription>
+      <FormDialogBody>
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-        <form onSubmit={onSubmit} className="mt-5 space-y-6">
-          {error ? <Alert variant="error" messages={[error]} /> : null}
-
-          <section className="space-y-4">
-            <h3 className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              {t('form.identitySection')}
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                htmlFor="doc-number"
-                label={t('form.documentNumber')}
-                hint={t('form.documentNumberHint')}
-                required
-              >
-                <Input
-                  id="doc-number"
-                  value={documentNumber}
-                  placeholder={t('form.documentNumberPlaceholder')}
-                  onChange={(event) => setDocumentNumber(event.target.value)}
-                  required
-                />
-              </FormField>
-
-              <FormField htmlFor="doc-title" label={t('form.titleLabel')} required>
-                <Input
-                  id="doc-title"
-                  value={title}
-                  placeholder={t('form.titlePlaceholder')}
-                  onChange={(event) => setTitle(event.target.value)}
-                  required
-                />
-              </FormField>
-
-              <FormField htmlFor="doc-cat" label={t('form.category')} required>
-                <Select id="doc-cat" value={category} onChange={setCategory} required>
-                  {Object.values(DocumentCategory).map((value) => (
-                    <option key={value} value={value}>
-                      {t(`category.${value}`)}
-                    </option>
-                  ))}
-                </Select>
-              </FormField>
-
-              <FormField
-                htmlFor="doc-disc"
-                label={t('form.discipline')}
-                hint={t('form.disciplineHint')}
-              >
-                <Select id="doc-disc" value={discipline} onChange={setDiscipline}>
-                  <option value="">{t('form.none')}</option>
-                  {Object.values(DocumentDiscipline).map((value) => (
-                    <option key={value} value={value}>
-                      {t(`discipline.${value}`)}
-                    </option>
-                  ))}
-                </Select>
-              </FormField>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h3 className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              {t('form.responsibilitySection')}
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                htmlFor="doc-resp"
-                label={t('form.responsible')}
-                hint={t('form.responsibleHint')}
-              >
-                <Select id="doc-resp" value={responsibleUserId} onChange={setResponsibleUserId}>
-                  <option value="">{t('form.none')}</option>
-                  {members.map((member) => (
-                    <option key={member.userId} value={member.userId}>
-                      {`${member.user.firstName} ${member.user.lastName}`.trim()}
-                    </option>
-                  ))}
-                </Select>
-              </FormField>
-
-              <FormField htmlFor="doc-issuer" label={t('form.issuer')}>
-                <Input
-                  id="doc-issuer"
-                  value={issuerName}
-                  placeholder={t('form.issuerPlaceholder')}
-                  onChange={(event) => setIssuerName(event.target.value)}
-                />
-              </FormField>
-
-              <FormField htmlFor="doc-issued" label={t('form.issuedAt')}>
-                <DatePicker
-                  id="doc-issued"
-                  value={issuedAt}
-                  onChange={setIssuedAt}
-                  clearLabel={t('actions.cancel')}
-                />
-              </FormField>
-
-              <FormField htmlFor="doc-valid-from" label={t('form.validFrom')}>
-                <DatePicker
-                  id="doc-valid-from"
-                  value={validFrom}
-                  onChange={setValidFrom}
-                  // The window must be a real one; the server refuses the inverse too.
-                  max={expiresAt || undefined}
-                  clearLabel={t('actions.cancel')}
-                />
-              </FormField>
-
-              <FormField
-                htmlFor="doc-expires"
-                label={t('form.expiresAt')}
-                hint={t('form.expiresAtHint')}
-              >
-                <DatePicker
-                  id="doc-expires"
-                  value={expiresAt}
-                  onChange={setExpiresAt}
-                  min={validFrom || undefined}
-                  clearLabel={t('actions.cancel')}
-                />
-              </FormField>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h3 className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              {t('form.fileSection')}
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField htmlFor="doc-rev-code" label={t('form.revisionCode')}>
-                <Input
-                  id="doc-rev-code"
-                  value={revisionCode}
-                  placeholder={t('form.revisionCodePlaceholder')}
-                  onChange={(event) => setRevisionCode(event.target.value)}
-                />
-              </FormField>
-
-              {isDrawing ? (
-                <FormField htmlFor="doc-purpose" label={t('form.purpose')} hint={t('form.purposeHint')}>
-                  <Select id="doc-purpose" value={purpose} onChange={setPurpose}>
-                    <option value="">{t('form.none')}</option>
-                    {Object.values(DocumentRevisionPurpose).map((value) => (
-                      <option key={value} value={value}>
-                        {t(`purpose.${value}`)}
-                      </option>
-                    ))}
-                  </Select>
-                </FormField>
-              ) : null}
-
-              <FormField
-                htmlFor="doc-file"
-                label={t('form.file')}
-                hint={t('form.fileHint')}
-                required
-                className="sm:col-span-2"
-              >
-                <input
-                  id="doc-file"
-                  ref={fileInput}
-                  type="file"
-                  required
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                  className="block min-h-11 w-full cursor-pointer rounded-input border border-border bg-surface px-3 py-2 text-body-sm text-foreground file:me-3 file:rounded-control file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-body-sm file:font-medium file:text-foreground"
-                />
-              </FormField>
-
-              <FormField htmlFor="doc-notes" label={t('form.notes')} className="sm:col-span-2">
-                <Textarea
-                  id="doc-notes"
-                  rows={2}
-                  value={notes}
-                  maxLength={300}
-                  onChange={(event) => setNotes(event.target.value)}
-                />
-              </FormField>
-            </div>
-          </section>
-
-          <DialogFooter>
-            <Button
-              type="submit"
-              loading={busy}
-              loadingText={upload.isPending ? t('states.uploading') : undefined}
+        <FormDialogSection title={t('form.identitySection')}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              htmlFor="doc-number"
+              label={t('form.documentNumber')}
+              hint={t('form.documentNumberHint')}
+              required
             >
-              {t('form.submit')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => onOpenChange(false)}
+              <Input
+                id="doc-number"
+                value={documentNumber}
+                placeholder={t('form.documentNumberPlaceholder')}
+                onChange={(event) => setDocumentNumber(event.target.value)}
+                required
+              />
+            </FormField>
+
+            <FormField htmlFor="doc-title" label={t('form.titleLabel')} required>
+              <Input
+                id="doc-title"
+                value={title}
+                placeholder={t('form.titlePlaceholder')}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+              />
+            </FormField>
+
+            <FormField htmlFor="doc-cat" label={t('form.category')} required>
+              <Select id="doc-cat" value={category} onChange={setCategory} required>
+                {Object.values(DocumentCategory).map((value) => (
+                  <option key={value} value={value}>
+                    {t(`category.${value}`)}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+
+            <FormField
+              htmlFor="doc-disc"
+              label={t('form.discipline')}
+              hint={t('form.disciplineHint')}
             >
-              {t('actions.cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              <Select id="doc-disc" value={discipline} onChange={setDiscipline}>
+                <option value="">{t('form.none')}</option>
+                {Object.values(DocumentDiscipline).map((value) => (
+                  <option key={value} value={value}>
+                    {t(`discipline.${value}`)}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+        </FormDialogSection>
+
+        <FormDialogSection title={t('form.responsibilitySection')}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              htmlFor="doc-resp"
+              label={t('form.responsible')}
+              hint={t('form.responsibleHint')}
+            >
+              <Select id="doc-resp" value={responsibleUserId} onChange={setResponsibleUserId}>
+                <option value="">{t('form.none')}</option>
+                {members.map((member) => (
+                  <option key={member.userId} value={member.userId}>
+                    {`${member.user.firstName} ${member.user.lastName}`.trim()}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+
+            <FormField htmlFor="doc-issuer" label={t('form.issuer')}>
+              <Input
+                id="doc-issuer"
+                value={issuerName}
+                placeholder={t('form.issuerPlaceholder')}
+                onChange={(event) => setIssuerName(event.target.value)}
+              />
+            </FormField>
+
+            <FormField htmlFor="doc-issued" label={t('form.issuedAt')}>
+              <DatePicker
+                id="doc-issued"
+                value={issuedAt}
+                onChange={setIssuedAt}
+                clearLabel={t('actions.cancel')}
+              />
+            </FormField>
+
+            <FormField htmlFor="doc-valid-from" label={t('form.validFrom')}>
+              <DatePicker
+                id="doc-valid-from"
+                value={validFrom}
+                onChange={setValidFrom}
+                // The window must be a real one; the server refuses the inverse too.
+                max={expiresAt || undefined}
+                clearLabel={t('actions.cancel')}
+              />
+            </FormField>
+
+            <FormField
+              htmlFor="doc-expires"
+              label={t('form.expiresAt')}
+              hint={t('form.expiresAtHint')}
+            >
+              <DatePicker
+                id="doc-expires"
+                value={expiresAt}
+                onChange={setExpiresAt}
+                min={validFrom || undefined}
+                clearLabel={t('actions.cancel')}
+              />
+            </FormField>
+          </div>
+        </FormDialogSection>
+
+        <FormDialogSection title={t('form.fileSection')} variant="plain">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField htmlFor="doc-rev-code" label={t('form.revisionCode')}>
+              <Input
+                id="doc-rev-code"
+                value={revisionCode}
+                placeholder={t('form.revisionCodePlaceholder')}
+                onChange={(event) => setRevisionCode(event.target.value)}
+              />
+            </FormField>
+
+            {isDrawing ? (
+              <FormField htmlFor="doc-purpose" label={t('form.purpose')} hint={t('form.purposeHint')}>
+                <Select id="doc-purpose" value={purpose} onChange={setPurpose}>
+                  <option value="">{t('form.none')}</option>
+                  {Object.values(DocumentRevisionPurpose).map((value) => (
+                    <option key={value} value={value}>
+                      {t(`purpose.${value}`)}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            ) : null}
+
+            <FormField
+              htmlFor="doc-file"
+              label={t('form.file')}
+              hint={t('form.fileHint')}
+              required
+              className="sm:col-span-2"
+            >
+              <input
+                id="doc-file"
+                ref={fileInput}
+                type="file"
+                required
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                className="block min-h-11 w-full cursor-pointer rounded-input border border-border bg-surface px-3 py-2 text-body-sm text-foreground file:me-3 file:rounded-control file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-body-sm file:font-medium file:text-foreground"
+              />
+            </FormField>
+
+            <FormField htmlFor="doc-notes" label={t('form.notes')} className="sm:col-span-2">
+              <Textarea
+                id="doc-notes"
+                rows={2}
+                value={notes}
+                maxLength={300}
+                onChange={(event) => setNotes(event.target.value)}
+              />
+            </FormField>
+          </div>
+        </FormDialogSection>
+
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={busy}>
+            {t('actions.cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button
+          type="submit"
+          loading={busy}
+          loadingText={upload.isPending ? t('states.uploading') : undefined}
+        >
+          {t('form.submit')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

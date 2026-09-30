@@ -8,15 +8,14 @@ import { Ellipsis, Plus } from 'lucide-react';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Select,
   Table,
   TableBody,
@@ -280,14 +279,12 @@ function EditRolesDialog({
   onDismiss: () => void;
 }) {
   const t = useTranslations('platform.projects.members');
+  const tCommon = useTranslations('common');
 
-  const [roles, setRolesState] = useState<ProjectRole[]>(() =>
+  const [initialRoles] = useState<ProjectRole[]>(() =>
     memberRoles(member).filter(isAssignableRole),
   );
-
-  const preventWhilePending = (event: Event) => {
-    if (isPending) event.preventDefault();
-  };
+  const [roles, setRolesState] = useState<ProjectRole[]>(initialRoles);
 
   function toggle(role: ProjectRole) {
     // The last manager cannot drop PROJECT_MANAGER.
@@ -302,29 +299,30 @@ function EditRolesDialog({
       ? [ProjectRole.PROJECT_MANAGER, ...roles]
       : roles;
   const canSave = effective.length > 0;
+  const dirty =
+    effective.length !== initialRoles.length ||
+    effective.some((role) => !initialRoles.includes(role));
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !isPending) onDismiss();
+        if (!next) onDismiss();
+      }}
+      title={t('editRolesTitle', { name: memberName(member) })}
+      subtitle={t('editRolesHint')}
+      size="md"
+      dirty={dirty}
+      busy={isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => {
+        if (canSave && !isPending) onSave(effective);
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-      >
-        <DialogTitle>{t('editRolesTitle', { name: memberName(member) })}</DialogTitle>
-        <DialogDescription>{t('editRolesHint')}</DialogDescription>
+      <FormDialogBody className="space-y-4">
+        {errorMessage ? <Alert variant="error" messages={[errorMessage]} /> : null}
 
-        {errorMessage ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[errorMessage]} />
-          </div>
-        ) : null}
-
-        <fieldset className="mt-4 space-y-2">
+        <fieldset className="space-y-2">
           <legend className="sr-only">{t('colRoles')}</legend>
           <div className="flex flex-wrap gap-2">
             {ASSIGNABLE_PROJECT_ROLES.map((role) => {
@@ -350,17 +348,24 @@ function EditRolesDialog({
             })}
           </div>
         </fieldset>
+      </FormDialogBody>
 
-        <DialogFooter>
-          <Button onClick={() => onSave(effective)} disabled={!canSave} loading={isPending}>
-            {t('save')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={isPending}>
             {t('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="submit"
+          disabled={!canSave}
+          loading={isPending}
+          loadingText={tCommon('saving')}
+        >
+          {t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -376,6 +381,7 @@ function AddMemberForm({
   onDismiss: () => void;
 }) {
   const t = useTranslations('platform.projects.members');
+  const tCommon = useTranslations('common');
 
   const users = useUsers();
   const add = useAddProjectMember(projectId);
@@ -410,92 +416,93 @@ function AddMemberForm({
     );
   }
 
-  const preventPending = (event: Event) => {
-    if (add.isPending) event.preventDefault();
-  };
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(open) => {
-        if (!open && !add.isPending) onDismiss();
+        if (!open) onDismiss();
+      }}
+      title={t('addTitle')}
+      subtitle={t('addHint')}
+      size="md"
+      dirty={userId !== '' || roles.length > 0}
+      busy={add.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => {
+        if (!users.isError && !users.isPending) handleAdd();
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={preventPending}
-        onPointerDownOutside={preventPending}
-        onInteractOutside={preventPending}
-      >
-        <DialogTitle>{t('addTitle')}</DialogTitle>
-        <DialogDescription>{t('addHint')}</DialogDescription>
+      <FormDialogBody className="space-y-4">
         {users.isError ? <Alert variant="error" messages={[t('usersLoadFailed')]} /> : null}
         {!users.isPending && !users.isError && candidates.length === 0 ? (
           <Alert variant="info" messages={[t('everyoneAdded')]} />
         ) : null}
-        <div className="mt-4 space-y-4">
-          <div className="max-w-md space-y-1.5">
-            <label htmlFor={ids.user} className="block text-xs font-medium text-muted-foreground">
-              {t('colName')}
-            </label>
-            <Select
-              disabled={users.isPending || users.isError || add.isPending}
-              id={ids.user}
-              value={userId}
-              onChange={(value) => setUserId(value)}
-            >
-              <option value="" disabled>
-                —
+        <div className="max-w-md space-y-1.5">
+          <label htmlFor={ids.user} className="block text-xs font-medium text-muted-foreground">
+            {t('colName')}
+          </label>
+          <Select
+            disabled={users.isPending || users.isError || add.isPending}
+            id={ids.user}
+            value={userId}
+            onChange={(value) => setUserId(value)}
+          >
+            <option value="" disabled>
+              —
+            </option>
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {userName(candidate)} · {candidate.email}
               </option>
-              {candidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {userName(candidate)} · {candidate.email}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-medium text-muted-foreground">{t('colRoles')}</legend>
-            <div className="flex flex-wrap gap-2">
-              {ASSIGNABLE_PROJECT_ROLES.map((role) => {
-                const selected = roles.includes(role);
-                return (
-                  <button
-                    key={role}
-                    type="button"
-                    disabled={add.isPending}
-                    aria-pressed={selected}
-                    onClick={() => toggle(role)}
-                    className={
-                      selected
-                        ? 'min-h-11 rounded-control border border-brand-primary bg-brand-primary px-3 text-sm font-medium text-white'
-                        : 'min-h-11 rounded-control border border-border bg-surface px-3 text-sm text-foreground'
-                    }
-                  >
-                    {t(`role.${role}`)}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
+            ))}
+          </Select>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onDismiss} disabled={add.isPending}>
+
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-medium text-muted-foreground">{t('colRoles')}</legend>
+          <div className="flex flex-wrap gap-2">
+            {ASSIGNABLE_PROJECT_ROLES.map((role) => {
+              const selected = roles.includes(role);
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  disabled={add.isPending}
+                  aria-pressed={selected}
+                  onClick={() => toggle(role)}
+                  className={
+                    selected
+                      ? 'min-h-11 rounded-control border border-brand-primary bg-brand-primary px-3 text-sm font-medium text-white'
+                      : 'min-h-11 rounded-control border border-border bg-surface px-3 text-sm text-foreground'
+                  }
+                >
+                  {t(`role.${role}`)}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={add.isPending}>
             {t('cancel')}
           </Button>
-          <Button
-            type="button"
-            className="gap-2"
-            onClick={handleAdd}
-            loading={add.isPending}
-            disabled={!complete || users.isError || users.isPending}
-          >
-            <Plus size={16} aria-hidden="true" />
-            {t('add')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="submit"
+          className="gap-2"
+          loading={add.isPending}
+          loadingText={t('adding')}
+          disabled={!complete || users.isError || users.isPending}
+        >
+          <Plus size={16} aria-hidden="true" />
+          {t('add')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

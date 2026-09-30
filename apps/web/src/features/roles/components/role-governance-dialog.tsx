@@ -75,7 +75,7 @@ export function RoleGovernanceDialog({
           <div className="h-48 animate-pulse rounded-panel bg-muted" aria-hidden="true" />
         ) : impact.data ? (
           <>
-            <FormDialogSection title={t('impact')}>
+            <FormDialogSection title={t('impact')} variant="plain">
               <p className="text-sm text-muted-foreground">
                 {t('memberCount', { count: impact.data.memberCount })}
               </p>

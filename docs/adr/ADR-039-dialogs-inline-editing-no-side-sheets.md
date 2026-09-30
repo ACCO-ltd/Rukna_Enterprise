@@ -71,6 +71,38 @@ Each width is capped at `100vw - 2rem`. Rules that go with it:
 
 Short confirmations keep `ConfirmDialog` and the small `DialogContent` tiers.
 
+#### Visual treatment (2026-09-30)
+
+Owner-approved restyle toward the calmer reference dialogs (settings rows, grouped field panels,
+a step indicator). Tokens, radii and colours are unchanged (ADR-034); what changed is structure:
+
+- **No hairlines at rest.** The header's bottom rule appears only once the body has scrolled, and
+  the footer's top rule only while more content sits below it. `FormDialogBody` reports its
+  scroll position; nothing else is needed from callers.
+- **Field groups sit on a panel.** `FormDialogSection` (title and description optional) puts its
+  fields on a `bg-surface-subtle` panel by default. Groups are separated by space, not rules. Use
+  `variant="plain"` when the group's content has its own frame: a line editor, a table, bordered
+  rows, a file drop.
+- **Settings are rows.** On/off flags that describe the record ("Accepts postings", "Control
+  account") use `SettingsGroup` + `SettingRow`: label and one-line description on the start
+  edge, a `Switch` on the end. Names, codes, amounts and dates stay `FormField`s.
+- **Rarely changed fields fold away.** `Disclosure` ("Advanced") holds fields defaulted correctly
+  for almost every record. Its content stays mounted while closed, and a form opens it itself
+  when a field inside needs an answer.
+- **Header extras.** `icon` puts a small tinted tile beside the title (decorative). `progress`
+  pins a step indicator (`WizardRail`, `ProgressStepper`) under the title, so a stepped dialog's
+  position never scrolls away — used by accounting setup and the schedule setup wizard.
+- **Reset** sits on the footer's start edge (`FormDialogFooter start`), shown only once the form
+  is dirty, apart from Cancel and the primary action.
+
+The New GL account form is the reference implementation: name, class, subtype, "Make this a
+sub-account" revealing a parent picker (which fills class, subtype and the next free code in the
+parent's block when still blank), code and start date on one panel; "Accepts postings" as a
+setting row; normal balance, posting policy and control-account flags under Advanced.
+
+Long documents that are full pages (the signed-contract record, supplier bill) are not dialogs
+and are not stepped by this change (ADR-035/037).
+
 ### 2. Inline editing — values in a table
 
 When the user is changing values that already sit in a table, edit them in the table. Examples:
@@ -156,6 +188,15 @@ Workflows: the three posting previews (client invoice, supplier bill, supplier p
 one `PostingPreviewDialog`; the chart-of-accounts create/edit/import, open-fiscal-year and
 configure-bank-account forms each own a `FormDialog`; and the workflow policy draft, clone,
 lifecycle-transition and edit-rule dialogs moved onto `FormDialog`.
+
+PR 3 of the UI-alive plan (dialog restyle) normalised the last record forms still built on raw
+`DialogContent`: client add-contact (`md`), guarantee add (`lg`) and edit (`md`), the district and
+project-subtype quick-create dialogs (`md`; their `onSubmit` keeps Enter from submitting the
+project form behind them), document register (`lg`, with `FormDialogSection`s), document edit
+details (`lg`), create revision and issue revision (`md`), project member add and edit roles
+(`md`), and the project lifecycle transition (`md`, no `onSubmit` because the body can hold the
+approval panel). Left on `DialogContent` as confirmations of one act with at most one field: the
+document replace-file, withdraw, supersede, archive and discard dialogs (`ActionDialog`).
 
 The design-system gallery's `Sheet` specimen (`patterns-section.tsx`) was removed with `Sheet`.
 

@@ -57,6 +57,10 @@ export type {
   FormDialogSectionProps,
   FormDialogSize,
 } from './components/form-dialog';
+export { SettingRow, SettingsGroup } from './components/settings-row';
+export type { SettingRowProps } from './components/settings-row';
+export { Disclosure } from './components/disclosure';
+export type { DisclosureProps } from './components/disclosure';
 export { ChoiceCards } from './components/choice-cards';
 export type { ChoiceCardOption, ChoiceCardsProps } from './components/choice-cards';
 export { useDialogDismissGuard } from './lib/use-dialog-dismiss-guard';
