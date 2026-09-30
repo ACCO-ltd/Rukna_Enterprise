@@ -242,7 +242,13 @@
     "submit": "Issue credit note",
     "retryPost": "Post credit note",
     "issuing": "Issuing…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "unposted": {
+      "title": "Close without posting?",
+      "description": "The credit note was saved as a draft but not posted. Close anyway?",
+      "confirm": "Close anyway",
+      "cancel": "Keep open"
+    }
   },
   "title": "Commercial",
   "subtitle": "Manage contract value, billing and collection.",
@@ -842,7 +848,8 @@
         "payment": "Payment received",
         "contact": "Contact: {person}",
         "promisedBy": "Promised by {date}",
-        "close": "Close"
+        "close": "Close",
+        "subtitle": "Everything recorded against this invoice since it was issued."
       },
       "creditNoteDesign": {
         "title": "Issue credit note",

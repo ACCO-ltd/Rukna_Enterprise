@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { CalendarClock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Badge, Button, CheckboxField, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, SectionHeader, Skeleton, Textarea, useToast, StatusPill } from '@erp/ui';
+import { Badge, Button, CheckboxField, DatePicker, EmptyState, FormDialog, FormDialogBody, FormDialogClose, FormDialogFooter, Label, SectionHeader, Skeleton, Textarea, useToast, StatusPill } from '@erp/ui';
 import type { ExtensionOfTimeResponse, VariationOrderListItem } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
@@ -89,7 +89,7 @@ export function ExtensionOfTimeSection({
       )}
 
       {open ? (
-        <GrantExtensionSheet
+        <GrantExtensionDialog
           contractId={contractId}
           projectId={projectId}
           variations={variations}
@@ -144,7 +144,8 @@ function ExtensionRow({
   );
 }
 
-function GrantExtensionSheet({
+/** Record an extension of time — a `FormDialog` (ADR-039), size `md`: three fields. */
+function GrantExtensionDialog({
   contractId,
   projectId,
   variations,
@@ -170,13 +171,13 @@ function GrantExtensionSheet({
   const [cited, setCited] = React.useState<string[]>([]);
 
   const canSave = newEndDate !== '' && reason.trim() !== '' && !grant.isPending;
+  const dirty = newEndDate !== '' || reason !== '' || cited.length > 0;
 
   function toggleCite(id: string) {
     setCited((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  function handleSubmit() {
     if (!canSave) return;
     grant.mutate(
       {
@@ -196,96 +197,93 @@ function GrantExtensionSheet({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" aria-describedby="eot-desc">
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-border px-5 py-4">
-            <DialogTitle>{t('grantTitle')}</DialogTitle>
-            <DialogDescription id="eot-desc">{t('grantSubtitle')}</DialogDescription>
-          </div>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('grantTitle')}
+      subtitle={t('grantSubtitle')}
+      size="md"
+      dirty={dirty}
+      busy={grant.isPending}
+      onSubmit={handleSubmit}
+    >
+      <FormDialogBody>
+        <div className="space-y-1.5">
+          <Label htmlFor="eot-date">{t('newEndDate')}</Label>
+          <DatePicker
+            id="eot-date"
+            value={newEndDate}
+            onChange={(value) => setNewEndDate(value)}
+          />
+        </div>
 
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="eot-date">{t('newEndDate')}</Label>
-              <DatePicker
-                id="eot-date"
-                value={newEndDate}
-                onChange={(value) => setNewEndDate(value)}
-              />
-            </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="eot-reason">{t('reason')}</Label>
+          <Textarea
+            id="eot-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={1000}
+            rows={3}
+            required
+          />
+        </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="eot-reason">{t('reason')}</Label>
-              <Textarea
-                id="eot-reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                maxLength={1000}
-                rows={3}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-body-sm font-medium text-foreground">{t('citeTitle')}</span>
-              <p className="text-caption text-muted-foreground">{t('citeHint')}</p>
-              {variations.length === 0 ? (
-                <p className="text-caption italic text-muted-foreground">{t('noVariations')}</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {variations.map((vo) => (
-                    <li key={vo.id}>
-                      <CheckboxField
-                        id={`eot-vo-${vo.id}`}
-                        className="rounded-control border border-border bg-surface-subtle px-3"
-                        label={
-                          <span className="flex flex-wrap items-center gap-2">
-                            <code className="font-mono text-caption text-muted-foreground">
-                              {vo.reference}
-                            </code>
-                            <StatusPill tone={statusTone(vo.status, 'variation')}>
-                              {tVo(`status.${vo.status}`)}
-                            </StatusPill>
+        <div className="space-y-2">
+          <span className="text-body-sm font-medium text-foreground">{t('citeTitle')}</span>
+          <p className="text-caption text-muted-foreground">{t('citeHint')}</p>
+          {variations.length === 0 ? (
+            <p className="text-caption italic text-muted-foreground">{t('noVariations')}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {variations.map((vo) => (
+                <li key={vo.id}>
+                  <CheckboxField
+                    id={`eot-vo-${vo.id}`}
+                    className="rounded-control border border-border bg-surface-subtle px-3"
+                    label={
+                      <span className="flex flex-wrap items-center gap-2">
+                        <code className="font-mono text-caption text-muted-foreground">
+                          {vo.reference}
+                        </code>
+                        <StatusPill tone={statusTone(vo.status, 'variation')}>
+                          {tVo(`status.${vo.status}`)}
+                        </StatusPill>
+                      </span>
+                    }
+                    description={
+                      <>
+                        <span className="block truncate text-body-sm text-foreground">
+                          {vo.title}
+                        </span>
+                        {vo.proposedTimeImpactDays !== null ? (
+                          <span className="block text-caption text-muted-foreground">
+                            {t('proposedImpact', { n: vo.proposedTimeImpactDays })}
                           </span>
-                        }
-                        description={
-                          <>
-                            <span className="block truncate text-body-sm text-foreground">
-                              {vo.title}
-                            </span>
-                            {vo.proposedTimeImpactDays !== null ? (
-                              <span className="block text-caption text-muted-foreground">
-                                {t('proposedImpact', { n: vo.proposedTimeImpactDays })}
-                              </span>
-                            ) : null}
-                          </>
-                        }
-                        checked={cited.includes(vo.id)}
-                        onChange={() => toggleCite(vo.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
+                        ) : null}
+                      </>
+                    }
+                    checked={cited.includes(vo.id)}
+                    onChange={() => toggleCite(vo.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </FormDialogBody>
 
-          <DialogFooter>
-            <Button type="submit" disabled={!canSave}>
-              {grant.isPending ? tCommon('saving') : t('grantConfirm')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={grant.isPending}
-            >
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={grant.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={!canSave}>
+          {grant.isPending ? tCommon('saving') : t('grantConfirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 

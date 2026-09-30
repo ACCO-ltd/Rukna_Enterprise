@@ -6,9 +6,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import { ExternalLink } from 'lucide-react';
 import {
   Button,
-  Dialog,
-  DialogContent,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   LtrValue,
   Skeleton,
   StatusPill,
@@ -39,6 +40,9 @@ type DetailTab = 'details' | 'items' | 'pos';
  *
  * Attachments are absent for the same reason — no attachment model, and file serving is deferred
  * platform-wide.
+ *
+ * A read-only `FormDialog` (ADR-039), size `xl`: one record and its short tables. Close is the
+ * only footer action; "Open in Procurement" stays with the record's identity at the top.
  */
 export function RequirementDetailDialog({
   projectId,
@@ -50,27 +54,41 @@ export function RequirementDetailDialog({
   onClose: () => void;
 }) {
   const t = useTranslations('procurement.project.requirements');
+  const tCommon = useTranslations('common');
   const [tab, setTab] = React.useState<DetailTab>('details');
   const query = useProjectRequirement(projectId, requirementId);
 
+  const title = query.isPending
+    ? t('detailLoading')
+    : query.isError || !query.data
+      ? t('detailFailed')
+      : (query.data.title ?? query.data.description ?? t('untitled'));
+
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={title}
+      subtitle={query.isError ? t('detailFailedHint') : undefined}
+      size="xl"
+      initialFocus="dialog"
+      closeLabel={tCommon('close')}
+    >
+      <FormDialogBody>
         {query.isPending ? (
-          <>
-            <DialogTitle>{t('detailLoading')}</DialogTitle>
-            <Skeleton className="mt-4 h-64 w-full" />
-          </>
-        ) : query.isError || !query.data ? (
-          <>
-            <DialogTitle>{t('detailFailed')}</DialogTitle>
-            <p className="mt-2 text-body-sm text-muted-foreground">{t('detailFailedHint')}</p>
-          </>
-        ) : (
+          <Skeleton className="h-64 w-full" />
+        ) : query.isError || !query.data ? null : (
           <DetailBody data={query.data} tab={tab} onTab={setTab} />
         )}
-      </DialogContent>
-    </Dialog>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline">
+            {tCommon('close')}
+          </Button>
+        </FormDialogClose>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -88,20 +106,15 @@ function DetailBody({
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <DialogTitle className="text-h2 font-bold">
-            {data.title ?? data.description ?? t('untitled')}
-          </DialogTitle>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
-            <LtrValue className="font-mono">{data.mrNumber}</LtrValue>
-            <StatusPill tone={statusTone(data.approvalStatus, 'requirementApproval')}>
-              {t(`approval.${data.approvalStatus}`)}
-            </StatusPill>
-            <StatusPill tone={statusTone(data.fulfillmentStatus, 'requirementFulfilment')}>
-              {t(`fulfilment.${data.fulfillmentStatus}`)}
-            </StatusPill>
-          </p>
-        </div>
+        <p className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
+          <LtrValue className="font-mono">{data.mrNumber}</LtrValue>
+          <StatusPill tone={statusTone(data.approvalStatus, 'requirementApproval')}>
+            {t(`approval.${data.approvalStatus}`)}
+          </StatusPill>
+          <StatusPill tone={statusTone(data.fulfillmentStatus, 'requirementFulfilment')}>
+            {t(`fulfilment.${data.fulfillmentStatus}`)}
+          </StatusPill>
+        </p>
         <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
           <Link href={`/procurement/requests/${data.id}`}>
             {t('openInProcurement')}
@@ -123,7 +136,7 @@ function DetailBody({
         />
       </div>
 
-      <div className="mt-4 max-h-[60vh] overflow-y-auto">
+      <div className="mt-4">
         {tab === 'details' ? <DetailsTab data={data} /> : null}
         {tab === 'items' ? <ItemsTab data={data} /> : null}
         {tab === 'pos' ? <PurchaseOrdersTab data={data} /> : null}

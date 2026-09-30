@@ -8,10 +8,10 @@ import {
   Alert,
   Badge,
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   MoneyInput,
   Select,
@@ -146,6 +146,7 @@ interface AllocateFormValues {
   amount: string;
 }
 
+/** Allocate the receipt to an invoice — a `FormDialog` (ADR-039), size `md`. */
 function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose: () => void }) {
   const t = useTranslations('platform.receipts.allocations');
   const tCommon = useTranslations('common');
@@ -167,7 +168,7 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
     register,
     handleSubmit,
     setValue,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<AllocateFormValues>({
     defaultValues: { clientInvoiceId: '', amount: '' },
   });
@@ -190,131 +191,128 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
   };
 
   return (
-    <Dialog open onOpenChange={(next) => (!next && !allocate.isPending ? onClose() : undefined)}>
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (allocate.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (allocate.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('add')}</DialogTitle>
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={t('add')}
+      subtitle={t('dialogSubtitle')}
+      size="md"
+      dirty={isDirty}
+      busy={allocate.isPending}
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
+      }}
+    >
+      <FormDialogBody className="space-y-4">
+        {allocate.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
+        {!isLoading && options.length === 0 ? (
+          <Alert variant="info" messages={[t('noInvoices')]} />
+        ) : null}
 
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
+        <FormField
+          htmlFor="allocation-invoice"
+          label={t('invoice')}
+          error={errors.clientInvoiceId?.message}
         >
-          {allocate.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
-          {!isLoading && options.length === 0 ? (
-            <Alert variant="info" messages={[t('noInvoices')]} />
-          ) : null}
-
-          <FormField
-            htmlFor="allocation-invoice"
-            label={t('invoice')}
-            error={errors.clientInvoiceId?.message}
-          >
-            <Controller
-              control={control}
-              name="clientInvoiceId"
-              rules={{ required: t('invoiceRequired') }}
-              render={({ field }) => (
-                <Select
-                  id="allocation-invoice"
-                  disabled={isLoading || options.length === 0}
-                  value={field.value}
-                  onChange={field.onChange}
-                >
-                  <option value="">
-                    {isLoading ? tCommon('loading') : t('invoicePlaceholder')}
-                  </option>
-                  {options.map(({ invoice, outstandingMinor }) => (
-                    <option key={invoice.id} value={invoice.id}>
-                      {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
-                      {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-          </FormField>
-
-          <FormField htmlFor="allocation-amount" label={t('amount')} error={errors.amount?.message}>
-            <Controller
-              name="amount"
-              control={control}
-              rules={{
-                validate: (v) => {
-                  const problem = allocationProblem(v, remainingMinor, selected?.outstandingMinor);
-                  return problem === null || t(problem);
-                },
-              }}
-              render={({ field }) => (
-                <MoneyInput
-                  id="allocation-amount"
-                  aria-describedby="allocation-remaining"
-                  aria-invalid={Boolean(errors.amount)}
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  name={field.name}
-                />
-              )}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p id="allocation-remaining" className="text-xs text-muted-foreground">
-                <bdi>
-                  {t('remaining', {
-                    amount:
-                      formatMoney(fromMinorUnits(remainingMinor), receipt.currencyCode, locale) ?? '',
-                  })}
-                </bdi>
-                {selected ? (
-                  <>
-                    {' · '}
-                    <bdi>
-                      {t('outstanding', {
-                        amount:
-                          formatMoney(
-                            fromMinorUnits(selected.outstandingMinor),
-                            receipt.currencyCode,
-                            locale,
-                          ) ?? '',
-                      })}
-                    </bdi>
-                  </>
-                ) : null}
-              </p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!selected}
-                onClick={() => {
-                  setValue('amount', fromMinorUnits(capMinor), { shouldValidate: true });
-                }}
+          <Controller
+            control={control}
+            name="clientInvoiceId"
+            rules={{ required: t('invoiceRequired') }}
+            render={({ field }) => (
+              <Select
+                id="allocation-invoice"
+                disabled={isLoading || options.length === 0}
+                value={field.value}
+                onChange={field.onChange}
               >
-                {t('allocateAll')}
-              </Button>
-            </div>
-          </FormField>
+                <option value="">
+                  {isLoading ? tCommon('loading') : t('invoicePlaceholder')}
+                </option>
+                {options.map(({ invoice, outstandingMinor }) => (
+                  <option key={invoice.id} value={invoice.id}>
+                    {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
+                    {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          />
+        </FormField>
 
-          <DialogFooter>
-            <Button type="submit" disabled={allocate.isPending || options.length === 0}>
-              {allocate.isPending ? tCommon('loading') : t('save')}
+        <FormField htmlFor="allocation-amount" label={t('amount')} error={errors.amount?.message}>
+          <Controller
+            name="amount"
+            control={control}
+            rules={{
+              validate: (v) => {
+                const problem = allocationProblem(v, remainingMinor, selected?.outstandingMinor);
+                return problem === null || t(problem);
+              },
+            }}
+            render={({ field }) => (
+              <MoneyInput
+                id="allocation-amount"
+                aria-describedby="allocation-remaining"
+                aria-invalid={Boolean(errors.amount)}
+                value={field.value}
+                onValueChange={field.onChange}
+                onBlur={field.onBlur}
+                ref={field.ref}
+                name={field.name}
+              />
+            )}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p id="allocation-remaining" className="text-xs text-muted-foreground">
+              <bdi>
+                {t('remaining', {
+                  amount:
+                    formatMoney(fromMinorUnits(remainingMinor), receipt.currencyCode, locale) ?? '',
+                })}
+              </bdi>
+              {selected ? (
+                <>
+                  {' · '}
+                  <bdi>
+                    {t('outstanding', {
+                      amount:
+                        formatMoney(
+                          fromMinorUnits(selected.outstandingMinor),
+                          receipt.currencyCode,
+                          locale,
+                        ) ?? '',
+                    })}
+                  </bdi>
+                </>
+              ) : null}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={!selected}
+              onClick={() => {
+                setValue('amount', fromMinorUnits(capMinor), { shouldValidate: true });
+              }}
+            >
+              {t('allocateAll')}
             </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={allocate.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </FormField>
+
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={allocate.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={allocate.isPending || options.length === 0}>
+          {allocate.isPending ? tCommon('loading') : t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 

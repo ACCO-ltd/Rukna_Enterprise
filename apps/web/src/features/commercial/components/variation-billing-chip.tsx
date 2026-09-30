@@ -34,7 +34,7 @@ export type VariationBillingState =
  *
  * Billing is a second axis beside the VO's status pill, so it renders as quiet dot + text; the tone
  * comes from the status registry (ADR-034). Takes only the VO's `status`, so both the list row
- * (`VariationOrderListItem`) and the detail drawer (`VariationOrderResponse`) can render the same
+ * (`VariationOrderListItem`) and the detail dialog (`VariationOrderResponse`) can render the same
  * chip from one source of truth.
  */
 export function VariationBillingChip({

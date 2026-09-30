@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/api-client';
 import { useSupersede } from '../hooks/use-ipc';
 import type { Ipc } from '../types';
 
-interface IpcSupersessionDrawerProps {
+interface IpcSupersessionDialogProps {
   open: boolean;
   onClose: () => void;
   applicationId: string;
@@ -19,14 +19,14 @@ interface IpcSupersessionDrawerProps {
   onSuccess?: () => void;
 }
 
-export function IpcSupersessionDrawer({
+export function IpcSupersessionDialog({
   open,
   onClose,
   applicationId,
   newCert,
   effectiveCert,
   onSuccess,
-}: IpcSupersessionDrawerProps) {
+}: IpcSupersessionDialogProps) {
   const t = useTranslations('platform.ipc.supersession');
   const supersede = useSupersede(applicationId);
 

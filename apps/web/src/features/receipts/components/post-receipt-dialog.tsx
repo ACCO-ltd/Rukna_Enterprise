@@ -5,10 +5,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   MoneyInput,
   Select,
@@ -38,6 +38,8 @@ const newRow = (): AllocationRow => ({ key: `row-${rowSeq++}`, clientInvoiceId: 
  * received the cash is chosen explicitly (its GL code is resolved from the chart); the AR and
  * unapplied-cash accounts are resolved server-side by role. Anything not allocated here is left
  * in Unapplied and can be allocated later from the receipt.
+ *
+ * A `FormDialog` (ADR-039), size `lg`: the bank account and a short list of allocations.
  */
 export function PostReceiptDialog({
   receipt,
@@ -96,121 +98,120 @@ export function PostReceiptDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(next) => (!next && !post.isPending ? onClose() : undefined)}>
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (post.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (post.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('title')}</DialogTitle>
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={t('title')}
+      subtitle={t('intro')}
+      size="lg"
+      dirty={bankAccountId !== '' || rows.length > 0}
+      busy={post.isPending}
+    >
+      <FormDialogBody className="space-y-4">
+        {post.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
 
-        <div className="mt-4 space-y-4">
-          <Alert variant="info" messages={[t('intro')]} />
-          {post.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
+        <FormField htmlFor="post-bank" label={t('bankLabel')}>
+          {receiptBanks.length === 0 && !bankAccounts.isPending ? (
+            <Alert variant="warning" messages={[t('noBanks')]} />
+          ) : (
+            <Select
+              id="post-bank"
+              value={bankAccountId}
+              onChange={(value) => setBankAccountId(value)}
+            >
+              <option value="">{t('bankPlaceholder')}</option>
+              {receiptBanks.map((bank) => (
+                <option key={bank.id} value={bank.id}>
+                  {bankAccountLabel(bank)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
 
-          <FormField htmlFor="post-bank" label={t('bankLabel')}>
-            {receiptBanks.length === 0 && !bankAccounts.isPending ? (
-              <Alert variant="warning" messages={[t('noBanks')]} />
-            ) : (
-              <Select
-                id="post-bank"
-                value={bankAccountId}
-                onChange={(value) => setBankAccountId(value)}
-              >
-                <option value="">{t('bankPlaceholder')}</option>
-                {receiptBanks.map((bank) => (
-                  <option key={bank.id} value={bank.id}>
-                    {bankAccountLabel(bank)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </FormField>
-
-          <div className="space-y-3 rounded-control border border-border bg-surface p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-foreground">{t('allocateNow')}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={invoiceOptions.length === 0}
-                onClick={() => setRows((prev) => [...prev, newRow()])}
-              >
-                {t('addInvoice')}
-              </Button>
-            </div>
-
-            {rows.map((row) => (
-              <div key={row.key} className="flex flex-wrap items-end gap-2">
-                <FormField htmlFor={`inv-${row.key}`} label={t('invoice')} className="min-w-40 flex-1">
-                  <Select
-                    id={`inv-${row.key}`}
-                    value={row.clientInvoiceId}
-                    onChange={(value) =>
-                      setRows((prev) =>
-                        prev.map((r) =>
-                          r.key === row.key ? { ...r, clientInvoiceId: value } : r,
-                        ),
-                      )
-                    }
-                  >
-                    <option value="">{t('invoice')}</option>
-                    {invoiceOptions.map(({ invoice, outstandingMinor }) => (
-                      <option key={invoice.id} value={invoice.id}>
-                        {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
-                        {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
-                      </option>
-                    ))}
-                  </Select>
-                </FormField>
-                <FormField htmlFor={`amt-${row.key}`} label={t('amount')} className="w-36">
-                  <MoneyInput
-                    id={`amt-${row.key}`}
-                    value={row.amount}
-                    onValueChange={(v) =>
-                      setRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, amount: v } : r)))
-                    }
-                  />
-                </FormField>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
-                >
-                  {t('remove')}
-                </Button>
-              </div>
-            ))}
-
-            <p className="text-xs text-muted-foreground">
-              {overAllocated ? (
-                <span className="text-danger">{t('overAllocated')}</span>
-              ) : (
-                <bdi>
-                  {t('unappliedNote', {
-                    amount:
-                      formatMoney(fromMinorUnits(unappliedMinor), receipt.currencyCode, locale) ?? '',
-                  })}
-                </bdi>
-              )}
-            </p>
+        <div className="space-y-3 rounded-control border border-border bg-surface p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">{t('allocateNow')}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={invoiceOptions.length === 0}
+              onClick={() => setRows((prev) => [...prev, newRow()])}
+            >
+              {t('addInvoice')}
+            </Button>
           </div>
 
-          <DialogFooter>
-            <Button type="button" onClick={submit} disabled={!canPost}>
-              {post.isPending ? tCommon('loading') : t('post')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={post.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
+          {rows.map((row) => (
+            <div key={row.key} className="flex flex-wrap items-end gap-2">
+              <FormField htmlFor={`inv-${row.key}`} label={t('invoice')} className="min-w-40 flex-1">
+                <Select
+                  id={`inv-${row.key}`}
+                  value={row.clientInvoiceId}
+                  onChange={(value) =>
+                    setRows((prev) =>
+                      prev.map((r) =>
+                        r.key === row.key ? { ...r, clientInvoiceId: value } : r,
+                      ),
+                    )
+                  }
+                >
+                  <option value="">{t('invoice')}</option>
+                  {invoiceOptions.map(({ invoice, outstandingMinor }) => (
+                    <option key={invoice.id} value={invoice.id}>
+                      {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
+                      {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField htmlFor={`amt-${row.key}`} label={t('amount')} className="w-36">
+                <MoneyInput
+                  id={`amt-${row.key}`}
+                  value={row.amount}
+                  onValueChange={(v) =>
+                    setRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, amount: v } : r)))
+                  }
+                />
+              </FormField>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
+              >
+                {t('remove')}
+              </Button>
+            </div>
+          ))}
+
+          <p className="text-xs text-muted-foreground">
+            {overAllocated ? (
+              <span className="text-danger">{t('overAllocated')}</span>
+            ) : (
+              <bdi>
+                {t('unappliedNote', {
+                  amount:
+                    formatMoney(fromMinorUnits(unappliedMinor), receipt.currencyCode, locale) ?? '',
+                })}
+              </bdi>
+            )}
+          </p>
         </div>
-      </DialogContent>
-    </Dialog>
+
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={post.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="button" onClick={submit} disabled={!canPost}>
+          {post.isPending ? tCommon('loading') : t('post')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

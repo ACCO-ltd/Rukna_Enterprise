@@ -48,7 +48,7 @@ import {
 import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
 import { ClassificationChips } from './classification-chips';
-import { PoAmendSheet } from './po-amend-sheet';
+import { PoAmendDialog } from './po-amend-dialog';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 export function PoDetail({ id }: { id: string }) {
@@ -216,9 +216,9 @@ export function PoDetail({ id }: { id: string }) {
         </details>
       ) : null}
 
-      {/* ── Amend sheet ───────────────────────────────────────────────────── */}
+      {/* ── Amend dialog ──────────────────────────────────────────────────── */}
       {amending ? (
-        <PoAmendSheet order={order} source={active} onClose={() => setAmending(false)} />
+        <PoAmendDialog order={order} source={active} onClose={() => setAmending(false)} />
       ) : null}
 
       {/* ── Cancel confirm ────────────────────────────────────────────────── */}

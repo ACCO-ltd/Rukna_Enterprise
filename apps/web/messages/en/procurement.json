@@ -868,7 +868,8 @@
     "pendingPoRevisionBody": "The exception requires a purchase order revision. Approve the revised PO then re-run matching.",
     "pendingReceiptCorrectionTitle": "Receipt correction required",
     "pendingReceiptCorrectionBody": "The exception requires a correction to the goods receipt. Correct the receipt then re-run matching.",
-    "resolvedNotes": "Notes: {notes}"
+    "resolvedNotes": "Notes: {notes}",
+    "resolveExceptionSubtitle": "The reason you choose decides what happens to this bill."
   },
   "commitments": {
     "title": "Commitment Ledger",

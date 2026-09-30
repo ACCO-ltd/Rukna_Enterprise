@@ -289,10 +289,10 @@ describe('BillMatchSummary — exception (D6, Review differences)', () => {
 
     renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
 
-    // Open the resolve drawer.
+    // Open the resolve dialog.
     await user.click(screen.getByRole('button', { name: 'Resolve exception' }));
 
-    // Drawer is open; the submit button is the last "Resolve exception" button.
+    // Dialog is open; the submit button is the last "Resolve exception" button.
     const submitBtn = screen.getAllByRole('button', { name: 'Resolve exception' }).at(-1)!;
 
     // Submit without selecting a reason — error shown, mutate not called.

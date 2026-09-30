@@ -6,12 +6,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   Textarea,
@@ -71,47 +69,51 @@ export function InvoiceEditDraftDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="md">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
-        <div className="mt-4 space-y-5">
-          {mutation.isError ? (
-            <Alert variant="error" messages={[mutation.error.message || t('failed')]} />
-          ) : null}
-          <FormField htmlFor="ed-due" label={t('dueDate')}>
-            <DatePicker id="ed-due" value={due} onChange={setDue} />
-          </FormField>
-          <FormField htmlFor="ed-terms" label={t('paymentTerms')} hint={t('paymentTermsHint')}>
-            <Input
-              id="ed-terms"
-              value={terms}
-              onChange={(event) => setTerms(event.target.value)}
-              maxLength={100}
-              disabled={mutation.isPending}
-            />
-          </FormField>
-          <FormField htmlFor="ed-notes" label={t('notes')}>
-            <Textarea
-              id="ed-notes"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              rows={3}
-              disabled={mutation.isPending}
-            />
-          </FormField>
-        </div>
-        <DialogFooter>
-          <Button onClick={save} disabled={mutation.isPending}>
-            {mutation.isPending ? t('saving') : t('save')}
-          </Button>
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
+    <FormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t('title')}
+      subtitle={t('description')}
+      size="md"
+      dirty={due !== initialDue || terms !== '' || notes !== ''}
+      busy={mutation.isPending}
+    >
+      <FormDialogBody>
+        {mutation.isError ? (
+          <Alert variant="error" messages={[mutation.error.message || t('failed')]} />
+        ) : null}
+        <FormField htmlFor="ed-due" label={t('dueDate')}>
+          <DatePicker id="ed-due" value={due} onChange={setDue} />
+        </FormField>
+        <FormField htmlFor="ed-terms" label={t('paymentTerms')} hint={t('paymentTermsHint')}>
+          <Input
+            id="ed-terms"
+            value={terms}
+            onChange={(event) => setTerms(event.target.value)}
+            maxLength={100}
+            disabled={mutation.isPending}
+          />
+        </FormField>
+        <FormField htmlFor="ed-notes" label={t('notes')}>
+          <Textarea
+            id="ed-notes"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={3}
+            disabled={mutation.isPending}
+          />
+        </FormField>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={mutation.isPending}>
             {t('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button type="button" onClick={save} disabled={mutation.isPending}>
+          {mutation.isPending ? t('saving') : t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

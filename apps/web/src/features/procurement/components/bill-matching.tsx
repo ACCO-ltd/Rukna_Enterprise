@@ -9,7 +9,7 @@
  *  - **Healthy** (MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION) → quiet
  *    "Matched · ready" strip with PO applicable / Accepted receipts / Bill total.
  *  - **Exception** (EXCEPTION, no resolutionAction yet) → warning banner + "Review
- *    differences" disclosure + "Resolve exception" structured drawer.
+ *    differences" disclosure + "Resolve exception" structured dialog.
  *  - **Pending PO revision / Receipt correction** (EXCEPTION with resolutionAction set)
  *    → informational banner explaining what to do + re-run button.
  *  - **Disputed** (DISPUTED) → error banner + re-run button for after the supplier
@@ -26,7 +26,13 @@ import {
   FormField,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Select,
   Table,
   TableBody,
@@ -382,36 +388,36 @@ function RerunMatchButton({ billId }: { billId: string }) {
 
       {confirming ? (
         <Dialog open onOpenChange={(next) => (next ? undefined : setConfirming(false))}>
-          <DialogContent className="p-6 sm:max-w-md">
-            <DialogTitle className="text-lg font-semibold text-foreground">
-              {t('rerunMatchTitle')}
-            </DialogTitle>
+          <DialogContent size="sm">
+            <DialogTitle>{t('rerunMatchTitle')}</DialogTitle>
+            <DialogDescription>{t('rerunMatchBody')}</DialogDescription>
 
-            <div className="mt-4 space-y-4">
-              <p className="text-sm text-muted-foreground">{t('rerunMatchBody')}</p>
-
-              {rerun.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
-              <div className="flex flex-wrap justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setConfirming(false)}
-                  disabled={rerun.isPending}
-                >
-                  {tc('cancel')}
-                </Button>
-                <Button
-                  type="button"
-                  disabled={rerun.isPending}
-                  onClick={() =>
-                    rerun.mutate(billId, { onSuccess: () => setConfirming(false) })
-                  }
-                >
-                  {t('rerunMatch')}
-                </Button>
+            {rerun.isError ? (
+              <div className="mt-4">
+                <Alert variant="error" messages={[tc('loadFailed')]} />
               </div>
-            </div>
+            ) : null}
+
+            {/* DialogFooter reverses on wide screens: the primary goes first in source. */}
+            <DialogFooter>
+              <Button
+                type="button"
+                disabled={rerun.isPending}
+                onClick={() =>
+                  rerun.mutate(billId, { onSuccess: () => setConfirming(false) })
+                }
+              >
+                {t('rerunMatch')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirming(false)}
+                disabled={rerun.isPending}
+              >
+                {tc('cancel')}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       ) : null}
@@ -563,78 +569,75 @@ export function ResolveExceptionDialog({
     );
   }
 
+  const dirty = reason !== '' || notes !== '';
+
   return (
-    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <DialogContent className="p-6 sm:max-w-lg">
-        <DialogTitle className="text-lg font-semibold text-foreground">
-          {t('resolveExceptionTitle')}
-        </DialogTitle>
-
-        <div className="mt-5 space-y-4">
-          <FormField
-            htmlFor="resolve-reason"
-            label={t('reasonLabel')}
-            error={reasonError}
+    <FormDialog
+      open
+      onOpenChange={(next) => (next ? undefined : onClose())}
+      title={t('resolveExceptionTitle')}
+      subtitle={t('resolveExceptionSubtitle')}
+      size="md"
+      dirty={dirty}
+      busy={resolve.isPending}
+    >
+      <FormDialogBody className="space-y-4">
+        <FormField
+          htmlFor="resolve-reason"
+          label={t('reasonLabel')}
+          error={reasonError}
+        >
+          <Select
+            id="resolve-reason"
+            value={reason}
+            onChange={(v) => setReason(v as MatchExceptionReason)}
           >
-            <Select
-              id="resolve-reason"
-              value={reason}
-              onChange={(v) => setReason(v as MatchExceptionReason)}
-            >
-              <option value="">—</option>
-              {REASONS.map((r) => (
-                <option key={r} value={r}>
-                  {t(`reason.${r}` as Parameters<typeof t>[0])}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+            <option value="">—</option>
+            {REASONS.map((r) => (
+              <option key={r} value={r}>
+                {t(`reason.${r}` as Parameters<typeof t>[0])}
+              </option>
+            ))}
+          </Select>
+        </FormField>
 
-          {derivedAction ? (
-            <Alert
-              variant={derivedAction === 'DISPUTE' ? 'error' : 'info'}
-              messages={[t(`actionConsequence.${derivedAction}` as Parameters<typeof t>[0])]}
-            />
-          ) : null}
+        {derivedAction ? (
+          <Alert
+            variant={derivedAction === 'DISPUTE' ? 'error' : 'info'}
+            messages={[t(`actionConsequence.${derivedAction}` as Parameters<typeof t>[0])]}
+          />
+        ) : null}
 
-          {isApprove ? (
-            <p className="text-xs text-muted-foreground">{t('cfoRequired')}</p>
-          ) : null}
+        {isApprove ? (
+          <p className="text-xs text-muted-foreground">{t('cfoRequired')}</p>
+        ) : null}
 
-          <FormField
-            htmlFor="resolve-notes"
-            label={`${t('resolveNotesLabel')}${needsNotes ? '' : ` (${tc('optional')})`}`}
-            error={notesError}
-          >
-            <Textarea
-              id="resolve-notes"
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </FormField>
+        <FormField
+          htmlFor="resolve-notes"
+          label={`${t('resolveNotesLabel')}${needsNotes ? '' : ` (${tc('optional')})`}`}
+          error={notesError}
+        >
+          <Textarea
+            id="resolve-notes"
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </FormField>
 
-          {resolve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+        {resolve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+      </FormDialogBody>
 
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={resolve.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button
-              type="button"
-              disabled={resolve.isPending}
-              onClick={handleSubmit}
-            >
-              {t('resolveException')}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={resolve.isPending}>
+            {tc('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="button" disabled={resolve.isPending} onClick={handleSubmit}>
+          {t('resolveException')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

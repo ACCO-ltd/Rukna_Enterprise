@@ -2682,7 +2682,8 @@
       "quantityRequired": "Enter the cumulative quantity claimed",
       "quantityInvalid": "Enter a valid quantity",
       "save": "Claim line",
-      "failed": "Could not claim the line."
+      "failed": "Could not claim the line.",
+      "dialogSubtitle": "Pick a BOQ line and enter the total claimed on it to date."
     },
     "deductions": {
       "heading": "Deductions",
@@ -2709,7 +2710,8 @@
       "basisRequired": "Enter the basis amount",
       "amountRequired": "Enter the deduction amount",
       "save": "Add deduction",
-      "failed": "Could not add the deduction."
+      "failed": "Could not add the deduction.",
+      "dialogSubtitle": "Deducted from this application's period total."
     }
   },
   "receipts": {
@@ -2802,7 +2804,8 @@
       "reverseFailed": "Could not reverse the allocation.",
       "reversed": "Reversed",
       "save": "Allocate",
-      "failed": "Could not allocate the receipt."
+      "failed": "Could not allocate the receipt.",
+      "dialogSubtitle": "Apply part of this receipt to one of the client's posted invoices."
     },
     "post": {
       "action": "Post to ledger",
