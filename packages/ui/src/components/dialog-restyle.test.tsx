@@ -156,3 +156,36 @@ describe('Disclosure', () => {
     expect(screen.getByText('Inside')).toBeVisible();
   });
 });
+
+describe('FormDialog restyle — content that arrives later', () => {
+  it("re-measures when the body's content changes without a scroll", async () => {
+    function Late() {
+      const [more, setMore] = React.useState(false);
+      return (
+        <FormDialog open onOpenChange={() => {}} title="Late">
+          <FormDialogBody data-testid="late-body">
+            <button type="button" onClick={() => setMore(true)}>
+              Load
+            </button>
+            {more ? <p>Arrived</p> : null}
+          </FormDialogBody>
+          <FormDialogFooter data-testid="late-footer">
+            <span />
+          </FormDialogFooter>
+        </FormDialog>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Late />);
+    const body = screen.getByTestId('late-body');
+    expect(screen.getByTestId('late-footer').className).toContain('border-transparent');
+
+    // The body is a fixed height (a phone): it does not resize, its content just grows.
+    setGeometry(body, { top: 0, height: 900, client: 400 });
+    await user.click(screen.getByRole('button', { name: 'Load' }));
+
+    await screen.findByText('Arrived');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByTestId('late-footer').className).toContain('border-border');
+  });
+});

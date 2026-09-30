@@ -102,7 +102,10 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
     effectiveFrom: useId(),
   };
 
-  const problems = accountDraftProblems(draft);
+  // Ticked "sub-account" is a statement of intent: submitting without a parent would quietly
+  // create a top-level account instead.
+  const missingParent = isSubAccount && !draft.parentAccountCode;
+  const problems = [...accountDraftProblems(draft), ...(missingParent ? ['parent' as const] : [])];
   const serverError = create.error instanceof ApiError ? create.error.message : null;
 
   // Any active account can be a parent; listed by code, the order a chart is read in.
@@ -176,7 +179,7 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
       setAdvancedOpen(true);
     }
     const body = toCreateAccountBody(draft);
-    if (!body) return;
+    if (!body || missingParent) return;
 
     create.mutate(body, { onSuccess: onDone });
   }
@@ -185,6 +188,8 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
     setDraft(initialDraft);
     setIsSubAccount(false);
     setShowErrors(false);
+    setAdvancedOpen(false);
+    create.reset();
   }
 
   const dirty = isSubAccount || JSON.stringify(draft) !== JSON.stringify(initialDraft);

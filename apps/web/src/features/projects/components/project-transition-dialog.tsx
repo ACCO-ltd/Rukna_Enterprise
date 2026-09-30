@@ -75,8 +75,10 @@ export function ProjectTransitionDialog({
   const conditions = readiness.data?.conditions.filter((condition) => !condition.satisfied) ?? [];
   const blockers = conditions.filter((condition) => !canWaive(condition));
   const waiverConditions = conditions.filter((condition) => canWaive(condition));
+  // Once the request is with approvers there is nothing left to discard: closing just waits.
   const dirty =
-    date !== '' || note !== '' || Object.values(waivers).some((reason) => reason !== '');
+    !gate.approvalInstanceId &&
+    (date !== '' || note !== '' || Object.values(waivers).some((reason) => reason !== ''));
 
   async function submit() {
     if (inFlight.current || readiness.isPending || readiness.isError) return;

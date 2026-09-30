@@ -161,6 +161,11 @@ describe('suggestChildCode', () => {
     expect(suggestChildCode(MATERIALS, chart)).toBeNull();
   });
 
+  it('offers nothing for a code too long to survive a round trip through a number', () => {
+    const long = account({ id: 'long', code: '1000000000000000000000' });
+    expect(suggestChildCode(long, [long])).toBeNull();
+  });
+
   it('steps by one under a parent ending in a single zero, and offers nothing for a code with none', () => {
     const odd = account({ id: 'odd', code: '51150' });
     expect(suggestChildCode(odd, [odd])).toBe('51151');

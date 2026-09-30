@@ -221,4 +221,15 @@ describe('CreateAccountForm', () => {
     expect(screen.getByLabelText('Account name')).toHaveValue('');
     expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
   });
+
+  it('will not quietly create a top-level account when "sub-account" is ticked with no parent', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    await user.click(screen.getByLabelText('Make this a sub-account'));
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(screen.getByText(/Choose the parent account, or untick/)).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
 });

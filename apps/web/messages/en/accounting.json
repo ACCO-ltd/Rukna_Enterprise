@@ -165,7 +165,8 @@
         "accountSubtype": "Choose an account subtype.",
         "normalBalance": "Choose a normal balance.",
         "effectiveFrom": "Choose the date this account takes effect.",
-        "subledgerType": "A control account has to say which subledger it controls."
+        "subledgerType": "A control account has to say which subledger it controls.",
+        "parent": "Choose the parent account, or untick “Make this a sub-account”."
       },
       "code": "Account code",
       "name": "Account name",

@@ -510,7 +510,8 @@ export function toCreateAccountBody(draft: AccountDraft): CreateAccountBody | nu
  */
 export function suggestChildCode(parent: Account, accounts: readonly Account[]): string | null {
   const code = parent.code;
-  if (!/^\d+$/.test(code)) return null;
+  // Past 15 digits a code no longer survives the round trip through a number.
+  if (!/^\d+$/.test(code) || code.length > 15) return null;
   const zeros = code.length - code.replace(/0+$/, '').length;
   if (zeros === 0) return null;
 

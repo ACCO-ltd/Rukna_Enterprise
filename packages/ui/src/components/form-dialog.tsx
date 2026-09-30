@@ -321,12 +321,19 @@ export function FormDialogBody({ className, onScroll, ...props }: React.HTMLAttr
   React.useLayoutEffect(() => {
     measure();
     const node = ref.current;
-    // Content that grows (a section revealed, a line added) changes whether anything is below.
-    if (!node || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    for (const child of Array.from(node.children)) observer.observe(child);
-    return () => observer.disconnect();
+    if (!node) return;
+    // Two ways the answer changes without a scroll: the body resizes (a laptop window), or its
+    // content changes (a section revealed, a line added, data arriving). On a phone the body is a
+    // fixed height, so only the second one happens there.
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    resize?.observe(node);
+    const mutation =
+      typeof MutationObserver === 'undefined' ? null : new MutationObserver(measure);
+    mutation?.observe(node, { childList: true, subtree: true });
+    return () => {
+      resize?.disconnect();
+      mutation?.disconnect();
+    };
   }, [measure]);
 
   return (
