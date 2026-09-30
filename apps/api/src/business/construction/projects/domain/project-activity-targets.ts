@@ -57,11 +57,13 @@ const RESOURCE_KIND: Readonly<Record<string, ActivityTargetKind>> = {
 };
 
 /** Invoice-issuing commercial commands record the invoice ids in `after`; name the invoice. */
-const INVOICE_COMMANDS = new Set([
-  'commercial.issuePackage',
-  'commercial.preparePackage',
-  'commercial.issueInvoice',
-]);
+const INVOICE_COMMANDS = new Set(['commercial.issuePackage', 'commercial.issueInvoice']);
+
+/**
+ * Preparing a stage's bill creates draft invoices, which have no number yet — so it is named by
+ * the payment stage (`after.installmentId` on the contract row; the installment row is the stage).
+ */
+const PREPARE_COMMAND = 'commercial.preparePackage';
 
 const RECEIPT_COMMAND = 'commercial.recordProjectPayment';
 
@@ -72,7 +74,7 @@ function stringField(value: unknown, key: string): string | null {
 }
 
 function firstInvoiceId(after: unknown): string | null {
-  const single = stringField(after, 'milestoneInvoiceId') ?? stringField(after, 'stageInvoiceId');
+  const single = stringField(after, 'milestoneInvoiceId');
   if (single) return single;
   if (!after || typeof after !== 'object' || Array.isArray(after)) return null;
   const ids = (after as Record<string, unknown>)['invoiceIds'];
@@ -91,6 +93,12 @@ export function targetRefOf(row: {
   after?: unknown;
 }): ActivityTargetRef | null {
   if (!row.sourceCommand) return null;
+  if (row.sourceCommand === PREPARE_COMMAND) {
+    const installmentId =
+      stringField(row.after, 'installmentId') ??
+      (row.resource === 'ContractPaymentInstallment' ? row.resourceId : null);
+    return installmentId ? { kind: 'installment', id: installmentId } : null;
+  }
   if (INVOICE_COMMANDS.has(row.sourceCommand)) {
     const invoiceId = firstInvoiceId(row.after);
     if (invoiceId) return { kind: 'invoice', id: invoiceId };

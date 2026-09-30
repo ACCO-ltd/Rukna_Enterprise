@@ -420,7 +420,7 @@ GET /projects/:id/activity?cursor=<nextCursor>&limit=25
 - `target` (additive, 2026-09-30) names what the event was done to by its business reference —
   never an amount: contract number (contract, payment plan, retention terms), payment-stage /
   deliverable name, advance-term description, guarantee reference, variation reference, invoice
-  number (`commercial.issuePackage` / `preparePackage` / `issueInvoice`), receipt number
+  number (`commercial.issuePackage` / `issueInvoice`; `preparePackage` names the payment stage, its drafts have no number yet), receipt number
   (`commercial.recordProjectPayment`), document number (+ `rev. <code>` for a revision),
   programme baseline `v<n>`. `href` is the app route when one exists (Contract page, invoice page,
   document page). `null` for project rows, request-logged rows (their id is the project, so the

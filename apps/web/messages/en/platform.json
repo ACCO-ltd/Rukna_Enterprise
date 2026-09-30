@@ -445,7 +445,7 @@
           "recordProjectPayment": "recorded the payment",
           "markReadyToBill": "set ready to bill on the stage",
           "revokeReadyToBill": "withdrew ready to bill on the stage",
-          "preparePackage": "prepared the invoice",
+          "preparePackage": "prepared the bill for the stage",
           "issuePackage": "issued the invoice",
           "issueInvoice": "issued the invoice",
           "deleteDraftInvoice": "deleted a draft invoice on the contract"

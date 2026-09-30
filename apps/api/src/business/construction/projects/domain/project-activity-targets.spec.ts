@@ -42,10 +42,6 @@ describe('targetRefOf', () => {
     expect(
       targetRefOf(outbox('Contract', 'c-1', 'commercial.issuePackage', { milestoneInvoiceId: 'inv-1', voInvoiceIds: [] })),
     ).toEqual({ kind: 'invoice', id: 'inv-1' });
-    expect(targetRefOf(outbox('Contract', 'c-1', 'commercial.preparePackage', { stageInvoiceId: 'inv-2' }))).toEqual({
-      kind: 'invoice',
-      id: 'inv-2',
-    });
     expect(
       targetRefOf(outbox('Contract', 'c-1', 'commercial.issueInvoice', { invoiceIds: ['inv-3', 'inv-4'] })),
     ).toEqual({ kind: 'invoice', id: 'inv-3' });
@@ -54,6 +50,17 @@ describe('targetRefOf', () => {
       kind: 'contract',
       id: 'c-1',
     });
+  });
+
+  it('preparing a bill (draft invoices, no number yet) is named by the payment stage', () => {
+    expect(
+      targetRefOf(outbox('Contract', 'c-1', 'commercial.preparePackage', { installmentId: 'st-1', stageInvoiceId: 'inv-2' })),
+    ).toEqual({ kind: 'installment', id: 'st-1' });
+    expect(targetRefOf(outbox('ContractPaymentInstallment', 'st-1', 'commercial.preparePackage', {}))).toEqual({
+      kind: 'installment',
+      id: 'st-1',
+    });
+    expect(targetRefOf(outbox('Contract', 'c-1', 'commercial.preparePackage', {}))).toBeNull();
   });
 
   it('a project payment is named by its receipt; without one it names nothing', () => {
