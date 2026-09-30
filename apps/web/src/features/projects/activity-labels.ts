@@ -1,13 +1,19 @@
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import type { ActivityTimelineEntry } from '@erp/ui';
 import type { ProjectActivityEventResponse } from '@erp/types';
 
+import { formatDateTime } from '@/lib/format';
+
 /**
- * Display labels for project history events (`recentActivity` and `GET /projects/:id/activity`).
+ * Display text for project history events (`recentActivity` and `GET /projects/:id/activity`).
  *
- * The server sends a stable `command` (e.g. `contract.record-signed`, `boq.commit`) and the
- * `resourceType` it happened to. The catalog lives in `platform.projects.activity.events` as
- * nested keys, so `events.<command>` resolves directly. Anything the catalog does not know reads
- * as a resource-aware fallback ("Contract changed") — never a machine code.
+ * The server sends a stable `command` (e.g. `contract.record-signed`, `boq.commit`), the
+ * `resourceType` it happened to, and — when the event names one record — a `target` with that
+ * record's reference. The catalog in `platform.projects.activity.events` holds verb phrases that
+ * read as one sentence between the actor and the target, with or without the target:
+ * **Abdi Yusuf** executed the contract ACC-HDN-26-0005-C1 / **Abdi Yusuf** committed the BOQ.
+ * `events.<command>` resolves directly; anything the catalog does not know reads as a
+ * resource-aware fallback ("changed the contract") — never a machine code.
  */
 
 type ActivityEventLike = Pick<ProjectActivityEventResponse, 'action' | 'sourceCommand'> &
@@ -53,7 +59,7 @@ export function activityEventKey(event: ActivityEventLike): string | null {
   return CATALOG_COMMAND.test(command) ? `events.${command}` : null;
 }
 
-/** `(event) => label` in the reader's language. */
+/** `(event) => verb phrase` in the reader's language. */
 export function useActivityLabel(): (event: ActivityEventLike) => string {
   const t = useTranslations('platform.projects.activity');
   return (event) => {
@@ -62,4 +68,31 @@ export function useActivityLabel(): (event: ActivityEventLike) => string {
     if (key && t.has(key as never)) return t(key as never);
     return t(`fallback.${activityFallback(event.resourceType)}`);
   };
+}
+
+type ActivityEntryEvent = ActivityEventLike &
+  Pick<ProjectActivityEventResponse, 'id' | 'occurredAt' | 'actor'> &
+  Partial<Pick<ProjectActivityEventResponse, 'target'>>;
+
+/**
+ * `(events) => ActivityTimelineEntry[]` — actor, verb phrase, the record it names (linked when
+ * the server gave a route), and the time as "22 Sep 2026, 11:40". The Overview rail and the
+ * project activity dialog both draw from this, so the two read as one list.
+ */
+export function useProjectActivityEntries(): (
+  events: readonly ActivityEntryEvent[],
+) => ActivityTimelineEntry[] {
+  const label = useActivityLabel();
+  const locale = useLocale() as 'en' | 'ar';
+  return (events) =>
+    events.map((event) => ({
+      id: event.id,
+      actor: event.actor.name,
+      action: label(event),
+      ...(event.target
+        ? { target: event.target.label, ...(event.target.href ? { href: event.target.href } : {}) }
+        : {}),
+      at: formatDateTime(event.occurredAt, locale) ?? '',
+      dateTime: event.occurredAt,
+    }));
 }

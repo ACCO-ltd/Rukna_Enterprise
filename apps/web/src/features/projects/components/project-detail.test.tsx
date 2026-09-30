@@ -458,6 +458,7 @@ describe('ProjectDetail — latest activity', () => {
     resourceId: 'p1',
     occurredAt: '2026-09-04T09:42:00.000Z',
     actor: { id: 'u1', name },
+    target: null as { label: string; href?: string } | null,
   });
 
   it('reads as a compact feed: who, what, when — three at most, no machine codes', async () => {
@@ -478,9 +479,9 @@ describe('ProjectDetail — latest activity', () => {
 
     const section = await railSection('Latest activity');
     expect(within(section).getAllByRole('listitem')).toHaveLength(3);
-    expect(within(section).getByText('Project created')).toBeInTheDocument();
+    expect(within(section).getByText(/created the project/)).toBeInTheDocument();
     expect(within(section).getByText('Ahmed Warsame')).toBeInTheDocument();
-    expect(within(section).queryByText('Project resumed')).not.toBeInTheDocument();
+    expect(within(section).queryByText(/resumed the project/)).not.toBeInTheDocument();
     expect(within(section).queryByText(/project\./)).not.toBeInTheDocument();
   });
 
@@ -499,9 +500,9 @@ describe('ProjectDetail — latest activity', () => {
     renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
 
     const section = await railSection('Latest activity');
-    expect(within(section).getByText('Signed contract recorded')).toBeInTheDocument();
-    expect(within(section).getByText('Start condition waived')).toBeInTheDocument();
-    expect(within(section).getByText('Contract changed')).toBeInTheDocument();
+    expect(within(section).getByText(/executed the contract/)).toBeInTheDocument();
+    expect(within(section).getByText(/waived a start condition/)).toBeInTheDocument();
+    expect(within(section).getByText(/changed the contract/)).toBeInTheDocument();
     expect(within(section).queryByText(/contract\./)).not.toBeInTheDocument();
   });
 
@@ -537,12 +538,12 @@ describe('ProjectDetail — latest activity', () => {
     await user.click(within(section).getByRole('button', { name: 'View all' }));
 
     const sheet = within(await screen.findByRole('dialog', { name: 'Project activity' }));
-    expect(await sheet.findByText('BOQ committed')).toBeInTheDocument();
-    expect(sheet.getByText('Team member added')).toBeInTheDocument();
+    expect(await sheet.findByText(/committed the BOQ/)).toBeInTheDocument();
+    expect(sheet.getByText(/added a team member/)).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenCalledWith('p1', undefined);
 
     await user.click(sheet.getByRole('button', { name: 'Load more' }));
-    expect(await sheet.findByText('Project created')).toBeInTheDocument();
+    expect(await sheet.findByText(/created the project/)).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenLastCalledWith('p1', 'cursor-1');
     expect(sheet.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
     expect(sheet.getByText('That is everything recorded so far.')).toBeInTheDocument();
