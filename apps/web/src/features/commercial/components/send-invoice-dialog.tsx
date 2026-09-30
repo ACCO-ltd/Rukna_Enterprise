@@ -190,7 +190,7 @@ export function SendInvoiceDialog({
             <p className="text-body-sm text-muted-foreground">{t('whatsappHint')}</p>
             {canOpenWhatsApp || opening ? (
               <Button type="button" variant="outline" onClick={openWhatsApp} disabled={opening}>
-                <MessageCircle size={16} aria-hidden="true" className="me-2" />
+                <MessageCircle size={16} aria-hidden="true" />
                 {opening ? t('opening') : t('openWhatsApp')}
               </Button>
             ) : (

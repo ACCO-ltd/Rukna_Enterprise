@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@erp/ui';
 
 import { sessionStore } from '@/features/auth/session/session-store';
+import { makeQueryClient } from '@/lib/query-client';
+import { QueryProvider } from '@/providers/query-provider';
 import { ToastProvider } from '@/providers/toast-provider';
 
 // Clear any session seeded via renderWithProviders after each test so permission
@@ -75,7 +77,13 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
 
 export function renderWithProviders(
   ui: ReactElement,
-  { messages, locale = 'en', permissions, withToast = false, ...options }: RenderWithProvidersOptions = {},
+  {
+    messages,
+    locale = 'en',
+    permissions,
+    withToast = false,
+    ...options
+  }: RenderWithProvidersOptions = {},
 ): RenderResult {
   if (permissions) {
     sessionStore.setSession({
@@ -94,34 +102,41 @@ export function renderWithProviders(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // With toasts on, the tree gets the app's own `QueryProvider`, so a mutation's `meta` feedback
+  // (toast, success dialog, row tint) runs exactly as it does in the app.
+  const createFeedbackClient = () => makeQueryClient({ retry: false });
 
   const resolved = messages ?? (MESSAGES[locale] as unknown as AbstractIntlMessages);
 
   function Wrapper({ children }: WrapperProps) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <NextIntlClientProvider
-          locale={locale}
-          messages={resolved}
-          // Surface a missing key as a test failure instead of silently rendering the
-          // dotted path, which is what let the bug above through.
-          onError={(error) => {
-            throw error;
-          }}
-        >
-          {/* Unconditional, unlike ToastProvider below: Radix's Tooltip.Provider is pure
+      <NextIntlClientProvider
+        locale={locale}
+        messages={resolved}
+        // Surface a missing key as a test failure instead of silently rendering the
+        // dotted path, which is what let the bug above through.
+        onError={(error) => {
+          throw error;
+        }}
+      >
+        {/* Unconditional, unlike ToastProvider below: Radix's Tooltip.Provider is pure
               context, no DOM node of its own, so it can never collide with an assertion the
               way the toast region's permanent role="status" can. layout.tsx mounts it the
               same way, unconditionally, for the same reason. */}
-          <TooltipProvider>
-            {/* Opt-in: a component that raises toasts (a mutation) needs the provider mounted
+        <TooltipProvider>
+          {/* Opt-in: a component that raises toasts (a mutation) needs the provider mounted
                 above it, as `layout.tsx`/`app-shell.tsx` mount it in the app. It is opt-in
                 because the toast region is a permanent `role="status"` element, which would
                 otherwise collide with the many tests that assert on a loading `role="status"`. */}
-            {withToast ? <ToastProvider>{children}</ToastProvider> : children}
-          </TooltipProvider>
-        </NextIntlClientProvider>
-      </QueryClientProvider>
+          {withToast ? (
+            <ToastProvider>
+              <QueryProvider createClient={createFeedbackClient}>{children}</QueryProvider>
+            </ToastProvider>
+          ) : (
+            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+          )}
+        </TooltipProvider>
+      </NextIntlClientProvider>
     );
   }
 

@@ -118,7 +118,7 @@ export function ClientsList() {
   const createAction = mayCreate ? (
     <Button asChild>
       <Link href="/clients/new">
-        <Plus className="me-2 h-4 w-4" aria-hidden="true" />
+        <Plus className="size-4" aria-hidden="true" />
         {t('newClient')}
       </Link>
     </Button>
