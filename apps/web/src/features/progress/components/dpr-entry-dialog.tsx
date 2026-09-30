@@ -444,6 +444,7 @@ function EntryForm({
         {formError ? <Alert variant="error" messages={[formError]} /> : null}
 
         <FormDialogSection
+          variant="plain"
           title={t('entry.workDone')}
           description={
             <>
@@ -530,7 +531,7 @@ function EntryForm({
           )}
         </FormDialogSection>
 
-        <FormDialogSection title={t('entry.labour')}>
+        <FormDialogSection title={t('entry.labour')} variant="plain">
           <DprLabourTable
             dprId={dpr.id}
             rows={dpr.labourRows ?? []}
@@ -564,7 +565,7 @@ function EntryForm({
           </div>
         </FormDialogSection>
 
-        <FormDialogSection title={t('entry.photos')}>
+        <FormDialogSection title={t('entry.photos')} variant="plain">
           <DprEvidence
             dprId={dpr.id}
             canUpload

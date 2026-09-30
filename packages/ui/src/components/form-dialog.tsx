@@ -70,6 +70,24 @@ const FIELD_SELECTOR = [
   '[contenteditable="true"]',
 ].join(', ');
 
+/**
+ * Where the body's scroll sits, reported by `FormDialogBody` so the pinned header and footer can
+ * show their dividing rule only while content is passing under them.
+ */
+interface FormDialogScroll {
+  /** Scrolled away from the top: the header draws its rule. */
+  scrolled: boolean;
+  /** More content below the fold: the footer draws its rule. */
+  moreBelow: boolean;
+}
+
+const AT_REST: FormDialogScroll = { scrolled: false, moreBelow: false };
+
+const FormDialogScrollContext = React.createContext<{
+  scroll: FormDialogScroll;
+  setScroll: (next: FormDialogScroll) => void;
+} | null>(null);
+
 export interface FormDialogProps {
   open: boolean;
   /** Called with `false` once a dismissal is allowed through the busy/dirty guard. */
@@ -78,6 +96,16 @@ export interface FormDialogProps {
   title: React.ReactNode;
   /** One line under the title, and the dialog's `aria-describedby`: "Measurement and pricing". */
   subtitle?: React.ReactNode;
+  /**
+   * A small glyph shown in a tinted tile beside the title — the record type at a glance ("a GL
+   * account", "a contact"). Decorative: the title still names the dialog.
+   */
+  icon?: React.ReactNode;
+  /**
+   * Shown under the title, inside the pinned header — a step indicator (`WizardRail`) for a form
+   * long enough to be walked in steps, so where the user is never scrolls out of view.
+   */
+  progress?: React.ReactNode;
   /** Width tier on `sm+`. Defaults to `md` (560px). */
   size?: FormDialogSize;
   /** Unsaved edits: a dismissal asks "Discard unsaved changes?" first. */
@@ -114,6 +142,8 @@ export function FormDialog({
   onOpenChange,
   title,
   subtitle,
+  icon,
+  progress,
   size = 'md',
   dirty = false,
   busy = false,
@@ -131,8 +161,16 @@ export function FormDialog({
     contentRef.current = node;
     setPortalContainer(node);
   }, []);
+  const [scroll, setScrollState] = React.useState<FormDialogScroll>(AT_REST);
+  // Measured on every scroll event and resize; only an actual change re-renders the dialog.
+  const setScroll = React.useCallback((next: FormDialogScroll) => {
+    setScrollState((prev) =>
+      prev.scrolled === next.scrolled && prev.moreBelow === next.moreBelow ? prev : next,
+    );
+  }, []);
   const dismiss = React.useCallback(() => onOpenChange(false), [onOpenChange]);
   const guard = useDialogDismissGuard(busy, dismiss, { dirty, open });
+  const scrollContext = React.useMemo(() => ({ scroll, setScroll }), [scroll, setScroll]);
 
   const returnFocus = useReturnFocus((event) => {
     // Take focus placement over from Radix, whose default is "first tabbable" — which, with the
@@ -206,32 +244,52 @@ export function FormDialog({
           onOpenAutoFocus={returnFocus.onOpenAutoFocus}
           onCloseAutoFocus={returnFocus.onCloseAutoFocus}
         >
-          <div className="flex shrink-0 items-start gap-3 border-b border-border px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pt-4">
-            <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className="text-h2 font-semibold text-foreground">
-                {title}
-              </DialogPrimitive.Title>
-              {subtitle ? (
-                <DialogPrimitive.Description className="mt-0.5 text-body-sm text-muted-foreground">
-                  {subtitle}
-                </DialogPrimitive.Description>
+          {/* No hairline at rest: the header and footer read as part of one calm surface. A rule
+          fades in only once content is actually passing under them (see FormDialogBody). */}
+          <div
+            className={cn(
+              'shrink-0 border-b px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] transition-colors sm:px-6 sm:pt-5',
+              scroll.scrolled ? 'border-border' : 'border-transparent',
+            )}
+          >
+            <div className="flex items-start gap-3">
+              {icon ? (
+                <span
+                  aria-hidden="true"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-panel bg-surface-selected text-brand-primary [&_svg]:size-5"
+                >
+                  {icon}
+                </span>
               ) : null}
+              <div className={cn('min-w-0 flex-1', icon ? 'pt-0.5' : null)}>
+                <DialogPrimitive.Title className="text-h2 font-semibold text-foreground">
+                  {title}
+                </DialogPrimitive.Title>
+                {subtitle ? (
+                  <DialogPrimitive.Description className="mt-0.5 text-body-sm text-muted-foreground">
+                    {subtitle}
+                  </DialogPrimitive.Description>
+                ) : null}
+              </div>
+              {/* Routed through onOpenChange like every other dismissal, so the guard covers it. */}
+              <DialogPrimitive.Close
+                aria-label={closeLabel}
+                disabled={busy}
+                className={cn(
+                  '-me-2 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors',
+                  'hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring',
+                  'disabled:pointer-events-none disabled:opacity-50',
+                )}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </DialogPrimitive.Close>
             </div>
-            {/* Routed through onOpenChange like every other dismissal, so the guard covers it. */}
-            <DialogPrimitive.Close
-              aria-label={closeLabel}
-              disabled={busy}
-              className={cn(
-                '-me-2 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors',
-                'hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring',
-                'disabled:pointer-events-none disabled:opacity-50',
-              )}
-            >
-              <X className="size-4" aria-hidden="true" />
-            </DialogPrimitive.Close>
+            {progress ? <div className="mt-4">{progress}</div> : null}
           </div>
 
-          <PortalContainerContext.Provider value={portalContainer}>{inner}</PortalContainerContext.Provider>
+          <FormDialogScrollContext.Provider value={scrollContext}>
+            <PortalContainerContext.Provider value={portalContainer}>{inner}</PortalContainerContext.Provider>
+          </FormDialogScrollContext.Provider>
 
           {open ? (
             <ConfirmDialog
@@ -254,10 +312,45 @@ export function FormDialog({
 }
 
 /** The scrolling region between the pinned header and footer. */
-export function FormDialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function FormDialogBody({ className, onScroll, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const setScroll = React.useContext(FormDialogScrollContext)?.setScroll;
+
+  const measure = React.useCallback(() => {
+    const node = ref.current;
+    if (!node || !setScroll) return;
+    const scrolled = node.scrollTop > 0;
+    // A pixel of slack: fractional layout can leave scrollTop a hair short of the bottom.
+    const moreBelow = node.scrollHeight - node.scrollTop - node.clientHeight > 1;
+    setScroll({ scrolled, moreBelow });
+  }, [setScroll]);
+
+  React.useLayoutEffect(() => {
+    measure();
+    const node = ref.current;
+    if (!node) return;
+    // Two ways the answer changes without a scroll: the body resizes (a laptop window), or its
+    // content changes (a section revealed, a line added, data arriving). On a phone the body is a
+    // fixed height, so only the second one happens there.
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    resize?.observe(node);
+    const mutation =
+      typeof MutationObserver === 'undefined' ? null : new MutationObserver(measure);
+    mutation?.observe(node, { childList: true, subtree: true });
+    return () => {
+      resize?.disconnect();
+      mutation?.disconnect();
+    };
+  }, [measure]);
+
   return (
     <div
+      ref={ref}
       data-form-dialog-body=""
+      onScroll={(event) => {
+        measure();
+        onScroll?.(event);
+      }}
       className={cn('min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6', className)}
       {...props}
     />
@@ -278,10 +371,12 @@ export interface FormDialogFooterProps extends React.HTMLAttributes<HTMLDivEleme
  * primary on top, within thumb reach.
  */
 export function FormDialogFooter({ className, start, children, ...props }: FormDialogFooterProps) {
+  const moreBelow = React.useContext(FormDialogScrollContext)?.scroll.moreBelow ?? false;
   return (
     <div
       className={cn(
-        'flex shrink-0 flex-col-reverse gap-3 border-t border-border bg-surface-elevated px-4 pt-4',
+        'flex shrink-0 flex-col-reverse gap-3 border-t bg-surface-elevated px-4 pt-4 transition-colors',
+        moreBelow ? 'border-border' : 'border-transparent',
         'pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:pb-4',
         className,
       )}
@@ -300,36 +395,49 @@ export function FormDialogFooter({ className, start, children, ...props }: FormD
 export const FormDialogClose = DialogPrimitive.Close;
 
 export interface FormDialogSectionProps extends Omit<React.HTMLAttributes<HTMLElement>, 'title'> {
-  title: React.ReactNode;
+  title?: React.ReactNode;
   description?: React.ReactNode;
+  /**
+   * `panel` (default): the fields sit on a soft grey panel under the heading, so a long form reads
+   * as a few labelled groups rather than one column of inputs. `plain`: no panel — for a group
+   * that is itself a table or a list with its own frame.
+   */
+  variant?: 'panel' | 'plain';
 }
 
 /**
- * A titled group of fields, for a long form. Sections after the first are divided by a hairline.
+ * A group of fields, optionally titled. Groups are separated by space, not rules: on the panel
+ * variant the grey ground is what tells one group from the next.
  */
 export function FormDialogSection({
   title,
   description,
+  variant = 'panel',
   className,
   children,
   ...props
 }: FormDialogSectionProps) {
   const headingId = React.useId();
   return (
-    <section
-      aria-labelledby={headingId}
-      className={cn('border-t border-border pt-6 first:border-t-0 first:pt-0', className)}
-      {...props}
-    >
-      <div className="mb-4">
-        <h3 id={headingId} className="text-h3 font-semibold text-foreground">
-          {title}
-        </h3>
-        {description ? (
-          <p className="mt-1 text-caption leading-5 text-muted-foreground">{description}</p>
-        ) : null}
+    <section aria-labelledby={title ? headingId : undefined} className={className} {...props}>
+      {title ? (
+        <div className="mb-3">
+          <h3 id={headingId} className="text-h3 font-semibold text-foreground">
+            {title}
+          </h3>
+          {description ? (
+            <p className="mt-1 text-caption leading-5 text-muted-foreground">{description}</p>
+          ) : null}
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          'space-y-4',
+          variant === 'panel' && 'rounded-panel border border-border/70 bg-surface-subtle p-4',
+        )}
+      >
+        {children}
       </div>
-      <div className="space-y-4">{children}</div>
     </section>
   );
 }
