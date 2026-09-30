@@ -19,7 +19,6 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
-  useToast,
 } from '@erp/ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { apportionUnits, type BoqTreeNodeResponse } from '@erp/types';
@@ -78,7 +77,6 @@ export function DeliveryPlanDialog({
   const t = useTranslations('progress');
   const tCommon = useTranslations('common');
   const tDiscard = useTranslations('common.discardChanges');
-  const { toast } = useToast();
 
   const workspace = useBoqWorkspace(projectId);
   const versionId = workspace.data?.approved?.id ?? workspace.data?.contractBaseline?.id ?? null;
@@ -211,8 +209,8 @@ export function DeliveryPlanDialog({
         })),
       },
       {
-        onSuccess: (res) => {
-          toast({ tone: 'success', title: t('deliveryPlan.saved', { count: res.packages.length }) });
+        // The success toast comes from the mutation's feedback meta.
+        onSuccess: () => {
           setRows(null);
           onOpenChange(false);
         },
@@ -318,8 +316,8 @@ export function DeliveryPlanDialog({
           </Button>
         </FormDialogClose>
         {suggestion && suggestion.packages.length > 0 ? (
-          <Button onClick={onSave} disabled={save.isPending || (weights.isPending && grouping.length > 0)}>
-            {save.isPending ? t('deliveryPlan.saving') : t('deliveryPlan.saveDraft')}
+          <Button onClick={onSave} disabled={weights.isPending && grouping.length > 0} loading={save.isPending} loadingText={t('deliveryPlan.saving')}>
+            {t('deliveryPlan.saveDraft')}
           </Button>
         ) : null}
       </FormDialogFooter>

@@ -148,8 +148,13 @@ export function ConfirmActionDialog({
         ) : null}
 
         <DialogFooter>
-          <Button onClick={submit} disabled={isPending} variant={destructive ? 'destructive' : 'default'}>
-            {isPending ? t('working') : confirmLabel}
+          <Button
+            onClick={submit}
+            loading={isPending}
+            loadingText={t('working')}
+            variant={destructive ? 'destructive' : 'default'}
+          >
+            {confirmLabel}
           </Button>
           <Button variant="outline" onClick={onDismiss} disabled={isPending}>
             {t('dismiss')}

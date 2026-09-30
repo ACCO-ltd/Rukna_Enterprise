@@ -512,7 +512,7 @@ function MilestonePackagesDialog({
               { onSuccess: onDismiss },
             )
           }
-          disabled={save.isPending}
+          loading={save.isPending}
         >
           {t('setupView.milestones.packagesSave')}
         </Button>

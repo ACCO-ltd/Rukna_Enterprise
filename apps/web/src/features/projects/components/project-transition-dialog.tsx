@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -21,7 +21,16 @@ import { useProjectReadiness } from '../hooks/use-project';
 import { projectKeys } from '../hooks/use-projects';
 import { runProjectCommand, type ProjectTransition } from '../api/projects-api';
 import type { ProjectCommand } from '../project-actions';
+import type { Project } from '../types';
 import { readinessCaller } from '../readiness-caller';
+
+/** The confirmation each forward step raises once it has happened (not when it is gated). */
+const TRANSITION_TOAST: Record<ProjectCommand, string> = {
+  start: 'platform.feedback.projectStarted',
+  'practical-completion': 'platform.feedback.projectPracticallyComplete',
+  closeout: 'platform.feedback.projectInCloseout',
+  close: 'platform.feedback.projectClosed',
+};
 
 export function ProjectTransitionDialog({
   projectId,
@@ -47,9 +56,18 @@ export function ProjectTransitionDialog({
   const [attempted, setAttempted] = useState(false);
   const submitted = useRef<ProjectTransition | null>(null);
   const inFlight = useRef(false);
-  const gate = useGatedCommand((transition: ProjectTransition) =>
-    runProjectCommand(projectId, transition),
-  );
+  // A mutation so the app-level feedback raises the toast on success; a gated attempt (409)
+  // rejects, so it confirms nothing until the re-drive actually transitions the project.
+  const transitionMutation = useMutation({
+    mutationFn: (transition: ProjectTransition) => runProjectCommand(projectId, transition),
+    meta: {
+      successToast: {
+        key: TRANSITION_TOAST[command],
+        values: (data) => ({ code: (data as Project).code }),
+      },
+    },
+  });
+  const gate = useGatedCommand(transitionMutation.mutateAsync);
   // Which open conditions this user may waive is the server's answer (`caller`), not a role-name
   // rule re-derived here; anything open and not waivable by them is a blocker.
   const waivable = new Set(readinessCaller(readiness.data).waivableConditions);
@@ -243,15 +261,11 @@ export function ProjectTransitionDialog({
           </Button>
           <Button
             onClick={() => void submit()}
-            disabled={
-              gate.pending || readiness.isPending || readiness.isError || blockers.length > 0
-            }
+            loading={gate.pending}
+            loadingText={actions('working')}
+            disabled={readiness.isPending || readiness.isError || blockers.length > 0}
           >
-            {gate.pending
-              ? actions('working')
-              : gate.approvalInstanceId
-                ? t('complete')
-                : actions(command)}
+            {gate.approvalInstanceId ? t('complete') : actions(command)}
           </Button>
         </DialogFooter>
       </DialogContent>

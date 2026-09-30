@@ -1,11 +1,6 @@
 'use client';
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryResult,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
   approveJournal,
@@ -45,12 +40,13 @@ import {
   submitJournal,
 } from '../api/accounting-api';
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
-import type { CreateAccountBody, UpdateAccountBody } from '../coa-setup';
+import type { CreateAccountBody, ImportChartResult, UpdateAccountBody } from '../coa-setup';
 import type { ProjectFinancialPositionResponse } from '@erp/types';
 
 import type { OpeningBalanceBody } from '../opening-balance';
 import type {
   Account,
+  AccountingPeriod,
   AccountLedger,
   BankAccount,
   BankAccountSignatory,
@@ -63,18 +59,26 @@ import type {
   CreateJournalPayload,
   FiscalYear,
   JournalEntry,
+  MigrationReport,
   PostingProfile,
   ProfitLoss,
   ReverseJournalPayload,
   TrialBalance,
 } from '../types';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+
+/** An ICU `select` value for a reference that may not be assigned yet (a draft has no number). */
+export function refOrNone(ref: string | null | undefined): string {
+  return ref ? ref : 'none';
+}
 
 export const accountingKeys = {
   all: ['accounting'] as const,
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
   bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
-  signatories: (bankAccountId: string) => [...accountingKeys.all, 'signatories', bankAccountId] as const,
+  signatories: (bankAccountId: string) =>
+    [...accountingKeys.all, 'signatories', bankAccountId] as const,
   fiscalYears: () => [...accountingKeys.all, 'fiscal-years'] as const,
   fiscalYear: (id: string) => [...accountingKeys.all, 'fiscal-year', id] as const,
   journals: () => [...accountingKeys.all, 'journals'] as const,
@@ -91,8 +95,7 @@ export const accountingKeys = {
     [...accountingKeys.all, 'balance-sheet', asOfDate, comparativeDate ?? 'none'] as const,
   ledger: (accountId: string, fromDate: string, toDate: string) =>
     [...accountingKeys.all, 'ledger', accountId, fromDate, toDate] as const,
-  monthlyPL: (fiscalYearId: string) =>
-    [...accountingKeys.all, 'monthly-pl', fiscalYearId] as const,
+  monthlyPL: (fiscalYearId: string) => [...accountingKeys.all, 'monthly-pl', fiscalYearId] as const,
   closeGate: (periodId: string) => [...accountingKeys.all, 'close-gate', periodId] as const,
 };
 
@@ -139,6 +142,12 @@ export function useCreateAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateAccountBody) => createAccount(payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.accountCreated',
+        values: (account) => ({ code: (account as Account).code }),
+      },
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
@@ -158,6 +167,12 @@ export function useUpdateAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateAccountBody }) => updateAccount(id, body),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.accountUpdated',
+        values: (account) => ({ code: (account as Account).code }),
+      },
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
@@ -178,6 +193,16 @@ export function useImportChartOfAccounts() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (accounts: CreateAccountBody[]) => importChartOfAccounts(accounts),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.chartImported',
+        values: (result) => {
+          const { created, updated } = result as ImportChartResult;
+          return { created, updated };
+        },
+      },
+      flashRow: false,
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
@@ -205,6 +230,12 @@ export function useCreateFiscalYear() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateFiscalYearPayload) => createFiscalYear(payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.fiscalYearCreated',
+        values: (year) => ({ name: (year as FiscalYear).name }),
+      },
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.fiscalYears() });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
@@ -224,6 +255,12 @@ export function useConfigureBankAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: ConfigureBankAccountBody) => configureBankAccount(payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.bankAccountConfigured',
+        values: (bank) => ({ name: (bank as BankAccount).accountName }),
+      },
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() });
       void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
@@ -242,6 +279,13 @@ export function useRunOpeningBalance() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: OpeningBalanceBody) => runOpeningBalance(payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.openingBalancePosted',
+        values: (report) => ({ ref: (report as MigrationReport).openingBalanceJournalNumber }),
+      },
+      flashRow: false,
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.all });
       void qc.invalidateQueries({ queryKey: ['procurement'] });
@@ -259,7 +303,9 @@ export function useRunReconciliation() {
   });
 }
 
-export function useSignatories(bankAccountId: string): UseQueryResult<BankAccountSignatory[], Error> {
+export function useSignatories(
+  bankAccountId: string,
+): UseQueryResult<BankAccountSignatory[], Error> {
   return useQuery({
     queryKey: accountingKeys.signatories(bankAccountId),
     queryFn: () => listSignatories(bankAccountId),
@@ -271,6 +317,7 @@ export function useAddSignatory(bankAccountId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) => addSignatory(bankAccountId, userId),
+    meta: { successToast: 'accounting.feedback.signatoryAdded' },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.signatories(bankAccountId) });
     },
@@ -281,6 +328,7 @@ export function useRemoveSignatory(bankAccountId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) => removeSignatory(bankAccountId, userId),
+    meta: { successToast: 'accounting.feedback.signatoryRemoved', flashRow: false },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.signatories(bankAccountId) });
     },
@@ -320,6 +368,12 @@ export function useCreateJournal() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateJournalPayload) => createJournal(payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.journalSaved',
+        values: (journal) => ({ ref: refOrNone((journal as JournalEntry).journalNumber) }),
+      },
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.journals() });
     },
@@ -352,6 +406,15 @@ export function useJournalAction(id: string) {
         case 'reverse':
           return reverseJournal(id, action.payload);
       }
+    },
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.journalAction',
+        values: (journal, action) => ({
+          action: (action as JournalActionRequest).type,
+          ref: refOrNone((journal as JournalEntry).journalNumber),
+        }),
+      },
     },
     onSuccess: (_result, action) => {
       void qc.invalidateQueries({ queryKey: accountingKeys.journal(id) });
@@ -509,5 +572,45 @@ export function usePeriodAction() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.all });
     },
+    meta: PERIOD_FEEDBACK,
   });
 }
+
+/** The period's name, when the transition answered with the period (rebuild and year-end do not). */
+function periodName(result: unknown): string {
+  return (result as Partial<AccountingPeriod> | null)?.name ?? '';
+}
+
+/** Which close a milestone was — the year's close words its dialog differently from a period's. */
+function closeKind(action: unknown): 'year' | 'period' {
+  return (action as PeriodActionRequest).type === 'close-year' ? 'year' : 'period';
+}
+
+/**
+ * Closing a period and closing the year are the milestones of the accounting calendar — they
+ * get the success dialog. Locking, reopening and rebuilding a snapshot get a toast.
+ */
+const PERIOD_FEEDBACK: MutationFeedbackMeta = {
+  successToast: {
+    key: 'accounting.feedback.periodAction',
+    values: (result, action) => ({
+      action: (action as PeriodActionRequest).type,
+      name: periodName(result),
+    }),
+  },
+  successDialog: {
+    when: (_result, action) => {
+      const type = (action as PeriodActionRequest).type;
+      return type === 'close' || type === 'close-year';
+    },
+    title: {
+      key: 'accounting.feedback.periodClosedTitle',
+      values: (result, action) => ({ kind: closeKind(action), name: periodName(result) }),
+    },
+    description: {
+      key: 'accounting.feedback.periodClosedBody',
+      values: (_result, action) => ({ kind: closeKind(action) }),
+    },
+  },
+  flashRow: false,
+};

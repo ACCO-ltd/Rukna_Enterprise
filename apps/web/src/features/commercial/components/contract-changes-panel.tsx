@@ -295,9 +295,11 @@ function CreateSeparateChargeInvoiceDialog({
         <Button
           type="button"
           onClick={() => void handleSubmit()}
-          disabled={!dueDate || mutation.isPending}
+          disabled={!dueDate}
+          loading={mutation.isPending}
+          loadingText={t('submitting')}
         >
-          {mutation.isPending ? t('submitting') : t('submit')}
+          {t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

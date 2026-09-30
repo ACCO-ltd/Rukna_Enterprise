@@ -41,6 +41,17 @@ export function useSetInstallmentMilestone(projectId: string, contractId: string
       installmentId: string;
       programmeMilestoneId: string | null;
     }) => setInstallmentMilestone(contractId, installmentId, programmeMilestoneId),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.stageMilestoneLinked',
+        values: (_data, variables) => ({
+          linked: (variables as { programmeMilestoneId: string | null }).programmeMilestoneId
+            ? 'yes'
+            : 'no',
+        }),
+      },
+      flashRow: (_data, variables) => (variables as { installmentId: string }).installmentId,
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
     },

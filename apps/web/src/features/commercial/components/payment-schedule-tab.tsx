@@ -532,8 +532,8 @@ export function ScheduleForm({
             </Button>
           </FormDialogClose>
           {/* Save is hard-stopped until the rows reconcile — see the inline form's note below. */}
-          <Button type="submit" disabled={save.isPending || !balanced}>
-            {save.isPending ? tCommon('loading') : t('save')}
+          <Button type="submit" disabled={!balanced} loading={save.isPending} loadingText={tCommon('loading')}>
+            {t('save')}
           </Button>
         </FormDialogFooter>
       </FormDialog>
@@ -555,8 +555,8 @@ export function ScheduleForm({
             to the required total (100% DRAFT; 100 − invoiced% ACTIVE). This mirrors the server's
             `assertPaymentPlanReconciles` so a broken plan never reaches the wire; the live delta in
             the builder says how far off it is, and the server error remains the backstop. */}
-        <Button type="submit" disabled={save.isPending || !balanced}>
-          {save.isPending ? tCommon('loading') : t('save')}
+        <Button type="submit" disabled={!balanced} loading={save.isPending} loadingText={tCommon('loading')}>
+          {t('save')}
         </Button>
         <Button type="button" variant="outline" onClick={onDone} disabled={save.isPending}>
           {tCommon('cancel')}

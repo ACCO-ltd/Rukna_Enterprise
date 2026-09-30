@@ -13,7 +13,6 @@ import {
   Select,
   Skeleton,
   Textarea,
-  useToast,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
@@ -44,7 +43,6 @@ export function RebaselineDialog({
   const tVo = useTranslations('commercial.variations');
   const tCommon = useTranslations('common');
   const tDiscard = useTranslations('common.discardChanges');
-  const { toast } = useToast();
 
   const summary = useCommercialSummary(projectId);
   const contractId = summary.data?.mainContract?.id ?? null;
@@ -73,10 +71,8 @@ export function RebaselineDialog({
     rebaseline.mutate(
       { variationOrderId, note: note.trim() || undefined },
       {
-        onSuccess: () => {
-          toast({ tone: 'success', title: t('baseline.governing.rebaselined') });
-          onOpenChange(false);
-        },
+        // The success toast comes from the mutation's feedback meta.
+        onSuccess: () => onOpenChange(false),
         onError: (e) =>
           setError(e instanceof ApiError ? e.message : t('baseline.governing.rebaselineFailed')),
       },
@@ -154,8 +150,13 @@ export function RebaselineDialog({
           </Button>
         </FormDialogClose>
         {canPick ? (
-          <Button type="submit" disabled={!canSubmit}>
-            {rebaseline.isPending ? tCommon('saving') : t('baseline.governing.rebaselineConfirm')}
+          <Button
+            type="submit"
+            disabled={variationOrderId === ''}
+            loading={rebaseline.isPending}
+            loadingText={tCommon('saving')}
+          >
+            {t('baseline.governing.rebaselineConfirm')}
           </Button>
         ) : null}
       </FormDialogFooter>

@@ -996,5 +996,37 @@
       "dismiss": "Dismiss",
       "open": "Open guide"
     }
+  },
+  "feedback": {
+    "accountCreated": "Account {code} created",
+    "accountUpdated": "Account {code} updated",
+    "chartImported": "Chart imported — {created} created, {updated} updated",
+    "fiscalYearCreated": "Fiscal year {name} created",
+    "bankAccountConfigured": "Bank account {name} configured",
+    "openingBalancePosted": "Opening balance posted as {ref}",
+    "signatoryAdded": "Signatory added",
+    "signatoryRemoved": "Signatory removed",
+    "journalSaved": "{ref, select, none {Journal saved as a draft} other {Journal {ref} saved}}",
+    "journalAction": "{action, select, submit {Journal submitted for approval} approve {Journal approved} post {{ref, select, none {Journal posted} other {Journal {ref} posted}}} reverse {Journal reversed} other {Journal updated}}",
+    "periodAction": "{action, select, lock {Period {name} locked} reopen {Period {name} reopened} rebuild {Period snapshot rebuilt} other {Period updated}}",
+    "periodClosedTitle": "{kind, select, year {Fiscal year closed} other {Period {name} closed}}",
+    "periodClosedBody": "{kind, select, year {The closing journal moved every profit and loss balance into retained earnings. The next year starts from these balances.} other {Its balances are now snapshotted and it accepts no further postings. Reports for the period read from the snapshot.}}",
+    "invoiceGenerated": "Draft invoice generated",
+    "invoiceAction": "{action, select, approve {Invoice approved} reverse {{ref, select, none {Invoice reversed} other {Invoice {ref} reversed}}} other {Invoice updated}}",
+    "invoicePostedTitle": "{ref, select, none {Invoice posted} other {Invoice {ref} posted}}",
+    "invoicePostedBody": "It is now in the ledger and on the client’s account. Record a receipt against it when payment arrives.",
+    "receiptRecorded": "Receipt recorded",
+    "receiptPosted": "Receipt posted",
+    "receiptAllocated": "Receipt allocated to the invoice",
+    "allocationReversed": "Allocation reversed",
+    "certificateIssued": "Certificate no. {number} issued",
+    "certificateSuperseded": "Certificate superseded",
+    "applicationCreated": "Payment application created",
+    "applicationItemAdded": "Line added",
+    "applicationItemRemoved": "Line removed",
+    "applicationDeductionAdded": "Deduction added",
+    "applicationDeductionRemoved": "Deduction removed",
+    "ipaCommand": "{command, select, submitForApproval {Payment application sent for approval} returnForRevision {Payment application returned for revision} approveForSubmission {Payment application approved for submission} submit {Payment application submitted to the client} other {Payment application updated}}",
+    "ipaCancelled": "Payment application cancelled"
   }
 }

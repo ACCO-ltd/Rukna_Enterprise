@@ -169,13 +169,8 @@ export function BoqImportView({
   const pending = preview.isPending || commit.isPending;
   const canImport = Boolean(data?.ok) && (data?.itemCount ?? 0) + (data?.sectionCount ?? 0) > 0;
   const primaryLabel =
-    step === 'review'
-      ? commit.isPending
-        ? t('review.importing')
-        : t('review.confirm', { items: data?.itemCount ?? 0 })
-      : preview.isPending
-        ? tCommon('loading')
-        : t('continue');
+    step === 'review' ? t('review.confirm', { items: data?.itemCount ?? 0 }) : t('continue');
+  const primaryLoadingText = step === 'review' ? t('review.importing') : tCommon('loading');
 
   return (
     <div className="flex min-h-[60vh] flex-col rounded-panel border border-border bg-surface shadow-e1">
@@ -401,7 +396,7 @@ export function BoqImportView({
           {step === 'upload' ? tCommon('cancel') : t('review.back')}
         </Button>
         {step !== 'review' || canImport ? (
-          <Button type="button" onClick={next} disabled={pending}>
+          <Button type="button" onClick={next} loading={pending} loadingText={primaryLoadingText}>
             {primaryLabel}
           </Button>
         ) : null}

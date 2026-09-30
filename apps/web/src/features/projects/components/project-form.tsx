@@ -298,8 +298,8 @@ function ProjectCreateForm() {
             </Button>
           }
           save={
-            <Button type="submit" disabled={isPending || blocked}>
-              {isPending ? t('saving') : t('saveProject')}
+            <Button type="submit" disabled={blocked} loading={isPending} loadingText={t('saving')}>
+              {t('saveProject')}
             </Button>
           }
           discard={

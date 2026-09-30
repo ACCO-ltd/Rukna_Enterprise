@@ -11,7 +11,7 @@ import {
   postInvoice,
   reverseInvoice,
 } from '../api/invoices-api';
-import { accountingKeys } from './use-accounting';
+import { accountingKeys, refOrNone } from './use-accounting';
 
 import type {
   ClientInvoice,
@@ -77,6 +77,7 @@ export function useGenerateInvoice() {
 
   return useMutation({
     mutationFn: (payload: GenerateInvoicePayload) => generateInvoiceFromIpc(payload),
+    meta: { successToast: 'accounting.feedback.invoiceGenerated' },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: invoiceKeys.all });
     },
@@ -132,6 +133,9 @@ export type InvoiceActionRequest =
 /**
  * The three lifecycle transitions as one mutation, mirroring `useJournalAction`.
  *
+ * Posting is the milestone — the invoice takes its number and lands on the client's account —
+ * so it gets the success dialog; approving and reversing get a toast.
+ *
  * Posting and reversing additionally invalidate the reports: a posted invoice debits the AR
  * control account and credits revenue, so the trial balance and the P&L both moved. Leaving a
  * stale report on screen after posting into it is how someone concludes the post did not take.
@@ -161,6 +165,23 @@ export function useInvoiceAction(id: string) {
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'balance-sheet'] });
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'ledger'] });
       }
+    },
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.invoiceAction',
+        values: (invoice, action) => ({
+          action: (action as InvoiceActionRequest).type,
+          ref: refOrNone((invoice as ClientInvoice).invoiceNumber),
+        }),
+      },
+      successDialog: {
+        when: (_invoice, action) => (action as InvoiceActionRequest).type === 'post',
+        title: {
+          key: 'accounting.feedback.invoicePostedTitle',
+          values: (invoice) => ({ ref: refOrNone((invoice as ClientInvoice).invoiceNumber) }),
+        },
+        description: 'accounting.feedback.invoicePostedBody',
+      },
     },
   });
 }

@@ -262,7 +262,7 @@ function EditDialog({ projectId, detail, onClose }: SharedProps) {
         </div>
 
         <DialogFooter>
-          <Button type="submit" disabled={update.isPending}>
+          <Button type="submit" loading={update.isPending}>
             {t('form.submitEdit')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
@@ -355,8 +355,12 @@ function NewRevisionDialog({ projectId, detail, onClose }: SharedProps) {
         </FormField>
 
         <DialogFooter>
-          <Button type="submit" disabled={upload.isPending || create.isPending}>
-            {upload.isPending ? t('states.uploading') : t('actions.newRevision')}
+          <Button
+            type="submit"
+            loading={upload.isPending || create.isPending}
+            loadingText={upload.isPending ? t('states.uploading') : undefined}
+          >
+            {t('actions.newRevision')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
             {t('actions.cancel')}
@@ -408,8 +412,12 @@ function ReplaceFileDialog({
           <FileInput id="replace-file" onSelect={setFile} />
         </FormField>
         <DialogFooter>
-          <Button type="submit" disabled={upload.isPending || replace.isPending}>
-            {upload.isPending ? t('states.uploading') : t('actions.replaceFile')}
+          <Button
+            type="submit"
+            loading={upload.isPending || replace.isPending}
+            loadingText={upload.isPending ? t('states.uploading') : undefined}
+          >
+            {t('actions.replaceFile')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
             {t('actions.cancel')}
@@ -506,7 +514,7 @@ function IssueDialog({
         </div>
 
         <DialogFooter>
-          <Button type="submit" disabled={issue.isPending}>
+          <Button type="submit" loading={issue.isPending}>
             {t('revision.issueConfirm')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
@@ -555,7 +563,7 @@ function WithdrawDialog({ projectId, detail, onClose }: SharedProps) {
           />
         </FormField>
         <DialogFooter>
-          <Button type="submit" variant="destructive" disabled={withdraw.isPending}>
+          <Button type="submit" variant="destructive" loading={withdraw.isPending}>
             {t('withdraw.confirm')}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>
@@ -632,7 +640,8 @@ function SupersedeDialog({ projectId, detail, onClose }: SharedProps) {
         <DialogFooter>
           <Button
             type="submit"
-            disabled={supersede.isPending || !candidates || candidates.length === 0}
+            disabled={!candidates || candidates.length === 0}
+            loading={supersede.isPending}
           >
             {t('supersede.confirm')}
           </Button>
@@ -656,7 +665,7 @@ function ArchiveDialog({ projectId, detail, onClose }: SharedProps) {
         {error ? <Alert variant="error" messages={[error]} /> : null}
         <DialogFooter>
           <Button
-            disabled={archive.isPending}
+            loading={archive.isPending}
             onClick={async () => {
               try {
                 await archive.mutateAsync(undefined);
@@ -694,7 +703,7 @@ function DeleteDialog({ projectId, detail, onClose }: SharedProps) {
         <DialogFooter>
           <Button
             variant="destructive"
-            disabled={remove.isPending}
+            loading={remove.isPending}
             onClick={async () => {
               try {
                 await remove.mutateAsync(detail.document.id);

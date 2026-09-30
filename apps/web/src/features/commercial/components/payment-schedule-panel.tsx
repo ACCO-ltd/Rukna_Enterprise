@@ -531,9 +531,11 @@ export function LinkMilestoneDialog({
               <Button
                 type="submit"
                 size="sm"
-                disabled={create.isPending || !newCode.trim() || !newName.trim() || !newDate}
+                disabled={!newCode.trim() || !newName.trim() || !newDate}
+                loading={create.isPending}
+                loadingText={t('paymentSchedule.milestone.creating')}
               >
-                {create.isPending ? t('paymentSchedule.milestone.creating') : t('paymentSchedule.milestone.createAndSelect')}
+                {t('paymentSchedule.milestone.createAndSelect')}
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={() => setCreatingNew(false)} disabled={create.isPending}>
                 {t('paymentSchedule.milestone.cancel')}
@@ -583,7 +585,8 @@ export function LinkMilestoneDialog({
               { onSuccess: onDismiss },
             )
           }
-          disabled={link.isPending || creatingNew}
+          disabled={creatingNew}
+          loading={link.isPending}
         >
           {t('paymentSchedule.milestone.save')}
         </Button>

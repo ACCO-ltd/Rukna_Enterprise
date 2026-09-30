@@ -102,6 +102,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const initialize = useInitializeBoq(projectId);
   const addNode = useAddNode(projectId, operationalVersionId ?? '');
   const updateNode = useUpdateNode(projectId, operationalVersionId ?? '');
+  // Inline grid edits: the cell shows the saved value itself, so these stay silent.
+  const addLine = useAddNode(projectId, operationalVersionId ?? '', { silent: true });
+  const updateCell = useUpdateNode(projectId, operationalVersionId ?? '', { silent: true });
   const deleteNode = useDeleteNode(projectId, operationalVersionId ?? '');
   const moveNode = useMoveNode(projectId, operationalVersionId ?? '');
   const addExtraWork = useAddExtraWork(projectId);
@@ -187,11 +190,12 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                 <Button
                   variant="outline"
                   className="gap-2"
-                  disabled={initialize.isPending}
+                  loading={initialize.isPending}
+                  loadingText={t('initializing')}
                   onClick={() => initialize.mutate()}
                 >
                   <Plus size={16} aria-hidden="true" />
-                  {initialize.isPending ? t('initializing') : t('empty.startBlank')}
+                  {t('empty.startBlank')}
                 </Button>
               </div>
               <Button
@@ -245,11 +249,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           }),
         bounds,
         onEditField: async (node, field, value) => {
-          await updateNode.mutateAsync({ nodeId: node.id, payload: cellEditPayload(field, value, unitsQuery.data) });
+          await updateCell.mutateAsync({ nodeId: node.id, payload: cellEditPayload(field, value, unitsQuery.data) });
         },
         onCreate: async ({ parent, kind, description }) => {
           // No code: the server numbers the line from its position (D2).
-          await addNode.mutateAsync({
+          await addLine.mutateAsync({
             ...(parent ? { parentId: parent.id } : {}),
             description,
             isLeaf: kind === 'item',

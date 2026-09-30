@@ -160,8 +160,13 @@ export function ClonePolicyDialog({
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={clone.isPending || reason.trim().length < 3}>
-          {clone.isPending ? t('cloning') : t('confirm')}
+        <Button
+          type="submit"
+          disabled={reason.trim().length < 3}
+          loading={clone.isPending}
+          loadingText={t('cloning')}
+        >
+          {t('confirm')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

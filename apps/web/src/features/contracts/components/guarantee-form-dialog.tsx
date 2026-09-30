@@ -295,8 +295,8 @@ function AddGuaranteeDialog({
           </FormField>
 
           <DialogFooter>
-            <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? tCommon('loading') : t('save')}
+            <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
+              {t('save')}
             </Button>
             <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
               {tCommon('cancel')}
@@ -431,8 +431,8 @@ function EditGuaranteeDialog({
           </FormField>
 
           <DialogFooter>
-            <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? tCommon('loading') : tCommon('save')}
+            <Button type="submit" loading={update.isPending} loadingText={tCommon('loading')}>
+              {tCommon('save')}
             </Button>
             <Button type="button" variant="outline" onClick={onClose} disabled={update.isPending}>
               {tCommon('cancel')}

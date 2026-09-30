@@ -54,8 +54,7 @@ export function PolicyAddRuleForm({ policyId }: { policyId: string }) {
     Boolean(requiredRole) &&
     Boolean(matrix) &&
     !priorityInvalid &&
-    !bandInvalid &&
-    !add.isPending;
+    !bandInvalid;
 
   function reset() {
     setRuleKey('');
@@ -67,7 +66,7 @@ export function PolicyAddRuleForm({ policyId }: { policyId: string }) {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!matrix || !canSubmit) return;
+    if (!matrix || !canSubmit || add.isPending) return;
     add.mutate(
       {
         id: policyId,
@@ -201,8 +200,8 @@ export function PolicyAddRuleForm({ policyId }: { policyId: string }) {
       {addError ? <Alert variant="error" messages={addError} /> : null}
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={!canSubmit}>
-          {add.isPending ? t('adding') : t('add')}
+        <Button type="submit" disabled={!canSubmit} loading={add.isPending} loadingText={t('adding')}>
+          {t('add')}
         </Button>
       </div>
     </form>

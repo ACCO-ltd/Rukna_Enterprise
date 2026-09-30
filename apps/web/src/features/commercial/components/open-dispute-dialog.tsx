@@ -48,6 +48,13 @@ export function OpenDisputeDialog({ open, onOpenChange, invoice, currency, proje
         disputedAmount: disputedAmount.trim() || undefined,
         note: note.trim() || undefined,
       }),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.disputeOpened',
+        values: () => ({ ref: invoice.invoiceNumber ?? 'none' }),
+      },
+      flashRow: () => invoice.invoiceId,
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: commercialKeys.billing(projectId) });
       handleOpenChange(false);
@@ -150,8 +157,14 @@ export function OpenDisputeDialog({ open, onOpenChange, invoice, currency, proje
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={handleSubmit} disabled={!reason || mutation.isPending}>
-          {mutation.isPending ? t('saving') : t('save')}
+        <Button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!reason}
+          loading={mutation.isPending}
+          loadingText={t('saving')}
+        >
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

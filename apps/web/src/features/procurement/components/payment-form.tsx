@@ -375,7 +375,8 @@ export function SupplierPaymentForm() {
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={create.isPending || noBanks || !canManage}
+          loading={create.isPending}
+          disabled={noBanks || !canManage}
         >
           {t('record')}
         </Button>

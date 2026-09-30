@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { createTranslator } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
 import accounting from '../../messages/en/accounting.json';
@@ -49,7 +50,8 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
 
 function lookup(path: string): unknown {
   return path.split('.').reduce<unknown>((node, part) => {
-    if (node && typeof node === 'object' && part in node) return (node as Record<string, unknown>)[part];
+    if (node && typeof node === 'object' && part in node)
+      return (node as Record<string, unknown>)[part];
     return undefined;
   }, CATALOGUE);
 }
@@ -69,5 +71,25 @@ describe('mutation feedback keys', () => {
   it('every <namespace>.feedback.* key the source names exists in the catalogue', () => {
     const missing = references.filter((r) => typeof lookup(r.key) !== 'string');
     expect(missing.map((r) => `${r.key} (${r.file.slice(SRC.length)})`)).toEqual([]);
+  });
+
+  it('every feedback message in the catalogue is valid ICU', () => {
+    // next-intl reports a message it cannot parse as INVALID_MESSAGE (a missing argument is a
+    // different code, so formatting without values still isolates syntax errors).
+    const broken: string[] = [];
+    for (const [ns, file] of Object.entries(CATALOGUE)) {
+      const feedback = (file as { feedback?: Record<string, unknown> }).feedback;
+      const t = createTranslator({
+        locale: 'en',
+        messages: { feedback } as Record<string, unknown>,
+        onError: (error) => {
+          if (error.code === 'INVALID_MESSAGE') broken.push(`${ns}: ${error.message}`);
+        },
+      });
+      for (const key of Object.keys(feedback ?? {})) {
+        (t as unknown as (k: string) => string)(`feedback.${key}`);
+      }
+    }
+    expect(broken).toEqual([]);
   });
 });

@@ -333,8 +333,8 @@ export function RecordPaymentDialog({
           </Button>
         </FormDialogClose>
         {moneyHidden ? null : (
-          <Button type="button" onClick={submit} disabled={mutation.isPending}>
-            {mutation.isPending ? t('saving') : t('submit')}
+          <Button type="button" onClick={submit} loading={mutation.isPending} loadingText={t('saving')}>
+            {t('submit')}
           </Button>
         )}
       </FormDialogFooter>

@@ -14,7 +14,8 @@ import { useSyncExternalStore } from 'react';
  *
  * - `successToast` — the everyday confirmation: a short toast, past tense.
  * - `successDialog` — reserved for the rare, consequential step (contract executed, invoice
- *   posted, period closed). It REPLACES the toast; never both.
+ *   posted, period closed). It REPLACES the toast; never both. `when` narrows it to the calls
+ *   that are the milestone.
  * - The saved record's row, wherever a `PlatformDataGrid` lists it, tints briefly — keyed by the
  *   `id` on the mutation's result unless `flashRow` says otherwise.
  *
@@ -37,6 +38,12 @@ export interface MutationFeedbackMeta extends Record<string, unknown> {
   successDialog?: {
     title: FeedbackMessage;
     description?: FeedbackMessage;
+    /**
+     * For a hook whose calls are mostly routine but occasionally a milestone (one mutation that
+     * approves OR posts an invoice): the dialog shows only when this answers true, and the call
+     * falls back to `successToast` otherwise.
+     */
+    when?: (data: unknown, variables: unknown) => boolean;
   };
   /**
    * Which row to tint. Defaults to the result's `id`. `false` turns it off (a command whose

@@ -174,9 +174,11 @@ export function PostingPreviewDialog({
           onClick={() => {
             if (postable) onConfirm();
           }}
-          disabled={isPending || !postable}
+          loading={isPending}
+          loadingText={tCommon('saving')}
+          disabled={!postable}
         >
-          {isPending ? tCommon('saving') : confirmLabel}
+          {confirmLabel}
         </Button>
       </FormDialogFooter>
     </FormDialog>

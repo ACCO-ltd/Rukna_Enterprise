@@ -42,6 +42,13 @@ export function RecordPromiseDialog({ open, onOpenChange, invoice, projectId }: 
         promisedAmount: promisedAmount.trim() || undefined,
         note: note.trim() || undefined,
       }),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.promiseRecorded',
+        values: () => ({ ref: invoice.invoiceNumber ?? 'none' }),
+      },
+      flashRow: () => invoice.invoiceId,
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: commercialKeys.billing(projectId) });
       handleOpenChange(false);
@@ -138,8 +145,14 @@ export function RecordPromiseDialog({ open, onOpenChange, invoice, projectId }: 
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={handleSubmit} disabled={!promisedDate || mutation.isPending}>
-          {mutation.isPending ? t('saving') : t('save')}
+        <Button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!promisedDate}
+          loading={mutation.isPending}
+          loadingText={t('saving')}
+        >
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

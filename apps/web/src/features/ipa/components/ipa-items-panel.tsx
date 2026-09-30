@@ -355,8 +355,13 @@ function ClaimLineDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={add.isPending || hasNoLines}>
-          {add.isPending ? tCommon('loading') : t('save')}
+        <Button
+          type="submit"
+          loading={add.isPending}
+          loadingText={tCommon('loading')}
+          disabled={hasNoLines}
+        >
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

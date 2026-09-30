@@ -73,6 +73,12 @@ export function useUpdateContract(id: string) {
 
   return useMutation({
     mutationFn: (payload: UpdateContractPayload) => updateContract(id, payload),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.contractUpdated',
+        values: (data) => ({ ref: (data as Contract).contractNumber }),
+      },
+    },
     onSuccess: async (contract) => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.all });
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(contract.projectId) });
@@ -114,10 +120,16 @@ export function useTerminateContract(id: string) {
 
 /** Reverses a live contract back to DRAFT for correction. See `reopenContract`. */
 export function useReopenContract(id: string) {
-  return useLifecycleCommand((reason: string) => reopenContract(id, reason), [
-    contractKeys.all,
-    ['projects'],
-  ]);
+  return useLifecycleCommand(
+    (reason: string) => reopenContract(id, reason),
+    [contractKeys.all, ['projects']],
+    {
+      successToast: {
+        key: 'commercial.feedback.contractReopened',
+        values: (data) => ({ ref: (data as Contract).contractNumber }),
+      },
+    },
+  );
 }
 
 /** Back-fills the physically-signed date on a contract missing it. See `recordSignedDate`. */
@@ -126,6 +138,7 @@ export function useRecordSignedDate(id: string) {
 
   return useMutation({
     mutationFn: (signedDate: string) => recordSignedDate(id, signedDate),
+    meta: { successToast: 'commercial.feedback.signedDateRecorded' },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.detail(id) });
     },

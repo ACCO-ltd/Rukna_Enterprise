@@ -44,7 +44,7 @@ export function DistrictsManager() {
         : null;
 
   function onCreate() {
-    if (!code.trim() || !name.trim()) return;
+    if (!code.trim() || !name.trim() || create.isPending) return;
     create.mutate(
       { code: code.trim().toUpperCase(), name: name.trim() },
       {
@@ -102,8 +102,14 @@ export function DistrictsManager() {
                 placeholder="Waaberi"
               />
             </FormField>
-            <Button type="button" onClick={onCreate} disabled={create.isPending || !code.trim() || !name.trim()}>
-              {create.isPending ? tCommon('loading') : t('add')}
+            <Button
+              type="button"
+              onClick={onCreate}
+              disabled={!code.trim() || !name.trim()}
+              loading={create.isPending}
+              loadingText={tCommon('loading')}
+            >
+              {t('add')}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">{t('codeHint')}</p>
@@ -140,6 +146,7 @@ export function DistrictsManager() {
                         variant="outline"
                         size="sm"
                         disabled={update.isPending}
+                        loading={update.isPending && update.variables?.id === district.id}
                         onClick={() =>
                           update.mutate({ id: district.id, payload: { active: !district.active } })
                         }

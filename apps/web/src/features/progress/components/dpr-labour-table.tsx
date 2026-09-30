@@ -258,10 +258,12 @@ export function DprLabourTable({
               variant="outline"
               size="sm"
               disabled={!canAdd}
+              loading={add.isPending}
+              loadingText={t('labour.saving')}
               className="w-full sm:w-auto"
             >
               <Plus className="me-1.5 size-4" aria-hidden="true" />
-              {add.isPending ? t('labour.saving') : t('entry.labourTable.addRow')}
+              {t('entry.labourTable.addRow')}
             </Button>
           </div>
         </form>

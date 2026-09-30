@@ -159,8 +159,8 @@ export function ReceiptForm() {
       </FormField>
 
       <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? tCommon('loading') : t('submit')}
+        <Button type="submit" loading={create.isPending} loadingText={tCommon('loading')}>
+          {t('submit')}
         </Button>
         <Button variant="outline" asChild>
           <Link href="/receipts">{t('cancel')}</Link>

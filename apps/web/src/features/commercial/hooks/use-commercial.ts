@@ -25,6 +25,7 @@ import type {
 
 import { boqKeys } from '@/features/boq/hooks/use-boq';
 import { accountingKeys } from '@/features/accounting/hooks/use-accounting';
+import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 import {
   addVariationLine,
@@ -215,10 +216,12 @@ function useVariationMutation<TArgs, TResult>(
   contractId: string,
   projectId: string,
   run: (args: TArgs) => Promise<TResult>,
+  meta?: MutationFeedbackMeta,
 ) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: run,
+    meta,
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: variationKeys.all }),
@@ -263,6 +266,12 @@ export function useReverseVariation(variationId: string, contractId: string, pro
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: { reason?: string } = {}) => reverseVariation(variationId, payload),
+    meta: {
+      successToast: {
+        key: 'commercial.feedback.variationReversed',
+        values: (data) => ({ ref: (data as VariationOrderResponse).reference }),
+      },
+    },
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: variationKeys.all }),
@@ -274,8 +283,11 @@ export function useReverseVariation(variationId: string, contractId: string, pro
 }
 
 export function useGrantExtensionOfTime(contractId: string, projectId: string) {
-  return useVariationMutation(contractId, projectId, (payload: GrantExtensionOfTimeRequest) =>
-    grantExtensionOfTime(contractId, payload),
+  return useVariationMutation(
+    contractId,
+    projectId,
+    (payload: GrantExtensionOfTimeRequest) => grantExtensionOfTime(contractId, payload),
+    { successToast: 'commercial.feedback.eotGranted' },
   );
 }
 
@@ -294,6 +306,11 @@ export function useRecordProjectPayment(projectId: string) {
   const qc = useQueryClient();
   return useMutation<RecordProjectPaymentResult, Error, RecordProjectPaymentPayload>({
     mutationFn: (payload) => recordProjectPayment(projectId, payload),
+    // No amount in the toast: this confirmation is seen by roles that are money-blind.
+    meta: {
+      successToast: 'commercial.feedback.paymentRecorded',
+      flashRow: (data) => (data as RecordProjectPaymentResult).receiptId,
+    },
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) }),
@@ -344,6 +361,7 @@ export function useCreateSeparateChargeInvoice(projectId: string) {
   return useMutation({
     mutationFn: (payload: CreateSeparateChargeInvoicePayload) =>
       createSeparateChargeInvoice(payload),
+    meta: { successToast: 'commercial.feedback.separateChargeInvoiced' },
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: commercialKeys.separateCharges(projectId) }),

@@ -410,7 +410,7 @@ function ActivityDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy} loading={create.isPending || update.isPending}>
           {t('activity.save')}
         </Button>
       </FormDialogFooter>

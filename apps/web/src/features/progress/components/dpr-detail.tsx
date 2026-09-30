@@ -14,7 +14,6 @@ import {
   Select,
   Skeleton,
   Textarea,
-  useToast,
   type ApprovalStep,
   Badge,
   type StatusTone,
@@ -504,7 +503,6 @@ function ReportDetailsCard({
   projectLocation?: string;
 }) {
   const t = useTranslations('progress');
-  const { toast } = useToast();
   const patch = usePatchDprContext(dpr.id);
 
   // locationArea pre-fills from the DPR if previously saved, then falls back to the project
@@ -527,10 +525,8 @@ function ReportDetailsCard({
         delayReason,
         narrative: narrative.trim() || undefined,
       },
-      {
-        onSuccess: () => toast({ tone: 'success', title: t('report.detailsSaved') }),
-        onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
-      },
+      // The success toast comes from the mutation's feedback meta.
+      { onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')) },
     );
   }
 

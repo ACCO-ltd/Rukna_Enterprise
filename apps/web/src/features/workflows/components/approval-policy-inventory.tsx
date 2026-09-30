@@ -269,8 +269,8 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
                 {t('cancel')}
               </Button>
             </FormDialogClose>
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? t('creating') : t('create')}
+            <Button type="submit" loading={create.isPending} loadingText={t('creating')}>
+              {t('create')}
             </Button>
           </FormDialogFooter>
         </FormDialog>

@@ -28,7 +28,7 @@ vi.mock('@/features/projects/api/projects-api', () => ({
   listProjects: vi.fn(),
 }));
 
-let searchParams = new URLSearchParams();
+const searchParams = new URLSearchParams();
 vi.mock('next/navigation', () => ({ useSearchParams: () => searchParams }));
 
 vi.mock('next/link', () => ({
@@ -648,16 +648,5 @@ describe('ProjectDetail — actions belong to the shell', () => {
     await screen.findByRole('heading', { name: 'Before you start' });
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
-  });
-});
-
-describe('ProjectDetail — arriving from create', () => {
-  it('confirms the new project with the app toast, once', async () => {
-    searchParams = new URLSearchParams('created=1');
-    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
-    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
-
-    expect(await screen.findByText('Project created')).toBeInTheDocument();
-    searchParams = new URLSearchParams();
   });
 });

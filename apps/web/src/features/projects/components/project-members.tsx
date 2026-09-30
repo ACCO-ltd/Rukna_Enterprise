@@ -352,7 +352,7 @@ function EditRolesDialog({
         </fieldset>
 
         <DialogFooter>
-          <Button onClick={() => onSave(effective)} disabled={!canSave || isPending}>
+          <Button onClick={() => onSave(effective)} disabled={!canSave} loading={isPending}>
             {t('save')}
           </Button>
           <Button variant="outline" onClick={onDismiss} disabled={isPending}>
@@ -488,7 +488,8 @@ function AddMemberForm({
             type="button"
             className="gap-2"
             onClick={handleAdd}
-            disabled={!complete || add.isPending || users.isError || users.isPending}
+            loading={add.isPending}
+            disabled={!complete || users.isError || users.isPending}
           >
             <Plus size={16} aria-hidden="true" />
             {t('add')}

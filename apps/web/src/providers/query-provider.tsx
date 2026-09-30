@@ -57,12 +57,11 @@ export function QueryProvider({
         return t(key, values);
       };
 
-      if (meta.successDialog) {
+      const dialog = meta.successDialog;
+      if (dialog && (!dialog.when || dialog.when(data, variables))) {
         setSuccess({
-          title: text(meta.successDialog.title),
-          description: meta.successDialog.description
-            ? text(meta.successDialog.description)
-            : undefined,
+          title: text(dialog.title),
+          description: dialog.description ? text(dialog.description) : undefined,
         });
       } else if (meta.successToast) {
         toast({ title: text(meta.successToast), tone: 'success' });

@@ -120,8 +120,8 @@ export function IpaForm({ contractId, basePath }: { contractId: string; basePath
       </FormSection>
 
       <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4 shadow-e1 sm:flex-row-reverse sm:justify-start">
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? tCommon('loading') : t('submit')}
+        <Button type="submit" loading={create.isPending} loadingText={tCommon('loading')}>
+          {t('submit')}
         </Button>
         <Button variant="outline" asChild>
           <Link href={basePath}>{t('cancel')}</Link>

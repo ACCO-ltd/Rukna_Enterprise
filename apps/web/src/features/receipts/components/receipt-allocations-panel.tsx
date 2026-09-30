@@ -308,8 +308,13 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={allocate.isPending || options.length === 0}>
-          {allocate.isPending ? tCommon('loading') : t('save')}
+        <Button
+          type="submit"
+          loading={allocate.isPending}
+          loadingText={tCommon('loading')}
+          disabled={options.length === 0}
+        >
+          {t('save')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

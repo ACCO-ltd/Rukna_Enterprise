@@ -256,8 +256,8 @@ function AddContactDialog({ clientId, hasPrimary, onClose }: AddContactDialogPro
           />
 
           <DialogFooter>
-            <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? tCommon('loading') : t('save')}
+            <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
+              {t('save')}
             </Button>
             <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
               {tCommon('cancel')}

@@ -170,7 +170,8 @@ function GrantExtensionDialog({
   const [reason, setReason] = React.useState('');
   const [cited, setCited] = React.useState<string[]>([]);
 
-  const canSave = newEndDate !== '' && reason.trim() !== '' && !grant.isPending;
+  const ready = newEndDate !== '' && reason.trim() !== '';
+  const canSave = ready && !grant.isPending;
   const dirty = newEndDate !== '' || reason !== '' || cited.length > 0;
 
   function toggleCite(id: string) {
@@ -186,10 +187,8 @@ function GrantExtensionDialog({
         variationOrderIds: cited.length > 0 ? cited : undefined,
       },
       {
-        onSuccess: () => {
-          toast({ title: t('toast.granted'), tone: 'success' });
-          onOpenChange(false);
-        },
+        // The success toast comes from the mutation's feedback meta.
+        onSuccess: () => onOpenChange(false),
         onError: (error) =>
           toast({ title: errorMessage(error, t('toast.grantFailed')), tone: 'error' }),
       },
@@ -279,8 +278,8 @@ function GrantExtensionDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={!canSave}>
-          {grant.isPending ? tCommon('saving') : t('grantConfirm')}
+        <Button type="submit" disabled={!ready} loading={grant.isPending} loadingText={tCommon('saving')}>
+          {t('grantConfirm')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

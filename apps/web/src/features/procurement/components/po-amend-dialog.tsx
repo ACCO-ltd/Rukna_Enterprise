@@ -258,7 +258,7 @@ export function PoAmendDialog({
             {tc('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={handleSubmit} disabled={revise.isPending}>
+        <Button type="button" onClick={handleSubmit} loading={revise.isPending}>
           {t('amendConfirm')}
         </Button>
       </FormDialogFooter>

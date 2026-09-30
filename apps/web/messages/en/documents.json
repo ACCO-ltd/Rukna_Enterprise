@@ -247,5 +247,16 @@
     "loadFailed": "Could not load linked attachments",
     "sourceFilter": "Source",
     "openSource": "Open record"
+  },
+  "feedback": {
+    "registered": "Document {ref} registered",
+    "updated": "Document {ref} updated",
+    "revisionAdded": "New revision added to {ref}",
+    "revisionFileReplaced": "Revision file replaced on {ref}",
+    "revisionIssued": "Revision issued on {ref}",
+    "withdrawn": "Document {ref} withdrawn",
+    "superseded": "Document {ref} superseded",
+    "archived": "Document {ref} archived",
+    "deleted": "Document deleted"
   }
 }

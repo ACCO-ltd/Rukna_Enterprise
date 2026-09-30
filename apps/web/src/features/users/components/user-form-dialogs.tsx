@@ -368,11 +368,9 @@ export function EditUserDialog({
 export function SetPasswordDialog({
   user,
   onOpenChange,
-  onSuccess,
 }: {
   user: UserWithRolesResponse | null;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
 }) {
   const t = useTranslations('platform.users.form');
   const tc = useTranslations('common');
@@ -398,7 +396,6 @@ export function SetPasswordDialog({
       {
         onSuccess: () => {
           setPasswordValue('');
-          onSuccess();
           close(false);
         },
       },
@@ -500,9 +497,11 @@ export function RegenerateTemporaryDialog({
             <Button
               type="button"
               onClick={() => user && regenerate.mutate(user.id)}
-              disabled={!user || regenerate.isPending}
+              disabled={!user}
+              loading={regenerate.isPending}
+              loadingText={t('regenerating')}
             >
-              {regenerate.isPending ? t('regenerating') : t('regenerateSubmit')}
+              {t('regenerateSubmit')}
             </Button>
           </>
         )

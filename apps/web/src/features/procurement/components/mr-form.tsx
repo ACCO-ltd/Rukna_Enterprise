@@ -266,7 +266,7 @@ export function MrForm() {
             <Button type="button" variant="outline" onClick={() => setStep(1)}>
               {tc('back')}
             </Button>
-            <Button type="button" onClick={handleSubmit} disabled={create.isPending}>
+            <Button type="button" onClick={handleSubmit} loading={create.isPending}>
               {tc('create')}
             </Button>
           </div>

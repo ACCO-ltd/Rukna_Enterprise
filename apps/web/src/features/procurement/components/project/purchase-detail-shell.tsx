@@ -156,7 +156,7 @@ export function PurchaseDetailShell({
               <Button
                 type="button"
                 size="sm"
-                disabled={confirm.isPending}
+                loading={confirm.isPending}
                 onClick={() => confirm.mutate(poId)}
               >
                 {isDraftPo ? t('confirm') : t('confirmRevision')}
@@ -381,10 +381,11 @@ function ItemsTab({
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={upload.isPending || attach.isPending}
+                loading={upload.isPending || attach.isPending}
+                loadingText={tItems('uploading')}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {upload.isPending || attach.isPending ? tItems('uploading') : tItems('attachQuotation')}
+                {tItems('attachQuotation')}
               </Button>
             </>
           ) : null
@@ -676,7 +677,7 @@ function AdvanceCard({
             <Button type="button" size="sm" variant="outline" onClick={() => { setShowReturnForm(false); setRetShowErrors(false); setRetError(null); }}>
               {tRet('cancel')}
             </Button>
-            <Button type="button" size="sm" disabled={createReturn.isPending} onClick={() => void handleReturnSubmit()}>
+            <Button type="button" size="sm" loading={createReturn.isPending} onClick={() => void handleReturnSubmit()}>
               {tRet('submit')}
             </Button>
           </div>
@@ -711,7 +712,7 @@ function AdvanceCard({
             <Button type="button" size="sm" variant="outline" onClick={() => { setShowEvidenceForm(false); setEvShowErrors(false); setEvError(null); }}>
               {tEv('cancel')}
             </Button>
-            <Button type="button" size="sm" disabled={createEvidence.isPending} onClick={() => void handleEvidenceSubmit()}>
+            <Button type="button" size="sm" loading={createEvidence.isPending} onClick={() => void handleEvidenceSubmit()}>
               {tEv('submit')}
             </Button>
           </div>
@@ -974,7 +975,7 @@ function FundingTab({ poId, locale, isOpen }: { poId: string; locale: 'en'; isOp
               <Button
                 type="button"
                 size="sm"
-                disabled={createAdvance.isPending}
+                loading={createAdvance.isPending}
                 onClick={() => void handleAdvanceSubmit()}
               >
                 {tForm('submit')}

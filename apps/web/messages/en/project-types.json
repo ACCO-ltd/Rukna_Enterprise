@@ -49,5 +49,9 @@
     "untyped": "Untyped",
     "filterByCategory": "Filter by category",
     "allCategories": "All categories"
+  },
+  "feedback": {
+    "subtypeAdded": "Subtype {name} added",
+    "subtypeDeactivated": "Subtype {name} deactivated"
   }
 }

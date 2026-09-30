@@ -204,8 +204,8 @@ export function CreditNoteDialog({
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="button" onClick={submit} disabled={mutation.isPending}>
-          {mutation.isPending ? t('issuing') : createdId ? t('retryPost') : t('submit')}
+        <Button type="button" onClick={submit} loading={mutation.isPending} loadingText={t('issuing')}>
+          {createdId ? t('retryPost') : t('submit')}
         </Button>
       </FormDialogFooter>
     </FormDialog>

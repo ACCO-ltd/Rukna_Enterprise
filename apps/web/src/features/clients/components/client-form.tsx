@@ -160,7 +160,7 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
               <Link href="/clients"><ArrowLeft size={16} aria-hidden="true" />{t('backToList')}</Link>
             </Button>
           )}
-          save={<Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? t('saving') : t('save')}</Button>}
+          save={<Button type="submit" loading={mutation.isPending} loadingText={t('saving')}>{t('save')}</Button>}
           discard={<Button type="button" variant="ghost" onClick={discard} disabled={mutation.isPending}>{t('discard')}</Button>}
           saveState={saveState}
           saveStateLabels={{ new: tCommon('formState.new'), dirty: tCommon('formState.dirty'), clean: tCommon('formState.clean') }}

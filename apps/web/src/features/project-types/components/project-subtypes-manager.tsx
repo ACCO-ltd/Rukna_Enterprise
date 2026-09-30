@@ -123,8 +123,14 @@ function CategoryGroup({
                 }}
               />
             </FormField>
-            <Button type="button" onClick={onCreate} disabled={!canSubmit}>
-              {create.isPending ? t('adding') : t('add')}
+            <Button
+              type="button"
+              onClick={onCreate}
+              disabled={!canSubmit}
+              loading={create.isPending}
+              loadingText={t('adding')}
+            >
+              {t('add')}
             </Button>
           </div>
           {createError ? <Alert variant="error" messages={[createError]} className="mt-3" /> : null}
@@ -164,7 +170,7 @@ function CategoryGroup({
                     subtype={subtype}
                     canManage={canManage}
                     onDeactivate={() => deactivate.mutate(subtype.id)}
-                    deactivating={deactivate.isPending}
+                    deactivating={deactivate.isPending && deactivate.variables === subtype.id}
                   />
                 ))
               )}
@@ -201,7 +207,7 @@ function SubtypeRow({
       {canManage ? (
         <TableCell className="text-end">
           {isActive ? (
-            <Button variant="outline" size="sm" disabled={deactivating} onClick={onDeactivate}>
+            <Button variant="outline" size="sm" loading={deactivating} onClick={onDeactivate}>
               {t('deactivate')}
             </Button>
           ) : null}

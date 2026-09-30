@@ -235,8 +235,14 @@ function CreateDistrictDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" onClick={submit} disabled={!canSubmit}>
-            {create.isPending ? tCommon('formActions.pendingLabel') : t('add')}
+          <Button
+            type="button"
+            onClick={submit}
+            disabled={!canSubmit}
+            loading={create.isPending}
+            loadingText={tCommon('formActions.pendingLabel')}
+          >
+            {t('add')}
           </Button>
           <Button type="button" variant="outline" onClick={onDismiss} disabled={create.isPending}>
             {tCommon('cancel')}

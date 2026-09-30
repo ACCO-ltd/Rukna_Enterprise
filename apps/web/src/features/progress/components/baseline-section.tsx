@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, DatePicker, Input, Label, StatusPill, useToast } from '@erp/ui';
+import { Alert, Button, DatePicker, Input, Label, StatusPill } from '@erp/ui';
 import { AlertTriangle, ShieldCheck, X } from 'lucide-react';
 
 import type { ProgrammeBaselineResponse } from '@erp/types';
@@ -60,7 +60,6 @@ function monthlyLinearPoints(startIso: string, endIso: string): Row[] {
 export function BaselineSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en' | 'ar';
-  const { toast } = useToast();
   const { can } = usePermissions();
 
   const targetsQuery = useProgressTargets(projectId);
@@ -166,10 +165,8 @@ export function BaselineSection({ projectId }: { projectId: string }) {
     const targets = validated();
     if (targets === null) return;
     save.mutate(targets, {
-      onSuccess: () => {
-        setRows(null); // re-sync from the (now-invalidated) server truth
-        toast({ tone: 'success', title: t('baseline.saved') });
-      },
+      // The success toast comes from the mutation's feedback meta.
+      onSuccess: () => setRows(null), // re-sync from the (now-invalidated) server truth
       onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
     });
   }
@@ -177,7 +174,6 @@ export function BaselineSection({ projectId }: { projectId: string }) {
   function onApprove() {
     setError(null);
     approve.mutate(undefined, {
-      onSuccess: () => toast({ tone: 'success', title: t('baseline.governing.approved') }),
       onError: (e) =>
         setError(e instanceof ApiError ? e.message : t('baseline.governing.approveFailed')),
     });
@@ -271,7 +267,7 @@ export function BaselineSection({ projectId }: { projectId: string }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-        <Button variant={lockIsNext || governingBaseline ? 'outline' : 'default'} onClick={onSave} disabled={save.isPending}>
+        <Button variant={lockIsNext || governingBaseline ? 'outline' : 'default'} onClick={onSave} loading={save.isPending}>
           {t('baseline.save')}
         </Button>
 
@@ -281,7 +277,7 @@ export function BaselineSection({ projectId }: { projectId: string }) {
             and "Lock" only once there is a saved curve to lock — before that the reason is said
             in words rather than shown as a disabled button. */}
         {lockIsNext ? (
-          <Button onClick={onApprove} disabled={approve.isPending}>
+          <Button onClick={onApprove} loading={approve.isPending}>
             {t('baseline.governing.approve')}
           </Button>
         ) : null}

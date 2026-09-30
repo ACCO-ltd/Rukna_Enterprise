@@ -137,7 +137,7 @@ export function PolicyLifecycleDialog({
                   {t('cancel')}
                 </Button>
               </FormDialogClose>
-              <Button type="submit" disabled={transition.isPending || !complete}>
+              <Button type="submit" disabled={!complete} loading={transition.isPending}>
                 {t(`lifecycle.${config.keyPrefix}Button`)}
               </Button>
             </FormDialogFooter>

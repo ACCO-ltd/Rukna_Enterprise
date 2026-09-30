@@ -148,7 +148,7 @@ export function TodaySection({ projectId }: { projectId: string }) {
         <div className="flex shrink-0 items-center gap-2">
           <Button
             onClick={() => (todays ? setOpenDprId(todays.id) : startReport(today))}
-            disabled={create.isPending}
+            loading={create.isPending}
           >
             {primaryLabel}
           </Button>

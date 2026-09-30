@@ -171,14 +171,11 @@ function BrandingForm({ org }: { org: OrganizationDto }) {
               type="button"
               variant="outline"
               size="sm"
-              disabled={upload.isPending}
+              loading={upload.isPending}
+              loadingText={tCommon('loading')}
               onClick={() => document.getElementById('branding-logo')?.click()}
             >
-              {upload.isPending
-                ? tCommon('loading')
-                : logoFileId
-                  ? t('replaceLogo')
-                  : t('uploadLogo')}
+              {logoFileId ? t('replaceLogo') : t('uploadLogo')}
             </Button>
             <p className="mt-1 text-caption text-muted-foreground">{t('logoHint')}</p>
             {logoError ? (
@@ -253,12 +250,15 @@ function BrandingForm({ org }: { org: OrganizationDto }) {
       {saveError ? <Alert variant="error" messages={[saveError]} /> : null}
 
       <div>
-        <Button type="button" onClick={onSave} disabled={update.isPending || upload.isPending}>
-          {update.isPending ? tCommon('saving') : tCommon('save')}
+        <Button
+          type="button"
+          onClick={onSave}
+          disabled={upload.isPending}
+          loading={update.isPending}
+          loadingText={tCommon('saving')}
+        >
+          {tCommon('save')}
         </Button>
-        {update.isSuccess ? (
-          <span className="ms-3 text-caption font-medium text-success">{t('saved')}</span>
-        ) : null}
       </div>
     </div>
   );

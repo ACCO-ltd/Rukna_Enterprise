@@ -190,7 +190,8 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
           <Button
             type="button"
             onClick={handleAllocate}
-            disabled={allocate.isPending || !selected || problem !== null || !canAllocate(payment)}
+            loading={allocate.isPending}
+            disabled={!selected || problem !== null || !canAllocate(payment)}
           >
             {t('apply')}
           </Button>

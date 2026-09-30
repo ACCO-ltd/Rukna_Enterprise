@@ -347,8 +347,8 @@ export function JournalForm() {
       {create.isError ? <Alert variant="error" messages={[t('saveFailed')]} /> : null}
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? t('saving') : t('save')}
+        <Button type="submit" loading={create.isPending} loadingText={t('saving')}>
+          {t('save')}
         </Button>
         <Button variant="outline" asChild>
           <Link href="/finance/accounting/journals">{tCommon('cancel')}</Link>

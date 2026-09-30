@@ -308,7 +308,7 @@ function SnapshotDialog({ projectId, onDismiss }: { projectId: string; onDismiss
             {t('performance.snapshotCancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" disabled={capture.isPending || !date}>
+        <Button type="submit" disabled={!date} loading={capture.isPending}>
           {t('performance.snapshotConfirm')}
         </Button>
       </FormDialogFooter>

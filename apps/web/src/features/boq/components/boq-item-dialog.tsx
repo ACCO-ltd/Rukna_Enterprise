@@ -612,16 +612,14 @@ export function BoqItemDialog({
           </Button>
         </FormDialogClose>
         {!readOnly ? (
-          <Button type="submit" disabled={isPending}>
-            {isPending
-              ? t('saving')
-              : isAdd
-                ? isItem
-                  ? t('addItemAction')
-                  : t('addSectionAction')
-                : isItem
-                  ? t('saveItem')
-                  : t('saveSection')}
+          <Button type="submit" loading={isPending} loadingText={t('saving')}>
+            {isAdd
+              ? isItem
+                ? t('addItemAction')
+                : t('addSectionAction')
+              : isItem
+                ? t('saveItem')
+                : t('saveSection')}
           </Button>
         ) : null}
       </FormDialogFooter>

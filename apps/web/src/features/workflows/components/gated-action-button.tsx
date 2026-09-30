@@ -62,7 +62,7 @@ export function GatedActionButton({
   if (!approvalInstanceId) {
     return (
       <div className="space-y-2">
-        <Button type="button" variant={variant} disabled={disabled || pending} onClick={handleRun}>
+        <Button type="button" variant={variant} disabled={disabled} loading={pending} onClick={handleRun}>
           {label}
         </Button>
         {error ? <Alert variant="error" messages={[error]} /> : null}
@@ -78,7 +78,7 @@ export function GatedActionButton({
       <ApprovalPanel instanceId={approvalInstanceId} transactionType={transactionType} />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3">
-        <Button type="button" variant={variant} disabled={pending} onClick={handleRun}>
+        <Button type="button" variant={variant} loading={pending} onClick={handleRun}>
           {t('gate.complete')}
         </Button>
         <span className="text-sm text-muted-foreground">{t('gate.completeHint')}</span>

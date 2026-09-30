@@ -209,9 +209,10 @@ export function LifecycleCommandDialog({
         <Button
           variant={isDestructive ? 'destructive' : 'default'}
           onClick={handleConfirm}
-          disabled={isPending}
+          loading={isPending}
+          loadingText={t('working')}
         >
-          {isPending ? t('working') : confirmLabel}
+          {confirmLabel}
         </Button>
       </FormDialogFooter>
     </FormDialog>
