@@ -65,7 +65,7 @@ Headings are marked **(H)** and do not accept postings.
 **Equity**
 - 30000 Share capital · EQUITY / SHARE_CAPITAL
 - 31000 Retained earnings · EQUITY / RETAINED_EARNINGS
-- 32000 Current year earnings · EQUITY / CURRENT_YEAR_EARNINGS
+- 32000 Current year earnings · EQUITY / CURRENT_YEAR_EARNINGS — `SYSTEM_ONLY`, accepts no postings (the balance sheet computes current-year earnings from the P&L and year-end close rolls it into 31000, so a posting here would double-count)
 - 33000 Shareholder current account · EQUITY / OTHER_EQUITY
 
 **Income**

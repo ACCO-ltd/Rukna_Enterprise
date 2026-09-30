@@ -7,7 +7,12 @@
  *   ST-03  a failure part-way rolls the WHOLE install back (no accounts, no policies, no profiles)
  *   ST-04  re-pointing a posting profile closes the previous version at the new date — the
  *          non-overlap constraint accepts it and a bill-date lookup resolves each side correctly
- *   ST-05  deactivate / reactivate a profile
+ *   ST-05  deactivate / reactivate a profile; deactivation blocked while an unposted bill names it
+ *   ST-06  posting a supplier bill whose line names an INCOME profile is refused (review M1)
+ *   ST-07  a future fiscal year: versions start today and a chart edit succeeds (review M2);
+ *          an overlapping fiscal year is a 409, not a constraint 500 (review L4)
+ *   ST-08  records without a chart → PARTIAL_SETUP / 409 ACCOUNTING_PARTIALLY_SET_UP (review L6)
+ *   ST-09  three concurrent installs → exactly one succeeds, two 409
  */
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -25,6 +30,11 @@ import { AccountingSetupService } from '../accounting-setup/application/accounti
 import { RESOLVER_SUBTYPES } from '../accounting-setup/templates/construction';
 import { PostingProfileRepository } from '../accounts-payable/infrastructure/posting-profile.repository';
 import { PostingProfileService } from '../accounts-payable/application/posting-profile.service';
+import { AccountService } from '../accounting-core/application/account.service';
+import { FiscalYearService } from '../accounting-core/application/fiscal-year.service';
+import { AccountingConfigurationService } from '../accounting-core/application/accounting-configuration.service';
+import { Decimal } from '@prisma/client/runtime/library';
+import { buildServices } from './helpers/build-services';
 
 const prisma = new PrismaClient();
 const tenancy = { getClient: () => prisma } as never;
@@ -68,6 +78,9 @@ const INPUT = {
 async function cleanup(orgId: string) {
   const q = (sql: TemplateStringsArray, ...v: unknown[]) => prisma.$executeRaw(sql, ...v);
   await prisma.auditLog.deleteMany({ where: { orgId } });
+  await q`DELETE FROM supplier_bill_lines WHERE supplier_bill_id IN (SELECT id FROM supplier_bills WHERE organization_id = ${orgId})`;
+  await q`DELETE FROM supplier_bills WHERE organization_id = ${orgId}`;
+  await q`DELETE FROM suppliers WHERE organization_id = ${orgId}`;
   await q`DELETE FROM bank_accounts WHERE organization_id = ${orgId}`;
   await q`DELETE FROM posting_profile_versions WHERE posting_profile_id IN (SELECT id FROM posting_profiles WHERE organization_id = ${orgId})`;
   await q`DELETE FROM posting_profiles WHERE organization_id = ${orgId}`;
@@ -85,6 +98,41 @@ async function cleanup(orgId: string) {
   await q`DELETE FROM banking_policy WHERE organization_id = ${orgId}`;
   await prisma.user.deleteMany({ where: { organizationId: orgId } });
   await q`DELETE FROM organizations WHERE id = ${orgId}`;
+}
+
+let billSeq = 0;
+/** An APPROVED, unposted, PO-less bill dated inside the installed fiscal year. */
+async function approvedBill(who: RequestIdentity, profileCode: string) {
+  const orgId = who.activeOrganizationId;
+  const supplier =
+    (await prisma.supplier.findFirst({ where: { organizationId: orgId } })) ??
+    (await prisma.supplier.create({ data: { organizationId: orgId, code: 'SUP-ST', name: 'ST Supplier', status: 'ACTIVE' } }));
+  billSeq += 1;
+  const amount = new Decimal(100);
+  return prisma.supplierBill.create({
+    data: {
+      organizationId: orgId,
+      supplierId: supplier.id,
+      supplierInvoiceNumber: `ST-${billSeq}`,
+      supplierInvoiceNumberNorm: `ST${billSeq}`,
+      billDate: new Date(`${YEAR}-03-15T00:00:00.000Z`),
+      dueDate: new Date(`${YEAR}-04-15T00:00:00.000Z`),
+      currencyCode: 'USD',
+      subtotal: amount,
+      vatAmount: new Decimal(0),
+      totalAmount: amount,
+      outstandingAmount: amount,
+      documentStatus: 'APPROVED',
+      postingStatus: 'NOT_POSTED',
+      createdBy: who.userId,
+      lines: {
+        create: [{
+          lineNumber: 1, description: 'ST line', netAmount: amount, vatAmount: new Decimal(0),
+          grossAmount: amount, expenseProfileCode: profileCode,
+        }],
+      },
+    },
+  });
 }
 
 afterAll(async () => {
@@ -208,11 +256,97 @@ describe('ADR-040 accounting setup (DB)', () => {
       .rejects.toMatchObject({ status: 409 });
   });
 
-  it('ST-05: deactivate and reactivate a profile', async () => {
+  it('ST-05: deactivate and reactivate a profile; blocked while an unposted bill names it', async () => {
     const service = new PostingProfileService(tenancy, new PostingProfileRepository());
     const target = (await service.list(identity)).find((p) => p.code === 'EXP_61100')!;
     expect((await service.setActive(identity, target.id, false)).status).toBe('INACTIVE');
     expect((await service.setActive(identity, target.id, true)).status).toBe('ACTIVE');
+
+    await approvedBill(identity, 'EXP_61100');
+    await expect(service.setActive(identity, target.id, false)).rejects.toMatchObject({
+      status: 409,
+      response: { errorCode: 'POSTING_PROFILE_IN_USE', details: { unpostedBills: 1 } },
+    });
+  });
+
+  it('ST-06: posting a bill whose line names an INCOME profile is refused; nothing is posted', async () => {
+    const bill = await approvedBill(identity, 'INC_42100');
+    const { supplierBillService } = buildServices(prisma);
+    await expect(supplierBillService.post(identity, { billId: bill.id, apAccountCode: '20000' })).rejects.toMatchObject({
+      status: 400,
+      response: { errorCode: 'POSTING_PROFILE_NOT_EXPENSE' },
+    });
+    const after = await prisma.supplierBill.findUnique({ where: { id: bill.id } });
+    // The post path records any refusal as FAILED (existing behaviour, same as an unknown profile).
+    expect(after!.postingStatus).not.toBe('POSTED');
+    expect(await prisma.journalEntry.count({ where: { organizationId: identity.activeOrganizationId } })).toBe(0);
+
+    // Nor can the income profile be re-pointed into the cost family.
+    const service = new PostingProfileService(tenancy, new PostingProfileRepository());
+    const inc = (await service.list(identity)).find((p) => p.code === 'INC_42100')!;
+    await expect(service.repoint(identity, inc.id, { accountCode: '51100', effectiveFrom: `${YEAR}-08-01` }))
+      .rejects.toMatchObject({ response: { errorCode: 'POSTING_PROFILE_CLASS_CHANGE' } });
+  });
+
+  it('ST-07: a future fiscal year — versions start today, a chart edit succeeds, an overlap is 409', async () => {
+    const who = await makeOrg();
+    const next = YEAR + 1;
+    await makeSetup().install(who, { ...INPUT, banks: [], fiscalYear: { year: next, startMonth: 1 } });
+    const today = new Date().toISOString().slice(0, 10);
+    const rent = await prisma.account.findUnique({
+      where: { organizationId_code: { organizationId: who.activeOrganizationId, code: '61100' } },
+      include: { versions: true },
+    });
+    expect(rent!.versions[0]!.effectiveFrom.toISOString().slice(0, 10)).toBe(today);
+
+    const accounts = new AccountService(tenancy, new AccountRepository());
+    const edited = await accounts.update(who, rent!.id, { name: 'Office and yard rent' });
+    expect(edited!.versions[0]!.name).toBe('Office and yard rent');
+
+    // L4: a July-start year overlapping FY<next> → 409 FISCAL_YEAR_OVERLAP, not a constraint 500.
+    await prisma.fiscalCalendarPolicy.update({
+      where: { organizationId: who.activeOrganizationId },
+      data: { fiscalYearStartMonth: 7 },
+    });
+    const fiscalYears = new FiscalYearService(
+      tenancy,
+      new FiscalYearRepository(),
+      new AccountRepository(),
+      new AccountingConfigurationService(tenancy, new AccountingConfigurationRepository()),
+    );
+    await expect(fiscalYears.create(who, { year: next, retainedEarningsAccountCode: '31000' })).rejects.toMatchObject({
+      status: 409,
+      response: { errorCode: 'FISCAL_YEAR_OVERLAP' },
+    });
+  });
+
+  it('ST-08: records without a chart → PARTIAL_SETUP and 409 ACCOUNTING_PARTIALLY_SET_UP', async () => {
+    const who = await makeOrg();
+    await prisma.taxCode.create({
+      data: {
+        organizationId: who.activeOrganizationId, code: 'VAT5_OUT', name: 'Output VAT 5%', rate: 5, taxType: 'VAT',
+        recoveryMethod: 'FULLY_RECOVERABLE', effectiveFrom: new Date(`${YEAR}-01-01T00:00:00.000Z`), createdBy: who.userId,
+      },
+    });
+    const setup = makeSetup();
+    expect(await setup.getStatus(who)).toMatchObject({ canInstall: false, reason: 'PARTIAL_SETUP', existingRecords: ['TAX_CODES'] });
+    await expect(setup.install(who, INPUT)).rejects.toMatchObject({
+      status: 409,
+      response: { errorCode: 'ACCOUNTING_PARTIALLY_SET_UP' },
+    });
+    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(0);
+  });
+
+  it('ST-09: three concurrent installs → exactly one succeeds, two are 409', async () => {
+    const who = await makeOrg();
+    const results = await Promise.allSettled([1, 2, 3].map(() => makeSetup().install(who, { ...INPUT, banks: [] })));
+    const refused = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(refused).toHaveLength(2);
+    for (const r of refused) {
+      expect(r.reason).toMatchObject({ status: 409, response: { errorCode: 'ACCOUNTING_ALREADY_SET_UP' } });
+    }
+    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(79);
   });
 
   it('ST-03: a failure part-way rolls the whole install back', async () => {

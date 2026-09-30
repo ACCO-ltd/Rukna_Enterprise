@@ -13,6 +13,14 @@ export class FiscalYearRepository {
     });
   }
 
+  /** A fiscal year whose [startDate, endDate] intersects the given range (dates, not names). */
+  findOverlapping(prisma: TenantPrisma, organizationId: string, startDate: Date, endDate: Date) {
+    return prisma.fiscalYear.findFirst({
+      where: { organizationId, startDate: { lte: endDate }, endDate: { gte: startDate } },
+      select: { id: true, name: true, startDate: true, endDate: true },
+    });
+  }
+
   findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<FiscalYearWithPeriods | null> {
     return prisma.fiscalYear.findFirst({
       where: { id, organizationId },

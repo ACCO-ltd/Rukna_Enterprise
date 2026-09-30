@@ -80,6 +80,13 @@ describe.each(CHOICES)('construction template (VAT=$vatCharged, banks=$bankNames
     });
   });
 
+  it('32000 current year earnings accepts no postings (the balance sheet computes it; review L5)', () => {
+    expect(byCode.get('32000')).toMatchObject({ isPostingAllowed: false, controlPostingPolicy: 'SYSTEM_ONLY', isHeading: false });
+    // Only headings, AR/AP and 32000 refuse postings.
+    const closed = accounts.filter((a) => !a.isPostingAllowed && !a.isHeading).map((a) => a.code).sort();
+    expect(closed).toEqual(['11000', '20000', '32000']);
+  });
+
   it('carries no retention or guarantee accounts', () => {
     expect(accounts.filter((a) => /retention|guarantee/i.test(a.name))).toEqual([]);
   });

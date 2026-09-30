@@ -66,6 +66,7 @@ beforeEach(() => {
     accountCount: 0,
     hasFiscalYear: false,
     hasPolicies: false,
+    existingRecords: [],
   });
 });
 
@@ -79,6 +80,26 @@ describe('GuideHub — accounting setup', () => {
     const step = screen.getByRole('button', { name: /Chart of accounts — Open/ });
     await user.click(step);
     expect(await screen.findByRole('dialog', { name: 'Set up accounting' })).toBeInTheDocument();
+  });
+
+  it('explains a partial setup instead of offering the install', async () => {
+    accounting.getAccountingSetupStatus.mockResolvedValue({
+      canInstall: false,
+      reason: 'PARTIAL_SETUP',
+      accountCount: 0,
+      hasFiscalYear: false,
+      hasPolicies: true,
+      existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'],
+    });
+    renderWithProviders(<GuideHub />, { permissions: MANAGE });
+
+    expect(
+      await screen.findByText(
+        'Accounting can’t be set up automatically: this organisation already has tax codes and bank accounts but no chart of accounts. Remove them or add the chart manually.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Set up accounting in one step')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Chart of accounts — Open/ })).toBeInTheDocument();
   });
 
   it('links the posting-profiles step to its screen', async () => {
@@ -95,6 +116,7 @@ describe('GuideHub — accounting setup', () => {
       accountCount: 62,
       hasFiscalYear: true,
       hasPolicies: true,
+      existingRecords: [],
     });
     renderWithProviders(<GuideHub />, { permissions: MANAGE });
 

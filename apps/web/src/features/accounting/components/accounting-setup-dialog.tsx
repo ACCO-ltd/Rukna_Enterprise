@@ -45,12 +45,12 @@ import {
   fiscalYearRange,
   hasSetupProblems,
   initialSetupDraft,
-  isAlreadySetUpError,
   monthName,
   parseSetupYear,
   parseVatRate,
   previewAccountCount,
   previewVatRate,
+  setupConflict,
   setupProblems,
   toSetupBody,
   type SetupBankDraft,
@@ -59,6 +59,7 @@ import {
   type VatMode,
 } from '../accounting-setup';
 import { useAccountingSetupTemplate, useRunAccountingSetup } from '../hooks/use-accounting';
+import { usePartialSetupMessage } from './partial-setup-notice';
 
 type StepId = 'company' | 'review' | 'confirm';
 
@@ -150,13 +151,17 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
     void wizard.next();
   }
 
-  const serverError = setup.isError
-    ? isAlreadySetUpError(setup.error)
+  const partialMessage = usePartialSetupMessage();
+  const conflict = setup.isError ? setupConflict(setup.error) : null;
+  const serverError = !setup.isError
+    ? null
+    : conflict?.kind === 'already'
       ? t('confirm.alreadySetUp')
-      : setup.error instanceof ApiError
-        ? setup.error.message
-        : t('review.loadFailed')
-    : null;
+      : conflict?.kind === 'partial'
+        ? partialMessage(conflict.existingRecords)
+        : setup.error instanceof ApiError
+          ? setup.error.message
+          : t('review.loadFailed');
 
   const stepLabel = steps[wizard.currentIndex]?.label ?? '';
 

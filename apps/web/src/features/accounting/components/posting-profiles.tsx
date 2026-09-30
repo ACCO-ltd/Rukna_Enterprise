@@ -52,8 +52,10 @@ import {
 import {
   createProfileProblems,
   earliestRepointDate,
+  type ProfileFamily,
   latestProfileVersion,
   profileCodeFromName,
+  profileFamily,
   profileTarget,
   profileVersionOn,
   PROFILE_TARGET_CLASSES,
@@ -65,6 +67,12 @@ import {
   todayIso,
 } from '../posting-profile-setup';
 import type { Account, AccountClass, PostingProfile } from '../types';
+
+/** `details.unpostedBills` on a 409 POSTING_PROFILE_IN_USE. */
+function unpostedBills(error: ApiError): number {
+  const count = error.details?.['unpostedBills'];
+  return typeof count === 'number' ? count : 0;
+}
 
 interface ProfileTargetView {
   code: string;
@@ -211,13 +219,31 @@ export function PostingProfiles() {
     </Button>
   ) : null;
 
-  const statusError =
-    status.isError && status.variables
-      ? t('actionFailed', {
-          code: status.variables.code,
-          message: status.error instanceof ApiError ? status.error.message : t('loadFailed'),
-        })
-      : null;
+  // A refused (de)activation is said inside the confirmation, which stays open: 409
+  // POSTING_PROFILE_IN_USE counts the unposted bills that still name the profile.
+  const statusError = !status.isError
+    ? null
+    : status.error instanceof ApiError && status.error.code === 'POSTING_PROFILE_IN_USE'
+      ? t('deactivate.inUse', { count: unpostedBills(status.error) })
+      : status.error instanceof ApiError && status.error.message
+        ? status.error.message
+        : t('actionFailed', { code: status.variables?.code ?? '', message: t('loadFailed') });
+
+  // The profile being re-pointed, read fresh from the list: after a 409 POSTING_PROFILE_CHANGED
+  // the list reloads, and the form must check against the new latest version.
+  const repointTarget = repointing
+    ? (profiles.data?.find((profile) => profile.id === repointing.id) ?? repointing)
+    : null;
+
+  /** The class family of the latest version's account — a re-point must stay inside it. */
+  const familyOf = (profile: PostingProfile) => {
+    const latest = latestProfileVersion(profile);
+    if (!latest) return null;
+    const fromServer =
+      profile.currentAccount?.id === latest.accountId ? profile.currentAccount.accountClass : null;
+    const local = accountById.get(latest.accountId);
+    return profileFamily(fromServer ?? (local ? currentVersion(local)?.accountClass : null));
+  };
 
   return (
     <div className="space-y-6">
@@ -225,8 +251,6 @@ export function PostingProfiles() {
         <h2 className="text-h2 font-semibold text-foreground">{t('title')}</h2>
         <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{t('description')}</p>
       </div>
-
-      {statusError ? <Alert variant="error" messages={[statusError]} /> : null}
 
       <PlatformDataGrid
         columns={columns}
@@ -270,7 +294,12 @@ export function PostingProfiles() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => setToggling(profile)}>
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              status.reset();
+                              setToggling(profile);
+                            }}
+                          >
                             {active ? t('deactivate.action') : t('reactivate.action')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -308,13 +337,14 @@ export function PostingProfiles() {
         />
       ) : null}
 
-      {repointing ? (
+      {repointTarget ? (
         <RepointPostingProfileForm
-          key={repointing.id}
-          profile={repointing}
-          current={targetOf(repointing)}
+          key={repointTarget.id}
+          profile={repointTarget}
+          current={targetOf(repointTarget)}
+          family={familyOf(repointTarget)}
           latestAccountCode={(() => {
-            const latest = latestProfileVersion(repointing);
+            const latest = latestProfileVersion(repointTarget);
             if (!latest) return null;
             return latest.accountCode ?? accountById.get(latest.accountId)?.code ?? null;
           })()}
@@ -336,7 +366,18 @@ export function PostingProfiles() {
               : t('reactivate.title', { code: toggling.code })
             : ''
         }
-        description={toggling?.status === 'ACTIVE' ? t('deactivate.body') : t('reactivate.body')}
+        description={
+          <>
+            <span className="block">
+              {toggling?.status === 'ACTIVE' ? t('deactivate.body') : t('reactivate.body')}
+            </span>
+            {statusError ? (
+              <span role="alert" className="mt-3 block font-medium text-danger">
+                {statusError}
+              </span>
+            ) : null}
+          </>
+        }
         confirmLabel={
           toggling?.status === 'ACTIVE' ? t('deactivate.confirm') : t('reactivate.confirm')
         }
@@ -347,7 +388,7 @@ export function PostingProfiles() {
           const target = toggling;
           status.mutate(
             { id: target.id, code: target.code, active: target.status !== 'ACTIVE' },
-            { onSettled: () => setToggling(null) },
+            { onSuccess: () => setToggling(null) },
           );
         }}
       />
@@ -604,6 +645,7 @@ export function CreatePostingProfileForm({
 export function RepointPostingProfileForm({
   profile,
   current,
+  family,
   latestAccountCode,
   accounts,
   onDone,
@@ -611,6 +653,8 @@ export function RepointPostingProfileForm({
   profile: PostingProfile;
   /** What the profile points at today, for the subtitle. */
   current: ProfileTargetView | null;
+  /** Income or cost/expense: the only accounts offered. `null` when unknown — all are offered. */
+  family: ProfileFamily | null;
   /** The latest version's account — a re-point to it again changes nothing. */
   latestAccountCode: string | null;
   accounts: readonly Account[];
@@ -630,7 +674,10 @@ export function RepointPostingProfileForm({
   const [showErrors, setShowErrors] = useState(false);
 
   const repoint = useRepointPostingProfile();
-  const options = useAccountOptions(accounts);
+  const allOptions = useAccountOptions(accounts);
+  const options = family
+    ? allOptions.filter((option) => profileFamily(option.accountClass) === family)
+    : allOptions;
 
   const problems = repointProblems(
     { accountCode, effectiveFrom },
@@ -639,11 +686,16 @@ export function RepointPostingProfileForm({
   const shown = showErrors ? problems : [];
   const dateOk = !problems.includes('effective-from') && !problems.includes('effective-from-early');
 
-  const serverError = repoint.isError
-    ? repoint.error instanceof ApiError && repoint.error.message
-      ? repoint.error.message
-      : tCreate('accountInvalid')
-    : null;
+  const code = repoint.error instanceof ApiError ? repoint.error.code : undefined;
+  const serverError = !repoint.isError
+    ? null
+    : code === 'POSTING_PROFILE_CHANGED'
+      ? t('changed')
+      : code === 'POSTING_PROFILE_CLASS_CHANGE' && family
+        ? t('problem.class-change', { family })
+        : repoint.error instanceof ApiError && repoint.error.message
+          ? repoint.error.message
+          : tCreate('accountInvalid');
 
   function handleSubmit() {
     setShowErrors(true);
@@ -681,6 +733,7 @@ export function RepointPostingProfileForm({
         <FormField
           htmlFor={ids.account}
           label={t('account')}
+          hint={family ? t('familyHint', { family }) : undefined}
           error={
             shown.includes('account')
               ? t('problem.account')

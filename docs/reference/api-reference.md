@@ -1355,8 +1355,8 @@ Supersede: explicit command swaps isEffective between old and new cert.
 | Method | Path | Permission | Description |
 |---|---|---|---|
 | `GET` | `/accounting/setup/template?vatRate=&banks=` | `view:accounting` | Preview: `{ templateId: 'CONSTRUCTION', version, accounts[], postingProfiles[] }`. `vatRate` > 0 adds 14100 (`conditional: 'VAT'`); `banks=n` adds placeholder rows 10100… named `Bank 1`… (`conditional: 'BANK'`). |
-| `GET` | `/accounting/setup/status` | `view:accounting` | `{ canInstall, reason: 'READY' \| 'CHART_NOT_EMPTY', accountCount, hasFiscalYear, hasPolicies }` |
-| `POST` | `/accounting/setup` | `manage:accounting` | Install in one transaction; `409 ACCOUNTING_ALREADY_SET_UP` if the org has any account |
+| `GET` | `/accounting/setup/status` | `view:accounting` | `{ canInstall, reason: 'READY' \| 'CHART_NOT_EMPTY' \| 'PARTIAL_SETUP', existingRecords: ('TAX_CODES'\|'POSTING_PROFILES'\|'BANK_ACCOUNTS'\|'FISCAL_YEARS')[], accountCount, hasFiscalYear, hasPolicies }` |
+| `POST` | `/accounting/setup` | `manage:accounting` | Install in one transaction; `409 ACCOUNTING_ALREADY_SET_UP` if the org has any account; `409 ACCOUNTING_PARTIALLY_SET_UP` (details.existingRecords) if tax codes, posting profiles, bank accounts or fiscal years exist without a chart |
 
 **Install — body:**
 ```json
@@ -1368,7 +1368,7 @@ Supersede: explicit command swaps isEffective between old and new cert.
 }
 ```
 
-Creates the six policy rows; the template chart (parent-first, effective from the fiscal-year start); banks as GL accounts 10100, 10101, … (max 20) each with a `BankAccount` (account number defaults to `Not recorded (<gl code>)`); `VAT{rate}_OUT` / `VAT{rate}_IN` tax codes + 14100 when VAT is charged; one posting profile per posting income/cost/expense account (`PROJECT_REVENUE`, `COST_<code>`, `EXP_<code>`, `INC_<code>`); fiscal year `FY2026` (or `FY2026/27` for a non-January start) with 12 OPEN periods; the JE/INV/RCP/BILL/PMT/CN number sequences; one `ACCOUNTING_SETUP_INSTALLED` audit event. Returns `{ accountsCreated, postingProfilesCreated, fiscalYear: { id, name }, bankAccountsCreated, taxCodesCreated }`. Validation failures → `400` (`ACCOUNTING_SETUP_INVALID` for service-level checks such as a missing VAT rate or a duplicated account number).
+Creates the six policy rows; the template chart (parent-first, effective from the earlier of the fiscal-year start and today, so a future year's chart is already in force); banks as GL accounts 10100, 10101, … (max 20) each with a `BankAccount` (account number defaults to `Not recorded (<gl code>)`); `VAT{rate}_OUT` / `VAT{rate}_IN` tax codes + 14100 when VAT is charged; one posting profile per posting income/cost/expense account (`PROJECT_REVENUE`, `COST_<code>`, `EXP_<code>`, `INC_<code>`); fiscal year `FY2026` (or `FY2026/27` for a non-January start) with 12 OPEN periods; the JE/INV/RCP/BILL/PMT/CN number sequences; one `ACCOUNTING_SETUP_INSTALLED` audit event. Returns `{ accountsCreated, postingProfilesCreated, fiscalYear: { id, name }, bankAccountsCreated, taxCodesCreated }`. Validation failures → `400` (`ACCOUNTING_SETUP_INVALID` for service-level checks such as a missing VAT rate or a duplicated account number).
 
 ---
 
@@ -1377,7 +1377,7 @@ Creates the six policy rows; the template chart (parent-first, effective from th
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/fiscal-years` | List fiscal years for the org |
-| `POST` | `/fiscal-years` | Create a new fiscal year |
+| `POST` | `/fiscal-years` | Create a new fiscal year (`409 FISCAL_YEAR_OVERLAP` when its dates overlap an existing year) |
 | `GET` | `/fiscal-years/:id` | Get fiscal year with all periods |
 | `GET` | `/fiscal-years/period/covering` | Find the period covering a date (`?date=2025-01-15`) |
 
@@ -1777,7 +1777,11 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 >
 > **Create:** the account must be ACTIVE, open to posting (not a heading or control account) and INCOME / COST_OF_SALES / EXPENSE — else `400 POSTING_PROFILE_ACCOUNT_INVALID`. Duplicate code → `409 POSTING_PROFILE_CODE_TAKEN`. `effectiveFrom` defaults to today.
 >
-> **Re-point:** `effectiveFrom` must be after the latest version's `effectiveFrom` (`400 POSTING_PROFILE_VERSION_INVALID`), and something must change. `effectiveTo` is exclusive, so the previous version is closed **at** the new `effectiveFrom` (its last day in force is the day before). Posted documents keep the version they posted with. All commands are audited (`POSTING_PROFILE_*`).
+> **Re-point:** `effectiveFrom` must be after the latest version's `effectiveFrom` (`400 POSTING_PROFILE_VERSION_INVALID`), and something must change. `effectiveTo` is exclusive, so the previous version is closed **at** the new `effectiveFrom` (its last day in force is the day before). Posted documents keep the version they posted with. A profile cannot change family: income stays income, cost/expense stays cost/expense (`400 POSTING_PROFILE_CLASS_CHANGE`). A concurrent re-point loses with `409 POSTING_PROFILE_CHANGED`.
+>
+> **Deactivate:** `409 POSTING_PROFILE_IN_USE` (details.unpostedBills) while draft, submitted or approved-unposted supplier bills name the profile. All commands are audited (`POSTING_PROFILE_*`).
+>
+> **Supplier bills:** create, update and post refuse a line whose profile resolves to a non-cost/expense account — `400 POSTING_PROFILE_NOT_EXPENSE`.
 
 ---
 

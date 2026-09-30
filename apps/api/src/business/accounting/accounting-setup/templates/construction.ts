@@ -32,6 +32,8 @@ export interface TemplateAccount {
   isHeading: boolean;
   parentCode: string | null;
   isControlAccount: boolean;
+  /** False for headings, control accounts, and accounts only the system may ever fill (32000). */
+  isPostingAllowed: boolean;
   controlledSubledgerType: SubledgerType | null;
   controlPostingPolicy: ControlPostingPolicy;
   /** Present only on rows that exist because of an install-time choice. */
@@ -74,6 +76,8 @@ function row(
     control?: SubledgerType;
     policy?: ControlPostingPolicy;
     conditional?: 'VAT' | 'BANK';
+    /** A non-heading account that accepts no postings at all. */
+    noPosting?: boolean;
   } = {},
 ): TemplateAccount {
   return {
@@ -85,6 +89,7 @@ function row(
     isHeading: opts.heading ?? false,
     parentCode: opts.parent ?? null,
     isControlAccount: opts.control !== undefined,
+    isPostingAllowed: !(opts.heading ?? false) && opts.control === undefined && !opts.noPosting,
     controlledSubledgerType: opts.control ?? null,
     controlPostingPolicy: opts.policy ?? ('UNRESTRICTED' as ControlPostingPolicy),
     ...(opts.conditional ? { conditional: opts.conditional } : {}),
@@ -155,7 +160,9 @@ const STATIC_ACCOUNTS: TemplateAccount[] = [
   // Equity
   row('30000', 'Share capital', 'EQUITY', 'SHARE_CAPITAL'),
   row(RETAINED_EARNINGS_CODE, 'Retained earnings', 'EQUITY', 'RETAINED_EARNINGS'),
-  row('32000', 'Current year earnings', 'EQUITY', 'CURRENT_YEAR_EARNINGS'),
+  // The balance sheet computes current-year earnings from the P&L, and year-end close rolls the
+  // P&L into 31000 — nothing ever posts here, so a manual posting would double-count it.
+  row('32000', 'Current year earnings', 'EQUITY', 'CURRENT_YEAR_EARNINGS', { policy: SYSTEM_ONLY, noPosting: true }),
   row('33000', 'Shareholder current account', 'EQUITY', 'OTHER_EQUITY'),
 
   // Income

@@ -316,6 +316,26 @@ describe('AccountingSetupDialog — confirm and submit', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains a 409 ACCOUNTING_PARTIALLY_SET_UP with the records in the way', async () => {
+    api.runAccountingSetup.mockRejectedValue(
+      new ApiError(409, 'Partially set up', 'ACCOUNTING_PARTIALLY_SET_UP', [], {
+        existingRecords: ['POSTING_PROFILES', 'FISCAL_YEARS'],
+      }),
+    );
+    const user = userEvent.setup();
+    const onDone = renderDialog();
+    await reachConfirm(user);
+
+    await user.click(screen.getByRole('button', { name: 'Set up accounting' }));
+
+    expect(
+      await screen.findByText(
+        'Accounting can’t be set up automatically: this organisation already has posting profiles and fiscal years but no chart of accounts. Remove them or add the chart manually.',
+      ),
+    ).toBeInTheDocument();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   it('explains a 409 ACCOUNTING_ALREADY_SET_UP instead of echoing it', async () => {
     api.runAccountingSetup.mockRejectedValue(
       new ApiError(409, 'ACCOUNTING_ALREADY_SET_UP', 'ACCOUNTING_ALREADY_SET_UP'),

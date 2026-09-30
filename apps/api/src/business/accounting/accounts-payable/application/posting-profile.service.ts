@@ -48,6 +48,12 @@ const accountInvalid = (message: string) =>
 const versionInvalid = (message: string) =>
   new BadRequestException({ errorCode: 'POSTING_PROFILE_VERSION_INVALID', message });
 
+const profileChanged = (code: string) =>
+  new ConflictException({
+    errorCode: 'POSTING_PROFILE_CHANGED',
+    message: `Posting profile ${code} was changed by someone else. Reload and try again.`,
+  });
+
 /** An ISO date (or date-time) → that calendar day at UTC midnight, as `@db.Date` stores it. */
 export function toDateOnly(iso: string): Date {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
@@ -125,23 +131,44 @@ export class PostingProfileService {
         `The new version must start after the current one (${latest.effectiveFrom.toISOString().slice(0, 10)})`,
       );
     }
+    // M1: a re-point may not move a profile between the revenue and the cost/expense families —
+    // bill lines already name cost profiles, and revenue must never be debited by a bill.
+    const currentClass = (await this.repo.findAccountLabels(prisma, orgId, [latest.accountId])).get(latest.accountId)?.accountClass;
+    if (currentClass && classFamily(currentClass) !== classFamily(account.accountClass)) {
+      throw new BadRequestException({
+        errorCode: 'POSTING_PROFILE_CLASS_CHANGE',
+        message:
+          `Posting profile ${profile.code} points at a ${currentClass} account; it can only be re-pointed to ` +
+          (classFamily(currentClass) === 'REVENUE' ? 'an income account' : 'a cost-of-sales or expense account'),
+      });
+    }
+
     const name = input.name?.trim() || latest.name;
     if (account.id === latest.accountId && name === latest.name) {
       throw versionInvalid('Nothing changes: the profile already points at this account under this name');
     }
 
-    await prisma.$transaction(async (tx) => {
-      await this.repo.addVersion(tx, latest, { name, accountId: account.id, effectiveFrom, changedBy: userId });
-      await this.repo.recordAudit(tx, {
-        organizationId: orgId, userId, action: 'POSTING_PROFILE_REPOINTED', resourceId: profile.id,
-        before: { versionNumber: latest.versionNumber, accountId: latest.accountId, name: latest.name },
-        after: {
-          versionNumber: latest.versionNumber + 1, accountCode: account.code, name,
-          effectiveFrom: effectiveFrom.toISOString().slice(0, 10),
-        },
-        sourceCommand: 'posting-profile.repoint',
+    try {
+      await prisma.$transaction(async (tx) => {
+        // L1: serialise concurrent re-points; the loser answers 409 instead of a constraint 500.
+        if ((await this.repo.lockAndLatestVersionNumber(tx, profile.id)) !== latest.versionNumber) {
+          throw profileChanged(profile.code);
+        }
+        await this.repo.addVersion(tx, latest, { name, accountId: account.id, effectiveFrom, changedBy: userId });
+        await this.repo.recordAudit(tx, {
+          organizationId: orgId, userId, action: 'POSTING_PROFILE_REPOINTED', resourceId: profile.id,
+          before: { versionNumber: latest.versionNumber, accountId: latest.accountId, name: latest.name },
+          after: {
+            versionNumber: latest.versionNumber + 1, accountCode: account.code, name,
+            effectiveFrom: effectiveFrom.toISOString().slice(0, 10),
+          },
+          sourceCommand: 'posting-profile.repoint',
+        });
       });
-    });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') throw profileChanged(profile.code);
+      throw err;
+    }
     return this.getView(orgId, id);
   }
 
@@ -153,6 +180,18 @@ export class PostingProfileService {
     if (!profile) throw new NotFoundException(`Posting profile ${id} not found`);
     const target = active ? 'ACTIVE' : 'INACTIVE';
     if (profile.status === target) return this.getView(orgId, id); // idempotent
+
+    // L2: deactivating a profile an unposted bill still names would make that bill unpostable.
+    if (!active) {
+      const inUse = await this.repo.countUnpostedBillsUsing(prisma, orgId, profile.code);
+      if (inUse > 0) {
+        throw new ConflictException({
+          errorCode: 'POSTING_PROFILE_IN_USE',
+          message: `Posting profile ${profile.code} is used by ${inUse} unposted supplier bill(s). Post, re-code or cancel them first.`,
+          details: { unpostedBills: inUse },
+        });
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       await this.repo.setStatus(tx, id, target);
@@ -219,6 +258,10 @@ export class PostingProfileService {
       };
     });
   }
+}
+
+function classFamily(accountClass: string): 'REVENUE' | 'COST' {
+  return accountClass === 'INCOME' ? 'REVENUE' : 'COST';
 }
 
 function latestVersion(profile: PostingProfileWithVersions): PostingProfileVersion | null {

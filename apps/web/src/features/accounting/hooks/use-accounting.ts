@@ -81,6 +81,7 @@ import type {
   ReverseJournalPayload,
   TrialBalance,
 } from '../types';
+import { ApiError } from '@/lib/api-client';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 /** An ICU `select` value for a reference that may not be assigned yet (a draft has no number). */
@@ -674,6 +675,12 @@ export function useRepointPostingProfile() {
       },
     },
     onSuccess: () => invalidatePostingProfiles(qc),
+    // Someone else re-pointed it meanwhile: reload so the form checks against the new latest version.
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'POSTING_PROFILE_CHANGED') {
+        invalidatePostingProfiles(qc);
+      }
+    },
   });
 }
 

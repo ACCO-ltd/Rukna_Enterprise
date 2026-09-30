@@ -5,7 +5,10 @@ import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
 import { buildFiscalYearPlan } from '../../accounting-core/domain/fiscal-calendar.js';
-import { AccountingSetupRepository } from '../infrastructure/accounting-setup.repository.js';
+import {
+  AccountingSetupRepository,
+  type ExistingSetupRecord,
+} from '../infrastructure/accounting-setup.repository.js';
 import { planVatTaxCodes } from '../domain/setup-tax-codes.js';
 import {
   CONSTRUCTION_TEMPLATE_ID,
@@ -32,7 +35,9 @@ export interface SetupTemplateView {
 
 export interface SetupStatusView {
   canInstall: boolean;
-  reason: 'READY' | 'CHART_NOT_EMPTY';
+  reason: 'READY' | 'CHART_NOT_EMPTY' | 'PARTIAL_SETUP';
+  /** Records found without a chart that block the one-step install (PARTIAL_SETUP). */
+  existingRecords: ExistingSetupRecord[];
   accountCount: number;
   hasFiscalYear: boolean;
   hasPolicies: boolean;
@@ -55,6 +60,15 @@ export interface InstallSetupResult {
 
 export const ACCOUNTING_ALREADY_SET_UP = 'ACCOUNTING_ALREADY_SET_UP';
 export const ACCOUNTING_SETUP_INVALID = 'ACCOUNTING_SETUP_INVALID';
+export const ACCOUNTING_PARTIALLY_SET_UP = 'ACCOUNTING_PARTIALLY_SET_UP';
+
+function todayUtc(now: Date = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function earliestOf(a: Date, b: Date): Date {
+  return a.getTime() <= b.getTime() ? a : b;
+}
 
 /** Placeholder when the user does not record an account number. Unique per bank (DB unique key). */
 export function unrecordedAccountNumber(glCode: string): string {
@@ -111,10 +125,12 @@ export class AccountingSetupService {
   async getStatus(identity: RequestIdentity): Promise<SetupStatusView> {
     const prisma = this.tenancy.getClient();
     const facts = await this.repo.getStatusFacts(prisma, identity.activeOrganizationId);
-    const canInstall = facts.accountCount === 0;
+    const reason: SetupStatusView['reason'] =
+      facts.accountCount > 0 ? 'CHART_NOT_EMPTY' : facts.existingRecords.length > 0 ? 'PARTIAL_SETUP' : 'READY';
     return {
-      canInstall,
-      reason: canInstall ? 'READY' : 'CHART_NOT_EMPTY',
+      canInstall: reason === 'READY',
+      reason,
+      existingRecords: facts.existingRecords,
       accountCount: facts.accountCount,
       hasFiscalYear: facts.hasFiscalYear,
       hasPolicies: facts.hasPolicies,
@@ -128,10 +144,14 @@ export class AccountingSetupService {
     const prisma = this.tenancy.getClient();
     // Cheap early answer; re-checked under the lock inside the transaction.
     if ((await this.repo.countAccounts(prisma, orgId)) > 0) throw alreadySetUp();
+    await this.assertNoPartialSetup(prisma, orgId);
 
     const startMonth = input.fiscalYear.startMonth ?? 1;
     const fyPlan = buildFiscalYearPlan(input.fiscalYear.year, startMonth);
-    const effectiveFrom = fyPlan.startDate;
+    // Versions (accounts, profiles, tax codes) start at the fiscal-year start or today, whichever is
+    // earlier: a chart installed for a future year must already be in force today, or every edit
+    // and every posting dated before the year would find no version (review M2).
+    const effectiveFrom = earliestOf(fyPlan.startDate, todayUtc());
     const vatRate = input.vat.charged ? input.vat.ratePercent! : null;
     const banks = input.banks.map((b) => ({
       accountName: b.accountName.trim(),
@@ -147,6 +167,7 @@ export class AccountingSetupService {
         async (tx) => {
           await this.repo.lockOrganization(tx, orgId);
           if ((await this.repo.countAccounts(tx, orgId)) > 0) throw alreadySetUp();
+          await this.assertNoPartialSetup(tx, orgId);
 
           await this.repo.upsertPolicies(tx, orgId, startMonth, userId);
 
@@ -222,6 +243,19 @@ export class AccountingSetupService {
         throw alreadySetUp();
       }
       throw err;
+    }
+  }
+
+  private async assertNoPartialSetup(client: Parameters<AccountingSetupRepository['findExistingRecords']>[0], orgId: string) {
+    const existing = await this.repo.findExistingRecords(client, orgId);
+    if (existing.length > 0) {
+      throw new ConflictException({
+        errorCode: ACCOUNTING_PARTIALLY_SET_UP,
+        message:
+          `This organisation has no chart of accounts but already has ${existing.map((e) => e.toLowerCase().replace(/_/g, ' ')).join(', ')}. ` +
+          'The one-step setup would collide with them; finish the setup with the individual screens.',
+        details: { existingRecords: existing },
+      });
     }
   }
 

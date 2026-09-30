@@ -11,6 +11,21 @@ export interface CreateFiscalYearDto {
   retainedEarningsAccountCode: string;
 }
 
+export function fiscalYearOverlap(name: string, existing: string | null) {
+  return new ConflictException({
+    errorCode: 'FISCAL_YEAR_OVERLAP',
+    message: existing
+      ? `${name} overlaps the existing fiscal year ${existing}.`
+      : `${name} overlaps an existing fiscal year.`,
+  });
+}
+
+/** The accounting_periods non-overlap exclusion constraint (migration 20260929120000). */
+export function isPeriodOverlapViolation(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.includes('ux_accounting_periods_no_overlap') || text.includes('23P01');
+}
+
 @Injectable()
 export class FiscalYearService {
   constructor(
@@ -31,20 +46,30 @@ export class FiscalYearService {
     const existing = await this.repo.findByName(prisma, orgId, plan.name);
     if (existing) throw new ConflictException(`Fiscal year ${plan.name} already exists`);
 
+    // L4: the period table's exclusion constraint would reject an overlapping calendar with a raw
+    // 500; answer the business error first (and again below if a concurrent create wins).
+    const overlapping = await this.repo.findOverlapping(prisma, orgId, plan.startDate, plan.endDate);
+    if (overlapping) throw fiscalYearOverlap(plan.name, overlapping.name);
+
     const retainedAccount = await this.accountRepo.findByCode(prisma, orgId, dto.retainedEarningsAccountCode);
     if (!retainedAccount) {
       throw new NotFoundException(`Retained earnings account "${dto.retainedEarningsAccountCode}" not found`);
     }
 
-    return this.repo.createWithPeriods(prisma, {
-      organizationId: orgId,
-      name: plan.name,
-      startDate: plan.startDate,
-      endDate: plan.endDate,
-      retainedEarningsAccountId: retainedAccount.id,
-      createdBy: userId,
-      periods: plan.periods.map((p) => ({ ...p, organizationId: orgId })),
-    });
+    try {
+      return await this.repo.createWithPeriods(prisma, {
+        organizationId: orgId,
+        name: plan.name,
+        startDate: plan.startDate,
+        endDate: plan.endDate,
+        retainedEarningsAccountId: retainedAccount.id,
+        createdBy: userId,
+        periods: plan.periods.map((p) => ({ ...p, organizationId: orgId })),
+      });
+    } catch (err) {
+      if (isPeriodOverlapViolation(err)) throw fiscalYearOverlap(plan.name, null);
+      throw err;
+    }
   }
 
   async findAll(identity: RequestIdentity) {

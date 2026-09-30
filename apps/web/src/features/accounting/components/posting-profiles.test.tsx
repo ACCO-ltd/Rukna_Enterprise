@@ -345,6 +345,95 @@ describe('PostingProfiles — re-pointing and status', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers a re-point only within the profile’s class family', async () => {
+    api.listPostingProfiles.mockResolvedValue([
+      ...PROFILES,
+      profile('p-rev', 'PROJECT_REVENUE', 'Contract revenue', 'a-rev'),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<PostingProfiles />, { permissions: MANAGE });
+
+    await screen.findByText('COST_51100');
+    await user.click(screen.getByRole('button', { name: 'Re-point COST_51100' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Re-point COST_51100' });
+    await openSelect(user, within(dialog).getByLabelText('New account'));
+    let offered = screen.getAllByRole('option').map((o) => o.getAttribute('data-value'));
+    expect(offered).toEqual(expect.arrayContaining(['51200', '61100']));
+    expect(offered).not.toContain('40000');
+    await user.keyboard('{Escape}');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await user.click(screen.getByRole('button', { name: 'Re-point PROJECT_REVENUE' }));
+    dialog = await screen.findByRole('dialog', { name: 'Re-point PROJECT_REVENUE' });
+    expect(within(dialog).getByText(/Income accounts only/)).toBeInTheDocument();
+    await openSelect(user, within(dialog).getByLabelText('New account'));
+    offered = screen.getAllByRole('option').map((o) => o.getAttribute('data-value'));
+    expect(offered.filter((v) => v && v !== '__erp_empty__')).toEqual(['40000']);
+  });
+
+  it('explains a refused class change', async () => {
+    api.repointPostingProfile.mockRejectedValue(
+      new ApiError(400, 'raw server text', 'POSTING_PROFILE_CLASS_CHANGE'),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<PostingProfiles />, { permissions: MANAGE });
+
+    await screen.findByText('COST_51100');
+    await user.click(screen.getByRole('button', { name: 'Re-point COST_51100' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Re-point COST_51100' });
+    await chooseOption(user, within(dialog).getByLabelText('New account'), '51200');
+    await user.click(within(dialog).getByRole('button', { name: 'Re-point profile' }));
+
+    expect(
+      await within(dialog).findByText(
+        'This profile posts to cost of sales or expenses, so it can only be re-pointed to a cost-of-sales or expense account.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('reloads and says so when someone else changed the profile meanwhile', async () => {
+    api.repointPostingProfile.mockRejectedValue(
+      new ApiError(409, 'changed', 'POSTING_PROFILE_CHANGED'),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<PostingProfiles />, { permissions: MANAGE });
+
+    await screen.findByText('COST_51100');
+    const loads = api.listPostingProfiles.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Re-point COST_51100' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Re-point COST_51100' });
+    await chooseOption(user, within(dialog).getByLabelText('New account'), '51200');
+    await user.click(within(dialog).getByRole('button', { name: 'Re-point profile' }));
+
+    expect(
+      await within(dialog).findByText(
+        'Someone changed this profile meanwhile. It has been reloaded — check it and try again.',
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(api.listPostingProfiles.mock.calls.length).toBeGreaterThan(loads));
+  });
+
+  it('keeps the deactivation open and counts the unposted bills still using the profile', async () => {
+    api.setPostingProfileActive.mockRejectedValue(
+      new ApiError(409, 'in use', 'POSTING_PROFILE_IN_USE', [], { unpostedBills: 3 }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<PostingProfiles />, { permissions: MANAGE });
+
+    await screen.findByText('COST_51100');
+    await user.click(screen.getByRole('button', { name: 'Actions for COST_51100' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Deactivate' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Deactivate COST_51100' });
+    await user.click(within(confirm).getByRole('button', { name: 'Deactivate profile' }));
+
+    expect(
+      await within(confirm).findByText(
+        '3 unposted supplier bills still use this profile. Post or change them first.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Deactivate COST_51100' })).toBeInTheDocument();
+  });
+
   it('deactivates an active profile after confirmation', async () => {
     api.setPostingProfileActive.mockResolvedValue({ ...PROFILES[0], status: 'INACTIVE' });
     const user = userEvent.setup();

@@ -85,6 +85,7 @@ beforeEach(() => {
     accountCount: 0,
     hasFiscalYear: false,
     hasPolicies: false,
+    existingRecords: [],
   });
   vi.mocked(listAccounts).mockReset();
   vi.mocked(listAccounts).mockResolvedValue([account(), apControl()]);
@@ -187,7 +188,7 @@ describe('ChartOfAccounts', () => {
     await screen.findByText('No accounts yet.');
     expect(screen.queryByText('An administrator has to set up accounting.')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Set up accounting' }));
+    await user.click(await screen.findByRole('button', { name: 'Set up accounting' }));
     expect(await screen.findByRole('dialog', { name: 'Set up accounting' })).toBeInTheDocument();
   });
 
@@ -214,6 +215,7 @@ describe('ChartOfAccounts', () => {
       accountCount: 2,
       hasFiscalYear: true,
       hasPolicies: true,
+      existingRecords: [],
     });
     renderWithProviders(<ChartOfAccounts />, {
       permissions: ['view:accounting', 'manage:accounting'],
@@ -222,6 +224,28 @@ describe('ChartOfAccounts', () => {
     await screen.findByText('10100');
     await waitFor(() => expect(getAccountingSetupStatus).toHaveBeenCalled());
     expect(screen.queryByRole('dialog', { name: 'Set up accounting' })).not.toBeInTheDocument();
+  });
+
+  it('explains, instead of offering setup, when other setup records already exist', async () => {
+    vi.mocked(listAccounts).mockResolvedValue([]);
+    vi.mocked(getAccountingSetupStatus).mockResolvedValue({
+      canInstall: false,
+      reason: 'PARTIAL_SETUP',
+      accountCount: 0,
+      hasFiscalYear: false,
+      hasPolicies: true,
+      existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'],
+    });
+    renderWithProviders(<ChartOfAccounts />, {
+      permissions: ['view:accounting', 'manage:accounting'],
+    });
+
+    expect(
+      await screen.findByText(
+        'Accounting can’t be set up automatically: this organisation already has tax codes and bank accounts but no chart of accounts. Remove them or add the chart manually.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up accounting' })).not.toBeInTheDocument();
   });
 
   it('tells anyone else an administrator has to set it up', async () => {

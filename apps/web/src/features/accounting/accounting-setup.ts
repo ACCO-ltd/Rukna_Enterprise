@@ -46,12 +46,22 @@ export interface SetupTemplate {
 }
 
 /** `GET /accounting/setup/status`. */
+/** Setup records that can exist without a chart — and then block the one-step install. */
+export type ExistingSetupRecord =
+  'TAX_CODES' | 'POSTING_PROFILES' | 'BANK_ACCOUNTS' | 'FISCAL_YEARS';
+
 export interface SetupStatus {
   canInstall: boolean;
-  reason: 'READY' | 'CHART_NOT_EMPTY';
+  /**
+   * PARTIAL_SETUP: the chart is empty but some other setup records exist, so the template cannot
+   * be installed over them.
+   */
+  reason: 'READY' | 'CHART_NOT_EMPTY' | 'PARTIAL_SETUP';
   accountCount: number;
   hasFiscalYear: boolean;
   hasPolicies: boolean;
+  /** What blocks the install when `reason` is PARTIAL_SETUP; empty otherwise. */
+  existingRecords: ExistingSetupRecord[];
 }
 
 /** Body of `POST /accounting/setup`. */
@@ -331,14 +341,44 @@ export function previewAccountCount(groups: readonly ChartPreviewGroup[]): numbe
 
 // ─── Errors ──────────────────────────────────────────────────────────────────────
 
-/** True when an error from `POST /accounting/setup` means the chart already has accounts. */
-export function isAlreadySetUpError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
+export type SetupConflict =
+  { kind: 'already' } | { kind: 'partial'; existingRecords: ExistingSetupRecord[] };
+
+/**
+ * Why `POST /accounting/setup` refused to install, when it is one of its two 409s:
+ * `ACCOUNTING_ALREADY_SET_UP` (the chart has accounts) or `ACCOUNTING_PARTIALLY_SET_UP` (no
+ * chart, but tax codes / profiles / banks / years exist — listed in `details.existingRecords`).
+ * `null` for any other error.
+ */
+export function setupConflict(error: unknown): SetupConflict | null {
+  if (!error || typeof error !== 'object') return null;
   const e = error as { status?: unknown; code?: unknown; message?: unknown; details?: unknown };
-  if (e.status === 409) return true;
+  const details = (e.details ?? {}) as Record<string, unknown>;
+  if (e.code === 'ACCOUNTING_PARTIALLY_SET_UP') {
+    const records = Array.isArray(details.existingRecords)
+      ? (details.existingRecords as ExistingSetupRecord[])
+      : [];
+    return { kind: 'partial', existingRecords: records };
+  }
   const code = 'ACCOUNTING_ALREADY_SET_UP';
-  if (e.code === code) return true;
-  const details = e.details as Record<string, unknown> | undefined;
-  if (details && (details.code === code || details.reason === code)) return true;
-  return typeof e.message === 'string' && e.message.includes(code);
+  if (
+    e.code === code ||
+    details.code === code ||
+    e.status === 409 ||
+    (typeof e.message === 'string' && e.message.includes(code))
+  ) {
+    return { kind: 'already' };
+  }
+  return null;
+}
+
+/** "tax codes, posting profiles and bank accounts" — the records in plain words, as a list. */
+export function existingRecordsList(
+  records: readonly ExistingSetupRecord[],
+  label: (record: ExistingSetupRecord) => string,
+  locale = 'en',
+): string {
+  return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(
+    records.map(label),
+  );
 }

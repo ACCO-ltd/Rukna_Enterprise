@@ -10,7 +10,8 @@ import {
   fiscalYearRange,
   hasSetupProblems,
   initialSetupDraft,
-  isAlreadySetUpError,
+  existingRecordsList,
+  setupConflict,
   parseVatRate,
   previewAccountCount,
   setupProblems,
@@ -210,11 +211,33 @@ describe('buildChartPreview', () => {
   });
 });
 
-describe('isAlreadySetUpError', () => {
-  it('recognises the 409 however the code is carried', () => {
-    expect(isAlreadySetUpError(new ApiError(409, 'Accounting is already set up'))).toBe(true);
-    expect(isAlreadySetUpError(new ApiError(400, 'x', 'ACCOUNTING_ALREADY_SET_UP'))).toBe(true);
-    expect(isAlreadySetUpError(new ApiError(400, 'Bad request'))).toBe(false);
-    expect(isAlreadySetUpError(null)).toBe(false);
+describe('setupConflict', () => {
+  it('recognises the already-set-up 409 however the code is carried', () => {
+    expect(setupConflict(new ApiError(409, 'Accounting is already set up'))).toEqual({
+      kind: 'already',
+    });
+    expect(setupConflict(new ApiError(400, 'x', 'ACCOUNTING_ALREADY_SET_UP'))).toEqual({
+      kind: 'already',
+    });
+    expect(setupConflict(new ApiError(400, 'Bad request'))).toBeNull();
+    expect(setupConflict(null)).toBeNull();
+  });
+
+  it('tells a partial setup apart, with the records that block it', () => {
+    expect(
+      setupConflict(
+        new ApiError(409, 'Partially set up', 'ACCOUNTING_PARTIALLY_SET_UP', [], {
+          existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'],
+        }),
+      ),
+    ).toEqual({ kind: 'partial', existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'] });
+  });
+
+  it('lists the records in plain words', () => {
+    const label = (r: string) => r.toLowerCase().replace('_', ' ');
+    expect(existingRecordsList(['TAX_CODES'], label)).toBe('tax codes');
+    expect(existingRecordsList(['TAX_CODES', 'BANK_ACCOUNTS', 'FISCAL_YEARS'], label)).toBe(
+      'tax codes, bank accounts, and fiscal years',
+    );
   });
 });

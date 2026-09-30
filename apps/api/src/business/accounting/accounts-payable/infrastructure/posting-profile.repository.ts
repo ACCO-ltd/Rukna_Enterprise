@@ -116,6 +116,34 @@ export class PostingProfileRepository {
     });
   }
 
+  /**
+   * Row-lock the profile for the rest of the transaction and return its latest version number, so
+   * two concurrent re-points serialise and the loser can see the profile changed under it.
+   */
+  async lockAndLatestVersionNumber(tx: TenantPrisma, id: string): Promise<number | null> {
+    await tx.$queryRaw`SELECT id FROM posting_profiles WHERE id = ${id} FOR UPDATE`;
+    const latest = await tx.postingProfileVersion.findFirst({
+      where: { postingProfileId: id },
+      orderBy: { versionNumber: 'desc' },
+      select: { versionNumber: true },
+    });
+    return latest?.versionNumber ?? null;
+  }
+
+  /** Supplier bills not yet posted (draft, submitted, or approved-unposted) naming this profile code. */
+  countUnpostedBillsUsing(prisma: TenantPrisma, organizationId: string, code: string): Promise<number> {
+    return prisma.supplierBill.count({
+      where: {
+        organizationId,
+        lines: { some: { expenseProfileCode: code } },
+        OR: [
+          { documentStatus: { in: ['DRAFT', 'SUBMITTED'] } },
+          { documentStatus: 'APPROVED', postingStatus: { in: ['NOT_POSTED', 'PENDING', 'FAILED'] } },
+        ],
+      },
+    });
+  }
+
   setStatus(tx: TenantPrisma, id: string, status: 'ACTIVE' | 'INACTIVE') {
     return tx.postingProfile.update({ where: { id }, data: { status } });
   }

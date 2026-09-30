@@ -281,3 +281,39 @@ describe('BillDocumentHeader — returned and rejected notices', () => {
     expect(routerMocks.push).toHaveBeenCalledWith('/finance/accounting/bills/bill-1/edit');
   });
 });
+
+describe('BillDocumentHeader — a refused post', () => {
+  /**
+   * ADR-040 review: the server refuses a bill whose line names a non-expense profile
+   * (400 POSTING_PROFILE_NOT_EXPENSE) and names the profile. The dialog says that, not a
+   * generic failure.
+   */
+  it('shows the server’s reason in the post dialog', async () => {
+    const { ApiError } = await import('@/lib/api-client');
+    mocks.usePostSupplierBill.mockReturnValue({
+      ...idle,
+      isError: true,
+      error: new ApiError(
+        400,
+        'Posting profile PROJECT_REVENUE is not an expense profile',
+        'POSTING_PROFILE_NOT_EXPENSE',
+      ),
+    });
+    const bill = {
+      ...BLOCKED,
+      purchaseOrderId: null,
+      purchaseOrderRevisionId: null,
+      matchStatus: 'NOT_REQUIRED',
+    } as unknown as SupplierBill;
+    const user = userEvent.setup();
+    renderWithProviders(<BillDocumentHeader bill={bill} />, {
+      permissions: [ACCOUNTING_PERMISSIONS.managePayables],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Post' }));
+
+    expect(
+      await screen.findByText('Posting profile PROJECT_REVENUE is not an expense profile'),
+    ).toBeInTheDocument();
+  });
+});

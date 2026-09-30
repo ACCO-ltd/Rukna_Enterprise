@@ -170,6 +170,35 @@ describe('expenseProfiles', () => {
     expect(only?.name).toBe('Material Purchase (COGS)');
   });
 
+  it('follows the bill date across a scheduled re-point', () => {
+    const repointed: PostingProfile = {
+      ...profile('MATERIAL_PURCHASE', COGS.id, 'Material Purchase (COGS)'),
+      versions: [
+        {
+          id: 'v2',
+          versionNumber: 2,
+          name: 'Office (from July)',
+          description: null,
+          accountId: OFFICE.id,
+          effectiveFrom: '2026-07-01',
+          effectiveTo: null,
+        },
+        {
+          id: 'v1',
+          versionNumber: 1,
+          name: 'Material Purchase (COGS)',
+          description: null,
+          accountId: COGS.id,
+          effectiveFrom: '2026-01-01',
+          effectiveTo: '2026-07-01',
+        },
+      ],
+    };
+
+    expect(expenseProfiles([repointed], ACCOUNTS, '2026-06-30')[0]?.account.id).toBe(COGS.id);
+    expect(expenseProfiles([repointed], ACCOUNTS, '2026-07-01')[0]?.account.id).toBe(OFFICE.id);
+  });
+
   /**
    * The one that matters. The seed creates PROJECT_REVENUE pointing at an INCOME account;
    * offering it on a bill line would debit revenue. The journal balances, the trial balance

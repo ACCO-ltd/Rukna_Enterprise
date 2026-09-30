@@ -146,6 +146,15 @@ export class SupplierBillService {
       }
     }
 
+    // M1 (ADR-040 review): a bill line debits its profile's account, so a profile that resolves
+    // to anything but a cost or expense account (e.g. INC_42100, PROJECT_REVENUE) would silently
+    // understate revenue. Refused here when the profile resolves; an unknown profile is still
+    // reported at post, as before.
+    const billDate = new Date(dto.billDate);
+    for (const code of new Set(dto.lines.map((l) => l.expenseProfileCode))) {
+      await this.resolveExpenseProfileAccount(prisma, orgId, code, billDate, { required: false });
+    }
+
     const lines = dto.lines.map((line, idx) => {
       const net = new Decimal(line.netAmount);
       const vat = new Decimal(line.vatAmount);
@@ -499,32 +508,11 @@ export class SupplierBillService {
 
         // Debit lines: one per bill line (expense/inventory)
         for (const billLine of bill.lines) {
-          // Resolve posting profile for expense account
-          const profile = await tx.postingProfile.findFirst({
-            where: { organizationId: orgId, code: billLine.expenseProfileCode, status: 'ACTIVE' },
-          });
-
-          let expenseAccountId: string;
-          if (profile) {
-            const version = await tx.postingProfileVersion.findFirst({
-              where: {
-                postingProfileId: profile.id,
-                effectiveFrom: { lte: bill.billDate },
-                OR: [{ effectiveTo: null }, { effectiveTo: { gt: bill.billDate } }],
-              },
-              orderBy: { effectiveFrom: 'desc' },
-            });
-            if (!version) {
-              throw new BadRequestException(
-                `No active version for posting profile ${billLine.expenseProfileCode} on ${bill.billDate.toISOString().slice(0, 10)}`,
-              );
-            }
-            expenseAccountId = version.accountId;
-          } else {
-            throw new BadRequestException(
-              `Posting profile "${billLine.expenseProfileCode}" not found — configure it in the COA`,
-            );
-          }
+          // Resolve posting profile for expense account (version in force on the bill date; the
+          // account must be COST_OF_SALES / EXPENSE — M1).
+          const expenseAccountId = (await this.resolveExpenseProfileAccount(
+            tx as never, orgId, billLine.expenseProfileCode, bill.billDate, { required: true },
+          ))!;
 
           const gross = new Decimal(billLine.grossAmount.toString());
           const target = targetByLine.get(billLine.id);
@@ -830,6 +818,52 @@ export class SupplierBillService {
     });
     if (!node) return null;
     return { projectId: node.version.boq.projectId, isLeaf: node.isLeaf, isActive: node.isActive };
+  }
+
+  /**
+   * The account a posting profile points at on `date`, required to be a cost or expense account.
+   * `required: false` returns null when the profile or its dated version does not exist (bill
+   * create/update keep their old leniency); `required: true` (post) throws as before.
+   */
+  private async resolveExpenseProfileAccount(
+    client: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    code: string,
+    date: Date,
+    opts: { required: boolean },
+  ): Promise<string | null> {
+    const profile = await client.postingProfile.findFirst({
+      where: { organizationId: orgId, code, status: 'ACTIVE' },
+    });
+    if (!profile) {
+      if (!opts.required) return null;
+      throw new BadRequestException(`Posting profile "${code}" not found — configure it in the COA`);
+    }
+    const version = await client.postingProfileVersion.findFirst({
+      where: {
+        postingProfileId: profile.id,
+        effectiveFrom: { lte: date },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: date } }],
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    if (!version) {
+      if (!opts.required) return null;
+      throw new BadRequestException(
+        `No active version for posting profile ${code} on ${date.toISOString().slice(0, 10)}`,
+      );
+    }
+    const account = await this.accountRepo.findById(client, orgId, version.accountId);
+    const accountClass = account?.versions[0]?.accountClass;
+    if (accountClass !== 'COST_OF_SALES' && accountClass !== 'EXPENSE') {
+      throw new BadRequestException({
+        errorCode: 'POSTING_PROFILE_NOT_EXPENSE',
+        message:
+          `Posting profile "${code}" points at ${account?.code ?? 'an unknown account'} ` +
+          `(${accountClass ?? 'no class'}); a supplier bill line can only use a cost or expense profile.`,
+      });
+    }
+    return version.accountId;
   }
 
   private async requireStatus(

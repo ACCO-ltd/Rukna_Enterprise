@@ -24,6 +24,7 @@ import { useAccountingSetupStatus, useAccounts } from '../hooks/use-accounting';
 import type { Account, AccountClass } from '../types';
 import { AccountClassBadge, NormalBalanceLabel, PostingPolicyBadge } from './account-badges';
 import { AccountingSetupDialog } from './accounting-setup-dialog';
+import { PartialSetupNotice } from './partial-setup-notice';
 import { CreateAccountForm } from './create-account-form';
 import { EditAccountForm } from './edit-account-form';
 import { ImportCoaForm } from './import-coa-form';
@@ -61,7 +62,12 @@ export function ChartOfAccounts() {
   const router = useRouter();
   const pathname = usePathname();
   const setupRequested = searchParams?.get('setup') === 'template';
-  const setupStatus = useAccountingSetupStatus({ enabled: mayManage && setupRequested });
+  // Asked when it matters: arriving from the guide link, or looking at an empty chart (where the
+  // empty state offers the install — or explains why it cannot run).
+  const chartEmpty = accounts.isSuccess && accounts.data.length === 0;
+  const setupStatus = useAccountingSetupStatus({
+    enabled: mayManage && (setupRequested || chartEmpty),
+  });
   const [setupParamHandled, setSetupParamHandled] = useState(false);
   const openFromLink =
     setupRequested && !setupParamHandled && mayManage && setupStatus.data?.canInstall === true;
@@ -236,11 +242,17 @@ export function ChartOfAccounts() {
               {/* ADR-040: an empty chart is set up from the template in one step — importing or
                   adding accounts one by one cannot create the control accounts posting needs. */}
               {mayManage ? (
-                <div className="mt-4 flex justify-center">
-                  <Button type="button" onClick={() => setSettingUp(true)}>
-                    {t('setUp')}
-                  </Button>
-                </div>
+                setupStatus.data?.canInstall ? (
+                  <div className="mt-4 flex justify-center">
+                    <Button type="button" onClick={() => setSettingUp(true)}>
+                      {t('setUp')}
+                    </Button>
+                  </div>
+                ) : setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
+                  <div className="mx-auto mt-4 max-w-prose text-start">
+                    <PartialSetupNotice records={setupStatus.data.existingRecords} />
+                  </div>
+                ) : null
               ) : (
                 <p className="mx-auto mt-3 max-w-prose text-sm font-medium text-foreground">
                   {t('emptyAdminOnly')}

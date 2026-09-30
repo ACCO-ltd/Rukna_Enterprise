@@ -32,6 +32,19 @@ export const PROFILE_TARGET_CLASSES: readonly AccountClass[] = [
   'EXPENSE',
 ];
 
+/**
+ * The two families a profile lives in. A re-point may not cross them (400
+ * `POSTING_PROFILE_CLASS_CHANGE`): bill lines name cost profiles, and a bill must never debit
+ * revenue.
+ */
+export type ProfileFamily = 'REVENUE' | 'COST';
+
+export function profileFamily(accountClass: AccountClass | null | undefined): ProfileFamily | null {
+  if (accountClass === 'INCOME') return 'REVENUE';
+  if (accountClass === 'COST_OF_SALES' || accountClass === 'EXPENSE') return 'COST';
+  return null;
+}
+
 /** The newest version — the controller returns only that one (`take: 1`). */
 export function latestProfileVersion(profile: PostingProfile): PostingProfileVersion | null {
   if (profile.versions.length === 0) return null;

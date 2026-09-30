@@ -11,6 +11,8 @@ import type { SetupTaxCodePlan } from '../domain/setup-tax-codes.js';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
+export type ExistingSetupRecord = 'TAX_CODES' | 'POSTING_PROFILES' | 'BANK_ACCOUNTS' | 'FISCAL_YEARS';
+
 /** Document sequences an organisation needs to number its accounting documents (seed + credit notes). */
 export const SETUP_DOCUMENT_SEQUENCES: ReadonlyArray<{ documentType: string; prefix: string }> = [
   { documentType: 'JOURNAL_ENTRY', prefix: 'JE-' },
@@ -40,6 +42,26 @@ export class AccountingSetupRepository {
     return prisma.account.count({ where: { organizationId } });
   }
 
+  /**
+   * Accounting records that can exist without a chart and would collide with what setup writes
+   * (unique tax/profile codes, bank account numbers, fiscal-year names and dates). Document
+   * sequences are not listed: setup reuses an existing sequence rather than creating a second one.
+   */
+  async findExistingRecords(prisma: TenantPrisma, organizationId: string): Promise<ExistingSetupRecord[]> {
+    const [taxCodes, profiles, banks, fiscalYears] = await Promise.all([
+      prisma.taxCode.count({ where: { organizationId } }),
+      prisma.postingProfile.count({ where: { organizationId } }),
+      prisma.bankAccount.count({ where: { organizationId } }),
+      prisma.fiscalYear.count({ where: { organizationId } }),
+    ]);
+    const found: ExistingSetupRecord[] = [];
+    if (taxCodes) found.push('TAX_CODES');
+    if (profiles) found.push('POSTING_PROFILES');
+    if (banks) found.push('BANK_ACCOUNTS');
+    if (fiscalYears) found.push('FISCAL_YEARS');
+    return found;
+  }
+
   async getStatusFacts(prisma: TenantPrisma, organizationId: string) {
     const [accountCount, fiscalYears, calendar, posting, tax, numbering, dimension, banking] = await Promise.all([
       prisma.account.count({ where: { organizationId } }),
@@ -53,6 +75,7 @@ export class AccountingSetupRepository {
     ]);
     return {
       accountCount,
+      existingRecords: await this.findExistingRecords(prisma, organizationId),
       hasFiscalYear: fiscalYears > 0,
       hasPolicies: [calendar, posting, tax, numbering, dimension, banking].every((p) => p !== null),
     };
@@ -130,7 +153,7 @@ export class AccountingSetupRepository {
               parentAccountId,
               accountClass: a.accountClass,
               accountSubtype: a.accountSubtype,
-              isPostingAllowed: !a.isHeading && !a.isControlAccount,
+              isPostingAllowed: a.isPostingAllowed,
               isControlAccount: a.isControlAccount,
               controlledSubledgerType: a.controlledSubledgerType ?? undefined,
               controlPostingPolicy: a.controlPostingPolicy,

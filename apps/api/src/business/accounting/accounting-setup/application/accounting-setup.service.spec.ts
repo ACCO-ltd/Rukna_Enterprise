@@ -33,6 +33,7 @@ function build(opts: { accountsBefore?: number; accountsInTx?: number; failAt?: 
   const repo = {
     countAccounts: jest.fn(async (..._a: Args) => (counts.length ? counts.shift()! : 0)),
     getStatusFacts: jest.fn(async (..._a: Args): Promise<unknown> => undefined),
+    findExistingRecords: jest.fn(async (..._a: Args): Promise<string[]> => []),
     lockOrganization: jest.fn(async (..._a: Args) => fail('lock')),
     upsertPolicies: jest.fn(async (..._a: Args) => fail('policies')),
     createAccounts: jest.fn(async (...a: Args): Promise<Map<string, string>> => {
@@ -134,6 +135,24 @@ describe('AccountingSetupService.install', () => {
     expect(repo.recordAudit).not.toHaveBeenCalled();
   });
 
+  it('L6: records without a chart (e.g. tax codes) → 409 ACCOUNTING_PARTIALLY_SET_UP listing them, no writes', async () => {
+    const { service, repo, prisma } = build();
+    repo.findExistingRecords.mockResolvedValueOnce(['TAX_CODES', 'BANK_ACCOUNTS']);
+    await expect(service.install(identity, INPUT)).rejects.toMatchObject({
+      status: 409,
+      response: { errorCode: 'ACCOUNTING_PARTIALLY_SET_UP', details: { existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'] } },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('M2: a future fiscal year still starts every version today, so the chart is in force now', async () => {
+    const { service, repo } = build();
+    const today = new Date().toISOString().slice(0, 10);
+    await service.install(identity, { ...INPUT, fiscalYear: { year: new Date().getUTCFullYear() + 1, startMonth: 1 } });
+    expect((repo.createAccounts.mock.calls[0]![3] as Date).toISOString().slice(0, 10)).toBe(today);
+    expect((repo.createPostingProfiles.mock.calls[0]![4] as Date).toISOString().slice(0, 10)).toBe(today);
+  });
+
   it('no VAT: no tax codes, no 14100 — output VAT 22000 still exists', async () => {
     const { service, repo } = build();
     const result = await service.install(identity, { ...INPUT, vat: { charged: false } });
@@ -180,11 +199,15 @@ describe('AccountingSetupService.install', () => {
 describe('AccountingSetupService.getStatus / getTemplate', () => {
   it('canInstall only while the chart is empty', async () => {
     const { service, repo } = build();
-    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, hasFiscalYear: false, hasPolicies: false });
+    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: [], hasFiscalYear: false, hasPolicies: false });
     await expect(service.getStatus(identity)).resolves.toEqual({
-      canInstall: true, reason: 'READY', accountCount: 0, hasFiscalYear: false, hasPolicies: false,
+      canInstall: true, reason: 'READY', existingRecords: [], accountCount: 0, hasFiscalYear: false, hasPolicies: false,
     });
-    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 4, hasFiscalYear: true, hasPolicies: true });
+    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: ['TAX_CODES', 'POSTING_PROFILES'], hasFiscalYear: false, hasPolicies: true });
+    await expect(service.getStatus(identity)).resolves.toMatchObject({
+      canInstall: false, reason: 'PARTIAL_SETUP', existingRecords: ['TAX_CODES', 'POSTING_PROFILES'],
+    });
+    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 4, existingRecords: [], hasFiscalYear: true, hasPolicies: true });
     await expect(service.getStatus(identity)).resolves.toMatchObject({ canInstall: false, reason: 'CHART_NOT_EMPTY', accountCount: 4 });
   });
 

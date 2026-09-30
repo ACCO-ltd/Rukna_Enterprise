@@ -15,6 +15,9 @@ const ACCOUNTS: Record<string, { id: string; code: string; status: string; name:
   '51000': { id: 'a51000', code: '51000', status: 'ACTIVE', name: 'Materials', accountClass: 'COST_OF_SALES', isPostingAllowed: false },
   '11000': { id: 'a11000', code: '11000', status: 'ACTIVE', name: 'AR', accountClass: 'ASSET', isPostingAllowed: false },
   '21100': { id: 'a21100', code: '21100', status: 'ACTIVE', name: 'Unapplied', accountClass: 'LIABILITY', isPostingAllowed: true },
+  '42100': { id: 'a42100', code: '42100', status: 'ACTIVE', name: 'Equipment hire income', accountClass: 'INCOME', isPostingAllowed: true },
+  '42200': { id: 'a42200', code: '42200', status: 'ACTIVE', name: 'Scrap sales', accountClass: 'INCOME', isPostingAllowed: true },
+  '61100': { id: 'a61100', code: '61100', status: 'ACTIVE', name: 'Office rent', accountClass: 'EXPENSE', isPostingAllowed: true },
   '61900': { id: 'a61900', code: '61900', status: 'INACTIVE', name: 'Tendering', accountClass: 'EXPENSE', isPostingAllowed: true },
 };
 
@@ -42,6 +45,8 @@ function build(profile: Record<string, unknown> | null = null) {
     create: jest.fn(async () => ({ id: 'p2' })),
     addVersion: jest.fn(async () => undefined),
     setStatus: jest.fn(async () => undefined),
+    lockAndLatestVersionNumber: jest.fn(async (): Promise<number | null> => 1),
+    countUnpostedBillsUsing: jest.fn(async () => 0),
     recordAudit: jest.fn(async () => undefined),
   };
   const service = new PostingProfileService({ getClient: () => prisma } as never, repo as never);
@@ -122,7 +127,53 @@ describe('PostingProfileService.repoint', () => {
   });
 });
 
+describe('PostingProfileService.repoint — review fixes', () => {
+  it('M1: a cost profile may move to another cost or expense account, never to income', async () => {
+    const { service, repo } = build();
+    await expect(service.repoint(identity, 'p1', { accountCode: '42100', effectiveFrom: '2026-06-01' }))
+      .rejects.toMatchObject({ response: { errorCode: 'POSTING_PROFILE_CLASS_CHANGE' } });
+    await service.repoint(identity, 'p1', { accountCode: '61100', effectiveFrom: '2026-06-01' }); // COST → EXPENSE ok
+    expect(repo.addVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('M1: an income profile may only move to another income account', async () => {
+    const { service, repo } = build({
+      id: 'p1', organizationId: 'org1', code: 'INC_42100', status: 'ACTIVE', createdAt: d('2026-01-01'), createdBy: 's',
+      versions: [version(1, 'a42100', '2026-01-01', null, 'Hire')],
+    });
+    await expect(service.repoint(identity, 'p1', { accountCode: '51200', effectiveFrom: '2026-06-01' }))
+      .rejects.toMatchObject({ response: { errorCode: 'POSTING_PROFILE_CLASS_CHANGE' } });
+    await service.repoint(identity, 'p1', { accountCode: '42200', effectiveFrom: '2026-06-01' });
+    expect(repo.addVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('L1: a concurrent re-point that got there first → 409 POSTING_PROFILE_CHANGED, nothing written', async () => {
+    const { service, repo } = build();
+    repo.lockAndLatestVersionNumber.mockResolvedValueOnce(2);
+    await expect(service.repoint(identity, 'p1', { accountCode: '51200', effectiveFrom: '2026-06-01' }))
+      .rejects.toMatchObject({ status: 409, response: { errorCode: 'POSTING_PROFILE_CHANGED' } });
+    expect(repo.addVersion).not.toHaveBeenCalled();
+  });
+
+  it('L1: a unique violation on the version number is also a 409, not a 500', async () => {
+    const { service, repo } = build();
+    repo.addVersion.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
+    await expect(service.repoint(identity, 'p1', { accountCode: '51200', effectiveFrom: '2026-06-01' }))
+      .rejects.toMatchObject({ response: { errorCode: 'POSTING_PROFILE_CHANGED' } });
+  });
+});
+
 describe('PostingProfileService.setActive / list', () => {
+  it('L2: deactivating a profile named by unposted bills → 409 POSTING_PROFILE_IN_USE with the count', async () => {
+    const { service, repo } = build();
+    repo.countUnpostedBillsUsing.mockResolvedValueOnce(3);
+    await expect(service.setActive(identity, 'p1', false)).rejects.toMatchObject({
+      status: 409,
+      response: { errorCode: 'POSTING_PROFILE_IN_USE', details: { unpostedBills: 3 } },
+    });
+    expect(repo.setStatus).not.toHaveBeenCalled();
+  });
+
   it('deactivates (audited) and is idempotent when already in the target state', async () => {
     const { service, repo, tx } = build();
     await service.setActive(identity, 'p1', false);

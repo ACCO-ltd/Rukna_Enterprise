@@ -122,7 +122,13 @@ export class AccountService {
       parentAccountId === (current.parentAccountId ?? undefined);
     if (unchanged) return account;
 
-    const effectiveFrom = new Date();
+    // Normally the edit takes effect today. A version that has not started yet (a chart installed
+    // for a future fiscal year) cannot be closed today — [future, today) is an invalid range and
+    // Postgres rejects it (500). The new version then starts where the current one does, closing
+    // the current version to an empty range: the same shape a same-day second edit already
+    // produces, and it keeps every version row immutable rather than rewriting one in place.
+    const now = new Date();
+    const effectiveFrom = current.effectiveFrom.getTime() > now.getTime() ? current.effectiveFrom : now;
 
     return prisma.$transaction(async (tx) => {
       // Close the current version so the non-overlap exclusion constraint holds.

@@ -12,6 +12,7 @@ import { useAccountingGuide } from '@/features/finance/hooks/use-accounting-guid
 import { GUIDE_STEP_TONE } from '../guide/guide-status';
 import { useAccountingSetupStatus } from '../hooks/use-accounting';
 import { AccountingSetupDialog } from './accounting-setup-dialog';
+import { PartialSetupNotice } from './partial-setup-notice';
 
 /** The setup step that the one-step install (ADR-040) completes, and so opens instead of linking. */
 const SETUP_STEP_KEY = 'chart-of-accounts';
@@ -74,6 +75,10 @@ export function GuideHub() {
       <Notice tone={ready ? 'success' : 'info'}>
         {ready ? t('readyNote') : t('notReadyNote')}
       </Notice>
+
+      {mayManage && setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
+        <PartialSetupNotice records={setupStatus.data.existingRecords} />
+      ) : null}
 
       {canInstall ? (
         <section

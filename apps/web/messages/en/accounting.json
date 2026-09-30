@@ -1118,6 +1118,16 @@
       "title": "Set up accounting in one step",
       "body": "Install the construction chart of accounts, posting profiles, your banks and the first fiscal year. You review everything before it is saved.",
       "action": "Set up accounting"
+    },
+    "partial": {
+      "notice": "Accounting can’t be set up automatically: this organisation already has {records} but no chart of accounts. Remove them or add the chart manually.",
+      "unknownRecords": "other accounting records",
+      "record": {
+        "TAX_CODES": "tax codes",
+        "POSTING_PROFILES": "posting profiles",
+        "BANK_ACCOUNTS": "bank accounts",
+        "FISCAL_YEARS": "fiscal years"
+      }
     }
   },
   "postingProfiles": {
@@ -1176,15 +1186,19 @@
         "account": "Choose the new account.",
         "same-account": "The profile already posts to this account.",
         "effective-from": "Choose the date the change takes effect.",
-        "effective-from-early": "The change must start after the current version, which starts on {date}."
+        "effective-from-early": "The change must start after the current version, which starts on {date}.",
+        "class-change": "{family, select, REVENUE {This profile posts to income, so it can only be re-pointed to another income account.} other {This profile posts to cost of sales or expenses, so it can only be re-pointed to a cost-of-sales or expense account.}}"
       },
-      "untilDay": "The current account stays in force until {date}."
+      "untilDay": "The current account stays in force until {date}.",
+      "familyHint": "{family, select, REVENUE {Income accounts only — a revenue profile stays a revenue profile.} other {Cost-of-sales and expense accounts only — a cost profile stays a cost profile.}}",
+      "changed": "Someone changed this profile meanwhile. It has been reloaded — check it and try again."
     },
     "deactivate": {
       "action": "Deactivate",
       "title": "Deactivate {code}",
       "body": "New bill lines can no longer choose it. Documents already posted with it are unchanged.",
-      "confirm": "Deactivate profile"
+      "confirm": "Deactivate profile",
+      "inUse": "{count, plural, one {# unposted supplier bill still uses this profile.} other {# unposted supplier bills still use this profile.}} Post or change them first."
     },
     "reactivate": {
       "action": "Reactivate",

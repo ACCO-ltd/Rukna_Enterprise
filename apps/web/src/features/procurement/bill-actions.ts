@@ -266,6 +266,27 @@ export interface ExpenseProfile {
 }
 
 /**
+ * The version covering `day` (ISO `YYYY-MM-DD`) — `effectiveTo` is exclusive. Versions arrive
+ * newest first. ISO dates compare correctly as strings.
+ */
+export function versionInForce<V extends { effectiveFrom: string; effectiveTo: string | null }>(
+  versions: readonly V[],
+  day: string,
+): V | undefined {
+  return versions.find(
+    (v) =>
+      v.effectiveFrom.slice(0, 10) <= day && (!v.effectiveTo || day < v.effectiveTo.slice(0, 10)),
+  );
+}
+
+/** Today as the user's calendar sees it — not UTC, which is still yesterday until 03:00 in EAT. */
+function localToday(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
  * The posting profiles that may legally appear on a supplier bill line.
  *
  * **This filter is not cosmetic.** `GET /posting-profiles` returns every profile in the
@@ -286,33 +307,26 @@ export interface ExpenseProfile {
  * Dropped silently on purpose: "PROJECT_REVENUE — not selectable" invites the question of how
  * to select it, and the answer is that it is never right on this form.
  */
-/**
- * The version covering `day` (ISO date) — `effectiveTo` is exclusive. Versions arrive newest first.
- */
-export function versionInForce<V extends { effectiveFrom: string; effectiveTo: string | null }>(
-  versions: readonly V[],
-  day: string,
-): V | undefined {
-  return versions.find(
-    (v) => v.effectiveFrom.slice(0, 10) <= day && (!v.effectiveTo || day < v.effectiveTo.slice(0, 10)),
-  );
-}
-
 export function expenseProfiles(
   profiles: readonly PostingProfile[],
   accounts: readonly Account[],
+  /**
+   * The bill date (ISO): the server posts with the version in force on it, so the picker shows
+   * that one. Before a date is chosen, the user's today.
+   */
+  onDate?: string | null,
 ): ExpenseProfile[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
-  const today = new Date().toISOString().slice(0, 10);
+  const day = onDate ? onDate.slice(0, 10) : localToday();
 
   const usable: ExpenseProfile[] = [];
 
   for (const profile of profiles) {
     if (profile.status !== 'ACTIVE') continue;
 
-    // The version in force today — not simply the newest: since ADR-040 a profile can carry a
-    // re-point scheduled for a later date, and the newest version would show that account early.
-    const version = versionInForce(profile.versions, today);
+    // The version in force on the bill date — not simply the newest: since ADR-040 a profile can
+    // carry a re-point scheduled for a later date, and the newest version would show it early.
+    const version = versionInForce(profile.versions, day);
     if (!version) continue;
 
     const account = byId.get(version.accountId);
@@ -380,7 +394,7 @@ export function planBillPost(
   if (!ap.ok) return { ok: false, problem: ap };
 
   const expenseByCode = new Map(
-    expenseProfiles(profiles, accounts).map((profile) => [profile.code, profile]),
+    expenseProfiles(profiles, accounts, bill.billDate).map((profile) => [profile.code, profile]),
   );
 
   const lines: BillPreviewLine[] = [];
