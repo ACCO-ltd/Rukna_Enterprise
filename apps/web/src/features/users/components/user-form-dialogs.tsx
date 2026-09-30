@@ -26,7 +26,7 @@ const MIN_PASSWORD_LENGTH = 12;
  * A plain shape check — something@something.tld, no spaces. FormDialog's form is `noValidate`, so
  * the browser's own `type="email"` check no longer runs; the server remains the authority.
  */
-const EMAIL_SHAPE = /^[^s@]+@[^s@]+.[^s@]+$/;
+export const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Same members, in any order. */
 function sameSet(a: readonly string[], b: readonly string[]): boolean {

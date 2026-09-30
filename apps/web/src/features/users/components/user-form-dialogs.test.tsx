@@ -39,7 +39,7 @@ vi.mock('@/features/roles/hooks/use-roles', () => ({
   }),
 }));
 
-import { CreateUserDialog, EditUserDialog } from './user-form-dialogs';
+import { CreateUserDialog, EMAIL_SHAPE, EditUserDialog } from './user-form-dialogs';
 
 const USER = {
   id: 'u1',
@@ -54,7 +54,41 @@ beforeEach(() => {
   mocks.pending = false;
 });
 
+/**
+ * The shape check once shipped with its backslashes stripped — `[^s@]` refused every address
+ * containing an "s". These pin the escapes.
+ */
+describe('EMAIL_SHAPE', () => {
+  it.each(['sam@acco.com', 'abdulsalam.test@gmail.com', 'admin@acco.com'])('accepts %s', (email) => {
+    expect(EMAIL_SHAPE.test(email)).toBe(true);
+  });
+
+  it.each(['a b@x.y', 'a@b', 'no-at-sign.com', 'a@b@c.d'])('rejects %s', (email) => {
+    expect(EMAIL_SHAPE.test(email)).toBe(false);
+  });
+
+  it('keeps its escapes: whitespace and a literal dot', () => {
+    expect(EMAIL_SHAPE.source).toBe('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$');
+  });
+});
+
 describe('CreateUserDialog', () => {
+  it('creates a user whose email contains an "s"', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateUserDialog open onOpenChange={vi.fn()} />);
+
+    await user.type(screen.getByLabelText(/Email/), 'abdulsalam.test@gmail.com');
+    await user.type(screen.getByLabelText(/First name/), 'Abdulsalam');
+    await user.type(screen.getByLabelText(/Last name/), 'Test');
+    await user.click(screen.getByRole('button', { name: 'Create user' }));
+
+    expect(screen.queryByText('Enter an email address like name@company.com.')).not.toBeInTheDocument();
+    expect(mocks.provision).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'abdulsalam.test@gmail.com' }),
+      expect.any(Object),
+    );
+  });
+
   it('creates the user with the same request, from a pinned footer with one primary', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateUserDialog open onOpenChange={vi.fn()} />);
