@@ -83,6 +83,33 @@ export class ProjectCostBudgetService {
     };
   }
 
+  /**
+   * One budget version with its lines, read through the project it belongs to.
+   *
+   * The list carries lines only for the baselined version, so a Working version could not be
+   * edited without writing over lines the editor never saw. Scoped exactly like the list: the
+   * caller must be a member of the project, the lookup is organisation-scoped, and a version of
+   * another project answers 404 rather than leaking across projects. Money is returned exactly as
+   * the list returns it.
+   */
+  async findForProject(
+    identity: RequestIdentity,
+    projectId: string,
+    budgetId: string,
+  ): Promise<ProjectCostBudgetResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+    const budget = await this.repo.findBudgetById(
+      prisma,
+      identity.activeOrganizationId,
+      budgetId,
+    );
+    if (!budget || budget.projectId !== projectId) {
+      throw new NotFoundException(`Cost budget ${budgetId} not found`);
+    }
+    return this.toResponse(budget);
+  }
+
   async findOne(identity: RequestIdentity, id: string): Promise<ProjectCostBudgetResponse> {
     const prisma = this.tenancy.getClient();
     const budget = await this.repo.findBudgetById(prisma, identity.activeOrganizationId, id);

@@ -29,17 +29,6 @@ export { EmptyState } from './components/empty-state';
 export type { EmptyStateProps } from './components/empty-state';
 export { Progress, Meter } from './components/progress';
 export type { ProgressProps, MeterProps, ProgressTone } from './components/progress';
-export {
-  Sheet,
-  SheetTrigger,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetBody,
-  SheetFooter,
-} from './components/sheet';
 export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './components/tooltip';
 export {
   Dialog,

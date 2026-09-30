@@ -14,6 +14,7 @@ import {
   baselineProjectCostBudget,
   createProjectCostBudget,
   discardProjectCostBudget,
+  getProjectCostBudget,
   getProjectProcurementCost,
   getProjectProcurementOverview,
   getProjectRequirement,
@@ -34,6 +35,8 @@ export const projectProcurementKeys = {
   requirement: (projectId: string, id: string) =>
     [...projectProcurementKeys.all(projectId), 'requirement', id] as const,
   budgets: (projectId: string) => [...projectProcurementKeys.all(projectId), 'budgets'] as const,
+  budget: (projectId: string, budgetId: string) =>
+    [...projectProcurementKeys.all(projectId), 'budget', budgetId] as const,
 };
 
 export function useProjectProcurementOverview(
@@ -81,6 +84,24 @@ export function useProjectCostBudgets(
   return useQuery({
     queryKey: projectProcurementKeys.budgets(projectId),
     queryFn: () => listProjectCostBudgets(projectId),
+  });
+}
+
+/**
+ * One budget version with its lines, for editing a Working version in place. Enabled only when
+ * asked for, so the lines are fetched when the user starts editing, not on every page load.
+ */
+export function useProjectCostBudget(
+  projectId: string,
+  budgetId: string | null,
+): UseQueryResult<ProjectCostBudgetResponse, Error> {
+  return useQuery({
+    queryKey: projectProcurementKeys.budget(projectId, budgetId ?? ''),
+    queryFn: () => getProjectCostBudget(projectId, budgetId!),
+    enabled: Boolean(budgetId),
+    // An edit replaces every line, so it must start from the server's current copy — never a cached
+    // one from an earlier visit. The editor also waits for this mount's fetch to finish.
+    refetchOnMount: 'always',
   });
 }
 

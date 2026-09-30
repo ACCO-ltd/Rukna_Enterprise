@@ -45,14 +45,14 @@ import { bulkTargets, filterUsers, type UserStatusFilter } from '../filter-users
 import { UserStatusBadge } from './user-status-badge';
 import { UserRolesCell } from './user-roles-cell';
 import {
-  CreateUserSheet,
-  EditUserSheet,
-  ManageRolesSheet,
-  RegenerateTemporarySheet,
-  SetPasswordSheet,
-} from './user-form-sheets';
+  CreateUserDialog,
+  EditUserDialog,
+  ManageRolesDialog,
+  RegenerateTemporaryDialog,
+  SetPasswordDialog,
+} from './user-form-dialogs';
 
-type ActiveSheet = 'edit' | 'password' | 'roles' | 'regenerate';
+type ActiveDialog = 'edit' | 'password' | 'roles' | 'regenerate';
 
 export function UsersList() {
   const t = useTranslations('platform.users');
@@ -68,7 +68,7 @@ export function UsersList() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [target, setTarget] = useState<UserWithRolesResponse | null>(null);
-  const [sheet, setSheet] = useState<ActiveSheet | null>(null);
+  const [dialog, setDialog] = useState<ActiveDialog | null>(null);
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('ALL');
@@ -93,13 +93,13 @@ export function UsersList() {
   );
   const selectedCount = selectedRows.length;
 
-  function openSheet(next: ActiveSheet, user: UserWithRolesResponse) {
+  function openDialog(next: ActiveDialog, user: UserWithRolesResponse) {
     setTarget(user);
-    setSheet(next);
+    setDialog(next);
   }
 
-  function closeSheet() {
-    setSheet(null);
+  function closeDialog() {
+    setDialog(null);
     setTarget(null);
   }
 
@@ -375,18 +375,18 @@ export function UsersList() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onSelect={() => openSheet('edit', user)}>
+                                      <DropdownMenuItem onSelect={() => openDialog('edit', user)}>
                                         {t('actions.edit')}
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onSelect={() => openSheet('password', user)}>
+                                      <DropdownMenuItem onSelect={() => openDialog('password', user)}>
                                         {t('actions.setPassword')}
                                       </DropdownMenuItem>
                                       {isActive ? (
-                                        <DropdownMenuItem onSelect={() => openSheet('regenerate', user)}>
+                                        <DropdownMenuItem onSelect={() => openDialog('regenerate', user)}>
                                           {t('actions.regenerateTemporary')}
                                         </DropdownMenuItem>
                                       ) : null}
-                                      <DropdownMenuItem onSelect={() => openSheet('roles', user)}>
+                                      <DropdownMenuItem onSelect={() => openDialog('roles', user)}>
                                         {t('actions.manageRoles')}
                                       </DropdownMenuItem>
                                       {isActive ? (
@@ -427,32 +427,32 @@ export function UsersList() {
 
         {canManage ? (
           <>
-            <CreateUserSheet open={createOpen} onOpenChange={setCreateOpen} />
-            <EditUserSheet
-              user={sheet === 'edit' ? target : null}
+            <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
+            <EditUserDialog
+              user={dialog === 'edit' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
             />
-            <SetPasswordSheet
-              user={sheet === 'password' ? target : null}
+            <SetPasswordDialog
+              user={dialog === 'password' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
               onSuccess={() => {
                 toast({ tone: 'success', title: t('toast.passwordSet') });
               }}
             />
-            <RegenerateTemporarySheet
-              user={sheet === 'regenerate' ? target : null}
+            <RegenerateTemporaryDialog
+              user={dialog === 'regenerate' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
             />
-            <ManageRolesSheet
-              user={sheet === 'roles' ? target : null}
+            <ManageRolesDialog
+              user={dialog === 'roles' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
             />
             {bulkIntent ? (

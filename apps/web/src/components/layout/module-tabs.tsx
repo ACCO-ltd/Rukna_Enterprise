@@ -16,6 +16,8 @@ import {
 } from '@erp/ui';
 import { ChevronDown } from 'lucide-react';
 
+import { guardedNavigate } from '@/lib/use-unsaved-changes-guard';
+
 import type { ModuleTab } from './module-nav';
 
 interface ModuleTabsProps {
@@ -111,7 +113,8 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
           searchable={false}
           className="w-full"
           value={current?.href ?? ''}
-          onChange={(href) => router.push(href)}
+          // Through the unsaved-changes guard: a select is not a link the guard can see.
+          onChange={(href) => guardedNavigate(() => router.push(href))}
         >
           {current ? null : <option value="">{t('shell.chooseSection')}</option>}
           {destinations.map((d) => (

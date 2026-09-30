@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ProjectCostBudgetListResponse,
@@ -22,10 +23,19 @@ const costMocks = vi.hoisted(() => ({
   useUpdateProjectCostBudget: vi.fn(),
   useBaselineProjectCostBudget: vi.fn(),
   useDiscardProjectCostBudget: vi.fn(),
+  useProjectCostBudget: vi.fn(),
 }));
-const permMocks = vi.hoisted(() => ({ can: vi.fn(() => true) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const permMocks = vi.hoisted(() => ({ can: vi.fn<(permission?: string) => boolean>(() => true) }));
 
 vi.mock('@/features/procurement/hooks/use-project-procurement', () => costMocks);
+vi.mock('@/features/boq/hooks/use-boq', () => ({
+  useBoqWorkspace: () => ({ data: null }),
+  useBoqTree: () => ({ isLoading: false, data: [] }),
+}));
+vi.mock('@/features/procurement/hooks/use-procurement', () => ({
+  useSpendCategories: () => ({ isLoading: false, data: [] }),
+}));
 vi.mock('@/features/auth/permissions/can', () => ({
   usePermissions: () => ({ can: permMocks.can, canAny: () => true, moduleVisible: () => true }),
 }));
@@ -160,6 +170,7 @@ beforeEach(() => {
   costMocks.useUpdateProjectCostBudget.mockReturnValue(idleMutation());
   costMocks.useBaselineProjectCostBudget.mockReturnValue(idleMutation());
   costMocks.useDiscardProjectCostBudget.mockReturnValue(idleMutation());
+  costMocks.useProjectCostBudget.mockReturnValue({ data: undefined, isPending: false, isError: false });
 });
 
 describe('CostControlView', () => {
@@ -260,7 +271,7 @@ describe('CostControlView', () => {
 
     expect(screen.getAllByText('Baselined').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /create revision/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /edit working/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit working version/i })).not.toBeInTheDocument();
     // Baselining is a freeze, not a governance approval.
     expect(screen.queryByText('Approved')).not.toBeInTheDocument();
   });
@@ -301,7 +312,7 @@ describe('CostControlView', () => {
     // The figures still read; only the actions are gone.
     expect(screen.getAllByText('Open commitment').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /create revision/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /edit working/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit working version/i })).not.toBeInTheDocument();
   });
 
   it('says no budget is set rather than showing a zero budget', () => {
@@ -328,5 +339,157 @@ describe('CostControlView', () => {
     expect(screen.getByText('No cost budget has been set for this project.')).toBeInTheDocument();
     expect(screen.getAllByText('Not baselined').length).toBeGreaterThan(0);
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument();
+  });
+
+  // ─── Inline budget editing (ADR-039) ────────────────────────────────────────
+
+  const withWorking = () =>
+    budgets({
+      budgets: [
+        {
+          ...budgets().budgets[0]!,
+          id: 'b3',
+          versionNumber: 3,
+          status: 'DRAFT',
+          baselinedAt: null,
+          baselinedBy: null,
+          lineCount: 2,
+        },
+        ...budgets().budgets,
+      ],
+    });
+
+  it('puts the budget table into edit mode for a revision, starting from the baselined lines', async () => {
+    const user = userEvent.setup();
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(
+      ready(
+        budgets({
+          baselined: {
+            ...budgets().baselined!,
+            lines: [
+              {
+                id: 'l1',
+                boqNodeId: null,
+                boqNodeCode: null,
+                spendCategoryId: 'c1',
+                spendCategoryName: 'Labour',
+                description: 'Site labour',
+                budgetAmount: '990000.00',
+                sortOrder: 0,
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    expect(screen.queryByRole('region', { name: 'Budget edit actions' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /create revision/i }));
+
+    expect(screen.getByText('New cost budget version')).toBeInTheDocument();
+    expect(screen.getByText('Editing version 3')).toBeInTheDocument();
+    expect(screen.getByLabelText('Description, line 1')).toHaveValue('Site labour');
+    const bar = screen.getByRole('region', { name: 'Budget edit actions' });
+    expect(within(bar).getByRole('button', { name: 'Save budget' })).toBeInTheDocument();
+    // One edit at a time: the panel's own version actions step aside while the table is open.
+    expect(screen.queryByRole('button', { name: /create revision/i })).not.toBeInTheDocument();
+
+    await user.click(within(bar).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('region', { name: 'Budget edit actions' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create revision/i })).toBeInTheDocument();
+  });
+
+  it('loads the working version’s own lines before its table opens for editing', async () => {
+    const user = userEvent.setup();
+    costMocks.useProjectCostBudget.mockReturnValue({
+      data: {
+        id: 'b3',
+        lines: [
+          {
+            id: 'l1',
+            boqNodeId: null,
+            boqNodeCode: null,
+            spendCategoryId: 'c1',
+            spendCategoryName: 'Labour',
+            description: 'Site labour',
+            budgetAmount: '5000.00',
+            sortOrder: 0,
+          },
+        ],
+      },
+      isPending: false,
+      isError: false,
+      isFetching: false,
+      isFetchedAfterMount: true,
+    });
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(withWorking()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    await user.click(screen.getByRole('button', { name: /edit working version/i }));
+    expect(screen.getByText('Edit working cost budget')).toBeInTheDocument();
+    expect(costMocks.useProjectCostBudget).toHaveBeenLastCalledWith('p1', 'b3');
+    expect(screen.getByLabelText('Description, line 1')).toHaveValue('Site labour');
+  });
+
+  it('keeps an open edit on screen when a background refetch fails, with a notice', async () => {
+    const user = userEvent.setup();
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(budgets()));
+    const { rerender } = renderWithProviders(<CostControlView projectId="p1" />);
+
+    await user.click(screen.getByRole('button', { name: /create revision/i }));
+    await user.type(screen.getByLabelText('Description, line 1'), 'Formwork');
+
+    costMocks.useProjectProcurementCost.mockReturnValue({
+      ...ready(cost()),
+      isError: true,
+    });
+    rerender(<CostControlView projectId="p1" />);
+
+    expect(screen.getByText('Could not refresh the cost figures')).toBeInTheDocument();
+    expect(screen.getByLabelText('Description, line 1')).toHaveValue('Formwork');
+    expect(screen.getByRole('region', { name: 'Budget edit actions' })).toBeInTheDocument();
+  });
+
+  it('baselines a working version only after saying what baselining does', async () => {
+    const user = userEvent.setup();
+    const baseline = idleMutation();
+    costMocks.useBaselineProjectCostBudget.mockReturnValue(baseline);
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(withWorking()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    await user.click(screen.getByRole('button', { name: 'Baseline budget' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Baseline this version?' });
+    expect(baseline.mutate).not.toHaveBeenCalled();
+    await user.click(within(confirm).getByRole('button', { name: 'Baseline budget' }));
+    expect(baseline.mutate).toHaveBeenCalledWith('b3', expect.any(Object));
+  });
+
+  it('asks before discarding a working version', async () => {
+    const user = userEvent.setup();
+    const discard = idleMutation();
+    costMocks.useDiscardProjectCostBudget.mockReturnValue(discard);
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(withWorking()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    await user.click(screen.getByRole('button', { name: 'Discard draft' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Discard this working version?' });
+    await user.click(within(confirm).getByRole('button', { name: 'Discard draft' }));
+    expect(discard.mutate).toHaveBeenCalledWith('b3', expect.any(Object));
+  });
+
+  it('offers baselining only to holders of the baseline permission', () => {
+    permMocks.can.mockImplementation((perm?: string) => perm !== 'baseline:project-budget');
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(withWorking()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    expect(screen.getByRole('button', { name: /edit working version/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Baseline budget' })).not.toBeInTheDocument();
   });
 });

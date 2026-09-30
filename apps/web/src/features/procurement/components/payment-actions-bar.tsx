@@ -16,24 +16,16 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from '@erp/ui';
+import { Button } from '@erp/ui';
 
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PostingPreviewDialog } from '@/features/accounting/components/posting-preview-dialog';
 import { ApiError } from '@/lib/api-client';
 import { useAccounts, useBankAccounts, useSignatories } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
-import { formatMoney } from '@/lib/format';
 
 import {
   useApproveSupplierPayment,
@@ -191,6 +183,10 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
   );
 }
 
+/**
+ * The payment's post confirmation, on the shared `PostingPreviewDialog` so it reads like the
+ * invoice and bill ones. `lg` (ADR-039): a payment can clear several bills.
+ */
 function PostPaymentDialog({
   payment,
   plan,
@@ -212,112 +208,28 @@ function PostPaymentDialog({
 }) {
   const t = useTranslations('procurement.payments');
   const tc = useTranslations('procurement.common');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-
-  const preventWhilePending = (event: Event) => {
-    if (isPending) event.preventDefault();
-  };
-
-  const postable = plan.ok && plan.plan.balanced;
 
   return (
-    <Dialog
-      open
-      onOpenChange={(next) => {
-        if (!next && !isPending) onDismiss();
+    <PostingPreviewDialog
+      title={t('postTitle')}
+      description={t('postBody')}
+      size="lg"
+      currencyCode={payment.currencyCode}
+      lines={plan.ok ? plan.plan.lines : undefined}
+      accountHeading={t('postPreview')}
+      debitHeading={t('postDebit')}
+      creditHeading={t('postCredit')}
+      unbalanced={plan.ok && !plan.plan.balanced ? t('postUnbalanced') : null}
+      problems={
+        plan.ok ? undefined : [plan.missingBank ? t('postBankMissing') : t('postAccountProblem')]
+      }
+      errorMessage={isError ? tc('loadFailed') : null}
+      confirmLabel={t('post')}
+      isPending={isPending}
+      onConfirm={() => {
+        if (plan.ok && plan.plan.balanced) onConfirm(plan.plan.payload);
       }}
-    >
-      <DialogContent
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-      >
-        <DialogTitle>{t('postTitle')}</DialogTitle>
-        <DialogDescription>{t('postBody')}</DialogDescription>
-
-        {isError ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[tc('loadFailed')]} />
-          </div>
-        ) : null}
-
-        {plan.ok ? (
-          <div className="mt-4 space-y-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                    <th scope="col" className="py-2 text-start font-medium">
-                      {t('postPreview')}
-                    </th>
-                    <th scope="col" className="py-2 text-end font-medium">
-                      {t('postDebit')}
-                    </th>
-                    <th scope="col" className="py-2 text-end font-medium">
-                      {t('postCredit')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.plan.lines.map((line, index) => (
-                    <tr
-                      key={`${line.accountCode}-${index}`}
-                      className="border-b border-border/60"
-                    >
-                      <td className="py-2 pe-3">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {line.accountCode}
-                        </span>
-                        <span className="ms-2 text-foreground">{line.accountName}</span>
-                      </td>
-                      <td className="py-2 text-end">
-                        <bdi className="tabular-nums">
-                          {line.debit
-                            ? formatMoney(line.debit, payment.currencyCode, locale)
-                            : null}
-                        </bdi>
-                      </td>
-                      <td className="py-2 text-end">
-                        <bdi className="tabular-nums">
-                          {line.credit
-                            ? formatMoney(line.credit, payment.currencyCode, locale)
-                            : null}
-                        </bdi>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {plan.plan.balanced ? null : (
-              <Alert variant="error" messages={[t('postUnbalanced')]} />
-            )}
-          </div>
-        ) : (
-          <div className="mt-4">
-            <Alert
-              variant="error"
-              messages={[plan.missingBank ? t('postBankMissing') : t('postAccountProblem')]}
-            />
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button
-            onClick={() => {
-              if (plan.ok && plan.plan.balanced) onConfirm(plan.plan.payload);
-            }}
-            disabled={isPending || !postable}
-          >
-            {isPending ? tCommon('saving') : t('post')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={isPending}>
-            {tCommon('cancel')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      onDismiss={onDismiss}
+    />
   );
 }

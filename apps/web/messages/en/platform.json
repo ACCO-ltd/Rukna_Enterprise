@@ -1501,6 +1501,7 @@
       "createSubmit": "Create user",
       "createPending": "Creating…",
       "createFailed": "Could not create the user.",
+      "emailInvalid": "Enter an email address like name@company.com.",
       "createdTitle": "User created",
       "createdHint": "Share these credentials with the user directly — no email is sent. The password is shown only once.",
       "copyCredentials": "Copy credentials",
@@ -1688,6 +1689,7 @@
       "newDraft": "New policy draft",
       "draftHint": "This creates an inactive draft. It cannot route approvals until validation and publication are complete.",
       "policyKey": "Policy key",
+      "policyKeyInvalid": "Use capital letters, digits and underscores, starting with a letter: PURCHASE_ORDER_APPROVAL.",
       "notes": "Notes",
       "create": "Create draft",
       "creating": "Creating draft",
@@ -1982,7 +1984,12 @@
         "SUPPLIER_PAYMENT": "Supplier Payment",
         "STOCK_TRANSFER": "Stock Transfer",
         "MATERIAL_ISSUE": "Material Issue",
-        "SUBCONTRACT_CERTIFICATE": "Subcontract Certificate"
+        "SUBCONTRACT_CERTIFICATE": "Subcontract Certificate",
+        "CLIENT_INVOICE": "Client Invoice",
+        "SUPPLIER_BILL": "Supplier Bill",
+        "PAYMENT_RECEIPT": "Payment Receipt",
+        "MANUAL_JOURNAL": "Manual Journal",
+        "BOQ_BASELINE": "BOQ Baseline"
       }
     }
   },

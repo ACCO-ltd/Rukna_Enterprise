@@ -20,7 +20,17 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Select } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormField,
+  Input,
+  Select,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -77,7 +87,8 @@ export function fiscalYearProblem(
   return null;
 }
 
-export function CreateFiscalYearForm({ onDone }: { onDone: () => void }) {
+/** A `FormDialog` (ADR-039), size `md`: two fields. The caller mounts it to open it. */
+export function CreateFiscalYearForm({ title, onDone }: { title: string; onDone: () => void }) {
   const t = useTranslations('accounting.periods.create');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
@@ -114,14 +125,27 @@ export function CreateFiscalYearForm({ onDone }: { onDone: () => void }) {
     );
   }
 
-  if (noCandidates) {
-    return (
-      <Alert variant="error" title={t('noRetainedTitle')} messages={[t('noRetainedBody')]} />
-    );
-  }
+  const dirty = year.trim() !== '' || retainedCode !== '';
 
   return (
-    <div className="space-y-4">
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onDone();
+      }}
+      title={title}
+      size="md"
+      dirty={dirty}
+      busy={create.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => handleSubmit()}
+    >
+      <FormDialogBody className="space-y-4">
+      {/* Nothing to close a year into: said here instead of an empty picker, and nothing to submit. */}
+      {noCandidates ? (
+        <Alert variant="error" title={t('noRetainedTitle')} messages={[t('noRetainedBody')]} />
+      ) : (
+      <>
       <Alert variant="info" messages={[t('periodsNotice')]} />
 
       <FormField htmlFor={ids.year} label={t('year')}>
@@ -160,14 +184,19 @@ export function CreateFiscalYearForm({ onDone }: { onDone: () => void }) {
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={create.isPending}>
-          {tCommon('cancel')}
-        </Button>
-        <Button type="button" onClick={handleSubmit} disabled={create.isPending}>
+      </>
+      )}
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={create.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={create.isPending || noCandidates}>
           {create.isPending ? tCommon('saving') : t('submit')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

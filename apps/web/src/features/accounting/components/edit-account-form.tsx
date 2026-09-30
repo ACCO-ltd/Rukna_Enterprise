@@ -19,7 +19,19 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, CheckboxField, FormField, Input, Select } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormField,
+  Input,
+  Select,
+  Skeleton,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -33,10 +45,13 @@ import {
 import { useAccounts, useUpdateAccount } from '../hooks/use-accounting';
 import type { Account } from '../types';
 
+/** A `FormDialog` (ADR-039), size `md`: four fields. The caller mounts it to open it. */
 export function EditAccountForm({
+  title,
   account,
   onDone,
 }: {
+  title: string;
   account: Account;
   onDone: () => void;
 }) {
@@ -46,13 +61,20 @@ export function EditAccountForm({
   const accounts = useAccounts();
   const update = useUpdateAccount();
 
-  // The original snapshot is captured once from the account this form opened on, so a background
-  // refetch of the chart does not shift what "changed" is measured against mid-edit.
-  const original = useMemo<EditAccountDraft>(
-    () => editAccountDraftFrom(account, accounts.data ?? []),
-    [account, accounts.data],
+  // The original is captured once — when the chart is first available, since the parent code is
+  // resolved from it — and never recomputed, so a background refetch of the chart cannot shift what
+  // "changed" is measured against mid-edit. The draft starts from the same snapshot.
+  const [original, setOriginal] = useState<EditAccountDraft | null>(() =>
+    accounts.data ? editAccountDraftFrom(account, accounts.data) : null,
   );
-  const [draft, setDraft] = useState<EditAccountDraft>(original);
+  const [draft, setDraft] = useState<EditAccountDraft>(
+    () => original ?? editAccountDraftFrom(account, []),
+  );
+  if (original === null && accounts.data) {
+    const snapshot = editAccountDraftFrom(account, accounts.data);
+    setOriginal(snapshot);
+    setDraft(snapshot);
+  }
   const [showErrors, setShowErrors] = useState(false);
 
   const ids = {
@@ -80,7 +102,7 @@ export function EditAccountForm({
 
   function handleSubmit() {
     setShowErrors(true);
-    if (problem) return;
+    if (problem || !original) return;
 
     const body = toUpdateAccountBody(draft, original);
     // Nothing changed — close rather than fire a no-op request.
@@ -92,8 +114,31 @@ export function EditAccountForm({
     update.mutate({ id: account.id, body }, { onSuccess: onDone });
   }
 
+  // Every raw field against the captured original — so a cleared name or a typed reason counts as
+  // an edit worth asking about, even though neither would produce a request body.
+  const dirty = original !== null && JSON.stringify(draft) !== JSON.stringify(original);
+
   return (
-    <div className="space-y-4">
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onDone();
+      }}
+      title={title}
+      size="md"
+      dirty={dirty}
+      busy={update.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => handleSubmit()}
+    >
+      <FormDialogBody className="space-y-4">
+      {original === null ? (
+        <div role="status" aria-label={tCommon('loading')} className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : (
+      <>
       <FormField htmlFor={ids.name} label={t('name')}>
         <Input
           id={ids.name}
@@ -153,14 +198,19 @@ export function EditAccountForm({
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={update.isPending}>
-          {tCommon('cancel')}
-        </Button>
-        <Button type="button" onClick={handleSubmit} disabled={update.isPending}>
+      </>
+      )}
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={update.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={update.isPending || original === null}>
           {update.isPending ? tCommon('saving') : t('submit')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

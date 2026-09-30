@@ -20,13 +20,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   DocumentActionBar,
   DocumentIdentity,
   type DefinitionFact,
@@ -39,6 +33,7 @@ import { ArrowLeft } from 'lucide-react';
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PostingPreviewDialog } from '@/features/accounting/components/posting-preview-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
@@ -377,15 +372,11 @@ export function BillDocumentHeader({
 // ─── Post ────────────────────────────────────────────────────────────────────────
 
 /**
- * The post confirmation, showing the exact journal the server will write.
+ * The post confirmation, showing the exact journal the server will write — the shared
+ * `PostingPreviewDialog`, so posting a bill reads exactly like posting an invoice.
  *
- * Built as a bespoke `Dialog` rather than a `ConfirmActionDialog`, following
- * `PostInvoiceDialog` — the shared confirmation takes no children, and the whole point here is
- * the preview. The markup deliberately mirrors that file so the two posting dialogs read the
- * same; an accountant posting a bill and posting an invoice should not be learning two screens.
- *
- * Unlike the invoice's fixed three lines, a bill has one debit per line and a single credit,
- * so this table is as long as the bill.
+ * Unlike the invoice's fixed three lines, a bill has one debit per line and a single credit, so
+ * this preview is as long as the bill: `lg` (ADR-039).
  */
 function PostDialog({
   bill,
@@ -404,110 +395,27 @@ function PostDialog({
 }) {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-
-  const preventWhilePending = (event: Event) => {
-    if (isPending) event.preventDefault();
-  };
-
-  const postable = plan.ok && plan.plan.balanced;
 
   return (
-    <Dialog
-      open
-      onOpenChange={(next) => {
-        if (!next && !isPending) onDismiss();
+    <PostingPreviewDialog
+      title={t('postTitle')}
+      description={t('postBody')}
+      size="lg"
+      currencyCode={bill.currencyCode}
+      lines={plan.ok ? plan.plan.lines : undefined}
+      accountHeading={t('postPreview')}
+      debitHeading={t('postDebit')}
+      creditHeading={t('postCredit')}
+      unbalanced={plan.ok && !plan.plan.balanced ? t('postUnbalanced') : null}
+      problems={plan.ok ? undefined : [t('postAccountProblem')]}
+      errorMessage={isError ? tc('loadFailed') : null}
+      confirmLabel={t('post')}
+      isPending={isPending}
+      onConfirm={() => {
+        if (plan.ok && plan.plan.balanced) onConfirm(plan.plan.payload);
       }}
-    >
-      <DialogContent
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-      >
-        <DialogTitle>{t('postTitle')}</DialogTitle>
-        <DialogDescription>{t('postBody')}</DialogDescription>
-
-        {isError ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[tc('loadFailed')]} />
-          </div>
-        ) : null}
-
-        {plan.ok ? (
-          <div className="mt-4 space-y-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                    <th scope="col" className="py-2 text-start font-medium">
-                      {t('postPreview')}
-                    </th>
-                    <th scope="col" className="py-2 text-end font-medium">
-                      {t('postDebit')}
-                    </th>
-                    <th scope="col" className="py-2 text-end font-medium">
-                      {t('postCredit')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.plan.lines.map((line, index) => (
-                    <tr
-                      key={`${line.accountCode}-${index}`}
-                      className="border-b border-border/60"
-                    >
-                      <td className="py-2 pe-3">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {line.accountCode}
-                        </span>
-                        <span className="ms-2 text-foreground">{line.accountName}</span>
-                      </td>
-                      <td className="py-2 text-end">
-                        <bdi className="tabular-nums">
-                          {line.debit
-                            ? formatMoney(line.debit, bill.currencyCode, locale)
-                            : null}
-                        </bdi>
-                      </td>
-                      <td className="py-2 text-end">
-                        <bdi className="tabular-nums">
-                          {line.credit
-                            ? formatMoney(line.credit, bill.currencyCode, locale)
-                            : null}
-                        </bdi>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {plan.plan.balanced ? null : (
-              <Alert variant="error" messages={[t('postUnbalanced')]} />
-            )}
-          </div>
-        ) : (
-          <div className="mt-4">
-            <Alert variant="error" messages={[t('postAccountProblem')]} />
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button
-            onClick={() => {
-              if (plan.ok && plan.plan.balanced) onConfirm(plan.plan.payload);
-            }}
-            disabled={isPending || !postable}
-          >
-            {isPending ? tCommon('saving') : t('post')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={isPending}>
-            {tCommon('cancel')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      onDismiss={onDismiss}
+    />
   );
 }
 

@@ -13,9 +13,6 @@ import {
   FilterField,
   Input,
   Select,
-  Dialog,
-  DialogContent,
-  DialogTitle,
 } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -176,46 +173,25 @@ export function ChartOfAccounts() {
   return (
     <div className="space-y-6">
 
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="p-6 sm:max-w-lg">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {t('create.title')}
-          </DialogTitle>
-          <div className="mt-5">
-            <CreateAccountForm onDone={() => setCreating(false)} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ADR-039: each form is its own FormDialog, mounted to open it. */}
+      {creating ? (
+        <CreateAccountForm title={t('create.title')} onDone={() => setCreating(false)} />
+      ) : null}
 
-      <Dialog open={importing} onOpenChange={setImporting}>
-        <DialogContent className="p-6 sm:max-w-xl">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {t('import.title')}
-          </DialogTitle>
-          <div className="mt-5">
-            <ImportCoaForm onDone={() => setImporting(false)} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {importing ? (
+        <ImportCoaForm title={t('import.title')} onDone={() => setImporting(false)} />
+      ) : null}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
-        <DialogContent className="p-6 sm:max-w-lg">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {editing ? t('edit.title', { name: accountName(editing) }) : t('edit.action')}
-          </DialogTitle>
-          <div className="mt-5">
-            {editing ? (
-              // Keyed so switching from one account's menu to another re-seeds the form from the
-              // new account rather than keeping the first one's draft.
-              <EditAccountForm
-                key={editing.id}
-                account={editing}
-                onDone={() => setEditing(null)}
-              />
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {editing ? (
+        // Keyed so switching from one account's menu to another re-seeds the form from the
+        // new account rather than keeping the first one's draft.
+        <EditAccountForm
+          key={editing.id}
+          title={t('edit.title', { name: accountName(editing) })}
+          account={editing}
+          onDone={() => setEditing(null)}
+        />
+      ) : null}
 
       <PlatformDataGrid
         columns={columns}

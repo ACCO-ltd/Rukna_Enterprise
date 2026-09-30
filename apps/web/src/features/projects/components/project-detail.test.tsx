@@ -536,16 +536,16 @@ describe('ProjectDetail — latest activity', () => {
     expect(within(section).queryByRole('link', { name: 'View all' })).not.toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'View all' }));
 
-    const sheet = within(await screen.findByRole('dialog', { name: 'Project activity' }));
-    expect(await sheet.findByText('BOQ committed')).toBeInTheDocument();
-    expect(sheet.getByText('Team member added')).toBeInTheDocument();
+    const dialog = within(await screen.findByRole('dialog', { name: 'Project activity' }));
+    expect(await dialog.findByText('BOQ committed')).toBeInTheDocument();
+    expect(dialog.getByText('Team member added')).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenCalledWith('p1', undefined);
 
-    await user.click(sheet.getByRole('button', { name: 'Load more' }));
-    expect(await sheet.findByText('Project created')).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: 'Load more' }));
+    expect(await dialog.findByText('Project created')).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenLastCalledWith('p1', 'cursor-1');
-    expect(sheet.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
-    expect(sheet.getByText('That is everything recorded so far.')).toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(dialog.getByText('That is everything recorded so far.')).toBeInTheDocument();
   });
 
   it('does not fetch the full history until it is asked for', async () => {

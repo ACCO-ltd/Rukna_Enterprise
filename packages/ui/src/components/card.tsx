@@ -16,7 +16,7 @@ import { cn } from '../lib/utils';
  * `CardHeader`/`CardContent`/`CardFooter` never fight over who owns the padding between them —
  * (ADR-033: bumped from `py-5`/`gap-5`/`px-5` to `py-6`/`gap-8`/`px-6` in the platform-wide
  * visual refresh's 24/32 spacing step)
- * the same reason `DialogFooter` and `SheetFooter` don't add their own top margin either.
+ * the same reason `DialogFooter` and `FormDialogFooter` don't add their own top margin either.
  *
  * @example
  * <Card>

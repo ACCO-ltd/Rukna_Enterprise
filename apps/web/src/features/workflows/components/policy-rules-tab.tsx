@@ -6,15 +6,14 @@ import {
   Alert,
   Badge,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   OverflowGlyph,
@@ -73,6 +72,7 @@ export function PolicyRulesTab({
   const reorder = useReorderApprovalPolicyRules();
 
   const [editing, setEditing] = useState<PolicyRule | null>(null);
+  const [ruleTouched, setRuleTouched] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PolicyRule | null>(null);
 
   function move(id: string, offset: -1 | 1) {
@@ -102,8 +102,13 @@ export function PolicyRulesTab({
         fromState: matrix?.fromState,
         toState: matrix?.toState,
       },
-      { onSuccess: () => setEditing(null) },
+      { onSuccess: () => closeEditor() },
     );
+  }
+
+  function closeEditor() {
+    setEditing(null);
+    setRuleTouched(false);
   }
 
   function confirmDelete() {
@@ -237,12 +242,23 @@ export function PolicyRulesTab({
       ) : null}
 
       {/* Edit draft rule — matrix-pinned, exactly as the retired sheet. */}
-      <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogTitle>{t('editTitle')}</DialogTitle>
-          <DialogDescription>{t('editDescription')}</DialogDescription>
+      {/* A FormDialog (ADR-039), size md. The fields stay uncontrolled (read on submit), so an
+          edit is noticed by the input events it raises — enough to ask before discarding it. */}
+      <FormDialog
+        open={Boolean(editing)}
+        onOpenChange={(open) => {
+          if (!open) closeEditor();
+        }}
+        size="md"
+        title={t('editTitle')}
+        subtitle={t('editDescription')}
+        dirty={ruleTouched}
+        busy={update.isPending}
+        onSubmit={saveRule}
+      >
           {editing ? (
-            <form onSubmit={saveRule} className="mt-4 space-y-3">
+            <>
+            <FormDialogBody className="space-y-3" onInput={() => setRuleTouched(true)}>
               {editingMatrix ? (
                 <Badge tone="neutral">
                   {editingMatrix.label} · {editingMatrix.transition}
@@ -253,6 +269,7 @@ export function PolicyRulesTab({
                   id="editRole"
                   name="requiredRole"
                   defaultValue={editing.configuration.requiredRole ?? ''}
+                  onChange={() => setRuleTouched(true)}
                 >
                   <option value="" disabled>
                     {t('selectRole')}
@@ -301,18 +318,20 @@ export function PolicyRulesTab({
                   }
                 />
               ) : null}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+            </FormDialogBody>
+            <FormDialogFooter>
+              <FormDialogClose asChild>
+                <Button type="button" variant="outline" disabled={update.isPending}>
                   {t('cancel')}
                 </Button>
-                <Button type="submit" disabled={update.isPending}>
-                  {t('saveRule')}
-                </Button>
-              </DialogFooter>
-            </form>
+              </FormDialogClose>
+              <Button type="submit" disabled={update.isPending}>
+                {t('saveRule')}
+              </Button>
+            </FormDialogFooter>
+            </>
           ) : null}
-        </DialogContent>
-      </Dialog>
+      </FormDialog>
 
       {/* Delete draft rule — DS confirm dialog, surfacing ApiError.messages on failure. */}
       {deleteTarget ? (

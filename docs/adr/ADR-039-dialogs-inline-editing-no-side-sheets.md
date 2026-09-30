@@ -81,9 +81,10 @@ document with an open-ended list of lines does not fit in a dialog.
 
 ### Side sheets are retired
 
-No new screen uses `Sheet`. The existing sheets migrate to one of the three containers above (see
-the inventory below). `Sheet` stays in `@erp/ui` until the last one has moved (PR 5), then it is
-removed.
+No screen uses `Sheet`. The existing sheets migrated to one of the three containers above (see
+the inventory below), and PR 5 removed `Sheet` from `@erp/ui` (`packages/ui/src/components/sheet.tsx`
+and its exports are gone). No legitimate non-form use remained — the app's mobile navigation does
+not use it — so there is no exception to keep.
 
 ### Mobile
 
@@ -107,18 +108,18 @@ This is the owner-approved plan of 2026-09-29. PR 1 (this change) is the foundat
 | BOQ | `boq-item-drawer` | `FormDialog` (unit picker from `useUnitsOfMeasure`) |
 | BOQ | `boq-timeline-drawer` | `FormDialog` + `ActivityTimeline` |
 | Progress | `dpr-entry-sheet` | `FormDialog size="xl"` — done in PR 3 as `dpr-entry-dialog` |
-| Finance | `budget-editor-dialog` (a `Sheet`) | inline editing in the budget table |
-| Accounting | `bank-accounts` signatories sheet | `FormDialog` |
-| Accounting | `invoice-document-preview` (mobile sheet) | `FormDialog` preview |
-| Admin | `policy-version-comparison-sheet` | `FormDialog size="2xl"` |
-| Admin | `form-sheet-shell` | `FormDialog` |
-| Project | `project-activity-sheet` | `FormDialog` + `ActivityTimeline` |
+| Finance | `budget-editor-dialog` (a `Sheet`) | inline editing in the budget table — done in PR 5 as `budget-lines-editor` (table of inputs, fixed Cancel / Save budget bar; still one whole-version POST/PATCH; a Working version is read with `GET …/budgets/:id` before its table opens) |
+| Accounting | `bank-accounts` signatories sheet | `FormDialog size="md"` — done in PR 5 |
+| Accounting | `invoice-document-preview` (mobile sheet) | `FormDialog size="2xl"` preview — done in PR 5 |
+| Admin | `policy-version-comparison-sheet` | `FormDialog size="2xl"` — done in PR 5 as `policy-version-comparison-dialog` |
+| Admin | `form-sheet-shell` | `FormDialog` — done in PR 5 as `form-dialog-shell` (`user-form-dialogs`, `role-form-dialogs`) |
+| Project | `project-activity-sheet` | `FormDialog` + `ActivityTimeline` — done in PR 5 as `project-activity-dialog` |
 
 **Ad-hoc dialogs to normalise onto `FormDialog`:**
 
 - `add-extra-work-drawer`
 - `boq-classifier-drawer`, `boq-compare-signed-panel`
-- `lifecycle-command-drawer`, `role-governance-sheet`
+- `lifecycle-command-drawer`, `role-governance-sheet` (done in PR 5 as `role-governance-dialog`)
 
 **Done in PR 4 (Commercial + Procurement):**
 
@@ -140,10 +141,18 @@ This is the owner-approved plan of 2026-09-29. PR 1 (this change) is the foundat
 | Procurement | `requirement-detail-dialog` | `FormDialog`, read-only + Close | `xl` |
 
 Left as confirmations on `DialogContent` (not record forms): the collection "info" dialog, the
-re-run match confirmation, the signed-contract confirmation, and the bill / supplier-payment post
-dialogs (journal previews that mirror accounting's `PostInvoiceDialog`; they move with it).
+re-run match confirmation and the signed-contract confirmation. The bill / supplier-payment post
+dialogs (journal previews that mirrored accounting's `PostInvoiceDialog`) moved with it in PR 5.
 
-The design-system gallery's `Sheet` specimen (`patterns-section.tsx`) goes when `Sheet` is removed.
+PR 5 also normalised the remaining form and preview dialogs in Finance, Accounting, Admin and
+Workflows: the three posting previews (client invoice, supplier bill, supplier payment) now share
+one `PostingPreviewDialog`; the chart-of-accounts create/edit/import, open-fiscal-year and
+configure-bank-account forms each own a `FormDialog`; and the workflow policy draft, clone,
+lifecycle-transition and edit-rule dialogs moved onto `FormDialog`.
+
+The design-system gallery's `Sheet` specimen (`patterns-section.tsx`) was removed with `Sheet`.
+
+**Sheets retired.** Nothing in `apps/web` or `packages/ui` imports `Sheet` any more.
 
 ## Consequences
 
@@ -152,7 +161,8 @@ The design-system gallery's `Sheet` specimen (`patterns-section.tsx`) goes when 
 - Phones get one behaviour, full screen, instead of three.
 - Tables become the place where values are edited. Some screens (the budget editor) need an
   inline-editing treatment rather than a container swap, which is more work than a reskin.
-- `Sheet` stays in the library, marked retired, until PR 5. Code review rejects new uses.
+- `Sheet` stayed in the library, marked retired, until PR 5 removed it. A side panel is not
+  reintroduced without a new ADR.
 - Wide comparisons that used an `xl` side sheet move to a `2xl` dialog. Anything wider than 1200px
   belongs on a full page.
 

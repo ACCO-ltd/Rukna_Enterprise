@@ -299,8 +299,7 @@
     "colStatus": "Status",
     "signatories": {
       "button": "Signatories",
-      "sheetTitle": "Signatories",
-      "sheetSubtitle": "Users authorised to sign payments. Two signatures are required once any signatory is added.",
+      "title": "Signatories",
       "loadFailed": "Could not load signatories.",
       "empty": "No signatories configured.",
       "emptyHint": "Adding a signatory enforces dual authorisation on every payment from this account.",

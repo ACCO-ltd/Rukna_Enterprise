@@ -24,15 +24,10 @@ import {
   FormField,
   Input,
   Select,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetBody,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   StatusPill,
   Table,
   TableBody,
@@ -71,6 +66,7 @@ import type { BankAccount } from '../types';
 
 export function BankAccounts() {
   const t = useTranslations('accounting.bankAccounts');
+  const tCommon = useTranslations('common');
   const { can } = usePermissions();
 
   const banks = useBankAccounts();
@@ -155,16 +151,9 @@ export function BankAccounts() {
   return (
     <div className="space-y-6">
 
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="p-6 sm:max-w-lg">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {t('create.title')}
-          </DialogTitle>
-          <div className="mt-5">
-            <ConfigureBankAccountForm onDone={() => setCreating(false)} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {creating ? (
+        <ConfigureBankAccountForm title={t('create.title')} onDone={() => setCreating(false)} />
+      ) : null}
 
       <PlatformDataGrid
         columns={columns}
@@ -191,20 +180,26 @@ export function BankAccounts() {
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>
 
-      <Sheet
+      {/* ADR-039: a FormDialog (md). Adding and removing act at once, so the footer only closes. */}
+      <FormDialog
         open={signatoryBank !== null}
         onOpenChange={(open) => { if (!open) setSignatoryBank(null); }}
+        size="md"
+        title={t('signatories.title')}
+        subtitle={signatoryBank?.accountName ?? ''}
+        closeLabel={tCommon('close')}
       >
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>{t('signatories.sheetTitle')}</SheetTitle>
-            <SheetDescription>{signatoryBank?.accountName ?? ''}</SheetDescription>
-          </SheetHeader>
-          <SheetBody>
-            {signatoryBank && <SignatoriesPanel bank={signatoryBank} />}
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
+        <FormDialogBody>
+          {signatoryBank && <SignatoriesPanel bank={signatoryBank} />}
+        </FormDialogBody>
+        <FormDialogFooter>
+          <FormDialogClose asChild>
+            <Button type="button" variant="outline">
+              {tCommon('close')}
+            </Button>
+          </FormDialogClose>
+        </FormDialogFooter>
+      </FormDialog>
     </div>
   );
 }
@@ -270,7 +265,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
       )}
 
       {signatories.length > 0 && (
-        <TableScroll aria-label={t('sheetTitle')}>
+        <TableScroll aria-label={t('title')}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -354,12 +349,14 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
 
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
-function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
+/** A `FormDialog` (ADR-039), size `md`. The caller mounts it to open it. */
+function ConfigureBankAccountForm({ title, onDone }: { title: string; onDone: () => void }) {
   const t = useTranslations('accounting.bankAccounts.create');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
-  const [draft, setDraft] = useState<BankAccountDraft>(emptyBankAccountDraft());
+  const [initialDraft] = useState<BankAccountDraft>(emptyBankAccountDraft);
+  const [draft, setDraft] = useState<BankAccountDraft>(initialDraft);
   const [showErrors, setShowErrors] = useState(false);
 
   const accounts = useAccounts();
@@ -397,18 +394,31 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
     configure.mutate(body, { onSuccess: onDone });
   }
 
-  if (availability !== null) {
-    return (
-      <Alert
-        variant={availability === 'all-mapped' ? 'info' : 'error'}
-        title={t(`unavailable.${availability}.title`)}
-        messages={[t(`unavailable.${availability}.body`)]}
-      />
-    );
-  }
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
 
   return (
-    <div className="space-y-4">
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onDone();
+      }}
+      title={title}
+      size="md"
+      dirty={dirty}
+      busy={configure.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => handleSubmit()}
+    >
+      <FormDialogBody className="space-y-4">
+      {/* No GL account left to map: said instead of an empty picker, and nothing to submit. */}
+      {availability !== null ? (
+        <Alert
+          variant={availability === 'all-mapped' ? 'info' : 'error'}
+          title={t(`unavailable.${availability}.title`)}
+          messages={[t(`unavailable.${availability}.body`)]}
+        />
+      ) : (
+      <>
       {/* A19 — the DTO offers an Arabic name, the column does not exist, and sending it fails
           the request. Said here so the omission does not read as an oversight. */}
       <Alert variant="info" messages={[t('noArabicName')]} />
@@ -492,14 +502,19 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={configure.isPending}>
-          {tCommon('cancel')}
-        </Button>
-        <Button type="button" onClick={handleSubmit} disabled={configure.isPending}>
+      </>
+      )}
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={configure.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={configure.isPending || availability !== null}>
           {configure.isPending ? tCommon('saving') : t('submit')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

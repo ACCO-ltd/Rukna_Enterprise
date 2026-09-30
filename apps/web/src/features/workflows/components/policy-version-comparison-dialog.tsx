@@ -4,13 +4,12 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
+  Button,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Select,
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
   StatusPill,
 } from '@erp/ui';
 
@@ -27,6 +26,7 @@ import { PolicyComparisonDiff } from './policy-comparison-diff';
 /**
  * Version history + comparison for one policyKey (ADR-027 GOV-ADM-005).
  *
+ * A read-only `FormDialog` at `2xl` (ADR-039: comparisons), with Close as its only action.
  * Opened from the inventory. Lists every version of the key (newest first) and lets the
  * administrator pick two to compare; the diff renders read-only via `PolicyComparisonDiff`.
  * This is a read surface — gating is the caller's job (`view:workflow`); nothing here writes.
@@ -34,7 +34,7 @@ import { PolicyComparisonDiff } from './policy-comparison-diff';
  * States covered: loading (skeleton), load error, and the single-version case, which has no
  * earlier version to compare against and says so rather than showing an inert picker.
  */
-export function PolicyVersionComparisonSheet({
+export function PolicyVersionComparisonDialog({
   policyKey,
   onOpenChange,
 }: {
@@ -42,37 +42,50 @@ export function PolicyVersionComparisonSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('platform.workflows.policies.compare');
+  const tc = useTranslations('common');
   const history = useApprovalPolicyVersions(policyKey);
   const versions = history.data?.versions ?? [];
 
   return (
-    <Sheet open={Boolean(policyKey)} onOpenChange={onOpenChange}>
-      <SheetContent size="xl">
-        <SheetHeader>
-          <SheetTitle>
-            {t('title')}{' '}
-            <span className="font-mono text-sm font-normal text-muted-foreground">{policyKey}</span>
-          </SheetTitle>
-          <SheetDescription>{t('description')}</SheetDescription>
-        </SheetHeader>
-        <SheetBody>
-          {history.isPending ? (
-            <div
-              className="h-40 animate-pulse rounded-panel border border-border bg-muted"
-              aria-hidden="true"
-            />
-          ) : history.isError ? (
-            <Alert variant="error" messages={[t('historyLoadFailed')]} />
-          ) : versions.length === 0 ? (
-            <p className="rounded-panel border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted-foreground">
-              {t('noVersions')}
-            </p>
-          ) : (
-            <VersionComparer versions={versions} />
-          )}
-        </SheetBody>
-      </SheetContent>
-    </Sheet>
+    <FormDialog
+      open={Boolean(policyKey)}
+      onOpenChange={onOpenChange}
+      size="2xl"
+      // A comparison is read, not filled in: focus the dialog, not the first version picker.
+      initialFocus="dialog"
+      closeLabel={tc('close')}
+      title={
+        <>
+          {t('title')}{' '}
+          <span className="font-mono text-sm font-normal text-muted-foreground">{policyKey}</span>
+        </>
+      }
+      subtitle={t('description')}
+    >
+      <FormDialogBody>
+        {history.isPending ? (
+          <div
+            className="h-40 animate-pulse rounded-panel border border-border bg-muted"
+            aria-hidden="true"
+          />
+        ) : history.isError ? (
+          <Alert variant="error" messages={[t('historyLoadFailed')]} />
+        ) : versions.length === 0 ? (
+          <p className="rounded-panel border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted-foreground">
+            {t('noVersions')}
+          </p>
+        ) : (
+          <VersionComparer versions={versions} />
+        )}
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline">
+            {tc('close')}
+          </Button>
+        </FormDialogClose>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
