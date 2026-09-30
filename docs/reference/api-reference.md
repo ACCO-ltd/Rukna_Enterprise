@@ -401,7 +401,7 @@ and `resourceId` (additive, 2026-09-28).
 ```
 GET /projects/:id/activity?cursor=<nextCursor>&limit=25
 → { items: [{ id, action, sourceCommand, command, resourceType, resourceId, occurredAt,
-              actor: { id, name } }],
+              actor: { id, name }, target: { label, href? } | null }],
     nextCursor: string | null }
 ```
 - `view:project` + project membership (`@ProjectScoped`), like the other project reads. Newest
@@ -417,6 +417,16 @@ GET /projects/:id/activity?cursor=<nextCursor>&limit=25
 - `command` is always a stable code — the `sourceCommand`, or the catalogued code of a
   request-logged route (`project.update`, `project.addMember`, `boq.commit`, …). It is not display
   text; clients map it to a label and fall back on `resourceType`.
+- `target` (additive, 2026-09-30) names what the event was done to by its business reference —
+  never an amount: contract number (contract, payment plan, retention terms), payment-stage /
+  deliverable name, advance-term description, guarantee reference, variation reference, invoice
+  number (`commercial.issuePackage` / `preparePackage` / `issueInvoice`), receipt number
+  (`commercial.recordProjectPayment`), document number (+ `rev. <code>` for a revision),
+  programme baseline `v<n>`. `href` is the app route when one exists (Contract page, invoice page,
+  document page). `null` for project rows, request-logged rows (their id is the project, so the
+  BOQ version, member or report is unknown), records without a reference, and deleted records.
+  Resolved per page with one query per record kind, held to the org and project
+  (`projects/domain/project-activity-targets.ts`).
 
 **Create project — request body:**
 ```json

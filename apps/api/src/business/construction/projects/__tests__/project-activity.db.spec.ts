@@ -211,6 +211,41 @@ describe('ProjectPrismaRepository — activity + readiness evidence (live DB)', 
     expect(second[1]!.sourceCommand).toBe('commercial.recordProjectPayment');
   });
 
+  it('names targets in one query per kind, held to this project', async () => {
+    const records = await repo.findActivityTargetRecords(
+      prisma,
+      orgId,
+      projectId,
+      new Map([
+        ['contract', [contractId, `missing-${suffix}`]],
+        ['installment', [guaranteeLikeId]],
+      ]),
+    );
+    expect(records.get('contract')?.get(contractId)).toEqual({ reference: `CT-${suffix.slice(-6)}` });
+    expect(records.get('contract')?.has(`missing-${suffix}`)).toBe(false);
+    expect(records.get('installment')?.get(guaranteeLikeId)).toEqual({ reference: 'Advance' });
+
+    // The same ids asked for under another project (or another org) resolve to nothing.
+    const elsewhere = await repo.findActivityTargetRecords(
+      prisma,
+      orgId,
+      otherProjectId,
+      new Map([
+        ['contract', [contractId]],
+        ['installment', [guaranteeLikeId]],
+      ]),
+    );
+    expect(elsewhere.get('contract')?.size).toBe(0);
+    expect(elsewhere.get('installment')?.size).toBe(0);
+    const otherOrg = await repo.findActivityTargetRecords(
+      prisma,
+      `other-${orgId}`,
+      projectId,
+      new Map([['contract', [contractId]]]),
+    );
+    expect(otherOrg.get('contract')?.size).toBe(0);
+  });
+
   it('loads the readiness evidence: signature events, commit stamps, every membership row', async () => {
     const signatures = await repo.findContractSignatureEvents(prisma, orgId, contractId);
     expect(signatures).toEqual([{ sourceCommand: 'contract.record-signed', createdAt: t(6) }]);

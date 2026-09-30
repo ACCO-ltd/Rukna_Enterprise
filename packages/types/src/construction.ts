@@ -97,6 +97,13 @@ export interface ProjectActivityEventResponse {
   resourceId: string;
   occurredAt: string;
   actor: { id: string; name: string };
+  /**
+   * What the event was done to, by its business reference — a contract, invoice or variation
+   * number, a document number and revision, a baseline version — and the app route that shows
+   * it when one exists. Never an amount. Null when the row names no single record (a
+   * request-logged BOQ, programme or team change), the record has no reference, or it is gone.
+   */
+  target: { label: string; href?: string } | null;
 }
 
 export interface ProjectActivityPageResponse {

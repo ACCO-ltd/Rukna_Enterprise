@@ -48,6 +48,11 @@ import {
   readableActivityFamilies,
   type ActivityCursor,
 } from '../domain/project-activity.js';
+import {
+  buildActivityTarget,
+  groupTargetRefs,
+  targetRefOf,
+} from '../domain/project-activity-targets.js';
 import { hasCommittedBoqVersion, isCommittedBoqStatus } from '../../boq/domain/boq-version-status.js';
 import type { StartProjectDto } from '../presentation/dto/start-project.dto.js';
 import type { CloseProjectDto } from '../presentation/dto/close-project.dto.js';
@@ -211,7 +216,7 @@ export class ProjectService {
             }
           : null,
       financialsVisible: mayViewFinancials,
-      recentActivity: recentActivity.map((row) => this.toActivityEvent(row)),
+      recentActivity: await this.toActivityEvents(identity, id, recentActivity),
     };
   }
 
@@ -237,7 +242,7 @@ export class ProjectService {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     return {
-      items: page.map((row) => this.toActivityEvent(row)),
+      items: await this.toActivityEvents(identity, id, page),
       nextCursor:
         rows.length > limit && last ? encodeActivityCursor({ createdAt: last.createdAt, id: last.id }) : null,
     };
@@ -257,7 +262,35 @@ export class ProjectService {
     );
   }
 
-  private toActivityEvent(row: ProjectActivityRow): ProjectActivityEventResponse {
+  /**
+   * Rows → events, each naming what it was done to. The named records are loaded in one query
+   * per kind for the whole page (`domain/project-activity-targets.ts`), never one per row.
+   */
+  private async toActivityEvents(
+    identity: RequestIdentity,
+    projectId: string,
+    rows: readonly ProjectActivityRow[],
+  ): Promise<ProjectActivityEventResponse[]> {
+    const refs = rows.map((row) => targetRefOf(row));
+    const grouped = groupTargetRefs(refs);
+    const records =
+      grouped.size > 0
+        ? await this.repo.findActivityTargetRecords(
+            this.tenancyService.getClient(),
+            identity.activeOrganizationId,
+            projectId,
+            grouped,
+          )
+        : new Map();
+    return rows.map((row, index) =>
+      this.toActivityEvent(row, buildActivityTarget(projectId, refs[index] ?? null, records)),
+    );
+  }
+
+  private toActivityEvent(
+    row: ProjectActivityRow,
+    target: ProjectActivityEventResponse['target'],
+  ): ProjectActivityEventResponse {
     const { command, resourceType } = describeActivityRow(row);
     return {
       id: row.id,
@@ -271,6 +304,7 @@ export class ProjectService {
         id: row.user.id,
         name: `${row.user.firstName} ${row.user.lastName}`.trim(),
       },
+      target,
     };
   }
 
