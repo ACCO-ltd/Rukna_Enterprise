@@ -1,9 +1,9 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import {
+  ActivityTimeline,
   Alert,
-  Avatar,
   Button,
   Sheet,
   SheetBody,
@@ -15,9 +15,9 @@ import {
 } from '@erp/ui';
 import type { ProjectActivityEventResponse } from '@erp/types';
 
-import { formatDateTime } from '@/lib/format';
+import { renderNextLink } from '@/components/render-next-link';
 
-import { useActivityLabel } from '../activity-labels';
+import { useProjectActivityEntries } from '../activity-labels';
 import { useProjectActivity } from '../hooks/use-project';
 
 /**
@@ -94,30 +94,11 @@ export function ProjectActivitySheet({
   );
 }
 
-/** Who · what, then when — the same line the Overview rail uses, so the two read as one list. */
+/**
+ * One sentence per event on the shared `ActivityTimeline` — **who** did what to which record
+ * (linked when it has a page), then when — the same reading as the Overview rail.
+ */
 export function ActivityList({ events }: { events: readonly ProjectActivityEventResponse[] }) {
-  const label = useActivityLabel();
-  const locale = useLocale() as 'en' | 'ar';
-
-  return (
-    <ol className="flex flex-col gap-3">
-      {events.map((event) => (
-        <li key={event.id} className="flex min-w-0 gap-2.5">
-          <Avatar name={event.actor.name} size="sm" className="mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-body-sm text-foreground">
-              <span className="font-semibold">{event.actor.name}</span>
-              <span className="text-muted-foreground"> · </span>
-              {label(event)}
-            </p>
-            <p className="text-caption text-muted-foreground">
-              <time dateTime={event.occurredAt}>
-                {formatDateTime(event.occurredAt, locale) ?? ''}
-              </time>
-            </p>
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
+  const toEntries = useProjectActivityEntries();
+  return <ActivityTimeline entries={toEntries(events)} renderLink={renderNextLink} />;
 }

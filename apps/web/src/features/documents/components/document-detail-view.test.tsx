@@ -228,6 +228,36 @@ describe('DocumentDetailView', () => {
     expect(screen.queryByRole('button', { name: /edit details/i })).not.toBeInTheDocument();
   });
 
+  it('reads its history as sentences, never raw command codes', () => {
+    mount({
+      activity: [
+        {
+          id: 'a1',
+          action: 'UPDATE',
+          sourceCommand: 'projectDocument.issueRevision',
+          actorUserId: 'u1',
+          actorName: 'Asha Ali',
+          reason: null,
+          occurredAt: '2026-09-02T10:00:00.000Z',
+        },
+        {
+          id: 'a2',
+          action: 'UPDATE',
+          sourceCommand: 'projectDocument.withdraw',
+          actorUserId: 'u2',
+          actorName: null,
+          reason: 'Wrong drawing',
+          occurredAt: '2026-09-01T10:00:00.000Z',
+        },
+      ],
+    });
+    expect(screen.getByText(/issued the revision/).closest('li')).toHaveTextContent('Asha Ali issued the revision');
+    expect(screen.getByText(/withdrew the document/).closest('li')).toHaveTextContent(
+      'u2 withdrew the document — Wrong drawing',
+    );
+    expect(screen.queryByText('issueRevision')).not.toBeInTheDocument();
+  });
+
   it('says when nothing has been recorded rather than inventing history', () => {
     mount();
     expect(screen.getByText('No recorded activity yet.')).toBeInTheDocument();

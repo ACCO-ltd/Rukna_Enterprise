@@ -60,7 +60,14 @@ Each width is capped at `100vw - 2rem`. Rules that go with it:
 - **Long forms group their fields** with `FormDialogSection`.
 - **A choice that changes which fields follow** uses `ChoiceCards`. Example: "Unit rate: Quantity ×
   rate" / "Lump sum: One fixed amount".
-- **History inside a dialog or a rail** uses `ActivityTimeline`.
+- **History inside a dialog or a rail** uses `ActivityTimeline`. Each entry is one sentence —
+  **actor** verb-phrase target — with the time (`formatDateTime`) underneath; the target is the
+  record's reference, linked through `renderNextLink` when it has a page. PR 6 moved every
+  actor/action/time feed onto it: the Overview rail and project activity (targets from
+  `ProjectActivityEventResponse.target`), commercial activity, document history, policy history
+  and the BOQ history. Lists with no actor — the procurement commitment ledger, finance
+  activity, an invoice's collection events — and approval-step timelines are not activity feeds
+  and keep their own layout.
 
 Short confirmations keep `ConfirmDialog` and the small `DialogContent` tiers.
 

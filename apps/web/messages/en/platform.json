@@ -1868,7 +1868,8 @@
       "history": {
         "empty": "No governance history has been recorded for this policy.",
         "loadFailed": "Could not load the policy history.",
-        "actor": "By"
+        "title": "Policy history",
+        "unknownActor": "Unknown user"
       },
       "clone": {
         "title": "Clone to a new draft",

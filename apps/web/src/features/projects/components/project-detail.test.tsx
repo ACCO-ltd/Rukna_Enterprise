@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { ApiError } from '@/lib/api-client';
+import { formatDateTime } from '@/lib/format';
 import {
   getProject,
   getProjectActivity,
@@ -504,6 +505,40 @@ describe('ProjectDetail — latest activity', () => {
     expect(within(section).getByText(/waived a start condition/)).toBeInTheDocument();
     expect(within(section).getByText(/changed the contract/)).toBeInTheDocument();
     expect(within(section).queryByText(/contract\./)).not.toBeInTheDocument();
+  });
+
+  it('reads each event as one sentence naming its target, linked to its page, with the time under it', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({
+        recentActivity: [
+          {
+            ...event('a1', 'contract.record-signed', 'Abdi Yusuf', 'Contract'),
+            target: { label: 'ACC-HDN-26-0005-C1', href: '/projects/p1/commercial/contract' },
+          },
+          { ...event('a2', 'programmeBaseline.approve', 'Abdi Yusuf', 'ProgrammeBaseline'), target: { label: 'v2' } },
+          event('a3', 'boq.commit', 'Abdi Yusuf', 'Boq'),
+        ],
+      }),
+    );
+
+    renderWithProviders(<ProjectDetail id="p1" />, { withToast: true });
+
+    const section = await railSection('Latest activity');
+    const items = within(section).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Abdi Yusuf executed the contract ACC-HDN-26-0005-C1');
+    expect(within(items[0]!).getByRole('link', { name: 'ACC-HDN-26-0005-C1' })).toHaveAttribute(
+      'href',
+      '/projects/p1/commercial/contract',
+    );
+    // The app's absolute date-time format (in the reader's time zone), machine-readable too.
+    const time = items[0]!.querySelector('time');
+    expect(time).toHaveAttribute('dateTime', '2026-09-04T09:42:00.000Z');
+    expect(time).toHaveTextContent(formatDateTime('2026-09-04T09:42:00.000Z', 'en')!);
+    // A target without a page is named, not linked; an event without a target is still a sentence.
+    expect(items[1]).toHaveTextContent('Abdi Yusuf approved the programme baseline v2');
+    expect(within(items[1]!).queryByRole('link')).not.toBeInTheDocument();
+    expect(items[2]).toHaveTextContent('Abdi Yusuf committed the BOQ');
   });
 
   /**

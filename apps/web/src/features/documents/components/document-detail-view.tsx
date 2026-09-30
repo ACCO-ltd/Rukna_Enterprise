@@ -4,8 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import type { DocumentRevisionResponse, ProjectDocumentDetailResponse } from '@erp/types';
+import type {
+  DocumentActivityEntry,
+  DocumentRevisionResponse,
+  ProjectDocumentDetailResponse,
+} from '@erp/types';
 import {
+  ActivityTimeline,
   Alert,
   Badge,
   Button,
@@ -28,7 +33,8 @@ import {
 } from '@erp/ui';
 import { ArrowLeft, Download, MoreHorizontal } from 'lucide-react';
 
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
+import { useActivityLabel } from '@/features/projects/activity-labels';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 
 import { useDocumentCapabilities, useProjectDocument } from '../hooks/use-documents';
@@ -340,30 +346,7 @@ export function DocumentDetailView({
           </RecordPanel>
 
           <RecordPanel title={t('detail.activityTitle')}>
-            {activity.length === 0 ? (
-              <p className="text-body-sm text-muted-foreground">{t('detail.noActivity')}</p>
-            ) : (
-              <ol className="space-y-3">
-                {activity.map((entry) => (
-                  <li key={entry.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="text-body-sm font-medium text-foreground">
-                      {entry.sourceCommand.replace('projectDocument.', '')}
-                    </span>
-                    <span className="text-body-sm text-muted-foreground">
-                      {entry.actorName ?? entry.actorUserId}
-                    </span>
-                    <span className="text-body-sm tabular-nums text-muted-foreground">
-                      {formatDate(entry.occurredAt, locale) ?? '—'}
-                    </span>
-                    {entry.reason ? (
-                      <span className="w-full text-body-sm text-muted-foreground">
-                        {entry.reason}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            )}
+            <DocumentActivity activity={activity} emptyLabel={t('detail.noActivity')} />
           </RecordPanel>
         </div>
       </div>
@@ -422,5 +405,48 @@ function RevisionRow({
         <DateCell value={revision.supersededAt} />
       </TableCell>
     </TableRow>
+  );
+}
+
+/**
+ * The document's own history on the shared `ActivityTimeline`: **who** did what, the reason
+ * when one was given, and when. The verb phrases are the project activity catalog's
+ * (`projectDocument.*`), so this reads the same as the project's Latest activity.
+ */
+function DocumentActivity({
+  activity,
+  emptyLabel,
+}: {
+  activity: readonly DocumentActivityEntry[];
+  emptyLabel: string;
+}) {
+  const label = useActivityLabel();
+  const locale = useLocale() as 'en' | 'ar';
+  return (
+    <ActivityTimeline
+      entries={activity.map((entry) => {
+        const phrase = label({
+          action: entry.action,
+          sourceCommand: entry.sourceCommand,
+          command: entry.sourceCommand,
+          resourceType: 'ProjectDocument',
+        });
+        return {
+          id: entry.id,
+          actor: entry.actorName ?? entry.actorUserId,
+          action: entry.reason ? (
+            <>
+              {phrase}
+              <span className="text-muted-foreground"> — {entry.reason}</span>
+            </>
+          ) : (
+            phrase
+          ),
+          at: formatDateTime(entry.occurredAt, locale) ?? '',
+          dateTime: entry.occurredAt,
+        };
+      })}
+      empty={<p className="text-body-sm text-muted-foreground">{emptyLabel}</p>}
+    />
   );
 }

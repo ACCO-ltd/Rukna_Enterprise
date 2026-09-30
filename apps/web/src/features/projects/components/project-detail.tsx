@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
+  ActivityTimeline,
   Alert,
   Button,
   DefinitionList,
@@ -14,6 +15,7 @@ import {
   useToast,
 } from '@erp/ui';
 
+import { renderNextLink } from '@/components/render-next-link';
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
@@ -28,7 +30,8 @@ import { useCommercialSummary } from '@/features/commercial/hooks/use-commercial
 
 import { PROJECT_PERMISSIONS } from '../permissions';
 import type { ProjectDetail as ProjectDetailModel, ProjectWorkspaceSummary } from '../types';
-import { ActivityList, ProjectActivitySheet } from './project-activity-sheet';
+import { useProjectActivityEntries } from '../activity-labels';
+import { ProjectActivitySheet } from './project-activity-sheet';
 import { ProjectReadiness } from './project-readiness';
 
 export function ProjectDetail({ id }: { id: string }) {
@@ -386,12 +389,12 @@ function CommercialFoundation({
 // ─── Latest activity ──────────────────────────────────────────────────────────
 
 /**
- * The three latest things that happened to this project: who, what, when. Compact on purpose —
- * no machine codes (the label catalog falls back to "Contract changed" and the like).
+ * The three latest things that happened to this project, each one sentence on the shared
+ * `ActivityTimeline` (compact): **who** did what to which record — the record linked when it has
+ * a page — and when. No machine codes (the label catalog falls back to "changed the contract").
  *
- * "View all" opens the project's own history (`GET /projects/:id/activity`) in a side sheet for
- * every project member; the server filters it to what the reader may see. It used to link to the
- * organisation audit log, which only `view:audit-log` holders could open.
+ * "View all" opens the project's own history (`GET /projects/:id/activity`) for every project
+ * member; the server filters it to what the reader may see.
  */
 function RecentActivity({
   projectId,
@@ -401,18 +404,19 @@ function RecentActivity({
   summary: ProjectWorkspaceSummary | undefined;
 }) {
   const t = useTranslations('platform.projects.detail');
+  const toEntries = useProjectActivityEntries();
   const [historyOpen, setHistoryOpen] = useState(false);
 
   if (!summary) return null;
 
-  const events = summary.recentActivity.slice(0, 3);
+  const entries = toEntries(summary.recentActivity.slice(0, 3));
 
   return (
     <RailSection
       id="project-activity-title"
       title={t('latestActivity')}
       action={
-        events.length > 0 ? (
+        entries.length > 0 ? (
           <button
             type="button"
             className={railLinkClass}
@@ -426,13 +430,14 @@ function RecentActivity({
         ) : null
       }
     >
-      {events.length > 0 ? (
-        <div className="mt-3">
-          <ActivityList events={events} />
-        </div>
-      ) : (
-        <p className="mt-3 text-caption text-muted-foreground">{t('noRecentActivity')}</p>
-      )}
+      <ActivityTimeline
+        compact
+        className="mt-3"
+        label={t('latestActivity')}
+        entries={entries}
+        renderLink={renderNextLink}
+        empty={<p className="text-caption text-muted-foreground">{t('noRecentActivity')}</p>}
+      />
       <ProjectActivitySheet
         projectId={projectId}
         open={historyOpen}
