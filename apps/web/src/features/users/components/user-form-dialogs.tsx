@@ -22,6 +22,12 @@ import { RoleMultiSelect } from './role-multi-select';
 
 const MIN_PASSWORD_LENGTH = 12;
 
+/**
+ * A plain shape check — something@something.tld, no spaces. FormDialog's form is `noValidate`, so
+ * the browser's own `type="email"` check no longer runs; the server remains the authority.
+ */
+const EMAIL_SHAPE = /^[^s@]+@[^s@]+.[^s@]+$/;
+
 /** Same members, in any order. */
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
@@ -59,8 +65,11 @@ export function CreateUserDialog({
   const [lastName, setLastName] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [created, setCreated] = useState<CreatedCredentials | null>(null);
+  const [tried, setTried] = useState(false);
+  const emailValid = EMAIL_SHAPE.test(email.trim());
 
   function reset() {
+    setTried(false);
     setEmail('');
     setFirstName('');
     setLastName('');
@@ -76,12 +85,13 @@ export function CreateUserDialog({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setTried(true);
     const trimmed = {
       email: email.trim(),
       firstName: firstName.trim(),
       lastName: lastName.trim(),
     };
-    if (!trimmed.email || !trimmed.firstName || !trimmed.lastName) return;
+    if (!emailValid || !trimmed.firstName || !trimmed.lastName) return;
 
     create.mutate(
       { ...trimmed, roleIds },
@@ -135,7 +145,12 @@ export function CreateUserDialog({
         <CredentialsSummary credentials={created} />
       ) : (
         <>
-          <FormField htmlFor={ids.email} label={t('email')} required>
+          <FormField
+            htmlFor={ids.email}
+            label={t('email')}
+            required
+            error={tried && !emailValid ? t('emailInvalid') : undefined}
+          >
             <Input
               id={ids.email}
               name="email"

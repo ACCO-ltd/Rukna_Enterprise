@@ -71,6 +71,19 @@ describe('CreateUserDialog', () => {
     );
   });
 
+  it('refuses a malformed email before any request', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateUserDialog open onOpenChange={vi.fn()} />);
+
+    await user.type(screen.getByLabelText(/Email/), 'omar-at-acco');
+    await user.type(screen.getByLabelText(/First name/), 'Omar');
+    await user.type(screen.getByLabelText(/Last name/), 'Nur');
+    await user.click(screen.getByRole('button', { name: 'Create user' }));
+
+    expect(screen.getByText('Enter an email address like name@company.com.')).toBeInTheDocument();
+    expect(mocks.provision).not.toHaveBeenCalled();
+  });
+
   it('asks before discarding a half-filled form', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();

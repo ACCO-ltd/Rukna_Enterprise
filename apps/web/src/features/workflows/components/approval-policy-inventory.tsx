@@ -51,6 +51,7 @@ const POLICY_KEY_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/;
  */
 export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2 | 3 } = {}) {
   const t = useTranslations('platform.workflows.policies');
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const { can } = usePermissions();
   const canManage = can('manage:workflow');
@@ -225,6 +226,13 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
           dirty={draftKey.trim() !== '' || draftNotes.trim() !== ''}
           busy={create.isPending}
           onSubmit={submit}
+          closeLabel={tCommon('close')}
+          discardLabels={{
+            title: tCommon('discardChanges.title'),
+            description: tCommon('discardChanges.description'),
+            confirm: tCommon('discardChanges.confirm'),
+            cancel: tCommon('discardChanges.cancel'),
+          }}
         >
           <FormDialogBody className="space-y-4">
             <FormField

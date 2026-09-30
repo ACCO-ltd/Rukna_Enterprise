@@ -106,7 +106,9 @@ export function EditAccountForm({
     update.mutate({ id: account.id, body }, { onSuccess: onDone });
   }
 
-  const dirty = toUpdateAccountBody(draft, original) !== null;
+  // The raw form against what it opened with: a cleared name or a typed reason is an edit worth
+  // asking about even though neither would produce a request body.
+  const dirty = JSON.stringify(draft) !== JSON.stringify(original);
 
   return (
     <FormDialog
