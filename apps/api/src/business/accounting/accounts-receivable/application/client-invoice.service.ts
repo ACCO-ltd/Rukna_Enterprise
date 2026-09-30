@@ -129,6 +129,24 @@ function resolveInvoiceSource(inv: {
   return { kind: 'NONE', label: null, id: null };
 }
 
+/**
+ * An invoice row as the API returns it: the resolved `source`, never the raw relations that
+ * `resolveInvoiceSource` reads — those are internal to it.
+ */
+function toInvoiceWithSource<
+  T extends Parameters<typeof resolveInvoiceSource>[0],
+>(invoice: T): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+  source: ReturnType<typeof resolveInvoiceSource>;
+} {
+  const rest: Record<string, unknown> = { ...invoice, source: resolveInvoiceSource(invoice) };
+  delete rest.sourceInstallment;
+  delete rest.sourceIpc;
+  delete rest.sourceBoqNode;
+  return rest as Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+    source: ReturnType<typeof resolveInvoiceSource>;
+  };
+}
+
 export interface ApproveInvoiceDto {
   invoiceId: string;
 }
@@ -785,21 +803,17 @@ export class ClientInvoiceService {
    */
   async findAll(identity: RequestIdentity, filter: { clientId?: string; projectId?: string } = {}) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, filter);
+    // The list carries the same resolved `source` as the detail read — the web list renders it
+    // on every row, and a row without it crashed the page.
+    const invoices = await this.repo.findAll(prisma, identity.activeOrganizationId, filter);
+    return invoices.map(toInvoiceWithSource);
   }
 
   async findById(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
     const invoice = await this.repo.findByIdWithSource(prisma, identity.activeOrganizationId, id);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
-    const source = resolveInvoiceSource(invoice);
-    const rest: Record<string, unknown> = { ...invoice, source };
-    // The raw relations are internal to `resolveInvoiceSource` above — the DTO carries only
-    // the resolved `source`, never these.
-    delete rest.sourceInstallment;
-    delete rest.sourceIpc;
-    delete rest.sourceBoqNode;
-    return rest;
+    return toInvoiceWithSource(invoice);
   }
 
   /**

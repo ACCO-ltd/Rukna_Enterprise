@@ -24,6 +24,22 @@ export interface CreateClientInvoiceData {
   createdBy: string;
 }
 
+/**
+ * The three mutually-exclusive source relations, each narrowed to its human reference. Read by
+ * the detail and list paths so both can resolve an invoice's `source`; never by the
+ * approve/post/reverse guards, which need only the flat entity.
+ */
+const INVOICE_SOURCE_INCLUDE = {
+  sourceInstallment: { select: { id: true, name: true } },
+  sourceIpc: {
+    select: {
+      id: true,
+      application: { select: { id: true, applicationRef: true, applicationNumber: true } },
+    },
+  },
+  sourceBoqNode: { select: { id: true, code: true, description: true } },
+} as const;
+
 @Injectable()
 export class ClientInvoiceRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<ClientInvoice | null> {
@@ -38,16 +54,7 @@ export class ClientInvoiceRepository {
   findByIdWithSource(prisma: TenantPrisma, organizationId: string, id: string) {
     return prisma.clientInvoice.findFirst({
       where: { id, organizationId },
-      include: {
-        sourceInstallment: { select: { id: true, name: true } },
-        sourceIpc: {
-          select: {
-            id: true,
-            application: { select: { id: true, applicationRef: true, applicationNumber: true } },
-          },
-        },
-        sourceBoqNode: { select: { id: true, code: true, description: true } },
-      },
+      include: INVOICE_SOURCE_INCLUDE,
     });
   }
 
@@ -139,6 +146,7 @@ export class ClientInvoiceRepository {
         ...(filter.clientId ? { clientId: filter.clientId } : {}),
         ...(filter.projectId ? { projectId: filter.projectId } : {}),
       },
+      include: INVOICE_SOURCE_INCLUDE,
       orderBy: { invoiceDate: 'desc' },
     });
   }

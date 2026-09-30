@@ -124,7 +124,8 @@ export async function getWorkflowDefinition(
  */
 export async function getApprovalStep(instanceId: string): Promise<WorkflowStep | null> {
   try {
-    return await apiClient<WorkflowStep | null>(`/workflows/instance/${instanceId}/step`);
+    // An empty 200 body (the service's `null`) arrives as `undefined`; a query cannot hold that.
+    return (await apiClient<WorkflowStep | null>(`/workflows/instance/${instanceId}/step`)) ?? null;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null;
     throw err;
