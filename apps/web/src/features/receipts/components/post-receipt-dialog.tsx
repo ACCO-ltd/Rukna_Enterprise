@@ -102,12 +102,12 @@ export function PostReceiptDialog({
       open
       onOpenChange={(next) => !next && onClose()}
       title={t('title')}
+      subtitle={t('intro')}
       size="lg"
       dirty={bankAccountId !== '' || rows.length > 0}
       busy={post.isPending}
     >
       <FormDialogBody className="space-y-4">
-        <Alert variant="info" messages={[t('intro')]} />
         {post.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
 
         <FormField htmlFor="post-bank" label={t('bankLabel')}>

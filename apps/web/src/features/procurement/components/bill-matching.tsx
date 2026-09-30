@@ -26,6 +26,7 @@ import {
   FormField,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogTitle,
   FormDialog,
@@ -389,12 +390,13 @@ function RerunMatchButton({ billId }: { billId: string }) {
         <Dialog open onOpenChange={(next) => (next ? undefined : setConfirming(false))}>
           <DialogContent size="sm">
             <DialogTitle>{t('rerunMatchTitle')}</DialogTitle>
+            <DialogDescription>{t('rerunMatchBody')}</DialogDescription>
 
-            <div className="mt-4 space-y-4">
-              <p className="text-sm text-muted-foreground">{t('rerunMatchBody')}</p>
-
-              {rerun.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-            </div>
+            {rerun.isError ? (
+              <div className="mt-4">
+                <Alert variant="error" messages={[tc('loadFailed')]} />
+              </div>
+            ) : null}
 
             {/* DialogFooter reverses on wide screens: the primary goes first in source. */}
             <DialogFooter>
@@ -574,6 +576,7 @@ export function ResolveExceptionDialog({
       open
       onOpenChange={(next) => (next ? undefined : onClose())}
       title={t('resolveExceptionTitle')}
+      subtitle={t('resolveExceptionSubtitle')}
       size="md"
       dirty={dirty}
       busy={resolve.isPending}

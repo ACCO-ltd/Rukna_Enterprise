@@ -11,7 +11,7 @@
  * ("Setup / Materials") already names the screen (ADR-035).
  */
 
-import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
@@ -138,8 +138,9 @@ interface CreateFormProps {
  *
  * Always shown in a `FormDialog` (ADR-039), size `md`: the fields scroll between a pinned title
  * and a pinned Cancel · Create. The dialog cannot be dismissed while the create is in flight,
- * and asks before discarding once something has been typed. The inputs are uncontrolled, so
- * "something typed" is any input or change event from inside the body.
+ * and asks before discarding unsaved edits. The inputs are uncontrolled, so "unsaved" is worked
+ * out from the form itself: its values now against its values when it opened. A field changed
+ * and then changed back is not an edit.
  */
 export function CreateForm({
   onSubmit,
@@ -154,6 +155,8 @@ export function CreateForm({
   const t = useTranslations('procurement.common');
   const contextTitle = useContext(CreateDialogTitle);
   const [dirty, setDirty] = useState(false);
+  // The form's values when it opened, read once from the DOM on mount.
+  const initialValues = useRef<string | null>(null);
 
   const message =
     error instanceof ApiError ? error.message : error ? t('loadFailed') : undefined;
@@ -169,12 +172,19 @@ export function CreateForm({
       busy={isPending}
       onSubmit={onSubmit}
     >
-      <FormDialogBody
-        className="space-y-4"
-        onInput={() => setDirty(true)}
-        onChange={() => setDirty(true)}
-      >
-        {children}
+      <FormDialogBody>
+        <div
+          className="space-y-4"
+          ref={(element) => {
+            if (element && initialValues.current === null) {
+              initialValues.current = formValues(element);
+            }
+          }}
+          onInput={(event) => setDirty(formValues(event.currentTarget) !== initialValues.current)}
+          onChange={(event) => setDirty(formValues(event.currentTarget) !== initialValues.current)}
+        >
+          {children}
+        </div>
 
         {message ? <Alert variant="error" messages={[message]} /> : null}
       </FormDialogBody>
@@ -191,4 +201,15 @@ export function CreateForm({
       </FormDialogFooter>
     </FormDialog>
   );
+}
+
+/** The enclosing form's named values, serialised so two readings compare with `===`. */
+function formValues(element: HTMLElement): string {
+  const form = element.closest('form');
+  if (!form) return '';
+  const entries: string[] = [];
+  new FormData(form).forEach((value, key) => {
+    entries.push(`${key}=${typeof value === 'string' ? value : value.name}`);
+  });
+  return entries.join('&');
 }

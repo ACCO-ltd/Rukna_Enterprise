@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -185,4 +186,24 @@ describe('SpendCategoriesScreen', () => {
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
+});
+
+describe('CreateForm — dismissal (ADR-039 FormDialog)', () => {
+  it('asks before discarding a typed value, but not once it is typed back to empty', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<UomList />, { permissions: ['manage:procurement-config'] });
+    await user.click(screen.getByRole('button', { name: 'New Unit of Measure' }));
+
+    const code = screen.getByLabelText('Code');
+    await user.type(code, 'BAG');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByText('Discard unsaved changes?')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Keep editing' })[0]!);
+
+    // Changed and changed back: no longer an edit, so Cancel just closes.
+    await user.clear(code);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Discard unsaved changes?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'New unit of measure' })).not.toBeInTheDocument();
+  });
 });

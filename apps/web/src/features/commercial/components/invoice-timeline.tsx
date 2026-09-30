@@ -38,6 +38,7 @@ export function InvoiceTimelineDialog({ open, onOpenChange, invoice, entries, cu
       open={open}
       onOpenChange={onOpenChange}
       title={`${t('title')}${invoice.invoiceNumber ? ` — ${invoice.invoiceNumber}` : ''}`}
+      subtitle={t('subtitle')}
       size="md"
       initialFocus="dialog"
       closeLabel={t('close')}

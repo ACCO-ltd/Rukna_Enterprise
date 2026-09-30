@@ -129,6 +129,17 @@ export function CreditNoteDialog({
       subtitle={invoiceNumber ? t('description', { number: invoiceNumber }) : t('descriptionNoNumber')}
       size="md"
       dirty={dirty}
+      // A note created but not posted is not "unsaved changes" — it exists as a draft. Say so.
+      discardLabels={
+        createdId
+          ? {
+              title: t('unposted.title'),
+              description: t('unposted.description'),
+              confirm: t('unposted.confirm'),
+              cancel: t('unposted.cancel'),
+            }
+          : undefined
+      }
       busy={mutation.isPending}
     >
       <FormDialogBody>

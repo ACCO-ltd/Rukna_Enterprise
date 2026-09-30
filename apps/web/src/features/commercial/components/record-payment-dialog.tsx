@@ -86,13 +86,23 @@ export function RecordPaymentDialog({
       : '';
   };
 
+  // What the dialog opened with — captured once (and again on reset), so a refetch of the
+  // invoices behind it cannot make an untouched form look edited.
+  const snapshot = () => {
+    const amount = initialAmount();
+    return {
+      amount,
+      date: today(),
+      amounts: prefillAllocations(parseMinorUnits(amount, MONEY_SCALE) ?? 0, invoices),
+    };
+  };
+  const [opening, setOpening] = useState(snapshot);
+
   const [bankAccountId, setBankAccountId] = useState('');
-  const [amount, setAmount] = useState(initialAmount);
-  const [date, setDate] = useState(today);
+  const [amount, setAmount] = useState(opening.amount);
+  const [date, setDate] = useState(opening.date);
   const [reference, setReference] = useState('');
-  const [amounts, setAmounts] = useState<Record<string, string>>(() =>
-    prefillAllocations(parseMinorUnits(initialAmount(), MONEY_SCALE) ?? 0, invoices),
-  );
+  const [amounts, setAmounts] = useState<Record<string, string>>(opening.amounts);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const [attempted, setAttempted] = useState(false);
 
@@ -102,12 +112,13 @@ export function RecordPaymentDialog({
   const check = checkAllocations(amount, invoices, amounts);
 
   function reset() {
-    const initial = initialAmount();
+    const next = snapshot();
+    setOpening(next);
     setBankAccountId('');
-    setAmount(initial);
-    setDate(today());
+    setAmount(next.amount);
+    setDate(next.date);
     setReference('');
-    setAmounts(prefillAllocations(parseMinorUnits(initial, MONEY_SCALE) ?? 0, invoices));
+    setAmounts(next.amounts);
     setIdempotencyKey(newIdempotencyKey());
     setAttempted(false);
     mutation.reset();
@@ -121,17 +132,14 @@ export function RecordPaymentDialog({
   }
 
   // Unsaved edits: anything the user has typed or picked beyond what the dialog opened with.
-  const openingAmount = initialAmount();
-  const openingAmounts = prefillAllocations(parseMinorUnits(openingAmount, MONEY_SCALE) ?? 0, invoices);
+  const lineKeys = new Set([...Object.keys(amounts), ...Object.keys(opening.amounts)]);
   const dirty =
     !moneyHidden &&
     (bankAccountId !== '' ||
-      amount !== openingAmount ||
-      date !== today() ||
+      amount !== opening.amount ||
+      date !== opening.date ||
       reference !== '' ||
-      invoices.some(
-        (invoice) => (amounts[invoice.invoiceId] ?? '') !== (openingAmounts[invoice.invoiceId] ?? ''),
-      ));
+      [...lineKeys].some((key) => (amounts[key] ?? '') !== (opening.amounts[key] ?? '')));
 
   function handleAmountChange(next: string) {
     setAmount(next);

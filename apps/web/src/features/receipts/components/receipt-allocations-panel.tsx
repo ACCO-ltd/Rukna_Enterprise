@@ -195,6 +195,7 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
       open
       onOpenChange={(next) => !next && onClose()}
       title={t('add')}
+      subtitle={t('dialogSubtitle')}
       size="md"
       dirty={isDirty}
       busy={allocate.isPending}

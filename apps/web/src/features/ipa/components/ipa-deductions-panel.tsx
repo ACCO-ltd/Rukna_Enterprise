@@ -228,6 +228,7 @@ function AddDeductionDialog({
       open
       onOpenChange={(next) => !next && onClose()}
       title={t('add')}
+      subtitle={t('dialogSubtitle')}
       size="md"
       dirty={isDirty}
       busy={add.isPending}
