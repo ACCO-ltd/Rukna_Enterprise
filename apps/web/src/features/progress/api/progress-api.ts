@@ -343,8 +343,10 @@ export function setProgressTargets(
 // re-baseline (v2+, senior, citing a Variation) — never a silent side effect of editing targets.
 
 /** The current governing programme baseline, or `null` when none has been approved yet. */
-export function getProgrammeBaseline(projectId: string): Promise<ProgrammeBaselineResponse | null> {
-  return apiClient<ProgrammeBaselineResponse | null>(`/projects/${projectId}/programme/baseline`);
+export async function getProgrammeBaseline(projectId: string): Promise<ProgrammeBaselineResponse | null> {
+  // The API returns `null` as an empty 200 body, which `apiClient` reads as `undefined`, and a
+  // query whose data is `undefined` fails. Normalise it back to `null`.
+  return (await apiClient<ProgrammeBaselineResponse | null>(`/projects/${projectId}/programme/baseline`)) ?? null;
 }
 
 /**

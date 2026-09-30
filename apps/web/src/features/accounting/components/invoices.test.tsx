@@ -153,6 +153,17 @@ describe('InvoicesList', () => {
     expect(await within(table).findByText('Al-Noor Development')).toBeInTheDocument();
   });
 
+  it('still renders a row that arrives without its source (an older API) instead of crashing', async () => {
+    const legacy = invoice();
+    delete (legacy as Partial<ClientInvoice>).source;
+    vi.mocked(listInvoices).mockResolvedValue([legacy]);
+
+    renderWithProviders(<InvoicesList />, { withToast: true });
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('INV-2026-031')).toBeInTheDocument();
+  });
+
   it('labels a draft as unnumbered rather than showing an empty cell', async () => {
     vi.mocked(listInvoices).mockResolvedValue([
       invoice({ invoiceNumber: null, documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }),

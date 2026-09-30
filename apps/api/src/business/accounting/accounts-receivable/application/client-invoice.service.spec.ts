@@ -567,3 +567,51 @@ describe('findById — readable source (detail read path)', () => {
     );
   });
 });
+
+describe('findAll — every row carries its readable source (list read path)', () => {
+  it('resolves source on each row and drops the raw relations', async () => {
+    const rows = [
+      {
+        id: 'inv-a',
+        sourceInstallmentId: 'inst-1',
+        sourceInstallment: { id: 'inst-1', name: 'Structure' },
+        sourceIpcId: null,
+        sourceIpc: null,
+        sourceBoqNodeId: null,
+        sourceBoqNode: null,
+      },
+      {
+        id: 'inv-b',
+        sourceInstallmentId: null,
+        sourceInstallment: null,
+        sourceIpcId: null,
+        sourceIpc: null,
+        sourceBoqNodeId: null,
+        sourceBoqNode: null,
+      },
+    ];
+    const repo = { findAll: jest.fn().mockResolvedValue(rows) };
+    const service = new ClientInvoiceService(
+      { getClient: () => ({}) } as never,
+      repo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const result = await service.findAll(identity, { projectId: 'p1' });
+
+    expect(repo.findAll).toHaveBeenCalledWith({}, identity.activeOrganizationId, { projectId: 'p1' });
+    expect(result.map((r) => r.source)).toEqual([
+      { kind: 'INSTALLMENT', label: 'Structure', id: 'inst-1' },
+      { kind: 'NONE', label: null, id: null },
+    ]);
+    for (const r of result) {
+      expect(r).not.toHaveProperty('sourceInstallment');
+      expect(r).not.toHaveProperty('sourceIpc');
+      expect(r).not.toHaveProperty('sourceBoqNode');
+    }
+  });
+});

@@ -111,8 +111,11 @@ export function InvoicesList() {
   ];
 
   const sourceText = (invoice: ClientInvoice) => {
-    const kind = t(`sourceKind.${invoice.source.kind}`);
-    return invoice.source.label ? `${kind} · ${invoice.source.label}` : kind;
+    // An API older than the list's `source` (or any row missing it) reads as "no source" rather
+    // than taking the whole page down.
+    const source = invoice.source ?? { kind: 'NONE' as const, label: null };
+    const kind = t(`sourceKind.${source.kind}`);
+    return source.label ? `${kind} · ${source.label}` : kind;
   };
 
   const columns: GridColumn<ClientInvoice>[] = [

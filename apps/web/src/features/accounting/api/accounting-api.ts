@@ -414,13 +414,16 @@ export function getAccountLedger(params: {
  * Returns `null` with a 200 rather than a 404 for an unknown fiscal year
  * (`pl-report.service.ts:180`), so the null is passed through for the caller to interpret.
  */
-export function getMonthlyPL(
+export async function getMonthlyPL(
   fiscalYearId: string,
   projectId?: string,
 ): Promise<MonthlyPL | null> {
-  return apiClient<MonthlyPL | null>(`/reports/pl/monthly/${fiscalYearId}`, {
+  // The API returns `null` as an empty 200 body, which `apiClient` reads as `undefined`, and a
+  // query whose data is `undefined` fails. Normalise it back to `null`.
+  const pl = await apiClient<MonthlyPL | null>(`/reports/pl/monthly/${fiscalYearId}`, {
     params: { ...(projectId ? { projectId } : {}) },
   });
+  return pl ?? null;
 }
 
 // ─── Period management ───────────────────────────────────────────────────────────

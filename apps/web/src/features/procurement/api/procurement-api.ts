@@ -460,8 +460,10 @@ export function approveGoodsReceiptException(id: string): Promise<GoodsReceipt> 
  * Returns `null` when matching has never been run for the bill — the service has nothing
  * to return, and the caller treats that as `NOT_RUN` rather than as an error.
  */
-export function getBillMatch(billId: string): Promise<BillMatchResult | null> {
-  return apiClient<BillMatchResult | null>(`/procurement/bill-matching/${billId}`);
+export async function getBillMatch(billId: string): Promise<BillMatchResult | null> {
+  // The API returns `null` as an empty 200 body, which `apiClient` reads as `undefined`, and a
+  // query whose data is `undefined` fails. Normalise it back to `null`.
+  return (await apiClient<BillMatchResult | null>(`/procurement/bill-matching/${billId}`)) ?? null;
 }
 
 /** `POST /procurement/bill-matching/:billId/run` — no body. Type inferred server-side. */
