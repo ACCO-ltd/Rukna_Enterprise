@@ -217,12 +217,13 @@ describe('WorkflowsService.getPolicyHistory', () => {
     const { svc, repo } = build();
     const at = new Date('2026-09-20T08:00:00Z');
     repo.findPolicyHistory.mockResolvedValue([
-      { id: 'h1', action: 'APPROVAL_POLICY_ACTIVE', reason: null, createdAt: at, userId: 'u1', after: null, user: { firstName: 'Hodan', lastName: 'Abdi', email: 'h@x.test' } },
-      { id: 'h2', action: 'APPROVAL_POLICY_IN_REVIEW', reason: 'ready', createdAt: at, userId: 'u2', after: null, user: { firstName: '', lastName: '', email: 'ops@x.test' } },
+      { id: 'h1', action: 'APPROVAL_POLICY_ACTIVE', reason: null, createdAt: at, userId: 'u1', after: null, user: { firstName: 'Hodan', lastName: 'Abdi' } },
+      { id: 'h2', action: 'APPROVAL_POLICY_IN_REVIEW', reason: 'ready', createdAt: at, userId: 'u2', after: null, user: { firstName: '', lastName: ' ' } },
     ]);
     const rows = await svc.getPolicyHistory('o1', 'p1');
     expect(repo.findPolicyHistory).toHaveBeenCalledWith('o1', 'p1');
-    expect(rows.map((r) => r.actorName)).toEqual(['Hodan Abdi', 'ops@x.test']);
+    // A blank name is null (the client says "Unknown user"), never an email.
+    expect(rows.map((r) => r.actorName)).toEqual(['Hodan Abdi', null]);
     expect(rows[0]).toMatchObject({ id: 'h1', userId: 'u1', action: 'APPROVAL_POLICY_ACTIVE' });
     expect(rows[0]).not.toHaveProperty('user');
   });

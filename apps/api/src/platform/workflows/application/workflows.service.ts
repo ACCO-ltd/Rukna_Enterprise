@@ -360,12 +360,15 @@ export class WorkflowsService {
     return policy;
   }
 
-  /** A policy's governance history, newest first; `actorName` names who acted (for the timeline). */
+  /**
+   * A policy's governance history, newest first. `actorName` names who acted (for the timeline);
+   * null when the user has no name on record — the client shows "Unknown user", never an email.
+   */
   async getPolicyHistory(organizationId: string, policyId: string) {
     const rows = await this.repo.findPolicyHistory(organizationId, policyId);
     return rows.map(({ user, ...row }) => ({
       ...row,
-      actorName: `${user.firstName} ${user.lastName}`.trim() || user.email,
+      actorName: `${user.firstName} ${user.lastName}`.trim() || null,
     }));
   }
 

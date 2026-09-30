@@ -182,7 +182,7 @@ export class WorkflowsPrismaRepository {
 
   async findPolicyHistory(organizationId: string, policyId: string) {
     const prisma = this.tenancyService.getClient();
-    return prisma.auditLog.findMany({ where: { orgId: organizationId, resourceId: policyId, resource: { in: ['workflow-policy', 'workflow-policy-rule'] } }, orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, action: true, reason: true, createdAt: true, userId: true, after: true, user: { select: { firstName: true, lastName: true, email: true } } } });
+    return prisma.auditLog.findMany({ where: { orgId: organizationId, resourceId: policyId, resource: { in: ['workflow-policy', 'workflow-policy-rule'] } }, orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, action: true, reason: true, createdAt: true, userId: true, after: true, user: { select: { firstName: true, lastName: true } } } });
   }
 
   async listPolicySodRules(organizationId: string, policyId: string) { const prisma = this.tenancyService.getClient(); return prisma.segregationOfDutiesRule.findMany({ where: { organizationId, workflowPolicyVersionId: policyId }, orderBy: { code: 'asc' } }); }

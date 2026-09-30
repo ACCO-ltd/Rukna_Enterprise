@@ -253,8 +253,9 @@ describe('DocumentDetailView', () => {
     });
     expect(screen.getByText(/issued the revision/).closest('li')).toHaveTextContent('Asha Ali issued the revision');
     expect(screen.getByText(/withdrew the document/).closest('li')).toHaveTextContent(
-      'u2 withdrew the document — Wrong drawing',
+      'Unknown user withdrew the document — Wrong drawing',
     );
+    expect(screen.queryByText(/u2/)).not.toBeInTheDocument();
     expect(screen.queryByText('issueRevision')).not.toBeInTheDocument();
   });
 

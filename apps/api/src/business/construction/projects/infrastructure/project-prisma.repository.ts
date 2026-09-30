@@ -127,8 +127,10 @@ const ACTIVITY_SELECT = {
   resource: true,
   resourceId: true,
   sourceCommand: true,
-  // Read only to find the record an invoice/payment command names (`project-activity-targets`);
-  // never sent to the client (a payment's `after` carries its amount).
+  // Read only for the ids an invoice/payment command names (`project-activity-targets`: invoice,
+  // receipt and installment ids); never sent to the client (a payment's `after` carries its
+  // amount). Prisma cannot select JSON sub-keys, so the whole column is loaded and the ids are
+  // picked out in the domain module.
   after: true,
   createdAt: true,
   user: { select: { id: true, firstName: true, lastName: true } },
@@ -418,11 +420,16 @@ export class ProjectPrismaRepository {
             select: { id: true, invoiceNumber: true },
           })
         ).map((r) => [r.id, { reference: r.invoiceNumber }]),
-      // A receipt has no project column; the row that names it is already tied to this project.
+      // A receipt has no project column: it belongs to this project through its allocations to
+      // this project's invoices. A receipt allocated elsewhere only resolves to nothing.
       receipt: async (in_) =>
         (
           await prisma.paymentReceipt.findMany({
-            where: { id: { in: in_ }, organizationId },
+            where: {
+              id: { in: in_ },
+              organizationId,
+              clientAllocations: { some: { invoice: { projectId, organizationId } } },
+            },
             select: { id: true, receiptNumber: true },
           })
         ).map((r) => [r.id, { reference: r.receiptNumber }]),

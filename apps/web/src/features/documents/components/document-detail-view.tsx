@@ -421,6 +421,7 @@ function DocumentActivity({
   emptyLabel: string;
 }) {
   const label = useActivityLabel();
+  const tHistory = useTranslations('platform.workflows.policies.history');
   const locale = useLocale() as 'en' | 'ar';
   return (
     <ActivityTimeline
@@ -433,7 +434,7 @@ function DocumentActivity({
         });
         return {
           id: entry.id,
-          actor: entry.actorName ?? entry.actorUserId,
+          actor: entry.actorName ?? tHistory('unknownActor'),
           action: entry.reason ? (
             <>
               {phrase}

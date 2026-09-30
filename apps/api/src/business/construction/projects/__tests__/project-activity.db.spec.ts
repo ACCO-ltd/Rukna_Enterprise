@@ -24,6 +24,7 @@ describe('ProjectPrismaRepository — activity + readiness evidence (live DB)', 
   let otherProjectId: string;
   let contractId: string;
   let guaranteeLikeId: string; // a contract child: a payment installment
+  let clientId: string;
 
   const t = (minute: number) => new Date(Date.UTC(2026, 8, 1, 10, minute));
 
@@ -71,6 +72,7 @@ describe('ProjectPrismaRepository — activity + readiness evidence (live DB)', 
     const client = await prisma.client.create({
       data: { organizationId: orgId, code: `CL-${suffix.slice(-6)}`, name: 'Client' },
     });
+    clientId = client.id;
     const project = await prisma.project.create({
       data: {
         organizationId: orgId,
@@ -153,6 +155,9 @@ describe('ProjectPrismaRepository — activity + readiness evidence (live DB)', 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { orgId } });
     await prisma.projectMember.deleteMany({ where: { project: { organizationId: orgId } } });
+    await prisma.clientReceiptAllocation.deleteMany({ where: { organizationId: orgId } });
+    await prisma.paymentReceipt.deleteMany({ where: { organizationId: orgId } });
+    await prisma.clientInvoice.deleteMany({ where: { organizationId: orgId } });
     await prisma.contractPaymentInstallment.deleteMany({ where: { contract: { organizationId: orgId } } });
     await prisma.contract.deleteMany({ where: { organizationId: orgId } });
     await prisma.boqVersion.deleteMany({ where: { boq: { organizationId: orgId } } });
@@ -244,6 +249,59 @@ describe('ProjectPrismaRepository — activity + readiness evidence (live DB)', 
       new Map([['contract', [contractId]]]),
     );
     expect(otherOrg.get('contract')?.size).toBe(0);
+  });
+
+  it("names a receipt only through its allocations to this project's invoices", async () => {
+    const invoice = (project: string | null) =>
+      prisma.clientInvoice.create({
+        data: {
+          organizationId: orgId,
+          projectId: project,
+          clientId,
+          invoiceDate: new Date('2026-09-01'),
+          currencyCode: 'USD',
+          subtotal: new Decimal(100),
+          vatAmount: new Decimal(0),
+          totalAmount: new Decimal(100),
+          outstandingAmount: new Decimal(0),
+          billingAddressSnapshot: {},
+          createdBy: userA,
+        },
+      });
+    const receipt = (n: string, invoiceId: string) =>
+      prisma.paymentReceipt.create({
+        data: {
+          organizationId: orgId,
+          clientId,
+          receiptDate: new Date('2026-09-02'),
+          accountingDate: new Date('2026-09-02'),
+          totalAmount: new Decimal(100),
+          unallocatedAmount: new Decimal(0),
+          currencyCode: 'USD',
+          receiptNumber: `RCT-${n}-${suffix.slice(-6)}`,
+          createdBy: userA,
+          clientAllocations: {
+            create: {
+              organizationId: orgId,
+              clientInvoiceId: invoiceId,
+              allocatedAmount: new Decimal(100),
+              allocationDate: new Date('2026-09-02'),
+              createdBy: userA,
+            },
+          },
+        },
+      });
+    const here = await receipt('here', (await invoice(projectId)).id);
+    const elsewhere = await receipt('else', (await invoice(otherProjectId)).id);
+
+    const records = await repo.findActivityTargetRecords(
+      prisma,
+      orgId,
+      projectId,
+      new Map([['receipt', [here.id, elsewhere.id]]]),
+    );
+    expect(records.get('receipt')?.get(here.id)).toEqual({ reference: here.receiptNumber });
+    expect(records.get('receipt')?.has(elsewhere.id)).toBe(false);
   });
 
   it('loads the readiness evidence: signature events, commit stamps, every membership row', async () => {
