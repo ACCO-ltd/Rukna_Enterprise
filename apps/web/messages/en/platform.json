@@ -2200,7 +2200,7 @@
   "contracts": {
     "title": "Contracts",
     "searchLabel": "Search contracts",
-    "searchPlaceholder": "Search by contract number",
+    "searchPlaceholder": "Search number, value or dates",
     "filterByStatus": "Filter by status",
     "allStatuses": "All statuses",
     "countLabel": "{count, plural, =0 {No contracts} one {# contract} other {# contracts}}",
@@ -2722,7 +2722,7 @@
     "title": "Receipts",
     "newReceipt": "Record receipt",
     "searchLabel": "Search receipts",
-    "searchPlaceholder": "Search by reference",
+    "searchPlaceholder": "Search reference, client or amount",
     "filterByClient": "Filter by client",
     "allClients": "All clients",
     "countLabel": "{count, plural, =0 {No receipts} one {# receipt} other {# receipts}}",

@@ -4,7 +4,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
-import { PortalContainerContext } from '../lib/portal-container';
+import { PortalContainerContext, isEscapeInFloatingPanel } from '../lib/portal-container';
 import { cn } from '../lib/utils';
 import { useDialogDismissGuard } from '../lib/use-dialog-dismiss-guard';
 import { ConfirmDialog } from './confirm-dialog';
@@ -193,7 +193,14 @@ export function FormDialog({
             formDialogSizeClass[size],
             className,
           )}
-          onEscapeKeyDown={guard.contentProps.onEscapeKeyDown}
+          onEscapeKeyDown={(event) => {
+            // Escape in an open Combobox list closes the list, not the dialog.
+            if (isEscapeInFloatingPanel(event)) {
+              event.preventDefault();
+              return;
+            }
+            guard.contentProps.onEscapeKeyDown(event);
+          }}
           onPointerDownOutside={guard.contentProps.onPointerDownOutside}
           onInteractOutside={guard.contentProps.onInteractOutside}
           onOpenAutoFocus={returnFocus.onOpenAutoFocus}

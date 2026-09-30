@@ -102,7 +102,15 @@ export function JournalForm() {
   const problemsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (refusals > 0) problemsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    if (refusals === 0) return;
+    // The list is hidden when every fault is on a field (a missing date or account); then the
+    // first invalid field is what to bring into view.
+    const list = problemsRef.current;
+    const target =
+      list && list.childElementCount > 0
+        ? list
+        : document.querySelector<HTMLElement>('[aria-invalid="true"]');
+    target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
   }, [refusals]);
 
   // Code and name are both in the label, so the combobox's own filter finds an account by either.

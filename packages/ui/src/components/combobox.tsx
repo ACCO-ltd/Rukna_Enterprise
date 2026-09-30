@@ -254,6 +254,8 @@ export function Combobox({
           <PopperPrimitive.Content
             ref={panelRef}
             id={`${id}-panel`}
+            // Escape here closes this list only — see isEscapeInFloatingPanel.
+            data-floating-panel=""
             side="bottom"
             align="start"
             sideOffset={4}

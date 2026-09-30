@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -70,5 +70,50 @@ describe('Combobox inside a dialog', () => {
     const listbox = await screen.findByRole('listbox');
     expect(listbox.closest('[role="dialog"]')).toBeNull();
     expect(document.body).toContainElement(listbox);
+  });
+});
+
+describe('Escape inside a dialog', () => {
+  it('closes the open list only, and a second Escape closes the dialog', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <FormDialog open onOpenChange={onOpenChange} title="New posting profile">
+        <FormDialogBody>
+          <Picker />
+        </FormDialogBody>
+      </FormDialog>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(await screen.findByPlaceholderText('Search accounts'), 'cem');
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('closes the list only inside a plain Dialog too', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogTitle>Pick</DialogTitle>
+          <Picker />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await screen.findByRole('listbox');
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

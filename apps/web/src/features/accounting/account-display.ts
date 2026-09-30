@@ -131,15 +131,3 @@ export function postableAccounts(accounts: readonly Account[]): Account[] {
     return version.isPostingAllowed && version.controlPostingPolicy !== 'SYSTEM_ONLY';
   });
 }
-
-/** Case-insensitive match on code or name, in either locale. */
-export function accountMatches(account: Account, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-
-  const version = currentVersion(account);
-
-  return [account.code, version?.name, version?.accountSubtype]
-    .filter((v): v is string => typeof v === 'string' && v.length > 0)
-    .some((v) => v.toLowerCase().includes(needle));
-}

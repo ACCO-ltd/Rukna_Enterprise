@@ -16,3 +16,18 @@ export const PortalContainerContext = React.createContext<HTMLElement | null>(nu
 export function usePortalContainer(): HTMLElement | null {
   return React.useContext(PortalContainerContext);
 }
+
+/**
+ * Marks a floating panel that handles its own Escape (the `Combobox` list).
+ *
+ * Radix dialogs listen for Escape on the document in the capture phase, so they hear it before
+ * the panel's own key handler does — and without this, Escape in the list's search box closed the
+ * whole dialog (or asked to discard it) instead of just the list. A dialog ignores an Escape that
+ * starts inside a marked panel and lets the panel close itself.
+ */
+export const FLOATING_PANEL_ATTRIBUTE = 'data-floating-panel';
+
+export function isEscapeInFloatingPanel(event: Event): boolean {
+  const target = event.target;
+  return target instanceof Element && target.closest(`[${FLOATING_PANEL_ATTRIBUTE}]`) !== null;
+}
