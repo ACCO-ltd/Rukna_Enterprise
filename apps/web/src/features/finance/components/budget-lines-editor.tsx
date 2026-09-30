@@ -48,10 +48,14 @@ export interface BudgetLineDraft {
 
 type LineProblem = 'target' | 'stale' | 'description' | 'amount';
 
-/** The targets a line may currently point at. `null` while they are still loading. */
+/**
+ * The targets a line may currently point at, as far as they are known. A set is `null` when that
+ * list could not be judged — still loading, failed to load, or (BOQ) there is no approved BOQ — and
+ * then no line is called stale on its account: "we could not check" is not "it is gone".
+ */
 export interface TargetOptions {
-  boqNodeIds: ReadonlySet<string>;
-  spendCategoryIds: ReadonlySet<string>;
+  boqNodeIds: ReadonlySet<string> | null;
+  spendCategoryIds: ReadonlySet<string> | null;
 }
 
 function emptyLine(): BudgetLineDraft {
@@ -94,8 +98,14 @@ export function budgetLineProblem(
   if (line.target === 'BOQ' && !line.boqNodeId) return 'target';
   if (line.target === 'CATEGORY' && !line.spendCategoryId) return 'target';
   if (options) {
-    if (line.target === 'BOQ' && !options.boqNodeIds.has(line.boqNodeId)) return 'stale';
-    if (line.target === 'CATEGORY' && !options.spendCategoryIds.has(line.spendCategoryId)) {
+    if (line.target === 'BOQ' && options.boqNodeIds && !options.boqNodeIds.has(line.boqNodeId)) {
+      return 'stale';
+    }
+    if (
+      line.target === 'CATEGORY' &&
+      options.spendCategoryIds &&
+      !options.spendCategoryIds.has(line.spendCategoryId)
+    ) {
       return 'stale';
     }
   }
@@ -150,22 +160,37 @@ interface EditorProps {
 export function BudgetLinesEditor(props: EditorProps) {
   const t = useTranslations('finance.budgetEditor');
   const tc = useTranslations('finance.common');
-  const draft = useProjectCostBudget(props.projectId, props.mode === 'edit' ? (props.budgetId ?? null) : null);
+  const draft = useProjectCostBudget(
+    props.projectId,
+    props.mode === 'edit' ? (props.budgetId ?? null) : null,
+  );
+
+  // The seed is taken once, and only from a read made after this editor mounted and settled — a
+  // copy cached from an earlier visit could be stale, and saving would write over the newer lines.
+  // Once taken, later background refetches never reset what the user has typed.
+  const [seed, setSeed] = React.useState<BudgetLineDraft[] | null>(null);
+  const freshRead =
+    props.mode === 'edit' &&
+    draft.data !== undefined &&
+    draft.isFetchedAfterMount &&
+    !draft.isFetching &&
+    !draft.isError;
+  if (seed === null && freshRead && draft.data) {
+    setSeed(draft.data.lines.map(draftFromLine));
+  }
 
   if (props.mode === 'create') {
     return <LinesTable {...props} initialLines={props.seedLines ?? []} />;
   }
 
-  // Only the first successful read seeds the table; a later background refetch must not reset
-  // what the user has typed, so `LinesTable` captures its starting lines once.
-  if (draft.data) {
-    return <LinesTable {...props} initialLines={draft.data.lines.map(draftFromLine)} />;
+  if (seed !== null) {
+    return <LinesTable {...props} initialLines={seed} />;
   }
 
   return (
     <>
       <SectionPanel title={t('editTitle')} description={t('description')}>
-        {draft.isError ? (
+        {draft.isError && !draft.isFetching ? (
           <Alert variant="error" title={t('loadLinesFailed')} messages={[t('loadLinesFailedHint')]}>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => void draft.refetch()}>
               {tc('retry')}
@@ -269,24 +294,44 @@ function LinesTable({
     () => (categories.data ?? []).filter((c) => c.status === 'ACTIVE'),
     [categories.data],
   );
-  // Staleness can only be judged once the pickers know what they offer.
+  // What the pickers offer decides staleness, so how far it is known matters:
+  //  - loading     → nothing is judged yet, and Save waits ("Loading options…");
+  //  - failed      → nothing is called stale; a notice offers Retry and Save stays blocked;
+  //  - no BOQ      → the project has no approved BOQ, so BOQ lines cannot be checked or picked —
+  //                  one message says so, rather than flagging every BOQ line.
   const optionsLoading = Boolean(workspace.isPending || tree.isLoading || categories.isLoading);
+  const optionsFailed = Boolean(workspace.isError || tree.isError || categories.isError);
+  const noApprovedBoq = !workspace.isPending && !workspace.isError && baselineVersionId === null;
+  const hasBoqLines = lines.some((l) => l.target === 'BOQ');
   const options = React.useMemo<TargetOptions | null>(
     () =>
-      optionsLoading
+      optionsLoading || optionsFailed
         ? null
         : {
-            boqNodeIds: new Set(leafNodes.map((n) => n.id)),
+            boqNodeIds: noApprovedBoq ? null : new Set(leafNodes.map((n) => n.id)),
             spendCategoryIds: new Set(activeCategories.map((c) => c.id)),
           },
-    [optionsLoading, leafNodes, activeCategories],
+    [optionsLoading, optionsFailed, noApprovedBoq, leafNodes, activeCategories],
   );
+  const retryOptions = () => {
+    void workspace.refetch();
+    if (baselineVersionId) void tree.refetch();
+    void categories.refetch();
+  };
+  /** Why Save cannot run yet, independent of what the lines say. */
+  const blockedBy: 'loading' | 'optionsFailed' | 'noApprovedBoq' | null = optionsLoading
+    ? 'loading'
+    : optionsFailed
+      ? 'optionsFailed'
+      : noApprovedBoq && hasBoqLines
+        ? 'noApprovedBoq'
+        : null;
 
   const dirty = signature(lines) !== signature(startingLines);
   const saving = create.isPending || update.isPending;
   const mutationError = create.error ?? update.error;
   const valid =
-    options !== null &&
+    blockedBy === null &&
     lines.length > 0 &&
     lines.every((l) => budgetLineProblem(l, options) === null);
   const totalMinor = lines.reduce(
@@ -322,7 +367,7 @@ function LinesTable({
 
   function handleSave() {
     setShowErrors(true);
-    if (!valid) return;
+    if (blockedBy === 'loading' || !valid) return;
     if (mode === 'create') {
       create.mutate({ currency, lines: payloadLines() }, { onSuccess: () => onExit() });
     } else if (budgetId) {
@@ -353,6 +398,20 @@ function LinesTable({
           </span>
         }
       >
+        {optionsFailed ? (
+          <div className="px-4 pt-3 sm:px-5">
+            <Alert variant="error" title={t('optionsFailed')} messages={[t('optionsFailedHint')]}>
+              <Button variant="outline" size="sm" className="mt-2" onClick={retryOptions}>
+                {tc('retry')}
+              </Button>
+            </Alert>
+          </div>
+        ) : noApprovedBoq && hasBoqLines ? (
+          <div className="px-4 pt-3 sm:px-5">
+            <Alert variant="warning" title={t('noApprovedBoq')} messages={[t('noApprovedBoqHint')]} />
+          </div>
+        ) : null}
+
         {mutationError ? (
           <div className="px-4 pt-3 sm:px-5">
             <Alert
@@ -512,8 +571,8 @@ function LinesTable({
         cancelLabel={tc('cancel')}
         cancelDisabled={saving}
         onCancel={handleCancel}
-        saveLabel={saving ? tc('saving') : t('save')}
-        saveDisabled={saving}
+        saveLabel={saving ? tc('saving') : blockedBy === 'loading' ? t('loadingOptions') : t('save')}
+        saveDisabled={saving || blockedBy === 'loading'}
         onSave={handleSave}
       />
 

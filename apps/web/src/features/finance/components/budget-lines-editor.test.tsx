@@ -19,8 +19,21 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   push: vi.fn(),
   createPending: false,
-  draft: { data: undefined as unknown, isPending: false, isError: false, refetch: vi.fn() },
+  draft: {} as Record<string, unknown>,
+  workspace: {} as Record<string, unknown>,
+  tree: {} as Record<string, unknown>,
+  categories: {} as Record<string, unknown> & { refetch?: ReturnType<typeof vi.fn> },
 }));
+
+/** A settled read made after mount — the only kind the editor seeds from. */
+const fresh = (data: unknown) => ({
+  data,
+  isPending: false,
+  isError: false,
+  isFetching: false,
+  isFetchedAfterMount: true,
+  refetch: vi.fn(),
+});
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 // next/link renders a plain anchor; the guard sees internal links by their DOM `<a href>`.
@@ -41,26 +54,11 @@ vi.mock('@/features/procurement/hooks/use-project-procurement', () => ({
   useProjectCostBudget: () => mocks.draft,
 }));
 vi.mock('@/features/boq/hooks/use-boq', () => ({
-  useBoqWorkspace: () => ({ data: { contractBaseline: { id: 'v1' }, approved: null } }),
-  useBoqTree: () => ({
-    isLoading: false,
-    data: [
-      {
-        id: 'n1',
-        code: '1.1',
-        description: 'Excavation',
-        isLeaf: true,
-        isActive: true,
-        children: [],
-      },
-    ],
-  }),
+  useBoqWorkspace: () => mocks.workspace,
+  useBoqTree: () => mocks.tree,
 }));
 vi.mock('@/features/procurement/hooks/use-procurement', () => ({
-  useSpendCategories: () => ({
-    isLoading: false,
-    data: [{ id: 'c1', code: 'LAB', name: 'Labour', status: 'ACTIVE' }],
-  }),
+  useSpendCategories: () => mocks.categories,
 }));
 
 import { BudgetLinesEditor, type BudgetLineDraft } from './budget-lines-editor';
@@ -120,7 +118,25 @@ function renderEditor(over: Partial<React.ComponentProps<typeof BudgetLinesEdito
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.createPending = false;
-  mocks.draft = { data: undefined, isPending: false, isError: false, refetch: vi.fn() };
+  mocks.draft = { data: undefined, isPending: false, isError: false, isFetching: false, refetch: vi.fn() };
+  mocks.workspace = {
+    data: { contractBaseline: { id: 'v1' }, approved: null },
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  };
+  mocks.tree = {
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+    data: [{ id: 'n1', code: '1.1', description: 'Excavation', isLeaf: true, isActive: true, children: [] }],
+  };
+  mocks.categories = {
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+    data: [{ id: 'c1', code: 'LAB', name: 'Labour', status: 'ACTIVE' }],
+  };
 });
 
 describe('BudgetLinesEditor', () => {
@@ -164,12 +180,7 @@ describe('BudgetLinesEditor', () => {
 
   it('opens a 12-line working version with all 12 lines and saves the edited set in one PATCH', async () => {
     const user = userEvent.setup();
-    mocks.draft = {
-      data: { id: 'b3', lines: Array.from({ length: 12 }, (_, i) => line(i + 1)) },
-      isPending: false,
-      isError: false,
-      refetch: vi.fn(),
-    };
+    mocks.draft = fresh({ id: 'b3', lines: Array.from({ length: 12 }, (_, i) => line(i + 1)) });
     renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
 
     expect(screen.getByText('12 lines')).toBeInTheDocument();
@@ -195,7 +206,7 @@ describe('BudgetLinesEditor', () => {
   });
 
   it('shows a skeleton while the working version loads, with Save unavailable', () => {
-    mocks.draft = { data: undefined, isPending: true, isError: false, refetch: vi.fn() };
+    mocks.draft = { data: undefined, isPending: true, isError: false, isFetching: true, refetch: vi.fn() };
     renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
 
     expect(screen.getByRole('status', { name: /loading the working version/i })).toBeInTheDocument();
@@ -205,7 +216,7 @@ describe('BudgetLinesEditor', () => {
 
   it('never saves over lines it could not load', async () => {
     const user = userEvent.setup();
-    mocks.draft = { data: undefined, isPending: false, isError: true, refetch: vi.fn() };
+    mocks.draft = { data: undefined, isPending: false, isError: true, isFetching: false, refetch: vi.fn() };
     const { onExit } = renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
 
     expect(screen.getByText("Could not load this version's lines")).toBeInTheDocument();
@@ -218,20 +229,88 @@ describe('BudgetLinesEditor', () => {
     expect(onExit).toHaveBeenCalled();
   });
 
-  it('flags a saved target that is no longer offered and blocks Save until it is re-picked', async () => {
-    const user = userEvent.setup();
+  it('never seeds from a cached copy: waits for this mount’s own read to settle', () => {
+    // A copy cached from an earlier visit, being refetched now.
     mocks.draft = {
-      data: {
-        id: 'b3',
-        lines: [
-          line(1, { boqNodeId: 'gone', boqNodeCode: '9.9', spendCategoryId: null, spendCategoryName: null }),
-          line(2, { spendCategoryId: 'retired', spendCategoryName: 'Old plant' }),
-        ],
-      },
+      ...fresh({ id: 'b3', lines: [line(1, { description: 'Stale cached line' })] }),
+      isFetching: true,
+      isFetchedAfterMount: false,
+    };
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    expect(screen.getByRole('status', { name: /loading the working version/i })).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Stale cached line')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save budget' })).toBeDisabled();
+  });
+
+  it('seeds once from the fresh read and keeps edits through a later background refetch', async () => {
+    const user = userEvent.setup();
+    mocks.draft = fresh({ id: 'b3', lines: [line(1)] });
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    await user.clear(screen.getByLabelText('Description, line 1'));
+    await user.type(screen.getByLabelText('Description, line 1'), 'Edited');
+    // A background refetch starts — the table stays, with the edit.
+    mocks.draft = { ...fresh({ id: 'b3', lines: [line(1)] }), isFetching: true };
+    await user.type(screen.getByLabelText('Description, line 1'), '!');
+    expect(screen.getByLabelText('Description, line 1')).toHaveValue('Edited!');
+  });
+
+  it('does not call lines stale when the options fail to load; it says so and blocks Save', async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+    mocks.categories = { isLoading: false, isError: true, data: undefined, refetch };
+    mocks.draft = fresh({ id: 'b3', lines: [line(1, { spendCategoryId: 'c9', spendCategoryName: 'Plant' })] });
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument();
+    expect(screen.getByText('Could not load the BOQ items and spend categories')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Save budget' }));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('with no approved BOQ, says so once instead of flagging every BOQ line, and blocks Save', async () => {
+    const user = userEvent.setup();
+    mocks.workspace = {
+      data: { contractBaseline: null, approved: null },
       isPending: false,
       isError: false,
       refetch: vi.fn(),
     };
+    mocks.tree = { isLoading: false, isError: false, data: undefined, refetch: vi.fn() };
+    mocks.draft = fresh({
+      id: 'b3',
+      lines: [
+        line(1, { boqNodeId: 'n7', boqNodeCode: '2.1', spendCategoryId: null, spendCategoryName: null }),
+        line(2, { boqNodeId: 'n8', boqNodeCode: '2.2', spendCategoryId: null, spendCategoryName: null }),
+      ],
+    });
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    expect(screen.getByText('This project has no approved BOQ')).toBeInTheDocument();
+    expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save budget' }));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('holds Save as "Loading options…" while the pickers load', () => {
+    mocks.categories = { isLoading: true, isError: false, data: undefined, refetch: vi.fn() };
+    renderEditor();
+    expect(screen.getByRole('button', { name: 'Loading options…' })).toBeDisabled();
+  });
+
+  it('flags a saved target that is no longer offered and blocks Save until it is re-picked', async () => {
+    const user = userEvent.setup();
+    mocks.draft = fresh({
+      id: 'b3',
+      lines: [
+        line(1, { boqNodeId: 'gone', boqNodeCode: '9.9', spendCategoryId: null, spendCategoryName: null }),
+        line(2, { spendCategoryId: 'retired', spendCategoryName: 'Old plant' }),
+      ],
+    });
     renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
 
     // Said at once, naming the old target — not only after Save.

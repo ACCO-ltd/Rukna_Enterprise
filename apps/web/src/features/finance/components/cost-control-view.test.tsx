@@ -421,6 +421,8 @@ describe('CostControlView', () => {
       },
       isPending: false,
       isError: false,
+      isFetching: false,
+      isFetchedAfterMount: true,
     });
     costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
     costMocks.useProjectCostBudgets.mockReturnValue(ready(withWorking()));

@@ -99,6 +99,9 @@ export function useProjectCostBudget(
     queryKey: projectProcurementKeys.budget(projectId, budgetId ?? ''),
     queryFn: () => getProjectCostBudget(projectId, budgetId!),
     enabled: Boolean(budgetId),
+    // An edit replaces every line, so it must start from the server's current copy — never a cached
+    // one from an earlier visit. The editor also waits for this mount's fetch to finish.
+    refetchOnMount: 'always',
   });
 }
 
