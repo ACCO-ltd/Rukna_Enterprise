@@ -76,6 +76,16 @@ export function listProjectCostBudgets(
   return apiClient<ProjectCostBudgetListResponse>(`/projects/${projectId}/procurement/budgets`);
 }
 
+/** One version with its lines — the list carries lines only for the baselined version. */
+export function getProjectCostBudget(
+  projectId: string,
+  budgetId: string,
+): Promise<ProjectCostBudgetResponse> {
+  return apiClient<ProjectCostBudgetResponse>(
+    `/projects/${projectId}/procurement/budgets/${budgetId}`,
+  );
+}
+
 export function createProjectCostBudget(
   projectId: string,
   payload: CreateProjectCostBudgetPayload,

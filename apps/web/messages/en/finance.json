@@ -156,7 +156,7 @@
       "none": "No cost budget has been set for this project.",
       "createBudget": "Create budget",
       "createRevision": "Create revision",
-      "editDraft": "Edit budget",
+      "editDraft": "Edit working version",
       "workingHint": "Not yet baselined, so cost is not measured against it.",
       "history": "All versions ({count})",
       "status": {
@@ -169,7 +169,9 @@
       "title": "Budget by cost area",
       "description": "What share of the budget each area holds.",
       "totalLabel": "Total budget"
-    }
+    },
+    "refreshFailed": "Could not refresh the cost figures",
+    "refreshFailedHint": "Showing the last figures that loaded. Any budget edit in progress is kept."
   },
   "budgetEditor": {
     "createTitle": "New cost budget version",
@@ -195,7 +197,10 @@
     "totalLabel": "Total budget",
     "lineCount": "{count, plural, one {# line} other {# lines}}",
     "editingVersion": "Editing version {version}",
-    "replacesLines": "This working version already has {count, plural, one {# line} other {# lines}} that can't be shown here. Saving replaces {count, plural, one {it} other {them}} with the lines below.",
+    "loadingLines": "Loading the working version's lines",
+    "loadLinesFailed": "Could not load this version's lines",
+    "loadLinesFailedHint": "Saving is unavailable until they load, so nothing is written over lines you have not seen.",
+    "savedTarget": "The saved target",
     "actionsLabel": "Budget edit actions",
     "unsaved": "Unsaved changes",
     "noChanges": "No changes yet",
@@ -213,6 +218,7 @@
     "baselineConfirmAction": "Baseline budget",
     "lineError": {
       "target": "Choose the BOQ item or spend category this line budgets for.",
+      "stale": "{target}: no longer available — pick another.",
       "description": "Give this line a description.",
       "amount": "Enter a budget amount of zero or more."
     }

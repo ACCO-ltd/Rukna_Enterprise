@@ -108,7 +108,7 @@ This is the owner-approved plan of 2026-09-29. PR 1 (this change) is the foundat
 | BOQ | `boq-item-drawer` | `FormDialog` (unit picker from `useUnitsOfMeasure`) |
 | BOQ | `boq-timeline-drawer` | `FormDialog` + `ActivityTimeline` |
 | Progress | `dpr-entry-sheet` | `FormDialog size="xl"` — done in PR 3 as `dpr-entry-dialog` |
-| Finance | `budget-editor-dialog` (a `Sheet`) | inline editing in the budget table — done in PR 5 as `budget-lines-editor` (Edit budget → table of inputs, fixed Cancel / Save budget bar; still one whole-version POST/PATCH) |
+| Finance | `budget-editor-dialog` (a `Sheet`) | inline editing in the budget table — done in PR 5 as `budget-lines-editor` (table of inputs, fixed Cancel / Save budget bar; still one whole-version POST/PATCH; a Working version is read with `GET …/budgets/:id` before its table opens) |
 | Accounting | `bank-accounts` signatories sheet | `FormDialog size="md"` — done in PR 5 |
 | Accounting | `invoice-document-preview` (mobile sheet) | `FormDialog size="2xl"` preview — done in PR 5 |
 | Admin | `policy-version-comparison-sheet` | `FormDialog size="2xl"` — done in PR 5 as `policy-version-comparison-dialog` |

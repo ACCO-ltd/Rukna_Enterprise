@@ -1,21 +1,36 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ProjectCostBudgetLineResponse } from '@erp/types';
+
+import Link from 'next/link';
 
 import { renderWithProviders } from '@/test/render';
 
 /**
  * The cost budget is edited in its own table (ADR-039), not in a side sheet. What matters:
  * the save model is unchanged (the whole version in one call — POST to start a version, PATCH to
- * replace a working version's lines), invalid lines never reach the server, the total is live,
- * and leaving with unsaved edits asks first.
+ * replace a working version's lines), an edit starts from every saved line and never writes over
+ * lines it has not seen, invalid or retired targets never reach the server, the total is live,
+ * and every way out — Cancel, an internal link — asks before discarding edits.
  */
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
+  push: vi.fn(),
   createPending: false,
+  draft: { data: undefined as unknown, isPending: false, isError: false, refetch: vi.fn() },
 }));
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
+// next/link renders a plain anchor; the guard sees internal links by their DOM `<a href>`.
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock('@/features/procurement/hooks/use-project-procurement', () => ({
   useCreateProjectCostBudget: () => ({
     mutate: mocks.create,
@@ -23,6 +38,7 @@ vi.mock('@/features/procurement/hooks/use-project-procurement', () => ({
     error: null,
   }),
   useUpdateProjectCostBudget: () => ({ mutate: mocks.update, isPending: false, error: null }),
+  useProjectCostBudget: () => mocks.draft,
 }));
 vi.mock('@/features/boq/hooks/use-boq', () => ({
   useBoqWorkspace: () => ({ data: { contractBaseline: { id: 'v1' }, approved: null } }),
@@ -68,18 +84,35 @@ const seeded: BudgetLineDraft[] = [
   },
 ];
 
+function line(i: number, over: Partial<ProjectCostBudgetLineResponse> = {}): ProjectCostBudgetLineResponse {
+  return {
+    id: `d${i}`,
+    boqNodeId: null,
+    boqNodeCode: null,
+    spendCategoryId: 'c1',
+    spendCategoryName: 'Labour',
+    description: `Line ${i}`,
+    budgetAmount: `${i * 100}.00`,
+    sortOrder: i - 1,
+    ...over,
+  };
+}
+
 function renderEditor(over: Partial<React.ComponentProps<typeof BudgetLinesEditor>> = {}) {
   const onExit = vi.fn();
   renderWithProviders(
-    <BudgetLinesEditor
-      projectId="p1"
-      mode="create"
-      versionNumber={3}
-      currency="USD"
-      initialLines={seeded}
-      onExit={onExit}
-      {...over}
-    />,
+    <>
+      <Link href="/projects">Projects</Link>
+      <BudgetLinesEditor
+        projectId="p1"
+        mode="create"
+        versionNumber={3}
+        currency="USD"
+        seedLines={seeded}
+        onExit={onExit}
+        {...over}
+      />
+    </>,
   );
   return { onExit };
 }
@@ -87,6 +120,7 @@ function renderEditor(over: Partial<React.ComponentProps<typeof BudgetLinesEdito
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.createPending = false;
+  mocks.draft = { data: undefined, isPending: false, isError: false, refetch: vi.fn() };
 });
 
 describe('BudgetLinesEditor', () => {
@@ -128,28 +162,84 @@ describe('BudgetLinesEditor', () => {
     expect(onExit).toHaveBeenCalled();
   });
 
-  it('replaces a working version’s lines with one PATCH, and says it will', async () => {
+  it('opens a 12-line working version with all 12 lines and saves the edited set in one PATCH', async () => {
     const user = userEvent.setup();
-    renderEditor({ mode: 'edit', budgetId: 'b3', unreadableLineCount: 4 });
+    mocks.draft = {
+      data: { id: 'b3', lines: Array.from({ length: 12 }, (_, i) => line(i + 1)) },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
 
-    expect(
-      screen.getByText(/already has 4 lines that can't be shown here/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText('12 lines')).toBeInTheDocument();
+    expect(screen.getByLabelText('Description, line 12')).toHaveValue('Line 12');
+    expect(screen.queryByText(/can't be shown here/i)).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText('Description, line 3'));
+    await user.type(screen.getByLabelText('Description, line 3'), 'Concrete pour');
+    await user.click(screen.getByRole('button', { name: 'Remove line 12' }));
+    await user.click(screen.getByRole('button', { name: 'Save budget' }));
+
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+    const [{ budgetId, payload }] = mocks.update.mock.calls[0]!;
+    expect(budgetId).toBe('b3');
+    expect(payload.lines).toHaveLength(11);
+    expect(payload.lines[0]).toEqual({ spendCategoryId: 'c1', description: 'Line 1', budgetAmount: 100 });
+    expect(payload.lines[2]).toEqual({
+      spendCategoryId: 'c1',
+      description: 'Concrete pour',
+      budgetAmount: 300,
+    });
+  });
+
+  it('shows a skeleton while the working version loads, with Save unavailable', () => {
+    mocks.draft = { data: undefined, isPending: true, isError: false, refetch: vi.fn() };
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    expect(screen.getByRole('status', { name: /loading the working version/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Description, line 1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save budget' })).toBeDisabled();
+  });
+
+  it('never saves over lines it could not load', async () => {
+    const user = userEvent.setup();
+    mocks.draft = { data: undefined, isPending: false, isError: true, refetch: vi.fn() };
+    const { onExit } = renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    expect(screen.getByText("Could not load this version's lines")).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save budget' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mocks.draft.refetch).toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onExit).toHaveBeenCalled();
+  });
+
+  it('flags a saved target that is no longer offered and blocks Save until it is re-picked', async () => {
+    const user = userEvent.setup();
+    mocks.draft = {
+      data: {
+        id: 'b3',
+        lines: [
+          line(1, { boqNodeId: 'gone', boqNodeCode: '9.9', spendCategoryId: null, spendCategoryName: null }),
+          line(2, { spendCategoryId: 'retired', spendCategoryName: 'Old plant' }),
+        ],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+    renderEditor({ mode: 'edit', budgetId: 'b3', seedLines: undefined });
+
+    // Said at once, naming the old target — not only after Save.
+    expect(screen.getByText('9.9: no longer available — pick another.')).toBeInTheDocument();
+    expect(screen.getByText('Old plant: no longer available — pick another.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Save budget' }));
-    expect(mocks.update).toHaveBeenCalledWith(
-      {
-        budgetId: 'b3',
-        payload: {
-          lines: [
-            { boqNodeId: 'n1', description: 'Excavation', budgetAmount: 1000.5 },
-            { spendCategoryId: 'c1', description: 'Site labour', budgetAmount: 2000 },
-          ],
-        },
-      },
-      expect.any(Object),
-    );
-    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it('adds and removes lines; an incomplete line blocks the save and says why', async () => {
@@ -171,7 +261,7 @@ describe('BudgetLinesEditor', () => {
   });
 
   it('keeps the last line: a version needs at least one', () => {
-    renderEditor({ initialLines: [] });
+    renderEditor({ seedLines: [] });
     expect(screen.getByRole('button', { name: 'Remove line 1' })).toBeDisabled();
   });
 
@@ -202,6 +292,26 @@ describe('BudgetLinesEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await user.click(await screen.findByRole('button', { name: 'Discard edits' }));
     expect(onExit).toHaveBeenCalled();
+  });
+
+  it('intercepts an internal link while there are unsaved edits, and only goes on agreement', async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    // Clean: the link is not held.
+    const link = screen.getByRole('link', { name: 'Projects' });
+    await user.type(screen.getByLabelText('Description, line 1'), ' works');
+    await user.click(link);
+
+    const confirm = await screen.findByRole('dialog', { name: 'Discard budget edits?' });
+    expect(mocks.push).not.toHaveBeenCalled();
+    await user.click(within(confirm).getAllByRole('button', { name: 'Keep editing' })[0]!);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Description, line 1')).toHaveValue('Excavation works');
+
+    await user.click(link);
+    await user.click(await screen.findByRole('button', { name: 'Discard edits' }));
+    expect(mocks.push).toHaveBeenCalledWith('/projects');
   });
 
   it('locks the table and the actions while a save is in flight', () => {

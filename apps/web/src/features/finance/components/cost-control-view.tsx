@@ -84,7 +84,9 @@ export function CostControlView({ projectId }: { projectId: string }) {
   const [confirming, setConfirming] = React.useState<'baseline' | 'discard' | null>(null);
 
   if (cost.isPending || budgets.isPending) return <Skeleton className="h-[32rem] w-full" />;
-  if (cost.isError) {
+  // Only a failed first load replaces the page. A background refetch that fails keeps the page —
+  // and an open budget edit — on screen with the last good figures, and says so.
+  if (cost.isError && !cost.data) {
     return (
       <Alert variant="error" title={tc('loadFailed')} messages={[tc('loadFailedHint')]}>
         <Button variant="outline" size="sm" className="mt-2" onClick={() => cost.refetch()}>
@@ -107,6 +109,22 @@ export function CostControlView({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
+      {cost.isError || budgets.isError ? (
+        <Alert variant="warning" title={t('refreshFailed')} messages={[t('refreshFailedHint')]}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              void cost.refetch();
+              void budgets.refetch();
+            }}
+          >
+            {tc('retry')}
+          </Button>
+        </Alert>
+      ) : null}
+
       <MetricBand
         title={t('position.title')}
         description={t('position.description')}
@@ -191,11 +209,8 @@ export function CostControlView({ projectId }: { projectId: string }) {
               : nextVersionNumber
           }
           currency={position.currency ?? 'USD'}
-          initialLines={
+          seedLines={
             editing.mode === 'create' && baselined ? baselined.lines.map(draftFromLine) : []
-          }
-          unreadableLineCount={
-            editing.mode === 'edit' && workingVersion ? workingVersion.lineCount : 0
           }
           onExit={() => setEditing(null)}
         />

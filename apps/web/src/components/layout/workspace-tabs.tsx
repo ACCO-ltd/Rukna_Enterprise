@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { cn, Select } from '@erp/ui';
 
+import { guardedNavigate } from '@/lib/use-unsaved-changes-guard';
+
 /**
  * One destination in a workspace tab bar.
  *
@@ -73,7 +75,9 @@ export function WorkspaceTabs({
         searchable={false}
         className={cn('my-3 w-full md:hidden', selectClassName)}
         value={active?.href ?? tabs[0]?.href ?? ''}
-        onChange={(value) => router.push(value)}
+        // Routed through the unsaved-changes guard: a select is not a link, so the guard's link
+        // interception cannot see it.
+        onChange={(value) => guardedNavigate(() => router.push(value))}
       >
         {tabs.map((tab) => (
           <option key={tab.href} value={tab.href}>
