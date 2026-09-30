@@ -44,7 +44,7 @@ come from the backend. `installmentBillingBlocker()` semantics (ADVANCE raise vs
 
 ### File ownership while building in parallel
 - Backend agent: `apps/api/**`, `apps/web/tools/seed-scenario.mjs`, API docs/ADR.
-- Frontend agent: invoice page + dialogs — `packages/ui/src/components/document-paper.tsx`, `features/commercial/components/{invoice-*, prepare-invoice-dialog*, record-payment-drawer*, send-invoice-dialog*, credit-note*}`, `features/commercial/{api,hooks}/commercial-invoice*`; i18n namespaces `commercial.invoicePage`, `commercial.prepare`, `commercial.recordPayment`, `commercial.send`, `commercial.creditNote`.
+- Frontend agent: invoice page + dialogs — `packages/ui/src/components/document-paper.tsx`, `features/commercial/components/{invoice-*, prepare-invoice-dialog*, record-payment-dialog*, send-invoice-dialog*, credit-note*}`, `features/commercial/{api,hooks}/commercial-invoice*`; i18n namespaces `commercial.invoicePage`, `commercial.prepare`, `commercial.recordPayment`, `commercial.send`, `commercial.creditNote`.
 - Main session: everything else (registry, ActionList, workspace/routes, bar, Billing, Contract, record-contract form, statement).
 
 ## 4. Status vocabularies (registry → real backend values)
