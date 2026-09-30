@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Button, FilterBar, FilterField, Input, Select, StatusPill } from '@erp/ui';
+import { Button, FilterBar, FilterField, Select, StatusPill } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -18,11 +18,10 @@ export function ReceiptsList() {
   const locale = useLocale() as 'en' | 'ar';
 
   const [clientId, setClientId] = useState('');
-  const [search, setSearch] = useState('');
 
   // The client filter is applied SERVER-side — `clientId` is the one parameter
-  // `GET /receipts` accepts — while the reference search is client-side, since the
-  // endpoint offers no text search.
+  // `GET /receipts` accepts. Text search (reference, client, amount) is the grid's own: the
+  // endpoint offers none, and a second search box beside the grid's was one too many.
   const { data, isPending, isError, refetch } = useReceipts(clientId || undefined);
   const clients = useClients();
 
@@ -30,12 +29,6 @@ export function ReceiptsList() {
     () => new Map((clients.data ?? []).map((c) => [c.id, c.name])),
     [clients.data],
   );
-
-  const visible = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return data ?? [];
-    return (data ?? []).filter((r) => r.reference?.toLowerCase().includes(needle));
-  }, [data, search]);
 
   const columns: GridColumn<Receipt>[] = [
     {
@@ -96,7 +89,7 @@ export function ReceiptsList() {
     <div className="space-y-4">
       <PlatformDataGrid
         columns={columns}
-        data={visible}
+        data={data ?? []}
         rowKey={(receipt) => receipt.id}
         label={t('title')}
         isLoading={isPending}
@@ -117,6 +110,8 @@ export function ReceiptsList() {
             </div>
           ) : undefined
         }
+        searchLabel={t('searchLabel')}
+        searchPlaceholder={t('searchPlaceholder')}
         noMatchMessage={t('noMatches')}
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 25 }}
@@ -127,18 +122,6 @@ export function ReceiptsList() {
         }
         toolbarFilters={
           <FilterBar>
-            <FilterField id="receipt-search" label={t('searchLabel')} hideLabel grow>
-              <Input
-                id="receipt-search"
-                type="search"
-                placeholder={t('searchPlaceholder')}
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                }}
-              />
-            </FilterField>
-
             <FilterField id="receipt-client" label={t('filterByClient')}>
               <Select
                 id="receipt-client"
@@ -157,10 +140,7 @@ export function ReceiptsList() {
             </FilterField>
           </FilterBar>
         }
-        onClearFilters={() => {
-          setSearch('');
-          setClientId('');
-        }}
+        onClearFilters={() => setClientId('')}
       />
     </div>
   );

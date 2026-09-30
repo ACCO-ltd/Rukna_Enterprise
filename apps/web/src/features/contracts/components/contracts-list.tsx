@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ContractStatus } from '@erp/types';
-import { FilterBar, FilterField, Input, Select } from '@erp/ui';
+import { FilterBar, FilterField, Select } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -22,12 +22,11 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
   const t = useTranslations('platform.contracts');
   const { data, isPending, isError, refetch } = useContracts(projectId);
 
-  const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ContractStatus | 'ALL'>('ALL');
 
   const visible = useMemo(
-    () => filterContracts(data ?? [], { search, status }),
-    [data, search, status],
+    () => filterContracts(data ?? [], { status }),
+    [data, status],
   );
 
   const unset = <span className="text-muted-foreground">{t('notSet')}</span>;
@@ -93,21 +92,13 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
             </div>
           ) : undefined
         }
+        searchLabel={t('searchLabel')}
+        searchPlaceholder={t('searchPlaceholder')}
         noMatchMessage={t('noMatches')}
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 25 }}
         toolbarFilters={
           <FilterBar>
-            <FilterField id="contract-search" label={t('searchLabel')} hideLabel grow>
-              <Input
-                id="contract-search"
-                type="search"
-                placeholder={t('searchPlaceholder')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </FilterField>
-
             <FilterField id="contract-status" label={t('filterByStatus')} hideLabel>
               <Select
                 id="contract-status"
@@ -124,10 +115,7 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
             </FilterField>
           </FilterBar>
         }
-        onClearFilters={() => {
-          setSearch('');
-          setStatus('ALL');
-        }}
+        onClearFilters={() => setStatus('ALL')}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 
-import { PortalContainerContext } from '../lib/portal-container';
+import { PortalContainerContext, isEscapeInFloatingPanel } from '../lib/portal-container';
 import { cn } from '../lib/utils';
 
 /**
@@ -106,6 +106,7 @@ export const DialogContent = React.forwardRef<
       size = 'sm',
       onOpenAutoFocus,
       onCloseAutoFocus,
+      onEscapeKeyDown,
       ...props
     },
     ref,
@@ -142,6 +143,14 @@ export const DialogContent = React.forwardRef<
           )}
           onOpenAutoFocus={returnFocus.onOpenAutoFocus}
           onCloseAutoFocus={returnFocus.onCloseAutoFocus}
+          onEscapeKeyDown={(event) => {
+            // Escape in an open Combobox list closes the list, not the dialog.
+            if (isEscapeInFloatingPanel(event)) {
+              event.preventDefault();
+              return;
+            }
+            onEscapeKeyDown?.(event);
+          }}
           {...props}
         >
           <PortalContainerContext.Provider value={portalContainer}>{children}</PortalContainerContext.Provider>

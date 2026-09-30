@@ -8,14 +8,15 @@ import { ArrowUpRight } from 'lucide-react';
 
 import { statusTone } from '@/lib/status-registry';
 
-import { awaitingCount, useAccountingGuide } from '../hooks/use-accounting-guide';
+import { awaitingCount, noPeriodAction, useAccountingGuide } from '../hooks/use-accounting-guide';
 
 const GUIDE_HREF = '/finance/accounting/guide';
 
 /**
  * The slim status strip shown across every accounting screen: the current fiscal period and its
  * status, and how many items across the daily cycle are waiting on the user. Compact and
- * non-intrusive — one line, no actions except a quiet link back to the guide.
+ * non-intrusive — one line; its only actions are a quiet link back to the guide and, when there
+ * is no open period, the way to get one.
  *
  * Renders nothing on the guide hub (redundant there) and nothing while the guide is unknown or
  * the reader cannot view accounting (the hook stays idle). It is honest about a missing period:
@@ -32,6 +33,7 @@ export function AccountingCycleStrip() {
 
   const { currentPeriod } = guide.data;
   const awaiting = awaitingCount(guide.data);
+  const periodAction = currentPeriod ? null : noPeriodAction(guide.data);
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-panel border border-border bg-surface-subtle px-4 py-2 text-body-sm">
@@ -44,7 +46,19 @@ export function AccountingCycleStrip() {
           {currentPeriod.name}
         </StatusText>
       ) : (
-        <StatusText tone="attention">{t('noPeriod')}</StatusText>
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StatusText tone="attention">{t('noPeriod')}</StatusText>
+          {/* The way out, where the user can take it: the strip used to state the problem and
+              leave them to find the fix. */}
+          {periodAction ? (
+            <Link
+              href={periodAction.href}
+              className="font-medium text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+            >
+              {t(periodAction.kind)}
+            </Link>
+          ) : null}
+        </span>
       )}
 
       <span

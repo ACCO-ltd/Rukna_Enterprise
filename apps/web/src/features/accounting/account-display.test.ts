@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   accountLabel,
-  accountMatches,
   accountName,
   currentVersion,
   indexAccounts,
@@ -204,31 +203,5 @@ describe('postableAccounts', () => {
 
   it('excludes an account with no version to judge by', () => {
     expect(postableAccounts([account({ versions: [] })])).toEqual([]);
-  });
-});
-
-describe('accountMatches', () => {
-  it('matches on code', () => {
-    expect(accountMatches(account(), '101')).toBe(true);
-  });
-
-  it('matches on the account name', () => {
-    expect(accountMatches(account(), 'salaam')).toBe(true);
-  });
-
-  it('matches on subtype, so "cash" finds the bank accounts', () => {
-    expect(accountMatches(account(), 'cash')).toBe(true);
-  });
-
-  it('is case-insensitive', () => {
-    expect(accountMatches(account(), 'SALAAM')).toBe(true);
-  });
-
-  it('matches everything on an empty query', () => {
-    expect(accountMatches(account(), '   ')).toBe(true);
-  });
-
-  it('does not match an unrelated term', () => {
-    expect(accountMatches(account(), 'retained')).toBe(false);
   });
 });

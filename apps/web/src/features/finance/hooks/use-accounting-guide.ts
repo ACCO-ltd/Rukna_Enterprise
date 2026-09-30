@@ -48,3 +48,25 @@ export function awaitingCount(guide: AccountingGuideResponse | undefined): numbe
     0,
   );
 }
+
+/**
+ * What the strip offers when there is no open period, taken from the setup cycle's own links so
+ * it never offers what the user cannot do (a RESTRICTED step comes back with no `href`).
+ *
+ * An empty chart comes first (the chart step links to the one-step setup only then): no period
+ * can exist until accounting is set up, and the setup installs the first fiscal year with it.
+ * Otherwise the fiscal-year step links to the periods screen, where a year is created or a
+ * closed period reopened. `null` when neither is on offer.
+ */
+export function noPeriodAction(
+  guide: AccountingGuideResponse | undefined,
+): { kind: 'setUp' | 'openPeriod'; href: string } | null {
+  const setup = findCycle(guide, 'setup');
+  const chart = setup?.steps.find((step) => step.key === 'chart-of-accounts');
+  if (chart?.href?.includes('setup=template')) {
+    return { kind: 'setUp', href: chart.href };
+  }
+  const year = setup?.steps.find((step) => step.key === 'fiscal-year');
+  if (year?.href && year.status !== 'RESTRICTED') return { kind: 'openPeriod', href: year.href };
+  return null;
+}
