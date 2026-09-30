@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,9 +18,19 @@ const mocks = vi.hoisted(() => ({
   useBankAccounts: vi.fn(),
   useAccounts: vi.fn(),
   useConfigureBankAccount: vi.fn(),
+  useSignatories: vi.fn(),
+  useAddSignatory: vi.fn(),
+  useRemoveSignatory: vi.fn(),
 }));
 
 vi.mock('../hooks/use-accounting', () => mocks);
+vi.mock('@/features/users/hooks/use-users', () => ({
+  useUsers: () => ({
+    data: [{ id: 'u1', firstName: 'Amina', lastName: 'Ali', email: 'amina@acco.com' }],
+    isPending: false,
+    isError: false,
+  }),
+}));
 
 import { BankAccounts } from './bank-accounts';
 import { openSelect } from '@/test/choose-option';
@@ -85,6 +95,13 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
+  mocks.useSignatories.mockReturnValue({
+    data: [{ id: 's1', userId: 'u1', isActive: true, addedAt: '2026-09-01T00:00:00.000Z' }],
+    isPending: false,
+    isError: false,
+  });
+  mocks.useAddSignatory.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
+  mocks.useRemoveSignatory.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
 });
 
 describe('BankAccounts list', () => {
@@ -172,4 +189,23 @@ describe('configure form', () => {
     expect(screen.getByText('Every cash account is already mapped')).toBeInTheDocument();
   });
 
+});
+
+/** ADR-039 — the signatories panel is a FormDialog, not a side sheet. */
+describe('signatories dialog', () => {
+  it('opens as a dialog named for the panel and the account, and closes from its footer', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BankAccounts />, { permissions: ['manage:accounting'] });
+
+    await user.click(screen.getByRole('button', { name: 'Signatories' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Signatories' });
+    expect(within(dialog).getByText('Main Operating')).toBeInTheDocument();
+    expect(within(dialog).getByText('Amina Ali')).toBeInTheDocument();
+
+    const close = within(dialog)
+      .getAllByRole('button', { name: 'Close' })
+      .find((button) => button.textContent === 'Close');
+    await user.click(close!);
+    expect(screen.queryByRole('dialog', { name: 'Signatories' })).not.toBeInTheDocument();
+  });
 });

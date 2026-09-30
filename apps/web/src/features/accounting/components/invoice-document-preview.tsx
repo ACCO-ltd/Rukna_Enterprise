@@ -5,12 +5,10 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetBody,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   Skeleton,
 } from '@erp/ui';
 
@@ -74,28 +72,39 @@ export function InvoiceDocumentPreview({ invoiceId, active }: { invoiceId: strin
 }
 
 /**
- * Mobile equivalent: the preview never fits usefully in a stacked narrow column, so it opens
- * full-screen in a `Sheet` instead of always rendering a cramped iframe.
+ * Mobile equivalent: the preview never fits usefully in a stacked narrow column, so it opens in
+ * a read-only `FormDialog` (2xl, ADR-039) instead of always rendering a cramped iframe. Below `sm`
+ * a FormDialog is full screen, which is the only place this trigger is shown.
  */
 export function MobileInvoicePreviewTrigger({ invoiceId }: { invoiceId: string }) {
   const t = useTranslations('accounting.invoices.document');
+  const tCommon = useTranslations('common');
   const [open, setOpen] = useState(false);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button variant="outline" className="w-full sm:hidden">
-          {t('previewMobile')}
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="end" size="2xl" className="sm:hidden">
-        <SheetHeader>
-          <SheetTitle>{t('heading')}</SheetTitle>
-        </SheetHeader>
-        <SheetBody className="flex flex-col">
+    <>
+      <Button variant="outline" className="w-full sm:hidden" onClick={() => setOpen(true)}>
+        {t('previewMobile')}
+      </Button>
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        size="2xl"
+        initialFocus="dialog"
+        title={t('heading')}
+        closeLabel={tCommon('close')}
+      >
+        <FormDialogBody className="flex flex-col">
           <InvoiceDocumentPreview invoiceId={invoiceId} active={open} />
-        </SheetBody>
-      </SheetContent>
-    </Sheet>
+        </FormDialogBody>
+        <FormDialogFooter>
+          <FormDialogClose asChild>
+            <Button type="button" variant="outline">
+              {tCommon('close')}
+            </Button>
+          </FormDialogClose>
+        </FormDialogFooter>
+      </FormDialog>
+    </>
   );
 }

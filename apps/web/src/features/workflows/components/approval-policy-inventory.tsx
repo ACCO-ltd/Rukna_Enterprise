@@ -33,7 +33,7 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { AdminPanel } from '@/features/admin/components/admin-panel';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
 import { filterPolicies, type PolicyStatusFilter } from '../filter-policies';
-import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet';
+import { PolicyVersionComparisonDialog } from './policy-version-comparison-dialog';
 
 /**
  * Approval policy inventory (S2) — the spine of the workflows page. The list is the primary
@@ -184,7 +184,7 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
         )}
 
         {canView ? (
-          <PolicyVersionComparisonSheet
+          <PolicyVersionComparisonDialog
             policyKey={compareKey}
             onOpenChange={(value) => {
               if (!value) setCompareKey(null);

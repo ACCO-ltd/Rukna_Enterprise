@@ -42,7 +42,7 @@ import { PolicyOverviewTab } from './policy-overview-tab';
 import { PolicyRulesTab } from './policy-rules-tab';
 import { PolicySimulationPanel } from './policy-simulation-panel';
 import { PolicySodEditor } from './policy-sod-editor';
-import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet';
+import { PolicyVersionComparisonDialog } from './policy-version-comparison-dialog';
 
 type WorkspaceTab = 'overview' | 'rules' | 'sod' | 'simulation' | 'history';
 
@@ -288,7 +288,7 @@ export function GovernanceWorkspace({ policyId }: { policyId: string }) {
 
       {/* Version comparison — a wide dialog: two versions side by side needed width, and
           the 420px panel it used to be was narrower than either column. */}
-      <PolicyVersionComparisonSheet
+      <PolicyVersionComparisonDialog
         policyKey={compareOpen ? policy.policyKey : null}
         onOpenChange={(open) => {
           if (!open) setCompareOpen(false);

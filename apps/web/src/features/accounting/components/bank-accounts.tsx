@@ -27,12 +27,10 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetBody,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   StatusPill,
   Table,
   TableBody,
@@ -71,6 +69,7 @@ import type { BankAccount } from '../types';
 
 export function BankAccounts() {
   const t = useTranslations('accounting.bankAccounts');
+  const tCommon = useTranslations('common');
   const { can } = usePermissions();
 
   const banks = useBankAccounts();
@@ -191,20 +190,26 @@ export function BankAccounts() {
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>
 
-      <Sheet
+      {/* ADR-039: a FormDialog (md). Adding and removing act at once, so the footer only closes. */}
+      <FormDialog
         open={signatoryBank !== null}
         onOpenChange={(open) => { if (!open) setSignatoryBank(null); }}
+        size="md"
+        title={t('signatories.title')}
+        subtitle={signatoryBank?.accountName ?? ''}
+        closeLabel={tCommon('close')}
       >
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>{t('signatories.sheetTitle')}</SheetTitle>
-            <SheetDescription>{signatoryBank?.accountName ?? ''}</SheetDescription>
-          </SheetHeader>
-          <SheetBody>
-            {signatoryBank && <SignatoriesPanel bank={signatoryBank} />}
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
+        <FormDialogBody>
+          {signatoryBank && <SignatoriesPanel bank={signatoryBank} />}
+        </FormDialogBody>
+        <FormDialogFooter>
+          <FormDialogClose asChild>
+            <Button type="button" variant="outline">
+              {tCommon('close')}
+            </Button>
+          </FormDialogClose>
+        </FormDialogFooter>
+      </FormDialog>
     </div>
   );
 }
@@ -270,7 +275,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
       )}
 
       {signatories.length > 0 && (
-        <TableScroll aria-label={t('sheetTitle')}>
+        <TableScroll aria-label={t('title')}>
           <Table>
             <TableHeader>
               <TableRow>
