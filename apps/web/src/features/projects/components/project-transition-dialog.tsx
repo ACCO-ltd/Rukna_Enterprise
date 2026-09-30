@@ -7,11 +7,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Textarea,
 } from '@erp/ui';
@@ -76,9 +75,8 @@ export function ProjectTransitionDialog({
   const conditions = readiness.data?.conditions.filter((condition) => !condition.satisfied) ?? [];
   const blockers = conditions.filter((condition) => !canWaive(condition));
   const waiverConditions = conditions.filter((condition) => canWaive(condition));
-  const preventPending = (event: Event) => {
-    if (gate.pending) event.preventDefault();
-  };
+  const dirty =
+    date !== '' || note !== '' || Object.values(waivers).some((reason) => reason !== '');
 
   async function submit() {
     if (inFlight.current || readiness.isPending || readiness.isError) return;
@@ -138,137 +136,141 @@ export function ProjectTransitionDialog({
   }
 
   return (
-    <Dialog
+    // No `onSubmit`: the body can hold the approval panel, whose own buttons must not submit the
+    // transition. The primary action stays a plain click, as it was before FormDialog.
+    <FormDialog
       open
       onOpenChange={(open) => {
-        if (!open && !gate.pending) onDismiss();
+        if (!open) onDismiss();
       }}
+      title={
+        command === 'start' && projectName ? t('startTitle', { name: projectName }) : actions(command)
+      }
+      subtitle={t(`description.${command}`)}
+      size="md"
+      dirty={dirty}
+      busy={gate.pending}
+      closeLabel={common('close')}
     >
-      <DialogContent
-        onEscapeKeyDown={preventPending}
-        onPointerDownOutside={preventPending}
-        onInteractOutside={preventPending}
-      >
-        <DialogTitle>
-          {command === 'start' && projectName ? t('startTitle', { name: projectName }) : actions(command)}
-        </DialogTitle>
-        <DialogDescription>{t(`description.${command}`)}</DialogDescription>
-        <div className="mt-4 max-h-[60vh] space-y-4 overflow-y-auto">
-          {readiness.isPending ? <p role="status">{common('loading')}</p> : null}
-          {readiness.isError ? (
-            <Alert variant="error" messages={[prep('loadFailed')]}>
-              <Button variant="outline" onClick={() => readiness.refetch()}>
-                {common('grid.retry')}
-              </Button>
-            </Alert>
-          ) : null}
-          {blockers.length > 0 ? (
-            <Alert
-              variant="warning"
-              messages={blockers.map((condition) =>
-                prep.has(`conditions.${condition.code}`)
-                  ? prep(`conditions.${condition.code}`)
-                  : condition.detail,
-              )}
+      <FormDialogBody className="space-y-4">
+        {readiness.isPending ? <p role="status">{common('loading')}</p> : null}
+        {readiness.isError ? (
+          <Alert variant="error" messages={[prep('loadFailed')]}>
+            <Button variant="outline" onClick={() => readiness.refetch()}>
+              {common('grid.retry')}
+            </Button>
+          </Alert>
+        ) : null}
+        {blockers.length > 0 ? (
+          <Alert
+            variant="warning"
+            messages={blockers.map((condition) =>
+              prep.has(`conditions.${condition.code}`)
+                ? prep(`conditions.${condition.code}`)
+                : condition.detail,
+            )}
+          />
+        ) : null}
+        {readiness.data?.deferred.length ? (
+          <details open>
+            <summary className="cursor-pointer text-body-sm text-muted-foreground">
+              {t('deferred')}
+            </summary>
+            <ul className="mt-2 space-y-2 text-caption text-muted-foreground">
+              {readiness.data.deferred.map((code) => (
+                <li key={code}>{t.has(`checks.${code}`) ? t(`checks.${code}`) : code}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {needsDate ? (
+          <FormField
+            htmlFor="transition-date"
+            label={t(command === 'start' ? 'actualStartDate' : 'closureDate')}
+            required
+            error={attempted && !date ? t('dateRequired') : undefined}
+          >
+            <DatePicker
+              id="transition-date"
+              value={date}
+              onChange={setDate}
+              disabled={gate.pending || Boolean(gate.approvalInstanceId)}
             />
-          ) : null}
-          {readiness.data?.deferred.length ? (
-            <details open>
-              <summary className="cursor-pointer text-body-sm text-muted-foreground">
-                {t('deferred')}
-              </summary>
-              <ul className="mt-2 space-y-2 text-caption text-muted-foreground">
-                {readiness.data.deferred.map((code) => (
-                  <li key={code}>{t.has(`checks.${code}`) ? t(`checks.${code}`) : code}</li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-          {needsDate ? (
-            <FormField
-              htmlFor="transition-date"
-              label={t(command === 'start' ? 'actualStartDate' : 'closureDate')}
-              required
-              error={attempted && !date ? t('dateRequired') : undefined}
-            >
-              <DatePicker
-                id="transition-date"
-                value={date}
-                onChange={setDate}
-                disabled={gate.pending || Boolean(gate.approvalInstanceId)}
-              />
-            </FormField>
-          ) : null}
-          {needsDate ? (
-            <FormField
-              htmlFor="transition-note"
-              label={t(command === 'close' ? 'closureSummary' : 'commencementNote')}
-              required={command === 'close'}
-              error={
-                attempted && command === 'close' && !note.trim() ? t('summaryRequired') : undefined
+          </FormField>
+        ) : null}
+        {needsDate ? (
+          <FormField
+            htmlFor="transition-note"
+            label={t(command === 'close' ? 'closureSummary' : 'commencementNote')}
+            required={command === 'close'}
+            error={
+              attempted && command === 'close' && !note.trim() ? t('summaryRequired') : undefined
+            }
+          >
+            <Textarea
+              id="transition-note"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={command === 'close' ? 2000 : 500}
+              disabled={gate.pending || Boolean(gate.approvalInstanceId)}
+            />
+          </FormField>
+        ) : null}
+        {waiverConditions.map((condition) => (
+          <FormField
+            key={condition.code}
+            htmlFor={`waiver-${condition.code}`}
+            // "Reason for starting without a delivery team" says what the reason is *for*; the
+            // bare step name read as a second copy of the checklist.
+            label={
+              command === 'start' && t.has(`waiverLabel.${condition.code}`)
+                ? t(`waiverLabel.${condition.code}`)
+                : prep.has(`conditions.${condition.code}`)
+                  ? prep(`conditions.${condition.code}`)
+                  : condition.detail
+            }
+            hint={t('waiverHint')}
+            required
+            error={
+              attempted && !waivers[condition.code]?.trim() ? t('waiverRequired') : undefined
+            }
+          >
+            <Textarea
+              id={`waiver-${condition.code}`}
+              value={waivers[condition.code] ?? ''}
+              maxLength={500}
+              disabled={gate.pending || Boolean(gate.approvalInstanceId)}
+              onChange={(event) =>
+                setWaivers({ ...waivers, [condition.code]: event.target.value })
               }
-            >
-              <Textarea
-                id="transition-note"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                maxLength={command === 'close' ? 2000 : 500}
-                disabled={gate.pending || Boolean(gate.approvalInstanceId)}
-              />
-            </FormField>
-          ) : null}
-          {waiverConditions.map((condition) => (
-            <FormField
-              key={condition.code}
-              htmlFor={`waiver-${condition.code}`}
-              // "Reason for starting without a delivery team" says what the reason is *for*; the
-              // bare step name read as a second copy of the checklist.
-              label={
-                command === 'start' && t.has(`waiverLabel.${condition.code}`)
-                  ? t(`waiverLabel.${condition.code}`)
-                  : prep.has(`conditions.${condition.code}`)
-                    ? prep(`conditions.${condition.code}`)
-                    : condition.detail
-              }
-              hint={t('waiverHint')}
-              required
-              error={
-                attempted && !waivers[condition.code]?.trim() ? t('waiverRequired') : undefined
-              }
-            >
-              <Textarea
-                id={`waiver-${condition.code}`}
-                value={waivers[condition.code] ?? ''}
-                maxLength={500}
-                disabled={gate.pending || Boolean(gate.approvalInstanceId)}
-                onChange={(event) =>
-                  setWaivers({ ...waivers, [condition.code]: event.target.value })
-                }
-              />
-            </FormField>
-          ))}
-          {gate.approvalInstanceId ? (
-            <>
-              <Alert variant="info" messages={[t('awaitingApproval'), t('retryApproval')]} />
-              <ApprovalPanel instanceId={gate.approvalInstanceId} />
-            </>
-          ) : null}
-          {gate.error ? <Alert variant="error" messages={[gate.error]} /> : null}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onDismiss} disabled={gate.pending}>
+            />
+          </FormField>
+        ))}
+        {gate.approvalInstanceId ? (
+          <>
+            <Alert variant="info" messages={[t('awaitingApproval'), t('retryApproval')]} />
+            <ApprovalPanel instanceId={gate.approvalInstanceId} />
+          </>
+        ) : null}
+        {gate.error ? <Alert variant="error" messages={[gate.error]} /> : null}
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={gate.pending}>
             {common('cancel')}
           </Button>
-          <Button
-            onClick={() => void submit()}
-            loading={gate.pending}
-            loadingText={actions('working')}
-            disabled={readiness.isPending || readiness.isError || blockers.length > 0}
-          >
-            {gate.approvalInstanceId ? t('complete') : actions(command)}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="button"
+          onClick={() => void submit()}
+          loading={gate.pending}
+          loadingText={actions('working')}
+          disabled={readiness.isPending || readiness.isError || blockers.length > 0}
+        >
+          {gate.approvalInstanceId ? t('complete') : actions(command)}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

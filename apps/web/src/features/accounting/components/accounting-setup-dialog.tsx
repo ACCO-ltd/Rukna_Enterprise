@@ -178,8 +178,7 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
       busy={setup.isPending}
       closeLabel={tCommon('close')}
       onSubmit={() => handleSubmit()}
-    >
-      <FormDialogBody className="space-y-6">
+      progress={
         <WizardRail
           steps={steps}
           wizard={wizard}
@@ -189,7 +188,9 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
             if (steps.findIndex((s) => s.id === id) < wizard.currentIndex) wizard.goTo(id);
           }}
         />
-
+      }
+    >
+      <FormDialogBody className="space-y-6">
         <h3 ref={headingRef} tabIndex={-1} className="sr-only">
           {stepLabel}
         </h3>
@@ -328,7 +329,7 @@ function CompanyStep({
         ) : null}
       </FormDialogSection>
 
-      <FormDialogSection title={t('banks.title')} description={t('banks.description')}>
+      <FormDialogSection title={t('banks.title')} description={t('banks.description')} variant="plain">
         {draft.banks.length === 0 ? (
           <p className="text-body-sm text-muted-foreground">{t('banks.none')}</p>
         ) : (

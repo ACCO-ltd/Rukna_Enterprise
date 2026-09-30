@@ -95,11 +95,9 @@ export function ScheduleSetupWizard({
       subtitle={tw('subtitle')}
       size="lg"
       closeLabel={tCommon('close')}
+      // Pinned in the header: where the user is stays visible while a step's body scrolls.
+      progress={<ProgressStepper steps={stepperSteps} />}
     >
-      {/* Pinned under the header: where the user is stays visible while a step's body scrolls. */}
-      <div className="shrink-0 border-b border-border px-4 py-3 sm:px-6">
-        <ProgressStepper steps={stepperSteps} />
-      </div>
 
       {!ready || rollup.isError || !hasBaseline ? (
         <>

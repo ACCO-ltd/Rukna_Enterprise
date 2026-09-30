@@ -1,16 +1,15 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
   Combobox,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
 } from '@erp/ui';
@@ -129,7 +128,6 @@ function CreateDistrictDialog({
 }) {
   const t = useTranslations('platform.districts');
   const tCommon = useTranslations('common');
-  const nameRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [typedCode, setTypedCode] = useState('');
@@ -161,94 +159,72 @@ function CreateDistrictDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !create.isPending) onDismiss();
+        if (!next) onDismiss();
       }}
+      title={t('addTitle')}
+      subtitle={t('intro')}
+      size="md"
+      dirty={name !== '' || codeEdited}
+      busy={create.isPending}
+      closeLabel={tCommon('close')}
+      // A real <form>, so Enter adds the district. FormDialog stops the submit from reaching
+      // whatever form opened the dialog — on the project screen that form creates the project.
+      onSubmit={submit}
     >
-      <DialogContent
-        closeLabel={tCommon('close')}
-        className="sm:max-w-lg"
-        onEscapeKeyDown={(event) => {
-          if (create.isPending) event.preventDefault();
-        }}
-        onPointerDownOutside={(event) => {
-          if (create.isPending) event.preventDefault();
-        }}
-        onOpenAutoFocus={(event) => {
-          // Radix focuses the first focusable node, which here is the close control. The
-          // point of this dialog is the name field — and the code follows from it.
-          event.preventDefault();
-          nameRef.current?.focus();
-        }}
-      >
-        <DialogTitle>{t('addTitle')}</DialogTitle>
-        <DialogDescription>{t('intro')}</DialogDescription>
+      <FormDialogBody className="space-y-4">
+        {requestError ? <Alert variant="error" messages={[requestError]} /> : null}
 
-        {requestError ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[requestError]} />
-          </div>
-        ) : null}
+        {/* The point of this dialog is the name field — and the code follows from it. */}
+        <FormField htmlFor="district-new-name" label={t('nameLabel')} hint={t('nameHint')} required>
+          <Input
+            id="district-new-name"
+            data-autofocus
+            value={name}
+            autoComplete="off"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </FormField>
 
-        <div
-          className="mt-5 space-y-4"
-          // Enter should add the district, not fall through to whatever form opened the
-          // dialog — on the project screen that form creates the project.
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            submit();
-          }}
+        <FormField
+          htmlFor="district-new-code"
+          label={t('codeLabel')}
+          hint={codeEdited ? t('codeHint') : t('codeSuggested')}
+          error={isDuplicate ? t('codeDuplicate') : undefined}
+          className="max-w-40"
+          required
         >
-          <FormField htmlFor="district-new-name" label={t('nameLabel')} hint={t('nameHint')} required>
-            <Input
-              id="district-new-name"
-              ref={nameRef}
-              value={name}
-              autoComplete="off"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </FormField>
+          <Input
+            id="district-new-code"
+            value={code}
+            maxLength={8}
+            autoComplete="off"
+            className="font-mono text-h3"
+            onChange={(event) => {
+              setCodeEdited(true);
+              setTypedCode(event.target.value.toUpperCase());
+            }}
+          />
+        </FormField>
+      </FormDialogBody>
 
-          <FormField
-            htmlFor="district-new-code"
-            label={t('codeLabel')}
-            hint={codeEdited ? t('codeHint') : t('codeSuggested')}
-            error={isDuplicate ? t('codeDuplicate') : undefined}
-            className="max-w-40"
-            required
-          >
-            <Input
-              id="district-new-code"
-              value={code}
-              maxLength={8}
-              autoComplete="off"
-              className="font-mono text-h3"
-              onChange={(event) => {
-                setCodeEdited(true);
-                setTypedCode(event.target.value.toUpperCase());
-              }}
-            />
-          </FormField>
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit}
-            loading={create.isPending}
-            loadingText={tCommon('formActions.pendingLabel')}
-          >
-            {t('add')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onDismiss} disabled={create.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={create.isPending}>
             {tCommon('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="submit"
+          disabled={!canSubmit}
+          loading={create.isPending}
+          loadingText={tCommon('formActions.pendingLabel')}
+        >
+          {t('add')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

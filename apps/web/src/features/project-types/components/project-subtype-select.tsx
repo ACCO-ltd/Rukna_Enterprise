@@ -1,16 +1,15 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ProjectCategory } from '@erp/types';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   Select,
@@ -136,7 +135,6 @@ function CreateSubtypeDialog({
 }) {
   const t = useTranslations('projectTypes.select');
   const tCommon = useTranslations('common');
-  const nameRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const create = useCreateProjectSubtype();
@@ -159,73 +157,50 @@ function CreateSubtypeDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !create.isPending) onDismiss();
+        if (!next) onDismiss();
       }}
+      title={t('addTitle')}
+      subtitle={t('nameHint')}
+      size="md"
+      dirty={name !== ''}
+      busy={create.isPending}
+      closeLabel={tCommon('close')}
+      // A real <form>, so Enter adds the subtype. FormDialog stops the submit from reaching the
+      // project form behind the dialog — on the project screen that form creates the project.
+      onSubmit={submit}
     >
-      <DialogContent
-        closeLabel={tCommon('close')}
-        className="sm:max-w-lg"
-        onEscapeKeyDown={(event) => {
-          if (create.isPending) event.preventDefault();
-        }}
-        onPointerDownOutside={(event) => {
-          if (create.isPending) event.preventDefault();
-        }}
-        onOpenAutoFocus={(event) => {
-          // Radix focuses the close control first; the point of this dialog is the name field.
-          event.preventDefault();
-          nameRef.current?.focus();
-        }}
-      >
-        <DialogTitle>{t('addTitle')}</DialogTitle>
-        <DialogDescription>{t('nameHint')}</DialogDescription>
+      <FormDialogBody className="space-y-4">
+        {requestError ? <Alert variant="error" messages={[requestError]} /> : null}
 
-        {requestError ? (
-          <div className="mt-4">
-            <Alert variant="error" messages={[requestError]} />
-          </div>
-        ) : null}
+        <FormField htmlFor="subtype-new-name" label={t('nameLabel')} hint={t('nameHint')} required>
+          <Input
+            id="subtype-new-name"
+            value={name}
+            maxLength={120}
+            autoComplete="off"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </FormField>
+      </FormDialogBody>
 
-        <div
-          className="mt-5"
-          // Enter should add the subtype, not fall through to the project form behind the
-          // dialog — on the project screen that form creates the project.
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <FormField htmlFor="subtype-new-name" label={t('nameLabel')} hint={t('nameHint')} required>
-            <Input
-              id="subtype-new-name"
-              ref={nameRef}
-              value={name}
-              maxLength={120}
-              autoComplete="off"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </FormField>
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit}
-            loading={create.isPending}
-            loadingText={tCommon('formActions.pendingLabel')}
-          >
-            {t('add')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onDismiss} disabled={create.isPending}>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={create.isPending}>
             {tCommon('cancel')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </FormDialogClose>
+        <Button
+          type="submit"
+          disabled={!canSubmit}
+          loading={create.isPending}
+          loadingText={tCommon('formActions.pendingLabel')}
+        >
+          {t('add')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { Ruler } from 'lucide-react';
 import {
   ActivityTimeline,
   Button,
   ChoiceCards,
+  Disclosure,
   FormDialog,
   FormDialogBody,
   FormDialogClose,
@@ -14,6 +16,9 @@ import {
   Input,
   MoneyInput,
   QuantityInput,
+  SettingRow,
+  SettingsGroup,
+  Switch,
   Textarea,
   type FormDialogSize,
 } from '@erp/ui';
@@ -28,6 +33,7 @@ const INITIAL = {
   rate: '185.00',
   pricing: 'UNIT_RATE' as Pricing,
   reference: '',
+  provisional: false,
 };
 
 /**
@@ -42,6 +48,7 @@ export function RecordDialogSpecimen() {
   const [saving, setSaving] = useState(false);
 
   const dirty = (Object.keys(INITIAL) as (keyof typeof INITIAL)[]).some((key) => values[key] !== INITIAL[key]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const openAt = (next: FormDialogSize) => {
     setSize(next);
@@ -61,8 +68,8 @@ export function RecordDialogSpecimen() {
     <>
       <Specimen
         label="Record dialog"
-        token="<FormDialog size dirty busy> · <FormDialogSection> · <ChoiceCards>"
-        note="ADR-039: md 1–6 fields · lg a record form · xl a record with a short list · 2xl comparisons. Full screen on phones. Edit a field, then press Esc to see the discard question."
+        token="<FormDialog size icon dirty busy> · <FormDialogSection> · <SettingRow> · <Disclosure> · <ChoiceCards>"
+        note="ADR-039: md 1–6 fields · lg a record form · xl a record with a short list · 2xl comparisons. Full screen on phones. Field groups sit on a grey panel; on/off settings are rows; rarely changed fields fold under Advanced; Reset sits apart on the start edge. The header and footer rules appear only while the body scrolls under them. Edit a field, then press Esc to see the discard question."
       >
         <div className="flex flex-wrap gap-3">
           {(['md', 'lg', 'xl', '2xl'] as const).map((tier) => (
@@ -101,6 +108,7 @@ export function RecordDialogSpecimen() {
         size={size}
         title="Item 2.1"
         subtitle="Measurement and pricing"
+        icon={<Ruler />}
         dirty={dirty}
         busy={saving}
         onSubmit={(event) => {
@@ -149,7 +157,26 @@ export function RecordDialogSpecimen() {
               </FormField>
             </div>
           </FormDialogSection>
-          <FormDialogSection title="Reference">
+          <SettingsGroup>
+            <SettingRow
+              htmlFor="rd-provisional"
+              label="Provisional quantity"
+              description="Remeasured on site before it is certified."
+            >
+              <Switch
+                id="rd-provisional"
+                aria-describedby="rd-provisional-description"
+                checked={values.provisional}
+                onCheckedChange={(provisional) => setValues((v) => ({ ...v, provisional }))}
+              />
+            </SettingRow>
+          </SettingsGroup>
+          <Disclosure
+            label="Advanced"
+            hint="Drawing reference"
+            open={advancedOpen}
+            onOpenChange={setAdvancedOpen}
+          >
             <FormField htmlFor="rd-ref" label="Drawing reference" hint="Optional.">
               <Input
                 id="rd-ref"
@@ -158,16 +185,24 @@ export function RecordDialogSpecimen() {
                 onChange={(event) => setValues((v) => ({ ...v, reference: event.target.value }))}
               />
             </FormField>
-          </FormDialogSection>
+          </Disclosure>
         </FormDialogBody>
-        <FormDialogFooter>
+        <FormDialogFooter
+          start={
+            dirty ? (
+              <Button type="button" variant="ghost" disabled={saving} onClick={() => setValues(INITIAL)}>
+                Reset
+              </Button>
+            ) : null
+          }
+        >
           <FormDialogClose asChild>
             <Button type="button" variant="outline" disabled={saving}>
               Cancel
             </Button>
           </FormDialogClose>
-          <Button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : 'Save item'}
+          <Button type="submit" loading={saving} loadingText="Saving…">
+            Save item
           </Button>
         </FormDialogFooter>
       </FormDialog>

@@ -20,6 +20,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   Select,
@@ -54,6 +58,10 @@ export type DocumentAction =
 
 /**
  * Every controlled act on a document, each in its own dialog.
+ *
+ * The three that edit a record (edit details, create revision, issue) are `FormDialog`s (ADR-039).
+ * The rest (replace file, withdraw, supersede, archive, discard) confirm one act with at most one
+ * field, and stay on the short `ActionDialog`.
  *
  * They are grouped in one file because they share one rule and it is easier to keep true in one
  * place: **the dialog states what the act does to the record before it does it.** Issuing freezes
@@ -122,7 +130,8 @@ function EditDialog({ projectId, detail, onClose }: SharedProps) {
   const t = useTranslations('documents');
   const { document } = detail;
   const isDraft = document.status === 'DRAFT';
-  const { error, report } = useActionError();
+  const tCommon = useTranslations('common');
+  const { error, setError, report } = useActionError();
 
   const [documentNumber, setDocumentNumber] = useState(document.documentNumber);
   const [title, setTitle] = useState(document.title);
@@ -137,8 +146,24 @@ function EditDialog({ projectId, detail, onClose }: SharedProps) {
   const { data: members = [] } = useProjectMembers(projectId);
   const update = useUpdateDocument(projectId, document.id);
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  const dirty =
+    documentNumber !== document.documentNumber ||
+    title !== document.title ||
+    category !== document.category ||
+    discipline !== (document.discipline ?? '') ||
+    responsibleUserId !== (document.responsibleUserId ?? '') ||
+    issuerName !== (document.issuerName ?? '') ||
+    issuedAt !== toDateInput(document.issuedAt) ||
+    validFrom !== toDateInput(document.validFrom) ||
+    expiresAt !== toDateInput(document.expiresAt);
+
+  async function onSubmit() {
+    setError(null);
+    // FormDialog's form is `noValidate`, so the title's `required` is checked here instead.
+    if (!title.trim()) {
+      setError(t('form.required'));
+      return;
+    }
     try {
       await update.mutateAsync({
         title: title.trim(),
@@ -164,8 +189,21 @@ function EditDialog({ projectId, detail, onClose }: SharedProps) {
   }
 
   return (
-    <ActionDialog title={t('form.editTitle')} onClose={onClose}>
-      <form onSubmit={onSubmit} className="mt-5 space-y-4">
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('form.editTitle')}
+      size="lg"
+      dirty={dirty}
+      busy={update.isPending}
+      closeLabel={t('actions.cancel')}
+      onSubmit={() => {
+        void onSubmit();
+      }}
+    >
+      <FormDialogBody className="space-y-4">
         {error ? <Alert variant="error" messages={[error]} /> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -261,16 +299,19 @@ function EditDialog({ projectId, detail, onClose }: SharedProps) {
           </FormField>
         </div>
 
-        <DialogFooter>
-          <Button type="submit" loading={update.isPending}>
-            {t('form.submitEdit')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={update.isPending}>
             {t('actions.cancel')}
           </Button>
-        </DialogFooter>
-      </form>
-    </ActionDialog>
+        </FormDialogClose>
+        <Button type="submit" loading={update.isPending} loadingText={tCommon('saving')}>
+          {t('form.submitEdit')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -287,9 +328,9 @@ function NewRevisionDialog({ projectId, detail, onClose }: SharedProps) {
   const upload = useFileUpload();
   const create = useCreateRevision(projectId, document.id);
   const isDrawing = document.category === DocumentCategory.DRAWING;
+  const busy = upload.isPending || create.isPending;
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function onSubmit() {
     setError(null);
     if (!file) {
       setError(t('form.required'));
@@ -310,12 +351,22 @@ function NewRevisionDialog({ projectId, detail, onClose }: SharedProps) {
   }
 
   return (
-    <ActionDialog
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
       title={t('revision.newTitle')}
-      description={t('revision.newHint')}
-      onClose={onClose}
+      subtitle={t('revision.newHint')}
+      size="md"
+      dirty={file !== null || revisionCode !== '' || purpose !== '' || notes !== ''}
+      busy={busy}
+      closeLabel={t('actions.cancel')}
+      onSubmit={() => {
+        void onSubmit();
+      }}
     >
-      <form onSubmit={onSubmit} className="mt-5 space-y-4">
+      <FormDialogBody className="space-y-4">
         {error ? <Alert variant="error" messages={[error]} /> : null}
 
         <FormField htmlFor="rev-code" label={t('form.revisionCode')}>
@@ -354,20 +405,23 @@ function NewRevisionDialog({ projectId, detail, onClose }: SharedProps) {
           />
         </FormField>
 
-        <DialogFooter>
-          <Button
-            type="submit"
-            loading={upload.isPending || create.isPending}
-            loadingText={upload.isPending ? t('states.uploading') : undefined}
-          >
-            {t('actions.newRevision')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={busy}>
             {t('actions.cancel')}
           </Button>
-        </DialogFooter>
-      </form>
-    </ActionDialog>
+        </FormDialogClose>
+        <Button
+          type="submit"
+          loading={busy}
+          loadingText={upload.isPending ? t('states.uploading') : undefined}
+        >
+          {t('actions.newRevision')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -442,6 +496,7 @@ function IssueDialog({
   onClose,
 }: SharedProps & { revision: DocumentRevisionResponse }) {
   const t = useTranslations('documents');
+  const tCommon = useTranslations('common');
   const { error, report } = useActionError();
   const [issuedAt, setIssuedAt] = useState('');
   const [revisionCode, setRevisionCode] = useState(revision.revisionCode ?? '');
@@ -450,8 +505,12 @@ function IssueDialog({
   const issue = useIssueRevision(projectId, detail.document.id);
   const isDrawing = detail.document.category === DocumentCategory.DRAWING;
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  const dirty =
+    issuedAt !== '' ||
+    revisionCode !== (revision.revisionCode ?? '') ||
+    purpose !== (revision.purpose ?? '');
+
+  async function onSubmit() {
     try {
       await issue.mutateAsync({
         revisionId: revision.id,
@@ -466,14 +525,24 @@ function IssueDialog({
   }
 
   return (
-    <ActionDialog
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
       title={t('revision.issueTitle', {
         code: revision.revisionCode ?? t('revision.number', { number: revision.revisionNumber }),
       })}
-      description={t('revision.issueHint')}
-      onClose={onClose}
+      subtitle={t('revision.issueHint')}
+      size="md"
+      dirty={dirty}
+      busy={issue.isPending}
+      closeLabel={t('actions.cancel')}
+      onSubmit={() => {
+        void onSubmit();
+      }}
     >
-      <form onSubmit={onSubmit} className="mt-5 space-y-4">
+      <FormDialogBody className="space-y-4">
         {error ? <Alert variant="error" messages={[error]} /> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -513,16 +582,19 @@ function IssueDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
-          <Button type="submit" loading={issue.isPending}>
-            {t('revision.issueConfirm')}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+      </FormDialogBody>
+
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={issue.isPending}>
             {t('actions.cancel')}
           </Button>
-        </DialogFooter>
-      </form>
-    </ActionDialog>
+        </FormDialogClose>
+        <Button type="submit" loading={issue.isPending} loadingText={tCommon('saving')}>
+          {t('revision.issueConfirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -725,6 +797,7 @@ function DeleteDialog({ projectId, detail, onClose }: SharedProps) {
   );
 }
 
+/** The short confirmation shell: one act, stated, with at most one field. */
 function ActionDialog({
   title,
   description,

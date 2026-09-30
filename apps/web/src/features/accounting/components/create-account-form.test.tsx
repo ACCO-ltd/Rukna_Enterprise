@@ -16,11 +16,52 @@ import { chooseOption, openSelect } from '@/test/choose-option';
  * not filtered by class.
  */
 
-const mocks = vi.hoisted(() => ({ useCreateAccount: vi.fn() }));
+const mocks = vi.hoisted(() => ({ useCreateAccount: vi.fn(), useAccounts: vi.fn() }));
 
 vi.mock('../hooks/use-accounting', () => mocks);
 
 import { CreateAccountForm } from './create-account-form';
+import type { Account } from '../types';
+
+function account(code: string, name: string, overrides: Partial<Account['versions'][number]> = {}): Account {
+  return {
+    id: `acc-${code}`,
+    organizationId: 'org-1',
+    code,
+    normalBalance: 'DEBIT',
+    status: 'ACTIVE',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    createdBy: 'user-1',
+    versions: [
+      {
+        id: `ver-${code}`,
+        accountId: `acc-${code}`,
+        versionNumber: 1,
+        name,
+        parentAccountId: null,
+        accountClass: 'COST_OF_SALES',
+        accountSubtype: 'MATERIAL_COST',
+        isPostingAllowed: false,
+        isControlAccount: false,
+        controlledSubledgerType: null,
+        controlPostingPolicy: 'UNRESTRICTED',
+        effectiveFrom: '2026-01-01',
+        effectiveTo: null,
+        ...overrides,
+      },
+    ],
+  };
+}
+
+const CHART = [
+  account('51000', 'Materials'),
+  account('51100', 'Cement and concrete', { parentAccountId: 'acc-51000', isPostingAllowed: true }),
+];
+
+/** Normal balance, posting policy and the control-account flags live behind this toggle. */
+async function openAdvanced(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /Advanced/ }));
+}
 
 const mutate = vi.fn();
 
@@ -32,6 +73,7 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
+  mocks.useAccounts.mockReturnValue({ data: CHART, isPending: false });
 });
 
 describe('CreateAccountForm', () => {
@@ -65,6 +107,7 @@ describe('CreateAccountForm', () => {
     renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await chooseOption(user, screen.getByLabelText('Class'), 'LIABILITY');
+    await openAdvanced(user);
 
     // The control is a trigger now, so the chosen value is what it displays.
     expect(screen.getByLabelText('Normal balance')).toHaveTextContent('Credit');
@@ -79,6 +122,7 @@ describe('CreateAccountForm', () => {
     renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await chooseOption(user, screen.getByLabelText('Class'), 'ASSET');
+    await openAdvanced(user);
     await chooseOption(user, screen.getByLabelText('Normal balance'), 'CREDIT');
 
     expect(screen.getByText(/opposite side/i)).toBeInTheDocument();
@@ -102,6 +146,7 @@ describe('CreateAccountForm', () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
+    await openAdvanced(user);
     await openSelect(user, screen.getByLabelText('Posting policy'));
     expect(screen.getAllByRole('option')).toHaveLength(2);
     expect(screen.getByText(/does not accept it/i)).toBeInTheDocument();
@@ -113,9 +158,67 @@ describe('CreateAccountForm', () => {
 
     expect(screen.queryByLabelText('Controls which subledger')).not.toBeInTheDocument();
 
-    await user.click(screen.getByLabelText('This is a control account'));
+    await openAdvanced(user);
+    await user.click(screen.getByRole('switch', { name: 'This is a control account' }));
 
     expect(screen.getByLabelText('Controls which subledger')).toBeInTheDocument();
   });
 
+  it('keeps the rarely changed fields folded under Advanced', () => {
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /Advanced/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('Normal balance')).not.toBeVisible();
+    expect(screen.getByLabelText('Account name')).toBeVisible();
+  });
+
+  it('opens Advanced by itself when an answer inside it is missing', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(screen.getByRole('button', { name: /Advanced/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Normal balance')).toBeVisible();
+  });
+
+  it('asks for a parent from the chart, and fills class, subtype and the next free code from it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    expect(screen.queryByRole('combobox', { name: 'Parent account' })).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('Make this a sub-account'));
+    await user.click(screen.getByRole('combobox', { name: 'Parent account' }));
+    await user.click(await screen.findByRole('option', { name: /51000 · Materials/ }));
+
+    expect(screen.getByLabelText('Class')).toHaveTextContent('Cost of Sales');
+    expect(screen.getByLabelText('Account subtype')).toHaveTextContent('Material cost');
+    expect(screen.getByLabelText('Account code')).toHaveValue('51200');
+  });
+
+  it('never overwrites what the user already chose when a parent is picked', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('Account code'), '51150');
+    await chooseOption(user, screen.getByLabelText('Class'), 'EXPENSE');
+    await user.click(screen.getByLabelText('Make this a sub-account'));
+    await user.click(screen.getByRole('combobox', { name: 'Parent account' }));
+    await user.click(await screen.findByRole('option', { name: /51000 · Materials/ }));
+
+    expect(screen.getByLabelText('Account code')).toHaveValue('51150');
+    expect(screen.getByLabelText('Class')).toHaveTextContent('Expense');
+  });
+
+  it('offers Reset once something is typed, and it clears the form', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('Account name'), 'Paint');
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+
+    expect(screen.getByLabelText('Account name')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
+  });
 });

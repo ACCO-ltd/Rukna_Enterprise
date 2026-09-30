@@ -233,7 +233,7 @@ export function PoAmendDialog({
         </div>
 
         {/* The same line editor the create screen uses — the reason this dialog is `xl`. */}
-        <FormDialogSection title={tc('lines')}>
+        <FormDialogSection title={tc('lines')} variant="plain">
           <PoLineEditor
             lines={lines}
             onChange={setLines}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   editAccountDraftFrom,
+  suggestChildCode,
   editAccountProblem,
   toUpdateAccountBody,
   type EditAccountDraft,
@@ -125,5 +126,47 @@ describe('editAccountProblem', () => {
 
   it('passes a non-empty name', () => {
     expect(editAccountProblem({ name: 'Cash', isPostingAllowed: true, parentAccountCode: '', changeReason: '' })).toBeNull();
+  });
+});
+
+describe('suggestChildCode', () => {
+  function child(code: string, parentId: string): Account {
+    return account({ id: `acc-${code}`, code, versions: [version({ accountId: `acc-${code}`, parentAccountId: parentId })] });
+  }
+  const MATERIALS = account({ id: 'acc-51000', code: '51000', versions: [version({ accountId: 'acc-51000' })] });
+
+  it('steps a tenth of the parent block: the first child of 51000 is 51100', () => {
+    expect(suggestChildCode(MATERIALS, [MATERIALS])).toBe('51100');
+  });
+
+  it('continues after the last child rather than filling from the top', () => {
+    const chart = [MATERIALS, child('51100', 'acc-51000'), child('51300', 'acc-51000')];
+    expect(suggestChildCode(MATERIALS, chart)).toBe('51400');
+  });
+
+  it('falls back to the first gap when the end of the block is taken', () => {
+    const codes = ['51100', '51200', '51300', '51400', '51500', '51600', '51700', '51900'];
+    const chart = [MATERIALS, ...codes.map((c) => child(c, 'acc-51000'))];
+    expect(suggestChildCode(MATERIALS, chart)).toBe('51800');
+  });
+
+  it('skips a code taken by an account elsewhere in the chart', () => {
+    const chart = [MATERIALS, account({ id: 'x', code: '51100' })];
+    expect(suggestChildCode(MATERIALS, chart)).toBe('51200');
+  });
+
+  it('never leaves the block: a full block suggests nothing', () => {
+    const codes = ['51100', '51200', '51300', '51400', '51500', '51600', '51700', '51800', '51900'];
+    const chart = [MATERIALS, ...codes.map((c) => child(c, 'acc-51000'))];
+    expect(suggestChildCode(MATERIALS, chart)).toBeNull();
+  });
+
+  it('steps by one under a parent ending in a single zero, and offers nothing for a code with none', () => {
+    const odd = account({ id: 'odd', code: '51150' });
+    expect(suggestChildCode(odd, [odd])).toBe('51151');
+    const text = account({ id: 'text', code: 'CASH' });
+    expect(suggestChildCode(text, [text])).toBeNull();
+    const noZero = account({ id: 'nz', code: '51151' });
+    expect(suggestChildCode(noZero, [noZero])).toBeNull();
   });
 });

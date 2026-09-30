@@ -7,10 +7,10 @@ import {
   Alert,
   Button,
   DatePicker,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
   MoneyInput,
@@ -121,7 +121,7 @@ function AddGuaranteeDialog({
     register,
     handleSubmit,
     getValues,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<AddFormValues>({
     defaultValues: {
       guaranteeType: 'PERFORMANCE',
@@ -159,152 +159,145 @@ function AddGuaranteeDialog({
   const required = { validate: (v: string) => v.trim() !== '' || t('required') };
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !add.isPending) onClose();
+        if (!next) onClose();
+      }}
+      title={t('add')}
+      size="lg"
+      dirty={isDirty}
+      busy={add.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('add')}</DialogTitle>
+      <FormDialogBody className="space-y-4">
+        {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
 
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
+        <FormField
+          htmlFor="guarantee-type"
+          label={t('type')}
+          error={errors.guaranteeType?.message}
         >
-          {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
+          <Input
+            id="guarantee-type"
+            aria-describedby="guarantee-type-hint"
+            aria-invalid={Boolean(errors.guaranteeType)}
+            {...register('guaranteeType', required)}
+          />
+          <p id="guarantee-type-hint" className="text-xs text-muted-foreground">
+            {t('typeHint')}
+          </p>
+        </FormField>
+
+        <div className="grid gap-4">
+          <FormField htmlFor="guarantee-amount" label={t('amount')} error={errors.amount?.message}>
+            <Controller
+              name="amount"
+              control={control}
+              rules={{
+                validate: (v) =>
+                  (v.trim() !== '' && Number.isFinite(Number(v))) || t('required'),
+              }}
+              render={({ field }) => (
+                <MoneyInput
+                  id="guarantee-amount"
+                  dir="ltr"
+                  aria-invalid={Boolean(errors.amount)}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  name={field.name}
+                />
+              )}
+            />
+          </FormField>
+        </div>
+
+        <FormField htmlFor="guarantee-issuer" label={t('issuer')} error={errors.issuer?.message}>
+          <Input
+            id="guarantee-issuer"
+            aria-invalid={Boolean(errors.issuer)}
+            {...register('issuer', required)}
+          />
+        </FormField>
+
+        <FormField
+          htmlFor="guarantee-beneficiary"
+          label={t('beneficiary')}
+          error={errors.beneficiary?.message}
+        >
+          <Input
+            id="guarantee-beneficiary"
+            aria-invalid={Boolean(errors.beneficiary)}
+            {...register('beneficiary', required)}
+          />
+        </FormField>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            htmlFor="guarantee-issue"
+            label={t('issueDate')}
+            error={errors.issueDate?.message}
+          >
+            <Controller
+              control={control}
+              name="issueDate"
+              rules={required}
+              render={({ field }) => (
+                <DatePicker id="guarantee-issue" value={field.value} onChange={field.onChange} />
+              )}
+            />
+          </FormField>
 
           <FormField
-            htmlFor="guarantee-type"
-            label={t('type')}
-            error={errors.guaranteeType?.message}
+            htmlFor="guarantee-expiry"
+            label={t('expiryDate')}
+            error={errors.expiryDate?.message}
           >
-            <Input
-              id="guarantee-type"
-              aria-describedby="guarantee-type-hint"
-              aria-invalid={Boolean(errors.guaranteeType)}
-              {...register('guaranteeType', required)}
-            />
-            <p id="guarantee-type-hint" className="text-xs text-muted-foreground">
-              {t('typeHint')}
-            </p>
-          </FormField>
-
-          <div className="grid gap-4">
-            <FormField htmlFor="guarantee-amount" label={t('amount')} error={errors.amount?.message}>
-              <Controller
-                name="amount"
-                control={control}
-                rules={{
-                  validate: (v) =>
-                    (v.trim() !== '' && Number.isFinite(Number(v))) || t('required'),
-                }}
-                render={({ field }) => (
-                  <MoneyInput
-                    id="guarantee-amount"
-                    dir="ltr"
-                    aria-invalid={Boolean(errors.amount)}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                    name={field.name}
-                  />
-                )}
-              />
-            </FormField>
-          </div>
-
-          <FormField htmlFor="guarantee-issuer" label={t('issuer')} error={errors.issuer?.message}>
-            <Input
-              id="guarantee-issuer"
-              aria-invalid={Boolean(errors.issuer)}
-              {...register('issuer', required)}
+            <Controller
+              control={control}
+              name="expiryDate"
+              rules={{
+                validate: (v) => {
+                  if (v.trim() === '') return t('required');
+                  const issue = getValues('issueDate');
+                  // A guarantee that expires before it was issued is a data-entry error
+                  // the API does not catch — both dates are only @IsDateString().
+                  return !issue || v >= issue || t('expiryBeforeIssue');
+                },
+              }}
+              render={({ field }) => (
+                <DatePicker
+                  id="guarantee-expiry"
+                  value={field.value}
+                  onChange={field.onChange}
+                  min={getValues('issueDate') || undefined}
+                />
+              )}
             />
           </FormField>
+        </div>
 
-          <FormField
-            htmlFor="guarantee-beneficiary"
-            label={t('beneficiary')}
-            error={errors.beneficiary?.message}
-          >
-            <Input
-              id="guarantee-beneficiary"
-              aria-invalid={Boolean(errors.beneficiary)}
-              {...register('beneficiary', required)}
-            />
-          </FormField>
+        <FormField htmlFor="guarantee-notes" label={t('notes')}>
+          <Input id="guarantee-notes" {...register('notes')} />
+        </FormField>
+      </FormDialogBody>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              htmlFor="guarantee-issue"
-              label={t('issueDate')}
-              error={errors.issueDate?.message}
-            >
-              <Controller
-                control={control}
-                name="issueDate"
-                rules={required}
-                render={({ field }) => (
-                  <DatePicker id="guarantee-issue" value={field.value} onChange={field.onChange} />
-                )}
-              />
-            </FormField>
-
-            <FormField
-              htmlFor="guarantee-expiry"
-              label={t('expiryDate')}
-              error={errors.expiryDate?.message}
-            >
-              <Controller
-                control={control}
-                name="expiryDate"
-                rules={{
-                  validate: (v) => {
-                    if (v.trim() === '') return t('required');
-                    const issue = getValues('issueDate');
-                    // A guarantee that expires before it was issued is a data-entry error
-                    // the API does not catch — both dates are only @IsDateString().
-                    return !issue || v >= issue || t('expiryBeforeIssue');
-                  },
-                }}
-                render={({ field }) => (
-                  <DatePicker
-                    id="guarantee-expiry"
-                    value={field.value}
-                    onChange={field.onChange}
-                    min={getValues('issueDate') || undefined}
-                  />
-                )}
-              />
-            </FormField>
-          </div>
-
-          <FormField htmlFor="guarantee-notes" label={t('notes')}>
-            <Input id="guarantee-notes" {...register('notes')} />
-          </FormField>
-
-          <DialogFooter>
-            <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
-              {t('save')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={add.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
+          {t('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -330,7 +323,7 @@ function EditGuaranteeDialog({
     register,
     control,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<EditFormValues>({
     defaultValues: {
       status: guarantee.status as GuaranteeStatus,
@@ -358,88 +351,81 @@ function EditGuaranteeDialog({
   };
 
   return (
-    <Dialog
+    <FormDialog
       open
       onOpenChange={(next) => {
-        if (!next && !update.isPending) onClose();
+        if (!next) onClose();
+      }}
+      title={t('editTitle')}
+      size="md"
+      dirty={isDirty}
+      busy={update.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={(e) => {
+        void handleSubmit(onSubmit)(e);
       }}
     >
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (update.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (update.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('editTitle')}</DialogTitle>
+      <FormDialogBody className="space-y-4">
+        {update.isError ? <Alert variant="error" messages={[t('updateFailed')]} /> : null}
 
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
-        >
-          {update.isError ? <Alert variant="error" messages={[t('updateFailed')]} /> : null}
+        {/* The commercial facts are fixed after creation — shown for context, not editable. */}
+        <dl className="grid gap-3 rounded-panel border border-border bg-surface p-3 text-xs sm:grid-cols-2">
+          <div>
+            <dt className="text-muted-foreground">{t('type')}</dt>
+            <dd className="text-foreground">{guarantee.guaranteeType}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t('issuer')}</dt>
+            <dd className="text-foreground">{guarantee.issuer}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t('beneficiary')}</dt>
+            <dd className="text-foreground">{guarantee.beneficiary}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t('expiryDate')}</dt>
+            <dd className="text-foreground">{guarantee.expiryDate}</dd>
+          </div>
+        </dl>
 
-          {/* The commercial facts are fixed after creation — shown for context, not editable. */}
-          <dl className="grid gap-3 rounded-panel border border-border bg-surface p-3 text-xs sm:grid-cols-2">
-            <div>
-              <dt className="text-muted-foreground">{t('type')}</dt>
-              <dd className="text-foreground">{guarantee.guaranteeType}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">{t('issuer')}</dt>
-              <dd className="text-foreground">{guarantee.issuer}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">{t('beneficiary')}</dt>
-              <dd className="text-foreground">{guarantee.beneficiary}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">{t('expiryDate')}</dt>
-              <dd className="text-foreground">{guarantee.expiryDate}</dd>
-            </div>
-          </dl>
+        <FormField htmlFor="guarantee-status" label={t('status')} error={errors.status?.message}>
+          <Controller
+            control={control}
+            name="status"
+            render={({ field }) => (
+              <Select
+                id="guarantee-status"
+                name={field.name}
+                value={field.value}
+                onChange={(value) => {
+                  field.onChange(value as GuaranteeStatus);
+                }}
+              >
+                {GUARANTEE_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {t(`statuses.${status}`)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          />
+        </FormField>
 
-          <FormField htmlFor="guarantee-status" label={t('status')} error={errors.status?.message}>
-            <Controller
-              control={control}
-              name="status"
-              render={({ field }) => (
-                <Select
-                  id="guarantee-status"
-                  name={field.name}
-                  value={field.value}
-                  onChange={(value) => {
-                    field.onChange(value as GuaranteeStatus);
-                  }}
-                >
-                  {GUARANTEE_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {t(`statuses.${status}`)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-          </FormField>
+        <FormField htmlFor="guarantee-notes" label={t('notes')}>
+          <Input id="guarantee-notes" {...register('notes')} />
+        </FormField>
+      </FormDialogBody>
 
-          <FormField htmlFor="guarantee-notes" label={t('notes')}>
-            <Input id="guarantee-notes" {...register('notes')} />
-          </FormField>
-
-          <DialogFooter>
-            <Button type="submit" loading={update.isPending} loadingText={tCommon('loading')}>
-              {tCommon('save')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={update.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={update.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" loading={update.isPending} loadingText={tCommon('loading')}>
+          {tCommon('save')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
