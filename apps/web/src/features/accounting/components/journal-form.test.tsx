@@ -286,10 +286,17 @@ describe('JournalForm', () => {
     renderWithProviders(<JournalForm />);
 
     await screen.findByLabelText('Account 1');
-    expect(screen.getByRole('button', { name: 'Remove line 1' })).toBeDisabled();
+    // At the floor the control is withheld rather than offered and refused.
+    expect(screen.queryAllByRole('button', { name: 'Remove line 1' })).toHaveLength(0);
 
     await user.click(screen.getByRole('button', { name: 'Add line' }));
-    expect(screen.getByRole('button', { name: 'Remove line 1' })).toBeEnabled();
+    // The line editor renders the button once for the phone card and once for the table row.
+    const remove = screen.getAllByRole('button', { name: 'Remove line 1' });
+    expect(remove.length).toBeGreaterThan(0);
+    remove.forEach((button) => expect(button).toBeEnabled());
+
+    await user.click(remove[0]!);
+    expect(screen.queryByLabelText('Account 3')).not.toBeInTheDocument();
   });
 
   it('surfaces a save failure without losing what was typed', async () => {
@@ -303,6 +310,53 @@ describe('JournalForm', () => {
 
     expect(await screen.findByText('Could not save the journal.')).toBeInTheDocument();
     expect(screen.getByLabelText('Description')).toHaveValue('January office rent');
+  });
+
+  it('finds an account by code or by name in the searchable picker', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<JournalForm />);
+
+    await user.click(await screen.findByRole('combobox', { name: 'Account 1' }));
+    const search = await screen.findByPlaceholderText('Search by code or name');
+
+    await user.type(search, '210');
+    expect(screen.getByRole('option', { name: '21000 — Accrued Liabilities' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Office Expense/ })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'office');
+    expect(screen.getByRole('option', { name: '60100 — Office Expense' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Accrued Liabilities/ })).not.toBeInTheDocument();
+
+    // A control account stays out of the list however it is searched for.
+    await user.clear(search);
+    await user.type(search, 'receivable');
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    expect(screen.getByText('No postable account matches.')).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'office');
+    await user.click(screen.getByRole('option', { name: '60100 — Office Expense' }));
+    expect(screen.getByRole('combobox', { name: 'Account 1' })).toHaveTextContent('60100 — Office Expense');
+  });
+
+  it('shows the difference in the balance bar until the sides agree, then Balanced', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<JournalForm />);
+
+    await screen.findByLabelText('Account 1');
+    const bar = screen.getByRole('status', { name: 'Journal balance' });
+
+    await user.type(screen.getByLabelText('Debit 1'), '300.00');
+    await user.type(screen.getByLabelText('Credit 2'), '120.00');
+    expect(bar).toHaveTextContent('Out of balance by');
+    expect(bar).toHaveTextContent('$180.00');
+    expect(bar).not.toHaveTextContent('Balanced');
+
+    await user.clear(screen.getByLabelText('Credit 2'));
+    await user.type(screen.getByLabelText('Credit 2'), '300.00');
+    expect(bar).toHaveTextContent('Balanced');
+    expect(bar).not.toHaveTextContent('$180.00');
   });
 
 });

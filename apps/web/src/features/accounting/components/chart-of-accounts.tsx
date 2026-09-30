@@ -3,23 +3,23 @@
 import { useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Ellipsis } from 'lucide-react';
+import { Ellipsis, ListTree } from 'lucide-react';
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  EmptyState,
   FilterBar,
   FilterField,
-  Input,
   Select,
 } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
-import { accountMatches, accountName, currentVersion } from '../account-display';
+import { accountName, currentVersion } from '../account-display';
 import { useAccountingSetupStatus, useAccounts } from '../hooks/use-accounting';
 import type { Account, AccountClass } from '../types';
 import { AccountClassBadge, NormalBalanceLabel, PostingPolicyBadge } from './account-badges';
@@ -40,10 +40,10 @@ const ACCOUNT_CLASSES: AccountClass[] = [
 
 export function ChartOfAccounts() {
   const t = useTranslations('accounting.chartOfAccounts');
+  const tClass = useTranslations('accounting.accountClass');
 
   const accounts = useAccounts();
 
-  const [search, setSearch] = useState('');
   const [accountClass, setAccountClass] = useState<AccountClass | ''>('');
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -81,15 +81,13 @@ export function ChartOfAccounts() {
   }
 
   // Filtered in the browser: `GET /accounts` takes no query parameters and a chart of accounts
-  // is a few hundred rows, so the whole thing is already here.
+  // is a few hundred rows, so the whole thing is already here. Text search (code, name,
+  // subtype) is the grid's own; this only narrows by class.
   const visible = useMemo(() => {
     const all = accounts.data ?? [];
-    return all.filter((account) => {
-      if (!accountMatches(account, search)) return false;
-      if (!accountClass) return true;
-      return currentVersion(account)?.accountClass === accountClass;
-    });
-  }, [accounts.data, search, accountClass]);
+    if (!accountClass) return all;
+    return all.filter((account) => currentVersion(account)?.accountClass === accountClass);
+  }, [accounts.data, accountClass]);
 
   const columns: GridColumn<Account>[] = [
     {
@@ -127,6 +125,7 @@ export function ChartOfAccounts() {
     {
       key: 'subtype',
       header: t('colSubtype'),
+      plainValue: (account) => currentVersion(account)?.accountSubtype ?? '',
       render: (account) => (
         <span className="text-xs text-muted-foreground">
           {currentVersion(account)?.accountSubtype ?? '—'}
@@ -231,52 +230,44 @@ export function ChartOfAccounts() {
         label={t('title')}
         isLoading={accounts.isPending}
         isError={accounts.isError}
-        errorMessage={t('empty')}
+        // A failed load is not an empty chart: saying "No accounts yet" here would send an
+        // administrator to install a chart the organisation may already have.
+        errorMessage={t('loadFailed')}
+        onRetry={() => void accounts.refetch()}
         emptyState={
           (accounts.data?.length ?? 0) === 0 ? (
-            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-                {t('emptyHint')}
-              </p>
-              {/* ADR-040: an empty chart is set up from the template in one step — importing or
-                  adding accounts one by one cannot create the control accounts posting needs. */}
-              {mayManage ? (
-                setupStatus.data?.canInstall ? (
-                  <div className="mt-4 flex justify-center">
+            <EmptyState
+              icon={<ListTree size={36} aria-hidden="true" />}
+              title={t('empty')}
+              description={t('emptyHint')}
+              // ADR-040: an empty chart is set up from the template in one step — importing or
+              // adding accounts one by one cannot create the control accounts posting needs.
+              action={
+                mayManage ? (
+                  setupStatus.data?.canInstall ? (
                     <Button type="button" onClick={() => setSettingUp(true)}>
                       {t('setUp')}
                     </Button>
-                  </div>
-                ) : setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
-                  <div className="mx-auto mt-4 max-w-prose text-start">
-                    <PartialSetupNotice records={setupStatus.data.existingRecords} />
-                  </div>
-                ) : null
-              ) : (
-                <p className="mx-auto mt-3 max-w-prose text-sm font-medium text-foreground">
-                  {t('emptyAdminOnly')}
-                </p>
-              )}
-            </div>
+                  ) : setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
+                    <div className="mx-auto max-w-prose text-start">
+                      <PartialSetupNotice records={setupStatus.data.existingRecords} />
+                    </div>
+                  ) : undefined
+                ) : (
+                  <p className="text-sm font-medium text-foreground">{t('emptyAdminOnly')}</p>
+                )
+              }
+            />
           ) : undefined
         }
+        searchLabel={t('searchLabel')}
+        searchPlaceholder={t('searchPlaceholder')}
         noMatchMessage={t('noMatches')}
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 50 }}
         toolbarActions={createAction}
         toolbarFilters={
           <FilterBar>
-            <FilterField id="coa-search" label={t('searchLabel')} grow>
-              <Input
-                id="coa-search"
-                type="search"
-                value={search}
-                placeholder={t('searchPlaceholder')}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </FilterField>
-
             <FilterField id="coa-class" label={t('filterByClass')}>
               <Select
                 id="coa-class"
@@ -286,17 +277,14 @@ export function ChartOfAccounts() {
                 <option value="">{t('allClasses')}</option>
                 {ACCOUNT_CLASSES.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {tClass(c)}
                   </option>
                 ))}
               </Select>
             </FilterField>
           </FilterBar>
         }
-        onClearFilters={() => {
-          setSearch('');
-          setAccountClass('');
-        }}
+        onClearFilters={() => setAccountClass('')}
       />
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('versionNote')}</p>

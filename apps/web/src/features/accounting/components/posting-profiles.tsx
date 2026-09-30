@@ -17,6 +17,7 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  Combobox,
   ConfirmDialog,
   DatePicker,
   DropdownMenu,
@@ -31,8 +32,8 @@ import {
   Input,
   OverflowGlyph,
   RowActions,
-  Select,
   StatusPill,
+  type ComboboxOption,
 } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -417,12 +418,9 @@ function useAccountOptions(accounts: readonly Account[]): AccountOption[] {
 }
 
 /**
- * A searchable account picker that works inside a modal dialog: a filter field narrowing a
- * `Select` grouped by class.
- *
- * Not `Combobox` (nor a `Select` long enough to become one): its list is portalled outside the
- * dialog, beneath the overlay and outside the dialog's focus trap, so inside a `FormDialog` it
- * can be neither clicked nor searched. `Select` is a Radix layer and cooperates with the dialog.
+ * A searchable account picker, grouped by class. `Combobox` portals its list into the dialog it
+ * sits in (see `@erp/ui` portal-container), so it can be clicked and searched inside a
+ * `FormDialog` — one search field, rather than a filter box stacked over a dropdown.
  */
 function AccountPicker({
   id,
@@ -439,50 +437,33 @@ function AccountPicker({
 }) {
   const t = useTranslations('accounting.postingProfiles.create');
   const tClass = useTranslations('accounting.accountClass');
-  const [query, setQuery] = useState('');
 
-  const q = query.trim().toLowerCase();
-  // The chosen account stays listed whatever the filter, so the field never shows a value its
-  // own list does not contain.
-  const shown = options.filter(
-    (option) => !q || option.value === value || option.label.toLowerCase().includes(q),
+  // Grouped in class order; Combobox renders a group heading wherever the group changes.
+  const grouped = useMemo<ComboboxOption[]>(
+    () =>
+      PROFILE_TARGET_CLASSES.flatMap((accountClass) =>
+        options
+          .filter((option) => option.accountClass === accountClass)
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            group: tClass(accountClass),
+          })),
+      ),
+    [options, tClass],
   );
-  const groups = PROFILE_TARGET_CLASSES.map((accountClass) => ({
-    accountClass,
-    options: shown.filter((option) => option.accountClass === accountClass),
-  })).filter((group) => group.options.length > 0);
 
   return (
-    <div className="space-y-2">
-      <Input
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={t('accountSearch')}
-        aria-label={t('accountSearch')}
-        aria-invalid={false}
-        aria-describedby={undefined}
-        disabled={disabled}
-        autoComplete="off"
-      />
-      <Select id={id} searchable={false} value={value} onChange={onChange} disabled={disabled}>
-        <option value="" disabled>
-          {t('accountPlaceholder')}
-        </option>
-        {groups.map((group) => (
-          <optgroup key={group.accountClass} label={tClass(group.accountClass)}>
-            {group.options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </Select>
-      {q && shown.length === 0 ? (
-        <p className="text-caption text-muted-foreground">{t('accountEmpty')}</p>
-      ) : null}
-    </div>
+    <Combobox
+      id={id}
+      value={value}
+      onChange={onChange}
+      options={grouped}
+      placeholder={t('accountPlaceholder')}
+      searchPlaceholder={t('accountSearch')}
+      emptyLabel={t('accountEmpty')}
+      disabled={disabled}
+    />
   );
 }
 

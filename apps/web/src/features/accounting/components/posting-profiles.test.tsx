@@ -202,7 +202,7 @@ describe('PostingProfiles — creating', () => {
     expect(await screen.findByText('Posting profile SITE_STEEL created')).toBeInTheDocument();
   });
 
-  it('narrows the account list with the search field', async () => {
+  it("narrows the account list with the picker's own search, inside the dialog", async () => {
     const user = userEvent.setup();
     renderWithProviders(<PostingProfiles />, { permissions: MANAGE });
 
@@ -210,13 +210,13 @@ describe('PostingProfiles — creating', () => {
     await user.click(screen.getByRole('button', { name: 'New posting profile' }));
     const dialog = await screen.findByRole('dialog', { name: 'New posting profile' });
 
-    await user.type(within(dialog).getByLabelText('Search by code or name'), 'rent');
-    await openSelect(user, within(dialog).getByLabelText('Posts to account'));
-    const offered = screen
+    await user.click(within(dialog).getByLabelText('Posts to account'));
+    // One search field — the list's own — rather than a filter box stacked over a dropdown.
+    await user.type(within(dialog).getByPlaceholderText('Search by code or name'), 'rent');
+    const offered = within(dialog)
       .getAllByRole('option')
-      .filter((o) => o.getAttribute('data-value') !== '')
-      .map((o) => o.textContent);
-    expect(offered.filter((text) => text !== 'Choose an account')).toEqual(['61100 · Office rent']);
+      .map((o) => o.getAttribute('data-value'));
+    expect(offered).toEqual(['61100']);
   });
 
   it('refuses a code already in use before asking the server', async () => {
