@@ -1,15 +1,25 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { chooseOption } from '@/test/choose-option';
-import { listAccounts } from '@/features/accounting/api/accounting-api';
+import { getAccountingSetupStatus, listAccounts } from '@/features/accounting/api/accounting-api';
 import type { Account, AccountVersion } from '@/features/accounting/types';
 
 import { ChartOfAccounts } from './chart-of-accounts';
 
-vi.mock('@/features/accounting/api/accounting-api', () => ({ listAccounts: vi.fn() }));
+vi.mock('@/features/accounting/api/accounting-api', () => ({
+  listAccounts: vi.fn(),
+  getAccountingSetupStatus: vi.fn(),
+}));
+
+const nav = vi.hoisted(() => ({ searchParams: new URLSearchParams(), replace: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => nav.searchParams,
+  useRouter: () => ({ replace: nav.replace, push: vi.fn() }),
+  usePathname: () => '/finance/accounting/chart-of-accounts',
+}));
 
 function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
   return {
@@ -66,6 +76,16 @@ function apControl(): Account {
 }
 
 beforeEach(() => {
+  nav.searchParams = new URLSearchParams();
+  nav.replace.mockReset();
+  vi.mocked(getAccountingSetupStatus).mockReset();
+  vi.mocked(getAccountingSetupStatus).mockResolvedValue({
+    canInstall: true,
+    reason: 'READY',
+    accountCount: 0,
+    hasFiscalYear: false,
+    hasPolicies: false,
+  });
   vi.mocked(listAccounts).mockReset();
   vi.mocked(listAccounts).mockResolvedValue([account(), apControl()]);
 });
@@ -146,6 +166,70 @@ describe('ChartOfAccounts', () => {
 
     expect(await screen.findByText('No accounts yet.')).toBeInTheDocument();
     expect(screen.getByText(/accounting has not been set up/)).toBeInTheDocument();
+  });
+
+  /** ADR-040: the old copy claimed the chart "is seeded when the organisation is provisioned". */
+  it('does not claim the chart is seeded at provisioning', async () => {
+    vi.mocked(listAccounts).mockResolvedValue([]);
+    renderWithProviders(<ChartOfAccounts />);
+
+    await screen.findByText('No accounts yet.');
+    expect(screen.queryByText(/seeded when the organisation is provisioned/)).not.toBeInTheDocument();
+  });
+
+  it('offers an administrator the one-step setup on an empty chart', async () => {
+    vi.mocked(listAccounts).mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderWithProviders(<ChartOfAccounts />, {
+      permissions: ['view:accounting', 'manage:accounting'],
+    });
+
+    await screen.findByText('No accounts yet.');
+    expect(screen.queryByText('An administrator has to set up accounting.')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Set up accounting' }));
+    expect(await screen.findByRole('dialog', { name: 'Set up accounting' })).toBeInTheDocument();
+  });
+
+  it('opens the setup dialog from the guide link, and drops the parameter on close', async () => {
+    vi.mocked(listAccounts).mockResolvedValue([]);
+    nav.searchParams = new URLSearchParams('setup=template');
+    const user = userEvent.setup();
+    renderWithProviders(<ChartOfAccounts />, {
+      permissions: ['view:accounting', 'manage:accounting'],
+    });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Set up accounting' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    expect(nav.replace).toHaveBeenCalledWith('/finance/accounting/chart-of-accounts');
+    expect(screen.queryByRole('dialog', { name: 'Set up accounting' })).not.toBeInTheDocument();
+  });
+
+  it('ignores the guide link once the chart has accounts', async () => {
+    nav.searchParams = new URLSearchParams('setup=template');
+    vi.mocked(getAccountingSetupStatus).mockResolvedValue({
+      canInstall: false,
+      reason: 'CHART_NOT_EMPTY',
+      accountCount: 2,
+      hasFiscalYear: true,
+      hasPolicies: true,
+    });
+    renderWithProviders(<ChartOfAccounts />, {
+      permissions: ['view:accounting', 'manage:accounting'],
+    });
+
+    await screen.findByText('10100');
+    await waitFor(() => expect(getAccountingSetupStatus).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog', { name: 'Set up accounting' })).not.toBeInTheDocument();
+  });
+
+  it('tells anyone else an administrator has to set it up', async () => {
+    vi.mocked(listAccounts).mockResolvedValue([]);
+    renderWithProviders(<ChartOfAccounts />, { permissions: ['view:accounting'] });
+
+    expect(await screen.findByText('An administrator has to set up accounting.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up accounting' })).not.toBeInTheDocument();
   });
 
 

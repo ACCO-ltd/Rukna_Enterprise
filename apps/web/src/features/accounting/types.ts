@@ -548,10 +548,9 @@ export interface ReverseInvoicePayload {
 /**
  * A version of a posting profile — the GL account it resolves to, over a date range.
  *
- * `effectiveTo` is **exclusive**: a version covers `[effectiveFrom, effectiveTo)`. The
- * controller returns only the newest version (`orderBy effectiveFrom desc, take: 1`), so a
- * profile whose newest version has not started yet still arrives as that version, and there
- * is no way to ask which one applies on a given date.
+ * `effectiveTo` is **exclusive**: a version covers `[effectiveFrom, effectiveTo)`. Since ADR-040
+ * the controller returns every version, newest first, plus `currentAccount` on the profile for the
+ * one in force today — so a re-point scheduled for next month no longer hides today's account.
  */
 export interface PostingProfileVersion {
   id: string;
@@ -561,6 +560,9 @@ export interface PostingProfileVersion {
   accountId: string;
   effectiveFrom: string;
   effectiveTo: string | null;
+  /** ADR-040: the account this version points at, resolved server-side. Null if it was removed. */
+  accountCode?: string | null;
+  accountName?: string | null;
 }
 
 /**
@@ -586,7 +588,13 @@ export interface PostingProfile {
   id: string;
   code: string;
   status: 'ACTIVE' | 'INACTIVE';
+  /**
+   * Since ADR-040 every version, newest first — `versions[0]` is still the latest, which may be
+   * future-dated after a re-point.
+   */
   versions: PostingProfileVersion[];
+  /** ADR-040: the account the version in force today points at. Null when none is in force yet. */
+  currentAccount?: { id: string; code: string; name: string; accountClass: AccountClass } | null;
 }
 
 // ─── Bank accounts ───────────────────────────────────────────────────────────────

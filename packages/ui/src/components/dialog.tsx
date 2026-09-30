@@ -3,6 +3,7 @@
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 
+import { PortalContainerContext } from '../lib/portal-container';
 import { cn } from '../lib/utils';
 
 /**
@@ -110,20 +111,32 @@ export const DialogContent = React.forwardRef<
     ref,
   ) => {
     const returnFocus = useReturnFocus(onOpenAutoFocus, onCloseAutoFocus);
+    // Floating panels inside the dialog (the Combobox list) portal here — see portal-container.ts.
+    const [portalContainer, setPortalContainer] = React.useState<HTMLDivElement | null>(null);
+    const composedRef = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        setPortalContainer(node);
+        if (typeof ref === 'function') ref(node);
+        else if (ref) ref.current = node;
+      },
+      [ref],
+    );
     return (
       <DialogPrimitive.Portal>
         {/* Blurred as well as dimmed. A flat scrim separates the dialog from the page; blurring
         what is behind it also stops a dense table competing for attention through the tint. */}
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm" />
         <DialogPrimitive.Content
-          ref={ref}
+          ref={composedRef}
           // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
           // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
           // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
           className={cn(
             'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
             'rounded-t-container sm:rounded-container',
-            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-8',
+            // Centred without a translate — see form-dialog.tsx: a transform would clip the panels
+            // that portal into the dialog.
+            'sm:inset-0 sm:m-auto sm:h-fit sm:w-full sm:p-8',
             dialogSizeClass[size],
             className,
           )}
@@ -131,7 +144,7 @@ export const DialogContent = React.forwardRef<
           onCloseAutoFocus={returnFocus.onCloseAutoFocus}
           {...props}
         >
-          {children}
+          <PortalContainerContext.Provider value={portalContainer}>{children}</PortalContainerContext.Provider>
 
           {/* Routed through onOpenChange like every other dismissal, so a dialog that blocks
           closing while a request is in flight blocks this too, without knowing it exists. */}

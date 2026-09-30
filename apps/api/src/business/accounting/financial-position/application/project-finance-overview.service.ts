@@ -15,6 +15,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProjectProcurementService } from '../../../procurement/project-procurement/application/project-procurement.service.js';
 import { AccountingReadinessService } from '../../accounting-core/application/accounting-readiness.service.js';
+import { SETUP_HREF } from '../../accounting-core/application/accounting-guide.service.js';
 import { ProjectCostReconciliationService } from './project-cost-reconciliation.service.js';
 import { ProjectFinancialPositionRepository } from '../infrastructure/project-financial-position.repository.js';
 
@@ -24,9 +25,16 @@ const ACTIVITY_LIMIT = 8;
 
 /** Where an administrator fixes an accounting-readiness blocker. */
 export function accountingSetupHref(code: string | undefined): string {
-  return code === 'NO_OPEN_PERIOD'
-    ? '/finance/accounting/periods'
-    : '/finance/accounting/chart-of-accounts';
+  switch (code) {
+    case 'NO_OPEN_PERIOD':
+      return '/finance/accounting/periods';
+    case 'NO_CHART_OF_ACCOUNTS':
+      return SETUP_HREF; // ADR-040: an empty chart is installed in one step
+    case 'NO_POSTING_PROFILES':
+      return '/finance/accounting/posting-profiles';
+    default:
+      return '/finance/accounting/chart-of-accounts';
+  }
 }
 
 /**

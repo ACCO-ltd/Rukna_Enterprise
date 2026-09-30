@@ -21,6 +21,8 @@ import { SupplierBillController } from './presentation/supplier-bill.controller.
 import { SupplierPaymentController } from './presentation/supplier-payment.controller.js';
 import { SupplierController } from './presentation/supplier.controller.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
+import { PostingProfileRepository } from './infrastructure/posting-profile.repository.js';
+import { PostingProfileService } from './application/posting-profile.service.js';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { PostingProfileController } from './presentation/posting-profile.control
     SupplierRepository,
     PurchaseAllocationRepository,
     BuyerAdvanceRepository,
+    PostingProfileRepository,
+    PostingProfileService,
     SupplierBillService,
     SupplierBillDocumentService,
     SupplierPaymentService,

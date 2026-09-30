@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
+import { PortalContainerContext } from '../lib/portal-container';
 import { cn } from '../lib/utils';
 import { useDialogDismissGuard } from '../lib/use-dialog-dismiss-guard';
 import { ConfirmDialog } from './confirm-dialog';
@@ -124,6 +125,12 @@ export function FormDialog({
   children,
 }: FormDialogProps) {
   const contentRef = React.useRef<HTMLDivElement>(null);
+  // Floating panels inside the dialog (the Combobox list) portal here — see portal-container.ts.
+  const [portalContainer, setPortalContainer] = React.useState<HTMLDivElement | null>(null);
+  const setContentRef = React.useCallback((node: HTMLDivElement | null) => {
+    contentRef.current = node;
+    setPortalContainer(node);
+  }, []);
   const dismiss = React.useCallback(() => onOpenChange(false), [onOpenChange]);
   const guard = useDialogDismissGuard(busy, dismiss, { dirty, open });
 
@@ -166,7 +173,7 @@ export function FormDialog({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm motion-safe:animate-enter-fade" />
         <DialogPrimitive.Content
-          ref={contentRef}
+          ref={setContentRef}
           data-size={size}
           aria-busy={busy || undefined}
           // Radix wires aria-describedby to the Description when there is one; with no subtitle
@@ -177,9 +184,12 @@ export function FormDialog({
             'motion-safe:animate-enter-fade',
             // Phones: the whole screen, header and footer still pinned.
             'inset-0 h-dvh w-dvw',
-            // sm+: centred, sized to content up to ~90dvh.
-            'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-auto sm:max-h-[90dvh] sm:w-[calc(100vw-2rem)]',
-            'sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-container sm:border sm:border-border',
+            // sm+: centred, sized to content up to ~90dvh. Centred with inset-0 + margin auto, not a
+            // translate: a transform would make this the containing block of the fixed-position
+            // panels that portal into it (Combobox list), and `overflow-hidden` would then clip them
+            // at the dialog's edge.
+            'sm:inset-0 sm:m-auto sm:h-fit sm:max-h-[90dvh] sm:w-[calc(100vw-2rem)]',
+            'sm:rounded-container sm:border sm:border-border',
             formDialogSizeClass[size],
             className,
           )}
@@ -214,7 +224,7 @@ export function FormDialog({
             </DialogPrimitive.Close>
           </div>
 
-          {inner}
+          <PortalContainerContext.Provider value={portalContainer}>{inner}</PortalContainerContext.Provider>
 
           {open ? (
             <ConfirmDialog

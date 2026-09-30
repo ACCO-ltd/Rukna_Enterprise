@@ -139,6 +139,37 @@ function bill(overrides: Partial<SupplierBill> = {}): SupplierBill {
 // ─── Expense profile filtering ───────────────────────────────────────────────────
 
 describe('expenseProfiles', () => {
+  it('shows the account in force today, not a re-point scheduled for later', () => {
+    const repointed: PostingProfile = {
+      ...profile('MATERIAL_PURCHASE', COGS.id, 'Material Purchase (COGS)'),
+      versions: [
+        {
+          id: 'v2',
+          versionNumber: 2,
+          name: 'Materials (from next year)',
+          description: null,
+          accountId: 'somewhere-else',
+          effectiveFrom: '2999-01-01',
+          effectiveTo: null,
+        },
+        {
+          id: 'v1',
+          versionNumber: 1,
+          name: 'Material Purchase (COGS)',
+          description: null,
+          accountId: COGS.id,
+          effectiveFrom: '2026-01-01',
+          effectiveTo: '2999-01-01',
+        },
+      ],
+    };
+
+    const [only] = expenseProfiles([repointed], ACCOUNTS);
+
+    expect(only?.account.id).toBe(COGS.id);
+    expect(only?.name).toBe('Material Purchase (COGS)');
+  });
+
   /**
    * The one that matters. The seed creates PROJECT_REVENUE pointing at an INCOME account;
    * offering it on a bill line would debit revenue. The journal balances, the trial balance

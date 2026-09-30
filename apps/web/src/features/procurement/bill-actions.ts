@@ -286,19 +286,33 @@ export interface ExpenseProfile {
  * Dropped silently on purpose: "PROJECT_REVENUE — not selectable" invites the question of how
  * to select it, and the answer is that it is never right on this form.
  */
+/**
+ * The version covering `day` (ISO date) — `effectiveTo` is exclusive. Versions arrive newest first.
+ */
+export function versionInForce<V extends { effectiveFrom: string; effectiveTo: string | null }>(
+  versions: readonly V[],
+  day: string,
+): V | undefined {
+  return versions.find(
+    (v) => v.effectiveFrom.slice(0, 10) <= day && (!v.effectiveTo || day < v.effectiveTo.slice(0, 10)),
+  );
+}
+
 export function expenseProfiles(
   profiles: readonly PostingProfile[],
   accounts: readonly Account[],
 ): ExpenseProfile[] {
   const byId = new Map(accounts.map((account) => [account.id, account]));
+  const today = new Date().toISOString().slice(0, 10);
 
   const usable: ExpenseProfile[] = [];
 
   for (const profile of profiles) {
     if (profile.status !== 'ACTIVE') continue;
 
-    // `take: 1` ordered by effectiveFrom desc, so index 0 is the newest version.
-    const version = profile.versions[0];
+    // The version in force today — not simply the newest: since ADR-040 a profile can carry a
+    // re-point scheduled for a later date, and the newest version would show that account early.
+    const version = versionInForce(profile.versions, today);
     if (!version) continue;
 
     const account = byId.get(version.accountId);

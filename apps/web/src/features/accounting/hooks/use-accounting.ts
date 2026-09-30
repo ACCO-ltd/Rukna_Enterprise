@@ -38,7 +38,23 @@ import {
   postJournal,
   reverseJournal,
   submitJournal,
+  createPostingProfile,
+  getAccountingSetupStatus,
+  getAccountingSetupTemplate,
+  repointPostingProfile,
+  runAccountingSetup,
+  setPostingProfileActive,
 } from '../api/accounting-api';
+import type {
+  AccountingSetupBody,
+  AccountingSetupResult,
+  SetupStatus,
+  SetupTemplate,
+} from '../accounting-setup';
+import type {
+  CreatePostingProfileBody,
+  RepointPostingProfileBody,
+} from '../posting-profile-setup';
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody, ImportChartResult, UpdateAccountBody } from '../coa-setup';
 import type { ProjectFinancialPositionResponse } from '@erp/types';
@@ -97,6 +113,9 @@ export const accountingKeys = {
     [...accountingKeys.all, 'ledger', accountId, fromDate, toDate] as const,
   monthlyPL: (fiscalYearId: string) => [...accountingKeys.all, 'monthly-pl', fiscalYearId] as const,
   closeGate: (periodId: string) => [...accountingKeys.all, 'close-gate', periodId] as const,
+  setupStatus: () => [...accountingKeys.all, 'setup-status'] as const,
+  setupTemplate: (vatRate: number, banks: number) =>
+    [...accountingKeys.all, 'setup-template', vatRate, banks] as const,
 };
 
 /**
@@ -614,3 +633,119 @@ const PERIOD_FEEDBACK: MutationFeedbackMeta = {
   },
   flashRow: false,
 };
+
+// ─── Posting profile management (ADR-040 §4) ─────────────────────────────────────
+
+/**
+ * Creating, re-pointing or (de)activating a profile invalidates the profile list and the guide —
+ * the setup cycle's "posting profiles" step reads whether any exist.
+ */
+function invalidatePostingProfiles(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: accountingKeys.postingProfiles() });
+  void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'guide'] });
+  void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'readiness'] });
+}
+
+export function useCreatePostingProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreatePostingProfileBody) => createPostingProfile(body),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.postingProfileCreated',
+        values: (_profile, body) => ({ code: (body as CreatePostingProfileBody).code }),
+      },
+    },
+    onSuccess: () => invalidatePostingProfiles(qc),
+  });
+}
+
+export function useRepointPostingProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: RepointPostingProfileBody }) =>
+      repointPostingProfile(id, body),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.postingProfileRepointed',
+        values: (_profile, variables) => ({
+          account: (variables as { body: RepointPostingProfileBody }).body.accountCode,
+        }),
+      },
+    },
+    onSuccess: () => invalidatePostingProfiles(qc),
+  });
+}
+
+export function useSetPostingProfileActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; code: string; active: boolean }) =>
+      setPostingProfileActive(id, active),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.postingProfileStatus',
+        values: (_profile, variables) => {
+          const { code, active } = variables as { code: string; active: boolean };
+          return { code, action: active ? 'reactivate' : 'deactivate' };
+        },
+      },
+      flashRow: (_profile, variables) => (variables as { id: string }).id,
+    },
+    onSuccess: () => invalidatePostingProfiles(qc),
+  });
+}
+
+// ─── Accounting setup from a template (ADR-040) ──────────────────────────────────
+
+/**
+ * Whether the one-step setup may still run. Only asked for by someone who could run it — the
+ * endpoint is an administrator question, and nobody else is offered the action.
+ */
+export function useAccountingSetupStatus(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<SetupStatus, Error> {
+  return useQuery({
+    queryKey: accountingKeys.setupStatus(),
+    queryFn: getAccountingSetupStatus,
+    enabled: options.enabled ?? true,
+  });
+}
+
+/** The template preview for the chosen VAT rate and bank count. Keyed on both. */
+export function useAccountingSetupTemplate(
+  params: { vatRate: number; banks: number },
+  options: { enabled?: boolean } = {},
+): UseQueryResult<SetupTemplate, Error> {
+  return useQuery({
+    queryKey: accountingKeys.setupTemplate(params.vatRate, params.banks),
+    queryFn: () => getAccountingSetupTemplate(params),
+    enabled: options.enabled ?? true,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Installing the template creates the chart, the profiles, the fiscal year and the bank
+ * accounts at once, so every accounting query — the guide and readiness included, which share
+ * the `accounting` root — is invalidated. It is the milestone of the whole module: the success
+ * dialog, not a toast.
+ */
+export function useRunAccountingSetup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AccountingSetupBody): Promise<AccountingSetupResult> =>
+      runAccountingSetup(body),
+    meta: {
+      successDialog: {
+        title: 'accounting.feedback.setupCompleteTitle',
+        description: 'accounting.feedback.setupCompleteBody',
+      },
+      flashRow: false,
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.all });
+      void qc.invalidateQueries({ queryKey: ['procurement'] });
+    },
+  });
+}

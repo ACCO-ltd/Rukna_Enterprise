@@ -83,6 +83,9 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     DocumentSequenceRepository,
     JournalRepository,
     PostingAccountResolver,
+    // ADR-040 one-step setup writes policy rows and bank accounts through these.
+    AccountingConfigurationRepository,
+    BankAccountRepository,
   ],
 })
 export class AccountingCoreModule {}

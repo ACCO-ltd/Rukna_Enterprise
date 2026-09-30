@@ -1350,6 +1350,28 @@ Supersede: explicit command swaps isEffective between old and new cert.
 
 ---
 
+### 6.13a Accounting setup from a template (ADR-040)
+
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `GET` | `/accounting/setup/template?vatRate=&banks=` | `view:accounting` | Preview: `{ templateId: 'CONSTRUCTION', version, accounts[], postingProfiles[] }`. `vatRate` > 0 adds 14100 (`conditional: 'VAT'`); `banks=n` adds placeholder rows 10100… named `Bank 1`… (`conditional: 'BANK'`). |
+| `GET` | `/accounting/setup/status` | `view:accounting` | `{ canInstall, reason: 'READY' \| 'CHART_NOT_EMPTY', accountCount, hasFiscalYear, hasPolicies }` |
+| `POST` | `/accounting/setup` | `manage:accounting` | Install in one transaction; `409 ACCOUNTING_ALREADY_SET_UP` if the org has any account |
+
+**Install — body:**
+```json
+{
+  "templateId": "CONSTRUCTION",
+  "vat": { "charged": true, "ratePercent": 5 },
+  "banks": [{ "accountName": "Salaam operating", "bankName": "Salaam Somali Bank", "accountNumber": "0012345" }],
+  "fiscalYear": { "year": 2026, "startMonth": 1 }
+}
+```
+
+Creates the six policy rows; the template chart (parent-first, effective from the fiscal-year start); banks as GL accounts 10100, 10101, … (max 20) each with a `BankAccount` (account number defaults to `Not recorded (<gl code>)`); `VAT{rate}_OUT` / `VAT{rate}_IN` tax codes + 14100 when VAT is charged; one posting profile per posting income/cost/expense account (`PROJECT_REVENUE`, `COST_<code>`, `EXP_<code>`, `INC_<code>`); fiscal year `FY2026` (or `FY2026/27` for a non-January start) with 12 OPEN periods; the JE/INV/RCP/BILL/PMT/CN number sequences; one `ACCOUNTING_SETUP_INSTALLED` audit event. Returns `{ accountsCreated, postingProfilesCreated, fiscalYear: { id, name }, bankAccountsCreated, taxCodesCreated }`. Validation failures → `400` (`ACCOUNTING_SETUP_INVALID` for service-level checks such as a missing VAT rate or a duplicated account number).
+
+---
+
 ### 6.14 Fiscal Years and Periods
 
 | Method | Path | Description |
@@ -1741,11 +1763,21 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 
 ### 6.23 Posting Profiles (AP)
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/posting-profiles` | List posting profiles (`?status=ACTIVE\|INACTIVE`) |
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `GET` | `/posting-profiles` | `manage:payable` OR `view:accounting` | List posting profiles (`?status=ACTIVE\|INACTIVE`) |
+| `POST` | `/posting-profiles` | `manage:accounting` | Create — body `{ code, name, accountCode, effectiveFrom? }` → 201 profile |
+| `POST` | `/posting-profiles/:id/versions` | `manage:accounting` | Re-point — body `{ name?, accountCode, effectiveFrom }` |
+| `POST` | `/posting-profiles/:id/deactivate` | `manage:accounting` | Deactivate (idempotent) |
+| `POST` | `/posting-profiles/:id/reactivate` | `manage:accounting` | Reactivate (idempotent) |
 
-> Posting profiles determine which expense GL account is debited when a supplier bill is posted. Each profile has a `code` (e.g. `GENERAL-EXPENSE`, `MATERIALS-EXPENSE`) that is referenced in supplier bill lines. The response includes the most recent active version for each profile.
+> Posting profiles determine which GL account a supplier bill line is debited to. Each profile has a `code` (A–Z, 0–9, `_`; e.g. `COST_51100` from the ADR-040 template) that supplier bill lines reference; the account is resolved from the version in force on the bill date.
+>
+> **Response item:** `{ id, organizationId, code, status, createdAt, createdBy, versions[], currentAccount }`. `versions` is the full history, newest first (`versions[0]` is the latest, as before), each with `accountCode` / `accountName` added. `currentAccount` is `{ id, code, name, accountClass }` of the version in force today, or `null`.
+>
+> **Create:** the account must be ACTIVE, open to posting (not a heading or control account) and INCOME / COST_OF_SALES / EXPENSE — else `400 POSTING_PROFILE_ACCOUNT_INVALID`. Duplicate code → `409 POSTING_PROFILE_CODE_TAKEN`. `effectiveFrom` defaults to today.
+>
+> **Re-point:** `effectiveFrom` must be after the latest version's `effectiveFrom` (`400 POSTING_PROFILE_VERSION_INVALID`), and something must change. `effectiveTo` is exclusive, so the previous version is closed **at** the new `effectiveFrom` (its last day in force is the day before). Posted documents keep the version they posted with. All commands are audited (`POSTING_PROFILE_*`).
 
 ---
 
