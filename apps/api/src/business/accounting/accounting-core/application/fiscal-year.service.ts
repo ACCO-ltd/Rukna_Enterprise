@@ -4,16 +4,27 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { FiscalYearRepository } from '../infrastructure/fiscal-year.repository.js';
 import { AccountRepository } from '../infrastructure/account.repository.js';
 import { AccountingConfigurationService } from './accounting-configuration.service.js';
+import { buildFiscalYearPlan } from '../domain/fiscal-calendar.js';
 
 export interface CreateFiscalYearDto {
   year: number;
   retainedEarningsAccountCode: string;
 }
 
-const MONTH_NAMES = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
-];
+export function fiscalYearOverlap(name: string, existing: string | null) {
+  return new ConflictException({
+    errorCode: 'FISCAL_YEAR_OVERLAP',
+    message: existing
+      ? `${name} overlaps the existing fiscal year ${existing}.`
+      : `${name} overlaps an existing fiscal year.`,
+  });
+}
+
+/** The accounting_periods non-overlap exclusion constraint (migration 20260929120000). */
+export function isPeriodOverlapViolation(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.includes('ux_accounting_periods_no_overlap') || text.includes('23P01');
+}
 
 @Injectable()
 export class FiscalYearService {
@@ -28,32 +39,37 @@ export class FiscalYearService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
-    const fyName = `FY${dto.year}`;
-    const existing = await this.repo.findByName(prisma, orgId, fyName);
-    if (existing) throw new ConflictException(`Fiscal year ${fyName} already exists`);
+    const calPolicy = await this.config.getFiscalCalendarPolicy(orgId);
+    // Shared with the one-step accounting setup (ADR-040) so both cut the year identically.
+    const plan = buildFiscalYearPlan(dto.year, calPolicy.fiscalYearStartMonth);
+
+    const existing = await this.repo.findByName(prisma, orgId, plan.name);
+    if (existing) throw new ConflictException(`Fiscal year ${plan.name} already exists`);
+
+    // L4: the period table's exclusion constraint would reject an overlapping calendar with a raw
+    // 500; answer the business error first (and again below if a concurrent create wins).
+    const overlapping = await this.repo.findOverlapping(prisma, orgId, plan.startDate, plan.endDate);
+    if (overlapping) throw fiscalYearOverlap(plan.name, overlapping.name);
 
     const retainedAccount = await this.accountRepo.findByCode(prisma, orgId, dto.retainedEarningsAccountCode);
     if (!retainedAccount) {
       throw new NotFoundException(`Retained earnings account "${dto.retainedEarningsAccountCode}" not found`);
     }
 
-    const calPolicy = await this.config.getFiscalCalendarPolicy(orgId);
-    const startMonth = calPolicy.fiscalYearStartMonth;
-
-    const fyStart = new Date(dto.year, startMonth - 1, 1);
-    const fyEnd = new Date(dto.year + (startMonth === 1 ? 0 : 1), (startMonth - 2 + 12) % 12, 0);
-
-    const periods = this.buildPeriods(orgId, dto.year, startMonth);
-
-    return this.repo.createWithPeriods(prisma, {
-      organizationId: orgId,
-      name: fyName,
-      startDate: fyStart,
-      endDate: fyEnd,
-      retainedEarningsAccountId: retainedAccount.id,
-      createdBy: userId,
-      periods,
-    });
+    try {
+      return await this.repo.createWithPeriods(prisma, {
+        organizationId: orgId,
+        name: plan.name,
+        startDate: plan.startDate,
+        endDate: plan.endDate,
+        retainedEarningsAccountId: retainedAccount.id,
+        createdBy: userId,
+        periods: plan.periods.map((p) => ({ ...p, organizationId: orgId })),
+      });
+    } catch (err) {
+      if (isPeriodOverlapViolation(err)) throw fiscalYearOverlap(plan.name, null);
+      throw err;
+    }
   }
 
   async findAll(identity: RequestIdentity) {
@@ -71,24 +87,5 @@ export class FiscalYearService {
   async findPeriodCovering(identity: RequestIdentity, date: Date) {
     const prisma = this.tenancyService.getClient();
     return this.repo.findPeriodCovering(prisma, identity.activeOrganizationId, date);
-  }
-
-  private buildPeriods(organizationId: string, year: number, startMonth: number) {
-    return Array.from({ length: 12 }, (_, i) => {
-      const monthIndex = (startMonth - 1 + i) % 12;
-      const periodYear = monthIndex < startMonth - 1 ? year + 1 : year;
-      const startDate = new Date(periodYear, monthIndex, 1);
-      const endDate = new Date(periodYear, monthIndex + 1, 0);
-
-      return {
-        organizationId,
-        periodNumber: i + 1,
-        name: `${MONTH_NAMES[monthIndex]} ${periodYear}`,
-        startDate,
-        endDate,
-        periodType: 'OPERATING' as const,
-        status: 'OPEN' as const,
-      };
-    });
   }
 }

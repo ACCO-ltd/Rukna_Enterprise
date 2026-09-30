@@ -69,6 +69,8 @@ Last verified against code: **2026-08-14** (branch `main`); access-governance + 
 | Capability | Backend | Frontend | Status | Notes |
 |---|---|---|---|---|
 | Chart of Accounts + fiscal calendar | ✓ | ✓ | INTEGRATED | Account/period versions, control accounts. |
+| Accounting setup from a template (ADR-040) | ✓ | in progress | BACKEND | `POST /accounting/setup` installs policies, the construction chart, VAT codes, posting profiles, first fiscal year (12 OPEN periods), banks and number sequences in one transaction, only while the chart is empty; `GET /accounting/setup/template` previews it, `GET /accounting/setup/status`. Nothing is seeded at provisioning — `accounting-phase1.seed.ts` is dev-only. Chart content pending Eng Ahmed / ACCO accountant sign-off. |
+| Posting profile management (ADR-040 §4) | ✓ | in progress | BACKEND | Create / re-point (effective-dated version, history kept) / deactivate / reactivate, `manage:accounting`, audited. `GET /posting-profiles` now returns full version history + `currentAccount`. |
 | Double-entry posting engine | ✓ | — | BACKEND | `AccountingPostingService`; ∑Dr=∑Cr enforced. |
 | Manual Journals | ✓ | ✓ | INTEGRATED | DRAFT→…→POSTED→REVERSED, four-eyes. |
 | Accounts Receivable (invoice from IPC, receipts) | ✓ | ✓ | INTEGRATED | Invoices + customer receipts + allocation. |

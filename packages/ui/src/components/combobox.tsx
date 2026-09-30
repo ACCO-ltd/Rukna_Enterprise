@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as PopperPrimitive from '@radix-ui/react-popper';
 import * as PortalPrimitive from '@radix-ui/react-portal';
 
+import { usePortalContainer } from '../lib/portal-container';
 import { cn } from '../lib/utils';
 
 /**
@@ -125,6 +126,7 @@ export function Combobox({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const portalContainer = usePortalContainer();
 
   const selected = options.find((option) => option.value === value);
 
@@ -246,7 +248,9 @@ export function Combobox({
       </PopperPrimitive.Anchor>
 
       {open ? (
-        <PortalPrimitive.Portal>
+        // Inside a modal dialog the list portals into the dialog, not the body — the dialog makes
+        // everything outside it inert (see portal-container.ts).
+        <PortalPrimitive.Portal container={portalContainer ?? undefined}>
           <PopperPrimitive.Content
             ref={panelRef}
             id={`${id}-panel`}
@@ -255,7 +259,7 @@ export function Combobox({
             sideOffset={4}
             avoidCollisions
             onPlaced={focusInput}
-            className="z-30 w-(--radix-popper-anchor-width) overflow-hidden rounded-panel border border-border bg-surface-elevated shadow-e3"
+            className="z-50 w-(--radix-popper-anchor-width) overflow-hidden rounded-panel border border-border bg-surface-elevated shadow-e3"
           >
             <div className="border-b border-border p-2">
               <input

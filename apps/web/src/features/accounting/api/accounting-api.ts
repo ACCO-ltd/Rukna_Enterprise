@@ -2,9 +2,19 @@ import type { ProjectFinancialPositionResponse } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
+import type {
+  AccountingSetupBody,
+  AccountingSetupResult,
+  SetupStatus,
+  SetupTemplate,
+} from '../accounting-setup';
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody, ImportChartResult, UpdateAccountBody } from '../coa-setup';
 import type { OpeningBalanceBody } from '../opening-balance';
+import type {
+  CreatePostingProfileBody,
+  RepointPostingProfileBody,
+} from '../posting-profile-setup';
 import type {
   Account,
   AccountLedger,
@@ -201,6 +211,80 @@ export function removeSignatory(bankAccountId: string, userId: string): Promise<
  */
 export function listPostingProfiles(): Promise<PostingProfile[]> {
   return apiClient<PostingProfile[]>('/posting-profiles');
+}
+
+/**
+ * `POST /posting-profiles` (ADR-040) — a new profile and its first version.
+ *
+ * 409 `POSTING_PROFILE_CODE_TAKEN` when the code exists; 400 `POSTING_PROFILE_ACCOUNT_INVALID`
+ * when the account is not an active posting account in INCOME / COST_OF_SALES / EXPENSE.
+ */
+export function createPostingProfile(body: CreatePostingProfileBody): Promise<PostingProfile> {
+  return apiClient<PostingProfile>('/posting-profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * `POST /posting-profiles/:id/versions` — re-points the profile from `effectiveFrom`. The
+ * previous version is closed, not replaced, so documents already posted keep their account.
+ */
+export function repointPostingProfile(
+  id: string,
+  body: RepointPostingProfileBody,
+): Promise<PostingProfile> {
+  return apiClient<PostingProfile>(`/posting-profiles/${id}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** `POST /posting-profiles/:id/deactivate` | `/reactivate`. */
+export function setPostingProfileActive(id: string, active: boolean): Promise<PostingProfile> {
+  return apiClient<PostingProfile>(
+    `/posting-profiles/${id}/${active ? 'reactivate' : 'deactivate'}`,
+    { method: 'POST' },
+  );
+}
+
+// ─── Accounting setup from a template (ADR-040) ─────────────────────────────────
+
+/** `GET /accounting/setup/status` — whether the one-step setup may still run. */
+export function getAccountingSetupStatus(): Promise<SetupStatus> {
+  return apiClient<SetupStatus>('/accounting/setup/status');
+}
+
+/**
+ * `GET /accounting/setup/template` — the chart and posting profiles the install would create,
+ * shaped by the VAT rate and the number of banks named. `vatRate` is omitted when VAT is not
+ * charged (0 here): the input-VAT row appears only for a positive rate. Bank rows come back as
+ * `Bank 1…n` placeholders (codes 10100, 10101, …) flagged `conditional: 'BANK'`.
+ */
+export function getAccountingSetupTemplate(params: {
+  vatRate: number;
+  banks: number;
+}): Promise<SetupTemplate> {
+  return apiClient<SetupTemplate>('/accounting/setup/template', {
+    params: {
+      ...(params.vatRate > 0 ? { vatRate: String(params.vatRate) } : {}),
+      banks: String(params.banks),
+    },
+  });
+}
+
+/**
+ * `POST /accounting/setup` — installs the template in one transaction. Runs once: 409
+ * `ACCOUNTING_ALREADY_SET_UP` as soon as the chart has any account.
+ */
+export function runAccountingSetup(body: AccountingSetupBody): Promise<AccountingSetupResult> {
+  return apiClient<AccountingSetupResult>('/accounting/setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 // ─── Fiscal years and periods ────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, FiscalYear, AccountingPeriod, PeriodType, PeriodStatus } from '@prisma/client';
+import type { PrismaClient, FiscalYear, AccountingPeriod, PeriodType, PeriodStatus, FiscalYearStatus } from '@prisma/client';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -10,6 +10,14 @@ export class FiscalYearRepository {
   findByName(prisma: TenantPrisma, organizationId: string, name: string) {
     return prisma.fiscalYear.findUnique({
       where: { organizationId_name: { organizationId, name } },
+    });
+  }
+
+  /** A fiscal year whose [startDate, endDate] intersects the given range (dates, not names). */
+  findOverlapping(prisma: TenantPrisma, organizationId: string, startDate: Date, endDate: Date) {
+    return prisma.fiscalYear.findFirst({
+      where: { organizationId, startDate: { lte: endDate }, endDate: { gte: startDate } },
+      select: { id: true, name: true, startDate: true, endDate: true },
     });
   }
 
@@ -37,6 +45,8 @@ export class FiscalYearRepository {
       endDate: Date;
       retainedEarningsAccountId: string;
       createdBy: string;
+      /** Defaults to the schema default (DRAFT) when omitted. */
+      status?: FiscalYearStatus;
       periods: Array<{
         organizationId: string;
         periodNumber: number;
@@ -56,6 +66,7 @@ export class FiscalYearRepository {
         endDate: data.endDate,
         retainedEarningsAccountId: data.retainedEarningsAccountId,
         createdBy: data.createdBy,
+        ...(data.status ? { status: data.status } : {}),
         periods: { create: data.periods },
       },
       include: { periods: { orderBy: { periodNumber: 'asc' } } },

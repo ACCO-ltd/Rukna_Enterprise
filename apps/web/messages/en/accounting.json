@@ -36,7 +36,7 @@
     "allClasses": "All classes",
     "countLabel": "{count, plural, =0 {No accounts} one {# account} other {# accounts}}",
     "empty": "No accounts yet.",
-    "emptyHint": "The chart of accounts is seeded when the organisation is provisioned. If this is empty, accounting has not been set up.",
+    "emptyHint": "The chart is empty because accounting has not been set up yet. Setting it up installs a construction chart of accounts, posting profiles, your bank accounts and the first fiscal year in one step.",
     "noMatches": "No account matches this search.",
     "clearFilters": "Clear filters",
     "colCode": "Code",
@@ -187,7 +187,9 @@
       "resultErrors": "{count, plural, one {# row could not be imported} other {# rows could not be imported}}:",
       "resultErrorRow": "{code}: {message}",
       "done": "Close"
-    }
+    },
+    "emptyAdminOnly": "An administrator has to set up accounting.",
+    "setUp": "Set up accounting"
   },
   "periods": {
     "title": "Fiscal Periods",
@@ -1027,6 +1029,184 @@
     "applicationDeductionAdded": "Deduction added",
     "applicationDeductionRemoved": "Deduction removed",
     "ipaCommand": "{command, select, submitForApproval {Payment application sent for approval} returnForRevision {Payment application returned for revision} approveForSubmission {Payment application approved for submission} submit {Payment application submitted to the client} other {Payment application updated}}",
-    "ipaCancelled": "Payment application cancelled"
+    "ipaCancelled": "Payment application cancelled",
+    "setupCompleteTitle": "Accounting is set up",
+    "setupCompleteBody": "You can now record invoices, bills and receipts. Next: enter opening balances.",
+    "postingProfileCreated": "Posting profile {code} created",
+    "postingProfileRepointed": "Posting profile now posts to {account}",
+    "postingProfileStatus": "{action, select, deactivate {Posting profile {code} deactivated} other {Posting profile {code} reactivated}}"
+  },
+  "setup": {
+    "title": "Set up accounting",
+    "subtitle": "Construction template — you review everything before it is saved.",
+    "stepsLabel": "Setup steps",
+    "steps": {
+      "company": "Your company",
+      "review": "Review the chart",
+      "confirm": "Confirm"
+    },
+    "vat": {
+      "title": "VAT registration",
+      "label": "Is the company registered for VAT?",
+      "none": "Not registered for VAT",
+      "noneHint": "No VAT tax codes are created. The output VAT account is still added and stays at zero.",
+      "charged": "Registered for VAT",
+      "chargedHint": "Adds an input VAT account and VAT tax codes at your rate.",
+      "rate": "VAT rate (%)",
+      "rateHint": "The rate your VAT tax codes use, for example 5 or 15.",
+      "rateError": "Enter a rate above 0 and up to 100.",
+      "choiceError": "Choose whether the company is registered for VAT.",
+      "invoiceTaxNotice": "Client invoices currently apply 5% sales tax regardless of this choice."
+    },
+    "banks": {
+      "title": "Banks",
+      "description": "Each bank you name gets a bank account and its own ledger account. You can add more later.",
+      "pettyCash": "A petty cash account is always added.",
+      "row": "Bank {n}",
+      "accountName": "Account name",
+      "accountNamePlaceholder": "e.g. Main operating account",
+      "bankName": "Bank",
+      "bankNamePlaceholder": "e.g. Salaam Bank",
+      "accountNumber": "Account number",
+      "add": "Add bank",
+      "remove": "Remove bank {n}",
+      "none": "No banks named. You can add bank accounts later under Bank accounts.",
+      "max": "Up to {max} banks can be added here.",
+      "accountNameError": "Enter the account name.",
+      "bankNameError": "Enter the bank."
+    },
+    "fiscal": {
+      "title": "First fiscal year",
+      "description": "Opened with twelve monthly periods, all open for posting.",
+      "year": "Year",
+      "yearError": "Enter a year between 2000 and 2100.",
+      "startMonth": "Starts in",
+      "range": "Covers {start} – {end}"
+    },
+    "review": {
+      "loading": "Loading the template…",
+      "loadFailed": "Could not load the template.",
+      "retry": "Try again",
+      "counts": "{accounts, plural, one {# account} other {# accounts}} · {profiles, plural, one {# posting profile} other {# posting profiles}} · {fyName} with {periods} open periods · {banks, plural, =0 {no bank accounts} one {# bank account} other {# bank accounts}}",
+      "readOnly": "Read-only. Accounts can be renamed and added after setup.",
+      "templateVersion": "Construction template, version {version}",
+      "chartLabel": "Chart of accounts to be created",
+      "classCount": "{count, plural, one {# account} other {# accounts}}",
+      "control": "Control",
+      "heading": "Heading",
+      "vat": "VAT",
+      "bank": "Bank",
+      "profilesTitle": "Posting profiles ({count})",
+      "profilesHint": "One per cost, expense and income account. Supplier bill lines pick from these.",
+      "profileAccount": "posts to {code}"
+    },
+    "confirm": {
+      "intro": "Setting up accounting creates:",
+      "accounts": "{count, plural, one {# account} other {# accounts}} in the chart of accounts",
+      "profiles": "{count, plural, one {# posting profile} other {# posting profiles}}",
+      "fiscalYear": "Fiscal year {fyName}, {start} – {end}, with 12 open monthly periods",
+      "banks": "{count, plural, =0 {Petty cash only — no bank accounts} one {# bank account ({names}) and petty cash} other {# bank accounts ({names}) and petty cash}}",
+      "vatCharged": "VAT tax codes at {rate}%",
+      "vatNone": "No VAT tax codes",
+      "onceTitle": "This can only be done once",
+      "onceBody": "Setup runs only while the chart of accounts is empty. Afterwards, accounts can be renamed, added and switched off on the chart of accounts.",
+      "submit": "Set up accounting",
+      "submitting": "Setting up…",
+      "alreadySetUp": "Accounting is already set up for this organisation — its chart of accounts has accounts. Continue from the chart of accounts and the other setup screens."
+    },
+    "hub": {
+      "title": "Set up accounting in one step",
+      "body": "Install the construction chart of accounts, posting profiles, your banks and the first fiscal year. You review everything before it is saved.",
+      "action": "Set up accounting"
+    },
+    "partial": {
+      "notice": "Accounting can’t be set up automatically: this organisation already has {records} but no chart of accounts. Remove them or add the chart manually.",
+      "unknownRecords": "other accounting records",
+      "record": {
+        "TAX_CODES": "tax codes",
+        "POSTING_PROFILES": "posting profiles",
+        "BANK_ACCOUNTS": "bank accounts",
+        "FISCAL_YEARS": "fiscal years"
+      }
+    }
+  },
+  "postingProfiles": {
+    "title": "Posting profiles",
+    "description": "Each profile names the ledger account a supplier bill line or revenue posting goes to. Re-pointing keeps history: documents already posted stay on the account they used.",
+    "colCode": "Code",
+    "colName": "Name",
+    "colAccount": "Posts to",
+    "colClass": "Class",
+    "colEffectiveFrom": "Effective from",
+    "colStatus": "Status",
+    "status": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive"
+    },
+    "unknownAccount": "Account not found",
+    "countLabel": "{count, plural, =0 {No posting profiles} one {# posting profile} other {# posting profiles}}",
+    "empty": "No posting profiles yet.",
+    "emptyHint": "Setting up accounting creates one per cost, expense and income account. You can also add them one at a time.",
+    "loadFailed": "Could not load posting profiles.",
+    "readOnlyNote": "Only an administrator can change posting profiles.",
+    "rowMenu": "Actions for {code}",
+    "actionFailed": "Could not update {code}: {message}",
+    "create": {
+      "new": "New posting profile",
+      "title": "New posting profile",
+      "name": "Name",
+      "code": "Code",
+      "codeHint": "Derived from the name. Capital letters, digits and underscores.",
+      "account": "Posts to account",
+      "accountPlaceholder": "Choose an account",
+      "accountSearch": "Search by code or name",
+      "accountEmpty": "No matching account",
+      "accountHint": "Active posting accounts in income, cost of sales and expenses.",
+      "noAccounts": "The chart has no active posting account in income, cost of sales or expenses to point a profile at.",
+      "effectiveFrom": "Effective from",
+      "effectiveFromHint": "Leave empty to start today.",
+      "submit": "Create profile",
+      "problem": {
+        "name": "Enter a name.",
+        "code": "Use capital letters, digits and underscores only (up to 50).",
+        "code-taken": "A posting profile with this code already exists.",
+        "account": "Choose the account the profile posts to."
+      },
+      "accountInvalid": "That account cannot take a posting profile. Choose an active posting account in income, cost of sales or expenses."
+    },
+    "repoint": {
+      "action": "Re-point",
+      "title": "Re-point {code}",
+      "current": "Currently posts to {account}",
+      "history": "History is kept. Documents dated before the effective date stay on the current account; from that date on, postings go to the new one.",
+      "account": "New account",
+      "effectiveFrom": "Effective from",
+      "submit": "Re-point profile",
+      "problem": {
+        "account": "Choose the new account.",
+        "same-account": "The profile already posts to this account.",
+        "effective-from": "Choose the date the change takes effect.",
+        "effective-from-early": "The change must start after the current version, which starts on {date}.",
+        "class-change": "{family, select, REVENUE {This profile posts to income, so it can only be re-pointed to another income account.} other {This profile posts to cost of sales or expenses, so it can only be re-pointed to a cost-of-sales or expense account.}}"
+      },
+      "untilDay": "The current account stays in force until {date}.",
+      "familyHint": "{family, select, REVENUE {Income accounts only — a revenue profile stays a revenue profile.} other {Cost-of-sales and expense accounts only — a cost profile stays a cost profile.}}",
+      "changed": "Someone changed this profile meanwhile. It has been reloaded — check it and try again."
+    },
+    "deactivate": {
+      "action": "Deactivate",
+      "title": "Deactivate {code}",
+      "body": "New bill lines can no longer choose it. Documents already posted with it are unchanged.",
+      "confirm": "Deactivate profile",
+      "inUse": "{count, plural, one {# unposted supplier bill still uses this profile.} other {# unposted supplier bills still use this profile.}} Post or change them first."
+    },
+    "reactivate": {
+      "action": "Reactivate",
+      "title": "Reactivate {code}",
+      "body": "Bill lines can choose it again.",
+      "confirm": "Reactivate profile"
+    },
+    "scheduled": "From {date}: {code}",
+    "notInForce": "Not in force yet"
   }
 }

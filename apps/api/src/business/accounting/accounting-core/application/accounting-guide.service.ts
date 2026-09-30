@@ -11,6 +11,8 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { AccountingReadinessService } from './accounting-readiness.service.js';
 
 const BASE = '/finance/accounting';
+/** ADR-040 one-step setup: the chart screen opens the setup flow when this query is present. */
+export const SETUP_HREF = `${BASE}/chart-of-accounts?setup=template`;
 
 /**
  * Read-model behind the Accounting "Get started" hub and the cycle-status strip.
@@ -82,15 +84,20 @@ export class AccountingGuideService {
     can: (p: string) => boolean,
   ): GuideCycle {
     const manage = can(PERMISSIONS.accountingManage);
+    const chartEmpty = hasBlocker('NO_CHART_OF_ACCOUNTS');
     const restrictedNote = 'Set up by an administrator (needs Manage accounting).';
 
     const raw: Array<{ key: string; label: string; detail: string; done: boolean; href: string | null; blocked?: boolean }> = [
       {
         key: 'chart-of-accounts',
         label: 'Chart of accounts',
-        detail: 'Define the accounts and mark the control roles (AR, AP, revenue, VAT, bank, unapplied, supplier advance).',
-        done: !hasBlocker('NO_CHART_OF_ACCOUNTS') && !hasBlocker('POSTING_ACCOUNT_NOT_CONFIGURED') && !hasBlocker('POSTING_ACCOUNT_AMBIGUOUS'),
-        href: `${BASE}/chart-of-accounts`,
+        // An empty chart is set up in one step from the template (ADR-040): the link opens the
+        // chart screen with the setup flow; otherwise the chart screen itself.
+        detail: chartEmpty
+          ? 'Install the construction chart, fiscal year, banks, posting profiles and numbering in one step.'
+          : 'Define the accounts and mark the control roles (AR, AP, revenue, VAT, bank, unapplied, supplier advance).',
+        done: !chartEmpty && !hasBlocker('POSTING_ACCOUNT_NOT_CONFIGURED') && !hasBlocker('POSTING_ACCOUNT_AMBIGUOUS'),
+        href: chartEmpty ? SETUP_HREF : `${BASE}/chart-of-accounts`,
         blocked: hasBlocker('POSTING_ACCOUNT_AMBIGUOUS'),
       },
       {
@@ -112,12 +119,12 @@ export class AccountingGuideService {
         label: 'Expense posting profiles',
         detail: 'Supplier bill lines resolve their expense account through a posting profile. (Revenue categories pending confirmation.)',
         done: !hasBlocker('NO_POSTING_PROFILES'),
-        href: null, // no dedicated screen yet — configured by an administrator
+        href: `${BASE}/posting-profiles`,
       },
       {
         key: 'document-numbering',
         label: 'Document numbering',
-        detail: 'Number sequences for journals, invoices and bills. Normally seeded automatically.',
+        detail: 'Number sequences for journals, invoices and bills. Created by the one-step setup, or on first use.',
         done: !hasBlocker('NO_DOCUMENT_SEQUENCE'),
         href: null,
       },

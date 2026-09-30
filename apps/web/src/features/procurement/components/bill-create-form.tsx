@@ -296,8 +296,8 @@ export function SupplierBillCreateForm({
   const supplierBills = useSupplierBills({ supplierId }, { enabled: Boolean(supplierId) });
 
   const options = useMemo(
-    () => expenseProfiles(profiles.data ?? [], accounts.data ?? []),
-    [profiles.data, accounts.data],
+    () => expenseProfiles(profiles.data ?? [], accounts.data ?? [], billDate || null),
+    [profiles.data, accounts.data, billDate],
   );
   // Every line names a profile. With none resolvable the only required select would be empty
   // and every save would 400 — so say what is wrong and withhold Save instead.

@@ -41,7 +41,9 @@ function build(existing: { id: string; billNumber: string | null } | null) {
     findBySupplierInvoiceNumber: jest.fn().mockResolvedValue(existing),
     create: jest.fn().mockResolvedValue({ id: 'b-new' }),
   };
-  const tenancy = { getClient: () => ({}) } as never;
+  // The profile-class guard (M1) finds no profile here, so it stays out of this test's way.
+  const client = { postingProfile: { findFirst: jest.fn().mockResolvedValue(null) } };
+  const tenancy = { getClient: () => client } as never;
   const svc = new SupplierBillService(
     tenancy,
     repo as never,
@@ -61,7 +63,7 @@ describe('SupplierBillService.create — duplicate supplier invoice number', () 
     const { svc, repo } = build(null);
 
     await expect(svc.create(identity, DTO)).resolves.toEqual({ id: 'b-new' });
-    expect(repo.findBySupplierInvoiceNumber).toHaveBeenCalledWith({}, 'o1', 's1', 'INV-0042');
+    expect(repo.findBySupplierInvoiceNumber).toHaveBeenCalledWith(expect.anything(), 'o1', 's1', 'INV-0042');
     expect(repo.create).toHaveBeenCalledTimes(1);
   });
 

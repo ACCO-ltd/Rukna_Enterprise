@@ -37,6 +37,7 @@ function build(
     supplierBillMatch,
     supplierBillLine,
     journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+    postingProfile: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn().mockImplementation((cb: (tx: unknown) => unknown) => cb(prisma)),
   };
   const repo = {

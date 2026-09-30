@@ -337,7 +337,8 @@ export function BillDocumentHeader({
           bill={bill}
           plan={plan}
           isPending={post.isPending}
-          isError={post.isError}
+          // The server's reason — e.g. POSTING_PROFILE_NOT_EXPENSE names the profile a line uses.
+          errorMessage={commandError(post.error, tc('loadFailed')) ?? null}
           onConfirm={(payload) => post.mutate({ id: bill.id, payload }, { onSuccess: close })}
           onDismiss={close}
         />
@@ -382,19 +383,18 @@ function PostDialog({
   bill,
   plan,
   isPending,
-  isError,
+  errorMessage,
   onConfirm,
   onDismiss,
 }: {
   bill: SupplierBill;
   plan: ReturnType<typeof planBillPost>;
   isPending: boolean;
-  isError: boolean;
+  errorMessage: string | null;
   onConfirm: (payload: { apAccountCode: string }) => void;
   onDismiss: () => void;
 }) {
   const t = useTranslations('procurement.bills');
-  const tc = useTranslations('procurement.common');
 
   return (
     <PostingPreviewDialog
@@ -408,7 +408,7 @@ function PostDialog({
       creditHeading={t('postCredit')}
       unbalanced={plan.ok && !plan.plan.balanced ? t('postUnbalanced') : null}
       problems={plan.ok ? undefined : [t('postAccountProblem')]}
-      errorMessage={isError ? tc('loadFailed') : null}
+      errorMessage={errorMessage}
       confirmLabel={t('post')}
       isPending={isPending}
       onConfirm={() => {

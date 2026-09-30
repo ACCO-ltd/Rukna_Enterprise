@@ -104,7 +104,8 @@
       "ledger": "General ledger",
       "reports": "Reports",
       "acctSetup": "Setup & close"
-    }
+    },
+    "postingProfiles": "Posting profiles"
   },
   "admin": {
     "title": "Administration",

@@ -1,13 +1,21 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, Notice, StatusPill, cn, type StatusTone } from '@erp/ui';
 import { ArrowRight, Check, CircleDot, Lock } from 'lucide-react';
 import type { GuideCycle, GuideCycleStatus, GuideStep } from '@erp/types';
 
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useAccountingGuide } from '@/features/finance/hooks/use-accounting-guide';
 import { GUIDE_STEP_TONE } from '../guide/guide-status';
+import { useAccountingSetupStatus } from '../hooks/use-accounting';
+import { AccountingSetupDialog } from './accounting-setup-dialog';
+import { PartialSetupNotice } from './partial-setup-notice';
+
+/** The setup step that the one-step install (ADR-040) completes, and so opens instead of linking. */
+const SETUP_STEP_KEY = 'chart-of-accounts';
 
 /**
  * The "Get started" hub: the four accounting cycles as cards, each a checklist of steps whose
@@ -17,7 +25,14 @@ import { GUIDE_STEP_TONE } from '../guide/guide-status';
  */
 export function GuideHub() {
   const t = useTranslations('accounting.guide');
+  const tSetup = useTranslations('accounting.setup.hub');
   const guide = useAccountingGuide();
+  const { can } = usePermissions();
+  const mayManage = can(ACCOUNTING_PERMISSIONS.manageChart);
+  // Asked only by someone who could run the install; everyone else follows the steps as before.
+  const setupStatus = useAccountingSetupStatus({ enabled: mayManage });
+  const canInstall = mayManage && setupStatus.data?.canInstall === true;
+  const [settingUp, setSettingUp] = useState(false);
 
   if (guide.isPending) {
     return (
@@ -61,11 +76,38 @@ export function GuideHub() {
         {ready ? t('readyNote') : t('notReadyNote')}
       </Notice>
 
+      {mayManage && setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
+        <PartialSetupNotice records={setupStatus.data.existingRecords} />
+      ) : null}
+
+      {canInstall ? (
+        <section
+          aria-labelledby="accounting-setup-callout"
+          className="flex flex-col gap-4 rounded-panel border border-brand-primary/30 bg-brand-accent px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+        >
+          <div className="min-w-0">
+            <h3 id="accounting-setup-callout" className="text-h3 font-semibold text-foreground">
+              {tSetup('title')}
+            </h3>
+            <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{tSetup('body')}</p>
+          </div>
+          <Button type="button" className="shrink-0" onClick={() => setSettingUp(true)}>
+            {tSetup('action')}
+          </Button>
+        </section>
+      ) : null}
+
       <div className="space-y-4">
         {cycles.map((cycle) => (
-          <CycleCard key={cycle.key} cycle={cycle} />
+          <CycleCard
+            key={cycle.key}
+            cycle={cycle}
+            onSetUp={canInstall ? () => setSettingUp(true) : undefined}
+          />
         ))}
       </div>
+
+      {settingUp ? <AccountingSetupDialog onDone={() => setSettingUp(false)} /> : null}
     </div>
   );
 }
@@ -78,7 +120,7 @@ const CYCLE_TONE: Record<GuideCycleStatus, StatusTone> = {
   DONE: 'success',
 };
 
-function CycleCard({ cycle }: { cycle: GuideCycle }) {
+function CycleCard({ cycle, onSetUp }: { cycle: GuideCycle; onSetUp?: () => void }) {
   const t = useTranslations('accounting.guide');
   const locked = cycle.status === 'LOCKED';
 
@@ -112,20 +154,35 @@ function CycleCard({ cycle }: { cycle: GuideCycle }) {
 
       <ol className="divide-y divide-border">
         {cycle.steps.map((step) => (
-          <StepRow key={step.key} step={step} locked={locked} />
+          <StepRow
+            key={step.key}
+            step={step}
+            locked={locked}
+            onActivate={cycle.key === 'setup' && step.key === SETUP_STEP_KEY ? onSetUp : undefined}
+          />
         ))}
       </ol>
     </section>
   );
 }
 
-function StepRow({ step, locked }: { step: GuideStep; locked: boolean }) {
+function StepRow({
+  step,
+  locked,
+  onActivate,
+}: {
+  step: GuideStep;
+  locked: boolean;
+  /** Opens an in-place action (the setup dialog) instead of following `href`. */
+  onActivate?: () => void;
+}) {
   const t = useTranslations('accounting.guide');
   const tone = GUIDE_STEP_TONE[step.status];
   // A step is a live link only when the cycle is unlocked, the step carries an href, and the
   // user is allowed to act (RESTRICTED steps come back with no href). Otherwise the row is
   // informational — the detail already says what is needed or who does it.
-  const actionable = !locked && step.status !== 'RESTRICTED' && step.href !== null;
+  const actionable =
+    !locked && step.status !== 'RESTRICTED' && (step.href !== null || onActivate !== undefined);
   const isNext = step.status === 'NEXT' && actionable;
 
   const body = (
@@ -169,7 +226,16 @@ function StepRow({ step, locked }: { step: GuideStep; locked: boolean }) {
 
   return (
     <li>
-      {actionable && step.href ? (
+      {actionable && onActivate ? (
+        <button
+          type="button"
+          onClick={onActivate}
+          className="group block w-full text-start focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary"
+          aria-label={`${step.label} — ${t('openStep')}`}
+        >
+          {body}
+        </button>
+      ) : actionable && step.href ? (
         <Link
           href={step.href}
           className="group block focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary"
