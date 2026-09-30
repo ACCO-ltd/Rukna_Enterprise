@@ -21,7 +21,19 @@
 
 import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, CheckboxField, DatePicker, FormField, Input, Select } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  DatePicker,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormField,
+  Input,
+  Select,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -40,13 +52,15 @@ import {
 import { useCreateAccount } from '../hooks/use-accounting';
 import type { AccountClass, NormalBalance } from '../types';
 
-export function CreateAccountForm({ onDone }: { onDone: () => void }) {
+/** A `FormDialog` (ADR-039), size `lg`: a record form. The caller mounts it to open it. */
+export function CreateAccountForm({ title, onDone }: { title: string; onDone: () => void }) {
   const t = useTranslations('accounting.chartOfAccounts.create');
   const tClass = useTranslations('accounting.accountClass');
   const tAcc = useTranslations('accounting.common');
   const tCommon = useTranslations('common');
 
-  const [draft, setDraft] = useState<AccountDraft>(emptyAccountDraft());
+  const [initialDraft] = useState<AccountDraft>(emptyAccountDraft);
+  const [draft, setDraft] = useState<AccountDraft>(initialDraft);
   const [showErrors, setShowErrors] = useState(false);
 
   const create = useCreateAccount();
@@ -95,8 +109,22 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
     create.mutate(body, { onSuccess: onDone });
   }
 
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initialDraft);
+
   return (
-    <div className="space-y-4">
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onDone();
+      }}
+      title={title}
+      size="lg"
+      dirty={dirty}
+      busy={create.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => handleSubmit()}
+    >
+      <FormDialogBody className="space-y-4">
       <FormField htmlFor={ids.code} label={t('code')}>
         <Input
           id={ids.code}
@@ -275,14 +303,17 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={create.isPending}>
-          {tCommon('cancel')}
-        </Button>
-        <Button type="button" onClick={handleSubmit} disabled={create.isPending}>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={create.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={create.isPending}>
           {create.isPending ? tCommon('saving') : t('submit')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

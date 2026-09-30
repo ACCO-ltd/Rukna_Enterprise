@@ -572,16 +572,46 @@ describe('ProjectDetail — latest activity', () => {
     expect(within(section).queryByRole('link', { name: 'View all' })).not.toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'View all' }));
 
-    const sheet = within(await screen.findByRole('dialog', { name: 'Project activity' }));
-    expect(await sheet.findByText(/committed the BOQ/)).toBeInTheDocument();
-    expect(sheet.getByText(/added a team member/)).toBeInTheDocument();
+    const dialog = within(await screen.findByRole('dialog', { name: 'Project activity' }));
+    expect(await dialog.findByText(/committed the BOQ/)).toBeInTheDocument();
+    expect(dialog.getByText(/added a team member/)).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenCalledWith('p1', undefined);
 
-    await user.click(sheet.getByRole('button', { name: 'Load more' }));
-    expect(await sheet.findByText(/created the project/)).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: 'Load more' }));
+    expect(await dialog.findByText(/created the project/)).toBeInTheDocument();
     expect(getProjectActivity).toHaveBeenLastCalledWith('p1', 'cursor-1');
-    expect(sheet.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
-    expect(sheet.getByText('That is everything recorded so far.')).toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(dialog.getByText('That is everything recorded so far.')).toBeInTheDocument();
+  });
+
+  it('View all names each target and links it to its page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({ recentActivity: [event('a1', 'project.create')] }),
+    );
+    vi.mocked(getProjectActivity).mockResolvedValueOnce({
+      items: [
+        {
+          ...event('h1', 'commercial.issuePackage', 'Abdi Yusuf', 'Contract'),
+          target: { label: 'INV-2026-0012', href: '/projects/p1/commercial/invoices/inv-1' },
+        },
+        { ...event('h2', 'programmeBaseline.approve', 'Abdi Yusuf', 'ProgrammeBaseline'), target: { label: 'v2' } },
+      ],
+      nextCursor: null,
+    });
+
+    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['view:project'], withToast: true });
+    const section = await railSection('Latest activity');
+    await user.click(within(section).getByRole('button', { name: 'View all' }));
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Project activity' }));
+    const link = await dialog.findByRole('link', { name: 'INV-2026-0012' });
+    expect(link).toHaveAttribute('href', '/projects/p1/commercial/invoices/inv-1');
+    expect(link.closest('li')).toHaveTextContent('Abdi Yusuf issued the invoice INV-2026-0012');
+    const baseline = dialog.getByText('v2');
+    expect(baseline.closest('a')).toBeNull();
+    expect(baseline.closest('li')).toHaveTextContent('Abdi Yusuf approved the programme baseline v2');
   });
 
   it('does not fetch the full history until it is asked for', async () => {

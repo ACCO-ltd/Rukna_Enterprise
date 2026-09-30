@@ -31,7 +31,7 @@ import { useCommercialSummary } from '@/features/commercial/hooks/use-commercial
 import { PROJECT_PERMISSIONS } from '../permissions';
 import type { ProjectDetail as ProjectDetailModel, ProjectWorkspaceSummary } from '../types';
 import { useProjectActivityEntries } from '../activity-labels';
-import { ProjectActivitySheet } from './project-activity-sheet';
+import { ProjectActivityDialog } from './project-activity-dialog';
 import { ProjectReadiness } from './project-readiness';
 
 export function ProjectDetail({ id }: { id: string }) {
@@ -438,7 +438,7 @@ function RecentActivity({
         renderLink={renderNextLink}
         empty={<p className="text-caption text-muted-foreground">{t('noRecentActivity')}</p>}
       />
-      <ProjectActivitySheet
+      <ProjectActivityDialog
         projectId={projectId}
         open={historyOpen}
         onOpenChange={setHistoryOpen}

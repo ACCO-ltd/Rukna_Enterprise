@@ -5,9 +5,6 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -68,16 +65,9 @@ export function FiscalPeriods() {
         </div>
       ) : null}
 
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="p-6 sm:max-w-2xl">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {t('create.title')}
-          </DialogTitle>
-          <div className="mt-5">
-            <CreateFiscalYearForm onDone={() => setCreating(false)} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {creating ? (
+        <CreateFiscalYearForm title={t('create.title')} onDone={() => setCreating(false)} />
+      ) : null}
 
       {/* The lifecycle endpoints carry `JwtAuthGuard` and nothing else — any signed-in user
           can close a fiscal year (#25). The actions are gated on `can()` so one flag secures

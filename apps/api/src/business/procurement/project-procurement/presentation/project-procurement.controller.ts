@@ -108,6 +108,19 @@ export class ProjectProcurementController {
     return this.budgets.list(identity, projectId);
   }
 
+  @Get('budgets/:budgetId')
+  @RequirePermissions(PERMISSIONS.commitmentsView)
+  @ApiOperation({ summary: 'One cost budget version with its lines (same access as the list)' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'budgetId' })
+  getBudget(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('budgetId') budgetId: string,
+  ) {
+    return this.budgets.findForProject(identity, projectId, budgetId);
+  }
+
   @Post('budgets')
   @RequirePermissions(PERMISSIONS.projectBudgetManage)
   @ApiOperation({ summary: 'Start a new DRAFT cost budget version' })

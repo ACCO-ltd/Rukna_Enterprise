@@ -1136,6 +1136,21 @@ Records cash received from clients and allocates it against certified IPCs.
 
 ---
 
+### 6.x Project Cost Budget — `/projects/:projectId/procurement/budgets`
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| `GET` | `/budgets` | `view:commitment-ledger` + project member | Versions, and the baselined one **with** its lines. Other versions carry `lineCount` only. |
+| `GET` | `/budgets/:budgetId` | `view:commitment-ledger` + project member | One version **with** its lines (`ProjectCostBudgetResponse`). Org-scoped; a version of another project answers `404`. Used to edit a Working version in place — the editor must start from every line because `PATCH` replaces them all. |
+| `POST` | `/budgets` | `manage:project-budget` | Start a DRAFT: `{ currency, notes?, lines[] }`. |
+| `PATCH` | `/budgets/:budgetId` | `manage:project-budget` | DRAFT only. `lines` **replaces** every line. |
+| `DELETE` | `/budgets/:budgetId` | `manage:project-budget` | Discard a DRAFT. |
+| `POST` | `/budgets/:budgetId/baseline` | `baseline:project-budget` | Baseline a DRAFT, superseding the previous one. |
+
+Each line targets exactly one of `boqNodeId` or `spendCategoryId`. Money is a decimal string.
+
+---
+
 ### 6.x Project Documents (Phase 7A) — `/projects/:projectId/documents`
 
 The **controlled document register**. Read the model before the routes:

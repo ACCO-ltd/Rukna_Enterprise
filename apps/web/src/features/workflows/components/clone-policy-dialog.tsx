@@ -5,11 +5,10 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
 } from '@erp/ui';
@@ -38,6 +37,8 @@ import { PolicyComparisonDiff } from './policy-comparison-diff';
  *  - the version being cloned **is** the active version → nothing to preview (a plain re-clone);
  *  - there is **no** active version → we say so rather than hide the control;
  *  - the preview read fails or is loading → its own state, and it never blocks the clone action.
+ *
+ * A `FormDialog` (ADR-039), size `xl`: one field plus a rules diff.
  */
 export function ClonePolicyDialog({
   policy,
@@ -87,22 +88,27 @@ export function ClonePolicyDialog({
         : null;
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(next) => {
         if (!next) setReason('');
         onOpenChange(next);
       }}
+      size="xl"
+      title={t('title')}
+      subtitle={
+        policy
+          ? t('description', { policyKey: policy.policyKey, version: policy.version })
+          : t('descriptionGeneric')
+      }
+      dirty={reason.trim() !== ''}
+      busy={clone.isPending}
+      onSubmit={submit}
     >
-      <DialogContent>
-        <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription>
-          {policy ? t('description', { policyKey: policy.policyKey, version: policy.version }) : t('descriptionGeneric')}
-        </DialogDescription>
-
+      <FormDialogBody className="space-y-4">
         {/* Rollback impact preview — active version vs the version being cloned. */}
         {policy ? (
-          <section aria-label={t('previewHeading')} className="mt-4 border-t border-border pt-4">
+          <section aria-label={t('previewHeading')}>
             <h3 className="text-sm font-semibold text-foreground">{t('previewHeading')}</h3>
             {history.isPending ? (
               <div
@@ -135,28 +141,29 @@ export function ClonePolicyDialog({
           </section>
         ) : null}
 
-        <form onSubmit={submit} className="mt-4 space-y-3">
-          <FormField htmlFor="clone-reason" label={t('reason')} hint={t('reasonHint')} required>
-            <Input
-              id="clone-reason"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              minLength={3}
-              maxLength={240}
-              required
-            />
-          </FormField>
-          {cloneError ? <Alert variant="error" messages={cloneError} /> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              {t('cancel')}
-            </Button>
-            <Button type="submit" disabled={clone.isPending || reason.trim().length < 3}>
-              {clone.isPending ? t('cloning') : t('confirm')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <FormField htmlFor="clone-reason" label={t('reason')} hint={t('reasonHint')} required>
+          <Input
+            id="clone-reason"
+            data-autofocus=""
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            minLength={3}
+            maxLength={240}
+            required
+          />
+        </FormField>
+        {cloneError ? <Alert variant="error" messages={cloneError} /> : null}
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={clone.isPending}>
+            {t('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={clone.isPending || reason.trim().length < 3}>
+          {clone.isPending ? t('cloning') : t('confirm')}
+        </Button>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

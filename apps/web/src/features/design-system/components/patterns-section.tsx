@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Avatar, Badge, Button, Card, MoneyDisplay, StatusPill, StatusText, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Pagination, Progress, Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { Alert, Avatar, Badge, Button, Card, MoneyDisplay, StatusPill, StatusText, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Pagination, Progress, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 import { FileX, Receipt, TriangleAlert } from 'lucide-react';
 
 import { ProgressStepper, type Step } from '@/components/progress-stepper';
@@ -624,36 +624,9 @@ export function PatternsSection() {
           nobody has to re-read the title to know what the button does.
         </Rule>
 
-        <Specimen label="Sheet" token="<Sheet> · <SheetContent side>">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="outline">Open requisition PR-2026-0148</Button>
-            </SheetTrigger>
-            <SheetContent>
-              <SheetHeader>
-                <SheetTitle>PR-2026-0148</SheetTitle>
-                <SheetDescription>Submitted 22 Sep 2026 by Ahmed Ali.</SheetDescription>
-              </SheetHeader>
-              <SheetBody>
-                <p className="text-body-sm text-muted-foreground">
-                  Concrete, rebar and formwork materials for foundation works — Block A.
-                </p>
-              </SheetBody>
-              <SheetFooter>
-                <SheetClose asChild>
-                  <Button>View approval</Button>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Button variant="outline">Edit</Button>
-                </SheetClose>
-              </SheetFooter>
-            </SheetContent>
-          </Sheet>
-        </Specimen>
-
         <Rule>
-          <code className="font-mono text-caption">Sheet</code> is retired (ADR-039): no new
-          screen uses it. Record forms, previews and history open in a{' '}
+          Side sheets are retired (ADR-039) and <code className="font-mono text-caption">Sheet</code>{' '}
+          is gone from the library. Record forms, previews and history open in a{' '}
           <code className="font-mono text-caption">FormDialog</code>; values already in a table
           are edited in the table. The BOQ item editor (
           <code className="font-mono text-caption">boq-item-dialog.tsx</code>) is the worked

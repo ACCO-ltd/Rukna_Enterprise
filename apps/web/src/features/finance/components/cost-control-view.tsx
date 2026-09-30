@@ -6,6 +6,7 @@ import { ChevronRight, Download, History, PieChart, Plus, Search, Wallet } from 
 import {
   Alert,
   Button,
+  ConfirmDialog,
   Input,
   Skeleton,
   Table,
@@ -30,6 +31,8 @@ import { statusTone } from '@/lib/status-registry';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { SectionPanel } from '@/features/procurement/components/project/section-panel';
 import {
+  useBaselineProjectCostBudget,
+  useDiscardProjectCostBudget,
   useProjectCostBudgets,
   useProjectProcurementCost,
 } from '@/features/procurement/hooks/use-project-procurement';
@@ -44,11 +47,12 @@ import {
 } from './finance-primitives';
 import { downloadCostCsv } from '../cost-export';
 import { ShareBar, toSegments } from './share-bar';
-import { BudgetEditorDialog } from './budget-editor-dialog';
+import { BudgetLinesEditor, draftFromLine } from './budget-lines-editor';
 
 type Dimension = 'boq' | 'category' | 'supplier';
 
 const BUDGET_MANAGE = 'manage:project-budget' as const;
+const BUDGET_BASELINE = 'baseline:project-budget' as const;
 
 /**
  * Cost Control — the project's cost budget, and cost measured against it.
@@ -64,19 +68,25 @@ const BUDGET_MANAGE = 'manage:project-budget' as const;
 export function CostControlView({ projectId }: { projectId: string }) {
   const t = useTranslations('finance.costControl');
   const tc = useTranslations('finance.common');
+  const tEditor = useTranslations('finance.budgetEditor');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
 
   const cost = useProjectProcurementCost(projectId);
   const budgets = useProjectCostBudgets(projectId);
+  const baselineBudget = useBaselineProjectCostBudget(projectId);
+  const discardBudget = useDiscardProjectCostBudget(projectId);
   const [dimension, setDimension] = React.useState<Dimension>('boq');
   const [search, setSearch] = React.useState('');
   const [editing, setEditing] = React.useState<{ mode: 'create' | 'edit'; budgetId?: string } | null>(
     null,
   );
+  const [confirming, setConfirming] = React.useState<'baseline' | 'discard' | null>(null);
 
   if (cost.isPending || budgets.isPending) return <Skeleton className="h-[32rem] w-full" />;
-  if (cost.isError) {
+  // Only a failed first load replaces the page. A background refetch that fails keeps the page —
+  // and an open budget edit — on screen with the last good figures, and says so.
+  if (cost.isError && !cost.data) {
     return (
       <Alert variant="error" title={tc('loadFailed')} messages={[tc('loadFailedHint')]}>
         <Button variant="outline" size="sm" className="mt-2" onClick={() => cost.refetch()}>
@@ -91,9 +101,30 @@ export function CostControlView({ projectId }: { projectId: string }) {
   const budgetList = budgets.data;
   const baselined = budgetList?.baselined ?? null;
   const mayManage = can(BUDGET_MANAGE);
+  const mayBaseline = can(BUDGET_BASELINE);
+  const workingVersion = budgetList?.budgets.find((v) => v.status === 'DRAFT') ?? null;
+  const nextVersionNumber =
+    Math.max(0, ...(budgetList?.budgets ?? []).map((v) => v.versionNumber)) + 1;
+  const versionError = baselineBudget.error ?? discardBudget.error;
 
   return (
     <div className="space-y-6">
+      {cost.isError || budgets.isError ? (
+        <Alert variant="warning" title={t('refreshFailed')} messages={[t('refreshFailedHint')]}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              void cost.refetch();
+              void budgets.refetch();
+            }}
+          >
+            {tc('retry')}
+          </Button>
+        </Alert>
+      ) : null}
+
       <MetricBand
         title={t('position.title')}
         description={t('position.description')}
@@ -165,6 +196,26 @@ export function CostControlView({ projectId }: { projectId: string }) {
         </p>
       ) : null}
 
+      {/* Edit mode: the budget's own lines, edited in place (ADR-039). A revision starts from the
+          baselined lines — the figures the user was measuring against become the inputs. */}
+      {editing ? (
+        <BudgetLinesEditor
+          projectId={projectId}
+          mode={editing.mode}
+          budgetId={editing.budgetId}
+          versionNumber={
+            editing.mode === 'edit' && workingVersion
+              ? workingVersion.versionNumber
+              : nextVersionNumber
+          }
+          currency={position.currency ?? 'USD'}
+          seedLines={
+            editing.mode === 'create' && baselined ? baselined.lines.map(draftFromLine) : []
+          }
+          onExit={() => setEditing(null)}
+        />
+      ) : null}
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <SectionPanel
           title={t('breakdown.title')}
@@ -233,9 +284,15 @@ export function CostControlView({ projectId }: { projectId: string }) {
         <div className="min-w-0 space-y-6">
           <BudgetPanel
             list={budgetList}
-            mayManage={mayManage}
+            // While the table is in edit mode the version actions step aside: one edit at a time,
+            // and nothing baselines or discards a version that differs from what is on screen.
+            mayManage={mayManage && !editing}
+            mayBaseline={mayBaseline && !editing}
             onCreate={() => setEditing({ mode: 'create' })}
             onEdit={(budgetId) => setEditing({ mode: 'edit', budgetId })}
+            onBaseline={() => setConfirming('baseline')}
+            onDiscard={() => setConfirming('discard')}
+            error={versionError}
             locale={locale}
           />
 
@@ -269,29 +326,58 @@ export function CostControlView({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      {editing ? (
-        <BudgetEditorDialog
-          projectId={projectId}
-          mode={editing.mode}
-          budgetId={editing.budgetId}
-          currency={position.currency ?? 'USD'}
-          onClose={() => setEditing(null)}
-        />
-      ) : null}
+      {/* While editing, room at the foot of the page so nothing sits under the fixed action bar. */}
+      {editing ? <div aria-hidden="true" className="h-16" /> : null}
+
+      {/* Baselining is a freeze the project is then measured against, so it is confirmed
+          explicitly and described for what it does — never as an approval. */}
+      <ConfirmDialog
+        open={confirming === 'baseline'}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        variant="default"
+        title={tEditor('baselineConfirmTitle')}
+        description={tEditor('baselineConfirmBody')}
+        confirmLabel={tEditor('baselineConfirmAction')}
+        isPending={baselineBudget.isPending}
+        onConfirm={() => {
+          if (!workingVersion) return;
+          baselineBudget.mutate(workingVersion.id, { onSettled: () => setConfirming(null) });
+        }}
+      />
+      <ConfirmDialog
+        open={confirming === 'discard'}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title={tEditor('discardDraftTitle')}
+        description={tEditor('discardDraftBody')}
+        confirmLabel={tEditor('discardDraft')}
+        isPending={discardBudget.isPending}
+        onConfirm={() => {
+          if (!workingVersion) return;
+          discardBudget.mutate(workingVersion.id, { onSettled: () => setConfirming(null) });
+        }}
+      />
     </div>
   );
 
   function BudgetPanel({
     list,
     mayManage,
+    mayBaseline,
     onCreate,
     onEdit,
+    onBaseline,
+    onDiscard,
+    error,
     locale,
   }: {
     list: ProjectCostBudgetListResponse | undefined;
     mayManage: boolean;
+    mayBaseline: boolean;
     onCreate: () => void;
     onEdit: (budgetId: string) => void;
+    onBaseline: () => void;
+    onDiscard: () => void;
+    error: Error | null;
     locale: 'en' | 'ar';
   }) {
     const versions = list?.budgets ?? [];
@@ -305,6 +391,7 @@ export function CostControlView({ projectId }: { projectId: string }) {
         bodyClassName="p-0"
       >
         <div className="space-y-4 px-4 py-4 sm:px-5">
+          {error ? <Alert variant="error" messages={[error.message]} /> : null}
           {/* Working, Baselined, Superseded — never "Approved". The model has no approval step,
               and naming one re-creates exactly the fake control this programme removed. */}
           {workingVersion ? (
@@ -320,8 +407,24 @@ export function CostControlView({ projectId }: { projectId: string }) {
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {mayManage ? (
-                  <Button size="sm" variant="outline" onClick={() => onEdit(workingVersion.id)}>
+                  <Button size="sm" onClick={() => onEdit(workingVersion.id)}>
                     {t('budget.editDraft')}
+                  </Button>
+                ) : null}
+                {/* The server refuses to baseline an empty version, so the control says so first. */}
+                {mayBaseline ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={workingVersion.lineCount === 0}
+                    onClick={onBaseline}
+                  >
+                    {tEditor('baseline')}
+                  </Button>
+                ) : null}
+                {mayManage ? (
+                  <Button size="sm" variant="ghost" onClick={onDiscard}>
+                    {tEditor('discardDraft')}
                   </Button>
                 ) : null}
               </div>
