@@ -1688,6 +1688,7 @@
       "newDraft": "New policy draft",
       "draftHint": "This creates an inactive draft. It cannot route approvals until validation and publication are complete.",
       "policyKey": "Policy key",
+      "policyKeyInvalid": "Use capital letters, digits and underscores, starting with a letter: PURCHASE_ORDER_APPROVAL.",
       "notes": "Notes",
       "create": "Create draft",
       "creating": "Creating draft",

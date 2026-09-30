@@ -38,13 +38,13 @@ import { AdminPanel } from '@/features/admin/components/admin-panel';
 import { useDeleteRole, useRoles } from '../hooks/use-roles';
 import { filterRoles, type RoleKindFilter } from '../filter-roles';
 import {
-  CreateRoleSheet,
-  EditRoleSheet,
-  ManagePermissionsSheet,
-} from './role-form-sheets';
-import { RoleGovernanceSheet } from './role-governance-sheet';
+  CreateRoleDialog,
+  EditRoleDialog,
+  ManagePermissionsDialog,
+} from './role-form-dialogs';
+import { RoleGovernanceDialog } from './role-governance-dialog';
 
-type ActiveSheet = 'edit' | 'permissions' | 'governance';
+type ActiveDialog = 'edit' | 'permissions' | 'governance';
 
 export function RolesList() {
   const t = useTranslations('platform.roles');
@@ -60,7 +60,7 @@ export function RolesList() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [target, setTarget] = useState<RoleSummary | null>(null);
-  const [sheet, setSheet] = useState<ActiveSheet | null>(null);
+  const [dialog, setDialog] = useState<ActiveDialog | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RoleSummary | null>(null);
 
   const [query, setQuery] = useState('');
@@ -73,13 +73,13 @@ export function RolesList() {
     [data, query, kindFilter],
   );
 
-  function openSheet(next: ActiveSheet, role: RoleSummary) {
+  function openDialog(next: ActiveDialog, role: RoleSummary) {
     setTarget(role);
-    setSheet(next);
+    setDialog(next);
   }
 
-  function closeSheet() {
-    setSheet(null);
+  function closeDialog() {
+    setDialog(null);
     setTarget(null);
   }
 
@@ -245,14 +245,14 @@ export function RolesList() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onSelect={() => openSheet('governance', role)}>
+                                      <DropdownMenuItem onSelect={() => openDialog('governance', role)}>
                                         {t('actions.viewImpact')}
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onSelect={() => openSheet('edit', role)}>
+                                      <DropdownMenuItem onSelect={() => openDialog('edit', role)}>
                                         {t('actions.edit')}
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
-                                        onSelect={() => openSheet('permissions', role)}
+                                        onSelect={() => openDialog('permissions', role)}
                                       >
                                         {t('actions.managePermissions')}
                                       </DropdownMenuItem>
@@ -274,7 +274,7 @@ export function RolesList() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => openSheet('governance', role)}
+                                onClick={() => openDialog('governance', role)}
                               >
                                 {t('protected')}
                               </Button>
@@ -292,23 +292,23 @@ export function RolesList() {
 
         {canManage ? (
           <>
-            <CreateRoleSheet open={createOpen} onOpenChange={setCreateOpen} />
-            <EditRoleSheet
-              role={sheet === 'edit' ? target : null}
+            <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} />
+            <EditRoleDialog
+              role={dialog === 'edit' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
             />
-            <ManagePermissionsSheet
-              role={sheet === 'permissions' ? target : null}
+            <ManagePermissionsDialog
+              role={dialog === 'permissions' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
             />
-            <RoleGovernanceSheet
-              role={sheet === 'governance' ? target : null}
+            <RoleGovernanceDialog
+              role={dialog === 'governance' ? target : null}
               onOpenChange={(open) => {
-                if (!open) closeSheet();
+                if (!open) closeDialog();
               }}
             />
             {deleteTarget ? (

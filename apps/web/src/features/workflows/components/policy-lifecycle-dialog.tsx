@@ -5,11 +5,10 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FormField,
   Input,
 } from '@erp/ui';
@@ -58,9 +57,20 @@ export function PolicyLifecycleDialog({
 
   const config = action ? LIFECYCLE_CONFIG[action] : null;
 
+  // FormDialog's form is `noValidate`, so the rules the inputs once enforced natively
+  // (`required`, `minLength={3}`) are checked here and keep Submit unavailable until met.
+  const complete =
+    reason.trim().length >= 3 && (!config?.needsDate || effectiveFrom.trim() !== '');
+
+  function close() {
+    setReason('');
+    setEffectiveFrom('');
+    onOpenChange(false);
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!action) return;
+    if (!action || !complete) return;
     transition.mutate(
       { id: policyId, action, reason, effectiveFrom: effectiveFrom || undefined },
       {
@@ -74,22 +84,22 @@ export function PolicyLifecycleDialog({
   }
 
   return (
-    <Dialog
+    // A FormDialog (ADR-039), size md: one or two fields.
+    <FormDialog
       open={Boolean(action)}
       onOpenChange={(open) => {
-        if (!open) {
-          setReason('');
-          setEffectiveFrom('');
-          onOpenChange(false);
-        }
+        if (!open) close();
       }}
+      size="md"
+      title={config ? t(`lifecycle.${config.keyPrefix}Title`) : ''}
+      subtitle={config ? t(`lifecycle.${config.keyPrefix}Description`) : undefined}
+      dirty={reason.trim() !== '' || effectiveFrom !== ''}
+      busy={transition.isPending}
+      onSubmit={submit}
     >
-      <DialogContent>
         {action && config ? (
-          <form onSubmit={submit}>
-            <DialogTitle>{t(`lifecycle.${config.keyPrefix}Title`)}</DialogTitle>
-            <DialogDescription>{t(`lifecycle.${config.keyPrefix}Description`)}</DialogDescription>
-            <div className="mt-4 space-y-3">
+          <>
+            <FormDialogBody className="space-y-3">
               <FormField htmlFor="lifecycle-reason" label={t('decisionReason')} required>
                 <Input
                   id="lifecycle-reason"
@@ -120,18 +130,19 @@ export function PolicyLifecycleDialog({
                   }
                 />
               ) : null}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                {t('cancel')}
-              </Button>
-              <Button type="submit" disabled={transition.isPending}>
+            </FormDialogBody>
+            <FormDialogFooter>
+              <FormDialogClose asChild>
+                <Button type="button" variant="outline" disabled={transition.isPending}>
+                  {t('cancel')}
+                </Button>
+              </FormDialogClose>
+              <Button type="submit" disabled={transition.isPending || !complete}>
                 {t(`lifecycle.${config.keyPrefix}Button`)}
               </Button>
-            </DialogFooter>
-          </form>
+            </FormDialogFooter>
+          </>
         ) : null}
-      </DialogContent>
-    </Dialog>
+    </FormDialog>
   );
 }

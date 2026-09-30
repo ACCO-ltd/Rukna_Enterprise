@@ -2,16 +2,15 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, FormDialogClose, FormField, Input } from '@erp/ui';
 
 import type { UserWithRolesResponse } from '@erp/types';
 
 import {
-  FormBody,
-  FormFooter,
-  FormSheetShell,
+  FormDialogActions,
+  FormDialogShell,
   apiMessage,
-} from '@/features/admin/components/form-sheet-shell';
+} from '@/features/admin/components/form-dialog-shell';
 import {
   useProvisionTemporaryUser,
   useRegenerateTemporaryPassword,
@@ -23,6 +22,13 @@ import { RoleMultiSelect } from './role-multi-select';
 
 const MIN_PASSWORD_LENGTH = 12;
 
+/** Same members, in any order. */
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+}
+
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
 interface CreatedCredentials {
@@ -31,7 +37,7 @@ interface CreatedCredentials {
   expiresAt: string;
 }
 
-export function CreateUserSheet({
+export function CreateUserDialog({
   open,
   onOpenChange,
 }: {
@@ -48,10 +54,16 @@ export function CreateUserSheet({
     lastName: useId(),
   };
 
+  const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [created, setCreated] = useState<CreatedCredentials | null>(null);
 
   function reset() {
+    setEmail('');
+    setFirstName('');
+    setLastName('');
     setRoleIds([]);
     setCreated(null);
     create.reset();
@@ -64,15 +76,15 @@ export function CreateUserSheet({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get('email') ?? '').trim();
-    const firstName = String(form.get('firstName') ?? '').trim();
-    const lastName = String(form.get('lastName') ?? '').trim();
-
-    if (!email || !firstName || !lastName) return;
+    const trimmed = {
+      email: email.trim(),
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+    };
+    if (!trimmed.email || !trimmed.firstName || !trimmed.lastName) return;
 
     create.mutate(
-      { email, firstName, lastName, roleIds },
+      { ...trimmed, roleIds },
       {
         onSuccess: (result) => {
           setCreated({
@@ -85,23 +97,44 @@ export function CreateUserSheet({
     );
   }
 
-  const title = created ? t('createdTitle') : t('createTitle');
+  // Once created there is nothing left to lose — the credentials are the result, not an edit.
+  const dirty =
+    !created &&
+    (email.trim() !== '' || firstName.trim() !== '' || lastName.trim() !== '' || roleIds.length > 0);
 
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={open}
       onOpenChange={handleOpenChange}
-      title={title}
+      title={created ? t('createdTitle') : t('createTitle')}
       description={created ? undefined : t('createSubtitle')}
+      dirty={dirty}
+      busy={create.isPending}
+      onSubmit={created ? undefined : handleSubmit}
+      footer={
+        created ? (
+          <>
+            <Button type="button" variant="ghost" onClick={reset}>
+              {t('addAnother')}
+            </Button>
+            <Button type="button" onClick={() => handleOpenChange(false)}>
+              {t('done')}
+            </Button>
+          </>
+        ) : (
+          <FormDialogActions
+            cancelLabel={tc('cancel')}
+            submitLabel={t('createSubmit')}
+            pendingLabel={t('createPending')}
+            pending={create.isPending}
+          />
+        )
+      }
     >
       {created ? (
-        <CredentialsSummary
-          credentials={created}
-          onDone={() => handleOpenChange(false)}
-          onAddAnother={reset}
-        />
+        <CredentialsSummary credentials={created} />
       ) : (
-        <FormBody onSubmit={handleSubmit}>
+        <>
           <FormField htmlFor={ids.email} label={t('email')} required>
             <Input
               id={ids.email}
@@ -109,6 +142,8 @@ export function CreateUserSheet({
               type="email"
               required
               autoComplete="off"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               disabled={create.isPending}
             />
           </FormField>
@@ -120,6 +155,8 @@ export function CreateUserSheet({
                 name="firstName"
                 required
                 autoComplete="off"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
                 disabled={create.isPending}
               />
             </FormField>
@@ -129,6 +166,8 @@ export function CreateUserSheet({
                 name="lastName"
                 required
                 autoComplete="off"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
                 disabled={create.isPending}
               />
             </FormField>
@@ -146,30 +185,14 @@ export function CreateUserSheet({
           {create.error ? (
             <Alert variant="error" messages={[apiMessage(create.error, t('createFailed'))!]} />
           ) : null}
-
-          <FormFooter
-            onCancel={() => handleOpenChange(false)}
-            cancelLabel={tc('cancel')}
-            submitLabel={t('createSubmit')}
-            pendingLabel={t('createPending')}
-            pending={create.isPending}
-          />
-        </FormBody>
+        </>
       )}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }
 
 /** Shown after a user is created so the admin can copy the credentials to share. */
-function CredentialsSummary({
-  credentials,
-  onDone,
-  onAddAnother,
-}: {
-  credentials: CreatedCredentials;
-  onDone: () => void;
-  onAddAnother: () => void;
-}) {
+function CredentialsSummary({ credentials }: { credentials: CreatedCredentials }) {
   const t = useTranslations('platform.users.form');
   const [copied, setCopied] = useState(false);
 
@@ -220,22 +243,13 @@ function CredentialsSummary({
       <Button type="button" variant="outline" onClick={() => void copy()} className="w-full">
         {copied ? t('copied') : t('copyCredentials')}
       </Button>
-
-      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-        <Button type="button" variant="ghost" onClick={onAddAnother}>
-          {t('addAnother')}
-        </Button>
-        <Button type="button" onClick={onDone}>
-          {t('done')}
-        </Button>
-      </div>
     </div>
   );
 }
 
 // ─── Edit profile ──────────────────────────────────────────────────────────────
 
-export function EditUserSheet({
+export function EditUserDialog({
   user,
   onOpenChange,
 }: {
@@ -247,38 +261,66 @@ export function EditUserSheet({
   const update = useUpdateUser();
   const ids = { firstName: useId(), lastName: useId() };
 
+  // Seed from the user each time a different user opens.
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (user && seededFor !== user.id) {
+    setSeededFor(user.id);
+    setFirstName(user.firstName);
+    setLastName(user.lastName);
+  }
+
+  function close(next: boolean) {
+    if (!next) {
+      setSeededFor(null);
+      update.reset();
+    }
+    onOpenChange(next);
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) return;
-    const form = new FormData(event.currentTarget);
-    const firstName = String(form.get('firstName') ?? '').trim();
-    const lastName = String(form.get('lastName') ?? '').trim();
-    if (!firstName || !lastName) return;
+    const first = firstName.trim();
+    const last = lastName.trim();
+    if (!first || !last) return;
 
     update.mutate(
-      { id: user.id, payload: { firstName, lastName } },
-      { onSuccess: () => onOpenChange(false) },
+      { id: user.id, payload: { firstName: first, lastName: last } },
+      { onSuccess: () => close(false) },
     );
   }
 
+  const dirty = Boolean(user) && (firstName !== user?.firstName || lastName !== user?.lastName);
+
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={Boolean(user)}
-      onOpenChange={(next) => {
-        if (!next) update.reset();
-        onOpenChange(next);
-      }}
+      onOpenChange={close}
       title={t('editTitle')}
       description={user ? `${t('editSubtitle')} · ${user.email}` : t('editSubtitle')}
+      dirty={dirty}
+      busy={update.isPending}
+      onSubmit={handleSubmit}
+      footer={
+        <FormDialogActions
+          cancelLabel={tc('cancel')}
+          submitLabel={tc('save')}
+          pendingLabel={t('savePending')}
+          pending={update.isPending}
+        />
+      }
     >
       {user ? (
-        <FormBody onSubmit={handleSubmit}>
+        <>
           <div className="grid gap-5 sm:grid-cols-2">
             <FormField htmlFor={ids.firstName} label={t('firstName')} required>
               <Input
                 id={ids.firstName}
                 name="firstName"
-                defaultValue={user.firstName}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
                 required
                 autoComplete="off"
                 disabled={update.isPending}
@@ -288,7 +330,8 @@ export function EditUserSheet({
               <Input
                 id={ids.lastName}
                 name="lastName"
-                defaultValue={user.lastName}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
                 required
                 autoComplete="off"
                 disabled={update.isPending}
@@ -299,23 +342,15 @@ export function EditUserSheet({
           {update.error ? (
             <Alert variant="error" messages={[apiMessage(update.error, t('editFailed'))!]} />
           ) : null}
-
-          <FormFooter
-            onCancel={() => onOpenChange(false)}
-            cancelLabel={tc('cancel')}
-            submitLabel={tc('save')}
-            pendingLabel={t('savePending')}
-            pending={update.isPending}
-          />
-        </FormBody>
+        </>
       ) : null}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }
 
 // ─── Set password ────────────────────────────────────────────────────────────────
 
-export function SetPasswordSheet({
+export function SetPasswordDialog({
   user,
   onOpenChange,
   onSuccess,
@@ -356,16 +391,28 @@ export function SetPasswordSheet({
   }
 
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={Boolean(user)}
       onOpenChange={close}
       title={t('setPasswordTitle')}
       description={
         user ? `${t('setPasswordSubtitle')} · ${user.firstName} ${user.lastName}` : t('setPasswordSubtitle')
       }
+      dirty={password.length > 0}
+      busy={setPassword.isPending}
+      onSubmit={handleSubmit}
+      footer={
+        <FormDialogActions
+          cancelLabel={tc('cancel')}
+          submitLabel={t('setPasswordSubmit')}
+          pendingLabel={t('setPasswordPending')}
+          pending={setPassword.isPending}
+          disabled={password.length < MIN_PASSWORD_LENGTH}
+        />
+      }
     >
       {user ? (
-        <FormBody onSubmit={handleSubmit}>
+        <>
           <FormField
             htmlFor={id}
             label={t('newPassword')}
@@ -390,24 +437,15 @@ export function SetPasswordSheet({
               messages={[apiMessage(setPassword.error, t('setPasswordFailed'))!]}
             />
           ) : null}
-
-          <FormFooter
-            onCancel={() => close(false)}
-            cancelLabel={tc('cancel')}
-            submitLabel={t('setPasswordSubmit')}
-            pendingLabel={t('setPasswordPending')}
-            pending={setPassword.isPending}
-            disabled={password.length < MIN_PASSWORD_LENGTH}
-          />
-        </FormBody>
+        </>
       ) : null}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }
 
 // ─── Regenerate temporary password ────────────────────────────────────────────────
 
-export function RegenerateTemporarySheet({
+export function RegenerateTemporaryDialog({
   user,
   onOpenChange,
 }: {
@@ -424,17 +462,40 @@ export function RegenerateTemporarySheet({
   }
 
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={Boolean(user)}
       onOpenChange={close}
       title={t('regenerateTitle')}
       description={
         user ? `${t('regenerateHint')} · ${user.firstName} ${user.lastName}` : t('regenerateHint')
       }
+      busy={regenerate.isPending}
+      footer={
+        regenerate.data ? (
+          <Button type="button" onClick={() => close(false)}>
+            {t('done')}
+          </Button>
+        ) : (
+          <>
+            <FormDialogClose asChild>
+              <Button type="button" variant="outline" disabled={regenerate.isPending}>
+                {tc('cancel')}
+              </Button>
+            </FormDialogClose>
+            <Button
+              type="button"
+              onClick={() => user && regenerate.mutate(user.id)}
+              disabled={!user || regenerate.isPending}
+            >
+              {regenerate.isPending ? t('regenerating') : t('regenerateSubmit')}
+            </Button>
+          </>
+        )
+      }
     >
       {user ? (
         regenerate.data ? (
-          <div className="space-y-4">
+          <>
             <Alert variant="success" messages={[t('regenerateDone')]} />
             <dl className="space-y-3 rounded-panel border border-border bg-surface p-4">
               <div>
@@ -454,14 +515,9 @@ export function RegenerateTemporarySheet({
                 </dd>
               </div>
             </dl>
-            <div className="mt-6 flex justify-end border-t border-border pt-4">
-              <Button type="button" onClick={() => close(false)}>
-                {t('done')}
-              </Button>
-            </div>
-          </div>
+          </>
         ) : (
-          <div className="space-y-5">
+          <>
             <Alert variant="warning" messages={[t('regenerateWarning')]} />
 
             {regenerate.error ? (
@@ -470,34 +526,16 @@ export function RegenerateTemporarySheet({
                 messages={[apiMessage(regenerate.error, t('regenerateWarning'))!]}
               />
             ) : null}
-
-            <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => close(false)}
-                disabled={regenerate.isPending}
-              >
-                {tc('cancel')}
-              </Button>
-              <Button
-                type="button"
-                onClick={() => regenerate.mutate(user.id)}
-                disabled={regenerate.isPending}
-              >
-                {regenerate.isPending ? t('regenerating') : t('regenerateSubmit')}
-              </Button>
-            </div>
-          </div>
+          </>
         )
       ) : null}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }
 
 // ─── Manage roles ────────────────────────────────────────────────────────────────
 
-export function ManageRolesSheet({
+export function ManageRolesDialog({
   user,
   onOpenChange,
 }: {
@@ -531,17 +569,30 @@ export function ManageRolesSheet({
     setRoles.mutate({ id: user.id, payload: { roleIds } }, { onSuccess: () => close(false) });
   }
 
+  const dirty = Boolean(user) && !sameSet(roleIds, user?.roles.map((r) => r.id) ?? []);
+
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={Boolean(user)}
       onOpenChange={close}
       title={t('manageRolesTitle')}
       description={
         user ? `${t('manageRolesSubtitle')} · ${user.firstName} ${user.lastName}` : t('manageRolesSubtitle')
       }
+      dirty={dirty}
+      busy={setRoles.isPending}
+      onSubmit={handleSubmit}
+      footer={
+        <FormDialogActions
+          cancelLabel={tc('cancel')}
+          submitLabel={tc('save')}
+          pendingLabel={t('savePending')}
+          pending={setRoles.isPending}
+        />
+      }
     >
       {user ? (
-        <FormBody onSubmit={handleSubmit}>
+        <>
           <RoleMultiSelect
             selectedIds={roleIds}
             onChange={setRoleIds}
@@ -551,16 +602,8 @@ export function ManageRolesSheet({
           {setRoles.error ? (
             <Alert variant="error" messages={[apiMessage(setRoles.error, t('manageRolesFailed'))!]} />
           ) : null}
-
-          <FormFooter
-            onCancel={() => close(false)}
-            cancelLabel={tc('cancel')}
-            submitLabel={tc('save')}
-            pendingLabel={t('savePending')}
-            pending={setRoles.isPending}
-          />
-        </FormBody>
+        </>
       ) : null}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }

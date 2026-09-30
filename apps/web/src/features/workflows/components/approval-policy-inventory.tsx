@@ -8,10 +8,10 @@ import {
   Button,
   FormField,
   Input,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
   FilterBar,
   FilterField,
   Select,
@@ -34,6 +34,9 @@ import { AdminPanel } from '@/features/admin/components/admin-panel';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
 import { filterPolicies, type PolicyStatusFilter } from '../filter-policies';
 import { PolicyVersionComparisonDialog } from './policy-version-comparison-dialog';
+
+/** The server's policy-key shape (once the input's native `pattern`). */
+const POLICY_KEY_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/;
 
 /**
  * Approval policy inventory (S2) — the spine of the workflows page. The list is the primary
@@ -69,13 +72,33 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
     [data, query, statusFilter],
   );
 
+  // Controlled, so the dialog knows when closing would throw a draft away.
+  const [draftKey, setDraftKey] = useState('');
+  const [draftNotes, setDraftNotes] = useState('');
+  const [draftTried, setDraftTried] = useState(false);
+  // FormDialog's form is `noValidate`, so the key's shape — once a native `pattern` — is checked here.
+  const keyValid = POLICY_KEY_PATTERN.test(draftKey.trim());
+
+  function setDraftOpen(next: boolean) {
+    if (!next) {
+      setDraftKey('');
+      setDraftNotes('');
+      setDraftTried(false);
+      create.reset();
+    }
+    setOpen(next);
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const policyKey = String(form.get('policyKey') ?? '').trim();
-    const notes = String(form.get('notes') ?? '').trim();
-    if (!policyKey) return;
-    create.mutate({ policyKey, ...(notes ? { notes } : {}) }, { onSuccess: () => setOpen(false) });
+    setDraftTried(true);
+    const policyKey = draftKey.trim();
+    const notes = draftNotes.trim();
+    if (!keyValid) return;
+    create.mutate(
+      { policyKey, ...(notes ? { notes } : {}) },
+      { onSuccess: () => setDraftOpen(false) },
+    );
   }
 
   return (
@@ -192,36 +215,57 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
           />
         ) : null}
 
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="p-6 sm:max-w-lg">
-            <DialogTitle>{t('newDraft')}</DialogTitle>
-            <DialogDescription className="mt-1">{t('draftHint')}</DialogDescription>
-            <form onSubmit={submit} className="mt-5 space-y-4">
-              <FormField htmlFor="policyKey" label={t('policyKey')} required>
-                <Input
-                  id="policyKey"
-                  name="policyKey"
-                  required
-                  pattern="[A-Z][A-Z0-9_]{2,79}"
-                  placeholder="PURCHASE_ORDER_APPROVAL"
-                  disabled={create.isPending}
-                />
-              </FormField>
-              <FormField htmlFor="notes" label={t('notes')}>
-                <Textarea id="notes" name="notes" rows={3} disabled={create.isPending} />
-              </FormField>
-              {create.error ? <Alert variant="error" messages={[t('createFailed')]} /> : null}
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  {t('cancel')}
-                </Button>
-                <Button type="submit" disabled={create.isPending}>
-                  {create.isPending ? t('creating') : t('create')}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* ADR-039: a FormDialog (md) — two fields. */}
+        <FormDialog
+          open={open}
+          onOpenChange={setDraftOpen}
+          size="md"
+          title={t('newDraft')}
+          subtitle={t('draftHint')}
+          dirty={draftKey.trim() !== '' || draftNotes.trim() !== ''}
+          busy={create.isPending}
+          onSubmit={submit}
+        >
+          <FormDialogBody className="space-y-4">
+            <FormField
+              htmlFor="policyKey"
+              label={t('policyKey')}
+              required
+              error={draftTried && !keyValid ? t('policyKeyInvalid') : undefined}
+            >
+              <Input
+                id="policyKey"
+                name="policyKey"
+                required
+                value={draftKey}
+                onChange={(event) => setDraftKey(event.target.value)}
+                placeholder="PURCHASE_ORDER_APPROVAL"
+                disabled={create.isPending}
+              />
+            </FormField>
+            <FormField htmlFor="notes" label={t('notes')}>
+              <Textarea
+                id="notes"
+                name="notes"
+                rows={3}
+                value={draftNotes}
+                onChange={(event) => setDraftNotes(event.target.value)}
+                disabled={create.isPending}
+              />
+            </FormField>
+            {create.error ? <Alert variant="error" messages={[t('createFailed')]} /> : null}
+          </FormDialogBody>
+          <FormDialogFooter>
+            <FormDialogClose asChild>
+              <Button type="button" variant="outline" disabled={create.isPending}>
+                {t('cancel')}
+              </Button>
+            </FormDialogClose>
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? t('creating') : t('create')}
+            </Button>
+          </FormDialogFooter>
+        </FormDialog>
       </div>
     </AdminPanel>
   );

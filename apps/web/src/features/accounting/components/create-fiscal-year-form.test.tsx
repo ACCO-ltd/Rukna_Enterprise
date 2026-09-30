@@ -144,7 +144,7 @@ describe('CreateFiscalYearForm', () => {
    * know it. §6.14 promises Jan–Dec; this deliberately does not.
    */
   it('does not promise January, since the start month is not knowable here', () => {
-    renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateFiscalYearForm title="New fiscal year" onDone={vi.fn()} />);
 
     expect(screen.getByText(/fiscal year start month/i)).toBeInTheDocument();
     expect(screen.queryByText(/January/i)).not.toBeInTheDocument();
@@ -152,7 +152,7 @@ describe('CreateFiscalYearForm', () => {
 
   it('offers the retained earnings account by code and name', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateFiscalYearForm title="New fiscal year" onDone={vi.fn()} />);
 
     await openSelect(user, screen.getByLabelText('Retained earnings account'));
     expect(
@@ -168,7 +168,7 @@ describe('CreateFiscalYearForm', () => {
       isPending: false,
       isError: false,
     });
-    renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateFiscalYearForm title="New fiscal year" onDone={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Year'), '2026');
     await chooseOption(user, screen.getByLabelText('Retained earnings account'), '31000');
@@ -180,7 +180,7 @@ describe('CreateFiscalYearForm', () => {
 
   it('sends the year as a number and the account as a code', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateFiscalYearForm title="New fiscal year" onDone={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Year'), '2027');
     await chooseOption(user, screen.getByLabelText('Retained earnings account'), '31000');
@@ -194,10 +194,11 @@ describe('CreateFiscalYearForm', () => {
 
   it('explains when the chart has no equity account to close into', () => {
     mocks.useAccounts.mockReturnValue({ data: [BANK], isPending: false, isError: false });
-    renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateFiscalYearForm title="New fiscal year" onDone={vi.fn()} />);
 
     expect(screen.getByText('No equity account is available')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open fiscal year' })).not.toBeInTheDocument();
+    // The dialog keeps its pinned footer, but there is nothing to submit.
+    expect(screen.getByRole('button', { name: 'Open fiscal year' })).toBeDisabled();
   });
 
 });

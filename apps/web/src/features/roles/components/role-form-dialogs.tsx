@@ -7,11 +7,10 @@ import { Alert, FormField, Input, Select, Textarea } from '@erp/ui';
 import type { RoleSummary } from '@erp/types';
 import { PermissionPicker } from '@/features/permissions/components/permission-picker';
 import {
-  FormBody,
-  FormFooter,
-  FormSheetShell,
+  FormDialogActions,
+  FormDialogShell,
   apiMessage,
-} from '@/features/admin/components/form-sheet-shell';
+} from '@/features/admin/components/form-dialog-shell';
 
 import {
   useCreateRole,
@@ -21,9 +20,19 @@ import {
   useUpdateRole,
 } from '../hooks/use-roles';
 
+/** Same members, in any order. */
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((id) => set.has(id));
+}
+
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
-export function CreateRoleSheet({
+const EMPTY_ROLE = { name: '', purpose: '', templateRoleId: '', description: '' };
+
+/** `lg` (ADR-039): a record form carrying the whole permission picker. */
+export function CreateRoleDialog({
   open,
   onOpenChange,
 }: {
@@ -35,10 +44,14 @@ export function CreateRoleSheet({
   const create = useCreateRole();
   const templates = useRoles();
   const ids = { name: useId(), purpose: useId(), template: useId(), description: useId() };
+  const [fields, setFields] = useState(EMPTY_ROLE);
   const [permissionIds, setPermissionIds] = useState<string[]>([]);
+
+  const patch = (next: Partial<typeof EMPTY_ROLE>) => setFields((prev) => ({ ...prev, ...next }));
 
   function close(next: boolean) {
     if (!next) {
+      setFields(EMPTY_ROLE);
       setPermissionIds([]);
       create.reset();
     }
@@ -47,11 +60,10 @@ export function CreateRoleSheet({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get('name') ?? '').trim();
-    const purpose = String(form.get('purpose') ?? '').trim();
-    const templateRoleId = String(form.get('templateRoleId') ?? '');
-    const description = String(form.get('description') ?? '').trim();
+    const name = fields.name.trim();
+    const purpose = fields.purpose.trim();
+    const templateRoleId = fields.templateRoleId;
+    const description = fields.description.trim();
     if (!name || !purpose) return;
 
     create.mutate(
@@ -62,95 +74,103 @@ export function CreateRoleSheet({
         ...(description ? { description } : {}),
         ...(permissionIds.length > 0 ? { permissionIds } : {}),
       },
-      {
-        onSuccess: () => {
-          setPermissionIds([]);
-          close(false);
-        },
-      },
+      { onSuccess: () => close(false) },
     );
   }
 
+  const dirty =
+    Object.values(fields).some((value) => value.trim() !== '') || permissionIds.length > 0;
+
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={open}
       onOpenChange={close}
       title={t('createTitle')}
       description={t('createSubtitle')}
-    >
-      <FormBody onSubmit={handleSubmit}>
-        <FormField htmlFor={ids.name} label={t('name')} required>
-          <Input
-            id={ids.name}
-            name="name"
-            required
-            maxLength={100}
-            autoComplete="off"
-            disabled={create.isPending}
-          />
-        </FormField>
-
-        <FormField htmlFor={ids.purpose} label={t('purpose')} required>
-          <Textarea
-            id={ids.purpose}
-            name="purpose"
-            rows={2}
-            required
-            maxLength={500}
-            disabled={create.isPending}
-          />
-        </FormField>
-
-        <FormField htmlFor={ids.template} label={t('template')}>
-          <Select
-            id={ids.template}
-            name="templateRoleId"
-            disabled={create.isPending || templates.isPending}
-          >
-            <option value="">{t('noTemplate')}</option>
-            {(templates.data ?? []).map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name} ({role.kind})
-              </option>
-            ))}
-          </Select>
-        </FormField>
-
-        <FormField htmlFor={ids.description} label={`${t('description')} (${tc('optional')})`}>
-          <Textarea
-            id={ids.description}
-            name="description"
-            rows={2}
-            maxLength={500}
-            disabled={create.isPending}
-          />
-        </FormField>
-
-        <PermissionPicker
-          selectedIds={permissionIds}
-          onChange={setPermissionIds}
-          disabled={create.isPending}
-        />
-
-        {create.error ? (
-          <Alert variant="error" messages={[apiMessage(create.error, t('createFailed'))!]} />
-        ) : null}
-
-        <FormFooter
-          onCancel={() => close(false)}
+      size="lg"
+      dirty={dirty}
+      busy={create.isPending}
+      onSubmit={handleSubmit}
+      footer={
+        <FormDialogActions
           cancelLabel={tc('cancel')}
           submitLabel={t('createSubmit')}
           pendingLabel={t('createPending')}
           pending={create.isPending}
         />
-      </FormBody>
-    </FormSheetShell>
+      }
+    >
+      <FormField htmlFor={ids.name} label={t('name')} required>
+        <Input
+          id={ids.name}
+          name="name"
+          required
+          maxLength={100}
+          autoComplete="off"
+          value={fields.name}
+          onChange={(e) => patch({ name: e.target.value })}
+          disabled={create.isPending}
+        />
+      </FormField>
+
+      <FormField htmlFor={ids.purpose} label={t('purpose')} required>
+        <Textarea
+          id={ids.purpose}
+          name="purpose"
+          rows={2}
+          required
+          maxLength={500}
+          value={fields.purpose}
+          onChange={(e) => patch({ purpose: e.target.value })}
+          disabled={create.isPending}
+        />
+      </FormField>
+
+      <FormField htmlFor={ids.template} label={t('template')}>
+        <Select
+          id={ids.template}
+          name="templateRoleId"
+          value={fields.templateRoleId}
+          onChange={(value) => patch({ templateRoleId: value })}
+          disabled={create.isPending || templates.isPending}
+        >
+          <option value="">{t('noTemplate')}</option>
+          {(templates.data ?? []).map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.name} ({role.kind})
+            </option>
+          ))}
+        </Select>
+      </FormField>
+
+      <FormField htmlFor={ids.description} label={`${t('description')} (${tc('optional')})`}>
+        <Textarea
+          id={ids.description}
+          name="description"
+          rows={2}
+          maxLength={500}
+          value={fields.description}
+          onChange={(e) => patch({ description: e.target.value })}
+          disabled={create.isPending}
+        />
+      </FormField>
+
+      <PermissionPicker
+        selectedIds={permissionIds}
+        onChange={setPermissionIds}
+        disabled={create.isPending}
+      />
+
+      {create.error ? (
+        <Alert variant="error" messages={[apiMessage(create.error, t('createFailed'))!]} />
+      ) : null}
+    </FormDialogShell>
   );
 }
 
 // ─── Edit ────────────────────────────────────────────────────────────────────────
 
-export function EditRoleSheet({
+export function EditRoleDialog({
   role,
   onOpenChange,
 }: {
@@ -162,38 +182,74 @@ export function EditRoleSheet({
   const update = useUpdateRole();
   const ids = { name: useId(), purpose: useId(), description: useId() };
 
+  // Seed from the role each time a different role opens.
+  const [fields, setFields] = useState({ name: '', purpose: '', description: '' });
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (role && seededFor !== role.id) {
+    setSeededFor(role.id);
+    setFields({
+      name: role.name,
+      purpose: role.purpose ?? '',
+      description: role.description ?? '',
+    });
+  }
+
+  const patch = (next: Partial<typeof fields>) => setFields((prev) => ({ ...prev, ...next }));
+
+  function close(next: boolean) {
+    if (!next) {
+      setSeededFor(null);
+      update.reset();
+    }
+    onOpenChange(next);
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!role) return;
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get('name') ?? '').trim();
-    const purpose = String(form.get('purpose') ?? '').trim();
-    const description = String(form.get('description') ?? '').trim();
+    const name = fields.name.trim();
+    const purpose = fields.purpose.trim();
+    const description = fields.description.trim();
     if (!name || !purpose) return;
 
     update.mutate(
       { id: role.id, payload: { name, purpose, description } },
-      { onSuccess: () => onOpenChange(false) },
+      { onSuccess: () => close(false) },
     );
   }
 
+  const dirty =
+    Boolean(role) &&
+    (fields.name !== role?.name ||
+      fields.purpose !== (role?.purpose ?? '') ||
+      fields.description !== (role?.description ?? ''));
+
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={Boolean(role)}
-      onOpenChange={(next) => {
-        if (!next) update.reset();
-        onOpenChange(next);
-      }}
+      onOpenChange={close}
       title={t('editTitle')}
       description={role ? `${t('editSubtitle')} · ${role.name}` : t('editSubtitle')}
+      dirty={dirty}
+      busy={update.isPending}
+      onSubmit={handleSubmit}
+      footer={
+        <FormDialogActions
+          cancelLabel={tc('cancel')}
+          submitLabel={tc('save')}
+          pendingLabel={t('savePending')}
+          pending={update.isPending}
+        />
+      }
     >
       {role ? (
-        <FormBody onSubmit={handleSubmit}>
+        <>
           <FormField htmlFor={ids.name} label={t('name')} required>
             <Input
               id={ids.name}
               name="name"
-              defaultValue={role.name}
+              value={fields.name}
+              onChange={(e) => patch({ name: e.target.value })}
               required
               maxLength={100}
               autoComplete="off"
@@ -208,7 +264,8 @@ export function EditRoleSheet({
               rows={2}
               required
               maxLength={500}
-              defaultValue={role.purpose ?? ''}
+              value={fields.purpose}
+              onChange={(e) => patch({ purpose: e.target.value })}
               disabled={update.isPending}
             />
           </FormField>
@@ -219,7 +276,8 @@ export function EditRoleSheet({
               name="description"
               rows={2}
               maxLength={500}
-              defaultValue={role.description ?? ''}
+              value={fields.description}
+              onChange={(e) => patch({ description: e.target.value })}
               disabled={update.isPending}
             />
           </FormField>
@@ -227,23 +285,16 @@ export function EditRoleSheet({
           {update.error ? (
             <Alert variant="error" messages={[apiMessage(update.error, t('editFailed'))!]} />
           ) : null}
-
-          <FormFooter
-            onCancel={() => onOpenChange(false)}
-            cancelLabel={tc('cancel')}
-            submitLabel={tc('save')}
-            pendingLabel={t('savePending')}
-            pending={update.isPending}
-          />
-        </FormBody>
+        </>
       ) : null}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }
 
 // ─── Manage permissions ──────────────────────────────────────────────────────────
 
-export function ManagePermissionsSheet({
+/** `lg` (ADR-039): the permission picker is a long list. */
+export function ManagePermissionsDialog({
   role,
   onOpenChange,
 }: {
@@ -283,13 +334,31 @@ export function ManagePermissionsSheet({
   }
 
   const loading = Boolean(role) && detail.isPending;
+  const ready = Boolean(role) && !loading && !detail.isError;
+  const dirty =
+    ready &&
+    seededFor === role?.id &&
+    !sameSet(permissionIds, detail.data?.permissions.map((p) => p.id) ?? []);
 
   return (
-    <FormSheetShell
+    <FormDialogShell
       open={Boolean(role)}
       onOpenChange={close}
       title={t('managePermissionsTitle')}
       description={role ? `${t('managePermissionsSubtitle')} · ${role.name}` : t('managePermissionsSubtitle')}
+      size="lg"
+      dirty={dirty}
+      busy={setPermissions.isPending}
+      onSubmit={ready ? handleSubmit : undefined}
+      footer={
+        <FormDialogActions
+          cancelLabel={tc('cancel')}
+          submitLabel={tc('save')}
+          pendingLabel={t('savePending')}
+          pending={setPermissions.isPending}
+          disabled={!ready}
+        />
+      }
     >
       {role ? (
         loading ? (
@@ -303,7 +372,7 @@ export function ManagePermissionsSheet({
         ) : detail.isError ? (
           <Alert variant="error" messages={[t('loadRoleFailed')]} />
         ) : (
-          <FormBody onSubmit={handleSubmit}>
+          <>
             <PermissionPicker
               selectedIds={permissionIds}
               onChange={setPermissionIds}
@@ -316,17 +385,9 @@ export function ManagePermissionsSheet({
                 messages={[apiMessage(setPermissions.error, t('managePermissionsFailed'))!]}
               />
             ) : null}
-
-            <FormFooter
-              onCancel={() => close(false)}
-              cancelLabel={tc('cancel')}
-              submitLabel={tc('save')}
-              pendingLabel={t('savePending')}
-              pending={setPermissions.isPending}
-            />
-          </FormBody>
+          </>
         )
       ) : null}
-    </FormSheetShell>
+    </FormDialogShell>
   );
 }

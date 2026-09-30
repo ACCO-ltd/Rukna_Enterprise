@@ -36,7 +36,7 @@ beforeEach(() => {
 
 describe('CreateAccountForm', () => {
   it('shows every field the DTO requires, including the two §6.13 omits', () => {
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     expect(screen.getByLabelText('Account code')).toBeInTheDocument();
     expect(screen.getByLabelText('Account name')).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe('CreateAccountForm', () => {
 
   it('offers all thirty subtypes, grouped, regardless of the class chosen', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     // The list only exists while the select is open — that is what makes it stylable.
     await openSelect(user, screen.getByLabelText('Account subtype'));
@@ -62,7 +62,7 @@ describe('CreateAccountForm', () => {
 
   it('defaults the normal balance from the account class', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await chooseOption(user, screen.getByLabelText('Class'), 'LIABILITY');
 
@@ -76,7 +76,7 @@ describe('CreateAccountForm', () => {
    */
   it('warns on a contra pairing without blocking it', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await chooseOption(user, screen.getByLabelText('Class'), 'ASSET');
     await chooseOption(user, screen.getByLabelText('Normal balance'), 'CREDIT');
@@ -87,7 +87,7 @@ describe('CreateAccountForm', () => {
 
   it('lists every missing required field at once rather than one at a time', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'Create account' }));
 
@@ -100,7 +100,7 @@ describe('CreateAccountForm', () => {
   /** A6 — the third policy exists in the schema and the DTO rejects it. */
   it('offers only the two posting policies the API accepts, and says why', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await openSelect(user, screen.getByLabelText('Posting policy'));
     expect(screen.getAllByRole('option')).toHaveLength(2);
@@ -109,7 +109,7 @@ describe('CreateAccountForm', () => {
 
   it('asks which subledger a control account governs, only once it is one', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     expect(screen.queryByLabelText('Controls which subledger')).not.toBeInTheDocument();
 

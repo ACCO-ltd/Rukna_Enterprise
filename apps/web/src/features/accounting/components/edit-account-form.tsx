@@ -19,7 +19,18 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, CheckboxField, FormField, Input, Select } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  CheckboxField,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormField,
+  Input,
+  Select,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -33,10 +44,13 @@ import {
 import { useAccounts, useUpdateAccount } from '../hooks/use-accounting';
 import type { Account } from '../types';
 
+/** A `FormDialog` (ADR-039), size `md`: four fields. The caller mounts it to open it. */
 export function EditAccountForm({
+  title,
   account,
   onDone,
 }: {
+  title: string;
   account: Account;
   onDone: () => void;
 }) {
@@ -92,8 +106,22 @@ export function EditAccountForm({
     update.mutate({ id: account.id, body }, { onSuccess: onDone });
   }
 
+  const dirty = toUpdateAccountBody(draft, original) !== null;
+
   return (
-    <div className="space-y-4">
+    <FormDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onDone();
+      }}
+      title={title}
+      size="md"
+      dirty={dirty}
+      busy={update.isPending}
+      closeLabel={tCommon('close')}
+      onSubmit={() => handleSubmit()}
+    >
+      <FormDialogBody className="space-y-4">
       <FormField htmlFor={ids.name} label={t('name')}>
         <Input
           id={ids.name}
@@ -153,14 +181,17 @@ export function EditAccountForm({
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={update.isPending}>
-          {tCommon('cancel')}
-        </Button>
-        <Button type="button" onClick={handleSubmit} disabled={update.isPending}>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={update.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={update.isPending}>
           {update.isPending ? tCommon('saving') : t('submit')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }

@@ -17,7 +17,16 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Textarea } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  FormField,
+  Textarea,
+} from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -28,7 +37,11 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function ImportCoaForm({ onDone }: { onDone: () => void }) {
+/**
+ * A `FormDialog` (ADR-039), size `lg`. The caller mounts it to open it. After a successful call
+ * it shows the outcome with Done as its only action.
+ */
+export function ImportCoaForm({ title, onDone }: { title: string; onDone: () => void }) {
   const t = useTranslations('accounting.chartOfAccounts.import');
   const tCommon = useTranslations('common');
 
@@ -52,10 +65,21 @@ export function ImportCoaForm({ onDone }: { onDone: () => void }) {
     });
   }
 
+  const dialogProps = {
+    open: true,
+    onOpenChange: (next: boolean) => {
+      if (!next) onDone();
+    },
+    title,
+    size: 'lg' as const,
+    closeLabel: tCommon('close'),
+  };
+
   // The result view: shown after a successful call, whatever the per-row outcome.
   if (result) {
     return (
-      <div className="space-y-4">
+      <FormDialog {...dialogProps}>
+      <FormDialogBody className="space-y-4">
         <Alert
           variant={result.errors.length > 0 ? 'warning' : 'success'}
           title={t('resultTitle')}
@@ -83,12 +107,13 @@ export function ImportCoaForm({ onDone }: { onDone: () => void }) {
           </div>
         ) : null}
 
-        <div className="flex justify-end">
-          <Button type="button" onClick={onDone}>
-            {t('done')}
-          </Button>
-        </div>
-      </div>
+      </FormDialogBody>
+      <FormDialogFooter>
+        <Button type="button" onClick={onDone}>
+          {t('done')}
+        </Button>
+      </FormDialogFooter>
+      </FormDialog>
     );
   }
 
@@ -99,8 +124,14 @@ export function ImportCoaForm({ onDone }: { onDone: () => void }) {
     : null;
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+    <FormDialog
+      {...dialogProps}
+      subtitle={t('subtitle')}
+      dirty={text.trim() !== ''}
+      busy={importMutation.isPending}
+      onSubmit={() => handleImport()}
+    >
+      <FormDialogBody className="space-y-4">
 
       <FormField htmlFor={pasteId} label={t('pasteLabel')} hint={t('pasteHint')}>
         <Textarea
@@ -147,21 +178,18 @@ export function ImportCoaForm({ onDone }: { onDone: () => void }) {
 
       {requestFailed ? <Alert variant="error" messages={[requestFailed]} /> : null}
 
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onDone} disabled={importMutation.isPending}>
-          {tCommon('cancel')}
-        </Button>
-        <Button
-          type="button"
-          onClick={handleImport}
-          disabled={
-            importMutation.isPending || parsed.rows.length === 0 || parsed.errors.length > 0
-          }
-          title={parsed.rows.length === 0 ? t('nothingToImport') : undefined}
-        >
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline" disabled={importMutation.isPending}>
+            {tCommon('cancel')}
+          </Button>
+        </FormDialogClose>
+        <Button type="submit" disabled={importMutation.isPending || parsed.rows.length === 0 || parsed.errors.length > 0}
+          title={parsed.rows.length === 0 ? t('nothingToImport') : undefined}>
           {importMutation.isPending ? t('importing') : t('submit')}
         </Button>
-      </div>
-    </div>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
