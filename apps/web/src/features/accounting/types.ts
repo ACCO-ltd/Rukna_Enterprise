@@ -487,6 +487,10 @@ export interface ClientInvoice {
   subtotal: string;
   vatAmount: string;
   totalAmount: string;
+  /** The tax code it was raised at (ADR-041); null for invoices raised before tax codes. */
+  taxCodeId?: string | null;
+  /** The rate it was raised at, as a PERCENT snapshot ("5", "5.0000", "0"). */
+  taxRate?: string | null;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
   paymentTerms: string | null;
@@ -511,6 +515,8 @@ export interface GenerateInvoicePayload {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /** ADR-041: omitted → the organisation's default sales tax code. */
+  taxCodeId?: string;
 }
 
 /**
@@ -523,6 +529,8 @@ export interface GenerateInvoiceFromInstallmentPayload {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /** ADR-041: omitted → the organisation's default sales tax code. */
+  taxCodeId?: string;
 }
 
 /**

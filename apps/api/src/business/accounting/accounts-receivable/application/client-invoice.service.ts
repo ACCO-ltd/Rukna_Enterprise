@@ -28,7 +28,8 @@ import {
   installmentBillingBlocker,
   installmentBillingBlockerMessage,
 } from '../domain/installment-billing-eligibility.js';
-import { clientInvoiceSalesTax } from '../domain/client-invoice-tax.js';
+import { clientInvoiceTax } from '../../accounting-core/domain/tax-amount.js';
+import { TaxCodeService } from '../../accounting-core/application/tax-code.service.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
 interface OrgBrandingSnapshot {
@@ -46,6 +47,11 @@ export interface GenerateInvoiceFromIpcDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /**
+   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
+   * Any other code than the default needs `manage:accounting`.
+   */
+  taxCodeId?: string;
 }
 
 export interface GenerateInvoiceFromInstallmentDto {
@@ -61,6 +67,11 @@ export interface GenerateInvoiceFromInstallmentDto {
    * zero is refused. Additions are billed as their own invoice, never through this field.
    */
   subtotalAdjustment?: string;
+  /**
+   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
+   * Any other code than the default needs `manage:accounting`.
+   */
+  taxCodeId?: string;
 }
 
 /**
@@ -80,6 +91,11 @@ export interface GenerateStandaloneChargeDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /**
+   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
+   * Any other code than the default needs `manage:accounting`.
+   */
+  taxCodeId?: string;
 }
 
 export interface GenerateInvoiceFromSeparateChargeDto {
@@ -87,6 +103,11 @@ export interface GenerateInvoiceFromSeparateChargeDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /**
+   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
+   * Any other code than the default needs `manage:accounting`.
+   */
+  taxCodeId?: string;
 }
 
 /**
@@ -172,7 +193,29 @@ export class ClientInvoiceService {
     private readonly postingPort: IAccountingPostingPort,
     private readonly documentService: InvoiceDocumentService,
     private readonly files: PlatformFileService,
+    private readonly taxCodes: TaxCodeService,
   ) {}
+
+  /**
+   * ADR-041 — the code, rate and amounts an invoice is raised at. Resolved after each path's
+   * idempotency read, so returning an existing invoice never re-checks tax.
+   */
+  private async taxFor(
+    prisma: Prisma.TransactionClient | ReturnType<TenancyService['getClient']>,
+    identity: RequestIdentity,
+    taxCodeId: string | undefined,
+    invoiceDate: string,
+    subtotal: Decimal,
+  ) {
+    const tax = await this.taxCodes.resolveForClientInvoice(prisma, identity, taxCodeId, invoiceDate);
+    const vatAmount = clientInvoiceTax(subtotal, tax.ratePercent);
+    return {
+      taxCodeId: tax.taxCodeId,
+      taxRate: tax.ratePercent,
+      vatAmount,
+      totalAmount: subtotal.plus(vatAmount),
+    };
+  }
 
   /**
    * The org's invoice branding, captured at invoice-creation time and frozen into
@@ -223,8 +266,7 @@ export class ClientInvoiceService {
 
     const contract = ipc.application.contract;
     const subtotal = new Decimal(ipc.certifiedTotal.toString());
-    const vatAmount = clientInvoiceSalesTax(subtotal);
-    const totalAmount = subtotal.plus(vatAmount);
+    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -238,8 +280,10 @@ export class ClientInvoiceService {
         dueDate: new Date(dto.dueDate),
         currencyCode: ipc.currency,
         subtotal,
-        vatAmount,
-        totalAmount,
+        vatAmount: tax.vatAmount,
+        totalAmount: tax.totalAmount,
+        taxCodeId: tax.taxCodeId,
+        taxRate: tax.taxRate,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -326,8 +370,7 @@ export class ClientInvoiceService {
           'exceed the stage value. Reduce the omission or bill it as a credit note.',
       );
     }
-    const vatAmount = clientInvoiceSalesTax(subtotal);
-    const totalAmount = subtotal.plus(vatAmount);
+    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -341,8 +384,10 @@ export class ClientInvoiceService {
         dueDate: new Date(dto.dueDate),
         currencyCode: contract.currency,
         subtotal,
-        vatAmount,
-        totalAmount,
+        vatAmount: tax.vatAmount,
+        totalAmount: tax.totalAmount,
+        taxCodeId: tax.taxCodeId,
+        taxRate: tax.taxRate,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -420,8 +465,7 @@ export class ClientInvoiceService {
     }
 
     const subtotal = new Decimal(node.totalAmount.toString()).toDecimalPlaces(2);
-    const vatAmount = clientInvoiceSalesTax(subtotal);
-    const totalAmount = subtotal.plus(vatAmount);
+    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -438,8 +482,10 @@ export class ClientInvoiceService {
         // document, consistent with the installment path.
         currencyCode: contract.currency,
         subtotal,
-        vatAmount,
-        totalAmount,
+        vatAmount: tax.vatAmount,
+        totalAmount: tax.totalAmount,
+        taxCodeId: tax.taxCodeId,
+        taxRate: tax.taxRate,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -473,7 +519,7 @@ export class ClientInvoiceService {
    * lives in Commercial). It is INTERNAL-only: NOT idempotent (a VO invoice carries no source column, so
    * there is nothing to key on) and NOT controller-exposed — the orchestrator owns the exactly-once
    * guard via the allocation ledger before it calls this. Same lifecycle as every other AR document:
-   * DRAFT / NOT_POSTED, VAT at the same 5% engine, no GL posting here.
+   * DRAFT / NOT_POSTED, tax from the same tax-code rule (ADR-041), no GL posting here.
    */
   async generateStandaloneCharge(
     identity: RequestIdentity,
@@ -484,8 +530,7 @@ export class ClientInvoiceService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const subtotal = new Decimal(dto.subtotal).toDecimalPlaces(2);
-    const vatAmount = clientInvoiceSalesTax(subtotal);
-    const totalAmount = subtotal.plus(vatAmount);
+    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     // Client is looked up by id only, deliberately — this method must not read the VO or the
     // contract (Accounting never imports Variations); Client is Accounting's own domain.
     const [org, client] = await Promise.all([
@@ -510,8 +555,10 @@ export class ClientInvoiceService {
       dueDate: new Date(dto.dueDate),
       currencyCode: dto.currencyCode,
       subtotal,
-      vatAmount,
-      totalAmount,
+      vatAmount: tax.vatAmount,
+      totalAmount: tax.totalAmount,
+      taxCodeId: tax.taxCodeId,
+      taxRate: tax.taxRate,
       paymentTerms: dto.paymentTerms,
       billingAddressSnapshot: {
         client: client
@@ -875,6 +922,7 @@ export class ClientInvoiceService {
       currencyCode: invoice.currencyCode,
       subtotal: invoice.subtotal.toString(),
       vatAmount: invoice.vatAmount.toString(),
+      taxRatePercent: invoice.taxRate.toString(),
       totalAmount: invoice.totalAmount.toString(),
       paymentTerms: invoice.paymentTerms,
       clientName: client?.name ?? snapshot.clientName ?? 'Client',

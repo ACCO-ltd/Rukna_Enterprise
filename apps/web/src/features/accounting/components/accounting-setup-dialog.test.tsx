@@ -14,6 +14,7 @@ import { AccountingSetupDialog } from './accounting-setup-dialog';
  */
 
 const api = vi.hoisted(() => ({
+  getAccountingSetupStatus: vi.fn(),
   getAccountingSetupTemplate: vi.fn(),
   runAccountingSetup: vi.fn(),
 }));
@@ -63,9 +64,10 @@ function template(vatRate: number, banks: number): SetupTemplate {
       ...(vatRate > 0
         ? [
             row({
-              code: '14100',
-              name: 'Input VAT recoverable',
-              parentCode: '10000',
+              code: '22100',
+              name: 'VAT clearing',
+              accountClass: 'LIABILITY',
+              normalBalance: 'CREDIT',
               conditional: 'VAT' as const,
             }),
           ]
@@ -81,8 +83,19 @@ function template(vatRate: number, banks: number): SetupTemplate {
   };
 }
 
+const STATUS = {
+  canInstall: true,
+  reason: 'READY',
+  accountCount: 0,
+  hasFiscalYear: false,
+  hasPolicies: false,
+  existingRecords: [],
+  defaultSalesTax: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  api.getAccountingSetupStatus.mockResolvedValue(STATUS);
   api.getAccountingSetupTemplate.mockImplementation(
     async ({ vatRate, banks }: { vatRate: number; banks: number }) => template(vatRate, banks),
   );
@@ -181,11 +194,49 @@ describe('AccountingSetupDialog — step 1', () => {
     expect(screen.getByText('Covers July 2026 – June 2027')).toBeInTheDocument();
   });
 
-  it('says plainly that invoice sales tax does not follow the VAT choice', () => {
+  it('says where the invoice sales tax is managed — no fixed 5%', async () => {
     renderDialog();
     expect(
-      screen.getByText('Client invoices currently apply 5% sales tax regardless of this choice.'),
+      await screen.findByText(
+        'Client invoices use the default sales tax code, which Finance manages on Accounting → Tax.',
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/5% sales tax/)).not.toBeInTheDocument();
+  });
+
+  it('with a default sales tax already set: no VAT question, tax left as configured', async () => {
+    api.getAccountingSetupStatus.mockResolvedValue({
+      ...STATUS,
+      defaultSalesTax: { code: 'VAT5_OUT', name: 'Sales tax 5%', ratePercent: '5.0000' },
+    });
+    api.runAccountingSetup.mockResolvedValue({
+      accountsCreated: 5,
+      postingProfilesCreated: 1,
+      fiscalYear: { id: 'fy-1', name: 'FY2026' },
+      bankAccountsCreated: 1,
+      taxCodesCreated: 0,
+    });
+    const user = userEvent.setup();
+    renderDialog();
+
+    expect(
+      await screen.findByText(
+        'Sales tax is already set up: Sales tax 5% (5%) — manage it on Accounting → Tax.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Registered for VAT/ })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Account name'), 'Main operating');
+    await user.type(screen.getByLabelText('Bank'), 'Salaam Bank');
+    await next(user);
+    await screen.findByRole('table', { name: 'Chart of accounts to be created' });
+    expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ vatRate: 0, banks: 1 });
+    await next(user);
+
+    expect(screen.getByText('Sales tax kept as configured: Sales tax 5% (5%)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Set up accounting' }));
+    await waitFor(() => expect(api.runAccountingSetup).toHaveBeenCalledTimes(1));
+    expect(api.runAccountingSetup.mock.calls[0]![0]).toMatchObject({ vat: { charged: false } });
   });
 });
 
@@ -203,7 +254,7 @@ describe('AccountingSetupDialog — review', () => {
     // The bank row carries the name typed on step 1, not the template placeholder.
     expect(within(chart).getByText('Main operating')).toBeInTheDocument();
     expect(within(chart).queryByText('Bank account 1')).not.toBeInTheDocument();
-    expect(within(chart).getByText('Input VAT recoverable')).toBeInTheDocument();
+    expect(within(chart).getByText('VAT clearing')).toBeInTheDocument();
 
     const receivable = within(chart).getByText('Accounts receivable').closest('tr')!;
     expect(within(receivable).getByText('Control')).toBeInTheDocument();
@@ -230,7 +281,7 @@ describe('AccountingSetupDialog — review', () => {
     await next(user);
 
     const chart = await screen.findByRole('table', { name: 'Chart of accounts to be created' });
-    expect(within(chart).queryByText('Input VAT recoverable')).not.toBeInTheDocument();
+    expect(within(chart).queryByText('VAT clearing')).not.toBeInTheDocument();
     expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ vatRate: 0, banks: 1 });
   });
 

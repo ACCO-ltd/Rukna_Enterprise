@@ -17,6 +17,9 @@ import { VariationOrderService } from '../../variations/application/variation-or
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
 import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
+import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
+import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
+import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
 
 /**
  * Commercial reconciliation DB tests.
@@ -116,6 +119,7 @@ describe('CommercialBillingService — post-lifecycle reconciliation', () => {
       mockPostingPort as never,
       documentService,
       fileService,
+      new TaxCodeService(tenancy, new TaxCodeRepository()),
     );
 
     const variationRepo = new VariationOrderPrismaRepository();
@@ -153,6 +157,7 @@ describe('CommercialBillingService — post-lifecycle reconciliation', () => {
     await prisma.organization.create({
       data: { id: orgId, name: `Recon Org ${suffix}`, slug: `recon-${suffix}`, status: 'ACTIVE' },
     });
+    await seedDefaultSalesTax(prisma, orgId);
 
     await prisma.documentNumberSequence.create({
       data: {
@@ -252,6 +257,7 @@ describe('CommercialBillingService — post-lifecycle reconciliation', () => {
     await prisma.boqVersion.deleteMany({ where: { boq: { organizationId: orgId } } });
     await prisma.boq.deleteMany({ where: { organizationId: orgId } });
     await prisma.project.deleteMany({ where: { organizationId: orgId } });
+    await cleanupSalesTax(prisma, orgId);
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });

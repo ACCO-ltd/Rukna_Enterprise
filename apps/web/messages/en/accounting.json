@@ -726,6 +726,7 @@
     "fieldDueDate": "Due date",
     "fieldSubtotal": "Subtotal",
     "fieldVat": "Sales tax",
+    "fieldVatRate": "Sales tax {rate}%",
     "fieldTotal": "Total",
     "fieldOutstanding": "Outstanding",
     "fieldDraftTotal": "Draft total",
@@ -903,6 +904,9 @@
       "emptyLinesTitle": "Choose a source to add its line",
       "emptyLinesHint": "The line and its amount are copied from the IPC, milestone or separate charge you pick.",
       "totalBeforeVat": "Amount before sales tax",
+      "subtotal": "Subtotal",
+      "taxLine": "{name} ({rate}%)",
+      "total": "Total",
       "vatNote": "Sales tax is calculated when the invoice is created.",
       "amountsHidden": "Amounts are hidden for your role.",
       "errors": {
@@ -1058,7 +1062,10 @@
     "setupCompleteBody": "You can now record invoices, bills and receipts. Next: enter opening balances.",
     "postingProfileCreated": "Posting profile {code} created",
     "postingProfileRepointed": "Posting profile now posts to {account}",
-    "postingProfileStatus": "{action, select, deactivate {Posting profile {code} deactivated} other {Posting profile {code} reactivated}}"
+    "postingProfileStatus": "{action, select, deactivate {Posting profile {code} deactivated} other {Posting profile {code} reactivated}}",
+    "taxCodeCreated": "Tax code {code} created",
+    "taxCodeDefault": "{code} is now the default sales tax",
+    "taxCodeStatus": "{action, select, deactivate {Tax code {code} deactivated} other {Tax code {code} reactivated}}"
   },
   "setup": {
     "title": "Set up accounting",
@@ -1075,12 +1082,13 @@
       "none": "Not registered for VAT",
       "noneHint": "No VAT tax codes are created. The output VAT account is still added and stays at zero.",
       "charged": "Registered for VAT",
-      "chargedHint": "Adds an input VAT account and VAT tax codes at your rate.",
+      "chargedHint": "Creates VAT tax codes at your rate.",
       "rate": "VAT rate (%)",
       "rateHint": "The rate your VAT tax codes use, for example 5 or 15.",
       "rateError": "Enter a rate above 0 and up to 100.",
       "choiceError": "Choose whether the company is registered for VAT.",
-      "invoiceTaxNotice": "Client invoices currently apply 5% sales tax regardless of this choice."
+      "invoiceTaxNotice": "Client invoices use the default sales tax code, which Finance manages on Accounting → Tax.",
+      "alreadySetUp": "Sales tax is already set up: {name} ({rate}%) — manage it on Accounting → Tax."
     },
     "banks": {
       "title": "Banks",
@@ -1132,6 +1140,7 @@
       "banks": "{count, plural, =0 {Petty cash only — no bank accounts} one {# bank account ({names}) and petty cash} other {# bank accounts ({names}) and petty cash}}",
       "vatCharged": "VAT tax codes at {rate}%",
       "vatNone": "No VAT tax codes",
+      "vatConfigured": "Sales tax kept as configured: {name} ({rate}%)",
       "onceTitle": "This can only be done once",
       "onceBody": "Setup runs only while the chart of accounts is empty. Afterwards, accounts can be renamed, added and switched off on the chart of accounts.",
       "submit": "Set up accounting",
@@ -1232,5 +1241,93 @@
     },
     "scheduled": "From {date}: {code}",
     "notInForce": "Not in force yet"
+  },
+  "invoiceTax": {
+    "label": "Tax",
+    "readOnly": "Tax: {name} ({rate}%)",
+    "option": "{name} ({rate}%)",
+    "defaultSuffix": "default",
+    "hint": "The organisation's default is preselected. Choose another sales tax code only when this invoice needs it.",
+    "loading": "Loading tax codes…",
+    "loadFailed": "Could not load tax codes. The default sales tax will apply.",
+    "missing": "No default sales tax is set — Finance sets it on Accounting → Tax.",
+    "missingLink": "Open Accounting → Tax",
+    "error": {
+      "TAX_CODE_OVERRIDE_FORBIDDEN": "Only Finance can raise an invoice at a tax code other than the default.",
+      "TAX_NOT_CONFIGURED": "No default sales tax is set — Finance sets it on Accounting → Tax.",
+      "TAX_CODE_NOT_APPLICABLE": "That tax code can't be used for this invoice: it is not an active sales tax code on the invoice date. Choose another."
+    }
+  },
+  "taxCodes": {
+    "title": "Tax",
+    "description": "A tax code's rate never changes — for a new rate, create a new code and make it the default. \"No tax\" is a sales code at 0%.",
+    "colCode": "Code",
+    "colName": "Name",
+    "colRate": "Rate",
+    "colDirection": "Applies to",
+    "colEffectiveFrom": "Effective from",
+    "colStatus": "Status",
+    "rate": "{rate}%",
+    "direction": {
+      "OUTPUT": "Sales",
+      "INPUT": "Purchases"
+    },
+    "status": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive",
+      "SUPERSEDED": "Superseded"
+    },
+    "defaultBadge": "Default",
+    "noDefault": "No default sales tax is set, so client invoices can't be raised. Make an active sales code the default.",
+    "countLabel": "{count, plural, =0 {No tax codes} one {# tax code} other {# tax codes}}",
+    "empty": "No tax codes yet.",
+    "emptyHint": "Create a sales tax code and make it the default before raising client invoices.",
+    "loadFailed": "Could not load tax codes.",
+    "readOnlyNote": "Only Finance can change tax codes.",
+    "rowMenu": "Actions for {code}",
+    "makeDefault": {
+      "action": "Make default"
+    },
+    "deactivate": {
+      "action": "Deactivate",
+      "title": "Deactivate {code}",
+      "body": "New invoices can no longer use it. Invoices already raised with it keep their tax.",
+      "confirm": "Deactivate code",
+      "isDefault": "This is the default sales tax. Make another code the default first.",
+      "defaultHint": "The default can't be deactivated — make another code the default first."
+    },
+    "reactivate": {
+      "action": "Reactivate",
+      "title": "Reactivate {code}",
+      "body": "It can be chosen on new invoices again.",
+      "confirm": "Reactivate code"
+    },
+    "actionFailed": "Could not update {code}.",
+    "create": {
+      "new": "New tax code",
+      "title": "New tax code",
+      "name": "Name",
+      "namePlaceholder": "e.g. Sales tax 6%",
+      "code": "Code",
+      "codeHint": "Up to 10 capital letters, digits, underscores or dots, e.g. VAT6_OUT.",
+      "rate": "Rate (%)",
+      "rateHint": "0 to 100. Use 0 for a \"No tax\" code. It can't be changed once the code is created.",
+      "direction": "Applies to",
+      "OUTPUT": "Sales",
+      "OUTPUTHint": "Client invoices",
+      "INPUT": "Purchases",
+      "INPUTHint": "Supplier bills — posted gross, no tax to reclaim",
+      "effectiveFrom": "Effective from",
+      "effectiveFromHint": "Leave empty to start today.",
+      "submit": "Create tax code",
+      "problem": {
+        "code": "Use 1–10 capital letters, digits, underscores or dots.",
+        "code-taken": "A tax code with this code already exists.",
+        "name": "Enter a name.",
+        "rate": "Enter a rate from 0 to 100, with at most four decimals.",
+        "direction": "Choose whether it applies to sales or purchases."
+      },
+      "failed": "Could not create the tax code."
+    }
   }
 }

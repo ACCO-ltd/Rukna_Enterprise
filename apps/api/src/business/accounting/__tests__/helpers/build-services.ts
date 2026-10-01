@@ -46,6 +46,8 @@ import { PLReportService }           from '../../general-ledger/application/pl-r
 import { BalanceSheetService }       from '../../general-ledger/application/balance-sheet.service.js';
 import { PeriodManagementService }   from '../../general-ledger/application/period-management.service.js';
 import { YearEndCloseService }       from '../../general-ledger/application/year-end-close.service.js';
+import { TaxCodeService } from '../../accounting-core/application/tax-code.service.js';
+import { TaxCodeRepository } from '../../accounting-core/infrastructure/tax-code.repository.js';
 
 export interface AccountingServices {
   prisma: PrismaClient;
@@ -112,7 +114,7 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   // the constructor.
   const invoiceDocumentServiceStub = {} as unknown as import('../../accounts-receivable/application/invoice-document.service.js').InvoiceDocumentService;
   const platformFileServiceStub = {} as unknown as import('../../../../platform/files/application/platform-file.service.js').PlatformFileService;
-  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService, invoiceDocumentServiceStub, platformFileServiceStub);
+  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService, invoiceDocumentServiceStub, platformFileServiceStub, new TaxCodeService(tenancy, new TaxCodeRepository()));
   const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingAccountResolver, postingService, sequenceRepo);
 
   // AP

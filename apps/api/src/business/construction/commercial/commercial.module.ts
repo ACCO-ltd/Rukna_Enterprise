@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { AccountsReceivableModule } from '../../accounting/accounts-receivable/accounts-receivable.module.js';
+import { AccountingCoreModule } from '../../accounting/accounting-core/accounting-core.module.js';
 import { VariationsModule } from '../variations/variations.module.js';
 import { BoqModule } from '../boq/boq.module.js';
 import { FilesModule } from '../../../platform/files/files.module.js';
@@ -33,6 +34,8 @@ import { CommercialController } from './presentation/commercial.controller.js';
     TenancyModule,
     AuditLogsModule,
     AccountsReceivableModule,
+    // ADR-041 — the Prepare invoice preview reads the default sales tax code.
+    AccountingCoreModule,
     VariationsModule,
     BoqModule,
     // Commercial redesign 2026-09-28 — short-lived logo URL on the invoice document read model.

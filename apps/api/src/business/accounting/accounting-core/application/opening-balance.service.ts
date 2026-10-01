@@ -15,6 +15,7 @@ import {
 import { AccountRepository } from '../infrastructure/account.repository.js';
 import { JournalRepository } from '../infrastructure/journal.repository.js';
 import { DocumentSequenceRepository } from '../infrastructure/document-sequence.repository.js';
+import { impliedTaxRatePercent } from '../domain/tax-amount.js';
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,9 @@ export class OpeningBalanceService {
             subtotal,
             vatAmount,
             totalAmount,
+            // ADR-041 — an opening invoice arrives with its tax amount, not a code: record the rate
+            // its own figures imply, so it reads like any other invoice.
+            taxRate: impliedTaxRatePercent(subtotal, vatAmount),
             outstandingAmount: totalAmount,
             billingAddressSnapshot: { migratedFrom: 'QuickBooks', invoiceRef: inv.invoiceRef },
             documentStatus: 'APPROVED',

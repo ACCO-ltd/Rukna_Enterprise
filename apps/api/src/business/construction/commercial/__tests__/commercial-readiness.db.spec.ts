@@ -17,6 +17,9 @@ import { VariationOrderService } from '../../variations/application/variation-or
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
 import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
+import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
+import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
+import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
 
 /**
  * Slice 3B — commercial readiness lifecycle (live-DB).
@@ -108,6 +111,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
       mockPostingPort as never,
       documentService,
       files,
+      new TaxCodeService(tenancy, new TaxCodeRepository()),
     );
     const variationRepo = new VariationOrderPrismaRepository();
     const variationService = new VariationOrderService(tenancy, variationRepo, projectAccess, auditOutbox);
@@ -143,6 +147,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     await prisma.organization.create({
       data: { id: orgId, name: `Org ${suffix}`, slug: `crd-${suffix}`, status: 'ACTIVE' },
     });
+    await seedDefaultSalesTax(prisma, orgId);
     const project = await prisma.project.create({
       data: {
         organizationId: orgId,
@@ -276,6 +281,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     await prisma.boq.deleteMany({ where: { organizationId: orgId } });
     // programmeMilestones are CASCADE-deleted with their project; delete projects last
     await prisma.project.deleteMany({ where: { organizationId: orgId } });
+    await cleanupSalesTax(prisma, orgId);
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });

@@ -23,7 +23,7 @@ import { deriveContractValue, netPrice } from '../../variations/domain/variation
 import { VariationBillingAllocationPolicy } from '../../variations/domain/variation-billing-allocation.policy.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import { installmentBillingBlocker } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
-import { CLIENT_INVOICE_SALES_TAX_RATE } from '../../../accounting/accounts-receivable/domain/client-invoice-tax.js';
+import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
 import { CommercialService, invoiceSource } from './commercial.service.js';
 import {
   buildStatementLines,
@@ -80,6 +80,7 @@ export class CommercialWorkspaceService {
     private readonly variationRepo: VariationOrderPrismaRepository,
     private readonly commercial: CommercialService,
     private readonly files: PlatformFileService,
+    private readonly taxCodes: TaxCodeService,
   ) {}
 
   // ─── GET …/commercial/workspace ────────────────────────────────────────────────
@@ -404,6 +405,7 @@ export class CommercialWorkspaceService {
       }));
 
     const pct = dec(installment.percentage);
+    const defaultTax = await this.taxCodes.defaultOutput(prisma, orgId);
     return {
       installmentId,
       stageNumber: index + 1,
@@ -419,8 +421,12 @@ export class CommercialWorkspaceService {
       currency: contract.currency,
       stageAmount: money(dec(contract.baseContractValue ?? contract.contractValue).mul(pct).toDecimalPlaces(2)),
       variations,
-      // The one rate every generated client invoice is raised at (AR domain), never re-keyed here.
-      taxRate: CLIENT_INVOICE_SALES_TAX_RATE,
+      // ADR-041 — the default sales tax code the drafts are raised at unless Finance picks another;
+      // the same rule the invoice generator applies, never re-keyed here.
+      taxRate: defaultTax ? new Decimal(defaultTax.ratePercent).div(100).toString() : null,
+      defaultTaxCode: defaultTax
+        ? { id: defaultTax.id, code: defaultTax.code, name: defaultTax.name, ratePercent: defaultTax.ratePercent }
+        : null,
     };
   }
 
@@ -537,7 +543,7 @@ export class CommercialWorkspaceService {
       currency: inv.currencyCode,
       lines,
       subtotal: money(subtotal),
-      taxLabel: taxLabelFor(subtotal, tax),
+      taxLabel: taxLabelFor(subtotal, tax, inv.taxRate ? dec(inv.taxRate) : null),
       taxAmount: money(tax),
       total: money(total),
       balanceDue: money(balance),

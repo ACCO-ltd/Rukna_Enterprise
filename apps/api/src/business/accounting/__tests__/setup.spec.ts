@@ -11,7 +11,7 @@
  *   ST-06  posting a supplier bill whose line names an INCOME profile is refused (review M1)
  *   ST-07  a future fiscal year: versions start today and a chart edit succeeds (review M2);
  *          an overlapping fiscal year is a 409, not a constraint 500 (review L4)
- *   ST-08  records without a chart → PARTIAL_SETUP / 409 ACCOUNTING_PARTIALLY_SET_UP (review L6)
+ *   ST-08  tax configured before the chart is kept; setup runs and links Output VAT (ADR-041)
  *   ST-09  three concurrent installs → exactly one succeeds, two 409
  */
 import { PrismaClient } from '@prisma/client';
@@ -157,7 +157,7 @@ describe('ADR-040 accounting setup (DB)', () => {
     expect(result.fiscalYear.name).toBe(`FY${YEAR}`);
     expect(result.bankAccountsCreated).toBe(2);
     expect(result.taxCodesCreated).toBe(2);
-    expect(result.accountsCreated).toBe(78 + 2 + 1); // chart + 2 banks + 14100
+    expect(result.accountsCreated).toBe(78 + 2); // chart + 2 banks; no input-VAT asset (ACC-TAX-001)
     expect(await prisma.account.count({ where: { organizationId: orgId } })).toBe(result.accountsCreated);
     expect(await prisma.postingProfile.count({ where: { organizationId: orgId } })).toBe(result.postingProfilesCreated);
 
@@ -320,21 +320,40 @@ describe('ADR-040 accounting setup (DB)', () => {
     });
   });
 
-  it('ST-08: records without a chart → PARTIAL_SETUP and 409 ACCOUNTING_PARTIALLY_SET_UP', async () => {
+  /**
+   * ADR-041 — Finance configures tax before ACCO's chart is signed off, so tax codes no longer
+   * count as a partial setup: setup runs, keeps the default Finance chose (ignoring its own VAT
+   * answer) and links the sales code to the new Output VAT account.
+   */
+  it('ST-08: tax configured before the chart is kept; setup runs and links the Output VAT account', async () => {
     const who = await makeOrg();
-    await prisma.taxCode.create({
+    const exempt = await prisma.taxCode.create({
       data: {
-        organizationId: who.activeOrganizationId, code: 'VAT5_OUT', name: 'Output VAT 5%', rate: 5, taxType: 'VAT',
-        recoveryMethod: 'FULLY_RECOVERABLE', effectiveFrom: new Date(`${YEAR}-01-01T00:00:00.000Z`), createdBy: who.userId,
+        organizationId: who.activeOrganizationId, code: 'EXEMPT', name: 'No tax', rate: 0, taxType: 'VAT',
+        direction: 'OUTPUT', recoveryMethod: 'FULLY_RECOVERABLE',
+        effectiveFrom: new Date(`${YEAR}-01-01T00:00:00.000Z`), createdBy: who.userId,
       },
     });
-    const setup = makeSetup();
-    expect(await setup.getStatus(who)).toMatchObject({ canInstall: false, reason: 'PARTIAL_SETUP', existingRecords: ['TAX_CODES'] });
-    await expect(setup.install(who, INPUT)).rejects.toMatchObject({
-      status: 409,
-      response: { errorCode: 'ACCOUNTING_PARTIALLY_SET_UP' },
+    await prisma.taxPolicy.create({
+      data: { organizationId: who.activeOrganizationId, defaultOutputTaxCodeId: exempt.id, updatedBy: who.userId },
     });
-    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(0);
+    const setup = makeSetup();
+    expect(await setup.getStatus(who)).toMatchObject({
+      canInstall: true, reason: 'READY', existingRecords: [],
+      defaultSalesTax: { code: 'EXEMPT', ratePercent: '0' },
+    });
+
+    const result = await setup.install(who, INPUT);
+
+    expect(result.taxCodesCreated).toBe(0);
+    const codes = await prisma.taxCode.findMany({ where: { organizationId: who.activeOrganizationId } });
+    expect(codes.map((c) => c.code)).toEqual(['EXEMPT']);
+    const outputVat = await prisma.account.findFirst({ where: { organizationId: who.activeOrganizationId, code: '22000' } });
+    expect(codes[0]!.outputTaxAccountId).toBe(outputVat!.id);
+    const policy = await prisma.taxPolicy.findUnique({ where: { organizationId: who.activeOrganizationId } });
+    expect(policy!.defaultOutputTaxCodeId).toBe(exempt.id);
+    // ACC-TAX-001: no recoverable input-VAT asset.
+    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId, code: '14100' } })).toBe(0);
   });
 
   it('ST-09: three concurrent installs → exactly one succeeds, two are 409', async () => {
@@ -346,7 +365,7 @@ describe('ADR-040 accounting setup (DB)', () => {
     for (const r of refused) {
       expect(r.reason).toMatchObject({ status: 409, response: { errorCode: 'ACCOUNTING_ALREADY_SET_UP' } });
     }
-    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(79);
+    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(78); // the chart, no banks; no input-VAT asset (ACC-TAX-001)
   });
 
   it('ST-03: a failure part-way rolls the whole install back', async () => {

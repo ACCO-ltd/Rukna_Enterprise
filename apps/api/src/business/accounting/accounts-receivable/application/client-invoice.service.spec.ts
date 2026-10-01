@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { ClientInvoiceService } from './client-invoice.service.js';
+import { fakeTaxCodes } from '../../__tests__/helpers/fake-tax-codes.js';
 
 const identity: RequestIdentity = {
   userId: 'user-1',
@@ -52,6 +53,7 @@ function build(ipc: unknown) {
     {} as never,
     {} as never,
     {} as never,
+    fakeTaxCodes() as never,
   );
   return { repo, service };
 }
@@ -152,6 +154,7 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
       {} as never,
       {} as never,
       {} as never,
+      fakeTaxCodes() as never,
     );
     return { repo, service };
   }
@@ -306,6 +309,7 @@ describe('ADR-029 R-4 — generateFromSeparateCharge (one-off separate-charge bi
       {} as never,
       {} as never,
       {} as never,
+      fakeTaxCodes() as never,
     );
     return { repo, service };
   }
@@ -392,6 +396,7 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     currencyCode: 'USD',
     subtotal: { toString: () => '23092.40' },
     vatAmount: { toString: () => '1154.62' },
+    taxRate: { toString: () => '5' },
     totalAmount: { toString: () => '24247.02' },
     paymentTerms: null,
     documentFileId: null,
@@ -434,6 +439,7 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
       {} as never,
       documentService as never,
       files as never,
+      fakeTaxCodes() as never,
     );
     return { repo, documentService, files, service };
   }
@@ -520,6 +526,7 @@ describe('findById — readable source (detail read path)', () => {
       {} as never,
       {} as never,
       {} as never,
+      fakeTaxCodes() as never,
     );
     return { repo, service };
   }
@@ -599,6 +606,7 @@ describe('findAll — every row carries its readable source (list read path)', (
       {} as never,
       {} as never,
       {} as never,
+      fakeTaxCodes() as never,
     );
 
     const result = await service.findAll(identity, { projectId: 'p1' });

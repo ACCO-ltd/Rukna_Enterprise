@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
 import { ClientInvoiceService } from './client-invoice.service.js';
+import { fakeTaxCodes } from '../../__tests__/helpers/fake-tax-codes.js';
 
 /**
  * Strict CONST-COM-011 at posting: a stage invoice drafted before the rule, or whose milestone
@@ -26,6 +27,7 @@ describe('ClientInvoiceService.post — milestone evidence gate', () => {
       postingPort as never,
       {} as never,
       {} as never,
+      fakeTaxCodes() as never,
     );
     return { service, postingPort };
   }

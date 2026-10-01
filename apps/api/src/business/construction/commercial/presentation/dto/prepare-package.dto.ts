@@ -43,4 +43,12 @@ export class PreparePackageDto implements CommercialPreparePackageRequest {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'ADR-041 — the sales tax code for every draft in the package. Omitted → the default. Another code needs manage:accounting.',
+  })
+  @IsOptional()
+  @IsString()
+  taxCodeId?: string;
 }

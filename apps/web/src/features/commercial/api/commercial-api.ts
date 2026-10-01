@@ -224,6 +224,8 @@ export interface IssuePackagePayload {
   paymentTerms?: string;
   notes?: string;
   selectedVariationIds: string[];
+  /** ADR-041: omitted → the organisation's default sales tax code. */
+  taxCodeId?: string;
 }
 
 /** Issue (approve + post) the billing package for a milestone installment atomically. */
@@ -455,6 +457,8 @@ export interface CreateSeparateChargeInvoicePayload {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /** ADR-041: omitted → the organisation's default sales tax code. */
+  taxCodeId?: string;
 }
 
 export function createSeparateChargeInvoice(

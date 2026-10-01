@@ -34,4 +34,12 @@ export class IssuePackageDto {
   @IsArray()
   @IsString({ each: true })
   selectedVariationIds!: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'ADR-041 — the sales tax code for every invoice in the package. Omitted → the default. Another code needs manage:accounting.',
+  })
+  @IsOptional()
+  @IsString()
+  taxCodeId?: string;
 }

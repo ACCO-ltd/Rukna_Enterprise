@@ -504,6 +504,8 @@ export class CommercialBillingService {
       paymentTerms?: string;
       notes?: string;
       selectedVariationIds: string[];
+      /** ADR-041 — one tax code for every invoice in the package; omitted → the default. */
+      taxCodeId?: string;
     },
   ): Promise<CommercialBillingPackage> {
     const prisma = this.tenancy.getClient();
@@ -561,6 +563,7 @@ export class CommercialBillingService {
               dueDate: dto.dueDate,
               paymentTerms: dto.paymentTerms,
               subtotalAdjustment: omissionAdjustment.toFixed(2),
+              taxCodeId: dto.taxCodeId,
             },
             tx,
           );
@@ -600,6 +603,7 @@ export class CommercialBillingService {
             invoiceDate: dto.invoiceDate,
             dueDate: dto.dueDate,
             paymentTerms: dto.paymentTerms,
+            taxCodeId: dto.taxCodeId,
           },
           tx,
         );
@@ -729,6 +733,7 @@ export class CommercialBillingService {
             dueDate: dates.dueDate,
             paymentTerms,
             subtotalAdjustment: omissionAdjustment.toFixed(2),
+            taxCodeId: dto.taxCodeId,
           },
           tx,
         );
@@ -761,6 +766,7 @@ export class CommercialBillingService {
               invoiceDate: dates.invoiceDate,
               dueDate: dates.dueDate,
               paymentTerms,
+            taxCodeId: dto.taxCodeId,
             },
             tx,
           );

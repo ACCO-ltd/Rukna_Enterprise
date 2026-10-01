@@ -19,6 +19,12 @@ import {
   ViewSwitcher,
 } from '@erp/ui';
 
+import {
+  InvoiceTaxField,
+  taxCodeBody,
+  useInvoiceTaxChoice,
+  useInvoiceTaxErrorMessage,
+} from '@/features/accounting/components/invoice-tax-field';
 import { formatMoney } from '@/lib/format';
 
 import {
@@ -231,19 +237,22 @@ function CreateSeparateChargeInvoiceDialog({
   const [dueDate, setDueDate] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const mutation = useCreateSeparateChargeInvoice(projectId);
+  const tax = useInvoiceTaxChoice({});
+  const taxError = useInvoiceTaxErrorMessage();
 
   async function handleSubmit() {
-    if (!dueDate) return;
+    if (!dueDate || tax.blocked) return;
     await mutation.mutateAsync({
       boqNodeId: node.id,
       invoiceDate,
       dueDate,
       paymentTerms: paymentTerms || undefined,
+      ...taxCodeBody(tax),
     });
     onClose();
   }
 
-  const dirty = invoiceDate !== today || dueDate !== '' || paymentTerms !== '';
+  const dirty = invoiceDate !== today || dueDate !== '' || paymentTerms !== '' || tax.changed;
 
   return (
     <FormDialog
@@ -257,7 +266,10 @@ function CreateSeparateChargeInvoiceDialog({
     >
       <FormDialogBody>
         {mutation.error && (
-          <Alert variant="error" messages={[(mutation.error as Error).message]} />
+          <Alert
+            variant="error"
+            messages={[taxError(mutation.error) ?? (mutation.error as Error).message]}
+          />
         )}
         <FormField htmlFor="sc-invoice-date" label={t('invoiceDate')}>
           <DatePicker
@@ -285,6 +297,7 @@ function CreateSeparateChargeInvoiceDialog({
             disabled={mutation.isPending}
           />
         </FormField>
+        <InvoiceTaxField choice={tax} id="sc-tax-code" disabled={mutation.isPending} />
       </FormDialogBody>
       <FormDialogFooter>
         <FormDialogClose asChild>
@@ -295,7 +308,7 @@ function CreateSeparateChargeInvoiceDialog({
         <Button
           type="button"
           onClick={() => void handleSubmit()}
-          disabled={!dueDate}
+          disabled={!dueDate || tax.blocked}
           loading={mutation.isPending}
           loadingText={t('submitting')}
         >

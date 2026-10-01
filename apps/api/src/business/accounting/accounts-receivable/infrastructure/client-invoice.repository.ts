@@ -19,6 +19,9 @@ export interface CreateClientInvoiceData {
   subtotal: Decimal;
   vatAmount: Decimal;
   totalAmount: Decimal;
+  /** ADR-041 — the sales tax code and its rate (percent) the invoice is raised at. */
+  taxCodeId: string;
+  taxRate: Decimal;
   paymentTerms?: string;
   billingAddressSnapshot: object;
   createdBy: string;
@@ -173,6 +176,8 @@ export class ClientInvoiceRepository {
         subtotal: data.subtotal,
         vatAmount: data.vatAmount,
         totalAmount: data.totalAmount,
+        taxCodeId: data.taxCodeId,
+        taxRate: data.taxRate,
         outstandingAmount: data.totalAmount,
         paymentTerms: data.paymentTerms ?? null,
         billingAddressSnapshot: data.billingAddressSnapshot,

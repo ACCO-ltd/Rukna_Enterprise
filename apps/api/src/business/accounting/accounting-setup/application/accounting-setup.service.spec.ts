@@ -45,6 +45,8 @@ function build(opts: { accountsBefore?: number; accountsInTx?: number; failAt?: 
       return (a[2] as unknown[]).length;
     }),
     createTaxCodes: jest.fn(async (...a: Args) => (a[2] as unknown[]).length),
+    findDefaultOutputTax: jest.fn(async (..._a: Args): Promise<unknown> => null),
+    linkOutputTaxAccount: jest.fn(async (..._a: Args) => undefined),
     createFiscalYear: jest.fn(async (..._a: Args) => ({ id: 'fy1', name: 'FY2026' })),
     createBankAccounts: jest.fn(async (...a: Args) => (a[2] as unknown[]).length),
     ensureDocumentSequences: jest.fn(async (..._a: Args) => fail('sequences')),
@@ -75,7 +77,8 @@ describe('AccountingSetupService.install', () => {
     }
     expect(accounts.find((a) => a.code === '10100')?.name).toBe('Salaam operating');
     expect(accounts.find((a) => a.code === '10101')?.name).toBe('Dahabshiil');
-    expect(seen.has('14100')).toBe(true);
+    // ACC-TAX-001 / ADR-041: input VAT is non-recoverable — no input-VAT asset, VAT or not.
+    expect(seen.has('14100')).toBe(false);
 
     // Versions effective from the fiscal year start.
     expect((repo.createAccounts.mock.calls[0]![3] as Date).toISOString().slice(0, 10)).toBe('2026-01-01');
@@ -202,10 +205,11 @@ describe('AccountingSetupService.getStatus / getTemplate', () => {
     repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: [], hasFiscalYear: false, hasPolicies: false });
     await expect(service.getStatus(identity)).resolves.toEqual({
       canInstall: true, reason: 'READY', existingRecords: [], accountCount: 0, hasFiscalYear: false, hasPolicies: false,
+      defaultSalesTax: null,
     });
-    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: ['TAX_CODES', 'POSTING_PROFILES'], hasFiscalYear: false, hasPolicies: true });
+    repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: ['POSTING_PROFILES'], hasFiscalYear: false, hasPolicies: true });
     await expect(service.getStatus(identity)).resolves.toMatchObject({
-      canInstall: false, reason: 'PARTIAL_SETUP', existingRecords: ['TAX_CODES', 'POSTING_PROFILES'],
+      canInstall: false, reason: 'PARTIAL_SETUP', existingRecords: ['POSTING_PROFILES'],
     });
     repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 4, existingRecords: [], hasFiscalYear: true, hasPolicies: true });
     await expect(service.getStatus(identity)).resolves.toMatchObject({ canInstall: false, reason: 'CHART_NOT_EMPTY', accountCount: 4 });
@@ -219,7 +223,7 @@ describe('AccountingSetupService.getStatus / getTemplate', () => {
       ['10100', 'Bank 1'],
       ['10101', 'Bank 2'],
     ]);
-    expect(t.accounts.find((a) => a.code === '14100')?.conditional).toBe('VAT');
+    expect(t.accounts.some((a) => a.code === '14100')).toBe(false);
     // Contract fields only — no internal posting policy leaks into the preview.
     expect(Object.keys(t.accounts[0]!).sort()).toEqual(
       ['accountClass', 'accountSubtype', 'code', 'isControlAccount', 'isHeading', 'name', 'normalBalance', 'parentCode'].sort(),

@@ -1,6 +1,6 @@
 # ADR-040 — Accounting setup from a template
 
-**Status:** Accepted (owner: Abdulsalam, 2026-09-30). Chart content pending sign-off by Eng Ahmed Shirie / ACCO's accountant — the template is data and can be revised before an organisation installs it.
+**Status:** Accepted (owner: Abdulsalam, 2026-09-30). Amended by ADR-041 (2026-10-01): no input-VAT asset, and tax configured before setup is kept. Chart content pending sign-off by Eng Ahmed Shirie / ACCO's accountant — the template is data and can be revised before an organisation installs it.
 
 ## Context
 
@@ -42,7 +42,6 @@ Headings are marked **(H)** and do not accept postings.
   - 13100 Staff advances · ASSET / OTHER_CURRENT_ASSET
   - 13200 Refundable deposits · ASSET / OTHER_CURRENT_ASSET
   - 14000 Prepaid expenses · ASSET / PREPAYMENTS
-  - 14100 Input VAT recoverable *(only when VAT is charged)* · ASSET / VAT_INPUT_RECOVERABLE
 - 15000 Non-current assets (H) · ASSET / OTHER_NON_CURRENT_ASSET
   - 15100 Land and buildings · ASSET / FIXED_ASSETS
   - 15200 Plant and heavy equipment · ASSET / FIXED_ASSETS
@@ -99,7 +98,8 @@ Headings are marked **(H)** and do not accept postings.
 
 ## Findings recorded during implementation
 
-- **Client invoices ignore tax codes.** Every client invoice applies a fixed 5% sales tax (`CLIENT_INVOICE_SALES_TAX_RATE`). The VAT answer at setup creates tax codes (`VAT{rate}_OUT` / `VAT{rate}_IN`) and the TaxPolicy defaults, but does **not** change what an invoice charges; the setup dialog says so. Making invoices use the organisation's tax code is a separate decision (owner: Eng Ahmed — does ACCO charge VAT, and at what rate?).
+- **Superseded by ADR-041:** the template no longer adds `14100 Input VAT recoverable` (ACCO's input VAT is non-recoverable, ACC-TAX-001); existing tax codes no longer block setup (`PARTIAL_SETUP`), and when a default sales tax code exists setup keeps it and creates none. Invoices now take their tax from tax codes.
+- **Client invoices ignore tax codes** *(historical — fixed by ADR-041)*. Every client invoice applies a fixed 5% sales tax (`CLIENT_INVOICE_SALES_TAX_RATE`). The VAT answer at setup creates tax codes (`VAT{rate}_OUT` / `VAT{rate}_IN`) and the TaxPolicy defaults, but does **not** change what an invoice charges; the setup dialog says so. Making invoices use the organisation's tax code is a separate decision (owner: Eng Ahmed — does ACCO charge VAT, and at what rate?).
 - **Fiscal years created through `POST /fiscal-years` start as DRAFT**, and nothing moves a year out of DRAFT while year-end close requires OPEN. Setup creates its first year OPEN. The DRAFT path is left as is and flagged.
 - `FiscalYearService` stored the wrong end date for a January-start year (30 November); both paths now share `buildFiscalYearPlan` (UTC).
 - Posting-profile versions use an exclusive `effectiveTo`: re-pointing sets the old version's `effectiveTo` to the new `effectiveFrom`, so the old account's last day in force is the day before.

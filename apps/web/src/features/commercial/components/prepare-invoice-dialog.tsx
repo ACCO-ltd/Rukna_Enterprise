@@ -17,6 +17,13 @@ import {
 } from '@erp/ui';
 import type { CommercialPreparePreviewResponse, InstallmentReleasedBy } from '@erp/types';
 
+import {
+  InvoiceTaxField,
+  useInvoiceTaxChoice,
+  useInvoiceTaxErrorMessage,
+  taxCodeBody,
+  type InvoiceTaxChoice,
+} from '@/features/accounting/components/invoice-tax-field';
 import { formatDate } from '@/lib/format';
 
 import { usePreparePackage, usePreparePreview } from '../hooks/use-commercial-invoice';
@@ -36,8 +43,10 @@ export interface PrepareInvoiceDialogProps {
  * page, after the draft has been reviewed.
  *
  * Everything shown comes from `GET …/installments/:id/prepare-preview`: the stage, what releases
- * it, the variations that can ride on it and the server's tax rate. When the server says the
- * stage is blocked, the dialog says why and offers no primary.
+ * it, the variations that can ride on it and the organisation's default sales tax code (ADR-041).
+ * Finance may raise the draft at another active sales code; the totals follow the chosen rate.
+ * When the server says the stage is blocked, the dialog says why and offers no primary; with no
+ * default sales tax configured it says so and Create stays disabled.
  *
  * A `FormDialog` (ADR-039), size `lg`: the stage, a short list of variations and the totals.
  * The create call and the variation ticks live here, above the body, so the dialog's guard can
@@ -53,15 +62,20 @@ export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }
   // one, the server's `defaultSelected` stands.
   const [override, setOverride] = useState<{ installmentId: string; ids: Set<string> } | null>(null);
 
+  const data = preview.isPending || preview.isError ? null : preview.data;
+  const tax = useInvoiceTaxChoice({
+    knownDefault: data ? data.defaultTaxCode : null,
+    enabled: open && data !== null,
+  });
+
   if (!installmentId) return null;
 
-  const data = preview.isPending || preview.isError ? null : preview.data;
   const defaults = new Set(
     (data?.variations ?? []).filter((v) => v.defaultSelected).map((v) => v.variationId),
   );
   const ownOverride = data && override?.installmentId === data.installmentId ? override.ids : null;
   const selected = ownOverride ?? defaults;
-  const dirty = ownOverride !== null && !sameMembers(ownOverride, defaults);
+  const dirty = (ownOverride !== null && !sameMembers(ownOverride, defaults)) || tax.changed;
 
   function toggle(id: string) {
     if (!data) return;
@@ -73,12 +87,13 @@ export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }
 
   function close() {
     setOverride(null);
+    tax.reset();
     onClose();
   }
 
   function create() {
     mutation.mutate(
-      { selectedVariationIds: [...selected] },
+      { selectedVariationIds: [...selected], ...taxCodeBody(tax) },
       {
         onSuccess: (result) => {
           close();
@@ -120,6 +135,7 @@ export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }
             preview={preview.data}
             selected={selected}
             onToggle={toggle}
+            tax={tax}
             isPending={mutation.isPending}
             error={mutation.isError ? mutation.error : null}
           />
@@ -133,7 +149,13 @@ export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }
           </Button>
         </FormDialogClose>
         {data && !blocked ? (
-          <Button type="button" onClick={create} loading={mutation.isPending} loadingText={t('creating')}>
+          <Button
+            type="button"
+            onClick={create}
+            disabled={tax.blocked}
+            loading={mutation.isPending}
+            loadingText={t('creating')}
+          >
             {t('create')}
           </Button>
         ) : null}
@@ -152,17 +174,22 @@ function PrepareBody({
   preview,
   selected,
   onToggle,
+  tax,
   isPending,
   error,
 }: {
   preview: CommercialPreparePreviewResponse;
   selected: Set<string>;
   onToggle: (variationId: string) => void;
+  tax: InvoiceTaxChoice;
   isPending: boolean;
   error: Error | null;
 }) {
   const t = useTranslations('commercial.prepare');
   const locale = useLocale() as 'en';
+  const taxError = useInvoiceTaxErrorMessage();
+  // The chosen code's rate; the preview's own (default) rate until the code is known.
+  const rate = tax.rateFraction ?? preview.taxRate;
 
   // The preview nulls money for a viewer who cannot see financials.
   const moneyHidden = preview.stageAmount === null;
@@ -173,12 +200,14 @@ function PrepareBody({
     : prepareTotals(
         preview.stageAmount as string,
         preview.variations.filter((v) => selected.has(v.variationId)).map((v) => v.amount),
-        preview.taxRate,
+        rate,
       );
 
   return (
     <div className="space-y-5">
-      {error ? <Alert variant="error" messages={[error.message || t('createFailed')]} /> : null}
+      {error ? (
+        <Alert variant="error" messages={[taxError(error) ?? (error.message || t('createFailed'))]} />
+      ) : null}
 
       <dl className="space-y-3 text-body-sm">
         <div>
@@ -250,6 +279,10 @@ function PrepareBody({
         </fieldset>
       ) : null}
 
+      {preview.blocker ? null : (
+        <InvoiceTaxField choice={tax} id="prepare-tax-code" disabled={isPending} />
+      )}
+
       {totals ? (
         <dl className="space-y-1.5 rounded-panel bg-surface-subtle px-4 py-3 text-body-sm tabular-nums">
           <div className="flex items-baseline justify-between gap-4">
@@ -258,9 +291,9 @@ function PrepareBody({
               <MoneyDisplay value={totals.subtotal} />
             </dd>
           </div>
-          {totals.tax !== null && preview.taxRate ? (
+          {totals.tax !== null && rate ? (
             <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-muted-foreground">{t('tax', { rate: formatRate(preview.taxRate) })}</dt>
+              <dt className="text-muted-foreground">{t('tax', { rate: formatRate(rate) })}</dt>
               <dd className="text-foreground">
                 <MoneyDisplay value={totals.tax} />
               </dd>
