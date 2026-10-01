@@ -19,6 +19,9 @@ import { CommercialBillingService } from '../application/commercial-billing.serv
 import { buildServices } from '../../../accounting/__tests__/helpers/build-services.js';
 import { AccountingFixtureFactory, type AccountingTestEnv } from '../../../accounting/__tests__/helpers/fixture.factory.js';
 import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
+import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
+import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
+import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
 
 /**
  * Commercial lifecycle DB integration tests.
@@ -123,6 +126,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
       mockPostingPort as never,
       documentService,
       fileService,
+      new TaxCodeService(tenancy, new TaxCodeRepository()),
     );
 
     const variationRepo = new VariationOrderPrismaRepository();
@@ -161,6 +165,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
     await prisma.organization.create({
       data: { id: orgId, name: `LC Org ${suffix}`, slug: `lc-${suffix}`, status: 'ACTIVE' },
     });
+    await seedDefaultSalesTax(prisma, orgId);
 
     // Document sequences for issuePackage (needs INV-xxx numbers).
     await prisma.documentNumberSequence.create({
@@ -313,6 +318,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
     await prisma.fiscalYear.deleteMany({ where: { organizationId: orgId } });
     await prisma.accountVersion.deleteMany({ where: { account: { organizationId: orgId } } });
     await prisma.account.deleteMany({ where: { organizationId: orgId } });
+    await cleanupSalesTax(prisma, orgId);
     await prisma.organization.deleteMany({ where: { id: orgId } });
     // Clean up the AccountingFixtureFactory env as well.
     await AccountingFixtureFactory.cleanup(prisma, env.orgId);

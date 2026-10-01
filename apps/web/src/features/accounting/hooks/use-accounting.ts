@@ -44,7 +44,12 @@ import {
   repointPostingProfile,
   runAccountingSetup,
   setPostingProfileActive,
+  createTaxCode,
+  listTaxCodes,
+  setDefaultOutputTaxCode,
+  setTaxCodeActive,
 } from '../api/accounting-api';
+import type { CreateTaxCodeBody, TaxCodesView } from '../tax-codes';
 import type {
   AccountingSetupBody,
   AccountingSetupResult,
@@ -93,6 +98,7 @@ export const accountingKeys = {
   all: ['accounting'] as const,
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
+  taxCodes: () => [...accountingKeys.all, 'tax-codes'] as const,
   bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
   signatories: (bankAccountId: string) =>
     [...accountingKeys.all, 'signatories', bankAccountId] as const,
@@ -700,6 +706,86 @@ export function useSetPostingProfileActive() {
       flashRow: (_profile, variables) => (variables as { id: string }).id,
     },
     onSuccess: () => invalidatePostingProfiles(qc),
+  });
+}
+
+// ─── Tax codes (ADR-041) ─────────────────────────────────────────────────────────
+
+/**
+ * Tax codes and the default sales code. Read by the Tax screen and by every place an invoice is
+ * raised; a minute of staleness is fine — a code changing mid-form is caught by the server
+ * (422 TAX_CODE_NOT_APPLICABLE), never silently applied.
+ */
+export function useTaxCodes(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<TaxCodesView, Error> {
+  return useQuery({
+    queryKey: accountingKeys.taxCodes(),
+    queryFn: listTaxCodes,
+    enabled: options.enabled ?? true,
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * Every tax-code command answers with the whole list, so the cache is replaced from the result.
+ * The commercial prepare preview carries the default code too; it is refetched on open anyway.
+ */
+function useTaxCodesWriter() {
+  const qc = useQueryClient();
+  return (view: TaxCodesView) => {
+    qc.setQueryData(accountingKeys.taxCodes(), view);
+    void qc.invalidateQueries({ queryKey: accountingKeys.setupStatus() });
+    void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'guide'] });
+  };
+}
+
+export function useCreateTaxCode() {
+  const write = useTaxCodesWriter();
+  return useMutation({
+    mutationFn: (body: CreateTaxCodeBody) => createTaxCode(body),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.taxCodeCreated',
+        values: (_view, body) => ({ code: (body as CreateTaxCodeBody).code }),
+      },
+      flashRow: false,
+    },
+    onSuccess: write,
+  });
+}
+
+export function useSetDefaultTaxCode() {
+  const write = useTaxCodesWriter();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; code: string }) => setDefaultOutputTaxCode(id),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.taxCodeDefault',
+        values: (_view, variables) => ({ code: (variables as { code: string }).code }),
+      },
+      flashRow: (_view, variables) => (variables as { id: string }).id,
+    },
+    onSuccess: write,
+  });
+}
+
+export function useSetTaxCodeActive() {
+  const write = useTaxCodesWriter();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; code: string; active: boolean }) =>
+      setTaxCodeActive(id, active),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.taxCodeStatus',
+        values: (_view, variables) => {
+          const { code, active } = variables as { code: string; active: boolean };
+          return { code, action: active ? 'reactivate' : 'deactivate' };
+        },
+      },
+      flashRow: (_view, variables) => (variables as { id: string }).id,
+    },
+    onSuccess: write,
   });
 }
 

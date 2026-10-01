@@ -51,3 +51,11 @@ export function planVatTaxCodes(ratePercent: number): SetupTaxCodePlan[] {
     },
   ];
 }
+
+/**
+ * ADR-041 — an organisation that charges no VAT still needs a default sales tax code, or no client
+ * invoice can be raised: a 0% "No sales tax" code becomes its default.
+ */
+export function planNoTaxCodes(): SetupTaxCodePlan[] {
+  return [{ code: 'EXEMPT', name: 'No sales tax', rate: 0, direction: 'OUTPUT', recoveryMethod: 'FULLY_RECOVERABLE' }];
+}

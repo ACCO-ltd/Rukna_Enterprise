@@ -3839,8 +3839,13 @@ export interface CommercialPreparePreviewResponse {
     amount: string | null;
     defaultSelected: boolean;
   }>;
-  /** Server-side sales-tax rate as a fraction string (e.g. "0.05"); null when none applies. */
+  /**
+   * The default sales tax rate as a fraction string (e.g. "0.05"); null when the organisation has
+   * no default sales tax configured (ADR-041) — then a draft cannot be created until Finance sets one.
+   */
   taxRate: string | null;
+  /** ADR-041 — the default sales tax code the drafts will use unless Finance picks another. */
+  defaultTaxCode: { id: string; code: string; name: string; ratePercent: string } | null;
 }
 
 /** POST …/commercial/installments/:installmentId/prepare-package — creates drafts only. */
@@ -3850,6 +3855,8 @@ export interface CommercialPreparePackageRequest {
   dueDate?: string;
   paymentTermsDays?: number;
   notes?: string;
+  /** ADR-041 — the sales tax code for every draft; omitted → the organisation's default. */
+  taxCodeId?: string;
 }
 
 export interface CommercialPreparePackageResponse {

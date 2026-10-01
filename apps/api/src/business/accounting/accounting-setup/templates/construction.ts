@@ -8,7 +8,8 @@
  * Rows that depend on install-time choices are not listed here:
  *   - one CASH_AND_BANK account per bank the user names (codes 10100, 10101, … under 10000) —
  *     built by `resolveTemplate`;
- *   - 14100 Input VAT recoverable, only when VAT is charged — `VAT_CONDITIONAL_ACCOUNTS`.
+ *   - No input-VAT asset: ACCO's input VAT is non-recoverable (ADR-006 ACC-TAX-001, ADR-041) — it is
+ *     absorbed into the cost a bill posts to, so there is never a balance to hold.
  *
  * Invariants (enforced by `resolveTemplate` callers' tests, see construction.template.spec.ts):
  *   - exactly one ACTIVE account each of the six resolver roles; no heading carries one;
@@ -112,7 +113,6 @@ export const BANK_BASE_CODE = 10100;
 export const MAX_BANKS = 20;
 export const PETTY_CASH_CODE = '10900';
 export const OUTPUT_VAT_CODE = '22000';
-export const INPUT_VAT_CODE = '14100';
 export const RETAINED_EARNINGS_CODE = '31000';
 export const PROJECT_REVENUE_CODE = '40000';
 
@@ -238,18 +238,9 @@ const STATIC_ACCOUNTS: TemplateAccount[] = [
   row('69000', 'Other expenses', 'EXPENSE', 'OTHER_EXPENSE'),
 ];
 
-/** Created only when the organisation charges VAT. */
-const VAT_CONDITIONAL_ACCOUNTS: TemplateAccount[] = [
-  row(INPUT_VAT_CODE, 'Input VAT recoverable', 'ASSET', 'VAT_INPUT_RECOVERABLE', {
-    parent: '10000', policy: SYSTEM_OR_ADJ, conditional: 'VAT',
-  }),
-];
-
 // ── Resolution ────────────────────────────────────────────────────────────────
 
 export interface TemplateChoices {
-  /** Whether VAT is charged (adds 14100 Input VAT recoverable). */
-  vatCharged: boolean;
   /** Display names of the banks, in order. Length 0..MAX_BANKS. */
   bankNames: string[];
 }
@@ -285,8 +276,6 @@ export function resolveTemplate(choices: TemplateChoices): ResolvedTemplate {
   for (const account of STATIC_ACCOUNTS) {
     accounts.push(account);
     if (account.code === BANK_PARENT_CODE) accounts.push(...banks);
-    // Keep 14100 next to 14000 Prepaid expenses, in chart order.
-    if (account.code === '14000' && choices.vatCharged) accounts.push(...VAT_CONDITIONAL_ACCOUNTS);
   }
 
   return {

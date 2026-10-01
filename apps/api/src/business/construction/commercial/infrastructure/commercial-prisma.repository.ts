@@ -1051,6 +1051,7 @@ export class CommercialPrismaRepository {
         currencyCode: true,
         subtotal: true,
         vatAmount: true,
+        taxRate: true,
         totalAmount: true,
         outstandingAmount: true,
         documentStatus: true,

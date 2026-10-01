@@ -105,7 +105,8 @@
       "reports": "Reports",
       "acctSetup": "Setup & close"
     },
-    "postingProfiles": "Posting profiles"
+    "postingProfiles": "Posting profiles",
+    "taxCodes": "Tax"
   },
   "admin": {
     "title": "Administration",

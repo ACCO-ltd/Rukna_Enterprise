@@ -16,6 +16,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 
+import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
 import { useInvoice, useInvoiceAction } from '../hooks/use-invoices';
 import {
@@ -180,7 +181,17 @@ export function InvoiceDetail({
             </DefinitionList>
             <DefinitionList className="mt-2 border-t border-border pt-2">
               <DefinitionRow label={t('fieldSubtotal')} numeric>{money(data.subtotal)}</DefinitionRow>
-              <DefinitionRow label={t('fieldVat')} numeric>{money(data.vatAmount)}</DefinitionRow>
+              <DefinitionRow
+                label={
+                  // The rate the invoice was raised at (ADR-041), never a rate assumed here.
+                  data.taxRate != null
+                    ? t('fieldVatRate', { rate: formatRatePercent(data.taxRate) })
+                    : t('fieldVat')
+                }
+                numeric
+              >
+                {money(data.vatAmount)}
+              </DefinitionRow>
               <DefinitionRow label={state === 'POSTED' ? t('fieldBalanceDue') : t('fieldDraftTotal')} numeric>
                 {money(state === 'POSTED' ? data.outstandingAmount : data.totalAmount)}
               </DefinitionRow>

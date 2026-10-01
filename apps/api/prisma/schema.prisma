@@ -2572,6 +2572,8 @@ model TaxCode {
   name               String
   rate               Decimal        @db.Decimal(7, 4)
   taxType            TaxType        @map("tax_type")
+  // ADR-041 — which side the code applies to: OUTPUT (client invoices) or INPUT (purchases).
+  direction          TaxDirection
   recoveryMethod     RecoveryMethod @map("recovery_method")
   outputTaxAccountId String?        @map("output_tax_account_id")
   inputTaxAccountId  String?        @map("input_tax_account_id")
@@ -2581,7 +2583,8 @@ model TaxCode {
   createdAt          DateTime       @default(now()) @map("created_at")
   createdBy          String         @map("created_by")
 
-  organization Organization @relation(fields: [organizationId], references: [id])
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  clientInvoices ClientInvoice[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -2788,6 +2791,12 @@ model ClientInvoice {
   currencyCode           String           @map("currency_code") @db.VarChar(3)
   subtotal               Decimal          @db.Decimal(18, 2)
   vatAmount              Decimal          @map("vat_amount") @db.Decimal(18, 2)
+  // ADR-041 — the sales tax code this invoice was raised at (null for invoices raised before tax
+  // codes, and for migration-loaded ones) and its rate in PERCENT, snapshotted: a later change to the
+  // code or the organisation's default never alters an invoice. Generation paths always set both;
+  // the default of 0 only covers direct writers that carry no tax.
+  taxCodeId              String?          @map("tax_code_id")
+  taxRate                Decimal          @default(0) @map("tax_rate") @db.Decimal(7, 4)
   totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
   outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
   paymentTerms           String?          @map("payment_terms")
@@ -2824,6 +2833,7 @@ model ClientInvoice {
   organization      Organization                @relation(fields: [organizationId], references: [id])
   client            Client                      @relation(fields: [clientId], references: [id])
   sourceIpc         InterimPaymentCertificate?  @relation(fields: [sourceIpcId], references: [id])
+  taxCode           TaxCode?                    @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
   sourceInstallment ContractPaymentInstallment? @relation(fields: [sourceInstallmentId], references: [id])
   // ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaf a one-off invoice bills. SetNull, not Restrict: the
   // invoice is the durable billing record and outlives the node; a node is deactivated not deleted
@@ -2844,6 +2854,7 @@ model ClientInvoice {
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
   @@index([organizationId, documentStatus])
+  @@index([taxCodeId])
   @@map("client_invoices")
 }
 
@@ -4182,6 +4193,12 @@ enum RecoveryMethod {
   // ACCO default: gross amount posts to expense (ACC-TAX-001)
   NON_RECOVERABLE
   PARTIALLY_RECOVERABLE
+}
+
+/// ADR-041 — OUTPUT codes tax client invoices; INPUT codes tax purchases.
+enum TaxDirection {
+  OUTPUT
+  INPUT
 }
 
 enum TaxCodeStatus {

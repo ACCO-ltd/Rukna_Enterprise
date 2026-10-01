@@ -260,6 +260,9 @@ describe('commercial-workspace.policy — small derivations', () => {
   it('taxLabelFor: from the invoice amounts; null when untaxed', () => {
     expect(taxLabelFor(new Decimal(1000), new Decimal(50))).toBe('Sales tax 5%');
     expect(taxLabelFor(new Decimal(1000), new Decimal(0))).toBeNull();
+    // ADR-041 — the invoice's own rate wins over a rate derived from rounded amounts.
+    expect(taxLabelFor(new Decimal('33.33'), new Decimal('1.67'))).toBe('Sales tax 5.01%');
+    expect(taxLabelFor(new Decimal('33.33'), new Decimal('1.67'), new Decimal(5))).toBe('Sales tax 5%');
   });
 });
 

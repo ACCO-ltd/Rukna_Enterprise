@@ -125,6 +125,7 @@ function build(opts: { installments?: unknown[]; invoiceRows?: unknown[] } = {})
     variationRepo as never,
     commercial as never,
     {} as never,
+    { defaultOutput: jest.fn().mockResolvedValue({ id: 'tax-default', code: 'VAT5_OUT', name: 'Sales tax 5%', ratePercent: '5', direction: 'OUTPUT', status: 'ACTIVE', effectiveFrom: '2000-01-01', effectiveTo: null, isDefault: true }) } as never,
   );
   return { service, repo };
 }

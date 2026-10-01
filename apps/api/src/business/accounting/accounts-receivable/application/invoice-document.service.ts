@@ -29,6 +29,11 @@ export interface InvoiceDocumentInput {
   subtotal: string;
   vatAmount: string;
   totalAmount: string;
+  /**
+   * ADR-041 — the rate (percent) the invoice was raised at, for the "Sales Tax 5%" label. Derived
+   * from the amounts only when absent: tax is rounded to cents, so a derived rate can read 5.0105%.
+   */
+  taxRatePercent?: string | null;
   paymentTerms: string | null;
   clientName: string;
   clientAddress: string | null;
@@ -65,7 +70,9 @@ function InvoiceDocument({ input }: { input: InvoiceDocumentInput }) {
   const styles = buildStyles(brandColor, compact);
 
   const money = (value: string) => formatMoney(value, input.currencyCode);
-  const vatRatePercent = ratePercent(input.subtotal, input.vatAmount);
+  const vatRatePercent = input.taxRatePercent
+    ? String(Number(input.taxRatePercent))
+    : ratePercent(input.subtotal, input.vatAmount);
 
   return h(
     Document,

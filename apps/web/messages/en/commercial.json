@@ -610,7 +610,7 @@
     "unappliedHint": "Client-level, not project-level: this cash has not been attributed to any contract yet.",
     "allocate": "Allocate",
     "overdueBy": "{days} days overdue",
-    "vatNote": "Totals include sales tax (5%). Settlement is measured against the invoice total, never against a pre-tax certified amount.",
+    "vatNote": "Totals include sales tax. Settlement is measured against the invoice total, never against a pre-tax certified amount.",
     "position": {
       "title": "Billing position",
       "invoiced": "Invoiced",
@@ -710,7 +710,7 @@
       "overdueBy": "{days} days overdue",
       "methodUnknown": "Method not recorded",
       "unnumbered": "Not yet numbered",
-      "vatNote": "Totals include sales tax (5%).",
+      "vatNote": "Totals include sales tax.",
       "paymentState": {
         "AWAITING_PAYMENT": "Awaiting payment",
         "PARTIALLY_PAID": "Part paid",
@@ -1650,7 +1650,7 @@
       "cancel": "Cancel",
       "issueCta": "Issue billing package",
       "subtotal": "Subtotal",
-      "vat": "Sales tax (5%)",
+      "vat": "Sales tax",
       "total": "Total",
       "invoiceCreatedBadge": "Invoice issued",
       "draftPreviewTitle": "DRAFT PREVIEW",

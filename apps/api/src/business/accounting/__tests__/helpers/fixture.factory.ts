@@ -13,6 +13,7 @@
 import { PrismaClient } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 import { randomUUID } from 'node:crypto';
+import { seedDefaultSalesTax } from './sales-tax.fixture.js';
 
 // ─── Public shape returned to spec files ─────────────────────────────────────
 
@@ -61,6 +62,8 @@ export class AccountingFixtureFactory {
     await prisma.organization.create({
       data: { id: orgId, name: `Test Org ${suffix}`, slug: `test-${suffix}`, status: 'ACTIVE' },
     });
+    // ADR-041 — what the migration gives every organisation: a 5% default sales tax code.
+    await seedDefaultSalesTax(prisma, orgId);
 
     const identity: RequestIdentity = {
       userId,
@@ -425,6 +428,7 @@ export class AccountingFixtureFactory {
 
     await prisma.$executeRaw`DELETE FROM clients WHERE organization_id = ${orgId}`;
 
+    await prisma.$executeRaw`DELETE FROM tax_policy WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM tax_codes WHERE organization_id = ${orgId}`;
 
     await prisma.$executeRaw`DELETE FROM organizations WHERE id = ${orgId}`;

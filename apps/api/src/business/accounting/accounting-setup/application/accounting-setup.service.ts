@@ -9,7 +9,7 @@ import {
   AccountingSetupRepository,
   type ExistingSetupRecord,
 } from '../infrastructure/accounting-setup.repository.js';
-import { planVatTaxCodes } from '../domain/setup-tax-codes.js';
+import { planNoTaxCodes, planVatTaxCodes } from '../domain/setup-tax-codes.js';
 import {
   CONSTRUCTION_TEMPLATE_ID,
   MAX_BANKS,
@@ -41,6 +41,11 @@ export interface SetupStatusView {
   accountCount: number;
   hasFiscalYear: boolean;
   hasPolicies: boolean;
+  /**
+   * ADR-041 — the default sales tax Finance has already configured. When set, setup keeps it and
+   * creates no tax codes; the VAT question is not asked.
+   */
+  defaultSalesTax: { code: string; name: string; ratePercent: string } | null;
 }
 
 export interface InstallSetupInput {
@@ -101,7 +106,6 @@ export class AccountingSetupService {
   getTemplate(query: { vatRate?: number; banks?: number }): SetupTemplateView {
     const bankCount = Math.min(Math.max(query.banks ?? 0, 0), MAX_BANKS);
     const resolved = resolveTemplate({
-      vatCharged: (query.vatRate ?? 0) > 0,
       bankNames: Array.from({ length: bankCount }, (_, i) => `Bank ${i + 1}`),
     });
     return {
@@ -124,7 +128,10 @@ export class AccountingSetupService {
 
   async getStatus(identity: RequestIdentity): Promise<SetupStatusView> {
     const prisma = this.tenancy.getClient();
-    const facts = await this.repo.getStatusFacts(prisma, identity.activeOrganizationId);
+    const [facts, defaultTax] = await Promise.all([
+      this.repo.getStatusFacts(prisma, identity.activeOrganizationId),
+      this.repo.findDefaultOutputTax(prisma, identity.activeOrganizationId),
+    ]);
     const reason: SetupStatusView['reason'] =
       facts.accountCount > 0 ? 'CHART_NOT_EMPTY' : facts.existingRecords.length > 0 ? 'PARTIAL_SETUP' : 'READY';
     return {
@@ -134,6 +141,9 @@ export class AccountingSetupService {
       accountCount: facts.accountCount,
       hasFiscalYear: facts.hasFiscalYear,
       hasPolicies: facts.hasPolicies,
+      defaultSalesTax: defaultTax
+        ? { code: defaultTax.code, name: defaultTax.name, ratePercent: defaultTax.rate.toString() }
+        : null,
     };
   }
 
@@ -158,8 +168,8 @@ export class AccountingSetupService {
       bankName: b.bankName.trim(),
       accountNumber: b.accountNumber?.trim() || null,
     }));
-    const template = resolveTemplate({ vatCharged: vatRate !== null, bankNames: banks.map((b) => b.accountName) });
-    const taxCodes = vatRate !== null ? planVatTaxCodes(vatRate) : [];
+    const template = resolveTemplate({ bankNames: banks.map((b) => b.accountName) });
+    const taxCodes = vatRate !== null ? planVatTaxCodes(vatRate) : planNoTaxCodes();
     const currencyCode = await this.config.getBaseCurrency(orgId);
 
     try {
@@ -177,11 +187,16 @@ export class AccountingSetupService {
             tx, orgId, template.postingProfiles, idByCode, effectiveFrom, userId,
           );
 
-          const taxCodesCreated = taxCodes.length
-            ? await this.repo.createTaxCodes(
-                tx, orgId, taxCodes, { outputTaxAccountId: idByCode.get(OUTPUT_VAT_CODE)! }, effectiveFrom, userId,
-              )
-            : 0;
+          // ADR-041 — tax Finance configured before the chart is kept as it is: no codes are created
+          // and the VAT answer is not applied. Either way, sales codes get the Output VAT account.
+          const taxAlreadyConfigured = (await this.repo.findDefaultOutputTax(tx, orgId)) !== null;
+          const taxCodesCreated =
+            taxCodes.length && !taxAlreadyConfigured
+              ? await this.repo.createTaxCodes(
+                  tx, orgId, taxCodes, { outputTaxAccountId: idByCode.get(OUTPUT_VAT_CODE)! }, effectiveFrom, userId,
+                )
+              : 0;
+          await this.repo.linkOutputTaxAccount(tx, orgId, idByCode.get(OUTPUT_VAT_CODE)!);
 
           const fiscalYear = await this.repo.createFiscalYear(
             tx, orgId, fyPlan, idByCode.get(RETAINED_EARNINGS_CODE)!, userId,
@@ -220,7 +235,11 @@ export class AccountingSetupService {
             after: {
               templateId: template.templateId,
               templateVersion: template.version,
-              vat: vatRate !== null ? { charged: true, ratePercent: vatRate, taxCodes: taxCodes.map((t) => t.code) } : { charged: false },
+              vat: taxAlreadyConfigured
+                ? { alreadyConfigured: true }
+                : vatRate !== null
+                  ? { charged: true, ratePercent: vatRate, taxCodes: taxCodes.map((t) => t.code) }
+                  : { charged: false },
               banks: banks.map((b, i) => ({ glCode: bankAccountCode(i), accountName: b.accountName, bankName: b.bankName })),
               ...result,
               fiscalYear: { ...result.fiscalYear, startDate: fyPlan.startDate.toISOString().slice(0, 10) },

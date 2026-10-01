@@ -15,14 +15,13 @@ import { planVatTaxCodes, vatTaxCode } from '../domain/setup-tax-codes.js';
 const banks = (n: number) => Array.from({ length: n }, (_, i) => `Bank ${i + 1}`);
 
 const CHOICES = [
-  { vatCharged: false, bankNames: [] as string[] },
-  { vatCharged: true, bankNames: [] as string[] },
-  { vatCharged: false, bankNames: banks(1) },
-  { vatCharged: true, bankNames: banks(3) },
-  { vatCharged: true, bankNames: banks(MAX_BANKS) },
+  { bankNames: [] as string[] },
+  { bankNames: banks(1) },
+  { bankNames: banks(3) },
+  { bankNames: banks(MAX_BANKS) },
 ];
 
-describe.each(CHOICES)('construction template (VAT=$vatCharged, banks=$bankNames.length)', (choice) => {
+describe.each(CHOICES)('construction template (banks=$bankNames.length)', (choice) => {
   const { accounts, postingProfiles } = resolveTemplate(choice);
   const byCode = new Map(accounts.map((a) => [a.code, a]));
   const active = accounts; // every template account is created ACTIVE
@@ -67,10 +66,10 @@ describe.each(CHOICES)('construction template (VAT=$vatCharged, banks=$bankNames
     expect(accounts.filter((a) => a.isControlAccount).map((a) => a.code).sort()).toEqual(['11000', '20000']);
   });
 
-  it('output VAT payable always exists; 14100 input VAT only when VAT is charged', () => {
+  it('output VAT payable always exists; no input-VAT asset (ACC-TAX-001, ADR-041)', () => {
     expect(byCode.get('22000')?.accountSubtype).toBe('VAT_OUTPUT_PAYABLE');
-    expect(byCode.has('14100')).toBe(choice.vatCharged);
-    if (choice.vatCharged) expect(byCode.get('14100')!.conditional).toBe('VAT');
+    expect(byCode.has('14100')).toBe(false);
+    expect(accounts.some((a) => a.accountSubtype === 'VAT_INPUT_RECOVERABLE')).toBe(false);
   });
 
   it('banks are 10100, 10101, … under 10000, flagged BANK and named as given', () => {
@@ -109,9 +108,9 @@ describe.each(CHOICES)('construction template (VAT=$vatCharged, banks=$bankNames
 });
 
 describe('construction template — shape', () => {
-  it('lists exactly the ADR-040 chart codes (78 without VAT or banks; 14100 with VAT)', () => {
+  it('lists exactly the ADR-040 chart codes (78 without banks)', () => {
     const ADR_040_CODES = [
-    '10000', '10900', '11000', '12000', '13000', '13100', '13200', '14000', '14100', '15000',
+    '10000', '10900', '11000', '12000', '13000', '13100', '13200', '14000', '15000',
     '15100', '15200', '15300', '15400', '15500', '15900', '20000', '21000', '21100', '22000',
     '23000', '23100', '23200', '23300', '24000', '30000', '31000', '32000', '33000', '40000',
     '42000', '42100', '42200', '42900', '51000', '51100', '51200', '51300', '51400', '51500',
@@ -120,17 +119,17 @@ describe('construction template — shape', () => {
     '55900', '60000', '61000', '61100', '61200', '61300', '61400', '61500', '61600', '61700',
     '61800', '61900', '62000', '62900', '65000', '66000', '66100', '66200', '69000',
     ];
-    const withVat = resolveTemplate({ vatCharged: true, bankNames: [] }).accounts.map((a) => a.code);
-    expect([...withVat].sort()).toEqual([...ADR_040_CODES].sort());
-    expect(resolveTemplate({ vatCharged: false, bankNames: [] }).accounts).toHaveLength(78);
+    const codes = resolveTemplate({ bankNames: [] }).accounts.map((a) => a.code);
+    expect([...codes].sort()).toEqual([...ADR_040_CODES].sort());
+    expect(codes).toHaveLength(78);
   });
 
   it('rejects more than MAX_BANKS banks', () => {
-    expect(() => resolveTemplate({ vatCharged: false, bankNames: banks(MAX_BANKS + 1) })).toThrow(RangeError);
+    expect(() => resolveTemplate({ bankNames: banks(MAX_BANKS + 1) })).toThrow(RangeError);
   });
 
   it('the last possible bank code stays inside 101xx and never collides with petty cash', () => {
-    const { accounts } = resolveTemplate({ vatCharged: false, bankNames: banks(MAX_BANKS) });
+    const { accounts } = resolveTemplate({ bankNames: banks(MAX_BANKS) });
     const last = String(BANK_BASE_CODE + MAX_BANKS - 1);
     expect(last).toBe('10119');
     expect(accounts.find((a) => a.code === last)?.conditional).toBe('BANK');

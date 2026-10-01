@@ -15,6 +15,7 @@ import type {
   CreatePostingProfileBody,
   RepointPostingProfileBody,
 } from '../posting-profile-setup';
+import type { CreateTaxCodeBody, TaxCodesView } from '../tax-codes';
 import type {
   Account,
   AccountLedger,
@@ -248,6 +249,41 @@ export function setPostingProfileActive(id: string, active: boolean): Promise<Po
     `/posting-profiles/${id}/${active ? 'reactivate' : 'deactivate'}`,
     { method: 'POST' },
   );
+}
+
+// ─── Tax codes (ADR-041) ─────────────────────────────────────────────────────────
+
+/**
+ * `GET /tax-codes` — every code (both directions, any status) and the default sales code.
+ * Readable by `manage:receivable` too: whoever raises an invoice sees which code it will use.
+ */
+export function listTaxCodes(): Promise<TaxCodesView> {
+  return apiClient<TaxCodesView>('/tax-codes');
+}
+
+/** `POST /tax-codes` — 409 `TAX_CODE_TAKEN`; 400 `TAX_CODE_INVALID` / `TAX_RATE_INVALID`. */
+export function createTaxCode(body: CreateTaxCodeBody): Promise<TaxCodesView> {
+  return apiClient<TaxCodesView>('/tax-codes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** `PUT /tax-codes/default-output` — 422 `TAX_CODE_NOT_APPLICABLE` unless ACTIVE OUTPUT. */
+export function setDefaultOutputTaxCode(taxCodeId: string): Promise<TaxCodesView> {
+  return apiClient<TaxCodesView>('/tax-codes/default-output', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taxCodeId }),
+  });
+}
+
+/** `POST /tax-codes/:id/deactivate` | `/reactivate` — 409 `TAX_CODE_IS_DEFAULT` for the default. */
+export function setTaxCodeActive(id: string, active: boolean): Promise<TaxCodesView> {
+  return apiClient<TaxCodesView>(`/tax-codes/${id}/${active ? 'reactivate' : 'deactivate'}`, {
+    method: 'POST',
+  });
 }
 
 // ─── Accounting setup from a template (ADR-040) ─────────────────────────────────

@@ -44,18 +44,18 @@ export class AccountingSetupRepository {
 
   /**
    * Accounting records that can exist without a chart and would collide with what setup writes
-   * (unique tax/profile codes, bank account numbers, fiscal-year names and dates). Document
-   * sequences are not listed: setup reuses an existing sequence rather than creating a second one.
+   * (unique profile codes, bank account numbers, fiscal-year names and dates). Document sequences
+   * are not listed: setup reuses an existing sequence rather than creating a second one. Tax codes
+   * are not listed either (ADR-041): Finance configures tax before the chart is signed off, and
+   * setup keeps what it finds.
    */
   async findExistingRecords(prisma: TenantPrisma, organizationId: string): Promise<ExistingSetupRecord[]> {
-    const [taxCodes, profiles, banks, fiscalYears] = await Promise.all([
-      prisma.taxCode.count({ where: { organizationId } }),
+    const [profiles, banks, fiscalYears] = await Promise.all([
       prisma.postingProfile.count({ where: { organizationId } }),
       prisma.bankAccount.count({ where: { organizationId } }),
       prisma.fiscalYear.count({ where: { organizationId } }),
     ]);
     const found: ExistingSetupRecord[] = [];
-    if (taxCodes) found.push('TAX_CODES');
     if (profiles) found.push('POSTING_PROFILES');
     if (banks) found.push('BANK_ACCOUNTS');
     if (fiscalYears) found.push('FISCAL_YEARS');
@@ -207,14 +207,31 @@ export class AccountingSetupRepository {
   ): Promise<number> {
     let outputId: string | null = null;
     let inputId: string | null = null;
+    let created = 0;
     for (const c of codes) {
-      const created = await tx.taxCode.create({
+      // A code Finance already created under this name is kept, not duplicated (ADR-041).
+      const existing = await tx.taxCode.findUnique({
+        where: { organizationId_code: { organizationId, code: c.code } },
+        select: { id: true, status: true },
+      });
+      if (existing) {
+        // Setup is about to make it the default: an inactive one is brought back into use.
+        if (existing.status !== 'ACTIVE') {
+          await tx.taxCode.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } });
+        }
+        if (c.direction === 'OUTPUT') outputId = existing.id;
+        else inputId = existing.id;
+        continue;
+      }
+      created += 1;
+      const row = await tx.taxCode.create({
         data: {
           organizationId,
           code: c.code,
           name: c.name,
           rate: c.rate,
           taxType: 'VAT',
+          direction: c.direction,
           recoveryMethod: c.recoveryMethod,
           // ACC-TAX-001: non-recoverable input VAT carries no input-tax account.
           outputTaxAccountId: c.direction === 'OUTPUT' ? links.outputTaxAccountId : null,
@@ -224,16 +241,37 @@ export class AccountingSetupRepository {
         },
         select: { id: true },
       });
-      if (c.direction === 'OUTPUT') outputId = created.id;
-      else inputId = created.id;
+      if (c.direction === 'OUTPUT') outputId = row.id;
+      else inputId = row.id;
     }
     await this.configRepo.upsertTaxPolicy(tx, organizationId, {
       defaultOutputTaxCodeId: outputId,
       defaultInputTaxCodeId: inputId,
       updatedBy: createdBy,
     });
-    return codes.length;
+    return created;
   }
+  /** ADR-041 — whether Finance has already set a default sales tax code. */
+  async findDefaultOutputTax(prisma: TenantPrisma, organizationId: string) {
+    const policy = await prisma.taxPolicy.findUnique({
+      where: { organizationId },
+      select: { defaultOutputTaxCodeId: true },
+    });
+    if (!policy?.defaultOutputTaxCodeId) return null;
+    return prisma.taxCode.findFirst({
+      where: { id: policy.defaultOutputTaxCodeId, organizationId },
+      select: { id: true, code: true, name: true, rate: true },
+    });
+  }
+
+  /** Sales tax codes created before the chart existed get the new Output VAT account. */
+  async linkOutputTaxAccount(tx: TenantPrisma, organizationId: string, outputTaxAccountId: string) {
+    await tx.taxCode.updateMany({
+      where: { organizationId, direction: 'OUTPUT', outputTaxAccountId: null },
+      data: { outputTaxAccountId },
+    });
+  }
+
 
   createFiscalYear(
     tx: TenantPrisma,

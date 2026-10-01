@@ -55,13 +55,21 @@ import {
   toSetupBody,
   type SetupBankDraft,
   type SetupDraft,
+  type SetupStatus,
   type SetupTemplate,
   type VatMode,
 } from '../accounting-setup';
-import { useAccountingSetupTemplate, useRunAccountingSetup } from '../hooks/use-accounting';
+import {
+  useAccountingSetupStatus,
+  useAccountingSetupTemplate,
+  useRunAccountingSetup,
+} from '../hooks/use-accounting';
+import { formatRatePercent } from '../tax-codes';
 import { usePartialSetupMessage } from './partial-setup-notice';
 
 type StepId = 'company' | 'review' | 'confirm';
+
+type SalesTax = NonNullable<SetupStatus['defaultSalesTax']>;
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -71,10 +79,16 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
   const locale = useLocale();
 
   const [initial] = useState(() => initialSetupDraft());
-  const [draft, setDraft] = useState<SetupDraft>(initial);
+  const [typed, setDraft] = useState<SetupDraft>(initial);
   const [showErrors, setShowErrors] = useState(false);
 
   const setup = useRunAccountingSetup();
+
+  // ADR-041: when Finance has already set the default sales tax, setup leaves tax alone — the VAT
+  // question is replaced by a read-only line and `vat: { charged: false }` is sent (ignored).
+  const status = useAccountingSetupStatus();
+  const salesTax = status.data?.defaultSalesTax ?? null;
+  const draft: SetupDraft = salesTax ? { ...typed, vatMode: 'none', vatRate: '' } : typed;
 
   const problems = setupProblems(draft);
   const vatCharged = draft.vatMode === 'charged';
@@ -129,8 +143,8 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
   }, [wizard.currentIndex]);
 
   const dirty =
-    draft.vatMode !== initial.vatMode ||
-    draft.vatRate !== initial.vatRate ||
+    typed.vatMode !== initial.vatMode ||
+    typed.vatRate !== initial.vatRate ||
     draft.year !== initial.year ||
     draft.startMonth !== initial.startMonth ||
     draft.banks.length !== initial.banks.length ||
@@ -202,6 +216,7 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
             patchBank={patchBank}
             showErrors={showErrors}
             range={range}
+            salesTax={salesTax}
           />
         ) : null}
 
@@ -225,6 +240,7 @@ export function AccountingSetupDialog({ onDone }: { onDone: () => void }) {
             range={range}
             banks={draft.banks.map((bank) => bank.accountName.trim())}
             vatRate={vatCharged ? parseVatRate(draft.vatRate) : null}
+            salesTax={salesTax}
             serverError={serverError}
           />
         ) : null}
@@ -275,12 +291,14 @@ function CompanyStep({
   patchBank,
   showErrors,
   range,
+  salesTax,
 }: {
   draft: SetupDraft;
   setDraft: React.Dispatch<React.SetStateAction<SetupDraft>>;
   patchBank: (key: string, patch: Partial<SetupBankDraft>) => void;
   showErrors: boolean;
   range: { start: string; end: string };
+  salesTax: SalesTax | null;
 }) {
   const t = useTranslations('accounting.setup');
   const locale = useLocale();
@@ -292,44 +310,58 @@ function CompanyStep({
   return (
     <div className="space-y-6">
       <FormDialogSection title={t('vat.title')}>
-        <ChoiceCards<VatMode>
-          label={t('vat.label')}
-          value={draft.vatMode}
-          onChange={(vatMode) => setDraft((d) => ({ ...d, vatMode }))}
-          columns={2}
-          options={[
-            { value: 'none', label: t('vat.none'), hint: t('vat.noneHint') },
-            { value: 'charged', label: t('vat.charged'), hint: t('vat.chargedHint') },
-          ]}
-        />
-        {showErrors && problems.vatChoice ? (
-          <p role="alert" className="text-caption text-danger">
-            {t('vat.choiceError')}
+        {salesTax ? (
+          <p className="text-body-sm text-foreground">
+            {t('vat.alreadySetUp', {
+              name: salesTax.name,
+              rate: formatRatePercent(salesTax.ratePercent),
+            })}
           </p>
-        ) : null}
-        {/* Tax codes only: invoice tax is still a fixed rate on the server, whatever is chosen here. */}
-        <Notice tone="attention">{t('vat.invoiceTaxNotice')}</Notice>
-        {draft.vatMode === 'charged' ? (
-          <FormField
-            htmlFor={ids.rate}
-            label={t('vat.rate')}
-            hint={t('vat.rateHint')}
-            error={showErrors && problems.vatRate ? t('vat.rateError') : undefined}
-            className="max-w-48"
-          >
-            <Input
-              id={ids.rate}
-              value={draft.vatRate}
-              onChange={(e) => setDraft((d) => ({ ...d, vatRate: e.target.value }))}
-              inputMode="decimal"
-              autoComplete="off"
-              maxLength={6}
+        ) : (
+          <>
+            <ChoiceCards<VatMode>
+              label={t('vat.label')}
+              value={draft.vatMode}
+              onChange={(vatMode) => setDraft((d) => ({ ...d, vatMode }))}
+              columns={2}
+              options={[
+                { value: 'none', label: t('vat.none'), hint: t('vat.noneHint') },
+                { value: 'charged', label: t('vat.charged'), hint: t('vat.chargedHint') },
+              ]}
             />
-          </FormField>
-        ) : null}
+            {showErrors && problems.vatChoice ? (
+              <p role="alert" className="text-caption text-danger">
+                {t('vat.choiceError')}
+              </p>
+            ) : null}
+            <Notice tone="info">{t('vat.invoiceTaxNotice')}</Notice>
+            {draft.vatMode === 'charged' ? (
+              <FormField
+                htmlFor={ids.rate}
+                label={t('vat.rate')}
+                hint={t('vat.rateHint')}
+                error={showErrors && problems.vatRate ? t('vat.rateError') : undefined}
+                className="max-w-48"
+              >
+                <Input
+                  id={ids.rate}
+                  value={draft.vatRate}
+                  onChange={(e) => setDraft((d) => ({ ...d, vatRate: e.target.value }))}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  maxLength={6}
+                />
+              </FormField>
+            ) : null}
+          </>
+        )}
       </FormDialogSection>
 
-      <FormDialogSection title={t('banks.title')} description={t('banks.description')} variant="plain">
+      <FormDialogSection
+        title={t('banks.title')}
+        description={t('banks.description')}
+        variant="plain"
+      >
         {draft.banks.length === 0 ? (
           <p className="text-body-sm text-muted-foreground">{t('banks.none')}</p>
         ) : (
@@ -642,6 +674,7 @@ function ConfirmStep({
   range,
   banks,
   vatRate,
+  salesTax,
   serverError,
 }: {
   accounts: number;
@@ -650,6 +683,7 @@ function ConfirmStep({
   range: { start: string; end: string };
   banks: string[];
   vatRate: number | null;
+  salesTax: SalesTax | null;
   serverError: string | null;
 }) {
   const t = useTranslations('accounting.setup.confirm');
@@ -659,7 +693,11 @@ function ConfirmStep({
     t('profiles', { count: profiles }),
     t('fiscalYear', { fyName, ...range }),
     t('banks', { count: banks.length, names: banks.join(', ') }),
-    vatRate !== null ? t('vatCharged', { rate: String(vatRate) }) : t('vatNone'),
+    salesTax
+      ? t('vatConfigured', { name: salesTax.name, rate: formatRatePercent(salesTax.ratePercent) })
+      : vatRate !== null
+        ? t('vatCharged', { rate: String(vatRate) })
+        : t('vatNone'),
   ];
 
   return (

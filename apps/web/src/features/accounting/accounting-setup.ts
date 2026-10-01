@@ -62,6 +62,11 @@ export interface SetupStatus {
   hasPolicies: boolean;
   /** What blocks the install when `reason` is PARTIAL_SETUP; empty otherwise. */
   existingRecords: ExistingSetupRecord[];
+  /**
+   * ADR-041: the default sales tax Finance already configured. When set, setup leaves tax as it
+   * is — the VAT answer is ignored and no tax codes are created.
+   */
+  defaultSalesTax?: { code: string; name: string; ratePercent: string } | null;
 }
 
 /** Body of `POST /accounting/setup`. */

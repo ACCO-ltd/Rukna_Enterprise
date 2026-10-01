@@ -3,7 +3,10 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CommercialPreparePreviewResponse } from '@erp/types';
 
+import { ApiError } from '@/lib/api-client';
+import { chooseOption } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
+import { percentToFraction, type TaxCode } from '@/features/accounting/tax-codes';
 
 import * as invoiceApi from '../api/commercial-invoice-api';
 import { prepareTotals, taxMinor } from './prepare-invoice-dialog.model';
@@ -16,6 +19,41 @@ vi.mock('../api/commercial-invoice-api', () => ({
   getPreparePreview: vi.fn(),
   preparePackage: vi.fn(),
 }));
+
+const accountingApi = vi.hoisted(() => ({ listTaxCodes: vi.fn() }));
+vi.mock('@/features/accounting/api/accounting-api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ...accountingApi,
+}));
+
+function taxCode(
+  id: string,
+  code: string,
+  name: string,
+  ratePercent: string,
+  extra: Partial<TaxCode> = {},
+): TaxCode {
+  return {
+    id,
+    code,
+    name,
+    ratePercent,
+    direction: 'OUTPUT',
+    status: 'ACTIVE',
+    effectiveFrom: '2026-01-01',
+    effectiveTo: null,
+    isDefault: false,
+    ...extra,
+  };
+}
+
+const VAT5 = taxCode('tc-5', 'VAT5_OUT', 'Sales tax 5%', '5', { isDefault: true });
+const EXEMPT = taxCode('tc-0', 'EXEMPT', 'No tax', '0');
+const PURCHASE = taxCode('tc-in', 'VAT5_IN', 'Purchase tax', '5', { direction: 'INPUT' });
+const RETIRED = taxCode('tc-old', 'VAT4_OUT', 'Old sales tax', '4', { status: 'INACTIVE' });
+
+const FINANCE = ['manage:receivable', 'view:accounting', 'manage:accounting'];
+const PREPARER = ['manage:receivable'];
 
 function makePreview(overrides: Partial<CommercialPreparePreviewResponse> = {}): CommercialPreparePreviewResponse {
   return {
@@ -53,19 +91,25 @@ function makePreview(overrides: Partial<CommercialPreparePreviewResponse> = {}):
       },
     ],
     taxRate: '0.05',
+    defaultTaxCode: { id: 'tc-5', code: 'VAT5_OUT', name: 'Sales tax 5%', ratePercent: '5' },
     ...overrides,
   };
 }
 
-function renderDialog(onClose = vi.fn()) {
+function renderDialog(onClose = vi.fn(), permissions?: string[]) {
   renderWithProviders(
     <PrepareInvoiceDialog projectId="p1" installmentId="inst-2" open onClose={onClose} />,
+    permissions ? { permissions } : {},
   );
   return onClose;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  accountingApi.listTaxCodes.mockResolvedValue({
+    codes: [VAT5, EXEMPT, PURCHASE, RETIRED],
+    defaultOutputTaxCodeId: 'tc-5',
+  });
 });
 
 describe('prepare-invoice-dialog.model — totals in minor units with the server rate', () => {
@@ -84,6 +128,25 @@ describe('prepare-invoice-dialog.model — totals in minor units with the server
     });
     expect(prepareTotals('100.00', [], '0.075')).toEqual({ subtotal: '100.00', tax: '7.50', total: '107.50' });
     expect(prepareTotals('100.00', [], null)).toEqual({ subtotal: '100.00', tax: null, total: '100.00' });
+  });
+
+  it('takes a tax code PERCENT through percentToFraction — 5, 12.5, 0', () => {
+    expect(percentToFraction('5')).toBe('0.050000');
+    expect(percentToFraction('12.5')).toBe('0.125000');
+    expect(percentToFraction('5.0000')).toBe('0.050000');
+    expect(percentToFraction('0.0125')).toBe('0.000125');
+    expect(percentToFraction('abc')).toBeNull();
+    expect(prepareTotals('100.00', [], percentToFraction('12.5'))).toEqual({
+      subtotal: '100.00',
+      tax: '12.50',
+      total: '112.50',
+    });
+    expect(prepareTotals('100.00', [], percentToFraction('0'))).toEqual({
+      subtotal: '100.00',
+      tax: '0.00',
+      total: '100.00',
+    });
+    expect(taxMinor(10000, percentToFraction('7.5'))).toBe(750);
   });
 });
 
@@ -114,7 +177,12 @@ describe('PrepareInvoiceDialog — creates a draft from the server preview', () 
 
   it('variation toggles change the total using the server tax rate', async () => {
     const user = userEvent.setup();
-    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview({ taxRate: '0.1' }));
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(
+      makePreview({
+        taxRate: '0.1',
+        defaultTaxCode: { id: 'tc-10', code: 'VAT10_OUT', name: 'Sales tax 10%', ratePercent: '10' },
+      }),
+    );
     renderDialog();
 
     const total = await screen.findByTestId('prepare-total');
@@ -223,5 +291,92 @@ describe('PrepareInvoiceDialog — dismissal (ADR-039 FormDialog)', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     await user.keyboard('{Escape}');
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('PrepareInvoiceDialog — tax code (ADR-041)', () => {
+  it('shows the default read-only to someone who is not Finance, and sends no code', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    vi.mocked(invoiceApi.preparePackage).mockResolvedValue({ invoiceId: 'inv-9', invoiceIds: ['inv-9'] });
+    renderDialog(vi.fn(), PREPARER);
+
+    expect(await screen.findByText('Tax: Sales tax 5% (5%)')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Tax')).not.toBeInTheDocument();
+    expect(accountingApi.listTaxCodes).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Create draft invoice' }));
+    await waitFor(() =>
+      expect(invoiceApi.preparePackage).toHaveBeenCalledWith('p1', 'inst-2', {
+        selectedVariationIds: ['vo-3'],
+      }),
+    );
+  });
+
+  it('lets Finance switch to EXEMPT: the tax drops out of the total and the code is sent', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    vi.mocked(invoiceApi.preparePackage).mockResolvedValue({ invoiceId: 'inv-9', invoiceIds: ['inv-9'] });
+    renderDialog(vi.fn(), FINANCE);
+
+    const select = await screen.findByLabelText('Tax');
+    const total = screen.getByTestId('prepare-total');
+    expect(total).toHaveTextContent('$170,100.00');
+
+    await chooseOption(user, select, 'tc-0');
+    expect(total).toHaveTextContent('$162,000.00');
+    expect(screen.getByText('Sales tax 0%')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Create draft invoice' }));
+    await waitFor(() =>
+      expect(invoiceApi.preparePackage).toHaveBeenCalledWith('p1', 'inst-2', {
+        selectedVariationIds: ['vo-3'],
+        taxCodeId: 'tc-0',
+      }),
+    );
+  });
+
+  it('offers Finance only active sales codes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    renderDialog(vi.fn(), FINANCE);
+
+    await user.click(await screen.findByLabelText('Tax'));
+    await screen.findByRole('listbox');
+    const offered = Array.from(document.querySelectorAll('[role="option"]')).map((el) =>
+      el.getAttribute('data-value'),
+    );
+    expect(offered).toEqual(['tc-5', 'tc-0']);
+  });
+
+  it('with no default sales tax: says so, links Finance to Tax, and Create is disabled', async () => {
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(
+      makePreview({ defaultTaxCode: null, taxRate: null }),
+    );
+    renderDialog(vi.fn(), FINANCE);
+
+    expect(
+      await screen.findByText('No default sales tax is set — Finance sets it on Accounting → Tax.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Accounting → Tax' })).toHaveAttribute(
+      'href',
+      '/finance/accounting/tax',
+    );
+    expect(screen.getByRole('button', { name: 'Create draft invoice' })).toBeDisabled();
+  });
+
+  it('explains a 403 TAX_CODE_OVERRIDE_FORBIDDEN in words', async () => {
+    const user = userEvent.setup();
+    vi.mocked(invoiceApi.getPreparePreview).mockResolvedValue(makePreview());
+    vi.mocked(invoiceApi.preparePackage).mockRejectedValue(
+      new ApiError(403, 'Forbidden', 'TAX_CODE_OVERRIDE_FORBIDDEN'),
+    );
+    renderDialog(vi.fn(), PREPARER);
+
+    await screen.findByText('Tax: Sales tax 5% (5%)');
+    await user.click(screen.getByRole('button', { name: 'Create draft invoice' }));
+    expect(
+      await screen.findByText('Only Finance can raise an invoice at a tax code other than the default.'),
+    ).toBeInTheDocument();
   });
 });
