@@ -20,5 +20,6 @@ export function clientInvoiceTax(subtotal: Decimal, ratePercent: Decimal): Decim
  */
 export function impliedTaxRatePercent(subtotal: Decimal, vatAmount: Decimal): Decimal {
   if (subtotal.isZero()) return new Decimal(0);
-  return vatAmount.div(subtotal).mul(100).toDecimalPlaces(4);
+  // Clamped to the column (DECIMAL(7,4)) so a nonsensical imported ratio cannot fail the import.
+  return Decimal.min(Decimal.max(vatAmount.div(subtotal).mul(100).toDecimalPlaces(4), 0), new Decimal('999.9999'));
 }

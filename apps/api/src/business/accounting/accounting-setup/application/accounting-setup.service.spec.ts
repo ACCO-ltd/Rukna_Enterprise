@@ -59,6 +59,15 @@ function build(opts: { accountsBefore?: number; accountsInTx?: number; failAt?: 
 }
 
 describe('AccountingSetupService.install', () => {
+  it('keeps tax Finance already configured: no codes created, sales codes linked to Output VAT', async () => {
+    const { service, repo } = build();
+    repo.findDefaultOutputTax.mockResolvedValue({ id: 't1', code: 'VAT5_OUT', name: 'Sales tax 5%', rate: 5 });
+    const result = await service.install(identity, INPUT);
+    expect(repo.createTaxCodes).not.toHaveBeenCalled();
+    expect(result.taxCodesCreated).toBe(0);
+    expect(repo.linkOutputTaxAccount.mock.calls[0]![2]).toBe('id-22000');
+  });
+
   it('installs everything inside ONE transaction, parent-first, and reports what it created', async () => {
     const { service, repo, prisma, tx } = build();
     const result = await service.install(identity, INPUT);
@@ -156,11 +165,14 @@ describe('AccountingSetupService.install', () => {
     expect((repo.createPostingProfiles.mock.calls[0]![4] as Date).toISOString().slice(0, 10)).toBe(today);
   });
 
-  it('no VAT: no tax codes, no 14100 — output VAT 22000 still exists', async () => {
+  it('no VAT: a 0% "No sales tax" default (ADR-041), no 14100 — output VAT 22000 still exists', async () => {
     const { service, repo } = build();
     const result = await service.install(identity, { ...INPUT, vat: { charged: false } });
-    expect(repo.createTaxCodes).not.toHaveBeenCalled();
-    expect(result.taxCodesCreated).toBe(0);
+    // Without a default sales tax code no client invoice could be raised.
+    expect((repo.createTaxCodes.mock.calls[0]![2] as Array<{ code: string; rate: number; direction: string }>)).toEqual([
+      expect.objectContaining({ code: 'EXEMPT', rate: 0, direction: 'OUTPUT' }),
+    ]);
+    expect(result.taxCodesCreated).toBe(1);
     const codes = (repo.createAccounts.mock.calls[0]![2] as Array<{ code: string }>).map((a) => a.code);
     expect(codes).not.toContain('14100');
     expect(codes).toContain('22000');

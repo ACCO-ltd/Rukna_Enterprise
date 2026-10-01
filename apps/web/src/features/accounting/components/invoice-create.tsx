@@ -135,7 +135,7 @@ export function InvoiceCreate() {
   const mayCreate = can(ACCOUNTING_PERMISSIONS.manageReceivables);
   const isMilestone = kind === 'INSTALLMENT';
   // The milestone path chooses its tax inside the Prepare invoice dialog.
-  const tax = useInvoiceTaxChoice({ enabled: mayCreate && kind !== '' && !isMilestone });
+  const tax = useInvoiceTaxChoice({ enabled: mayCreate && kind !== '' && !isMilestone, invoiceDate });
   const taxError = useInvoiceTaxErrorMessage();
   const financialsVisible = summary.data?.financialsVisible ?? true;
 

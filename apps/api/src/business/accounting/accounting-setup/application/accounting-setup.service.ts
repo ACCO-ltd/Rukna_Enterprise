@@ -9,7 +9,7 @@ import {
   AccountingSetupRepository,
   type ExistingSetupRecord,
 } from '../infrastructure/accounting-setup.repository.js';
-import { planVatTaxCodes } from '../domain/setup-tax-codes.js';
+import { planNoTaxCodes, planVatTaxCodes } from '../domain/setup-tax-codes.js';
 import {
   CONSTRUCTION_TEMPLATE_ID,
   MAX_BANKS,
@@ -169,7 +169,7 @@ export class AccountingSetupService {
       accountNumber: b.accountNumber?.trim() || null,
     }));
     const template = resolveTemplate({ bankNames: banks.map((b) => b.accountName) });
-    const taxCodes = vatRate !== null ? planVatTaxCodes(vatRate) : [];
+    const taxCodes = vatRate !== null ? planVatTaxCodes(vatRate) : planNoTaxCodes();
     const currencyCode = await this.config.getBaseCurrency(orgId);
 
     try {

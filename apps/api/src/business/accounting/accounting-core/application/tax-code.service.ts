@@ -107,6 +107,20 @@ export class TaxCodeService {
           after: { code, name, ratePercent: rate.toString(), direction: input.direction, effectiveFrom: dateOnly(effectiveFrom) },
           sourceCommand: 'tax-code.create',
         });
+        // The first sales code an organisation creates becomes its default when it has none and the
+        // code is already in force — otherwise invoicing stays blocked until someone finds the setting.
+        if (
+          input.direction === 'OUTPUT' &&
+          inForce(created, dateOnly(new Date())) &&
+          (await this.repo.findDefaultOutputId(tx, orgId)) === null
+        ) {
+          await this.repo.setDefaultOutput(tx, orgId, created.id, userId);
+          await this.repo.recordAudit(tx, {
+            organizationId: orgId, userId, action: 'TAX_DEFAULT_OUTPUT_CHANGED', resourceId: created.id,
+            before: { defaultOutputTaxCodeId: null }, after: { defaultOutputTaxCodeId: created.id, code },
+            sourceCommand: 'tax-code.create',
+          });
+        }
       });
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') throw codeTaken(code);
@@ -147,6 +161,14 @@ export class TaxCodeService {
     if (!code) throw new NotFoundException(`Tax code ${taxCodeId} not found`);
     if (code.direction !== 'OUTPUT' || code.status !== 'ACTIVE') {
       throw notApplicable(`${code.code} cannot be the default sales tax: it must be an active sales (output) code.`);
+    }
+    // A default not yet in force would stop every invoice until its start date (review M1): make a
+    // new rate the default on or after the day it takes effect.
+    const today = dateOnly(new Date());
+    if (!inForce(code, today)) {
+      throw notApplicable(
+        `${code.code} is not in force today (${dateOnly(code.effectiveFrom)}${code.effectiveTo ? ` to ${dateOnly(code.effectiveTo)}` : ''}). Make it the default on or after the day it takes effect.`,
+      );
     }
     const before = await this.repo.findDefaultOutputId(prisma, orgId);
     if (before === taxCodeId) return this.list(identity);
@@ -214,7 +236,7 @@ export class TaxCodeService {
         ? 'is not a sales (output) tax code'
         : code.status !== 'ACTIVE'
           ? 'is inactive'
-          : dateOnly(code.effectiveFrom) > day || (code.effectiveTo !== null && dateOnly(code.effectiveTo) <= day)
+          : !inForce(code, day)
             ? `is not in force on ${day}`
             : null;
     if (problem) {
@@ -226,6 +248,11 @@ export class TaxCodeService {
     }
     return { taxCodeId: code!.id, ratePercent: new Decimal(code!.rate.toString()) };
   }
+}
+
+/** `[effectiveFrom, effectiveTo)` — `effectiveTo` is exclusive, like every versioned range here. */
+function inForce(code: TaxCode, day: string): boolean {
+  return dateOnly(code.effectiveFrom) <= day && (code.effectiveTo === null || day < dateOnly(code.effectiveTo));
 }
 
 function mayOverride(identity: RequestIdentity): boolean {

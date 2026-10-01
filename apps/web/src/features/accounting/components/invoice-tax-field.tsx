@@ -55,7 +55,10 @@ export interface InvoiceTaxChoice {
 export function useInvoiceTaxChoice({
   knownDefault,
   enabled = true,
+  invoiceDate,
 }: {
+  /** The invoice date (YYYY-MM-DD); Finance is offered only codes in force on it. Defaults to today. */
+  invoiceDate?: string;
   /**
    * The default code when the caller already has it (the commercial prepare preview carries it);
    * `undefined` reads it from `GET /tax-codes`.
@@ -71,7 +74,7 @@ export function useInvoiceTaxChoice({
 
   const listDefault = defaultTaxCodeOf(list.data);
   const defaultCode = knownDefault !== undefined ? knownDefault : listDefault;
-  const options = mayChoose && list.data ? invoiceTaxOptions(list.data.codes) : [];
+  const options = mayChoose && list.data ? invoiceTaxOptions(list.data.codes, invoiceDate || undefined) : [];
 
   const state: InvoiceTaxChoice['state'] =
     knownDefault === undefined && list.isPending

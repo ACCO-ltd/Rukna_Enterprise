@@ -9,6 +9,8 @@
  *   TX-05  changing the default never changes an invoice already raised
  *   TX-06  the default cannot be deactivated (409); only an ACTIVE OUTPUT code can be the default
  *   TX-07  create validates code, rate and uniqueness, and every change is audited
+ *   TX-08  a code not in force today cannot be made the default (review M1); the first sales code an
+ *          organisation creates becomes its default when it has none (review M3)
  */
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -198,5 +200,24 @@ describe('ADR-041 — client invoice tax codes', () => {
     expect(actions).toEqual([
       'TAX_CODE_CREATED', 'TAX_DEFAULT_OUTPUT_CHANGED', 'TAX_CODE_CREATED', 'TAX_CODE_DEACTIVATED', 'TAX_CODE_REACTIVATED',
     ]);
+  });
+
+  it('TX-08: a future code cannot be the default; the first sales code becomes the default', async () => {
+    const { finance, clientId } = await makeOrg();
+    const orgId = finance.activeOrganizationId;
+
+    await create(finance, 'VAT5_IN', '5', { direction: 'INPUT' });
+    expect((await taxCodes.list(finance)).defaultOutputTaxCodeId).toBeNull();
+
+    await create(finance, 'EXEMPT', '0');
+    expect((await taxCodes.list(finance)).defaultOutputTaxCodeId).toBe(await idOf(orgId, 'EXEMPT'));
+    await expect(raise(finance, clientId, '100.00')).resolves.toMatchObject({});
+
+    await create(finance, 'VAT6_OUT', '6', { effectiveFrom: '2099-01-01' });
+    await expect(taxCodes.setDefaultOutput(finance, await idOf(orgId, 'VAT6_OUT'))).rejects.toMatchObject({
+      status: 422, response: { errorCode: 'TAX_CODE_NOT_APPLICABLE' },
+    });
+    // Invoicing is untouched: the default is still the code in force.
+    expect((await taxCodes.list(finance)).defaultOutputTaxCodeId).toBe(await idOf(orgId, 'EXEMPT'));
   });
 });

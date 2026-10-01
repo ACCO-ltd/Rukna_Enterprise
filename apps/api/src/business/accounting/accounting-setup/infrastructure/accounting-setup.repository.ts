@@ -212,9 +212,13 @@ export class AccountingSetupRepository {
       // A code Finance already created under this name is kept, not duplicated (ADR-041).
       const existing = await tx.taxCode.findUnique({
         where: { organizationId_code: { organizationId, code: c.code } },
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (existing) {
+        // Setup is about to make it the default: an inactive one is brought back into use.
+        if (existing.status !== 'ACTIVE') {
+          await tx.taxCode.update({ where: { id: existing.id }, data: { status: 'ACTIVE' } });
+        }
         if (c.direction === 'OUTPUT') outputId = existing.id;
         else inputId = existing.id;
         continue;

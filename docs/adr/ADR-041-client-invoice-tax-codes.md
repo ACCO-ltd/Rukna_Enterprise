@@ -26,6 +26,10 @@ Builds on ADR-006 (ACC-TAX-001, `TaxCode`, `TaxPolicy`) and corrects ADR-040.
    reactivate, and choose the organisation's default sales tax code. A code's rate never changes
    once created; a new rate is a new code (e.g. `VAT6_OUT`) made the default. "No tax" is an
    OUTPUT code at 0% (e.g. `EXEMPT`). Every change is audited.
+   - Only an ACTIVE OUTPUT code **in force today** can be made the default — a future-dated default
+     would stop every invoice until its start date. A new rate is made the default on or after the
+     day it takes effect.
+   - The first sales code an organisation creates becomes its default when it has none.
 3. **Every client invoice records the tax it was raised at.** `ClientInvoice.taxCodeId`
    (nullable — invoices raised before this ADR have none) and `ClientInvoice.taxRate` (percent,
    snapshot, required). `vatAmount = round2(subtotal × taxRate / 100)`. A posted or issued invoice
@@ -45,17 +49,24 @@ Builds on ADR-006 (ACC-TAX-001, `TaxCode`, `TaxPolicy`) and corrects ADR-040.
 5. **Posting is unchanged.** The tax amount still credits the account in the `VAT_OUTPUT_PAYABLE`
    role (resolved at post time); a 0% invoice posts no tax line. Credit notes keep deriving their
    rate from the invoice they credit.
-6. **Existing organisations keep today's behaviour as data.** The migration gives every
-   organisation with no OUTPUT code a `VAT5_OUT` "Sales tax 5%" OUTPUT code and makes it the
-   default (creating the `tax_policy` row if needed); an organisation with an OUTPUT code but no
-   default gets that code as default. Existing invoices get `taxRate = 5` when they carry tax, else 0.
+6. **Existing organisations keep today's behaviour as data.** The migration:
+   - gives every organisation with no ACTIVE OUTPUT code a "Sales tax 5%" code (`VAT5_OUT`, or
+     `SALES5` if that code name is taken) in force from 2000-01-01;
+   - sets the default where it is missing or unusable (inactive, or a purchase code): the 5% sales
+     code if there is one, else the oldest active sales code; a usable existing default is kept;
+   - extends the chosen default back to 2000-01-01 (the seed's codes start 2026-01-01): invoicing
+     ignored dates until now, so a back-dated invoice keeps working;
+   - gives existing invoices `taxRate = 5` when their tax is within a cent of 5%, 0 when untaxed,
+     else the rate their figures imply (capped to the column).
    Finance can then switch the default or add codes without a release.
 7. **Accounting setup (ADR-040) is corrected.**
    - `14100 Input VAT recoverable` is removed from the template (ACC-TAX-001).
    - Existing tax codes no longer count as a partial setup. When the organisation already has a
      default sales tax code, setup leaves tax as configured (it creates no tax codes and the VAT
-     step says tax is already set up); otherwise it behaves as before. Setup links the new Output
-     VAT account to OUTPUT codes that have none.
+     step says tax is already set up). Otherwise "VAT charged" creates the VAT codes as before, and
+     "no VAT" creates a 0% `EXEMPT` "No sales tax" default — without one no invoice could be raised.
+     A code of the same name that already exists is reused (and reactivated). Setup links the new
+     Output VAT account to OUTPUT codes that have none.
 
 ## Who can do what
 

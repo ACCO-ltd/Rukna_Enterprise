@@ -87,9 +87,17 @@ export function formatRatePercent(ratePercent: string | null | undefined): strin
 }
 
 /** What an invoice may be raised at: ACTIVE sales (OUTPUT) codes, the default first. */
-export function invoiceTaxOptions(codes: readonly TaxCode[]): TaxCode[] {
+export function invoiceTaxOptions(codes: readonly TaxCode[], onDate: string = localToday()): TaxCode[] {
+  // Only codes in force on the invoice date — the server refuses any other (422). `effectiveTo` is
+  // exclusive.
   return codes
-    .filter((code) => code.status === 'ACTIVE' && code.direction === 'OUTPUT')
+    .filter(
+      (code) =>
+        code.status === 'ACTIVE' &&
+        code.direction === 'OUTPUT' &&
+        code.effectiveFrom <= onDate &&
+        (code.effectiveTo === null || onDate < code.effectiveTo),
+    )
     .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.code.localeCompare(b.code));
 }
 
@@ -173,4 +181,11 @@ export function invoiceTaxErrorCode(error: unknown): InvoiceTaxErrorCode | null 
   return typeof code === 'string' && (INVOICE_TAX_ERRORS as readonly string[]).includes(code)
     ? (code as InvoiceTaxErrorCode)
     : null;
+}
+
+/** Today as YYYY-MM-DD in the user's own timezone. */
+function localToday(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
