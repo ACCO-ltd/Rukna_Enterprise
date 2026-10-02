@@ -168,9 +168,47 @@ describe('WhatsAppClient (ADR-042 phase 2)', () => {
     expect(err.message).toMatch(/in time/);
   });
 
-  it('treats a success without a message id as PROVIDER_ERROR', async () => {
+  it('treats a success without a message id as PROVIDER_ERROR with an unknown outcome', async () => {
     fetchMock.mockResolvedValue(json(200, {}));
-    expect((await caught(client().sendTemplate(message))).code).toBe('PROVIDER_ERROR');
+    const err = await caught(client().sendTemplate(message));
+    expect(err.code).toBe('PROVIDER_ERROR');
+    expect(err.outcomeUnknown).toBe(true);
+  });
+
+  describe('outcome unknown vs. definite refusal', () => {
+    it('send: network error, timeout and Meta 5xx are outcome-unknown; a Meta 4xx is a definite refusal', async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+      expect((await caught(client().sendTemplate(message))).outcomeUnknown).toBe(true);
+      fetchMock.mockResolvedValueOnce(metaError(500, 131000));
+      expect((await caught(client().sendTemplate(message))).outcomeUnknown).toBe(true);
+      fetchMock.mockResolvedValueOnce(metaError(400, 131026));
+      expect((await caught(client().sendTemplate(message))).outcomeUnknown).toBe(false);
+    });
+
+    it('upload and pre-flight failures are definite (nothing was sent)', async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+      expect((await caught(client().uploadMedia(Buffer.from('x'), 'application/pdf', 'a.pdf'))).outcomeUnknown).toBe(false);
+      fetchMock.mockResolvedValueOnce(metaError(500, 1));
+      expect((await caught(client().uploadMedia(Buffer.from('x'), 'application/pdf', 'a.pdf'))).outcomeUnknown).toBe(false);
+      expect((await caught(client({}).sendTemplate(message))).outcomeUnknown).toBe(false);
+      expect((await caught(client().sendTemplate({ ...message, to: '1' }))).outcomeUnknown).toBe(false);
+    });
+
+    it('the timeout also covers reading the response body', async () => {
+      jest.useFakeTimers();
+      fetchMock.mockImplementation((_url: string, init: { signal: AbortSignal }) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => new Promise((_r, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted')))),
+        }),
+      );
+      const pending = caught(client().sendTemplate(message));
+      await jest.advanceTimersByTimeAsync(20_000);
+      const err = await pending;
+      expect(err.code).toBe('NETWORK');
+      expect(err.outcomeUnknown).toBe(true);
+    });
   });
 
   it('helpers: classify and mask', () => {

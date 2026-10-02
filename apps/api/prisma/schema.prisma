@@ -5194,6 +5194,9 @@ enum MessagePurpose {
 
 enum MessageStatus {
   QUEUED
+  /// The send request went out but Meta never answered (timeout / dropped connection). It may or
+  /// may not have been delivered, so it is NOT retried automatically.
+  UNKNOWN
   SENT
   DELIVERED
   READ

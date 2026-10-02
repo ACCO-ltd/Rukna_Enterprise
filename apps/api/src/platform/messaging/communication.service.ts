@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, type MessagePurpose, type OutboundMessage } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import type { OutboundMessageView, RequestIdentity } from '@erp/types';
@@ -10,6 +10,8 @@ import { OutboundMessageRepository, type Db } from './infrastructure/outbound-me
 import { OutboundMessageRouteRepository } from './infrastructure/outbound-message-route.repository.js';
 import {
   E164_PATTERN,
+  IMPLIED_TIMESTAMPS,
+  STALE_STATUSES,
   STATUS_TIMESTAMP,
   fromMetaStatus,
   statusesThatAccept,
@@ -23,6 +25,11 @@ import {
 } from './whatsapp/whatsapp.client.js';
 
 export const OUTBOUND_MESSAGE_AUDIT_RESOURCE = 'outbound-message';
+
+/** errorCode of an UNKNOWN row: the send went out, Meta never confirmed it. */
+export const OUTCOME_UNKNOWN = 'OUTCOME_UNKNOWN';
+const OUTCOME_UNKNOWN_MESSAGE =
+  'WhatsApp did not confirm this message, so it may or may not have reached the client. Check with the client before sending it again.';
 
 export interface SendWhatsAppTemplateInput {
   purpose: MessagePurpose;
@@ -59,16 +66,19 @@ export type StatusUpdateOutcome = 'applied' | 'ignored' | 'not_found';
  * reminders) ask for a message; this records it (OutboundMessage), sends it through the channel
  * client, and keeps its status from the provider's webhooks.
  *
- * Idempotency: one row per (organization, idempotencyKey).
+ * Idempotency: one row per (organization, idempotencyKey). A key reused for a different purpose or
+ * record is a caller bug → 409 IDEMPOTENCY_KEY_REUSED.
  *   - Existing row not FAILED → returned unchanged; nothing is sent again. This includes a row stuck
- *     in QUEUED (e.g. the process died mid-send): we cannot know whether Meta accepted it, so we do
- *     not risk a duplicate message to a client.
+ *     in QUEUED (the process died mid-send) or UNKNOWN (Meta never answered the send): we cannot
+ *     know whether Meta accepted it, so we do not risk a duplicate message to a client. Such rows
+ *     surface through `listStale`.
  *   - Existing row FAILED → a retry REUSES the row (re-armed to QUEUED with this request's recipient
  *     and template), so a resource keeps one record per intended message and its failure history
  *     lives in the audit log. The re-arm is conditional, so two concurrent retries send once.
  *
- * Provider failures never throw: the row becomes FAILED with a typed code and plain-words message,
- * and is returned for the caller to surface. Only invalid input (a programming error) throws.
+ * Provider failures never throw: a definite refusal makes the row FAILED (retryable), an unanswered
+ * send makes it UNKNOWN (not retryable), each with a code and plain-words message, and the row is
+ * returned for the caller to surface. Only invalid input (a programming error) throws.
  */
 @Injectable()
 export class CommunicationService {
@@ -96,6 +106,7 @@ export class CommunicationService {
 
     let row = await this.messages.findByKey(db, orgId, input.idempotencyKey);
     if (row) {
+      assertSameIntent(row, input);
       if (row.status !== 'FAILED') return toView(row);
       const claimed = await this.messages.rearmFailed(db, row.id, details);
       const current = await this.messages.findById(db, row.id);
@@ -117,11 +128,25 @@ export class CommunicationService {
         // A concurrent request with the same key won the insert: return its row, send nothing.
         const winner = await this.messages.findByKey(db, orgId, input.idempotencyKey);
         if (!winner) throw error;
+        assertSameIntent(winner, input);
         return toView(winner);
       }
     }
 
     return this.deliver(db, identity, row, input);
+  }
+
+  /**
+   * Messages with no provider confirmation (QUEUED or UNKNOWN) queued more than `olderThanMinutes`
+   * ago, oldest first — the ones a person must check by hand before any re-send.
+   */
+  async listStale(identity: RequestIdentity, olderThanMinutes: number): Promise<OutboundMessageView[]> {
+    if (!Number.isFinite(olderThanMinutes) || olderThanMinutes < 0) {
+      throw new BadRequestException({ code: 'MESSAGE_INVALID', field: 'olderThanMinutes', message: 'olderThanMinutes must be 0 or more' });
+    }
+    const before = new Date(Date.now() - olderThanMinutes * 60_000);
+    const rows = await this.messages.listStale(this.tenancy.getClient(), identity.activeOrganizationId, STALE_STATUSES, before);
+    return rows.map(toView);
   }
 
   async listForResource(identity: RequestIdentity, resourceType: string, resourceId: string): Promise<OutboundMessageView[]> {
@@ -138,9 +163,11 @@ export class CommunicationService {
     const status = fromMetaStatus(update.status);
     if (!status) return 'ignored';
 
+    if (!(status in STATUS_TIMESTAMP)) return 'ignored';
+    const webhookStatus = status as keyof typeof STATUS_TIMESTAMP;
+
     const at = parseUnixSeconds(update.timestamp);
-    const data: Prisma.OutboundMessageUpdateManyMutationInput = { status };
-    if (status !== 'QUEUED') data[STATUS_TIMESTAMP[status]] = at;
+    const data: Prisma.OutboundMessageUpdateManyMutationInput = { status, [STATUS_TIMESTAMP[webhookStatus]]: at };
     if (status === 'FAILED') {
       const first = update.errors?.[0];
       const code = typeof first?.code === 'number' ? first.code : undefined;
@@ -149,7 +176,10 @@ export class CommunicationService {
     }
 
     const applied = await this.messages.applyStatus(db, update.providerMessageId, statusesThatAccept(status), data);
-    if (applied) return 'applied';
+    if (applied) {
+      await this.messages.fillMissingTimestamps(db, update.providerMessageId, IMPLIED_TIMESTAMPS[webhookStatus], at);
+      return 'applied';
+    }
     return (await this.messages.findByProviderId(db, update.providerMessageId)) ? 'ignored' : 'not_found';
   }
 
@@ -181,18 +211,26 @@ export class CommunicationService {
         error instanceof WhatsAppSendError
           ? error
           : new WhatsAppSendError('PROVIDER_ERROR', describeWhatsAppError('PROVIDER_ERROR'));
-      const failed = await db.$transaction(async (tx) => {
-        const updated = await this.messages.markFailed(tx, row.id, failure.code, failure.message, new Date());
-        await this.audit(tx, identity, updated, 'failed');
+      const outcome = failure.outcomeUnknown ? 'unknown' : 'failed';
+      const settled = await db.$transaction(async (tx) => {
+        const updated =
+          outcome === 'unknown'
+            ? await this.messages.markUnknown(tx, row.id, OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_MESSAGE)
+            : await this.messages.markFailed(tx, row.id, failure.code, failure.message, new Date());
+        await this.audit(tx, identity, updated, outcome);
         return updated;
       });
-      this.logger.warn(`WhatsApp ${row.purpose} message ${row.id} to ${maskPhone(row.recipient)} failed: ${failure.code}`);
+      this.logger.warn(`WhatsApp ${row.purpose} message ${row.id} to ${maskPhone(row.recipient)} ${outcome}: ${failure.code}`);
       if (!(error instanceof WhatsAppSendError)) throw error; // a bug, not a provider failure
-      return toView(failed);
+      return toView(settled);
     }
 
-    // Route first, so a fast webhook can already find the tenant. A route failure must not turn a
-    // message Meta accepted into FAILED: it is logged and only costs this message's status updates.
+    // Order matters for a fast webhook: (1) the provider id goes on the row, (2) the platform route
+    // is written, (3) the row is marked SENT. Once the route exists the row is findable by provider
+    // id, and a webhook landing before (3) applies from QUEUED (markSent then keeps the later status).
+    // A route failure must not turn a message Meta accepted into FAILED: it is logged and only costs
+    // this message's status updates.
+    await this.messages.attachProviderId(db, row.id, providerMessageId);
     await this.recordRoute(providerMessageId);
 
     const sent = await db.$transaction(async (tx) => {
@@ -215,7 +253,7 @@ export class CommunicationService {
     }
   }
 
-  private audit(tx: Db, identity: RequestIdentity, row: OutboundMessage, outcome: 'sent' | 'failed'): Promise<void> {
+  private audit(tx: Db, identity: RequestIdentity, row: OutboundMessage, outcome: 'sent' | 'failed' | 'unknown'): Promise<void> {
     return this.auditOutbox.record(tx as Prisma.TransactionClient, {
       organizationId: row.organizationId,
       actorUserId: identity.userId,
@@ -253,6 +291,16 @@ function validate(input: SendWhatsAppTemplateInput): void {
   }
   if (input.document && (!input.document.bytes?.length || !input.document.mimeType || !input.document.filename)) {
     throw bad('document', 'A document needs bytes, a MIME type and a filename');
+  }
+}
+
+/** One idempotency key = one intended message: same purpose, same record. */
+function assertSameIntent(row: OutboundMessage, input: SendWhatsAppTemplateInput): void {
+  if (row.purpose !== input.purpose || row.resourceType !== input.resourceType || row.resourceId !== input.resourceId) {
+    throw new ConflictException({
+      code: 'IDEMPOTENCY_KEY_REUSED',
+      message: 'This idempotency key was already used for a different message.',
+    });
   }
 }
 

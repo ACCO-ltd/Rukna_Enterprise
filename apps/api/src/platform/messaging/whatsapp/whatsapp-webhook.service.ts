@@ -31,6 +31,8 @@ export class WhatsAppWebhookService {
   private readonly logger = new Logger(WhatsAppWebhookService.name);
   /** Each missing-setting error is logged once, not on every (possibly hostile) request. */
   private readonly warned = new Set<string>();
+  /** Back-off before re-applying a routed status whose tenant row is not visible yet. */
+  notFoundRetryDelaysMs: number[] = [250, 1000, 3000];
 
   constructor(
     private readonly config: ConfigService,
@@ -106,14 +108,24 @@ export class WhatsAppWebhookService {
           continue;
         }
         const context = await this.tenancy.resolveTenant(slug);
-        const outcome = await tenancyStorage.run(context, () =>
-          this.communication.applyStatusUpdate({
-            providerMessageId: u.messageId,
-            status: u.status,
-            timestamp: u.timestamp,
-            errors: u.errors,
-          }),
-        );
+        const apply = () =>
+          tenancyStorage.run(context, () =>
+            this.communication.applyStatusUpdate({
+              providerMessageId: u.messageId,
+              status: u.status,
+              timestamp: u.timestamp,
+              errors: u.errors,
+            }),
+          );
+        // The route exists, so the message is ours: a not_found means the tenant write that carries
+        // the provider id has not committed yet. Retry briefly rather than lose the status (Meta
+        // already has its 200 and will not resend).
+        let outcome = await apply();
+        for (const delay of this.notFoundRetryDelaysMs) {
+          if (outcome !== 'not_found') break;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          outcome = await apply();
+        }
         this.logger.log(`WhatsApp message ${maskId(u.messageId)} → ${u.status} (to ${u.recipient}): ${outcome}`);
       } catch (error) {
         this.logger.error(

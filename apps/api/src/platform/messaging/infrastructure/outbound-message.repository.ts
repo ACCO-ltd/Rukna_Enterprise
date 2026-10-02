@@ -67,8 +67,31 @@ export class OutboundMessageRepository {
     return count === 1;
   }
 
-  markSent(db: Db, id: string, providerMessageId: string, sentAt: Date): Promise<OutboundMessage> {
-    return db.outboundMessage.update({ where: { id }, data: { status: 'SENT', providerMessageId, sentAt } });
+  /**
+   * Stores Meta's message id on the still-QUEUED row the moment Meta accepts it — before the
+   * platform route is written — so a webhook that beats `markSent` already finds the row.
+   */
+  async attachProviderId(db: Db, id: string, providerMessageId: string): Promise<boolean> {
+    const { count } = await db.outboundMessage.updateMany({
+      where: { id, status: 'QUEUED', providerMessageId: null },
+      data: { providerMessageId },
+    });
+    return count === 1;
+  }
+
+  /**
+   * QUEUED → SENT. A webhook may already have moved the row further (DELIVERED / READ / FAILED):
+   * that status is kept and only a missing `sentAt` is filled.
+   */
+  async markSent(db: Db, id: string, providerMessageId: string, sentAt: Date): Promise<OutboundMessage> {
+    await db.outboundMessage.updateMany({ where: { id, status: 'QUEUED' }, data: { status: 'SENT', providerMessageId, sentAt } });
+    await db.outboundMessage.updateMany({ where: { id, sentAt: null, status: { not: 'FAILED' } }, data: { sentAt } });
+    return db.outboundMessage.findUniqueOrThrow({ where: { id } });
+  }
+
+  /** The send went out but Meta never confirmed it: not FAILED, so never auto-retried. */
+  markUnknown(db: Db, id: string, errorCode: string, errorMessage: string): Promise<OutboundMessage> {
+    return db.outboundMessage.update({ where: { id }, data: { status: 'UNKNOWN', errorCode, errorMessage } });
   }
 
   markFailed(db: Db, id: string, errorCode: string, errorMessage: string, failedAt: Date): Promise<OutboundMessage> {
@@ -91,6 +114,21 @@ export class OutboundMessageRepository {
       data,
     });
     return count > 0;
+  }
+
+  /** After a jump ahead (READ before DELIVERED), fills the skipped timestamps that are still null. */
+  async fillMissingTimestamps(db: Db, providerMessageId: string, fields: Array<'sentAt' | 'deliveredAt'>, at: Date): Promise<void> {
+    for (const field of fields) {
+      await db.outboundMessage.updateMany({ where: { providerMessageId, [field]: null }, data: { [field]: at } });
+    }
+  }
+
+  /** Rows in `statuses` queued before `before`, oldest first. */
+  listStale(db: Db, organizationId: string, statuses: MessageStatus[], before: Date): Promise<OutboundMessage[]> {
+    return db.outboundMessage.findMany({
+      where: { organizationId, status: { in: statuses }, queuedAt: { lt: before } },
+      orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }],
+    });
   }
 
   listForResource(db: Db, organizationId: string, resourceType: string, resourceId: string): Promise<OutboundMessage[]> {

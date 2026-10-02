@@ -10,8 +10,10 @@
  *          FAILED cannot override READ)
  *   WA-05  webhook dispatch end to end: route → tenant resolve → status applied; unknown id ignored
  *   WA-06  listForResource is org-scoped, newest first
+ *   WA-07  review follow-ups: webhook before markSent is applied; send timeout → UNKNOWN (not
+ *          retried) + listStale; key reuse → 409; READ fills deliveredAt; resourceType allow-list
  */
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import type { RequestIdentity } from '@erp/types';
@@ -25,6 +27,7 @@ import { OutboundMessageRepository } from '../infrastructure/outbound-message.re
 import { OutboundMessageRouteRepository } from '../infrastructure/outbound-message-route.repository';
 import { WhatsAppWebhookService } from '../whatsapp/whatsapp-webhook.service';
 import { WhatsAppSendError } from '../whatsapp/whatsapp.client';
+import { CommunicationsQueryDto } from '../presentation/dto/communications-query.dto';
 
 const prisma = new PrismaClient();
 const platform = new PrismaService();
@@ -238,6 +241,65 @@ describe('WA-05 webhook dispatch', () => {
       status: 'READ',
       readAt: new Date(1727780300 * 1000),
     });
+  });
+});
+
+describe('WA-07 review follow-ups', () => {
+  it('a webhook that arrives before markSent is applied (provider id is stored before the route)', async () => {
+    const me = await makeOrg();
+    const realRecord = routes.record.bind(routes);
+    const spy = jest.spyOn(routes, 'record').mockImplementationOnce(async (pid: string, tid: string) => {
+      await realRecord(pid, tid);
+      // Meta's "delivered" lands between the route write and markSent.
+      await webhook.dispatch([{ messageId: pid, status: 'delivered', recipient: '…5678', timestamp: '1727780000' }]);
+    });
+    const view = await run(() => service.sendWhatsAppTemplate(me, input()));
+    spy.mockRestore();
+    const row = await prisma.outboundMessage.findUniqueOrThrow({ where: { id: view.id } });
+    expect(row.status).toBe('DELIVERED');
+    expect(row.deliveredAt).toEqual(new Date(1727780000 * 1000));
+    expect(row.sentAt).not.toBeNull();
+  });
+
+  it('send timeout → UNKNOWN, not retried; listStale surfaces it', async () => {
+    const me = await makeOrg();
+    whatsapp.sendTemplate.mockRejectedValueOnce(new WhatsAppSendError('NETWORK', 'WhatsApp did not answer in time.', undefined, true));
+    const req = input();
+    const view = await run(() => service.sendWhatsAppTemplate(me, req));
+    expect(view).toMatchObject({ status: 'UNKNOWN', errorCode: 'OUTCOME_UNKNOWN' });
+    expect((await run(() => service.sendWhatsAppTemplate(me, req))).status).toBe('UNKNOWN');
+    expect(whatsapp.sendTemplate).toHaveBeenCalledTimes(1);
+
+    expect(await run(() => service.listStale(me, 5))).toEqual([]);
+    await prisma.outboundMessage.update({ where: { id: view.id }, data: { queuedAt: new Date(Date.now() - 10 * 60_000) } });
+    expect((await run(() => service.listStale(me, 5))).map((m) => m.id)).toEqual([view.id]);
+  });
+
+  it('a key reused for another record → 409 IDEMPOTENCY_KEY_REUSED', async () => {
+    const me = await makeOrg();
+    whatsapp.sendTemplate.mockRejectedValueOnce(new WhatsAppSendError('INVALID_RECIPIENT', 'x', 131026));
+    const req = input();
+    await run(() => service.sendWhatsAppTemplate(me, req));
+    await expect(run(() => service.sendWhatsAppTemplate(me, { ...req, resourceId: 'inv-2' }))).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+    });
+  });
+
+  it('READ before DELIVERED fills deliveredAt', async () => {
+    const me = await makeOrg();
+    const a = await run(() => service.sendWhatsAppTemplate(me, input()));
+    const pid = (await prisma.outboundMessage.findUniqueOrThrow({ where: { id: a.id } })).providerMessageId!;
+    await run(() => service.applyStatusUpdate({ providerMessageId: pid, status: 'read', timestamp: '1727780500' }));
+    const row = await prisma.outboundMessage.findUniqueOrThrow({ where: { id: a.id } });
+    expect(row).toMatchObject({ status: 'READ', readAt: new Date(1727780500 * 1000), deliveredAt: new Date(1727780500 * 1000) });
+  });
+
+  it('GET /communications allows only invoice and receipt resource types', async () => {
+    const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+    const meta = { type: 'query' as const, metatype: CommunicationsQueryDto };
+    await expect(pipe.transform({ resourceType: 'client_invoice', resourceId: 'x' }, meta)).resolves.toBeDefined();
+    await expect(pipe.transform({ resourceType: 'payment_receipt', resourceId: 'x' }, meta)).resolves.toBeDefined();
+    await expect(pipe.transform({ resourceType: 'user', resourceId: 'x' }, meta)).rejects.toThrow();
   });
 });
 

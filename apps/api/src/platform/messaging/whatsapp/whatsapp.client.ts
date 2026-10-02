@@ -21,13 +21,21 @@ export type WhatsAppSendErrorCode =
   | 'NETWORK'
   | 'PROVIDER_ERROR';
 
-/** A provider-side failure. `message` is plain words safe to show staff and store. */
+/**
+ * A provider-side failure. `message` is plain words safe to show staff and store.
+ *
+ * `outcomeUnknown` is true when a SEND request went out but no definite answer came back (timeout,
+ * dropped connection, Meta 5xx, an unreadable success): the message may have been delivered, so the
+ * caller must not treat it as refused or retry it automatically. Definite refusals (Meta 4xx error,
+ * not configured, invalid number, any media-upload failure — nothing was sent yet) have it false.
+ */
 export class WhatsAppSendError extends Error {
   constructor(
     readonly code: WhatsAppSendErrorCode,
     message: string,
     /** Meta's numeric error code, when Meta answered with one. */
     readonly providerCode?: number,
+    readonly outcomeUnknown = false,
   ) {
     super(message);
     this.name = 'WhatsAppSendError';
@@ -159,7 +167,8 @@ export class WhatsAppClient {
     );
     const id = (body as { messages?: Array<{ id?: unknown }> } | null)?.messages?.[0]?.id;
     if (typeof id !== 'string' || !id) {
-      throw new WhatsAppSendError('PROVIDER_ERROR', PLAIN.PROVIDER_ERROR);
+      // Meta said OK but we cannot read which message it created: it may well have been sent.
+      throw new WhatsAppSendError('PROVIDER_ERROR', PLAIN.PROVIDER_ERROR, undefined, true);
     }
     this.logger.log(`WhatsApp template ${message.templateName} accepted for ${maskPhone(to)} (${id})`);
     return { providerMessageId: id };
@@ -182,8 +191,10 @@ export class WhatsAppClient {
   }
 
   /**
-   * One Graph API call with a timeout. Every failure becomes a WhatsAppSendError; `fallback` is the
-   * code for a Meta error that matches no specific class (media upload vs. send).
+   * One Graph API call with a timeout that also covers reading the response body. Every failure
+   * becomes a WhatsAppSendError; `fallback` is the code for a Meta error that matches no specific
+   * class (media upload vs. send). On the send path, anything short of a definite Meta 4xx refusal
+   * is flagged `outcomeUnknown` (see WhatsAppSendError).
    */
   private async call(
     s: { token: string; version: string },
@@ -191,36 +202,50 @@ export class WhatsAppClient {
     init: { method: string; body: BodyInit; headers?: Record<string, string> },
     fallback: 'MEDIA_UPLOAD_FAILED' | 'PROVIDER_ERROR',
   ): Promise<unknown> {
+    const isSend = fallback === 'PROVIDER_ERROR';
+    const endpoint = path.split('/').pop();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), WHATSAPP_REQUEST_TIMEOUT_MS);
     let response: Response;
+    let body: unknown;
     try {
-      response = await fetch(`https://graph.facebook.com/${s.version}/${path}`, {
-        method: init.method,
-        body: init.body,
-        headers: { ...init.headers, Authorization: `Bearer ${s.token}` },
-        signal: controller.signal,
-      });
-    } catch (error) {
-      const timedOut = controller.signal.aborted;
-      // The error's own text never leaves here: it could echo request details.
-      this.logger.warn(`WhatsApp request to /${path.split('/').pop()} failed: ${timedOut ? 'timeout' : 'network error'}`);
-      throw new WhatsAppSendError(
-        'NETWORK',
-        timedOut ? 'WhatsApp did not answer in time. Try again.' : PLAIN.NETWORK,
-      );
+      try {
+        response = await fetch(`https://graph.facebook.com/${s.version}/${path}`, {
+          method: init.method,
+          body: init.body,
+          headers: { ...init.headers, Authorization: `Bearer ${s.token}` },
+          signal: controller.signal,
+        });
+        body = await response.json().catch(() => {
+          if (controller.signal.aborted) throw new Error('aborted while reading the response');
+          return null; // a non-JSON body: classified by HTTP status below
+        });
+      } catch {
+        const timedOut = controller.signal.aborted;
+        // The error's own text never leaves here: it could echo request details.
+        this.logger.warn(`WhatsApp request to /${endpoint} failed: ${timedOut ? 'timeout' : 'network error'}`);
+        throw new WhatsAppSendError(
+          'NETWORK',
+          timedOut ? 'WhatsApp did not answer in time.' : PLAIN.NETWORK,
+          undefined,
+          isSend,
+        );
+      }
     } finally {
       clearTimeout(timer);
     }
 
-    const body: unknown = await response.json().catch(() => null);
     if (response.ok) return body;
 
     const providerCode = (body as { error?: { code?: unknown } } | null)?.error?.code;
     const numeric = typeof providerCode === 'number' ? providerCode : undefined;
     let code = classifyMetaError(numeric, response.status);
     if (code === 'PROVIDER_ERROR') code = fallback;
-    this.logger.warn(`WhatsApp request to /${path.split('/').pop()} refused: HTTP ${response.status}, Meta code ${numeric ?? 'none'} → ${code}`);
-    throw new WhatsAppSendError(code, PLAIN[code], numeric);
+    // A 5xx is Meta failing, not refusing: on the send path we cannot know whether it went out.
+    const unknown = isSend && response.status >= 500;
+    this.logger.warn(
+      `WhatsApp request to /${endpoint} refused: HTTP ${response.status}, Meta code ${numeric ?? 'none'} → ${code}${unknown ? ' (outcome unknown)' : ''}`,
+    );
+    throw new WhatsAppSendError(code, PLAIN[code], numeric, unknown);
   }
 }

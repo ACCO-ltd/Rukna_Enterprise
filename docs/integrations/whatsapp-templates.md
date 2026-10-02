@@ -33,7 +33,7 @@ Amounts are sent already formatted with their currency (e.g. `USD 12,500.00`), d
 | Variable | Meaning | Sample |
 |---|---|---|
 | {{1}} | Client name | Hodan Construction Ltd |
-| {{2}} | Invoice number | INV-2026-0042 |
+| {{2}} | Invoice number | INV-000042 |
 | {{3}} | Amount due | USD 12,500.00 |
 | {{4}} | Due date | 15 Oct 2026 |
 | {{5}} | Company name | ACCO Ltd |
@@ -49,7 +49,7 @@ Amounts are sent already formatted with their currency (e.g. `USD 12,500.00`), d
 | Variable | Meaning | Sample |
 |---|---|---|
 | {{1}} | Client name | Hodan Construction Ltd |
-| {{2}} | Receipt number | RCT-2026-0017 |
+| {{2}} | Receipt number | RCP-000017 |
 | {{3}} | Amount received | USD 5,000.00 |
 | {{4}} | Payment date | 02 Oct 2026 |
 | {{5}} | Company name | ACCO Ltd |
@@ -65,7 +65,7 @@ Amounts are sent already formatted with their currency (e.g. `USD 12,500.00`), d
 | Variable | Meaning | Sample |
 |---|---|---|
 | {{1}} | Client name | Hodan Construction Ltd |
-| {{2}} | Invoice number | INV-2026-0042 |
+| {{2}} | Invoice number | INV-000042 |
 | {{3}} | Amount outstanding | USD 12,500.00 |
 | {{4}} | Due date | 15 Oct 2026 |
 | {{5}} | Company name | ACCO Ltd |
@@ -81,7 +81,7 @@ Amounts are sent already formatted with their currency (e.g. `USD 12,500.00`), d
 | Variable | Meaning | Sample |
 |---|---|---|
 | {{1}} | Client name | Hodan Construction Ltd |
-| {{2}} | Invoice number | INV-2026-0042 |
+| {{2}} | Invoice number | INV-000042 |
 | {{3}} | Amount outstanding | USD 12,500.00 |
 | {{4}} | Original due date | 15 Sep 2026 |
 | {{5}} | Company name | ACCO Ltd |

@@ -9,7 +9,7 @@ CREATE TYPE "MessageChannel" AS ENUM ('WHATSAPP', 'EMAIL');
 CREATE TYPE "MessagePurpose" AS ENUM ('INVOICE', 'RECEIPT', 'PAYMENT_REMINDER', 'OVERDUE_REMINDER');
 
 -- CreateEnum
-CREATE TYPE "MessageStatus" AS ENUM ('QUEUED', 'SENT', 'DELIVERED', 'READ', 'FAILED');
+CREATE TYPE "MessageStatus" AS ENUM ('QUEUED', 'UNKNOWN', 'SENT', 'DELIVERED', 'READ', 'FAILED');
 
 -- CreateTable
 CREATE TABLE "outbound_messages" (

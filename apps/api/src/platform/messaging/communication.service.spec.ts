@@ -1,4 +1,4 @@
-import { BadRequestException, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import type { MessageStatus, OutboundMessage } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
@@ -36,8 +36,26 @@ class FakeRepo {
     Object.assign(row, data, { status: 'QUEUED', failedAt: null, errorCode: null, errorMessage: null, providerMessageId: null });
     return true;
   });
-  markSent = jest.fn(async (_db: unknown, id: string, providerMessageId: string, sentAt: Date) =>
-    Object.assign(this.rows.find((r) => r.id === id)!, { status: 'SENT', providerMessageId, sentAt }),
+  attachProviderId = jest.fn(async (_db: unknown, id: string, providerMessageId: string) => {
+    const row = this.rows.find((r) => r.id === id && r.status === 'QUEUED' && !r.providerMessageId);
+    if (row) row.providerMessageId = providerMessageId;
+    return !!row;
+  });
+  markSent = jest.fn(async (_db: unknown, id: string, providerMessageId: string, sentAt: Date) => {
+    const row = this.rows.find((r) => r.id === id)!;
+    if (row.status === 'QUEUED') Object.assign(row, { status: 'SENT', providerMessageId, sentAt });
+    if (!row.sentAt && row.status !== 'FAILED') row.sentAt = sentAt;
+    return row;
+  });
+  markUnknown = jest.fn(async (_db: unknown, id: string, errorCode: string, errorMessage: string) =>
+    Object.assign(this.rows.find((r) => r.id === id)!, { status: 'UNKNOWN', errorCode, errorMessage }),
+  );
+  fillMissingTimestamps = jest.fn(async (_db: unknown, pid: string, fields: Array<'sentAt' | 'deliveredAt'>, at: Date) => {
+    const row = this.rows.find((r) => r.providerMessageId === pid);
+    for (const f of fields) if (row && !row[f]) row[f] = at;
+  });
+  listStale = jest.fn(async (_db: unknown, org: string, statuses: MessageStatus[], before: Date) =>
+    this.rows.filter((r) => r.organizationId === org && statuses.includes(r.status) && r.queuedAt < before),
   );
   markFailed = jest.fn(async (_db: unknown, id: string, errorCode: string, errorMessage: string, failedAt: Date) =>
     Object.assign(this.rows.find((r) => r.id === id)!, { status: 'FAILED', errorCode, errorMessage, failedAt }),
@@ -148,7 +166,14 @@ describe('CommunicationService (ADR-042 phase 2)', () => {
 
   it('does not resend a row stuck in QUEUED', async () => {
     const { service, whatsapp, repo, run } = setup();
-    repo.insert({ organizationId: 'org1', idempotencyKey: 'k', recipient: '+252612345678' });
+    repo.insert({
+      organizationId: 'org1',
+      idempotencyKey: 'k',
+      recipient: '+252612345678',
+      purpose: 'INVOICE',
+      resourceType: 'client_invoice',
+      resourceId: 'inv1',
+    });
     const view = await run(() => service.sendWhatsAppTemplate(identity, input({ idempotencyKey: 'k' })));
     expect(view.status).toBe('QUEUED');
     expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
@@ -220,7 +245,74 @@ describe('CommunicationService (ADR-042 phase 2)', () => {
     expect(repo.rows).toHaveLength(0);
   });
 
+  it('send went out but Meta never answered → UNKNOWN (not FAILED); a repeat does not resend', async () => {
+    const { service, whatsapp, routes, audit, run } = setup();
+    whatsapp.sendTemplate.mockRejectedValue(new WhatsAppSendError('NETWORK', 'WhatsApp did not answer in time.', undefined, true));
+    const view = await run(() => service.sendWhatsAppTemplate(identity, input()));
+    expect(view).toMatchObject({ status: 'UNKNOWN', errorCode: 'OUTCOME_UNKNOWN', failedAt: null });
+    expect(view.errorMessage).toMatch(/may or may not/);
+    expect(routes.record).not.toHaveBeenCalled();
+    expect(audit.record.mock.calls[0][1].action).toBe('whatsapp.unknown');
+
+    const again = await run(() => service.sendWhatsAppTemplate(identity, input()));
+    expect(again.status).toBe('UNKNOWN');
+    expect(whatsapp.sendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('a network failure during media upload (nothing sent yet) is a definite FAILED', async () => {
+    const { service, whatsapp, run } = setup();
+    whatsapp.uploadMedia.mockRejectedValue(new WhatsAppSendError('NETWORK', 'Could not reach WhatsApp.'));
+    expect((await run(() => service.sendWhatsAppTemplate(identity, input()))).status).toBe('FAILED');
+  });
+
+  it.each([
+    [{ purpose: 'RECEIPT' as const }],
+    [{ resourceType: 'payment_receipt' }],
+    [{ resourceId: 'inv2' }],
+  ])('a key reused for a different message (%j) → 409 IDEMPOTENCY_KEY_REUSED, nothing sent', async (over) => {
+    const { service, whatsapp, run } = setup();
+    whatsapp.sendTemplate.mockRejectedValueOnce(new WhatsAppSendError('INVALID_RECIPIENT', 'x'));
+    await run(() => service.sendWhatsAppTemplate(identity, input()));
+    const err = await run(() => service.sendWhatsAppTemplate(identity, input(over))).catch((e: ConflictException) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(((err as ConflictException).getResponse() as { code: string }).code).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(whatsapp.sendTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('a webhook that lands before markSent finds the row (provider id stored before the route) and wins', async () => {
+    const { service, routes, run, repo } = setup();
+    routes.record.mockImplementation(async (pid: string) => {
+      expect(repo.rows[0].providerMessageId).toBe(pid);
+      expect(await service.applyStatusUpdate({ providerMessageId: pid, status: 'delivered', timestamp: '1727780000' })).toBe('applied');
+    });
+    const view = await run(() => service.sendWhatsAppTemplate(identity, input()));
+    expect(view.status).toBe('DELIVERED');
+    expect(view.sentAt).not.toBeNull();
+    expect(view.deliveredAt).toBe(new Date(1727780000 * 1000).toISOString());
+  });
+
+  it('listStale returns QUEUED/UNKNOWN rows older than the cutoff, org-scoped', async () => {
+    const { service, repo, run } = setup();
+    const old = new Date(Date.now() - 60 * 60_000);
+    repo.insert({ organizationId: 'org1', status: 'UNKNOWN', queuedAt: old });
+    repo.insert({ organizationId: 'org1', status: 'QUEUED', queuedAt: old });
+    repo.insert({ organizationId: 'org1', status: 'QUEUED', queuedAt: new Date() });
+    repo.insert({ organizationId: 'org1', status: 'SENT', queuedAt: old });
+    repo.insert({ organizationId: 'org2', status: 'QUEUED', queuedAt: old });
+    const stale = await run(() => service.listStale(identity, 30));
+    expect(stale.map((m) => m.status).sort()).toEqual(['QUEUED', 'UNKNOWN']);
+    await expect(run(() => service.listStale(identity, -1))).rejects.toThrow(BadRequestException);
+  });
+
   describe('applyStatusUpdate', () => {
+    it('a jump ahead fills the skipped timestamps that are still null', async () => {
+      const ctx = setup();
+      ctx.repo.insert({ organizationId: 'org1', status: 'QUEUED', providerMessageId: 'wamid.J' });
+      expect(await ctx.service.applyStatusUpdate({ providerMessageId: 'wamid.J', status: 'read', timestamp: '1727780000' })).toBe('applied');
+      const at = new Date(1727780000 * 1000);
+      expect(ctx.repo.rows[0]).toMatchObject({ status: 'READ', readAt: at, deliveredAt: at, sentAt: at });
+    });
+
     async function sent() {
       const ctx = setup();
       await ctx.run(() => ctx.service.sendWhatsAppTemplate(identity, input()));
@@ -275,6 +367,9 @@ describe('CommunicationService (ADR-042 phase 2)', () => {
       expect(canTransition('READ', 'FAILED')).toBe(false);
       expect(canTransition('FAILED', 'DELIVERED')).toBe(false);
       expect(canTransition('FAILED', 'FAILED')).toBe(false);
+      expect(canTransition('UNKNOWN', 'DELIVERED')).toBe(true);
+      expect(canTransition('UNKNOWN', 'FAILED')).toBe(true);
+      expect(canTransition('QUEUED', 'UNKNOWN')).toBe(false);
     });
   });
 });

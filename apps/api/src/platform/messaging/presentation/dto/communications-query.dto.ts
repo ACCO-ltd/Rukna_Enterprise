@@ -1,12 +1,13 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
+/** Records whose messages `GET /communications` may list (all gated on manage:receivable). */
+export const COMMUNICATION_RESOURCE_TYPES = ['client_invoice', 'payment_receipt'] as const;
+
 export class CommunicationsQueryDto {
-  @ApiProperty({ example: 'client_invoice', description: "The record the messages are about, e.g. 'client_invoice' | 'payment_receipt'" })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(64)
-  resourceType!: string;
+  @ApiProperty({ enum: COMMUNICATION_RESOURCE_TYPES, description: 'The kind of record the messages are about' })
+  @IsIn(COMMUNICATION_RESOURCE_TYPES)
+  resourceType!: (typeof COMMUNICATION_RESOURCE_TYPES)[number];
 
   @ApiProperty({ description: 'The record id' })
   @IsString()

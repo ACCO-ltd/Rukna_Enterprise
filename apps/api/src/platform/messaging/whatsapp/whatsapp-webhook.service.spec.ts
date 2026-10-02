@@ -129,6 +129,21 @@ describe('WhatsApp webhook (ADR-042)', () => {
       expect(d.communication.applyStatusUpdate).not.toHaveBeenCalled();
     });
 
+    it('retries a routed update whose tenant row is not visible yet, then gives up quietly', async () => {
+      const d = deps();
+      d.routes.findTenantSlug.mockResolvedValue('acco');
+      d.tenancy.resolveTenant.mockResolvedValue({ tenantId: 't1', tenantSlug: 'acco', client: {} });
+      d.communication.applyStatusUpdate.mockResolvedValueOnce('not_found').mockResolvedValueOnce('applied');
+      const s = service(ENV, d);
+      s.notFoundRetryDelaysMs = [0, 0, 0];
+      await s.dispatch([update('wamid.fast')]);
+      expect(d.communication.applyStatusUpdate).toHaveBeenCalledTimes(2);
+
+      d.communication.applyStatusUpdate.mockReset().mockResolvedValue('not_found');
+      await expect(s.dispatch([update('wamid.gone')])).resolves.toBeUndefined();
+      expect(d.communication.applyStatusUpdate).toHaveBeenCalledTimes(4);
+    });
+
     it('one failing update does not stop the next', async () => {
       const d = deps();
       d.routes.findTenantSlug.mockResolvedValue('acco');

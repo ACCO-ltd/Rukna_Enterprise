@@ -2,14 +2,15 @@
  * Outbound client communications (ADR-042 phase 2 — communication core).
  *
  * One record per business-initiated message Rukna sends a client (WhatsApp today; EMAIL reserved).
- * Status only moves forward: QUEUED → SENT → DELIVERED → READ, or FAILED (see the ADR).
+ * Status only moves forward: QUEUED → SENT → DELIVERED → READ, or FAILED / UNKNOWN (see ADR-042).
  */
 
 export type MessageChannel = 'WHATSAPP' | 'EMAIL';
 
 export type MessagePurpose = 'INVOICE' | 'RECEIPT' | 'PAYMENT_REMINDER' | 'OVERDUE_REMINDER';
 
-export type MessageStatus = 'QUEUED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+/** UNKNOWN: the send went out but WhatsApp never confirmed it — may or may not have arrived; never auto-retried. */
+export type MessageStatus = 'QUEUED' | 'UNKNOWN' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
 
 /** Wire shape of `GET /communications?resourceType=&resourceId=` items (newest first). */
 export interface OutboundMessageView {
