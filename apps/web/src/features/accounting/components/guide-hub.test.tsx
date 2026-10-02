@@ -1,15 +1,16 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AccountingGuideResponse } from '@erp/types';
+import type { AccountingGuideResponse, GuideStep } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
 
 import { GuideHub } from './guide-hub';
 
 /**
- * The Get started hub opens the one-step setup (ADR-040) from its first setup step while the
- * chart is still empty, and links the posting-profiles step to its new screen.
+ * The Get started hub shows setup in proportion to what is left: the one-step setup card alone
+ * before setup (ADR-040), a single "set up" line after it, and the full checklist only for a
+ * partial or manual setup.
  */
 
 const finance = vi.hoisted(() => ({ getAccountingGuide: vi.fn() }));
@@ -24,115 +25,150 @@ vi.mock('../api/accounting-api', async (importOriginal) => ({
   ...accounting,
 }));
 
-const GUIDE: AccountingGuideResponse = {
-  ready: false,
-  currentPeriod: null,
-  fiscalYear: null,
-  checkedAt: '2026-09-30T00:00:00.000Z',
-  cycles: [
-    {
-      key: 'setup',
-      title: 'Setup',
-      summary: '0 of 6 done',
-      status: 'IN_PROGRESS',
-      steps: [
-        {
-          key: 'chart-of-accounts',
-          label: 'Chart of accounts',
-          detail: 'Create the accounts the ledger posts to.',
-          status: 'NEXT',
-          href: '/finance/accounting/chart-of-accounts',
-        },
-        {
-          key: 'posting-profiles',
-          label: 'Posting profiles',
-          detail: 'Map bill lines to accounts.',
-          status: 'TODO',
-          href: '/finance/accounting/posting-profiles',
-        },
-      ],
-    },
+const step = (key: string, label: string, status: GuideStep['status'], href: string | null): GuideStep => ({
+  key,
+  label,
+  detail: `${label} detail.`,
+  status,
+  href,
+});
+
+function guide(setupSteps: GuideStep[], ready = false): AccountingGuideResponse {
+  return {
+    ready,
+    currentPeriod: null,
+    fiscalYear: null,
+    checkedAt: '2026-09-30T00:00:00.000Z',
+    cycles: [
+      { key: 'setup', title: 'First-time setup', summary: '', status: 'IN_PROGRESS', steps: setupSteps },
+      {
+        key: 'daily',
+        title: 'Daily posting',
+        summary: '',
+        status: ready ? 'IN_PROGRESS' : 'LOCKED',
+        steps: [step('post-bills', 'Post supplier bills', ready ? 'TODO' : 'BLOCKED', '/finance/accounting/bills')],
+      },
+    ],
+  };
+}
+
+/** A fresh organisation: nothing set up. */
+const FRESH = guide([
+  step('chart-of-accounts', 'Chart of accounts', 'NEXT', '/finance/accounting/chart-of-accounts?setup=template'),
+  step('fiscal-year', 'Fiscal year & periods', 'TODO', '/finance/accounting/periods'),
+  step('posting-profiles', 'Expense posting profiles', 'TODO', '/finance/accounting/posting-profiles'),
+  step('opening-balances', 'Opening balances', 'TODO', '/finance/accounting/opening-balance'),
+]);
+
+/** After the one-step setup: only the optional opening balances remain. */
+const SET_UP = guide(
+  [
+    step('chart-of-accounts', 'Chart of accounts', 'DONE', '/finance/accounting/chart-of-accounts'),
+    step('fiscal-year', 'Fiscal year & periods', 'DONE', '/finance/accounting/periods'),
+    step('posting-profiles', 'Expense posting profiles', 'DONE', '/finance/accounting/posting-profiles'),
+    step('opening-balances', 'Opening balances', 'TODO', '/finance/accounting/opening-balance'),
   ],
-};
+  true,
+);
+
+/** A manual or partial setup: required steps still open after some are done. */
+const PARTWAY = guide([
+  step('chart-of-accounts', 'Chart of accounts', 'DONE', '/finance/accounting/chart-of-accounts'),
+  step('fiscal-year', 'Fiscal year & periods', 'NEXT', '/finance/accounting/periods'),
+  step('posting-profiles', 'Expense posting profiles', 'TODO', '/finance/accounting/posting-profiles'),
+]);
 
 const MANAGE = ['view:accounting', 'manage:accounting'];
+const status = (over: object = {}) => ({
+  canInstall: true,
+  reason: 'READY',
+  accountCount: 0,
+  hasFiscalYear: false,
+  hasPolicies: false,
+  existingRecords: [],
+  defaultSalesTax: null,
+  ...over,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
-  finance.getAccountingGuide.mockResolvedValue(GUIDE);
-  accounting.getAccountingSetupStatus.mockResolvedValue({
-    canInstall: true,
-    reason: 'READY',
-    accountCount: 0,
-    hasFiscalYear: false,
-    hasPolicies: false,
-    existingRecords: [],
-  });
+  finance.getAccountingGuide.mockResolvedValue(FRESH);
+  accounting.getAccountingSetupStatus.mockResolvedValue(status());
 });
 
-describe('GuideHub — accounting setup', () => {
-  it('offers the one-step setup and opens it from the first setup step', async () => {
+describe('GuideHub — setup in proportion to what is left', () => {
+  it('before setup, the one-step setup card is the page: no checklist, locked cycles in one line', async () => {
     const user = userEvent.setup();
     renderWithProviders(<GuideHub />, { permissions: MANAGE });
 
-    expect(await screen.findByText('Set up accounting in one step')).toBeInTheDocument();
+    const card = await screen.findByRole('region', { name: 'Set up accounting' });
+    expect(within(card).getByText('Construction chart of accounts and posting profiles')).toBeInTheDocument();
+    expect(within(card).getByText('Sales tax')).toBeInTheDocument();
+    // What it installs is not repeated as a checklist.
+    expect(screen.queryByRole('region', { name: /First-time setup/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Fiscal year & periods')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /Daily posting/ })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Daily posting, month-end and year-end open once accounting is set up.'),
+    ).toBeInTheDocument();
 
-    const step = screen.getByRole('button', { name: /Chart of accounts — Open/ });
-    await user.click(step);
+    await user.click(within(card).getByRole('button', { name: 'Set up accounting' }));
     expect(await screen.findByRole('dialog', { name: 'Set up accounting' })).toBeInTheDocument();
   });
 
-  it('explains a partial setup instead of offering the install', async () => {
-    accounting.getAccountingSetupStatus.mockResolvedValue({
-      canInstall: false,
-      reason: 'PARTIAL_SETUP',
-      accountCount: 0,
-      hasFiscalYear: false,
-      hasPolicies: true,
-      existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'],
-    });
-    renderWithProviders(<GuideHub />, { permissions: MANAGE });
-
-    expect(
-      await screen.findByText(
-        'Accounting can’t be set up automatically: this organisation already has tax codes and bank accounts but no chart of accounts. Remove them or add the chart manually.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Set up accounting in one step')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Chart of accounts — Open/ })).toBeInTheDocument();
-  });
-
-  it('links the posting-profiles step to its screen', async () => {
-    renderWithProviders(<GuideHub />, { permissions: MANAGE });
-
-    const link = await screen.findByRole('link', { name: /Posting profiles — Open/ });
-    expect(link).toHaveAttribute('href', '/finance/accounting/posting-profiles');
-  });
-
-  it('keeps the plain link once the chart has accounts', async () => {
-    accounting.getAccountingSetupStatus.mockResolvedValue({
-      canInstall: false,
-      reason: 'CHART_NOT_EMPTY',
-      accountCount: 62,
-      hasFiscalYear: true,
-      hasPolicies: true,
-      existingRecords: [],
-    });
-    renderWithProviders(<GuideHub />, { permissions: MANAGE });
-
-    const link = await screen.findByRole('link', { name: /Chart of accounts — Open/ });
-    expect(link).toHaveAttribute('href', '/finance/accounting/chart-of-accounts');
-    expect(screen.queryByText('Set up accounting in one step')).not.toBeInTheDocument();
-  });
-
-  it('does not ask for the setup status, or offer setup, without manage:accounting', async () => {
+  it('tells someone who cannot run setup who does, without the checklist', async () => {
     renderWithProviders(<GuideHub />, { permissions: ['view:accounting'] });
 
-    const setup = await screen.findByRole('region', { name: /Setup/ });
-    expect(
-      within(setup).getByRole('link', { name: /Chart of accounts — Open/ }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Set up accounting in one step')).not.toBeInTheDocument();
+    expect(await screen.findByText('Accounting isn’t set up yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up accounting' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Fiscal year & periods')).not.toBeInTheDocument();
     expect(accounting.getAccountingSetupStatus).not.toHaveBeenCalled();
+  });
+
+  it('after setup, shows one "set up" line with only the optional opening balances', async () => {
+    finance.getAccountingGuide.mockResolvedValue(SET_UP);
+    accounting.getAccountingSetupStatus.mockResolvedValue(
+      status({ canInstall: false, reason: 'CHART_NOT_EMPTY', accountCount: 78 }),
+    );
+    renderWithProviders(<GuideHub />, { permissions: MANAGE });
+
+    const done = await screen.findByRole('region', { name: 'Accounting is set up' });
+    const opening = within(done).getByRole('link', { name: /Opening balances — Open/ });
+    expect(opening).toHaveAttribute('href', '/finance/accounting/opening-balance');
+    expect(within(done).getByText('Optional')).toBeInTheDocument();
+    expect(screen.queryByText('Fiscal year & periods')).not.toBeInTheDocument();
+    // The everyday cycles are the page now.
+    expect(screen.getByRole('region', { name: /Daily posting/ })).toBeInTheDocument();
+  });
+
+  it('keeps the step-by-step checklist for a manual or partial setup', async () => {
+    finance.getAccountingGuide.mockResolvedValue(PARTWAY);
+    accounting.getAccountingSetupStatus.mockResolvedValue(
+      status({ canInstall: false, reason: 'CHART_NOT_EMPTY', accountCount: 12 }),
+    );
+    renderWithProviders(<GuideHub />, { permissions: MANAGE });
+
+    const setup = await screen.findByRole('region', { name: /First-time setup/ });
+    expect(within(setup).getByRole('link', { name: /Fiscal year & periods — Open/ })).toHaveAttribute(
+      'href',
+      '/finance/accounting/periods',
+    );
+    expect(within(setup).getByRole('link', { name: /Expense posting profiles — Open/ })).toHaveAttribute(
+      'href',
+      '/finance/accounting/posting-profiles',
+    );
+    expect(screen.queryByRole('button', { name: 'Set up accounting' })).not.toBeInTheDocument();
+  });
+
+  it('explains a partial setup alongside the checklist instead of offering the install', async () => {
+    finance.getAccountingGuide.mockResolvedValue(PARTWAY);
+    accounting.getAccountingSetupStatus.mockResolvedValue(
+      status({ canInstall: false, reason: 'PARTIAL_SETUP', hasPolicies: true, existingRecords: ['BANK_ACCOUNTS'] }),
+    );
+    renderWithProviders(<GuideHub />, { permissions: MANAGE });
+
+    expect(await screen.findByRole('region', { name: /First-time setup/ })).toBeInTheDocument();
+    expect(screen.getByText(/can’t be set up automatically/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set up accounting' })).not.toBeInTheDocument();
   });
 });
