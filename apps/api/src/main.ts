@@ -9,7 +9,8 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter.
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  // rawBody: the WhatsApp webhook (ADR-042) verifies Meta's signature over the exact request bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.enableShutdownHooks();
   app.use(cookieParser());

@@ -1,0 +1,84 @@
+import { createHmac } from 'node:crypto';
+
+import { WhatsAppWebhookService, extractStatuses } from './whatsapp-webhook.service';
+
+function service(env: Record<string, string | undefined>) {
+  const config = { get: (key: string) => env[key] };
+  return new WhatsAppWebhookService(config as never);
+}
+
+const ENV = { WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'verify-me', WHATSAPP_APP_SECRET: 'app-secret' };
+const sign = (body: string, secret = 'app-secret') =>
+  `sha256=${createHmac('sha256', secret).update(Buffer.from(body)).digest('hex')}`;
+
+describe('WhatsApp webhook (ADR-042)', () => {
+  describe('verification handshake', () => {
+    it('echoes the challenge for subscribe + the configured token', () => {
+      expect(service(ENV).verifyHandshake('subscribe', 'verify-me', '1158201444')).toBe('1158201444');
+    });
+
+    it('refuses a wrong token, another mode, or a missing challenge', () => {
+      const s = service(ENV);
+      expect(s.verifyHandshake('subscribe', 'guess', '1')).toBeNull();
+      expect(s.verifyHandshake('unsubscribe', 'verify-me', '1')).toBeNull();
+      expect(s.verifyHandshake('subscribe', 'verify-me', undefined)).toBeNull();
+    });
+
+    it('refuses array or object query values', () => {
+      const s = service(ENV);
+      expect(s.verifyHandshake('subscribe', ['verify-me'], '1')).toBeNull();
+      expect(s.verifyHandshake('subscribe', 'verify-me', ['1', '2'])).toBeNull();
+    });
+
+    it('refuses everything while no verify token is configured', () => {
+      expect(service({}).verifyHandshake('subscribe', '', 'x')).toBeNull();
+      expect(service({}).verifyHandshake('subscribe', 'anything', 'x')).toBeNull();
+    });
+  });
+
+  describe('notification signature', () => {
+    const body = JSON.stringify({ object: 'whatsapp_business_account', entry: [] });
+
+    it('accepts Meta’s HMAC-SHA256 of the raw body', () => {
+      expect(service(ENV).isSignatureValid(Buffer.from(body), sign(body))).toBe(true);
+    });
+
+    it('refuses a forged, tampered, missing or unsigned request', () => {
+      const s = service(ENV);
+      expect(s.isSignatureValid(Buffer.from(body), sign(body, 'not-the-secret'))).toBe(false);
+      expect(s.isSignatureValid(Buffer.from(`${body} `), sign(body))).toBe(false);
+      expect(s.isSignatureValid(Buffer.from(body), undefined)).toBe(false);
+      expect(s.isSignatureValid(undefined, sign(body))).toBe(false);
+    });
+
+    it('refuses everything while no app secret is configured', () => {
+      expect(service({ WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'v' }).isSignatureValid(Buffer.from(body), sign(body))).toBe(false);
+    });
+  });
+
+  it('reads status updates and masks the recipient', () => {
+    const updates = extractStatuses({
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                statuses: [
+                  { id: 'wamid.A', status: 'delivered', recipient_id: '252612345678', timestamp: '1727780000' },
+                  { id: 'wamid.B', status: 'failed', recipient_id: '252615550142', timestamp: '1727780001', errors: [{ code: 131026 }] },
+                  { nonsense: true },
+                ],
+              },
+            },
+            { value: { messages: [{ id: 'incoming' }] } },
+          ],
+        },
+      ],
+    });
+    expect(updates).toEqual([
+      { messageId: 'wamid.A', status: 'delivered', recipient: '…5678', timestamp: '1727780000' },
+      { messageId: 'wamid.B', status: 'failed', recipient: '…0142', timestamp: '1727780001', errors: [{ code: 131026 }] },
+    ]);
+    expect(extractStatuses(null)).toEqual([]);
+  });
+});
