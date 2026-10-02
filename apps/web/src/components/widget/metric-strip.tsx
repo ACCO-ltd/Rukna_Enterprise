@@ -27,9 +27,10 @@ export interface Metric {
   sublabel?: string;
   /**
    * Colours the sublabel (not the value) when the sublabel is the thing to act on — "3 behind
-   * plan" under a neutral figure. Same rule as `tone`: only for a real variance.
+   * plan" under a neutral figure. Same rule as `tone`: only for a real variance. `danger` for an
+   * overdue line ("32 days · INV-0042") under a figure that is itself neutral.
    */
-  sublabelTone?: 'attention';
+  sublabelTone?: 'attention' | 'danger';
   /** Makes the whole segment a link to the list behind the figure. */
   href?: string;
   /**
@@ -132,7 +133,11 @@ function MetricSegment({
       {sublabel ? (
         <dd
           className={`mt-1 text-caption ${
-            sublabelTone === 'attention' ? 'font-medium text-warning' : 'text-muted-foreground'
+            sublabelTone === 'attention'
+              ? 'font-medium text-warning'
+              : sublabelTone === 'danger'
+                ? 'font-medium text-danger'
+                : 'text-muted-foreground'
           }`}
         >
           {sublabel}

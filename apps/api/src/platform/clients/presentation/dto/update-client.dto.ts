@@ -1,44 +1,16 @@
-import { IsString, IsOptional, IsEnum, Length, MaxLength } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ClientStatus } from '@erp/types';
-import { ClientType } from '@prisma/client';
 
-export class UpdateClientDto {
+import { ClientFieldsDto } from './create-client.dto.js';
+
+/**
+ * `PATCH /clients/:id` — client fields only, all optional (`null` clears an optional field).
+ * `status` is deliberately absent: the global ValidationPipe (forbidNonWhitelisted) rejects it —
+ * status changes go through deactivate / reactivate.
+ */
+export class UpdateClientDto extends ClientFieldsDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   name?: string;
-
-
-  @ApiPropertyOptional({ enum: ClientType })
-  @IsOptional()
-  @IsEnum(ClientType)
-  type?: ClientType;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  taxNumber?: string;
-
-  @ApiPropertyOptional({ example: 'USD' })
-  @IsOptional()
-  @IsString()
-  @Length(3, 3)
-  defaultCurrency?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  address?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  notes?: string;
-
-  @ApiPropertyOptional({ enum: ClientStatus })
-  @IsOptional()
-  @IsEnum(ClientStatus)
-  status?: ClientStatus;
 }

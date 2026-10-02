@@ -85,6 +85,8 @@ export {
   RecordLayout,
   RecordPanel,
 } from './components/record-layout';
+export { ContactList } from './components/contact-list';
+export type { ContactChannel, ContactListItem, ContactListProps } from './components/contact-list';
 export { ActionList } from './components/action-list';
 export type { ActionListItem } from './components/action-list';
 export { ContextBar } from './components/context-bar';

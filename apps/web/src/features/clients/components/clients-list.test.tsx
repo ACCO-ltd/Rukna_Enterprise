@@ -1,188 +1,251 @@
 import { ClientStatus } from '@erp/types';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listClientSummaries } from '@/features/clients/api/clients-api';
-import type { ClientListItem } from '@/features/clients/types';
-import { renderWithProviders } from '@/test/render';
+import type { ClientSummaryItem, ClientSummaryPage } from '@/features/clients/types';
 import { chooseOption } from '@/test/choose-option';
+import { renderWithProviders } from '@/test/render';
 
-import { ClientsList } from './clients-list';
+import { ClientsList, toServerSort } from './clients-list';
 
 vi.mock('@/features/clients/api/clients-api', () => ({ listClientSummaries: vi.fn() }));
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => <a href={href} {...props}>{children}</a>,
+  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
-function client(overrides: Partial<ClientListItem> & { id: string }): ClientListItem {
+const MONEY = 'view:financial-position';
+
+function row(overrides: Partial<ClientSummaryItem> & { id: string }): ClientSummaryItem {
   return {
     code: `CLI-00000${overrides.id}`,
     name: `Client ${overrides.id}`,
+    type: 'COMPANY',
     status: ClientStatus.ACTIVE,
     primaryContact: null,
     activeProjectCount: 0,
-    outstandingBalance: '0.00',
+    totalProjectCount: 0,
+    outstanding: '0.00',
+    overdue: '0.00',
     ...overrides,
   };
 }
 
+function page(items: ClientSummaryItem[], overrides: Partial<ClientSummaryPage> = {}): ClientSummaryPage {
+  return { items, total: items.length, page: 1, pageSize: 25, moneyVisible: true, ...overrides };
+}
+
+/**
+ * The table. Below 640px the grid renders phone cards from the same rows; jsdom has no media
+ * queries, so both are in the DOM and every query is scoped to the table.
+ */
+async function grid() {
+  return within(await screen.findByRole('table'));
+}
+
+const lastQuery = () => vi.mocked(listClientSummaries).mock.calls.at(-1)?.[0];
+
 beforeEach(() => vi.mocked(listClientSummaries).mockReset());
 
-describe('ClientsList', () => {
-  it('renders the business context, including the code a person would quote', async () => {
-    // The code used to be withheld here as an "internal identifier". It is not one: CLI-000001
-    // is what a client is called on a contract and in a phone call, and a list that omits it
-    // makes the reader open a record to confirm they have the right one. The identifier that
-    // stays hidden is the cuid in the URL.
-    vi.mocked(listClientSummaries).mockResolvedValue([
-      client({ id: '1', name: 'Baraka Real Estate', primaryContact: { name: 'Yusuf Ahmed', role: 'Commercial Director' }, activeProjectCount: 2, outstandingBalance: '1250.00' }),
-    ]);
-    renderWithProviders(<ClientsList />);
+describe('ClientsList — columns', () => {
+  it('shows the client as the row link with code · type, the contact with a formatted phone, and project counts', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(
+      page([
+        row({
+          id: '1',
+          name: 'Baraka Real Estate',
+          type: 'GOVERNMENT',
+          primaryContact: { name: 'Yusuf Ahmed', phone: '+252616666666' },
+          activeProjectCount: 2,
+          totalProjectCount: 5,
+        }),
+      ]),
+    );
+    renderWithProviders(<ClientsList />, { permissions: [MONEY] });
 
-    expect(await screen.findByRole('link', { name: /Baraka Real Estate/ })).toHaveAttribute('href', '/clients/1');
-    expect(screen.getByText('CLI-000001')).toBeInTheDocument();
-    expect(screen.getByText('Yusuf Ahmed')).toBeInTheDocument();
-    expect(screen.getByText('Commercial Director')).toBeInTheDocument();
+    const link = await (await grid()).findByRole('link', { name: /Baraka Real Estate/ });
+    expect(link).toHaveAttribute('href', '/clients/1');
+    expect(link).toHaveTextContent('CLI-000001 · Government');
+    expect(document.querySelectorAll('table a[data-row-link]')).toHaveLength(1);
+    expect((await grid()).getByText('Yusuf Ahmed')).toBeInTheDocument();
+    expect((await grid()).getByText('+252 61 666 6666')).toBeInTheDocument();
+    expect((await grid()).getByText('2 active')).toBeInTheDocument();
+    expect((await grid()).getByText('5 in total')).toBeInTheDocument();
+    // Project counts are plain text, never a link.
+    expect((await grid()).queryByRole('link', { name: /active/ })).not.toBeInTheDocument();
   });
 
-  it('shows restrained placeholders for missing contacts and restricted balances', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1', outstandingBalance: null })]);
-    renderWithProviders(<ClientsList />);
+  it('words project counts for none-active and none-yet', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(
+      page([
+        row({ id: '1', activeProjectCount: 0, totalProjectCount: 3 }),
+        row({ id: '2', activeProjectCount: 0, totalProjectCount: 0 }),
+        row({ id: '3', activeProjectCount: 4, totalProjectCount: 4 }),
+      ]),
+    );
+    renderWithProviders(<ClientsList />, { permissions: [MONEY] });
 
-    await screen.findByRole('link', { name: /Client 1/ });
-    expect(screen.getAllByText('Not assigned').length).toBeGreaterThan(0);
-    expect(screen.getByText('Restricted')).toBeInTheDocument();
+    expect(await (await grid()).findByText('None active')).toBeInTheDocument();
+    expect((await grid()).getByText('3 in total')).toBeInTheDocument();
+    expect((await grid()).getByText('None yet')).toBeInTheDocument();
+    expect((await grid()).getByText('4 active')).toBeInTheDocument();
+    expect((await grid()).queryByText('4 in total')).not.toBeInTheDocument();
   });
 
-  it('filters by client and primary-contact names', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([
-      client({ id: '1', name: 'Baraka Real Estate' }),
-      client({ id: '2', name: 'Hodan Holdings', primaryContact: { name: 'Amina Ali', role: null } }),
-    ]);
-    const user = userEvent.setup();
-    renderWithProviders(<ClientsList />);
+  it('shows outstanding with an overdue line, and $0.00 when nothing is owed', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(
+      page([
+        row({ id: '1', name: 'Owes', outstanding: '1250.00', overdue: '400.00' }),
+        row({ id: '2', name: 'Clear', outstanding: '0.00', overdue: '0.00' }),
+      ]),
+    );
+    renderWithProviders(<ClientsList />, { permissions: [MONEY] });
 
-    await screen.findByRole('link', { name: /Baraka Real Estate/ });
-    await user.type(screen.getByLabelText('Search'), 'Amina');
-    await waitFor(() => expect(screen.queryByRole('link', { name: /Baraka Real Estate/ })).not.toBeInTheDocument());
-    expect(screen.getByRole('link', { name: /Hodan Holdings/ })).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: /Outstanding/ })).toBeInTheDocument();
+    expect((await grid()).getByText('$1,250.00')).toBeInTheDocument();
+    expect((await grid()).getByText('$400.00 overdue')).toHaveClass('text-danger');
+    expect((await grid()).getByText('$0.00')).toBeInTheDocument();
   });
 
-  it('filters by status', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([
-      client({ id: '1', name: 'Active One' }),
-      client({ id: '2', name: 'Retired One', status: ClientStatus.INACTIVE }),
-    ]);
-    const user = userEvent.setup();
-    renderWithProviders(<ClientsList />);
+  it('drops the money column for money-blind roles and says so once under the grid', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(
+      page([row({ id: '1', outstanding: null, overdue: null })], { moneyVisible: false }),
+    );
+    renderWithProviders(<ClientsList />, { permissions: [] });
 
-    await screen.findByRole('link', { name: /Active One/ });
-    await chooseOption(user, screen.getByLabelText('Filter by status'), ClientStatus.INACTIVE);
-    await waitFor(() => expect(screen.queryByRole('link', { name: /Active One/ })).not.toBeInTheDocument());
-    expect(screen.getByRole('link', { name: /Retired One/ })).toBeInTheDocument();
-  });
-
-  it('offers to create a client when there are none', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([]);
-    renderWithProviders(<ClientsList />, { permissions: ['view:client', 'create:client'] });
-
-    expect(await screen.findByText('No clients yet.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'New client' })).toHaveAttribute('href', '/clients/new');
-  });
-
-  it('offers to clear filters when a search hides everything', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1', name: 'Baraka' })]);
-    const user = userEvent.setup();
-    renderWithProviders(<ClientsList />);
-
-    await screen.findByRole('link', { name: /Baraka/ });
-    await user.type(screen.getByLabelText('Search'), 'nothing matches this');
-    expect(await screen.findByText('No results match your search.')).toBeInTheDocument();
-    // "Clear filters", not "Clear search": the control now also resets the status filter, so
-    // it names the whole thing it undoes rather than only the half it used to.
-    await user.click(screen.getByRole('button', { name: 'Clear search' }));
-    expect(await screen.findByRole('link', { name: /Baraka/ })).toBeInTheDocument();
-  });
-
-
-  it('announces the visible count', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' }), client({ id: '2' })]);
-    renderWithProviders(<ClientsList />);
-
-    await screen.findByRole('link', { name: /Client 1/ });
-    expect(screen.getByRole('status')).toHaveTextContent('2 results');
-  });
-
-  it('says how much of the list is on screen, under the rows', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' }), client({ id: '2' })]);
-    renderWithProviders(<ClientsList />);
-
-    // The count above the table scrolls away with it; the footer is what a reader sees when
-    // they reach the bottom and want to know whether that was all of them.
-    expect(await screen.findByText('Showing 2 of 2 results')).toBeInTheDocument();
-  });
-
-  it('puts one link behind the row, which the whole row activates', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '7', name: 'Baraka' })]);
-    renderWithProviders(<ClientsList />);
-
-    await screen.findByRole('link', { name: /Baraka/ });
-
-    // The row click handler activates this link rather than pushing a route of its own, so
-    // the two can never point at different places. It is also what a keyboard reaches and
-    // what open-in-new-tab acts on.
-    const rowLink = document.querySelector('a[data-row-link]');
-    expect(rowLink).toHaveAttribute('href', '/clients/7');
-    expect(document.querySelectorAll('a[data-row-link]')).toHaveLength(1);
-  });
-
-  it('marks live status with a dot, and the drill-down number as a link', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([
-      client({ id: '1', name: 'Baraka', activeProjectCount: 3 }),
-    ]);
-    renderWithProviders(<ClientsList />);
-
-    // The dot is what the eye finds scanning a status column; the word confirms it.
-    const badge = (await screen.findByText('Active')).closest('span');
-    expect(badge?.querySelector('span[aria-hidden="true"]')).not.toBeNull();
-
-    // Underlined at rest, not only on hover: the one drillable number in the row has to
-    // advertise itself, or it reads as plain text.
-    const count = screen.getByRole('link', { name: '3' });
-    expect(count.className).toContain('underline');
-    expect(count.className).not.toContain('hover:underline');
-  });
-
-  it('offers view and edit behind the row menu, and nothing destructive', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '7', name: 'Baraka' })]);
-    const user = userEvent.setup();
-    renderWithProviders(<ClientsList />, { permissions: ['view:client', 'manage:client'] });
-
-    await user.click(await screen.findByRole('button', { name: 'Actions for Baraka' }));
-
-    expect(await screen.findByRole('menuitem', { name: 'View client' })).toHaveAttribute('href', '/clients/7');
-    expect(screen.getByRole('menuitem', { name: 'Edit client' })).toHaveAttribute('href', '/clients/7/edit');
-    // A list row is the wrong place to deactivate a client from — it is one slip away from
-    // the row above it, and the record page is where that decision has its context.
-    expect(screen.queryByRole('menuitem', { name: /Deactivate/i })).not.toBeInTheDocument();
+    await (await grid()).findByRole('link', { name: /Client 1/ });
+    expect(screen.queryByRole('columnheader', { name: /Outstanding/ })).not.toBeInTheDocument();
+    expect((await grid()).queryByText('$0.00')).not.toBeInTheDocument();
+    expect(screen.getByText('Balances are not shown for your role.')).toBeInTheDocument();
   });
 });
 
-describe('ClientsList — permission gates (ADR-035)', () => {
-  it('offers New client and Edit only to holders of the permissions the API checks', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' })]);
-    renderWithProviders(<ClientsList />, { permissions: ['view:client', 'create:client', 'manage:client'] });
+describe('ClientsList — states', () => {
+  it('shows the first-use empty state with the create action', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(page([]));
+    renderWithProviders(<ClientsList />, { permissions: ['create:client'] });
 
-    await screen.findByRole('link', { name: /Client 1/ });
-    expect(screen.getByRole('link', { name: /New client/ })).toHaveAttribute('href', '/clients/new');
+    expect(await screen.findByText('No clients yet')).toBeInTheDocument();
+    expect(
+      screen.getByText('Add the client first, then create its project. Clients are shared by every project, invoice and receipt.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New client' })).toHaveAttribute('href', '/clients/new');
   });
 
-  it('hides New client from a viewer without create:client, rather than letting them hit a 403', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' })]);
+  it('shows a filtered-empty state with Clear filters when a search finds nothing', async () => {
+    vi.mocked(listClientSummaries).mockImplementation(async (query) =>
+      query?.search ? page([]) : page([row({ id: '1', name: 'Baraka' })]),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsList />);
+
+    await (await grid()).findByRole('link', { name: /Baraka/ });
+    await user.type(screen.getByRole('searchbox', { name: 'Search clients' }), 'zzz');
+    expect(await screen.findAllByText('No clients match these filters.')).not.toHaveLength(0);
+    expect(screen.queryByText('No clients yet')).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    expect(await (await grid()).findByRole('link', { name: /Baraka/ })).toBeInTheDocument();
+  });
+
+  it('shows an error with a retry', async () => {
+    vi.mocked(listClientSummaries).mockRejectedValueOnce(new Error('boom')).mockResolvedValue(page([row({ id: '1' })]));
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsList />);
+
+    expect(await screen.findByText('Could not load clients.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await (await grid()).findByRole('link', { name: /Client 1/ })).toBeInTheDocument();
+  });
+});
+
+describe('ClientsList — server query', () => {
+  it('sends search, filters, sort and page to GET /clients/summary', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(
+      page([row({ id: '1', name: 'Baraka' })], { total: 60 }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsList />, { permissions: [MONEY] });
+    await (await grid()).findByRole('link', { name: /Baraka/ });
+    expect(lastQuery()).toEqual(expect.objectContaining({ page: 1, pageSize: 25 }));
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search clients' }), 'Amina');
+    await waitFor(() => expect(lastQuery()).toEqual(expect.objectContaining({ search: 'Amina', page: 1 })));
+
+    await user.click(screen.getByRole('button', { name: /^Filter/ }));
+    await chooseOption(user, screen.getByRole('combobox', { name: 'Status' }), ClientStatus.INACTIVE);
+    await chooseOption(user, screen.getByRole('combobox', { name: 'Client type' }), 'NGO');
+    await chooseOption(user, screen.getByRole('combobox', { name: 'Balance' }), 'OVERDUE');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(lastQuery()).toEqual(
+        expect.objectContaining({ search: 'Amina', status: 'INACTIVE', type: 'NGO', balance: 'OVERDUE' }),
+      ),
+    );
+    // Applied filters show as chips.
+    expect(screen.getByRole('button', { name: 'Remove filter: Balance' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Sort Outstanding/ }));
+    await waitFor(() => expect(lastQuery()).toEqual(expect.objectContaining({ sort: 'outstanding' })));
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await waitFor(() => expect(lastQuery()).toEqual(expect.objectContaining({ page: 2 })));
+  });
+
+  it('offers no Balance filter to money-blind roles', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(page([row({ id: '1' })], { moneyVisible: false }));
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsList />, { permissions: [] });
+    await (await grid()).findByRole('link', { name: /Client 1/ });
+    await user.click(screen.getByRole('button', { name: /^Filter/ }));
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Balance' })).not.toBeInTheDocument();
+  });
+
+  it('maps grid sort to the API sort param', () => {
+    expect(toServerSort(null)).toBeUndefined();
+    expect(toServerSort({ key: 'client', direction: 'asc' })).toBe('name');
+    expect(toServerSort({ key: 'client', direction: 'desc' })).toBe('-name');
+    expect(toServerSort({ key: 'outstanding', direction: 'desc' })).toBe('-outstanding');
+    expect(toServerSort({ key: 'status', direction: 'asc' })).toBeUndefined();
+  });
+});
+
+describe('ClientsList — row menu and gates', () => {
+  it('offers Open, New project (active clients) and Edit client, gated by permission', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(
+      page([row({ id: '7', name: 'Baraka' }), row({ id: '8', name: 'Retired', status: ClientStatus.INACTIVE })]),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsList />, { permissions: ['manage:client', 'create:project', 'create:client'] });
+
+    expect(await screen.findByRole('link', { name: /New client/ })).toHaveAttribute('href', '/clients/new');
+    await user.click((await grid()).getByRole('button', { name: 'Actions for Baraka' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Open' })).toHaveAttribute('href', '/clients/7');
+    expect(within(menu).getByRole('menuitem', { name: 'New project' })).toHaveAttribute('href', '/projects/new?clientId=7');
+    expect(within(menu).getByRole('menuitem', { name: 'Edit client' })).toHaveAttribute('href', '/clients/7/edit');
+    await user.keyboard('{Escape}');
+
+    await user.click((await grid()).getByRole('button', { name: 'Actions for Retired' }));
+    const retiredMenu = await screen.findByRole('menu');
+    expect(within(retiredMenu).queryByRole('menuitem', { name: 'New project' })).not.toBeInTheDocument();
+  });
+
+  it('hides New client, New project and Edit without their permissions', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue(page([row({ id: '7', name: 'Baraka' })]));
+    const user = userEvent.setup();
     renderWithProviders(<ClientsList />, { permissions: ['view:client'] });
 
-    await screen.findByRole('link', { name: /Client 1/ });
-    expect(screen.queryByRole('link', { name: /New client/ })).toBeNull();
+    await (await grid()).findByRole('link', { name: /Baraka/ });
+    expect(screen.queryByRole('link', { name: /New client/ })).not.toBeInTheDocument();
+    await user.click((await grid()).getByRole('button', { name: 'Actions for Baraka' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
   });
 });

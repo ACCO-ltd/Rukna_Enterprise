@@ -97,6 +97,15 @@ export interface ComboboxProps {
   disabled?: boolean;
   invalid?: boolean;
   className?: string;
+  /**
+   * What the closed trigger shows for the selected option. Defaults to its `label`. For a
+   * compact trigger whose options are long — a dial-code picker shows "+252" while its rows read
+   * "Somalia +252".
+   */
+  renderValue?: (option: ComboboxOption) => React.ReactNode;
+  /** Extra classes on the floating list — e.g. a `min-w-*` when the trigger is narrower than its rows. */
+  panelClassName?: string;
+  'aria-label'?: string;
   'aria-describedby'?: string;
   'aria-required'?: boolean;
 }
@@ -116,6 +125,9 @@ export function Combobox({
   disabled,
   invalid,
   className,
+  renderValue,
+  panelClassName,
+  'aria-label': ariaLabel,
   'aria-describedby': describedBy,
   'aria-required': required,
 }: ComboboxProps) {
@@ -221,6 +233,7 @@ export function Combobox({
           aria-expanded={open}
           aria-controls={`${id}-panel`}
           aria-haspopup="listbox"
+          aria-label={ariaLabel}
           aria-describedby={describedBy}
           aria-required={required}
           aria-invalid={invalid || undefined}
@@ -241,7 +254,7 @@ export function Combobox({
           )}
         >
           <span className={cn('min-w-0 truncate', selected ? 'text-foreground' : 'text-muted-foreground')}>
-            {selected ? selected.label : placeholder}
+            {selected ? (renderValue ? renderValue(selected) : selected.label) : placeholder}
           </span>
           <CaretGlyph open={open} />
         </button>
@@ -261,7 +274,10 @@ export function Combobox({
             sideOffset={4}
             avoidCollisions
             onPlaced={focusInput}
-            className="z-50 w-(--radix-popper-anchor-width) overflow-hidden rounded-panel border border-border bg-surface-elevated shadow-e3"
+            className={cn(
+              'z-50 w-(--radix-popper-anchor-width) overflow-hidden rounded-panel border border-border bg-surface-elevated shadow-e3',
+              panelClassName,
+            )}
           >
             <div className="border-b border-border p-2">
               <input

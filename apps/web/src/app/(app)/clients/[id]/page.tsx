@@ -1,11 +1,11 @@
-import { ClientDetail } from '@/features/clients/components/client-detail';
+import { ClientRecord } from '@/features/clients/components/client-record';
 
-export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * The client record carries its own breadcrumbs and `h1`: the module header and tabs stand
+ * aside here (`hasOwnWorkspace` in module-nav), so the record is one page with no tab bar.
+ */
+export default async function ClientRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  return (
-    <div className="w-full max-w-5xl">
-      <ClientDetail clientId={id} />
-    </div>
-  );
+  return <ClientRecord clientId={id} />;
 }

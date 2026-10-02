@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   Button,
@@ -57,9 +58,12 @@ export function InvoicesList() {
   ) : null;
 
   const projectFilter = useProjectFilter();
+  // "All invoices" on a client record links here with `?clientId=`.
+  const initialClientId = useSearchParams()?.get('clientId') ?? undefined;
   const [filters, setFilters] = useState<FilterValues>(() => {
     const initial: FilterValues = {};
     if (projectFilter.initialProjectId) initial.project = projectFilter.initialProjectId;
+    if (initialClientId) initial.client = initialClientId;
     return initial;
   });
   const invoices = useInvoices({ projectId: filters.project || undefined });

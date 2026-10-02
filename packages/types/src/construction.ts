@@ -15,7 +15,6 @@ import type {
   GuaranteeStatus,
   IpaStatus,
   IpcStatus,
-  ClientStatus,
   BoqVersionStatus,
   MeasurementMethod,
   PricingBasis,
@@ -180,30 +179,7 @@ export interface ProjectReadinessResponse {
   caller: ProjectReadinessCallerResponse;
 }
 
-// ─── Client ───────────────────────────────────────────────────────────────────
-
-export interface ClientContactResponse {
-  id: string;
-  clientId: string;
-  name: string;
-  role?: string;
-  email?: string;
-  phone?: string;
-  isPrimary: boolean;
-}
-
-export interface ClientResponse {
-  id: string;
-  organizationId: string;
-  code: string;
-  name: string;
-  taxNumber?: string;
-  defaultCurrency?: string;
-  status: ClientStatus;
-  contacts: ClientContactResponse[];
-  createdAt: string;
-  updatedAt: string;
-}
+// ─── Client ─── (moved to ./clients.ts — clients redesign 2026-10-02)
 
 // ─── Contract sub-entities ────────────────────────────────────────────────────
 

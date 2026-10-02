@@ -474,6 +474,15 @@ model Client {
   name            String
   type            ClientType   @default(COMPANY)
   taxNumber       String?      @map("tax_number")
+  // Clients redesign (docs/design/clients-redesign-contract.md): business licence / company
+  // registration, default invoice terms (0-365 days), country (ISO-3166 alpha-2) + city; `address`
+  // stays the street/building line; `invoiceEmail` is where invoices go (falls back to the primary
+  // contact's email when null).
+  registrationNumber String?   @map("registration_number") @db.VarChar(50)
+  paymentTermsDays   Int?      @map("payment_terms_days")
+  countryCode        String    @default("SO") @map("country_code") @db.VarChar(2)
+  city               String?   @db.VarChar(100)
+  invoiceEmail       String?   @map("invoice_email") @db.VarChar(254)
   defaultCurrency String?      @map("default_currency") @db.VarChar(3)
   address         String?
   notes           String?
@@ -577,8 +586,18 @@ model ClientContact {
   name      String
   role      String?
   email     String?
+  // E.164 (`+252612345678`) when written through the API since the clients redesign; older rows
+  // keep whatever was typed until they are next edited.
   phone     String?
-  isPrimary Boolean @default(false) @map("is_primary")
+  // E.164 — the number WhatsApp messages go to (usually the same as `phone`).
+  whatsappPhone String?  @map("whatsapp_phone")
+  // Exactly one primary per client: enforced by the PARTIAL unique index
+  // `client_contacts_one_primary_per_client ON client_contacts(client_id) WHERE is_primary`
+  // (migration 20261002120000_client_contact_details). Prisma cannot express a partial index, so
+  // it lives in SQL only — never add @@unique([clientId, isPrimary]) here (that would allow only
+  // one NON-primary contact too).
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 

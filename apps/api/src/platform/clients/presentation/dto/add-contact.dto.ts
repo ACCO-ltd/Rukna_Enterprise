@@ -1,27 +1,13 @@
-import { IsString, IsOptional, IsBoolean, IsEmail } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsOptional } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
-export class AddContactDto {
-  @ApiProperty()
-  @IsString()
-  name!: string;
+import { ContactInputDto } from './contact-input.dto.js';
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  role?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  phone?: string;
-
-  @ApiPropertyOptional({ default: false })
+export class AddContactDto extends ContactInputDto {
+  @ApiPropertyOptional({
+    default: false,
+    description: "true demotes the current primary. A client's first contact is always primary.",
+  })
   @IsOptional()
   @IsBoolean()
   isPrimary?: boolean;

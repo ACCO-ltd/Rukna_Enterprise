@@ -45,10 +45,14 @@ export interface ResolvedModule {
 /**
  * Paths that belong to a module but render their own workspace chrome, so the module header and
  * tabs must stand aside — one navigation system per page. The project workspace keeps its own
- * tabs until its migration is validated separately.
+ * tabs until its migration is validated separately. The client record (not its edit page) is
+ * one page with its own breadcrumbs and no tabs (clients redesign, 2026-10-02).
  */
 function hasOwnWorkspace(pathname: string): boolean {
-  return /^\/projects\/(?!new(?:\/|$))[^/]+/.test(pathname);
+  return (
+    /^\/projects\/(?!new(?:\/|$))[^/]+/.test(pathname) ||
+    /^\/clients\/(?!new(?:\/|$))[^/]+\/?$/.test(pathname)
+  );
 }
 
 /**

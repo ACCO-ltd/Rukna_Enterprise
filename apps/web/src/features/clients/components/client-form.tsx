@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Controller, useForm, useWatch, type Control } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
@@ -11,6 +11,8 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Users } from 'lucide-react';
 import {
   Button,
+  CheckboxField,
+  Disclosure,
   FormActionBar,
   FormField,
   FormGroup,
@@ -24,91 +26,135 @@ import {
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
+import { expectsBusinessEmail, isEmailFormat } from '@/lib/email-hints';
+import { isPhoneEmpty, isValidPhone } from '@/lib/phone';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { CountrySelect } from '@/components/country-select';
+import { EmailField } from '@/components/email-field';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
-import { findClientDuplicateCandidates } from '../api/clients-api';
-import { EMPTY_CLIENT_FORM, toClientFormValues, toCreateClientPayload, toUpdateClientPayload, type ClientFormValues } from '../client-form-payload';
-import { useCreateClient, useUpdateClient } from '../hooks/use-client';
-import type { Client } from '../types';
+import { PhoneInput } from '@/components/phone-input';
 
-interface ClientFormProps { client?: Client; onCreated?: (client: Client) => void; onCancel?: () => void }
+import { findClientDuplicateCandidates } from '../api/clients-api';
+import { clientErrorCode, emailFieldOf, phoneFieldOf } from '../client-errors';
+import {
+  EMPTY_CLIENT_FORM,
+  toClientFormValues,
+  toCreateClientPayload,
+  toUpdateClientPayload,
+  type ClientFormValues,
+} from '../client-form-payload';
+import { useCreateClient, useUpdateClient } from '../hooks/use-client';
+import { CLIENT_TYPES, type Client } from '../types';
+
+interface ClientFormProps {
+  client?: Client;
+  onCreated?: (client: Client) => void;
+  onCancel?: () => void;
+}
 
 type ClientCreateT = ReturnType<typeof useTranslations<'platform.clients.create'>>;
+
+const phoneSchema = z.object({ country: z.string(), number: z.string() });
 
 /**
  * Create and edit a client — the ADR-037 create page.
  *
- * ─── The shape ───────────────────────────────────────────────────────────────────
+ * Sticky action bar → error summary when a save failed → the record header (the name, set
+ * large) → "* Required" → Identity → Primary contact (create only) → Address → Billing, with
+ * internal notes folded behind a disclosure. One page, not a wizard: the fields have no
+ * dependency on each other beyond the client type.
  *
- * Sticky action bar (back, one Save, Discard, save state) → the error summary when a save
- * failed → the record header (icon tile + the name, set large, because the name is what the
- * record will be known by) → "* Required" → two hairline groups: Details (how the client
- * appears on invoices and in search) and Contact (who ACCO calls). Notes stay behind a
- * disclosure: they are optional and internal.
+ * Client type shapes the form: an individual's name reads "Full name" and has no job title,
+ * and an organisation's personal webmail address gets a (non-blocking) warning.
  *
- * It is one page and not a wizard: six-odd fields with no dependency between them is a form,
- * and ux-doctrine §7 rejects "a wizard where a form works".
+ * Contacts belong to creation only. On an existing client they are managed on the record, so
+ * a second contact editor here would be two ways to change one thing.
  *
- * ─── Three hosts ─────────────────────────────────────────────────────────────────
- *
- * The /clients/new page, the edit page (`ClientEdit`), and inline inside the project create
- * form (`onCreated` / `onCancel`), where saving hands the new client back to the project
- * instead of navigating, and there is no back link because the project form is the context.
- *
- * ─── Contacts on edit ────────────────────────────────────────────────────────────
- *
- * Contact capture belongs to creation only. On an existing client the contact list is its own
- * aggregate with its own add/remove affordances (ClientContacts); a second single-contact
- * editor here would be two ways to change one thing. The address is a client column, so it
- * stays editable.
- *
- * Not here, by decision (ADR-037): a hand-typed short code (the server assigns CLI-000001),
- * district (ADR-025: it belongs to the project), payment terms, receivable account, an
- * "email invoices" toggle and a registration number — none exist in the API.
+ * Three hosts: /clients/new, the edit page, and inline inside the project form (`onCreated` /
+ * `onCancel`), where saving hands the new client back instead of navigating.
  */
 export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}) {
   const t = useTranslations('platform.clients.create');
+  const tErrors = useTranslations('platform.clients.errors');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const { toast } = useToast();
   const isEdit = Boolean(client);
   const isInline = Boolean(onCreated || onCancel);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(Boolean(client?.notes));
 
-  const schema = z.object({
-    name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
-    type: z.enum(['COMPANY', 'GOVERNMENT', 'NGO', 'INDIVIDUAL', 'OTHER']).optional(),
-    taxNumber: z.string().trim().max(50, t('taxNumberTooLong')),
-    defaultCurrency: z.string(),
-    address: z.string().optional(),
-    contactName: z.string().trim().max(255, t('nameTooLong')),
-    contactRole: z.string().trim().max(100, t('contactRoleTooLong')),
-    contactPhone: z.string().trim().max(50, t('contactPhoneTooLong')).refine(
-      (value) => value === '' || /^[+]?[-\s().\d]{7,50}$/.test(value),
-      t('contactPhoneInvalid'),
-    ),
-    contactEmail: z.string().trim().email(t('contactEmailInvalid')).or(z.literal('')),
-    notes: z.string().trim().max(2000, t('notesTooLong')),
-  }).superRefine((values, ctx) => {
-    if (!isEdit && !values.contactName) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['contactName'], message: t('contactNameRequired') });
-    }
-  });
+  const optionalEmail = (message: string) =>
+    z.string().refine((value) => value.trim() === '' || isEmailFormat(value), message);
+
+  const schema = z
+    .object({
+      name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
+      type: z.enum(['COMPANY', 'GOVERNMENT', 'NGO', 'INDIVIDUAL', 'OTHER']),
+      registrationNumber: z.string().trim().max(50, t('registrationNumberTooLong')),
+      taxNumber: z.string().trim().max(50, t('taxNumberTooLong')),
+      contactName: z.string().trim().max(255, t('nameTooLong')),
+      contactRole: z.string().trim().max(100, t('contactRoleTooLong')),
+      contactPhone: phoneSchema,
+      whatsappSame: z.boolean(),
+      contactWhatsapp: phoneSchema,
+      contactEmail: optionalEmail(tCommon('email.invalid')),
+      countryCode: z.string(),
+      city: z.string().trim().max(100, t('cityTooLong')),
+      address: z.string().trim().max(500, t('addressTooLong')),
+      invoiceEmail: optionalEmail(tCommon('email.invalid')),
+      paymentTermsDays: z
+        .string()
+        .trim()
+        .refine(
+          (value) => value === '' || (/^\d+$/.test(value) && Number(value) <= 365),
+          t('paymentTermsInvalid'),
+        ),
+      notes: z.string().trim().max(2000, t('notesTooLong')),
+    })
+    .superRefine((values, ctx) => {
+      if (isEdit) return;
+      // An individual client is their own contact: the full name above is the contact's name.
+      if (values.type !== 'INDIVIDUAL' && !values.contactName.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['contactName'], message: t('contactNameRequired') });
+      }
+      if (isPhoneEmpty(values.contactPhone)) {
+        ctx.addIssue({ code: 'custom', path: ['contactPhone'], message: tCommon('phone.required') });
+      } else if (!isValidPhone(values.contactPhone)) {
+        ctx.addIssue({ code: 'custom', path: ['contactPhone'], message: tCommon('phone.invalid') });
+      }
+      if (!values.whatsappSame && !isPhoneEmpty(values.contactWhatsapp) && !isValidPhone(values.contactWhatsapp)) {
+        ctx.addIssue({ code: 'custom', path: ['contactWhatsapp'], message: tCommon('phone.invalid') });
+      }
+    });
 
   const create = useCreateClient();
   const update = useUpdateClient(client?.id ?? '');
   const mutation = isEdit ? update : create;
-  const form = useForm<ClientFormValues>({ resolver: zodResolver(schema), defaultValues: client ? toClientFormValues(client) : EMPTY_CLIENT_FORM });
-  const { register, handleSubmit, control, formState: { errors, isDirty } } = form;
+  const form = useForm<ClientFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: client ? toClientFormValues(client) : EMPTY_CLIENT_FORM,
+  });
+  const {
+    register,
+    handleSubmit,
+    control,
+    setError,
+    formState: { errors, isDirty },
+  } = form;
   const name = useWatch({ control, name: 'name' });
+  const type = useWatch({ control, name: 'type' });
+  const whatsappSame = useWatch({ control, name: 'whatsappSame' });
+  const isIndividual = type === 'INDIVIDUAL';
+  const warnPersonal = expectsBusinessEmail(type);
+
   const duplicateQuery = useQuery({
     queryKey: ['clients', 'duplicate-candidates', name.trim()],
     queryFn: () => findClientDuplicateCandidates(name.trim()),
     enabled: !isEdit && name.trim().length >= 3,
     staleTime: 30_000,
   });
-  // A warning, not an error (ADR-037): two clients can legitimately share a name, so this
-  // never blocks the save. It names what to check and links to it.
+  // A warning, not an error (ADR-037): two clients can legitimately share a name.
   const candidates = duplicateQuery.data ?? [];
 
   useEffect(() => {
@@ -118,16 +164,30 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
     return () => window.removeEventListener('beforeunload', handler);
   }, [isDirty, mutation.isSuccess]);
 
+  const nameLabel = isIndividual ? t('fullName') : t('clientName');
   const fieldErrors: FormFieldError[] = [
-    errors.name ? { label: t('clientName'), fieldId: 'client-name', message: errors.name.message! } : null,
+    errors.name ? { label: nameLabel, fieldId: 'client-name', message: errors.name.message! } : null,
+    errors.registrationNumber ? { label: t('registrationNumber'), fieldId: 'client-registration-number', message: errors.registrationNumber.message! } : null,
     errors.taxNumber ? { label: t('taxId'), fieldId: 'client-tax-number', message: errors.taxNumber.message! } : null,
     errors.contactName ? { label: t('contactName'), fieldId: 'client-contact-name', message: errors.contactName.message! } : null,
     errors.contactRole ? { label: t('contactRole'), fieldId: 'client-contact-role', message: errors.contactRole.message! } : null,
     errors.contactPhone ? { label: t('contactPhone'), fieldId: 'client-contact-phone', message: errors.contactPhone.message! } : null,
+    errors.contactWhatsapp ? { label: t('whatsappNumber'), fieldId: 'client-contact-whatsapp', message: errors.contactWhatsapp.message! } : null,
     errors.contactEmail ? { label: t('contactEmail'), fieldId: 'client-contact-email', message: errors.contactEmail.message! } : null,
+    errors.city ? { label: t('city'), fieldId: 'client-city', message: errors.city.message! } : null,
+    errors.address ? { label: t('address'), fieldId: 'client-address', message: errors.address.message! } : null,
+    errors.invoiceEmail ? { label: t('invoiceEmail'), fieldId: 'client-invoice-email', message: errors.invoiceEmail.message! } : null,
+    errors.paymentTermsDays ? { label: t('paymentTerms'), fieldId: 'client-payment-terms', message: errors.paymentTermsDays.message! } : null,
     errors.notes ? { label: t('notes'), fieldId: 'client-notes', message: errors.notes.message! } : null,
   ].filter(Boolean) as FormFieldError[];
-  const apiErrors = mutation.error ? [mutation.error instanceof ApiError ? mutation.error.message : t('failed')] : [];
+
+  // A field-specific server error is shown at its field (applied in `onServerError`), so the
+  // summary only carries the failures that belong to no field.
+  const code = clientErrorCode(mutation.error);
+  const apiErrors =
+    mutation.error && code !== 'PHONE_INVALID' && code !== 'EMAIL_INVALID'
+      ? [code ? tErrors(code) : mutation.error instanceof ApiError ? mutation.error.message : t('failed')]
+      : [];
   const hasSummary = fieldErrors.length > 0 || apiErrors.length > 0;
 
   const discardHref = isEdit ? `/clients/${client!.id}` : '/clients';
@@ -136,14 +196,34 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
 
   const saveState: FormSaveState = isDirty ? 'dirty' : isEdit ? 'clean' : 'new';
 
+  const onServerError = (error: unknown) => {
+    const errorCode = clientErrorCode(error);
+    if (errorCode === 'PHONE_INVALID') {
+      const field = phoneFieldOf(error) === 'whatsapp' ? 'contactWhatsapp' : 'contactPhone';
+      setError(field, { message: tErrors('PHONE_INVALID') }, { shouldFocus: true });
+    } else if (errorCode === 'EMAIL_INVALID') {
+      setError(emailFieldOf(error), { message: tErrors('EMAIL_INVALID') }, { shouldFocus: true });
+    }
+  };
+
   const submit = (values: ClientFormValues) => {
     if (mutation.isPending) return;
-    if (isEdit && client) return update.mutate(toUpdateClientPayload(values));
+    if (isEdit && client) {
+      update.mutate(toUpdateClientPayload(values), { onError: onServerError });
+      return;
+    }
     create.mutate(toCreateClientPayload(values), {
+      onError: onServerError,
       onSuccess: (created) => {
-        if (onCreated) { onCreated(created); return; }
+        if (onCreated) {
+          onCreated(created);
+          return;
+        }
         toast({
-          tone: 'success', title: t('createdToast'), description: `${created.name} · ${created.code}`, duration: 9000,
+          tone: 'success',
+          title: t('createdToast'),
+          description: `${created.name} · ${created.code}`,
+          duration: 9000,
           action: { label: t('createProject'), onClick: () => router.push(`/projects/new?clientId=${created.id}`) },
         });
         router.push(`/clients/${created.id}`);
@@ -155,13 +235,26 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
     <>
       <form onSubmit={(event) => void handleSubmit(submit)(event)} noValidate>
         <FormActionBar
-          back={isInline ? undefined : (
-            <Button asChild variant="ghost" className="gap-1.5 px-2">
-              <Link href="/clients"><ArrowLeft size={16} aria-hidden="true" />{t('backToList')}</Link>
+          back={
+            isInline ? undefined : (
+              <Button asChild variant="ghost" className="gap-1.5 px-2">
+                <Link href="/clients">
+                  <ArrowLeft size={16} aria-hidden="true" />
+                  {t('backToList')}
+                </Link>
+              </Button>
+            )
+          }
+          save={
+            <Button type="submit" loading={mutation.isPending} loadingText={t('saving')}>
+              {t('save')}
             </Button>
-          )}
-          save={<Button type="submit" loading={mutation.isPending} loadingText={t('saving')}>{t('save')}</Button>}
-          discard={<Button type="button" variant="ghost" onClick={discard} disabled={mutation.isPending}>{t('discard')}</Button>}
+          }
+          discard={
+            <Button type="button" variant="ghost" onClick={discard} disabled={mutation.isPending}>
+              {t('discard')}
+            </Button>
+          }
           saveState={saveState}
           saveStateLabels={{ new: tCommon('formState.new'), dirty: tCommon('formState.dirty'), clean: tCommon('formState.clean') }}
         />
@@ -173,67 +266,196 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
             <RecordCreateHeader icon={<Users size={20} />}>
               <FormField
                 htmlFor="client-name"
-                label={t('clientName')}
+                label={nameLabel}
                 hint={t('clientNameHint')}
                 error={errors.name?.message}
                 warning={candidates.length > 0 ? t('possibleDuplicate') : undefined}
                 required
               >
-                <Input id="client-name" className={RECORD_NAME_INPUT} placeholder={t('namePlaceholder')} autoFocus={!isEdit} {...register('name')} />
+                <Input
+                  id="client-name"
+                  className={RECORD_NAME_INPUT}
+                  placeholder={isIndividual ? t('fullNamePlaceholder') : t('namePlaceholder')}
+                  autoFocus={!isEdit}
+                  {...register('name')}
+                />
               </FormField>
               {candidates.length > 0 ? <DuplicateLinks candidates={candidates} t={t} /> : null}
             </RecordCreateHeader>
             <RequiredNote label={tCommon('required')} />
           </div>
 
-          <FormGroup title={t('detailsGroup')} description={t('detailsGroupHint')}>
+          <FormGroup title={t('identityGroup')} description={t('identityGroupHint')}>
             <FormField htmlFor="client-type" label={t('clientType')} required>
-              <ClientTypeSelect control={control} t={t} />
-            </FormField>
-            <FormField htmlFor="client-tax-number" label={t('taxId')} error={errors.taxNumber?.message}>
-              <Input id="client-tax-number" placeholder={t('taxIdPlaceholder')} {...register('taxNumber')} />
+              <Controller
+                control={control}
+                name="type"
+                render={({ field }) => (
+                  <Select id="client-type" value={field.value} onChange={field.onChange}>
+                    {CLIENT_TYPES.map((value) => (
+                      <option key={value} value={value}>
+                        {t(`clientTypes.${value}`)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
             </FormField>
             {isEdit ? (
               <FormField htmlFor="client-code" label={t('code')}>
                 <Input id="client-code" readOnly value={client?.code ?? ''} className="bg-muted text-muted-foreground" />
               </FormField>
             ) : null}
-          </FormGroup>
-
-          <FormGroup title={t('contactGroup')} description={isEdit ? t('contactGroupEditHint') : t('contactGroupHint')}>
-            {isEdit ? null : (
-              <>
-                <FormField htmlFor="client-contact-name" label={t('contactName')} error={errors.contactName?.message} required>
-                  <Input id="client-contact-name" placeholder={t('contactNamePlaceholder')} {...register('contactName')} />
-                </FormField>
-                <FormField htmlFor="client-contact-role" label={t('contactRole')} error={errors.contactRole?.message}>
-                  <Input id="client-contact-role" placeholder={t('contactRolePlaceholder')} {...register('contactRole')} />
-                </FormField>
-                <FormField htmlFor="client-contact-phone" label={t('contactPhone')} hint={t('contactPhoneHint')} error={errors.contactPhone?.message}>
-                  <Input id="client-contact-phone" type="tel" placeholder={t('contactPhonePlaceholder')} {...register('contactPhone')} />
-                </FormField>
-                <FormField htmlFor="client-contact-email" label={t('contactEmail')} error={errors.contactEmail?.message}>
-                  <Input id="client-contact-email" type="email" placeholder={t('contactEmailPlaceholder')} {...register('contactEmail')} />
-                </FormField>
-              </>
-            )}
-            <FormField htmlFor="client-address" label={t('address')} className="sm:col-span-2">
-              <Textarea id="client-address" rows={2} placeholder={t('addressPlaceholder')} {...register('address')} />
+            <FormField htmlFor="client-registration-number" label={t('registrationNumber')} error={errors.registrationNumber?.message}>
+              <Input id="client-registration-number" placeholder={t('registrationNumberPlaceholder')} {...register('registrationNumber')} />
+            </FormField>
+            <FormField htmlFor="client-tax-number" label={t('taxId')} error={errors.taxNumber?.message}>
+              <Input id="client-tax-number" placeholder={t('taxIdPlaceholder')} {...register('taxNumber')} />
             </FormField>
           </FormGroup>
 
-          <details open={isEdit || Boolean(errors.notes) || undefined}>
-            <summary className="cursor-pointer text-body-sm font-medium text-foreground">{t('notesSection')}</summary>
+          {isEdit ? null : (
+            <FormGroup title={t('contactGroup')} description={t('contactGroupHint')}>
+              {isIndividual ? null : (
+                <FormField htmlFor="client-contact-name" label={t('contactName')} error={errors.contactName?.message} required>
+                  <Input id="client-contact-name" placeholder={t('contactNamePlaceholder')} {...register('contactName')} />
+                </FormField>
+              )}
+              {isIndividual ? null : (
+                <FormField htmlFor="client-contact-role" label={t('contactRole')} error={errors.contactRole?.message}>
+                  <Input id="client-contact-role" placeholder={t('contactRolePlaceholder')} {...register('contactRole')} />
+                </FormField>
+              )}
+              <FormField htmlFor="client-contact-phone" label={t('contactPhone')} error={errors.contactPhone?.message} required>
+                <Controller
+                  control={control}
+                  name="contactPhone"
+                  render={({ field }) => (
+                    <PhoneInput
+                      id="client-contact-phone"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      invalid={Boolean(errors.contactPhone)}
+                    />
+                  )}
+                />
+              </FormField>
+              <Controller
+                control={control}
+                name="contactEmail"
+                render={({ field }) => (
+                  <EmailField
+                    id="client-contact-email"
+                    label={t('contactEmail')}
+                    placeholder={t('contactEmailPlaceholder')}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    error={errors.contactEmail?.message}
+                    warnPersonal={warnPersonal}
+                  />
+                )}
+              />
+              <div className="sm:col-span-2">
+                <Controller
+                  control={control}
+                  name="whatsappSame"
+                  render={({ field }) => (
+                    <CheckboxField
+                      id="client-whatsapp-same"
+                      label={t('whatsappSame')}
+                      checked={field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                    />
+                  )}
+                />
+              </div>
+              {whatsappSame ? null : (
+                <FormField htmlFor="client-contact-whatsapp" label={t('whatsappNumber')} hint={t('whatsappNumberHint')} error={errors.contactWhatsapp?.message}>
+                  <Controller
+                    control={control}
+                    name="contactWhatsapp"
+                    render={({ field }) => (
+                      <PhoneInput
+                        id="client-contact-whatsapp"
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        invalid={Boolean(errors.contactWhatsapp)}
+                      />
+                    )}
+                  />
+                </FormField>
+              )}
+            </FormGroup>
+          )}
+
+          <FormGroup title={t('addressGroup')} description={t('addressGroupHint')}>
+            <FormField htmlFor="client-country" label={t('country')}>
+              <Controller
+                control={control}
+                name="countryCode"
+                render={({ field }) => <CountrySelect id="client-country" value={field.value} onChange={field.onChange} />}
+              />
+            </FormField>
+            <FormField htmlFor="client-city" label={t('city')} error={errors.city?.message}>
+              <Input id="client-city" placeholder={t('cityPlaceholder')} {...register('city')} />
+            </FormField>
+            <FormField htmlFor="client-address" label={t('address')} error={errors.address?.message} className="sm:col-span-2">
+              <Input id="client-address" placeholder={t('addressPlaceholder')} {...register('address')} />
+            </FormField>
+          </FormGroup>
+
+          <FormGroup title={t('billingGroup')} description={t('billingGroupHint')}>
+            <Controller
+              control={control}
+              name="invoiceEmail"
+              render={({ field }) => (
+                <EmailField
+                  id="client-invoice-email"
+                  label={t('invoiceEmail')}
+                  hint={t('invoiceEmailHint')}
+                  placeholder={t('invoiceEmailPlaceholder')}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.invoiceEmail?.message}
+                  warnPersonal={warnPersonal}
+                />
+              )}
+            />
+            <FormField htmlFor="client-payment-terms" label={t('paymentTerms')} hint={t('paymentTermsHint')} error={errors.paymentTermsDays?.message}>
+              <Input id="client-payment-terms" inputMode="numeric" placeholder={t('paymentTermsPlaceholder')} {...register('paymentTermsDays')} />
+            </FormField>
+          </FormGroup>
+
+          {/* An error inside the notes must not stay hidden behind a closed toggle. */}
+          <Disclosure
+            label={t('notesSection')}
+            hint={t('notesDescription')}
+            open={notesOpen || Boolean(errors.notes)}
+            onOpenChange={setNotesOpen}
+          >
             <div className="pt-4">
               <FormField htmlFor="client-notes" label={t('notes')} hint={t('notesHint')} error={errors.notes?.message}>
                 <Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} />
               </FormField>
             </div>
-          </details>
+          </Disclosure>
         </div>
       </form>
 
-      {showLeaveConfirm ? <ConfirmActionDialog title={tCommon('unsavedChanges.title')} description={tCommon('unsavedChanges.body')} confirmLabel={tCommon('unsavedChanges.leave')} isPending={false} onConfirm={leave} onDismiss={() => setShowLeaveConfirm(false)} /> : null}
+      {showLeaveConfirm ? (
+        <ConfirmActionDialog
+          title={tCommon('unsavedChanges.title')}
+          description={tCommon('unsavedChanges.body')}
+          confirmLabel={tCommon('unsavedChanges.leave')}
+          isPending={false}
+          onConfirm={leave}
+          onDismiss={() => setShowLeaveConfirm(false)}
+        />
+      ) : null}
     </>
   );
 }
@@ -244,29 +466,31 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
 export function RequiredNote({ label }: { label: string }) {
   return (
     <p className="text-caption text-muted-foreground">
-      <span className="me-0.5 text-danger" aria-hidden="true">*</span>
+      <span className="me-0.5 text-danger" aria-hidden="true">
+        *
+      </span>
       {label}
     </p>
   );
 }
 
-function ClientTypeSelect({ control, t }: { control: Control<ClientFormValues>; t: ClientCreateT }) {
-  return <Controller
-           control={control}
-           name="type"
-           render={({ field }) => (
-             <Select id="client-type" value={field.value} onChange={field.onChange}><option value="COMPANY">{t('clientTypes.COMPANY')}</option><option value="GOVERNMENT">{t('clientTypes.GOVERNMENT')}</option><option value="NGO">{t('clientTypes.NGO')}</option><option value="INDIVIDUAL">{t('clientTypes.INDIVIDUAL')}</option><option value="OTHER">{t('clientTypes.OTHER')}</option></Select>
-           )}
-         />;
-}
-
 /** The possible duplicates behind the name field's warning, each opening in a new tab. */
-function DuplicateLinks({ candidates, t }: { candidates: Awaited<ReturnType<typeof findClientDuplicateCandidates>>; t: ClientCreateT }) {
+function DuplicateLinks({
+  candidates,
+  t,
+}: {
+  candidates: Awaited<ReturnType<typeof findClientDuplicateCandidates>>;
+  t: ClientCreateT;
+}) {
   return (
     <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-caption" aria-label={t('possibleDuplicate')}>
       {candidates.map((candidate) => (
         <li key={candidate.id}>
-          <Link href={`/clients/${candidate.id}`} target="_blank" className="font-medium text-brand-primary underline-offset-2 hover:underline">
+          <Link
+            href={`/clients/${candidate.id}`}
+            target="_blank"
+            className="font-medium text-brand-primary underline-offset-2 hover:underline"
+          >
             {t('openClient')}: {candidate.name}
           </Link>
         </li>

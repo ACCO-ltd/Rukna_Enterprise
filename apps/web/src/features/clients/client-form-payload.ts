@@ -1,116 +1,143 @@
-import type { CreateClientPayload, UpdateClientPayload } from './api/clients-api';
-import type { Client } from './types';
+import { normalizeEmail } from '@/lib/email-hints';
+import { DEFAULT_PHONE_COUNTRY, EMPTY_PHONE, toE164, type PhoneValue } from '@/lib/phone';
 
-/** What the form holds — every field a string, as HTML inputs produce. */
+import type { Client, ClientType, CreateClientPayload, UpdateClientPayload } from './types';
+
+/** What the client form holds — strings as inputs produce them, phones as picker pairs. */
 export interface ClientFormValues {
-  /** Legacy fixture compatibility; no form control or request payload uses this. */
-  code?: string;
   name: string;
-  /** Legacy fixture compatibility; Arabic business names are no longer captured. */
-  type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
+  type: ClientType;
+  registrationNumber: string;
   taxNumber: string;
-  defaultCurrency: string;
-  address?: string;
-  notes: string;
+  // Primary contact — create only. On an existing client contacts are managed on the record.
   contactName: string;
   contactRole: string;
-  contactPhone: string;
+  contactPhone: PhoneValue;
+  /** "Use this number for WhatsApp" — on by default. */
+  whatsappSame: boolean;
+  contactWhatsapp: PhoneValue;
   contactEmail: string;
+  // Address
+  countryCode: string;
+  city: string;
+  address: string;
+  // Billing
+  invoiceEmail: string;
+  /** Digits as typed; converted to an integer on save. */
+  paymentTermsDays: string;
+  notes: string;
 }
 
 export const EMPTY_CLIENT_FORM: ClientFormValues = {
   name: '',
   type: 'COMPANY',
+  registrationNumber: '',
   taxNumber: '',
-  defaultCurrency: '',
-  address: '',
-  notes: '',
   contactName: '',
   contactRole: '',
-  contactPhone: '',
+  contactPhone: { ...EMPTY_PHONE },
+  whatsappSame: true,
+  contactWhatsapp: { ...EMPTY_PHONE },
   contactEmail: '',
+  countryCode: DEFAULT_PHONE_COUNTRY,
+  city: '',
+  address: '',
+  invoiceEmail: '',
+  paymentTermsDays: '',
+  notes: '',
 };
 
+/** Trim and collapse inner whitespace — the server's rule for names. */
+export function normalizeName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function paymentTerms(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const days = Number(trimmed);
+  return Number.isInteger(days) ? days : null;
+}
+
 /**
- * Converts form values into the `POST /clients` body.
- *
- * Empty optional fields are OMITTED rather than sent as `""`. `defaultCurrency` carries
- * `@Length(3, 3)`, so an empty string is not "absent" — it is an invalid three-character
- * code, and the request fails with a 400 the user cannot act on. The same reasoning as
- * projects: a blank tax number and an unknown tax number are different facts, and a
- * nullable column should hold NULL for the second.
+ * Form values → `POST /clients` body. Empty optionals are omitted, not sent as `""`. Phones go
+ * out as E.164; WhatsApp is the main phone unless a separate number was given. A job title is
+ * not captured for an individual, so it is not sent for one even if typed before switching type.
  */
 export function toCreateClientPayload(values: ClientFormValues): CreateClientPayload {
-  const payload: CreateClientPayload = { name: values.name.trim() };
+  const phone = toE164(values.contactPhone) ?? values.contactPhone.number.trim();
+  const whatsapp = values.whatsappSame ? phone : toE164(values.contactWhatsapp);
+  const role = values.type === 'INDIVIDUAL' ? '' : values.contactRole.trim();
+  const email = normalizeEmail(values.contactEmail);
+
+  const payload: CreateClientPayload = {
+    name: normalizeName(values.name),
+    type: values.type,
+    countryCode: values.countryCode || DEFAULT_PHONE_COUNTRY,
+    primaryContact: {
+      // An individual client is their own contact.
+      name: normalizeName(values.type === 'INDIVIDUAL' ? values.name : values.contactName),
+      phone,
+      ...(role ? { role } : {}),
+      ...(whatsapp ? { whatsappPhone: whatsapp } : {}),
+      ...(email ? { email } : {}),
+    },
+  };
 
   const optional = {
-    taxNumber: values.taxNumber ?? '',
-    address: values.address ?? '',
-    notes: values.notes ?? '',
-  } as const;
-
+    registrationNumber: values.registrationNumber.trim(),
+    taxNumber: values.taxNumber.trim(),
+    city: values.city.trim(),
+    address: values.address.trim(),
+    invoiceEmail: normalizeEmail(values.invoiceEmail),
+    notes: values.notes.trim(),
+  };
   for (const [key, value] of Object.entries(optional)) {
-    const trimmed = value.trim();
-    if (trimmed) payload[key as keyof typeof optional] = trimmed;
+    if (value) payload[key as keyof typeof optional] = value;
   }
-  payload.type = values.type ?? 'COMPANY';
-
-  const contactName = values.contactName.trim();
-  if (contactName) {
-    payload.primaryContact = {
-      name: contactName,
-      role: values.contactRole.trim() || undefined,
-      phone: values.contactPhone.trim() || undefined,
-      email: values.contactEmail.trim() || undefined,
-    };
-  }
+  const terms = paymentTerms(values.paymentTermsDays);
+  if (terms !== null) payload.paymentTermsDays = terms;
 
   return payload;
 }
 
 /**
- * Converts form values into a `PATCH /clients/:id` body.
- *
- * An emptied optional field is sent as `null`, not omitted — the same rule as
- * `toUpdateProjectPayload`, and for the same reason: on a PATCH, omitting means "leave
- * unchanged", so omission would make every optional field write-once. A user who typed a
- * tax number by mistake could never clear it again, which is not what "edit" means.
- *
- * `null` is safe to send even though `UpdateClientDto` declares `@IsString()`:
- * `@IsOptional()` short-circuits validation when the value is `null` or `undefined`
- * (class-validator's `IsOptional` constraint is `value !== null && value !== undefined`),
- * so the string check never runs. Prisma then writes NULL, where `undefined` would skip
- * the column. Every one of these columns is nullable.
- *
- * `status` is not part of this form — deactivating a client is a separate, deliberate
- * action, not something to change by accident while fixing a typo in a name.
- *
- * `code` is never sent: it is immutable after creation.
+ * Form values → `PATCH /clients/:id` body. An emptied optional field is sent as `null` — on a
+ * PATCH omission means "leave unchanged", so omitting would make every optional field
+ * write-once. No contacts (managed on the record) and no status (deactivate/reactivate).
  */
 export function toUpdateClientPayload(values: ClientFormValues): UpdateClientPayload {
   const text = (value: string): string | null => value.trim() || null;
-
   return {
-    name: values.name.trim(),
-    type: values.type ?? 'COMPANY',
-    taxNumber: text(values.taxNumber ?? ''),
-    address: text(values.address ?? ''),
-    notes: text(values.notes ?? ''),
+    name: normalizeName(values.name),
+    type: values.type,
+    registrationNumber: text(values.registrationNumber),
+    taxNumber: text(values.taxNumber),
+    countryCode: values.countryCode || DEFAULT_PHONE_COUNTRY,
+    city: text(values.city),
+    address: text(values.address),
+    invoiceEmail: normalizeEmail(values.invoiceEmail) || null,
+    paymentTermsDays: paymentTerms(values.paymentTermsDays),
+    notes: text(values.notes),
   };
 }
 
 /** Fills the form from an existing client, converting nulls to the empty strings inputs need. */
 export function toClientFormValues(client: Client): ClientFormValues {
   return {
+    ...EMPTY_CLIENT_FORM,
     name: client.name,
     type: client.type ?? 'COMPANY',
+    registrationNumber: client.registrationNumber ?? '',
     taxNumber: client.taxNumber ?? '',
-    defaultCurrency: client.defaultCurrency ?? '',
+    countryCode: client.countryCode ?? DEFAULT_PHONE_COUNTRY,
+    city: client.city ?? '',
     address: client.address ?? '',
+    invoiceEmail: client.invoiceEmail ?? '',
+    paymentTermsDays:
+      client.paymentTermsDays === null || client.paymentTermsDays === undefined
+        ? ''
+        : String(client.paymentTermsDays),
     notes: client.notes ?? '',
-    contactName: '',
-    contactRole: '',
-    contactPhone: '',
-    contactEmail: '',
   };
 }

@@ -157,5 +157,19 @@
     "saved": "Changes saved",
     "created": "Created",
     "deleted": "Deleted"
+  },
+  "phone": {
+    "countryCode": "Country code",
+    "searchCountry": "Search country or code",
+    "noCountry": "No country matches",
+    "numberPlaceholder": "61 234 5678",
+    "invalid": "Enter a valid phone number for the selected country",
+    "required": "Enter a phone number"
+  },
+  "email": {
+    "invalid": "Enter a valid email address",
+    "personal": "This looks like a personal address. A company email is better for invoices and records.",
+    "didYouMean": "Did you mean {email}?",
+    "useSuggestion": "Use {email}"
   }
 }
