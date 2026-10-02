@@ -117,6 +117,14 @@ describe('GuideHub — setup in proportion to what is left', () => {
   });
 
   it('tells someone who cannot run setup who does, without the checklist', async () => {
+    // As the API sends it to a user without manage:accounting: every step RESTRICTED, no link.
+    finance.getAccountingGuide.mockResolvedValue(
+      guide([
+        step('chart-of-accounts', 'Chart of accounts', 'RESTRICTED', null),
+        step('fiscal-year', 'Fiscal year & periods', 'RESTRICTED', null),
+        step('bank-accounts', 'Bank accounts', 'RESTRICTED', null),
+      ]),
+    );
     renderWithProviders(<GuideHub />, { permissions: ['view:accounting'] });
 
     expect(await screen.findByText('Accounting isn’t set up yet')).toBeInTheDocument();
@@ -139,6 +147,24 @@ describe('GuideHub — setup in proportion to what is left', () => {
     expect(screen.queryByText('Fiscal year & periods')).not.toBeInTheDocument();
     // The everyday cycles are the page now.
     expect(screen.getByRole('region', { name: /Daily posting/ })).toBeInTheDocument();
+  });
+
+  it('falls back to the checklist when setup left a required step open (no banks entered)', async () => {
+    finance.getAccountingGuide.mockResolvedValue(
+      guide([
+        step('chart-of-accounts', 'Chart of accounts', 'DONE', '/finance/accounting/chart-of-accounts'),
+        step('bank-accounts', 'Bank accounts', 'NEXT', '/finance/accounting/bank-accounts'),
+        step('opening-balances', 'Opening balances', 'TODO', '/finance/accounting/opening-balance'),
+      ]),
+    );
+    accounting.getAccountingSetupStatus.mockResolvedValue(
+      status({ canInstall: false, reason: 'CHART_NOT_EMPTY', accountCount: 78 }),
+    );
+    renderWithProviders(<GuideHub />, { permissions: MANAGE });
+
+    const setup = await screen.findByRole('region', { name: /First-time setup/ });
+    expect(within(setup).getByRole('link', { name: /Bank accounts — Open/ })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Accounting is set up' })).not.toBeInTheDocument();
   });
 
   it('keeps the step-by-step checklist for a manual or partial setup', async () => {
