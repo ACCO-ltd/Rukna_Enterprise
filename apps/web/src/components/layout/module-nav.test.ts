@@ -32,7 +32,13 @@ describe('resolveModule', () => {
     expect(resolveModule('/projects/p-1/boq')).toBeNull();
     expect(resolveModule('/projects')?.domain.moduleKey).toBe('portfolio');
     expect(resolveModule('/projects/new')?.domain.moduleKey).toBe('portfolio');
-    expect(resolveModule('/clients/c-1')?.item?.labelKey).toBe('clients');
+    expect(resolveModule('/clients')?.item?.labelKey).toBe('clients');
+    expect(resolveModule('/clients/new')?.item?.labelKey).toBe('clients');
+    expect(resolveModule('/clients/c-1/edit')?.item?.labelKey).toBe('clients');
+  });
+
+  it('stands aside for the client record, which carries its own breadcrumbs', () => {
+    expect(resolveModule('/clients/c-1')).toBeNull();
   });
 
   it('returns null outside every module and for flat domains', () => {

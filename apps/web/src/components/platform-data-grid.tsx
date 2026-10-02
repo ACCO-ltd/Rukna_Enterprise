@@ -93,6 +93,28 @@ export interface PaginationConfig {
   pageSizeOptions?: number[];
 }
 
+// ─── Server-driven lists ──────────────────────────────────────────────────────
+
+/**
+ * A list whose search, sort and paging run on the server. The grid still draws the search box,
+ * the sortable headers and the page bar, but applies none of them to `data` — `data` is already
+ * the page the server returned — and reports every change to the caller instead.
+ */
+export interface ServerListConfig {
+  search: string;
+  onSearchChange: (next: string) => void;
+  sort: SortState | null;
+  onSortChange: (next: SortState | null) => void;
+  /** 1-based. */
+  page: number;
+  pageSize: number;
+  /** Rows matching the current search and filters, across every page. */
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+  pageSizeOptions?: number[];
+}
+
 // ─── Selection ────────────────────────────────────────────────────────────────
 
 export interface SelectionConfig {
@@ -380,6 +402,12 @@ export interface PlatformDataGridProps<T> {
   pagination?: PaginationConfig;
 
   /**
+   * Search, sort and paging done by the server (see `ServerListConfig`). Mutually exclusive with
+   * `pagination`, which pages client-side.
+   */
+  server?: ServerListConfig;
+
+  /**
    * Row selection. Only provide when the caller has bulk actions to perform —
    * a checkbox column that does nothing is not useful.
    */
@@ -572,6 +600,7 @@ export function PlatformDataGrid<T>({
   filters,
   filterValues,
   onFilterValuesChange,
+  server,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
   const t = useTranslations('common.grid');
@@ -580,9 +609,25 @@ export function PlatformDataGrid<T>({
 
   // ── State ──────────────────────────────────────────────────────────────────
 
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortState | null>(defaultSort ?? null);
-  const [page, setPage] = useState(1);
+  const [localSearch, setLocalSearch] = useState('');
+  const [localSort, setLocalSort] = useState<SortState | null>(defaultSort ?? null);
+  const [localPage, setLocalPage] = useState(1);
+  // A server-driven list owns these; the grid only reports changes.
+  const search = server ? server.search : localSearch;
+  const setSearch = (next: string) => (server ? server.onSearchChange(next) : setLocalSearch(next));
+  const sort = server ? server.sort : localSort;
+  const setSort = (next: SortState | null | ((prev: SortState | null) => SortState | null)) => {
+    const resolved = typeof next === 'function' ? next(sort) : next;
+    if (server) server.onSortChange(resolved);
+    else setLocalSort(resolved);
+  };
+  const page = server ? server.page : localPage;
+  // The caller of a server list resets its own page when search, sort or filters change.
+  const setPage = (next: number) => {
+    if (server) {
+      if (next !== server.page) server.onPageChange(next);
+    } else setLocalPage(next);
+  };
   /**
    * Whether the table is actually scrolled sideways.
    *
@@ -594,8 +639,11 @@ export function PlatformDataGrid<T>({
 
   const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
   const defaultPageSize = paginationConfig?.defaultPageSize ?? 25;
-  const [pageSize, setPageSize] = useState(defaultPageSize);
-  const pageSizeOptions = paginationConfig?.pageSizeOptions ?? DEFAULT_PAGE_SIZES;
+  const [localPageSize, setLocalPageSize] = useState(defaultPageSize);
+  const pageSize = server ? server.pageSize : localPageSize;
+  const setPageSize = (next: number) => (server ? server.onPageSizeChange(next) : setLocalPageSize(next));
+  const pageSizeOptions =
+    server?.pageSizeOptions ?? paginationConfig?.pageSizeOptions ?? DEFAULT_PAGE_SIZES;
 
   // Column visibility state — initialize from defaultVisible (defaults to true)
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
@@ -627,17 +675,32 @@ export function PlatformDataGrid<T>({
   // A redacted column is invisible to search and sort: matching or ordering by a figure the
   // viewer cannot see would reveal it.
   const readableColumns = useMemo(() => visibleColumns.filter((c) => !c.redacted), [visibleColumns]);
-  const searched = useMemo(() => searchRows(data, search, readableColumns), [data, search, readableColumns]);
-  const sorted = useMemo(() => sortRows(searched, sort, readableColumns), [searched, sort, readableColumns]);
+  const isServer = Boolean(server);
+  const searched = useMemo(
+    () => (isServer ? data : searchRows(data, search, readableColumns)),
+    [isServer, data, search, readableColumns],
+  );
+  const sorted = useMemo(
+    () => (isServer ? searched : sortRows(searched, sort, readableColumns)),
+    [isServer, searched, sort, readableColumns],
+  );
 
-  // Pagination
-  const totalPages = paginationConfig ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  // Pagination — a server list pages by its `total`, and `data` is already the page.
+  const rowCount = server ? server.total : sorted.length;
+  const paged = Boolean(paginationConfig || server);
+  const totalPages = paged ? Math.max(1, Math.ceil(rowCount / pageSize)) : 1;
   const safePage = Math.min(page, totalPages);
-  const visible = paginationConfig
-    ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
-    : sorted;
-  const from = paginationConfig ? (safePage - 1) * pageSize + 1 : 1;
-  const to = paginationConfig ? Math.min(safePage * pageSize, sorted.length) : sorted.length;
+  const visible = server
+    ? sorted
+    : paginationConfig
+      ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
+      : sorted;
+  const from = paged ? (safePage - 1) * pageSize + 1 : 1;
+  const to = server
+    ? from + visible.length - 1
+    : paginationConfig
+      ? Math.min(safePage * pageSize, sorted.length)
+      : sorted.length;
 
   const hasSearch = search.trim() !== '';
   const hasActions = Boolean(rowActions);
@@ -696,8 +759,8 @@ export function PlatformDataGrid<T>({
   };
 
   const countText = resultLabel
-    ? resultLabel(sorted.length)
-    : t('results', { count: sorted.length });
+    ? resultLabel(rowCount)
+    : t('results', { count: rowCount });
 
   /**
    * The column that carries the row's link.
@@ -1214,14 +1277,14 @@ export function PlatformDataGrid<T>({
             Paginated lists get the full control bar; an unpaginated one still says how much
             of the data it is showing, because "1 result" at the top of a list you have
             scrolled away from stops being visible exactly when you want it. */}
-        {paginationConfig && sorted.length > 0 ? (
+        {paged && rowCount > 0 ? (
           <div className="border-t border-border px-4 py-3">
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
               from={from}
               to={to}
-              count={sorted.length}
+              count={rowCount}
               pageSize={pageSize}
               pageSizeOptions={pageSizeOptions}
               onPageChange={setPage}
@@ -1231,7 +1294,7 @@ export function PlatformDataGrid<T>({
         ) : visible.length > 0 ? (
           <div className="border-t border-border px-4 py-3">
             <p className="text-body-sm text-muted-foreground">
-              {t('showingOf', { shown: visible.length, total: sorted.length })}
+              {t('showingOf', { shown: visible.length, total: rowCount })}
             </p>
           </div>
         ) : null}

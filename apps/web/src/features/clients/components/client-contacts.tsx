@@ -1,28 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import {
-  Alert,
-  Badge,
   Button,
-  CheckboxField,
-  FormDialog,
-  FormDialogBody,
-  FormDialogClose,
-  FormDialogFooter,
-  FormField,
-  Input,
+  ContactList,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  EmptyState,
+  OverflowGlyph,
+  RecordPanel,
+  type ContactChannel,
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { formatPhone, telHref, whatsappHref } from '@/lib/phone';
 
-import type { AddContactPayload } from '../api/clients-api';
-import { useAddContact, useRemoveContact } from '../hooks/use-client';
+import { clientErrorCode } from '../client-errors';
+import { useMakeContactPrimary, useRemoveContact } from '../hooks/use-client';
 import type { ClientContact } from '../types';
+import { ContactDialog } from './contact-dialog';
 
 interface ClientContactsProps {
   clientId: string;
@@ -30,234 +30,143 @@ interface ClientContactsProps {
   canManage?: boolean;
 }
 
-export function ClientContacts({ clientId, contacts, canManage = true }: ClientContactsProps) {
-  const t = useTranslations('platform.clients.contacts');
-  const [isAdding, setIsAdding] = useState(false);
-  const [pendingRemoval, setPendingRemoval] = useState<ClientContact | null>(null);
+type Editing = { mode: 'add' } | { mode: 'edit'; contact: ClientContact } | null;
 
+/** Primary first, then oldest first — the order people were added in. */
+function ordered(contacts: ClientContact[]): ClientContact[] {
+  return [...contacts].sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
+  });
+}
+
+/**
+ * The Contacts panel on the client record: one row per person with phone, email and WhatsApp
+ * as links, a kebab per row (Edit · Make primary · Remove…), and "Add contact" in the header.
+ * The primary contact has no Remove — another contact must be made primary first, which is
+ * exactly what the API enforces (`CONTACT_IS_PRIMARY`).
+ */
+export function ClientContacts({ clientId, contacts, canManage = false }: ClientContactsProps) {
+  const t = useTranslations('platform.clients.contacts');
+  const tErrors = useTranslations('platform.clients.errors');
+  const [editing, setEditing] = useState<Editing>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<ClientContact | null>(null);
   const remove = useRemoveContact(clientId);
+  const makePrimary = useMakeContactPrimary(clientId);
+  const sorted = ordered(contacts);
+  const byId = new Map(sorted.map((contact) => [contact.id, contact]));
+
+  const channels = (contact: ClientContact): ContactChannel[] => {
+    const list: ContactChannel[] = [];
+    if (contact.phone) list.push({ key: 'phone', label: formatPhone(contact.phone) ?? contact.phone, href: telHref(contact.phone) });
+    if (contact.email) list.push({ key: 'email', label: contact.email, href: `mailto:${contact.email}` });
+    if (contact.whatsappPhone) {
+      list.push({
+        key: 'whatsapp',
+        label: t('whatsappLink'),
+        href: whatsappHref(contact.whatsappPhone),
+        external: true,
+        'aria-label': t('whatsappLabel', { name: contact.name }),
+      });
+    }
+    return list;
+  };
+
+  const removeError = remove.error
+    ? clientErrorCode(remove.error) === 'CONTACT_IS_PRIMARY'
+      ? tErrors('CONTACT_IS_PRIMARY')
+      : t('removeFailed')
+    : undefined;
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
-        {canManage ? <Button
-          size="sm"
-          onClick={() => {
-            setIsAdding(true);
-          }}
-        >
-          {t('add')}
-        </Button> : null}
-      </div>
+    <RecordPanel
+      title={t('headingWithCount', { count: contacts.length })}
+      padded={false}
+      action={
+        canManage ? (
+          <Button variant="outline" size="sm" onClick={() => setEditing({ mode: 'add' })}>
+            {t('add')}
+          </Button>
+        ) : undefined
+      }
+    >
+      <ContactList
+        label={t('heading')}
+        primaryLabel={t('primary')}
+        contacts={sorted.map((contact) => ({
+          id: contact.id,
+          name: contact.name,
+          role: contact.role,
+          primary: contact.isPrimary,
+          channels: channels(contact),
+        }))}
+        empty={<EmptyState variant="inline" title={t('none')} description={t('noneHint')} />}
+        actions={
+          canManage
+            ? (item) => {
+                const contact = byId.get(item.id)!;
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" aria-label={t('rowMenu', { name: contact.name })}>
+                        <OverflowGlyph />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setEditing({ mode: 'edit', contact })}>{t('edit')}</DropdownMenuItem>
+                      {contact.isPrimary ? null : (
+                        <>
+                          <DropdownMenuItem onSelect={() => makePrimary.mutate(contact.id)} disabled={makePrimary.isPending}>
+                            {t('makePrimary')}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem destructive onSelect={() => setPendingRemoval(contact)}>
+                            {t('removeEllipsis')}
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+            : undefined
+        }
+      />
 
-      {contacts.length === 0 ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-10 text-center">
-          <p className="text-sm font-medium text-foreground">{t('none')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('noneHint')}</p>
-        </div>
-      ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
-          {contacts.map((contact) => (
-            <li
-              key={contact.id}
-              className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{contact.name}</span>
-                  {contact.isPrimary ? <Badge tone="neutral">{t('primary')}</Badge> : null}
-                </div>
-                {contact.role ? (
-                  <p className="text-xs text-muted-foreground">{contact.role}</p>
-                ) : null}
-                <div className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground sm:flex-row sm:gap-4">
-                  {/* mailto/tel so a site manager can act on the contact from a phone
-                      rather than copying digits by hand. `dir="ltr"` keeps a phone number
-                      or address readable when the page is Arabic. */}
-                  {contact.email ? (
-                    <a href={`mailto:${contact.email}`} className="truncate hover:underline" dir="ltr">
-                      {contact.email}
-                    </a>
-                  ) : null}
-                  {contact.phone ? (
-                    <a href={`tel:${contact.phone}`} className="hover:underline" dir="ltr">
-                      {contact.phone}
-                    </a>
-                  ) : null}
-                </div>
-              </div>
+      {makePrimary.isError ? (
+        <p role="alert" className="border-t border-border px-4 py-2 text-caption text-danger">
+          {t('makePrimaryFailed')}
+        </p>
+      ) : null}
 
-              {canManage ? <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setPendingRemoval(contact);
-                }}
-              >
-                {t('remove')}
-              </Button> : null}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {isAdding ? (
-        <AddContactDialog
+      {editing ? (
+        <ContactDialog
           clientId={clientId}
-          hasPrimary={contacts.some((c) => c.isPrimary)}
-          onClose={() => {
-            setIsAdding(false);
-          }}
+          contact={editing.mode === 'edit' ? editing.contact : undefined}
+          isFirst={contacts.length === 0}
+          onClose={() => setEditing(null)}
         />
       ) : null}
 
       {pendingRemoval ? (
         <ConfirmActionDialog
-          title={t('removeTitle')}
-          description={`${pendingRemoval.name} — ${t('removeBody')}`}
+          title={t('removeTitle', { name: pendingRemoval.name })}
+          description={t('removeBody')}
           confirmLabel={t('remove')}
+          destructive
           isPending={remove.isPending}
-          errorMessage={remove.isError ? t('removeFailed') : undefined}
-          onConfirm={() => {
+          errorMessage={removeError}
+          onConfirm={() =>
             remove.mutate(pendingRemoval.id, {
-              onSuccess: () => {
-                setPendingRemoval(null);
-              },
-            });
-          }}
+              onSuccess: () => setPendingRemoval(null),
+            })
+          }
           onDismiss={() => {
             remove.reset();
             setPendingRemoval(null);
           }}
         />
       ) : null}
-    </section>
-  );
-}
-
-interface AddContactDialogProps {
-  clientId: string;
-  /** Drives the demotion warning — there is nothing to demote when no primary exists. */
-  hasPrimary: boolean;
-  onClose: () => void;
-}
-
-interface ContactFormValues {
-  name: string;
-  role: string;
-  email: string;
-  phone: string;
-  isPrimary: boolean;
-}
-
-function AddContactDialog({ clientId, hasPrimary, onClose }: AddContactDialogProps) {
-  const t = useTranslations('platform.clients.contacts');
-  const tCommon = useTranslations('common');
-  const add = useAddContact(clientId);
-
-  // `email` mirrors the DTO's `@IsEmail()`. The other fields are unconstrained
-  // server-side, so nothing is invented here that the API would not enforce.
-  const schema = z.object({
-    name: z.string().trim().min(1, t('nameRequired')),
-    role: z.string(),
-    email: z.string().refine((v) => v.trim() === '' || z.email().safeParse(v.trim()).success, {
-      message: t('emailInvalid'),
-    }),
-    phone: z.string(),
-    isPrimary: z.boolean(),
-  });
-
-  const {
-    control,
-    register,
-    handleSubmit,
-    formState: { errors, isDirty },
-  } = useForm<ContactFormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { name: '', role: '', email: '', phone: '', isPrimary: false },
-  });
-
-  // `useWatch` rather than the `watch()` returned by useForm: the latter is a function
-  // the React Compiler cannot memoize, so it opts the whole component out of compilation.
-  const isPrimary = useWatch({ control, name: 'isPrimary' });
-  const willDemote = isPrimary && hasPrimary;
-
-  const onSubmit = (values: ContactFormValues) => {
-    // Empty optional fields are omitted, not sent as "" — `@IsEmail()` rejects an empty
-    // string, and a blank phone should be NULL rather than a stored empty value.
-    const payload: AddContactPayload = { name: values.name.trim() };
-    const optional = { role: values.role, email: values.email, phone: values.phone } as const;
-    for (const [key, value] of Object.entries(optional)) {
-      const trimmed = value.trim();
-      if (trimmed) payload[key as keyof typeof optional] = trimmed;
-    }
-    if (values.isPrimary) payload.isPrimary = true;
-
-    add.mutate(payload, { onSuccess: onClose });
-  };
-
-  return (
-    <FormDialog
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-      title={t('add')}
-      size="md"
-      dirty={isDirty}
-      busy={add.isPending}
-      closeLabel={tCommon('close')}
-      onSubmit={(e) => {
-        void handleSubmit(onSubmit)(e);
-      }}
-    >
-      <FormDialogBody className="space-y-4">
-        {add.isError ? <Alert variant="error" messages={[t('addFailed')]} /> : null}
-
-        <FormField htmlFor="contact-name" label={t('name')} error={errors.name?.message}>
-          <Input id="contact-name" aria-invalid={Boolean(errors.name)} {...register('name')} />
-        </FormField>
-
-        <FormField htmlFor="contact-role" label={t('role')}>
-          <Input id="contact-role" {...register('role')} />
-        </FormField>
-
-        <FormField htmlFor="contact-email" label={t('email')} error={errors.email?.message}>
-          <Input
-            id="contact-email"
-            type="email"
-            dir="ltr"
-            aria-invalid={Boolean(errors.email)}
-            {...register('email')}
-          />
-        </FormField>
-
-        <FormField htmlFor="contact-phone" label={t('phone')}>
-          <Input id="contact-phone" type="tel" dir="ltr" {...register('phone')} />
-        </FormField>
-
-        {/* The API demotes the existing primary in the same request. That is a change to a
-            record the user did not name, so it is stated before they submit rather than
-            discovered afterwards. */}
-        <CheckboxField
-          id="contact-is-primary"
-          label={t('isPrimary')}
-          description={willDemote ? <span className="text-warning">{t('isPrimaryHint')}</span> : undefined}
-          {...register('isPrimary')}
-        />
-      </FormDialogBody>
-
-      <FormDialogFooter>
-        <FormDialogClose asChild>
-          <Button type="button" variant="outline" disabled={add.isPending}>
-            {tCommon('cancel')}
-          </Button>
-        </FormDialogClose>
-        <Button type="submit" loading={add.isPending} loadingText={tCommon('loading')}>
-          {t('save')}
-        </Button>
-      </FormDialogFooter>
-    </FormDialog>
+    </RecordPanel>
   );
 }

@@ -106,8 +106,9 @@ export const NAV_DOMAINS: NavDomain[] = [
     moduleKey: 'portfolio',
     iconKey: 'folder',
     items: [
-      { href: '/clients', labelKey: 'clients', iconKey: 'building' },
+      // Projects first: the module opens on Projects (/projects), Clients beside it.
       { href: '/projects', labelKey: 'projects', iconKey: 'briefcase' },
+      { href: '/clients', labelKey: 'clients', iconKey: 'building' },
     ],
   },
   {

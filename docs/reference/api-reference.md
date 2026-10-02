@@ -316,57 +316,80 @@ approval panel via `approvalInstanceId`, and re-call the command once the instan
 
 ### 6.6 Clients
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/clients` | List clients (`?status=ACTIVE`) |
-| `POST` | `/clients` | Create client |
-| `GET` | `/clients/:id` | Get client with contacts |
-| `PATCH` | `/clients/:id` | Update client |
-| `POST` | `/clients/:id/contacts` | Add contact |
-| `DELETE` | `/clients/:id/contacts/:contactId` | Remove contact |
+Clients redesign (2026-10-02). Full contract: [`docs/design/clients-redesign-contract.md`](../design/clients-redesign-contract.md);
+wire types in `@erp/types` (`packages/types/src/clients.ts`). Money follows one gate,
+`view:financial-position`: without it every money field is `null` (never `"0.00"`). Every write is
+audited in its own transaction (`audit_logs.resource = 'client'`, `sourceCommand = client.*`).
+
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `GET` | `/clients` | `view:client` | All clients (pickers), name order |
+| `GET` | `/clients/summary` | `view:client` | List: `search` (name, code, contact name), `status`, `type`, `balance=OWES\|OVERDUE`, `sort=name\|-name\|outstanding\|-outstanding`, `page`, `pageSize` (≤100). Returns `{ items, total, page, pageSize, moneyVisible }` |
+| `GET` | `/clients/duplicate-candidates?name=` | `view:client` | Up to 5 similar names |
+| `POST` | `/clients` | `create:client` | Create with a **required** `primaryContact` (phone required). Returns the record |
+| `GET` | `/clients/:id` | `view:client` | Record: master data, contacts (primary first), `allowedCommands`, `deactivationBlockedBy` |
+| `GET` | `/clients/:id/overview` | `view:client` | Metrics, projects, unpaid invoices (money gated) |
+| `GET` | `/clients/:id/activity?limit=10` | `view:client` | Audit entries; invoices/receipts only with money permission |
+| `PATCH` | `/clients/:id` | `manage:client` | Master data only (`null` clears). `status` is refused — use deactivate/reactivate |
+| `POST` | `/clients/:id/deactivate` | `manage:client` | `{ reason }` (3–500). `409 CLIENT_HAS_ACTIVE_PROJECTS` (any project not CLOSED/CANCELLED) · `409 CLIENT_HAS_OPEN_BALANCE` (Σ outstanding of POSTED invoices > 0) · `409 CLIENT_ALREADY_INACTIVE` |
+| `POST` | `/clients/:id/reactivate` | `manage:client` | `409 CLIENT_ALREADY_ACTIVE` when already active |
+| `POST` | `/clients/:id/contacts` | `manage:client` | Add contact; the first is always primary; `isPrimary: true` demotes the current one. Returns the contact |
+| `PATCH` | `/clients/:id/contacts/:contactId` | `manage:client` | Edit contact (`role`/`whatsappPhone`/`email` clear with `null`; phone cannot be cleared). Returns the contact |
+| `POST` | `/clients/:id/contacts/:contactId/make-primary` | `manage:client` | Demote + promote in one transaction. Returns the contact |
+| `DELETE` | `/clients/:id/contacts/:contactId` | `manage:client` | `204`; `409 CONTACT_IS_PRIMARY` for the primary |
 
 **Create client — request body:**
 ```json
 {
-  "code": "CLIENT-001",
   "name": "Baraka Real Estate LLC",
-  "nameAr": "شركة البركة للعقارات",
+  "type": "COMPANY",
   "taxNumber": "SO-123456",
-  "defaultCurrency": "USD",
-  "status": "ACTIVE"
+  "registrationNumber": "BL-2024-0091",
+  "paymentTermsDays": 30,
+  "countryCode": "SO",
+  "city": "Mogadishu",
+  "address": "Maka Al Mukarama Rd, Building 12",
+  "invoiceEmail": "accounts@baraka.so",
+  "primaryContact": {
+    "name": "Mohammed Hassan",
+    "role": "Finance Director",
+    "phone": { "country": "SO", "number": "61 234 5678" },
+    "whatsappPhone": "+252612345678",
+    "email": "m.hassan@baraka.so"
+  }
 }
 ```
 
-> `code` is unique per org, max 30 chars, **immutable after creation**.
+> `code` (`CLI-000001`) is assigned by the server, unique per org, immutable.
+> Input rules: names trimmed/whitespace-collapsed (1–255); phones `{ country, number }` or a `+…`
+> string, validated with libphonenumber-js and stored **E.164**; emails trimmed + lower-cased.
+> Errors are `400` with `error.code` = `NAME_INVALID` / `PHONE_INVALID` / `EMAIL_INVALID` /
+> `COUNTRY_INVALID` / `PAYMENT_TERMS_INVALID` / `FIELD_INVALID` / `REASON_INVALID` / `NO_CHANGES`
+> and `error.details.field` naming the field (e.g. `primaryContact.phone`).
 
 **Get client response:**
 ```json
 {
-  "id": "cld...", "code": "CLIENT-001",
-  "name": "Baraka Real Estate LLC", "nameAr": "شركة البركة للعقارات",
-  "taxNumber": "SO-123456", "defaultCurrency": "USD", "status": "ACTIVE",
+  "id": "cld...", "organizationId": "org...", "code": "CLI-000001",
+  "name": "Baraka Real Estate LLC", "type": "COMPANY", "status": "ACTIVE",
+  "taxNumber": "SO-123456", "registrationNumber": "BL-2024-0091", "paymentTermsDays": 30,
+  "defaultCurrency": "USD", "countryCode": "SO", "city": "Mogadishu",
+  "address": "Maka Al Mukarama Rd, Building 12", "invoiceEmail": "accounts@baraka.so", "notes": null,
+  "createdAt": "2026-10-02T09:00:00.000Z", "updatedAt": "2026-10-02T09:00:00.000Z",
   "contacts": [
     {
-      "id": "cld...", "name": "Mohammed Hassan",
-      "role": "Finance Director", "email": "m.hassan@baraka.so",
-      "phone": "+252612345678", "isPrimary": true
+      "id": "cld...", "clientId": "cld...", "name": "Mohammed Hassan", "role": "Finance Director",
+      "phone": "+252612345678", "whatsappPhone": "+252612345678", "email": "m.hassan@baraka.so",
+      "isPrimary": true, "createdAt": "2026-10-02T09:00:00.000Z"
     }
-  ]
+  ],
+  "allowedCommands": ["DEACTIVATE"],
+  "deactivationBlockedBy": null
 }
 ```
 
-**Add contact — request body:**
-```json
-{
-  "name": "Mohammed Hassan",
-  "role": "Finance Director",
-  "email": "m.hassan@baraka.so",
-  "phone": "+252612345678",
-  "isPrimary": true
-}
-```
-
-> Setting `isPrimary: true` clears the flag on any existing primary contact for this client.
+> **One primary contact per client** is a database invariant (partial unique index
+> `client_contacts_one_primary_per_client`, migration `20261002120000_client_contact_details`).
 
 ---
 

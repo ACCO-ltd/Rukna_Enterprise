@@ -22,7 +22,14 @@ import { ClientService } from '../application/client.service.js';
 import { CreateClientDto } from './dto/create-client.dto.js';
 import { UpdateClientDto } from './dto/update-client.dto.js';
 import { AddContactDto } from './dto/add-contact.dto.js';
+import { UpdateContactDto } from './dto/update-contact.dto.js';
+import { DeactivateClientDto } from './dto/deactivate-client.dto.js';
+import { ClientActivityQueryDto, ClientListQueryDto } from './dto/client-list-query.dto.js';
 
+/**
+ * Clients (platform). Contract: docs/design/clients-redesign-contract.md. Money fields follow one
+ * gate, `view:financial-position` — without it they are `null`, never `'0.00'`.
+ */
 @ApiTags('Clients')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
@@ -32,70 +39,123 @@ export class ClientsController {
   constructor(private readonly clientService: ClientService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all clients for the authenticated organization' })
+  @ApiOperation({ summary: 'List all clients for the authenticated organization (pickers)' })
   findAll(@CurrentUser() identity: RequestIdentity) {
     return this.clientService.findAll(identity);
   }
 
   @Get('summary')
-  @ApiOperation({ summary: 'List client workspace summaries' })
-  findSummary(@CurrentUser() identity: RequestIdentity) {
-    return this.clientService.findListSummary(identity);
+  @ApiOperation({ summary: 'Client list: search, filters, sort, pagination; money gated' })
+  findSummary(@CurrentUser() identity: RequestIdentity, @Query() query: ClientListQueryDto) {
+    return this.clientService.findList(identity, query);
   }
 
   @Get('duplicate-candidates')
   @ApiOperation({ summary: 'Find possible duplicate clients by name' })
-  findDuplicateCandidates(
-    @CurrentUser() identity: RequestIdentity,
-    @Query('name') name = '',
-  ) {
+  findDuplicateCandidates(@CurrentUser() identity: RequestIdentity, @Query('name') name = '') {
     return this.clientService.findDuplicateCandidates(identity, name);
   }
 
   @Post()
   @RequirePermissions(PERMISSIONS.clientsCreate)
-  @ApiOperation({ summary: 'Create a new client' })
-  @ApiResponse({ status: 201, description: 'Client created' })
-  @ApiResponse({ status: 409, description: 'Client code already exists' })
+  @ApiOperation({ summary: 'Create a client with its primary contact' })
+  @ApiResponse({ status: 201, description: 'Client created (same shape as GET /clients/:id)' })
+  @ApiResponse({ status: 400, description: 'PHONE_INVALID / EMAIL_INVALID / NAME_INVALID …' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateClientDto) {
     return this.clientService.create(identity, dto);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get client details including contacts' })
+  @ApiOperation({ summary: 'Client record incl. contacts, allowedCommands, deactivationBlockedBy' })
   @ApiParam({ name: 'id', description: 'Client ID' })
   findOne(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.clientService.findOne(identity, id);
   }
 
-  @Patch(':id')
-  @RequirePermissions(PERMISSIONS.clientsManage)
-  @ApiOperation({ summary: 'Update client details' })
+  @Get(':id/overview')
+  @ApiOperation({ summary: 'Client record overview: metrics, projects, unpaid invoices (money gated)' })
   @ApiParam({ name: 'id', description: 'Client ID' })
-  update(
+  findOverview(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.clientService.findOverview(identity, id);
+  }
+
+  @Get(':id/activity')
+  @ApiOperation({ summary: 'Client activity: audit entries, plus invoices/receipts with money permission' })
+  @ApiParam({ name: 'id', description: 'Client ID' })
+  findActivity(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
-    @Body() dto: UpdateClientDto,
+    @Query() query: ClientActivityQueryDto,
   ) {
+    return this.clientService.findActivity(identity, id, query.limit ?? 10);
+  }
+
+  @Patch(':id')
+  @RequirePermissions(PERMISSIONS.clientsManage)
+  @ApiOperation({ summary: 'Update client master data (not contacts, not status)' })
+  @ApiParam({ name: 'id', description: 'Client ID' })
+  update(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: UpdateClientDto) {
     return this.clientService.update(identity, id, dto);
+  }
+
+  @Post(':id/deactivate')
+  @RequirePermissions(PERMISSIONS.clientsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Deactivate a client (409 CLIENT_HAS_ACTIVE_PROJECTS / CLIENT_HAS_OPEN_BALANCE)' })
+  @ApiParam({ name: 'id', description: 'Client ID' })
+  deactivate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: DeactivateClientDto) {
+    return this.clientService.deactivate(identity, id, dto.reason);
+  }
+
+  @Post(':id/reactivate')
+  @RequirePermissions(PERMISSIONS.clientsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reactivate an inactive client' })
+  @ApiParam({ name: 'id', description: 'Client ID' })
+  reactivate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.clientService.reactivate(identity, id);
   }
 
   @Post(':id/contacts')
   @RequirePermissions(PERMISSIONS.clientsManage)
-  @ApiOperation({ summary: 'Add a contact to a client' })
+  @ApiOperation({ summary: 'Add a contact (the first is always primary; isPrimary demotes the current one)' })
   @ApiParam({ name: 'id', description: 'Client ID' })
-  addContact(
+  addContact(@CurrentUser() identity: RequestIdentity, @Param('id') clientId: string, @Body() dto: AddContactDto) {
+    return this.clientService.addContact(identity, clientId, dto);
+  }
+
+  @Patch(':id/contacts/:contactId')
+  @RequirePermissions(PERMISSIONS.clientsManage)
+  @ApiOperation({ summary: 'Edit a contact' })
+  @ApiParam({ name: 'id', description: 'Client ID' })
+  @ApiParam({ name: 'contactId', description: 'Contact ID' })
+  updateContact(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') clientId: string,
-    @Body() dto: AddContactDto,
+    @Param('contactId') contactId: string,
+    @Body() dto: UpdateContactDto,
   ) {
-    return this.clientService.addContact(identity, clientId, dto);
+    return this.clientService.updateContact(identity, clientId, contactId, dto);
+  }
+
+  @Post(':id/contacts/:contactId/make-primary')
+  @RequirePermissions(PERMISSIONS.clientsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Make this contact the primary (demotes the current one, one transaction)' })
+  @ApiParam({ name: 'id', description: 'Client ID' })
+  @ApiParam({ name: 'contactId', description: 'Contact ID' })
+  makePrimary(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') clientId: string,
+    @Param('contactId') contactId: string,
+  ) {
+    return this.clientService.makePrimary(identity, clientId, contactId);
   }
 
   @Delete(':id/contacts/:contactId')
   @RequirePermissions(PERMISSIONS.clientsManage)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a contact from a client' })
+  @ApiOperation({ summary: 'Remove a contact (409 CONTACT_IS_PRIMARY for the primary)' })
   @ApiParam({ name: 'id', description: 'Client ID' })
   @ApiParam({ name: 'contactId', description: 'Contact ID' })
   removeContact(
