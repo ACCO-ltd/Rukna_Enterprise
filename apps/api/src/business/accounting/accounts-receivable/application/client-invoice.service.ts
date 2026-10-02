@@ -8,7 +8,10 @@ import {
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
-type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+type TenantPrisma = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
 import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
 import type { RequestIdentity, ClientInvoiceSourceKind } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -123,13 +126,21 @@ function resolveInvoiceSource(inv: {
   sourceIpcId: string | null;
   sourceIpc: {
     id: string;
-    application: { id: string; applicationRef: string | null; applicationNumber: number | null } | null;
+    application: {
+      id: string;
+      applicationRef: string | null;
+      applicationNumber: number | null;
+    } | null;
   } | null;
   sourceBoqNodeId: string | null;
   sourceBoqNode: { id: string; code: string; description: string } | null;
 }): { kind: ClientInvoiceSourceKind; label: string | null; id: string | null } {
   if (inv.sourceInstallmentId) {
-    return { kind: 'INSTALLMENT', label: inv.sourceInstallment?.name ?? null, id: inv.sourceInstallmentId };
+    return {
+      kind: 'INSTALLMENT',
+      label: inv.sourceInstallment?.name ?? null,
+      id: inv.sourceInstallmentId,
+    };
   }
   if (inv.sourceIpcId) {
     const application = inv.sourceIpc?.application ?? null;
@@ -154,9 +165,9 @@ function resolveInvoiceSource(inv: {
  * An invoice row as the API returns it: the resolved `source`, never the raw relations that
  * `resolveInvoiceSource` reads — those are internal to it.
  */
-function toInvoiceWithSource<
-  T extends Parameters<typeof resolveInvoiceSource>[0],
->(invoice: T): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+function toInvoiceWithSource<T extends Parameters<typeof resolveInvoiceSource>[0]>(
+  invoice: T,
+): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
   source: ReturnType<typeof resolveInvoiceSource>;
 } {
   const rest: Record<string, unknown> = { ...invoice, source: resolveInvoiceSource(invoice) };
@@ -207,7 +218,12 @@ export class ClientInvoiceService {
     invoiceDate: string,
     subtotal: Decimal,
   ) {
-    const tax = await this.taxCodes.resolveForClientInvoice(prisma, identity, taxCodeId, invoiceDate);
+    const tax = await this.taxCodes.resolveForClientInvoice(
+      prisma,
+      identity,
+      taxCodeId,
+      invoiceDate,
+    );
     const vatAmount = clientInvoiceTax(subtotal, tax.ratePercent);
     return {
       taxCodeId: tax.taxCodeId,
@@ -351,7 +367,10 @@ export class ClientInvoiceService {
     }
     // CONST-COM-011 (strict, 2026-09-28): a work-completion stage bills only on a linked programme
     // milestone verified on site. The one shared rule — see installment-billing-eligibility.ts.
-    const blocker = installmentBillingBlocker({ ...installment, contractStatus: installment.contract.status });
+    const blocker = installmentBillingBlocker({
+      ...installment,
+      contractStatus: installment.contract.status,
+    });
     if (blocker) {
       throw new BadRequestException(installmentBillingBlockerMessage(blocker, installment.name));
     }
@@ -459,9 +478,7 @@ export class ClientInvoiceService {
     }
     // A separate charge is a priced leaf; an unpriced one has nothing to bill.
     if (node.totalAmount === null) {
-      throw new BadRequestException(
-        `Separate-charge line ${node.code} has no amount to bill.`,
-      );
+      throw new BadRequestException(`Separate-charge line ${node.code} has no amount to bill.`);
     }
 
     const subtotal = new Decimal(node.totalAmount.toString()).toDecimalPlaces(2);
@@ -599,7 +616,11 @@ export class ClientInvoiceService {
     }
   }
 
-  async approve(identity: RequestIdentity, invoiceId: string, externalTx?: Prisma.TransactionClient) {
+  async approve(
+    identity: RequestIdentity,
+    invoiceId: string,
+    externalTx?: Prisma.TransactionClient,
+  ) {
     const prisma = (externalTx ?? this.tenancyService.getClient()) as TenantPrisma;
     const { activeOrganizationId: orgId, userId } = identity;
 
@@ -616,7 +637,11 @@ export class ClientInvoiceService {
    * Post the ClientInvoice to the GL.
    * EVT-AR-001: Dr AR / Cr Revenue / Cr VAT Output
    */
-  async post(identity: RequestIdentity, dto: PostInvoiceDto, externalTx?: Prisma.TransactionClient) {
+  async post(
+    identity: RequestIdentity,
+    dto: PostInvoiceDto,
+    externalTx?: Prisma.TransactionClient,
+  ) {
     const outerPrisma = this.tenancyService.getClient();
     const readPrisma = (externalTx ?? outerPrisma) as TenantPrisma;
     const { activeOrganizationId: orgId, userId } = identity;
@@ -633,9 +658,16 @@ export class ClientInvoiceService {
     // whose milestone was unlinked since) must not reach the ledger without site-verified evidence.
     // Covers the invoice screen's Post and the billing package, which posts through here.
     if (invoice.sourceInstallmentId) {
-      const stage = await this.repo.findInstallmentForBilling(readPrisma, orgId, invoice.sourceInstallmentId);
+      const stage = await this.repo.findInstallmentForBilling(
+        readPrisma,
+        orgId,
+        invoice.sourceInstallmentId,
+      );
       const stageBlocker = stage
-        ? installmentBillingBlocker({ ...stage, contractStatus: stage.contract.status }, { at: 'post' })
+        ? installmentBillingBlocker(
+            { ...stage, contractStatus: stage.contract.status },
+            { at: 'post' },
+          )
         : null;
       if (stage && stageBlocker) {
         throw new BadRequestException(installmentBillingBlockerMessage(stageBlocker, stage.name));
@@ -645,22 +677,29 @@ export class ClientInvoiceService {
     // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
     // DTO still works as an explicit override (backward-compatible) but is no longer required.
     const arAccount = await this.resolver.resolveByCodeOrRole(
-      outerPrisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
+      outerPrisma,
+      orgId,
+      dto.arAccountCode,
+      'ACCOUNTS_RECEIVABLE',
     );
     const revAccount = await this.resolver.resolveByCodeOrRole(
-      outerPrisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE',
+      outerPrisma,
+      orgId,
+      dto.revenueAccountCode,
+      'PROJECT_REVENUE',
     );
 
     let vatAccount: ResolvedAccount | null = null;
     if (new Decimal(invoice.vatAmount.toString()).gt(0)) {
       vatAccount = await this.resolver.resolveByCodeOrRole(
-        outerPrisma, orgId, dto.vatAccountCode, 'VAT_OUTPUT_PAYABLE',
+        outerPrisma,
+        orgId,
+        dto.vatAccountCode,
+        'VAT_OUTPUT_PAYABLE',
       );
     }
 
-    await this.sequenceRepo.ensureSequence(
-      outerPrisma as never, orgId, 'CLIENT_INVOICE', 'INV-',
-    );
+    await this.sequenceRepo.ensureSequence(outerPrisma as never, orgId, 'CLIENT_INVOICE', 'INV-');
 
     const runPost = async (activeTx: Prisma.TransactionClient) => {
       const subtotal = new Decimal(invoice.subtotal.toString());
@@ -712,11 +751,15 @@ export class ClientInvoiceService {
         activeTx as never,
       );
 
-      const invNum = await this.sequenceRepo.claimNext(
-        activeTx as never, orgId, 'CLIENT_INVOICE',
-      );
+      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE');
 
-      await this.repo.markPosted(activeTx as TenantPrisma, invoice.id, postResult.journalEntryId, invNum.formattedNumber, userId);
+      await this.repo.markPosted(
+        activeTx as TenantPrisma,
+        invoice.id,
+        postResult.journalEntryId,
+        invNum.formattedNumber,
+        userId,
+      );
 
       return { ...postResult, invoiceNumber: invNum.formattedNumber };
     };
@@ -755,7 +798,9 @@ export class ClientInvoiceService {
     const invoice = await this.repo.findById(prisma, orgId, invoiceId);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
     if (invoice.postingStatus !== 'POSTED') {
-      throw new BadRequestException(`Only POSTED invoices can be reversed (status: ${invoice.postingStatus})`);
+      throw new BadRequestException(
+        `Only POSTED invoices can be reversed (status: ${invoice.postingStatus})`,
+      );
     }
     if (invoice.reversalJournalEntryId) {
       throw new ConflictException(`Invoice ${invoiceId} is already reversed`);
@@ -768,7 +813,7 @@ export class ClientInvoiceService {
     if (activeAllocs > 0) {
       throw new BadRequestException(
         `Cannot reverse invoice ${invoiceId} — it has ${activeAllocs} active receipt allocation(s). ` +
-        `Reverse the receipt allocations first.`,
+          `Reverse the receipt allocations first.`,
       );
     }
 
@@ -781,7 +826,7 @@ export class ClientInvoiceService {
     if (activeCreditNotes > 0) {
       throw new BadRequestException(
         `Cannot reverse invoice ${invoiceId} — it has ${activeCreditNotes} posted credit note(s) against it. ` +
-        `A credit note has already partially reversed this invoice; resolve the credit note(s) first.`,
+          `A credit note has already partially reversed this invoice; resolve the credit note(s) first.`,
       );
     }
 
@@ -874,12 +919,30 @@ export class ClientInvoiceService {
    * client and org-branding facts then, not now.
    */
   async getOrGenerateDocument(identity: RequestIdentity, id: string) {
+    const fileId = await this.ensureDocumentFileId(identity, id);
+    return this.files.getDownloadUrl(identity, fileId);
+  }
+
+  /**
+   * The frozen invoice PDF's bytes (rendered first if it never was) — for attaching it to a message
+   * (ADR-042 WhatsApp send). Server-side only; callers have already authorised the invoice.
+   */
+  async readDocumentBytes(identity: RequestIdentity, id: string): Promise<Buffer> {
+    const fileId = await this.ensureDocumentFileId(identity, id);
+    const stored = await this.files.readBytesForRendering(fileId);
+    if (!stored)
+      throw new ConflictException('The invoice document is not ready yet; try again in a moment.');
+    return stored.buffer;
+  }
+
+  /** The invoice's document file id, rendering + freezing the PDF on first request. */
+  private async ensureDocumentFileId(identity: RequestIdentity, id: string): Promise<string> {
     const prisma = this.tenancyService.getClient();
     const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
 
     if (invoice.documentFileId) {
-      return this.files.getDownloadUrl(identity, invoice.documentFileId);
+      return invoice.documentFileId;
     }
 
     const snapshot = (invoice.billingAddressSnapshot ?? {}) as {
@@ -954,12 +1017,12 @@ export class ClientInvoiceService {
     if (!won) {
       await this.files.discardIfUnreferenced(file.id);
       const settled = await this.repo.findById(prisma, identity.activeOrganizationId, id);
-      return this.files.getDownloadUrl(identity, settled!.documentFileId!);
+      return settled!.documentFileId!;
     }
 
     await this.files.bind(file.id, `invoice document for ${id}`);
     await this.files.markImmutable(file.id, `invoice document for ${id}`);
 
-    return this.files.getDownloadUrl(identity, file.id);
+    return file.id;
   }
 }

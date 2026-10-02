@@ -115,7 +115,10 @@
       "save": "Save draft",
       "saving": "Saving…",
       "cancel": "Cancel"
-    }
+    },
+    "sendWhatsApp": "Send on WhatsApp",
+    "whatsappTitle": "Send invoice on WhatsApp",
+    "whatsappSubtitle": "Invoice {number} goes to the client as a PDF."
   },
   "prepare": {
     "title": "Prepare invoice",
@@ -205,19 +208,14 @@
       "PHYSICAL": "Received by",
       "OTHER": "Recipient"
     },
-    "whatsappPlaceholder": "+252 61 234 5678",
     "note": "Note",
-    "whatsappHint": "Open a chat with the invoice PDF link, send it, then mark it as sent here.",
-    "openWhatsApp": "Open WhatsApp",
-    "opening": "Opening…",
-    "whatsappNeedsNumber": "Enter the client's WhatsApp number to open a chat.",
-    "whatsappMessage": "Hello, please find invoice {number} here: {url}",
-    "whatsappFailed": "Could not open WhatsApp. Try again.",
+    "whatsappHint": "Rukna sends the invoice PDF to the client on WhatsApp and tracks whether it was delivered and read.",
     "failed": "Could not record the delivery. Try again.",
-    "chooseMethod": "Choose how it was sent to record the delivery.",
+    "chooseMethod": "Choose how it was sent to record the delivery, or WhatsApp to send it now.",
     "markSent": "Mark as sent",
     "saving": "Saving…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "continueWhatsApp": "Continue to WhatsApp"
   },
   "creditNote": {
     "title": "Issue credit note",

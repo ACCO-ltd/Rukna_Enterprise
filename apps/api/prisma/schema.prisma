@@ -2889,6 +2889,9 @@ model ClientInvoiceDelivery {
   note           String?
   sentAt         DateTime              @map("sent_at")
   sentBy         String                @map("sent_by")
+  // ADR-042 — the OutboundMessage this delivery records (a WhatsApp send through Rukna); null for a
+  // hand-recorded delivery. Unique: one delivery per message, however often a send or resolve repeats.
+  outboundMessageId String?            @unique @map("outbound_message_id")
   createdAt      DateTime              @default(now()) @map("created_at")
 
   invoice ClientInvoice @relation(fields: [invoiceId], references: [id])

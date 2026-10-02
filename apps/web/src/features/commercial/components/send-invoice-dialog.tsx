@@ -18,7 +18,7 @@ import {
 } from '@erp/ui';
 import { Mail, MessageCircle, MoreHorizontal, Printer } from 'lucide-react';
 
-import { getIssuedInvoiceDocument, recordPackageDelivery } from '../api/commercial-api';
+import { recordPackageDelivery } from '../api/commercial-api';
 import { commercialInvoiceKeys } from '../hooks/use-commercial-invoice';
 
 type DeliveryMethod = 'WHATSAPP' | 'EMAIL' | 'PHYSICAL' | 'OTHER';
@@ -29,10 +29,13 @@ export interface SendInvoiceDialogProps {
   projectId: string;
   /** Delivery is recorded per billing package, which is keyed by its installment. */
   installmentId: string;
-  /** The invoice the dialog was opened from — its PDF link goes into a WhatsApp message. */
-  invoiceId: string;
   invoiceNumber: string | null;
   onSent?: () => void;
+  /**
+   * WhatsApp is sent through Rukna (ADR-042), not recorded by hand: choosing it hands over to the
+   * "Send on WhatsApp" dialog. Without this, the WhatsApp option is not offered.
+   */
+  onChooseWhatsApp?: () => void;
 }
 
 /**
@@ -40,8 +43,8 @@ export interface SendInvoiceDialogProps {
  *
  * The invoice is already numbered and posted; this only records how it was delivered, via
  * `POST …/installments/:installmentId/package-deliveries`, which stamps every invoice of the
- * stage's package. For WhatsApp the dialog can also open a chat with the PDF link — the user
- * still confirms the send, because opening a chat is not proof it was sent.
+ * stage's package. WhatsApp is different: Rukna sends the PDF itself and records the delivery
+ * when WhatsApp accepts it, so choosing WhatsApp hands over to the Send on WhatsApp dialog.
  *
  * A `FormDialog` (ADR-039), size `md`.
  */
@@ -50,9 +53,9 @@ export function SendInvoiceDialog({
   onClose,
   projectId,
   installmentId,
-  invoiceId,
   invoiceNumber,
   onSent,
+  onChooseWhatsApp,
 }: SendInvoiceDialogProps) {
   const t = useTranslations('commercial.send');
   const queryClient = useQueryClient();
@@ -61,7 +64,6 @@ export function SendInvoiceDialog({
   const [recipient, setRecipient] = useState('');
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
-  const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
@@ -70,7 +72,6 @@ export function SendInvoiceDialog({
     setNote('');
     setError(null);
     setPending(false);
-    setOpening(false);
   }
 
   function close() {
@@ -79,36 +80,14 @@ export function SendInvoiceDialog({
     onClose();
   }
 
-  const phone = recipient.replace(/[^0-9]/g, '');
-  const canOpenWhatsApp = method === 'WHATSAPP' && phone.length >= 7 && !opening;
-
-  async function openWhatsApp() {
-    if (!canOpenWhatsApp) return;
-    // Opened synchronously so the browser treats it as the user's click, then pointed at the
-    // chat once the short-lived PDF link is back.
-    const popup = window.open('', '_blank');
-    setOpening(true);
-    setError(null);
-    try {
-      const { url } = await getIssuedInvoiceDocument(invoiceId);
-      const text = t('whatsappMessage', { number: invoiceNumber ?? '', url });
-      const href = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-      if (popup) {
-        popup.opener = null;
-        popup.location.href = href;
-      } else {
-        window.open(href, '_blank', 'noopener,noreferrer');
-      }
-    } catch (err) {
-      popup?.close();
-      setError(err instanceof Error && err.message ? err.message : t('whatsappFailed'));
-    } finally {
-      setOpening(false);
-    }
+  function continueToWhatsApp() {
+    reset();
+    onClose();
+    onChooseWhatsApp?.();
   }
 
   async function markSent() {
-    if (!method) return;
+    if (!method || method === 'WHATSAPP') return;
     setPending(true);
     setError(null);
     try {
@@ -130,13 +109,44 @@ export function SendInvoiceDialog({
   }
 
   const options: RadioOption<DeliveryMethod>[] = [
-    { value: 'WHATSAPP', label: <IconLabel icon={<MessageCircle size={16} aria-hidden="true" />}>{t('method.WHATSAPP')}</IconLabel> },
-    { value: 'EMAIL', label: <IconLabel icon={<Mail size={16} aria-hidden="true" />}>{t('method.EMAIL')}</IconLabel> },
-    { value: 'PHYSICAL', label: <IconLabel icon={<Printer size={16} aria-hidden="true" />}>{t('method.PHYSICAL')}</IconLabel> },
-    { value: 'OTHER', label: <IconLabel icon={<MoreHorizontal size={16} aria-hidden="true" />}>{t('method.OTHER')}</IconLabel> },
+    ...(onChooseWhatsApp
+      ? [
+          {
+            value: 'WHATSAPP' as const,
+            label: (
+              <IconLabel icon={<MessageCircle size={16} aria-hidden="true" />}>
+                {t('method.WHATSAPP')}
+              </IconLabel>
+            ),
+          },
+        ]
+      : []),
+    {
+      value: 'EMAIL',
+      label: (
+        <IconLabel icon={<Mail size={16} aria-hidden="true" />}>{t('method.EMAIL')}</IconLabel>
+      ),
+    },
+    {
+      value: 'PHYSICAL',
+      label: (
+        <IconLabel icon={<Printer size={16} aria-hidden="true" />}>
+          {t('method.PHYSICAL')}
+        </IconLabel>
+      ),
+    },
+    {
+      value: 'OTHER',
+      label: (
+        <IconLabel icon={<MoreHorizontal size={16} aria-hidden="true" />}>
+          {t('method.OTHER')}
+        </IconLabel>
+      ),
+    },
   ];
 
   const dirty = method !== '' || recipient !== '' || note !== '';
+  const whatsapp = method === 'WHATSAPP';
 
   const recipientLabel = method ? t(`recipientLabel.${method}`) : t('recipientLabel.OTHER');
 
@@ -145,7 +155,9 @@ export function SendInvoiceDialog({
       open={open}
       onOpenChange={(next) => (!next ? close() : undefined)}
       title={t('title')}
-      subtitle={invoiceNumber ? t('description', { number: invoiceNumber }) : t('descriptionNoNumber')}
+      subtitle={
+        invoiceNumber ? t('description', { number: invoiceNumber }) : t('descriptionNoNumber')
+      }
       size="md"
       dirty={dirty}
       busy={pending}
@@ -164,40 +176,30 @@ export function SendInvoiceDialog({
           required
         />
 
-        <FormField htmlFor="send-recipient" label={recipientLabel}>
-          <Input
-            id="send-recipient"
-            value={recipient}
-            onChange={(event) => setRecipient(event.target.value)}
-            placeholder={method === 'WHATSAPP' ? t('whatsappPlaceholder') : undefined}
-            inputMode={method === 'WHATSAPP' ? 'tel' : undefined}
-            disabled={pending}
-          />
-        </FormField>
+        {whatsapp ? (
+          <p className="text-body-sm text-muted-foreground">{t('whatsappHint')}</p>
+        ) : (
+          <>
+            <FormField htmlFor="send-recipient" label={recipientLabel}>
+              <Input
+                id="send-recipient"
+                value={recipient}
+                onChange={(event) => setRecipient(event.target.value)}
+                disabled={pending}
+              />
+            </FormField>
 
-        <FormField htmlFor="send-note" label={t('note')}>
-          <Textarea
-            id="send-note"
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            rows={2}
-            disabled={pending}
-          />
-        </FormField>
-
-        {method === 'WHATSAPP' ? (
-          <div className="space-y-2">
-            <p className="text-body-sm text-muted-foreground">{t('whatsappHint')}</p>
-            {canOpenWhatsApp || opening ? (
-              <Button type="button" variant="outline" onClick={openWhatsApp} disabled={opening}>
-                <MessageCircle size={16} aria-hidden="true" />
-                {opening ? t('opening') : t('openWhatsApp')}
-              </Button>
-            ) : (
-              <p className="text-caption text-muted-foreground">{t('whatsappNeedsNumber')}</p>
-            )}
-          </div>
-        ) : null}
+            <FormField htmlFor="send-note" label={t('note')}>
+              <Textarea
+                id="send-note"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                rows={2}
+                disabled={pending}
+              />
+            </FormField>
+          </>
+        )}
         {!method ? <p className="text-caption text-muted-foreground">{t('chooseMethod')}</p> : null}
       </FormDialogBody>
 
@@ -207,9 +209,14 @@ export function SendInvoiceDialog({
             {t('cancel')}
           </Button>
         </FormDialogClose>
-        {method ? (
-          <Button type="button" onClick={markSent} disabled={pending}>
-            {pending ? t('saving') : t('markSent')}
+        {whatsapp ? (
+          <Button type="button" onClick={continueToWhatsApp}>
+            <MessageCircle size={16} aria-hidden="true" />
+            {t('continueWhatsApp')}
+          </Button>
+        ) : method ? (
+          <Button type="button" onClick={markSent} loading={pending} loadingText={t('saving')}>
+            {t('markSent')}
           </Button>
         ) : null}
       </FormDialogFooter>

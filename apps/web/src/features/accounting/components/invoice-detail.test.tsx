@@ -19,6 +19,12 @@ vi.mock('../hooks/use-invoices', () => ({
   useInvoice: mocks.useInvoice,
   useInvoiceAction: mocks.useInvoiceAction,
   useInvoiceDocumentUrl: mocks.useInvoiceDocumentUrl,
+  invoiceKeys: { all: ['accounting', 'invoices'] },
+}));
+vi.mock('@/features/communications/hooks', () => ({
+  useCommunications: () => ({ isPending: false, isError: false, data: [] }),
+  useResolveCommunication: () => ({ isPending: false, mutate: vi.fn() }),
+  communicationKeys: { all: ['communications'], resource: () => ['communications'] },
 }));
 vi.mock('../hooks/use-accounting', () => ({ useAccounts: mocks.useAccounts }));
 vi.mock('@/features/clients/hooks/use-clients', () => ({ useClients: mocks.useClients }));
@@ -161,7 +167,9 @@ describe('InvoiceDetail — permission gating', () => {
 describe('InvoiceDetail — readable source', () => {
   it('reads a separate charge as "Separate charge · {description}", not a bare code', () => {
     mocks.useInvoice.mockReturnValue({
-      data: invoice({ source: { kind: 'SEPARATE_CHARGE', label: 'Temporary site power', id: 'node-9' } }),
+      data: invoice({
+        source: { kind: 'SEPARATE_CHARGE', label: 'Temporary site power', id: 'node-9' },
+      }),
       isPending: false,
       isError: false,
     });
@@ -185,7 +193,7 @@ describe('InvoiceDetail — readable source', () => {
 });
 
 describe('InvoiceDetail — breadcrumb back-link', () => {
-  it('renders the calling page\'s label and link when ?from=/?fromLabel= are present', () => {
+  it("renders the calling page's label and link when ?from=/?fromLabel= are present", () => {
     mocks.searchParams = new URLSearchParams({
       from: '/projects/p-1/commercial/billing?filter=needsAction',
       fromLabel: 'Billing & Collection',
@@ -210,7 +218,11 @@ describe('InvoiceDetail — breadcrumb back-link', () => {
 describe('InvoiceDetail — embedded document preview', () => {
   it('shows a loading state while the signed URL is in flight', () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
-    mocks.useInvoiceDocumentUrl.mockReturnValue({ isPending: true, isError: false, data: undefined });
+    mocks.useInvoiceDocumentUrl.mockReturnValue({
+      isPending: true,
+      isError: false,
+      data: undefined,
+    });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
 
@@ -239,7 +251,11 @@ describe('InvoiceDetail — embedded document preview', () => {
     mocks.useInvoiceDocumentUrl.mockReturnValue({
       isPending: false,
       isError: false,
-      data: { url: 'https://storage.rukna.site/signed-abc', originalName: 'invoice.pdf', mimeType: 'application/pdf' },
+      data: {
+        url: 'https://storage.rukna.site/signed-abc',
+        originalName: 'invoice.pdf',
+        mimeType: 'application/pdf',
+      },
       refetch: vi.fn(),
     });
 
@@ -261,7 +277,9 @@ describe('InvoiceDetail — embedded document preview', () => {
 describe('InvoiceDetail — project-scoped route and safe back-link (flow plan PR 4 review)', () => {
   it('shows another project’s invoice as not found under this project', () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
-    renderWithProviders(<InvoiceDetail invoiceId="inv-1" projectId="other-project" />, { permissions: [] });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" projectId="other-project" />, {
+      permissions: [],
+    });
     expect(screen.getByText('This invoice does not belong to this project.')).toBeInTheDocument();
   });
 

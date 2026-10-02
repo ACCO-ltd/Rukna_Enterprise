@@ -171,5 +171,59 @@
     "personal": "This looks like a personal address. A company email is better for invoices and records.",
     "didYouMean": "Did you mean {email}?",
     "useSuggestion": "Use {email}"
+  },
+  "messaging": {
+    "whatsapp": {
+      "loading": "Preparing the message…",
+      "loadFailed": "Could not prepare the WhatsApp message. Try again.",
+      "to": "To",
+      "otherNumber": "Another number",
+      "otherNumberLabel": "WhatsApp number",
+      "otherNumberInvalid": "Enter a valid phone number, including the country code.",
+      "recipientOption": "{name} · {number}",
+      "recipientOptionRole": "{name} ({role}) · {number}",
+      "primary": "primary",
+      "message": "Message",
+      "messageHint": "WhatsApp sends this approved message with the attachment. It cannot be edited.",
+      "attachment": "Attachment",
+      "send": "Send on WhatsApp",
+      "sending": "Sending…",
+      "tryAgain": "Try again",
+      "cancel": "Cancel",
+      "close": "Close",
+      "sentToast": "Sent on WhatsApp to {number}",
+      "failedTitle": "WhatsApp did not send the message",
+      "failedFallback": "WhatsApp could not send the message.",
+      "unknownTitle": "WhatsApp did not confirm the message",
+      "unknownBody": "It may or may not have reached the client. Check with them before sending again — you can mark it as sent or not sent under Messages.",
+      "sendFailed": "Could not send the message. Try again.",
+      "blockedTitle": "This cannot be sent on WhatsApp yet",
+      "blocked": {
+        "NOT_POSTED": "Only an issued document can be sent. Issue it first.",
+        "WHATSAPP_NOT_CONFIGURED": "WhatsApp sending is not set up on this server. Ask an administrator to connect WhatsApp.",
+        "TEMPLATE_NOT_CONFIGURED": "The WhatsApp message template for this is not set up on this server. Ask an administrator to add it.",
+        "NO_RECIPIENT": "This client has no saved WhatsApp or phone number. Enter the number to send to."
+      }
+    },
+    "history": {
+      "title": "Messages",
+      "empty": "No messages sent yet.",
+      "loadFailed": "Could not load the messages.",
+      "via": "WhatsApp to {number}",
+      "status": {
+        "QUEUED": "Sending",
+        "SENT": "Sent",
+        "DELIVERED": "Delivered",
+        "READ": "Read",
+        "FAILED": "Failed",
+        "UNKNOWN": "Unknown"
+      },
+      "unknownHint": "WhatsApp never confirmed this message. Check with the client, then mark what happened.",
+      "markSent": "Mark as sent",
+      "markFailed": "Mark as not sent",
+      "resolveFailed": "Could not update the message. Try again.",
+      "resolvedSent": "Marked as sent",
+      "resolvedFailed": "Marked as not sent — you can send it again"
+    }
   }
 }
