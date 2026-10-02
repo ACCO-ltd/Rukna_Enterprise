@@ -2,6 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+import { TenancyService } from '../../tenancy/tenancy.service.js';
+import { tenancyStorage } from '../../tenancy/tenancy.context.js';
+import { CommunicationService } from '../communication.service.js';
+import { OutboundMessageRouteRepository } from '../infrastructure/outbound-message-route.repository.js';
+
 /** One delivery-status update Meta reports for a message we sent (sent / delivered / read / failed). */
 export interface WhatsAppStatusUpdate {
   messageId: string;
@@ -27,7 +32,12 @@ export class WhatsAppWebhookService {
   /** Each missing-setting error is logged once, not on every (possibly hostile) request. */
   private readonly warned = new Set<string>();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly routes: OutboundMessageRouteRepository,
+    private readonly tenancy: TenancyService,
+    private readonly communication: CommunicationService,
+  ) {}
 
   private warnOnce(key: string, message: string): void {
     if (this.warned.has(key)) return;
@@ -67,16 +77,56 @@ export class WhatsAppWebhookService {
   }
 
   /**
-   * Reads the status updates out of a notification. Delivery tracking against invoices arrives
-   * with the "send invoice by WhatsApp" feature; until then they are logged (recipient masked).
+   * Reads the status updates out of a notification and routes them to their tenants in the
+   * background — the controller answers Meta 200 at once (Meta retries, then disables, a slow or
+   * failing webhook). Returns the updates read (recipient masked).
    */
   handleNotification(payload: unknown): WhatsAppStatusUpdate[] {
     const updates = extractStatuses(payload);
-    for (const u of updates) {
-      this.logger.log(`WhatsApp message ${u.messageId} → ${u.status} (to ${u.recipient})`);
+    if (updates.length > 0) {
+      void this.dispatch(updates).catch((error: unknown) =>
+        this.logger.error(`WhatsApp status dispatch failed: ${error instanceof Error ? error.message : String(error)}`),
+      );
     }
     return updates;
   }
+
+  /**
+   * ADR-042 phase 2 — for each update: platform route (provider message id → tenant) → resolve the
+   * tenant → apply the status inside that tenant's context. An unknown id (a message not sent by
+   * Rukna, or sent before routes existed) is logged and ignored. One bad update never stops the rest,
+   * and nothing here throws back to Meta.
+   */
+  async dispatch(updates: WhatsAppStatusUpdate[]): Promise<void> {
+    for (const u of updates) {
+      try {
+        const slug = await this.routes.findTenantSlug(u.messageId);
+        if (!slug) {
+          this.logger.warn(`WhatsApp status ${u.status} for unknown message ${maskId(u.messageId)} (to ${u.recipient}) — ignored`);
+          continue;
+        }
+        const context = await this.tenancy.resolveTenant(slug);
+        const outcome = await tenancyStorage.run(context, () =>
+          this.communication.applyStatusUpdate({
+            providerMessageId: u.messageId,
+            status: u.status,
+            timestamp: u.timestamp,
+            errors: u.errors,
+          }),
+        );
+        this.logger.log(`WhatsApp message ${maskId(u.messageId)} → ${u.status} (to ${u.recipient}): ${outcome}`);
+      } catch (error) {
+        this.logger.error(
+          `WhatsApp status ${u.status} for ${maskId(u.messageId)} not applied: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+}
+
+/** Message ids are not secret, but logs only need enough to correlate. */
+function maskId(id: string): string {
+  return id.length > 10 ? `…${id.slice(-10)}` : id;
 }
 
 function safeEqual(a: string, b: string): boolean {
