@@ -24,6 +24,12 @@ describe('WhatsApp webhook (ADR-042)', () => {
       expect(s.verifyHandshake('subscribe', 'verify-me', undefined)).toBeNull();
     });
 
+    it('refuses array or object query values', () => {
+      const s = service(ENV);
+      expect(s.verifyHandshake('subscribe', ['verify-me'], '1')).toBeNull();
+      expect(s.verifyHandshake('subscribe', 'verify-me', ['1', '2'])).toBeNull();
+    });
+
     it('refuses everything while no verify token is configured', () => {
       expect(service({}).verifyHandshake('subscribe', '', 'x')).toBeNull();
       expect(service({}).verifyHandshake('subscribe', 'anything', 'x')).toBeNull();

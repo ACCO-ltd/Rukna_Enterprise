@@ -75,7 +75,9 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    // health is excluded so a platform probe never depends on tenant resolution
-    consumer.apply(TenancyMiddleware).exclude('health').forRoutes('*');
+    // health is excluded so a platform probe never depends on tenant resolution; the WhatsApp
+    // webhook (ADR-042) likewise must answer Meta even if tenant resolution or the database is down
+    // — Meta disables a webhook that keeps failing.
+    consumer.apply(TenancyMiddleware).exclude('health', 'webhooks/whatsapp').forRoutes('*');
   }
 }

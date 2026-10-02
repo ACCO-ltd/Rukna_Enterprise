@@ -24,19 +24,29 @@ export interface WhatsAppStatusUpdate {
 @Injectable()
 export class WhatsAppWebhookService {
   private readonly logger = new Logger(WhatsAppWebhookService.name);
+  /** Each missing-setting error is logged once, not on every (possibly hostile) request. */
+  private readonly warned = new Set<string>();
 
   constructor(private readonly config: ConfigService) {}
+
+  private warnOnce(key: string, message: string): void {
+    if (this.warned.has(key)) return;
+    this.warned.add(key);
+    this.logger.error(message);
+  }
 
   /**
    * Meta's GET handshake: echo `hub.challenge` only when the mode is `subscribe` and the token is
    * the one configured on this server. Returns null to refuse.
    */
-  verifyHandshake(mode: string | undefined, token: string | undefined, challenge: string | undefined): string | null {
+  verifyHandshake(mode: unknown, token: unknown, challenge: unknown): string | null {
     const expected = this.config.get<string>('WHATSAPP_WEBHOOK_VERIFY_TOKEN')?.trim();
     if (!expected) {
-      this.logger.error('WHATSAPP_WEBHOOK_VERIFY_TOKEN is not set — refusing the webhook handshake');
+      this.warnOnce('verify', 'WHATSAPP_WEBHOOK_VERIFY_TOKEN is not set — refusing the webhook handshake');
       return null;
     }
+    // Query values can arrive as arrays or objects (`hub.challenge[]=…`); only plain strings count.
+    if (typeof mode !== 'string' || typeof token !== 'string' || typeof challenge !== 'string') return null;
     if (mode !== 'subscribe' || !token || !challenge || !safeEqual(token, expected)) return null;
     return challenge;
   }
@@ -48,7 +58,7 @@ export class WhatsAppWebhookService {
   isSignatureValid(rawBody: Buffer | undefined, signatureHeader: string | undefined): boolean {
     const secret = this.config.get<string>('WHATSAPP_APP_SECRET')?.trim();
     if (!secret) {
-      this.logger.error('WHATSAPP_APP_SECRET is not set — refusing webhook notifications');
+      this.warnOnce('secret', 'WHATSAPP_APP_SECRET is not set — refusing webhook notifications');
       return false;
     }
     if (!rawBody || !signatureHeader?.startsWith('sha256=')) return false;

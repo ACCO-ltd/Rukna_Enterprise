@@ -19,9 +19,9 @@ export class WhatsAppWebhookController {
   /** Meta's verification handshake: answers with `hub.challenge` as plain text. */
   @Get()
   verify(
-    @Query('hub.mode') mode: string | undefined,
-    @Query('hub.verify_token') token: string | undefined,
-    @Query('hub.challenge') challenge: string | undefined,
+    @Query('hub.mode') mode: unknown,
+    @Query('hub.verify_token') token: unknown,
+    @Query('hub.challenge') challenge: unknown,
     @Res() res: Response,
   ): void {
     const answer = this.webhook.verifyHandshake(mode, token, challenge);
