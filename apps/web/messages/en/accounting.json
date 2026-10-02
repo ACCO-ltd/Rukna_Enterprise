@@ -992,6 +992,10 @@
     "retry": "Try again",
     "openStep": "Open",
     "lockedCycle": "Finish setup first",
+    "lockedUntilSetup": "Daily posting, month-end and year-end open once accounting is set up.",
+    "setupDoneTitle": "Accounting is set up",
+    "setupDoneBody": "Chart of accounts, fiscal year, banks, posting profiles and numbering are in place.",
+    "optional": "Optional",
     "cycleStatus": {
       "LOCKED": "Locked",
       "IN_PROGRESS": "In progress",
@@ -1148,9 +1152,19 @@
       "alreadySetUp": "Accounting is already set up for this organisation — its chart of accounts has accounts. Continue from the chart of accounts and the other setup screens."
     },
     "hub": {
-      "title": "Set up accounting in one step",
-      "body": "Install the construction chart of accounts, posting profiles, your banks and the first fiscal year. You review everything before it is saved.",
-      "action": "Set up accounting"
+      "title": "Set up accounting",
+      "body": "One step installs everything the ledger needs to start posting. You review it all before anything is saved.",
+      "action": "Set up accounting",
+      "installs": {
+        "chart": "Construction chart of accounts and posting profiles",
+        "banks": "Your bank accounts",
+        "tax": "Sales tax",
+        "fiscalYear": "The first fiscal year, with 12 open periods",
+        "numbering": "Numbering for journals, invoices and bills"
+      },
+      "afterSetup": "Opening balances from a previous system can be imported afterwards.",
+      "awaitAdminTitle": "Accounting isn’t set up yet",
+      "awaitAdminBody": "An administrator sets it up in one step from this page. Daily posting, month-end and year-end open once it is done."
     },
     "partial": {
       "notice": "Accounting can’t be set up automatically: this organisation already has {records} but no chart of accounts. Remove them or add the chart manually.",
