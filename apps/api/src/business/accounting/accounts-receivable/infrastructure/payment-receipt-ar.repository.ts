@@ -251,6 +251,7 @@ export class PaymentReceiptArRepository {
           },
         },
         bankAccount: { select: { bankName: true, accountName: true } },
+        documentFile: { select: { lifecycle: true } },
       },
     });
     if (!receipt) return null;

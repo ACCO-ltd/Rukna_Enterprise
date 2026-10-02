@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { OutboundMessageView, RequestIdentity, WhatsAppSendPreview, WhatsAppSendRequest } from '@erp/types';
 
@@ -16,7 +16,7 @@ import {
   whatsappSendBlockedReason,
 } from '../../../../platform/messaging/whatsapp/whatsapp-send-preview.js';
 import { PaymentReceiptArRepository } from '../infrastructure/payment-receipt-ar.repository.js';
-import { PaymentReceiptDocumentService, receiptPdfFilename } from './payment-receipt-document.service.js';
+import { PaymentReceiptDocumentService, assertIssuable, receiptPdfFilename } from './payment-receipt-document.service.js';
 
 export const RECEIPT_MESSAGE_RESOURCE_TYPE = 'payment_receipt';
 
@@ -64,6 +64,7 @@ export class ReceiptWhatsAppService {
     const whatsappConfigured = this.whatsapp.isConfigured();
     const blockedReason = whatsappSendBlockedReason({
       posted: isIssuable(receipt),
+      reversed: receipt.postingStatus === 'REVERSED',
       hasRecipient: defaultRecipient !== null,
       templateConfigured,
       whatsappConfigured,
@@ -87,9 +88,7 @@ export class ReceiptWhatsAppService {
    */
   async send(identity: RequestIdentity, receiptId: string, dto: WhatsAppSendRequest): Promise<OutboundMessageView> {
     const receipt = await this.load(identity, receiptId);
-    if (!isIssuable(receipt)) {
-      throw new ConflictException({ errorCode: 'NOT_POSTED', message: 'Only a posted receipt can be sent.' });
-    }
+    assertIssuable(receipt);
     const template = resolveWhatsAppTemplate(this.config, 'RECEIPT');
     if (!template) {
       throw new BadRequestException({

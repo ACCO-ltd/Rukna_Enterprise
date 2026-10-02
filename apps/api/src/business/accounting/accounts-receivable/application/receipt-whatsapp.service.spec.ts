@@ -93,7 +93,7 @@ describe('ReceiptWhatsAppService.preview', () => {
 
   it.each([
     ['NOT_POSTED', { receipt: receiptRow({ postingStatus: 'NOT_POSTED', receiptNumber: null }) }],
-    ['NOT_POSTED', { receipt: receiptRow({ postingStatus: 'REVERSED' }) }],
+    ['REVERSED', { receipt: receiptRow({ postingStatus: 'REVERSED' }) }],
     ['NO_RECIPIENT', { receipt: receiptRow({ client: { name: 'X', countryCode: 'SO', contacts: [] } }) }],
     ['TEMPLATE_NOT_CONFIGURED', { template: null }],
     ['WHATSAPP_NOT_CONFIGURED', { whatsapp: false }],
@@ -145,6 +145,7 @@ describe('ReceiptWhatsAppService.send', () => {
 
   it.each([
     ['NOT_POSTED', ConflictException, { receipt: receiptRow({ postingStatus: 'NOT_POSTED', receiptNumber: null }) }],
+    ['RECEIPT_REVERSED', ConflictException, { receipt: receiptRow({ postingStatus: 'REVERSED' }) }],
     ['TEMPLATE_NOT_CONFIGURED', BadRequestException, { template: null }],
     ['WHATSAPP_NOT_CONFIGURED', BadRequestException, { whatsapp: false }],
     ['NO_RECIPIENT', BadRequestException, { receipt: receiptRow({ client: { name: 'X', countryCode: 'SO', contacts: [] } }) }],

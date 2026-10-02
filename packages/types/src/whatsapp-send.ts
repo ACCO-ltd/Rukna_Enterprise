@@ -7,6 +7,8 @@
 /** Why a document cannot be sent right now (null when it can). */
 export type WhatsAppSendBlockedReason =
   | 'NOT_POSTED'
+  /** The document was posted and has since been reversed — it must not be sent. */
+  | 'REVERSED'
   | 'NO_RECIPIENT'
   | 'TEMPLATE_NOT_CONFIGURED'
   | 'WHATSAPP_NOT_CONFIGURED';

@@ -71,7 +71,7 @@ export class CustomerReceiptController {
   @ApiOperation({
     summary: 'The branded receipt PDF of a POSTED receipt: a short-lived signed download URL, rendering it on first request',
   })
-  @ApiResponse({ status: 409, description: 'NOT_POSTED — the receipt is not posted (or has no receipt number)' })
+  @ApiResponse({ status: 409, description: 'NOT_POSTED (draft / no receipt number) or RECEIPT_REVERSED' })
   getDocument(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.receiptDocuments.getOrGenerateReceiptDocument(identity, id);
   }
@@ -89,7 +89,7 @@ export class CustomerReceiptController {
   @ApiOperation({
     summary: 'Send the receipt PDF to the client by WhatsApp (template rukna_receipt). Idempotent per idempotencyKey.',
   })
-  @ApiResponse({ status: 409, description: 'NOT_POSTED' })
+  @ApiResponse({ status: 409, description: 'NOT_POSTED or RECEIPT_REVERSED' })
   @ApiResponse({ status: 400, description: 'RECIPIENT_INVALID | NO_RECIPIENT | TEMPLATE_NOT_CONFIGURED | WHATSAPP_NOT_CONFIGURED' })
   sendWhatsApp(
     @CurrentUser() identity: RequestIdentity,

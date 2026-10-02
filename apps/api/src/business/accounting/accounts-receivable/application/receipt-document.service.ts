@@ -29,7 +29,7 @@ export interface ReceiptDocumentInput {
   totalAmount: string;
   /** What the receipt was applied to when it was posted. */
   allocations: ReceiptDocumentAllocation[];
-  /** The part of the payment not applied to an invoice at posting — held on the client's account. */
+  /** The part of the payment not applied to an invoice at posting (later allocations are not shown). */
   unallocatedAmount: string;
   paymentMethod: string | null;
   /** The receiving bank account, e.g. 'Premier Bank — ACCO Operating'. */
@@ -152,7 +152,7 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
           ? h(
               View,
               { style: styles.tableRow, key: 'unallocated' },
-              h(Text, { style: styles.tableDescription }, 'Held on account (not yet applied to an invoice)'),
+              h(Text, { style: styles.tableDescription }, 'Unallocated when the payment was recorded'),
               h(Text, { style: styles.tableAmount }, money(input.unallocatedAmount)),
             )
           : null,

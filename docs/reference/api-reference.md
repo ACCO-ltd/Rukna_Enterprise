@@ -1668,8 +1668,9 @@ to `PaymentReceipt.documentFileId` and frozen (IMMUTABLE): later views and sends
 even after a later allocation or a branding change. It shows the org header (logo, name, address,
 tax no.), receipt number, date received, received from (client name + address), amount, payment
 method, receiving bank account, reference / bank reference, the invoices applied **when the receipt
-was posted** (invoice number + amount) and any amount held on account, and the org footer note. Not
-posted → `409 { code: 'NOT_POSTED' }`. Commercial "record payment" receipts are the same
+was posted** (invoice number + amount) and any amount unallocated when the payment was recorded, and
+the org footer note. Draft → `409 { code: 'NOT_POSTED' }`; reversed → `409 { code: 'RECEIPT_REVERSED' }`
+(also for a document generated before the reversal). Commercial "record payment" receipts are the same
 `PaymentReceipt` and get the same document.
 
 **Send-by-WhatsApp preview — `GET /customer-receipts/:id/whatsapp/preview`** (shared shape
@@ -1690,7 +1691,7 @@ posted → `409 { code: 'NOT_POSTED' }`. Commercial "record payment" receipts ar
 ```
 `recipients`: one per client contact with a usable number — the WhatsApp number, else the phone
 (`source`), normalised to E.164; primary first. `defaultRecipient` is an E.164 string (primary
-contact's number) or null. `blockedReason` (first that applies): `NOT_POSTED` → `NO_RECIPIENT` →
+contact's number) or null. `blockedReason` (first that applies): `REVERSED` → `NOT_POSTED` → `NO_RECIPIENT` →
 `TEMPLATE_NOT_CONFIGURED` (`WHATSAPP_TEMPLATE_RECEIPT` unset) → `WHATSAPP_NOT_CONFIGURED`.
 
 **Send — `POST /customer-receipts/:id/whatsapp`** (shared shape `WhatsAppSendRequest`):
@@ -1704,7 +1705,7 @@ Sends template `rukna_receipt` (purpose `RECEIPT`, resourceType `payment_receipt
 PDF as its DOCUMENT header; params: client name, receipt number, amount (`USD 5,000.00`), payment
 date (`02 Oct 2026`), company name. Response: `OutboundMessageView` (`status` `SENT`, or `FAILED` /
 `UNKNOWN` with `errorCode` + `errorMessage` — a provider failure is not an HTTP error). Errors:
-`409 NOT_POSTED`; `400 RECIPIENT_INVALID | NO_RECIPIENT | TEMPLATE_NOT_CONFIGURED |
+`409 NOT_POSTED | RECEIPT_REVERSED`; `400 RECIPIENT_INVALID | NO_RECIPIENT | TEMPLATE_NOT_CONFIGURED |
 WHATSAPP_NOT_CONFIGURED`. Message history: `GET /communications?resourceType=payment_receipt&resourceId=:id`.
 
 ---

@@ -70,23 +70,23 @@ describe('ReceiptDocumentService', () => {
     );
   });
 
-  it('lists each invoice it was applied to, plus the amount held on account', () => {
+  it('lists each invoice it was applied to, plus the amount unallocated at posting', () => {
     const all = texts(ReceiptDocument({ input: sample() }));
     expect(all).toEqual(
       expect.arrayContaining(['Invoice INV-000041', 'USD 3,000.00', 'Invoice INV-000042', 'USD 1,500.00', 'USD 500.00']),
     );
-    expect(all.some((t) => t.startsWith('Held on account'))).toBe(true);
+    expect(all.some((t) => t.startsWith('Unallocated when the payment was recorded'))).toBe(true);
   });
 
-  it('a fully-applied receipt has no held-on-account row; an unapplied one shows only that row', () => {
+  it('a fully-applied receipt has no unallocated row; an unapplied one shows only that row', () => {
     const full = texts(
       ReceiptDocument({ input: sample({ allocations: [{ invoiceNumber: 'INV-1', amount: '5000.00' }], unallocatedAmount: '0.00' }) }),
     );
-    expect(full.some((t) => t.startsWith('Held on account'))).toBe(false);
+    expect(full.some((t) => t.startsWith('Unallocated when the payment was recorded'))).toBe(false);
 
     const none = texts(ReceiptDocument({ input: sample({ allocations: [], unallocatedAmount: '5000.00' }) }));
     expect(none.filter((t) => t.startsWith('Invoice '))).toHaveLength(0);
-    expect(none.some((t) => t.startsWith('Held on account'))).toBe(true);
+    expect(none.some((t) => t.startsWith('Unallocated when the payment was recorded'))).toBe(true);
   });
 
   it('omits optional facts that are absent and keeps free-text payment methods as typed', () => {

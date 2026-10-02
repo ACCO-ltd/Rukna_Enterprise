@@ -65,19 +65,25 @@ export class PaymentReceiptDocumentService {
     const prisma = this.tenancy.getClient();
     const receipt = await this.repo.findForDocument(prisma, identity.activeOrganizationId, receiptId);
     if (!receipt) throw new NotFoundException(`PaymentReceipt ${receiptId} not found`);
-    if (receipt.documentFileId) return { fileId: receipt.documentFileId, receiptNumber: receipt.receiptNumber };
-    if (receipt.postingStatus !== 'POSTED' || !receipt.receiptNumber) {
-      throw new ConflictException({
-        errorCode: 'NOT_POSTED',
-        message: 'A receipt document is issued once the receipt is posted.',
-      });
+    // A reversed receipt no longer stands: never serve (or send) its clean PDF, even one generated
+    // while it was posted.
+    assertIssuable(receipt);
+    const receiptNumber = receipt.receiptNumber as string;
+    if (receipt.documentFileId) {
+      // A process that died between compare-and-set and the freeze leaves the bound file BOUND (or
+      // TEMPORARY): finish the freeze now rather than serving a still-replaceable file.
+      if (receipt.documentFile?.lifecycle !== 'IMMUTABLE') {
+        await this.files.bind(receipt.documentFileId, `receipt document for ${receiptId}`);
+        await this.files.markImmutable(receipt.documentFileId, `receipt document for ${receiptId}`);
+      }
+      return { fileId: receipt.documentFileId, receiptNumber };
     }
 
     const logo = await this.files.readBytesForRendering(receipt.organization.logoFileId);
-    const pdf = await this.renderer.render(toDocumentInput(receipt, receipt.receiptNumber, logo));
+    const pdf = await this.renderer.render(toDocumentInput(receipt, receiptNumber, logo));
 
     const file = await this.files.storeGenerated(identity, {
-      originalName: receiptPdfFilename(receipt.receiptNumber),
+      originalName: receiptPdfFilename(receiptNumber),
       mimeType: RECEIPT_PDF_MIME_TYPE,
       body: pdf,
     });
@@ -91,12 +97,25 @@ export class PaymentReceiptDocumentService {
       if (!winner) {
         throw new ConflictException({ errorCode: 'RECEIPT_DOCUMENT_UNAVAILABLE', message: 'The receipt document could not be bound. Try again.' });
       }
-      return { fileId: winner, receiptNumber: receipt.receiptNumber };
+      return { fileId: winner, receiptNumber };
     }
 
     await this.files.bind(file.id, `receipt document for ${receiptId}`);
     await this.files.markImmutable(file.id, `receipt document for ${receiptId}`);
-    return { fileId: file.id, receiptNumber: receipt.receiptNumber };
+    return { fileId: file.id, receiptNumber };
+  }
+}
+
+/**
+ * 409 unless the receipt is POSTED with a number: RECEIPT_REVERSED once reversed, NOT_POSTED for a
+ * draft (or an unnumbered opening-balance receipt).
+ */
+export function assertIssuable(receipt: { postingStatus: string; receiptNumber: string | null }): void {
+  if (receipt.postingStatus === 'REVERSED') {
+    throw new ConflictException({ errorCode: 'RECEIPT_REVERSED', message: 'This receipt was reversed, so it can no longer be issued or sent.' });
+  }
+  if (receipt.postingStatus !== 'POSTED' || !receipt.receiptNumber) {
+    throw new ConflictException({ errorCode: 'NOT_POSTED', message: 'A receipt document is issued once the receipt is posted.' });
   }
 }
 

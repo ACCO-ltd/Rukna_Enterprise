@@ -10,6 +10,9 @@
  *           the template params; a repeat with the same key returns it without sending again
  *   RCP-05  preview: recipients from the client's contacts, the exact message, sendable
  *   RCP-06  a commercial-style receipt (createAndPost, bankAccountId set) gets the same document
+ *   RCP-07  once reversed: no document (409 RECEIPT_REVERSED, even if generated before), preview
+ *           REVERSED, send 409 RECEIPT_REVERSED
+ *   RCP-08  a bound document left non-IMMUTABLE (process died after the bind) is frozen on next read
  *
  * WhatsApp (Meta) is never called: the client is a jest mock. The PDF renderer is the Jest stub of
  * @react-pdf/renderer (bytes 'stub-pdf'); what the PDF says is covered by receipt-document.service.spec.
@@ -358,5 +361,41 @@ describe('RCP-06 commercial "record payment" receipt', () => {
     expect(input).toMatchObject({ totalAmount: '800.00', unallocatedAmount: '0.00', paymentMethod: 'Cheque' });
     expect(input.allocations).toHaveLength(1);
     expect(input.bankAccountLabel).toEqual(expect.any(String));
+  });
+});
+
+describe('RCP-07 reversed receipt', () => {
+  it('is no longer served, previewed as sendable, or sent', async () => {
+    const { receipt } = await postedReceipt();
+    await run(() => documents.getOrGenerateReceiptDocument(me, receipt.id)); // generated while posted
+    await svc.customerReceiptService.reverse(env.identity, receipt.id, {
+      reversalDate: env.periods.openStart.toISOString().slice(0, 10),
+      reason: 'Cheque bounced',
+    });
+
+    expect(errorCode(await run(() => documents.getOrGenerateReceiptDocument(me, receipt.id)).catch((e) => e))).toBe('RECEIPT_REVERSED');
+    expect(errorCode(await run(() => documents.getOrGenerateReceiptPdf(me, receipt.id)).catch((e) => e))).toBe('RECEIPT_REVERSED');
+    expect(await run(() => sender.preview(me, receipt.id))).toMatchObject({ sendable: false, blockedReason: 'REVERSED' });
+    expect(errorCode(await run(() => sender.send(me, receipt.id, { idempotencyKey: randomUUID() })).catch((e) => e))).toBe('RECEIPT_REVERSED');
+    expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe('RCP-08 fast-path repair', () => {
+  it('freezes a bound document that was left BOUND, without re-rendering', async () => {
+    const { receipt } = await postedReceipt();
+    await run(() => documents.getOrGenerateReceiptDocument(me, receipt.id));
+    const { documentFileId } = await prisma.paymentReceipt.findUniqueOrThrow({ where: { id: receipt.id } });
+    await prisma.platformFile.update({ where: { id: documentFileId! }, data: { lifecycle: 'BOUND' } });
+    renderSpy.mockClear();
+
+    await run(() => documents.getOrGenerateReceiptDocument(me, receipt.id));
+    expect((await prisma.platformFile.findUniqueOrThrow({ where: { id: documentFileId! } })).lifecycle).toBe('IMMUTABLE');
+    expect(renderSpy).not.toHaveBeenCalled();
+
+    // And from TEMPORARY (the compare-and-set landed, nothing after it did).
+    await prisma.platformFile.update({ where: { id: documentFileId! }, data: { lifecycle: 'TEMPORARY' } });
+    await run(() => documents.getOrGenerateReceiptPdf(me, receipt.id));
+    expect((await prisma.platformFile.findUniqueOrThrow({ where: { id: documentFileId! } })).lifecycle).toBe('IMMUTABLE');
   });
 });

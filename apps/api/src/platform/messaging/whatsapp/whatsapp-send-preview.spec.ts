@@ -64,6 +64,7 @@ describe('WhatsApp send preview helpers', () => {
   it('blocked reason: record first, then recipient, then template, then WhatsApp connection', () => {
     const ok = { posted: true, hasRecipient: true, templateConfigured: true, whatsappConfigured: true };
     expect(whatsappSendBlockedReason(ok)).toBeNull();
+    expect(whatsappSendBlockedReason({ ...ok, posted: false, reversed: true, hasRecipient: false })).toBe('REVERSED');
     expect(whatsappSendBlockedReason({ ...ok, posted: false, hasRecipient: false, templateConfigured: false })).toBe('NOT_POSTED');
     expect(whatsappSendBlockedReason({ ...ok, hasRecipient: false, templateConfigured: false })).toBe('NO_RECIPIENT');
     expect(whatsappSendBlockedReason({ ...ok, templateConfigured: false, whatsappConfigured: false })).toBe('TEMPLATE_NOT_CONFIGURED');

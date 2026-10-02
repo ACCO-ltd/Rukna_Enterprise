@@ -102,10 +102,13 @@ export function defaultWhatsAppRecipient(options: WhatsAppRecipientOption[]): st
  */
 export function whatsappSendBlockedReason(state: {
   posted: boolean;
+  /** Posted, then reversed. Optional so existing callers keep compiling; checked before `posted`. */
+  reversed?: boolean;
   hasRecipient: boolean;
   templateConfigured: boolean;
   whatsappConfigured: boolean;
 }): WhatsAppSendBlockedReason | null {
+  if (state.reversed) return 'REVERSED';
   if (!state.posted) return 'NOT_POSTED';
   if (!state.hasRecipient) return 'NO_RECIPIENT';
   if (!state.templateConfigured) return 'TEMPLATE_NOT_CONFIGURED';
