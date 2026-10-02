@@ -18,6 +18,8 @@ model Tenant {
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
+  outboundMessageRoutes OutboundMessageRoute[]
+
   @@map("tenants")
 }
 
@@ -26,4 +28,17 @@ enum TenantStatus {
   ACTIVE
   SUSPENDED
   TERMINATED
+}
+
+/// ADR-042 phase 2 — which tenant sent a WhatsApp message. The public webhook (no tenant subdomain)
+/// looks the provider message id up here to find the tenant DB that holds the OutboundMessage.
+model OutboundMessageRoute {
+  providerMessageId String   @id @map("provider_message_id")
+  tenantId          String   @map("tenant_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("outbound_message_routes")
 }

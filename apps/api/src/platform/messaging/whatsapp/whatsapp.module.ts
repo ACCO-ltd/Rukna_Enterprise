@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 
-import { WhatsAppWebhookController } from './whatsapp-webhook.controller.js';
-import { WhatsAppWebhookService } from './whatsapp-webhook.service.js';
+import { WhatsAppClient } from './whatsapp.client.js';
 
-/** ADR-042 — WhatsApp Cloud API. Today: the webhook. Sending arrives with "send invoice by WhatsApp". */
+/**
+ * ADR-042 — the WhatsApp Cloud API client (the only code that calls graph.facebook.com). The webhook
+ * and message records live in CommunicationModule, which imports this.
+ */
 @Module({
-  controllers: [WhatsAppWebhookController],
-  providers: [WhatsAppWebhookService],
-  exports: [WhatsAppWebhookService],
+  providers: [WhatsAppClient],
+  exports: [WhatsAppClient],
 })
 export class WhatsAppModule {}

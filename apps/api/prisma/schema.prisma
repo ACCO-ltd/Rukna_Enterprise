@@ -5174,3 +5174,66 @@ enum PolicyConditionOperator {
   BETWEEN
   IN
 }
+
+// ─── Outbound messages (ADR-042 phase 2 — communication core) ─────────────────
+//
+// One row per business-initiated message Rukna sends to a client (WhatsApp today; EMAIL reserved).
+// Idempotent on (organizationId, idempotencyKey). Status only moves forward (see CommunicationService).
+
+enum MessageChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum MessagePurpose {
+  INVOICE
+  RECEIPT
+  PAYMENT_REMINDER
+  OVERDUE_REMINDER
+}
+
+enum MessageStatus {
+  QUEUED
+  /// The send request went out but Meta never answered (timeout / dropped connection). It may or
+  /// may not have been delivered, so it is NOT retried automatically.
+  UNKNOWN
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model OutboundMessage {
+  id                String         @id @default(cuid())
+  organizationId    String         @map("organization_id")
+  channel           MessageChannel
+  purpose           MessagePurpose
+  clientId          String?        @map("client_id")
+  /// E.164, e.g. +252612345678.
+  recipient         String
+  /// 'client_invoice' | 'payment_receipt' | …
+  resourceType      String         @map("resource_type")
+  resourceId        String         @map("resource_id")
+  templateName      String?        @map("template_name")
+  templateLanguage  String?        @map("template_language")
+  providerMessageId String?        @unique @map("provider_message_id")
+  status            MessageStatus  @default(QUEUED)
+  queuedAt          DateTime       @default(now()) @map("queued_at")
+  sentAt            DateTime?      @map("sent_at")
+  deliveredAt       DateTime?      @map("delivered_at")
+  readAt            DateTime?      @map("read_at")
+  failedAt          DateTime?      @map("failed_at")
+  /// Our typed code (e.g. INVALID_RECIPIENT) or Meta's numeric code for webhook failures.
+  errorCode         String?        @map("error_code")
+  /// Plain words for staff; never a token or other secret.
+  errorMessage      String?        @map("error_message")
+  idempotencyKey    String         @map("idempotency_key")
+  createdBy         String         @map("created_by")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  @@unique([organizationId, idempotencyKey], map: "outbound_messages_org_idempotency_key")
+  @@index([organizationId, resourceType, resourceId], map: "outbound_messages_org_resource_idx")
+  @@index([organizationId, clientId], map: "outbound_messages_org_client_idx")
+  @@map("outbound_messages")
+}
