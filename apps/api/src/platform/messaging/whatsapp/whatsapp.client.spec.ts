@@ -216,6 +216,7 @@ describe('WhatsAppClient (ADR-042 phase 2)', () => {
     expect(classifyMetaError(undefined, 500)).toBe('PROVIDER_ERROR');
     expect(maskPhone('+252612345678')).toBe('…5678');
     expect(maskPhone(null)).toBe('…');
+    expect(maskPhone('…5678')).toBe('…5678'); // idempotent on an already-masked value
   });
 });
 
