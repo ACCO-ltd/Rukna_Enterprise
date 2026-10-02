@@ -42,6 +42,9 @@ export type FileOwner =
   // one organization-level permission (manage:accounts-receivable), not project membership — see
   // ORGANIZATION_LOGO's note — so the document mirrors that rather than resolving a project.
   | { kind: 'INVOICE_DOCUMENT'; invoiceId: string }
+  // The rendered PDF for a posted payment receipt — same rule as INVOICE_DOCUMENT: the receipts
+  // controller gates every route on manage:receivable, not project membership.
+  | { kind: 'RECEIPT_DOCUMENT'; receiptId: string }
   // Procurement attachments: quotation evidence on a PO revision, delivery note on a GRN.
   // Neither lives inside a project — they are org-level records. Reachable by procurementView.
   | { kind: 'PO_REVISION_ATTACHMENT'; attachmentId: string; revisionId: string; organizationId: string }
@@ -126,6 +129,7 @@ export class FileAuthorizationService {
         },
         organizationLogoFor: { select: { id: true } },
         invoiceDocumentFor: { select: { id: true } },
+        receiptDocumentFor: { select: { id: true } },
         poRevisionAttachments: {
           select: {
             id: true,
@@ -190,6 +194,10 @@ export class FileAuthorizationService {
       ...file.invoiceDocumentFor.map((invoice) => ({
         kind: 'INVOICE_DOCUMENT' as const,
         invoiceId: invoice.id,
+      })),
+      ...file.receiptDocumentFor.map((receipt) => ({
+        kind: 'RECEIPT_DOCUMENT' as const,
+        receiptId: receipt.id,
       })),
       ...file.poRevisionAttachments.map((a) => ({
         kind: 'PO_REVISION_ATTACHMENT' as const,
@@ -319,6 +327,7 @@ export class FileAuthorizationService {
       case 'ORGANIZATION_LOGO':
         return identity.permissions.includes(PERMISSIONS.organizationsView);
       case 'INVOICE_DOCUMENT':
+      case 'RECEIPT_DOCUMENT':
         return identity.permissions.includes(PERMISSIONS.receivablesManage);
       // Procurement attachments are org-level (no project). Any holder of procurementView can
       // read them — the same guard that gates the PO and GRN list endpoints.

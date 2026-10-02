@@ -52,6 +52,7 @@ interface FileRow {
   }[];
   organizationLogoFor: { id: string }[];
   invoiceDocumentFor: { id: string }[];
+  receiptDocumentFor: { id: string }[];
   poRevisionAttachments: { id: string; purchaseOrderRevisionId: string; organizationId: string }[];
   grnAttachments: { id: string; goodsReceiptNoteId: string; organizationId: string }[];
 }
@@ -76,6 +77,7 @@ function fileRow(over: Partial<FileRow> = {}): FileRow {
     ipcAttachments: [],
     organizationLogoFor: [],
     invoiceDocumentFor: [],
+    receiptDocumentFor: [],
     poRevisionAttachments: [],
     grnAttachments: [],
     ...over,
@@ -418,6 +420,28 @@ describe('FileAuthorizationService', () => {
       await expect(service.assertCanRead(noPermission, 'file-1')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
+    });
+  });
+
+  /** WhatsApp V1 step 3: a generated receipt PDF, gated like the invoice document. */
+  describe('receipt document', () => {
+    const document = fileRow({
+      uploadedBy: 'someone-else',
+      lifecycle: 'IMMUTABLE',
+      receiptDocumentFor: [{ id: 'rcp-1' }],
+    });
+
+    it('is readable with manage:receivable, without project membership', async () => {
+      const { service } = build(document, []);
+      const arUser = { ...BOB, permissions: [PERMISSIONS.receivablesManage] };
+      await expect(service.assertCanRead(arUser, 'file-1')).resolves.toMatchObject({
+        owners: [{ kind: 'RECEIPT_DOCUMENT', receiptId: 'rcp-1' }],
+      });
+    });
+
+    it('denies a caller without manage:receivable', async () => {
+      const { service } = build(document, []);
+      await expect(service.assertCanRead({ ...BOB, permissions: [] }, 'file-1')).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 });

@@ -313,6 +313,10 @@ export class PlatformFileService {
             journalEntryAttachments: true,
             poRevisionAttachments: true,
             grnAttachments: true,
+            // Generated documents (receipt/invoice PDF) and the org logo are owners too.
+            invoiceDocumentFor: true,
+            receiptDocumentFor: true,
+            organizationLogoFor: true,
           },
         },
       },

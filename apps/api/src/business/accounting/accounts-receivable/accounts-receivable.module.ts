@@ -1,19 +1,23 @@
 import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { FilesModule } from '../../../platform/files/files.module.js';
+import { CommunicationModule } from '../../../platform/messaging/communication.module.js';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module.js';
 import { ClientInvoiceRepository } from './infrastructure/client-invoice.repository.js';
 import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceService } from './application/client-invoice.service.js';
 import { CustomerReceiptService } from './application/customer-receipt.service.js';
 import { InvoiceDocumentService } from './application/invoice-document.service.js';
+import { ReceiptDocumentService } from './application/receipt-document.service.js';
+import { PaymentReceiptDocumentService } from './application/payment-receipt-document.service.js';
+import { ReceiptWhatsAppService } from './application/receipt-whatsapp.service.js';
 import { CollectionEventsService } from './application/collection-events.service.js';
 import { CreditNoteService } from './application/credit-note.service.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
 import { CustomerReceiptController } from './presentation/customer-receipt.controller.js';
 
 @Module({
-  imports: [TenancyModule, AccountingCoreModule, FilesModule],
+  imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule],
   controllers: [ClientInvoiceController, CustomerReceiptController],
   providers: [
     ClientInvoiceRepository,
@@ -21,6 +25,9 @@ import { CustomerReceiptController } from './presentation/customer-receipt.contr
     ClientInvoiceService,
     CustomerReceiptService,
     InvoiceDocumentService,
+    ReceiptDocumentService,
+    PaymentReceiptDocumentService,
+    ReceiptWhatsAppService,
     CollectionEventsService,
     CreditNoteService,
   ],

@@ -214,4 +214,89 @@ export class PaymentReceiptArRepository {
       totalAllocated: totalReceived.toFixed(2),
     };
   }
+
+  // ─── Receipt document + WhatsApp (WhatsApp V1 step 3) ──────────────────────
+
+  /**
+   * What the receipt PDF and the WhatsApp message are built from: the receipt, its client (with
+   * contacts, for recipients), the org's branding, and the allocations made WHEN IT WAS POSTED —
+   * the ones sharing the posting journal. Later allocations (EVT-AR-005) are not part of the
+   * receipt as issued; initial allocations can only be undone by reversing the whole receipt, so
+   * this set is fixed for as long as the receipt is POSTED.
+   */
+  async findForDocument(prisma: TenantPrisma, organizationId: string, id: string) {
+    const receipt = await prisma.paymentReceipt.findFirst({
+      where: { id, organizationId },
+      include: {
+        client: {
+          select: {
+            name: true,
+            address: true,
+            city: true,
+            countryCode: true,
+            contacts: {
+              select: { id: true, name: true, role: true, phone: true, whatsappPhone: true, isPrimary: true },
+            },
+          },
+        },
+        organization: {
+          select: {
+            name: true,
+            logoFileId: true,
+            legalAddress: true,
+            taxRegistrationNumber: true,
+            brandColorHex: true,
+            invoiceFooterNote: true,
+            invoiceTemplate: true,
+          },
+        },
+        bankAccount: { select: { bankName: true, accountName: true } },
+      },
+    });
+    if (!receipt) return null;
+
+    const initialAllocations = receipt.postedJournalEntryId
+      ? await prisma.clientReceiptAllocation.findMany({
+          where: { paymentReceiptId: id, journalEntryId: receipt.postedJournalEntryId, postingStatus: 'POSTED' },
+          orderBy: { createdAt: 'asc' },
+          select: { allocatedAmount: true, clientInvoiceId: true, invoice: { select: { invoiceNumber: true } } },
+        })
+      : [];
+
+    // AR posting picks the bank by GL code and leaves bankAccountId empty; recover the account from
+    // the posting journal's bank line when it is a registered bank account.
+    let bankAccount = receipt.bankAccount;
+    if (!bankAccount && receipt.postedJournalEntryId) {
+      const bankLine = await prisma.journalLine.findFirst({
+        where: { journalEntryId: receipt.postedJournalEntryId, sourceSubledgerType: 'BANK' },
+        select: { accountId: true },
+      });
+      if (bankLine) {
+        bankAccount = await prisma.bankAccount.findFirst({
+          where: { organizationId, glAccountId: bankLine.accountId },
+          select: { bankName: true, accountName: true },
+        });
+      }
+    }
+
+    return { ...receipt, bankAccount, initialAllocations };
+  }
+
+  /**
+   * Compare-and-set: bind the rendered PDF only if none is bound yet. False = a concurrent first
+   * request won; the caller discards its own file and uses the winner's.
+   */
+  async bindDocumentFileIdIfUnset(prisma: TenantPrisma, id: string, documentFileId: string): Promise<boolean> {
+    const { count } = await prisma.paymentReceipt.updateMany({
+      where: { id, documentFileId: null },
+      data: { documentFileId },
+    });
+    return count === 1;
+  }
+
+  findDocumentFileId(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.paymentReceipt
+      .findFirst({ where: { id, organizationId }, select: { documentFileId: true } })
+      .then((r) => r?.documentFileId ?? null);
+  }
 }
