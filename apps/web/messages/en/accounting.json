@@ -921,7 +921,11 @@
       "noPermissionTitle": "You can't raise client invoices",
       "noPermissionBody": "Creating a client invoice needs permission to manage receivables."
     },
-    "notInProject": "This invoice does not belong to this project."
+    "notInProject": "This invoice does not belong to this project.",
+    "sendWhatsApp": "Send on WhatsApp",
+    "whatsappTitle": "Send invoice on WhatsApp",
+    "whatsappSubtitle": "Invoice {number} goes to the client as a PDF.",
+    "messagesHeading": "Messages"
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, PrismaClient, type MessageChannel, type MessagePurpose, type MessageStatus, type OutboundMessage } from '@prisma/client';
+import {
+  Prisma,
+  PrismaClient,
+  type MessageChannel,
+  type MessagePurpose,
+  type MessageStatus,
+  type OutboundMessage,
+} from '@prisma/client';
 
 /** A tenant client or an open transaction. */
 export type Db = Prisma.TransactionClient | PrismaClient;
@@ -21,7 +28,11 @@ export interface NewOutboundMessage {
 /** Tenant DB access for OutboundMessage (ADR-042 phase 2). */
 @Injectable()
 export class OutboundMessageRepository {
-  findByKey(db: Db, organizationId: string, idempotencyKey: string): Promise<OutboundMessage | null> {
+  findByKey(
+    db: Db,
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<OutboundMessage | null> {
     return db.outboundMessage.findUnique({
       where: { organizationId_idempotencyKey: { organizationId, idempotencyKey } },
     });
@@ -47,7 +58,10 @@ export class OutboundMessageRepository {
   async rearmFailed(
     db: Db,
     id: string,
-    data: Pick<NewOutboundMessage, 'recipient' | 'clientId' | 'templateName' | 'templateLanguage' | 'createdBy'>,
+    data: Pick<
+      NewOutboundMessage,
+      'recipient' | 'clientId' | 'templateName' | 'templateLanguage' | 'createdBy'
+    >,
   ): Promise<boolean> {
     const { count } = await db.outboundMessage.updateMany({
       where: { id, status: 'FAILED' },
@@ -83,19 +97,47 @@ export class OutboundMessageRepository {
    * QUEUED → SENT. A webhook may already have moved the row further (DELIVERED / READ / FAILED):
    * that status is kept and only a missing `sentAt` is filled.
    */
-  async markSent(db: Db, id: string, providerMessageId: string, sentAt: Date): Promise<OutboundMessage> {
-    await db.outboundMessage.updateMany({ where: { id, status: 'QUEUED' }, data: { status: 'SENT', providerMessageId, sentAt } });
-    await db.outboundMessage.updateMany({ where: { id, sentAt: null, status: { not: 'FAILED' } }, data: { sentAt } });
+  async markSent(
+    db: Db,
+    id: string,
+    providerMessageId: string,
+    sentAt: Date,
+  ): Promise<OutboundMessage> {
+    await db.outboundMessage.updateMany({
+      where: { id, status: 'QUEUED' },
+      data: { status: 'SENT', providerMessageId, sentAt },
+    });
+    await db.outboundMessage.updateMany({
+      where: { id, sentAt: null, status: { not: 'FAILED' } },
+      data: { sentAt },
+    });
     return db.outboundMessage.findUniqueOrThrow({ where: { id } });
   }
 
   /** The send went out but Meta never confirmed it: not FAILED, so never auto-retried. */
-  markUnknown(db: Db, id: string, errorCode: string, errorMessage: string): Promise<OutboundMessage> {
-    return db.outboundMessage.update({ where: { id }, data: { status: 'UNKNOWN', errorCode, errorMessage } });
+  markUnknown(
+    db: Db,
+    id: string,
+    errorCode: string,
+    errorMessage: string,
+  ): Promise<OutboundMessage> {
+    return db.outboundMessage.update({
+      where: { id },
+      data: { status: 'UNKNOWN', errorCode, errorMessage },
+    });
   }
 
-  markFailed(db: Db, id: string, errorCode: string, errorMessage: string, failedAt: Date): Promise<OutboundMessage> {
-    return db.outboundMessage.update({ where: { id }, data: { status: 'FAILED', errorCode, errorMessage, failedAt } });
+  markFailed(
+    db: Db,
+    id: string,
+    errorCode: string,
+    errorMessage: string,
+    failedAt: Date,
+  ): Promise<OutboundMessage> {
+    return db.outboundMessage.update({
+      where: { id },
+      data: { status: 'FAILED', errorCode, errorMessage, failedAt },
+    });
   }
 
   /**
@@ -117,21 +159,55 @@ export class OutboundMessageRepository {
   }
 
   /** After a jump ahead (READ before DELIVERED), fills the skipped timestamps that are still null. */
-  async fillMissingTimestamps(db: Db, providerMessageId: string, fields: Array<'sentAt' | 'deliveredAt'>, at: Date): Promise<void> {
+  async fillMissingTimestamps(
+    db: Db,
+    providerMessageId: string,
+    fields: Array<'sentAt' | 'deliveredAt'>,
+    at: Date,
+  ): Promise<void> {
     for (const field of fields) {
-      await db.outboundMessage.updateMany({ where: { providerMessageId, [field]: null }, data: { [field]: at } });
+      await db.outboundMessage.updateMany({
+        where: { providerMessageId, [field]: null },
+        data: { [field]: at },
+      });
     }
   }
 
+  /**
+   * A person settled an UNKNOWN row by hand (ADR-042 step 2): conditional on it still being UNKNOWN,
+   * so a webhook or a second click that got there first wins and this returns `false`.
+   */
+  async resolveUnknown(
+    db: Db,
+    id: string,
+    data: Prisma.OutboundMessageUpdateManyMutationInput,
+  ): Promise<boolean> {
+    const { count } = await db.outboundMessage.updateMany({
+      where: { id, status: 'UNKNOWN' },
+      data,
+    });
+    return count === 1;
+  }
+
   /** Rows in `statuses` queued before `before`, oldest first. */
-  listStale(db: Db, organizationId: string, statuses: MessageStatus[], before: Date): Promise<OutboundMessage[]> {
+  listStale(
+    db: Db,
+    organizationId: string,
+    statuses: MessageStatus[],
+    before: Date,
+  ): Promise<OutboundMessage[]> {
     return db.outboundMessage.findMany({
       where: { organizationId, status: { in: statuses }, queuedAt: { lt: before } },
       orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }],
     });
   }
 
-  listForResource(db: Db, organizationId: string, resourceType: string, resourceId: string): Promise<OutboundMessage[]> {
+  listForResource(
+    db: Db,
+    organizationId: string,
+    resourceType: string,
+    resourceId: string,
+  ): Promise<OutboundMessage[]> {
     return db.outboundMessage.findMany({
       where: { organizationId, resourceType, resourceId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

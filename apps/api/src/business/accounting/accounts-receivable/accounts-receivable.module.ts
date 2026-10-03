@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { FilesModule } from '../../../platform/files/files.module.js';
 import { CommunicationModule } from '../../../platform/messaging/communication.module.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module.js';
 import { ClientInvoiceRepository } from './infrastructure/client-invoice.repository.js';
 import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.repository.js';
@@ -14,11 +15,14 @@ import { ReceiptWhatsAppService } from './application/receipt-whatsapp.service.j
 import { CollectionEventsService } from './application/collection-events.service.js';
 import { CreditNoteService } from './application/credit-note.service.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
+import { InvoiceWhatsAppController } from './presentation/invoice-whatsapp.controller.js';
+import { InvoiceWhatsAppService } from './application/invoice-whatsapp.service.js';
+import { InvoiceWhatsAppRepository } from './infrastructure/invoice-whatsapp.repository.js';
 import { CustomerReceiptController } from './presentation/customer-receipt.controller.js';
 
 @Module({
-  imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule],
-  controllers: [ClientInvoiceController, CustomerReceiptController],
+  imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule, AuditLogsModule],
+  controllers: [ClientInvoiceController, CustomerReceiptController, InvoiceWhatsAppController],
   providers: [
     ClientInvoiceRepository,
     PaymentReceiptArRepository,
@@ -30,7 +34,14 @@ import { CustomerReceiptController } from './presentation/customer-receipt.contr
     ReceiptWhatsAppService,
     CollectionEventsService,
     CreditNoteService,
+    InvoiceWhatsAppRepository,
+    InvoiceWhatsAppService,
   ],
-  exports: [ClientInvoiceService, CustomerReceiptService, CollectionEventsService, CreditNoteService],
+  exports: [
+    ClientInvoiceService,
+    CustomerReceiptService,
+    CollectionEventsService,
+    CreditNoteService,
+  ],
 })
 export class AccountsReceivableModule {}

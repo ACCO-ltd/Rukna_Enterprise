@@ -39,3 +39,9 @@ export interface OutboundMessageView {
   createdBy: string;
   createdAt: string;
 }
+
+/** `POST /communications/:id/resolve` body — settle an UNKNOWN message after checking with the client. */
+export interface ResolveMessageRequest {
+  outcome: 'SENT' | 'FAILED';
+  note?: string;
+}

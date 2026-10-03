@@ -15,10 +15,12 @@ import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecy
 import { formatDate, formatMoney } from '@/lib/format';
 import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
+import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
+import { MessageHistory } from '@/features/communications/components/message-history';
 
 import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
-import { useInvoice, useInvoiceAction } from '../hooks/use-invoices';
+import { invoiceKeys, useInvoice, useInvoiceAction } from '../hooks/use-invoices';
 import {
   canApprove,
   canPost,
@@ -31,7 +33,7 @@ import { InvoiceDocumentPreview, MobileInvoicePreviewTrigger } from './invoice-d
 import { InvoiceStatusBadges } from './invoice-status-badges';
 import { PostInvoiceDialog } from './post-invoice-dialog';
 
-type OpenDialog = 'approve' | 'post' | 'reverse' | null;
+type OpenDialog = 'approve' | 'post' | 'reverse' | 'whatsapp' | null;
 
 export function InvoiceDetail({
   invoiceId,
@@ -62,9 +64,7 @@ export function InvoiceDetail({
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
-  useModuleTrail(
-    invoice.data ? (invoice.data.invoiceNumber ?? t('unnumbered')) : undefined,
-  );
+  useModuleTrail(invoice.data ? (invoice.data.invoiceNumber ?? t('unnumbered')) : undefined);
 
   if (invoice.isPending) {
     return (
@@ -92,6 +92,11 @@ export function InvoiceDetail({
   const money = (value: string | null) => formatMoney(value, data.currencyCode, locale);
 
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
+  // ADR-042 — an issued invoice (numbered, posted, not cancelled) can be sent on WhatsApp.
+  const issued =
+    data.postingStatus === 'POSTED' &&
+    data.documentStatus !== 'CANCELLED' &&
+    Boolean(data.invoiceNumber);
   // Post needs a ready ledger. When it is not, the action is withheld and the notice below the
   // header says why and where to fix it — never a button that fails and rolls back (A7).
   const ledgerBlocked = ledgerBlockedState;
@@ -101,12 +106,15 @@ export function InvoiceDetail({
 
   // `from` is only followed when it is a same-origin path — never `//host` or an absolute URL.
   const fromParam = searchParams.get('from');
-  const safeFrom = fromParam && fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : null;
+  const safeFrom =
+    fromParam && fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : null;
   const backHref = back?.href ?? safeFrom;
   const backLabel = back?.label ?? searchParams.get('fromLabel') ?? t('backToInvoices');
 
   const title =
-    state === 'POSTED' ? t('stateTitle.POSTED', { number: data.invoiceNumber ?? t('unnumbered') }) : t(`stateTitle.${state}`);
+    state === 'POSTED'
+      ? t('stateTitle.POSTED', { number: data.invoiceNumber ?? t('unnumbered') })
+      : t(`stateTitle.${state}`);
 
   const close = () => {
     action.reset();
@@ -134,7 +142,12 @@ export function InvoiceDetail({
         }
         identifier={data.invoiceNumber ?? undefined}
         title={title}
-        status={<InvoiceStatusBadges documentStatus={data.documentStatus} postingStatus={data.postingStatus} />}
+        status={
+          <InvoiceStatusBadges
+            documentStatus={data.documentStatus}
+            postingStatus={data.postingStatus}
+          />
+        }
         actions={
           mayManage ? (
             <>
@@ -148,6 +161,12 @@ export function InvoiceDetail({
                 <BlockedHint invoice={data} />
               )}
 
+              {issued ? (
+                <Button variant="outline" onClick={() => setDialog('whatsapp')}>
+                  {t('sendWhatsApp')}
+                </Button>
+              ) : null}
+
               {canReverse(data) ? (
                 <Button variant="outline" onClick={() => setDialog('reverse')}>
                   {t('reverse')}
@@ -160,7 +179,9 @@ export function InvoiceDetail({
 
       {data.postingStatus !== 'POSTED' ? <AccountingSetupNotice /> : null}
 
-      {state === 'DRAFT' ? <p className="text-caption text-muted-foreground">{t('approveHint')}</p> : null}
+      {state === 'DRAFT' ? (
+        <p className="text-caption text-muted-foreground">{t('approveHint')}</p>
+      ) : null}
       {state === 'AWAITING_POSTING' ? (
         <p className="text-caption text-muted-foreground">{t('postHint')}</p>
       ) : null}
@@ -174,13 +195,21 @@ export function InvoiceDetail({
           <RecordPanel title={t('detailEyebrow')}>
             <DefinitionList>
               <DefinitionRow label={t('fieldSource')}>{humanSource(data, t)}</DefinitionRow>
-              <DefinitionRow label={t('fieldClient')}>{clientName ?? data.clientId.slice(-8)}</DefinitionRow>
-              <DefinitionRow label={t('fieldInvoiceDate')}>{formatDate(data.invoiceDate, locale)}</DefinitionRow>
-              <DefinitionRow label={t('fieldDueDate')}>{formatDate(data.dueDate, locale)}</DefinitionRow>
+              <DefinitionRow label={t('fieldClient')}>
+                {clientName ?? data.clientId.slice(-8)}
+              </DefinitionRow>
+              <DefinitionRow label={t('fieldInvoiceDate')}>
+                {formatDate(data.invoiceDate, locale)}
+              </DefinitionRow>
+              <DefinitionRow label={t('fieldDueDate')}>
+                {formatDate(data.dueDate, locale)}
+              </DefinitionRow>
               <DefinitionRow label={t('fieldTerms')}>{data.paymentTerms}</DefinitionRow>
             </DefinitionList>
             <DefinitionList className="mt-2 border-t border-border pt-2">
-              <DefinitionRow label={t('fieldSubtotal')} numeric>{money(data.subtotal)}</DefinitionRow>
+              <DefinitionRow label={t('fieldSubtotal')} numeric>
+                {money(data.subtotal)}
+              </DefinitionRow>
               <DefinitionRow
                 label={
                   // The rate the invoice was raised at (ADR-041), never a rate assumed here.
@@ -192,7 +221,10 @@ export function InvoiceDetail({
               >
                 {money(data.vatAmount)}
               </DefinitionRow>
-              <DefinitionRow label={state === 'POSTED' ? t('fieldBalanceDue') : t('fieldDraftTotal')} numeric>
+              <DefinitionRow
+                label={state === 'POSTED' ? t('fieldBalanceDue') : t('fieldDraftTotal')}
+                numeric
+              >
                 {money(state === 'POSTED' ? data.outstandingAmount : data.totalAmount)}
               </DefinitionRow>
             </DefinitionList>
@@ -201,6 +233,18 @@ export function InvoiceDetail({
           <RecordPanel title={t('statusList.heading')}>
             <ApprovalPostingStatus data={data} locale={locale} />
           </RecordPanel>
+
+          {issued && mayManage ? (
+            <RecordPanel title={t('messagesHeading')}>
+              <MessageHistory
+                resourceType="client_invoice"
+                resourceId={invoiceId}
+                canResolve
+                showTitle={false}
+                invalidateOnResolve={[invoiceKeys.all, ['commercial']]}
+              />
+            </RecordPanel>
+          ) : null}
 
           <MobileInvoicePreviewTrigger invoiceId={invoiceId} />
         </div>
@@ -235,6 +279,17 @@ export function InvoiceDetail({
         />
       ) : null}
 
+      {issued && mayManage ? (
+        <InvoiceWhatsAppDialog
+          open={dialog === 'whatsapp'}
+          onClose={() => setDialog(null)}
+          invoiceId={invoiceId}
+          title={t('whatsappTitle')}
+          subtitle={t('whatsappSubtitle', { number: data.invoiceNumber ?? '' })}
+          invalidate={[invoiceKeys.all, ['commercial']]}
+        />
+      ) : null}
+
       {dialog === 'reverse' ? (
         <ConfirmActionDialog
           title={t('reverseTitle')}
@@ -260,7 +315,10 @@ export function InvoiceDetail({
  * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · Temporary site power". Falls
  * back to the bare kind word only for a migration-loaded invoice, which has no reference to show.
  */
-function humanSource(invoice: ClientInvoice, t: ReturnType<typeof useTranslations<'accounting.invoices'>>): string {
+function humanSource(
+  invoice: ClientInvoice,
+  t: ReturnType<typeof useTranslations<'accounting.invoices'>>,
+): string {
   const kindText = t(`sourceKind.${invoice.source.kind}`);
   if (!invoice.source.label) return kindText;
   return `${kindText} · ${invoice.source.label}`;
@@ -271,13 +329,7 @@ function humanSource(invoice: ClientInvoice, t: ReturnType<typeof useTranslation
  * are the only transitions this page's own data can honestly account for; a reversal appends a
  * third step only when one actually happened.
  */
-function ApprovalPostingStatus({
-  data,
-  locale,
-}: {
-  data: ClientInvoice;
-  locale: 'en' | 'ar';
-}) {
+function ApprovalPostingStatus({ data, locale }: { data: ClientInvoice; locale: 'en' | 'ar' }) {
   const t = useTranslations('accounting.invoices.statusList');
   const approved = data.documentStatus !== 'DRAFT';
   const posted = data.postingStatus === 'POSTED';
@@ -301,7 +353,15 @@ function ApprovalPostingStatus({
   );
 }
 
-function StatusStep({ done, label, detail }: { done: boolean; label: string; detail: string | null }) {
+function StatusStep({
+  done,
+  label,
+  detail,
+}: {
+  done: boolean;
+  label: string;
+  detail: string | null;
+}) {
   return (
     <li className="flex items-center gap-2.5">
       {done ? (
@@ -309,7 +369,9 @@ function StatusStep({ done, label, detail }: { done: boolean; label: string; det
       ) : (
         <Circle size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       )}
-      <span className={done ? 'text-body-sm text-foreground' : 'text-body-sm text-muted-foreground'}>
+      <span
+        className={done ? 'text-body-sm text-foreground' : 'text-body-sm text-muted-foreground'}
+      >
         {label}
       </span>
       <span className="text-caption text-muted-foreground">{detail}</span>

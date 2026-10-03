@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type MessagePurpose, type OutboundMessage } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import type { OutboundMessageView, RequestIdentity } from '@erp/types';
@@ -6,7 +12,10 @@ import type { OutboundMessageView, RequestIdentity } from '@erp/types';
 import { TenancyService } from '../tenancy/tenancy.service.js';
 import { tenancyStorage } from '../tenancy/tenancy.context.js';
 import { TransactionalAuditOutboxService } from '../audit-logs/application/transactional-audit-outbox.service.js';
-import { OutboundMessageRepository, type Db } from './infrastructure/outbound-message.repository.js';
+import {
+  OutboundMessageRepository,
+  type Db,
+} from './infrastructure/outbound-message.repository.js';
 import { OutboundMessageRouteRepository } from './infrastructure/outbound-message-route.repository.js';
 import {
   E164_PATTERN,
@@ -61,6 +70,50 @@ export interface MessageStatusUpdate {
 
 export type StatusUpdateOutcome = 'applied' | 'ignored' | 'not_found';
 
+/** errorCode of a row a person marked as not delivered. */
+export const MARKED_FAILED = 'MARKED_FAILED';
+const MARKED_FAILED_MESSAGE =
+  'Marked as not received after checking with the client. Send it again to retry.';
+
+export interface ResolveUnknownInput {
+  outcome: 'SENT' | 'FAILED';
+  /** Why, in the person's words — kept in the audit log only. */
+  note?: string | null;
+}
+
+/** Who a status hook acts for: the requesting user, or (webhooks) the message's creator. */
+export interface MessageHookContext {
+  organizationId: string;
+  actorUserId: string;
+}
+
+export type MessageStatusHook = (
+  tx: Prisma.TransactionClient,
+  ctx: MessageHookContext,
+  message: OutboundMessageView,
+) => Promise<void>;
+
+/**
+ * Reactions of the feature that owns a resourceType (e.g. invoices) to its messages' status, run
+ * INSIDE the transaction that changes the OutboundMessage status, so the feature's own record (an
+ * invoice delivery) can never disagree with the message. Feature modules register them at start-up —
+ * the platform never imports them (ARCH-BOUNDARY: platform must not depend on business modules).
+ *
+ *   onSent    the message reached the client's WhatsApp side: the send was accepted (SENT, or a
+ *             webhook already moved it to DELIVERED / READ), a webhook confirmed a QUEUED / UNKNOWN
+ *             row, or a person resolved UNKNOWN → SENT. May run more than once per message (each
+ *             forward webhook): it must be idempotent.
+ *   onFailed  a webhook reported the message FAILED (e.g. the number is not on WhatsApp) — possibly
+ *             after onSent already ran. Not called for a send refused up front or a manual "not sent"
+ *             of an UNKNOWN row (onSent never ran for those).
+ */
+export interface MessageStatusHooks {
+  onSent?: MessageStatusHook;
+  onFailed?: MessageStatusHook;
+}
+
+const REACHED: ReadonlySet<string> = new Set(['SENT', 'DELIVERED', 'READ']);
+
 /**
  * ADR-042 phase 2 — the channel-agnostic communication core. Callers (send invoice / receipt /
  * reminders) ask for a message; this records it (OutboundMessage), sends it through the channel
@@ -83,6 +136,7 @@ export type StatusUpdateOutcome = 'applied' | 'ignored' | 'not_found';
 @Injectable()
 export class CommunicationService {
   private readonly logger = new Logger(CommunicationService.name);
+  private readonly statusHooks = new Map<string, MessageStatusHooks>();
 
   constructor(
     private readonly tenancy: TenancyService,
@@ -92,7 +146,10 @@ export class CommunicationService {
     private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
-  async sendWhatsAppTemplate(identity: RequestIdentity, input: SendWhatsAppTemplateInput): Promise<OutboundMessageView> {
+  async sendWhatsAppTemplate(
+    identity: RequestIdentity,
+    input: SendWhatsAppTemplateInput,
+  ): Promise<OutboundMessageView> {
     validate(input);
     const db = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
@@ -140,18 +197,123 @@ export class CommunicationService {
    * Messages with no provider confirmation (QUEUED or UNKNOWN) queued more than `olderThanMinutes`
    * ago, oldest first — the ones a person must check by hand before any re-send.
    */
-  async listStale(identity: RequestIdentity, olderThanMinutes: number): Promise<OutboundMessageView[]> {
+  async listStale(
+    identity: RequestIdentity,
+    olderThanMinutes: number,
+  ): Promise<OutboundMessageView[]> {
     if (!Number.isFinite(olderThanMinutes) || olderThanMinutes < 0) {
-      throw new BadRequestException({ code: 'MESSAGE_INVALID', field: 'olderThanMinutes', message: 'olderThanMinutes must be 0 or more' });
+      throw new BadRequestException({
+        code: 'MESSAGE_INVALID',
+        field: 'olderThanMinutes',
+        message: 'olderThanMinutes must be 0 or more',
+      });
     }
     const before = new Date(Date.now() - olderThanMinutes * 60_000);
-    const rows = await this.messages.listStale(this.tenancy.getClient(), identity.activeOrganizationId, STALE_STATUSES, before);
+    const rows = await this.messages.listStale(
+      this.tenancy.getClient(),
+      identity.activeOrganizationId,
+      STALE_STATUSES,
+      before,
+    );
     return rows.map(toView);
   }
 
-  async listForResource(identity: RequestIdentity, resourceType: string, resourceId: string): Promise<OutboundMessageView[]> {
-    const rows = await this.messages.listForResource(this.tenancy.getClient(), identity.activeOrganizationId, resourceType, resourceId);
+  async listForResource(
+    identity: RequestIdentity,
+    resourceType: string,
+    resourceId: string,
+  ): Promise<OutboundMessageView[]> {
+    const rows = await this.messages.listForResource(
+      this.tenancy.getClient(),
+      identity.activeOrganizationId,
+      resourceType,
+      resourceId,
+    );
     return rows.map(toView);
+  }
+
+  /** Registers the status hooks for one resourceType. A second registration is a wiring bug. */
+  registerStatusHooks(resourceType: string, hooks: MessageStatusHooks): void {
+    if (this.statusHooks.has(resourceType)) {
+      throw new Error(`Message status hooks for '${resourceType}' are already registered`);
+    }
+    this.statusHooks.set(resourceType, hooks);
+  }
+
+  /**
+   * A person settles an UNKNOWN message after checking with the client (WhatsApp never confirmed the
+   * send). SENT → the row counts as sent, `sentAt` = the time of the resolve (the real send time is
+   * unknowable), and the owning feature's onSent hook runs in the same transaction with the resolver
+   * as actor; FAILED → the row is FAILED (errorCode MARKED_FAILED) and the caller may send
+   * again under a new idempotency key. Only an UNKNOWN row can be resolved (409 otherwise). Audited.
+   */
+  async resolveUnknown(
+    identity: RequestIdentity,
+    id: string,
+    input: ResolveUnknownInput,
+  ): Promise<OutboundMessageView> {
+    if (input.outcome !== 'SENT' && input.outcome !== 'FAILED') {
+      throw new BadRequestException({
+        code: 'MESSAGE_INVALID',
+        field: 'outcome',
+        message: 'outcome must be SENT or FAILED',
+      });
+    }
+    const db = this.tenancy.getClient();
+    const existing = await this.messages.findById(db, id);
+    if (!existing || existing.organizationId !== identity.activeOrganizationId) {
+      throw new NotFoundException({
+        errorCode: 'MESSAGE_NOT_FOUND',
+        message: 'Message not found.',
+      });
+    }
+    const notUnknown = () =>
+      new ConflictException({
+        errorCode: 'MESSAGE_NOT_UNKNOWN',
+        message:
+          'Only a message WhatsApp never confirmed can be marked by hand. Reload to see its current status.',
+      });
+    if (existing.status !== 'UNKNOWN') throw notUnknown();
+
+    const now = new Date();
+    const data: Prisma.OutboundMessageUpdateManyMutationInput =
+      input.outcome === 'SENT'
+        ? { status: 'SENT', sentAt: now, errorCode: null, errorMessage: null }
+        : {
+            status: 'FAILED',
+            failedAt: now,
+            errorCode: MARKED_FAILED,
+            errorMessage: MARKED_FAILED_MESSAGE,
+          };
+
+    const settled = await db.$transaction(async (tx) => {
+      if (!(await this.messages.resolveUnknown(tx, id, data))) throw notUnknown();
+      const row = await this.messages.findById(tx, id);
+      if (!row) throw notUnknown();
+      await this.auditOutbox.record(tx as Prisma.TransactionClient, {
+        organizationId: row.organizationId,
+        actorUserId: identity.userId,
+        action: `whatsapp.resolved-${input.outcome === 'SENT' ? 'sent' : 'failed'}`,
+        resourceType: OUTBOUND_MESSAGE_AUDIT_RESOURCE,
+        resourceId: row.id,
+        sourceCommand: 'communication.resolve-unknown',
+        eventType: 'outbound-message.resolved',
+        idempotencyKey: `outbound-message.resolved:${row.id}`,
+        before: { status: 'UNKNOWN' },
+        after: {
+          status: row.status,
+          resourceType: row.resourceType,
+          resourceId: row.resourceId,
+          recipient: maskPhone(row.recipient),
+          ...(input.note?.trim() ? { note: input.note.trim().slice(0, 500) } : {}),
+        },
+      });
+      if (input.outcome === 'SENT') {
+        await this.runHook('onSent', tx as Prisma.TransactionClient, row, identity.userId);
+      }
+      return row;
+    });
+    return toView(settled);
   }
 
   /**
@@ -167,7 +329,10 @@ export class CommunicationService {
     const webhookStatus = status as keyof typeof STATUS_TIMESTAMP;
 
     const at = parseUnixSeconds(update.timestamp);
-    const data: Prisma.OutboundMessageUpdateManyMutationInput = { status, [STATUS_TIMESTAMP[webhookStatus]]: at };
+    const data: Prisma.OutboundMessageUpdateManyMutationInput = {
+      status,
+      [STATUS_TIMESTAMP[webhookStatus]]: at,
+    };
     if (status === 'FAILED') {
       const first = update.errors?.[0];
       const code = typeof first?.code === 'number' ? first.code : undefined;
@@ -175,12 +340,38 @@ export class CommunicationService {
       data.errorMessage = describeWhatsAppError(classifyMetaError(code));
     }
 
-    const applied = await this.messages.applyStatus(db, update.providerMessageId, statusesThatAccept(status), data);
-    if (applied) {
-      await this.messages.fillMissingTimestamps(db, update.providerMessageId, IMPLIED_TIMESTAMPS[webhookStatus], at);
-      return 'applied';
-    }
-    return (await this.messages.findByProviderId(db, update.providerMessageId)) ? 'ignored' : 'not_found';
+    const applied = await db.$transaction(async (tx) => {
+      const ok = await this.messages.applyStatus(
+        tx,
+        update.providerMessageId,
+        statusesThatAccept(status),
+        data,
+      );
+      if (!ok) return false;
+      await this.messages.fillMissingTimestamps(
+        tx,
+        update.providerMessageId,
+        IMPLIED_TIMESTAMPS[webhookStatus],
+        at,
+      );
+      if (this.statusHooks.size > 0) {
+        const row = await this.messages.findByProviderId(tx, update.providerMessageId);
+        // No user behind a webhook: the message's creator is the actor (as for its own send).
+        if (row) {
+          await this.runHook(
+            status === 'FAILED' ? 'onFailed' : 'onSent',
+            tx as Prisma.TransactionClient,
+            row,
+            row.createdBy,
+          );
+        }
+      }
+      return true;
+    });
+    if (applied) return 'applied';
+    return (await this.messages.findByProviderId(db, update.providerMessageId))
+      ? 'ignored'
+      : 'not_found';
   }
 
   // ─── internals ──────────────────────────────────────────────────────────────
@@ -195,7 +386,11 @@ export class CommunicationService {
     try {
       const document = input.document
         ? {
-            mediaId: await this.whatsapp.uploadMedia(input.document.bytes, input.document.mimeType, input.document.filename),
+            mediaId: await this.whatsapp.uploadMedia(
+              input.document.bytes,
+              input.document.mimeType,
+              input.document.filename,
+            ),
             filename: input.document.filename,
           }
         : undefined;
@@ -220,7 +415,9 @@ export class CommunicationService {
         await this.audit(tx, identity, updated, outcome);
         return updated;
       });
-      this.logger.warn(`WhatsApp ${row.purpose} message ${row.id} to ${maskPhone(row.recipient)} ${outcome}: ${failure.code}`);
+      this.logger.warn(
+        `WhatsApp ${row.purpose} message ${row.id} to ${maskPhone(row.recipient)} ${outcome}: ${failure.code}`,
+      );
       if (!(error instanceof WhatsAppSendError)) throw error; // a bug, not a provider failure
       return toView(settled);
     }
@@ -236,9 +433,23 @@ export class CommunicationService {
     const sent = await db.$transaction(async (tx) => {
       const updated = await this.messages.markSent(tx, row.id, providerMessageId, new Date());
       await this.audit(tx, identity, updated, 'sent');
+      // A webhook may already have failed it; only a message that got through counts as sent.
+      if (REACHED.has(updated.status)) {
+        await this.runHook('onSent', tx as Prisma.TransactionClient, updated, identity.userId);
+      }
       return updated;
     });
     return toView(sent);
+  }
+
+  private async runHook(
+    kind: keyof MessageStatusHooks,
+    tx: Prisma.TransactionClient,
+    row: OutboundMessage,
+    actorUserId: string,
+  ): Promise<void> {
+    const hook = this.statusHooks.get(row.resourceType)?.[kind];
+    if (hook) await hook(tx, { organizationId: row.organizationId, actorUserId }, toView(row));
   }
 
   private async recordRoute(providerMessageId: string): Promise<void> {
@@ -253,7 +464,12 @@ export class CommunicationService {
     }
   }
 
-  private audit(tx: Db, identity: RequestIdentity, row: OutboundMessage, outcome: 'sent' | 'failed' | 'unknown'): Promise<void> {
+  private audit(
+    tx: Db,
+    identity: RequestIdentity,
+    row: OutboundMessage,
+    outcome: 'sent' | 'failed' | 'unknown',
+  ): Promise<void> {
     return this.auditOutbox.record(tx as Prisma.TransactionClient, {
       organizationId: row.organizationId,
       actorUserId: identity.userId,
@@ -280,23 +496,34 @@ export class CommunicationService {
 }
 
 function validate(input: SendWhatsAppTemplateInput): void {
-  const bad = (field: string, why: string) => new BadRequestException({ code: 'MESSAGE_INVALID', field, message: why });
-  if (!E164_PATTERN.test(input.recipient?.trim() ?? '')) throw bad('recipient', 'Recipient must be an E.164 number, e.g. +252612345678');
-  if (!input.idempotencyKey?.trim() || input.idempotencyKey.length > 200) throw bad('idempotencyKey', 'An idempotency key (≤ 200 chars) is required');
+  const bad = (field: string, why: string) =>
+    new BadRequestException({ code: 'MESSAGE_INVALID', field, message: why });
+  if (!E164_PATTERN.test(input.recipient?.trim() ?? ''))
+    throw bad('recipient', 'Recipient must be an E.164 number, e.g. +252612345678');
+  if (!input.idempotencyKey?.trim() || input.idempotencyKey.length > 200)
+    throw bad('idempotencyKey', 'An idempotency key (≤ 200 chars) is required');
   if (!input.templateName?.trim()) throw bad('templateName', 'A template name is required');
   if (!input.language?.trim()) throw bad('language', 'A template language is required');
-  if (!input.resourceType?.trim() || !input.resourceId?.trim()) throw bad('resource', 'resourceType and resourceId are required');
+  if (!input.resourceType?.trim() || !input.resourceId?.trim())
+    throw bad('resource', 'resourceType and resourceId are required');
   if (!Array.isArray(input.bodyParams) || input.bodyParams.some((p) => typeof p !== 'string')) {
     throw bad('bodyParams', 'bodyParams must be a list of strings');
   }
-  if (input.document && (!input.document.bytes?.length || !input.document.mimeType || !input.document.filename)) {
+  if (
+    input.document &&
+    (!input.document.bytes?.length || !input.document.mimeType || !input.document.filename)
+  ) {
     throw bad('document', 'A document needs bytes, a MIME type and a filename');
   }
 }
 
 /** One idempotency key = one intended message: same purpose, same record. */
 function assertSameIntent(row: OutboundMessage, input: SendWhatsAppTemplateInput): void {
-  if (row.purpose !== input.purpose || row.resourceType !== input.resourceType || row.resourceId !== input.resourceId) {
+  if (
+    row.purpose !== input.purpose ||
+    row.resourceType !== input.resourceType ||
+    row.resourceId !== input.resourceId
+  ) {
     throw new ConflictException({
       code: 'IDEMPOTENCY_KEY_REUSED',
       message: 'This idempotency key was already used for a different message.',
@@ -305,7 +532,12 @@ function assertSameIntent(row: OutboundMessage, input: SendWhatsAppTemplateInput
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'P2002';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: unknown }).code === 'P2002'
+  );
 }
 
 function parseUnixSeconds(value: string | undefined): Date {

@@ -21,14 +21,21 @@ import type { CommercialInvoiceDocumentResponse } from '@erp/types';
 import { ArrowLeft } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { invoiceKeys } from '@/features/accounting/hooks/use-invoices';
+import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
+import { MessageHistory } from '@/features/communications/components/message-history';
 import { PostingStatus, StatusBadge } from '@/components/status-badge';
-import { useAccountingReadiness, useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
+import {
+  useAccountingReadiness,
+  useLedgerBlocked,
+} from '@/features/finance/hooks/use-accounting-readiness';
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 
 import { getIssuedInvoiceDocument } from '../api/commercial-api';
-import { useCommercialBilling } from '../hooks/use-commercial';
+import { useBillingPackages, useCommercialBilling } from '../hooks/use-commercial';
 import {
+  commercialInvoiceKeys,
   useDeleteDraftInvoice,
   useInvoiceDocument,
   useIssueInvoice,
@@ -41,7 +48,16 @@ import { InvoicePaper } from './invoice-paper';
 import { RecordPaymentDialog } from './record-payment-dialog';
 import { SendInvoiceDialog } from './send-invoice-dialog';
 
-type Pending = 'issue' | 'send' | 'payment' | 'edit' | 'delete' | 'credit' | CollectionDialogKind | null;
+type Pending =
+  | 'issue'
+  | 'send'
+  | 'whatsapp'
+  | 'payment'
+  | 'edit'
+  | 'delete'
+  | 'credit'
+  | CollectionDialogKind
+  | null;
 
 const LIFECYCLE_STEPS = ['DRAFT', 'ISSUED', 'SENT', 'PAID'] as const;
 
@@ -51,13 +67,20 @@ const LIFECYCLE_STEPS = ['DRAFT', 'ISSUED', 'SENT', 'PAID'] as const;
  * on paper, and a summary rail.
  *
  *  - Draft  → Issue invoice (approve + number + post in one command, decision D1)
- *  - Issued → Send to client (installment invoices — delivery is recorded per stage package)
+ *  - Issued → Send to client (installment invoices — delivery is recorded per stage package), or
+ *             Send on WhatsApp (any issued invoice — Rukna sends the PDF and records the delivery)
  *  - Sent   → Record payment
  *
  * Commands render from the server's `capabilities`; an unavailable one is not rendered and a
  * blocked Issue (accounting setup unfinished) is explained in words, never greyed out.
  */
-export function ProjectInvoicePage({ projectId, invoiceId }: { projectId: string; invoiceId: string }) {
+export function ProjectInvoicePage({
+  projectId,
+  invoiceId,
+}: {
+  projectId: string;
+  invoiceId: string;
+}) {
   const t = useTranslations('commercial.invoicePage');
   const query = useInvoiceDocument(projectId, invoiceId);
   const billingHref = `/projects/${projectId}/commercial/billing`;
@@ -141,14 +164,28 @@ function InvoiceDocumentView({
   const issueBlockedBySetup = lifecycle === 'DRAFT' && caps.canIssue && ledgerBlocked;
   // Delivery is recorded per stage package, keyed by the installment. A separate charge has no
   // delivery route, so it is never offered Send.
-  const canSend = caps.canSend && installmentId !== null && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
+  const canSend =
+    caps.canSend && installmentId !== null && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
+  // WhatsApp goes per invoice (ADR-042), so a separate charge can be sent this way too.
+  // Same rule as the API: posted, numbered, not cancelled or reversed (a paid one may go as a copy).
+  const canWhatsApp =
+    caps.canSend &&
+    Boolean(document.invoiceNumber) &&
+    (lifecycle === 'ISSUED' || lifecycle === 'SENT' || lifecycle === 'PAID');
   // A payment posts a receipt, so it waits for the ledger just like Issue (hidden, and said why).
   const payable = caps.canRecordPayment && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
   const canPay = payable && !ledgerBlocked;
   const paymentBlockedBySetup = payable && ledgerBlocked;
 
-  const primary: 'issue' | 'send' | 'payment' | null =
-    canIssue ? 'issue' : lifecycle === 'ISSUED' && canSend ? 'send' : canPay ? 'payment' : null;
+  // WhatsApp stays in the menu: for a separate charge (no package delivery route) the next step
+  // the page leads with is still Record payment.
+  const primary: 'issue' | 'send' | 'payment' | null = canIssue
+    ? 'issue'
+    : lifecycle === 'ISSUED' && canSend
+      ? 'send'
+      : canPay
+        ? 'payment'
+        : null;
 
   // Collection tools (follow-up, promise, dispute, history) belong to issued invoices only, for a
   // viewer who may bill or collect on this contract.
@@ -184,12 +221,17 @@ function InvoiceDocumentView({
   }
 
   const commands: DocumentCommand[] = [
-    ...(caps.canDownloadPdf ? [{ key: 'pdf', label: t('downloadPdf'), onSelect: () => void downloadPdf() }] : []),
+    ...(caps.canDownloadPdf
+      ? [{ key: 'pdf', label: t('downloadPdf'), onSelect: () => void downloadPdf() }]
+      : []),
     ...(lifecycle === 'DRAFT' && caps.canEditDraft
       ? [{ key: 'edit', label: t('editDraft'), onSelect: () => setPending('edit') }]
       : []),
     ...(canSend && primary !== 'send'
       ? [{ key: 'send', label: t('sendAgain'), onSelect: () => setPending('send') }]
+      : []),
+    ...(canWhatsApp
+      ? [{ key: 'whatsapp', label: t('sendWhatsApp'), onSelect: () => setPending('whatsapp') }]
       : []),
     ...(canPay && primary !== 'payment'
       ? [{ key: 'payment', label: t('recordPayment'), onSelect: () => setPending('payment') }]
@@ -201,12 +243,21 @@ function InvoiceDocumentView({
           { key: 'dispute', label: t('disputeMenu'), onSelect: () => setPending('dispute') },
         ]
       : []),
-    ...(collects ? [{ key: 'history', label: t('history'), onSelect: () => setPending('history') }] : []),
+    ...(collects
+      ? [{ key: 'history', label: t('history'), onSelect: () => setPending('history') }]
+      : []),
     ...(caps.canIssueCreditNote && lifecycle !== 'DRAFT' && lifecycle !== 'CANCELLED'
       ? [{ key: 'credit', label: t('creditNoteMenu'), onSelect: () => setPending('credit') }]
       : []),
     ...(lifecycle === 'DRAFT' && caps.canDeleteDraft
-      ? [{ key: 'delete', label: t('deleteDraftMenu'), onSelect: () => setPending('delete'), destructive: true }]
+      ? [
+          {
+            key: 'delete',
+            label: t('deleteDraftMenu'),
+            onSelect: () => setPending('delete'),
+            destructive: true,
+          },
+        ]
       : []),
   ];
 
@@ -247,7 +298,9 @@ function InvoiceDocumentView({
             steps={LIFECYCLE_STEPS.map((key) => ({ key, label: t(`lifecycle.${key}`) }))}
             current={lifecycle === 'CANCELLED' ? 'DRAFT' : lifecycle}
             terminal={
-              lifecycle === 'CANCELLED' ? { label: t('lifecycle.CANCELLED'), tone: 'historical' } : undefined
+              lifecycle === 'CANCELLED'
+                ? { label: t('lifecycle.CANCELLED'), tone: 'historical' }
+                : undefined
             }
             stepOfLabel={(n, total) => t('stepOf', { n, total })}
           />
@@ -273,7 +326,12 @@ function InvoiceDocumentView({
               },
               {
                 label: t('axisPosting'),
-                value: <PostingStatus status={document.postingStatus} label={tPosting(document.postingStatus)} />,
+                value: (
+                  <PostingStatus
+                    status={document.postingStatus}
+                    label={tPosting(document.postingStatus)}
+                  />
+                ),
               },
             ]}
             className="mb-0"
@@ -289,6 +347,16 @@ function InvoiceDocumentView({
           ) : null}
 
           <InvoicePaper document={document} />
+
+          {collects ? (
+            <MessageHistory
+              resourceType="client_invoice"
+              resourceId={document.id}
+              canResolve={caps.canSend}
+              invalidateOnResolve={[commercialInvoiceKeys.all(projectId), invoiceKeys.all]}
+              hideWhenEmpty
+            />
+          ) : null}
         </div>
 
         <div className="lg:pt-1">
@@ -298,7 +366,10 @@ function InvoiceDocumentView({
               {
                 label: t('source'),
                 value: sourceHref ? (
-                  <Link href={sourceHref} className="text-brand-primary underline-offset-4 hover:underline">
+                  <Link
+                    href={sourceHref}
+                    className="text-brand-primary underline-offset-4 hover:underline"
+                  >
                     {sourceText}
                   </Link>
                 ) : (
@@ -374,8 +445,18 @@ function InvoiceDocumentView({
           onClose={() => setPending(null)}
           projectId={projectId}
           installmentId={installmentId}
+          invoiceNumber={document.invoiceNumber}
+          onChooseWhatsApp={canWhatsApp ? () => setPending('whatsapp') : undefined}
+        />
+      ) : null}
+
+      {canWhatsApp && pending === 'whatsapp' ? (
+        <PackageWhatsAppDialog
+          projectId={projectId}
           invoiceId={document.id}
           invoiceNumber={document.invoiceNumber}
+          installmentId={installmentId}
+          onClose={() => setPending(null)}
         />
       ) : null}
 
@@ -401,7 +482,10 @@ function InvoiceDocumentView({
       ) : null}
 
       {collects &&
-      (pending === 'followup' || pending === 'promise' || pending === 'dispute' || pending === 'history') ? (
+      (pending === 'followup' ||
+        pending === 'promise' ||
+        pending === 'dispute' ||
+        pending === 'history') ? (
         <InvoiceCollectionDialogs
           kind={pending}
           projectId={projectId}
@@ -419,6 +503,65 @@ function InvoiceDocumentView({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Send on WhatsApp for a stage invoice sends the whole billing package — the milestone invoice and
+ * its variation invoices, each as its own message and PDF — as "Send to client" records a delivery
+ * on every invoice of the package. A separate charge (no installment) is just itself.
+ */
+function PackageWhatsAppDialog({
+  projectId,
+  invoiceId,
+  invoiceNumber,
+  installmentId,
+  onClose,
+}: {
+  projectId: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  installmentId: string | null;
+  onClose: () => void;
+}) {
+  const t = useTranslations('commercial.invoicePage');
+  const billing = useCommercialBilling(projectId);
+  const packages = useBillingPackages(
+    projectId,
+    installmentId ? (billing.data?.contractId ?? null) : null,
+  );
+  const loading =
+    installmentId !== null &&
+    (billing.isPending || (Boolean(billing.data?.contractId) && packages.isPending));
+  if (loading) {
+    return (
+      <p role="status" className="sr-only">
+        {t('loadingInvoices')}
+      </p>
+    );
+  }
+  const otherInvoices = (
+    packages.data?.packages.find((p) => p.installmentId === installmentId)?.documents ?? []
+  )
+    .filter((d) => d.invoiceId !== invoiceId && d.postingStatus === 'POSTED' && d.invoiceNumber)
+    .map((d) => ({ id: d.invoiceId, invoiceNumber: d.invoiceNumber as string }));
+
+  return (
+    <InvoiceWhatsAppDialog
+      open
+      onClose={onClose}
+      invoiceId={invoiceId}
+      title={otherInvoices.length > 0 ? t('whatsappPackageTitle') : t('whatsappTitle')}
+      subtitle={
+        otherInvoices.length > 0
+          ? t('whatsappPackageSubtitle', { count: otherInvoices.length + 1 })
+          : invoiceNumber
+            ? t('whatsappSubtitle', { number: invoiceNumber })
+            : undefined
+      }
+      otherInvoices={otherInvoices}
+      invalidate={[commercialInvoiceKeys.all(projectId), invoiceKeys.all]}
+    />
   );
 }
 
@@ -480,7 +623,9 @@ function SetupBlockedNotice({ step }: { step: 'issue' | 'payment' }) {
   const readiness = useAccountingReadiness();
   const first = readiness.data?.blockers[0]?.code;
   const href =
-    first === 'NO_OPEN_PERIOD' ? '/finance/accounting/periods' : '/finance/accounting/chart-of-accounts';
+    first === 'NO_OPEN_PERIOD'
+      ? '/finance/accounting/periods'
+      : '/finance/accounting/chart-of-accounts';
   return (
     <Notice
       tone="attention"
