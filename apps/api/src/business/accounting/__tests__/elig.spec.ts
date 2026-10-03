@@ -9,6 +9,7 @@
  *   ELIG-05  GET /payments?projectId — via allocations to the project's bills (header or line)
  *   ELIG-06  GET /customer-receipts?projectId — via allocations to the project's invoices
  *   ELIG-07  GET /journals?projectId — via a line coded to the project
+ *   ELIG-08  An opening-balance bill is refused by post (409) and payment, and eligibility says so
  */
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -256,4 +257,25 @@ test('ELIG-07 journals filter by a line coded to the project', async () => {
   expect(inA).toContain(coded.id);
   expect(inA).not.toContain(plain.id);
   expect((await svc.manualJournalService.findAll(env.identity, projectB)).map((j) => j.id)).not.toContain(coded.id);
+});
+
+test('ELIG-08 an opening-balance bill: not postable (409), not payable, said plainly', async () => {
+  const b = await bill({});
+  await prisma.supplierBill.update({ where: { id: b.id }, data: { postingStatus: 'OPENING_BALANCE' } });
+  const e = await docs.eligibility(env.identity, b.id);
+  expect(e.canPost).toBe(false);
+  expect(e.canPay).toBe(false);
+  expect(e.blockedReason).toBe('OPENING_BALANCE_NOT_PAYABLE');
+  await expect(post(b.id)).rejects.toThrow(/opening balance/);
+  await expect(
+    svc.supplierPaymentService.create(env.identity, {
+      supplierId: env.supplierId,
+      bankAccountId: env.bankAccountId,
+      paymentDate: env.periods.openStart.toISOString().slice(0, 10),
+      currencyCode: 'USD',
+      totalAmount: 1,
+      paymentMethod: 'BANK_TRANSFER',
+      allocations: [{ supplierBillId: b.id, amount: 1 }],
+    }),
+  ).rejects.toThrow(/not POSTED/);
 });

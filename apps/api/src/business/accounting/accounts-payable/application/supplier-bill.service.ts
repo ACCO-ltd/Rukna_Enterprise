@@ -481,6 +481,13 @@ export class SupplierBillService {
     if (block) {
       if (isNotApprovedBlock(block)) throw new BadRequestException(`Bill must be APPROVED before posting`);
       if (block === 'BILL_ALREADY_POSTED') throw new ConflictException(`Bill ${dto.billId} is already posted`);
+      if (block === 'OPENING_BALANCE_BILL') {
+        throw new ConflictException({
+          message: `Bill ${dto.billId} is an opening balance from the previous system — it is already in the ledger and is not posted again`,
+          code: 'OPENING_BALANCE_BILL',
+          errorCode: 'OPENING_BALANCE_BILL',
+        });
+      }
       if (block === 'BILL_REVERSED') {
         throw new ConflictException(`Bill ${dto.billId} has been reversed — record a new bill instead`);
       }

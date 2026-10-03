@@ -61,6 +61,9 @@ describe('billPostingBlock — the post command order', () => {
   ])('PO-backed bill with match %s → %s', (matchStatus, code) => {
     expect(billPostingBlock({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED', matchStatus, purchaseOrderRevisionId: 'r' })).toBe(code);
   });
+  it('an opening-balance bill is never posted again', () => {
+    expect(billPostingBlock({ documentStatus: 'APPROVED', postingStatus: 'OPENING_BALANCE', matchStatus: 'NOT_RUN', purchaseOrderRevisionId: null })).toBe('OPENING_BALANCE_BILL');
+  });
   it('a non-PO bill skips the match', () => {
     expect(billPostingBlock({ documentStatus: 'APPROVED', postingStatus: 'FAILED', matchStatus: 'NOT_RUN', purchaseOrderRevisionId: null })).toBeNull();
   });
@@ -178,6 +181,30 @@ describe('supplierBillEligibility — steps', () => {
     expect(stepOf(e, 'PAYMENT_APPROVED')).toMatchObject({ status: 'PENDING', code: 'NO_PAYMENT_RECORDED', owner: 'FINANCE' });
   });
 
+  it('opening-balance bill: in the ledger already, not postable, not payable in Rukna — said plainly', () => {
+    const e = supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE' }, { postingPeriod: null }));
+    expect(e.canPost).toBe(false);
+    expect(e.canPay).toBe(false);
+    expect(e.blockedReason).toBe('OPENING_BALANCE_NOT_PAYABLE');
+    expect(stepOf(e, 'POSTED')).toMatchObject({ status: 'DONE', detail: 'Opening balance from the previous system — already in the ledger' });
+    expect(stepOf(e, 'PERIOD_OPEN').status).toBe('NOT_APPLICABLE');
+    for (const key of ['PAYMENT_APPROVED', 'PAYMENT_RELEASED', 'PAID']) {
+      expect(stepOf(e, key)).toMatchObject({ status: 'BLOCKED', code: 'OPENING_BALANCE_NOT_PAYABLE' });
+      expect(stepOf(e, key).detail).toMatch(/cannot be paid in Rukna yet/);
+    }
+  });
+
+  it('part paid with nothing in flight reads PARTLY_PAID, not "no payment recorded"', () => {
+    const e = supplierBillEligibility(
+      facts({ postingStatus: 'POSTED', outstandingAmount: '50' }, {
+        allocations: [{ postingStatus: 'POSTED', payment: { documentStatus: 'APPROVED', postingStatus: 'POSTED', underDualControl: false, signatures: 0 } }],
+      }),
+    );
+    expect(e.canPay).toBe(true);
+    expect(stepOf(e, 'PAID')).toMatchObject({ status: 'PENDING', code: 'PARTLY_PAID' });
+    expect(stepOf(e, 'PAYMENT_APPROVED').code).toBe('PARTLY_PAID');
+  });
+
   const inFlight = (documentStatus: string, underDualControl: boolean, signatures = 0) => ({
     postingStatus: 'NOT_POSTED',
     payment: { documentStatus, postingStatus: 'NOT_POSTED', underDualControl, signatures },
@@ -247,6 +274,7 @@ describe('eligibility.canPost ⇔ SupplierBillService.post passes its guard', ()
     ['APPROVED', 'NOT_POSTED', 'NOT_RUN', 'r'],
     ['APPROVED', 'NOT_POSTED', 'APPROVED_EXCEPTION', 'r'],
     ['APPROVED', 'FAILED', 'NOT_RUN', null],
+    ['APPROVED', 'OPENING_BALANCE', 'NOT_RUN', null],
   ];
   it.each(cases)('doc %s / posting %s / match %s / po %s', async (documentStatus, postingStatus, matchStatus, rev) => {
     const bill = { id: 'b1', documentStatus, postingStatus, matchStatus, purchaseOrderRevisionId: rev, outstandingAmount: '10', lines: [] };
@@ -255,8 +283,7 @@ describe('eligibility.canPost ⇔ SupplierBillService.post passes its guard', ()
     if (e.canPost) {
       await expect(run).rejects.toBeInstanceOf(NotFoundException); // passed the guard
     } else {
-      const code = e.blockedReason!;
-      const expected = code === 'BILL_REVERSED' || postingStatus === 'POSTED' ? ConflictException : BadRequestException;
+      const expected = ['POSTED', 'REVERSED', 'OPENING_BALANCE'].includes(postingStatus) ? ConflictException : BadRequestException;
       await expect(run).rejects.toBeInstanceOf(expected);
     }
   });
@@ -287,6 +314,7 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
     ['POSTED', '100'],
     ['POSTED', '0'],
     ['REVERSED', '100'],
+    ['OPENING_BALANCE', '100'],
   ])('posting %s, outstanding %s', async (postingStatus, outstandingAmount) => {
     const bill = { ...base, postingStatus, outstandingAmount };
     const e = supplierBillEligibility(facts(bill as never));

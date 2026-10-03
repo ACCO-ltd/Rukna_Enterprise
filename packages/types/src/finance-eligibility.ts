@@ -38,7 +38,8 @@ export type SupplierBillEligibilityStepKey =
  * The one reason the bill's next action (post while unposted, pay once posted) is refused.
  * Post: BILL_NOT_SUBMITTED / BILL_AWAITING_APPROVAL / BILL_REJECTED / BILL_CANCELLED (the post
  * command's "must be APPROVED" 400), BILL_REVERSED (409), MATCH_* (the 3-way-match 400),
- * NO_PERIOD / PERIOD_CLOSED / PERIOD_LOCKED (the ledger's period 400).
+ * NO_PERIOD / PERIOD_CLOSED / PERIOD_LOCKED (the ledger's period 400), OPENING_BALANCE_BILL (409).
+ * Opening-balance bills: OPENING_BALANCE_NOT_PAYABLE (only POSTED bills are paid).
  * Pay: BILL_NOT_POSTED (only POSTED bills are paid), PAYMENT_AWAITING_APPROVAL /
  * PAYMENT_AWAITING_RELEASE / PAYMENT_NOT_POSTED (the whole balance is on a payment still in
  * flight), FULLY_PAID.
@@ -49,6 +50,10 @@ export type SupplierBillBlockedReason =
   | 'BILL_REJECTED'
   | 'BILL_CANCELLED'
   | 'BILL_REVERSED'
+  /** Imported from the previous system: already in the ledger via the opening-balance journal; never posted again. */
+  | 'OPENING_BALANCE_BILL'
+  /** Opening-balance bill: the payment command accepts only POSTED bills, so it cannot be paid in Rukna yet. */
+  | 'OPENING_BALANCE_NOT_PAYABLE'
   | 'MATCH_NOT_RUN'
   | 'MATCH_EXCEPTION'
   | 'MATCH_DISPUTED'

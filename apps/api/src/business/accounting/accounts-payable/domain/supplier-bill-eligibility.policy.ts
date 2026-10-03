@@ -47,6 +47,7 @@ export type BillPostBlock =
   | 'BILL_CANCELLED'
   | 'BILL_ALREADY_POSTED'
   | 'BILL_REVERSED'
+  | 'OPENING_BALANCE_BILL'
   | 'MATCH_NOT_RUN'
   | 'MATCH_EXCEPTION'
   | 'MATCH_DISPUTED';
@@ -80,6 +81,9 @@ export function billPostingBlock(bill: BillPostingFacts): BillPostBlock | null {
   // A reversed bill has a posting and its mirror in the ledger; posting it again would re-flip it
   // to POSTED against the old journal (the posting port returns the existing entry). Record a new bill.
   if (bill.postingStatus === 'REVERSED') return 'BILL_REVERSED';
+  // An opening-balance bill was imported with its balance already in the ledger (the opening-balance
+  // journal, EVT-OPB-001) and carries no lines: there is nothing to post.
+  if (bill.postingStatus === 'OPENING_BALANCE') return 'OPENING_BALANCE_BILL';
   if (bill.purchaseOrderRevisionId && !POSTABLE_MATCH_STATUSES.includes(bill.matchStatus)) {
     if (bill.matchStatus === 'EXCEPTION') return 'MATCH_EXCEPTION';
     if (bill.matchStatus === 'DISPUTED') return 'MATCH_DISPUTED';
@@ -236,6 +240,7 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   const { bill } = facts;
   const postBlock = billPostingBlock(bill);
   const inLedger = LEDGER_STATES.has(bill.postingStatus);
+  const openingBalance = bill.postingStatus === 'OPENING_BALANCE';
   const reversed = bill.postingStatus === 'REVERSED';
   const periodBlock: PeriodPostingBlock | null =
     inLedger || reversed ? null : periodPostingBlock(facts.postingPeriod, SUPPLIER_BILL_JOURNAL_CATEGORY);
@@ -280,7 +285,8 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   );
 
   // 4. The accounting period the bill posts into (bill date) accepts AP postings.
-  if (inLedger) steps.push(step('PERIOD_OPEN', 'FINANCE', 'DONE'));
+  if (openingBalance) steps.push(step('PERIOD_OPEN', 'FINANCE', 'NOT_APPLICABLE'));
+  else if (inLedger) steps.push(step('PERIOD_OPEN', 'FINANCE', 'DONE'));
   else if (reversed) steps.push(step('PERIOD_OPEN', 'FINANCE', 'NOT_APPLICABLE'));
   else {
     steps.push(
@@ -292,7 +298,9 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
 
   // 5. Posted to the ledger.
   steps.push(
-    inLedger
+    openingBalance
+      ? step('POSTED', 'FINANCE', 'DONE', null, 'Opening balance from the previous system — already in the ledger')
+      : inLedger
       ? step('POSTED', 'FINANCE', 'DONE')
       : reversed
         ? step('POSTED', 'FINANCE', 'BLOCKED', 'BILL_REVERSED')
@@ -302,7 +310,14 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   );
 
   // 6–8. Payment: approved → released (dual control) → posted.
-  if (reversed) {
+  if (openingBalance) {
+    // The payment command settles only POSTED bills (`billSettlementBlock`), so an imported balance
+    // cannot be paid in Rukna yet — said plainly rather than "not posted".
+    const detail = 'Opening balance from the previous system — it cannot be paid in Rukna yet';
+    steps.push(step('PAYMENT_APPROVED', 'FINANCE', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
+    steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
+    steps.push(step('PAID', 'FINANCE', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
+  } else if (reversed) {
     steps.push(step('PAYMENT_APPROVED', 'APPROVER', 'NOT_APPLICABLE'));
     steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'NOT_APPLICABLE'));
     steps.push(step('PAID', 'FINANCE', 'NOT_APPLICABLE'));
@@ -316,9 +331,11 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
       steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'DONE'));
       steps.push(step('PAID', 'FINANCE', 'DONE'));
     } else {
-      steps.push(step('PAYMENT_APPROVED', 'FINANCE', 'PENDING', 'NO_PAYMENT_RECORDED'));
-      steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'PENDING', 'NO_PAYMENT_RECORDED'));
-      steps.push(step('PAID', 'FINANCE', 'PENDING', 'NO_PAYMENT_RECORDED'));
+      // Part paid (a posted payment covered some of it) reads differently from never paid.
+      const code = facts.allocations.some((a) => a.postingStatus === 'POSTED') ? 'PARTLY_PAID' : 'NO_PAYMENT_RECORDED';
+      steps.push(step('PAYMENT_APPROVED', 'FINANCE', 'PENDING', code));
+      steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'PENDING', code));
+      steps.push(step('PAID', 'FINANCE', 'PENDING', code));
     }
   } else {
     const awaitingApproval = inFlight.filter((a) => a.payment.documentStatus === 'DRAFT');
@@ -349,7 +366,9 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   const canPay = settlementBlock === null;
 
   let blockedReason: SupplierBillBlockedReason | null = null;
-  if (bill.postingStatus !== 'POSTED') {
+  if (openingBalance) {
+    blockedReason = 'OPENING_BALANCE_NOT_PAYABLE';
+  } else if (bill.postingStatus !== 'POSTED') {
     // The next action is posting (or nothing, for a reversed bill).
     if (postBlock && postBlock !== 'BILL_ALREADY_POSTED') blockedReason = postBlock;
     else if (periodBlock) blockedReason = periodBlock;
