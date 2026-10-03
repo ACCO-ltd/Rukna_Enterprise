@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Button, FilterBar, FilterField, Select } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
@@ -23,10 +24,18 @@ const STATUSES: JournalStatus[] = [
   'REVERSED',
 ];
 
-export function JournalsList() {
+export function JournalsList({
+  projectId,
+}: {
+  /** ADR-043 Phase 2: fixes the list to journals with a line coded to this project. */
+  projectId?: string;
+} = {}) {
   const t = useTranslations('accounting.journals');
 
-  const journals = useJournals();
+  // `?projectId=` lets a project link in already narrowed; applied server-side.
+  const projectFilter = useProjectFilter();
+  const [filterProjectId, setFilterProjectId] = useState(projectFilter.initialProjectId ?? '');
+  const journals = useJournals({ projectId: projectId ?? (filterProjectId || undefined) });
   const [status, setStatus] = useState<JournalStatus | ''>('');
 
   const visible = useMemo(() => {
@@ -114,7 +123,7 @@ export function JournalsList() {
         errorMessage={t('loadFailed')}
         rowHref={(journal) => `/finance/accounting/journals/${journal.id}`}
         emptyState={
-          (journals.data?.length ?? 0) === 0 ? (
+          (journals.data?.length ?? 0) === 0 && (projectId || !filterProjectId) ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
@@ -143,9 +152,24 @@ export function JournalsList() {
                 ))}
               </Select>
             </FilterField>
+            {projectId ? null : (
+              <FilterField id="journal-project" label={t('filterByProject')}>
+                <Select id="journal-project" value={filterProjectId} onChange={(value) => setFilterProjectId(value)}>
+                  <option value="">{t('allProjects')}</option>
+                  {projectFilter.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FilterField>
+            )}
           </FilterBar>
         }
-        onClearFilters={() => setStatus('')}
+        onClearFilters={() => {
+          setStatus('');
+          setFilterProjectId('');
+        }}
         toolbarActions={createAction}
       />
     </div>

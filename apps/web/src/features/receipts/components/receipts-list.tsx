@@ -7,22 +7,32 @@ import { Button, FilterBar, FilterField, Select, StatusPill } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
+import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
 import { useReceipts } from '../hooks/use-receipts';
 import type { Receipt } from '../types';
 
-export function ReceiptsList() {
+export function ReceiptsList({
+  projectId,
+}: {
+  /** ADR-043 Phase 2: fixes the list to receipts allocated to an invoice of this project. */
+  projectId?: string;
+} = {}) {
   const t = useTranslations('platform.receipts');
   const locale = useLocale() as 'en' | 'ar';
 
   const [clientId, setClientId] = useState('');
+  // `?projectId=` lets a project link in already narrowed (applied server-side).
+  const projectFilter = useProjectFilter();
+  const [filterProjectId, setFilterProjectId] = useState(projectFilter.initialProjectId ?? '');
+  const effectiveProjectId = projectId ?? (filterProjectId || undefined);
 
   // The client filter is applied SERVER-side — `clientId` is the one parameter
   // `GET /receipts` accepts. Text search (reference, client, amount) is the grid's own: the
   // endpoint offers none, and a second search box beside the grid's was one too many.
-  const { data, isPending, isError, refetch } = useReceipts(clientId || undefined);
+  const { data, isPending, isError, refetch } = useReceipts(clientId || undefined, { projectId: effectiveProjectId });
   const clients = useClients();
 
   const clientNames = useMemo(
@@ -98,7 +108,7 @@ export function ReceiptsList() {
         onRetry={() => void refetch()}
         rowHref={(receipt) => `/receipts/${receipt.id}`}
         emptyState={
-          (data?.length ?? 0) === 0 && !clientId ? (
+          (data?.length ?? 0) === 0 && !clientId && !effectiveProjectId ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
@@ -138,9 +148,24 @@ export function ReceiptsList() {
                 ))}
               </Select>
             </FilterField>
+            {projectId ? null : (
+              <FilterField id="receipt-project" label={t('filterByProject')}>
+                <Select id="receipt-project" value={filterProjectId} onChange={(value) => setFilterProjectId(value)}>
+                  <option value="">{t('allProjects')}</option>
+                  {projectFilter.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FilterField>
+            )}
           </FilterBar>
         }
-        onClearFilters={() => setClientId('')}
+        onClearFilters={() => {
+          setClientId('');
+          setFilterProjectId('');
+        }}
       />
     </div>
   );

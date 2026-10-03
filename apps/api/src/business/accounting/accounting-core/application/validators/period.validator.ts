@@ -1,15 +1,19 @@
 import { BadRequestException } from '@nestjs/common';
 import type { AccountingPeriod } from '@prisma/client';
 import type { TxClient } from '../ports/accounting-posting.port.js';
+import { periodPostingBlock, periodPostingBlockMessage } from '../../domain/period-posting.policy.js';
 
 export class PeriodValidator {
-  static async resolve(
-    tx: TxClient,
+  /**
+   * The period covering `accountingDate` — the same lookup `resolve` posts against. Unlocked: the
+   * "why blocked" read models (ADR-043) use it to predict the posting gate without taking a lock.
+   */
+  static findCovering(
+    client: Pick<TxClient, 'accountingPeriod'>,
     organizationId: string,
     accountingDate: Date,
-    journalCategory: string,
-  ): Promise<AccountingPeriod> {
-    const period = await tx.accountingPeriod.findFirst({
+  ): Promise<AccountingPeriod | null> {
+    return client.accountingPeriod.findFirst({
       where: {
         organizationId,
         startDate: { lte: accountingDate },
@@ -17,10 +21,19 @@ export class PeriodValidator {
       },
       orderBy: { startDate: 'desc' },
     });
+  }
+
+  static async resolve(
+    tx: TxClient,
+    organizationId: string,
+    accountingDate: Date,
+    journalCategory: string,
+  ): Promise<AccountingPeriod> {
+    const period = await PeriodValidator.findCovering(tx, organizationId, accountingDate);
 
     if (!period) {
       throw new BadRequestException(
-        `No accounting period covers ${accountingDate.toISOString().slice(0, 10)} for this organization`,
+        periodPostingBlockMessage('NO_PERIOD', { accountingDate, journalCategory }),
       );
     }
 
@@ -35,22 +48,12 @@ export class PeriodValidator {
     `;
     const status = (lockedRows[0]?.status ?? period.status) as AccountingPeriod['status'];
 
-    if (status === 'CLOSED') {
+    // CLOSED refuses everything; LOCKED accepts only the entries that finish the period
+    // (`periodPostingBlock` — the same rule the "why blocked" read models use, ADR-043).
+    const block = periodPostingBlock({ name: period.name, status }, journalCategory);
+    if (block) {
       throw new BadRequestException(
-        `Accounting period "${period.name}" is CLOSED — no further postings allowed`,
-      );
-    }
-
-    // A LOCKED period is closed to ordinary business but still open to the entries
-    // that finish it: December adjustments, and the year-end closing journal itself.
-    // YEAR_END_CLOSE belongs here because `YearEndCloseService` *requires* period 12
-    // to be LOCKED before it will run — without this the close could never post, and
-    // its only test mocks the posting port, so nothing caught it.
-    const LOCKED_PERIOD_CATEGORIES = ['CLOSING_ADJUSTMENT', 'YEAR_END_CLOSE'];
-    if (status === 'LOCKED' && !LOCKED_PERIOD_CATEGORIES.includes(journalCategory)) {
-      throw new BadRequestException(
-        `Period "${period.name}" is LOCKED — only ${LOCKED_PERIOD_CATEGORIES.join(' and ')} journals are accepted. ` +
-        `Received category: ${journalCategory}`,
+        periodPostingBlockMessage(block, { accountingDate, periodName: period.name, journalCategory }),
       );
     }
 

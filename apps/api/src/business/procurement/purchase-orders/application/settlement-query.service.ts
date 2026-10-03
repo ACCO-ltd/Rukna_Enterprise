@@ -1,8 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { PurchaseOrderBillPaymentsResponse, RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SettlementQueryRepository } from '../infrastructure/settlement-query.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import {
+  billPaymentState,
+  summarizeBillPayments,
+} from '../../../accounting/accounts-payable/domain/supplier-bill-eligibility.policy.js';
 
 type FundingStatus = 'NOT_FUNDED' | 'PARTIALLY_FUNDED' | 'FUNDED';
 type ReceivingStatus = 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED';
@@ -15,7 +20,104 @@ export class SettlementQueryService {
   constructor(
     private readonly tenancy: TenancyService,
     private readonly repo: SettlementQueryRepository,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
+
+  /**
+   * Project access for a PO read by a person (ADR-043 review M2). A PO carries its projects per
+   * line. `every` (money reads: settlement, bill payments) — the caller must see every project the
+   * PO is coded to; `any` (receiving, no money) — one of them is enough, so a site team on one
+   * project of a multi-project PO keeps receiving. Bypass roles always pass; a PO with no project
+   * lines is org-level and needs only the endpoint's permission. 404 outside the organisation.
+   * Internal callers (auto-close) skip this.
+   */
+  async assertCanRead(
+    identity: RequestIdentity,
+    purchaseOrderId: string,
+    mode: 'every' | 'any' = 'every',
+  ): Promise<void> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    if (!(await this.repo.purchaseOrderExists(prisma, orgId, purchaseOrderId))) {
+      throw new NotFoundException(`Purchase order ${purchaseOrderId} not found`);
+    }
+    const projectIds = await this.repo.findPoProjectIds(prisma, orgId, purchaseOrderId);
+    if (mode === 'any') {
+      if (projectIds.length === 0) return;
+      const accessible = await this.projectAccess.accessibleProjectIds(identity);
+      if (accessible === undefined || projectIds.some((id) => accessible.includes(id))) return;
+      throw new ForbiddenException('You are not a member of any project on this purchase order.');
+    }
+    for (const projectId of projectIds) {
+      await this.projectAccess.assertMember(identity, projectId);
+    }
+  }
+
+  /** The settlement read model for a person: project access first, then `getSettlement`. */
+  async getSettlementForViewer(identity: RequestIdentity, purchaseOrderId: string) {
+    await this.assertCanRead(identity, purchaseOrderId);
+    return this.getSettlement(identity, purchaseOrderId);
+  }
+
+  /**
+   * Receiving only — ordered vs accepted quantity per line, no money (ADR-043 review M2). The
+   * Receiving tab reads this so money-blind roles keep it while the settlement read is gated on
+   * cost visibility. Same per-line rule as the settlement read (`receivingPosition`).
+   */
+  async getReceiving(identity: RequestIdentity, purchaseOrderId: string) {
+    await this.assertCanRead(identity, purchaseOrderId, 'any');
+    const prisma = this.tenancy.getClient();
+    const po = await this.repo.findPoForSettlement(prisma, identity.activeOrganizationId, purchaseOrderId);
+    if (!po) throw new NotFoundException(`Purchase order ${purchaseOrderId} not found`);
+    const { byLine } = await this.repo.receivedByPoLine(prisma, purchaseOrderId);
+    return receivingPosition(po.revisions.find((r) => r.status === 'ACTIVE'), byLine);
+  }
+
+  /**
+   * ADR-043 decision 4 — the payment status of this PO's supplier bills, amounts included, for the
+   * Procurement Manager (who negotiated the prices). A record only: no payment command is reachable
+   * from it. Paid / pending use the bill page's own rule (`summarizeBillPayments`); outstanding is
+   * the bill's stored balance (the bills list's figure). The controller gates it on
+   * `view:procurement` + `view:commitment-ledger`, so Project Managers and Site Engineers (who hold
+   * no cost visibility) stay blind; project access applies to every project the PO is coded to.
+   */
+  async getBillPayments(
+    identity: RequestIdentity,
+    purchaseOrderId: string,
+  ): Promise<PurchaseOrderBillPaymentsResponse> {
+    await this.assertCanRead(identity, purchaseOrderId);
+    const prisma = this.tenancy.getClient();
+    const bills = await this.repo.findBillPaymentsForPo(prisma, identity.activeOrganizationId, purchaseOrderId);
+    return {
+      purchaseOrderId,
+      bills: bills.map((bill) => {
+        const summary = summarizeBillPayments(
+          bill.allocations.map((a) => ({
+            allocatedAmount: a.allocatedAmount.toString(),
+            postingStatus: a.postingStatus,
+            paymentId: a.supplierPaymentId,
+            paymentDate: a.payment.paymentDate,
+          })),
+        );
+        return {
+          billId: bill.id,
+          billNumber: bill.billNumber ?? null,
+          supplierInvoiceNumber: bill.supplierInvoiceNumber,
+          billDate: bill.billDate.toISOString().slice(0, 10),
+          dueDate: bill.dueDate.toISOString().slice(0, 10),
+          currencyCode: bill.currencyCode,
+          documentStatus: bill.documentStatus,
+          postingStatus: bill.postingStatus,
+          totalAmount: new Decimal(bill.totalAmount.toString()).toFixed(2),
+          paidAmount: summary.paid.toFixed(2),
+          pendingAmount: summary.pending.toFixed(2),
+          outstandingAmount: new Decimal(bill.outstandingAmount.toString()).toFixed(2),
+          lastPaymentDate: summary.lastPaymentDate,
+          paymentStatus: billPaymentState(bill, summary),
+        };
+      }),
+    };
+  }
 
   async getSettlement(identity: RequestIdentity, purchaseOrderId: string) {
     const prisma = this.tenancy.getClient();
@@ -118,32 +220,7 @@ export class SettlementQueryService {
           : 'NOT_FUNDED';
 
     // ── Per-line receiving ──────────────────────────────────────────────────────
-    const receivingLines = (activeRevision?.lines ?? []).map((line) => {
-      const accepted = receivedByLine.get(line.id) ?? new Decimal(0);
-      const ordered = line.orderedQuantity as Decimal;
-      const lineStatus: LineReceivingStatus = accepted.greaterThanOrEqualTo(ordered)
-        ? 'RECEIVED'
-        : accepted.greaterThan(0)
-          ? 'PARTIALLY_RECEIVED'
-          : 'NOT_RECEIVED';
-
-      return {
-        poLineId: line.id,
-        description: line.description,
-        orderedQuantity: ordered,
-        uomSymbol: (line as unknown as { uom: { symbol: string } }).uom?.symbol ?? '',
-        acceptedQuantity: accepted,
-        lineStatus,
-      };
-    });
-
-    const receivingStatus: ReceivingStatus = receivingLines.every(
-      (l) => l.lineStatus === 'RECEIVED',
-    )
-      ? 'RECEIVED'
-      : receivingLines.some((l) => l.lineStatus !== 'NOT_RECEIVED')
-        ? 'PARTIALLY_RECEIVED'
-        : 'NOT_RECEIVED';
+    const { receivingLines, receivingStatus } = receivingPosition(activeRevision, receivedByLine);
 
     // ── Evidence block ──────────────────────────────────────────────────────────
     // All supplier bills associated with this PO — independent of payment method.
@@ -251,6 +328,40 @@ export class SettlementQueryService {
       humanReadablePosition,
     };
   }
+}
+
+type ActiveRevision = {
+  lines: Array<{ id: string; description: string; orderedQuantity: unknown }>;
+};
+
+/** Ordered vs accepted quantity per line of the active revision, and the PO's receiving status. */
+function receivingPosition(activeRevision: ActiveRevision | undefined, receivedByLine: Map<string, Decimal>) {
+  const receivingLines = (activeRevision?.lines ?? []).map((line) => {
+    const accepted = receivedByLine.get(line.id) ?? new Decimal(0);
+    const ordered = line.orderedQuantity as Decimal;
+    const lineStatus: LineReceivingStatus = accepted.greaterThanOrEqualTo(ordered)
+      ? 'RECEIVED'
+      : accepted.greaterThan(0)
+        ? 'PARTIALLY_RECEIVED'
+        : 'NOT_RECEIVED';
+
+    return {
+      poLineId: line.id,
+      description: line.description,
+      orderedQuantity: ordered,
+      uomSymbol: (line as unknown as { uom: { symbol: string } }).uom?.symbol ?? '',
+      acceptedQuantity: accepted,
+      lineStatus,
+    };
+  });
+
+  const receivingStatus: ReceivingStatus = receivingLines.every((l) => l.lineStatus === 'RECEIVED')
+    ? 'RECEIVED'
+    : receivingLines.some((l) => l.lineStatus !== 'NOT_RECEIVED')
+      ? 'PARTIALLY_RECEIVED'
+      : 'NOT_RECEIVED';
+
+  return { receivingStatus, receivingLines };
 }
 
 function buildPositionSentence(

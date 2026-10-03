@@ -5,7 +5,7 @@ import type {
   FinancePortfolioResponse,
 } from '@erp/types';
 
-import { usePermissions } from '@/features/auth/permissions/can';
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import { getFinancePortfolio, getFinanceProject } from './api';
 
@@ -44,4 +44,21 @@ export function useFinanceProject(
 /** Whether the viewer may open the Finance project portfolio and workspace. */
 export function useCanViewFinanceProjects(): boolean {
   return usePermissions().can(FINANCE_PROJECTS_PERMISSION);
+}
+
+/** The Payables tab (ADR-043 Phase 2) - `manage:payable`, the bills list's own gate. */
+export function useCanViewProjectPayables(): boolean {
+  return usePermissions().can(ACCOUNTING_PERMISSIONS.managePayables);
+}
+
+/**
+ * The Payments tab (ADR-043 Phase 2): each list behind its own API gate - receipts
+ * `manage:receivable`, supplier payments `manage:payable`, journals `manage:journal`.
+ */
+export function useProjectPaymentsAccess() {
+  const { can } = usePermissions();
+  const receipts = can(ACCOUNTING_PERMISSIONS.manageReceivables);
+  const supplierPayments = can(ACCOUNTING_PERMISSIONS.managePayables);
+  const journals = can(ACCOUNTING_PERMISSIONS.manageJournals);
+  return { receipts, supplierPayments, journals, any: receipts || supplierPayments || journals };
 }

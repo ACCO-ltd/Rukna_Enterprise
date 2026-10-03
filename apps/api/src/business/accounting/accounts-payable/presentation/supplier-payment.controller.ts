@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SupplierPaymentService } from '../application/supplier-payment.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { CreateSupplierPaymentDto } from './dto/create-supplier-payment.dto.js';
 import { PostSupplierPaymentDto } from './dto/post-supplier-payment.dto.js';
 import { AllocateAdvanceDto } from './dto/allocate-advance.dto.js';
@@ -22,16 +23,23 @@ import { CreatePurchaseAllocationDto } from './dto/create-purchase-allocation.dt
 @RequirePermissions(PERMISSIONS.payablesManage)
 @Controller('payments')
 export class SupplierPaymentController {
-  constructor(private readonly supplierPaymentService: SupplierPaymentService) {}
+  constructor(
+    private readonly supplierPaymentService: SupplierPaymentService,
+    private readonly projectAccess: ProjectAccessService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List supplier payments' })
   @ApiQuery({ name: 'supplierId', required: false })
-  findAll(
+  @ApiQuery({ name: 'projectId', required: false, description: 'Payments allocated to any bill of the project' })
+  async findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('supplierId') supplierId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.supplierPaymentService.findAll(identity, supplierId);
+    // ADR-043: a project filter respects project access (404 outside the org, 403 non-member).
+    if (projectId) await this.projectAccess.assertMember(identity, projectId);
+    return this.supplierPaymentService.findAll(identity, supplierId, projectId);
   }
 
   @Post()

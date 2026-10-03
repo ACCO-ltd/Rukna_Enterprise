@@ -49,6 +49,7 @@ import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
 import { ClassificationChips } from './classification-chips';
 import { PoAmendDialog } from './po-amend-dialog';
+import { PoBillPaymentsSection } from './po-bill-payments';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 export function PoDetail({ id }: { id: string }) {
@@ -215,6 +216,10 @@ export function PoDetail({ id }: { id: string }) {
           </div>
         </details>
       ) : null}
+
+      {/* ── Supplier bills & payments (ADR-043 decision 4) — self-gated on
+          view:procurement + view:commitment-ledger; never called without both. ── */}
+      <PoBillPaymentsSection purchaseOrderId={order.id} />
 
       {/* ── Amend dialog ──────────────────────────────────────────────────── */}
       {amending ? (

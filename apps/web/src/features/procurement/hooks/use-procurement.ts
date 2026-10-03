@@ -17,6 +17,8 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 
+import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from '@erp/types';
+
 import { unitOfMeasureKeys } from '@/features/units-of-measure/hooks/use-units-of-measure';
 import {
   allocateAdvance,
@@ -51,10 +53,13 @@ import {
   getProjectCommitmentSummary,
   getPurchaseOrder,
   getPurchaseOrderSettlement,
+  getPurchaseOrderReceiving,
   getSupplierBill,
   getSupplierBillActivity,
   getSupplierBillApprovals,
   getSupplierBillPayments,
+  getSupplierBillEligibility,
+  getPurchaseOrderBillPayments,
   getSupplierPayment,
   listGoodsReceipts,
   listGoodsReceiptAttachments,
@@ -119,6 +124,7 @@ import type {
   PoRevisionAttachment,
   PurchaseOrder,
   PurchaseOrderSettlement,
+  PurchaseOrderReceiving,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
@@ -173,8 +179,8 @@ export const procurementKeys = {
   bills: (supplierId?: string, projectId?: string) =>
     [...procurementKeys.all, 'bills', supplierId ?? 'all', projectId ?? 'all'] as const,
   bill: (id: string) => [...procurementKeys.all, 'bill', id] as const,
-  payments: (supplierId?: string) =>
-    [...procurementKeys.all, 'payments', supplierId ?? 'all'] as const,
+  payments: (supplierId?: string, projectId?: string) =>
+    [...procurementKeys.all, 'payments', supplierId ?? 'all', projectId ?? 'all'] as const,
   payment: (id: string) => [...procurementKeys.all, 'payment', id] as const,
   billMatch: (billId: string) => [...procurementKeys.all, 'bill-match', billId] as const,
   commitments: () => [...procurementKeys.all, 'commitments'] as const,
@@ -192,6 +198,8 @@ export const procurementKeys = {
     [...procurementKeys.commitments(), 'purchase-order', poId] as const,
   purchaseOrderSettlement: (poId: string) =>
     [...procurementKeys.all, 'po-settlement', poId] as const,
+  purchaseOrderReceiving: (poId: string) =>
+    [...procurementKeys.all, 'po-receiving', poId] as const,
   poRevisionAttachments: (poId: string) =>
     [...procurementKeys.all, 'po-revision-attachments', poId] as const,
   grnAttachments: (grnId: string) =>
@@ -607,7 +615,20 @@ export function useConfirmPurchaseOrder() {
   });
 }
 
-/** Full reconciliation read model for a PO — funding, receiving, settlement status. */
+/** Receiving only (ordered vs accepted per line, no money) — `view:procurement`. */
+export function usePurchaseOrderReceiving(poId: string): UseQueryResult<PurchaseOrderReceiving> {
+  return useQuery({
+    queryKey: procurementKeys.purchaseOrderReceiving(poId),
+    queryFn: () => getPurchaseOrderReceiving(poId),
+    enabled: Boolean(poId),
+  });
+}
+
+/**
+ * Full reconciliation read model for a PO — funding, receiving, settlement status. Carries money:
+ * the API requires `view:procurement` + `view:commitment-ledger` (ADR-043 review M2), so callers
+ * pass `enabled: false` for anyone without both.
+ */
 export function usePurchaseOrderSettlement(
   poId: string,
   options?: { enabled?: boolean },
@@ -782,6 +803,36 @@ export function useSupplierBillPayments(id: string): UseQueryResult<BillPayments
 }
 
 /**
+ * ADR-043 Phase 2: why the bill can or cannot be posted / paid. Keyed under the bill, so every
+ * bill mutation (which invalidates `bill(id)`) refreshes it too.
+ */
+export function useSupplierBillEligibility(
+  id: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<SupplierBillEligibility> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'eligibility'],
+    queryFn: () => getSupplierBillEligibility(id),
+    enabled: Boolean(id) && (options?.enabled ?? true),
+  });
+}
+
+/**
+ * ADR-043 decision 4: a purchase order's supplier bills and their payment status. The caller
+ * gates `enabled` on `view:procurement` + `view:commitment-ledger` — the server's gate.
+ */
+export function usePurchaseOrderBillPayments(
+  id: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<PurchaseOrderBillPaymentsResponse> {
+  return useQuery({
+    queryKey: [...procurementKeys.purchaseOrder(id), 'bill-payments'],
+    queryFn: () => getPurchaseOrderBillPayments(id),
+    enabled: Boolean(id) && (options?.enabled ?? true),
+  });
+}
+
+/**
  * Every bill mutation invalidates the list, the individual bill, and the commitment ledger.
  *
  * The commitment invalidation is not defensive padding. Posting a bill is the step that turns
@@ -869,12 +920,18 @@ export function useReverseSupplierBill() {
 
 // ─── Supplier payments ───────────────────────────────────────────────────────────
 
-export function useSupplierPayments(filters?: {
-  supplierId?: string;
-}): UseQueryResult<SupplierPayment[]> {
+export function useSupplierPayments(
+  filters?: {
+    supplierId?: string;
+    /** ADR-043 Phase 2: payments allocated to any bill of the project (server-side). */
+    projectId?: string;
+  },
+  options?: { enabled?: boolean },
+): UseQueryResult<SupplierPayment[]> {
   return useQuery({
-    queryKey: procurementKeys.payments(filters?.supplierId),
+    queryKey: procurementKeys.payments(filters?.supplierId, filters?.projectId),
     queryFn: () => listSupplierPayments(filters),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -912,6 +969,16 @@ function usePaymentMutation<TArgs>(
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
       void qc.invalidateQueries({ queryKey: procurementKeys.payment(payment.id) });
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+      // A payment moves its bills' balances and "why can't I pay this?" (every bill key, eligibility
+      // included — it nests under the bill key) and the PO's bill-payments section (L2).
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bill'] });
+      void qc.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === procurementKeys.all[0] &&
+          query.queryKey[1] === 'purchase-order' &&
+          query.queryKey[3] === 'bill-payments',
+      });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'po-settlement'] });
     },
   });
 }
@@ -1092,6 +1159,7 @@ export function useCreateBuyerAdvance(poId: string) {
     meta: { successToast: 'procurement.feedback.buyerAdvanceCreated' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
   });
 }
@@ -1103,6 +1171,7 @@ export function useCreateAdvanceReturn(advanceId: string, poId: string) {
     meta: { successToast: 'procurement.feedback.advanceReturnRecorded' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
   });
 }
@@ -1115,6 +1184,7 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
     meta: { successToast: 'procurement.feedback.evidenceAllocated' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
     },
@@ -1143,6 +1213,7 @@ export function usePostBuyerAdvance(advanceId: string, poId: string) {
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
   });
 }

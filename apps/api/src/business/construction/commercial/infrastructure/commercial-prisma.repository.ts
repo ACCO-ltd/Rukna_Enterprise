@@ -292,6 +292,7 @@ export class CommercialPrismaRepository {
             totalAmount: true,
             outstandingAmount: true,
             dueDate: true,
+            invoiceDate: true,
             documentStatus: true,
             postingStatus: true,
             deliveries: {

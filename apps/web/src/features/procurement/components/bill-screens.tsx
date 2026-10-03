@@ -23,7 +23,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
@@ -42,13 +42,14 @@ import { Plus, Receipt } from 'lucide-react';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useModuleTrail } from '@/components/layout/module-chrome';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
+import { BillEligibilityPanel } from './bill-eligibility-panel';
 import {
   BillActivityTab,
   BillApprovalsTab,
@@ -68,8 +69,17 @@ const BILL_POSTING_STATUSES: BillPostingStatus[] = ['NOT_POSTED', 'PENDING', 'PO
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
-export function SupplierBillsList() {
+export function SupplierBillsList({
+  projectId,
+}: {
+  /**
+   * ADR-043 Phase 2: fixes the list to one project (the Finance project workspace's Payables
+   * tab). The project filter is then not offered, and an Outstanding column is added.
+   */
+  projectId?: string;
+} = {}) {
   const t = useTranslations('procurement.bills');
+  const tProject = useTranslations('finance.projects.payables');
   const tc = useTranslations('procurement.common');
   const tStatus = useTranslations('procurement.status');
   const tPosting = useTranslations('procurement.postingStatus');
@@ -81,7 +91,7 @@ export function SupplierBillsList() {
     if (projectFilter.initialProjectId) initial.project = projectFilter.initialProjectId;
     return initial;
   });
-  const bills = useSupplierBills({ projectId: filters.project || undefined });
+  const bills = useSupplierBills({ projectId: projectId ?? (filters.project || undefined) });
 
   const all = useMemo(() => bills.data ?? [], [bills.data]);
   const visible = useMemo(
@@ -121,7 +131,9 @@ export function SupplierBillsList() {
       options: BILL_POSTING_STATUSES.map((s) => ({ value: s, label: tPosting(s) })),
     },
     { key: 'supplier', type: 'select', label: tc('supplier'), options: supplierOptions },
-    { key: 'project', type: 'select', label: tc('project'), options: projectFilter.options },
+    ...(projectId
+      ? []
+      : [{ key: 'project', type: 'select' as const, label: tc('project'), options: projectFilter.options }]),
   ];
 
   const columns: GridColumn<SupplierBill>[] = [
@@ -181,6 +193,27 @@ export function SupplierBillsList() {
       plainValue: (bill) => Number(bill.totalAmount),
       render: (bill) => <MoneyDisplay value={bill.totalAmount} />,
     },
+    ...(projectId
+      ? [
+          {
+            key: 'outstanding',
+            header: tProject('outstanding'),
+            numeric: true,
+            sortable: true,
+            plainValue: (bill: SupplierBill) => Number(bill.outstandingAmount),
+            // The bill's stored balance — what no payment covers yet. Only meaningful once posted.
+            render: (bill: SupplierBill) =>
+              bill.postingStatus === 'POSTED' ? (
+                <MoneyDisplay value={bill.outstandingAmount} />
+              ) : (
+                <span className="text-muted-foreground">
+                  <span aria-hidden="true">—</span>
+                  <span className="sr-only">{tc('notAvailable')}</span>
+                </span>
+              ),
+          } satisfies GridColumn<SupplierBill>,
+        ]
+      : []),
     {
       key: 'status',
       header: tc('status'),
@@ -322,6 +355,9 @@ function SupplierBillDocument({ bill, back }: { bill: SupplierBill; back?: { hre
       facts={facts}
       rail={<SummaryRail title={t('summaryTitle')} rows={summary} />}
     >
+      {/* ADR-043 Phase 2: what stands between this bill and payment, step by step. */}
+      <BillEligibilityPanel className="mb-6" billId={bill.id} currencyCode={bill.currencyCode} />
+
       <DocumentTabs
         label={t('sectionsLabel')}
         tabs={[

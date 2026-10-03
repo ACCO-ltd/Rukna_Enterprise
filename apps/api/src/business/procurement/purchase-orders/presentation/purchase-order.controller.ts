@@ -76,10 +76,33 @@ export class PurchaseOrderController {
   }
 
   @Get(':id/settlement')
+  // ADR-043 review M2: the settlement read carries money (bill totals, settled, outstanding,
+  // advances), so it needs cost visibility as well as procurement access — the same gate as
+  // `bill-payments` — and project access to every project the PO is coded to.
+  @RequirePermissions(PERMISSIONS.procurementView, PERMISSIONS.commitmentsView)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Settlement read model: funding, receiving, and reconciliation status' })
   getSettlement(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.settlementQuery.getSettlement(identity, id);
+    return this.settlementQuery.getSettlementForViewer(identity, id);
+  }
+
+  @Get(':id/receiving')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Receiving only: ordered vs accepted quantity per line (no money)' })
+  getReceiving(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.settlementQuery.getReceiving(identity, id);
+  }
+
+  @Get(':id/bill-payments')
+  // Method-level permissions override the class gate, so both are listed: procurement access AND
+  // cost visibility (ADR-043 decision 4 — Procurement Manager yes, Project Manager / Site Engineer no).
+  @RequirePermissions(PERMISSIONS.procurementView, PERMISSIONS.commitmentsView)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: "Payment status of the PO's supplier bills: total, paid, in progress, outstanding, last payment date",
+  })
+  getBillPayments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.settlementQuery.getBillPayments(identity, id);
   }
 
   @Post(':id/revise')

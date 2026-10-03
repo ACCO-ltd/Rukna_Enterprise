@@ -2,7 +2,8 @@
 
 **Status:** Accepted (owner: Abdulsalam, decisions by ACCO's owner, 2026-10-03). Phase 0 (this
 document + `docs/design/finance-projects-contract.md`) and Phase 1 (portfolio read model, Finance
-navigation, Finance → Projects) ship together. Phases 2–4 follow.
+navigation, Finance → Projects) ship together. Phase 2 ("why blocked", Payables / Payments tabs,
+project filters, Procurement Manager payment status) shipped 2026-10-03. Phases 3–4 follow.
 
 ## Context
 
@@ -57,7 +58,10 @@ Rules:
 3. **Receipts can be recorded from either place** — the project workspace or Finance →
    Receivables. Both call the same command.
 4. **The Procurement Manager may see the payment status of supplier bills, including amounts** —
-   as a record only. Implemented in a later phase.
+   as a record only. Implemented in Phase 2 on the purchase order (`GET
+   /procurement/purchase-orders/:id/bill-payments`), gated `view:procurement` +
+   `view:commitment-ledger` — permissions the Procurement Manager already holds, so no role-grant
+   change. Project Manager and Site Engineer hold no `view:commitment-ledger` and stay blind.
 5. **Morning queues:** *To bill* (stages ready to bill whose invoice is not yet issued), *Overdue* (invoices past
    due with a balance), *To pay* (posted supplier bills with a balance).
 
@@ -83,6 +87,18 @@ the existing project-access rule applies per row.
 - The project's own Finance tab and Commercial screens stay in place until Phase 3; for a while
   the same work is reachable from two places, both calling the same commands.
 - Portfolio totals are given per currency; money is never added across currencies.
+- **"Why blocked" has one source of truth (Phase 2).** The guards of the supplier-bill post, the
+  supplier-payment create / release / post, the milestone-stage prepare and the ledger's period
+  gate are pure policy functions (`billPostingBlock`, `billSettlementBlock`, `paymentPostingBlock`,
+  `isReleaseComplete`, `stagePrepareBlock`, `periodPostingBlock`); the commands call them and map a
+  result to the exception they always threw, and the eligibility read models are built from the
+  same functions. A screen can therefore never say "ready" over a refusal. One deliberate
+  tightening: posting a REVERSED bill is now refused (409) — it used to re-flip the bill to POSTED
+  against the old journal.
+- A receipt, a supplier payment and a manual journal have no project of their own; their project
+  membership is derived (receipt → allocations to the project's invoices; payment → allocations to
+  the project's bills, header or line; journal → a line coded to the project). An unallocated
+  receipt or advance belongs to no project.
 - A ready-to-bill stage leaves *To bill* only when its invoice is POSTED (issued); a prepared draft
   shows as "draft prepared" (decision 1: Finance issues invoices).
 
@@ -91,9 +107,13 @@ the existing project-access rule applies per row.
 1. **Phase 1 (this change):** ADR + contract; `GET /finance/projects` (read-only, no migration);
    Finance navigation; Finance → Projects (portfolio with queues) and the Finance project workspace
    (Overview, Billing, Cost & commitments, P&L) built from existing components.
-2. **Phase 2:** morning queues on the Finance Overview landing and the dashboard; receipts from
-   Receivables pre-filtered by project; Procurement Manager read-only payment status of supplier
-   bills (decision 4).
+2. **Phase 2 (shipped 2026-10-03):** "why blocked" eligibility for supplier bills (`GET
+   /bills/:id/eligibility`) and payment-schedule stages (`billingEligibility` on every schedule row
+   and `GET …/installments/:id/billing-eligibility`); Finance project workspace tabs **Payables**
+   (the project's bills + "Why can't I pay this?") and **Payments** (receipts, supplier payments,
+   journals filtered to the project); `projectId` filters on receipts, supplier payments and
+   journals; Procurement Manager read-only payment status of supplier bills (decision 4). Still
+   open: morning queues on the Finance Overview landing and the dashboard.
 3. **Phase 3:** remove finance commands from the construction workspace — the project Finance tab
    and the Commercial billing screens move to Finance; the project Overview keeps the read-only
    money summary (decision 2).

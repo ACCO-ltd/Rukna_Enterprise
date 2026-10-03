@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
+import { WorkflowTransactionType, type RequestIdentity, type SupplierBillEligibility } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ApprovalHistoryService } from '../../../../platform/workflows/application/approval-history.service.js';
@@ -9,6 +9,9 @@ import { RecordActivityService } from '../../../../platform/audit-logs/applicati
 import type { ActivityEntryView } from '../../../../platform/audit-logs/domain/record-activity.js';
 import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import { PeriodValidator } from '../../accounting-core/application/validators/period.validator.js';
+import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
+import { summarizeBillPayments, supplierBillEligibility } from '../domain/supplier-bill-eligibility.policy.js';
 
 export interface BillApprovalsView {
   /** Approval chains raised for the bill, newest first — empty when no DoA policy applied. */
@@ -56,6 +59,7 @@ export class SupplierBillDocumentService {
     private readonly repo: SupplierBillRepository,
     private readonly approvalHistory: ApprovalHistoryService,
     private readonly recordActivity: RecordActivityService,
+    private readonly signatories: BankAccountSignatoryService,
   ) {}
 
   private async requireBill(identity: RequestIdentity, id: string) {
@@ -133,23 +137,19 @@ export class SupplierBillDocumentService {
       bill.id,
     );
 
-    let paid = new Decimal(0);
-    let pending = new Decimal(0);
-    const paidPayments = new Set<string>();
-    for (const allocation of allocations) {
-      const amount = new Decimal(allocation.allocatedAmount.toString());
-      if (allocation.postingStatus === 'POSTED') {
-        paid = paid.plus(amount);
-        paidPayments.add(allocation.supplierPaymentId);
-      } else if (allocation.postingStatus === 'NOT_POSTED' || allocation.postingStatus === 'PENDING') {
-        pending = pending.plus(amount);
-      }
-    }
+    const summary = summarizeBillPayments(
+      allocations.map((allocation) => ({
+        allocatedAmount: allocation.allocatedAmount.toString(),
+        postingStatus: allocation.postingStatus,
+        paymentId: allocation.supplierPaymentId,
+        paymentDate: allocation.payment.paymentDate,
+      })),
+    );
 
     return {
-      paidAmount: paid.toFixed(2),
-      pendingAmount: pending.toFixed(2),
-      paymentCount: paidPayments.size,
+      paidAmount: summary.paid.toFixed(2),
+      pendingAmount: summary.pending.toFixed(2),
+      paymentCount: summary.paidPaymentCount,
       allocations: allocations.map((allocation) => ({
         id: allocation.id,
         paymentId: allocation.supplierPaymentId,
@@ -160,5 +160,50 @@ export class SupplierBillDocumentService {
         paymentStatus: allocation.payment.documentStatus,
       })),
     };
+  }
+
+  /**
+   * "Why can't I pay this?" (ADR-043 Phase 2) — the bill's steps from submission to paid, each
+   * with its owner, built by `supplierBillEligibility` from the SAME rules the post / pay / release
+   * commands call. Read-only; the period is read without the posting lock.
+   */
+  async eligibility(identity: RequestIdentity, id: string): Promise<SupplierBillEligibility> {
+    const prisma = this.tenancyService.getClient();
+    const bill = await this.requireBill(identity, id);
+    const [period, allocations] = await Promise.all([
+      PeriodValidator.findCovering(prisma, identity.activeOrganizationId, bill.billDate),
+      this.repo.findAllocationsForBill(prisma, identity.activeOrganizationId, bill.id),
+    ]);
+    const bankAccounts = [...new Set(allocations.map((a) => a.payment.bankAccountId))];
+    const dual = new Map(
+      await Promise.all(
+        bankAccounts.map(
+          async (bankAccountId) =>
+            [bankAccountId, await this.signatories.requiresDualControl(prisma, bankAccountId)] as const,
+        ),
+      ),
+    );
+    return supplierBillEligibility({
+      bill: {
+        id: bill.id,
+        documentStatus: bill.documentStatus,
+        postingStatus: bill.postingStatus,
+        matchStatus: bill.matchStatus,
+        purchaseOrderRevisionId: bill.purchaseOrderRevisionId,
+        outstandingAmount: bill.outstandingAmount.toString(),
+        returnReason: bill.returnReason,
+        lastPostingErrorCode: bill.lastPostingErrorCode,
+      },
+      postingPeriod: period ? { name: period.name, status: period.status } : null,
+      allocations: allocations.map((a) => ({
+        postingStatus: a.postingStatus,
+        payment: {
+          documentStatus: a.payment.documentStatus,
+          postingStatus: a.payment.postingStatus,
+          underDualControl: dual.get(a.payment.bankAccountId) ?? false,
+          signatures: a.payment._count.releaseSignatures,
+        },
+      })),
+    });
   }
 }

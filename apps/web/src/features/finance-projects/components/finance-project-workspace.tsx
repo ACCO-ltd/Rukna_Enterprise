@@ -10,7 +10,12 @@ import { statusTone } from '@/lib/status-registry';
 
 import { ApiError } from '@/lib/api-client';
 
-import { useCanViewFinanceProjects, useFinanceProject } from '../hooks';
+import {
+  useCanViewFinanceProjects,
+  useCanViewProjectPayables,
+  useFinanceProject,
+  useProjectPaymentsAccess,
+} from '../hooks';
 import { NoFinanceAccess } from './no-finance-access';
 
 const VIEWS = [
@@ -18,6 +23,8 @@ const VIEWS = [
   { key: 'billing', segment: 'billing' },
   { key: 'cost', segment: 'cost' },
   { key: 'pl', segment: 'pl' },
+  { key: 'payables', segment: 'payables' },
+  { key: 'payments', segment: 'payments' },
 ] as const;
 
 /**
@@ -34,6 +41,9 @@ export function FinanceProjectWorkspace({ projectId, children }: { projectId: st
   const tStatus = useTranslations('platform.projects.status');
   const allowed = useCanViewFinanceProjects();
   const project = useFinanceProject(projectId, { enabled: allowed });
+  // Payables and Payments (ADR-043 Phase 2) show only to holders of their lists' own gates.
+  const canPayables = useCanViewProjectPayables();
+  const paymentsAccess = useProjectPaymentsAccess();
 
   if (!allowed) return <NoFinanceAccess />;
   if (project.isPending) {
@@ -97,7 +107,10 @@ export function FinanceProjectWorkspace({ projectId, children }: { projectId: st
 
       <WorkspaceSubNav
         label={t('navLabel')}
-        items={VIEWS.map((view) => ({
+        items={VIEWS.filter(
+          (view) =>
+            (view.key !== 'payables' || canPayables) && (view.key !== 'payments' || paymentsAccess.any),
+        ).map((view) => ({
           value: view.key,
           label: t(`views.${view.key}`),
           href: view.segment ? `${base}/${view.segment}` : base,

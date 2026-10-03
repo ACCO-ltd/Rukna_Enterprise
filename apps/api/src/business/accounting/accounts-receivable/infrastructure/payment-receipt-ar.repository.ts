@@ -5,6 +5,15 @@ import type { IpcPaymentStatus, IpcPaymentStatusResponse } from '@erp/types';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
+/**
+ * A receipt belongs to a project when any of its allocations (any posting state) applies it to a
+ * client invoice of that project — a receipt has no project of its own. A receipt split across
+ * projects appears under each; an unallocated receipt (on account) belongs to none (ADR-043).
+ */
+export function paymentReceiptProjectWhere(projectId: string) {
+  return { clientAllocations: { some: { invoice: { projectId } } } };
+}
+
 @Injectable()
 export class PaymentReceiptArRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<PaymentReceipt | null> {
@@ -44,9 +53,13 @@ export class PaymentReceiptArRepository {
     });
   }
 
-  findAll(prisma: TenantPrisma, organizationId: string, clientId?: string) {
+  findAll(prisma: TenantPrisma, organizationId: string, clientId?: string, projectId?: string) {
     return prisma.paymentReceipt.findMany({
-      where: { organizationId, ...(clientId ? { clientId } : {}) },
+      where: {
+        organizationId,
+        ...(clientId ? { clientId } : {}),
+        ...(projectId ? paymentReceiptProjectWhere(projectId) : {}),
+      },
       orderBy: { receiptDate: 'desc' },
     });
   }

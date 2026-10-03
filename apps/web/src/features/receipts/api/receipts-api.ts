@@ -49,10 +49,16 @@ export interface AllocateToInvoicePayload {
   amount: number;
 }
 
-/** `GET /customer-receipts`, optionally scoped to one client. Newest receipt date first. */
-export function listReceipts(clientId?: string): Promise<Receipt[]> {
+/**
+ * `GET /customer-receipts`, optionally scoped to one client and/or one project (ADR-043 Phase 2:
+ * receipts allocated to any invoice of the project). Newest receipt date first.
+ */
+export function listReceipts(clientId?: string, projectId?: string): Promise<Receipt[]> {
+  const params: Record<string, string> = {};
+  if (clientId) params.clientId = clientId;
+  if (projectId) params.projectId = projectId;
   return apiClient<Receipt[]>('/customer-receipts', {
-    ...(clientId ? { params: { clientId } } : {}),
+    ...(Object.keys(params).length > 0 ? { params } : {}),
   });
 }
 

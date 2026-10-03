@@ -52,6 +52,7 @@ function build(opts: {
     repo as never,
     approvalHistory as never,
     recordActivity as never,
+    { requiresDualControl: jest.fn().mockResolvedValue(false) } as never,
   );
   return { svc, repo, approvalHistory, recordActivity };
 }

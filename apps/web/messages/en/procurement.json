@@ -350,6 +350,31 @@
       "descriptionRequired": "Enter a description.",
       "quantityMustBePositive": "Enter a quantity greater than zero.",
       "priceMustBePositive": "Enter a unit price greater than zero. The API does not accept a zero-priced line."
+    },
+    "billPayments": {
+      "title": "Supplier bills & payments",
+      "hint": "Bills raised against this order and how far each is paid.",
+      "empty": "No supplier bills against this order yet.",
+      "loadFailed": "Could not load the bills for this order.",
+      "retry": "Try again",
+      "bill": "Bill",
+      "draft": "Draft",
+      "supplierRef": "Supplier ref. {ref}",
+      "total": "Total",
+      "paid": "Paid",
+      "pending": "In progress",
+      "outstanding": "Outstanding",
+      "lastPayment": "Last payment",
+      "status": "Status",
+      "none": "—",
+      "state": {
+        "NOT_POSTED": "Not posted",
+        "UNPAID": "Unpaid",
+        "PAYMENT_IN_PROGRESS": "Payment in progress",
+        "PARTIALLY_PAID": "Partly paid",
+        "PAID": "Paid",
+        "REVERSED": "Reversed"
+      }
     }
   },
   "grn": {
@@ -777,7 +802,8 @@
       "filterByStatus": "Status",
       "filterByPosting": "Posting",
       "emptyHint": "A payment records money paid to a supplier and how it settles against their bills.",
-      "colTotal": "Amount"
+      "colTotal": "Amount",
+      "filterByProject": "Project"
     }
   },
   "allocation": {

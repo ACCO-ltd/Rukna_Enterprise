@@ -378,8 +378,15 @@ export function useFiscalYear(id: string): UseQueryResult<FiscalYear, Error> {
   });
 }
 
-export function useJournals(): UseQueryResult<JournalEntry[], Error> {
-  return useQuery({ queryKey: accountingKeys.journals(), queryFn: listJournals });
+export function useJournals(
+  options: { projectId?: string; enabled?: boolean } = {},
+): UseQueryResult<JournalEntry[], Error> {
+  return useQuery({
+    // Under `journals()`, so the journal mutations' prefix invalidation still refreshes it.
+    queryKey: [...accountingKeys.journals(), options.projectId ?? 'all'],
+    queryFn: () => listJournals(options.projectId),
+    enabled: options.enabled ?? true,
+  });
 }
 
 export function useJournal(id: string): UseQueryResult<JournalEntry, Error> {

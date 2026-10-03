@@ -23,6 +23,11 @@ import { CommandGovernanceService, throwIfGated } from '../../../../platform/wor
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
+import {
+  billSettlementBlock,
+  isReleaseComplete,
+  paymentPostingBlock,
+} from '../domain/supplier-bill-eligibility.policy.js';
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -76,9 +81,6 @@ export class SupplierPaymentService {
     private readonly signatoryService: BankAccountSignatoryService,
     private readonly purchaseOrderService: PurchaseOrderService,
   ) {}
-
-  /** ADR-022 CONST-DOA-005: the number of distinct bank signatures required to release a payment. */
-  private static readonly RELEASE_SIGNATURES_REQUIRED = 2;
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
     const prisma = this.tenancyService.getClient();
@@ -138,14 +140,16 @@ export class SupplierPaymentService {
         // DRAFT/SUBMITTED/REJECTED/CANCELLED or REVERSED bill would debit AP with no matching balance,
         // so only a POSTED bill is a valid direct-settlement target (mirrors allocateAdvance). This also
         // rejects an already-settled bill defensively — its outstanding is 0, caught below either way.
-        if (bill.postingStatus !== 'POSTED') {
+        // One rule for this command and `GET /bills/:id/eligibility` (ADR-043).
+        const allocAmt = new Decimal(alloc.amount);
+        const outstanding = new Decimal(bill.outstandingAmount.toString());
+        const settlementBlock = billSettlementBlock(bill, allocAmt);
+        if (settlementBlock === 'BILL_NOT_POSTED') {
           throw new BadRequestException(
             `Bill ${alloc.supplierBillId} is not POSTED (status: ${bill.postingStatus}) and cannot be settled by a payment`,
           );
         }
-        const allocAmt = new Decimal(alloc.amount);
-        const outstanding = new Decimal(bill.outstandingAmount.toString());
-        if (allocAmt.gt(outstanding)) {
+        if (settlementBlock) {
           throw new BadRequestException(`Allocation ${allocAmt.toFixed(2)} exceeds bill outstanding balance ${outstanding.toFixed(2)}`);
         }
 
@@ -253,7 +257,7 @@ export class SupplierPaymentService {
         throw e;
       }
       const signatures = await this.paymentRepo.countReleaseSignatures(tx as never, paymentId);
-      if (signatures >= SupplierPaymentService.RELEASE_SIGNATURES_REQUIRED) {
+      if (isReleaseComplete(signatures)) {
         await this.paymentRepo.markReleased(tx as never, paymentId);
       }
     });
@@ -277,14 +281,15 @@ export class SupplierPaymentService {
     }
     // ADR-022 CONST-DOA-005: an account under bank-signatory dual control must reach RELEASED
     // (≥2 signatures) before it can be posted; an account without signatories posts from APPROVED.
+    // `paymentPostingBlock` is the rule the bill's eligibility read model shows (ADR-043).
     const underDualControl = await this.signatoryService.requiresDualControl(prisma, payment.bankAccountId);
-    if (underDualControl) {
-      if (payment.documentStatus !== 'RELEASED') {
-        throw new BadRequestException(
-          'Payment must be RELEASED by two authorized bank signatories before posting',
-        );
-      }
-    } else if (payment.documentStatus !== 'APPROVED') {
+    const postBlock = paymentPostingBlock(payment, underDualControl);
+    if (postBlock === 'PAYMENT_NOT_RELEASED') {
+      throw new BadRequestException(
+        'Payment must be RELEASED by two authorized bank signatories before posting',
+      );
+    }
+    if (postBlock === 'PAYMENT_NOT_APPROVED') {
       throw new BadRequestException(`Payment must be APPROVED before posting`);
     }
 
@@ -393,7 +398,7 @@ export class SupplierPaymentService {
 
     const bill = await this.billRepo.findById(prisma, orgId, dto.supplierBillId);
     if (!bill) throw new NotFoundException(`SupplierBill ${dto.supplierBillId} not found`);
-    if (bill.postingStatus !== 'POSTED') {
+    if (billSettlementBlock(bill, amount) === 'BILL_NOT_POSTED') {
       throw new BadRequestException(`Bill must be POSTED before advance allocation`);
     }
     if (bill.supplierId !== payment.supplierId) {
@@ -679,9 +684,9 @@ export class SupplierPaymentService {
     });
   }
 
-  async findAll(identity: RequestIdentity, supplierId?: string) {
+  async findAll(identity: RequestIdentity, supplierId?: string, projectId?: string) {
     const prisma = this.tenancyService.getClient();
-    return this.paymentRepo.findAll(prisma, identity.activeOrganizationId, supplierId);
+    return this.paymentRepo.findAll(prisma, identity.activeOrganizationId, supplierId, projectId);
   }
 
   async findById(identity: RequestIdentity, id: string) {

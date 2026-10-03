@@ -926,6 +926,9 @@ export type BuyerAdvanceReturnMethod = 'CASH' | 'BANK' | 'MOBILE_MONEY';
  * allocation tables and the commitment ledger. The frontend never recomputes these figures;
  * it renders what the server returned.
  */
+/** `GET /procurement/purchase-orders/:id/receiving` — quantities only, no money (view:procurement). */
+export type PurchaseOrderReceiving = Pick<PurchaseOrderSettlement, 'receivingStatus' | 'receivingLines'>;
+
 export interface PurchaseOrderSettlement {
   orderedAmount: Money;
 

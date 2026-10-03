@@ -717,9 +717,9 @@ export class CustomerReceiptService {
     });
   }
 
-  async findAll(identity: RequestIdentity, clientId?: string) {
+  async findAll(identity: RequestIdentity, clientId?: string, projectId?: string) {
     const prisma = this.tenancyService.getClient();
-    return this.receiptRepo.findAll(prisma, identity.activeOrganizationId, clientId);
+    return this.receiptRepo.findAll(prisma, identity.activeOrganizationId, clientId, projectId);
   }
 
   // ACC-SET-001 — IPC payment status derived from the invoice raised off it (moved from finance).
