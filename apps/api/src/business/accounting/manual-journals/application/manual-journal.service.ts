@@ -376,7 +376,7 @@ export class ManualJournalService {
     });
   }
 
-  async findAll(identity: RequestIdentity) {
+  async findAll(identity: RequestIdentity, projectId?: string) {
     const prisma = this.tenancyService.getClient();
     // `replacedByJournalEntryId: null` hides the authoring rows of journals that have
     // already posted, so the list shows one row per journal instead of the staging
@@ -387,6 +387,8 @@ export class ManualJournalService {
         organizationId: identity.activeOrganizationId,
         sourceDocumentType: 'MANUAL_JOURNAL',
         replacedByJournalEntryId: null,
+        // ADR-043: a journal belongs to a project when any of its lines is coded to it.
+        ...(projectId ? { lines: { some: { projectId } } } : {}),
       },
       include: { lines: { orderBy: { lineNumber: 'asc' } } },
       orderBy: { createdAt: 'desc' },

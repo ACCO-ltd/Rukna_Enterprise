@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient, SupplierPayment, SupplierPaymentAllocation } from '@prisma/client';
 import type { Decimal } from '@prisma/client/runtime/library';
+import { supplierBillProjectWhere } from './supplier-bill.repository.js';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -18,6 +19,16 @@ export interface CreateSupplierPaymentData {
   bankReference?: string;
   notes?: string;
   createdBy: string;
+}
+
+/**
+ * A supplier payment belongs to a project when any of its bill allocations (any posting state)
+ * settles a bill of that project — by the bills list's own header-or-line rule
+ * (`supplierBillProjectWhere`). A payment has no project of its own; an unallocated advance and
+ * pre-bill PO funding belong to none (ADR-043).
+ */
+export function supplierPaymentProjectWhere(projectId: string) {
+  return { allocations: { some: { bill: supplierBillProjectWhere(projectId) } } };
 }
 
 @Injectable()
@@ -45,9 +56,13 @@ export class SupplierPaymentRepository {
     return prisma.supplierPayment.update({ where: { id }, data: { documentStatus: 'RELEASED' } });
   }
 
-  findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {
+  findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string, projectId?: string) {
     return prisma.supplierPayment.findMany({
-      where: { organizationId, ...(supplierId ? { supplierId } : {}) },
+      where: {
+        organizationId,
+        ...(supplierId ? { supplierId } : {}),
+        ...(projectId ? supplierPaymentProjectWhere(projectId) : {}),
+      },
       orderBy: { paymentDate: 'desc' },
     });
   }

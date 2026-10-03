@@ -1,14 +1,15 @@
 import {
-  Controller, Get, Post, Body, Param,
+  Controller, Get, Post, Body, Param, Query,
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { ManualJournalService } from '../application/manual-journal.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { CreateManualJournalDto } from './dto/create-manual-journal.dto.js';
 import { ApproveManualJournalDto } from './dto/approve-manual-journal.dto.js';
 import { ReverseManualJournalDto } from './dto/reverse-manual-journal.dto.js';
@@ -19,12 +20,18 @@ import { ReverseManualJournalDto } from './dto/reverse-manual-journal.dto.js';
 @RequirePermissions(PERMISSIONS.journalsManage)
 @Controller('journals')
 export class ManualJournalController {
-  constructor(private readonly manualJournalService: ManualJournalService) {}
+  constructor(
+    private readonly manualJournalService: ManualJournalService,
+    private readonly projectAccess: ProjectAccessService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all manual journal entries for the organization' })
-  findAll(@CurrentUser() identity: RequestIdentity) {
-    return this.manualJournalService.findAll(identity);
+  @ApiQuery({ name: 'projectId', required: false, description: 'Journals with any line coded to the project' })
+  async findAll(@CurrentUser() identity: RequestIdentity, @Query('projectId') projectId?: string) {
+    // ADR-043: a project filter respects project access (404 outside the org, 403 non-member).
+    if (projectId) await this.projectAccess.assertMember(identity, projectId);
+    return this.manualJournalService.findAll(identity, projectId);
   }
 
   @Post()

@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { OutboundMessageView, RequestIdentity, WhatsAppSendPreview } from '@erp/types';
 import { CustomerReceiptService } from '../application/customer-receipt.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { PaymentReceiptDocumentService } from '../application/payment-receipt-document.service.js';
 import { ReceiptWhatsAppService } from '../application/receipt-whatsapp.service.js';
 import { CreateReceiptDto } from './dto/create-receipt.dto.js';
@@ -28,16 +29,21 @@ export class CustomerReceiptController {
     private readonly customerReceiptService: CustomerReceiptService,
     private readonly receiptDocuments: PaymentReceiptDocumentService,
     private readonly receiptWhatsApp: ReceiptWhatsAppService,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'List payment receipts' })
   @ApiQuery({ name: 'clientId', required: false })
-  findAll(
+  @ApiQuery({ name: 'projectId', required: false, description: 'Receipts allocated to any invoice of the project' })
+  async findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('clientId') clientId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.customerReceiptService.findAll(identity, clientId);
+    // ADR-043: a project filter respects project access (404 outside the org, 403 non-member).
+    if (projectId) await this.projectAccess.assertMember(identity, projectId);
+    return this.customerReceiptService.findAll(identity, clientId, projectId);
   }
 
   // ACC-SET-001 BE-2: receipt creation moved here from the retired finance /receipts module.
