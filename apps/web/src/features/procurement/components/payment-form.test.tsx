@@ -37,6 +37,9 @@ const accountingMocks = vi.hoisted(() => ({
 vi.mock('../hooks/use-procurement', () => mocks);
 vi.mock('@/features/accounting/hooks/use-accounting', () => accountingMocks);
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
+vi.mock('@/features/projects/hooks/use-project-filter', () => ({
+  useProjectFilter: () => ({ initialProjectId: undefined, options: [] }),
+}));
 
 import { PAYMENT_METHODS, SupplierPaymentForm } from './payment-form';
 import { SupplierPaymentsList } from './payment-screens';

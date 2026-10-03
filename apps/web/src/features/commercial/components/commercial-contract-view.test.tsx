@@ -88,6 +88,41 @@ describe('Contract view — payment schedule', () => {
     expect(within(rows[0]!).getByText('40%')).toBeInTheDocument();
   });
 
+  it('shows the server’s blocking reason with its owner, and the billing steps (ADR-043 Phase 2)', () => {
+    schedule.installments[2] = stageFixture({
+      id: 's3',
+      sortOrder: 2,
+      name: 'Frame complete',
+      billingBlocker: 'MILESTONE_NOT_VERIFIED',
+      releasedBy: { kind: 'MILESTONE', milestoneId: 'm2', milestoneCode: 'MS-02', milestoneName: 'Frame complete', verifiedAt: null },
+      billingEligibility: {
+        installmentId: 's3',
+        canPrepare: false,
+        canIssue: false,
+        blockedReason: 'MILESTONE_NOT_VERIFIED',
+        steps: [
+          { key: 'CONTRACT_ACTIVE', status: 'DONE', owner: 'FINANCE', code: null, detail: null },
+          { key: 'MILESTONE_LINKED', status: 'DONE', owner: 'CONSTRUCTION', code: null, detail: null },
+          { key: 'MILESTONE_VERIFIED', status: 'BLOCKED', owner: 'CONSTRUCTION', code: 'MILESTONE_NOT_VERIFIED', detail: null },
+          { key: 'INVOICE_PREPARED', status: 'PENDING', owner: 'FINANCE', code: 'NOT_PREPARED', detail: null },
+        ],
+      },
+    });
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />);
+    const rows = scheduleRows();
+    expect(within(rows[2]!).getByText('Progress not verified yet — owner: Construction')).toBeInTheDocument();
+    expect(within(rows[2]!).getByText('Billing steps (2 of 4 done)')).toBeInTheDocument();
+    const steps = within(rows[2]!).getByRole('list', { name: 'Steps', hidden: true });
+    expect(within(steps).getAllByRole('listitem', { hidden: true }).map((li) => li.getAttribute('data-status'))).toEqual([
+      'DONE',
+      'DONE',
+      'BLOCKED',
+      'PENDING',
+    ]);
+    // A stage the server says can move carries no blocking note.
+    expect(within(rows[1]!).queryByText(/— owner:/)).toBeNull();
+  });
+
   it('offers Re-profile only to someone allowed to', () => {
     renderWithProviders(
       <CommercialContractView

@@ -180,6 +180,7 @@ export function stageFixture(overrides: Partial<CommercialPaymentScheduleInstall
     releasedBy: { kind: 'MILESTONE', milestoneId: null, milestoneCode: null, milestoneName: null, verifiedAt: null },
     invoiceId: null,
     invoiceState: null,
+    billingEligibility: { installmentId: overrides.id, canPrepare: false, canIssue: false, blockedReason: null, steps: [] },
     ...overrides,
   };
 }

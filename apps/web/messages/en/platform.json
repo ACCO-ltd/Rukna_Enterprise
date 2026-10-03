@@ -3001,7 +3001,9 @@
       "notPosted": "Not posted",
       "posted": "Posted",
       "reversed": "Reversed"
-    }
+    },
+    "filterByProject": "Project",
+    "allProjects": "All projects"
   },
   "ipc": {
     "title": "Payment Certificates",

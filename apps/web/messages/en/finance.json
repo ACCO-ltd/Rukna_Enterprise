@@ -411,7 +411,9 @@
         "overview": "Overview",
         "billing": "Billing",
         "cost": "Cost & commitments",
-        "pl": "P&L"
+        "pl": "P&L",
+        "payables": "Payables",
+        "payments": "Payments"
       }
     },
     "billing": {
@@ -420,6 +422,103 @@
       "noContract": "No contract yet",
       "noContractHint": "Billing starts once the signed contract is recorded on the project's Commercial tab.",
       "openCommercial": "Open Commercial"
+    },
+    "payables": {
+      "title": "Supplier bills",
+      "hint": "This project's supplier bills — a bill coded to the project on any line is included. Open a bill to approve, post or pay it.",
+      "noAccess": "You don't have access to supplier bills",
+      "noAccessHint": "Supplier bills need the Manage payables permission. Ask an administrator if you need it.",
+      "outstanding": "Outstanding"
+    },
+    "payments": {
+      "receipts": "Client receipts",
+      "receiptsHint": "Receipts allocated to an invoice of this project.",
+      "supplierPayments": "Supplier payments",
+      "supplierPaymentsHint": "Payments allocated to a supplier bill of this project.",
+      "journals": "Manual journals",
+      "journalsHint": "Journals with a line coded to this project.",
+      "noAccess": "You don't have access to project payments",
+      "noAccessHint": "Receipts, supplier payments and journals each need their own finance permission. Ask an administrator if you need one."
+    }
+  },
+  "eligibility": {
+    "bill": {
+      "title": "Why can't I pay this?",
+      "readyToPay": "Ready to pay — {amount} not yet covered by a payment.",
+      "readyToPost": "Ready to post. Once posted, it can be paid.",
+      "paidInFull": "Paid in full.",
+      "blocked": "{reason} — owner: {owner}",
+      "inFlight": "{count, plural, one {# payment} other {# payments}} in progress",
+      "signatures": "A payment needs {count, plural, one {# bank signature} other {# bank signatures}} to be released.",
+      "loading": "Checking whether this bill can be paid",
+      "loadFailed": "Could not check whether this bill can be paid.",
+      "retry": "Try again"
+    },
+    "stage": {
+      "blocked": "{reason} — owner: {owner}",
+      "steps": "Billing steps ({done} of {total} done)"
+    },
+    "stepsLabel": "Steps",
+    "ownerLabel": "Owner: {owner}",
+    "status": {
+      "DONE": "Done",
+      "PENDING": "Waiting",
+      "BLOCKED": "Blocked",
+      "NOT_APPLICABLE": "Not applicable"
+    },
+    "owner": {
+      "FINANCE": "Finance",
+      "APPROVER": "Approver",
+      "PROCUREMENT": "Procurement",
+      "SIGNATORIES": "Bank signatories",
+      "CONSTRUCTION": "Construction"
+    },
+    "billStep": {
+      "SUBMITTED": "Submitted for approval",
+      "MATCHED": "Matched to the purchase order",
+      "APPROVED": "Approved",
+      "PERIOD_OPEN": "Accounting period open",
+      "POSTED": "Posted to the ledger",
+      "PAYMENT_APPROVED": "Payment approved",
+      "PAYMENT_RELEASED": "Payment released (signed)",
+      "PAID": "Paid"
+    },
+    "stageStep": {
+      "CONTRACT_ACTIVE": "Contract active",
+      "MILESTONE_LINKED": "Progress milestone linked",
+      "MILESTONE_VERIFIED": "Progress verified",
+      "READY_TO_BILL": "Marked ready to bill",
+      "INVOICE_PREPARED": "Invoice prepared",
+      "PERIOD_OPEN": "Accounting period open",
+      "INVOICE_ISSUED": "Invoice issued"
+    },
+    "unknownReason": "Not done yet",
+    "reason": {
+      "BILL_NOT_SUBMITTED": "The bill is still a draft — it must be submitted for approval",
+      "BILL_AWAITING_APPROVAL": "Waiting for an approver",
+      "BILL_REJECTED": "The bill was rejected — it cannot be posted or paid",
+      "BILL_CANCELLED": "The bill was cancelled",
+      "BILL_REVERSED": "The bill was reversed",
+      "MATCH_NOT_RUN": "The 3-way match has not run yet",
+      "MATCH_EXCEPTION": "3-way match exception — Procurement must resolve it or an approver must accept it",
+      "MATCH_DISPUTED": "The 3-way match is disputed — Procurement must resolve it",
+      "NO_PERIOD": "No accounting period covers this date — Finance must open one",
+      "PERIOD_CLOSED": "The accounting period is closed",
+      "PERIOD_LOCKED": "The accounting period is locked",
+      "BILL_NOT_POSTED": "The bill is not posted yet — only posted bills can be paid",
+      "PAYMENT_AWAITING_APPROVAL": "A payment is waiting for approval",
+      "PAYMENT_AWAITING_RELEASE": "A payment is waiting for bank signatures",
+      "PAYMENT_NOT_POSTED": "A payment is released but not posted yet",
+      "FULLY_PAID": "Paid in full",
+      "NO_PAYMENT_RECORDED": "No payment recorded yet",
+      "POSTING_FAILED": "Posting failed",
+      "CONTRACT_NOT_ACTIVE": "The contract is not active yet",
+      "MILESTONE_NOT_LINKED": "No progress milestone is linked to this stage",
+      "MILESTONE_NOT_VERIFIED": "Progress not verified yet",
+      "NOT_READY": "Not marked ready to bill — preparing the invoice records it",
+      "NOT_PREPARED": "The invoice has not been prepared yet",
+      "STAGE_ISSUED": "Already billed",
+      "NOT_ISSUED": "The invoice has not been issued yet"
     }
   }
 }

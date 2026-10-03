@@ -17,6 +17,8 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 
+import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from '@erp/types';
+
 import { unitOfMeasureKeys } from '@/features/units-of-measure/hooks/use-units-of-measure';
 import {
   allocateAdvance,
@@ -55,6 +57,8 @@ import {
   getSupplierBillActivity,
   getSupplierBillApprovals,
   getSupplierBillPayments,
+  getSupplierBillEligibility,
+  getPurchaseOrderBillPayments,
   getSupplierPayment,
   listGoodsReceipts,
   listGoodsReceiptAttachments,
@@ -173,8 +177,8 @@ export const procurementKeys = {
   bills: (supplierId?: string, projectId?: string) =>
     [...procurementKeys.all, 'bills', supplierId ?? 'all', projectId ?? 'all'] as const,
   bill: (id: string) => [...procurementKeys.all, 'bill', id] as const,
-  payments: (supplierId?: string) =>
-    [...procurementKeys.all, 'payments', supplierId ?? 'all'] as const,
+  payments: (supplierId?: string, projectId?: string) =>
+    [...procurementKeys.all, 'payments', supplierId ?? 'all', projectId ?? 'all'] as const,
   payment: (id: string) => [...procurementKeys.all, 'payment', id] as const,
   billMatch: (billId: string) => [...procurementKeys.all, 'bill-match', billId] as const,
   commitments: () => [...procurementKeys.all, 'commitments'] as const,
@@ -782,6 +786,36 @@ export function useSupplierBillPayments(id: string): UseQueryResult<BillPayments
 }
 
 /**
+ * ADR-043 Phase 2: why the bill can or cannot be posted / paid. Keyed under the bill, so every
+ * bill mutation (which invalidates `bill(id)`) refreshes it too.
+ */
+export function useSupplierBillEligibility(
+  id: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<SupplierBillEligibility> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'eligibility'],
+    queryFn: () => getSupplierBillEligibility(id),
+    enabled: Boolean(id) && (options?.enabled ?? true),
+  });
+}
+
+/**
+ * ADR-043 decision 4: a purchase order's supplier bills and their payment status. The caller
+ * gates `enabled` on `view:procurement` + `view:commitment-ledger` — the server's gate.
+ */
+export function usePurchaseOrderBillPayments(
+  id: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<PurchaseOrderBillPaymentsResponse> {
+  return useQuery({
+    queryKey: [...procurementKeys.purchaseOrder(id), 'bill-payments'],
+    queryFn: () => getPurchaseOrderBillPayments(id),
+    enabled: Boolean(id) && (options?.enabled ?? true),
+  });
+}
+
+/**
  * Every bill mutation invalidates the list, the individual bill, and the commitment ledger.
  *
  * The commitment invalidation is not defensive padding. Posting a bill is the step that turns
@@ -869,12 +903,18 @@ export function useReverseSupplierBill() {
 
 // ─── Supplier payments ───────────────────────────────────────────────────────────
 
-export function useSupplierPayments(filters?: {
-  supplierId?: string;
-}): UseQueryResult<SupplierPayment[]> {
+export function useSupplierPayments(
+  filters?: {
+    supplierId?: string;
+    /** ADR-043 Phase 2: payments allocated to any bill of the project (server-side). */
+    projectId?: string;
+  },
+  options?: { enabled?: boolean },
+): UseQueryResult<SupplierPayment[]> {
   return useQuery({
-    queryKey: procurementKeys.payments(filters?.supplierId),
+    queryKey: procurementKeys.payments(filters?.supplierId, filters?.projectId),
     queryFn: () => listSupplierPayments(filters),
+    enabled: options?.enabled ?? true,
   });
 }
 

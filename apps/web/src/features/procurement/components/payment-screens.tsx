@@ -30,6 +30,7 @@ import { useModuleTrail } from '@/components/layout/module-chrome';
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { formatDate, formatMoney } from '@/lib/format';
+import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
 import { useSupplierPayment, useSupplierPayments, useSuppliers } from '../hooks/use-procurement';
 import { bankAccountLabel } from '../payment-actions';
@@ -62,17 +63,26 @@ const detailHref = (payment: SupplierPayment) => `/finance/accounting/payments/$
  * lists (ADR-035): row navigation to the detail, an empty-state CTA, and status filters. The
  * response embeds no supplier, so the name is joined against `GET /suppliers` the screen holds.
  */
-export function SupplierPaymentsList() {
+export function SupplierPaymentsList({
+  projectId,
+}: {
+  /** ADR-043 Phase 2: fixes the list to payments allocated to a bill of this project. */
+  projectId?: string;
+} = {}) {
   const t = useTranslations('procurement.payments');
   const tList = useTranslations('procurement.payments.list');
   const tc = useTranslations('procurement.common');
   const tStatus = useTranslations('procurement.status');
   const { can } = usePermissions();
 
-  const payments = useSupplierPayments();
+  // `?projectId=` lets a project link in already narrowed; the filter is applied server-side
+  // (`GET /payments?projectId=`), so a payment split across projects still matches.
+  const projectFilter = useProjectFilter();
+  const [filters, setFilters] = useState<FilterValues>((): FilterValues =>
+    projectFilter.initialProjectId ? { project: projectFilter.initialProjectId } : {},
+  );
+  const payments = useSupplierPayments({ projectId: projectId ?? (filters.project || undefined) });
   const suppliers = useSuppliers();
-
-  const [filters, setFilters] = useState<FilterValues>({});
 
   const supplierNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -110,6 +120,9 @@ export function SupplierPaymentsList() {
       label: tList('filterByPosting'),
       options: POSTING_STATUSES.map((s) => ({ value: s, label: s })),
     },
+    ...(projectId
+      ? []
+      : [{ key: 'project', type: 'select' as const, label: tList('filterByProject'), options: projectFilter.options }]),
   ];
 
   const columns: GridColumn<SupplierPayment>[] = [

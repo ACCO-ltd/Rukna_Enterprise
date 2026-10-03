@@ -63,6 +63,7 @@ import { ClassificationChips } from '../classification-chips';
 import { PoAmendDialog } from '../po-amend-dialog';
 import { ProcurementStatusBadge } from '../procurement-badges';
 import { SectionPanel } from './section-panel';
+import { PoBillPaymentsSection } from '../po-bill-payments';
 
 type Tab = 'items' | 'funding' | 'receiving' | 'settlement';
 
@@ -1218,6 +1219,10 @@ function SettlementTab({
           </ul>
         )}
       </SectionPanel>
+
+      {/* ADR-043 decision 4: supplier bills against this order and their payment status —
+          self-gated on view:procurement + view:commitment-ledger. */}
+      <PoBillPaymentsSection purchaseOrderId={poId} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Ellipsis, Paperclip } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import type {
+  StageBillingEligibility,
   CommercialPaymentScheduleInstallment,
   CommercialWorkspaceResponse,
 } from '@erp/types';
@@ -33,6 +34,7 @@ import { projectInvoiceHref, type InvoiceHrefBuilder } from './commercial-billin
 import { ContractChangesPanel } from './contract-changes-panel';
 import { ScheduleForm, splitScheduleForEditing } from './payment-schedule-tab';
 import { RecordSignedDateDialog } from './record-signed-date-dialog';
+import { StageEligibilityNote } from './stage-eligibility-note';
 
 /**
  * Contract: what was signed (facts), how it bills (the payment schedule, with each stage's state
@@ -328,6 +330,8 @@ export function PaymentSchedulePanel({
           <div className="min-w-0 space-y-0.5">
             <StatusPill tone={statusTone(state, 'paymentInstallment')}>{tState(state)}</StatusPill>
             {why ? <p className="text-caption text-muted-foreground">{why}</p> : null}
+            {/* ADR-043 Phase 2: the server's blocking reason + owner, and the billing steps. */}
+            <StageEligibilityNote eligibility={inst.billingEligibility as StageBillingEligibility | undefined} />
           </div>
         );
       },

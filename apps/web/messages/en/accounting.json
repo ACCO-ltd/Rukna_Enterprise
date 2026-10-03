@@ -398,7 +398,9 @@
       "POSTED": "Posted",
       "REJECTED": "Rejected",
       "REVERSED": "Reversed"
-    }
+    },
+    "filterByProject": "Project",
+    "allProjects": "All projects"
   },
   "journalForm": {
     "title": "New journal",

@@ -22,14 +22,19 @@ import type { Receipt, ReceiptDetail } from '../types';
 
 export const receiptKeys = {
   all: ['receipts'] as const,
-  list: (clientId?: string) => [...receiptKeys.all, 'list', clientId ?? 'all'] as const,
+  list: (clientId?: string, projectId?: string) =>
+    [...receiptKeys.all, 'list', clientId ?? 'all', projectId ?? 'all'] as const,
   detail: (id: string) => [...receiptKeys.all, 'detail', id] as const,
 };
 
-export function useReceipts(clientId?: string): UseQueryResult<Receipt[], Error> {
+export function useReceipts(
+  clientId?: string,
+  options: { projectId?: string; enabled?: boolean } = {},
+): UseQueryResult<Receipt[], Error> {
   return useQuery({
-    queryKey: receiptKeys.list(clientId),
-    queryFn: () => listReceipts(clientId),
+    queryKey: receiptKeys.list(clientId, options.projectId),
+    queryFn: () => listReceipts(clientId, options.projectId),
+    enabled: options.enabled ?? true,
   });
 }
 

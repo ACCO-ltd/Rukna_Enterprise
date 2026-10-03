@@ -370,8 +370,9 @@ export function getFiscalYear(id: string): Promise<FiscalYear> {
  * The endpoint takes no query parameters at all, despite §6.17 documenting
  * `?status=DRAFT&periodId=...` (A7). Status filtering is done in the browser.
  */
-export function listJournals(): Promise<JournalEntry[]> {
-  return apiClient<JournalEntry[]>('/journals');
+/** `GET /journals`; `projectId` (ADR-043 Phase 2) keeps journals with any line coded to the project. */
+export function listJournals(projectId?: string): Promise<JournalEntry[]> {
+  return apiClient<JournalEntry[]>('/journals', projectId ? { params: { projectId } } : {});
 }
 
 export function getJournal(id: string): Promise<JournalEntry> {

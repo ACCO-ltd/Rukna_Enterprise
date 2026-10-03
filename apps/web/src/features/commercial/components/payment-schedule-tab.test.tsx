@@ -57,6 +57,7 @@ function installment(
     releasedBy: { kind: 'MILESTONE', milestoneId: null, milestoneCode: null, milestoneName: null, verifiedAt: null },
     invoiceId: null,
     invoiceState: null,
+    billingEligibility: { installmentId: 'inst-1', canPrepare: false, canIssue: false, blockedReason: null, steps: [] },
     ...overrides,
   };
 }

@@ -12,6 +12,7 @@
  */
 
 import { apiClient } from '@/lib/api-client';
+import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from '@erp/types';
 
 import type {
   BillActivityEntry,
@@ -538,6 +539,22 @@ export function getSupplierBillActivity(id: string): Promise<BillActivityEntry[]
   return apiClient<BillActivityEntry[]>(`/bills/${id}/activity`);
 }
 
+/**
+ * ADR-043 Phase 2: why the bill can or cannot be posted / paid, step by step, from the same
+ * policy the post and payment commands enforce. Gate `manage:payable`.
+ */
+export function getSupplierBillEligibility(id: string): Promise<SupplierBillEligibility> {
+  return apiClient<SupplierBillEligibility>(`/bills/${id}/eligibility`);
+}
+
+/**
+ * ADR-043 decision 4: the supplier bills raised against a purchase order and how far each is
+ * paid. Gate `view:procurement` + `view:commitment-ledger`.
+ */
+export function getPurchaseOrderBillPayments(id: string): Promise<PurchaseOrderBillPaymentsResponse> {
+  return apiClient<PurchaseOrderBillPaymentsResponse>(`/procurement/purchase-orders/${id}/bill-payments`);
+}
+
 /** ADR-036: payments against the bill, with paid / pending computed server-side. */
 export function getSupplierBillPayments(id: string): Promise<BillPayments> {
   return apiClient<BillPayments>(`/bills/${id}/payments`);
@@ -749,9 +766,11 @@ export function updateSupplier(
  */
 export function listSupplierPayments(filters?: {
   supplierId?: string;
+  /** ADR-043 Phase 2: payments allocated to any bill of the project. */
+  projectId?: string;
 }): Promise<SupplierPayment[]> {
   return apiClient<SupplierPayment[]>('/payments', {
-    params: queryParams({ supplierId: filters?.supplierId }),
+    params: queryParams({ supplierId: filters?.supplierId, projectId: filters?.projectId }),
   });
 }
 
