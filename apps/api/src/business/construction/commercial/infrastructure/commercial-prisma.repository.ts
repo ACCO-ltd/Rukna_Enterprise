@@ -78,6 +78,7 @@ export interface PostedReceivables {
     invoiceNumber: string | null;
     invoiceDate: Date;
     dueDate: Date | null;
+    currencyCode: string;
     totalAmount: Decimal;
     outstandingAmount: Decimal;
     sourceInstallmentId: string | null;
@@ -884,6 +885,7 @@ export class CommercialPrismaRepository {
         invoiceNumber: true,
         invoiceDate: true,
         dueDate: true,
+        currencyCode: true,
         totalAmount: true,
         outstandingAmount: true,
         sourceInstallmentId: true,
@@ -906,6 +908,7 @@ export class CommercialPrismaRepository {
         invoiceNumber: inv.invoiceNumber,
         invoiceDate: inv.invoiceDate,
         dueDate: inv.dueDate,
+        currencyCode: inv.currencyCode,
         totalAmount: new Decimal(inv.totalAmount.toString()),
         outstandingAmount: new Decimal(inv.outstandingAmount.toString()),
         sourceInstallmentId: inv.sourceInstallmentId,
@@ -949,9 +952,11 @@ export class CommercialPrismaRepository {
       select: {
         id: true,
         projectId: true,
+        status: true,
         currency: true,
         contractValue: true,
         baseContractValue: true,
+        paymentTerms: true,
         client: { select: { name: true } },
       },
     });
@@ -972,6 +977,31 @@ export class CommercialPrismaRepository {
         id: true,
         contractId: true,
         percentage: true,
+        clientInvoice: { select: { id: true, documentStatus: true, postingStatus: true } },
+      },
+    });
+  }
+
+  /**
+   * Every payment-schedule stage of the given contracts with what the cash-flow forecast (ADR-043
+   * Phase 4) needs to date it — the schedule's own expected-date facts (`deriveExpectedDate`) and
+   * the stage's invoice (for `deriveInvoiceState`).
+   */
+  findScheduleStagesForForecast(prisma: TenantPrisma, contractIds: string[]) {
+    if (contractIds.length === 0) return Promise.resolve([]);
+    return prisma.contractPaymentInstallment.findMany({
+      where: { contractId: { in: contractIds } },
+      orderBy: [{ contractId: 'asc' }, { sortOrder: 'asc' }],
+      select: {
+        id: true,
+        contractId: true,
+        percentage: true,
+        triggerType: true,
+        dueDate: true,
+        readyToBillAt: true,
+        programmeMilestone: {
+          select: { id: true, code: true, name: true, status: true, baselineDate: true, forecastDate: true },
+        },
         clientInvoice: { select: { id: true, documentStatus: true, postingStatus: true } },
       },
     });

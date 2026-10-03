@@ -51,6 +51,45 @@ export class ProjectProcurementRepository {
     });
   }
 
+  /**
+   * Ledger totals per project, purchase order, currency and stage — the cash-flow forecast's open
+   * commitments (ADR-043 Phase 4): COMMITTED + ACCRUED of an order is what it still owes before a
+   * bill posts (each stage transition reverses the previous one, see `buildPosition`).
+   */
+  groupByProjectPurchaseOrderAndStage(prisma: TenantPrisma, organizationId: string, projectIds: string[]) {
+    if (projectIds.length === 0) return Promise.resolve([]);
+    return prisma.commitmentLedgerEntry.groupBy({
+      by: ['projectId', 'purchaseOrderId', 'currencyCode', 'stage'],
+      where: { organizationId, projectId: { in: projectIds } },
+      _sum: { amount: true },
+    });
+  }
+
+  /** Each order's expected delivery date (its current revision) and its supplier's payment terms. */
+  async findPurchaseOrderPaymentFacts(prisma: TenantPrisma, organizationId: string, purchaseOrderIds: string[]) {
+    const result = new Map<string, { expectedDeliveryDate: Date | null; supplierTermsDays: number | null }>();
+    if (purchaseOrderIds.length === 0) return result;
+    const orders = await prisma.purchaseOrder.findMany({
+      where: { organizationId, id: { in: purchaseOrderIds } },
+      select: { id: true, currentRevisionId: true, supplier: { select: { paymentTermsDays: true } } },
+    });
+    const revisionIds = orders.map((o) => o.currentRevisionId).filter((id): id is string => id !== null);
+    const revisions = revisionIds.length
+      ? await prisma.purchaseOrderRevision.findMany({
+          where: { id: { in: revisionIds } },
+          select: { id: true, expectedDeliveryDate: true },
+        })
+      : [];
+    const deliveryByRevision = new Map(revisions.map((r) => [r.id, r.expectedDeliveryDate]));
+    for (const o of orders) {
+      result.set(o.id, {
+        expectedDeliveryDate: o.currentRevisionId ? (deliveryByRevision.get(o.currentRevisionId) ?? null) : null,
+        supplierTermsDays: o.supplier.paymentTermsDays ?? null,
+      });
+    }
+    return result;
+  }
+
   /** Ledger totals per BOQ node (null = the project-level, non-BOQ bucket) and stage. */
   groupByBoqNodeAndStage(
     prisma: TenantPrisma,

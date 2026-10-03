@@ -4,7 +4,8 @@
 document + `docs/design/finance-projects-contract.md`) and Phase 1 (portfolio read model, Finance
 navigation, Finance → Projects) ship together. Phase 2 ("why blocked", Payables / Payments tabs,
 project filters, Procurement Manager payment status) shipped 2026-10-03. Phase 3 (finance commands
-leave the construction workspace; money-free stage status) shipped 2026-10-03. Phase 4 follows.
+leave the construction workspace; money-free stage status) shipped 2026-10-03. Phase 4 (cash-flow
+forecast, portfolio and cash-flow exports) shipped 2026-10-03. Phase 5 (tidy-up) follows.
 
 ## Context
 
@@ -195,5 +196,46 @@ the existing project-access rule applies per row.
      billing" toast, project activity) go to Finance for a finance reader and to the Commercial
      schedule otherwise (`useProjectBillingHref`) — never to Finance's no-access page. Redirects keep
      the old URL's query string.
-4. **Phase 4:** tidy-up — retire the redirect routes once bookmarks have aged out, role-seed
+4. **Phase 4 (shipped 2026-10-03):** cash-flow forecast and exports. Read-only, no migration.
+   - `GET /finance/cashflow?projectId&from&to&bucket=WEEK|MONTH` — per currency, per bucket:
+     inflows (posted invoices' outstanding by due date; payment-schedule stages not yet invoiced),
+     outflows (posted supplier bills' outstanding by due date; open purchase-order commitments),
+     net and cumulative net, plus a plain-words `basis` per line and the `exclusions`. Same gate
+     (`view:financial-position`), organisation scoping and project-access rule as the portfolio.
+   - **No second formula.** Invoice inflows are `findPostedReceivablesByProject` (= the portfolio's
+     `outstanding`); bill outflows are `findBillsToPay`, now the one query behind the portfolio's
+     `billsToPay` too; stage amounts are `scheduleBaseValue` × percentage, a stage is unbilled by
+     `deriveInvoiceState`; open commitments are the commitment ledger folded by `addStage`
+     (committed + accrued = committed-to-date − actual). A DB test asserts the totals reconcile.
+   - **Opening balances** (OPENING_BALANCE client invoices and supplier bills imported at go-live,
+     e.g. from QuickBooks) are their own lines, *Opening balances — receivable / payable*, by due
+     date (overdue → *Overdue / now*), same outstanding definition. Company-wide: all of them the
+     caller may see (a caller limited to their projects sees only those coded to them); one
+     project: only those coded to it. The portfolio and its POSTED-only helpers are unchanged, so
+     forecast invoices + opening receivables = portfolio outstanding + opening-balance outstanding
+     (bills likewise) — asserted by the DB test.
+   - A range with `to` before `from`, or longer than 104 periods (weeks or months), is a 400 —
+     never silently changed.
+   - **Dates are never guessed.** Stage bill date = the schedule's `deriveExpectedDate` (milestone
+     forecast → baseline; a dated stage's date), or `readyToBillAt` if earlier, moved up to today
+     (an invoice is dated the day it is issued); expected receipt = bill date + the contract's
+     payment terms through `resolveInvoiceDates` (the prepare/issue default; no number → due on
+     receipt). `Client.paymentTermsDays` is not used: the issue path does not use it either. An
+     open order pays at its current revision's expected delivery date + `Supplier.paymentTermsDays`
+     (the supplier bill's due-date default); either missing → *Undated*. Past-due items sit in the
+     first *Overdue / now* bucket; items after the range in *Later*.
+   - Web: **Finance → Reports → Cash flow** (`/finance/cashflow`, portfolio) and a **Cash flow** tab
+     in the Finance project workspace — chart (hand-rolled SVG, as the cost charts; no chart
+     library), table, weekly/monthly switch, currency switch, assumptions. Under Reports, not
+     Projects: it is a forward-looking statement across receivables and payables, read beside P&L;
+     Projects is the per-project worklist.
+   - **Exports** (client-side, from the rows on screen, as the accounting reports): the
+     `/finance/projects` list (current queue, screen columns, one totals line per currency) and the
+     cash-flow table, each as CSV (`exportCsv`) and Excel (`downloadXlsx`, a dependency-free XLSX
+     writer in `apps/web/src/lib/xlsx-export.ts`; one sheet per currency for cash flow). The shared
+     CSV writer now neutralises formula injection (a text cell starting `=`, `+`, `-`, `@`, tab or
+     CR gets a leading quote; numbers and plain decimal strings are untouched) — every accounting
+     report export benefits. XLSX text is written as inline strings, never formulas, so it needs
+     no prefix.
+5. **Phase 5:** tidy-up — retire the redirect routes once bookmarks have aged out, role-seed
    review, and a rename-proof permission check for the role names project access still matches on.

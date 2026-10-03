@@ -126,7 +126,7 @@ export class OpeningBalanceService {
       const journalLines: Parameters<typeof this.postingPort.post>[0]['lines'] = [];
 
       for (const tbLine of dto.trialBalance) {
-        const account = await this.accountRepo.findByCode(prisma, orgId, tbLine.accountCode);
+        const account = await this.accountRepo.findByCode(tx as never, orgId, tbLine.accountCode);
         if (!account) {
           throw new NotFoundException(
             `Trial balance account "${tbLine.accountCode}" not found in COA`,
@@ -226,11 +226,13 @@ export class OpeningBalanceService {
       }
 
       // ── 6. Reconciliation ──────────────────────────────────────────────────
+      // Read the GL on `tx`, like the subledger: the opening journal posted above is uncommitted, so
+      // the outer client cannot see it (it would report a variance equal to the whole balance).
       const reconciliation: ReconciliationLine[] = [];
 
-      const arGl = await this.accountRepo.findByCode(prisma, orgId, dto.arAccountCode);
+      const arGl = await this.accountRepo.findByCode(tx as never, orgId, dto.arAccountCode);
       if (arGl) {
-        const arGlBalance = (await this.journalRepo.getGlBalance(prisma, orgId, arGl.id)).abs();
+        const arGlBalance = (await this.journalRepo.getGlBalance(tx as never, orgId, arGl.id)).abs();
         const arAgg = await tx.clientInvoice.aggregate({
           where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
           _sum: { outstandingAmount: true },
@@ -246,9 +248,9 @@ export class OpeningBalanceService {
         });
       }
 
-      const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
+      const apGl = await this.accountRepo.findByCode(tx as never, orgId, dto.apAccountCode);
       if (apGl) {
-        const apGlBalance = (await this.journalRepo.getGlBalance(prisma, orgId, apGl.id)).abs();
+        const apGlBalance = (await this.journalRepo.getGlBalance(tx as never, orgId, apGl.id)).abs();
         const apAgg = await tx.supplierBill.aggregate({
           where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
           _sum: { outstandingAmount: true },

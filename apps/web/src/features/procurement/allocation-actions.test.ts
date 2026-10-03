@@ -96,6 +96,10 @@ describe('allocatableBills', () => {
     expect(allocatableBills(payment(), [bill({ postingStatus: 'NOT_POSTED' })])).toEqual([]);
   });
 
+  it('offers an opening-balance bill with an outstanding balance (carried on AP control)', () => {
+    expect(allocatableBills(payment(), [bill({ postingStatus: 'OPENING_BALANCE' })]).map((b) => b.id)).toEqual(['bill-1']);
+  });
+
   it('excludes a fully settled bill', () => {
     expect(allocatableBills(payment(), [bill({ outstandingAmount: '0.00' })])).toEqual([]);
   });

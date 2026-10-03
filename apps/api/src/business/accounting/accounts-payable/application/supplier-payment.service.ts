@@ -26,8 +26,23 @@ import { PurchaseOrderService } from '../../../procurement/purchase-orders/appli
 import {
   billSettlementBlock,
   isReleaseComplete,
+  openingBalanceApTieOutProblem,
   paymentPostingBlock,
+  type OpeningBalanceApTieOut,
 } from '../domain/supplier-bill-eligibility.policy.js';
+import {
+  loadOpeningBalanceApTieOut,
+  resolveApControlAccount,
+} from '../infrastructure/opening-balance-tie-out.repository.js';
+
+/** 409 for an opening-balance bill whose carried-over payables do not tie to AP control. */
+function openingBalanceNotReconciled(tieOut: OpeningBalanceApTieOut | undefined): ConflictException {
+  return new ConflictException({
+    message: openingBalanceApTieOutProblem(tieOut) ?? 'Opening-balance payables do not tie to the AP control account.',
+    code: 'OPENING_BALANCE_AP_NOT_RECONCILED',
+    errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED',
+  });
+}
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -127,6 +142,9 @@ export class SupplierPaymentService {
         createdBy: userId,
       });
 
+      // Opening-balance bills: the carried-over payables must tie to the AP control account the
+      // payment will debit (checked once, inside this transaction).
+      let obTieOut: OpeningBalanceApTieOut | undefined;
       for (const alloc of allocationLines) {
         const bill = await this.billRepo.findById(tx as never, orgId, alloc.supplierBillId);
         if (!bill) throw new NotFoundException(`SupplierBill ${alloc.supplierBillId} not found`);
@@ -136,17 +154,21 @@ export class SupplierPaymentService {
         if (bill.currencyCode !== dto.currencyCode) {
           throw new BadRequestException(`Bill ${alloc.supplierBillId} currency does not match payment currency`);
         }
-        // A bill is only a live AP liability once POSTED (AP is credited at EVT-AP-001). Settling a
-        // DRAFT/SUBMITTED/REJECTED/CANCELLED or REVERSED bill would debit AP with no matching balance,
-        // so only a POSTED bill is a valid direct-settlement target (mirrors allocateAdvance). This also
-        // rejects an already-settled bill defensively — its outstanding is 0, caught below either way.
+        // A bill is a live AP liability once its balance is on AP control: POSTED (credited at
+        // EVT-AP-001) or OPENING_BALANCE (credited by the opening-balance journal EVT-OPB-001).
+        // Settling a DRAFT/SUBMITTED/REJECTED/CANCELLED or REVERSED bill would debit AP with no
+        // matching balance, so only those two are valid settlement targets (mirrors allocateAdvance).
         // One rule for this command and `GET /bills/:id/eligibility` (ADR-043).
         const allocAmt = new Decimal(alloc.amount);
         const outstanding = new Decimal(bill.outstandingAmount.toString());
-        const settlementBlock = billSettlementBlock(bill, allocAmt);
+        if (bill.postingStatus === 'OPENING_BALANCE' && !obTieOut) {
+          obTieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, await resolveApControlAccount(tx as never, orgId));
+        }
+        const settlementBlock = billSettlementBlock(bill, allocAmt, obTieOut);
+        if (settlementBlock === 'OPENING_BALANCE_AP_NOT_RECONCILED') throw openingBalanceNotReconciled(obTieOut);
         if (settlementBlock === 'BILL_NOT_POSTED') {
           throw new BadRequestException(
-            `Bill ${alloc.supplierBillId} is not POSTED (status: ${bill.postingStatus}) and cannot be settled by a payment`,
+            `Bill ${alloc.supplierBillId} is not POSTED (status: ${bill.postingStatus}) and cannot be settled by a payment — only POSTED or OPENING_BALANCE bills can`,
           );
         }
         if (settlementBlock) {
@@ -310,6 +332,16 @@ export class SupplierPaymentService {
 
     try {
       return await prisma.$transaction(async (tx) => {
+        // A payment settling an opening-balance bill debits `apGl`: the carried-over payables must be
+        // on exactly that account, or the debit would drain AP control while the balance sits elsewhere.
+        const settlesOpeningBalance = await tx.supplierPaymentAllocation.count({
+          where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED', bill: { postingStatus: 'OPENING_BALANCE' } },
+        });
+        if (settlesOpeningBalance > 0) {
+          const tieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, { id: apGl.id, code: apGl.code });
+          if (openingBalanceApTieOutProblem(tieOut) !== null) throw openingBalanceNotReconciled(tieOut);
+        }
+
         const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [];
 
         if (allocatedAmount.gt(0)) {
@@ -398,8 +430,9 @@ export class SupplierPaymentService {
 
     const bill = await this.billRepo.findById(prisma, orgId, dto.supplierBillId);
     if (!bill) throw new NotFoundException(`SupplierBill ${dto.supplierBillId} not found`);
+    // (An opening-balance bill's AP tie-out is checked inside the transaction below.)
     if (billSettlementBlock(bill, amount) === 'BILL_NOT_POSTED') {
-      throw new BadRequestException(`Bill must be POSTED before advance allocation`);
+      throw new BadRequestException(`Bill must be POSTED (or an OPENING_BALANCE bill) before advance allocation`);
     }
     if (bill.supplierId !== payment.supplierId) {
       throw new BadRequestException(`Bill supplier does not match payment supplier`);
@@ -415,6 +448,14 @@ export class SupplierPaymentService {
     if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${dto.supplierAdvanceCode} not found`);
 
     return prisma.$transaction(async (tx) => {
+      // Opening-balance bill: its payables must tie to the AP account this allocation debits.
+      if (bill.postingStatus === 'OPENING_BALANCE') {
+        const tieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, { id: apGl.id, code: apGl.code });
+        if (billSettlementBlock(bill, amount, tieOut) === 'OPENING_BALANCE_AP_NOT_RECONCILED') {
+          throw openingBalanceNotReconciled(tieOut);
+        }
+      }
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,

@@ -3,6 +3,7 @@ import { resolvePostingAccounts, type Resolution } from '@/features/accounting/p
 import type { Account } from '@/features/accounting/types';
 import { MONEY_SCALE, fromMinorUnits, toMinorUnits } from '@/lib/money';
 
+import { isSettleableBill } from './bill-actions';
 import { moneyToApi } from './quantities';
 import type { AllocateAdvancePayload, SupplierBill, SupplierPayment } from './types';
 
@@ -53,7 +54,7 @@ export function allocationBlockReason(
  *
  * Four conditions, and only the first two are enforced server-side:
  *
- *   1. POSTED — an unposted bill has no AP balance to clear (server: yes)
+ *   1. POSTED or OPENING_BALANCE — an unposted bill has no AP balance to clear (server: yes)
  *   2. still outstanding — allocating to a settled bill would drive it negative (server: no,
  *      but the amount guard makes it hard to reach by accident)
  *   3. same supplier (server: **no** — A18)
@@ -68,7 +69,7 @@ export function allocatableBills(
   return bills
     .filter(
       (bill) =>
-        bill.postingStatus === 'POSTED' &&
+        isSettleableBill(bill) &&
         bill.supplierId === payment.supplierId &&
         bill.currencyCode === payment.currencyCode &&
         toMinorUnits(bill.outstandingAmount, MONEY_SCALE) > 0,

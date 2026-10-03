@@ -59,6 +59,17 @@ describe('applyToBills', () => {
     expect(result.map((b) => b.id)).toEqual(['keep']);
   });
 
+  it('includes opening-balance bills carried over from the previous system (already on AP control)', () => {
+    const bills = [
+      bill({ id: 'ob', postingStatus: 'OPENING_BALANCE', billDate: '2026-01-01' }),
+      bill({ id: 'ob-settled', postingStatus: 'OPENING_BALANCE', outstandingAmount: '0.00' }),
+      bill({ id: 'reversed', postingStatus: 'REVERSED' }),
+      bill({ id: 'posted' }),
+    ];
+
+    expect(applyToBills('sup-1', 'USD', bills).map((b) => b.id)).toEqual(['ob', 'posted']);
+  });
+
   it('sorts oldest bill first', () => {
     const bills = [
       bill({ id: 'newest', billDate: '2026-08-31' }),

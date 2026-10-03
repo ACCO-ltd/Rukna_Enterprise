@@ -12,9 +12,13 @@ import {
 import { ContextBar, EmptyState, MoneyDisplay, Skeleton, StatusPill, ViewSwitcher, cn } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { exportCsv, reportFilename } from '@/features/accounting/lib/export-csv';
 import { statusTone } from '@/lib/status-registry';
+import { downloadXlsx } from '@/lib/xlsx-export';
 
+import { portfolioExportTable } from '../exports';
 import { useCanViewFinanceProjects, useFinancePortfolio } from '../hooks';
+import { ExportButtons } from './export-buttons';
 import { NoFinanceAccess } from './no-finance-access';
 
 type QueueView = 'ALL' | FinancePortfolioQueue;
@@ -36,6 +40,7 @@ export function FinanceProjectsList() {
   const t = useTranslations('finance.projects');
   const tGrid = useTranslations('common.grid');
   const tStatus = useTranslations('platform.projects.status');
+  const tNeeds = useTranslations('finance.projects.needs');
   const router = useRouter();
   const pathname = usePathname() ?? '/finance/projects';
   const searchParams = useSearchParams();
@@ -146,6 +151,31 @@ export function FinanceProjectsList() {
     };
   }
 
+  // Export the rows of the current queue (the API's filter) with their per-currency totals — the
+  // grid's columns, money as numbers. The grid's own text search is not applied to the file.
+  const exportTable = () =>
+    portfolioExportTable(data?.items ?? [], data?.totals ?? [], {
+      headers: {
+        code: t('export.code'),
+        project: t('export.project'),
+        status: t('export.status'),
+        client: t('col.client'),
+        currency: t('export.currency'),
+        contract: t('col.contract'),
+        billed: t('col.billed'),
+        collected: t('col.collected'),
+        outstanding: t('col.outstanding'),
+        overdue: t('col.overdue'),
+        cost: t('col.cost'),
+        margin: t('col.margin'),
+        needsAction: t('col.needsAction'),
+      },
+      status: (status) => tStatus(status),
+      needsAction: (row) => needsActionLabels(row, tNeeds as unknown as NeedsTranslator).map((p) => p.label).join('; '),
+      totalLabel: (currency) => t('export.total', { currency: currency ?? t('export.noCurrency') }),
+    });
+  const filename = reportFilename('finance-projects', queue === 'ALL' ? null : queue.toLowerCase(), data?.asOf.slice(0, 10));
+
   const counts = all.data?.queueCounts;
   const chipLabel = (key: QueueView) =>
     counts ? t('queue.withCount', { label: t(`queue.${key}`), count: counts[key] }) : t(`queue.${key}`);
@@ -154,12 +184,25 @@ export function FinanceProjectsList() {
     <div className="space-y-4">
       <TotalsBar data={all.data} />
 
-      <ViewSwitcher
-        aria-label={t('queue.label')}
-        value={queue}
-        onValueChange={setQueue}
-        items={(['ALL', ...FINANCE_PORTFOLIO_QUEUES] as QueueView[]).map((key) => ({ value: key, label: chipLabel(key) }))}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ViewSwitcher
+          aria-label={t('queue.label')}
+          value={queue}
+          onValueChange={setQueue}
+          items={(['ALL', ...FINANCE_PORTFOLIO_QUEUES] as QueueView[]).map((key) => ({ value: key, label: chipLabel(key) }))}
+        />
+        <ExportButtons
+          disabled={!data || data.items.length === 0}
+          onCsv={() => {
+            const table = exportTable();
+            exportCsv(filename, table.headers, table.rows);
+          }}
+          onXlsx={() => {
+            const table = exportTable();
+            downloadXlsx(filename, [{ name: t('title'), rows: [table.headers, ...table.rows] }]);
+          }}
+        />
+      </div>
 
       <PlatformDataGrid
         columns={columns}
@@ -222,43 +265,50 @@ function TotalsBar({ data }: { data: FinancePortfolioResponse | undefined }) {
   );
 }
 
-/** What the project needs from finance today, as state pills — never a bare number. */
-function NeedsAction({ row }: { row: FinancePortfolioRow }) {
-  const t = useTranslations('finance.projects.needs');
-  const pills: React.ReactNode[] = [];
+type NeedsTranslator = (key: string, values?: Record<string, number>) => string;
+
+/**
+ * What the project needs from finance today, as labelled states — one list behind the pills and
+ * the export's "Needs action" column.
+ */
+export function needsActionLabels(
+  row: FinancePortfolioRow,
+  t: NeedsTranslator,
+): { key: string; tone: 'danger' | 'attention' | 'progress'; label: string }[] {
+  const out: { key: string; tone: 'danger' | 'attention' | 'progress'; label: string }[] = [];
   if (row.overdueInvoices.count > 0) {
-    pills.push(
-      <StatusPill key="overdue" tone="danger">
-        {row.overdueInvoices.oldestDaysPastDue !== null
+    out.push({
+      key: 'overdue',
+      tone: 'danger',
+      label:
+        row.overdueInvoices.oldestDaysPastDue !== null
           ? t('overdueAged', { count: row.overdueInvoices.count, days: row.overdueInvoices.oldestDaysPastDue })
-          : t('overdue', { count: row.overdueInvoices.count })}
-      </StatusPill>,
-    );
+          : t('overdue', { count: row.overdueInvoices.count }),
+    });
   }
   // ADR-043 decision 1 — Finance issues invoices: a ready stage stays here until its invoice is
   // posted, split into "not prepared" (nothing raised yet) and "draft prepared" (awaiting issue).
   const notPrepared = row.readyToBill.count - row.readyToBill.draftCount;
-  if (notPrepared > 0) {
-    pills.push(
-      <StatusPill key="bill" tone="attention">
-        {t('toBill', { count: notPrepared })}
-      </StatusPill>,
-    );
-  }
+  if (notPrepared > 0) out.push({ key: 'bill', tone: 'attention', label: t('toBill', { count: notPrepared }) });
   if (row.readyToBill.draftCount > 0) {
-    pills.push(
-      <StatusPill key="draft" tone="progress">
-        {t('draftPrepared', { count: row.readyToBill.draftCount })}
-      </StatusPill>,
-    );
+    out.push({ key: 'draft', tone: 'progress', label: t('draftPrepared', { count: row.readyToBill.draftCount }) });
   }
-  if (row.billsToPay.count > 0) {
-    pills.push(
-      <StatusPill key="pay" tone="progress">
-        {t('toPay', { count: row.billsToPay.count })}
-      </StatusPill>,
-    );
-  }
+  if (row.billsToPay.count > 0) out.push({ key: 'pay', tone: 'progress', label: t('toPay', { count: row.billsToPay.count }) });
+  return out;
+}
+
+/** What the project needs from finance today, as state pills — never a bare number. */
+function NeedsAction({ row }: { row: FinancePortfolioRow }) {
+  const t = useTranslations('finance.projects.needs');
+  const pills = needsActionLabels(row, t as unknown as NeedsTranslator);
   if (pills.length === 0) return <span className="text-caption text-muted-foreground">{t('none')}</span>;
-  return <span className="flex flex-wrap items-start gap-1">{pills}</span>;
+  return (
+    <span className="flex flex-wrap items-start gap-1">
+      {pills.map((p) => (
+        <StatusPill key={p.key} tone={p.tone}>
+          {p.label}
+        </StatusPill>
+      ))}
+    </span>
+  );
 }

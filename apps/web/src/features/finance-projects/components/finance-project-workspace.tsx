@@ -25,6 +25,7 @@ const VIEWS = [
   { key: 'pl', segment: 'pl' },
   { key: 'payables', segment: 'payables' },
   { key: 'payments', segment: 'payments' },
+  { key: 'cashflow', segment: 'cashflow' },
 ] as const;
 
 /**

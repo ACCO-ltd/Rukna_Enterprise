@@ -1,4 +1,6 @@
 import type {
+  CashflowForecastQuery,
+  CashflowForecastResponse,
   FinancePortfolioProjectResponse,
   FinancePortfolioQuery,
   FinancePortfolioResponse,
@@ -19,4 +21,15 @@ export function getFinancePortfolio(query: FinancePortfolioQuery = {}): Promise<
 /** One project's portfolio row — the Finance workspace header (`GET /finance/projects/:id`). */
 export function getFinanceProject(projectId: string): Promise<FinancePortfolioProjectResponse> {
   return apiClient<FinancePortfolioProjectResponse>(`/finance/projects/${projectId}`);
+}
+
+/** ADR-043 Phase 4 — the cash-flow forecast (`GET /finance/cashflow`), portfolio or one project. */
+export function getCashflowForecast(query: CashflowForecastQuery = {}): Promise<CashflowForecastResponse> {
+  const params = new URLSearchParams();
+  if (query.projectId) params.set('projectId', query.projectId);
+  if (query.bucket) params.set('bucket', query.bucket);
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  const qs = params.toString();
+  return apiClient<CashflowForecastResponse>(`/finance/cashflow${qs ? `?${qs}` : ''}`);
 }
