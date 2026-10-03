@@ -9,7 +9,7 @@ import { formatDateTime } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
 
 import type { CommunicationResourceType } from '../api';
-import { useCommunicationsFor, useResolveCommunication } from '../hooks';
+import { useCommunications, useCommunicationsFor, useResolveCommunication } from '../hooks';
 import { MESSAGE_STATUS_TONE, statusTime } from '../message-status';
 
 export interface MessageHistoryProps {
@@ -32,34 +32,64 @@ export interface MessageHistoryProps {
  * (polled for a few minutes after a send). An Unknown message — WhatsApp never confirmed it —
  * offers "Mark as sent" / "Mark as not sent" once the user has checked with the client.
  */
-export function MessageHistory({
+export function MessageHistory({ resourceType, ...rest }: MessageHistoryProps) {
+  return typeof resourceType === 'string' ? (
+    <SingleHistory resourceType={resourceType} {...rest} />
+  ) : (
+    <MergedHistory resourceTypes={resourceType} {...rest} />
+  );
+}
+
+type HistoryViewProps = Omit<MessageHistoryProps, 'resourceType'>;
+
+function SingleHistory({
   resourceType,
-  resourceId,
+  ...rest
+}: HistoryViewProps & { resourceType: CommunicationResourceType }) {
+  const messages = useCommunications(resourceType, rest.resourceId);
+  return <HistoryList messages={messages} showPurpose={false} {...rest} />;
+}
+
+/** Several kinds kept for the same record (an invoice: sends + reminders), merged newest first. */
+function MergedHistory({
+  resourceTypes,
+  ...rest
+}: HistoryViewProps & { resourceTypes: readonly CommunicationResourceType[] }) {
+  const messages = useCommunicationsFor(resourceTypes, rest.resourceId);
+  // Listed together, each row says what it was (Invoice / Payment reminder …).
+  return <HistoryList messages={messages} showPurpose={resourceTypes.length > 1} {...rest} />;
+}
+
+function HistoryList({
+  messages,
+  showPurpose,
   canResolve,
   invalidateOnResolve,
   hideWhenEmpty = false,
   showTitle = true,
-}: MessageHistoryProps) {
+}: HistoryViewProps & {
+  messages: { isPending: boolean; isError: boolean; data?: OutboundMessageView[] };
+  showPurpose: boolean;
+}) {
   const t = useTranslations('common.messaging.history');
-  const types = typeof resourceType === 'string' ? [resourceType] : resourceType;
-  const messages = useCommunicationsFor(types, resourceId);
-  // With several kinds listed together, each row says what it was (Invoice / Payment reminder …).
-  const showPurpose = types.length > 1;
 
   if (messages.isPending) return null;
-  if (messages.isError) return <Alert variant="error" messages={[t('loadFailed')]} />;
-  if (hideWhenEmpty && messages.data.length === 0) return null;
+  if (messages.isError || !messages.data) {
+    return <Alert variant="error" messages={[t('loadFailed')]} />;
+  }
+  const data = messages.data;
+  if (hideWhenEmpty && data.length === 0) return null;
 
   return (
     <section aria-label={t('title')} className="space-y-3">
       {showTitle ? (
         <h3 className="text-body-sm font-semibold text-foreground">{t('title')}</h3>
       ) : null}
-      {messages.data.length === 0 ? (
+      {data.length === 0 ? (
         <p className="text-body-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul className="divide-y divide-border rounded-panel border border-border">
-          {messages.data.map((message) => (
+          {data.map((message) => (
             <MessageRow
               key={message.id}
               message={message}
