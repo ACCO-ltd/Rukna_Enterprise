@@ -123,6 +123,94 @@ currency, **Open project** (→ `/projects/:id`). Tabs:
 
 A project outside the caller's portfolio reads as "Project not found".
 
+## Phase 2 — eligibility, project filters, procurement payment status
+
+Types: `packages/types/src/finance-eligibility.ts`. No migration.
+
+### Eligibility ("why blocked") — semantics
+
+Every step is a rule a command enforces; nothing is a new control. A step is `DONE`, `PENDING`
+(waiting on its owner), `BLOCKED` (refused until something changes) or `NOT_APPLICABLE`. Each step
+names an `owner` (`FINANCE`, `APPROVER`, `PROCUREMENT`, `SIGNATORIES`, `CONSTRUCTION`), a machine
+`code` while not done, and an optional server `detail` (period name, "1 of 2 signatures", posting
+error). The web words codes; it never re-derives a status.
+
+#### `GET /api/v1/bills/:id/eligibility` → `SupplierBillEligibility`
+
+Gate `manage:payable` (the bill's own gate); org-scoped (404 outside the organisation).
+
+| Step | Owner | Rule (code) | Enforced by |
+| --- | --- | --- | --- |
+| `SUBMITTED` | Finance | DRAFT → PENDING `BILL_NOT_SUBMITTED` (detail: return reason); REJECTED / CANCELLED → BLOCKED | submit / post |
+| `MATCHED` | Procurement | PO-backed bills only (else N/A): NOT_RUN → PENDING `MATCH_NOT_RUN`; EXCEPTION → BLOCKED `MATCH_EXCEPTION`; DISPUTED → BLOCKED `MATCH_DISPUTED`; MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION → DONE | `billPostingBlock` (post) |
+| `APPROVED` | Approver | not APPROVED → PENDING `BILL_AWAITING_APPROVAL` / `BILL_NOT_SUBMITTED` | `billPostingBlock` |
+| `PERIOD_OPEN` | Finance | period covering the bill date, AP category: `NO_PERIOD` / `PERIOD_CLOSED` / `PERIOD_LOCKED` → BLOCKED | `periodPostingBlock` (ledger `PeriodValidator`) |
+| `POSTED` | Finance | FAILED → PENDING `POSTING_FAILED` (retryable); REVERSED → BLOCKED `BILL_REVERSED` | `billPostingBlock` |
+| `PAYMENT_APPROVED` | Approver | a draft payment holds part of the balance → PENDING `PAYMENT_AWAITING_APPROVAL`; nothing recorded → PENDING `NO_PAYMENT_RECORDED` (owner Finance) | payment approve |
+| `PAYMENT_RELEASED` | Signatories | under bank-signatory dual control only (else N/A): PENDING `PAYMENT_AWAITING_RELEASE`, detail "n of 2 signatures" | `paymentPostingBlock`, `isReleaseComplete` |
+| `PAID` | Finance | payments in flight → PENDING `PAYMENT_NOT_POSTED`; no balance and nothing in flight → DONE | payment post |
+
+`canPost` ⇔ `billPostingBlock` and `periodPostingBlock` are both null. `canPay` ⇔
+`billSettlementBlock` is null (POSTED, uncovered balance > 0 — the payment-create rule).
+`blockedReason` is the reason the bill's next action is refused: while unposted, the post block
+(or the period block); once posted and not payable, the first pending payment step's code, or
+`FULLY_PAID`. "In flight" = an allocation not yet posted whose payment is neither
+rejected/cancelled nor posted/reversed. Note `outstandingAmount` already excludes draft payments
+(it is decremented when a payment is created).
+
+#### Milestone stage — `billingEligibility` on every payment-schedule row, and `GET /api/v1/projects/:projectId/commercial/installments/:installmentId/billing-eligibility` → `StageBillingEligibility`
+
+Gate `view:contract` + project membership (as the commercial workspace read).
+
+| Step | Owner | Rule (code) |
+| --- | --- | --- |
+| `CONTRACT_ACTIVE` | Construction | contract not ACTIVE → BLOCKED `CONTRACT_NOT_ACTIVE` |
+| `MILESTONE_LINKED` / `MILESTONE_VERIFIED` | Construction | MILESTONE stages only (else N/A): `MILESTONE_NOT_LINKED` / `MILESTONE_NOT_VERIFIED` (CONST-COM-011) |
+| `READY_TO_BILL` | Construction | not marked → PENDING `NOT_READY` — informative, **not** a gate: preparing records it (D2) |
+| `INVOICE_PREPARED` | Finance | no live invoice → PENDING `NOT_PREPARED` |
+| `PERIOD_OPEN` | Finance | period covering the date an issue would post at (the draft's date moved up to today; today when not prepared), AR category |
+| `INVOICE_ISSUED` | Finance | `deriveInvoiceState` ≠ ISSUED → PENDING `NOT_ISSUED` |
+
+`canPrepare` ⇔ `stagePrepareBlock` is null (the prepare command's own guard: contract ACTIVE →
+`installmentBillingBlocker(at:'raise')` → no live invoice). `canIssue` ⇔ a DRAFT invoice,
+`installmentBillingBlocker(at:'post')` null and the period open — the rules the issue path posts
+under (`ClientInvoiceService.post`, `PeriodValidator`). `blockedReason`: `STAGE_ISSUED` once billed;
+the issue block for a draft; the prepare block otherwise (or the period block when nothing else
+stops preparing).
+
+### Project filters (`projectId`, optional)
+
+Each filter checks project access first (`ProjectAccessService.assertMember`: 404 outside the
+organisation, 403 for a non-member without a bypass role); the list's own permission is unchanged.
+
+| Endpoint | Gate | Membership rule |
+| --- | --- | --- |
+| `GET /api/v1/customer-receipts?projectId` | `manage:receivable` | any allocation (any posting state) to a client invoice of the project (`paymentReceiptProjectWhere`). Unallocated receipts belong to no project; a split receipt appears under each project. |
+| `GET /api/v1/payments?projectId` | `manage:payable` | any allocation to a supplier bill of the project by the bills list's header-or-line rule (`supplierPaymentProjectWhere` → `supplierBillProjectWhere`). Unallocated advances and pre-bill PO funding belong to none. |
+| `GET /api/v1/journals?projectId` | `manage:journal` | any journal line coded to the project. |
+| `GET /api/v1/bills?projectId` | `manage:payable` | unchanged (header or any line). |
+
+### `GET /api/v1/procurement/purchase-orders/:id/bill-payments` → `PurchaseOrderBillPaymentsResponse`
+
+Gate `view:procurement` **and** `view:commitment-ledger` (decision 4). Holders: Procurement Manager,
+Construction Director, Finance Officer, CFO/CEO/ADMIN — all org-wide roles. Project Manager and
+Site Engineer lack `view:commitment-ledger` and get 403. Per bill of the PO: total, paid (Σ POSTED
+allocations), pending (Σ not-yet-posted allocations), outstanding (the bill's stored balance),
+last payment date, status (`NOT_POSTED`, `UNPAID`, `PAYMENT_IN_PROGRESS`, `PARTIALLY_PAID`, `PAID`,
+`REVERSED`) — `summarizeBillPayments` / `billPaymentState`, the same rule as the bill page's
+payments panel. Read-only; no payment command is reachable from procurement.
+
+### Screens (Phase 2)
+
+| Where | What |
+| --- | --- |
+| `/finance/projects/:id/payables` (needs `manage:payable`) | the bills list filtered to the project (match, approval, posted, outstanding); rows open the accounting bill page, where the existing actions live |
+| bill detail | "Why can't I pay this?" — the eligibility steps with owners |
+| `/finance/projects/:id/payments` | receipts, supplier payments and journals of the project, each behind its list's permission |
+| Billing tab / Commercial payment schedule | a blocked stage shows its reason and owner, with the steps folded |
+| receipts / supplier payments / journals lists | a project filter (`?projectId=`) |
+| purchase order detail | "Supplier bills & payments" (needs both gates above) |
+
 ## Not in Phase 1
 
 Browser QA; Finance Overview queues on the landing page (Phase 2); Procurement Manager payment
