@@ -2067,6 +2067,8 @@ model PlatformFile {
   // The generated branded PDF for a client invoice — server-originated (PlatformFileService's
   // storeGenerated path, not the presign-from-browser one), immutable once rendered.
   invoiceDocumentFor      ClientInvoice[]          @relation("ClientInvoiceDocument")
+  // The generated branded PDF for a posted payment receipt — same storeGenerated path, immutable.
+  receiptDocumentFor      PaymentReceipt[]         @relation("PaymentReceiptDocument")
 
   @@index([organizationId])
   @@index([lifecycle, createdAt])
@@ -3086,6 +3088,10 @@ model PaymentReceipt {
   // The uniqueness is enforced by a partial index (WHERE IS NOT NULL) in migration #87 — not @unique
   // here, to avoid Prisma generating a conflicting full unique constraint on future migrate dev runs.
   idempotencyKey       String?          @map("idempotency_key")
+  // WhatsApp V1 step 3: the rendered branded receipt PDF — generated lazily on first request for a
+  // POSTED receipt, then IMMUTABLE (PaymentReceiptDocumentService). ON DELETE SET NULL, like
+  // client_invoices.document_file_id.
+  documentFileId       String?          @map("document_file_id")
   revision             Int              @default(1)
   createdBy            String           @map("created_by")
   approvedBy           String?          @map("approved_by")
@@ -3096,6 +3102,7 @@ model PaymentReceipt {
   organization      Organization              @relation(fields: [organizationId], references: [id])
   client            Client                    @relation(fields: [clientId], references: [id])
   bankAccount       BankAccount?              @relation(fields: [bankAccountId], references: [id])
+  documentFile      PlatformFile?             @relation("PaymentReceiptDocument", fields: [documentFileId], references: [id])
   // Accounting subledger (receipt ↔ ClientInvoice) — the sole allocation ledger (ACC-SET-001).
   clientAllocations ClientReceiptAllocation[]
 

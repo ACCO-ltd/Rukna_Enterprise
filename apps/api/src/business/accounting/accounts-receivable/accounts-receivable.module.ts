@@ -9,6 +9,9 @@ import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.
 import { ClientInvoiceService } from './application/client-invoice.service.js';
 import { CustomerReceiptService } from './application/customer-receipt.service.js';
 import { InvoiceDocumentService } from './application/invoice-document.service.js';
+import { ReceiptDocumentService } from './application/receipt-document.service.js';
+import { PaymentReceiptDocumentService } from './application/payment-receipt-document.service.js';
+import { ReceiptWhatsAppService } from './application/receipt-whatsapp.service.js';
 import { CollectionEventsService } from './application/collection-events.service.js';
 import { CreditNoteService } from './application/credit-note.service.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
@@ -26,6 +29,9 @@ import { CustomerReceiptController } from './presentation/customer-receipt.contr
     ClientInvoiceService,
     CustomerReceiptService,
     InvoiceDocumentService,
+    ReceiptDocumentService,
+    PaymentReceiptDocumentService,
+    ReceiptWhatsAppService,
     CollectionEventsService,
     CreditNoteService,
     InvoiceWhatsAppRepository,

@@ -6,6 +6,7 @@ import { TenancyService } from '../../tenancy/tenancy.service.js';
 import { tenancyStorage } from '../../tenancy/tenancy.context.js';
 import { CommunicationService } from '../communication.service.js';
 import { OutboundMessageRouteRepository } from '../infrastructure/outbound-message-route.repository.js';
+import { maskPhone } from './whatsapp.client.js';
 
 /** One delivery-status update Meta reports for a message we sent (sent / delivered / read / failed). */
 export interface WhatsAppStatusUpdate {
@@ -104,7 +105,7 @@ export class WhatsAppWebhookService {
       try {
         const slug = await this.routes.findTenantSlug(u.messageId);
         if (!slug) {
-          this.logger.warn(`WhatsApp status ${u.status} for unknown message ${maskId(u.messageId)} (to ${u.recipient}) — ignored`);
+          this.logger.warn(`WhatsApp status ${u.status} for unknown message ${maskId(u.messageId)} (to ${maskPhone(u.recipient)}) — ignored`);
           continue;
         }
         const context = await this.tenancy.resolveTenant(slug);
@@ -126,7 +127,7 @@ export class WhatsAppWebhookService {
           await new Promise((resolve) => setTimeout(resolve, delay));
           outcome = await apply();
         }
-        this.logger.log(`WhatsApp message ${maskId(u.messageId)} → ${u.status} (to ${u.recipient}): ${outcome}`);
+        this.logger.log(`WhatsApp message ${maskId(u.messageId)} → ${u.status} (to ${maskPhone(u.recipient)}): ${outcome}`);
       } catch (error) {
         this.logger.error(
           `WhatsApp status ${u.status} for ${maskId(u.messageId)} not applied: ${error instanceof Error ? error.message : String(error)}`,
@@ -147,10 +148,6 @@ function safeEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function mask(phone: unknown): string {
-  const digits = typeof phone === 'string' ? phone.replace(/\D/g, '') : '';
-  return digits.length > 4 ? `…${digits.slice(-4)}` : '…';
-}
 
 /** `entry[].changes[].value.statuses[]`, the shape the Cloud API posts. Anything else is ignored. */
 export function extractStatuses(payload: unknown): WhatsAppStatusUpdate[] {
@@ -168,7 +165,7 @@ export function extractStatuses(payload: unknown): WhatsAppStatusUpdate[] {
         out.push({
           messageId: s.id,
           status: s.status,
-          recipient: mask(s.recipient_id),
+          recipient: maskPhone(typeof s.recipient_id === 'string' ? s.recipient_id : null),
           timestamp: typeof s.timestamp === 'string' ? s.timestamp : '',
           ...(Array.isArray(s.errors) ? { errors: s.errors as WhatsAppStatusUpdate['errors'] } : {}),
         });

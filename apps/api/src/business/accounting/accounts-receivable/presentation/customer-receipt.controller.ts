@@ -7,13 +7,16 @@ import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import type { OutboundMessageView, RequestIdentity, WhatsAppSendPreview } from '@erp/types';
 import { CustomerReceiptService } from '../application/customer-receipt.service.js';
+import { PaymentReceiptDocumentService } from '../application/payment-receipt-document.service.js';
+import { ReceiptWhatsAppService } from '../application/receipt-whatsapp.service.js';
 import { CreateReceiptDto } from './dto/create-receipt.dto.js';
 import { PostReceiptDto } from './dto/post-receipt.dto.js';
 import { AllocateReceiptDto } from './dto/allocate-receipt.dto.js';
 import { ReverseReceiptDto } from './dto/reverse-receipt.dto.js';
 import { ReverseAllocationDto } from './dto/reverse-allocation.dto.js';
+import { SendReceiptWhatsAppDto } from './dto/send-receipt-whatsapp.dto.js';
 
 @ApiTags('Customer Receipts')
 @ApiBearerAuth('access-token')
@@ -21,7 +24,11 @@ import { ReverseAllocationDto } from './dto/reverse-allocation.dto.js';
 @RequirePermissions(PERMISSIONS.receivablesManage)
 @Controller('customer-receipts')
 export class CustomerReceiptController {
-  constructor(private readonly customerReceiptService: CustomerReceiptService) {}
+  constructor(
+    private readonly customerReceiptService: CustomerReceiptService,
+    private readonly receiptDocuments: PaymentReceiptDocumentService,
+    private readonly receiptWhatsApp: ReceiptWhatsAppService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List payment receipts' })
@@ -57,6 +64,39 @@ export class CustomerReceiptController {
   @ApiOperation({ summary: 'Get payment receipt with allocations' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.customerReceiptService.findById(identity, id);
+  }
+
+  @Get(':id/document')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'The branded receipt PDF of a POSTED receipt: a short-lived signed download URL, rendering it on first request',
+  })
+  @ApiResponse({ status: 409, description: 'NOT_POSTED (draft / no receipt number) or RECEIPT_REVERSED' })
+  getDocument(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.receiptDocuments.getOrGenerateReceiptDocument(identity, id);
+  }
+
+  @Get(':id/whatsapp/preview')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Send-by-WhatsApp preview: recipients, the exact message, and whether it can be sent' })
+  previewWhatsApp(@CurrentUser() identity: RequestIdentity, @Param('id') id: string): Promise<WhatsAppSendPreview> {
+    return this.receiptWhatsApp.preview(identity, id);
+  }
+
+  @Post(':id/whatsapp')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Send the receipt PDF to the client by WhatsApp (template rukna_receipt). Idempotent per idempotencyKey.',
+  })
+  @ApiResponse({ status: 409, description: 'NOT_POSTED or RECEIPT_REVERSED' })
+  @ApiResponse({ status: 400, description: 'RECIPIENT_INVALID | NO_RECIPIENT | TEMPLATE_NOT_CONFIGURED | WHATSAPP_NOT_CONFIGURED' })
+  sendWhatsApp(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: SendReceiptWhatsAppDto,
+  ): Promise<OutboundMessageView> {
+    return this.receiptWhatsApp.send(identity, id, dto);
   }
 
   @Post(':id/post')

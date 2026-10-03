@@ -121,10 +121,13 @@ export function isIssuedForSending(invoice: {
  */
 export function whatsAppBlockedReason(state: {
   issued: boolean;
+  /** Posted and since reversed — never sent (REVERSED, as for receipts). */
+  reversed?: boolean;
   whatsappConfigured: boolean;
   templateConfigured: boolean;
   recipient: string | null;
 }): WhatsAppSendBlockedReason | null {
+  if (state.reversed) return 'REVERSED';
   if (!state.issued) return 'NOT_POSTED';
   if (!state.recipient) return 'NO_RECIPIENT';
   if (!state.templateConfigured) return 'TEMPLATE_NOT_CONFIGURED';
@@ -138,6 +141,7 @@ export const WHATSAPP_REFUSAL_MESSAGE: Record<
   string
 > = {
   NOT_POSTED: 'Only an issued invoice can be sent. Issue the invoice first.',
+  REVERSED: 'This invoice has been reversed, so it cannot be sent.',
   WHATSAPP_NOT_CONFIGURED:
     'WhatsApp sending is not set up on this server. Ask an administrator to connect WhatsApp.',
   TEMPLATE_NOT_CONFIGURED:

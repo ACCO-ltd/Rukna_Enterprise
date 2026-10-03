@@ -36,6 +36,7 @@ const OTHER = '__other__';
 /** Hard blocks: nothing the user can do in this dialog. NO_RECIPIENT is soft (type a number). */
 const HARD_BLOCKS: ReadonlySet<WhatsAppSendBlockedReason> = new Set([
   'NOT_POSTED',
+  'REVERSED',
   'WHATSAPP_NOT_CONFIGURED',
   'TEMPLATE_NOT_CONFIGURED',
 ]);

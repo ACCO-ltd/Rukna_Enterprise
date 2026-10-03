@@ -97,6 +97,8 @@ export function describeWhatsAppError(code: WhatsAppSendErrorCode): string {
 
 /** `…1234` — the only form a phone number takes in logs. */
 export function maskPhone(phone: string | null | undefined): string {
+  // Idempotent: an already-masked value ('…1234') is returned as is, not re-masked to '…'.
+  if (phone && /^…\d{0,4}$/.test(phone)) return phone;
   const digits = (phone ?? '').replace(/\D/g, '');
   return digits.length > 4 ? `…${digits.slice(-4)}` : '…';
 }

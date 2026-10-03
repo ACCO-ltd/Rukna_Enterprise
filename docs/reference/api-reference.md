@@ -1625,6 +1625,11 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 | `POST` | `/customer-receipts/:id/allocations` | Allocate posted receipt to a client invoice |
 | `POST` | `/customer-receipts/:id/allocations/:allocationId/reverse` | Reverse a specific allocation |
 | `POST` | `/customer-receipts/:id/reverse` | Reverse the entire receipt posting |
+| `GET` | `/customer-receipts/:id/document` | Branded receipt PDF (POSTED only): `{ url, originalName, mimeType }` |
+| `GET` | `/customer-receipts/:id/whatsapp/preview` | Send-by-WhatsApp preview (`WhatsAppSendPreview`) |
+| `POST` | `/customer-receipts/:id/whatsapp` | Send the receipt PDF by WhatsApp → `OutboundMessageView` |
+
+All `/customer-receipts` routes require `manage:receivable`, except `POST /` (`create:receipt`) and the certificate payment-status read (`view:receipt`); method-level permissions replace the class-level one.
 
 **Post receipt — body:**
 ```json
@@ -1656,6 +1661,52 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
   "unappliedAccountCode": "2050"
 }
 ```
+
+**Receipt PDF (WhatsApp V1 step 3) — `GET /customer-receipts/:id/document`:** a short-lived signed
+download URL. Rendered on the first request for a **POSTED** receipt with a receipt number, then bound
+to `PaymentReceipt.documentFileId` and frozen (IMMUTABLE): later views and sends get the same bytes,
+even after a later allocation or a branding change. It shows the org header (logo, name, address,
+tax no.), receipt number, date received, received from (client name + address), amount, payment
+method, receiving bank account, reference / bank reference, the invoices applied **when the receipt
+was posted** (invoice number + amount) and any amount unallocated when the payment was recorded, and
+the org footer note. Draft → `409 { code: 'NOT_POSTED' }`; reversed → `409 { code: 'RECEIPT_REVERSED' }`
+(also for a document generated before the reversal). Commercial "record payment" receipts are the same
+`PaymentReceipt` and get the same document.
+
+**Send-by-WhatsApp preview — `GET /customer-receipts/:id/whatsapp/preview`** (shared shape
+`WhatsAppSendPreview`, also used by invoices):
+```json
+{
+  "templateConfigured": true,
+  "whatsappConfigured": true,
+  "recipients": [
+    { "contactId": "cl...", "name": "Amina", "role": "Finance", "number": "+252615555555", "isPrimary": true, "source": "whatsapp" }
+  ],
+  "defaultRecipient": "+252615555555",
+  "message": "Hello Hodan Construction Ltd, thank you for your payment of USD 5,000.00 received on 02 Oct 2026. Your receipt RCP-000017 from ACCO Ltd is attached.",
+  "filename": "RCP-000017.pdf",
+  "sendable": true,
+  "blockedReason": null
+}
+```
+`recipients`: one per client contact with a usable number — the WhatsApp number, else the phone
+(`source`), normalised to E.164; primary first. `defaultRecipient` is an E.164 string (primary
+contact's number) or null. `blockedReason` (first that applies): `REVERSED` → `NOT_POSTED` → `NO_RECIPIENT` →
+`TEMPLATE_NOT_CONFIGURED` (`WHATSAPP_TEMPLATE_RECEIPT` unset) → `WHATSAPP_NOT_CONFIGURED`.
+
+**Send — `POST /customer-receipts/:id/whatsapp`** (shared shape `WhatsAppSendRequest`):
+```json
+{ "recipient": "+252612345678", "idempotencyKey": "3f1c2a9e-6d4b-4f0a-9b1e-2c7d5e8f9a01" }
+```
+`recipient` optional (default: `defaultRecipient`; any valid E.164 number is accepted).
+`idempotencyKey` required (≤ 100 chars): make one per send dialog and reuse it on retry — a repeat
+returns the same message without sending again; a retry after `FAILED` re-sends on the same record.
+Sends template `rukna_receipt` (purpose `RECEIPT`, resourceType `payment_receipt`) with the receipt
+PDF as its DOCUMENT header; params: client name, receipt number, amount (`USD 5,000.00`), payment
+date (`02 Oct 2026`), company name. Response: `OutboundMessageView` (`status` `SENT`, or `FAILED` /
+`UNKNOWN` with `errorCode` + `errorMessage` — a provider failure is not an HTTP error). Errors:
+`409 NOT_POSTED | RECEIPT_REVERSED`; `400 RECIPIENT_INVALID | NO_RECIPIENT | TEMPLATE_NOT_CONFIGURED |
+WHATSAPP_NOT_CONFIGURED`. Message history: `GET /communications?resourceType=payment_receipt&resourceId=:id`.
 
 ---
 

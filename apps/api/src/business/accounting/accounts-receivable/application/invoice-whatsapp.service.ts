@@ -195,6 +195,7 @@ export class InvoiceWhatsAppService implements OnModuleInit {
       }),
       state: {
         issued: isIssuedForSending(invoice),
+        reversed: invoice.postingStatus === 'REVERSED',
         whatsappConfigured: this.whatsapp.isConfigured(),
         templateConfigured: template !== null,
       },
@@ -204,7 +205,12 @@ export class InvoiceWhatsAppService implements OnModuleInit {
       companyName: string;
       filename: string;
       bodyParams: string[];
-      state: { issued: boolean; whatsappConfigured: boolean; templateConfigured: boolean };
+      state: {
+        issued: boolean;
+        reversed: boolean;
+        whatsappConfigured: boolean;
+        templateConfigured: boolean;
+      };
     };
   }
 }
@@ -219,5 +225,7 @@ function refuse(
       ? { details: { field: 'recipient' } }
       : {}),
   };
-  return code === 'NOT_POSTED' ? new ConflictException(body) : new BadRequestException(body);
+  return code === 'NOT_POSTED' || code === 'REVERSED'
+    ? new ConflictException(body)
+    : new BadRequestException(body);
 }

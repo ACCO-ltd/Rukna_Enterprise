@@ -202,7 +202,8 @@
         "NOT_POSTED": "Only an issued document can be sent. Issue it first.",
         "WHATSAPP_NOT_CONFIGURED": "WhatsApp sending is not set up on this server. Ask an administrator to connect WhatsApp.",
         "TEMPLATE_NOT_CONFIGURED": "The WhatsApp message template for this is not set up on this server. Ask an administrator to add it.",
-        "NO_RECIPIENT": "This client has no saved WhatsApp or phone number. Enter the number to send to."
+        "NO_RECIPIENT": "This client has no saved WhatsApp or phone number. Enter the number to send to.",
+        "REVERSED": "This document has been reversed, so it cannot be sent."
       },
       "sentManyToast": "Sent {count} invoices on WhatsApp to {number}",
       "attachmentsMany": "{count} messages, one attachment each",
