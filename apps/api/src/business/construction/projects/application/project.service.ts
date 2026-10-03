@@ -283,7 +283,15 @@ export class ProjectService {
           )
         : new Map();
     return rows.map((row, index) =>
-      this.toActivityEvent(row, buildActivityTarget(projectId, refs[index] ?? null, records)),
+      this.toActivityEvent(
+        row,
+        buildActivityTarget(
+          projectId,
+          refs[index] ?? null,
+          records,
+          identity.permissions.includes(PERMISSIONS.financialPositionView),
+        ),
+      ),
     );
   }
 

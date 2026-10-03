@@ -25,13 +25,29 @@ export interface StageCollectionInvoice {
 }
 
 /**
+ * THE paid rule for a stage's invoice (0..1): the share of a POSTED invoice already collected,
+ * from its stored `outstandingAmount`. A non-posted or zero-total invoice reads 0. The schedule's
+ * PAID / PARTIALLY_PAID status and `stageCollectionStatus` both use this one definition.
+ */
+export function invoiceCollectedFraction(inv: {
+  postingStatus: string;
+  totalAmount: Decimal | { toString(): string };
+  outstandingAmount: Decimal | { toString(): string };
+}): Decimal {
+  if (inv.postingStatus !== 'POSTED') return new Decimal(0);
+  const total = new Decimal(inv.totalAmount.toString());
+  if (total.lte(0)) return new Decimal(0);
+  return total.minus(new Decimal(inv.outstandingAmount.toString())).div(total);
+}
+
+/**
  * ADR-043 Phase 3 — a payment-schedule stage's billing / collection status with NO amounts, so
  * project roles (who may not see money) still see "billed", "paid" or "overdue". One definition,
  * built only from existing rules:
  *
  *  - the invoice state is `deriveInvoiceState` (ISSUED = posted, reversed or opening balance);
- *  - paid / part paid read the posted invoice's stored `outstandingAmount` — the schedule's own
- *    PAID / PARTIALLY_PAID rule (`collectedFraction`), so the two never disagree;
+ *  - paid / part paid are `invoiceCollectedFraction` — the schedule's own PAID / PARTIALLY_PAID
+ *    rule, the same function, so the two never disagree (a zero-total invoice reads Billed);
  *  - overdue is THE overdue rule (`overdueDays`, D5: whole UTC days past due on the server clock,
  *    posted, with a balance) and wins over part paid;
  *  - before an invoice is issued, "ready" is the raise blocker (`installmentBillingBlocker`) being
@@ -46,12 +62,12 @@ export function stageCollectionStatus(
   const state = deriveInvoiceState(invoice);
   if (state === 'ISSUED' && invoice) {
     const posted = invoice.postingStatus === 'POSTED';
-    const total = new Decimal(invoice.totalAmount.toString());
-    const balance = new Decimal(invoice.outstandingAmount.toString());
     if (!posted) return 'BILLED';
-    if (balance.lte(0)) return 'PAID';
+    const collected = invoiceCollectedFraction(invoice);
+    if (collected.gte(1)) return 'PAID';
+    const balance = new Decimal(invoice.outstandingAmount.toString());
     if (overdueDays({ posted, dueDate: invoice.dueDate, balance }, asOf) > 0) return 'OVERDUE';
-    return balance.lt(total) ? 'PART_PAID' : 'BILLED';
+    return collected.gt(0) ? 'PART_PAID' : 'BILLED';
   }
   if (state === 'DRAFT') return 'READY_TO_BILL';
 

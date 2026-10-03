@@ -1,6 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
 import {
+  invoiceCollectedFraction,
   stageCollectionStatus,
   type StageCollectionFacts,
   type StageCollectionInvoice,
@@ -62,6 +63,15 @@ describe('stageCollectionStatus (ADR-043 Phase 3)', () => {
     expect(stageCollectionStatus(stage(), invoice({ outstandingAmount: new Decimal('0') }), AS_OF)).toBe('PAID');
     // an opening-balance invoice is issued but never collected in Rukna
     expect(stageCollectionStatus(stage(), invoice({ postingStatus: 'OPENING_BALANCE' }), AS_OF)).toBe('BILLED');
+  });
+
+  it('agrees with the schedule paid rule on a zero-total posted invoice (Billed, never Paid)', () => {
+    const zero = invoice({ totalAmount: new Decimal('0'), outstandingAmount: new Decimal('0') });
+    expect(invoiceCollectedFraction(zero).toString()).toBe('0');
+    expect(stageCollectionStatus(stage(), zero, AS_OF)).toBe('BILLED');
+    // and the fraction is the schedule's: posted 600 of 1000 collected → 0.6; unposted → 0
+    expect(invoiceCollectedFraction(invoice({ outstandingAmount: new Decimal('400') })).toString()).toBe('0.6');
+    expect(invoiceCollectedFraction(invoice({ postingStatus: 'NOT_POSTED' })).toString()).toBe('0');
   });
 
   it('OVERDUE by the one overdue rule — past due with a balance — and never once paid', () => {

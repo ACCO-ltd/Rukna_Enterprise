@@ -111,7 +111,11 @@ describe('buildActivityTarget', () => {
     });
     expect(buildActivityTarget('p-1', { kind: 'invoice', id: 'inv-1' }, records)).toEqual({
       label: 'INV-2026-0012',
-      href: '/projects/p-1/commercial/invoices/inv-1',
+      href: '/projects/p-1/commercial/contract',
+    });
+    // ADR-043 Phase 3 — a finance reader opens the invoice in Finance, straight (no redirect hop).
+    expect(buildActivityTarget('p-1', { kind: 'invoice', id: 'inv-1' }, records, true)).toMatchObject({
+      href: '/finance/projects/p-1/billing/invoices/inv-1',
     });
     expect(buildActivityTarget('p-1', { kind: 'document', id: 'd-1' }, records)).toEqual({
       label: 'DWG-101',

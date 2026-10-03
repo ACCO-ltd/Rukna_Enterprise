@@ -145,7 +145,12 @@ function clip(label: string): string {
 }
 
 /** The app route that shows a record of this kind, when it has a stable one. */
-function hrefOf(projectId: string, ref: ActivityTargetRef, record: ActivityTargetRecord): string | undefined {
+function hrefOf(
+  projectId: string,
+  ref: ActivityTargetRef,
+  record: ActivityTargetRecord,
+  canViewFinance: boolean,
+): string | undefined {
   const project = `/projects/${projectId}`;
   switch (ref.kind) {
     // The contract, its schedule, deliverables, guarantees and changes all live on Contract.
@@ -156,8 +161,13 @@ function hrefOf(projectId: string, ref: ActivityTargetRef, record: ActivityTarge
     case 'guarantee':
     case 'variation':
       return `${project}/commercial/contract`;
+    // ADR-043 Phase 3 — an invoice lives in Finance → Projects → Billing. A reader without the
+    // finance permission is sent to the Commercial schedule (its money-free stage status) instead
+    // of a page that would refuse them; no redirect hop either way.
     case 'invoice':
-      return `${project}/commercial/invoices/${ref.id}`;
+      return canViewFinance
+        ? `/finance/projects/${projectId}/billing/invoices/${ref.id}`
+        : `${project}/commercial/contract`;
     case 'document':
       return `${project}/documents/${ref.id}`;
     case 'revision':
@@ -173,12 +183,14 @@ export function buildActivityTarget(
   projectId: string,
   ref: ActivityTargetRef | null,
   records: ActivityTargetRecords,
+  /** `view:financial-position` — decides where an invoice target opens (ADR-043 Phase 3). */
+  canViewFinance = false,
 ): ActivityTarget | null {
   if (!ref) return null;
   const record = records.get(ref.kind)?.get(ref.id);
   if (!record || !record.reference) return null;
   const label = clip(record.reference);
   if (!label) return null;
-  const href = hrefOf(projectId, ref, record);
+  const href = hrefOf(projectId, ref, record, canViewFinance);
   return href ? { label, href } : { label };
 }
