@@ -1,6 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
-import { computeReceivablePosition, isLiveStageInvoice, scheduleBaseValue } from './receivable-position';
+import { computeReceivablePosition, isIssuedStageInvoice, isLiveStageInvoice, scheduleBaseValue } from './receivable-position';
 
 const d = (n: number) => new Decimal(n);
 const today = new Date('2026-10-03T10:00:00Z');
@@ -42,6 +42,13 @@ describe('stage helpers', () => {
   it('a cancelled invoice does not bill its stage', () => {
     expect(isLiveStageInvoice({ documentStatus: 'CANCELLED' })).toBe(false);
     expect(isLiveStageInvoice({ documentStatus: 'DRAFT' })).toBe(true);
+  });
+
+  it('a stage is billed only once its invoice is issued (POSTED)', () => {
+    expect(isIssuedStageInvoice({ documentStatus: 'APPROVED', postingStatus: 'POSTED' })).toBe(true);
+    expect(isIssuedStageInvoice({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' })).toBe(false);
+    expect(isIssuedStageInvoice({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' })).toBe(false);
+    expect(isIssuedStageInvoice({ documentStatus: 'CANCELLED', postingStatus: 'POSTED' })).toBe(false);
   });
 
   it('prices against the base value, falling back to the contract value', () => {

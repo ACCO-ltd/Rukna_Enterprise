@@ -8,7 +8,9 @@
  *   `collected` / `outstanding` / `overdue` of `GET /projects/:id/commercial/overview`.
  * - `costToDate` / `committedCost` are `costPosition.actual` / `costPosition.committedToDate` of
  *   `GET /projects/:id/finance/overview`; `margin` is its `accountingPosition.marginPercent`.
- * - `readyToBill` counts payment-schedule stages marked ready to bill with no live invoice yet.
+ * - `readyToBill` counts payment-schedule stages marked ready to bill whose invoice is not yet
+ *   POSTED (Finance issues invoices — ADR-043 decision 1). `draftCount` of them already have a
+ *   prepared draft/approved invoice awaiting issue; the rest are not prepared yet.
  * - `billsToPay` counts POSTED supplier bills coded to the project with an outstanding balance.
  *
  * Money is a decimal string, or null when the caller may not see it. ACCO bills by milestone:
@@ -51,18 +53,24 @@ export interface FinancePortfolioRow {
    * Null without the margin permission, while the ledger cannot post, or with no revenue yet.
    */
   margin: number | null;
-  readyToBill: FinancePortfolioCountAmount;
+  readyToBill: FinancePortfolioReadyToBill;
   overdueInvoices: { count: number; oldestDaysPastDue: number | null };
   billsToPay: FinancePortfolioCountAmount;
 }
 
+export interface FinancePortfolioReadyToBill extends FinancePortfolioCountAmount {
+  /** Of `count`, stages whose invoice is prepared (draft/approved) but not yet issued (posted). */
+  draftCount: number;
+}
+
+/**
+ * Sums of the returned rows in ONE currency — money is never added across currencies. Rows with
+ * no currency are grouped under `currency: null`.
+ */
 export interface FinancePortfolioTotals {
-  /**
-   * Sums across the returned rows. Mixed currencies are not converted: `currency` is the single
-   * currency every row shares, or null when they differ (the sums are then indicative only).
-   */
   currency: string | null;
-  mixedCurrencies: boolean;
+  /** Projects in this currency. */
+  projectCount: number;
   contractValue: string | null;
   billed: string | null;
   collected: string | null;
@@ -70,7 +78,7 @@ export interface FinancePortfolioTotals {
   overdue: string | null;
   costToDate: string | null;
   committedCost: string | null;
-  readyToBill: FinancePortfolioCountAmount;
+  readyToBill: FinancePortfolioReadyToBill;
   overdueInvoices: { count: number };
   billsToPay: FinancePortfolioCountAmount;
 }
@@ -84,7 +92,8 @@ export interface FinancePortfolioQueueCounts {
 
 export interface FinancePortfolioResponse {
   items: FinancePortfolioRow[];
-  totals: FinancePortfolioTotals;
+  /** One entry per currency among the returned rows, ordered by currency code. */
+  totals: FinancePortfolioTotals[];
   /** Project counts per queue over the search/status-filtered set — chip badges. */
   queueCounts: FinancePortfolioQueueCounts;
   /** False when receivable/cost money is withheld from the caller (every money field is null). */
@@ -99,4 +108,12 @@ export interface FinancePortfolioQuery {
   queue?: FinancePortfolioQueue;
   search?: string;
   status?: string;
+}
+
+/** `GET /finance/projects/:projectId` — one project's portfolio row (the Finance workspace header). */
+export interface FinancePortfolioProjectResponse {
+  item: FinancePortfolioRow;
+  moneyVisible: boolean;
+  marginVisible: boolean;
+  asOf: string;
 }

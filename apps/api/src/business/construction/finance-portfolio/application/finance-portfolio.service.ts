@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   PERMISSIONS,
+  type FinancePortfolioProjectResponse,
   type FinancePortfolioQuery,
   type FinancePortfolioResponse,
   type FinancePortfolioRow,
@@ -25,6 +26,7 @@ import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js'
 import { CommercialPrismaRepository } from '../../commercial/infrastructure/commercial-prisma.repository.js';
 import {
   computeReceivablePosition,
+  isIssuedStageInvoice,
   isLiveStageInvoice,
   scheduleBaseValue,
 } from '../../commercial/domain/receivable-position.js';
@@ -63,6 +65,34 @@ export class FinancePortfolioService {
   ) {}
 
   async list(identity: RequestIdentity, query: FinancePortfolioQuery = {}): Promise<FinancePortfolioResponse> {
+    const built = await this.buildRows(identity, { status: query.status });
+    const searched = built.rows.filter((row) => matchesSearch(row, query.search));
+    const items = query.queue ? searched.filter((row) => inQueue(row, query.queue!)) : searched;
+
+    return {
+      items,
+      totals: portfolioTotals(items, (projectIds) => built.distinctBills(projectIds), built.moneyVisible),
+      queueCounts: queueCounts(searched),
+      moneyVisible: built.moneyVisible,
+      marginVisible: built.marginVisible,
+      asOf: built.asOf,
+    };
+  }
+
+  /**
+   * One project's row — the Finance workspace header. Same figures, gate and scoping as the list:
+   * 404 outside the organisation, 403 for a project the caller is not a member of.
+   */
+  async getOne(identity: RequestIdentity, projectId: string): Promise<FinancePortfolioProjectResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const built = await this.buildRows(identity, { projectId });
+    const item = built.rows[0];
+    if (!item) throw new NotFoundException(`Project ${projectId} not found`);
+    return { item, moneyVisible: built.moneyVisible, marginVisible: built.marginVisible, asOf: built.asOf };
+  }
+
+  /** The rows for the caller's projects (optionally one project / one status), batched. */
+  private async buildRows(identity: RequestIdentity, filter: { projectId?: string; status?: string }) {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
     const today = new Date();
@@ -80,7 +110,8 @@ export class FinancePortfolioService {
       where: {
         organizationId: orgId,
         ...(accessible ? { id: { in: accessible } } : {}),
-        ...(query.status ? { status: query.status as never } : {}),
+        ...(filter.projectId ? { id: filter.projectId } : {}),
+        ...(filter.status ? { status: filter.status as never } : {}),
       },
       select: {
         id: true,
@@ -128,13 +159,17 @@ export class FinancePortfolioService {
     }
 
     const contractById = new Map([...contracts.values()].map((c) => [c.id, c]));
-    const ready = new Map<string, { count: number; amount: Decimal }>();
+    // ADR-043 decision 1 — Finance issues invoices. A ready stage stays "to bill" until its invoice is
+    // POSTED (issued); a prepared draft/approved invoice only marks it "draft prepared".
+    const ready = new Map<string, { count: number; draftCount: number; amount: Decimal }>();
     for (const inst of readyInstallments) {
-      if (inst.clientInvoice && isLiveStageInvoice(inst.clientInvoice)) continue; // already billed
+      const live = inst.clientInvoice && isLiveStageInvoice(inst.clientInvoice) ? inst.clientInvoice : null;
+      if (live && isIssuedStageInvoice(live)) continue; // billed
       const contract = contractById.get(inst.contractId);
       if (!contract) continue;
-      const entry = ready.get(contract.projectId) ?? { count: 0, amount: ZERO };
+      const entry = ready.get(contract.projectId) ?? { count: 0, draftCount: 0, amount: ZERO };
       entry.count += 1;
+      if (live) entry.draftCount += 1;
       entry.amount = entry.amount.plus(scheduleBaseValue(contract).mul(inst.percentage.toString()));
       ready.set(contract.projectId, entry);
     }
@@ -189,7 +224,11 @@ export class FinancePortfolioService {
         costToDate: moneyVisible ? cost.actual : null,
         committedCost: moneyVisible ? cost.committedToDate : null,
         margin: marginVisible ? accounting.marginPercent : null,
-        readyToBill: { count: readyEntry?.count ?? 0, amount: money(readyEntry?.amount ?? ZERO) },
+        readyToBill: {
+          count: readyEntry?.count ?? 0,
+          draftCount: readyEntry?.draftCount ?? 0,
+          amount: money(readyEntry?.amount ?? ZERO),
+        },
         overdueInvoices: { count: position.overdueCount, oldestDaysPastDue: position.oldestDaysPastDue },
         billsToPay: {
           count: projectBills.length,
@@ -198,31 +237,18 @@ export class FinancePortfolioService {
       };
     });
 
-    const searched = allRows.filter((row) => matchesSearch(row, query.search));
-    const items = query.queue ? searched.filter((row) => inQueue(row, query.queue!)) : searched;
-
-    // Totals over the visible rows, bills counted once each.
-    const visibleIds = new Set(items.map((r) => r.projectId));
-    const distinctBills = new Map<string, Decimal>();
-    for (const [projectId, list] of billsByProject) {
-      if (!visibleIds.has(projectId)) continue;
-      for (const b of list) distinctBills.set(b.id, b.outstanding);
-    }
-
-    return {
-      items,
-      totals: portfolioTotals(
-        items,
-        {
-          distinctCount: distinctBills.size,
-          distinctAmount: [...distinctBills.values()].reduce((s, v) => s.plus(v), ZERO),
-        },
-        moneyVisible,
-      ),
-      queueCounts: queueCounts(searched),
-      moneyVisible,
-      marginVisible,
-      asOf: today.toISOString(),
+    /** Distinct bills to pay across a set of projects — a bill coded to two projects counts once. */
+    const distinctBills = (projectIds: string[]) => {
+      const seen = new Map<string, Decimal>();
+      for (const projectId of projectIds) {
+        for (const b of billsByProject.get(projectId) ?? []) seen.set(b.id, b.outstanding);
+      }
+      return {
+        distinctCount: seen.size,
+        distinctAmount: [...seen.values()].reduce((s, v) => s.plus(v), ZERO),
+      };
     };
+
+    return { rows: allRows, distinctBills, moneyVisible, marginVisible, asOf: today.toISOString() };
   }
 }

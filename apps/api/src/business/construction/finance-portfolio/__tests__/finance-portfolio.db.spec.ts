@@ -46,17 +46,18 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
 
   let projA: string; // the busy project: every source populated
   let projB: string; // no contract; only a shared supplier bill (TO_PAY)
-  let projC: string; // contract, nothing else — in no queue
+  let projC: string; // contract + one ready stage with only a DRAFT invoice (still TO_BILL)
+  let projD: string; // a SOS project — totals never add it to USD
 
-  async function makeProject(code: string, name: string): Promise<string> {
+  async function makeProject(code: string, name: string, currency = 'USD'): Promise<string> {
     const p = await prisma.project.create({
-      data: { organizationId: orgId, code, name, currency: 'USD', status: 'ACTIVE', createdBy: userId },
+      data: { organizationId: orgId, code, name, currency, status: 'ACTIVE', createdBy: userId },
     });
     return p.id;
   }
 
-  async function makeContract(projectId: string, value: number): Promise<string> {
-    const boq = await prisma.boq.create({ data: { organizationId: orgId, projectId, currency: 'USD' } });
+  async function makeContract(projectId: string, value: number, currency = 'USD'): Promise<string> {
+    const boq = await prisma.boq.create({ data: { organizationId: orgId, projectId, currency } });
     const ver = await prisma.boqVersion.create({
       data: { boqId: boq.id, versionNumber: 1, status: 'BASELINED', createdBy: userId },
     });
@@ -69,7 +70,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
         contractNumber: `CT-${projectId.slice(-6)}`,
         contractValue: new Decimal(value),
         baseContractValue: new Decimal(value),
-        currency: 'USD',
+        currency,
         status: 'ACTIVE',
         billingModel: 'MILESTONE' as never,
         createdBy: userId,
@@ -96,9 +97,10 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
   async function makeInvoice(
     projectId: string,
     contractId: string,
-    opts: { total: number; outstanding: number; dueDate: Date; installmentId?: string; status?: 'POSTED' | 'CANCELLED' },
+    opts: { total: number; outstanding: number; dueDate: Date; installmentId?: string; status?: 'POSTED' | 'CANCELLED' | 'DRAFT' },
   ): Promise<string> {
     const cancelled = opts.status === 'CANCELLED';
+    const draft = opts.status === 'DRAFT';
     const inv = await prisma.clientInvoice.create({
       data: {
         organizationId: orgId,
@@ -113,8 +115,8 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
         outstandingAmount: new Decimal(opts.outstanding),
         currencyCode: 'USD',
         billingAddressSnapshot: {},
-        postingStatus: cancelled ? 'NOT_POSTED' : 'POSTED',
-        documentStatus: cancelled ? 'CANCELLED' : 'APPROVED',
+        postingStatus: cancelled || draft ? 'NOT_POSTED' : 'POSTED',
+        documentStatus: cancelled ? 'CANCELLED' : draft ? 'DRAFT' : 'APPROVED',
         createdBy: userId,
         ...(opts.installmentId ? { sourceInstallmentId: opts.installmentId } : {}),
       },
@@ -370,8 +372,14 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     await makeBill({ headerProjectId: projA, lineProjectIds: [projA], total: 40_000, outstanding: 40_000, posted: false }); // unposted
     await makeBill({ headerProjectId: null, lineProjectIds: [projA, projB], total: 10_000, outstanding: 10_000, posted: true }); // shared
 
-    // ── projC: a contract and nothing else ───────────────────────────────────────
-    await makeContract(projC, 200_000);
+    // ── projC: a ready stage whose invoice is only a DRAFT — Finance still has to issue it ──
+    const ctrC = await makeContract(projC, 200_000);
+    const instC = await makeInstallment(ctrC, 'Mobilisation', '0.5', 1, true);
+    await makeInvoice(projC, ctrC, { total: 100_000, outstanding: 100_000, dueDate: future, installmentId: instC, status: 'DRAFT' });
+
+    // ── projD: another currency ──────────────────────────────────────────────────────
+    projD = await makeProject(`FPF-D-${suffix.slice(-6)}`, 'Hargeisa depot', 'SOS');
+    await makeContract(projD, 1_000, 'SOS');
   }, 60_000);
 
   afterAll(async () => {
@@ -432,9 +440,17 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     expect(r.currency).toBe('USD');
   });
 
-  it('FPF-2: ready to bill = ready stages with no live invoice (a cancelled draft does not bill)', async () => {
+  it('FPF-2: ready to bill = ready stages with no POSTED invoice (a cancelled draft does not bill)', async () => {
     const r = await row(projA);
-    expect(r.readyToBill).toEqual({ count: 2, amount: '150000.00' }); // 20% + 10% of 500,000
+    // 20% + 10% of 500,000; the POSTED stage-1 invoice removed stage 1; no prepared drafts.
+    expect(r.readyToBill).toEqual({ count: 2, draftCount: 0, amount: '150000.00' });
+  });
+
+  it('FPF-2b: a ready stage whose invoice is only a DRAFT stays To bill, marked draft prepared', async () => {
+    const r = await row(projC);
+    expect(r.readyToBill).toEqual({ count: 1, draftCount: 1, amount: '100000.00' });
+    const toBill = await portfolio.list(finance, { queue: 'TO_BILL' });
+    expect(toBill.items.map((i) => i.projectId).sort()).toEqual([projA, projC].sort());
   });
 
   it('FPF-3: overdue invoices count and age', async () => {
@@ -451,33 +467,45 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
 
   it('FPF-5: queue filters and counts', async () => {
     const all = await portfolio.list(finance);
-    expect(all.queueCounts).toEqual({ ALL: 3, TO_BILL: 1, OVERDUE: 1, TO_PAY: 2 });
-
-    const toBill = await portfolio.list(finance, { queue: 'TO_BILL' });
-    expect(toBill.items.map((i) => i.projectId)).toEqual([projA]);
+    expect(all.queueCounts).toEqual({ ALL: 4, TO_BILL: 2, OVERDUE: 1, TO_PAY: 2 });
     const overdue = await portfolio.list(finance, { queue: 'OVERDUE' });
     expect(overdue.items.map((i) => i.projectId)).toEqual([projA]);
     const toPay = await portfolio.list(finance, { queue: 'TO_PAY' });
     expect(toPay.items.map((i) => i.projectId).sort()).toEqual([projA, projB].sort());
     // The shared bill is owed once: 25,000 + 10,000.
-    expect(toPay.totals.billsToPay).toEqual({ count: 2, amount: '35000.00' });
+    expect(toPay.totals).toHaveLength(1);
+    expect(toPay.totals[0]!.billsToPay).toEqual({ count: 2, amount: '35000.00' });
   });
 
   it('FPF-6: search matches code, name or client; status filters', async () => {
     const byName = await portfolio.list(finance, { search: 'clinic' });
     expect(byName.items.map((i) => i.projectId)).toEqual([projA]);
     const byClient = await portfolio.list(finance, { search: 'hodan' });
-    expect(byClient.items.map((i) => i.projectId).sort()).toEqual([projA, projC].sort());
+    expect(byClient.items.map((i) => i.projectId).sort()).toEqual([projA, projC, projD].sort());
     const closed = await portfolio.list(finance, { status: 'CLOSED' });
     expect(closed.items).toEqual([]);
   });
 
-  it('FPF-7: totals sum the visible rows', async () => {
+  it('FPF-7: totals sum the visible rows per currency — never across currencies', async () => {
     const all = await portfolio.list(finance);
-    expect(all.totals.currency).toBe('USD');
-    expect(all.totals.contractValue).toBe('700000.00');
-    expect(all.totals.billed).toBe('160000.00');
-    expect(all.totals.readyToBill).toEqual({ count: 2, amount: '150000.00' });
+    expect(all.totals.map((t) => t.currency)).toEqual(['SOS', 'USD']);
+    const usd = all.totals.find((t) => t.currency === 'USD')!;
+    const sos = all.totals.find((t) => t.currency === 'SOS')!;
+    expect(usd.projectCount).toBe(3);
+    expect(usd.contractValue).toBe('700000.00');
+    expect(usd.billed).toBe('160000.00');
+    expect(usd.readyToBill).toEqual({ count: 3, draftCount: 1, amount: '250000.00' });
+    expect(sos.projectCount).toBe(1);
+    expect(sos.contractValue).toBe('1000.00');
+    expect(sos.billed).toBe('0.00');
+  });
+
+  it('FPF-7b: GET /finance/projects/:id returns the same row as the list', async () => {
+    const one = await portfolio.getOne(finance, projA);
+    expect(one.item).toEqual(await row(projA));
+    await expect(
+      portfolio.getOne({ ...finance, activeOrganizationId: `other-${suffix}` }, projA),
+    ).rejects.toThrow('not found');
   });
 
   it('FPF-8: project access — a member-scoped caller sees only their projects', async () => {
@@ -501,8 +529,8 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     expect(r.contractValue).toBeNull();
     expect(r.costToDate).toBeNull();
     expect(r.margin).toBeNull();
-    expect(r.readyToBill).toEqual({ count: 2, amount: null });
-    expect(res.totals.billed).toBeNull();
+    expect(r.readyToBill).toEqual({ count: 2, draftCount: 0, amount: null });
+    expect(res.totals.every((t) => t.billed === null)).toBe(true);
   });
 
   it('FPF-11: margin follows the margin permission (cost visible, margin withheld)', async () => {

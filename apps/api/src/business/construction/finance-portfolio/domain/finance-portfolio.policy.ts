@@ -37,39 +37,54 @@ export function queueCounts(rows: FinancePortfolioRow[]): FinancePortfolioQueueC
 }
 
 /**
- * Sums of the visible rows. A money total is null when money is hidden. Bills to pay are summed
- * over DISTINCT bills: a bill coded to two projects (per line) appears on both rows but is owed once.
+ * Sums of the visible rows, one entry per currency — money is never added across currencies.
+ * A money total is null when money is hidden. Bills to pay are summed over DISTINCT bills (via
+ * `billsFor`): a bill coded to two projects (per line) appears on both rows but is owed once.
  */
 export function portfolioTotals(
   rows: FinancePortfolioRow[],
-  bills: { distinctCount: number; distinctAmount: Decimal },
+  billsFor: (projectIds: string[]) => { distinctCount: number; distinctAmount: Decimal },
   moneyVisible: boolean,
-): FinancePortfolioTotals {
-  const currencies = new Set(rows.map((r) => r.currency).filter((c): c is string => c !== null));
-  const sum = (pick: (r: FinancePortfolioRow) => string | null): string | null => {
-    if (!moneyVisible) return null;
-    return rows.reduce((s, r) => s.plus(pick(r) ?? 0), ZERO).toFixed(2);
-  };
-  return {
-    currency: currencies.size === 1 ? [...currencies][0]! : null,
-    mixedCurrencies: currencies.size > 1,
-    contractValue: sum((r) => r.contractValue),
-    billed: sum((r) => r.billed),
-    collected: sum((r) => r.collected),
-    outstanding: sum((r) => r.outstanding),
-    overdue: sum((r) => r.overdue),
-    costToDate: sum((r) => r.costToDate),
-    committedCost: sum((r) => r.committedCost),
-    readyToBill: {
-      count: rows.reduce((s, r) => s + r.readyToBill.count, 0),
-      amount: sum((r) => r.readyToBill.amount),
-    },
-    overdueInvoices: { count: rows.reduce((s, r) => s + r.overdueInvoices.count, 0) },
-    billsToPay: {
-      count: bills.distinctCount,
-      amount: moneyVisible ? bills.distinctAmount.toFixed(2) : null,
-    },
-  };
+): FinancePortfolioTotals[] {
+  const groups = new Map<string | null, FinancePortfolioRow[]>();
+  for (const row of rows) {
+    const list = groups.get(row.currency) ?? [];
+    list.push(row);
+    groups.set(row.currency, list);
+  }
+  // Currencies in code order; projects with no currency last.
+  const ordered = [...groups.entries()].sort(([a], [b]) =>
+    a === b ? 0 : a === null ? 1 : b === null ? -1 : a.localeCompare(b),
+  );
+
+  return ordered.map(([currency, group]) => {
+    const sum = (pick: (r: FinancePortfolioRow) => string | null): string | null => {
+      if (!moneyVisible) return null;
+      return group.reduce((s, r) => s.plus(pick(r) ?? 0), ZERO).toFixed(2);
+    };
+    const bills = billsFor(group.map((r) => r.projectId));
+    return {
+      currency,
+      projectCount: group.length,
+      contractValue: sum((r) => r.contractValue),
+      billed: sum((r) => r.billed),
+      collected: sum((r) => r.collected),
+      outstanding: sum((r) => r.outstanding),
+      overdue: sum((r) => r.overdue),
+      costToDate: sum((r) => r.costToDate),
+      committedCost: sum((r) => r.committedCost),
+      readyToBill: {
+        count: group.reduce((s, r) => s + r.readyToBill.count, 0),
+        draftCount: group.reduce((s, r) => s + r.readyToBill.draftCount, 0),
+        amount: sum((r) => r.readyToBill.amount),
+      },
+      overdueInvoices: { count: group.reduce((s, r) => s + r.overdueInvoices.count, 0) },
+      billsToPay: {
+        count: bills.distinctCount,
+        amount: moneyVisible ? bills.distinctAmount.toFixed(2) : null,
+      },
+    };
+  });
 }
 
 /** Free-text match on code, name and client — case-insensitive, trimmed; empty matches all. */

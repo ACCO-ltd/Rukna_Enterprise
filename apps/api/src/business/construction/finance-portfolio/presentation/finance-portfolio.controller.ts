@@ -1,5 +1,5 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
@@ -34,5 +34,15 @@ export class FinancePortfolioController {
   })
   list(@CurrentUser() identity: RequestIdentity, @Query() query: FinancePortfolioQueryDto) {
     return this.service.list(identity, query);
+  }
+
+  @Get(':projectId')
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiOperation({
+    summary: "One project's portfolio row (the Finance workspace header)",
+    description: 'Same figures, gate and project-access rule as the list; 404 / 403 outside them.',
+  })
+  getOne(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getOne(identity, projectId);
   }
 }

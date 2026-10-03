@@ -935,7 +935,7 @@ export class CommercialPrismaRepository {
         id: true,
         contractId: true,
         percentage: true,
-        clientInvoice: { select: { id: true, documentStatus: true } },
+        clientInvoice: { select: { id: true, documentStatus: true, postingStatus: true } },
       },
     });
   }

@@ -13,13 +13,14 @@ import { FinancePortfolioController } from './finance-portfolio.controller.js';
 describe('GET /finance/projects', () => {
   let app: INestApplication;
   const list = jest.fn(async () => ({ items: [] }));
+  const getOne = jest.fn(async () => ({ item: {} }));
   let permissions: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [FinancePortfolioController],
       providers: [
-        { provide: FinancePortfolioService, useValue: { list } },
+        { provide: FinancePortfolioService, useValue: { list, getOne } },
         // As in AppModule: authentication (a stand-in here) runs before the permission guard.
         {
           provide: APP_GUARD,
@@ -67,5 +68,12 @@ describe('GET /finance/projects', () => {
   it('rejects an unknown queue', async () => {
     permissions = [PERMISSIONS.financialPositionView];
     await request(app.getHttpServer()).get('/finance/projects?queue=CERTIFIED').expect(400);
+  });
+  it('serves one project under the same gate', async () => {
+    permissions = [PERMISSIONS.financialPositionView];
+    await request(app.getHttpServer()).get('/finance/projects/p1').expect(200);
+    expect(getOne).toHaveBeenCalledWith(expect.objectContaining({ activeOrganizationId: 'o1' }), 'p1');
+    permissions = [PERMISSIONS.accountingView];
+    await request(app.getHttpServer()).get('/finance/projects/p1').expect(403);
   });
 });
