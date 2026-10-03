@@ -145,8 +145,8 @@ Gate `manage:payable` (the bill's own gate); org-scoped (404 outside the organis
 | `MATCHED` | Procurement | PO-backed bills only (else N/A): NOT_RUN → PENDING `MATCH_NOT_RUN`; EXCEPTION → BLOCKED `MATCH_EXCEPTION`; DISPUTED → BLOCKED `MATCH_DISPUTED`; MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION → DONE | `billPostingBlock` (post) |
 | `APPROVED` | Approver | not APPROVED → PENDING `BILL_AWAITING_APPROVAL` / `BILL_NOT_SUBMITTED` | `billPostingBlock` |
 | `PERIOD_OPEN` | Finance | period covering the bill date, AP category: `NO_PERIOD` / `PERIOD_CLOSED` / `PERIOD_LOCKED` → BLOCKED | `periodPostingBlock` (ledger `PeriodValidator`) |
-| `POSTED` | Finance | FAILED → PENDING `POSTING_FAILED` (retryable); REVERSED → BLOCKED `BILL_REVERSED` | `billPostingBlock` |
-| `PAYMENT_APPROVED` | Approver | a draft payment holds part of the balance → PENDING `PAYMENT_AWAITING_APPROVAL`; nothing recorded → PENDING `NO_PAYMENT_RECORDED` (owner Finance) | payment approve |
+| `POSTED` | Finance | FAILED → PENDING `POSTING_FAILED` (retryable); REVERSED → BLOCKED `BILL_REVERSED`; OPENING_BALANCE → DONE (already in the ledger via the opening-balance journal; the post command refuses it with 409 `OPENING_BALANCE_BILL`) | `billPostingBlock` |
+| `PAYMENT_APPROVED` | Approver | a draft payment holds part of the balance → PENDING `PAYMENT_AWAITING_APPROVAL`; nothing recorded → PENDING `NO_PAYMENT_RECORDED` (owner Finance); part paid with nothing in flight → PENDING `PARTLY_PAID` | payment approve |
 | `PAYMENT_RELEASED` | Signatories | under bank-signatory dual control only (else N/A): PENDING `PAYMENT_AWAITING_RELEASE`, detail "n of 2 signatures" | `paymentPostingBlock`, `isReleaseComplete` |
 | `PAID` | Finance | payments in flight → PENDING `PAYMENT_NOT_POSTED`; no balance and nothing in flight → DONE | payment post |
 
@@ -154,7 +154,10 @@ Gate `manage:payable` (the bill's own gate); org-scoped (404 outside the organis
 `billSettlementBlock` is null (POSTED, uncovered balance > 0 — the payment-create rule).
 `blockedReason` is the reason the bill's next action is refused: while unposted, the post block
 (or the period block); once posted and not payable, the first pending payment step's code, or
-`FULLY_PAID`. "In flight" = an allocation not yet posted whose payment is neither
+`FULLY_PAID`. An **opening-balance bill** (imported, `postingStatus OPENING_BALANCE`) reads
+`OPENING_BALANCE_NOT_PAYABLE` on the three payment steps and as `blockedReason`: the payment
+command accepts only POSTED bills, so it cannot be paid in Rukna yet — a follow-up for the
+owner, not changed here. "In flight" = an allocation not yet posted whose payment is neither
 rejected/cancelled nor posted/reversed. Note `outstandingAmount` already excludes draft payments
 (it is decremented when a payment is created).
 
@@ -192,13 +195,33 @@ organisation, 403 for a non-member without a bypass role); the list's own permis
 
 ### `GET /api/v1/procurement/purchase-orders/:id/bill-payments` → `PurchaseOrderBillPaymentsResponse`
 
-Gate `view:procurement` **and** `view:commitment-ledger` (decision 4). Holders: Procurement Manager,
+Gate `view:procurement` **and** `view:commitment-ledger` (decision 4), plus project access to every
+project the PO's lines are coded to. Holders: Procurement Manager,
 Construction Director, Finance Officer, CFO/CEO/ADMIN — all org-wide roles. Project Manager and
 Site Engineer lack `view:commitment-ledger` and get 403. Per bill of the PO: total, paid (Σ POSTED
 allocations), pending (Σ not-yet-posted allocations), outstanding (the bill's stored balance),
 last payment date, status (`NOT_POSTED`, `UNPAID`, `PAYMENT_IN_PROGRESS`, `PARTIALLY_PAID`, `PAID`,
 `REVERSED`) — `summarizeBillPayments` / `billPaymentState`, the same rule as the bill page's
 payments panel. Read-only; no payment command is reachable from procurement.
+
+### PO settlement (money) and receiving (no money) — review M2
+
+`GET /api/v1/procurement/purchase-orders/:id/settlement` (funding, bill totals / settled /
+outstanding, advances, evidence) carried money behind `view:procurement` alone, which Project
+Managers hold. It now needs `view:procurement` + `view:commitment-ledger` and project access to
+every project the PO is coded to (`SettlementQueryService.assertCanRead`; the internal auto-close
+path is unchanged). The money-free receiving position moved to
+`GET /api/v1/procurement/purchase-orders/:id/receiving` (`view:procurement`, same project access),
+which the PO Receiving tab reads; the Funding and Settlement tabs are not offered without both
+permissions.
+
+### Follow-ups (not in this change)
+
+- **Indexes (L1):** the project filters join through `client_receipt_allocations → client_invoices.project_id`,
+  `supplier_payment_allocations → supplier_bills.project_id / supplier_bill_lines.project_id` and
+  `journal_lines.project_id`. No migration now; add `project_id` indexes on those tables if the
+  filtered lists slow down.
+- **Paying opening-balance supplier bills** in Rukna (today only POSTED bills are payable).
 
 ### Screens (Phase 2)
 
