@@ -27,6 +27,7 @@ import {
   type RecordProjectPaymentAllocationResult,
   type RecordProjectPaymentResult,
   type RequestIdentity,
+  type StageBillingEligibility,
 } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -45,6 +46,12 @@ import {
 } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import { isUnposted, redateForIssue, resolveInvoiceDates } from '../domain/commercial-workspace.policy.js';
+import {
+  issuePostingDate,
+  stageBillingEligibility,
+  stagePrepareBlock,
+} from '../domain/stage-billing-eligibility.policy.js';
+import { PeriodValidator } from '../../../accounting/accounting-core/application/validators/period.validator.js';
 
 const ZERO = new Decimal(0);
 
@@ -482,6 +489,38 @@ export class CommercialBillingService {
     return { installmentId, readyToBill: false, readyToBillAt: null };
   }
 
+  /**
+   * ADR-043 Phase 2 — why this stage can or cannot be prepared / issued, step by step. The same
+   * object every payment-schedule row carries; built by `stageBillingEligibility` from the guards
+   * `preparePackage` calls (`stagePrepareBlock`) and the rules the issue path posts under.
+   */
+  async getStageBillingEligibility(
+    identity: RequestIdentity,
+    projectId: string,
+    installmentId: string,
+  ): Promise<StageBillingEligibility> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const installment = await this.repo.findInstallmentWithContract(prisma, orgId, installmentId);
+    if (!installment || installment.contract.projectId !== projectId) {
+      throw new NotFoundException(`Payment installment ${installmentId} not found on project ${projectId}`);
+    }
+    await this.projectAccess.assertMember(identity, projectId);
+    const invoice =
+      installment.clientInvoice && installment.clientInvoice.documentStatus !== 'CANCELLED'
+        ? installment.clientInvoice
+        : null;
+    const issueDate = issuePostingDate(invoice?.invoiceDate ?? null, new Date());
+    const period = await PeriodValidator.findCovering(prisma, orgId, issueDate);
+    return stageBillingEligibility({
+      installmentId,
+      contractStatus: installment.contract.status,
+      installment,
+      invoice,
+      issuePeriod: period ? { name: period.name, status: period.status } : null,
+    });
+  }
+
   // ─── Slice 4B — Issue billing package + record delivery ─────────────────────────
 
   /**
@@ -687,21 +726,26 @@ export class CommercialBillingService {
     await this.projectAccess.assertMember(identity, projectId);
     const contract = installment.contract;
 
-    if (contract.status !== 'ACTIVE') {
+    // One rule for this command and the stage's billing eligibility (ADR-043 Phase 2).
+    const block = stagePrepareBlock({
+      contractStatus: contract.status,
+      installment,
+      invoice: installment.clientInvoice,
+    });
+    if (block === 'CONTRACT_NOT_ACTIVE') {
       throw refuse(
         'CONTRACT_NOT_ACTIVE',
         `Contract ${contract.contractNumber} must be ACTIVE to prepare an invoice (currently ${contract.status}).`,
       );
     }
-    const blocker = installmentBillingBlocker({ ...installment, contractStatus: contract.status });
-    if (blocker) {
-      throw refuse(blocker, installmentBillingBlockerMessage(blocker, installment.name));
-    }
-    if (installment.clientInvoice && installment.clientInvoice.documentStatus !== 'CANCELLED') {
+    if (block === 'STAGE_ALREADY_INVOICED') {
       throw refuse(
         'STAGE_ALREADY_INVOICED',
-        `"${installment.name}" already has an invoice (${installment.clientInvoice.invoiceNumber ?? 'draft'}).`,
+        `"${installment.name}" already has an invoice (${installment.clientInvoice?.invoiceNumber ?? 'draft'}).`,
       );
+    }
+    if (block) {
+      throw refuse(block, installmentBillingBlockerMessage(block, installment.name));
     }
 
     const dates = resolveInvoiceDates(dto, contract.paymentTerms, new Date());

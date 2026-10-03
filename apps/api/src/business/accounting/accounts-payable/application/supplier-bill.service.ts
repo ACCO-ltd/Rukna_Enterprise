@@ -28,6 +28,11 @@ import {
   costTargetViolationMessage,
 } from '../../../../business/procurement/purchase-orders/domain/cost-target.policy.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
+import {
+  billPostingBlock,
+  isNotApprovedBlock,
+  SUPPLIER_BILL_JOURNAL_CATEGORY,
+} from '../domain/supplier-bill-eligibility.policy.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -470,16 +475,15 @@ export class SupplierBillService {
 
     const bill = await this.repo.findById(prisma, orgId, dto.billId);
     if (!bill) throw new NotFoundException(`SupplierBill ${dto.billId} not found`);
-    if (bill.documentStatus !== 'APPROVED') {
-      throw new BadRequestException(`Bill must be APPROVED before posting`);
-    }
-    if (bill.postingStatus === 'POSTED') {
-      throw new ConflictException(`Bill ${dto.billId} is already posted`);
-    }
-
-    // ADR-007: posting blocked for procurement bills unless matching is complete/approved
-    const POSTABLE_MATCH_STATUSES = ['MATCHED', 'MATCHED_WITH_TOLERANCE', 'APPROVED_EXCEPTION'];
-    if (bill.purchaseOrderRevisionId && !POSTABLE_MATCH_STATUSES.includes(bill.matchStatus)) {
+    // One rule for this command and `GET /bills/:id/eligibility` (ADR-043): approved → not already
+    // in the ledger → (ADR-007) a PO-backed bill's match complete or its exception approved.
+    const block = billPostingBlock(bill);
+    if (block) {
+      if (isNotApprovedBlock(block)) throw new BadRequestException(`Bill must be APPROVED before posting`);
+      if (block === 'BILL_ALREADY_POSTED') throw new ConflictException(`Bill ${dto.billId} is already posted`);
+      if (block === 'BILL_REVERSED') {
+        throw new ConflictException(`Bill ${dto.billId} has been reversed — record a new bill instead`);
+      }
       throw new BadRequestException(
         `Bill posting blocked — match status is ${bill.matchStatus}. Approve the exception before posting.`,
       );
@@ -551,7 +555,7 @@ export class SupplierBillService {
             eventType: 'EVT-AP-001',
             sourceDocumentType: 'SUPPLIER_BILL',
             sourceDocumentId: bill.id,
-            journalCategory: 'ACCOUNTS_PAYABLE',
+            journalCategory: SUPPLIER_BILL_JOURNAL_CATEGORY,
             entryPurpose: 'NORMAL',
             postingOrigin: 'SYSTEM_AP',
             createdBy: userId,

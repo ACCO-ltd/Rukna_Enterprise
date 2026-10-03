@@ -93,7 +93,16 @@ export class SupplierBillRepository {
     return prisma.supplierPaymentAllocation.findMany({
       where: { organizationId, supplierBillId: billId },
       include: {
-        payment: { select: { paymentNumber: true, paymentDate: true, documentStatus: true } },
+        payment: {
+          select: {
+            paymentNumber: true,
+            paymentDate: true,
+            documentStatus: true,
+            postingStatus: true,
+            bankAccountId: true,
+            _count: { select: { releaseSignatures: true } },
+          },
+        },
       },
       orderBy: { allocationDate: 'asc' },
     });

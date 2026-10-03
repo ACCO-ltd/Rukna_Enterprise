@@ -51,6 +51,16 @@ export class SupplierBillController {
     return this.supplierBillService.findById(identity, id);
   }
 
+  @Get(':id/eligibility')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary:
+      "Why the bill can or cannot be posted / paid: steps from submission to paid, each with its owner (ADR-043). Built from the same rules the post / pay / release commands enforce.",
+  })
+  eligibility(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.eligibility(identity, id);
+  }
+
   @Get(':id/approvals')
   @ApiParam({ name: 'id' })
   @ApiOperation({

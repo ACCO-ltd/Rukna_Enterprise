@@ -1,3 +1,4 @@
+import type { StageBillingEligibility } from './finance-eligibility';
 import type {
   ContractStatus,
   BillingModel,
@@ -1993,6 +1994,11 @@ export interface CommercialPaymentScheduleInstallment {
   invoiceId: string | null;
   /** DRAFT while the stage's invoice is prepared but not issued; ISSUED once posted. */
   invoiceState: 'DRAFT' | 'ISSUED' | null;
+  /**
+   * ADR-043 Phase 2 — why this stage can or cannot be prepared / issued, step by step, from the
+   * same policy the prepare and issue commands call (`stageBillingEligibility`).
+   */
+  billingEligibility: StageBillingEligibility;
 }
 
 /** Commercial redesign — the codes `installmentBillingBlocker` returns. */

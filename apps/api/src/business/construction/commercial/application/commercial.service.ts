@@ -65,6 +65,8 @@ import {
   isLiveStageInvoice,
   scheduleBaseValue,
 } from '../domain/receivable-position.js';
+import { issuePostingDate, stageBillingEligibility } from '../domain/stage-billing-eligibility.policy.js';
+import { PeriodValidator } from '../../../accounting/accounting-core/application/validators/period.validator.js';
 
 const ZERO = new Decimal(0);
 
@@ -1168,6 +1170,24 @@ export class CommercialService {
       return total.minus(new Decimal(inv.outstandingAmount.toString())).div(total);
     };
 
+    // ADR-043 Phase 2 — the period an issue would post into (the draft's date, never before today),
+    // read once per distinct date so every row's billing eligibility is one batched lookup.
+    const today = new Date();
+    const issueDateOf = (inv: InvoiceRow | undefined) => issuePostingDate(inv?.invoiceDate ?? null, today);
+    const issueDates = new Map<string, Date>();
+    for (const inst of installments) {
+      const date = issueDateOf(byInstallment.get(inst.id));
+      issueDates.set(date.toISOString().slice(0, 10), date);
+    }
+    const periodByDay = new Map(
+      await Promise.all(
+        [...issueDates].map(async ([day, date]) => {
+          const period = await PeriodValidator.findCovering(prisma, identity.activeOrganizationId, date);
+          return [day, period ? { name: period.name, status: period.status } : null] as const;
+        }),
+      ),
+    );
+
     let collected = ZERO;
     let nextAssigned = false;
     const lines: CommercialPaymentScheduleInstallment[] = installments.map((inst) => {
@@ -1231,6 +1251,13 @@ export class CommercialService {
         releasedBy: deriveReleasedBy(releaseFacts),
         invoiceId: inv?.id ?? null,
         invoiceState: deriveInvoiceState(inv),
+        billingEligibility: stageBillingEligibility({
+          installmentId: inst.id,
+          contractStatus: contract.status,
+          installment: inst,
+          invoice: inv ?? null,
+          issuePeriod: periodByDay.get(issueDateOf(inv).toISOString().slice(0, 10)) ?? null,
+        }),
       };
     });
 

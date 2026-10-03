@@ -92,7 +92,12 @@ function build(overrides: {
       .mockResolvedValue(overrides.variationBillingAllocations ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
-  const tenancy = { getClient: () => ({}) };
+  // ADR-043: the schedule reads the accounting period an issue would post into (open by default).
+  const tenancy = {
+    getClient: () => ({
+      accountingPeriod: { findFirst: jest.fn().mockResolvedValue({ name: 'Oct 2026', status: 'OPEN' }) },
+    }),
+  };
   // ADR-026: the commercial summary now derives contract value from the VO set. Default to none.
   const variationRepo = {
     findValuationInputs: jest.fn().mockResolvedValue(overrides.variationInputs ?? []),

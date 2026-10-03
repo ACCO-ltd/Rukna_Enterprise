@@ -70,6 +70,21 @@ export class CommercialController {
     return this.workspaceService.getStatement(identity, projectId);
   }
 
+  @Get('installments/:installmentId/billing-eligibility')
+  @ApiOperation({
+    summary:
+      'Why the stage can or cannot be prepared / issued: steps with owners (ADR-043). Same rules as the prepare and issue commands.',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })
+  getBillingEligibility(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('installmentId') installmentId: string,
+  ) {
+    return this.commercialBillingService.getStageBillingEligibility(identity, projectId, installmentId);
+  }
+
   @Get('installments/:installmentId/prepare-preview')
   @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
   @ApiOperation({ summary: 'Prepare-invoice dialog preview: stage amount, variations, server tax rate' })
