@@ -156,9 +156,15 @@ describe('ReceiptDetail — receipt PDF and WhatsApp', () => {
     expect(screen.getByText(/This receipt was reversed/)).toBeInTheDocument();
   });
 
-  it('without manage:receivable, Send on WhatsApp is withheld but the PDF stays', () => {
+  it('without manage:receivable, offers neither (the document endpoint needs it too)', () => {
     show(receipt(), ['view:receivable']);
-    expect(screen.getByRole('button', { name: 'Download receipt' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Download receipt' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send on WhatsApp' })).not.toBeInTheDocument();
+  });
+
+  it('a posted receipt with no number (opening balance) offers neither — the API refuses it', () => {
+    show(receipt({ receiptNumber: null }));
+    expect(screen.queryByRole('button', { name: 'Download receipt' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send on WhatsApp' })).not.toBeInTheDocument();
   });
 

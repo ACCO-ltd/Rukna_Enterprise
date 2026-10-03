@@ -63,26 +63,27 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const reversed = receipt.postingStatus === 'REVERSED';
   // Same eligibility as the API: only a POSTED (numbered, not reversed) receipt has a PDF and can
   // be sent; the server still answers 409 NOT_POSTED / RECEIPT_REVERSED as the final word.
-  const issued = receipt.postingStatus === 'POSTED';
+  // A posted opening balance carries no receipt number, and the API refuses those too.
+  const issued = receipt.postingStatus === 'POSTED' && Boolean(receipt.receiptNumber);
+  // The document endpoint, like the whole receipts controller, needs manage:receivable.
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
   const number = receipt.receiptNumber ?? receipt.reference ?? tReceipts('noReference');
 
-  const actions = issued ? (
-    <>
-      <Button
-        variant="outline"
-        loading={openDocument.isPending}
-        onClick={() => openDocument.mutate(receipt.id)}
-      >
-        {t('downloadReceipt')}
-      </Button>
-      {mayManage ? (
+  const actions =
+    issued && mayManage ? (
+      <>
+        <Button
+          variant="outline"
+          loading={openDocument.isPending}
+          onClick={() => openDocument.mutate(receipt.id)}
+        >
+          {t('downloadReceipt')}
+        </Button>
         <Button variant="outline" onClick={() => setSending(true)}>
           {t('sendWhatsApp')}
         </Button>
-      ) : null}
-    </>
-  ) : null;
+      </>
+    ) : null;
 
   return (
     <div className="space-y-8">

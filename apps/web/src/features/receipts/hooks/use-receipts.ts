@@ -16,6 +16,7 @@ import {
   type PostReceiptPayload,
 } from '../api/receipts-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+import { openSignedDocument } from '@/lib/open-signed-document';
 
 import type { Receipt, ReceiptDetail } from '../types';
 
@@ -107,17 +108,6 @@ export function useReverseAllocation(receiptId: string) {
  */
 export function useOpenReceiptDocument() {
   return useMutation({
-    mutationFn: async (id: string) => {
-      const tab = window.open('', '_blank', 'noopener');
-      try {
-        const doc = await getReceiptDocument(id);
-        if (tab) tab.location.href = doc.url;
-        else window.open(doc.url, '_blank', 'noopener');
-        return doc;
-      } catch (error) {
-        tab?.close();
-        throw error;
-      }
-    },
+    mutationFn: (id: string) => openSignedDocument(() => getReceiptDocument(id)),
   });
 }
