@@ -647,6 +647,7 @@
       "statusLabel": "Billing status: {status}",
       "status": {
         "NOT_READY": "Not ready",
+        "VERIFIED": "Verified — awaiting ready to bill",
         "READY_TO_BILL": "Ready to bill",
         "BILLED": "Billed",
         "PART_PAID": "Part paid",

@@ -53,7 +53,9 @@ Rules:
 ### The owner's five decisions (2026-10-03)
 
 1. **The finance team issues invoices.** Construction verifies milestones and marks them ready to
-   bill; Finance prepares and issues the invoice.
+   bill; Finance prepares and issues the invoice. *Implemented 2026-10-03* (see "Construction marks
+   ready" below): the Construction Director marks a stage ready from the project's Commercial
+   schedule with the narrow `mark-ready:billing` permission.
 2. **The Construction Director is unchanged:** sees cost, not margin, and keeps the read-only money
    summary on the project Overview. (The Finance workspace is gated on `view:financial-position`,
    which the Construction Director deliberately does not hold.)
@@ -76,6 +78,45 @@ Project Manager, Site Engineer and Procurement Manager do not. `view:accounting`
 it would reveal project revenue and margin to anyone who can read the chart of accounts. Margin is
 additionally subject to the existing margin rule (`resolveBoqVisibility(...).canViewMargin`), and
 the existing project-access rule applies per row.
+
+### Construction marks ready (decision 1, implemented 2026-10-03)
+
+- **Permission `mark-ready:billing`** (domain Commercial, risk MEDIUM). It authorizes exactly two
+  routes — `POST` / `DELETE /projects/:projectId/commercial/installments/:installmentId/ready-to-bill`
+  — and nothing else; the commands create no invoice and return no amount. The routes require
+  `view:contract` AND (`manage:receivable` OR `mark-ready:billing`), so Finance keeps the command.
+- **Who holds it:** the Construction Director (role seed) and ADMIN (re-linked to every catalogue
+  permission on each deploy). Not the Project Manager or Site Engineer (money-blind, no
+  `view:contract`). Not CEO: CEO is a governed approval/oversight role that never held the finance
+  set either; granting it is an owner decision.
+- **Preconditions — unchanged, and now the prepare command's own rule (`stagePrepareBlock`):** the
+  contract is ACTIVE; a work-completion stage is linked to a programme milestone VERIFIED on site
+  (CONST-COM-011), an advance needs the contract executed; the stage has no live invoice (a
+  cancelled one does not count). The schedule enables the button from the row's
+  `billingEligibility.canPrepare` — the same guard — and shows the blocking reason in words.
+- **Undo ready** is allowed until Finance prepares the stage (a DRAFT invoice blocks it; a
+  cancelled invoice does not). Both acts write their audit event (`MILESTONE_READY_TO_BILL`,
+  `MILESTONE_READINESS_REVOKED`); the mark's idempotency key now carries its timestamp, so mark →
+  undo → mark again no longer collides on the audit outbox's unique key.
+- **Concurrency:** mark ready, undo ready and Finance's prepare each take the stage's row lock
+  (`SELECT … FOR UPDATE` on the installment) inside their transaction and re-check there. Mark is a
+  conditional update (`readyToBillAt IS NULL`; a lost race is a no-op with no audit event); undo
+  re-checks for a live invoice under the lock and answers 409 if Finance prepared meanwhile.
+  Prepare always runs the conditional mark under its lock (never trusting its pre-lock read), so
+  an undo that committed just before it cannot leave a draft unmarked — out of *To bill*.
+- Cash-flow forecast (Phase 4) is unaffected: it forecasts every un-issued stage by its expected
+  date (or the day it was marked, if earlier), whether VERIFIED or READY_TO_BILL.
+- Marking ready puts the stage in Finance's *To bill* queue (`readyToBillAt`); preparing an invoice
+  still records readiness itself when Construction has not (D2).
+- **Status follows the mark.** `collectionStatus` gains **`VERIFIED`** ("Verified — awaiting ready
+  to bill"): nothing blocks raising the stage (milestone verified / advance due / date reached) but
+  Construction has not marked it. **`READY_TO_BILL`** now means marked (`readyToBillAt`) or a draft
+  Finance is preparing — the same set Finance's *To bill* queue counts. One rule
+  (`stageCollectionStatus`) for the Commercial schedule and Progress → milestones. **No behaviour
+  change for Finance:** Finance can still prepare an unmarked (VERIFIED) stage; preparing marks it.
+- **Production:** the live tenant gets the grant from a targeted, additive script
+  (`prisma/seeds/grant-construction-mark-ready.seed.ts`) — one permission, one role — not by
+  re-running the team-role seed, which would re-add grants removed in Admin → Roles.
 
 ## Consequences
 
@@ -152,10 +193,9 @@ the existing project-access rule applies per row.
      on the Commercial schedule. No server permission was changed.
    - The project **Overview is unchanged** — the Construction Director keeps the read-only money
      summary (decision 2).
-   - **Not done (unchanged from main):** no screen calls the mark-ready-to-bill command, on main
-     either — preparing an invoice records readiness (D2). The command is gated `view:contract` +
-     `manage:receivable` (a finance permission). Verification in Progress is what makes a stage read
-     Ready to bill. A construction "mark ready" action is a future owner decision.
+   - ~~Not done: no screen calls the mark-ready-to-bill command.~~ Done 2026-10-03 — see
+     "Construction marks ready (decision 1)": the Commercial schedule offers **Mark ready to bill**
+     / **Undo ready** to `mark-ready:billing` (Construction Director) and to the finance set.
    - Billing links outside Finance (Progress performance, variation detail, the BOQ "Review in
      billing" toast, project activity) go to Finance for a finance reader and to the Commercial
      schedule otherwise (`useProjectBillingHref`) — never to Finance's no-access page. Redirects keep

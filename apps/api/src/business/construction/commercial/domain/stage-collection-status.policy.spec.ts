@@ -43,18 +43,24 @@ describe('stageCollectionStatus (ADR-043 Phase 3)', () => {
     ).toBe('NOT_READY');
   });
 
-  it('a date stage is NOT_READY before its date and READY_TO_BILL on it', () => {
+  it('a date stage is NOT_READY before its date, VERIFIED on it, READY_TO_BILL once marked', () => {
     const future = stage({ triggerType: 'TIME_BASED', programmeMilestone: null, programmeMilestoneId: null, dueDate: new Date('2026-10-04') });
     expect(stageCollectionStatus(future, null, AS_OF)).toBe('NOT_READY');
-    expect(stageCollectionStatus({ ...future, dueDate: new Date('2026-10-03') }, null, AS_OF)).toBe('READY_TO_BILL');
+    expect(stageCollectionStatus({ ...future, dueDate: new Date('2026-10-03') }, null, AS_OF)).toBe('VERIFIED');
     expect(stageCollectionStatus({ ...future, readyToBillAt: new Date() }, null, AS_OF)).toBe('READY_TO_BILL');
   });
 
-  it('READY_TO_BILL for a verified stage, and while Finance holds a draft', () => {
-    expect(stageCollectionStatus(stage(), null, AS_OF)).toBe('READY_TO_BILL');
-    expect(stageCollectionStatus(stage(), invoice({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }), AS_OF)).toBe('READY_TO_BILL');
+  it('VERIFIED for a verified stage nobody has marked (ADR-043 decision 1); an advance on an active contract too', () => {
+    expect(stageCollectionStatus(stage(), null, AS_OF)).toBe('VERIFIED');
+    expect(stageCollectionStatus(stage({ triggerType: 'ADVANCE', programmeMilestone: null, programmeMilestoneId: null }), null, AS_OF)).toBe('VERIFIED');
     // a cancelled invoice is no invoice
-    expect(stageCollectionStatus(stage(), invoice({ documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED' }), AS_OF)).toBe('READY_TO_BILL');
+    expect(stageCollectionStatus(stage(), invoice({ documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED' }), AS_OF)).toBe('VERIFIED');
+  });
+
+  it('READY_TO_BILL only once marked (readyToBillAt), or while Finance holds a draft', () => {
+    expect(stageCollectionStatus(stage({ readyToBillAt: new Date() }), null, AS_OF)).toBe('READY_TO_BILL');
+    expect(stageCollectionStatus(stage(), invoice({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }), AS_OF)).toBe('READY_TO_BILL');
+    expect(stageCollectionStatus(stage({ readyToBillAt: new Date() }), invoice({ documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED' }), AS_OF)).toBe('READY_TO_BILL');
   });
 
   it('BILLED → PART_PAID → PAID from the posted invoice balance', () => {

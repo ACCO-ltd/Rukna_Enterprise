@@ -78,6 +78,7 @@ function releaseAmount(
 /** The pill colour for a stage's billing status (ref-ui palette; same reading as `stageCollection`). */
 const COLLECTION_TONE: Record<StageCollectionStatus, RefTone> = {
   NOT_READY: 'gray',
+  VERIFIED: 'amber',
   READY_TO_BILL: 'blue',
   BILLED: 'blue',
   PART_PAID: 'amber',

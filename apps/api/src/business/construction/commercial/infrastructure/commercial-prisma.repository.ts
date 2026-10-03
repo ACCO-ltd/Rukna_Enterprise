@@ -323,26 +323,62 @@ export class CommercialPrismaRepository {
 
   // Slice 3B — readiness persistence helpers. These accept a transaction client so the caller
   // can include them in a broader $transaction alongside the audit outbox write.
-  markInstallmentReadyToBill(
+
+  /**
+   * Row-lock one installment for the rest of the transaction (`SELECT … FOR UPDATE`). Mark ready,
+   * undo ready and prepare all take it first, so they serialise per stage: an undo cannot slip in
+   * beside a prepare, and two marks cannot both write. Returns false when the row is not in this org.
+   */
+  async lockInstallment(tx: TenantPrisma, organizationId: string, installmentId: string): Promise<boolean> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT i.id FROM contract_payment_installments i
+      JOIN contracts c ON c.id = i.contract_id
+      WHERE i.id = ${installmentId} AND c.organization_id = ${organizationId}
+      FOR UPDATE OF i`;
+    return rows.length > 0;
+  }
+
+  /** Readiness + the stage's live (non-cancelled) invoice, read under the caller's lock. */
+  async findReadinessForUpdate(tx: TenantPrisma, organizationId: string, installmentId: string) {
+    const [row, invoice] = await Promise.all([
+      tx.contractPaymentInstallment.findFirst({
+        where: { id: installmentId, contract: { organizationId } },
+        select: { readyToBillAt: true },
+      }),
+      tx.clientInvoice.findFirst({
+        where: { organizationId, sourceInstallmentId: installmentId, documentStatus: { not: 'CANCELLED' } },
+        select: { id: true },
+      }),
+    ]);
+    return { readyToBillAt: row?.readyToBillAt ?? null, hasLiveInvoice: invoice !== null };
+  }
+
+  /**
+   * Set readiness only while it is unset (conditional — `readyToBillAt IS NULL` in the WHERE).
+   * Returns the timestamp written, or null when another mark already set it (no-op).
+   */
+  async markInstallmentReadyToBill(
     tx: TenantPrisma,
     organizationId: string,
     installmentId: string,
     userId: string,
     note?: string,
-  ) {
-    return tx.contractPaymentInstallment.update({
-      where: { id: installmentId, contract: { organizationId } },
-      data: { readyToBillAt: new Date(), readyToBillBy: userId, readinessNote: note ?? null },
-      select: { id: true, readyToBillAt: true },
+  ): Promise<Date | null> {
+    const at = new Date();
+    const { count } = await tx.contractPaymentInstallment.updateMany({
+      where: { id: installmentId, contract: { organizationId }, readyToBillAt: null },
+      data: { readyToBillAt: at, readyToBillBy: userId, readinessNote: note ?? null },
     });
+    return count > 0 ? at : null;
   }
 
-  revokeInstallmentReadiness(tx: TenantPrisma, organizationId: string, installmentId: string) {
-    return tx.contractPaymentInstallment.update({
-      where: { id: installmentId, contract: { organizationId } },
+  /** Clear readiness only while it is set. Returns the number of rows changed (0 or 1). */
+  async revokeInstallmentReadiness(tx: TenantPrisma, organizationId: string, installmentId: string) {
+    const { count } = await tx.contractPaymentInstallment.updateMany({
+      where: { id: installmentId, contract: { organizationId }, readyToBillAt: { not: null } },
       data: { readyToBillAt: null, readyToBillBy: null, readinessNote: null },
-      select: { id: true },
     });
+    return count;
   }
 
   /**

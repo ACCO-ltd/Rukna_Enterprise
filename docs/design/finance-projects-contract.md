@@ -256,7 +256,8 @@ see them.
 | Value | Rule (`stageCollectionStatus`, `commercial/domain/stage-collection-status.policy.ts`) |
 | --- | --- |
 | `NOT_READY` | no live invoice and the raise blocker (`installmentBillingBlocker`) stands, or a date stage before its date (unless marked ready) |
-| `READY_TO_BILL` | no live invoice and nothing blocks raising it; or marked ready; or a DRAFT invoice (`deriveInvoiceState`) Finance is preparing |
+| `VERIFIED` | no live invoice, nothing blocks raising it (and a date stage's date has come), not marked ready — "Verified — awaiting ready to bill" (added with decision 1) |
+| `READY_TO_BILL` | marked ready (`readyToBillAt`) with nothing blocking; or a DRAFT invoice (`deriveInvoiceState`) Finance is preparing |
 | `BILLED` | invoice ISSUED and nothing collected (or not POSTED: reversed / opening balance) |
 | `PART_PAID` | POSTED, 0 < balance < total, not overdue |
 | `PAID` | POSTED, balance ≤ 0 |
@@ -293,6 +294,42 @@ invoice notification now link to Finance directly.
 | Commercial → payment schedule | status column = money-free status; "Open in Finance" and invoice links only for `view:financial-position` |
 | Progress → milestones | each release line shows the money-free status (was an "invoiced" tag) |
 | Project Overview | unchanged (Construction Director's read-only money summary, decision 2) |
+
+## Construction marks ready (ADR-043 decision 1, 2026-10-03)
+
+No migration. New permission **`mark-ready:billing`** (Construction Director; ADMIN via the deploy
+refresh). Production grant: `docker compose -f deploy/docker-compose.prod.yml run --rm --no-deps
+migrate pnpm exec tsx prisma/seeds/grant-construction-mark-ready.seed.ts` (targeted, idempotent,
+touches only that permission on that role).
+
+### `POST /api/v1/projects/:projectId/commercial/installments/:installmentId/ready-to-bill`
+
+Body `{ note?: string }` → `InstallmentReadinessResult` `{ installmentId, readyToBill: true,
+readyToBillAt }` (no money). Gate: `view:contract` AND (`manage:receivable` OR
+`mark-ready:billing`), plus project access. 404 when the stage is not on `:projectId`. Refused
+(400, coded `code` / `errorCode`) by `stagePrepareBlock`: `CONTRACT_NOT_ACTIVE`,
+`MILESTONE_NOT_LINKED`, `MILESTONE_NOT_VERIFIED`, `STAGE_ALREADY_INVOICED` (a live — non-cancelled —
+invoice). Already ready → 200, no-op, no second audit event.
+
+### `DELETE …/installments/:installmentId/ready-to-bill`
+
+Body `{ reason?: string }` → `{ installmentId, readyToBill: false, readyToBillAt: null }`. Same
+gate. Refused: `NOT_READY` (not marked), `STAGE_ALREADY_INVOICED` (a DRAFT or issued invoice; a
+cancelled one does not block). A live invoice found only under the row lock (Finance prepared concurrently) → **409**
+`STAGE_ALREADY_INVOICED`. Mark, undo and prepare serialise on the installment row lock.
+`canMarkReadyToBill` on each schedule row = not marked AND `stagePrepareBlock` clear (any stage, not
+only NEXT).
+
+### Screen
+
+| Where | Change |
+| --- | --- |
+| Commercial → payment schedule (`mode="project"`) | per row, while the stage has no invoice: **Mark ready to bill** (enabled by `billingEligibility.canPrepare`; disabled with the blocking reason in words) or **Undo ready** once marked. Shown to `view:contract` + (`mark-ready:billing` or `manage:receivable`). Success toast; refreshes the project's commercial reads and the Finance portfolio (*To bill*). Not shown in Finance's own schedule, where preparing records readiness. |
+
+`collectionStatus` follows the mark: a verified stage nobody has marked reads `VERIFIED`
+("Verified — awaiting ready to bill"); `READY_TO_BILL` = marked or a draft being prepared —
+consistent with Finance's *To bill* queue (marked only). Finance may still prepare an unmarked
+stage (unchanged; preparing records readiness, D2).
 
 ## Phase 4 — cash-flow forecast and exports
 

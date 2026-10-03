@@ -40,10 +40,7 @@ import { netPrice as computeNetPrice } from '../../variations/domain/variation-o
 import { VariationBillingAllocationPolicy } from '../../variations/domain/variation-billing-allocation.policy.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
 import { CustomerReceiptService } from '../../../accounting/accounts-receivable/application/customer-receipt.service.js';
-import {
-  installmentBillingBlocker,
-  installmentBillingBlockerMessage,
-} from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
+import { installmentBillingBlockerMessage } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import { isUnposted, redateForIssue, resolveInvoiceDates } from '../domain/commercial-workspace.policy.js';
 import {
@@ -352,14 +349,20 @@ export class CommercialBillingService {
   // ─── Slice 3B — Commercial readiness commands ────────────────────────────────────
 
   /**
-   * Mark a payment installment as commercially ready to bill.
+   * Mark a payment installment as commercially ready to bill — Construction's signal to Finance
+   * (ADR-043 decision 1: Construction verifies and marks ready; Finance prepares and issues).
    *
-   * Guards (in priority order):
-   *   1. Installment must exist in this org.
+   * Authorized at the route by the finance set (`view:contract` + `manage:receivable`) or by the
+   * narrow `mark-ready:billing` the Construction Director holds. Returns no money.
+   *
+   * Guards — the prepare command's own rule (`stagePrepareBlock`), so the button the schedule
+   * enables (`billingEligibility.canPrepare`) and this command can never disagree:
+   *   1. Installment must exist in this org (and on `projectId` when the route names one).
    *   2. Caller must have contract access (project membership gate).
    *   3. Contract must be ACTIVE.
-   *   4. No invoice must already exist for this installment.
-   *   5. If linked to a programme milestone, that milestone must be VERIFIED.
+   *   4. CONST-COM-011: a work-completion stage needs a linked, site-VERIFIED programme milestone;
+   *      an advance needs the contract executed.
+   *   5. No live (non-cancelled) invoice may exist for the stage.
    *   6. Idempotent: already-ready → no-op, no duplicate audit.
    *
    * Does NOT generate an invoice, allocate variations, or change contract value.
@@ -368,31 +371,37 @@ export class CommercialBillingService {
     identity: RequestIdentity,
     installmentId: string,
     note?: string,
+    projectId?: string,
   ): Promise<InstallmentReadinessResult> {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
     const installment = await this.repo.findInstallmentWithContract(prisma, orgId, installmentId);
-    if (!installment) {
+    if (!installment || (projectId !== undefined && installment.contract.projectId !== projectId)) {
       throw new NotFoundException(`Payment installment ${installmentId} not found`);
     }
     await this.projectAccess.assertContract(identity, installment.contract.id);
 
-    if (installment.contract.status !== 'ACTIVE') {
-      throw new BadRequestException(
+    const block = stagePrepareBlock({
+      contractStatus: installment.contract.status,
+      installment,
+      invoice: installment.clientInvoice,
+    });
+    if (block === 'CONTRACT_NOT_ACTIVE') {
+      throw refuse(
+        'CONTRACT_NOT_ACTIVE',
         `Contract ${installment.contract.contractNumber} must be ACTIVE to mark an installment ready to bill ` +
           `(currently ${installment.contract.status}).`,
       );
     }
-    if (installment.clientInvoice !== null) {
-      throw new BadRequestException(
+    if (block === 'STAGE_ALREADY_INVOICED') {
+      throw refuse(
+        'STAGE_ALREADY_INVOICED',
         `Installment "${installment.name}" already has an invoice — readiness cannot be set after billing.`,
       );
     }
-    // CONST-COM-011 (strict): the same rule the invoice generator and the cycle apply.
-    const blocker = installmentBillingBlocker({ ...installment, contractStatus: installment.contract.status });
-    if (blocker) {
-      throw new BadRequestException(installmentBillingBlockerMessage(blocker, installment.name));
+    if (block) {
+      throw refuse(block, installmentBillingBlockerMessage(block, installment.name));
     }
 
     // Idempotent: already-ready is a no-op (no error, no duplicate audit event).
@@ -404,14 +413,24 @@ export class CommercialBillingService {
       };
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const result = await this.repo.markInstallmentReadyToBill(
-        tx as unknown as Parameters<typeof this.repo.markInstallmentReadyToBill>[0],
-        orgId,
-        installmentId,
-        identity.userId,
-        note,
-      );
+    // Authoritative under the stage's row lock (shared with undo and prepare): two marks racing,
+    // or a mark racing Finance's prepare, write once. The checks above are the fast error only.
+    const readyToBillAt = await prisma.$transaction(async (tx) => {
+      const t = tx as unknown as Parameters<typeof this.repo.lockInstallment>[0];
+      if (!(await this.repo.lockInstallment(t, orgId, installmentId))) {
+        throw new NotFoundException(`Payment installment ${installmentId} not found`);
+      }
+      const now = await this.repo.findReadinessForUpdate(t, orgId, installmentId);
+      if (now.readyToBillAt) return now.readyToBillAt; // marked meanwhile: no-op, no event
+      if (now.hasLiveInvoice) {
+        throw new ConflictException({
+          message: `Installment "${installment.name}" already has an invoice — readiness cannot be set after billing.`,
+          code: 'STAGE_ALREADY_INVOICED',
+          errorCode: 'STAGE_ALREADY_INVOICED',
+        });
+      }
+      const at = await this.repo.markInstallmentReadyToBill(t, orgId, installmentId, identity.userId, note);
+      if (!at) return (await this.repo.findReadinessForUpdate(t, orgId, installmentId)).readyToBillAt!;
       await this.auditOutbox.record(tx, {
         organizationId: orgId,
         actorUserId: identity.userId,
@@ -420,59 +439,74 @@ export class CommercialBillingService {
         resourceId: installmentId,
         sourceCommand: 'commercial.markReadyToBill',
         eventType: 'MILESTONE_READY_TO_BILL',
-        idempotencyKey: `ready-to-bill-${installmentId}`,
+        // Keyed on the mark's own timestamp (as revoke is): mark → undo → mark again is a new
+        // event, and a constant key would collide on the outbox's unique index and roll it back.
+        idempotencyKey: `ready-to-bill-${installmentId}-${at.getTime()}`,
         after: { readyToBillBy: identity.userId, note: note ?? null },
       });
-      return result;
+      return at;
     });
 
-    return {
-      installmentId,
-      readyToBill: true,
-      readyToBillAt: updated.readyToBillAt!.toISOString(),
-    };
+    return { installmentId, readyToBill: true, readyToBillAt: readyToBillAt.toISOString() };
   }
 
   /**
-   * Revoke ready-to-bill status before an invoice is created.
+   * Revoke ready-to-bill status ("Undo ready") before an invoice is prepared.
    *
    * Guards:
-   *   1. Installment must exist.
+   *   1. Installment must exist (and be on `projectId` when the route names one).
    *   2. Caller must have contract access.
    *   3. Must be currently marked ready (nothing to revoke otherwise).
-   *   4. No invoice may exist (once billed, readiness is history — use the audit log).
+   *   4. No live invoice may exist — a draft counts: once Finance has prepared the stage, readiness
+   *      is history (the audit log keeps it). A cancelled invoice does not count, so the stage can
+   *      be taken back out of Finance's queue after a cancellation.
    */
   async revokeReadyToBill(
     identity: RequestIdentity,
     installmentId: string,
     reason?: string,
+    projectId?: string,
   ): Promise<InstallmentReadinessResult> {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
     const installment = await this.repo.findInstallmentWithContract(prisma, orgId, installmentId);
-    if (!installment) {
+    if (!installment || (projectId !== undefined && installment.contract.projectId !== projectId)) {
       throw new NotFoundException(`Payment installment ${installmentId} not found`);
     }
     await this.projectAccess.assertContract(identity, installment.contract.id);
 
     if (installment.readyToBillAt === null) {
-      throw new BadRequestException(
+      throw refuse(
+        'NOT_READY',
         `Installment "${installment.name}" is not marked ready to bill — nothing to revoke.`,
       );
     }
-    if (installment.clientInvoice !== null) {
-      throw new BadRequestException(
+    if (installment.clientInvoice !== null && installment.clientInvoice.documentStatus !== 'CANCELLED') {
+      throw refuse(
+        'STAGE_ALREADY_INVOICED',
         `Installment "${installment.name}" has an invoice — readiness cannot be revoked after billing.`,
       );
     }
 
+    // Re-checked under the stage's row lock, which Finance's prepare also takes: an undo and a
+    // prepare serialise, so an undo can never clear readiness under a draft just prepared.
     await prisma.$transaction(async (tx) => {
-      await this.repo.revokeInstallmentReadiness(
-        tx as unknown as Parameters<typeof this.repo.revokeInstallmentReadiness>[0],
-        orgId,
-        installmentId,
-      );
+      const t = tx as unknown as Parameters<typeof this.repo.lockInstallment>[0];
+      if (!(await this.repo.lockInstallment(t, orgId, installmentId))) {
+        throw new NotFoundException(`Payment installment ${installmentId} not found`);
+      }
+      const now = await this.repo.findReadinessForUpdate(t, orgId, installmentId);
+      if (now.hasLiveInvoice) {
+        throw new ConflictException({
+          message: `Installment "${installment.name}" has an invoice — readiness cannot be revoked after billing.`,
+          code: 'STAGE_ALREADY_INVOICED',
+          errorCode: 'STAGE_ALREADY_INVOICED',
+        });
+      }
+      if (!now.readyToBillAt || (await this.repo.revokeInstallmentReadiness(t, orgId, installmentId)) === 0) {
+        throw refuse('NOT_READY', `Installment "${installment.name}" is not marked ready to bill — nothing to revoke.`);
+      }
       await this.auditOutbox.record(tx, {
         organizationId: orgId,
         actorUserId: identity.userId,
@@ -481,7 +515,7 @@ export class CommercialBillingService {
         resourceId: installmentId,
         sourceCommand: 'commercial.revokeReadyToBill',
         eventType: 'MILESTONE_READINESS_REVOKED',
-        idempotencyKey: `revoke-readiness-${installmentId}-${installment.readyToBillAt!.getTime()}`,
+        idempotencyKey: `revoke-readiness-${installmentId}-${now.readyToBillAt.getTime()}`,
         after: { reason: reason ?? null },
       });
     });
@@ -763,6 +797,8 @@ export class CommercialBillingService {
 
     return prisma.$transaction(
       async (tx) => {
+        // The stage's row lock, shared with mark ready / undo ready: an undo cannot interleave.
+        await this.repo.lockInstallment(tx as never, orgId, installmentId);
         // Authoritative re-check inside the transaction (the pre-check above is a fast error only).
         const existing = await this.repo.findPackageInvoices(tx as never, orgId, installmentId);
         if (existing.stage) {
@@ -829,14 +865,17 @@ export class CommercialBillingService {
         }
 
         // D2 — preparing IS the ready-to-bill decision now; keep its audit trail.
-        if (!installment.readyToBillAt) {
-          await this.repo.markInstallmentReadyToBill(
-            tx as never,
-            orgId,
-            installmentId,
-            identity.userId,
-            'Prepared for billing',
-          );
+        // Always attempted, under the row lock taken above — never trusting the pre-lock read: an
+        // undo that committed first leaves it unset, so preparing must mark it (D2). Conditional
+        // (`readyToBillAt IS NULL`): an existing mark stands and no second event is added.
+        const markedAt = await this.repo.markInstallmentReadyToBill(
+          tx as never,
+          orgId,
+          installmentId,
+          identity.userId,
+          'Prepared for billing',
+        );
+        if (markedAt) {
           await this.auditOutbox.record(tx, {
             organizationId: orgId,
             actorUserId: identity.userId,

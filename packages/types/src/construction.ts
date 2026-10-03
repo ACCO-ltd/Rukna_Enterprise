@@ -1952,7 +1952,10 @@ export type CommercialCycleStage =
  * project roles. Server-derived (`stageCollectionStatus`); never re-derived in the browser.
  *  - NOT_READY: nothing invoiced and the stage is not yet releasable (milestone unverified / unlinked,
  *    contract not active, or a date stage before its date)
- *  - READY_TO_BILL: releasable (or marked ready, or a draft invoice is being prepared by Finance)
+ *  - VERIFIED: releasable (milestone verified / advance due / date reached) but not yet marked
+ *    ready to bill by Construction
+ *  - READY_TO_BILL: marked ready to bill (ADR-043 decision 1), or a draft invoice is being
+ *    prepared by Finance
  *  - BILLED: the invoice is issued and nothing is collected
  *  - PART_PAID: part collected, not overdue
  *  - PAID: fully collected
@@ -1960,6 +1963,7 @@ export type CommercialCycleStage =
  */
 export type StageCollectionStatus =
   | 'NOT_READY'
+  | 'VERIFIED'
   | 'READY_TO_BILL'
   | 'BILLED'
   | 'PART_PAID'
@@ -1998,7 +2002,7 @@ export interface CommercialPaymentScheduleInstallment {
   readyToBill: boolean;
   /** ISO-8601 timestamp when readiness was marked; null when revoked or never set. */
   readyToBillAt: string | null;
-  /** True when the user may click "Mark Ready to Bill" — NEXT status, not yet marked ready, no outstanding invoice. */
+  /** True when "Mark ready to bill" would succeed: not yet marked and the mark-ready command's guard (`stagePrepareBlock`) is clear. Permission is separate. */
   canMarkReadyToBill: boolean;
   /** True when the user may click "Prepare Invoice" — NEXT status, marked ready, no outstanding invoice. */
   canPrepareInvoice: boolean;

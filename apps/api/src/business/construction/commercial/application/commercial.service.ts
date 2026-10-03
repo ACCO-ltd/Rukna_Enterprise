@@ -69,7 +69,7 @@ import {
   isLiveStageInvoice,
   scheduleBaseValue,
 } from '../domain/receivable-position.js';
-import { issuePostingDate, stageBillingEligibility } from '../domain/stage-billing-eligibility.policy.js';
+import { issuePostingDate, stageBillingEligibility, stagePrepareBlock } from '../domain/stage-billing-eligibility.policy.js';
 import { PeriodValidator } from '../../../accounting/accounting-core/application/validators/period.validator.js';
 
 const ZERO = new Decimal(0);
@@ -1227,10 +1227,10 @@ export class CommercialService {
         dueDate: inst.dueDate ? inst.dueDate.toISOString().slice(0, 10) : null,
         readyToBill: isReady,
         readyToBillAt: inst.readyToBillAt?.toISOString() ?? null,
-        // Same strict CONST-COM-011 rule the commands enforce: a flag must never offer what the
-        // server refuses (e.g. a stage marked ready under the old soft gate, or unlinked since).
+        // The mark-ready command's own guard (`stagePrepareBlock`: contract ACTIVE, CONST-COM-011,
+        // no live invoice) — any stage, not only the next one (ADR-043 decision 1).
         canMarkReadyToBill:
-          status === 'NEXT' && !isReady && installmentBillingBlocker({ ...inst, contractStatus: contract.status }) === null,
+          !isReady && stagePrepareBlock({ contractStatus: contract.status, installment: inst, invoice: inv ?? null }) === null,
         canPrepareInvoice:
           status === 'NEXT' && isReady && installmentBillingBlocker({ ...inst, contractStatus: contract.status }) === null,
         status,

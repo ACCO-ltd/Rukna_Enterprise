@@ -15,7 +15,10 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse }
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../../../common/decorators/require-permissions.decorator.js';
 import { ProjectScoped } from '../../../../common/decorators/project-scoped.decorator.js';
 import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -230,32 +233,39 @@ export class CommercialController {
 
   // ─── Slice 3B — Commercial readiness commands ────────────────────────────────────
 
+  // ADR-043 decision 1 — Construction marks a verified stage ready; Finance issues. Either the
+  // finance set (`view:contract` + `manage:receivable`) or the narrow `mark-ready:billing` (held by
+  // the Construction Director) authorizes it; `view:contract` stays required for both.
   @Post('installments/:installmentId/ready-to-bill')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
+  @RequirePermissions(PERMISSIONS.contractsView)
+  @RequireAnyPermission(PERMISSIONS.receivablesManage, PERMISSIONS.billingMarkReady)
   @ApiOperation({ summary: 'Slice 3B: mark a payment installment as commercially ready to bill' })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })
   markReadyToBill(
     @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
     @Param('installmentId') installmentId: string,
     @Body() dto: MarkReadyToBillDto,
   ) {
-    return this.commercialBillingService.markReadyToBill(identity, installmentId, dto.note);
+    return this.commercialBillingService.markReadyToBill(identity, installmentId, dto.note, projectId);
   }
 
   @Delete('installments/:installmentId/ready-to-bill')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
+  @RequirePermissions(PERMISSIONS.contractsView)
+  @RequireAnyPermission(PERMISSIONS.receivablesManage, PERMISSIONS.billingMarkReady)
   @ApiOperation({ summary: 'Slice 3B: revoke ready-to-bill status before an invoice is created' })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })
   revokeReadyToBill(
     @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
     @Param('installmentId') installmentId: string,
     @Body() dto: RevokeReadyToBillDto,
   ) {
-    return this.commercialBillingService.revokeReadyToBill(identity, installmentId, dto.reason);
+    return this.commercialBillingService.revokeReadyToBill(identity, installmentId, dto.reason, projectId);
   }
 
   // ─── Slice 4B — Issue billing package ────────────────────────────────────────────

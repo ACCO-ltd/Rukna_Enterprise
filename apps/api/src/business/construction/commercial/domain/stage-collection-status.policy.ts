@@ -50,9 +50,12 @@ export function invoiceCollectedFraction(inv: {
  *    rule, the same function, so the two never disagree (a zero-total invoice reads Billed);
  *  - overdue is THE overdue rule (`overdueDays`, D5: whole UTC days past due on the server clock,
  *    posted, with a balance) and wins over part paid;
- *  - before an invoice is issued, "ready" is the raise blocker (`installmentBillingBlocker`) being
- *    clear — the gate the prepare command enforces — plus a date stage's date having come; a stage
- *    marked ready, or with a draft Finance is preparing, is ready to bill.
+ *  - before an invoice is issued: NOT_READY while the raise blocker (`installmentBillingBlocker`)
+ *    stands or a date stage's date has not come; VERIFIED once nothing blocks raising it but
+ *    Construction has not marked it; READY_TO_BILL only once it is marked (`readyToBillAt`,
+ *    ADR-043 decision 1) or Finance has a draft invoice for it. This matches Finance's *To bill*
+ *    queue, which counts marked stages. (Finance may still prepare an unmarked VERIFIED stage —
+ *    preparing records readiness itself, D2 — so the label is not a gate.)
  */
 export function stageCollectionStatus(
   stage: StageCollectionFacts,
@@ -75,5 +78,5 @@ export function stageCollectionStatus(
   if (stage.readyToBillAt) return 'READY_TO_BILL';
   const beforeDate =
     stage.triggerType === 'TIME_BASED' && stage.dueDate !== null && daysPastDue(stage.dueDate, asOf) < 0;
-  return beforeDate ? 'NOT_READY' : 'READY_TO_BILL';
+  return beforeDate ? 'NOT_READY' : 'VERIFIED';
 }
