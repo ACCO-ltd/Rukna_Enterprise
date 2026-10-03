@@ -50,11 +50,6 @@ export interface LedgerSourceLinks {
   invoice: (invoiceId: string) => string;
 }
 
-export const projectLedgerLinks = (projectId: string): LedgerSourceLinks => ({
-  bill: (billId) => `/projects/${projectId}/finance/ledger/bills/${billId}`,
-  invoice: (invoiceId) => `/projects/${projectId}/commercial/invoices/${invoiceId}`,
-});
-
 /** The accounting pages — used by the Finance workspace (ADR-043) so the reader stays in Finance. */
 export const accountingLedgerLinks: LedgerSourceLinks = {
   bill: (billId) => `/finance/accounting/bills/${billId}`,
@@ -63,7 +58,7 @@ export const accountingLedgerLinks: LedgerSourceLinks = {
 
 export function LedgerView({
   projectId,
-  links = projectLedgerLinks(projectId),
+  links = accountingLedgerLinks,
 }: {
   projectId: string;
   links?: LedgerSourceLinks;

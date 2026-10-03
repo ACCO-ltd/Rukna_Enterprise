@@ -63,10 +63,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const siteLabel = [districtName, project?.location].filter(Boolean).join(', ');
 
   // Ordered by the project's operating logic rather than by the order the workspaces shipped:
-  // understand → scope → execute → earn → spend → financial position → evidence → people.
-  // Procurement sits before Finance because procurement *creates* the commitments, accruals and
-  // actuals that Finance then interprets; Documents before Team because project evidence is
-  // read daily and membership is changed rarely.
+  // understand → scope → execute → earn → spend → evidence → people. Documents before Team
+  // because project evidence is read daily and membership is changed rarely.
   const allTabs: Array<{
     key: string;
     label: string;
@@ -94,8 +92,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     // One tab, not a dropdown. Commercial was three flat entries — Contracts, Applications &
     // certificates, Finance — inside the only nested control in this bar, and they duplicated
     // the Commercial workspace's own sub-nav. The contract and certificate routes now live
-    // under /commercial/*; Finance is its own tab because accounting truth and client contract
-    // administration are different responsibilities.
+    // under /commercial/*; billing and accounting truth live in Finance (ADR-043).
     {
       key: 'commercial',
       label: t('workspace.commercial'),
@@ -108,15 +105,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       href: `/projects/${id}/procurement`,
       requires: 'view:procurement',
     },
-    // The Finance tab used to land on the Project Actual P&L alone — a subset presented as the
-    // whole. It now opens the Finance workspace: cost position and control status first, with
-    // Cost Control, Profit & Loss and the Ledger beneath it.
-    {
-      key: 'finance',
-      label: t('workspace.finance'),
-      href: `/projects/${id}/finance`,
-      requires: 'view:financial-position',
-    },
+    // No Finance tab (ADR-043 Phase 3): a project's money — billing, cost, P&L, ledger — is read
+    // and acted on in Finance → Projects. The old /projects/:id/finance/** URLs redirect there.
     {
       key: 'documents',
       label: t('workspace.documents'),

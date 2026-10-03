@@ -47,6 +47,7 @@ function installment(
     dueOffsetDays: null,
     dueDate: null,
     status: 'NEXT',
+    collectionStatus: 'READY_TO_BILL',
     programmeMilestone: null,
     readyToBill: false,
     readyToBillAt: null,

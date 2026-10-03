@@ -439,6 +439,9 @@
       "journalsHint": "Journals with a line coded to this project.",
       "noAccess": "You don't have access to project payments",
       "noAccessHint": "Receipts, supplier payments and journals each need their own finance permission. Ask an administrator if you need one."
+    },
+    "redirect": {
+      "opening": "Opening…"
     }
   },
   "eligibility": {

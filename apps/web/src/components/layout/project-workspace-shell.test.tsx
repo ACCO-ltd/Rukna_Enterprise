@@ -423,11 +423,25 @@ describe('ProjectWorkspaceShell — navigation', () => {
       'Progress',
       'Commercial',
       'Procurement',
-      'Finance',
       'Documents',
       'Team',
     ]);
     expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
+  });
+
+  it('has no Finance tab, even for a finance reader (ADR-043 Phase 3: it lives in Finance → Projects)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      { permissions: ['view:project', 'view:contract', 'view:procurement', 'view:financial-position'] },
+    );
+    await openSelect(user, screen.getByRole('combobox'));
+    const labels = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(labels).toContain('Commercial');
+    expect(labels).not.toContain('Finance');
+    expect(screen.queryByRole('link', { name: 'Finance' })).not.toBeInTheDocument();
   });
 
   it('reaches the Commercial workspace directly rather than through a menu', () => {

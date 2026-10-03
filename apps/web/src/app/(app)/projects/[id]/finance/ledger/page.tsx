@@ -1,6 +1,9 @@
-import { LedgerView } from '@/features/finance/components/ledger-view';
+import { redirect } from 'next/navigation';
 
-export default async function LedgerPage({ params }: { params: Promise<{ id: string }> }) {
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
+/** ADR-043 Phase 3 — the project ledger now sits under Finance → Projects → P&L. */
+export default async function LegacyLedgerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <LedgerView projectId={id} />;
+  redirect(financeProjectRedirects.ledger(id));
 }

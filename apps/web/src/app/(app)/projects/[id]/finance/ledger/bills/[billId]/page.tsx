@@ -1,10 +1,13 @@
-import { ProjectBillPage } from '@/features/finance/components/project-bill-page';
+import { redirect } from 'next/navigation';
 
-export default async function ProjectBillRoute({
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
+/** ADR-043 Phase 3 — a bill opened from the old project ledger opens on the accounting bill page. */
+export default async function LegacyProjectBillRoute({
   params,
 }: {
   params: Promise<{ id: string; billId: string }>;
 }) {
-  const { id, billId } = await params;
-  return <ProjectBillPage projectId={id} billId={billId} />;
+  const { billId } = await params;
+  redirect(financeProjectRedirects.bill(billId));
 }

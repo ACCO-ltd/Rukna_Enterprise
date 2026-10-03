@@ -15,7 +15,7 @@ vi.mock('next/link', () => ({
   ),
 }));
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
-vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/projects/p1/commercial/billing' }));
+vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/projects/p1/commercial/contract' }));
 
 const workspace = vi.hoisted(() => ({ value: undefined as unknown }));
 vi.mock('../hooks/use-commercial-workspace', () => ({
@@ -30,7 +30,6 @@ const reopen = vi.hoisted(() => ({ mutate: vi.fn() }));
 vi.mock('@/features/contracts/hooks/use-contracts', () => ({
   useReopenContract: () => ({ ...reopen, isPending: false, isError: false, reset: vi.fn() }),
 }));
-vi.mock('./commercial-billing-view', () => ({ CommercialBillingView: () => <div>billing view</div> }));
 vi.mock('./commercial-contract-view', () => ({ CommercialContractView: () => <div>contract view</div> }));
 vi.mock('./applications-tab', () => ({ ApplicationsTab: () => <div>applications view</div> }));
 
@@ -46,7 +45,7 @@ describe('Commercial — no contract', () => {
       signBoq: { versionId: 'v1', versionNumber: 1 },
       capabilities: { ...workspaceFixture().capabilities, canRecordContract: true },
     });
-    renderWithProviders(<CommercialWorkspace projectId="p1" active="billing" />, { withToast: true });
+    renderWithProviders(<CommercialWorkspace projectId="p1" active="contract" />, { withToast: true });
     expect(screen.getByText('No contract yet')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Record signed contract' })).toHaveAttribute('href', '/projects/p1/commercial/contract/new');
     expect(screen.getByRole('link', { name: 'BOQ version 1' })).toBeInTheDocument();
@@ -56,32 +55,41 @@ describe('Commercial — no contract', () => {
 
   it('offers no command to someone who cannot record it', () => {
     workspace.value = workspaceFixture({ contract: null });
-    renderWithProviders(<CommercialWorkspace projectId="p1" active="billing" />, { withToast: true });
+    renderWithProviders(<CommercialWorkspace projectId="p1" active="contract" />, { withToast: true });
     expect(screen.queryByRole('link', { name: 'Record signed contract' })).not.toBeInTheDocument();
     expect(screen.getByText('The commercial team records the signed contract.')).toBeInTheDocument();
   });
 });
 
 describe('Commercial — with a contract', () => {
-  it('shows the contract bar with its five facts and no primary, then Billing · Contract with the To do count', () => {
+  it('shows the contract bar with its five facts and no primary, then the Contract view with no view switch', () => {
     workspace.value = workspaceFixture({ todo: [OVERDUE, READY] });
-    renderWithProviders(<CommercialWorkspace projectId="p1" active="billing" />, { withToast: true });
+    renderWithProviders(<CommercialWorkspace projectId="p1" active="contract" />, { withToast: true });
     expect(screen.getByRole('heading', { name: 'Main contract C1' })).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
     for (const label of ['Contract value', 'Invoiced', 'Collected', 'Outstanding', 'Overdue']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
     expect(screen.getByText('$12,600.00', { selector: '.text-danger' })).toBeInTheDocument();
-    const nav = screen.getByRole('navigation', { name: 'Commercial views' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Billing2', 'Contract']);
+    // ADR-043 Phase 3: Billing moved to Finance, so a milestone contract has one view and no switch.
+    expect(screen.queryByRole('navigation', { name: 'Commercial views' })).not.toBeInTheDocument();
     expect(screen.queryByText('Overview')).not.toBeInTheDocument();
-    expect(screen.getByText('billing view')).toBeInTheDocument();
+    expect(screen.getByText('contract view')).toBeInTheDocument();
   });
 
-  it('lands billers on Billing and everyone else on Contract', async () => {
+  it('keeps Contract · Applications for a measured contract', () => {
+    workspace.value = workspaceFixture({
+      contract: { ...workspaceFixture().contract!, billingModel: 'MEASURED_IPC' },
+    });
+    renderWithProviders(<CommercialWorkspace projectId="p1" active="contract" />, { withToast: true });
+    const nav = screen.getByRole('navigation', { name: 'Commercial views' });
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Contract', 'Applications']);
+  });
+
+  it('lands everyone — billers too — on Contract (billing lives in Finance)', async () => {
     workspace.value = workspaceFixture();
     const { unmount } = renderWithProviders(<CommercialWorkspace projectId="p1" active="landing" />, { withToast: true });
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/projects/p1/commercial/billing'));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/projects/p1/commercial/contract'));
     unmount();
     router.replace.mockReset();
     workspace.value = workspaceFixture({ capabilities: { ...workspaceFixture().capabilities, canBill: false } });

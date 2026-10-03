@@ -443,7 +443,7 @@ function AttentionRail({
               {t('performance.costLine', { built: pct(costWarning.physicalPercent), cost: pct(costWarning.costConsumedPercent) })}
             </p>
             {can('view:financial-position') ? (
-              <Link href={`/projects/${projectId}/finance`} className={linkClass}>
+              <Link href={`/finance/projects/${projectId}`} className={linkClass}>
                 {t('performance.openFinance')}
               </Link>
             ) : null}

@@ -269,6 +269,18 @@ export const STATUS_REGISTRY = {
     PARTIALLY_PAID: 'progress',
     PAID: 'success',
   },
+  /**
+   * ADR-043 Phase 3 — a stage's money-free billing / collection status (`StageCollectionStatus`),
+   * shown to project roles on the Commercial schedule and on Progress milestones.
+   */
+  stageCollection: {
+    NOT_READY: 'neutral',
+    READY_TO_BILL: 'progress',
+    BILLED: 'progress',
+    PART_PAID: 'attention',
+    PAID: 'success',
+    OVERDUE: 'danger',
+  },
   /** A row of the Commercial Billing "To do" list (`CommercialTodoKind`). */
   commercialTodo: {
     OVERDUE_INVOICE: 'danger',

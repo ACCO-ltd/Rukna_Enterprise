@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 
 import { stageFixture, workspaceFixture } from '../test-fixtures';
-import { CommercialContractView, installmentDisplayState } from './commercial-contract-view';
+import { CommercialContractView, PaymentSchedulePanel, installmentDisplayState } from './commercial-contract-view';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
@@ -34,8 +34,8 @@ vi.mock('./record-signed-date-dialog', () => ({ RecordSignedDateDialog: () => <d
 
 beforeEach(() => {
   schedule.installments = [
-    stageFixture({ id: 's1', sortOrder: 0, name: 'Advance (mobilisation)', percentage: '0.4000', amount: '165000.00', triggerType: 'ADVANCE', status: 'PAID', releasedBy: { kind: 'ADVANCE' }, invoiceId: 'inv-121', invoiceState: 'ISSUED' }),
-    stageFixture({ id: 's2', sortOrder: 1, name: 'Substructure complete', status: 'NEXT', releasedBy: { kind: 'MILESTONE', milestoneId: 'm1', milestoneCode: 'MS-01', milestoneName: 'Substructure complete', verifiedAt: '2026-09-26' } }),
+    stageFixture({ id: 's1', sortOrder: 0, name: 'Advance (mobilisation)', percentage: '0.4000', amount: '165000.00', triggerType: 'ADVANCE', status: 'PAID', releasedBy: { kind: 'ADVANCE' }, invoiceId: 'inv-121', invoiceState: 'ISSUED', collectionStatus: 'PAID' }),
+    stageFixture({ id: 's2', sortOrder: 1, name: 'Substructure complete', status: 'NEXT', releasedBy: { kind: 'MILESTONE', milestoneId: 'm1', milestoneCode: 'MS-01', milestoneName: 'Substructure complete', verifiedAt: '2026-09-26' }, collectionStatus: 'READY_TO_BILL' }),
     stageFixture({ id: 's3', sortOrder: 2, name: 'Frame complete', percentage: '0.2000', amount: '82500.00', billingBlocker: 'MILESTONE_NOT_VERIFIED', releasedBy: { kind: 'MILESTONE', milestoneId: 'm2', milestoneCode: 'MS-02', milestoneName: 'Frame complete', verifiedAt: null } }),
     stageFixture({ id: 's4', sortOrder: 3, name: 'Practical completion', percentage: '0.1000', amount: '41250.00', billingBlocker: 'MILESTONE_NOT_LINKED' }),
   ];
@@ -81,7 +81,7 @@ describe('Contract view — payment schedule', () => {
     expect(within(rows[0]!).getByText('Paid')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Ready to bill')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('MS-01 verified in Progress on Sep 26, 2026')).toBeInTheDocument();
-    expect(within(rows[2]!).getByText('Upcoming')).toBeInTheDocument();
+    expect(within(rows[2]!).getByText('Not ready')).toBeInTheDocument();
     expect(within(rows[2]!).getByRole('link', { name: 'Waits for MS-02 to be verified' })).toHaveAttribute('href', '/projects/p1/progress/review');
     expect(within(rows[3]!).getByText('Milestone · not linked yet')).toBeInTheDocument();
     expect(within(rows[3]!).getByRole('link', { name: 'Link it to a milestone in Progress › Plan & setup' })).toBeInTheDocument();
@@ -131,6 +131,63 @@ describe('Contract view — payment schedule', () => {
       />,
     );
     expect(screen.queryByRole('button', { name: 'Schedule actions' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Contract view — money-free billing status (ADR-043 Phase 3)', () => {
+  const statuses = [
+    ['NOT_READY', 'Not ready'],
+    ['READY_TO_BILL', 'Ready to bill'],
+    ['BILLED', 'Billed'],
+    ['PART_PAID', 'Part paid'],
+    ['PAID', 'Paid'],
+    ['OVERDUE', 'Overdue'],
+  ] as const;
+
+  it('words every server status, with no amount for a money-blind reader', () => {
+    schedule.installments = statuses.map(([status], index) =>
+      stageFixture({ id: `x${index}`, sortOrder: index, name: `Stage ${index}`, amount: null, amountPaid: null, collectionStatus: status }),
+    );
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture({ financialsVisible: false })} />, {
+      permissions: ['view:contract'],
+    });
+    const rows = scheduleRows();
+    statuses.forEach(([, label], index) => expect(within(rows[index]!).getByText(label)).toBeInTheDocument());
+    expect(screen.getByRole('columnheader', { name: 'Billing status' })).toBeInTheDocument();
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
+  });
+
+  it('offers no billing command, invoice link or Finance link to a construction reader', () => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['view:contract', 'manage:project'],
+    });
+    expect(screen.queryByRole('link', { name: 'Open in Finance' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'View invoice' })).not.toBeInTheDocument();
+    for (const name of [/Prepare/, /Issue/, /Record payment/, /Send/, /reminder/i]) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+    expect(screen.getByText('Invoices, payments and reminders are handled by Finance.')).toBeInTheDocument();
+  });
+
+  it('gives a finance reader "Open in Finance" and the invoice in Finance', () => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['view:contract', 'view:financial-position'],
+    });
+    expect(screen.getByRole('link', { name: 'Open in Finance' })).toHaveAttribute('href', '/finance/projects/p1/billing');
+    const invoiceLinks = screen.getAllByRole('link', { name: 'View invoice' });
+    expect(invoiceLinks.length).toBeGreaterThan(0);
+    for (const link of invoiceLinks) expect(link).toHaveAttribute('href', '/finance/projects/p1/billing/invoices/inv-121');
+  });
+
+  it('keeps the billing-pipeline words in Finance (mode="finance")', () => {
+    renderWithProviders(<PaymentSchedulePanel projectId="p1" workspace={workspaceFixture()} mode="finance" />, {
+      permissions: ['view:financial-position'],
+    });
+    const rows = scheduleRows();
+    expect(within(rows[1]!).getByText('Ready to bill')).toBeInTheDocument();
+    expect(within(rows[0]!).getByText('Paid')).toBeInTheDocument();
+    expect(within(rows[2]!).getByText('Upcoming')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open in Finance' })).not.toBeInTheDocument();
   });
 });
 

@@ -12,27 +12,27 @@ import { ApiError } from '@/lib/api-client';
 import { useCommercialSummary } from '../hooks/use-commercial';
 import { useCommercialWorkspace } from '../hooks/use-commercial-workspace';
 import { ApplicationsTab } from './applications-tab';
-import { CommercialBillingView } from './commercial-billing-view';
 import { CommercialContextBar } from './commercial-context-bar';
 import { CommercialContractView } from './commercial-contract-view';
 import {
+  COMMERCIAL_LANDING_TAB,
   CommercialNav,
-  commercialLandingTab,
   commercialTabHref,
   commercialTabsFor,
   type CommercialTab,
 } from './commercial-nav';
 
 /**
- * The Commercial tab: "here's what we're owed and what we've collected".
+ * The Commercial tab: the contract, how it bills, and where each stage stands.
  *
  * No page title — the project tab bar already says "Commercial". Without a contract the tab is one
  * empty state with the one way forward. With one, a bar states the contract and its five figures,
  * the view switch sits under it, and the view does the work. Every figure, ranking and permission
  * comes from `GET …/commercial/workspace`; this component only arranges it.
  *
- * `active="landing"` is `/commercial` itself: it lands billers on Billing and everyone else on
- * Contract (the JWT permissions live client-side, so the choice is made here, not in the route).
+ * `active="landing"` is `/commercial` itself and lands on Contract. ADR-043 Phase 3: billing and
+ * collection commands moved to Finance → Projects → Billing (decision 1: Finance issues invoices);
+ * this tab keeps the contract, the schedule with a money-free status per stage, and variations.
  */
 export function CommercialWorkspace({
   projectId,
@@ -49,7 +49,7 @@ export function CommercialWorkspace({
 
   useEffect(() => {
     if (active === 'landing' && workspace && contract) {
-      router.replace(commercialTabHref(projectId, commercialLandingTab(workspace.capabilities.canBill)));
+      router.replace(commercialTabHref(projectId, COMMERCIAL_LANDING_TAB));
     }
   }, [active, workspace, contract, projectId, router]);
 
@@ -109,12 +109,7 @@ export function CommercialWorkspace({
   return (
     <div className="space-y-4" data-commercial-root>
       <CommercialContextBar projectId={projectId} workspace={workspace} />
-      <CommercialNav
-        projectId={projectId}
-        active={active}
-        billingModel={contract.billingModel}
-        billingCount={workspace.todo.length}
-      />
+      <CommercialNav projectId={projectId} active={active} billingModel={contract.billingModel} />
       {!available.includes(active) ? (
         <EmptyState
           variant="page"
@@ -122,12 +117,10 @@ export function CommercialWorkspace({
           description={t('applicationsHidden.description')}
           action={
             <Button asChild variant="outline">
-              <Link href={commercialTabHref(projectId, 'billing')}>{t('applicationsHidden.action')}</Link>
+              <Link href={commercialTabHref(projectId, 'contract')}>{t('applicationsHidden.action')}</Link>
             </Button>
           }
         />
-      ) : active === 'billing' ? (
-        <CommercialBillingView projectId={projectId} workspace={workspace} />
       ) : active === 'contract' ? (
         <CommercialContractView projectId={projectId} workspace={workspace} />
       ) : (

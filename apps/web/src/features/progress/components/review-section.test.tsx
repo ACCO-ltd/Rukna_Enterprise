@@ -212,7 +212,7 @@ describe('ReviewSection — milestones ready to verify', () => {
       data: [
         milestone({
           releases: [
-            { installmentId: 'i1', name: 'Frame stage', percentage: '0.3', triggerType: 'MILESTONE', amount: '30000.00', currency: 'USD', invoiced: false },
+            { installmentId: 'i1', name: 'Frame stage', percentage: '0.3', triggerType: 'MILESTONE', amount: '30000.00', currency: 'USD', invoiced: false, collectionStatus: 'NOT_READY' },
           ],
         }),
         milestone({ id: 'm2', code: 'M3', name: 'Roof', readyToVerify: false }),
@@ -247,7 +247,7 @@ describe('ReviewSection — milestones ready to verify', () => {
       data: [
         milestone({
           releases: [
-            { installmentId: 'i1', name: 'Frame stage', percentage: '0.3', triggerType: 'MILESTONE', amount: null, currency: 'USD', invoiced: false },
+            { installmentId: 'i1', name: 'Frame stage', percentage: '0.3', triggerType: 'MILESTONE', amount: null, currency: 'USD', invoiced: false, collectionStatus: 'NOT_READY' },
           ],
         }),
       ],
@@ -282,7 +282,7 @@ describe('ReviewSection — milestones ready to verify', () => {
             { id: 'wp2', code: 'WP-02', name: 'Roof', percentComplete: 60 },
           ],
           releases: [
-            { installmentId: 'i', name: 'Roof stage', percentage: '0.2', triggerType: 'MILESTONE', amount: null, currency: 'USD', invoiced: false },
+            { installmentId: 'i', name: 'Roof stage', percentage: '0.2', triggerType: 'MILESTONE', amount: null, currency: 'USD', invoiced: false, collectionStatus: 'NOT_READY' },
           ],
         }),
         milestone({ id: 'm-done', code: 'M0', name: 'Site handover', status: 'VERIFIED', readyToVerify: false }),

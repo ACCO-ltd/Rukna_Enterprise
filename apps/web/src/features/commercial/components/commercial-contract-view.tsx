@@ -29,6 +29,9 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { statusTone } from '@/lib/status-registry';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 
+import { useCanViewFinanceProjects } from '@/features/finance-projects/hooks';
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
 import { useCommercialCurrentCycle, useCommercialSummary } from '../hooks/use-commercial';
 import { projectInvoiceHref, type InvoiceHrefBuilder } from './commercial-billing-view';
 import { ContractChangesPanel } from './contract-changes-panel';
@@ -41,6 +44,10 @@ import { StageEligibilityNote } from './stage-eligibility-note';
  * and the one reason it is waiting), and what has changed since (variations, separate charges,
  * time). Read-only apart from the few commands the server allows; the schedule's reasons come from
  * `installmentBillingBlocker` via the read model, never from rules re-derived here.
+ *
+ * ADR-043 Phase 3 — this is the whole project Commercial tab for a milestone contract. Billing and
+ * collection commands live in Finance → Projects → Billing; here each stage shows a money-free
+ * status and a finance reader gets an "Open in Finance" link.
  */
 export function CommercialContractView({
   projectId,
@@ -215,19 +222,33 @@ export function installmentDisplayState(inst: CommercialPaymentScheduleInstallme
 /**
  * The payment schedule: each stage, its state and the one reason it is waiting. Exported so the
  * Finance workspace (ADR-043) renders the same panel; `invoiceHref` says where a billed stage's
- * invoice opens (the project invoice page by default).
+ * invoice opens (the invoice page in Finance → Projects → Billing by default).
+ *
+ * `mode` (ADR-043 Phase 3):
+ *  - `project` (the project's Commercial tab) — the status column is the stage's money-free
+ *    billing / collection status (`collectionStatus`: Not ready · Ready to bill · Billed · Part
+ *    paid · Paid · Overdue), never an amount-bearing word; invoice links and the "Open in Finance"
+ *    link render only for a finance reader (`view:financial-position`). No billing command.
+ *  - `finance` — Finance's Billing tab: the billing-pipeline word (Draft / Ready / Billed …) that
+ *    tells the finance team what to prepare or issue.
  */
 export function PaymentSchedulePanel({
   projectId,
   workspace,
   invoiceHref = projectInvoiceHref(projectId),
+  mode = 'project',
 }: {
   projectId: string;
   workspace: CommercialWorkspaceResponse;
   invoiceHref?: InvoiceHrefBuilder;
+  mode?: 'project' | 'finance';
 }) {
   const t = useTranslations('commercial.contractView');
   const tState = useTranslations('commercial.contractView.stageStatus');
+  const tCollection = useTranslations('commercial.contractView.collectionStatus');
+  const canViewFinance = useCanViewFinanceProjects();
+  // In the project, an invoice opens only for a finance reader (it lives in Finance now).
+  const showInvoiceLinks = mode === 'finance' || canViewFinance;
   const locale = useLocale() as 'en' | 'ar';
   const cycle = useCommercialCurrentCycle(projectId);
   const canVerify = usePermissions().can('manage:project');
@@ -283,7 +304,7 @@ export function PaymentSchedulePanel({
       if (inst.billingBlocker === 'CONTRACT_NOT_ACTIVE') return t('reasonContractNotActive');
       return inst.expectedDate ? t('reasonExpected', { date: date(inst.expectedDate) }) : null;
     }
-    return inst.invoiceId ? (
+    return inst.invoiceId && showInvoiceLinks ? (
       <Link href={invoiceHref(inst.invoiceId)} className="text-brand-primary hover:underline">
         {t('viewInvoice')}
       </Link>
@@ -321,14 +342,20 @@ export function PaymentSchedulePanel({
     },
     {
       key: 'status',
-      header: t('status'),
+      header: mode === 'project' ? t('collectionHeader') : t('status'),
       card: 'status',
       render: (inst) => {
         const state = installmentDisplayState(inst, today);
         const why = reason(inst);
         return (
           <div className="min-w-0 space-y-0.5">
-            <StatusPill tone={statusTone(state, 'paymentInstallment')}>{tState(state)}</StatusPill>
+            {mode === 'project' ? (
+              <StatusPill tone={statusTone(inst.collectionStatus, 'stageCollection')}>
+                {tCollection(inst.collectionStatus)}
+              </StatusPill>
+            ) : (
+              <StatusPill tone={statusTone(state, 'paymentInstallment')}>{tState(state)}</StatusPill>
+            )}
             {why ? <p className="text-caption text-muted-foreground">{why}</p> : null}
             {/* ADR-043 Phase 2: the server's blocking reason + owner, and the billing steps. */}
             <StageEligibilityNote eligibility={inst.billingEligibility as StageBillingEligibility | undefined} />
@@ -355,7 +382,14 @@ export function PaymentSchedulePanel({
               <MoneyDisplay value={schedule.contractValue} />
             ) : null}
           </p>
+          {mode === 'project' ? <p className="text-caption text-muted-foreground">{t('financeNote')}</p> : null}
         </div>
+        <div className="flex shrink-0 items-center gap-1">
+        {mode === 'project' && canViewFinance ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={financeProjectRedirects.billing(projectId)}>{t('openInFinance')}</Link>
+          </Button>
+        ) : null}
         {canReprofile ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -368,6 +402,7 @@ export function PaymentSchedulePanel({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
+        </div>
       </div>
 
       <PlatformDataGrid

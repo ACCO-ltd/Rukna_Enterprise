@@ -1,6 +1,9 @@
-import { CostControlView } from '@/features/finance/components/cost-control-view';
+import { redirect } from 'next/navigation';
 
-export default async function CostControlPage({ params }: { params: Promise<{ id: string }> }) {
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
+/** ADR-043 Phase 3 — moved to Finance → Projects → Cost & commitments. */
+export default async function LegacyCostControlPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <CostControlView projectId={id} />;
+  redirect(financeProjectRedirects.costControl(id));
 }

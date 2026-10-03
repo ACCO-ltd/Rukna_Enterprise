@@ -1,18 +1,12 @@
 import { redirect } from 'next/navigation';
 
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
 /**
- * Absorbed into the Commercial workspace.
- *
- * The project-scoped contracts list was one of three entries in a Commercial dropdown that
- * duplicated the Commercial workspace's own sub-navigation. A contract is now read at
- * Commercial → Main Contract. The route is kept as a redirect so existing links, bookmarks
- * and anything that deep-links here still land somewhere correct.
+ * Legacy project contracts list. A contract is read at Commercial → Contract; one hop (it used to
+ * go via /commercial/main-contract, itself a redirect).
  */
-export default async function ProjectContractsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ProjectContractsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  redirect(`/projects/${id}/commercial/main-contract`);
+  redirect(financeProjectRedirects.contracts(id));
 }

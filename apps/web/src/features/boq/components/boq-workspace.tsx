@@ -51,6 +51,7 @@ import { BoqHistoryDialog } from './boq-history-dialog';
 import { UnitsUnavailableNotice } from './boq-unit-select';
 import { BoqToolbar, type LineFilter } from './boq-toolbar';
 import type { BoqTreeNodeResponse } from '@erp/types';
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
 
 /** Procurement setup's unit registry (nav-groups.ts), behind `manage:procurement-config`. */
 const UNITS_ADMIN_HREF = '/procurement/setup/uom';
@@ -538,7 +539,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   duration: 9000,
                   action: {
                     label: t('classifier.reviewInBilling'),
-                    onClick: () => router.push(`/projects/${projectId}/commercial/billing`),
+                    onClick: () => router.push(financeProjectRedirects.billing(projectId)),
                   },
                 }
               : {}),

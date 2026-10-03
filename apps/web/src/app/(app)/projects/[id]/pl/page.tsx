@@ -1,15 +1,12 @@
 import { redirect } from 'next/navigation';
 
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
 /**
- * The Finance tab used to land here, on the Project Actual P&L alone — a subset presented as the
- * whole project's finances. It now lands on the Finance workspace; this route keeps every
- * existing link, bookmark and notification working by sending them to the report they meant.
+ * The oldest project P&L URL. It first moved under the project Finance tab; since ADR-043 Phase 3
+ * the P&L lives in Finance → Projects, so it goes straight there (one hop, not two).
  */
-export default async function LegacyProjectPlPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function LegacyProjectPlPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  redirect(`/projects/${id}/finance/profit-loss`);
+  redirect(financeProjectRedirects.profitLoss(id));
 }

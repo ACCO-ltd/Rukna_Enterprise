@@ -28,6 +28,7 @@ import { formatDate } from '@/lib/format';
 
 import { usePreparePackage, usePreparePreview } from '../hooks/use-commercial-invoice';
 import { formatRate, prepareTotals } from './prepare-invoice-dialog.model';
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
 
 export interface PrepareInvoiceDialogProps {
   projectId: string;
@@ -97,7 +98,8 @@ export function PrepareInvoiceDialog({ projectId, installmentId, open, onClose }
       {
         onSuccess: (result) => {
           close();
-          router.push(`/projects/${projectId}/commercial/invoices/${result.invoiceId}`);
+          // ADR-043 Phase 3 — the prepared draft opens in Finance → Projects → Billing.
+          router.push(financeProjectRedirects.invoice(projectId, result.invoiceId));
         },
       },
     );

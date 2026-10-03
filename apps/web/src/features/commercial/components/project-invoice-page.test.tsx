@@ -75,7 +75,7 @@ describe('ProjectInvoicePage — the invoice as a document inside the project', 
     getDocument.mockResolvedValue(makeInvoiceDocument());
     renderPage();
     const back = await screen.findByRole('link', { name: 'Billing' });
-    expect(back).toHaveAttribute('href', '/projects/p1/commercial/billing');
+    expect(back).toHaveAttribute('href', '/finance/projects/p1/billing');
   });
 
   it('draft: the primary is Issue invoice, with the draft title, pills and who created it', async () => {
@@ -211,7 +211,7 @@ describe('ProjectInvoicePage — the invoice as a document inside the project', 
     const dialog = await screen.findByRole('dialog', { name: 'Delete draft invoice?' });
     await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/projects/p1/commercial/billing'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/finance/projects/p1/billing'));
     expect(invoiceApi.deleteDraftInvoice).toHaveBeenCalledWith('p1', 'inv-1');
   });
 

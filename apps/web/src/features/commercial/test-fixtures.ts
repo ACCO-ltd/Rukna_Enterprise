@@ -170,6 +170,7 @@ export function stageFixture(overrides: Partial<CommercialPaymentScheduleInstall
     dueOffsetDays: null,
     dueDate: null,
     status: 'UPCOMING',
+    collectionStatus: 'NOT_READY',
     programmeMilestone: null,
     readyToBill: false,
     readyToBillAt: null,

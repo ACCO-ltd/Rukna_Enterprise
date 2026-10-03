@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import type { MilestoneReleaseLine, ProgrammeMilestoneResponse } from '@erp/types';
+import type { MilestoneReleaseLine, ProgrammeMilestoneResponse, StageCollectionStatus } from '@erp/types';
 import {
   Alert,
   Button,
@@ -36,6 +36,7 @@ import {
   RefTh,
   RefThead,
   RefTr,
+  type RefTone,
 } from '@/features/progress/components/ref-ui';
 
 const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
@@ -73,6 +74,16 @@ function releaseAmount(
   if (release.amount === null) return hiddenLabel;
   return formatMoney(release.amount, release.currency, locale) ?? release.amount;
 }
+
+/** The pill colour for a stage's billing status (ref-ui palette; same reading as `stageCollection`). */
+const COLLECTION_TONE: Record<StageCollectionStatus, RefTone> = {
+  NOT_READY: 'gray',
+  READY_TO_BILL: 'blue',
+  BILLED: 'blue',
+  PART_PAID: 'amber',
+  PAID: 'green',
+  OVERDUE: 'red',
+};
 
 /**
  * One release line. A null `percentage` means the server withheld the share of the contract value
@@ -223,11 +234,14 @@ function ReleasesCell({
       {releases.map((r) => (
         <li key={r.installmentId} className="flex flex-wrap items-center gap-1.5">
           <span className="text-body text-foreground">{releaseLine(r, locale, t)}</span>
-          {r.invoiced ? (
-            <RefPill tone="green" aria-label={t('programme.releases.invoicedLabel')}>
-              {t('programme.releases.invoiced')}
-            </RefPill>
-          ) : null}
+          {/* ADR-043 Phase 3 — the stage's money-free billing status (server-derived), shown to
+              every reader: a status is not money, so money-blind roles see it too. */}
+          <RefPill
+            tone={COLLECTION_TONE[r.collectionStatus]}
+            aria-label={t('programme.releases.statusLabel', { status: t(`programme.releases.status.${r.collectionStatus}`) })}
+          >
+            {t(`programme.releases.status.${r.collectionStatus}`)}
+          </RefPill>
           {/* The same ProgrammeMilestone is read from both domains (see research) — this only
               deep-links into where its billing side lives, never creates or copies anything. */}
           <Link

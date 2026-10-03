@@ -23,6 +23,7 @@ function release(overrides: Partial<MilestoneReleaseLine> = {}): MilestoneReleas
     amount: '300000.00',
     currency: 'USD',
     invoiced: false,
+    collectionStatus: 'NOT_READY',
     ...overrides,
   };
 }
@@ -94,18 +95,27 @@ describe('MilestonesSection — Releases affordance (P2 milestone → payment br
     expect(line).toHaveTextContent(/\$300,000\.00/);
   });
 
-  it('marks an already-invoiced release with a subtle tag', () => {
-    stubList([milestone({ releases: [release({ invoiced: true })] })]);
+  it.each([
+    ['NOT_READY', 'Not ready'],
+    ['READY_TO_BILL', 'Ready to bill'],
+    ['BILLED', 'Billed'],
+    ['PART_PAID', 'Part paid'],
+    ['PAID', 'Paid'],
+    ['OVERDUE', 'Overdue'],
+  ] as const)('tags a %s release with its money-free billing status (ADR-043 Phase 3)', (status, label) => {
+    stubList([milestone({ releases: [release({ collectionStatus: status })] })]);
     renderWithProviders(<MilestonesSection projectId="p-1" />);
 
-    expect(screen.getByText('invoiced')).toBeInTheDocument();
+    expect(screen.getByLabelText(`Billing status: ${label}`)).toHaveTextContent(label);
   });
 
-  it('does not mark a release that has not been invoiced', () => {
-    stubList([milestone({ releases: [release({ invoiced: false })] })]);
+  it('shows the status to a money-blind reader with no amount', () => {
+    stubList([milestone({ releases: [release({ percentage: null, amount: null, invoiced: true, collectionStatus: 'PART_PAID' })] })]);
     renderWithProviders(<MilestonesSection projectId="p-1" />);
 
-    expect(screen.queryByText('invoiced')).not.toBeInTheDocument();
+    expect(screen.getByText('Part paid')).toBeInTheDocument();
+    expect(screen.getByText('Releases Structure · amount restricted')).toBeInTheDocument();
+    expect(screen.queryByText(/300,000/)).not.toBeInTheDocument();
   });
 
   it('shows a muted em dash when a milestone releases nothing', () => {

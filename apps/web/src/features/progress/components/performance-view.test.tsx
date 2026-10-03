@@ -243,7 +243,7 @@ describe('PerformanceView — packages and attention', () => {
     renderWithProviders(<PerformanceView projectId="p1" />, {
       permissions: ['view:project', 'view:financial-position', 'view:contract'],
     });
-    expect(screen.getByRole('link', { name: 'Open Finance' })).toHaveAttribute('href', '/projects/p1/finance');
+    expect(screen.getByRole('link', { name: 'Open Finance' })).toHaveAttribute('href', '/finance/projects/p1');
     expect(screen.getByRole('link', { name: 'Open Billing & collection' })).toHaveAttribute(
       'href',
       '/projects/p1/commercial/billing',

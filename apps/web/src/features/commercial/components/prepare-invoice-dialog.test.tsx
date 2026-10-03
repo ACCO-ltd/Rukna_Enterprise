@@ -229,7 +229,7 @@ describe('PrepareInvoiceDialog — creates a draft from the server preview', () 
     await within(dialog).findByText('Structure complete');
     await user.click(within(dialog).getByRole('button', { name: 'Create draft invoice' }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/projects/p1/commercial/invoices/inv-9'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/finance/projects/p1/billing/invoices/inv-9'));
     expect(invoiceApi.preparePackage).toHaveBeenCalledWith('p1', 'inst-2', { selectedVariationIds: ['vo-3'] });
     expect(onClose).toHaveBeenCalled();
   });

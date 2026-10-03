@@ -1,6 +1,9 @@
-import { ProfitLossView } from '@/features/finance/components/profit-loss-view';
+import { redirect } from 'next/navigation';
 
-export default async function ProfitLossPage({ params }: { params: Promise<{ id: string }> }) {
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+
+/** ADR-043 Phase 3 — moved to Finance → Projects → P&L. */
+export default async function LegacyProfitLossPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <ProfitLossView projectId={id} />;
+  redirect(financeProjectRedirects.profitLoss(id));
 }

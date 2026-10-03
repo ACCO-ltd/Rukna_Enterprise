@@ -6,7 +6,6 @@ import { renderWithProviders } from '@/test/render';
 
 import { BLOCKED, DRAFT, OVERDUE, READY, invoiceRow, receiptRow, workspaceFixture } from '../test-fixtures';
 import { CommercialBillingView, collectionState } from './commercial-billing-view';
-import { accountingInvoiceHref } from '@/features/finance-projects/components/finance-project-billing';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
@@ -236,12 +235,12 @@ describe('Billing — invoices and payments', () => {
 });
 
 describe('Billing — in the Finance workspace (ADR-043)', () => {
-  it('opens every invoice on the accounting invoice page when given a Finance link builder', () => {
+  it('opens every invoice where the given link builder says', () => {
     renderWithProviders(
       <CommercialBillingView
         projectId="p1"
         workspace={workspaceFixture({ todo: [OVERDUE, READY, DRAFT, BLOCKED] })}
-        invoiceHref={accountingInvoiceHref}
+        invoiceHref={(id) => `/finance/accounting/invoices/${id}`}
       />,
     );
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? '');
@@ -249,10 +248,11 @@ describe('Billing — in the Finance workspace (ADR-043)', () => {
     expect(hrefs.filter((h) => h.includes('/commercial/invoices/'))).toEqual([]);
   });
 
-  it('keeps the project invoice page by default', () => {
+  it('by default opens the invoice page inside Finance → Projects → Billing (ADR-043 Phase 3)', () => {
     render();
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? '');
-    expect(hrefs.some((h) => h.startsWith('/projects/p1/commercial/invoices/'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/finance/projects/p1/billing/invoices/'))).toBe(true);
+    expect(hrefs.filter((h) => h.startsWith('/projects/'))).not.toContainEqual(expect.stringContaining('/commercial/invoices/'));
   });
 });
 
