@@ -293,3 +293,59 @@ invoice notification now link to Finance directly.
 | Commercial → payment schedule | status column = money-free status; "Open in Finance" and invoice links only for `view:financial-position` |
 | Progress → milestones | each release line shows the money-free status (was an "invoiced" tag) |
 | Project Overview | unchanged (Construction Director's read-only money summary, decision 2) |
+
+## Phase 4 — cash-flow forecast and exports
+
+Types: `packages/types/src/finance-cashflow.ts`. No migration.
+
+### `GET /api/v1/finance/cashflow` → `CashflowForecastResponse`
+
+**Gate:** `view:financial-position`. Organisation-scoped; `projectId` (optional) checks project
+access (`assertMember`: 404 / 403); without it the forecast covers `accessibleProjectIds`.
+
+| Param | Values |
+| --- | --- |
+| `projectId` | one project; omit for the portfolio |
+| `bucket` | `WEEK` (Monday–Sunday, UTC; default) · `MONTH` (400 otherwise) |
+| `from` | ISO date; default today; a past date reads as today |
+| `to` | ISO date; default 12 weeks / 6 months after `from`. Before `from` (after the past-date rule) or more than 104 periods (weeks or months) → 400 |
+
+**Response:** `currencies[]` (one per currency, by code — never added across currencies), each with
+`buckets[]` in order `NOW` · the periods · `LATER` · `UNDATED`, each bucket `inflows {fromInvoices,
+fromUnbilledStages, fromOpeningReceivables, total}`, `outflows {fromSupplierBills,
+fromOpenCommitments, fromOpeningPayables, total}`, `net`,
+`cumulativeNet` (running from `NOW` through `LATER`; null on `UNDATED`); `totals`; `counts` per line.
+Also `basis` (a plain-words note per line), `exclusions`, `from` / `to` (the first / last period's
+days), `moneyVisible` (the portfolio's money rule; amounts null when false), `asOf`.
+
+| Line | Amount (existing definition) | Date |
+| --- | --- | --- |
+| `fromInvoices` | POSTED client invoice `outstandingAmount` (`findPostedReceivablesByProject`) — Σ = portfolio `outstanding` | due date; before today → `NOW`; none → `UNDATED` |
+| `fromUnbilledStages` | stages of the ACTIVE main contract with `deriveInvoiceState` ≠ ISSUED (no invoice, cancelled, or a draft) — `scheduleBaseValue` × percentage | `deriveExpectedDate` or `readyToBillAt` (earlier wins), not before today; + contract terms via `resolveInvoiceDates`; no date and not ready → `UNDATED` |
+| `fromSupplierBills` | `findBillsToPay` (POSTED, outstanding > 0, header-or-line) — Σ = portfolio `billsToPay.amount`; a two-project bill counts once | due date; before today → `NOW` |
+| `fromOpenCommitments` | commitment ledger per project × purchase order × currency: COMMITTED + ACCRUED (`addStage`); ≤ 0 skipped | current revision's `expectedDeliveryDate` + `Supplier.paymentTermsDays`; either missing, or no order on the ledger row → `UNDATED` |
+| `fromOpeningReceivables` | OPENING_BALANCE client invoices, `outstandingAmount` > 0 (`findOpeningReceivables`). Company-wide: all (a project-limited caller: those coded to their projects); one project: those coded to it | due date; before today → `NOW` |
+| `fromOpeningPayables` | OPENING_BALANCE supplier bills, `outstandingAmount` > 0, header-or-line project match (`findOpeningPayables`), same scope | due date; before today → `NOW` |
+
+Reconciliation (DB test): `fromInvoices` + `fromOpeningReceivables` = portfolio `outstanding` +
+opening-balance invoices' outstanding; `fromSupplierBills` + `fromOpeningPayables` = portfolio
+`billsToPay.amount` + opening-balance bills' outstanding. The portfolio itself still reads POSTED
+documents only.
+
+**Not included** (`exclusions`): the bank balance today (cumulative net starts at zero); documents
+issued in Rukna that are not coded to a project (opening balances are included company-wide);
+separate-charge variations until invoiced, and tax an invoice adds on top of
+a stage amount; stages of contracts that are not ACTIVE.
+
+### Screens
+
+| Where | What |
+| --- | --- |
+| Finance → Reports → **Cash flow** (`/finance/cashflow`, gated `view:financial-position`) | portfolio forecast: weekly / monthly, currency switch, bars (in / out) + cumulative line, table, "How this forecast is worked out" (the `basis` and `exclusions`), Export CSV / Excel |
+| `/finance/projects/:id/cashflow` | the same view for one project |
+| `/finance/projects` | **Export CSV / Excel** of the current queue's rows (the grid's columns; Needs action as text) + one totals line per currency. The grid's in-page text search is not applied to the file. |
+
+Exports are built in the browser from the loaded rows (`exportCsv`; `downloadXlsx`, a
+dependency-free XLSX writer). Money is written as numbers; hidden money as empty cells. CSV text
+cells starting `=`, `+`, `-`, `@`, tab or CR are prefixed with `'` (formula injection; plain
+decimal strings untouched). XLSX text is inline strings, never evaluated.

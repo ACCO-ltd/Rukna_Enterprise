@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { reportFilename, toCsv } from './export-csv';
+import { neutraliseFormula, reportFilename, toCsv } from './export-csv';
 
 describe('toCsv', () => {
   it('joins a header row and body rows with CRLF', () => {
@@ -21,6 +21,33 @@ describe('toCsv', () => {
   it('writes an empty cell for null or undefined, and keeps a numeric zero', () => {
     const csv = toCsv(['A', 'B', 'C'], [[null, undefined, 0]]);
     expect(csv).toBe('A,B,C\r\n,,0');
+  });
+});
+
+describe('CSV formula injection', () => {
+  it('prefixes a text cell a spreadsheet would run as a formula with a quote', () => {
+    expect(['=SUM(A1)', '+1+1', '-2+3', '@cmd', '\tx', '\rx'].map(neutraliseFormula)).toEqual([
+      "'=SUM(A1)",
+      "'+1+1",
+      "'-2+3",
+      "'@cmd",
+      "'\tx",
+      "'\rx",
+    ]);
+  });
+
+  it('leaves numbers, plain decimal strings and ordinary text alone', () => {
+    expect(neutraliseFormula(-1234.5)).toBe(-1234.5);
+    expect(neutraliseFormula('-1234.50')).toBe('-1234.50');
+    expect(neutraliseFormula('-7')).toBe('-7');
+    expect(neutraliseFormula('Salaam Bank')).toBe('Salaam Bank');
+    expect(neutraliseFormula(null)).toBeNull();
+  });
+
+  it('applies inside toCsv, quoting still per RFC 4180', () => {
+    expect(toCsv(['Name', 'Amount'], [['=HYPERLINK("x")', -50], ['-1,5', '-12.00']])).toBe(
+      'Name,Amount\r\n"\'=HYPERLINK(""x"")",-50\r\n"\'-1,5",-12.00',
+    );
   });
 });
 

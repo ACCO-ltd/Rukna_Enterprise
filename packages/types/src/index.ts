@@ -15,3 +15,4 @@ export * from './communications';
 export * from './whatsapp-send';
 export * from './finance-portfolio';
 export * from './finance-eligibility';
+export * from './finance-cashflow';

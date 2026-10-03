@@ -5,7 +5,9 @@ import { AccountingCoreModule } from '../../accounting/accounting-core/accountin
 import { FinancialPositionModule } from '../../accounting/financial-position/financial-position.module.js';
 import { ProjectProcurementModule } from '../../procurement/project-procurement/project-procurement.module.js';
 import { CommercialModule } from '../commercial/commercial.module.js';
+import { FinanceCashflowService } from './application/finance-cashflow.service.js';
 import { FinancePortfolioService } from './application/finance-portfolio.service.js';
+import { FinanceCashflowController } from './presentation/finance-cashflow.controller.js';
 import { FinancePortfolioController } from './presentation/finance-portfolio.controller.js';
 
 /**
@@ -15,7 +17,7 @@ import { FinancePortfolioController } from './presentation/finance-portfolio.con
  */
 @Module({
   imports: [TenancyModule, AccountingCoreModule, FinancialPositionModule, ProjectProcurementModule, CommercialModule],
-  providers: [FinancePortfolioService],
-  controllers: [FinancePortfolioController],
+  providers: [FinancePortfolioService, FinanceCashflowService],
+  controllers: [FinancePortfolioController, FinanceCashflowController],
 })
 export class FinancePortfolioModule {}

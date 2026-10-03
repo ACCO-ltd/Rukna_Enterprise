@@ -15,13 +15,29 @@
 /** One field of a CSV row: a string, a number, or nothing. Absence becomes an empty cell. */
 export type CsvCell = string | number | null | undefined;
 
+/** A plain decimal ("-1234.50") — a number written as text, which a spreadsheet cannot run. */
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
+
+/**
+ * CSV formula injection: a spreadsheet runs a text cell that starts with `=`, `+`, `-`, `@`, tab
+ * or carriage return as a formula, and names, descriptions and references in these exports are
+ * user-entered. Such a string cell is prefixed with a single quote so it opens as text. Numbers
+ * stay numbers: a `number` cell is never touched, and neither is a string that is just a plain
+ * decimal (a negative amount sent as "-1234.50"). Callers should still pass money as numbers.
+ */
+export function neutraliseFormula(cell: CsvCell): CsvCell {
+  if (typeof cell !== 'string' || PLAIN_NUMBER.test(cell)) return cell;
+  return /^[=+\-@\t\r]/.test(cell) ? `'${cell}` : cell;
+}
+
 /**
  * Escapes a single cell per RFC 4180: wrap in quotes when it holds a comma, a quote or a
- * newline, and double any embedded quote. Everything else is written bare.
+ * newline, and double any embedded quote. Everything else is written bare. A string that a
+ * spreadsheet would run as a formula is neutralised first (`neutraliseFormula`).
  */
 function escapeCell(cell: CsvCell): string {
   if (cell === null || cell === undefined) return '';
-  const text = String(cell);
+  const text = String(neutraliseFormula(cell));
   if (/[",\r\n]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }

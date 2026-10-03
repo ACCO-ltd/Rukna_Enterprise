@@ -117,6 +117,12 @@ describe('NAV_DOMAINS', () => {
       const projects = finance().items.find((i) => i.href === '/finance/projects');
       expect(projects?.permissionKey).toBe('view:financial-position');
     });
+
+    it('lists Cash flow under Reports, gated like GET /finance/cashflow (ADR-043 Phase 4)', () => {
+      const cashflow = finance().items.find((i) => i.href === '/finance/cashflow');
+      expect(cashflow?.groupKey).toBe('reports');
+      expect(cashflow?.permissionKey).toBe('view:financial-position');
+    });
   });
 
   describe('procurement domain', () => {
