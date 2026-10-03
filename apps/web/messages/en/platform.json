@@ -2526,7 +2526,6 @@
       "valueInvalid": "Enter the signed value, with no more than two decimal places.",
       "startDate": "Start date",
       "endDate": "Expected completion",
-      "endBeforeStart": "Expected completion cannot be before the start date",
       "paymentTerms": "Payment terms",
       "paymentTermsPlaceholder": "For example: payment due within 30 days",
       "plan": {
@@ -2575,8 +2574,6 @@
         "contractNumber": "Contract reference",
         "signedDate": "Date signed",
         "contractValue": "Signed contract value",
-        "startDate": "Start date",
-        "expectedEndDate": "Expected completion",
         "paymentTerms": "Payment terms"
       },
       "terms": {

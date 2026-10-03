@@ -50,8 +50,6 @@ interface Fields {
   contractNumber: string;
   signedDate: string;
   contractValue: string;
-  startDate: string;
-  expectedEndDate: string;
   paymentTerms: PaymentTermsKey;
 }
 
@@ -86,8 +84,6 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
     contractNumber: '',
     signedDate: '',
     contractValue: '',
-    startDate: '',
-    expectedEndDate: '',
     paymentTerms: 'NET_30',
   });
   const [stages, setStages] = useState<StageRow[]>(() => ACCO_STANDARD_PLAN.map(stageFromTemplate));
@@ -126,9 +122,6 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
   if (!fields.signedDate) fieldErrors.signedDate = t('signedDateRequired');
   if (!/^\d+(\.\d{1,2})?$/.test(fields.contractValue.trim()) || Number(fields.contractValue) <= 0) {
     fieldErrors.contractValue = t('valueInvalid');
-  }
-  if (fields.startDate && fields.expectedEndDate && fields.expectedEndDate < fields.startDate) {
-    fieldErrors.expectedEndDate = t('endBeforeStart');
   }
   const stageErrors = stages.map((row) => {
     const errors: Record<string, string> = {};
@@ -170,8 +163,11 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
         contractValue: fields.contractValue.trim(),
         billingModel: BillingModel.MILESTONE,
         paymentTerms: t(`terms.${fields.paymentTerms}`),
-        startDate: fields.startDate || undefined,
-        expectedEndDate: fields.expectedEndDate || undefined,
+        // The project already carries its start and expected completion, so the form no longer
+        // asks again — the contract inherits them. They still matter downstream: the commercial
+        // overview shows them and Extension-of-Time extends the contract's completion date.
+        startDate: toDateOnly(project?.startDate),
+        expectedEndDate: toDateOnly(project?.expectedEndDate),
         paymentPlan: buildPaymentPlan(stages),
         file: file ?? undefined,
       },
@@ -318,7 +314,9 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
           ) : null}
 
           <FormGroup title={t('sections.contract')}>
-            <FormField htmlFor="record-client" label={t('labels.client')}>
+            {/* Client spans the row so the four editable fields pair up: reference + date signed,
+                value + payment terms. */}
+            <FormField htmlFor="record-client" label={t('labels.client')} className="sm:col-span-2">
               <Input id="record-client" value={clientName ?? '—'} readOnly aria-readonly="true" className="bg-surface-subtle" />
             </FormField>
             <FormField htmlFor="record-contractNumber" label={t('labels.contractNumber')} hint={t('referenceHint')}>
@@ -329,12 +327,6 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
             </FormField>
             <FormField htmlFor="record-contractValue" label={t('labels.contractValue')} hint={t('valueHint')} required error={attempted ? fieldErrors.contractValue : undefined}>
               <MoneyInput id="record-contractValue" value={fields.contractValue} onValueChange={(value) => set('contractValue', value)} placeholder="0.00" />
-            </FormField>
-            <FormField htmlFor="record-startDate" label={t('labels.startDate')}>
-              <DatePicker id="record-startDate" value={fields.startDate} onChange={(value) => set('startDate', value)} />
-            </FormField>
-            <FormField htmlFor="record-expectedEndDate" label={t('labels.expectedEndDate')} error={attempted ? fieldErrors.expectedEndDate : undefined}>
-              <DatePicker id="record-expectedEndDate" value={fields.expectedEndDate} onChange={(value) => set('expectedEndDate', value)} />
             </FormField>
             <FormField htmlFor="record-paymentTerms" label={t('labels.paymentTerms')}>
               <Select id="record-paymentTerms" searchable={false} value={fields.paymentTerms} onChange={(value) => set('paymentTerms', value as PaymentTermsKey)}>
@@ -433,6 +425,11 @@ function inlineStageErrors(errors: Record<string, string> | undefined): Record<s
   if (!errors?.dueDate) return errors;
   const { dueDate, ...rest } = errors;
   return { ...rest, billedOn: dueDate };
+}
+
+/** The project's ISO timestamp as the `YYYY-MM-DD` the DTO expects; absent when the project has none. */
+function toDateOnly(value: string | null | undefined): string | undefined {
+  return value ? value.split('T')[0] || undefined : undefined;
 }
 
 function round(value: number): number {

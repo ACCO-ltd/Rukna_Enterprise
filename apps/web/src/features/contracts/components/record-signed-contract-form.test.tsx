@@ -21,7 +21,19 @@ vi.mock('../hooks/use-record-signed-contract', () => ({
   useRecordSignedContract: () => ({ ...record, isPending: false, error: null }),
 }));
 vi.mock('@/features/projects/hooks/use-projects', () => ({
-  useProjects: () => ({ isPending: false, isError: false, data: [{ id: 'p1', name: 'Hayat Market Renovation', clientId: 'c1' }] }),
+  useProjects: () => ({
+    isPending: false,
+    isError: false,
+    data: [
+      {
+        id: 'p1',
+        name: 'Hayat Market Renovation',
+        clientId: 'c1',
+        startDate: '2026-04-01T00:00:00.000Z',
+        expectedEndDate: '2027-03-31T00:00:00.000Z',
+      },
+    ],
+  }),
 }));
 vi.mock('@/features/clients/hooks/use-clients', () => ({
   useClients: () => ({ isPending: false, isError: false, data: [{ id: 'c1', name: 'Hayat Market' }] }),
@@ -44,6 +56,13 @@ describe('RecordSignedContractForm', () => {
     expect(screen.getAllByRole('textbox', { name: /Share/ }).map((input) => (input as HTMLInputElement).value)).toEqual(['40', '30', '20', '10']);
     expect(screen.getByText('Allocated').parentElement).toHaveTextContent('Allocated 100%');
     expect(screen.getByDisplayValue('Hayat Market')).toHaveAttribute('readonly');
+  });
+
+  it('does not ask for start or completion dates — the project already carries them', () => {
+    renderWithProviders(<RecordSignedContractForm projectId="p1" />);
+    expect(screen.queryByLabelText(/Start date/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Expected completion/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Payment terms/)).toBeInTheDocument();
   });
 
   it('lists what is wrong on submit instead of disabling the button', async () => {
@@ -87,6 +106,9 @@ describe('RecordSignedContractForm', () => {
         signedDate: '2026-05-20',
         contractValue: '412500',
         paymentTerms: 'Net 30 days',
+        // Inherited from the project — the form no longer asks for them.
+        startDate: '2026-04-01',
+        expectedEndDate: '2027-03-31',
         paymentPlan: [
           expect.objectContaining({ triggerType: 'ADVANCE', percentage: 0.4 }),
           expect.objectContaining({ triggerType: 'MILESTONE', percentage: 0.3 }),
