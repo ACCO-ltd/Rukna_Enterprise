@@ -63,7 +63,14 @@ import {
  * one Finance Overview read, which itself reuses the cost rollup Cost Control renders — so the
  * two screens cannot show different numbers for the same thing.
  */
-export function FinanceOverviewView({ projectId }: { projectId: string }) {
+export function FinanceOverviewView({
+  projectId,
+  costControlHref = `/projects/${projectId}/finance/cost-control`,
+}: {
+  projectId: string;
+  /** Where "Open cost control" goes — the Finance workspace (ADR-043) keeps the reader in Finance. */
+  costControlHref?: string;
+}) {
   const t = useTranslations('finance.overview');
   const tc = useTranslations('finance.common');
   const locale = useLocale() as 'en' | 'ar';
@@ -97,7 +104,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <CostByArea data={data} projectId={projectId} />
+        <CostByArea data={data} />
         <RecentActivity data={data} locale={locale} />
       </div>
     </div>
@@ -387,13 +394,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
     );
   }
 
-  function CostByArea({
-    data,
-    projectId,
-  }: {
-    data: ProjectFinanceOverviewResponse;
-    projectId: string;
-  }) {
+  function CostByArea({ data }: { data: ProjectFinanceOverviewResponse }) {
     if (data.costByArea.length === 0) {
       return (
         <SectionPanel title={t('costByArea.title')} description={t('costByArea.description')}>
@@ -411,7 +412,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
         icon={<LayoutGrid size={16} strokeWidth={1.9} />}
         action={
           <Button variant="ghost" size="sm" asChild>
-            <Link href={`/projects/${projectId}/finance/cost-control`}>
+            <Link href={costControlHref}>
               {t('costByArea.openCostControl')}
               <ArrowRight size={15} strokeWidth={1.9} aria-hidden="true" />
             </Link>
