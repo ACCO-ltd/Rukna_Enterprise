@@ -3,7 +3,8 @@
 **Status:** Accepted (owner: Abdulsalam, decisions by ACCO's owner, 2026-10-03). Phase 0 (this
 document + `docs/design/finance-projects-contract.md`) and Phase 1 (portfolio read model, Finance
 navigation, Finance → Projects) ship together. Phase 2 ("why blocked", Payables / Payments tabs,
-project filters, Procurement Manager payment status) shipped 2026-10-03. Phases 3–4 follow.
+project filters, Procurement Manager payment status) shipped 2026-10-03. Phase 3 (finance commands
+leave the construction workspace; money-free stage status) shipped 2026-10-03. Phase 4 follows.
 
 ## Context
 
@@ -84,8 +85,9 @@ the existing project-access rule applies per row.
   moved.
 - Shared billing components take a link builder (`invoiceHref`, ledger `links`) instead of
   hard-coding project routes, so Finance renders them with links into Finance.
-- The project's own Finance tab and Commercial screens stay in place until Phase 3; for a while
-  the same work is reachable from two places, both calling the same commands.
+- Until Phase 3 the project's own Finance tab and Commercial billing screens stayed in place, so
+  the same work was reachable from two places. Phase 3 removed them: each piece of finance work is
+  now reachable from Finance only (see Phases below).
 - Portfolio totals are given per currency; money is never added across currencies.
 - **"Why blocked" has one source of truth (Phase 2).** The guards of the supplier-bill post, the
   supplier-payment create / release / post, the milestone-stage prepare and the ledger's period
@@ -114,8 +116,40 @@ the existing project-access rule applies per row.
    journals filtered to the project); `projectId` filters on receipts, supplier payments and
    journals; Procurement Manager read-only payment status of supplier bills (decision 4). Still
    open: morning queues on the Finance Overview landing and the dashboard.
-3. **Phase 3:** remove finance commands from the construction workspace — the project Finance tab
-   and the Commercial billing screens move to Finance; the project Overview keeps the read-only
-   money summary (decision 2).
-4. **Phase 4:** tidy-up — redirects from retired project routes, role-seed review, and a
-   rename-proof permission check for the role names project access still matches on.
+3. **Phase 3 (shipped 2026-10-03):** remove finance commands from the construction workspace.
+   - The project **Finance tab is gone**. `/projects/:id/finance` (→ `/finance/projects/:id`),
+     `…/finance/cost-control` (→ `/cost`), `…/finance/profit-loss` and `/projects/:id/pl` (→ `/pl`),
+     `…/finance/ledger` (→ `/pl#ledger`), `…/finance/ledger/bills/:billId` (→
+     `/finance/accounting/bills/:billId`) are server redirects; a reader without
+     `view:financial-position` lands on Finance's no-access state. `/projects/:id/ipc` →
+     `/projects/:id/commercial` (ACCO bills by milestone, not IPC); `/projects/:id/contracts` →
+     `…/commercial/contract`. One table: `apps/web/src/features/finance-projects/redirects.ts`.
+   - The project **Commercial tab** keeps the contract (record / view / reopen), the payment schedule
+     (milestone links, re-profile; verification stays in Progress → Review) and variations. Its
+     **Billing view is removed** — prepare / issue invoice, send (WhatsApp), record payment, reminder
+     now live only in Finance → Projects → Billing; `/commercial/billing(-collection)` redirect
+     there. A finance reader sees **Open in Finance** on the schedule.
+   - The **project invoice page** (issue, send, record payment, credit note, collection notes, edit /
+     delete draft) moves to `/finance/projects/:id/billing/invoices/:invoiceId`, and Finance's
+     Billing tab opens invoices there (it carries commands the accounting invoice page does not).
+     The old `/projects/:id/commercial/invoices/:id` sends a finance reader there and anyone else to
+     the Commercial schedule (client-side: the session lives in the browser). Chosen over a
+     read-only project invoice view because a Construction Director already sees no invoice money
+     (`financialsVisible` is the margin tier), so the schedule's status says all they could see.
+   - **Money-free status.** Every schedule row and every Progress milestone release line carries
+     `collectionStatus` — `NOT_READY` · `READY_TO_BILL` · `BILLED` · `PART_PAID` · `PAID` ·
+     `OVERDUE` — from one pure rule, `stageCollectionStatus` (`deriveInvoiceState`, the schedule's
+     paid rule on the posted invoice's `outstandingAmount`, the one overdue rule `overdueDays`, and
+     the raise blocker `installmentBillingBlocker`; a draft Finance is preparing reads Ready to
+     bill). A status is not money: it is returned whatever the caller's money visibility, while
+     `amount` / `amountPaid` / `percentage` stay redacted. Project Managers and Site Engineers see
+     it on Progress → milestones (they hold no `view:contract`); the Construction Director sees it
+     on the Commercial schedule. No server permission was changed.
+   - The project **Overview is unchanged** — the Construction Director keeps the read-only money
+     summary (decision 2).
+   - **Not done:** construction cannot *mark* a stage ready to bill in the UI — the command is gated
+     `view:contract` + `manage:receivable` (a finance permission). Verification in Progress is what
+     makes a stage read Ready to bill. Granting construction the mark-ready command is a role
+     decision for the owner, not taken here.
+4. **Phase 4:** tidy-up — retire the redirect routes once bookmarks have aged out, role-seed
+   review, and a rename-proof permission check for the role names project access still matches on.

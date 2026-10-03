@@ -117,7 +117,8 @@ currency, **Open project** (→ `/projects/:id`). Tabs:
 | Tab | Route | Renders (existing component) |
 | --- | --- | --- |
 | Overview | `/finance/projects/:id` | `FinanceOverviewView` (cost-control link → the Finance Cost tab) |
-| Billing | `/billing` | `PaymentSchedulePanel` + `CommercialBillingView` — milestones with verified / ready-to-bill state, To do, prepare/issue invoice, send on WhatsApp, record payment, reminder, invoices, payments; invoice links → `/finance/accounting/invoices/:id` |
+| Billing | `/billing` | `PaymentSchedulePanel mode="finance"` + `CommercialBillingView` — milestones with verified / ready-to-bill state, To do, prepare/issue invoice, send on WhatsApp, record payment, reminder, invoices, payments; invoice links → `/finance/projects/:id/billing/invoices/:invoiceId` (Phase 3; was the accounting invoice page) |
+| Invoice | `/billing/invoices/:invoiceId` | `ProjectInvoicePage` (Phase 3) — issue, send, record payment, credit note, collection notes, edit / delete draft; back → Billing |
 | Cost & commitments | `/cost` | `CostControlView` |
 | P&L | `/pl` | `ProfitLossView` + `LedgerView` (sources → accounting bill / invoice pages) |
 
@@ -240,3 +241,55 @@ permissions.
 
 Browser QA; Finance Overview queues on the landing page (Phase 2); Procurement Manager payment
 status (Phase 2); removing finance commands from the construction workspace (Phase 3).
+
+## Phase 3 — the construction workspace without finance commands
+
+No migration; no permission changed.
+
+### Money-free stage status — `collectionStatus: StageCollectionStatus`
+
+On every `CommercialPaymentScheduleInstallment` (`GET …/commercial/current-cycle`, gate
+`view:contract`) and every `MilestoneReleaseLine` (`GET …/programme/milestones`, the Progress
+gate). Present for every caller; the money fields beside it stay null for a caller who may not
+see them.
+
+| Value | Rule (`stageCollectionStatus`, `commercial/domain/stage-collection-status.policy.ts`) |
+| --- | --- |
+| `NOT_READY` | no live invoice and the raise blocker (`installmentBillingBlocker`) stands, or a date stage before its date (unless marked ready) |
+| `READY_TO_BILL` | no live invoice and nothing blocks raising it; or marked ready; or a DRAFT invoice (`deriveInvoiceState`) Finance is preparing |
+| `BILLED` | invoice ISSUED and nothing collected (or not POSTED: reversed / opening balance) |
+| `PART_PAID` | POSTED, 0 < balance < total, not overdue |
+| `PAID` | POSTED, balance ≤ 0 |
+| `OVERDUE` | POSTED, balance > 0, `overdueDays(…, asOf) > 0` — the one overdue rule (D5); wins over part paid |
+
+Balance is the invoice's stored `outstandingAmount` — the same fact the schedule's
+`PAID / PARTIALLY_PAID` status reads.
+
+### Redirects
+
+| Old route | New route |
+| --- | --- |
+| `/projects/:id/finance` | `/finance/projects/:id` |
+| `/projects/:id/finance/cost-control` | `/finance/projects/:id/cost` |
+| `/projects/:id/finance/profit-loss`, `/projects/:id/pl` | `/finance/projects/:id/pl` |
+| `/projects/:id/finance/ledger` | `/finance/projects/:id/pl#ledger` |
+| `/projects/:id/finance/ledger/bills/:billId` | `/finance/accounting/bills/:billId` |
+| `/projects/:id/commercial/billing`, `…/billing-collection` | `/finance/projects/:id/billing` |
+| `/projects/:id/commercial/invoices/:invoiceId` | finance reader → `/finance/projects/:id/billing/invoices/:invoiceId`; others → `/projects/:id/commercial/contract` (client redirect) |
+| `/projects/:id/ipc` | `/projects/:id/commercial` |
+| `/projects/:id/contracts` | `/projects/:id/commercial/contract` |
+
+Server redirects (`redirect()` in the page) except the invoice route, which needs the browser
+session's permission. A reader without `view:financial-position` reaching a Finance URL sees
+Finance's no-access state. The Finance overview's ledger / cost-control links and the overdue
+invoice notification now link to Finance directly.
+
+### Screens
+
+| Where | Change |
+| --- | --- |
+| Project tabs | Finance tab removed (Overview · BOQ · Progress · Commercial · Procurement · Documents · Team) |
+| Commercial | Billing view removed; lands on Contract; the view switch shows only for a measured (IPC) contract |
+| Commercial → payment schedule | status column = money-free status; "Open in Finance" and invoice links only for `view:financial-position` |
+| Progress → milestones | each release line shows the money-free status (was an "invoiced" tag) |
+| Project Overview | unchanged (Construction Director's read-only money summary, decision 2) |
