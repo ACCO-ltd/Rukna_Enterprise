@@ -80,6 +80,10 @@ const ROLES: TeamRoleSpec[] = [
       P.ipaCreate,
       P.ipaManage,
       P.ipaApprove,
+      // ADR-043 decision 1 — Construction verifies a milestone and marks it ready to bill; Finance
+      // issues the invoice. Only that signal: no invoice, no AR, no money. (Live tenant: granted by
+      // the targeted prisma/seeds/grant-construction-mark-ready.seed.ts, not by re-running this.)
+      P.billingMarkReady,
       // Cost-control context (cost / budget / commitment — NOT the project P&L: `financialPositionView`
       // is withheld because it surfaces revenue vs cost = profit; see the margin note above).
       P.projectBudgetManage,

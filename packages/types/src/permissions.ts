@@ -65,6 +65,11 @@ export const PERMISSIONS = {
   contractsCreate: 'create:contract',
   contractsManage: 'manage:contract',
   contractsApprove: 'approve:contract',
+  // ADR-043 decision 1 — Construction verifies a milestone and says it is ready to bill; Finance
+  // issues the invoice. This is ONLY that signal (mark ready / undo ready on a payment-schedule
+  // stage): it creates no invoice, reads no money and grants nothing else. The same two commands
+  // stay open to the finance set (`view:contract` + `manage:receivable`).
+  billingMarkReady: 'mark-ready:billing',
 
   ipaView: 'view:ipa',
   ipaCreate: 'create:ipa',
@@ -128,7 +133,7 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
   client: 'Commercial', project: 'Projects', district: 'Organization', 'project-member': 'Projects',
   'project-type': 'Organization', 'project-document': 'Projects',
   progress: 'Projects',
-  boq: 'Projects', contract: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
+  boq: 'Projects', contract: 'Commercial', billing: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
   accounting: 'Accounting', 'financial-position': 'Accounting', journal: 'Accounting',
   receivable: 'Accounting', payable: 'Accounting', period: 'Accounting', 'fiscal-year': 'Accounting',
   procurement: 'Procurement', 'procurement-config': 'Procurement', 'material-request': 'Procurement',
@@ -149,7 +154,8 @@ function riskFor(action: string): PermissionDefinition['riskClass'] {
     )
   )
     return 'HIGH';
-  if (['create'].includes(action)) return 'MEDIUM';
+  // `mark-ready` puts a stage in Finance's "to bill" queue; it moves no money and posts nothing.
+  if (['create', 'mark-ready'].includes(action)) return 'MEDIUM';
   // `view-margin` exposes profitability — a read, but a commercially sensitive one, so it is a
   // review signal above an ordinary view (`view-cost`/`view` stay LOW).
   if (action === 'view-margin') return 'MEDIUM';
@@ -203,6 +209,8 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.contractsCreate]: 'Create contracts',
   [PERMISSIONS.contractsManage]: 'Update contract terms and operational state',
   [PERMISSIONS.contractsApprove]: 'Approve and execute contracts',
+  [PERMISSIONS.billingMarkReady]:
+    'Mark a verified payment-schedule stage ready to bill, or undo it before an invoice is prepared (no invoice, no amounts)',
   [PERMISSIONS.ipaView]: 'View interim payment applications',
   [PERMISSIONS.ipaCreate]: 'Create interim payment applications',
   [PERMISSIONS.ipaManage]: 'Edit and submit interim payment applications',

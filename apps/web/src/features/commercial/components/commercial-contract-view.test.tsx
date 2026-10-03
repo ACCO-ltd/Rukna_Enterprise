@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -25,6 +25,12 @@ vi.mock('../hooks/use-commercial', () => ({
   }),
   useCommercialSummary: () => ({ isPending: true, data: undefined }),
 }));
+const readiness = vi.hoisted(() => ({ mark: vi.fn(), undo: vi.fn() }));
+vi.mock('../hooks/use-mark-ready-to-bill', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/use-mark-ready-to-bill')>()),
+  useMarkReadyToBill: () => ({ mutate: readiness.mark, isPending: false, error: null }),
+  useRevokeReadyToBill: () => ({ mutate: readiness.undo, isPending: false, error: null }),
+}));
 vi.mock('./contract-changes-panel', () => ({ ContractChangesPanel: () => null }));
 vi.mock('./payment-schedule-tab', () => ({
   ScheduleForm: () => <div>editor</div>,
@@ -33,6 +39,8 @@ vi.mock('./payment-schedule-tab', () => ({
 vi.mock('./record-signed-date-dialog', () => ({ RecordSignedDateDialog: () => <div role="dialog">signed date</div> }));
 
 beforeEach(() => {
+  readiness.mark.mockReset();
+  readiness.undo.mockReset();
   schedule.installments = [
     stageFixture({ id: 's1', sortOrder: 0, name: 'Advance (mobilisation)', percentage: '0.4000', amount: '165000.00', triggerType: 'ADVANCE', status: 'PAID', releasedBy: { kind: 'ADVANCE' }, invoiceId: 'inv-121', invoiceState: 'ISSUED', collectionStatus: 'PAID' }),
     stageFixture({ id: 's2', sortOrder: 1, name: 'Substructure complete', status: 'NEXT', releasedBy: { kind: 'MILESTONE', milestoneId: 'm1', milestoneCode: 'MS-01', milestoneName: 'Substructure complete', verifiedAt: '2026-09-26' }, collectionStatus: 'READY_TO_BILL' }),
@@ -204,5 +212,78 @@ describe('installmentDisplayState', () => {
     const dated = { triggerType: 'TIME_BASED' as const, status: 'NEXT' as const };
     expect(installmentDisplayState(stageFixture({ id: 'f', ...dated, expectedDate: '2026-12-01' }), TODAY)).toBe('UPCOMING');
     expect(installmentDisplayState(stageFixture({ id: 'g', ...dated, expectedDate: '2026-09-28' }), TODAY)).toBe('READY');
+  });
+});
+
+describe('Mark ready to bill (ADR-043 decision 1)', () => {
+  const eligible = (id: string) => ({ installmentId: id, canPrepare: true, canIssue: false, blockedReason: null, steps: [] });
+  const notVerified = (id: string) => ({
+    installmentId: id,
+    canPrepare: false,
+    canIssue: false,
+    blockedReason: 'MILESTONE_NOT_VERIFIED' as const,
+    steps: [{ key: 'MILESTONE_VERIFIED' as const, status: 'BLOCKED' as const, owner: 'CONSTRUCTION' as const, code: 'MILESTONE_NOT_VERIFIED', detail: null }],
+  });
+
+  beforeEach(() => {
+    schedule.installments = [
+      stageFixture({ id: 'paid', sortOrder: 0, name: 'Advance', status: 'PAID', invoiceId: 'inv-1', invoiceState: 'ISSUED', collectionStatus: 'PAID' }),
+      stageFixture({ id: 'ok', sortOrder: 1, name: 'Substructure', status: 'NEXT', billingEligibility: eligible('ok') }),
+      stageFixture({ id: 'wait', sortOrder: 2, name: 'Frame', billingBlocker: 'MILESTONE_NOT_VERIFIED', billingEligibility: notVerified('wait') }),
+      stageFixture({ id: 'ready', sortOrder: 3, name: 'Roof', status: 'NEXT', readyToBill: true, readyToBillAt: '2026-10-01T00:00:00Z', collectionStatus: 'READY_TO_BILL', billingEligibility: eligible('ready') }),
+      stageFixture({ id: 'draft', sortOrder: 4, name: 'Finishes', status: 'BILLED', readyToBill: true, invoiceId: 'inv-2', invoiceState: 'DRAFT', collectionStatus: 'READY_TO_BILL' }),
+    ];
+  });
+
+  const CD = ['view:contract', 'manage:project', 'mark-ready:billing'];
+
+  it('gives the Construction Director "Mark ready to bill" on an eligible stage and sends it', () => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, { permissions: CD });
+    const rows = scheduleRows();
+    const button = within(rows[1]!).getByRole('button', { name: 'Mark ready to bill' });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(readiness.mark).toHaveBeenCalledWith({ installmentId: 'ok' });
+  });
+
+  it('disables it with the reason in plain words when the milestone is not verified', () => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, { permissions: CD });
+    const button = within(scheduleRows()[2]!).getByRole('button', { name: 'Mark ready to bill' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("Can't mark ready yet: Progress not verified yet");
+  });
+
+  it('offers "Undo ready" on a ready stage, and nothing once Finance has prepared or billed it', () => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, { permissions: CD });
+    const rows = scheduleRows();
+    fireEvent.click(within(rows[3]!).getByRole('button', { name: 'Undo ready' }));
+    expect(readiness.undo).toHaveBeenCalledWith({ installmentId: 'ready' });
+    expect(within(rows[3]!).queryByRole('button', { name: 'Mark ready to bill' })).toBeNull();
+    for (const row of [rows[0]!, rows[4]!]) {
+      expect(within(row).queryByRole('button', { name: /ready/i })).toBeNull();
+    }
+  });
+
+  it('keeps it for the finance set (view:contract + manage:receivable)', () => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['view:contract', 'manage:receivable'],
+    });
+    expect(within(scheduleRows()[1]!).getByRole('button', { name: 'Mark ready to bill' })).toBeEnabled();
+  });
+
+  it.each([
+    ['Project Manager', ['view:project', 'manage:project']],
+    ['contract reader without the permission', ['view:contract', 'manage:project']],
+    ['mark-ready:billing without view:contract', ['mark-ready:billing']],
+  ])('shows no readiness button to a %s', (_label, permissions) => {
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, { permissions });
+    expect(screen.queryByRole('button', { name: /Mark ready to bill|Undo ready/ })).toBeNull();
+  });
+
+  it('is not offered in Finance’s own schedule (mode="finance")', () => {
+    renderWithProviders(<PaymentSchedulePanel projectId="p1" workspace={workspaceFixture()} mode="finance" />, {
+      permissions: [...CD, 'manage:receivable', 'view:financial-position'],
+    });
+    expect(screen.queryByRole('button', { name: /Mark ready to bill|Undo ready/ })).toBeNull();
   });
 });

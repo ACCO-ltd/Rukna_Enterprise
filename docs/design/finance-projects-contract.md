@@ -293,3 +293,34 @@ invoice notification now link to Finance directly.
 | Commercial → payment schedule | status column = money-free status; "Open in Finance" and invoice links only for `view:financial-position` |
 | Progress → milestones | each release line shows the money-free status (was an "invoiced" tag) |
 | Project Overview | unchanged (Construction Director's read-only money summary, decision 2) |
+
+## Construction marks ready (ADR-043 decision 1, 2026-10-03)
+
+No migration. New permission **`mark-ready:billing`** (Construction Director; ADMIN via the deploy
+refresh). Production grant: `docker compose -f deploy/docker-compose.prod.yml run --rm --no-deps
+migrate pnpm exec tsx prisma/seeds/grant-construction-mark-ready.seed.ts` (targeted, idempotent,
+touches only that permission on that role).
+
+### `POST /api/v1/projects/:projectId/commercial/installments/:installmentId/ready-to-bill`
+
+Body `{ note?: string }` → `InstallmentReadinessResult` `{ installmentId, readyToBill: true,
+readyToBillAt }` (no money). Gate: `view:contract` AND (`manage:receivable` OR
+`mark-ready:billing`), plus project access. 404 when the stage is not on `:projectId`. Refused
+(400, coded `code` / `errorCode`) by `stagePrepareBlock`: `CONTRACT_NOT_ACTIVE`,
+`MILESTONE_NOT_LINKED`, `MILESTONE_NOT_VERIFIED`, `STAGE_ALREADY_INVOICED` (a live — non-cancelled —
+invoice). Already ready → 200, no-op, no second audit event.
+
+### `DELETE …/installments/:installmentId/ready-to-bill`
+
+Body `{ reason?: string }` → `{ installmentId, readyToBill: false, readyToBillAt: null }`. Same
+gate. Refused: `NOT_READY` (not marked), `STAGE_ALREADY_INVOICED` (a DRAFT or issued invoice; a
+cancelled one does not block).
+
+### Screen
+
+| Where | Change |
+| --- | --- |
+| Commercial → payment schedule (`mode="project"`) | per row, while the stage has no invoice: **Mark ready to bill** (enabled by `billingEligibility.canPrepare`; disabled with the blocking reason in words) or **Undo ready** once marked. Shown to `view:contract` + (`mark-ready:billing` or `manage:receivable`). Success toast; refreshes the project's commercial reads and the Finance portfolio (*To bill*). Not shown in Finance's own schedule, where preparing records readiness. |
+
+Note: `collectionStatus` already reads *Ready to bill* for a verified stage that nobody has marked
+(Phase 3 rule); Finance's *To bill* queue counts only marked (`readyToBillAt`) or prepared stages.

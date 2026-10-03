@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { Ellipsis, Paperclip } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -24,6 +24,7 @@ import {
 } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { explainingStep, useEligibilityWords } from '@/components/eligibility-steps';
 import { formatDate } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { statusTone } from '@/lib/status-registry';
@@ -33,6 +34,7 @@ import { useCanViewFinanceProjects } from '@/features/finance-projects/hooks';
 import { financeProjectRedirects } from '@/features/finance-projects/redirects';
 
 import { useCommercialCurrentCycle, useCommercialSummary } from '../hooks/use-commercial';
+import { useCanMarkReadyToBill, useMarkReadyToBill, useRevokeReadyToBill } from '../hooks/use-mark-ready-to-bill';
 import { projectInvoiceHref, type InvoiceHrefBuilder } from './commercial-billing-view';
 import { ContractChangesPanel } from './contract-changes-panel';
 import { ScheduleForm, splitScheduleForEditing } from './payment-schedule-tab';
@@ -252,6 +254,8 @@ export function PaymentSchedulePanel({
   const locale = useLocale() as 'en' | 'ar';
   const cycle = useCommercialCurrentCycle(projectId);
   const canVerify = usePermissions().can('manage:project');
+  // ADR-043 decision 1 — Construction says a verified stage is ready; Finance issues.
+  const canMarkReady = useCanMarkReadyToBill() && mode === 'project';
   const [reprofiling, setReprofiling] = useState(false);
   const { financialsVisible, capabilities } = workspace;
   const contract = workspace.contract!;
@@ -359,6 +363,7 @@ export function PaymentSchedulePanel({
             {why ? <p className="text-caption text-muted-foreground">{why}</p> : null}
             {/* ADR-043 Phase 2: the server's blocking reason + owner, and the billing steps. */}
             <StageEligibilityNote eligibility={inst.billingEligibility as StageBillingEligibility | undefined} />
+            {canMarkReady ? <StageReadinessAction projectId={projectId} inst={inst} /> : null}
           </div>
         );
       },
@@ -429,5 +434,80 @@ export function PaymentSchedulePanel({
         />
       ) : null}
     </section>
+  );
+}
+
+// ─── Mark ready to bill (ADR-043 decision 1) ────────────────────────────────
+
+/** Statuses after Finance has billed the stage: readiness is history, nothing to mark or undo. */
+const BILLED_STATUSES = new Set(['BILLED', 'PART_PAID', 'PAID', 'OVERDUE']);
+
+/**
+ * "Mark ready to bill" / "Undo ready" on one schedule row. Shown only while Finance has not
+ * prepared the stage's invoice. Enabled by the row's `billingEligibility.canPrepare` — the same
+ * guard (`stagePrepareBlock`) the mark-ready command enforces — and, when blocked, disabled with
+ * that reason in plain words. Money-free: the command returns no amount.
+ */
+export function StageReadinessAction({
+  projectId,
+  inst,
+}: {
+  projectId: string;
+  inst: CommercialPaymentScheduleInstallment;
+}) {
+  const t = useTranslations('commercial.contractView');
+  const words = useEligibilityWords();
+  const mark = useMarkReadyToBill(projectId);
+  const undo = useRevokeReadyToBill(projectId);
+  const reasonId = useId();
+
+  if (inst.invoiceId || inst.invoiceState || BILLED_STATUSES.has(inst.collectionStatus)) return null;
+
+  const eligibility = inst.billingEligibility as StageBillingEligibility | undefined;
+  const error = (mark.error ?? undo.error) as Error | null;
+
+  if (inst.readyToBill) {
+    return (
+      <div className="space-y-1 pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          title={t('undoReadyHint')}
+          loading={undo.isPending}
+          onClick={() => undo.mutate({ installmentId: inst.id })}
+        >
+          {t('undoReady')}
+        </Button>
+        {error ? <p className="text-caption text-danger">{error.message}</p> : null}
+      </div>
+    );
+  }
+
+  const blocked = !eligibility?.canPrepare;
+  const step = eligibility?.blockedReason ? explainingStep(eligibility.steps, eligibility.blockedReason) : undefined;
+  const reason = blocked
+    ? (words.reason(eligibility?.blockedReason ?? null, step?.detail ?? null) ?? null)
+    : null;
+
+  return (
+    <div className="space-y-1 pt-1">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={blocked}
+        aria-describedby={reason ? reasonId : undefined}
+        title={reason ? t('markReadyBlocked', { reason }) : undefined}
+        loading={mark.isPending}
+        onClick={() => mark.mutate({ installmentId: inst.id })}
+      >
+        {t('markReady')}
+      </Button>
+      {reason ? (
+        <span id={reasonId} className="sr-only">
+          {t('markReadyBlocked', { reason })}
+        </span>
+      ) : null}
+      {error ? <p className="text-caption text-danger">{error.message}</p> : null}
+    </div>
   );
 }

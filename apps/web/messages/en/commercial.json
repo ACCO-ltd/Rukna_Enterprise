@@ -1856,6 +1856,10 @@
     },
     "openInFinance": "Open in Finance",
     "financeNote": "Invoices, payments and reminders are handled by Finance.",
+    "markReady": "Mark ready to bill",
+    "undoReady": "Undo ready",
+    "markReadyBlocked": "Can't mark ready yet: {reason}",
+    "undoReadyHint": "Takes the stage back out of Finance’s queue. Possible until Finance prepares the invoice.",
     "collectionHeader": "Billing status"
   },
   "feedback": {
@@ -1879,6 +1883,8 @@
     "guaranteeAdded": "Guarantee added",
     "guaranteeUpdated": "Guarantee updated",
     "contractActiveTitle": "Contract {ref} is active",
-    "contractActiveDescription": "Billing is now open: the advance and each payment stage can be invoiced from Billing & Collection."
+    "contractActiveDescription": "Billing is now open: the advance and each payment stage can be invoiced from Billing & Collection.",
+    "stageMarkedReady": "Marked ready to bill — Finance will prepare the invoice",
+    "stageReadyUndone": "Ready to bill undone"
   }
 }
