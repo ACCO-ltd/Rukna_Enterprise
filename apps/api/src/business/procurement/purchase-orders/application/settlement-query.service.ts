@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PurchaseOrderBillPaymentsResponse, RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -24,17 +24,31 @@ export class SettlementQueryService {
   ) {}
 
   /**
-   * Project access for a PO read by a person (ADR-043 review M2): a PO carries its projects per
-   * line, so the caller must be able to see every project the PO is coded to (bypass roles always
-   * can). 404 for a PO outside the organisation. Internal callers (auto-close) skip this.
+   * Project access for a PO read by a person (ADR-043 review M2). A PO carries its projects per
+   * line. `every` (money reads: settlement, bill payments) — the caller must see every project the
+   * PO is coded to; `any` (receiving, no money) — one of them is enough, so a site team on one
+   * project of a multi-project PO keeps receiving. Bypass roles always pass; a PO with no project
+   * lines is org-level and needs only the endpoint's permission. 404 outside the organisation.
+   * Internal callers (auto-close) skip this.
    */
-  async assertCanRead(identity: RequestIdentity, purchaseOrderId: string): Promise<void> {
+  async assertCanRead(
+    identity: RequestIdentity,
+    purchaseOrderId: string,
+    mode: 'every' | 'any' = 'every',
+  ): Promise<void> {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
     if (!(await this.repo.purchaseOrderExists(prisma, orgId, purchaseOrderId))) {
       throw new NotFoundException(`Purchase order ${purchaseOrderId} not found`);
     }
-    for (const projectId of await this.repo.findPoProjectIds(prisma, orgId, purchaseOrderId)) {
+    const projectIds = await this.repo.findPoProjectIds(prisma, orgId, purchaseOrderId);
+    if (mode === 'any') {
+      if (projectIds.length === 0) return;
+      const accessible = await this.projectAccess.accessibleProjectIds(identity);
+      if (accessible === undefined || projectIds.some((id) => accessible.includes(id))) return;
+      throw new ForbiddenException('You are not a member of any project on this purchase order.');
+    }
+    for (const projectId of projectIds) {
       await this.projectAccess.assertMember(identity, projectId);
     }
   }
@@ -51,7 +65,7 @@ export class SettlementQueryService {
    * cost visibility. Same per-line rule as the settlement read (`receivingPosition`).
    */
   async getReceiving(identity: RequestIdentity, purchaseOrderId: string) {
-    await this.assertCanRead(identity, purchaseOrderId);
+    await this.assertCanRead(identity, purchaseOrderId, 'any');
     const prisma = this.tenancy.getClient();
     const po = await this.repo.findPoForSettlement(prisma, identity.activeOrganizationId, purchaseOrderId);
     if (!po) throw new NotFoundException(`Purchase order ${purchaseOrderId} not found`);

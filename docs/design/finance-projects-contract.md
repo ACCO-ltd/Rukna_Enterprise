@@ -211,7 +211,9 @@ outstanding, advances, evidence) carried money behind `view:procurement` alone, 
 Managers hold. It now needs `view:procurement` + `view:commitment-ledger` and project access to
 every project the PO is coded to (`SettlementQueryService.assertCanRead`; the internal auto-close
 path is unchanged). The money-free receiving position moved to
-`GET /api/v1/procurement/purchase-orders/:id/receiving` (`view:procurement`, same project access),
+`GET /api/v1/procurement/purchase-orders/:id/receiving` (`view:procurement`; access to ANY project on
+the PO, so a site team on one project of a multi-project PO keeps receiving; an org-level PO with
+no project lines needs no membership),
 which the PO Receiving tab reads; the Funding and Settlement tabs are not offered without both
 permissions.
 

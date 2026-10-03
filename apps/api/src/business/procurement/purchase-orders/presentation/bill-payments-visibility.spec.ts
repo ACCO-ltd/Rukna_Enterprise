@@ -65,12 +65,49 @@ describe('SettlementQueryService.getBillPayments', () => {
       findPoForSettlement: jest.fn(),
     };
     const projectAccess = {
+      accessibleProjectIds: jest.fn().mockResolvedValue(member ? undefined : []),
       assertMember: jest.fn(async () => {
         if (!member) throw new ForbiddenException('You are not a member of this project.');
       }),
     };
     return new SettlementQueryService({ getClient: () => ({}) } as never, repo as never, projectAccess as never);
   }
+
+  it('member of ONE of two projects on the PO: receiving allowed, settlement and bill payments refused', async () => {
+    const repo = {
+      purchaseOrderExists: jest.fn().mockResolvedValue(true),
+      findPoProjectIds: jest.fn().mockResolvedValue(['prj-1', 'prj-2']),
+      findBillPaymentsForPo: jest.fn().mockResolvedValue([]),
+      findPoForSettlement: jest.fn().mockResolvedValue({ revisions: [{ status: 'ACTIVE', lines: [] }] }),
+      receivedByPoLine: jest.fn().mockResolvedValue({ byLine: new Map(), hasOverReceipt: false }),
+    };
+    const projectAccess = {
+      accessibleProjectIds: jest.fn().mockResolvedValue(['prj-1']),
+      assertMember: jest.fn(async (_i: unknown, projectId: string) => {
+        if (projectId !== 'prj-1') throw new ForbiddenException('You are not a member of this project.');
+      }),
+    };
+    const svc = new SettlementQueryService({ getClient: () => ({}) } as never, repo as never, projectAccess as never);
+    await expect(svc.getReceiving(identity, 'po')).resolves.toMatchObject({ receivingStatus: 'RECEIVED', receivingLines: [] });
+    await expect(svc.getSettlementForViewer(identity, 'po')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.getBillPayments(identity, 'po')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('receiving: an org-level PO (no project lines) needs no membership; a member of none is refused', async () => {
+    const make = (projects: string[]) =>
+      new SettlementQueryService(
+        { getClient: () => ({}) } as never,
+        {
+          purchaseOrderExists: jest.fn().mockResolvedValue(true),
+          findPoProjectIds: jest.fn().mockResolvedValue(projects),
+          findPoForSettlement: jest.fn().mockResolvedValue({ revisions: [] }),
+          receivedByPoLine: jest.fn().mockResolvedValue({ byLine: new Map(), hasOverReceipt: false }),
+        } as never,
+        { accessibleProjectIds: jest.fn().mockResolvedValue(['other']), assertMember: jest.fn() } as never,
+      );
+    await expect(make([]).getReceiving(identity, 'po')).resolves.toBeDefined();
+    await expect(make(['prj-1']).getReceiving(identity, 'po')).rejects.toBeInstanceOf(ForbiddenException);
+  });
 
   it('a non-member of a project the PO is coded to is refused (bill payments, settlement, receiving)', async () => {
     const svc = build(true, [], false);
