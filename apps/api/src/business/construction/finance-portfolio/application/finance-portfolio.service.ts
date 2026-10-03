@@ -14,7 +14,6 @@ import { ProjectAccessService } from '../../../../platform/project-access/projec
 import { AccountingReadinessService } from '../../../accounting/accounting-core/application/accounting-readiness.service.js';
 import { buildAccountingPosition } from '../../../accounting/financial-position/application/accounting-position.js';
 import { ProjectFinancialPositionRepository } from '../../../accounting/financial-position/infrastructure/project-financial-position.repository.js';
-import { supplierBillProjectWhere } from '../../../accounting/accounts-payable/infrastructure/supplier-bill.repository.js';
 import { ProjectProcurementRepository } from '../../../procurement/project-procurement/infrastructure/project-procurement.repository.js';
 import {
   addStage,
@@ -29,6 +28,7 @@ import {
   computeReceivablePosition,
   scheduleBaseValue,
 } from '../../commercial/domain/receivable-position.js';
+import { findBillsToPay } from '../infrastructure/bills-to-pay.query.js';
 import { inQueue, matchesSearch, portfolioTotals, queueCounts } from '../domain/finance-portfolio.policy.js';
 
 const ZERO = new Decimal(0);
@@ -51,7 +51,7 @@ const ZERO = new Decimal(0);
  *   the payment schedule's rule; a DRAFT invoice counts as "draft prepared"), priced by
  *   `scheduleBaseValue` × percentage as the payment schedule does;
  * - bills to pay: POSTED supplier bills with an outstanding balance, matched to a project by
- *   `supplierBillProjectWhere` (the bills list's own rule).
+ *   `supplierBillProjectWhere` (the bills list's own rule) — `findBillsToPay`.
  */
 @Injectable()
 export class FinancePortfolioService {
@@ -133,17 +133,7 @@ export class FinancePortfolioService {
       this.financeRepo.sumPostedRevenueByProject(prisma, orgId, ids),
       this.financeRepo.sumProjectCostByProject(prisma, orgId, ids),
       this.readiness.getReadiness(identity),
-      ids.length
-        ? prisma.supplierBill.findMany({
-            where: {
-              organizationId: orgId,
-              postingStatus: 'POSTED',
-              outstandingAmount: { gt: 0 },
-              ...supplierBillProjectWhere({ in: ids }),
-            },
-            select: { id: true, projectId: true, outstandingAmount: true, lines: { select: { projectId: true } } },
-          })
-        : Promise.resolve([]),
+      findBillsToPay(prisma, orgId, ids),
     ]);
 
     const contractIds = [...contracts.values()].map((c) => c.id);
