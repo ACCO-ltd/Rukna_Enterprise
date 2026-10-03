@@ -78,14 +78,6 @@ export function isLiveStageInvoice(inv: { documentStatus: string }): boolean {
 }
 
 /**
- * A live stage invoice that has been issued (POSTED). Until then a ready stage is still Finance's
- * work to bill (ADR-043 decision 1) — a draft or approved invoice is "prepared", not billed.
- */
-export function isIssuedStageInvoice(inv: { documentStatus: string; postingStatus: string }): boolean {
-  return isLiveStageInvoice(inv) && inv.postingStatus === 'POSTED';
-}
-
-/**
  * A schedule stage's amount: its share of the base contract value. T-6 — the schedule is frozen
  * against the base value; a legacy contract whose base was never set falls back to the contract
  * value (M-4: never fail a legacy contract).

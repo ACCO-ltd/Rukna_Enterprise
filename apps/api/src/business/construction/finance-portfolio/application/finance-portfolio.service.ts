@@ -23,11 +23,10 @@ import {
   type StageTotals,
 } from '../../../procurement/project-procurement/domain/project-cost-rollup.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
+import { deriveInvoiceState } from '../../commercial/domain/commercial-workspace.policy.js';
 import { CommercialPrismaRepository } from '../../commercial/infrastructure/commercial-prisma.repository.js';
 import {
   computeReceivablePosition,
-  isIssuedStageInvoice,
-  isLiveStageInvoice,
   scheduleBaseValue,
 } from '../../commercial/domain/receivable-position.js';
 import { inQueue, matchesSearch, portfolioTotals, queueCounts } from '../domain/finance-portfolio.policy.js';
@@ -48,7 +47,8 @@ const ZERO = new Decimal(0);
  *   Control / Finance Overview `costPosition`);
  * - margin: `sumPostedRevenueByProject` / `sumProjectCostByProject` into `buildAccountingPosition`
  *   (Finance Overview `accountingPosition`);
- * - ready to bill: stages with `readyToBillAt`, no live invoice (`isLiveStageInvoice`), priced by
+ * - ready to bill: stages with `readyToBillAt` whose invoice is not ISSUED (`deriveInvoiceState`,
+ *   the payment schedule's rule; a DRAFT invoice counts as "draft prepared"), priced by
  *   `scheduleBaseValue` × percentage as the payment schedule does;
  * - bills to pay: POSTED supplier bills with an outstanding balance, matched to a project by
  *   `supplierBillProjectWhere` (the bills list's own rule).
@@ -159,17 +159,19 @@ export class FinancePortfolioService {
     }
 
     const contractById = new Map([...contracts.values()].map((c) => [c.id, c]));
-    // ADR-043 decision 1 — Finance issues invoices. A ready stage stays "to bill" until its invoice is
-    // POSTED (issued); a prepared draft/approved invoice only marks it "draft prepared".
+    // ADR-043 decision 1 — Finance issues invoices. The stage's invoice state is the payment
+    // schedule's own rule (`deriveInvoiceState`): ISSUED (posted, reversed or opening balance) is
+    // billed; DRAFT (not yet posted, incl. pending/failed) stays "to bill" as "draft prepared";
+    // none (no invoice, or a cancelled one) stays "to bill" as "not prepared".
     const ready = new Map<string, { count: number; draftCount: number; amount: Decimal }>();
     for (const inst of readyInstallments) {
-      const live = inst.clientInvoice && isLiveStageInvoice(inst.clientInvoice) ? inst.clientInvoice : null;
-      if (live && isIssuedStageInvoice(live)) continue; // billed
+      const invoiceState = deriveInvoiceState(inst.clientInvoice);
+      if (invoiceState === 'ISSUED') continue; // billed
       const contract = contractById.get(inst.contractId);
       if (!contract) continue;
       const entry = ready.get(contract.projectId) ?? { count: 0, draftCount: 0, amount: ZERO };
       entry.count += 1;
-      if (live) entry.draftCount += 1;
+      if (invoiceState === 'DRAFT') entry.draftCount += 1;
       entry.amount = entry.amount.plus(scheduleBaseValue(contract).mul(inst.percentage.toString()));
       ready.set(contract.projectId, entry);
     }

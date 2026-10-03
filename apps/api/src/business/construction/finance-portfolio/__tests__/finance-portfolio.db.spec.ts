@@ -48,6 +48,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
   let projB: string; // no contract; only a shared supplier bill (TO_PAY)
   let projC: string; // contract + one ready stage with only a DRAFT invoice (still TO_BILL)
   let projD: string; // a SOS project — totals never add it to USD
+  let projE: string; // ready stages billed by a REVERSED and an OPENING_BALANCE invoice — not To bill
 
   async function makeProject(code: string, name: string, currency = 'USD'): Promise<string> {
     const p = await prisma.project.create({
@@ -97,7 +98,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
   async function makeInvoice(
     projectId: string,
     contractId: string,
-    opts: { total: number; outstanding: number; dueDate: Date; installmentId?: string; status?: 'POSTED' | 'CANCELLED' | 'DRAFT' },
+    opts: { total: number; outstanding: number; dueDate: Date; installmentId?: string; status?: 'POSTED' | 'CANCELLED' | 'DRAFT'; postingStatus?: 'REVERSED' | 'OPENING_BALANCE' },
   ): Promise<string> {
     const cancelled = opts.status === 'CANCELLED';
     const draft = opts.status === 'DRAFT';
@@ -115,7 +116,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
         outstandingAmount: new Decimal(opts.outstanding),
         currencyCode: 'USD',
         billingAddressSnapshot: {},
-        postingStatus: cancelled || draft ? 'NOT_POSTED' : 'POSTED',
+        postingStatus: opts.postingStatus ?? (cancelled || draft ? 'NOT_POSTED' : 'POSTED'),
         documentStatus: cancelled ? 'CANCELLED' : draft ? 'DRAFT' : 'APPROVED',
         createdBy: userId,
         ...(opts.installmentId ? { sourceInstallmentId: opts.installmentId } : {}),
@@ -380,6 +381,14 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     // ── projD: another currency ──────────────────────────────────────────────────────
     projD = await makeProject(`FPF-D-${suffix.slice(-6)}`, 'Hargeisa depot', 'SOS');
     await makeContract(projD, 1_000, 'SOS');
+
+    // ── projE: ready stages already billed — the schedule reads REVERSED / OPENING_BALANCE as ISSUED ──
+    projE = await makeProject(`FPF-E-${suffix.slice(-6)}`, 'Reversed road');
+    const ctrE = await makeContract(projE, 100_000);
+    const instE1 = await makeInstallment(ctrE, 'Stage 1', '0.5', 1, true);
+    const instE2 = await makeInstallment(ctrE, 'Stage 2', '0.5', 2, true);
+    await makeInvoice(projE, ctrE, { total: 50_000, outstanding: 0, dueDate: past, installmentId: instE1, postingStatus: 'REVERSED' });
+    await makeInvoice(projE, ctrE, { total: 50_000, outstanding: 0, dueDate: past, installmentId: instE2, postingStatus: 'OPENING_BALANCE' });
   }, 60_000);
 
   afterAll(async () => {
@@ -453,6 +462,12 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     expect(toBill.items.map((i) => i.projectId).sort()).toEqual([projA, projC].sort());
   });
 
+  it('FPF-2c: a stage billed by a REVERSED or OPENING_BALANCE invoice is billed, as on the payment schedule', async () => {
+    expect((await row(projE)).readyToBill).toEqual({ count: 0, draftCount: 0, amount: '0.00' });
+    const toBill = await portfolio.list(finance, { queue: 'TO_BILL' });
+    expect(toBill.items.map((i) => i.projectId)).not.toContain(projE);
+  });
+
   it('FPF-3: overdue invoices count and age', async () => {
     const r = await row(projA);
     expect(r.overdueInvoices.count).toBe(1);
@@ -467,7 +482,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
 
   it('FPF-5: queue filters and counts', async () => {
     const all = await portfolio.list(finance);
-    expect(all.queueCounts).toEqual({ ALL: 4, TO_BILL: 2, OVERDUE: 1, TO_PAY: 2 });
+    expect(all.queueCounts).toEqual({ ALL: 5, TO_BILL: 2, OVERDUE: 1, TO_PAY: 2 });
     const overdue = await portfolio.list(finance, { queue: 'OVERDUE' });
     expect(overdue.items.map((i) => i.projectId)).toEqual([projA]);
     const toPay = await portfolio.list(finance, { queue: 'TO_PAY' });
@@ -481,7 +496,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     const byName = await portfolio.list(finance, { search: 'clinic' });
     expect(byName.items.map((i) => i.projectId)).toEqual([projA]);
     const byClient = await portfolio.list(finance, { search: 'hodan' });
-    expect(byClient.items.map((i) => i.projectId).sort()).toEqual([projA, projC, projD].sort());
+    expect(byClient.items.map((i) => i.projectId).sort()).toEqual([projA, projC, projD, projE].sort());
     const closed = await portfolio.list(finance, { status: 'CLOSED' });
     expect(closed.items).toEqual([]);
   });
@@ -491,8 +506,8 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     expect(all.totals.map((t) => t.currency)).toEqual(['SOS', 'USD']);
     const usd = all.totals.find((t) => t.currency === 'USD')!;
     const sos = all.totals.find((t) => t.currency === 'SOS')!;
-    expect(usd.projectCount).toBe(3);
-    expect(usd.contractValue).toBe('700000.00');
+    expect(usd.projectCount).toBe(4);
+    expect(usd.contractValue).toBe('800000.00');
     expect(usd.billed).toBe('160000.00');
     expect(usd.readyToBill).toEqual({ count: 3, draftCount: 1, amount: '250000.00' });
     expect(sos.projectCount).toBe(1);

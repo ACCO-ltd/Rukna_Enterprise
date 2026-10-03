@@ -56,7 +56,7 @@ Money is a decimal string, or `null` when hidden. Counts are always present.
 | `costToDate` | Finance Overview `costPosition.actual` (commitment-ledger ACTUAL) | `groupByProjectAndStage` + `addStage` + `buildPosition` |
 | `committedCost` | Finance Overview `costPosition.committedToDate` (COMMITTED + ACCRUED + ACTUAL) | same |
 | `margin` | Finance Overview `accountingPosition.marginPercent` ((GL revenue − GL project cost) / GL revenue; null while the ledger cannot post or with no revenue) | `sumPostedRevenueByProject`, `sumProjectCostByProject`, `buildAccountingPosition` |
-| `readyToBill` | payment-schedule stages with `readyToBillAt` set whose live invoice is not POSTED yet (Finance issues invoices, decision 1); `draftCount` = those with a prepared draft/approved invoice ("draft prepared"), the rest are "not prepared"; amount = base contract value × stage % | `isLiveStageInvoice`, `isIssuedStageInvoice`, `scheduleBaseValue` |
+| `readyToBill` | payment-schedule stages with `readyToBillAt` set whose invoice the schedule does not read as ISSUED (`deriveInvoiceState`: POSTED / REVERSED / OPENING_BALANCE = billed). `draftCount` = stages whose invoice is DRAFT (not yet posted: NOT_POSTED / PENDING / FAILED) = "draft prepared"; no invoice or a cancelled one = "not prepared" (Finance issues invoices, decision 1); amount = base contract value × stage % | `deriveInvoiceState`, `scheduleBaseValue` |
 | `billsToPay` | POSTED supplier bills with `outstandingAmount > 0` belonging to the project (header or any line, as the bills list) | `supplierBillProjectWhere` |
 
 **Note (bills to pay, multi-project bills):** a bill coded to several projects per line counts on
