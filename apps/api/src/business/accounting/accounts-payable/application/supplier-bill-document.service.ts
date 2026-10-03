@@ -12,6 +12,7 @@ import { SupplierBillRepository } from '../infrastructure/supplier-bill.reposito
 import { PeriodValidator } from '../../accounting-core/application/validators/period.validator.js';
 import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
 import { summarizeBillPayments, supplierBillEligibility } from '../domain/supplier-bill-eligibility.policy.js';
+import { loadOpeningBalanceApTieOut, resolveApControlAccount } from '../infrastructure/opening-balance-tie-out.repository.js';
 
 export interface BillApprovalsView {
   /** Approval chains raised for the bill, newest first — empty when no DoA policy applied. */
@@ -183,7 +184,18 @@ export class SupplierBillDocumentService {
         ),
       ),
     );
+    // Opening-balance bill: the same AP tie-out the payment commands apply (against the AP control
+    // account the payment screens resolve).
+    const openingBalanceTieOut =
+      bill.postingStatus === 'OPENING_BALANCE'
+        ? await loadOpeningBalanceApTieOut(
+            prisma,
+            identity.activeOrganizationId,
+            await resolveApControlAccount(prisma, identity.activeOrganizationId),
+          )
+        : undefined;
     return supplierBillEligibility({
+      openingBalanceTieOut,
       bill: {
         id: bill.id,
         documentStatus: bill.documentStatus,

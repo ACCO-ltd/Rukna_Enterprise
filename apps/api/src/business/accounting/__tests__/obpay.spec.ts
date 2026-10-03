@@ -14,6 +14,12 @@
  *   OBPAY-06  A posted advance can be applied to an opening-balance bill (EVT-AP-005: Dr AP / Cr Advance)
  *   OBPAY-07  Posting an opening-balance bill is still refused (409 OPENING_BALANCE_BILL)
  *   OBPAY-08  No commitment-ledger entries are written by any of it (opening-balance bills have no PO)
+ *   OBPAY-09  The wizard's own reconciliation sees its opening journal (GL read on the same tx)
+ *   OBPAY-10  Posting a payment for an opening-balance bill against a DIFFERENT AP account → 409
+ *             OPENING_BALANCE_AP_NOT_RECONCILED (the payables are not on the account it would debit)
+ *
+ * The fixture chart has two ACCOUNTS_PAYABLE-subtype accounts (AP-TEST and the SYSTEM_ONLY CTL-TEST);
+ * CTL-TEST is deactivated here so AP control resolves to one account, as on a real chart.
  */
 
 import { ConflictException } from '@nestjs/common';
@@ -32,6 +38,7 @@ let docs: SupplierBillDocumentService;
 let billA: string; // 6,000 — paid in two parts, then one payment reversed
 let billB: string; // 2,000 — settled by an advance
 let commitmentRowsBefore = 0;
+let wizardReport: Awaited<ReturnType<AccountingServices['openingBalanceService']['runWizard']>>;
 
 const day = () => env.periods.openStart.toISOString().slice(0, 10);
 
@@ -46,8 +53,9 @@ beforeAll(async () => {
     { requiresDualControl: async () => false } as never,
   );
   commitmentRowsBefore = await prisma.commitmentLedgerEntry.count({ where: { organizationId: env.orgId } });
+  await prisma.account.update({ where: { id: env.accounts.ctrlId }, data: { status: 'INACTIVE' } });
 
-  await svc.openingBalanceService.runWizard(env.identity, {
+  wizardReport = await svc.openingBalanceService.runWizard(env.identity, {
     cutoverDate: day(),
     batchReference: `OBPAY-${Date.now()}`,
     arAccountCode: env.accounts.arCode,
@@ -248,4 +256,29 @@ test('OBPAY-07 posting an opening-balance bill is still refused (409)', async ()
 
 test('OBPAY-08 paying opening-balance bills writes no commitment-ledger entries', async () => {
   expect(await prisma.commitmentLedgerEntry.count({ where: { organizationId: env.orgId } })).toBe(commitmentRowsBefore);
+});
+
+test('OBPAY-09 the import reconciliation reads the GL inside its own transaction (zero variance)', () => {
+  const ap = wizardReport.reconciliation.find((r) => r.label.startsWith('Accounts Payable'));
+  expect(ap).toMatchObject({ glBalance: '8000.00', subledgerBalance: '8000.00', variance: '0.00', reconciled: true });
+  expect(wizardReport.zeroVariance).toBe(true);
+});
+
+test('OBPAY-10 posting against an AP account that does not carry the opening payables is refused (409)', async () => {
+  const payment = await svc.supplierPaymentService.create(env.identity, {
+    supplierId: env.supplierId, bankAccountId: env.bankAccountId, paymentDate: day(), currencyCode: 'USD',
+    totalAmount: 100, paymentMethod: 'BANK_TRANSFER', allocations: [{ supplierBillId: billB, amount: 100 }],
+  });
+  await svc.supplierPaymentService.approve(env.identity, payment.id);
+  const run = svc.supplierPaymentService.post(env.identity, {
+    paymentId: payment.id,
+    apAccountCode: env.accounts.ctrlCode, // not the account the opening journal credited
+    bankGlCode: env.accounts.bankCode,
+    supplierAdvanceCode: env.accounts.advOutCode,
+  });
+  await expect(run).rejects.toBeInstanceOf(ConflictException);
+  await expect(run).rejects.toMatchObject({ response: { code: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
+  const after = await prisma.supplierPayment.findUniqueOrThrow({ where: { id: payment.id } });
+  expect(after.postingStatus).not.toBe('POSTED');
+  expect(await prisma.journalEntry.count({ where: { sourceDocumentId: payment.id, sourceDocumentType: 'SUPPLIER_PAYMENT' } })).toBe(0);
 });

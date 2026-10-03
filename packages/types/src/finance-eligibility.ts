@@ -40,7 +40,8 @@ export type SupplierBillEligibilityStepKey =
  * command's "must be APPROVED" 400), BILL_REVERSED (409), MATCH_* (the 3-way-match 400),
  * NO_PERIOD / PERIOD_CLOSED / PERIOD_LOCKED (the ledger's period 400), OPENING_BALANCE_BILL (409).
  * Pay: BILL_NOT_POSTED (only POSTED or OPENING_BALANCE bills are paid — an opening-balance bill's
- * balance is already on AP control), PAYMENT_AWAITING_APPROVAL /
+ * balance is already on AP control), OPENING_BALANCE_AP_NOT_RECONCILED (409 — the carried-over
+ * payables do not tie to the AP control account the payment debits), PAYMENT_AWAITING_APPROVAL /
  * PAYMENT_AWAITING_RELEASE / PAYMENT_NOT_POSTED (the whole balance is on a payment still in
  * flight), FULLY_PAID.
  */
@@ -52,6 +53,8 @@ export type SupplierBillBlockedReason =
   | 'BILL_REVERSED'
   /** Imported from the previous system: already in the ledger via the opening-balance journal; never posted again. */
   | 'OPENING_BALANCE_BILL'
+  /** Opening-balance bill whose carried-over payables do not tie to the AP control account (refused, 409). */
+  | 'OPENING_BALANCE_AP_NOT_RECONCILED'
   | 'MATCH_NOT_RUN'
   | 'MATCH_EXCEPTION'
   | 'MATCH_DISPUTED'

@@ -376,7 +376,7 @@ function buildPost(payment: Record<string, unknown>) {
     markPostingFailed: jest.fn().mockResolvedValue(payment),
   };
   const prisma = {
-    supplierPaymentAllocation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    supplierPaymentAllocation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), count: jest.fn().mockResolvedValue(0) },
     $transaction: async (cb: (tx: unknown) => unknown) => cb(prisma),
   };
   const signatoryService = {

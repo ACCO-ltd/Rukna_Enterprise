@@ -8,13 +8,23 @@ import {
   billPostingBlock,
   billSettlementBlock,
   isReleaseComplete,
+  openingBalanceApTieOutProblem,
   paymentPostingBlock,
+  type OpeningBalanceApTieOut,
   summarizeBillPayments,
   supplierBillEligibility,
   type BillEligibilityFacts,
 } from './supplier-bill-eligibility.policy.js';
 
 const OPEN = { name: 'Oct 2026', status: 'OPEN' };
+
+/** Opening-balance payables that tie to AP control (journal credits 1,000; bills total 1,000). */
+const TIED: OpeningBalanceApTieOut = {
+  apAccount: { id: 'ap', code: '2000' },
+  journal: { journalNumber: 'JE-000001' },
+  journalNetCredit: '1000',
+  importedBillsTotal: '1000.00',
+};
 
 function facts(over: Partial<BillEligibilityFacts['bill']> = {}, rest: Partial<BillEligibilityFacts> = {}): BillEligibilityFacts {
   return {
@@ -74,13 +84,24 @@ describe('billSettlementBlock / paymentPostingBlock / release', () => {
     expect(billSettlementBlock({ postingStatus: 'APPROVED', outstandingAmount: '10' })).toBe('BILL_NOT_POSTED');
     expect(billSettlementBlock({ postingStatus: 'NOT_POSTED', outstandingAmount: '10' })).toBe('BILL_NOT_POSTED');
     expect(billSettlementBlock({ postingStatus: 'REVERSED', outstandingAmount: '10' })).toBe('BILL_NOT_POSTED');
-    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' })).toBeNull();
-    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '0' })).toBe('NOTHING_OUTSTANDING');
-    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' }, new Decimal(11))).toBe('EXCEEDS_OUTSTANDING');
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' }, undefined, TIED)).toBeNull();
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '0' }, undefined, TIED)).toBe('NOTHING_OUTSTANDING');
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' }, new Decimal(11), TIED)).toBe('EXCEEDS_OUTSTANDING');
+    // Without a tie-out (or one that fails) an opening-balance bill is refused.
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' })).toBe('OPENING_BALANCE_AP_NOT_RECONCILED');
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '0' })).toBe('NOTHING_OUTSTANDING');
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '10' })).toBeNull();
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '10' }, new Decimal(11))).toBe('EXCEEDS_OUTSTANDING');
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '10' }, new Decimal(10))).toBeNull();
+  });
+  it('opening-balance AP tie-out: equal → none; mismatch / no journal / no account → plain words', () => {
+    expect(openingBalanceApTieOutProblem(TIED)).toBeNull();
+    expect(openingBalanceApTieOutProblem({ ...TIED, journalNetCredit: '600' })).toBe(
+      'Opening-balance payables do not tie to the AP control account (journal JE-000001 credits 2000 600.00, imported bills total 1000.00). Fix the opening balance before paying.',
+    );
+    expect(openingBalanceApTieOutProblem({ ...TIED, journal: null, journalNetCredit: '0' })).toMatch(/no opening-balance journal is posted/);
+    expect(openingBalanceApTieOutProblem({ ...TIED, apAccount: null })).toMatch(/no single AP control account/);
+    expect(openingBalanceApTieOutProblem(undefined)).not.toBeNull();
   });
   it('dual control needs RELEASED; otherwise APPROVED', () => {
     expect(paymentPostingBlock({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' }, true)).toBe('PAYMENT_NOT_RELEASED');
@@ -187,7 +208,7 @@ describe('supplierBillEligibility — steps', () => {
   });
 
   it('opening-balance bill: in the ledger already, never posted again, but payable like a posted bill', () => {
-    const e = supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE' }, { postingPeriod: null }));
+    const e = supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE' }, { postingPeriod: null, openingBalanceTieOut: TIED }));
     expect(e.canPost).toBe(false);
     expect(e.canPay).toBe(true);
     expect(e.blockedReason).toBeNull();
@@ -203,7 +224,7 @@ describe('supplierBillEligibility — steps', () => {
 
   it('opening-balance bill: part paid, in flight and paid in full read exactly as for a posted bill', () => {
     const ob = (outstandingAmount: string, rest: Partial<BillEligibilityFacts> = {}) =>
-      supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE', outstandingAmount }, { postingPeriod: null, ...rest }));
+      supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE', outstandingAmount }, { postingPeriod: null, openingBalanceTieOut: TIED, ...rest }));
     const posted = { postingStatus: 'POSTED', payment: { documentStatus: 'APPROVED', postingStatus: 'POSTED', underDualControl: false, signatures: 0 } };
     const part = ob('400', { allocations: [posted] });
     expect(part.canPay).toBe(true);
@@ -216,6 +237,19 @@ describe('supplierBillEligibility — steps', () => {
       allocations: [{ postingStatus: 'NOT_POSTED', payment: { documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', underDualControl: true, signatures: 0 } }],
     });
     expect(drafted.blockedReason).toBe('PAYMENT_AWAITING_APPROVAL');
+  });
+
+  it('opening-balance bill whose payables do not tie to AP control: refused, said plainly', () => {
+    const e = supplierBillEligibility(
+      facts({ postingStatus: 'OPENING_BALANCE' }, { postingPeriod: null, openingBalanceTieOut: { ...TIED, journalNetCredit: '0' } }),
+    );
+    expect(e.canPay).toBe(false);
+    expect(e.blockedReason).toBe('OPENING_BALANCE_AP_NOT_RECONCILED');
+    expect(stepOf(e, 'POSTED').status).toBe('DONE');
+    for (const key of ['PAYMENT_APPROVED', 'PAYMENT_RELEASED', 'PAID']) {
+      expect(stepOf(e, key)).toMatchObject({ status: 'BLOCKED', code: 'OPENING_BALANCE_AP_NOT_RECONCILED' });
+      expect(stepOf(e, key).detail).toMatch(/do not tie to the AP control account/);
+    }
   });
 
   it('part paid with nothing in flight reads PARTLY_PAID, not "no payment recorded"', () => {
@@ -314,8 +348,18 @@ describe('eligibility.canPost ⇔ SupplierBillService.post passes its guard', ()
 });
 
 describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an allocation', () => {
-  function payHarness(bill: Record<string, unknown>) {
-    const tx = {};
+  /** A tenant whose opening-balance payables tie (journal credit = bills total = `obCredit`). */
+  function payHarness(bill: Record<string, unknown>, obCredit = '100') {
+    const tx = {
+      account: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'ap', code: '2000', status: 'ACTIVE', versions: [{ accountSubtype: 'ACCOUNTS_PAYABLE' }] },
+        ]),
+      },
+      journalEntry: { findMany: jest.fn().mockResolvedValue([{ id: 'j1', journalNumber: 'JE-000001' }]) },
+      supplierBill: { aggregate: jest.fn().mockResolvedValue({ _sum: { totalAmount: '100' } }) },
+      journalLine: { aggregate: jest.fn().mockResolvedValue({ _sum: { creditAmount: obCredit, debitAmount: '0' } }) },
+    };
     const prisma = {
       supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'someone' }) },
       $transaction: (fn: (t: unknown) => unknown) => fn(tx),
@@ -334,16 +378,23 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
   }
   const base = { id: 'b1', supplierId: 's1', currencyCode: 'USD', documentStatus: 'APPROVED', matchStatus: 'MATCHED', purchaseOrderRevisionId: null };
   it.each([
-    ['NOT_POSTED', '100'],
-    ['POSTED', '100'],
-    ['POSTED', '0'],
-    ['REVERSED', '100'],
-    ['OPENING_BALANCE', '100'],
-    ['OPENING_BALANCE', '0'],
-  ])('posting %s, outstanding %s', async (postingStatus, outstandingAmount) => {
+    ['NOT_POSTED', '100', '100'],
+    ['POSTED', '100', '100'],
+    ['POSTED', '0', '100'],
+    ['REVERSED', '100', '100'],
+    ['OPENING_BALANCE', '100', '100'],
+    ['OPENING_BALANCE', '0', '100'],
+    ['OPENING_BALANCE', '100', '40'], // payables not on AP control
+  ])('posting %s, outstanding %s, opening journal credits %s', async (postingStatus, outstandingAmount, obCredit) => {
     const bill = { ...base, postingStatus, outstandingAmount };
-    const e = supplierBillEligibility(facts(bill as never));
-    const { svc, paymentRepo } = payHarness(bill);
+    const tieOut: OpeningBalanceApTieOut = {
+      apAccount: { id: 'ap', code: '2000' },
+      journal: { journalNumber: 'JE-000001' },
+      journalNetCredit: obCredit,
+      importedBillsTotal: '100',
+    };
+    const e = supplierBillEligibility(facts(bill as never, { openingBalanceTieOut: tieOut }));
+    const { svc, paymentRepo } = payHarness(bill, obCredit);
     const run = svc.create(identity, {
       supplierId: 's1', bankAccountId: 'ba', paymentDate: '2026-10-01', currencyCode: 'USD', totalAmount: 1,
       paymentMethod: 'BANK', allocations: [{ supplierBillId: 'b1', amount: 1 }],
@@ -352,7 +403,9 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
       await expect(run).resolves.toMatchObject({ id: 'p1' });
       expect(paymentRepo.createAllocation).toHaveBeenCalled();
     } else {
-      await expect(run).rejects.toBeInstanceOf(BadRequestException);
+      await expect(run).rejects.toBeInstanceOf(
+        e.blockedReason === 'OPENING_BALANCE_AP_NOT_RECONCILED' ? ConflictException : BadRequestException,
+      );
       expect(paymentRepo.createAllocation).not.toHaveBeenCalled();
     }
   });
