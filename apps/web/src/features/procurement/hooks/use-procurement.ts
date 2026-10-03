@@ -969,6 +969,16 @@ function usePaymentMutation<TArgs>(
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
       void qc.invalidateQueries({ queryKey: procurementKeys.payment(payment.id) });
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+      // A payment moves its bills' balances and "why can't I pay this?" (every bill key, eligibility
+      // included — it nests under the bill key) and the PO's bill-payments section (L2).
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bill'] });
+      void qc.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === procurementKeys.all[0] &&
+          query.queryKey[1] === 'purchase-order' &&
+          query.queryKey[3] === 'bill-payments',
+      });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'po-settlement'] });
     },
   });
 }
