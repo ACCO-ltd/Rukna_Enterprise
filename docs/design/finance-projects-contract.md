@@ -315,7 +315,10 @@ invoice). Already ready → 200, no-op, no second audit event.
 
 Body `{ reason?: string }` → `{ installmentId, readyToBill: false, readyToBillAt: null }`. Same
 gate. Refused: `NOT_READY` (not marked), `STAGE_ALREADY_INVOICED` (a DRAFT or issued invoice; a
-cancelled one does not block).
+cancelled one does not block). A live invoice found only under the row lock (Finance prepared concurrently) → **409**
+`STAGE_ALREADY_INVOICED`. Mark, undo and prepare serialise on the installment row lock.
+`canMarkReadyToBill` on each schedule row = not marked AND `stagePrepareBlock` clear (any stage, not
+only NEXT).
 
 ### Screen
 

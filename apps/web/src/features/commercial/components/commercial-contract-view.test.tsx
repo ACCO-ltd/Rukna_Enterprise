@@ -265,6 +265,14 @@ describe('Mark ready to bill (ADR-043 decision 1)', () => {
     }
   });
 
+  it('still offers it after a cancelled invoice (invoice id kept, no live invoice)', () => {
+    schedule.installments = [
+      stageFixture({ id: 'cx', sortOrder: 0, name: 'Re-bill', status: 'NEXT', invoiceId: 'inv-cancelled', invoiceState: null, collectionStatus: 'VERIFIED', billingEligibility: eligible('cx') }),
+    ];
+    renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, { permissions: CD });
+    expect(within(scheduleRows()[0]!).getByRole('button', { name: 'Mark ready to bill' })).toBeEnabled();
+  });
+
   it('keeps it for the finance set (view:contract + manage:receivable)', () => {
     renderWithProviders(<CommercialContractView projectId="p1" workspace={workspaceFixture()} />, {
       permissions: ['view:contract', 'manage:receivable'],

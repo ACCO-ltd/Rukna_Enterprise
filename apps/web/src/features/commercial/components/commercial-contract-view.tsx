@@ -444,8 +444,8 @@ export function PaymentSchedulePanel({
 const BILLED_STATUSES = new Set(['BILLED', 'PART_PAID', 'PAID', 'OVERDUE']);
 
 /**
- * "Mark ready to bill" / "Undo ready" on one schedule row. Shown only while Finance has not
- * prepared the stage's invoice. Enabled by the row's `billingEligibility.canPrepare` — the same
+ * "Mark ready to bill" / "Undo ready" on one schedule row. Shown only while the stage has no live
+ * invoice (`invoiceState` — a cancelled invoice reads as none). Enabled by the row's `billingEligibility.canPrepare` — the same
  * guard (`stagePrepareBlock`) the mark-ready command enforces — and, when blocked, disabled with
  * that reason in plain words. Money-free: the command returns no amount.
  */
@@ -462,7 +462,9 @@ export function StageReadinessAction({
   const undo = useRevokeReadyToBill(projectId);
   const reasonId = useId();
 
-  if (inst.invoiceId || inst.invoiceState || BILLED_STATUSES.has(inst.collectionStatus)) return null;
+  // A live invoice (draft or issued) means Finance has the stage. A cancelled one does not count —
+  // the same rule as the command and `billingEligibility` — so the stage can be marked again.
+  if (inst.invoiceState !== null || BILLED_STATUSES.has(inst.collectionStatus)) return null;
 
   const eligibility = inst.billingEligibility as StageBillingEligibility | undefined;
   const error = (mark.error ?? undo.error) as Error | null;

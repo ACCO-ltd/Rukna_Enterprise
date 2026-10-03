@@ -209,6 +209,66 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
     await expect(service.markReadyToBill(identity, stageInvoiced, undefined, projectId)).resolves.toMatchObject({ readyToBill: true });
   });
 
+  it('MR-09: two concurrent marks write once — one audit event (row lock + conditional update)', async () => {
+    const raced = (
+      await prisma.contractPaymentInstallment.create({
+        data: { contractId, name: 'Race', sortOrder: 9, percentage: new Decimal('0.0000'), triggerType: 'ADVANCE', milestoneLabel: 'Race' },
+      })
+    ).id;
+    const [a, b] = await Promise.all([
+      service.markReadyToBill(identity, raced, undefined, projectId),
+      service.markReadyToBill(identity, raced, undefined, projectId),
+    ]);
+    expect(a.readyToBillAt).toBe(b.readyToBillAt);
+    const events = await prisma.auditOutboxEvent.count({
+      where: { organizationId: orgId, aggregateId: raced, eventType: 'MILESTONE_READY_TO_BILL' },
+    });
+    expect(events).toBe(1);
+  });
+
+  it('MR-10: undo racing Finance’s prepare waits for it, then is refused (409) — readiness stays', async () => {
+    const raced = (
+      await prisma.contractPaymentInstallment.create({
+        data: { contractId, name: 'Race 2', sortOrder: 10, percentage: new Decimal('0.0000'), triggerType: 'ADVANCE', milestoneLabel: 'Race 2' },
+      })
+    ).id;
+    await service.markReadyToBill(identity, raced, undefined, projectId);
+
+    // Stand-in for prepare: take the stage's row lock, create the draft, hold until released.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const holding = new Promise<void>((resolve) => (locked = resolve));
+    const prepare = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM contract_payment_installments WHERE id = ${raced} FOR UPDATE`;
+        await tx.clientInvoice.create({
+          data: {
+            organizationId: orgId, clientId, invoiceDate: new Date('2026-10-01'), currencyCode: 'USD',
+            subtotal: new Decimal('0'), vatAmount: new Decimal('0'), totalAmount: new Decimal('0'), outstandingAmount: new Decimal('0'),
+            billingAddressSnapshot: {}, createdBy: identity.userId, sourceInstallmentId: raced, documentStatus: 'DRAFT',
+          },
+        });
+        locked();
+        await gate;
+      },
+      { timeout: 20000 },
+    );
+    await holding;
+    // The undo's pre-check sees no invoice yet (uncommitted); it must block on the lock, then refuse.
+    const undo = service.revokeReadyToBill(identity, raced, undefined, projectId);
+    const outcome = undo.then(
+      () => 'revoked',
+      (error: { status?: number; getStatus?: () => number }) => error.getStatus?.() ?? error.status,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await prepare;
+    expect(await outcome).toBe(409);
+    const row = await prisma.contractPaymentInstallment.findUniqueOrThrow({ where: { id: raced } });
+    expect(row.readyToBillAt).not.toBeNull();
+  });
+
   it('MR-08: a stage is not found through another project’s route', async () => {
     await expect(service.markReadyToBill(identity, stageVerified, undefined, otherProjectId)).rejects.toThrow(/not found/);
     await expect(service.revokeReadyToBill(identity, stageVerified, undefined, otherProjectId)).rejects.toThrow(/not found/);

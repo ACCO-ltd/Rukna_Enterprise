@@ -4,6 +4,7 @@ import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-q
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { financePortfolioKeys } from '@/features/finance-projects/hooks';
+import { programmeKeys } from '@/features/programme/hooks/programme-keys';
 
 import { markInstallmentReadyToBill, revokeInstallmentReadiness } from '../api/commercial-api';
 import { commercialKeys } from './use-commercial';
@@ -23,10 +24,14 @@ export function useCanMarkReadyToBill(): boolean {
   return can('view:contract') && (can(MARK_READY_PERMISSION) || can('manage:receivable'));
 }
 
-/** The schedule (every commercial read of the project) and Finance's portfolio / "To bill" queue. */
+/**
+ * The schedule (every commercial read of the project), Progress → milestones (each release line's
+ * `collectionStatus`) and Finance's portfolio / "To bill" queue.
+ */
 function invalidateReadiness(qc: QueryClient, projectId: string) {
   return Promise.all([
     qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) }),
+    qc.invalidateQueries({ queryKey: programmeKeys.milestones(projectId) }),
     qc.invalidateQueries({ queryKey: financePortfolioKeys.all }),
   ]);
 }

@@ -413,14 +413,24 @@ export class CommercialBillingService {
       };
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const result = await this.repo.markInstallmentReadyToBill(
-        tx as unknown as Parameters<typeof this.repo.markInstallmentReadyToBill>[0],
-        orgId,
-        installmentId,
-        identity.userId,
-        note,
-      );
+    // Authoritative under the stage's row lock (shared with undo and prepare): two marks racing,
+    // or a mark racing Finance's prepare, write once. The checks above are the fast error only.
+    const readyToBillAt = await prisma.$transaction(async (tx) => {
+      const t = tx as unknown as Parameters<typeof this.repo.lockInstallment>[0];
+      if (!(await this.repo.lockInstallment(t, orgId, installmentId))) {
+        throw new NotFoundException(`Payment installment ${installmentId} not found`);
+      }
+      const now = await this.repo.findReadinessForUpdate(t, orgId, installmentId);
+      if (now.readyToBillAt) return now.readyToBillAt; // marked meanwhile: no-op, no event
+      if (now.hasLiveInvoice) {
+        throw new ConflictException({
+          message: `Installment "${installment.name}" already has an invoice — readiness cannot be set after billing.`,
+          code: 'STAGE_ALREADY_INVOICED',
+          errorCode: 'STAGE_ALREADY_INVOICED',
+        });
+      }
+      const at = await this.repo.markInstallmentReadyToBill(t, orgId, installmentId, identity.userId, note);
+      if (!at) return (await this.repo.findReadinessForUpdate(t, orgId, installmentId)).readyToBillAt!;
       await this.auditOutbox.record(tx, {
         organizationId: orgId,
         actorUserId: identity.userId,
@@ -431,17 +441,13 @@ export class CommercialBillingService {
         eventType: 'MILESTONE_READY_TO_BILL',
         // Keyed on the mark's own timestamp (as revoke is): mark → undo → mark again is a new
         // event, and a constant key would collide on the outbox's unique index and roll it back.
-        idempotencyKey: `ready-to-bill-${installmentId}-${result.readyToBillAt!.getTime()}`,
+        idempotencyKey: `ready-to-bill-${installmentId}-${at.getTime()}`,
         after: { readyToBillBy: identity.userId, note: note ?? null },
       });
-      return result;
+      return at;
     });
 
-    return {
-      installmentId,
-      readyToBill: true,
-      readyToBillAt: updated.readyToBillAt!.toISOString(),
-    };
+    return { installmentId, readyToBill: true, readyToBillAt: readyToBillAt.toISOString() };
   }
 
   /**
@@ -483,12 +489,24 @@ export class CommercialBillingService {
       );
     }
 
+    // Re-checked under the stage's row lock, which Finance's prepare also takes: an undo and a
+    // prepare serialise, so an undo can never clear readiness under a draft just prepared.
     await prisma.$transaction(async (tx) => {
-      await this.repo.revokeInstallmentReadiness(
-        tx as unknown as Parameters<typeof this.repo.revokeInstallmentReadiness>[0],
-        orgId,
-        installmentId,
-      );
+      const t = tx as unknown as Parameters<typeof this.repo.lockInstallment>[0];
+      if (!(await this.repo.lockInstallment(t, orgId, installmentId))) {
+        throw new NotFoundException(`Payment installment ${installmentId} not found`);
+      }
+      const now = await this.repo.findReadinessForUpdate(t, orgId, installmentId);
+      if (now.hasLiveInvoice) {
+        throw new ConflictException({
+          message: `Installment "${installment.name}" has an invoice — readiness cannot be revoked after billing.`,
+          code: 'STAGE_ALREADY_INVOICED',
+          errorCode: 'STAGE_ALREADY_INVOICED',
+        });
+      }
+      if (!now.readyToBillAt || (await this.repo.revokeInstallmentReadiness(t, orgId, installmentId)) === 0) {
+        throw refuse('NOT_READY', `Installment "${installment.name}" is not marked ready to bill — nothing to revoke.`);
+      }
       await this.auditOutbox.record(tx, {
         organizationId: orgId,
         actorUserId: identity.userId,
@@ -497,7 +515,7 @@ export class CommercialBillingService {
         resourceId: installmentId,
         sourceCommand: 'commercial.revokeReadyToBill',
         eventType: 'MILESTONE_READINESS_REVOKED',
-        idempotencyKey: `revoke-readiness-${installmentId}-${installment.readyToBillAt!.getTime()}`,
+        idempotencyKey: `revoke-readiness-${installmentId}-${now.readyToBillAt.getTime()}`,
         after: { reason: reason ?? null },
       });
     });
@@ -779,6 +797,8 @@ export class CommercialBillingService {
 
     return prisma.$transaction(
       async (tx) => {
+        // The stage's row lock, shared with mark ready / undo ready: an undo cannot interleave.
+        await this.repo.lockInstallment(tx as never, orgId, installmentId);
         // Authoritative re-check inside the transaction (the pre-check above is a fast error only).
         const existing = await this.repo.findPackageInvoices(tx as never, orgId, installmentId);
         if (existing.stage) {
@@ -845,14 +865,17 @@ export class CommercialBillingService {
         }
 
         // D2 — preparing IS the ready-to-bill decision now; keep its audit trail.
-        if (!installment.readyToBillAt) {
-          await this.repo.markInstallmentReadyToBill(
-            tx as never,
-            orgId,
-            installmentId,
-            identity.userId,
-            'Prepared for billing',
-          );
+        // Conditional: if Construction marked it meanwhile, their mark stands and no event is added.
+        const markedAt = installment.readyToBillAt
+          ? null
+          : await this.repo.markInstallmentReadyToBill(
+              tx as never,
+              orgId,
+              installmentId,
+              identity.userId,
+              'Prepared for billing',
+            );
+        if (markedAt) {
           await this.auditOutbox.record(tx, {
             organizationId: orgId,
             actorUserId: identity.userId,

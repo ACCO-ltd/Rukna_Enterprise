@@ -36,7 +36,7 @@ function Gate() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('mark ready to bill — feedback and refresh', () => {
-  it('confirms, and refreshes the schedule and Finance’s portfolio ("To bill")', async () => {
+  it('confirms, and refreshes the schedule, Progress milestones and Finance’s portfolio ("To bill")', async () => {
     api.mark.mockResolvedValue({ installmentId: 's1', readyToBill: true, readyToBillAt: '2026-10-03T00:00:00Z' });
     const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     renderWithProviders(<Probe />, { withToast: true });
@@ -46,7 +46,7 @@ describe('mark ready to bill — feedback and refresh', () => {
     expect(await screen.findByText('Marked ready to bill — Finance will prepare the invoice')).toBeInTheDocument();
     expect(api.mark).toHaveBeenCalledWith('p1', 's1', undefined);
     const keys = invalidate.mock.calls.map(([filters]) => (filters as { queryKey: unknown[] }).queryKey);
-    expect(keys).toEqual(expect.arrayContaining([['commercial', 'p1'], ['finance-portfolio']]));
+    expect(keys).toEqual(expect.arrayContaining([['commercial', 'p1'], ['programme', 'p1', 'milestones'], ['finance-portfolio']]));
   });
 
   it('confirms an undo', async () => {

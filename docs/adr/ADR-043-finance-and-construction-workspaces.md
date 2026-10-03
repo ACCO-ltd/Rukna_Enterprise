@@ -97,6 +97,10 @@ the existing project-access rule applies per row.
   cancelled invoice does not). Both acts write their audit event (`MILESTONE_READY_TO_BILL`,
   `MILESTONE_READINESS_REVOKED`); the mark's idempotency key now carries its timestamp, so mark →
   undo → mark again no longer collides on the audit outbox's unique key.
+- **Concurrency:** mark ready, undo ready and Finance's prepare each take the stage's row lock
+  (`SELECT … FOR UPDATE` on the installment) inside their transaction and re-check there. Mark is a
+  conditional update (`readyToBillAt IS NULL`; a lost race is a no-op with no audit event); undo
+  re-checks for a live invoice under the lock and answers 409 if Finance prepared meanwhile.
 - Marking ready puts the stage in Finance's *To bill* queue (`readyToBillAt`); preparing an invoice
   still records readiness itself when Construction has not (D2).
 - **Status follows the mark.** `collectionStatus` gains **`VERIFIED`** ("Verified — awaiting ready

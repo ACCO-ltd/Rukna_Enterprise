@@ -2002,7 +2002,7 @@ export interface CommercialPaymentScheduleInstallment {
   readyToBill: boolean;
   /** ISO-8601 timestamp when readiness was marked; null when revoked or never set. */
   readyToBillAt: string | null;
-  /** True when the user may click "Mark Ready to Bill" — NEXT status, not yet marked ready, no outstanding invoice. */
+  /** True when "Mark ready to bill" would succeed: not yet marked and the mark-ready command's guard (`stagePrepareBlock`) is clear. Permission is separate. */
   canMarkReadyToBill: boolean;
   /** True when the user may click "Prepare Invoice" — NEXT status, marked ready, no outstanding invoice. */
   canPrepareInvoice: boolean;
