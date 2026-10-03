@@ -2875,6 +2875,7 @@ model ClientInvoice {
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
   @@index([organizationId, documentStatus])
+  @@index([projectId])
   @@index([taxCodeId])
   @@map("client_invoices")
 }
@@ -3178,6 +3179,7 @@ model SupplierBill {
   @@index([organizationId, supplierId, supplierInvoiceNumberNorm], map: "supplier_bills_organization_id_supplier_id_supplier_invoice_idx")
   @@unique([organizationId, billNumber])
   @@index([organizationId, postingStatus])
+  @@index([projectId])
   @@index([supplierId])
   @@map("supplier_bills")
 }
@@ -3215,6 +3217,7 @@ model SupplierBillLine {
   material Material?    @relation(fields: [materialId], references: [id])
 
   @@unique([supplierBillId, lineNumber])
+  @@index([projectId, supplierBillId])
   @@map("supplier_bill_lines")
 }
 
