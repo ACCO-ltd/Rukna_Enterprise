@@ -1,3 +1,4 @@
+import type { DownloadUrlResponse } from '@/features/files/api/files-api';
 import { apiClient } from '@/lib/api-client';
 
 import type { Receipt, ReceiptAllocation, ReceiptDetail } from '../types';
@@ -93,4 +94,13 @@ export function reverseAllocation(receiptId: string, allocationId: string): Prom
     `/customer-receipts/${receiptId}/allocations/${allocationId}/reverse`,
     { method: 'POST', body: JSON.stringify({}) },
   );
+}
+
+/**
+ * `GET /customer-receipts/:id/document` — the branded receipt PDF's short-lived signed download
+ * URL, rendered on first request. Only a POSTED, numbered, non-reversed receipt has one (409
+ * NOT_POSTED / RECEIPT_REVERSED otherwise). Fetch fresh on every open — the URL expires.
+ */
+export function getReceiptDocument(id: string): Promise<DownloadUrlResponse> {
+  return apiClient<DownloadUrlResponse>(`/customer-receipts/${id}/document`);
 }
