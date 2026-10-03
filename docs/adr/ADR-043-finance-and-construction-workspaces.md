@@ -102,6 +102,10 @@ the existing project-access rule applies per row.
   (`SELECT … FOR UPDATE` on the installment) inside their transaction and re-check there. Mark is a
   conditional update (`readyToBillAt IS NULL`; a lost race is a no-op with no audit event); undo
   re-checks for a live invoice under the lock and answers 409 if Finance prepared meanwhile.
+  Prepare always runs the conditional mark under its lock (never trusting its pre-lock read), so
+  an undo that committed just before it cannot leave a draft unmarked — out of *To bill*.
+- Cash-flow forecast (Phase 4) is unaffected: it forecasts every un-issued stage by its expected
+  date (or the day it was marked, if earlier), whether VERIFIED or READY_TO_BILL.
 - Marking ready puts the stage in Finance's *To bill* queue (`readyToBillAt`); preparing an invoice
   still records readiness itself when Construction has not (D2).
 - **Status follows the mark.** `collectionStatus` gains **`VERIFIED`** ("Verified — awaiting ready
