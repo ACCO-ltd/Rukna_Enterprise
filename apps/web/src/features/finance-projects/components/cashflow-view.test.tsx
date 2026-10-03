@@ -32,8 +32,18 @@ import { FinanceProjectsList } from './finance-projects-list';
 const PERMISSION = 'view:financial-position';
 
 const money = (inv: string, stages: string, bills: string, po: string) => ({
-  inflows: { fromInvoices: inv, fromUnbilledStages: stages, total: (Number(inv) + Number(stages)).toFixed(2) },
-  outflows: { fromSupplierBills: bills, fromOpenCommitments: po, total: (Number(bills) + Number(po)).toFixed(2) },
+  inflows: {
+    fromInvoices: inv,
+    fromUnbilledStages: stages,
+    fromOpeningReceivables: '0.00',
+    total: (Number(inv) + Number(stages)).toFixed(2),
+  },
+  outflows: {
+    fromSupplierBills: bills,
+    fromOpenCommitments: po,
+    fromOpeningPayables: '0.00',
+    total: (Number(bills) + Number(po)).toFixed(2),
+  },
   net: (Number(inv) + Number(stages) - Number(bills) - Number(po)).toFixed(2),
 });
 
@@ -51,7 +61,14 @@ function currency(code: string): CashflowCurrencyForecast {
       bucket('UNDATED', 'UNDATED', null, null, money('0.00', '20000.00', '0.00', '4000.00')),
     ],
     totals: money('25000.00', '50000.00', '7000.00', '4000.00'),
-    counts: { fromInvoices: 1, fromUnbilledStages: 2, fromSupplierBills: 1, fromOpenCommitments: 2 },
+    counts: {
+      fromInvoices: 1,
+      fromUnbilledStages: 2,
+      fromOpeningReceivables: 0,
+      fromSupplierBills: 1,
+      fromOpenCommitments: 2,
+      fromOpeningPayables: 0,
+    },
   };
 }
 
@@ -65,8 +82,10 @@ function response(over: Partial<CashflowForecastResponse> = {}): CashflowForecas
     basis: {
       fromInvoices: 'Invoice basis note.',
       fromUnbilledStages: 'Stage basis note.',
+      fromOpeningReceivables: 'Opening receivable basis note.',
       fromSupplierBills: 'Bill basis note.',
       fromOpenCommitments: 'Order basis note.',
+      fromOpeningPayables: 'Opening payable basis note.',
     },
     exclusions: ['The cash already in the bank.'],
     moneyVisible: true,
@@ -83,7 +102,7 @@ describe('CashflowView', () => {
     renderWithProviders(<CashflowView />, { permissions: [PERMISSION] });
 
     const table = await screen.findByRole('region', { name: 'Cash flow in SOS' });
-    for (const header of ['Period', 'Money in', 'Money out', 'Net', 'Cumulative net', 'Issued invoices', 'Stages not yet invoiced', 'Supplier bills', 'Open purchase orders']) {
+    for (const header of ['Period', 'Money in', 'Money out', 'Net', 'Cumulative net', 'Issued invoices', 'Stages not yet invoiced', 'Supplier bills', 'Open purchase orders', 'Opening balances — receivable', 'Opening balances — payable']) {
       expect(within(table).getAllByRole('columnheader', { name: header }).length).toBeGreaterThan(0);
     }
     expect(within(table).getByText('Overdue / now')).toBeInTheDocument();
@@ -92,6 +111,7 @@ describe('CashflowView', () => {
     expect(within(table).getByText('Undated')).toBeInTheDocument();
     expect(within(table).getByRole('cell', { name: 'Total' })).toBeInTheDocument();
     expect(screen.getByText('Stage basis note.')).toBeInTheDocument();
+    expect(screen.getByText('Opening payable basis note.')).toBeInTheDocument();
     expect(screen.getByText('The cash already in the bank.')).toBeInTheDocument();
     expect(api.getCashflowForecast).toHaveBeenCalledWith({ projectId: undefined, bucket: 'WEEK' });
   });
@@ -120,7 +140,7 @@ describe('CashflowView', () => {
     const [filename, headers, rows] = csv.exportCsv.mock.calls[0]!;
     expect(filename).toBe('cash-flow-week-2026-10-05.csv');
     expect(headers[0]).toBe('Currency');
-    expect(rows[0]).toEqual(['SOS', 'Overdue / now', 25000, 0, 25000, 7000, 0, 7000, 18000, 18000]);
+    expect(rows[0]).toEqual(['SOS', 'Overdue / now', 25000, 0, 0, 25000, 7000, 0, 0, 7000, 18000, 18000]);
     expect(rows.filter((r: unknown[]) => r[1] === 'Total')).toHaveLength(2); // one total per currency
 
     await user.click(screen.getByRole('button', { name: 'Export Excel' }));

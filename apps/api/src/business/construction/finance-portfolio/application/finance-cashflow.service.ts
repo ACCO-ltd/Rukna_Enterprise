@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   PERMISSIONS,
@@ -21,6 +21,7 @@ import {
 import { scheduleBaseValue } from '../../commercial/domain/receivable-position.js';
 import { CommercialPrismaRepository } from '../../commercial/infrastructure/commercial-prisma.repository.js';
 import {
+  CashflowRangeError,
   buildForecast,
   buildGrid,
   expectedBillDate,
@@ -28,6 +29,11 @@ import {
   type CashflowItem,
 } from '../domain/cashflow-forecast.policy.js';
 import { findBillsToPay } from '../infrastructure/bills-to-pay.query.js';
+import {
+  findOpeningPayables,
+  findOpeningReceivables,
+  type OpeningBalanceScope,
+} from '../infrastructure/opening-balances.query.js';
 
 /** The plain-words assumptions behind each line — returned with every forecast. */
 export const CASHFLOW_BASIS: Record<CashflowLineType, string> = {
@@ -46,11 +52,19 @@ export const CASHFLOW_BASIS: Record<CashflowLineType, string> = {
   fromOpenCommitments:
     'Purchase-order value ordered or received but not yet billed (commitment ledger committed + accrued, per order). ' +
     'Expected payment: the order’s expected delivery date + the supplier’s payment terms; either missing → “Undated”.',
+  fromOpeningReceivables:
+    'Outstanding balance of client invoices brought in as opening balances at go-live (e.g. from QuickBooks), expected ' +
+    'on each invoice’s due date; past due → “Overdue / now”. They are not in Finance → Projects figures (which count ' +
+    'invoices issued in Rukna). Company-wide: all of them; for one project: only those coded to it.',
+  fromOpeningPayables:
+    'Outstanding balance of supplier bills brought in as opening balances at go-live, expected on each bill’s due date; ' +
+    'past due → “Overdue / now”. Company-wide: all of them; for one project: only those coded to it.',
 };
 
 export const CASHFLOW_EXCLUSIONS: string[] = [
   'The cash already in the bank — cumulative net starts from zero, not from today’s bank balance.',
-  'Invoices, bills and orders not coded to a project.',
+  'Invoices, bills and orders issued in Rukna that are not coded to a project (opening balances are included in the ' +
+    'company-wide forecast even without a project; a project’s forecast shows only those coded to it).',
   'Variations billed as separate charges until they are invoiced, and tax an invoice adds on top of a stage amount.',
   'Stages of contracts that are not active yet.',
 ];
@@ -64,7 +78,9 @@ export const CASHFLOW_EXCLUSIONS: string[] = [
  *   `scheduleBaseValue` × percentage, terms by `resolveInvoiceDates` (the prepare/issue default);
  * - supplier bills: `findBillsToPay` (the portfolio's `billsToPay`);
  * - open commitments: the commitment ledger folded by `addStage` — committed + accrued =
- *   committed-to-date − actual.
+ *   committed-to-date − actual;
+ * - opening balances: OPENING_BALANCE invoices / bills' `outstandingAmount` (the same outstanding
+ *   definition), shown as their own lines because the portfolio's helpers read POSTED only.
  */
 @Injectable()
 export class FinanceCashflowService {
@@ -84,6 +100,19 @@ export class FinanceCashflowService {
     const moneyVisible =
       resolveBoqVisibility(identity).canViewMargin && identity.permissions.includes(PERMISSIONS.financialPositionView);
 
+    let grid: ReturnType<typeof buildGrid>;
+    try {
+      grid = buildGrid({
+        today,
+        from: query.from ? new Date(`${query.from.slice(0, 10)}T00:00:00Z`) : null,
+        to: query.to ? new Date(`${query.to.slice(0, 10)}T00:00:00Z`) : null,
+        size,
+      });
+    } catch (err) {
+      if (err instanceof CashflowRangeError) throw new BadRequestException(err.message);
+      throw err;
+    }
+
     if (query.projectId) await this.projectAccess.assertMember(identity, query.projectId);
     const accessible = await this.projectAccess.accessibleProjectIds(identity);
     const projects = await prisma.project.findMany({
@@ -96,11 +125,19 @@ export class FinanceCashflowService {
     });
     const ids = projects.map((p) => p.id);
 
-    const [contracts, receivables, bills, ledger] = await Promise.all([
+    const obScope: OpeningBalanceScope = query.projectId
+      ? { kind: 'PROJECT', projectId: query.projectId }
+      : accessible
+        ? { kind: 'PROJECTS', projectIds: ids }
+        : { kind: 'ALL' };
+
+    const [contracts, receivables, bills, ledger, obReceivables, obPayables] = await Promise.all([
       ids.length ? this.commercialRepo.findMainContractsByProject(prisma, orgId, ids) : Promise.resolve(new Map()),
       this.commercialRepo.findPostedReceivablesByProject(prisma, orgId, ids),
       findBillsToPay(prisma, orgId, ids),
       this.procurementRepo.groupByProjectPurchaseOrderAndStage(prisma, orgId, ids),
+      findOpeningReceivables(prisma, orgId, obScope),
+      findOpeningPayables(prisma, orgId, obScope),
     ]);
     const activeContracts = [...contracts.values()].filter((c) => c.status === 'ACTIVE');
     const contractById = new Map(activeContracts.map((c) => [c.id, c]));
@@ -141,6 +178,24 @@ export class FinanceCashflowService {
       items.push({ line: 'fromUnbilledStages', currency: contract.currency, amount, date });
     }
 
+    // ── Opening balances (imported at go-live): their own lines, on their due dates ──────
+    for (const inv of obReceivables) {
+      items.push({
+        line: 'fromOpeningReceivables',
+        currency: inv.currencyCode,
+        amount: new Decimal(inv.outstandingAmount.toString()),
+        date: inv.dueDate,
+      });
+    }
+    for (const bill of obPayables) {
+      items.push({
+        line: 'fromOpeningPayables',
+        currency: bill.currencyCode,
+        amount: new Decimal(bill.outstandingAmount.toString()),
+        date: bill.dueDate,
+      });
+    }
+
     // ── Outflows: posted supplier bills' outstanding, on their due dates ────────────────
     for (const bill of bills) {
       items.push({
@@ -170,13 +225,6 @@ export class FinanceCashflowService {
         date: facts ? expectedCommitmentPayDate(facts.expectedDeliveryDate, facts.supplierTermsDays) : null,
       });
     }
-
-    const grid = buildGrid({
-      today,
-      from: query.from ? new Date(`${query.from.slice(0, 10)}T00:00:00Z`) : null,
-      to: query.to ? new Date(`${query.to.slice(0, 10)}T00:00:00Z`) : null,
-      size,
-    });
 
     return {
       currencies: buildForecast(items, grid, moneyVisible),

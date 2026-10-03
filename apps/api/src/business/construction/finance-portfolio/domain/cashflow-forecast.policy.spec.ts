@@ -1,6 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
 import {
+  CashflowRangeError,
   MAX_PERIODS,
   buildForecast,
   buildGrid,
@@ -39,11 +40,28 @@ describe('cash-flow forecast policy (ADR-043 Phase 4)', () => {
       expect(months.periods.at(-1)!.end.toISOString().slice(0, 10)).toBe('2027-03-31');
     });
 
-    it('reads a past from as today, honours to, and caps the number of periods', () => {
+    it('reads a past from as today and honours to', () => {
       const grid = buildGrid({ today: TODAY, from: d('2026-01-01'), to: d('2026-10-31'), size: 'WEEK' });
       expect(grid.periods[0]!.key).toBe('2026-10-05');
       expect(grid.periods.at(-1)!.key).toBe('2026-10-26');
-      expect(buildGrid({ today: TODAY, to: d('2040-01-01'), size: 'WEEK' }).periods).toHaveLength(MAX_PERIODS);
+    });
+
+    it('refuses to before from, never falling back silently', () => {
+      expect(() => buildGrid({ today: TODAY, from: d('2026-12-01'), to: d('2026-11-01'), size: 'WEEK' })).toThrow(
+        CashflowRangeError,
+      );
+      // A past range: from reads as today, so a to before today is refused too.
+      expect(() => buildGrid({ today: TODAY, from: d('2026-01-01'), to: d('2026-02-01'), size: 'MONTH' })).toThrow(
+        CashflowRangeError,
+      );
+    });
+
+    it(`accepts up to ${MAX_PERIODS} periods and refuses more, never truncating`, () => {
+      // From Monday 2026-10-05: 104 weeks end on Sunday 2028-10-01.
+      expect(buildGrid({ today: TODAY, to: d('2028-10-01'), size: 'WEEK' }).periods).toHaveLength(MAX_PERIODS);
+      expect(() => buildGrid({ today: TODAY, to: d('2028-10-02'), size: 'WEEK' })).toThrow(/more than 104 weeks/);
+      expect(buildGrid({ today: TODAY, to: d('2035-05-31'), size: 'MONTH' }).periods).toHaveLength(MAX_PERIODS);
+      expect(() => buildGrid({ today: TODAY, to: d('2035-06-01'), size: 'MONTH' })).toThrow(/more than 104 months/);
     });
   });
 
@@ -110,6 +128,8 @@ describe('cash-flow forecast policy (ADR-043 Phase 4)', () => {
       item('fromOpenCommitments', 400, '2026-11-30'),
       item('fromOpenCommitments', 900, '2028-01-01'), // after the range → LATER
       item('fromInvoices', 50, '2026-10-20', 'SOS'),
+      item('fromOpeningReceivables', 200, '2025-12-31'), // imported, long overdue → NOW
+      item('fromOpeningPayables', 100, '2026-11-10'),
     ];
     const forecast = buildForecast(items, grid, true);
 
@@ -133,27 +153,39 @@ describe('cash-flow forecast policy (ADR-043 Phase 4)', () => {
         'UNDATED',
       ]);
       expect(by('NOW')).toMatchObject({
-        inflows: { fromInvoices: '1000.00', total: '1000.00' },
+        inflows: { fromInvoices: '1000.00', fromOpeningReceivables: '200.00', total: '1200.00' },
         outflows: { fromSupplierBills: '300.00', total: '300.00' },
-        net: '700.00',
-        cumulativeNet: '700.00',
+        net: '900.00',
+        cumulativeNet: '900.00',
         end: '2026-10-06',
       });
-      expect(by('2026-10-01')).toMatchObject({ net: '500.00', cumulativeNet: '1200.00' });
+      expect(by('2026-10-01')).toMatchObject({ net: '500.00', cumulativeNet: '1400.00' });
       expect(by('2026-11-01')).toMatchObject({
         inflows: { fromUnbilledStages: '2000.00' },
-        outflows: { fromOpenCommitments: '400.00' },
-        net: '1600.00',
-        cumulativeNet: '2800.00',
+        outflows: { fromOpenCommitments: '400.00', fromOpeningPayables: '100.00', total: '500.00' },
+        net: '1500.00',
+        cumulativeNet: '2900.00',
       });
-      expect(by('LATER')).toMatchObject({ net: '-900.00', cumulativeNet: '1900.00', start: '2027-04-01' });
+      expect(by('LATER')).toMatchObject({ net: '-900.00', cumulativeNet: '2000.00', start: '2027-04-01' });
       expect(by('UNDATED')).toMatchObject({ inflows: { fromUnbilledStages: '700.00' }, cumulativeNet: null });
       expect(f.totals).toEqual({
-        inflows: { fromInvoices: '1500.00', fromUnbilledStages: '2700.00', total: '4200.00' },
-        outflows: { fromSupplierBills: '300.00', fromOpenCommitments: '1300.00', total: '1600.00' },
-        net: '2600.00',
+        inflows: { fromInvoices: '1500.00', fromUnbilledStages: '2700.00', fromOpeningReceivables: '200.00', total: '4400.00' },
+        outflows: {
+          fromSupplierBills: '300.00',
+          fromOpenCommitments: '1300.00',
+          fromOpeningPayables: '100.00',
+          total: '1700.00',
+        },
+        net: '2700.00',
       });
-      expect(f.counts).toEqual({ fromInvoices: 2, fromUnbilledStages: 2, fromSupplierBills: 1, fromOpenCommitments: 2 });
+      expect(f.counts).toEqual({
+        fromInvoices: 2,
+        fromUnbilledStages: 2,
+        fromOpeningReceivables: 1,
+        fromSupplierBills: 1,
+        fromOpenCommitments: 2,
+        fromOpeningPayables: 1,
+      });
     });
 
     it('hides money but keeps counts when money is not visible', () => {

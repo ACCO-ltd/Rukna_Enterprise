@@ -547,7 +547,7 @@
     "loading": "Loading the forecast",
     "loadFailed": "Could not load the cash-flow forecast.",
     "empty": "Nothing to forecast yet",
-    "emptyHint": "Issued invoices, stages not yet invoiced, supplier bills and open purchase orders appear here.",
+    "emptyHint": "Issued invoices, stages not yet invoiced, opening balances, supplier bills and open purchase orders appear here.",
     "hidden": "Amounts are restricted for your role.",
     "bucketLabel": "Group by",
     "currencyLabel": "Currency",
@@ -574,7 +574,9 @@
       "fromInvoices": "Issued invoices",
       "fromUnbilledStages": "Stages not yet invoiced",
       "fromSupplierBills": "Supplier bills",
-      "fromOpenCommitments": "Open purchase orders"
+      "fromOpenCommitments": "Open purchase orders",
+      "fromOpeningReceivables": "Opening balances — receivable",
+      "fromOpeningPayables": "Opening balances — payable"
     },
     "bucket": {
       "now": "Overdue / now",

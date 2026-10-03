@@ -8,7 +8,8 @@
  * uncompressed ZIP — Excel, LibreOffice and Google Sheets all open it.
  *
  * Money arrives as the API's decimal strings; callers pass it as a number so a `SUM()` works.
- * Strings are written as inline text, never as formulas, so a cell starting with `=` is inert.
+ * Strings are written as inline text (`t="inlineStr"`), never as formulas (`<f>`), so a cell
+ * starting with `=` is shown as text and never evaluated: the CSV quote-prefix is not needed here.
  */
 
 import type { CsvCell } from '@/features/accounting/lib/export-csv';
@@ -44,7 +45,9 @@ export function columnName(index: number): string {
 }
 
 export function sheetName(name: string, taken: Set<string>): string {
-  const base = (name.replace(/[[\]:*?/\\]/g, ' ').trim() || 'Sheet').slice(0, 31);
+  // Excel refuses []:*?/\ anywhere and an apostrophe at either end of a sheet name.
+  const base =
+    (name.replace(/[[\]:*?/\\]/g, ' ').trim().replace(/^'+|'+$/g, '').trim() || 'Sheet').slice(0, 31);
   let candidate = base;
   for (let i = 2; taken.has(candidate.toLowerCase()); i += 1) {
     const suffix = ` (${i})`;

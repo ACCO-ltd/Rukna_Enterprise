@@ -1,9 +1,10 @@
 import { Decimal } from '@prisma/client/runtime/library';
-import type {
-  CashflowBucket,
-  CashflowBucketSize,
-  CashflowCurrencyForecast,
-  CashflowLineType,
+import {
+  CASHFLOW_MAX_PERIODS,
+  type CashflowBucket,
+  type CashflowBucketSize,
+  type CashflowCurrencyForecast,
+  type CashflowLineType,
 } from '@erp/types';
 
 import { utcMidnight } from '../../commercial/domain/commercial-workspace.policy.js';
@@ -18,8 +19,11 @@ import { utcMidnight } from '../../commercial/domain/commercial-workspace.policy
 const DAY_MS = 86_400_000;
 const ZERO = new Decimal(0);
 
-/** Hard cap on the number of periods one request may ask for (two years of weeks). */
-export const MAX_PERIODS = 104;
+/** Cap on the number of periods one request may span (104 weeks / 104 months). */
+export const MAX_PERIODS = CASHFLOW_MAX_PERIODS;
+
+/** A requested range the forecast refuses (the controller answers 400). */
+export class CashflowRangeError extends Error {}
 
 /** One amount the forecast places on a date (null = undated). */
 export interface CashflowItem {
@@ -66,7 +70,8 @@ function nextPeriodStart(start: Date, size: CashflowBucketSize): Date {
 /**
  * The periods from the one containing `from` through the one containing `to`. `from` before today
  * is read as today — a forecast looks forward; what is already late sits in `NOW`. `to` defaults to
- * 12 weeks or 6 months after `from`; at most {@link MAX_PERIODS} periods.
+ * 12 weeks or 6 months after `from`. A `to` before `from`, or a range of more than
+ * {@link MAX_PERIODS} periods, is refused ({@link CashflowRangeError}) — never silently changed.
  */
 export function buildGrid(input: { today: Date; from?: Date | null; to?: Date | null; size: CashflowBucketSize }): CashflowGrid {
   const today = day(input.today);
@@ -75,11 +80,19 @@ export function buildGrid(input: { today: Date; from?: Date | null; to?: Date | 
     input.size === 'MONTH'
       ? new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 6, 0))
       : addDays(from, 12 * 7 - 1);
-  const to = input.to && day(input.to) >= from ? day(input.to) : defaultTo;
+  const to = input.to ? day(input.to) : defaultTo;
+  if (to < from) {
+    throw new CashflowRangeError(`"to" (${iso(to)}) is before the forecast start (${iso(from)}; a past "from" reads as today).`);
+  }
 
   const periods: CashflowPeriod[] = [];
   let start = periodStart(from, input.size);
-  while (start <= to && periods.length < MAX_PERIODS) {
+  while (start <= to) {
+    if (periods.length === MAX_PERIODS) {
+      throw new CashflowRangeError(
+        `The range spans more than ${MAX_PERIODS} ${input.size === 'MONTH' ? 'months' : 'weeks'}; shorten it.`,
+      );
+    }
     const next = nextPeriodStart(start, input.size);
     periods.push({ key: iso(start), start, end: addDays(next, -1) });
     start = next;
@@ -133,9 +146,21 @@ type Sums = Record<CashflowLineType, Decimal>;
 const emptySums = (): Sums => ({
   fromInvoices: ZERO,
   fromUnbilledStages: ZERO,
+  fromOpeningReceivables: ZERO,
   fromSupplierBills: ZERO,
   fromOpenCommitments: ZERO,
+  fromOpeningPayables: ZERO,
 });
+const emptyCounts = (): Record<CashflowLineType, number> => ({
+  fromInvoices: 0,
+  fromUnbilledStages: 0,
+  fromOpeningReceivables: 0,
+  fromSupplierBills: 0,
+  fromOpenCommitments: 0,
+  fromOpeningPayables: 0,
+});
+const inflowOf = (s: Sums) => s.fromInvoices.plus(s.fromUnbilledStages).plus(s.fromOpeningReceivables);
+const outflowOf = (s: Sums) => s.fromSupplierBills.plus(s.fromOpenCommitments).plus(s.fromOpeningPayables);
 
 /**
  * Sum the items per currency and bucket. Bucket order: NOW, the periods, LATER, UNDATED — every
@@ -147,7 +172,7 @@ export function buildForecast(items: CashflowItem[], grid: CashflowGrid, moneyVi
   for (const item of items) {
     const entry = byCurrency.get(item.currency) ?? {
       sums: new Map<string, Sums>(),
-      counts: { fromInvoices: 0, fromUnbilledStages: 0, fromSupplierBills: 0, fromOpenCommitments: 0 },
+      counts: emptyCounts(),
     };
     const key = bucketKeyFor(item.date, grid);
     const sums = entry.sums.get(key) ?? emptySums();
@@ -173,24 +198,30 @@ export function buildForecast(items: CashflowItem[], grid: CashflowGrid, moneyVi
       const buckets: CashflowBucket[] = layout.map((slot) => {
         const s = entry.sums.get(slot.key) ?? emptySums();
         for (const line of Object.keys(total) as CashflowLineType[]) total[line] = total[line].plus(s[line]);
-        const inflow = s.fromInvoices.plus(s.fromUnbilledStages);
-        const outflow = s.fromSupplierBills.plus(s.fromOpenCommitments);
+        const inflow = inflowOf(s);
+        const outflow = outflowOf(s);
         const net = inflow.minus(outflow);
         if (slot.kind !== 'UNDATED') running = running.plus(net);
         return {
           ...slot,
-          inflows: { fromInvoices: money(s.fromInvoices), fromUnbilledStages: money(s.fromUnbilledStages), total: money(inflow) },
+          inflows: {
+            fromInvoices: money(s.fromInvoices),
+            fromUnbilledStages: money(s.fromUnbilledStages),
+            fromOpeningReceivables: money(s.fromOpeningReceivables),
+            total: money(inflow),
+          },
           outflows: {
             fromSupplierBills: money(s.fromSupplierBills),
             fromOpenCommitments: money(s.fromOpenCommitments),
+            fromOpeningPayables: money(s.fromOpeningPayables),
             total: money(outflow),
           },
           net: money(net),
           cumulativeNet: slot.kind === 'UNDATED' ? null : money(running),
         };
       });
-      const inflow = total.fromInvoices.plus(total.fromUnbilledStages);
-      const outflow = total.fromSupplierBills.plus(total.fromOpenCommitments);
+      const inflow = inflowOf(total);
+      const outflow = outflowOf(total);
       return {
         currency,
         buckets,
@@ -198,11 +229,13 @@ export function buildForecast(items: CashflowItem[], grid: CashflowGrid, moneyVi
           inflows: {
             fromInvoices: money(total.fromInvoices),
             fromUnbilledStages: money(total.fromUnbilledStages),
+            fromOpeningReceivables: money(total.fromOpeningReceivables),
             total: money(inflow),
           },
           outflows: {
             fromSupplierBills: money(total.fromSupplierBills),
             fromOpenCommitments: money(total.fromOpenCommitments),
+            fromOpeningPayables: money(total.fromOpeningPayables),
             total: money(outflow),
           },
           net: money(inflow.minus(outflow)),

@@ -10,12 +10,13 @@
 
 import { randomUUID } from 'node:crypto';
 
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PERMISSIONS, type CashflowCurrencyForecast, type RequestIdentity } from '@erp/types';
 
 import type { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import type { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { AccountingReadinessService } from '../../../accounting/accounting-core/application/accounting-readiness.service.js';
 import { ProjectFinancialPositionRepository } from '../../../accounting/financial-position/infrastructure/project-financial-position.repository.js';
 import { ProjectProcurementRepository } from '../../../procurement/project-procurement/infrastructure/project-procurement.repository.js';
@@ -34,6 +35,7 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
   const userId = 'fcf-user-1';
 
   let cashflow: FinanceCashflowService;
+  let cashflowRealAccess: FinanceCashflowService;
   let portfolio: FinancePortfolioService;
   let finance: RequestIdentity;
   let clientId: string;
@@ -91,9 +93,17 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
   }
 
   async function makeInvoice(
-    projectId: string,
-    contractId: string,
-    opts: { total: number; outstanding: number; dueDate: Date; installmentId?: string; draft?: boolean; currency?: string },
+    projectId: string | null,
+    contractId: string | null,
+    opts: {
+      total: number;
+      outstanding: number;
+      dueDate: Date;
+      installmentId?: string;
+      draft?: boolean;
+      currency?: string;
+      openingBalance?: boolean;
+    },
   ) {
     await prisma.clientInvoice.create({
       data: {
@@ -109,7 +119,7 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
         outstandingAmount: new Decimal(opts.outstanding),
         currencyCode: opts.currency ?? 'USD',
         billingAddressSnapshot: {},
-        postingStatus: opts.draft ? 'NOT_POSTED' : 'POSTED',
+        postingStatus: opts.openingBalance ? 'OPENING_BALANCE' : opts.draft ? 'NOT_POSTED' : 'POSTED',
         documentStatus: opts.draft ? 'DRAFT' : 'APPROVED',
         createdBy: userId,
         ...(opts.installmentId ? { sourceInstallmentId: opts.installmentId } : {}),
@@ -117,7 +127,14 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
     });
   }
 
-  async function makeBill(opts: { header: string | null; lines: string[]; outstanding: number; dueDate: Date; posted?: boolean }) {
+  async function makeBill(opts: {
+    header: string | null;
+    lines: (string | null)[];
+    outstanding: number;
+    dueDate: Date;
+    posted?: boolean;
+    openingBalance?: boolean;
+  }) {
     const n = randomUUID().slice(0, 8);
     await prisma.supplierBill.create({
       data: {
@@ -134,7 +151,7 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
         totalAmount: new Decimal(opts.outstanding),
         outstandingAmount: new Decimal(opts.outstanding),
         documentStatus: 'APPROVED',
-        postingStatus: opts.posted === false ? 'NOT_POSTED' : 'POSTED',
+        postingStatus: opts.openingBalance ? 'OPENING_BALANCE' : opts.posted === false ? 'NOT_POSTED' : 'POSTED',
         createdBy: userId,
         lines: {
           create: opts.lines.map((projectId, i) => ({
@@ -201,6 +218,8 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
     const commercialRepo = new CommercialPrismaRepository();
     const procurementRepo = new ProjectProcurementRepository();
     cashflow = new FinanceCashflowService(tenancy, projectAccess, commercialRepo, procurementRepo);
+    // The real access rule (no stub): membership rows decide.
+    cashflowRealAccess = new FinanceCashflowService(tenancy, new ProjectAccessService(tenancy), commercialRepo, procurementRepo);
     portfolio = new FinancePortfolioService(
       tenancy,
       projectAccess,
@@ -251,6 +270,13 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
     await makeBill({ header: null, lines: [projA, projB], outstanding: 4_000, dueDate: dateIn(21) });
     await makeBill({ header: projA, lines: [projA], outstanding: 9_999, dueDate: dateIn(21), posted: false });
 
+    // Opening balances imported at go-live: two with no project, one coded to projA.
+    await makeInvoice(null, null, { total: 8_000, outstanding: 8_000, dueDate: dateIn(-200), openingBalance: true });
+    await makeInvoice(projA, null, { total: 1_500, outstanding: 1_000, dueDate: dateIn(30), openingBalance: true });
+    await makeInvoice(null, null, { total: 500, outstanding: 0, dueDate: dateIn(-90), openingBalance: true }); // settled
+    await makeBill({ header: null, lines: [null], outstanding: 3_000, dueDate: dateIn(-60), openingBalance: true });
+    await makeBill({ header: null, lines: [projA], outstanding: 600, dueDate: dateIn(15), openingBalance: true });
+
     // Commitments on A: PO1 dated (delivery in 20 days + 30 days terms) 12,000 open; PO2 no delivery
     // date → undated 3,000; PO3 fully billed → nothing; ledger without an order → undated 1,000.
     const po1 = await makePurchaseOrder(dateIn(20));
@@ -284,27 +310,93 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
 
   const usd = (list: CashflowCurrencyForecast[]) => list.find((c) => c.currency === 'USD')!;
 
-  it('reconciles with the portfolio: invoice inflows = outstanding, bill outflows = bills to pay (per currency)', async () => {
+  /** Sum of OPENING_BALANCE outstanding straight from the DB: the reconciliation's other half. */
+  async function openingOutstanding(currency: string, projectId?: string) {
+    const [rec, pay] = await Promise.all([
+      prisma.clientInvoice.aggregate({
+        where: { organizationId: orgId, postingStatus: 'OPENING_BALANCE', currencyCode: currency, ...(projectId ? { projectId } : {}) },
+        _sum: { outstandingAmount: true },
+      }),
+      prisma.supplierBill.aggregate({
+        where: {
+          organizationId: orgId,
+          postingStatus: 'OPENING_BALANCE',
+          currencyCode: currency,
+          ...(projectId ? { OR: [{ projectId }, { lines: { some: { projectId } } }] } : {}),
+        },
+        _sum: { outstandingAmount: true },
+      }),
+    ]);
+    return {
+      receivable: new Decimal(rec._sum.outstandingAmount?.toString() ?? 0),
+      payable: new Decimal(pay._sum.outstandingAmount?.toString() ?? 0),
+    };
+  }
+
+  const plus = (a: string | null | undefined, b: Decimal) => new Decimal(a ?? 0).plus(b).toFixed(2);
+  const sumOf = (...values: (string | null | undefined)[]) =>
+    values.reduce((acc, v) => acc.plus(v ?? 0), new Decimal(0)).toFixed(2);
+
+  it('reconciles with the portfolio: invoices = outstanding + opening receivables, bills = to pay + opening payables', async () => {
     const [forecast, rows] = await Promise.all([cashflow.forecast(finance), portfolio.list(finance)]);
     for (const totals of rows.totals) {
       const f = forecast.currencies.find((c) => c.currency === totals.currency);
-      expect(f?.totals.inflows.fromInvoices ?? '0.00').toBe(totals.outstanding);
-      expect(f?.totals.outflows.fromSupplierBills ?? '0.00').toBe(totals.billsToPay.amount);
+      const ob = await openingOutstanding(totals.currency!);
+      expect(sumOf(f?.totals.inflows.fromInvoices, f?.totals.inflows.fromOpeningReceivables)).toBe(
+        plus(totals.outstanding, ob.receivable),
+      );
+      expect(sumOf(f?.totals.outflows.fromSupplierBills, f?.totals.outflows.fromOpeningPayables)).toBe(
+        plus(totals.billsToPay.amount, ob.payable),
+      );
     }
-    expect(usd(forecast.currencies).totals.inflows.fromInvoices).toBe('30000.00');
-    expect(usd(forecast.currencies).totals.outflows.fromSupplierBills).toBe('11000.00'); // shared bill once
+    const f = usd(forecast.currencies);
+    expect(f.totals.inflows.fromInvoices).toBe('30000.00');
+    expect(f.totals.inflows.fromOpeningReceivables).toBe('9000.00'); // incl. the one with no project
+    expect(f.totals.outflows.fromSupplierBills).toBe('11000.00'); // shared bill once
+    expect(f.totals.outflows.fromOpeningPayables).toBe('3600.00');
+    // Overdue opening balances sit in Overdue / now.
+    const now = f.buckets.find((b) => b.kind === 'NOW')!;
+    expect(now.inflows.fromOpeningReceivables).toBe('8000.00');
+    expect(now.outflows.fromOpeningPayables).toBe('3000.00');
     expect(forecast.currencies.map((c) => c.currency)).toEqual(['SOS', 'USD']);
   });
 
-  it('reconciles one project with its portfolio row', async () => {
+  it('reconciles one project with its portfolio row; only its own opening balances', async () => {
     const [forecast, one] = await Promise.all([
       cashflow.forecast(finance, { projectId: projA }),
       portfolio.getOne(finance, projA),
     ]);
     const f = usd(forecast.currencies);
-    expect(f.totals.inflows.fromInvoices).toBe(one.item.outstanding);
-    expect(f.totals.outflows.fromSupplierBills).toBe(one.item.billsToPay.amount);
+    const ob = await openingOutstanding('USD', projA);
+    expect(sumOf(f.totals.inflows.fromInvoices, f.totals.inflows.fromOpeningReceivables)).toBe(
+      plus(one.item.outstanding, ob.receivable),
+    );
+    expect(sumOf(f.totals.outflows.fromSupplierBills, f.totals.outflows.fromOpeningPayables)).toBe(
+      plus(one.item.billsToPay.amount, ob.payable),
+    );
+    expect(f.totals.inflows.fromOpeningReceivables).toBe('1000.00');
+    expect(f.totals.outflows.fromOpeningPayables).toBe('600.00');
     expect(forecast.projectId).toBe(projA);
+  });
+
+  it('refuses a range that ends before it starts or spans more than 104 periods (400)', async () => {
+    await expect(cashflow.forecast(finance, { from: isoDay(30), to: isoDay(10) })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(cashflow.forecast(finance, { bucket: 'WEEK', to: isoDay(800) })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('applies the real project-access rule: a non-member gets 403, another organisation 404', async () => {
+    const pm: RequestIdentity = { ...finance, userId: `fcf-nonmember-${suffix}`, roles: ['Project Manager'] };
+    await expect(cashflowRealAccess.forecast(pm, { projectId: projA })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      cashflowRealAccess.forecast({ ...finance, activeOrganizationId: `other-${suffix}` }, { projectId: projA }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // Company-wide, a member of no project sees nothing, not even unassigned opening balances.
+    const none = await cashflowRealAccess.forecast(pm);
+    expect(none.currencies).toEqual([]);
   });
 
   it('places overdue items in NOW and dates unbilled stages by schedule date + contract terms', async () => {
@@ -340,6 +432,9 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
     expect(forecast.currencies.map((c) => c.currency)).toEqual(['USD']);
     // Only projA: the shared bill counts once, with its whole balance (as the portfolio row).
     expect(usd(forecast.currencies).totals.outflows.fromSupplierBills).toBe('11000.00');
+    // Opening balances only where coded to projA; the unassigned ones need company-wide access.
+    expect(usd(forecast.currencies).totals.inflows.fromOpeningReceivables).toBe('1000.00');
+    expect(usd(forecast.currencies).totals.outflows.fromOpeningPayables).toBe('600.00');
   });
 
   it('redaction (as the portfolio): without the money permissions every figure is null, counts stay', async () => {

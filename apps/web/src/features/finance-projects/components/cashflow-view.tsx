@@ -82,9 +82,11 @@ export function CashflowView({ projectId, projectCode }: { projectId?: string; p
       period: t('col.period'),
       fromInvoices: t('line.fromInvoices'),
       fromUnbilledStages: t('line.fromUnbilledStages'),
+      fromOpeningReceivables: t('line.fromOpeningReceivables'),
       inflows: t('col.inflows'),
       fromSupplierBills: t('line.fromSupplierBills'),
       fromOpenCommitments: t('line.fromOpenCommitments'),
+      fromOpeningPayables: t('line.fromOpeningPayables'),
       outflows: t('col.outflows'),
       net: t('col.net'),
       cumulativeNet: t('col.cumulative'),
@@ -173,9 +175,11 @@ function CashflowTable({
     <>
       <TableCell numeric>{money(b.inflows.fromInvoices)}</TableCell>
       <TableCell numeric>{money(b.inflows.fromUnbilledStages)}</TableCell>
+      <TableCell numeric>{money(b.inflows.fromOpeningReceivables)}</TableCell>
       <TableCell numeric className="font-medium">{money(b.inflows.total)}</TableCell>
       <TableCell numeric>{money(b.outflows.fromSupplierBills)}</TableCell>
       <TableCell numeric>{money(b.outflows.fromOpenCommitments)}</TableCell>
+      <TableCell numeric>{money(b.outflows.fromOpeningPayables)}</TableCell>
       <TableCell numeric className="font-medium">{money(b.outflows.total)}</TableCell>
       <TableCell numeric className="font-medium">{money(b.net, true)}</TableCell>
       <TableCell numeric>{cumulative === null ? '—' : money(cumulative, true)}</TableCell>
@@ -188,17 +192,19 @@ function CashflowTable({
         <TableHeader>
           <TableRow>
             <TableHead rowSpan={2}>{t('col.period')}</TableHead>
-            <TableHead colSpan={3} className="text-center">{t('col.inflows')}</TableHead>
-            <TableHead colSpan={3} className="text-center">{t('col.outflows')}</TableHead>
+            <TableHead colSpan={4} className="text-center">{t('col.inflows')}</TableHead>
+            <TableHead colSpan={4} className="text-center">{t('col.outflows')}</TableHead>
             <TableHead rowSpan={2} numeric>{t('col.net')}</TableHead>
             <TableHead rowSpan={2} numeric>{t('col.cumulative')}</TableHead>
           </TableRow>
           <TableRow>
             <TableHead numeric>{t('line.fromInvoices')}</TableHead>
             <TableHead numeric>{t('line.fromUnbilledStages')}</TableHead>
+            <TableHead numeric>{t('line.fromOpeningReceivables')}</TableHead>
             <TableHead numeric>{t('col.total')}</TableHead>
             <TableHead numeric>{t('line.fromSupplierBills')}</TableHead>
             <TableHead numeric>{t('line.fromOpenCommitments')}</TableHead>
+            <TableHead numeric>{t('line.fromOpeningPayables')}</TableHead>
             <TableHead numeric>{t('col.total')}</TableHead>
           </TableRow>
         </TableHeader>

@@ -112,9 +112,11 @@ export interface CashflowExportLabels {
     period: string;
     fromInvoices: string;
     fromUnbilledStages: string;
+    fromOpeningReceivables: string;
     inflows: string;
     fromSupplierBills: string;
     fromOpenCommitments: string;
+    fromOpeningPayables: string;
     outflows: string;
     net: string;
     cumulativeNet: string;
@@ -127,9 +129,11 @@ function bucketCells(b: Pick<CashflowBucket, 'inflows' | 'outflows' | 'net'> & {
   return [
     num(b.inflows.fromInvoices),
     num(b.inflows.fromUnbilledStages),
+    num(b.inflows.fromOpeningReceivables),
     num(b.inflows.total),
     num(b.outflows.fromSupplierBills),
     num(b.outflows.fromOpenCommitments),
+    num(b.outflows.fromOpeningPayables),
     num(b.outflows.total),
     num(b.net),
     num(b.cumulativeNet ?? null),
@@ -150,9 +154,11 @@ function cashflowHeaders(labels: CashflowExportLabels): string[] {
     h.period,
     h.fromInvoices,
     h.fromUnbilledStages,
+    h.fromOpeningReceivables,
     h.inflows,
     h.fromSupplierBills,
     h.fromOpenCommitments,
+    h.fromOpeningPayables,
     h.outflows,
     h.net,
     h.cumulativeNet,

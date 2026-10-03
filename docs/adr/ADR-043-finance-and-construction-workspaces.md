@@ -171,6 +171,15 @@ the existing project-access rule applies per row.
      `billsToPay` too; stage amounts are `scheduleBaseValue` × percentage, a stage is unbilled by
      `deriveInvoiceState`; open commitments are the commitment ledger folded by `addStage`
      (committed + accrued = committed-to-date − actual). A DB test asserts the totals reconcile.
+   - **Opening balances** (OPENING_BALANCE client invoices and supplier bills imported at go-live,
+     e.g. from QuickBooks) are their own lines, *Opening balances — receivable / payable*, by due
+     date (overdue → *Overdue / now*), same outstanding definition. Company-wide: all of them the
+     caller may see (a caller limited to their projects sees only those coded to them); one
+     project: only those coded to it. The portfolio and its POSTED-only helpers are unchanged, so
+     forecast invoices + opening receivables = portfolio outstanding + opening-balance outstanding
+     (bills likewise) — asserted by the DB test.
+   - A range with `to` before `from`, or longer than 104 periods (weeks or months), is a 400 —
+     never silently changed.
    - **Dates are never guessed.** Stage bill date = the schedule's `deriveExpectedDate` (milestone
      forecast → baseline; a dated stage's date), or `readyToBillAt` if earlier, moved up to today
      (an invoice is dated the day it is issued); expected receipt = bill date + the contract's
@@ -187,6 +196,10 @@ the existing project-access rule applies per row.
    - **Exports** (client-side, from the rows on screen, as the accounting reports): the
      `/finance/projects` list (current queue, screen columns, one totals line per currency) and the
      cash-flow table, each as CSV (`exportCsv`) and Excel (`downloadXlsx`, a dependency-free XLSX
-     writer in `apps/web/src/lib/xlsx-export.ts`; one sheet per currency for cash flow).
+     writer in `apps/web/src/lib/xlsx-export.ts`; one sheet per currency for cash flow). The shared
+     CSV writer now neutralises formula injection (a text cell starting `=`, `+`, `-`, `@`, tab or
+     CR gets a leading quote; numbers and plain decimal strings are untouched) — every accounting
+     report export benefits. XLSX text is written as inline strings, never formulas, so it needs
+     no prefix.
 5. **Phase 5:** tidy-up — retire the redirect routes once bookmarks have aged out, role-seed
    review, and a rename-proof permission check for the role names project access still matches on.

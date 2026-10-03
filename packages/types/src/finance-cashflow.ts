@@ -13,7 +13,11 @@
  *   project (the portfolio's `billsToPay`), on each bill's due date;
  * - outflows from open commitments: commitment-ledger COMMITTED + ACCRUED per purchase order (the
  *   cost position's committed-to-date less actual = ordered or received but not yet billed), on the
- *   order's expected delivery date + the supplier's payment terms.
+ *   order's expected delivery date + the supplier's payment terms;
+ * - opening balances (receivable / payable): the outstanding balance of OPENING_BALANCE client
+ *   invoices and supplier bills imported at go-live, on each document's due date. Company-wide
+ *   forecast: all of them the caller may see; one project: only those coded to it. They are not in
+ *   the portfolio's per-project figures (those read POSTED documents only).
  *
  * Money is per currency and never added across currencies; a decimal string, or null when the
  * caller may not see money.
@@ -32,24 +36,39 @@ export const CASHFLOW_BUCKET_SIZES: readonly CashflowBucketSize[] = ['WEEK', 'MO
  */
 export type CashflowBucketKind = 'NOW' | 'PERIOD' | 'LATER' | 'UNDATED';
 
-export type CashflowLineType = 'fromInvoices' | 'fromUnbilledStages' | 'fromSupplierBills' | 'fromOpenCommitments';
+export type CashflowLineType =
+  | 'fromInvoices'
+  | 'fromUnbilledStages'
+  | 'fromOpeningReceivables'
+  | 'fromSupplierBills'
+  | 'fromOpenCommitments'
+  | 'fromOpeningPayables';
 
 export const CASHFLOW_LINE_TYPES: readonly CashflowLineType[] = [
   'fromInvoices',
   'fromUnbilledStages',
+  'fromOpeningReceivables',
   'fromSupplierBills',
   'fromOpenCommitments',
+  'fromOpeningPayables',
 ];
+
+/** Inclusive cap on the periods one request may span (104 weeks / 104 months); 400 beyond it. */
+export const CASHFLOW_MAX_PERIODS = 104;
 
 export interface CashflowInflows {
   fromInvoices: string | null;
   fromUnbilledStages: string | null;
+  /** OPENING_BALANCE client invoices' outstanding (imported at go-live). */
+  fromOpeningReceivables: string | null;
   total: string | null;
 }
 
 export interface CashflowOutflows {
   fromSupplierBills: string | null;
   fromOpenCommitments: string | null;
+  /** OPENING_BALANCE supplier bills' outstanding (imported at go-live). */
+  fromOpeningPayables: string | null;
   total: string | null;
 }
 
@@ -98,7 +117,10 @@ export interface CashflowForecastQuery {
   projectId?: string;
   /** ISO date; defaults to today. A date before today is read as today. */
   from?: string;
-  /** ISO date; defaults to 12 weeks (WEEK) or 6 months (MONTH) after `from`. */
+  /**
+   * ISO date; defaults to 12 weeks (WEEK) or 6 months (MONTH) after `from`. Before `from` (after
+   * reading a past `from` as today), or more than {@link CASHFLOW_MAX_PERIODS} periods away → 400.
+   */
   to?: string;
   bucket?: CashflowBucketSize;
 }

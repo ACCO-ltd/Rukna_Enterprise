@@ -36,6 +36,8 @@ describe('xlsx export', () => {
     expect(sheetName('usd', taken)).toBe('usd (2)');
     expect(sheetName('a/b:c', taken)).toBe('a b c');
     expect(sheetName('x'.repeat(40), taken)).toHaveLength(31);
+    expect(sheetName("'Quoted'", taken)).toBe('Quoted'); // Excel refuses an apostrophe at either end
+    expect(sheetName("''", taken)).toBe('Sheet');
   });
 
   it('writes a workbook with one sheet per entry, numbers as numbers, text inert', () => {
