@@ -13,6 +13,41 @@ import { formatTemplateDate } from './invoice-whatsapp.js';
  * (`daysPastDue` — whole UTC calendar days past the due date; overdue from the day after it).
  */
 
+/**
+ * Who can be chased: an issued invoice (numbered, posted) or an OPENING_BALANCE invoice migrated
+ * from the prior system — a real receivable (the client balance and reconciliation count it) that
+ * never gets a Rukna number. Never a cancelled one. Reminders only: sending the invoice itself keeps
+ * its own rule (`isIssuedForSending`).
+ */
+export function isRemindable(invoice: {
+  invoiceNumber: string | null;
+  postingStatus: string;
+  documentStatus: string;
+}): boolean {
+  if (invoice.documentStatus === 'CANCELLED') return false;
+  if (invoice.postingStatus === 'OPENING_BALANCE') return true;
+  return invoice.postingStatus === 'POSTED' && !!invoice.invoiceNumber;
+}
+
+/**
+ * The number the client knows the invoice by: Rukna's invoice number, else — for an opening-balance
+ * invoice — the prior system's reference kept in `billingAddressSnapshot.invoiceRef`
+ * (accounting-core/application/opening-balance.service.ts). Null when there is neither.
+ */
+export function reminderInvoiceReference(invoice: {
+  invoiceNumber: string | null;
+  billingAddressSnapshot: unknown;
+}): string | null {
+  const number = invoice.invoiceNumber?.trim();
+  if (number) return number;
+  const snapshot = invoice.billingAddressSnapshot;
+  const ref =
+    snapshot && typeof snapshot === 'object'
+      ? (snapshot as { invoiceRef?: unknown }).invoiceRef
+      : undefined;
+  return typeof ref === 'string' && ref.trim() ? ref.trim() : null;
+}
+
 /** OVERDUE_REMINDER once the due date has passed, else PAYMENT_REMINDER (also with no due date). */
 export function reminderKind(dueDate: Date | null, asOf: Date): WhatsAppReminderKind {
   return dueDate && daysPastDue(dueDate, asOf) > 0 ? 'OVERDUE_REMINDER' : 'PAYMENT_REMINDER';
@@ -60,8 +95,11 @@ export function buildReminderBodyParams(facts: ReminderTemplateFacts): string[] 
  * nothing owed), then who to send to, then the server's WhatsApp set-up.
  */
 export function reminderBlockedReason(state: {
+  /** {@link isRemindable}. */
   issued: boolean;
   reversed: boolean;
+  /** {@link reminderInvoiceReference} found one. */
+  hasReference: boolean;
   outstanding: boolean;
   recipient: string | null;
   templateConfigured: boolean;
@@ -69,6 +107,7 @@ export function reminderBlockedReason(state: {
 }): WhatsAppSendBlockedReason | null {
   if (state.reversed) return 'REVERSED';
   if (!state.issued) return 'NOT_POSTED';
+  if (!state.hasReference) return 'NO_INVOICE_REFERENCE';
   if (!state.outstanding) return 'NOTHING_OUTSTANDING';
   if (!state.recipient) return 'NO_RECIPIENT';
   if (!state.templateConfigured) return 'TEMPLATE_NOT_CONFIGURED';
@@ -85,6 +124,8 @@ export const REMINDER_REFUSAL_MESSAGE: Record<
   REVERSED: 'This invoice has been reversed, so there is nothing to remind the client about.',
   NOTHING_OUTSTANDING:
     'This invoice is fully paid, so there is nothing to remind the client about.',
+  NO_INVOICE_REFERENCE:
+    'This opening-balance invoice has no invoice number or reference to quote to the client. Add the reference before sending a reminder.',
   WHATSAPP_NOT_CONFIGURED:
     'WhatsApp sending is not set up on this server. Ask an administrator to connect WhatsApp.',
   TEMPLATE_NOT_CONFIGURED:

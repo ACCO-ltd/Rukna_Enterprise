@@ -38,6 +38,7 @@ const HARD_BLOCKS: ReadonlySet<WhatsAppSendBlockedReason> = new Set([
   'NOT_POSTED',
   'REVERSED',
   'NOTHING_OUTSTANDING',
+  'NO_INVOICE_REFERENCE',
   'WHATSAPP_NOT_CONFIGURED',
   'TEMPLATE_NOT_CONFIGURED',
 ]);

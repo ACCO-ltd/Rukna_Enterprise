@@ -184,6 +184,25 @@ describe('Billing — invoices and payments', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('reminder inv-130 9');
   });
 
+  it('offers Send reminder on an opening-balance invoice migrated with no Rukna number', () => {
+    billing.invoices = [
+      invoiceRow({
+        id: 'inv-ob',
+        invoiceNumber: null,
+        documentStatus: 'APPROVED',
+        postingStatus: 'OPENING_BALANCE',
+        status: 'UNPAID',
+        outstandingAmount: '800.00',
+      }),
+    ];
+    renderWithProviders(<CommercialBillingView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['manage:receivable'],
+    });
+    expect(
+      within(tableIn('Invoices')).getByRole('button', { name: /Send reminder/ }),
+    ).toBeInTheDocument();
+  });
+
   it('offers no reminder on a paid invoice', () => {
     billing.invoices = [
       invoiceRow({

@@ -204,7 +204,8 @@
         "TEMPLATE_NOT_CONFIGURED": "The WhatsApp message template for this is not set up on this server. Ask an administrator to add it.",
         "NO_RECIPIENT": "This client has no saved WhatsApp or phone number. Enter the number to send to.",
         "REVERSED": "This document has been reversed, so it cannot be sent.",
-        "NOTHING_OUTSTANDING": "This invoice is fully paid, so there is nothing to remind the client about."
+        "NOTHING_OUTSTANDING": "This invoice is fully paid, so there is nothing to remind the client about.",
+        "NO_INVOICE_REFERENCE": "This opening-balance invoice has no invoice number or reference to quote to the client. Add the reference before sending a reminder."
       },
       "sentManyToast": "Sent {count} invoices on WhatsApp to {number}",
       "attachmentsMany": "{count} messages, one attachment each",
@@ -247,8 +248,8 @@
       "titlePayment": "Send payment reminder on WhatsApp",
       "titleOverdue": "Send overdue reminder on WhatsApp",
       "title": "Send reminder on WhatsApp",
-      "subtitle": "Invoice {number} · {amount} outstanding. Rukna records the reminder as a follow-up.",
-      "subtitleOverdue": "Invoice {number} · {amount} outstanding, {days, plural, one {# day} other {# days}} overdue. Rukna records the reminder as a follow-up."
+      "subtitle": "{number, select, none {Opening balance invoice} other {Invoice {number}}} · {amount} outstanding. Rukna records the reminder as a follow-up.",
+      "subtitleOverdue": "{number, select, none {Opening balance invoice} other {Invoice {number}}} · {amount} outstanding, {days, plural, one {# day} other {# days}} overdue. Rukna records the reminder as a follow-up."
     }
   }
 }

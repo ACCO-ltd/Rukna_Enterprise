@@ -11,6 +11,8 @@ export type WhatsAppSendBlockedReason =
   | 'REVERSED'
   /** A reminder (WhatsApp V1 step 4) for an invoice with nothing left to collect. */
   | 'NOTHING_OUTSTANDING'
+  /** A reminder for an opening-balance invoice with neither a number nor the prior system's ref. */
+  | 'NO_INVOICE_REFERENCE'
   | 'NO_RECIPIENT'
   | 'TEMPLATE_NOT_CONFIGURED'
   | 'WHATSAPP_NOT_CONFIGURED';

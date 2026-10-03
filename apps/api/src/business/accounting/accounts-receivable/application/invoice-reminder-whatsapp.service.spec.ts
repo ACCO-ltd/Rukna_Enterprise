@@ -6,6 +6,8 @@ import {
 } from './invoice-reminder-whatsapp.service';
 import {
   hasOutstanding,
+  isRemindable,
+  reminderInvoiceReference,
   reminderBlockedReason,
   reminderDaysPastDue,
   reminderKind,
@@ -99,6 +101,7 @@ function setup(
   const communication = {
     registerStatusHooks: jest.fn(),
     sendWhatsAppTemplate: jest.fn().mockResolvedValue(message()),
+    findForResourceByKey: jest.fn().mockResolvedValue(null),
   };
   const service = new InvoiceReminderWhatsAppService(
     { getClient: () => ({}) } as never,
@@ -137,6 +140,7 @@ describe('reminder rules', () => {
     const ok = {
       issued: true,
       reversed: false,
+      hasReference: true,
       outstanding: true,
       recipient: '+252615555555',
       templateConfigured: true,
@@ -151,6 +155,71 @@ describe('reminder rules', () => {
     expect(reminderBlockedReason({ ...ok, recipient: null, templateConfigured: false })).toBe(
       'NO_RECIPIENT',
     );
+  });
+});
+
+describe('opening-balance invoices (migrated receivables)', () => {
+  it('are remindable without a Rukna number; cancelled / unposted are not', () => {
+    const base = { invoiceNumber: null, documentStatus: 'APPROVED' };
+    expect(isRemindable({ ...base, postingStatus: 'OPENING_BALANCE' })).toBe(true);
+    expect(isRemindable({ ...base, postingStatus: 'POSTED' })).toBe(false);
+    expect(isRemindable({ ...base, postingStatus: 'NOT_POSTED', invoiceNumber: 'X' })).toBe(false);
+    expect(
+      isRemindable({ ...base, postingStatus: 'OPENING_BALANCE', documentStatus: 'CANCELLED' }),
+    ).toBe(false);
+  });
+
+  it('quote the invoice number, else the prior system reference', () => {
+    expect(reminderInvoiceReference({ invoiceNumber: 'INV-1', billingAddressSnapshot: {} })).toBe(
+      'INV-1',
+    );
+    expect(
+      reminderInvoiceReference({
+        invoiceNumber: null,
+        billingAddressSnapshot: { migratedFrom: 'QuickBooks', invoiceRef: ' QB-1042 ' },
+      }),
+    ).toBe('QB-1042');
+    expect(reminderInvoiceReference({ invoiceNumber: null, billingAddressSnapshot: null })).toBeNull();
+  });
+
+  it('preview: an opening-balance invoice is sendable and names its QuickBooks reference', async () => {
+    const { service } = setup({
+      inv: {
+        invoiceNumber: null,
+        postingStatus: 'OPENING_BALANCE',
+        dueDate: new Date('2026-06-30T00:00:00Z'),
+        billingAddressSnapshot: { migratedFrom: 'QuickBooks', invoiceRef: 'QB-1042' },
+      },
+    });
+    const preview = await service.preview(identity, 'inv1');
+    expect(preview).toMatchObject({ sendable: true, kind: 'OVERDUE_REMINDER' });
+    expect(preview.message).toContain('invoice QB-1042 from Live Org for USD 4,500.00');
+  });
+
+  it('refuses one with no number and no reference (NO_INVOICE_REFERENCE, not NOT_POSTED)', async () => {
+    const { service, communication } = setup({
+      inv: { invoiceNumber: null, postingStatus: 'OPENING_BALANCE', billingAddressSnapshot: {} },
+    });
+    expect((await service.preview(identity, 'inv1')).blockedReason).toBe('NO_INVOICE_REFERENCE');
+    const error = await service
+      .send(identity, 'inv1', { idempotencyKey: 'k' })
+      .catch((e: unknown) => e);
+    expect((error as { getStatus(): number }).getStatus()).toBe(409);
+    expect(communication.sendWhatsAppTemplate).not.toHaveBeenCalled();
+  });
+
+  it('with no due date: a payment reminder, 0 days past due, "due on receipt"', async () => {
+    const { service } = setup({
+      inv: {
+        invoiceNumber: null,
+        postingStatus: 'OPENING_BALANCE',
+        dueDate: null,
+        billingAddressSnapshot: { invoiceRef: 'QB-7' },
+      },
+    });
+    const preview = await service.preview(identity, 'inv1');
+    expect(preview).toMatchObject({ kind: 'PAYMENT_REMINDER', daysPastDue: 0 });
+    expect(preview.message).toContain('is due on receipt.');
   });
 });
 
@@ -206,6 +275,30 @@ describe('InvoiceReminderWhatsAppService.preview', () => {
 });
 
 describe('InvoiceReminderWhatsAppService.send', () => {
+  it('a replay returns the original message before any refusal check (the invoice was paid since)', async () => {
+    const { service, communication, repo } = setup({ inv: { outstandingAmount: '0.00' } });
+    const original = message({ id: 'm-original', status: 'DELIVERED' });
+    communication.findForResourceByKey.mockResolvedValue(original);
+    await expect(service.send(identity, 'inv1', { idempotencyKey: 'k' })).resolves.toBe(original);
+    expect(communication.findForResourceByKey).toHaveBeenCalledWith(
+      identity,
+      'invoice-reminder:inv1:k',
+      'client_invoice_reminder',
+      'inv1',
+    );
+    expect(repo.findInvoice).not.toHaveBeenCalled();
+    expect(communication.sendWhatsAppTemplate).not.toHaveBeenCalled();
+  });
+
+  it('a FAILED earlier attempt is re-checked (paid now → refused, nothing re-sent)', async () => {
+    const { service, communication } = setup({ inv: { outstandingAmount: '0.00' } });
+    communication.findForResourceByKey.mockResolvedValue(message({ status: 'FAILED' }));
+    await expect(service.send(identity, 'inv1', { idempotencyKey: 'k' })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(communication.sendWhatsAppTemplate).not.toHaveBeenCalled();
+  });
+
   it('sends a text-only template through CommunicationService in the reminder namespace', async () => {
     const { service, communication } = setup({
       inv: { dueDate: new Date('2026-09-30T00:00:00Z') },

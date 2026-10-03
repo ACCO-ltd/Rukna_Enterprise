@@ -1,7 +1,8 @@
 /**
  * When "Send reminder" (ADR-042 WhatsApp V1 step 4) is offered for a client invoice. Mirrors the
- * server's refusals so the command is never shown for a reminder the API would reject: an issued
- * invoice (numbered, posted, not cancelled or reversed) with something still outstanding.
+ * server's rule: an issued invoice (numbered, posted) or an OPENING_BALANCE invoice migrated from
+ * QuickBooks — a real receivable with no Rukna number — never cancelled or reversed, with something
+ * still outstanding. (An opening-balance invoice with no reference is explained in the dialog.)
  */
 export interface ReminderEligibilityFacts {
   invoiceNumber: string | null;
@@ -12,9 +13,11 @@ export interface ReminderEligibilityFacts {
 }
 
 export function canSendReminder(invoice: ReminderEligibilityFacts): boolean {
+  const chaseable =
+    invoice.postingStatus === 'OPENING_BALANCE' ||
+    (invoice.postingStatus === 'POSTED' && Boolean(invoice.invoiceNumber));
   return (
-    Boolean(invoice.invoiceNumber) &&
-    invoice.postingStatus === 'POSTED' &&
+    chaseable &&
     invoice.documentStatus !== 'CANCELLED' &&
     hasOutstanding(invoice.outstandingAmount)
   );

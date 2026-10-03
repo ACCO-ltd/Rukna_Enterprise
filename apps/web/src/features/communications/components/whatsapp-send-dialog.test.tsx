@@ -166,6 +166,14 @@ describe('WhatsAppSendDialog', () => {
     expect(screen.getByRole('button', { name: 'Send on WhatsApp' })).toBeEnabled();
   });
 
+  it('an opening-balance invoice with no reference is blocked in words, not as "not issued"', async () => {
+    renderDialog({
+      preview: preview({ filename: null, sendable: false, blockedReason: 'NO_INVOICE_REFERENCE' }),
+    });
+    expect(await screen.findByText(/no invoice number or reference/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send on WhatsApp' })).not.toBeInTheDocument();
+  });
+
   it('a paid invoice blocks the reminder in words, with no Send button', async () => {
     renderDialog({
       preview: preview({ filename: null, sendable: false, blockedReason: 'NOTHING_OUTSTANDING' }),

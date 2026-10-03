@@ -20,17 +20,14 @@ import { WhatsAppClient } from '../../../../platform/messaging/whatsapp/whatsapp
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { resolveWhatsAppTemplate } from '../../../../platform/messaging/whatsapp/whatsapp-templates.js';
 import { renderWhatsAppMessage } from '../../../../platform/messaging/whatsapp/whatsapp-send-preview.js';
-import {
-  defaultRecipient,
-  isE164,
-  isIssuedForSending,
-  recipientOptions,
-} from '../domain/invoice-whatsapp.js';
+import { defaultRecipient, isE164, recipientOptions } from '../domain/invoice-whatsapp.js';
 import {
   REMINDER_REFUSAL_MESSAGE,
   buildReminderBodyParams,
   hasOutstanding,
+  isRemindable,
   reminderBlockedReason,
+  reminderInvoiceReference,
   reminderDaysPastDue,
   reminderFollowUpNote,
   reminderKind,
@@ -148,6 +145,17 @@ export class InvoiceReminderWhatsAppService implements OnModuleInit {
     invoiceId: string,
     input: { recipient?: string | null; idempotencyKey: string },
   ): Promise<OutboundMessageView> {
+    const idempotencyKey = `invoice-reminder:${invoiceId}:${input.idempotencyKey.trim()}`;
+    // A replay returns the original message even if the invoice has changed since (e.g. it was paid):
+    // that send already happened. Only a FAILED one goes through the checks again before a retry.
+    const existing = await this.communication.findForResourceByKey(
+      identity,
+      idempotencyKey,
+      CLIENT_INVOICE_REMINDER_RESOURCE,
+      invoiceId,
+    );
+    if (existing && existing.status !== 'FAILED') return existing;
+
     const ctx = await this.load(identity, invoiceId);
     const db = this.tenancy.getClient();
 
@@ -173,7 +181,7 @@ export class InvoiceReminderWhatsAppService implements OnModuleInit {
       templateName: ctx.template!.name,
       language: ctx.template!.language,
       bodyParams: ctx.bodyParams,
-      idempotencyKey: `invoice-reminder:${invoiceId}:${input.idempotencyKey.trim()}`,
+      idempotencyKey,
     });
   }
 
@@ -198,6 +206,7 @@ export class InvoiceReminderWhatsAppService implements OnModuleInit {
     ]);
 
     const asOf = new Date();
+    const reference = reminderInvoiceReference(invoice);
     const kind: WhatsAppReminderKind = reminderKind(invoice.dueDate, asOf);
     const template = resolveWhatsAppTemplate(this.config, kind);
     return {
@@ -208,15 +217,16 @@ export class InvoiceReminderWhatsAppService implements OnModuleInit {
       companyName: (companyName || '').trim(),
       bodyParams: buildReminderBodyParams({
         clientName: clientName || 'Client',
-        invoiceNumber: invoice.invoiceNumber ?? '',
+        invoiceNumber: reference ?? '',
         outstandingAmount: invoice.outstandingAmount,
         currencyCode: invoice.currencyCode,
         dueDate: invoice.dueDate,
         companyName: companyName || '',
       }),
       state: {
-        issued: isIssuedForSending(invoice),
+        issued: isRemindable(invoice),
         reversed: invoice.postingStatus === 'REVERSED',
+        hasReference: reference !== null,
         outstanding: hasOutstanding(invoice.outstandingAmount),
         whatsappConfigured: this.whatsapp.isConfigured(),
         templateConfigured: template !== null,
@@ -235,7 +245,10 @@ function refuse(
       ? { details: { field: 'recipient' } }
       : {}),
   };
-  return code === 'NOT_POSTED' || code === 'REVERSED' || code === 'NOTHING_OUTSTANDING'
+  return code === 'NOT_POSTED' ||
+    code === 'REVERSED' ||
+    code === 'NOTHING_OUTSTANDING' ||
+    code === 'NO_INVOICE_REFERENCE'
     ? new ConflictException(body)
     : new BadRequestException(body);
 }

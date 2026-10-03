@@ -44,6 +44,8 @@ export function InvoiceReminderDialog({
     for (const queryKey of invalidate) void queryClient.invalidateQueries({ queryKey });
   };
   const overdue = daysOverdue > 0;
+  // An opening-balance invoice has no Rukna number: the subtitle says so instead of a blank.
+  const number = invoiceNumber.trim() || 'none';
   return (
     <WhatsAppSendDialog
       open={open}
@@ -54,11 +56,11 @@ export function InvoiceReminderDialog({
           ? undefined
           : overdue
             ? t('subtitleOverdue', {
-                number: invoiceNumber,
+                number,
                 amount: outstanding,
                 days: daysOverdue,
               })
-            : t('subtitle', { number: invoiceNumber, amount: outstanding })
+            : t('subtitle', { number, amount: outstanding })
       }
       previewQueryKey={['whatsapp-preview', 'client_invoice_reminder', invoiceId]}
       loadPreview={() => getInvoiceReminderPreview(invoiceId)}

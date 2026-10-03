@@ -25,7 +25,7 @@ import { invoiceKeys } from '@/features/accounting/hooks/use-invoices';
 import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
 import { MessageHistory } from '@/features/communications/components/message-history';
 import { InvoiceReminderDialog } from '@/features/communications/components/invoice-reminder-dialog';
-import { daysOverdue, hasOutstanding } from '@/features/communications/reminder-eligibility';
+import { canSendReminder, daysOverdue } from '@/features/communications/reminder-eligibility';
 import { PostingStatus, StatusBadge } from '@/components/status-badge';
 import {
   useAccountingReadiness,
@@ -203,8 +203,12 @@ function InvoiceDocumentView({
   const chasing = collects && hasBalance && lifecycle !== 'PAID';
   // ADR-042 step 4 — a manual WhatsApp payment / overdue reminder: the WhatsApp send rule plus
   // something still outstanding (the server refuses a paid invoice the same way).
+  // Opening-balance invoices (migrated, no Rukna number) can be chased too.
   const canRemind =
-    canWhatsApp && hasBalance && lifecycle !== 'PAID' && hasOutstanding(document.balanceDue);
+    caps.canSend &&
+    hasBalance &&
+    lifecycle !== 'PAID' &&
+    canSendReminder({ ...document, outstandingAmount: document.balanceDue });
 
   const primaryLabel: Record<'issue' | 'send' | 'payment', string> = {
     issue: t('issue'),

@@ -10,6 +10,20 @@ const issued = {
 };
 
 describe('canSendReminder', () => {
+  it('offers one for an opening-balance invoice (migrated, no Rukna number)', () => {
+    expect(
+      canSendReminder({ ...issued, invoiceNumber: null, postingStatus: 'OPENING_BALANCE' }),
+    ).toBe(true);
+    expect(
+      canSendReminder({
+        ...issued,
+        invoiceNumber: null,
+        postingStatus: 'OPENING_BALANCE',
+        outstandingAmount: '0.00',
+      }),
+    ).toBe(false);
+  });
+
   it('offers a reminder for an issued invoice with a balance', () => {
     expect(canSendReminder(issued)).toBe(true);
     expect(canSendReminder({ ...issued, outstandingAmount: '0.01' })).toBe(true);

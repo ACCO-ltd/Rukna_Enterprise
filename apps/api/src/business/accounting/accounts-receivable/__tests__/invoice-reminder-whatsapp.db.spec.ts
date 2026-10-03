@@ -8,6 +8,11 @@
  *   WAR-03  a paid invoice (nothing outstanding) is refused 409 NOTHING_OUTSTANDING; nothing sent
  *   WAR-04  a later FAILED webhook voids the follow-up; a hand-recorded follow-up is untouched
  *   WAR-05  the reminders list under resourceType 'client_invoice_reminder' for the invoice
+ *   WAR-06  another organisation's invoice → 404, nothing sent
+ *   WAR-07  webhooks racing the accepted send (delivered + read at once) → one follow-up
+ *   WAR-08  UNKNOWN → resolve as SENT writes exactly one follow-up
+ *   WAR-09  OPENING_BALANCE invoice (migrated): reminded with its QuickBooks ref; refused
+ *           NO_INVOICE_REFERENCE without one
  */
 import { Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -20,6 +25,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import { CommunicationService } from '../../../../platform/messaging/communication.service';
 import { OutboundMessageRepository } from '../../../../platform/messaging/infrastructure/outbound-message.repository';
 import { OutboundMessageRouteRepository } from '../../../../platform/messaging/infrastructure/outbound-message-route.repository';
+import { WhatsAppSendError } from '../../../../platform/messaging/whatsapp/whatsapp.client';
 import { InvoiceWhatsAppRepository } from '../infrastructure/invoice-whatsapp.repository';
 import { InvoiceReminderWhatsAppService } from '../application/invoice-reminder-whatsapp.service';
 
@@ -55,7 +61,13 @@ let tenantSlug = '';
 const run = <T>(fn: () => Promise<T>) =>
   tenancyStorage.run({ tenantId, tenantSlug, client: prisma }, fn);
 
-async function makeInvoice(over: { outstandingAmount?: string; dueDate?: Date } = {}) {
+async function makeInvoice(
+  over: {
+    outstandingAmount?: string;
+    dueDate?: Date | null;
+    openingBalance?: { invoiceRef?: string };
+  } = {},
+) {
   const suffix = `war${randomUUID().slice(0, 12)}`;
   const orgId = `test-org-${suffix}`;
   await prisma.organization.create({
@@ -85,20 +97,19 @@ async function makeInvoice(over: { outstandingAmount?: string; dueDate?: Date } 
     data: {
       organizationId: orgId,
       clientId: client.id,
-      invoiceNumber: 'INV-000042',
+      invoiceNumber: over.openingBalance ? null : 'INV-000042',
       invoiceDate: new Date('2026-08-01T00:00:00Z'),
-      dueDate: over.dueDate ?? new Date('2026-09-01T00:00:00Z'),
+      dueDate: over.dueDate === undefined ? new Date('2026-09-01T00:00:00Z') : over.dueDate,
       currencyCode: 'USD',
       subtotal: '12500.00',
       vatAmount: '0.00',
       totalAmount: '12500.00',
       outstandingAmount: over.outstandingAmount ?? '4500.00',
-      billingAddressSnapshot: {
-        client: { name: 'Hodan Construction Ltd' },
-        org: { name: 'ACCO Ltd' },
-      },
+      billingAddressSnapshot: over.openingBalance
+        ? { migratedFrom: 'QuickBooks', ...over.openingBalance }
+        : { client: { name: 'Hodan Construction Ltd' }, org: { name: 'ACCO Ltd' } },
       documentStatus: 'APPROVED',
-      postingStatus: 'POSTED',
+      postingStatus: over.openingBalance ? 'OPENING_BALANCE' : 'POSTED',
       createdBy: user.id,
     },
   });
@@ -244,5 +255,76 @@ describe('WAR-04 failed webhook', () => {
     const left = await followUps(invoiceId);
     expect(left).toHaveLength(1);
     expect(left[0].outboundMessageId).toBeNull();
+  });
+});
+
+describe('WAR-06 tenancy', () => {
+  it("another organisation's invoice is not found and nothing is sent", async () => {
+    const mine = await makeInvoice();
+    const theirs = await makeInvoice();
+    await expect(
+      run(() => service.send(mine.me, theirs.invoiceId, { idempotencyKey: randomUUID() })),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(run(() => service.preview(mine.me, theirs.invoiceId))).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe('WAR-07/08 status races', () => {
+  const providerId = async (id: string) =>
+    (await prisma.outboundMessage.findUniqueOrThrow({ where: { id } })).providerMessageId!;
+
+  it('webhooks arriving together with the accepted send record one follow-up', async () => {
+    const { me, invoiceId } = await makeInvoice();
+    const view = await run(() => service.send(me, invoiceId, { idempotencyKey: randomUUID() }));
+    const pid = await providerId(view.id);
+    await Promise.all(
+      ['delivered', 'read', 'delivered'].map((status) =>
+        run(() => communication.applyStatusUpdate({ providerMessageId: pid, status })),
+      ),
+    );
+    const rows = await followUps(invoiceId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].outboundMessageId).toBe(view.id);
+  });
+
+  it('UNKNOWN records nothing; resolving as SENT writes exactly one follow-up', async () => {
+    const { me, invoiceId } = await makeInvoice();
+    whatsapp.sendTemplate.mockRejectedValue(
+      new WhatsAppSendError('NETWORK', 'timeout', undefined, true),
+    );
+    const view = await run(() => service.send(me, invoiceId, { idempotencyKey: randomUUID() }));
+    expect(view.status).toBe('UNKNOWN');
+    expect(await followUps(invoiceId)).toHaveLength(0);
+    await run(() => communication.resolveUnknown(me, view.id, { outcome: 'SENT' }));
+    await expect(
+      run(() => communication.resolveUnknown(me, view.id, { outcome: 'SENT' })),
+    ).rejects.toMatchObject({ status: 409 });
+    const rows = await followUps(invoiceId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ outboundMessageId: view.id, recordedBy: me.userId });
+  });
+});
+
+describe('WAR-09 opening-balance invoices', () => {
+  it('reminds a migrated invoice by its QuickBooks reference', async () => {
+    const { me, invoiceId } = await makeInvoice({ openingBalance: { invoiceRef: 'QB-1042' } });
+    const view = await run(() => service.send(me, invoiceId, { idempotencyKey: randomUUID() }));
+    expect(view).toMatchObject({ status: 'SENT', purpose: 'OVERDUE_REMINDER' });
+    expect(whatsapp.sendTemplate.mock.calls[0][0].bodyParams[1]).toBe('QB-1042');
+    expect(await followUps(invoiceId)).toHaveLength(1);
+  });
+
+  it('refuses one with no reference, in words that say so', async () => {
+    const { me, invoiceId } = await makeInvoice({ openingBalance: {}, dueDate: null });
+    expect((await run(() => service.preview(me, invoiceId))).blockedReason).toBe(
+      'NO_INVOICE_REFERENCE',
+    );
+    await expect(
+      run(() => service.send(me, invoiceId, { idempotencyKey: randomUUID() })),
+    ).rejects.toMatchObject({ status: 409, response: { errorCode: 'NO_INVOICE_REFERENCE' } });
+    expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
   });
 });

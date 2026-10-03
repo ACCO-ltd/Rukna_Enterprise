@@ -151,6 +151,23 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
   });
 
+  it('offers a reminder on an opening-balance invoice (no Rukna number)', () => {
+    mocks.useInvoice.mockReturnValue({
+      data: invoice({
+        invoiceNumber: null,
+        documentStatus: 'APPROVED',
+        postingStatus: 'OPENING_BALANCE',
+        outstandingAmount: '800.00',
+      }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
+      permissions: ['manage:receivable'],
+    });
+    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
+
   it('offers no reminder once the invoice is fully paid', () => {
     mocks.useInvoice.mockReturnValue({
       data: invoice({
