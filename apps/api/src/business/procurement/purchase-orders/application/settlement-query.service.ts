@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import type { PurchaseOrderBillPaymentsResponse, RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SettlementQueryRepository } from '../infrastructure/settlement-query.repository.js';
+import {
+  billPaymentState,
+  summarizeBillPayments,
+} from '../../../accounting/accounts-payable/domain/supplier-bill-eligibility.policy.js';
 
 type FundingStatus = 'NOT_FUNDED' | 'PARTIALLY_FUNDED' | 'FUNDED';
 type ReceivingStatus = 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED';
@@ -16,6 +20,58 @@ export class SettlementQueryService {
     private readonly tenancy: TenancyService,
     private readonly repo: SettlementQueryRepository,
   ) {}
+
+  /**
+   * ADR-043 decision 4 — the payment status of this PO's supplier bills, amounts included, for the
+   * Procurement Manager (who negotiated the prices). A record only: no payment command is reachable
+   * from it. Paid / pending use the bill page's own rule (`summarizeBillPayments`); outstanding is
+   * the bill's stored balance (the bills list's figure). The controller gates it on
+   * `view:procurement` + `view:commitment-ledger`, so Project Managers and Site Engineers (who hold
+   * no cost visibility) stay blind. Every holder of `view:commitment-ledger` in ACCO's scheme is an
+   * org-wide (project-access bypass) role, and a PO carries its projects per line, so — like the
+   * settlement read beside it — no per-project membership check applies.
+   */
+  async getBillPayments(
+    identity: RequestIdentity,
+    purchaseOrderId: string,
+  ): Promise<PurchaseOrderBillPaymentsResponse> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const [exists, bills] = await Promise.all([
+      this.repo.purchaseOrderExists(prisma, orgId, purchaseOrderId),
+      this.repo.findBillPaymentsForPo(prisma, orgId, purchaseOrderId),
+    ]);
+    if (!exists) throw new NotFoundException(`Purchase order ${purchaseOrderId} not found`);
+    return {
+      purchaseOrderId,
+      bills: bills.map((bill) => {
+        const summary = summarizeBillPayments(
+          bill.allocations.map((a) => ({
+            allocatedAmount: a.allocatedAmount.toString(),
+            postingStatus: a.postingStatus,
+            paymentId: a.supplierPaymentId,
+            paymentDate: a.payment.paymentDate,
+          })),
+        );
+        return {
+          billId: bill.id,
+          billNumber: bill.billNumber ?? null,
+          supplierInvoiceNumber: bill.supplierInvoiceNumber,
+          billDate: bill.billDate.toISOString().slice(0, 10),
+          dueDate: bill.dueDate.toISOString().slice(0, 10),
+          currencyCode: bill.currencyCode,
+          documentStatus: bill.documentStatus,
+          postingStatus: bill.postingStatus,
+          totalAmount: new Decimal(bill.totalAmount.toString()).toFixed(2),
+          paidAmount: summary.paid.toFixed(2),
+          pendingAmount: summary.pending.toFixed(2),
+          outstandingAmount: new Decimal(bill.outstandingAmount.toString()).toFixed(2),
+          lastPaymentDate: summary.lastPaymentDate,
+          paymentStatus: billPaymentState(bill, summary),
+        };
+      }),
+    };
+  }
 
   async getSettlement(identity: RequestIdentity, purchaseOrderId: string) {
     const prisma = this.tenancy.getClient();

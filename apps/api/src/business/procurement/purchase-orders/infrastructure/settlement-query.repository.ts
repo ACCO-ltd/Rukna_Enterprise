@@ -74,6 +74,45 @@ export class SettlementQueryRepository {
     });
   }
 
+  async purchaseOrderExists(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
+    const po = await prisma.purchaseOrder.findFirst({
+      where: { id: purchaseOrderId, organizationId },
+      select: { id: true },
+    });
+    return po !== null;
+  }
+
+  /**
+   * ADR-043 decision 4 — the PO's supplier bills with every payment allocation and its payment
+   * date, for procurement's read-only payment status. Org-scoped like the settlement read.
+   */
+  findBillPaymentsForPo(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
+    return prisma.supplierBill.findMany({
+      where: { organizationId, purchaseOrderId },
+      select: {
+        id: true,
+        billNumber: true,
+        supplierInvoiceNumber: true,
+        billDate: true,
+        dueDate: true,
+        currencyCode: true,
+        documentStatus: true,
+        postingStatus: true,
+        totalAmount: true,
+        outstandingAmount: true,
+        allocations: {
+          select: {
+            allocatedAmount: true,
+            postingStatus: true,
+            supplierPaymentId: true,
+            payment: { select: { paymentDate: true } },
+          },
+        },
+      },
+      orderBy: { billDate: 'asc' },
+    });
+  }
+
   // Buyer advances for this PO with returns and evidence allocations.
   // Only POSTED advances count as real disbursements — a DRAFT advance means money has not
   // yet left ACCO's bank account and must not inflate the funded total.

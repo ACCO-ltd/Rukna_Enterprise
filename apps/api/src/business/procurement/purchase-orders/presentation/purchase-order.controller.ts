@@ -82,6 +82,18 @@ export class PurchaseOrderController {
     return this.settlementQuery.getSettlement(identity, id);
   }
 
+  @Get(':id/bill-payments')
+  // Method-level permissions override the class gate, so both are listed: procurement access AND
+  // cost visibility (ADR-043 decision 4 — Procurement Manager yes, Project Manager / Site Engineer no).
+  @RequirePermissions(PERMISSIONS.procurementView, PERMISSIONS.commitmentsView)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: "Payment status of the PO's supplier bills: total, paid, in progress, outstanding, last payment date",
+  })
+  getBillPayments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.settlementQuery.getBillPayments(identity, id);
+  }
+
   @Post(':id/revise')
   @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
