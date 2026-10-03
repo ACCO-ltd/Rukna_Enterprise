@@ -6,7 +6,7 @@ import type { OutboundMessageView, WhatsAppSendPreview } from '@erp/types';
 import { chooseOption } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
 
-import { WhatsAppSendDialog } from './whatsapp-send-dialog';
+import { WhatsAppSendDialog, type WhatsAppSendItem } from './whatsapp-send-dialog';
 
 const preview = (over: Partial<WhatsAppSendPreview> = {}): WhatsAppSendPreview => ({
   templateConfigured: true,
@@ -62,7 +62,11 @@ const message = (over: Partial<OutboundMessageView> = {}): OutboundMessageView =
 });
 
 function renderDialog(
-  opts: { preview?: WhatsAppSendPreview; send?: ReturnType<typeof vi.fn> } = {},
+  opts: {
+    preview?: WhatsAppSendPreview;
+    send?: ReturnType<typeof vi.fn>;
+    extraItems?: WhatsAppSendItem[];
+  } = {},
 ) {
   const loadPreview = vi.fn().mockResolvedValue(opts.preview ?? preview());
   const send = opts.send ?? vi.fn().mockResolvedValue(message());
@@ -77,6 +81,7 @@ function renderDialog(
       loadPreview={loadPreview}
       send={send}
       onSent={onSent}
+      extraItems={opts.extraItems}
     />,
     { withToast: true },
   );
@@ -225,5 +230,67 @@ describe('WhatsAppSendDialog', () => {
       screen.queryByRole('button', { name: /Send on WhatsApp|Try again/ }),
     ).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('a package: one message per invoice', () => {
+    it('sends each invoice in turn with its own derived key, then toasts and closes', async () => {
+      const user = userEvent.setup();
+      const order: string[] = [];
+      const send = vi.fn().mockImplementation(async () => {
+        order.push('main');
+        return message();
+      });
+      const vo = vi.fn().mockImplementation(async () => {
+        order.push('vo');
+        return message({ id: 'm2', resourceId: 'inv2' });
+      });
+      const { onClose, onSent } = renderDialog({
+        send,
+        extraItems: [{ key: 'inv2', label: 'INV-000043.pdf', send: vo }],
+      });
+      expect(await screen.findByText('INV-000043.pdf')).toBeInTheDocument();
+      expect(screen.getByText('INV-000042.pdf')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Send on WhatsApp' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(order).toEqual(['main', 'vo']);
+      const mainKey = send.mock.calls[0][0].idempotencyKey;
+      expect(vo).toHaveBeenCalledWith({
+        recipient: '+252615555555',
+        idempotencyKey: `${mainKey}:inv2`,
+      });
+      expect(onSent).toHaveBeenCalledTimes(2);
+      expect(await screen.findByText(/Sent 2 invoices on WhatsApp/)).toBeInTheDocument();
+    });
+
+    it('shows the outcome per invoice and a retry sends only what did not go', async () => {
+      const user = userEvent.setup();
+      const send = vi.fn().mockResolvedValue(message());
+      const vo = vi
+        .fn()
+        .mockResolvedValueOnce(
+          message({
+            id: 'm2',
+            status: 'FAILED',
+            sentAt: null,
+            errorMessage: 'WhatsApp could not accept the attached document.',
+          }),
+        )
+        .mockResolvedValueOnce(message({ id: 'm2' }));
+      const { onClose } = renderDialog({
+        send,
+        extraItems: [{ key: 'inv2', label: 'INV-000043.pdf', send: vo }],
+      });
+      await user.click(await screen.findByRole('button', { name: 'Send on WhatsApp' }));
+      const results = await screen.findByRole('list', { name: 'What was sent' });
+      expect(results).toHaveTextContent('Sent');
+      expect(results).toHaveTextContent('WhatsApp could not accept the attached document.');
+      expect(onClose).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Try again' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(vo).toHaveBeenCalledTimes(2);
+      expect(vo.mock.calls[1][0].idempotencyKey).toBe(vo.mock.calls[0][0].idempotencyKey);
+    });
   });
 });

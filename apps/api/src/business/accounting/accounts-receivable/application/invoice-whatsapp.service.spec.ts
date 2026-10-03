@@ -53,13 +53,16 @@ function setup(
     configured?: boolean;
     inv?: Record<string, unknown>;
     contacts?: unknown[];
+    orgName?: string | null;
   } = {},
 ) {
   const env: Record<string, string> = opts.env ?? { WHATSAPP_TEMPLATE_INVOICE: 'rukna_invoice' };
   const repo = {
     findInvoice: jest.fn().mockResolvedValue(invoice(opts.inv)),
     findClientName: jest.fn().mockResolvedValue('Live Client'),
-    findOrganizationName: jest.fn().mockResolvedValue('Live Org'),
+    findOrganizationName: jest
+      .fn()
+      .mockResolvedValue(opts.orgName === undefined ? 'Live Org' : opts.orgName),
     listContacts: jest.fn().mockResolvedValue(
       opts.contacts ?? [
         {
@@ -81,9 +84,11 @@ function setup(
       ],
     ),
     recordMessageDelivery: jest.fn().mockResolvedValue(true),
+    voidMessageDelivery: jest.fn().mockResolvedValue(1),
   };
+  const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const communication = {
-    onResolvedAsSent: jest.fn(),
+    registerStatusHooks: jest.fn(),
     sendWhatsAppTemplate: jest.fn().mockResolvedValue(message()),
   };
   const invoices = { readDocumentBytes: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.7')) };
@@ -94,8 +99,9 @@ function setup(
     communication as never,
     invoices as never,
     repo as never,
+    audit as never,
   );
-  return { service, repo, communication, invoices };
+  return { service, repo, communication, invoices, audit };
 }
 
 describe('InvoiceWhatsAppService.preview', () => {
@@ -137,7 +143,7 @@ describe('InvoiceWhatsAppService.preview', () => {
 });
 
 describe('InvoiceWhatsAppService.send', () => {
-  it('sends the template with the PDF to the default recipient and records the delivery', async () => {
+  it('sends the template with the PDF to the default recipient', async () => {
     const { service, communication, repo } = setup();
     await service.send(identity, 'inv1', { idempotencyKey: 'abc' });
     expect(communication.sendWhatsAppTemplate).toHaveBeenCalledWith(identity, {
@@ -162,15 +168,8 @@ describe('InvoiceWhatsAppService.send', () => {
       },
       idempotencyKey: 'invoice-send:inv1:abc',
     });
-    expect(repo.recordMessageDelivery).toHaveBeenCalledWith(
-      {},
-      expect.objectContaining({
-        invoiceId: 'inv1',
-        recipient: '+252615555555',
-        outboundMessageId: 'm1',
-        sentBy: 'u1',
-      }),
-    );
+    // The delivery is the onSent hook's job, inside the status transaction — not the send path's.
+    expect(repo.recordMessageDelivery).not.toHaveBeenCalled();
   });
 
   it('uses another number when given', async () => {
@@ -179,23 +178,21 @@ describe('InvoiceWhatsAppService.send', () => {
     expect(communication.sendWhatsAppTemplate.mock.calls[0][1].recipient).toBe('+252613333333');
   });
 
-  it.each(['FAILED', 'UNKNOWN', 'QUEUED'] as const)(
-    'records no delivery when the message is %s',
-    async (status) => {
-      const { service, communication, repo } = setup();
-      communication.sendWhatsAppTemplate.mockResolvedValue(message({ status, sentAt: null }));
-      const result = await service.send(identity, 'inv1', { idempotencyKey: 'abc' });
-      expect(result.status).toBe(status);
-      expect(repo.recordMessageDelivery).not.toHaveBeenCalled();
-    },
-  );
-
   it.each([
     [{}, { recipient: '0612345678' }, 'RECIPIENT_INVALID', 400],
     [{ contacts: [] }, {}, 'NO_RECIPIENT', 400],
     [{ inv: { postingStatus: 'NOT_POSTED' } }, {}, 'NOT_POSTED', 409],
     [{ env: {} }, {}, 'TEMPLATE_NOT_CONFIGURED', 400],
     [{ configured: false }, {}, 'WHATSAPP_NOT_CONFIGURED', 400],
+    [
+      {
+        inv: { billingAddressSnapshot: { client: { name: 'X' }, org: { name: ' ' } } },
+        orgName: null,
+      },
+      {},
+      'COMPANY_NAME_MISSING',
+      400,
+    ],
   ])('refuses in plain words (%o %o → %s)', async (opts, body, code, status) => {
     const { service, communication, invoices } = setup(opts);
     const error = await service
@@ -212,19 +209,41 @@ describe('InvoiceWhatsAppService.send', () => {
     expect(invoices.readDocumentBytes).not.toHaveBeenCalled();
   });
 
-  it('registers the resolve-as-sent hook for invoices, which records the delivery', async () => {
-    const { service, communication, repo } = setup();
+  it('registers invoice status hooks: onSent records the delivery, onFailed voids it and audits', async () => {
+    const { service, communication, repo, audit } = setup();
     service.onModuleInit();
-    expect(communication.onResolvedAsSent).toHaveBeenCalledWith(
-      'client_invoice',
-      expect.any(Function),
-    );
-    const handler = communication.onResolvedAsSent.mock.calls[0][1];
+    expect(communication.registerStatusHooks).toHaveBeenCalledWith('client_invoice', {
+      onSent: expect.any(Function),
+      onFailed: expect.any(Function),
+    });
+    const hooks = communication.registerStatusHooks.mock.calls[0][1];
     const tx = { tx: true };
-    await handler(tx, identity, message({ id: 'm9' }));
-    expect(repo.recordMessageDelivery).toHaveBeenCalledWith(
+    const ctx = { organizationId: 'org1', actorUserId: 'u7' };
+
+    await hooks.onSent(tx, ctx, message({ id: 'm9' }));
+    expect(repo.recordMessageDelivery).toHaveBeenCalledWith(tx, {
+      organizationId: 'org1',
+      invoiceId: 'inv1',
+      recipient: '+252615555555',
+      sentAt: new Date('2026-10-02T10:00:01.000Z'),
+      sentBy: 'u7',
+      outboundMessageId: 'm9',
+    });
+
+    await hooks.onFailed(tx, ctx, message({ id: 'm9', status: 'FAILED', errorCode: '131026' }));
+    expect(repo.voidMessageDelivery).toHaveBeenCalledWith(tx, 'org1', 'm9');
+    expect(audit.record).toHaveBeenCalledWith(
       tx,
-      expect.objectContaining({ outboundMessageId: 'm9' }),
+      expect.objectContaining({
+        action: 'whatsapp delivery voided: message failed',
+        resourceId: 'inv1',
+        actorUserId: 'u7',
+      }),
     );
+
+    audit.record.mockClear();
+    repo.voidMessageDelivery.mockResolvedValue(0);
+    await hooks.onFailed(tx, ctx, message({ id: 'm8', status: 'FAILED' }));
+    expect(audit.record).not.toHaveBeenCalled();
   });
 });

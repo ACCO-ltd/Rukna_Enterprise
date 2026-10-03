@@ -81,17 +81,38 @@ export interface ResolveUnknownInput {
   note?: string | null;
 }
 
-/**
- * Called inside the resolve transaction when a person settles an UNKNOWN message as SENT, so the
- * feature that sent it (e.g. invoices) can record the delivery atomically with the status. Feature
- * modules register one per resourceType at start-up — the platform never imports them
- * (ARCH-BOUNDARY: platform must not depend on business modules).
- */
-export type MessageResolvedAsSentHandler = (
+/** Who a status hook acts for: the requesting user, or (webhooks) the message's creator. */
+export interface MessageHookContext {
+  organizationId: string;
+  actorUserId: string;
+}
+
+export type MessageStatusHook = (
   tx: Prisma.TransactionClient,
-  identity: RequestIdentity,
+  ctx: MessageHookContext,
   message: OutboundMessageView,
 ) => Promise<void>;
+
+/**
+ * Reactions of the feature that owns a resourceType (e.g. invoices) to its messages' status, run
+ * INSIDE the transaction that changes the OutboundMessage status, so the feature's own record (an
+ * invoice delivery) can never disagree with the message. Feature modules register them at start-up —
+ * the platform never imports them (ARCH-BOUNDARY: platform must not depend on business modules).
+ *
+ *   onSent    the message reached the client's WhatsApp side: the send was accepted (SENT, or a
+ *             webhook already moved it to DELIVERED / READ), a webhook confirmed a QUEUED / UNKNOWN
+ *             row, or a person resolved UNKNOWN → SENT. May run more than once per message (each
+ *             forward webhook): it must be idempotent.
+ *   onFailed  a webhook reported the message FAILED (e.g. the number is not on WhatsApp) — possibly
+ *             after onSent already ran. Not called for a send refused up front or a manual "not sent"
+ *             of an UNKNOWN row (onSent never ran for those).
+ */
+export interface MessageStatusHooks {
+  onSent?: MessageStatusHook;
+  onFailed?: MessageStatusHook;
+}
+
+const REACHED: ReadonlySet<string> = new Set(['SENT', 'DELIVERED', 'READ']);
 
 /**
  * ADR-042 phase 2 — the channel-agnostic communication core. Callers (send invoice / receipt /
@@ -115,7 +136,7 @@ export type MessageResolvedAsSentHandler = (
 @Injectable()
 export class CommunicationService {
   private readonly logger = new Logger(CommunicationService.name);
-  private readonly resolvedAsSentHandlers = new Map<string, MessageResolvedAsSentHandler>();
+  private readonly statusHooks = new Map<string, MessageStatusHooks>();
 
   constructor(
     private readonly tenancy: TenancyService,
@@ -211,15 +232,19 @@ export class CommunicationService {
     return rows.map(toView);
   }
 
-  /** Registers the reaction to "resolved as SENT" for one resourceType (one handler per type). */
-  onResolvedAsSent(resourceType: string, handler: MessageResolvedAsSentHandler): void {
-    this.resolvedAsSentHandlers.set(resourceType, handler);
+  /** Registers the status hooks for one resourceType. A second registration is a wiring bug. */
+  registerStatusHooks(resourceType: string, hooks: MessageStatusHooks): void {
+    if (this.statusHooks.has(resourceType)) {
+      throw new Error(`Message status hooks for '${resourceType}' are already registered`);
+    }
+    this.statusHooks.set(resourceType, hooks);
   }
 
   /**
    * A person settles an UNKNOWN message after checking with the client (WhatsApp never confirmed the
-   * send). SENT → the row counts as sent (sentAt now) and the owning feature's handler runs in the
-   * same transaction; FAILED → the row is FAILED (errorCode MARKED_FAILED) and the caller may send
+   * send). SENT → the row counts as sent, `sentAt` = the time of the resolve (the real send time is
+   * unknowable), and the owning feature's onSent hook runs in the same transaction with the resolver
+   * as actor; FAILED → the row is FAILED (errorCode MARKED_FAILED) and the caller may send
    * again under a new idempotency key. Only an UNKNOWN row can be resolved (409 otherwise). Audited.
    */
   async resolveUnknown(
@@ -283,9 +308,9 @@ export class CommunicationService {
           ...(input.note?.trim() ? { note: input.note.trim().slice(0, 500) } : {}),
         },
       });
-      const handler =
-        input.outcome === 'SENT' ? this.resolvedAsSentHandlers.get(row.resourceType) : undefined;
-      if (handler) await handler(tx as Prisma.TransactionClient, identity, toView(row));
+      if (input.outcome === 'SENT') {
+        await this.runHook('onSent', tx as Prisma.TransactionClient, row, identity.userId);
+      }
       return row;
     });
     return toView(settled);
@@ -315,21 +340,35 @@ export class CommunicationService {
       data.errorMessage = describeWhatsAppError(classifyMetaError(code));
     }
 
-    const applied = await this.messages.applyStatus(
-      db,
-      update.providerMessageId,
-      statusesThatAccept(status),
-      data,
-    );
-    if (applied) {
+    const applied = await db.$transaction(async (tx) => {
+      const ok = await this.messages.applyStatus(
+        tx,
+        update.providerMessageId,
+        statusesThatAccept(status),
+        data,
+      );
+      if (!ok) return false;
       await this.messages.fillMissingTimestamps(
-        db,
+        tx,
         update.providerMessageId,
         IMPLIED_TIMESTAMPS[webhookStatus],
         at,
       );
-      return 'applied';
-    }
+      if (this.statusHooks.size > 0) {
+        const row = await this.messages.findByProviderId(tx, update.providerMessageId);
+        // No user behind a webhook: the message's creator is the actor (as for its own send).
+        if (row) {
+          await this.runHook(
+            status === 'FAILED' ? 'onFailed' : 'onSent',
+            tx as Prisma.TransactionClient,
+            row,
+            row.createdBy,
+          );
+        }
+      }
+      return true;
+    });
+    if (applied) return 'applied';
     return (await this.messages.findByProviderId(db, update.providerMessageId))
       ? 'ignored'
       : 'not_found';
@@ -394,9 +433,23 @@ export class CommunicationService {
     const sent = await db.$transaction(async (tx) => {
       const updated = await this.messages.markSent(tx, row.id, providerMessageId, new Date());
       await this.audit(tx, identity, updated, 'sent');
+      // A webhook may already have failed it; only a message that got through counts as sent.
+      if (REACHED.has(updated.status)) {
+        await this.runHook('onSent', tx as Prisma.TransactionClient, updated, identity.userId);
+      }
       return updated;
     });
     return toView(sent);
+  }
+
+  private async runHook(
+    kind: keyof MessageStatusHooks,
+    tx: Prisma.TransactionClient,
+    row: OutboundMessage,
+    actorUserId: string,
+  ): Promise<void> {
+    const hook = this.statusHooks.get(row.resourceType)?.[kind];
+    if (hook) await hook(tx, { organizationId: row.organizationId, actorUserId }, toView(row));
   }
 
   private async recordRoute(providerMessageId: string): Promise<void> {

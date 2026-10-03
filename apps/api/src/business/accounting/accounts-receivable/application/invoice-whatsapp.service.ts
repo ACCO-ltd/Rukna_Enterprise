@@ -6,7 +6,6 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Prisma } from '@prisma/client';
 import type {
   OutboundMessageView,
   RequestIdentity,
@@ -17,10 +16,10 @@ import type {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { CommunicationService } from '../../../../platform/messaging/communication.service.js';
 import { WhatsAppClient } from '../../../../platform/messaging/whatsapp/whatsapp.client.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { resolveWhatsAppTemplate } from '../../../../platform/messaging/whatsapp/whatsapp-templates.js';
 import {
   INVOICE_TEMPLATE_BODY,
-  REACHED_STATUSES,
   WHATSAPP_REFUSAL_MESSAGE,
   buildInvoiceBodyParams,
   defaultRecipient,
@@ -38,8 +37,6 @@ import { ClientInvoiceService } from './client-invoice.service.js';
 
 export const CLIENT_INVOICE_RESOURCE = 'client_invoice';
 
-type Db = Prisma.TransactionClient | ReturnType<TenancyService['getClient']>;
-
 /**
  * ADR-042 — WhatsApp V1 step 2: send an issued invoice to the client on WhatsApp (the frozen PDF as
  * the template's DOCUMENT header) and, once WhatsApp accepts it, record the delivery so the invoice
@@ -55,13 +52,44 @@ export class InvoiceWhatsAppService implements OnModuleInit {
     private readonly communication: CommunicationService,
     private readonly invoices: ClientInvoiceService,
     private readonly repo: InvoiceWhatsAppRepository,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
-  /** "Mark as sent" on an UNKNOWN invoice message records the delivery in the same transaction. */
+  /**
+   * The invoice's delivery follows its WhatsApp message, inside the transaction that changes the
+   * message's status: recorded when the message gets through (send accepted, webhook confirmation,
+   * or "Mark as sent" — then sentAt is the resolve time), removed again when WhatsApp later reports
+   * it FAILED, so the invoice drops back to Issued unless another delivery exists.
+   */
   onModuleInit(): void {
-    this.communication.onResolvedAsSent(CLIENT_INVOICE_RESOURCE, (tx, identity, message) =>
-      this.recordDelivery(tx, identity, message).then(() => undefined),
-    );
+    this.communication.registerStatusHooks(CLIENT_INVOICE_RESOURCE, {
+      onSent: async (tx, ctx, message) => {
+        await this.repo.recordMessageDelivery(tx, {
+          organizationId: ctx.organizationId,
+          invoiceId: message.resourceId,
+          recipient: message.recipient,
+          sentAt: message.sentAt ? new Date(message.sentAt) : new Date(),
+          sentBy: ctx.actorUserId,
+          outboundMessageId: message.id,
+        });
+      },
+      onFailed: async (tx, ctx, message) => {
+        const voided = await this.repo.voidMessageDelivery(tx, ctx.organizationId, message.id);
+        if (voided === 0) return;
+        await this.auditOutbox.record(tx, {
+          organizationId: ctx.organizationId,
+          actorUserId: ctx.actorUserId,
+          action: 'whatsapp delivery voided: message failed',
+          resourceType: 'ClientInvoice',
+          resourceId: message.resourceId,
+          sourceCommand: 'invoice-whatsapp.message-failed',
+          eventType: 'client-invoice.whatsapp-delivery-voided',
+          idempotencyKey: `client-invoice.whatsapp-delivery-voided:${message.id}`,
+          before: { deliveryMethod: 'WHATSAPP', outboundMessageId: message.id },
+          after: { messageStatus: message.status, errorCode: message.errorCode },
+        });
+      },
+    });
   }
 
   async preview(identity: RequestIdentity, invoiceId: string): Promise<WhatsAppSendPreview> {
@@ -91,7 +119,8 @@ export class InvoiceWhatsAppService implements OnModuleInit {
    * Sends the invoice. Refusals (not issued, not configured, no / invalid number) are 400/409 with an
    * errorCode; a provider failure is NOT an error — the FAILED / UNKNOWN message comes back (200) for
    * the page to show. A repeat with the same idempotency key returns the same message, never a second
-   * send, and records the delivery at most once.
+   * send. The delivery is recorded by the onSent hook, in the transaction that marks the message
+   * SENT — at most once per message.
    */
   async send(
     identity: RequestIdentity,
@@ -112,9 +141,10 @@ export class InvoiceWhatsAppService implements OnModuleInit {
     }
     const blocked = whatsAppBlockedReason({ ...ctx.state, recipient });
     if (blocked) throw refuse(blocked);
+    if (!ctx.companyName) throw refuse('COMPANY_NAME_MISSING');
 
     const bytes = await this.invoices.readDocumentBytes(identity, invoiceId);
-    const message = await this.communication.sendWhatsAppTemplate(identity, {
+    return this.communication.sendWhatsAppTemplate(identity, {
       purpose: 'INVOICE',
       clientId: ctx.invoice.clientId,
       recipient: recipient!,
@@ -126,27 +156,9 @@ export class InvoiceWhatsAppService implements OnModuleInit {
       document: { bytes, mimeType: 'application/pdf', filename: ctx.filename },
       idempotencyKey: `invoice-send:${invoiceId}:${input.idempotencyKey.trim()}`,
     });
-
-    if (REACHED_STATUSES.has(message.status)) await this.recordDelivery(db, identity, message);
-    return message;
   }
 
   // ─── internals ──────────────────────────────────────────────────────────────
-
-  private async recordDelivery(
-    db: Db,
-    identity: RequestIdentity,
-    message: OutboundMessageView,
-  ): Promise<boolean> {
-    return this.repo.recordMessageDelivery(db, {
-      organizationId: identity.activeOrganizationId,
-      invoiceId: message.resourceId,
-      recipient: message.recipient,
-      sentAt: message.sentAt ? new Date(message.sentAt) : new Date(),
-      sentBy: identity.userId,
-      outboundMessageId: message.id,
-    });
-  }
 
   private async load(identity: RequestIdentity, invoiceId: string) {
     const db = this.tenancy.getClient();
@@ -171,6 +183,7 @@ export class InvoiceWhatsAppService implements OnModuleInit {
     return {
       invoice,
       template,
+      companyName: (companyName || '').trim(),
       filename: `${invoiceNumber || `invoice-${invoice.id}`}.pdf`,
       bodyParams: buildInvoiceBodyParams({
         clientName: clientName || 'Client',
@@ -188,6 +201,7 @@ export class InvoiceWhatsAppService implements OnModuleInit {
     } satisfies {
       invoice: InvoiceForWhatsApp;
       template: { name: string; language: string } | null;
+      companyName: string;
       filename: string;
       bodyParams: string[];
       state: { issued: boolean; whatsappConfigured: boolean; templateConfigured: boolean };
@@ -195,7 +209,9 @@ export class InvoiceWhatsAppService implements OnModuleInit {
   }
 }
 
-function refuse(code: WhatsAppSendBlockedReason | 'RECIPIENT_INVALID'): Error {
+function refuse(
+  code: WhatsAppSendBlockedReason | 'RECIPIENT_INVALID' | 'COMPANY_NAME_MISSING',
+): Error {
   const body = {
     errorCode: code,
     message: WHATSAPP_REFUSAL_MESSAGE[code],

@@ -8,6 +8,8 @@
  *   WAI-04  outcome unknown → UNKNOWN, no delivery; resolve as SENT records exactly one delivery;
  *           resolve again → 409; resolve as FAILED records none and a new key sends again
  *   WAI-05  refusals: not issued (409 NOT_POSTED), invalid number (400 RECIPIENT_INVALID)
+ *   WAI-06  webhooks: a later FAILED voids the delivery (audited) and the invoice has none left; a
+ *           hand-recorded delivery is untouched; a webhook confirming an UNKNOWN message records it
  */
 import { Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -46,6 +48,7 @@ const service = new InvoiceWhatsAppService(
   communication,
   invoices as never,
   new InvoiceWhatsAppRepository(),
+  new TransactionalAuditOutboxService(),
 );
 service.onModuleInit();
 
@@ -327,5 +330,74 @@ describe('WAI-05 refusals', () => {
       run(() => service.send(me, invoiceId, { recipient: '+1234', idempotencyKey: randomUUID() })),
     ).rejects.toMatchObject({ status: 400, response: { errorCode: 'RECIPIENT_INVALID' } });
     expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe('WAI-06 webhook status follows through to the delivery', () => {
+  const providerId = async (id: string) =>
+    (await prisma.outboundMessage.findUniqueOrThrow({ where: { id } })).providerMessageId!;
+
+  it('a FAILED webhook after SENT voids the WhatsApp delivery and audits it; manual deliveries stay', async () => {
+    const { me, invoiceId } = await makeInvoice();
+    await prisma.clientInvoiceDelivery.create({
+      data: {
+        organizationId: me.activeOrganizationId,
+        invoiceId,
+        method: 'EMAIL',
+        sentAt: new Date(),
+        sentBy: me.userId,
+      },
+    });
+    const view = await run(() => service.send(me, invoiceId, { idempotencyKey: randomUUID() }));
+    expect(await deliveries(invoiceId)).toHaveLength(2);
+
+    const pid = await providerId(view.id);
+    expect(
+      await run(() =>
+        communication.applyStatusUpdate({
+          providerMessageId: pid,
+          status: 'failed',
+          errors: [{ code: 131026 }],
+        }),
+      ),
+    ).toBe('applied');
+
+    const left = await deliveries(invoiceId);
+    expect(left).toHaveLength(1);
+    expect(left[0].method).toBe('EMAIL');
+    const audit = await prisma.auditLog.findMany({
+      where: { orgId: me.activeOrganizationId, action: 'whatsapp delivery voided: message failed' },
+    });
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ resourceId: invoiceId, userId: me.userId });
+  });
+
+  it('a webhook confirming an UNKNOWN message records the delivery once', async () => {
+    const { me, invoiceId } = await makeInvoice();
+    whatsapp.sendTemplate.mockRejectedValue(
+      new WhatsAppSendError('NETWORK', 'timeout', undefined, true),
+    );
+    const view = await run(() => service.send(me, invoiceId, { idempotencyKey: randomUUID() }));
+    expect(view.status).toBe('UNKNOWN');
+    // Meta's id is unknown to us for an unanswered send; attach one as if it had arrived.
+    await prisma.outboundMessage.update({
+      where: { id: view.id },
+      data: { providerMessageId: `wamid.wai.${view.id}` },
+    });
+    await run(() =>
+      communication.applyStatusUpdate({
+        providerMessageId: `wamid.wai.${view.id}`,
+        status: 'delivered',
+      }),
+    );
+    await run(() =>
+      communication.applyStatusUpdate({
+        providerMessageId: `wamid.wai.${view.id}`,
+        status: 'read',
+      }),
+    );
+    const rows = await deliveries(invoiceId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ outboundMessageId: view.id, sentBy: me.userId });
   });
 });

@@ -100,4 +100,20 @@ export class InvoiceWhatsAppRepository {
     });
     return count === 1;
   }
+
+  /**
+   * Removes the delivery a message recorded, once WhatsApp reports that message FAILED. Only the
+   * system-generated row linked to that message — never a hand-recorded delivery. Returns how many
+   * rows went (0 or 1).
+   */
+  async voidMessageDelivery(
+    db: Db,
+    organizationId: string,
+    outboundMessageId: string,
+  ): Promise<number> {
+    const { count } = await db.clientInvoiceDelivery.deleteMany({
+      where: { organizationId, outboundMessageId, method: 'WHATSAPP' },
+    });
+    return count;
+  }
 }

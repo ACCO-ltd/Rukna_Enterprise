@@ -33,7 +33,7 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 
 import { getIssuedInvoiceDocument } from '../api/commercial-api';
-import { useCommercialBilling } from '../hooks/use-commercial';
+import { useBillingPackages, useCommercialBilling } from '../hooks/use-commercial';
 import {
   commercialInvoiceKeys,
   useDeleteDraftInvoice,
@@ -167,7 +167,11 @@ function InvoiceDocumentView({
   const canSend =
     caps.canSend && installmentId !== null && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
   // WhatsApp goes per invoice (ADR-042), so a separate charge can be sent this way too.
-  const canWhatsApp = caps.canSend && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
+  // Same rule as the API: posted, numbered, not cancelled or reversed (a paid one may go as a copy).
+  const canWhatsApp =
+    caps.canSend &&
+    Boolean(document.invoiceNumber) &&
+    (lifecycle === 'ISSUED' || lifecycle === 'SENT' || lifecycle === 'PAID');
   // A payment posts a receipt, so it waits for the ledger just like Issue (hidden, and said why).
   const payable = caps.canRecordPayment && (lifecycle === 'ISSUED' || lifecycle === 'SENT');
   const canPay = payable && !ledgerBlocked;
@@ -446,18 +450,13 @@ function InvoiceDocumentView({
         />
       ) : null}
 
-      {canWhatsApp ? (
-        <InvoiceWhatsAppDialog
-          open={pending === 'whatsapp'}
-          onClose={() => setPending(null)}
+      {canWhatsApp && pending === 'whatsapp' ? (
+        <PackageWhatsAppDialog
+          projectId={projectId}
           invoiceId={document.id}
-          title={t('whatsappTitle')}
-          subtitle={
-            document.invoiceNumber
-              ? t('whatsappSubtitle', { number: document.invoiceNumber })
-              : undefined
-          }
-          invalidate={[commercialInvoiceKeys.all(projectId), invoiceKeys.all]}
+          invoiceNumber={document.invoiceNumber}
+          installmentId={installmentId}
+          onClose={() => setPending(null)}
         />
       ) : null}
 
@@ -504,6 +503,65 @@ function InvoiceDocumentView({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Send on WhatsApp for a stage invoice sends the whole billing package — the milestone invoice and
+ * its variation invoices, each as its own message and PDF — as "Send to client" records a delivery
+ * on every invoice of the package. A separate charge (no installment) is just itself.
+ */
+function PackageWhatsAppDialog({
+  projectId,
+  invoiceId,
+  invoiceNumber,
+  installmentId,
+  onClose,
+}: {
+  projectId: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  installmentId: string | null;
+  onClose: () => void;
+}) {
+  const t = useTranslations('commercial.invoicePage');
+  const billing = useCommercialBilling(projectId);
+  const packages = useBillingPackages(
+    projectId,
+    installmentId ? (billing.data?.contractId ?? null) : null,
+  );
+  const loading =
+    installmentId !== null &&
+    (billing.isPending || (Boolean(billing.data?.contractId) && packages.isPending));
+  if (loading) {
+    return (
+      <p role="status" className="sr-only">
+        {t('loadingInvoices')}
+      </p>
+    );
+  }
+  const otherInvoices = (
+    packages.data?.packages.find((p) => p.installmentId === installmentId)?.documents ?? []
+  )
+    .filter((d) => d.invoiceId !== invoiceId && d.postingStatus === 'POSTED' && d.invoiceNumber)
+    .map((d) => ({ id: d.invoiceId, invoiceNumber: d.invoiceNumber as string }));
+
+  return (
+    <InvoiceWhatsAppDialog
+      open
+      onClose={onClose}
+      invoiceId={invoiceId}
+      title={otherInvoices.length > 0 ? t('whatsappPackageTitle') : t('whatsappTitle')}
+      subtitle={
+        otherInvoices.length > 0
+          ? t('whatsappPackageSubtitle', { count: otherInvoices.length + 1 })
+          : invoiceNumber
+            ? t('whatsappSubtitle', { number: invoiceNumber })
+            : undefined
+      }
+      otherInvoices={otherInvoices}
+      invalidate={[commercialInvoiceKeys.all(projectId), invoiceKeys.all]}
+    />
   );
 }
 

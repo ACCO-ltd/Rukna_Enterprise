@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { FilesModule } from '../../../platform/files/files.module.js';
 import { CommunicationModule } from '../../../platform/messaging/communication.module.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module.js';
 import { ClientInvoiceRepository } from './infrastructure/client-invoice.repository.js';
 import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.repository.js';
@@ -17,7 +18,7 @@ import { InvoiceWhatsAppRepository } from './infrastructure/invoice-whatsapp.rep
 import { CustomerReceiptController } from './presentation/customer-receipt.controller.js';
 
 @Module({
-  imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule],
+  imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule, AuditLogsModule],
   controllers: [ClientInvoiceController, CustomerReceiptController, InvoiceWhatsAppController],
   providers: [
     ClientInvoiceRepository,

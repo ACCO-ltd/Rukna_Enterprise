@@ -134,7 +134,7 @@ export function whatsAppBlockedReason(state: {
 
 /** Plain words for each refusal (the API's error message). */
 export const WHATSAPP_REFUSAL_MESSAGE: Record<
-  WhatsAppSendBlockedReason | 'RECIPIENT_INVALID',
+  WhatsAppSendBlockedReason | 'RECIPIENT_INVALID' | 'COMPANY_NAME_MISSING',
   string
 > = {
   NOT_POSTED: 'Only an issued invoice can be sent. Issue the invoice first.',
@@ -144,7 +144,6 @@ export const WHATSAPP_REFUSAL_MESSAGE: Record<
     'The WhatsApp invoice message template is not set up on this server. Ask an administrator to add it.',
   NO_RECIPIENT: 'This client has no saved WhatsApp or phone number. Enter the number to send to.',
   RECIPIENT_INVALID: 'Enter a valid international phone number, e.g. +252 61 234 5678.',
+  COMPANY_NAME_MISSING:
+    "The company name is missing, and the message names the sender. Add it in the organisation's settings first.",
 };
-
-/** Statuses at which WhatsApp has accepted the message — the invoice counts as delivered. */
-export const REACHED_STATUSES = new Set(['SENT', 'DELIVERED', 'READ']);

@@ -118,7 +118,9 @@
     },
     "sendWhatsApp": "Send on WhatsApp",
     "whatsappTitle": "Send invoice on WhatsApp",
-    "whatsappSubtitle": "Invoice {number} goes to the client as a PDF."
+    "whatsappSubtitle": "Invoice {number} goes to the client as a PDF.",
+    "whatsappPackageTitle": "Send stage invoices on WhatsApp",
+    "whatsappPackageSubtitle": "All {count} invoices of this stage go to the client, each as its own message with its PDF."
   },
   "prepare": {
     "title": "Prepare invoice",
