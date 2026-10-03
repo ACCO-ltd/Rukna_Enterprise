@@ -2942,7 +2942,16 @@
       "postingStatus": "Status",
       "statusNotPosted": "Not posted",
       "statusPosted": "Posted",
-      "statusReversed": "Reversed"
+      "statusReversed": "Reversed",
+      "downloadReceipt": "Download receipt",
+      "downloadFailed": "Could not open the receipt PDF. Try again.",
+      "sendWhatsApp": "Send on WhatsApp",
+      "whatsappTitle": "Send receipt on WhatsApp",
+      "whatsappSubtitle": "Receipt {number} goes to the client as a PDF.",
+      "messagesHeading": "Messages",
+      "documentUnavailableReversed": "This receipt was reversed, so it cannot be downloaded or sent to the client.",
+      "blockedNotPosted": "Post the receipt first. Only a posted receipt can be sent to the client.",
+      "blockedReversed": "This receipt was reversed. A reversed receipt must not be sent to the client."
     },
     "allocations": {
       "heading": "Allocations",

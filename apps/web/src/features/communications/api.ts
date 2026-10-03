@@ -45,3 +45,18 @@ export function sendInvoiceWhatsApp(
     body: JSON.stringify(body),
   });
 }
+
+export function getReceiptWhatsAppPreview(receiptId: string): Promise<WhatsAppSendPreview> {
+  return apiClient<WhatsAppSendPreview>(`/customer-receipts/${receiptId}/whatsapp/preview`);
+}
+
+/** 200 with the message — also when WhatsApp refused it (status FAILED / UNKNOWN). */
+export function sendReceiptWhatsApp(
+  receiptId: string,
+  body: WhatsAppSendRequest,
+): Promise<OutboundMessageView> {
+  return apiClient<OutboundMessageView>(`/customer-receipts/${receiptId}/whatsapp`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

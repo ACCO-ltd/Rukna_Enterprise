@@ -6,13 +6,16 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, StatusPill } from '@erp/ui';
 
 import { useModuleTrail } from '@/components/layout/module-chrome';
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { MessageHistory } from '@/features/communications/components/message-history';
+import { ReceiptWhatsAppDialog } from '@/features/communications/components/receipt-whatsapp-dialog';
 import { useClient } from '@/features/clients/hooks/use-client';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
 import { fromMinorUnits, isFullyAllocated, isOverAllocated } from '../allocation';
-import { useReceipt } from '../hooks/use-receipts';
+import { receiptKeys, useOpenReceiptDocument, useReceipt } from '../hooks/use-receipts';
 import type { ReceiptDetail as ReceiptDetailModel } from '../types';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
 import { PostReceiptDialog } from './post-receipt-dialog';
@@ -26,6 +29,9 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
 
   const { data: receipt, isPending, isError, error } = useReceipt(receiptId);
   const [posting, setPosting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const { can } = usePermissions();
+  const openDocument = useOpenReceiptDocument();
 
   useModuleTrail(receipt ? (receipt.reference ?? tReceipts('noReference')) : undefined);
 
@@ -54,10 +60,38 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   }
 
   const notPosted = receipt.postingStatus === 'NOT_POSTED';
+  const reversed = receipt.postingStatus === 'REVERSED';
+  // Same eligibility as the API: only a POSTED (numbered, not reversed) receipt has a PDF and can
+  // be sent; the server still answers 409 NOT_POSTED / RECEIPT_REVERSED as the final word.
+  const issued = receipt.postingStatus === 'POSTED';
+  const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
+  const number = receipt.receiptNumber ?? receipt.reference ?? tReceipts('noReference');
+
+  const actions = issued ? (
+    <>
+      <Button
+        variant="outline"
+        loading={openDocument.isPending}
+        onClick={() => openDocument.mutate(receipt.id)}
+      >
+        {t('downloadReceipt')}
+      </Button>
+      {mayManage ? (
+        <Button variant="outline" onClick={() => setSending(true)}>
+          {t('sendWhatsApp')}
+        </Button>
+      ) : null}
+    </>
+  ) : null;
 
   return (
     <div className="space-y-8">
-      <ReceiptHeader receipt={receipt} locale={locale} />
+      <ReceiptHeader receipt={receipt} locale={locale} actions={actions} />
+
+      {openDocument.isError ? <Alert variant="error" messages={[t('downloadFailed')]} /> : null}
+      {reversed ? (
+        <p className="text-sm text-muted-foreground">{t('documentUnavailableReversed')}</p>
+      ) : null}
 
       {notPosted ? (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">
@@ -78,7 +112,29 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
         </section>
       ) : null}
 
+      {mayManage && !notPosted ? (
+        <MessageHistory
+          resourceType="payment_receipt"
+          resourceId={receipt.id}
+          canResolve
+          hideWhenEmpty
+          invalidateOnResolve={[receiptKeys.detail(receipt.id)]}
+        />
+      ) : null}
+
       {posting ? <PostReceiptDialog receipt={receipt} onClose={() => setPosting(false)} /> : null}
+
+      {issued && mayManage ? (
+        <ReceiptWhatsAppDialog
+          open={sending}
+          onClose={() => setSending(false)}
+          receiptId={receipt.id}
+          title={t('whatsappTitle')}
+          subtitle={t('whatsappSubtitle', { number })}
+          blockedText={{ NOT_POSTED: t('blockedNotPosted'), REVERSED: t('blockedReversed') }}
+          invalidate={[receiptKeys.detail(receipt.id)]}
+        />
+      ) : null}
 
       <span className="sr-only">{tReceipts('title')}</span>
     </div>
@@ -88,9 +144,11 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
 function ReceiptHeader({
   receipt,
   locale,
+  actions,
 }: {
   receipt: ReceiptDetailModel;
   locale: 'en' | 'ar';
+  actions?: React.ReactNode;
 }) {
   const t = useTranslations('platform.receipts.detail');
   const tReceipts = useTranslations('platform.receipts');
@@ -127,6 +185,7 @@ function ReceiptHeader({
             {client.data ? client.data.name : tReceipts('notSet')}
           </p>
         </div>
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
 
       <dl className="mt-6 grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-4 sm:p-6">
