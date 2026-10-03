@@ -413,7 +413,8 @@
         "cost": "Cost & commitments",
         "pl": "P&L",
         "payables": "Payables",
-        "payments": "Payments"
+        "payments": "Payments",
+        "cashflow": "Cash flow"
       }
     },
     "billing": {
@@ -442,6 +443,15 @@
     },
     "redirect": {
       "opening": "Opening…"
+    },
+    "export": {
+      "code": "Code",
+      "project": "Project",
+      "status": "Status",
+      "client": "Client",
+      "currency": "Currency",
+      "total": "Total {currency}",
+      "noCurrency": "no currency"
     }
   },
   "eligibility": {
@@ -525,6 +535,54 @@
       "NOT_PREPARED": "The invoice has not been prepared yet",
       "STAGE_ISSUED": "Already billed",
       "NOT_ISSUED": "The invoice has not been issued yet"
+    }
+  },
+  "exports": {
+    "csv": "Export CSV",
+    "xlsx": "Export Excel"
+  },
+  "cashflow": {
+    "title": "Cash flow",
+    "subtitle": "Money expected in and out across your projects, by week or month.",
+    "loading": "Loading the forecast",
+    "loadFailed": "Could not load the cash-flow forecast.",
+    "empty": "Nothing to forecast yet",
+    "emptyHint": "Issued invoices, stages not yet invoiced, supplier bills and open purchase orders appear here.",
+    "hidden": "Amounts are restricted for your role.",
+    "bucketLabel": "Group by",
+    "currencyLabel": "Currency",
+    "size": {
+      "WEEK": "Weekly",
+      "MONTH": "Monthly"
+    },
+    "range": "{from} – {to} · {currency}. Amounts in one currency only; currencies are never added together.",
+    "tableLabel": "Cash flow in {currency}",
+    "chartSummary": "Cash flow in {currency}: {inflows} expected in, {outflows} expected out.",
+    "total": "Total",
+    "assumptions": "How this forecast is worked out",
+    "notIncluded": "Not included",
+    "col": {
+      "period": "Period",
+      "inflows": "Money in",
+      "outflows": "Money out",
+      "total": "Total",
+      "net": "Net",
+      "cumulative": "Cumulative net",
+      "currency": "Currency"
+    },
+    "line": {
+      "fromInvoices": "Issued invoices",
+      "fromUnbilledStages": "Stages not yet invoiced",
+      "fromSupplierBills": "Supplier bills",
+      "fromOpenCommitments": "Open purchase orders"
+    },
+    "bucket": {
+      "now": "Overdue / now",
+      "nowShort": "Now",
+      "week": "Week of {date}",
+      "later": "From {date}",
+      "laterShort": "Later",
+      "undated": "Undated"
     }
   }
 }

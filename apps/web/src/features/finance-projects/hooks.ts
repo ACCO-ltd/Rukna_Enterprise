@@ -1,5 +1,7 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type {
+  CashflowForecastQuery,
+  CashflowForecastResponse,
   FinancePortfolioProjectResponse,
   FinancePortfolioQuery,
   FinancePortfolioResponse,
@@ -7,7 +9,7 @@ import type {
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
-import { getFinancePortfolio, getFinanceProject } from './api';
+import { getCashflowForecast, getFinancePortfolio, getFinanceProject } from './api';
 import { financeProjectRedirects } from './redirects';
 
 /** The permission `GET /finance/projects` requires — the nav item and pages gate on it too. */
@@ -38,6 +40,23 @@ export function useFinanceProject(
   return useQuery({
     queryKey: financePortfolioKeys.project(projectId),
     queryFn: () => getFinanceProject(projectId),
+    enabled: options.enabled ?? true,
+  });
+}
+
+export const cashflowKeys = {
+  all: ['finance-cashflow'] as const,
+  forecast: (query: CashflowForecastQuery) => [...cashflowKeys.all, query] as const,
+};
+
+/** ADR-043 Phase 4 — the cash-flow forecast; same gate as the portfolio. */
+export function useCashflowForecast(
+  query: CashflowForecastQuery,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<CashflowForecastResponse> {
+  return useQuery({
+    queryKey: cashflowKeys.forecast(query),
+    queryFn: () => getCashflowForecast(query),
     enabled: options.enabled ?? true,
   });
 }
