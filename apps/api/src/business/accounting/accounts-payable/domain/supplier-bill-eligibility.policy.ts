@@ -94,19 +94,77 @@ export function billPostingBlock(bill: BillPostingFacts): BillPostBlock | null {
 
 // ─── Settle (pay) a bill ────────────────────────────────────────────────────────
 
-export type BillSettlementBlock = 'BILL_NOT_POSTED' | 'NOTHING_OUTSTANDING' | 'EXCEEDS_OUTSTANDING';
+export type BillSettlementBlock =
+  | 'BILL_NOT_POSTED'
+  | 'OPENING_BALANCE_AP_NOT_RECONCILED'
+  | 'NOTHING_OUTSTANDING'
+  | 'EXCEEDS_OUTSTANDING';
 
 /**
- * May a payment be allocated to the bill? Only a POSTED bill is a live AP liability (AP is
- * credited at EVT-AP-001), and an allocation may not exceed the balance no payment covers yet.
- * With `amount` the command's check (EXCEEDS_OUTSTANDING); without it the read model's
- * "is there anything left to pay" (NOTHING_OUTSTANDING).
+ * The posting statuses whose bill is a live AP liability, i.e. whose balance already sits on the
+ * AP control account: POSTED (credited by the bill's own EVT-AP-001 journal) and OPENING_BALANCE
+ * (credited by the opening-balance journal, EVT-OPB-001, when the bill was carried over from the
+ * previous system). A payment settles either one the same way — Dr AP control / Cr Bank.
+ */
+export const SETTLEABLE_POSTING_STATUSES: readonly string[] = ['POSTED', 'OPENING_BALANCE'];
+
+/** The opening-balance journal's event — how the import's aggregate journal is identified. */
+export const OPENING_BALANCE_EVENT = 'EVT-OPB-001';
+
+/**
+ * Facts for the opening-balance AP tie-out. The import credits AP with whatever the uploaded
+ * trial balance says, on whichever account it names; it never ties that to the bills it imports
+ * or to the AP control account a payment debits. So before a payment debits AP control for an
+ * opening-balance bill, the carried-over payables must actually be on that account.
+ */
+export interface OpeningBalanceApTieOut {
+  /** The AP control account the payment debits (null: none could be resolved). */
+  apAccount: { id: string; code: string } | null;
+  /** The live (posted, not reversed) opening-balance journal, or null when there is none. */
+  journal: { journalNumber: string | null } | null;
+  /** That journal's net CREDIT on the AP control account (credit − debit). */
+  journalNetCredit: Decimal | string | number;
+  /** Σ ORIGINAL amount (totalAmount) of every OPENING_BALANCE supplier bill in the organization. */
+  importedBillsTotal: Decimal | string | number;
+}
+
+/**
+ * Do the carried-over payables tie to the AP control account? Equal → payable; otherwise the
+ * plain-words reason (also the 409 message and the eligibility step's detail). Uses the bills'
+ * ORIGINAL totals because payments post their own journals: neither side moves as bills are paid.
+ */
+export function openingBalanceApTieOutProblem(t: OpeningBalanceApTieOut | undefined): string | null {
+  if (!t) return 'Opening-balance payables could not be checked against the AP control account.';
+  const total = new Decimal(t.importedBillsTotal.toString());
+  if (!t.apAccount) {
+    return 'Opening-balance payables cannot be paid: no single AP control account is configured. Fix the chart of accounts before paying.';
+  }
+  if (!t.journal) {
+    return `Opening-balance payables do not tie to the AP control account ${t.apAccount.code}: no opening-balance journal is posted, imported bills total ${total.toFixed(2)}. Fix the opening balance before paying.`;
+  }
+  const credit = new Decimal(t.journalNetCredit.toString());
+  if (!credit.eq(total)) {
+    return `Opening-balance payables do not tie to the AP control account (journal ${t.journal.journalNumber ?? '—'} credits ${t.apAccount.code} ${credit.toFixed(2)}, imported bills total ${total.toFixed(2)}). Fix the opening balance before paying.`;
+  }
+  return null;
+}
+
+/**
+ * May a payment be allocated to the bill? Only a bill in the ledger (POSTED, or carried in as an
+ * OPENING_BALANCE whose payables tie to AP control — `openingBalanceApTieOutProblem`) is a live AP
+ * liability, and an allocation may not exceed the balance no payment covers yet. With `amount` the
+ * command's check (EXCEEDS_OUTSTANDING); without it the read model's "is there anything left to
+ * pay" (NOTHING_OUTSTANDING). `tieOut` is required for an OPENING_BALANCE bill (absent → refused).
  */
 export function billSettlementBlock(
   bill: { postingStatus: string; outstandingAmount: Decimal | string | number },
   amount?: Decimal,
+  tieOut?: OpeningBalanceApTieOut,
 ): BillSettlementBlock | null {
-  if (bill.postingStatus !== 'POSTED') return 'BILL_NOT_POSTED';
+  if (!SETTLEABLE_POSTING_STATUSES.includes(bill.postingStatus)) return 'BILL_NOT_POSTED';
+  if (bill.postingStatus === 'OPENING_BALANCE' && openingBalanceApTieOutProblem(tieOut) !== null) {
+    return 'OPENING_BALANCE_AP_NOT_RECONCILED';
+  }
   const outstanding = new Decimal(bill.outstandingAmount.toString());
   if (amount !== undefined) return amount.gt(outstanding) ? 'EXCEEDS_OUTSTANDING' : null;
   return outstanding.lte(0) ? 'NOTHING_OUTSTANDING' : null;
@@ -204,6 +262,8 @@ export interface BillEligibilityFacts {
   };
   /** The period covering the bill date — the one the post would land in. */
   postingPeriod: PeriodPostingFacts | null;
+  /** Opening-balance bills only: the AP tie-out (`openingBalanceApTieOutProblem`). */
+  openingBalanceTieOut?: OpeningBalanceApTieOut;
   /** Every payment allocation to the bill, with its payment's state. */
   allocations: ReadonlyArray<{
     postingStatus: string;
@@ -244,7 +304,9 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   const reversed = bill.postingStatus === 'REVERSED';
   const periodBlock: PeriodPostingBlock | null =
     inLedger || reversed ? null : periodPostingBlock(facts.postingPeriod, SUPPLIER_BILL_JOURNAL_CATEGORY);
-  const settlementBlock = billSettlementBlock(bill);
+  const settlementBlock = billSettlementBlock(bill, undefined, facts.openingBalanceTieOut);
+  const tieOutProblem = openingBalanceApTieOutProblem(facts.openingBalanceTieOut);
+  const untied = openingBalance && tieOutProblem !== null;
   const outstanding = new Decimal(bill.outstandingAmount.toString());
   const inFlight = facts.allocations.filter(isInFlight);
 
@@ -299,7 +361,7 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   // 5. Posted to the ledger.
   steps.push(
     openingBalance
-      ? step('POSTED', 'FINANCE', 'DONE', null, 'Opening balance from the previous system — already in the ledger')
+      ? step('POSTED', 'FINANCE', 'DONE', null, 'Opening balance — carried from the previous system, already in the ledger')
       : inLedger
       ? step('POSTED', 'FINANCE', 'DONE')
       : reversed
@@ -309,19 +371,19 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
           : step('POSTED', 'FINANCE', 'PENDING', 'BILL_NOT_POSTED'),
   );
 
-  // 6–8. Payment: approved → released (dual control) → posted.
-  if (openingBalance) {
-    // The payment command settles only POSTED bills (`billSettlementBlock`), so an imported balance
-    // cannot be paid in Rukna yet — said plainly rather than "not posted".
-    const detail = 'Opening balance from the previous system — it cannot be paid in Rukna yet';
-    steps.push(step('PAYMENT_APPROVED', 'FINANCE', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
-    steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
-    steps.push(step('PAID', 'FINANCE', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
+  // 6–8. Payment: approved → released (dual control) → posted. An opening-balance bill is paid
+  // exactly like a posted one (its balance is on AP control), so it falls through to the same steps.
+  if (untied) {
+    // The carried-over payables are not on the AP control account a payment would debit.
+    const code = 'OPENING_BALANCE_AP_NOT_RECONCILED';
+    steps.push(step('PAYMENT_APPROVED', 'FINANCE', 'BLOCKED', code, tieOutProblem));
+    steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'BLOCKED', code, tieOutProblem));
+    steps.push(step('PAID', 'FINANCE', 'BLOCKED', code, tieOutProblem));
   } else if (reversed) {
     steps.push(step('PAYMENT_APPROVED', 'APPROVER', 'NOT_APPLICABLE'));
     steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'NOT_APPLICABLE'));
     steps.push(step('PAID', 'FINANCE', 'NOT_APPLICABLE'));
-  } else if (bill.postingStatus !== 'POSTED') {
+  } else if (!inLedger) {
     steps.push(step('PAYMENT_APPROVED', 'APPROVER', 'PENDING', 'BILL_NOT_POSTED'));
     steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'PENDING', 'BILL_NOT_POSTED'));
     steps.push(step('PAID', 'FINANCE', 'PENDING', 'BILL_NOT_POSTED'));
@@ -366,14 +428,14 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   const canPay = settlementBlock === null;
 
   let blockedReason: SupplierBillBlockedReason | null = null;
-  if (openingBalance) {
-    blockedReason = 'OPENING_BALANCE_NOT_PAYABLE';
-  } else if (bill.postingStatus !== 'POSTED') {
+  if (untied) {
+    blockedReason = 'OPENING_BALANCE_AP_NOT_RECONCILED';
+  } else if (!inLedger) {
     // The next action is posting (or nothing, for a reversed bill).
     if (postBlock && postBlock !== 'BILL_ALREADY_POSTED') blockedReason = postBlock;
     else if (periodBlock) blockedReason = periodBlock;
   } else if (!canPay) {
-    // Posted with nothing uncovered: the balance sits on a payment in flight, or it is paid.
+    // In the ledger with nothing uncovered: the balance sits on a payment in flight, or it is paid.
     const pendingPayment = steps.find(
       (s) => s.status === 'PENDING' && (s.key === 'PAYMENT_APPROVED' || s.key === 'PAYMENT_RELEASED' || s.key === 'PAID'),
     );
