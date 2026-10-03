@@ -18,6 +18,6 @@ import { ProjectProcurementController } from './presentation/project-procurement
   imports: [TenancyModule, AuditLogsModule],
   providers: [ProjectProcurementRepository, ProjectProcurementService, ProjectCostBudgetService],
   controllers: [ProjectProcurementController],
-  exports: [ProjectProcurementService],
+  exports: [ProjectProcurementService, ProjectProcurementRepository],
 })
 export class ProjectProcurementModule {}

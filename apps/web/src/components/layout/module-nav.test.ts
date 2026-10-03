@@ -19,7 +19,7 @@ describe('resolveModule', () => {
     expect(resolveModule('/receipts/new')?.item?.labelKey).toBe('receipts');
   });
 
-  it('ignores cross-links — Supplier bills belongs to Accounting, not Procurement', () => {
+  it('ignores cross-links — Supplier bills belongs to Finance, not Procurement', () => {
     expect(resolveModule('/finance/accounting/bills')?.domain.moduleKey).toBe('accounting');
   });
 
@@ -58,10 +58,13 @@ describe('moduleTabs', () => {
   it('turns groups into dropdown tabs in declared order', () => {
     const tabs = moduleTabs(domain('accounting'), '/finance/accounting/bills', allowAll);
     expect(tabs.map((t) => `${t.kind}:${t.key}`)).toEqual([
-      // The guided "Get started" hub is the one ungrouped item, so it leads the tab bar.
+      // ADR-043 — Get started (the guided hub) and Projects (the portfolio) are ungrouped, so they
+      // lead the tab bar; Banking sits between Payables and the ledger.
       'link:/finance/accounting/guide',
+      'link:/finance/projects',
       'menu:receivables',
       'menu:payables',
+      'menu:banking',
       'menu:ledger',
       'menu:reports',
       'menu:acctSetup',

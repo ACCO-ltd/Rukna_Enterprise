@@ -59,7 +59,7 @@ export interface NavItem {
   /**
    * A cross-domain pointer: this item lives in one domain's nav but links to a route that is
    * canonically owned by another domain (e.g. Supplier bills surfaced under Procurement, whose
-   * route stays `/finance/accounting/bills` under Accounting). Marks intent for readers; the
+   * route stays `/finance/accounting/bills` under Finance). Marks intent for readers; the
    * link resolves to the same single destination either way.
    */
   crossLink?: boolean;
@@ -112,22 +112,28 @@ export const NAV_DOMAINS: NavDomain[] = [
     ],
   },
   {
-    labelKey: 'accounting',
+    // ADR-043 — "Two workspaces, one ledger": the finance team's workspace. Renamed from
+    // Accounting; every route is unchanged (`/finance/accounting/*`, `/receipts`), only labels and
+    // grouping moved. `moduleKey` stays `accounting` (the module-visibility gate, view:accounting).
+    labelKey: 'finance',
     href: '/accounting',
     moduleKey: 'accounting',
     iconKey: 'chart-bar',
-    // Six named sections mirror the module's logical structure. The groupKey controls the
-    // micro-label divider rendered by NavItemList; ungrouped items always lead — the guided
-    // "Get started" hub is the one ungrouped spine item, so it heads the tab bar before the
-    // grouped sections, and it is the module's default landing while setup is incomplete.
+    // Ungrouped items lead the tab bar: Get started (the guided accounting hub, the module's landing
+    // while setup is incomplete — a company-wide Finance overview does not exist yet) and Projects (the portfolio, gated like its API on
+    // view:financial-position). Then the named sections; the groupKey draws the micro-label.
     items: [
       { href: '/finance/accounting/guide', labelKey: 'getStarted', iconKey: 'check-circle' },
+      { href: '/finance/projects', labelKey: 'financeProjects', iconKey: 'briefcase', permissionKey: 'view:financial-position' },
       // Receivables
       { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text', groupKey: 'receivables' },
       { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt', groupKey: 'receivables' },
       // Payables
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', groupKey: 'payables' },
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
+      // Banking
+      { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
+      { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'banking' },
       // General Ledger
       { href: '/finance/accounting/journals', labelKey: 'journals', iconKey: 'book-open', groupKey: 'ledger' },
       { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts', iconKey: 'list', groupKey: 'ledger' },
@@ -137,11 +143,9 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison', iconKey: 'trending-up', groupKey: 'reports' },
-      // Setup & Close
-      { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'acctSetup' },
+      // Setup & close
       { href: '/finance/accounting/posting-profiles', labelKey: 'postingProfiles', iconKey: 'git-branch', groupKey: 'acctSetup' },
       { href: '/finance/accounting/tax', labelKey: 'taxCodes', iconKey: 'tag', groupKey: 'acctSetup' },
-      { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'acctSetup' },
       { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance', iconKey: 'book-open', groupKey: 'acctSetup' },
       { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar', groupKey: 'acctSetup' },
     ],

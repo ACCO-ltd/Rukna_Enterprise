@@ -64,6 +64,7 @@
     "contracts": "Contracts",
     "accounting": "Accounting",
     "getStarted": "Get started",
+    "financeProjects": "Projects",
     "chartOfAccounts": "Chart of accounts",
     "fiscalPeriods": "Fiscal periods",
     "journals": "Journals",
@@ -101,6 +102,7 @@
       "evidence": "Evidence",
       "receivables": "Receivables",
       "payables": "Payables",
+      "banking": "Banking",
       "ledger": "General ledger",
       "reports": "Reports",
       "acctSetup": "Setup & close"

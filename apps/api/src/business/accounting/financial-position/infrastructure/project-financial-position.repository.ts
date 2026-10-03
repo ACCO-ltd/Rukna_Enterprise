@@ -316,6 +316,21 @@ export class ProjectFinancialPositionRepository {
     organizationId: string,
     projectId: string,
   ): Promise<Decimal> {
+    const byProject = await this.sumPostedRevenueByProject(prisma, organizationId, [projectId]);
+    return byProject.get(projectId) ?? ZERO;
+  }
+
+  /**
+   * `sumPostedRevenue` for many projects in one query (ADR-043 Finance portfolio): the same income
+   * accounts and the same journal filter, grouped by project. Projects with no revenue are absent.
+   */
+  async sumPostedRevenueByProject(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectIds: string[],
+  ): Promise<Map<string, Decimal>> {
+    const result = new Map<string, Decimal>();
+    if (projectIds.length === 0) return result;
     const accounts = await prisma.account.findMany({
       where: {
         organizationId,
@@ -326,25 +341,59 @@ export class ProjectFinancialPositionRepository {
     const incomeIds = accounts
       .filter((a) => a.versions[0]?.accountClass === 'INCOME')
       .map((a) => a.id);
-    if (incomeIds.length === 0) return ZERO;
+    if (incomeIds.length === 0) return result;
 
     const agg = await prisma.journalLine.groupBy({
-      by: ['accountId'],
+      by: ['projectId'],
       where: {
         accountId: { in: incomeIds },
-        projectId,
+        projectId: { in: projectIds },
         entry: { organizationId, status: 'POSTED', entryPurpose: { not: 'CLOSING' } },
       },
       _sum: { debitAmount: true, creditAmount: true },
     });
-
-    let total = ZERO;
     for (const row of agg) {
-      total = total
-        .plus(new Decimal((row._sum.creditAmount ?? 0).toString()))
-        .minus(new Decimal((row._sum.debitAmount ?? 0).toString()));
+      if (!row.projectId) continue;
+      const net = new Decimal((row._sum.creditAmount ?? 0).toString()).minus(
+        new Decimal((row._sum.debitAmount ?? 0).toString()),
+      );
+      result.set(row.projectId, (result.get(row.projectId) ?? ZERO).plus(net));
     }
-    return total;
+    return result;
+  }
+
+  /**
+   * Total posted GL project cost per project (debit-normal, cost-of-sales + expense accounts,
+   * excluding CLOSING entries) — `glTotalProjectCost` of the cost reconciliation
+   * (`sumActualCostBySource` fromSupplierBills + fromOtherSources) for many projects in one query.
+   */
+  async sumProjectCostByProject(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectIds: string[],
+  ): Promise<Map<string, Decimal>> {
+    const result = new Map<string, Decimal>();
+    if (projectIds.length === 0) return result;
+    const costAccountIds = await this.costAccountIds(prisma, organizationId);
+    if (costAccountIds.length === 0) return result;
+
+    const agg = await prisma.journalLine.groupBy({
+      by: ['projectId'],
+      where: {
+        accountId: { in: costAccountIds },
+        projectId: { in: projectIds },
+        entry: { organizationId, status: 'POSTED', entryPurpose: { not: 'CLOSING' } },
+      },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+    for (const row of agg) {
+      if (!row.projectId) continue;
+      const net = new Decimal((row._sum.debitAmount ?? 0).toString()).minus(
+        new Decimal((row._sum.creditAmount ?? 0).toString()),
+      );
+      result.set(row.projectId, (result.get(row.projectId) ?? ZERO).plus(net));
+    }
+    return result;
   }
 
   /** Every cost-budget version for the project, newest first. */

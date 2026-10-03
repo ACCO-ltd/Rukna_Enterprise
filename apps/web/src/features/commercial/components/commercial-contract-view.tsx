@@ -29,6 +29,7 @@ import { statusTone } from '@/lib/status-registry';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 
 import { useCommercialCurrentCycle, useCommercialSummary } from '../hooks/use-commercial';
+import { projectInvoiceHref, type InvoiceHrefBuilder } from './commercial-billing-view';
 import { ContractChangesPanel } from './contract-changes-panel';
 import { ScheduleForm, splitScheduleForEditing } from './payment-schedule-tab';
 import { RecordSignedDateDialog } from './record-signed-date-dialog';
@@ -209,7 +210,20 @@ export function installmentDisplayState(inst: CommercialPaymentScheduleInstallme
   return notYetDue ? 'UPCOMING' : 'READY';
 }
 
-function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; workspace: CommercialWorkspaceResponse }) {
+/**
+ * The payment schedule: each stage, its state and the one reason it is waiting. Exported so the
+ * Finance workspace (ADR-043) renders the same panel; `invoiceHref` says where a billed stage's
+ * invoice opens (the project invoice page by default).
+ */
+export function PaymentSchedulePanel({
+  projectId,
+  workspace,
+  invoiceHref = projectInvoiceHref(projectId),
+}: {
+  projectId: string;
+  workspace: CommercialWorkspaceResponse;
+  invoiceHref?: InvoiceHrefBuilder;
+}) {
   const t = useTranslations('commercial.contractView');
   const tState = useTranslations('commercial.contractView.stageStatus');
   const locale = useLocale() as 'en' | 'ar';
@@ -268,7 +282,7 @@ function PaymentSchedulePanel({ projectId, workspace }: { projectId: string; wor
       return inst.expectedDate ? t('reasonExpected', { date: date(inst.expectedDate) }) : null;
     }
     return inst.invoiceId ? (
-      <Link href={`/projects/${projectId}/commercial/invoices/${inst.invoiceId}`} className="text-brand-primary hover:underline">
+      <Link href={invoiceHref(inst.invoiceId)} className="text-brand-primary hover:underline">
         {t('viewInvoice')}
       </Link>
     ) : null;

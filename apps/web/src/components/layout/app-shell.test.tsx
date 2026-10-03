@@ -104,7 +104,7 @@ describe('AppShell — navigation', () => {
     const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
     const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent?.trim());
 
-    expect(links).toEqual(['Dashboard', 'Projects', 'Accounting', 'Procurement', 'Administration']);
+    expect(links).toEqual(['Dashboard', 'Projects', 'Finance', 'Procurement', 'Administration']);
     expect(links).not.toContain('Clients');
     expect(links).not.toContain('Receipts');
     expect(links).not.toContain('Journals');
@@ -154,7 +154,7 @@ describe('AppShell — flat domains', () => {
   it('has no expand controls — no module nests in the sidebar any more', () => {
     renderShell();
 
-    expect(screen.queryByRole('button', { name: /^(Expand|Collapse) (Administration|Accounting)/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Expand|Collapse) (Administration|Finance)/ })).toBeNull();
   });
 
   it('stays lit on every route beneath it', () => {
@@ -175,11 +175,11 @@ describe('AppShell — module chrome', () => {
     pathname = '/finance/accounting/bills';
     renderShell();
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Accounting' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Finance' })).toBeInTheDocument();
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(crumbs).getByText('Payables')).toBeInTheDocument();
     expect(within(crumbs).getByText('Supplier bills')).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('navigation', { name: 'Accounting sections' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Finance sections' })).toBeInTheDocument();
   });
 
   it('renders no module chrome outside a module, or inside the project workspace', () => {

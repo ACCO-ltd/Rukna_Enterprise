@@ -27,6 +27,14 @@ import { RecordPaymentDialog } from './record-payment-dialog';
 
 type InvoiceView = 'needsAction' | 'unpaid' | 'all';
 
+/** Where an invoice opens. Defaults to the project workspace's invoice page. */
+export type InvoiceHrefBuilder = (invoiceId: string) => string;
+
+export const projectInvoiceHref =
+  (projectId: string): InvoiceHrefBuilder =>
+  (invoiceId) =>
+    `/projects/${projectId}/commercial/invoices/${invoiceId}`;
+
 /**
  * Billing: what to do next, the invoices, and the money that came in.
  *
@@ -37,9 +45,15 @@ type InvoiceView = 'needsAction' | 'unpaid' | 'all';
 export function CommercialBillingView({
   projectId,
   workspace,
+  invoiceHref = projectInvoiceHref(projectId),
 }: {
   projectId: string;
   workspace: CommercialWorkspaceResponse;
+  /**
+   * ADR-043 — the Finance workspace renders this same view and opens invoices on the accounting
+   * invoice page, so the finance team stays in Finance. The commands are unchanged.
+   */
+  invoiceHref?: InvoiceHrefBuilder;
 }) {
   const t = useTranslations('commercial.billingView');
   const billing = useCommercialBilling(projectId);
@@ -91,6 +105,7 @@ export function CommercialBillingView({
         workspace={workspace}
         ledgerBlocked={ledgerBlocked}
         receivables={receivables}
+        invoiceHref={invoiceHref}
         onPrepare={setPrepareFor}
         onRecordPayment={(invoiceId) => setPaymentFor(receivables.find((row) => row.invoiceId === invoiceId) ?? 'none')}
       />
@@ -106,7 +121,7 @@ export function CommercialBillingView({
       ) : (
         <>
           <InvoicesPanel
-            projectId={projectId}
+            invoiceHref={invoiceHref}
             invoices={billing.data.invoices}
             financialsVisible={financialsVisible}
             onRemind={canRemind ? setReminderFor : undefined}
@@ -156,6 +171,7 @@ function TodoPanel({
   workspace,
   ledgerBlocked,
   receivables,
+  invoiceHref,
   onPrepare,
   onRecordPayment,
 }: {
@@ -163,6 +179,7 @@ function TodoPanel({
   workspace: CommercialWorkspaceResponse;
   ledgerBlocked: boolean;
   receivables: ClientReceivableView[];
+  invoiceHref: InvoiceHrefBuilder;
   onPrepare: (installmentId: string) => void;
   onRecordPayment: (invoiceId: string) => void;
 }) {
@@ -186,6 +203,7 @@ function TodoPanel({
         ) : undefined,
       action: todoAction(item, {
         projectId,
+        invoiceHref,
         variant,
         t,
         ledgerBlocked,
@@ -277,6 +295,7 @@ function todoAction(
   item: CommercialTodoItem,
   ctx: {
     projectId: string;
+    invoiceHref: InvoiceHrefBuilder;
     variant: 'default' | 'outline';
     t: Translate;
     ledgerBlocked: boolean;
@@ -289,7 +308,7 @@ function todoAction(
 ): React.ReactNode {
   const { t, variant, projectId } = ctx;
   const afterSetup = <span className="text-caption text-muted-foreground">{t('todo.afterSetup')}</span>;
-  const invoiceHref = item.invoiceId ? `/projects/${projectId}/commercial/invoices/${item.invoiceId}` : null;
+  const invoiceHref = item.invoiceId ? ctx.invoiceHref(item.invoiceId) : null;
 
   switch (item.kind) {
     case 'OVERDUE_INVOICE':
@@ -357,12 +376,12 @@ export function collectionState(row: CommercialInvoiceRow): string {
 }
 
 function InvoicesPanel({
-  projectId,
+  invoiceHref,
   invoices,
   financialsVisible,
   onRemind,
 }: {
-  projectId: string;
+  invoiceHref: InvoiceHrefBuilder;
   invoices: CommercialInvoiceRow[];
   financialsVisible: boolean;
   /** Set when the viewer may send a WhatsApp reminder; offered on rows with a balance. */
@@ -449,7 +468,7 @@ function InvoicesPanel({
         columns={columns}
         data={rows}
         rowKey={(row) => row.id}
-        rowHref={(row) => `/projects/${projectId}/commercial/invoices/${row.id}`}
+        rowHref={(row) => invoiceHref(row.id)}
         rowActions={
           onRemind
             ? (row) =>

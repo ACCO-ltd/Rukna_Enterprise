@@ -333,5 +333,93 @@
     "title": "Invoices can't be posted until accounting setup is finished",
     "body": "Still to set up: {items}. Preparing or posting an invoice is unavailable until then.",
     "action": "Open accounting setup"
+  },
+  "projects": {
+    "title": "Projects",
+    "hidden": "Restricted",
+    "loadFailed": "Could not load projects.",
+    "empty": "No projects yet",
+    "emptyHint": "Projects appear here once they are created.",
+    "noMatches": "No projects match your search.",
+    "countLabel": "{count, plural, one {# project} other {# projects}}",
+    "searchPlaceholder": "Search projects or clients",
+    "percent": "{value}%",
+    "marginUnavailable": "Margin shows once revenue is posted and accounting is set up.",
+    "col": {
+      "project": "Project",
+      "client": "Client",
+      "contract": "Contract",
+      "billed": "Billed",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "cost": "Cost",
+      "margin": "Margin",
+      "needsAction": "Needs action"
+    },
+    "queue": {
+      "label": "Queue",
+      "withCount": "{label} ({count})",
+      "ALL": "All",
+      "TO_BILL": "To bill",
+      "OVERDUE": "Overdue",
+      "TO_PAY": "To pay"
+    },
+    "queueEmpty": {
+      "TO_BILL": "Nothing is ready to bill",
+      "OVERDUE": "No overdue invoices",
+      "TO_PAY": "No supplier bills to pay"
+    },
+    "totals": {
+      "title": "{currency} · {count, plural, one {# project} other {# projects}}",
+      "contract": "Contract value",
+      "billed": "Billed",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "toPay": "Bills to pay",
+      "label": "Totals by currency",
+      "noCurrency": "No currency"
+    },
+    "needs": {
+      "none": "Nothing today",
+      "toBill": "{count, plural, one {# stage not prepared} other {# stages not prepared}}",
+      "overdue": "{count, plural, one {# overdue invoice} other {# overdue invoices}}",
+      "overdueAged": "{count, plural, one {# overdue} other {# overdue}} · {days}d",
+      "toPay": "{count, plural, one {# bill to pay} other {# bills to pay}}",
+      "draftPrepared": "{count, plural, one {# draft prepared} other {# drafts prepared}}"
+    },
+    "noAccess": {
+      "title": "You don't have access to finance projects",
+      "description": "Finance projects need the View financial position permission. Ask an administrator if you need it."
+    },
+    "workspace": {
+      "loading": "Loading project",
+      "loadFailed": "Could not load this project.",
+      "notFound": "Project not found",
+      "notFoundHint": "It may not exist, or you may not have access to it.",
+      "back": "Back to projects",
+      "title": "{name} · {code}",
+      "client": "Client",
+      "contractValue": "Contract value",
+      "currency": "Currency",
+      "hidden": "Restricted",
+      "noContract": "No contract",
+      "openProject": "Open project",
+      "navLabel": "Project finance",
+      "views": {
+        "overview": "Overview",
+        "billing": "Billing",
+        "cost": "Cost & commitments",
+        "pl": "P&L"
+      }
+    },
+    "billing": {
+      "loadFailed": "Could not load billing.",
+      "retry": "Try again",
+      "noContract": "No contract yet",
+      "noContractHint": "Billing starts once the signed contract is recorded on the project's Commercial tab.",
+      "openCommercial": "Open Commercial"
+    }
   }
 }

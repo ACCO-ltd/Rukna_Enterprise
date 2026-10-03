@@ -13,3 +13,4 @@ export * from './weights';
 export * from './clients';
 export * from './communications';
 export * from './whatsapp-send';
+export * from './finance-portfolio';

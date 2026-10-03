@@ -44,7 +44,30 @@ const PAGE_SIZE = 25;
  * can reconcile. The header totals come from the server over the whole filtered set instead —
  * summing the visible page and calling it a total would be wrong on page two.
  */
-export function LedgerView({ projectId }: { projectId: string }) {
+/** Where a posting's source document opens. */
+export interface LedgerSourceLinks {
+  bill: (billId: string) => string;
+  invoice: (invoiceId: string) => string;
+}
+
+export const projectLedgerLinks = (projectId: string): LedgerSourceLinks => ({
+  bill: (billId) => `/projects/${projectId}/finance/ledger/bills/${billId}`,
+  invoice: (invoiceId) => `/projects/${projectId}/commercial/invoices/${invoiceId}`,
+});
+
+/** The accounting pages — used by the Finance workspace (ADR-043) so the reader stays in Finance. */
+export const accountingLedgerLinks: LedgerSourceLinks = {
+  bill: (billId) => `/finance/accounting/bills/${billId}`,
+  invoice: (invoiceId) => `/finance/accounting/invoices/${invoiceId}`,
+};
+
+export function LedgerView({
+  projectId,
+  links = projectLedgerLinks(projectId),
+}: {
+  projectId: string;
+  links?: LedgerSourceLinks;
+}) {
   const t = useTranslations('finance.ledger');
   const tc = useTranslations('finance.common');
   const locale = useLocale() as 'en' | 'ar';
@@ -268,7 +291,7 @@ export function LedgerView({ projectId }: { projectId: string }) {
         </div>
 
         {selected ? (
-          <EntryDetail projectId={projectId} line={selected} locale={locale} money={money} onClose={() => setSelected(null)} />
+          <EntryDetail links={links} line={selected} locale={locale} money={money} onClose={() => setSelected(null)} />
         ) : (
           <aside className="hidden rounded-panel border border-dashed border-border bg-surface px-5 py-6 xl:block">
             <p className="text-body-sm text-muted-foreground">{t('selectHint')}</p>
@@ -314,13 +337,13 @@ function TotalsStrip({
  * somebody failed to fill it in.
  */
 function EntryDetail({
-  projectId,
+  links,
   line,
   locale,
   money,
   onClose,
 }: {
-  projectId: string;
+  links: LedgerSourceLinks;
   line: ProjectLedgerLine;
   locale: 'en' | 'ar';
   money: (amount: string) => string;
@@ -352,9 +375,9 @@ function EntryDetail({
   // people to stop following them.
   const sourceHref =
     line.sourceDocumentType === 'SUPPLIER_BILL' && line.sourceDocumentId
-      ? `/projects/${projectId}/finance/ledger/bills/${line.sourceDocumentId}`
+      ? links.bill(line.sourceDocumentId)
       : line.sourceDocumentType === 'CLIENT_INVOICE' && line.sourceDocumentId
-        ? `/projects/${projectId}/commercial/invoices/${line.sourceDocumentId}`
+        ? links.invoice(line.sourceDocumentId)
         : line.sourceDocumentType === 'MANUAL_JOURNAL'
           ? `/finance/accounting/journals/${line.journalEntryId}`
           : null;
