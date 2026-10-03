@@ -8,7 +8,9 @@ import { Button, ContextBar, EmptyState, MoneyDisplay, Skeleton, StatusPill } fr
 import { WorkspaceSubNav } from '@/components/layout/workspace-sub-nav';
 import { statusTone } from '@/lib/status-registry';
 
-import { useCanViewFinanceProjects, useFinancePortfolio } from '../hooks';
+import { ApiError } from '@/lib/api-client';
+
+import { useCanViewFinanceProjects, useFinanceProject } from '../hooks';
 import { NoFinanceAccess } from './no-finance-access';
 
 const VIEWS = [
@@ -24,17 +26,17 @@ const VIEWS = [
  * components the project workspace uses (finance overview, billing, cost control, P&L + ledger)
  * with their links pointed at Finance pages. "Open project" goes to the construction workspace.
  *
- * The header reads the portfolio row, so a project the caller may not see (project access, other
- * organisation) reads as not found here exactly as it does in the list.
+ * The header reads `GET /finance/projects/:id` — the same row as the list, for this project only.
+ * A project the caller may not see (project access, other organisation) reads as not found.
  */
 export function FinanceProjectWorkspace({ projectId, children }: { projectId: string; children: React.ReactNode }) {
   const t = useTranslations('finance.projects.workspace');
   const tStatus = useTranslations('platform.projects.status');
   const allowed = useCanViewFinanceProjects();
-  const portfolio = useFinancePortfolio({}, { enabled: allowed });
+  const project = useFinanceProject(projectId, { enabled: allowed });
 
   if (!allowed) return <NoFinanceAccess />;
-  if (portfolio.isPending) {
+  if (project.isPending) {
     return (
       <div className="space-y-4" role="status" aria-live="polite">
         <span className="sr-only">{t('loading')}</span>
@@ -44,14 +46,17 @@ export function FinanceProjectWorkspace({ projectId, children }: { projectId: st
     );
   }
 
-  const row = portfolio.data?.items.find((item) => item.projectId === projectId);
+  const row = project.data?.item;
+  // 404 (not in this organisation) and 403 (not a member) both read as "not found".
+  const notFound = project.error instanceof ApiError && (project.error.status === 404 || project.error.status === 403);
   if (!row) {
+    const failed = project.isError && !notFound;
     return (
       <EmptyState
         variant="page"
         icon={<FolderX size={24} aria-hidden="true" />}
-        title={portfolio.isError ? t('loadFailed') : t('notFound')}
-        description={portfolio.isError ? undefined : t('notFoundHint')}
+        title={failed ? t('loadFailed') : t('notFound')}
+        description={failed ? undefined : t('notFoundHint')}
         action={
           <Button asChild variant="outline">
             <Link href="/finance/projects">{t('back')}</Link>
@@ -62,7 +67,7 @@ export function FinanceProjectWorkspace({ projectId, children }: { projectId: st
   }
 
   const base = `/finance/projects/${projectId}`;
-  const hidden = !portfolio.data!.moneyVisible;
+  const hidden = !project.data!.moneyVisible;
 
   return (
     <div className="space-y-4">

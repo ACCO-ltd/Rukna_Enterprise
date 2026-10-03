@@ -119,11 +119,11 @@ export const NAV_DOMAINS: NavDomain[] = [
     href: '/accounting',
     moduleKey: 'accounting',
     iconKey: 'chart-bar',
-    // Ungrouped items lead the tab bar: Overview (the guided accounting hub, the module's landing
-    // while setup is incomplete) and Projects (the portfolio, gated like its API on
+    // Ungrouped items lead the tab bar: Get started (the guided accounting hub, the module's landing
+    // while setup is incomplete — a company-wide Finance overview does not exist yet) and Projects (the portfolio, gated like its API on
     // view:financial-position). Then the named sections; the groupKey draws the micro-label.
     items: [
-      { href: '/finance/accounting/guide', labelKey: 'financeOverview', iconKey: 'check-circle' },
+      { href: '/finance/accounting/guide', labelKey: 'getStarted', iconKey: 'check-circle' },
       { href: '/finance/projects', labelKey: 'financeProjects', iconKey: 'briefcase', permissionKey: 'view:financial-position' },
       // Receivables
       { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text', groupKey: 'receivables' },

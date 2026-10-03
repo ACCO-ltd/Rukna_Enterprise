@@ -58,7 +58,7 @@ describe('moduleTabs', () => {
   it('turns groups into dropdown tabs in declared order', () => {
     const tabs = moduleTabs(domain('accounting'), '/finance/accounting/bills', allowAll);
     expect(tabs.map((t) => `${t.kind}:${t.key}`)).toEqual([
-      // ADR-043 — Overview (the guided hub) and Projects (the portfolio) are ungrouped, so they
+      // ADR-043 — Get started (the guided hub) and Projects (the portfolio) are ungrouped, so they
       // lead the tab bar; Banking sits between Payables and the ledger.
       'link:/finance/accounting/guide',
       'link:/finance/projects',

@@ -95,7 +95,7 @@ describe('NAV_DOMAINS', () => {
       expect(finance().href).toBe('/accounting');
     });
 
-    it('leads with Overview and Projects, then the named sections in order', () => {
+    it('leads with Get started and Projects, then the named sections in order', () => {
       const groups = groupNavItems(finance().items);
       expect(groups.map((g) => g.key)).toEqual([
         undefined,
@@ -106,7 +106,7 @@ describe('NAV_DOMAINS', () => {
         'reports',
         'acctSetup',
       ]);
-      expect(groups[0]!.items.map((i) => i.labelKey)).toEqual(['financeOverview', 'financeProjects']);
+      expect(groups[0]!.items.map((i) => i.labelKey)).toEqual(['getStarted', 'financeProjects']);
       expect(groups.find((g) => g.key === 'banking')!.items.map((i) => i.href)).toEqual([
         '/finance/accounting/bank-accounts',
         '/finance/accounting/reconciliation',

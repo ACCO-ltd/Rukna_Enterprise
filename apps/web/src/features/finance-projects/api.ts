@@ -1,4 +1,8 @@
-import type { FinancePortfolioQuery, FinancePortfolioResponse } from '@erp/types';
+import type {
+  FinancePortfolioProjectResponse,
+  FinancePortfolioQuery,
+  FinancePortfolioResponse,
+} from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
@@ -10,4 +14,9 @@ export function getFinancePortfolio(query: FinancePortfolioQuery = {}): Promise<
   if (query.status) params.set('status', query.status);
   const qs = params.toString();
   return apiClient<FinancePortfolioResponse>(`/finance/projects${qs ? `?${qs}` : ''}`);
+}
+
+/** One project's portfolio row — the Finance workspace header (`GET /finance/projects/:id`). */
+export function getFinanceProject(projectId: string): Promise<FinancePortfolioProjectResponse> {
+  return apiClient<FinancePortfolioProjectResponse>(`/finance/projects/${projectId}`);
 }

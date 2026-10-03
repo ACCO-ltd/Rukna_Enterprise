@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FinancePortfolioResponse, FinancePortfolioRow } from '@erp/types';
 
+import { ApiError } from '@/lib/api-client';
 import { renderWithProviders } from '@/test/render';
 
 const nav = vi.hoisted(() => ({
@@ -16,7 +17,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(nav.search),
 }));
 
-const api = vi.hoisted(() => ({ getFinancePortfolio: vi.fn() }));
+const api = vi.hoisted(() => ({ getFinancePortfolio: vi.fn(), getFinanceProject: vi.fn() }));
 vi.mock('../api', () => api);
 
 import { FinanceProjectsList, parseQueue } from './finance-projects-list';
@@ -40,30 +41,37 @@ function row(over: Partial<FinancePortfolioRow> = {}): FinancePortfolioRow {
     costToDate: '60000.00',
     committedCost: '170000.00',
     margin: 62.5,
-    readyToBill: { count: 2, amount: '150000.00' },
+    readyToBill: { count: 2, draftCount: 1, amount: '150000.00' },
     overdueInvoices: { count: 1, oldestDaysPastDue: 40 },
     billsToPay: { count: 2, amount: '35000.00' },
     ...over,
   };
 }
 
+function totalsFor(currency: string, projectCount: number, contractValue: string) {
+  return {
+    currency,
+    projectCount,
+    contractValue,
+    billed: '160000.00',
+    collected: '50000.00',
+    outstanding: '110000.00',
+    overdue: '90000.00',
+    costToDate: '60000.00',
+    committedCost: '170000.00',
+    readyToBill: { count: 2, draftCount: 1, amount: '150000.00' },
+    overdueInvoices: { count: 1 },
+    billsToPay: { count: 2, amount: '35000.00' },
+  };
+}
+
 function response(items: FinancePortfolioRow[], over: Partial<FinancePortfolioResponse> = {}): FinancePortfolioResponse {
   return {
     items,
-    totals: {
-      currency: 'USD',
-      mixedCurrencies: false,
-      contractValue: '700000.00',
-      billed: '160000.00',
-      collected: '50000.00',
-      outstanding: '110000.00',
-      overdue: '90000.00',
-      costToDate: '60000.00',
-      committedCost: '170000.00',
-      readyToBill: { count: 2, amount: '150000.00' },
-      overdueInvoices: { count: 1 },
-      billsToPay: { count: 2, amount: '35000.00' },
-    },
+    totals: [
+      totalsFor('SOS', 1, '1000.00'),
+      totalsFor('USD', 2, '700000.00'),
+    ],
     queueCounts: { ALL: items.length, TO_BILL: 1, OVERDUE: 1, TO_PAY: 1 },
     moneyVisible: true,
     marginVisible: true,
@@ -77,7 +85,7 @@ const quiet = row({
   code: 'ACC-02',
   name: 'School',
   margin: null,
-  readyToBill: { count: 0, amount: '0.00' },
+  readyToBill: { count: 0, draftCount: 0, amount: '0.00' },
   overdueInvoices: { count: 0, oldestDaysPastDue: null },
   billsToPay: { count: 0, amount: '0.00' },
 });
@@ -107,13 +115,24 @@ describe('FinanceProjectsList', () => {
     for (const header of ['Project', 'Client', 'Contract', 'Billed', 'Collected', 'Outstanding', 'Overdue', 'Cost', 'Margin', 'Needs action']) {
       expect(screen.getAllByRole('columnheader', { name: new RegExp(`^${header}`) }).length).toBeGreaterThan(0);
     }
-    expect(screen.getAllByText('2 stages to bill').length).toBeGreaterThan(0);
+    // Finance issues invoices: a ready stage with a prepared draft is still here, told apart.
+    expect(screen.getAllByText('1 stage not prepared').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('1 draft prepared').length).toBeGreaterThan(0);
     expect(screen.getAllByText('1 overdue · 40d').length).toBeGreaterThan(0);
     expect(screen.getAllByText('2 bills to pay').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Nothing today').length).toBeGreaterThan(0);
     expect(screen.getAllByText('62.5%').length).toBeGreaterThan(0);
     // No retention or certification anywhere (ACCO bills by milestone).
     expect(screen.queryByText(/retention|certif/i)).toBeNull();
+  });
+
+  it('shows one totals line per currency, never one mixed sum', async () => {
+    api.getFinancePortfolio.mockResolvedValue(response([row(), quiet]));
+    renderWithProviders(<FinanceProjectsList />, { permissions: [PERMISSION] });
+
+    const group = await screen.findByRole('group', { name: 'Totals by currency' });
+    expect(within(group).getByText('SOS · 1 project')).toBeInTheDocument();
+    expect(within(group).getByText('USD · 2 projects')).toBeInTheDocument();
   });
 
   it('opens a project in the Finance workspace', async () => {
@@ -148,7 +167,7 @@ describe('FinanceProjectsList', () => {
 describe('FinanceProjectWorkspace', () => {
   it('names the project and links back to the construction workspace, with the four tabs', async () => {
     nav.pathname = '/finance/projects/p1/billing';
-    api.getFinancePortfolio.mockResolvedValue(response([row()]));
+    api.getFinanceProject.mockResolvedValue({ item: row(), moneyVisible: true, marginVisible: true, asOf: '2026-10-03T00:00:00.000Z' });
     renderWithProviders(
       <FinanceProjectWorkspace projectId="p1">
         <div>tab body</div>
@@ -164,10 +183,13 @@ describe('FinanceProjectWorkspace', () => {
     expect(within(tabs).getByRole('link', { name: 'Cost & commitments' })).toHaveAttribute('href', '/finance/projects/p1/cost');
     expect(within(tabs).getByRole('link', { name: 'P&L' })).toHaveAttribute('href', '/finance/projects/p1/pl');
     expect(screen.getByText('tab body')).toBeInTheDocument();
+    // The header reads one project, never the whole portfolio.
+    expect(api.getFinanceProject).toHaveBeenCalledWith('p1');
+    expect(api.getFinancePortfolio).not.toHaveBeenCalled();
   });
 
   it('reads a project outside the caller’s portfolio as not found', async () => {
-    api.getFinancePortfolio.mockResolvedValue(response([row()]));
+    api.getFinanceProject.mockRejectedValue(new ApiError(403, 'Forbidden'));
     renderWithProviders(
       <FinanceProjectWorkspace projectId="someone-elses">
         <div>tab body</div>

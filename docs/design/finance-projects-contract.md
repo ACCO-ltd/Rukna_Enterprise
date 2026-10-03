@@ -27,12 +27,13 @@ bypass roles see every project, others only projects they are a member of).
     projectId, code, name, clientName: string | null, status, currency: string | null,
     contractValue, billed, collected, outstanding, overdue, costToDate, committedCost: string | null,
     margin: number | null,                       // percent, one decimal
-    readyToBill: { count: number; amount: string | null },
+    readyToBill: { count: number; draftCount: number; amount: string | null },
     overdueInvoices: { count: number; oldestDaysPastDue: number | null },
     billsToPay: { count: number; amount: string | null },
   }>,
-  totals: { currency, mixedCurrencies, contractValue, billed, collected, outstanding, overdue,
-            costToDate, committedCost, readyToBill, overdueInvoices: { count }, billsToPay },
+  totals: Array<{ currency, projectCount, contractValue, billed, collected, outstanding, overdue,
+            costToDate, committedCost, readyToBill, overdueInvoices: { count }, billsToPay }>,
+                                                 // one entry per currency — never summed across currencies
   queueCounts: { ALL, TO_BILL, OVERDUE, TO_PAY },  // over the search/status-filtered set
   moneyVisible: boolean,
   marginVisible: boolean,
@@ -55,13 +56,26 @@ Money is a decimal string, or `null` when hidden. Counts are always present.
 | `costToDate` | Finance Overview `costPosition.actual` (commitment-ledger ACTUAL) | `groupByProjectAndStage` + `addStage` + `buildPosition` |
 | `committedCost` | Finance Overview `costPosition.committedToDate` (COMMITTED + ACCRUED + ACTUAL) | same |
 | `margin` | Finance Overview `accountingPosition.marginPercent` ((GL revenue − GL project cost) / GL revenue; null while the ledger cannot post or with no revenue) | `sumPostedRevenueByProject`, `sumProjectCostByProject`, `buildAccountingPosition` |
-| `readyToBill` | payment-schedule stages with `readyToBillAt` set and no live invoice; amount = base contract value × stage % | `isLiveStageInvoice`, `scheduleBaseValue` |
+| `readyToBill` | payment-schedule stages with `readyToBillAt` set whose live invoice is not POSTED yet (Finance issues invoices, decision 1); `draftCount` = those with a prepared draft/approved invoice ("draft prepared"), the rest are "not prepared"; amount = base contract value × stage % | `isLiveStageInvoice`, `isIssuedStageInvoice`, `scheduleBaseValue` |
 | `billsToPay` | POSTED supplier bills with `outstandingAmount > 0` belonging to the project (header or any line, as the bills list) | `supplierBillProjectWhere` |
+
+**Note (bills to pay, multi-project bills):** a bill coded to several projects per line counts on
+each of those rows with its **whole** outstanding balance — the same header-or-line rule the bills
+list uses (`GET /bills?projectId`), deliberately kept so the row matches what the bills list shows.
+The outstanding is not split per line. Totals count such a bill once.
 
 **Queues:** `TO_BILL` ⇔ `readyToBill.count > 0`; `OVERDUE` ⇔ `overdueInvoices.count > 0`;
 `TO_PAY` ⇔ `billsToPay.count > 0`.
 
-**Totals** sum the returned rows; a supplier bill coded to two projects is counted once.
+**Totals** sum the returned rows **per currency** (one entry per currency, ordered by code, no
+currency last); money is never added across currencies. A supplier bill coded to two projects is
+counted once.
+
+### `GET /api/v1/finance/projects/:projectId`
+
+Same gate and scoping; one project's row: `{ item, moneyVisible, marginVisible, asOf }`
+(`FinancePortfolioProjectResponse`). 404 outside the organisation, 403 for a non-member. Used by
+the Finance workspace header, so it never loads the whole portfolio.
 
 **Redaction:** receivable money follows the Commercial Overview's gate (`canViewMargin`), cost
 follows the Finance Overview's (`view:financial-position`); `moneyVisible` is both. `margin` needs
@@ -75,7 +89,8 @@ group-bys, readiness, supplier bills, ready installments. No per-project loop.
 
 ### Sidebar — Finance (was Accounting)
 
-Same routes, new labels and grouping: **Overview** (`/finance/accounting/guide`) · **Projects**
+Same routes, new labels and grouping: **Get started** (`/finance/accounting/guide`; a company-wide
+Finance overview does not exist yet) · **Projects**
 (`/finance/projects`, gated `view:financial-position`) · **Receivables** (Client invoices,
 Receipts) · **Payables** (Supplier bills, Supplier payments) · **Banking** (Bank accounts,
 Reconciliation) · **Ledger** (Journals, Chart of accounts, Account ledger) · **Reports** (Trial
@@ -84,20 +99,20 @@ Tax, Opening balance, Fiscal periods).
 
 ### `/finance/projects` — portfolio
 
-- Totals bar: project count, contract value, billed, collected, outstanding, overdue, bills to pay
-  (mixed-currency note when relevant).
+- Totals: one line per currency — project count, contract value, billed, collected, outstanding,
+  overdue, bills to pay.
 - Queue switch: All · To bill · Overdue · To pay, each with its count; the choice is in the URL
   (`?queue=`).
 - Table (`PlatformDataGrid`, search, sort, pagination): Project (name, code, status) · Client ·
   Contract · Billed · Collected · Outstanding · Overdue · Cost · Margin · Needs action (state pills:
-  "N overdue · Xd", "N stages to bill", "N bills to pay").
+  "N overdue · Xd", "N stages not prepared", "N drafts prepared", "N bills to pay").
 - Row → `/finance/projects/:id`.
 - No access → a lock empty state; the API is not called.
 
 ### `/finance/projects/:id` — project inside Finance
 
-Header: project name · code, status, client, contract value, currency, **Open project** (→
-`/projects/:id`). Tabs:
+Header (from `GET /finance/projects/:id`): project name · code, status, client, contract value,
+currency, **Open project** (→ `/projects/:id`). Tabs:
 
 | Tab | Route | Renders (existing component) |
 | --- | --- | --- |

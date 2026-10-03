@@ -371,21 +371,23 @@
       "TO_PAY": "No supplier bills to pay"
     },
     "totals": {
-      "title": "{count, plural, one {# project} other {# projects}}",
+      "title": "{currency} · {count, plural, one {# project} other {# projects}}",
       "contract": "Contract value",
       "billed": "Billed",
       "collected": "Collected",
       "outstanding": "Outstanding",
       "overdue": "Overdue",
       "toPay": "Bills to pay",
-      "mixedCurrencies": "Projects use more than one currency. Totals are added as they are, not converted."
+      "label": "Totals by currency",
+      "noCurrency": "No currency"
     },
     "needs": {
       "none": "Nothing today",
-      "toBill": "{count, plural, one {# stage to bill} other {# stages to bill}}",
+      "toBill": "{count, plural, one {# stage not prepared} other {# stages not prepared}}",
       "overdue": "{count, plural, one {# overdue invoice} other {# overdue invoices}}",
       "overdueAged": "{count, plural, one {# overdue} other {# overdue}} · {days}d",
-      "toPay": "{count, plural, one {# bill to pay} other {# bills to pay}}"
+      "toPay": "{count, plural, one {# bill to pay} other {# bills to pay}}",
+      "draftPrepared": "{count, plural, one {# draft prepared} other {# drafts prepared}}"
     },
     "noAccess": {
       "title": "You don't have access to finance projects",

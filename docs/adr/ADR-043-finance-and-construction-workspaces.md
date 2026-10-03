@@ -58,7 +58,7 @@ Rules:
    Receivables. Both call the same command.
 4. **The Procurement Manager may see the payment status of supplier bills, including amounts** —
    as a record only. Implemented in a later phase.
-5. **Morning queues:** *To bill* (stages ready to bill, not yet invoiced), *Overdue* (invoices past
+5. **Morning queues:** *To bill* (stages ready to bill whose invoice is not yet issued), *Overdue* (invoices past
    due with a balance), *To pay* (posted supplier bills with a balance).
 
 ### Permission
@@ -75,14 +75,16 @@ the existing project-access rule applies per row.
 
 - One portfolio request answers "what needs finance today" without per-project round trips; the
   read model is batched (a fixed number of queries for the whole portfolio).
-- The Accounting sidebar domain is now **Finance**: Overview, Projects, Receivables, Payables,
+- The Accounting sidebar domain is now **Finance**: Get started, Projects, Receivables, Payables,
   Banking, Ledger, Reports, Setup & close. Every existing URL still works; only labels and grouping
   moved.
 - Shared billing components take a link builder (`invoiceHref`, ledger `links`) instead of
   hard-coding project routes, so Finance renders them with links into Finance.
 - The project's own Finance tab and Commercial screens stay in place until Phase 3; for a while
   the same work is reachable from two places, both calling the same commands.
-- Totals across projects in different currencies are added as they are and flagged, not converted.
+- Portfolio totals are given per currency; money is never added across currencies.
+- A ready-to-bill stage leaves *To bill* only when its invoice is POSTED (issued); a prepared draft
+  shows as "draft prepared" (decision 1: Finance issues invoices).
 
 ## Phases
 

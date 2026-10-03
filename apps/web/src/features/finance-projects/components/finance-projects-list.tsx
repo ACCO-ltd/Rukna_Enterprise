@@ -9,7 +9,7 @@ import {
   type FinancePortfolioResponse,
   type FinancePortfolioRow,
 } from '@erp/types';
-import { ContextBar, EmptyState, MoneyDisplay, StatusPill, ViewSwitcher, cn } from '@erp/ui';
+import { ContextBar, EmptyState, MoneyDisplay, Skeleton, StatusPill, ViewSwitcher, cn } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { statusTone } from '@/lib/status-registry';
@@ -189,29 +189,36 @@ export function FinanceProjectsList() {
   );
 }
 
-/** The portfolio's totals, from the unfiltered read. Mixed currencies are flagged, not converted. */
+/**
+ * The portfolio's totals, from the unfiltered read — one line per currency. Money in different
+ * currencies is never added together.
+ */
 function TotalsBar({ data }: { data: FinancePortfolioResponse | undefined }) {
   const t = useTranslations('finance.projects');
-  const totals = data?.totals;
-  const hidden = data ? !data.moneyVisible : false;
-  const money = (value: string | null | undefined) => (
-    <MoneyDisplay value={value ?? null} hidden={hidden} hiddenLabel={t('hidden')} loading={!data} />
-  );
+  if (!data) return <Skeleton className="h-20 w-full rounded-panel" />;
+  const hidden = !data.moneyVisible;
+  const money = (value: string | null) => <MoneyDisplay value={value} hidden={hidden} hiddenLabel={t('hidden')} />;
   return (
-    <ContextBar
-      headingId="finance-projects-totals"
-      title={t('totals.title', { count: data?.items.length ?? 0 })}
-      metrics={[
-        { key: 'contract', label: t('totals.contract'), value: money(totals?.contractValue) },
-        { key: 'billed', label: t('totals.billed'), value: money(totals?.billed) },
-        { key: 'collected', label: t('totals.collected'), value: money(totals?.collected) },
-        { key: 'outstanding', label: t('totals.outstanding'), value: money(totals?.outstanding) },
-        { key: 'overdue', label: t('totals.overdue'), value: money(totals?.overdue) },
-        { key: 'toPay', label: t('totals.toPay'), value: money(totals?.billsToPay.amount) },
-      ]}
-      note={totals?.mixedCurrencies ? t('totals.mixedCurrencies') : undefined}
-      noteTone={totals?.mixedCurrencies ? 'attention' : undefined}
-    />
+    <div className="space-y-2" aria-label={t('totals.label')} role="group">
+      {data.totals.map((totals) => (
+        <ContextBar
+          key={totals.currency ?? 'none'}
+          headingId={`finance-projects-totals-${totals.currency ?? 'none'}`}
+          title={t('totals.title', {
+            currency: totals.currency ?? t('totals.noCurrency'),
+            count: totals.projectCount,
+          })}
+          metrics={[
+            { key: 'contract', label: t('totals.contract'), value: money(totals.contractValue) },
+            { key: 'billed', label: t('totals.billed'), value: money(totals.billed) },
+            { key: 'collected', label: t('totals.collected'), value: money(totals.collected) },
+            { key: 'outstanding', label: t('totals.outstanding'), value: money(totals.outstanding) },
+            { key: 'overdue', label: t('totals.overdue'), value: money(totals.overdue) },
+            { key: 'toPay', label: t('totals.toPay'), value: money(totals.billsToPay.amount) },
+          ]}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -228,10 +235,20 @@ function NeedsAction({ row }: { row: FinancePortfolioRow }) {
       </StatusPill>,
     );
   }
-  if (row.readyToBill.count > 0) {
+  // ADR-043 decision 1 — Finance issues invoices: a ready stage stays here until its invoice is
+  // posted, split into "not prepared" (nothing raised yet) and "draft prepared" (awaiting issue).
+  const notPrepared = row.readyToBill.count - row.readyToBill.draftCount;
+  if (notPrepared > 0) {
     pills.push(
       <StatusPill key="bill" tone="attention">
-        {t('toBill', { count: row.readyToBill.count })}
+        {t('toBill', { count: notPrepared })}
+      </StatusPill>,
+    );
+  }
+  if (row.readyToBill.draftCount > 0) {
+    pills.push(
+      <StatusPill key="draft" tone="progress">
+        {t('draftPrepared', { count: row.readyToBill.draftCount })}
       </StatusPill>,
     );
   }
