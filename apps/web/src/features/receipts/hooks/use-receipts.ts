@@ -7,6 +7,7 @@ import {
   allocateToInvoice,
   createReceipt,
   getReceipt,
+  getReceiptDocument,
   listReceipts,
   postReceipt,
   reverseAllocation,
@@ -15,6 +16,7 @@ import {
   type PostReceiptPayload,
 } from '../api/receipts-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
+import { openSignedDocument } from '@/lib/open-signed-document';
 
 import type { Receipt, ReceiptDetail } from '../types';
 
@@ -97,4 +99,15 @@ export function useReverseAllocation(receiptId: string) {
     (allocationId: string) => reverseAllocation(receiptId, allocationId),
     { successToast: 'accounting.feedback.allocationReversed', flashRow: false },
   );
+}
+
+/**
+ * Fetches the receipt PDF's signed URL and opens it in a new tab — same pattern as
+ * `useOpenInvoiceDocument`: the tab opens synchronously on click (so it is not a blocked popup)
+ * and is pointed at the URL once it arrives; it is closed again if the fetch fails.
+ */
+export function useOpenReceiptDocument() {
+  return useMutation({
+    mutationFn: (id: string) => openSignedDocument(() => getReceiptDocument(id)),
+  });
 }

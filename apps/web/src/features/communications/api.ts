@@ -51,6 +51,21 @@ export function sendInvoiceWhatsApp(
   });
 }
 
+export function getReceiptWhatsAppPreview(receiptId: string): Promise<WhatsAppSendPreview> {
+  return apiClient<WhatsAppSendPreview>(`/customer-receipts/${receiptId}/whatsapp/preview`);
+}
+
+/** 200 with the message — also when WhatsApp refused it (status FAILED / UNKNOWN). */
+export function sendReceiptWhatsApp(
+  receiptId: string,
+  body: WhatsAppSendRequest,
+): Promise<OutboundMessageView> {
+  return apiClient<OutboundMessageView>(`/customer-receipts/${receiptId}/whatsapp`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 /** What a manual payment / overdue reminder would send (text only; WhatsApp V1 step 4). */
 export function getInvoiceReminderPreview(invoiceId: string): Promise<WhatsAppReminderPreview> {
   return apiClient<WhatsAppReminderPreview>(`/invoices/${invoiceId}/whatsapp-reminder/preview`);

@@ -596,6 +596,8 @@ export interface Receipt {
   allocatedAmount: string;
   unallocatedAmount: string;
   currencyCode: string;
+  /** Assigned when the receipt is posted (e.g. 'RCP-000017'); null before. */
+  receiptNumber?: string | null;
   reference: string | null;
   notes: string | null;
   documentStatus: string;

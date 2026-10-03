@@ -12,6 +12,7 @@ import {
   reverseInvoice,
 } from '../api/invoices-api';
 import { accountingKeys, refOrNone } from './use-accounting';
+import { openSignedDocument } from '@/lib/open-signed-document';
 
 import type {
   ClientInvoice,
@@ -93,18 +94,7 @@ export function useGenerateInvoice() {
  */
 export function useOpenInvoiceDocument() {
   return useMutation({
-    mutationFn: async (id: string) => {
-      const tab = window.open('', '_blank', 'noopener');
-      try {
-        const doc = await getInvoiceDocument(id);
-        if (tab) tab.location.href = doc.url;
-        else window.open(doc.url, '_blank', 'noopener');
-        return doc;
-      } catch (error) {
-        tab?.close();
-        throw error;
-      }
-    },
+    mutationFn: (id: string) => openSignedDocument(() => getInvoiceDocument(id)),
   });
 }
 
