@@ -8,7 +8,10 @@ export function FinanceProjectPl({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-6">
       <ProfitLossView projectId={projectId} />
-      <LedgerView projectId={projectId} links={accountingLedgerLinks} />
+      {/* `#ledger` — the target of the retired /projects/:id/finance/ledger route (ADR-043 Phase 3). */}
+      <div id="ledger" className="scroll-mt-4">
+        <LedgerView projectId={projectId} links={accountingLedgerLinks} />
+      </div>
     </div>
   );
 }

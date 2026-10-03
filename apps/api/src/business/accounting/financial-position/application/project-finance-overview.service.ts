@@ -253,7 +253,7 @@ export class ProjectFinanceOverviewService {
         severity: 'CRITICAL',
         title: 'Procurement and the general ledger disagree',
         detail: `Supplier-bill variance ${reconciliation.variance}. Project cost figures cannot be relied on until this is resolved.`,
-        href: `/projects/${projectId}/finance/ledger`,
+        href: `/finance/projects/${projectId}/pl#ledger`,
       });
     }
 
@@ -295,7 +295,7 @@ export class ProjectFinanceOverviewService {
         severity: 'INFO',
         title: `Cost budget version ${draft.versionNumber} is not baselined`,
         detail: 'Budget comparisons are unavailable until a version is baselined.',
-        href: `/projects/${projectId}/finance/cost-control`,
+        href: `/finance/projects/${projectId}/cost`,
       });
     } else if (!baselined && !draft) {
       items.push({
@@ -303,7 +303,7 @@ export class ProjectFinanceOverviewService {
         severity: 'INFO',
         title: 'No cost budget has been set',
         detail: 'Cost is tracked, but there is nothing to measure it against.',
-        href: `/projects/${projectId}/finance/cost-control`,
+        href: `/finance/projects/${projectId}/cost`,
       });
     }
 

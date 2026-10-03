@@ -51,6 +51,8 @@ import { BoqHistoryDialog } from './boq-history-dialog';
 import { UnitsUnavailableNotice } from './boq-unit-select';
 import { BoqToolbar, type LineFilter } from './boq-toolbar';
 import type { BoqTreeNodeResponse } from '@erp/types';
+import { useProjectBillingHref } from '@/features/finance-projects/hooks';
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
 
 /** Procurement setup's unit registry (nav-groups.ts), behind `manage:procurement-config`. */
 const UNITS_ADMIN_HREF = '/procurement/setup/uom';
@@ -67,6 +69,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.boq');
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
+  // ADR-043 Phase 3 — "Review in billing" goes to Finance, or to the schedule for a non-finance reader.
+  const billingHref = useProjectBillingHref(projectId);
   const { toast } = useToast();
   const router = useRouter();
 
@@ -538,7 +542,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   duration: 9000,
                   action: {
                     label: t('classifier.reviewInBilling'),
-                    onClick: () => router.push(`/projects/${projectId}/commercial/billing`),
+                    onClick: () => router.push(billingHref ?? financeProjectRedirects.commercialSchedule(projectId)),
                   },
                 }
               : {}),

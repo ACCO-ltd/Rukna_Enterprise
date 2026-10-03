@@ -24,16 +24,18 @@ import { useCommercialBilling } from '../hooks/use-commercial';
 import { toClientReceivableView, type ClientReceivableView } from '../lib/collection-view-model';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
 
 type InvoiceView = 'needsAction' | 'unpaid' | 'all';
 
-/** Where an invoice opens. Defaults to the project workspace's invoice page. */
+/** Where an invoice opens. Defaults to the invoice page inside Finance → Projects → Billing. */
 export type InvoiceHrefBuilder = (invoiceId: string) => string;
 
+/** ADR-043 Phase 3 — the project's invoice page, hosted in Finance (`…/billing/invoices/:id`). */
 export const projectInvoiceHref =
   (projectId: string): InvoiceHrefBuilder =>
   (invoiceId) =>
-    `/projects/${projectId}/commercial/invoices/${invoiceId}`;
+    financeProjectRedirects.invoice(projectId, invoiceId);
 
 /**
  * Billing: what to do next, the invoices, and the money that came in.

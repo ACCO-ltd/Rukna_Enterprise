@@ -49,6 +49,7 @@ import { InvoiceEditDraftDialog } from './invoice-edit-draft-dialog';
 import { InvoicePaper } from './invoice-paper';
 import { RecordPaymentDialog } from './record-payment-dialog';
 import { SendInvoiceDialog } from './send-invoice-dialog';
+import { financeProjectRedirects } from '@/features/finance-projects/redirects';
 
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
@@ -89,7 +90,8 @@ export function ProjectInvoicePage({
 }) {
   const t = useTranslations('commercial.invoicePage');
   const query = useInvoiceDocument(projectId, invoiceId);
-  const billingHref = `/projects/${projectId}/commercial/billing`;
+  // ADR-043 Phase 3 — the page lives in Finance → Projects → Billing; back returns there.
+  const billingHref = financeProjectRedirects.billing(projectId);
 
   const back = (
     <Button asChild variant="ghost" className="gap-1.5 px-2">
@@ -447,7 +449,7 @@ function InvoiceDocumentView({
           errorMessage={remove.isError ? remove.error.message || t('deleteFailed') : undefined}
           onConfirm={() =>
             remove.mutate(undefined, {
-              onSuccess: () => router.push(`/projects/${projectId}/commercial/billing`),
+              onSuccess: () => router.push(financeProjectRedirects.billing(projectId)),
             })
           }
           onDismiss={() => {

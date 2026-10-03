@@ -261,6 +261,17 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     expect(res.paymentSchedule?.installments[0].status).toBe('PAID');
   });
 
+  it('ADR-043 Phase 3: the money-free collection status is the same for a money-blind caller and finance', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const blind = (await service.getCurrentCycle(noFinanceIdentity, 'p-1')).paymentSchedule!.installments;
+    const finance = (await service.getCurrentCycle(financeIdentity, 'p-1')).paymentSchedule!.installments;
+    // Advance paid; the structure stage is unlinked (not billable yet); the rest wait on milestones.
+    expect(blind.map((i) => i.collectionStatus)).toEqual(finance.map((i) => i.collectionStatus));
+    expect(blind[0].collectionStatus).toBe('PAID');
+    expect(blind.every((i) => i.amount === null && i.amountPaid === null)).toBe(true);
+    expect(finance[0].amount).toBe('400000.00');
+  });
+
   // ADR-029 V-3 / CONST-BOQ-032 — an ADOPTED on-contract variation is billed as its OWN line, OUTSIDE
   // the Σ%=1.0 milestone schedule, and NEVER merged into a milestone figure.
   const adoptedVo = {

@@ -26,6 +26,7 @@ import {
   progressValueByLeaf,
 } from '../../progress/domain/progress-rollup.js';
 import { isMilestoneReadyToVerify, isPackageFullyVerified } from '../domain/milestone-readiness.js';
+import { stageCollectionStatus } from '../../commercial/domain/stage-collection-status.policy.js';
 import type { CreateMilestoneDto, VerifyMilestoneDto } from '../presentation/dto/programme.dto.js';
 
 const ZERO = new Decimal(0);
@@ -277,8 +278,17 @@ interface IncludedReleaseInstallment {
   name: string;
   percentage: Decimal;
   triggerType: MilestoneReleaseLine['triggerType'];
-  contract: { contractValue: Decimal; currency: string };
-  clientInvoice: { id: string } | null;
+  readyToBillAt: Date | null;
+  dueDate: Date | null;
+  contract: { contractValue: Decimal; currency: string; status: string };
+  clientInvoice: {
+    id: string;
+    documentStatus: string;
+    postingStatus: string;
+    totalAmount: Decimal;
+    outstandingAmount: Decimal;
+    dueDate: Date | null;
+  } | null;
 }
 
 /** A linked package's display % and whether it is fully verified on exact quantities. */
@@ -326,7 +336,12 @@ function isoDate(value: Date | null): string | null {
  * `amount` and `percentage` are null when the caller may not see contract figures
  * (`canViewContractFigures`): a share of the contract value is money-derived (owner decision 2026-09-29). Name, trigger and `invoiced` stay.
  */
-function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean): MilestoneReleaseLine {
+function toReleaseLine(
+  inst: IncludedReleaseInstallment,
+  moneyVisible: boolean,
+  milestone: { id: string; status: string },
+  asOf: Date,
+): MilestoneReleaseLine {
   const amount = new Decimal(inst.contract.contractValue.toString()).mul(
     new Decimal(inst.percentage.toString()),
   );
@@ -338,6 +353,20 @@ function toReleaseLine(inst: IncludedReleaseInstallment, moneyVisible: boolean):
     amount: moneyVisible ? amount.toFixed(2) : null,
     currency: inst.contract.currency,
     invoiced: inst.clientInvoice !== null,
+    // ADR-043 Phase 3 — money-free billing / collection status, the Commercial schedule's rule.
+    // Visible to money-blind roles (a status is not money); the amounts above stay null for them.
+    collectionStatus: stageCollectionStatus(
+      {
+        triggerType: inst.triggerType,
+        programmeMilestoneId: milestone.id,
+        programmeMilestone: { status: milestone.status },
+        contractStatus: inst.contract.status,
+        readyToBillAt: inst.readyToBillAt,
+        dueDate: inst.dueDate,
+      },
+      inst.clientInvoice,
+      asOf,
+    ),
   };
 }
 
@@ -345,6 +374,7 @@ function toMilestoneResponse(
   m: StoredMilestoneWithReleases,
   moneyVisible: boolean,
   progressByPackage: ReadonlyMap<string, PackageProgress>,
+  asOf: Date = new Date(),
 ): ProgrammeMilestoneResponse {
   const workPackages: MilestoneWorkPackageLine[] = m.workPackageLinks.map(({ workPackage }) => ({
     id: workPackage.id,
@@ -366,7 +396,7 @@ function toMilestoneResponse(
     verifiedBy: m.verifiedBy,
     verifiedAt: m.verifiedAt ? m.verifiedAt.toISOString() : null,
     // Installments are already ordered by (sortOrder, name) in the repo query.
-    releases: m.installments.map((inst) => toReleaseLine(inst, moneyVisible)),
+    releases: m.installments.map((inst) => toReleaseLine(inst, moneyVisible, m, asOf)),
     workPackages,
     // Readiness reads the exact per-package verdict, never the rounded display %.
     readyToVerify: isMilestoneReadyToVerify(

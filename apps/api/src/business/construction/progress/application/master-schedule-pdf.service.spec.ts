@@ -132,6 +132,7 @@ const milestones: ProgrammeMilestoneResponse[] = [
         amount: '150000.00',
         currency: 'USD',
         invoiced: false,
+        collectionStatus: 'NOT_READY',
       },
     ],
   },

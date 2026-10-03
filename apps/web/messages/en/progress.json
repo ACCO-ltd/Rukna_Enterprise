@@ -643,7 +643,16 @@
       "amountHidden": "amount restricted",
       "invoiced": "invoiced",
       "invoicedLabel": "already invoiced",
-      "viewInCommercial": "View in Commercial"
+      "viewInCommercial": "View in Commercial",
+      "statusLabel": "Billing status: {status}",
+      "status": {
+        "NOT_READY": "Not ready",
+        "READY_TO_BILL": "Ready to bill",
+        "BILLED": "Billed",
+        "PART_PAID": "Part paid",
+        "PAID": "Paid",
+        "OVERDUE": "Overdue"
+      }
     },
     "verify": {
       "title": "Verify {name}",

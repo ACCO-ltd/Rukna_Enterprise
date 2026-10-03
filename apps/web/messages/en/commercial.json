@@ -1681,7 +1681,7 @@
     "applicationsHidden": {
       "title": "No applications for this contract",
       "description": "This contract bills from its payment schedule, not measured applications.",
-      "action": "Go to Billing"
+      "action": "Go to Contract"
     }
   },
   "bar": {
@@ -1845,7 +1845,18 @@
       "PARTIALLY_PAID": "Partly paid",
       "PAID": "Paid",
       "NEXT": "Upcoming"
-    }
+    },
+    "collectionStatus": {
+      "NOT_READY": "Not ready",
+      "READY_TO_BILL": "Ready to bill",
+      "BILLED": "Billed",
+      "PART_PAID": "Part paid",
+      "PAID": "Paid",
+      "OVERDUE": "Overdue"
+    },
+    "openInFinance": "Open in Finance",
+    "financeNote": "Invoices, payments and reminders are handled by Finance.",
+    "collectionHeader": "Billing status"
   },
   "feedback": {
     "paymentRecorded": "Payment recorded",

@@ -54,6 +54,7 @@ import {
   useProjectRollup,
 } from '../hooks/use-progress';
 import { ProgressCurveChart } from './progress-curve-chart';
+import { useProjectBillingHref } from '@/features/finance-projects/hooks';
 
 /** A percentage the server may not have: a dash, never a fabricated 0. */
 function pct(value: number | null | undefined): string {
@@ -393,6 +394,7 @@ function AttentionRail({
 }) {
   const t = useTranslations('progress');
   const { can } = usePermissions();
+  const billingHref = useProjectBillingHref(projectId);
   const cost = usePhysicalFinancialSignal(projectId);
   const collection = useCollectionProgressSignal(projectId);
 
@@ -443,7 +445,7 @@ function AttentionRail({
               {t('performance.costLine', { built: pct(costWarning.physicalPercent), cost: pct(costWarning.costConsumedPercent) })}
             </p>
             {can('view:financial-position') ? (
-              <Link href={`/projects/${projectId}/finance`} className={linkClass}>
+              <Link href={`/finance/projects/${projectId}`} className={linkClass}>
                 {t('performance.openFinance')}
               </Link>
             ) : null}
@@ -460,8 +462,8 @@ function AttentionRail({
                 built: pct(collectionWarning.physicalPercent),
               })}
             </p>
-            {can('view:contract') ? (
-              <Link href={`/projects/${projectId}/commercial/billing`} className={linkClass}>
+            {billingHref ? (
+              <Link href={billingHref} className={linkClass}>
                 {t('performance.openBilling')}
               </Link>
             ) : null}

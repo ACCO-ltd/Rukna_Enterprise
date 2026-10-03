@@ -61,6 +61,10 @@ import {
   deriveReleasedBy,
 } from '../domain/commercial-workspace.policy.js';
 import {
+  invoiceCollectedFraction,
+  stageCollectionStatus,
+} from '../domain/stage-collection-status.policy.js';
+import {
   computeReceivablePosition,
   isLiveStageInvoice,
   scheduleBaseValue,
@@ -1162,13 +1166,9 @@ export class CommercialService {
     // contract whose base was never set (M-4: never fail a legacy contract).
     const baseValue = scheduleBaseValue(contract);
 
-    // Fraction of a posted invoice already collected (0..1). Non-posted invoices count as 0.
-    const collectedFraction = (inv: InvoiceRow): Decimal => {
-      if (inv.postingStatus !== 'POSTED') return ZERO;
-      const total = new Decimal(inv.totalAmount.toString());
-      if (total.lte(ZERO)) return ZERO;
-      return total.minus(new Decimal(inv.outstandingAmount.toString())).div(total);
-    };
+    // Fraction of a posted invoice already collected (0..1) — THE paid rule, shared with the
+    // money-free collection status (`invoiceCollectedFraction`). Non-posted invoices count as 0.
+    const collectedFraction = (inv: InvoiceRow): Decimal => invoiceCollectedFraction(inv);
 
     // ADR-043 Phase 2 — the period an issue would post into (the draft's date, never before today),
     // read once per distinct date so every row's billing eligibility is one batched lookup.
@@ -1251,6 +1251,13 @@ export class CommercialService {
         releasedBy: deriveReleasedBy(releaseFacts),
         invoiceId: inv?.id ?? null,
         invoiceState: deriveInvoiceState(inv),
+        // ADR-043 Phase 3 — the money-free status project roles read; present whatever the
+        // caller's money visibility (a status is not money; the amounts above stay redacted).
+        collectionStatus: stageCollectionStatus(
+          { ...inst, contractStatus: contract.status },
+          inv ?? null,
+          today,
+        ),
         billingEligibility: stageBillingEligibility({
           installmentId: inst.id,
           contractStatus: contract.status,

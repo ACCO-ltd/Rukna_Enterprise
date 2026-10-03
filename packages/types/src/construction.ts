@@ -727,6 +727,12 @@ export interface MilestoneReleaseLine {
   currency: string;
   /** True when a ClientInvoice has been generated from this installment. */
   invoiced: boolean;
+  /**
+   * ADR-043 Phase 3 — the stage's money-free billing / collection status (`stageCollectionStatus`,
+   * the same rule as the Commercial schedule). A status is not money: it is present for callers
+   * who may not see contract figures, while `amount` / `percentage` stay null for them.
+   */
+  collectionStatus: StageCollectionStatus;
 }
 
 // ADR-021 amendment (2026-09-28): a work package linked to a milestone, with its verified physical %
@@ -1941,6 +1947,25 @@ export type CommercialCycleStage =
 // (sourceInstallmentId). NEXT is the first un-invoiced installment (where "Generate invoice" lives);
 // UPCOMING are the later un-invoiced ones; BILLED means an invoice exists but nothing is collected
 // yet; PARTIALLY_PAID / PAID reflect posted receipts against that invoice.
+/**
+ * ADR-043 Phase 3 — a payment-schedule stage's billing / collection status, with NO amounts, for
+ * project roles. Server-derived (`stageCollectionStatus`); never re-derived in the browser.
+ *  - NOT_READY: nothing invoiced and the stage is not yet releasable (milestone unverified / unlinked,
+ *    contract not active, or a date stage before its date)
+ *  - READY_TO_BILL: releasable (or marked ready, or a draft invoice is being prepared by Finance)
+ *  - BILLED: the invoice is issued and nothing is collected
+ *  - PART_PAID: part collected, not overdue
+ *  - PAID: fully collected
+ *  - OVERDUE: issued, past due (one overdue rule, D5) with a balance
+ */
+export type StageCollectionStatus =
+  | 'NOT_READY'
+  | 'READY_TO_BILL'
+  | 'BILLED'
+  | 'PART_PAID'
+  | 'PAID'
+  | 'OVERDUE';
+
 export type PaymentInstallmentBillStatus =
   | 'PAID'
   | 'PARTIALLY_PAID'
@@ -1999,6 +2024,11 @@ export interface CommercialPaymentScheduleInstallment {
    * same policy the prepare and issue commands call (`stageBillingEligibility`).
    */
   billingEligibility: StageBillingEligibility;
+  /**
+   * ADR-043 Phase 3 — the money-free status project roles read (`stageCollectionStatus`). Present
+   * whatever the caller's money visibility; `amount` / `amountPaid` stay redacted.
+   */
+  collectionStatus: StageCollectionStatus;
 }
 
 /** Commercial redesign — the codes `installmentBillingBlocker` returns. */

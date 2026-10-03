@@ -97,13 +97,28 @@ function verifiedSum(boqNodeId: string, quantity: string) {
   return { boqNodeId, _sum: { quantity: decimal(quantity) } };
 }
 
+/** A posted stage invoice as the repo include selects it — unpaid, due far in the future. */
+function postedInvoice(over: Record<string, unknown> = {}) {
+  return {
+    id: 'inv-1',
+    documentStatus: 'APPROVED',
+    postingStatus: 'POSTED',
+    totalAmount: decimal('300000.00'),
+    outstandingAmount: decimal('300000.00'),
+    dueDate: new Date('2999-01-01'),
+    ...over,
+  };
+}
+
 function releaseInstallment(over: Record<string, unknown> = {}) {
   return {
     id: 'inst-1',
     name: 'Substructure payment',
     percentage: decimal('0.3000'),
     triggerType: 'MILESTONE',
-    contract: { contractValue: decimal('1000000.00'), currency: 'USD' },
+    readyToBillAt: null,
+    dueDate: null,
+    contract: { contractValue: decimal('1000000.00'), currency: 'USD', status: 'ACTIVE' },
     clientInvoice: null,
     ...over,
   };
@@ -171,6 +186,8 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
           amount: '300000.00', // 1,000,000 × 0.30
           currency: 'USD',
           invoiced: false,
+          // the milestone is PLANNED, so its stage is not yet billable
+          collectionStatus: 'NOT_READY',
         },
       ]);
     });
@@ -179,7 +196,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       const { service } = build({
         milestones: [
           storedMilestone({
-            installments: [releaseInstallment({ clientInvoice: { id: 'inv-1' } })],
+            installments: [releaseInstallment({ clientInvoice: postedInvoice() })],
           }),
         ],
       });
@@ -209,7 +226,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
               releaseInstallment({
                 id: 'inst-round',
                 percentage: decimal('0.3333'),
-                contract: { contractValue: decimal('100.10'), currency: 'USD' },
+                contract: { contractValue: decimal('100.10'), currency: 'USD', status: 'ACTIVE' },
               }),
             ],
           }),
@@ -225,7 +242,7 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
       const { service } = build({
         milestones: [
           storedMilestone({
-            installments: [releaseInstallment({ clientInvoice: { id: 'inv-1' } })],
+            installments: [releaseInstallment({ clientInvoice: postedInvoice() })],
           }),
         ],
       });
@@ -240,6 +257,37 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
         percentage: null,
         currency: 'USD',
         invoiced: true,
+        collectionStatus: 'BILLED',
+      });
+    });
+
+    describe('ADR-043 Phase 3 — money-free collection status', () => {
+      const pm = { ...identity, permissions: [PERMISSIONS.projectsView] };
+      const stageWith = (invoice: ReturnType<typeof postedInvoice> | null, status = 'VERIFIED') =>
+        build({ milestones: [storedMilestone({ status, installments: [releaseInstallment({ clientInvoice: invoice })] })] });
+
+      it.each([
+        ['NOT_READY', null, 'PLANNED'],
+        ['READY_TO_BILL', null, 'VERIFIED'],
+        ['READY_TO_BILL', postedInvoice({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }), 'VERIFIED'],
+        ['BILLED', postedInvoice(), 'VERIFIED'],
+        ['PART_PAID', postedInvoice({ outstandingAmount: decimal('100000.00') }), 'VERIFIED'],
+        ['PAID', postedInvoice({ outstandingAmount: decimal('0') }), 'VERIFIED'],
+        ['OVERDUE', postedInvoice({ dueDate: new Date('2000-01-01') }), 'VERIFIED'],
+      ] as const)('PM sees %s with every money field null', async (expected, invoice, status) => {
+        const { service } = stageWith(invoice, status);
+        const [milestone] = await service.listMilestones(pm, 'p-1');
+        expect(milestone.releases[0]).toMatchObject({ collectionStatus: expected, amount: null, percentage: null });
+      });
+
+      it('finance sees the same status AND the money', async () => {
+        const { service } = stageWith(postedInvoice({ outstandingAmount: decimal('100000.00') }));
+        const [milestone] = await service.listMilestones(financeIdentity, 'p-1');
+        expect(milestone.releases[0]).toMatchObject({
+          collectionStatus: 'PART_PAID',
+          amount: '300000.00',
+          percentage: '0.3000',
+        });
       });
     });
 

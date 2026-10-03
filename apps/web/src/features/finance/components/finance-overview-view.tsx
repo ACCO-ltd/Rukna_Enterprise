@@ -65,7 +65,7 @@ import {
  */
 export function FinanceOverviewView({
   projectId,
-  costControlHref = `/projects/${projectId}/finance/cost-control`,
+  costControlHref = `/finance/projects/${projectId}/cost`,
 }: {
   projectId: string;
   /** Where "Open cost control" goes — the Finance workspace (ADR-043) keeps the reader in Finance. */
