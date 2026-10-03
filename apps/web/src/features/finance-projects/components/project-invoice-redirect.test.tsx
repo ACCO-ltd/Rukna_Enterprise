@@ -1,6 +1,7 @@
-import { waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { sessionStore } from '@/features/auth/session/session-store';
 import { renderWithProviders } from '@/test/render';
 
 import { ProjectInvoiceRedirect, projectInvoiceTarget } from './project-invoice-redirect';
@@ -33,5 +34,31 @@ describe('ProjectInvoiceRedirect', () => {
     });
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/projects/p1/commercial/contract'));
     expect(router.replace).not.toHaveBeenCalledWith(expect.stringContaining('/finance/'));
+  });
+
+  it('decides nothing until the permissions are known, then follows them (a finance reader is not sent to the schedule)', async () => {
+    renderWithProviders(<ProjectInvoiceRedirect projectId="p1" invoiceId="inv-1" />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    // no session yet (hydration snapshot) — no redirect at all
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(router.replace).not.toHaveBeenCalled();
+
+    act(() => {
+      sessionStore.setSession({
+        accessToken: 't',
+        user: {
+          id: 'u',
+          email: 'f@example.com',
+          name: null,
+          orgId: 'org-1',
+          tenantSlug: 'test',
+          roles: [],
+          permissions: ['view:financial-position'],
+        },
+      });
+    });
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/finance/projects/p1/billing/invoices/inv-1'));
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).not.toHaveBeenCalledWith('/projects/p1/commercial/contract');
   });
 });

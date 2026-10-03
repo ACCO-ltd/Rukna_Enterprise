@@ -24,6 +24,7 @@ import { statusTone } from '@/lib/status-registry';
 
 import { useReverseVariation, useVariation } from '../hooks/use-commercial';
 import { VariationBillingChip, type VariationBilling } from './variation-billing-chip';
+import { useProjectBillingHref } from '@/features/finance-projects/hooks';
 
 /**
  * VariationOrder detail — a read-only `FormDialog` (ADR-039), size `xl`: one record and its short
@@ -219,6 +220,8 @@ function DetailBody({
   serverError: string | null;
 }) {
   const t = useTranslations('commercial.variations');
+  // ADR-043 Phase 3 — billing lives in Finance; a non-finance reader goes to the schedule.
+  const billingHref = useProjectBillingHref(projectId);
   const locale = useLocale() as 'en' | 'ar';
 
   const money = (value: string | number | null) =>
@@ -319,9 +322,9 @@ function DetailBody({
               <span className="text-caption text-muted-foreground">{t('detail.billing')}</span>
               <VariationBillingChip status={variation.status} billing={billing} />
             </span>
-            {billing?.invoice ? (
+            {billing?.invoice && billingHref ? (
               <Link
-                href={`/projects/${projectId}/commercial/billing`}
+                href={billingHref}
                 className="inline-flex min-h-11 items-center gap-1 text-caption font-medium text-brand-primary hover:underline sm:min-h-0"
               >
                 {t('detail.viewBilling')}

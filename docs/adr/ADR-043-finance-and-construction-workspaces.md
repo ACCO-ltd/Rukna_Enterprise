@@ -103,6 +103,10 @@ the existing project-access rule applies per row.
   receipt or advance belongs to no project.
 - A ready-to-bill stage leaves *To bill* only when its invoice is POSTED (issued); a prepared draft
   shows as "draft prepared" (decision 1: Finance issues invoices).
+- **Phase 3:** the Construction Director no longer has the project's read-only Billing view
+  (invoice and receipt lists) or the project invoice documents — they showed the CD no money anyway
+  (the margin tier gates it). Owner decision 2: the CD keeps the read-only money summary on the
+  project Overview and sees each stage's money-free status on the Commercial schedule.
 
 ## Phases
 
@@ -147,9 +151,13 @@ the existing project-access rule applies per row.
      on the Commercial schedule. No server permission was changed.
    - The project **Overview is unchanged** — the Construction Director keeps the read-only money
      summary (decision 2).
-   - **Not done:** construction cannot *mark* a stage ready to bill in the UI — the command is gated
-     `view:contract` + `manage:receivable` (a finance permission). Verification in Progress is what
-     makes a stage read Ready to bill. Granting construction the mark-ready command is a role
-     decision for the owner, not taken here.
+   - **Not done (unchanged from main):** no screen calls the mark-ready-to-bill command, on main
+     either — preparing an invoice records readiness (D2). The command is gated `view:contract` +
+     `manage:receivable` (a finance permission). Verification in Progress is what makes a stage read
+     Ready to bill. A construction "mark ready" action is a future owner decision.
+   - Billing links outside Finance (Progress performance, variation detail, the BOQ "Review in
+     billing" toast, project activity) go to Finance for a finance reader and to the Commercial
+     schedule otherwise (`useProjectBillingHref`) — never to Finance's no-access page. Redirects keep
+     the old URL's query string.
 4. **Phase 4:** tidy-up — retire the redirect routes once bookmarks have aged out, role-seed
    review, and a rename-proof permission check for the role names project access still matches on.

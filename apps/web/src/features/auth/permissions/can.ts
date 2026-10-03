@@ -190,6 +190,12 @@ export function usePermissions() {
   );
 
   return {
+    /**
+     * False until the session (and so the permission set) is known in this render — on the
+     * server / hydration snapshot. A decision that must not be made on "no permissions yet" (a
+     * redirect, say) waits for it.
+     */
+    ready: user !== null,
     can: (permission: PermissionKey) => canWith(user, permission),
     canAny: (permissions: PermissionKey[]) => permissions.some((p) => canWith(user, p)),
     moduleVisible: (module: string) => moduleVisibleWith(user, module),

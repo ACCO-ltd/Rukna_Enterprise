@@ -1,9 +1,19 @@
 import { redirect } from 'next/navigation';
 
-import { financeProjectRedirects } from '@/features/finance-projects/redirects';
+import {
+  financeProjectRedirects,
+  withQuery,
+  type RouteSearchParams,
+} from '@/features/finance-projects/redirects';
 
 /** ADR-043 Phase 3 — moved to Finance → Projects → P&L. */
-export default async function LegacyProfitLossPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LegacyProfitLossPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<RouteSearchParams>;
+}) {
   const { id } = await params;
-  redirect(financeProjectRedirects.profitLoss(id));
+  redirect(withQuery(financeProjectRedirects.profitLoss(id), await searchParams));
 }

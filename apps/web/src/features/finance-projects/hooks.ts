@@ -8,6 +8,7 @@ import type {
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import { getFinancePortfolio, getFinanceProject } from './api';
+import { financeProjectRedirects } from './redirects';
 
 /** The permission `GET /finance/projects` requires — the nav item and pages gate on it too. */
 export const FINANCE_PROJECTS_PERMISSION = 'view:financial-position' as const;
@@ -61,4 +62,17 @@ export function useProjectPaymentsAccess() {
   const supplierPayments = can(ACCOUNTING_PERMISSIONS.managePayables);
   const journals = can(ACCOUNTING_PERMISSIONS.manageJournals);
   return { receipts, supplierPayments, journals, any: receipts || supplierPayments || journals };
+}
+
+/**
+ * ADR-043 Phase 3 — where a "billing" link sends this reader for a project: a finance reader to
+ * Finance → Projects → Billing; anyone else who can read the contract to the Commercial schedule
+ * (its money-free stage status); null when neither is open to them (render no link). Never a
+ * dead-end on Finance's no-access page.
+ */
+export function useProjectBillingHref(projectId: string): string | null {
+  const { can } = usePermissions();
+  if (can(FINANCE_PROJECTS_PERMISSION)) return financeProjectRedirects.billing(projectId);
+  if (can('view:contract')) return financeProjectRedirects.commercialSchedule(projectId);
+  return null;
 }

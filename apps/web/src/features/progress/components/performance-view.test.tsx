@@ -246,8 +246,17 @@ describe('PerformanceView — packages and attention', () => {
     expect(screen.getByRole('link', { name: 'Open Finance' })).toHaveAttribute('href', '/finance/projects/p1');
     expect(screen.getByRole('link', { name: 'Open Billing & collection' })).toHaveAttribute(
       'href',
-      '/projects/p1/commercial/billing',
+      '/finance/projects/p1/billing',
     );
+  });
+
+  it('sends a Construction Director (view:contract, no finance) to the Commercial schedule, not to Finance (ADR-043 Phase 3)', () => {
+    renderWithProviders(<PerformanceView projectId="p1" />, { permissions: ['view:project', 'view:contract'] });
+    expect(screen.getByRole('link', { name: 'Open Billing & collection' })).toHaveAttribute(
+      'href',
+      '/projects/p1/commercial/contract',
+    );
+    expect(screen.queryByRole('link', { name: 'Open Finance' })).not.toBeInTheDocument();
   });
 
   it('offers Record snapshot only to setup managers; Export to everyone', async () => {

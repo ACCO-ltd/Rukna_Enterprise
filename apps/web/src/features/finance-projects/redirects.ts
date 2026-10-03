@@ -26,3 +26,23 @@ export const financeProjectRedirects = {
   ipc: (projectId: string) => `/projects/${projectId}/commercial`,
   contracts: (projectId: string) => `/projects/${projectId}/commercial/contract`,
 } as const;
+
+/** A Next.js page's `searchParams` once awaited. */
+export type RouteSearchParams = Record<string, string | string[] | undefined>;
+
+/**
+ * Carry the old URL's query string onto a redirect target, so a bookmark's filters (`?filter=`,
+ * `?from=`) are not silently dropped. The query goes before any `#fragment` in the target.
+ */
+export function withQuery(target: string, searchParams: RouteSearchParams | undefined): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    if (value === undefined) continue;
+    for (const v of Array.isArray(value) ? value : [value]) query.append(key, v);
+  }
+  const qs = query.toString();
+  if (!qs) return target;
+  const hashAt = target.indexOf('#');
+  const [path, hash] = hashAt === -1 ? [target, ''] : [target.slice(0, hashAt), target.slice(hashAt)];
+  return `${path}${path.includes('?') ? '&' : '?'}${qs}${hash}`;
+}

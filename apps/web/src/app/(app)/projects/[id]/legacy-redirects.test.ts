@@ -21,6 +21,7 @@ import IpcPage from './ipc/page';
 import ContractsPage from './contracts/page';
 import CommercialBillingPage from './commercial/billing/page';
 import BillingCollectionPage from './commercial/billing-collection/page';
+import { withQuery } from '@/features/finance-projects/redirects';
 
 const id = Promise.resolve({ id: 'p-1' });
 
@@ -46,5 +47,21 @@ describe('retired project routes → their new home', () => {
     await expect(render()).rejects.toThrow(`NEXT_REDIRECT:${target}`);
     expect(mocks.redirect).toHaveBeenCalledTimes(1);
     expect(mocks.redirect).toHaveBeenCalledWith(target);
+  });
+});
+
+describe('query strings survive the redirect', () => {
+  it('carries ?filter / ?from onto the target, before any #fragment', async () => {
+    await expect(
+      CommercialBillingPage({ params: id, searchParams: Promise.resolve({ filter: 'needsAction' }) }),
+    ).rejects.toThrow('NEXT_REDIRECT:/finance/projects/p-1/billing?filter=needsAction');
+    await expect(
+      LedgerPage({ params: id, searchParams: Promise.resolve({ from: '2026-01-01', tag: ['a', 'b'] }) }),
+    ).rejects.toThrow('NEXT_REDIRECT:/finance/projects/p-1/pl?from=2026-01-01&tag=a&tag=b#ledger');
+  });
+
+  it('withQuery leaves a target alone when there is no query', () => {
+    expect(withQuery('/finance/projects/p-1/pl#ledger', {})).toBe('/finance/projects/p-1/pl#ledger');
+    expect(withQuery('/x', undefined)).toBe('/x');
   });
 });
