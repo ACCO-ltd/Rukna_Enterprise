@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PERMISSIONS } from '@erp/types';
 
 import { REQUIRED_PERMISSIONS_KEY } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -21,7 +21,7 @@ function seededPermissions(roleName: string): Set<string> {
   return new Set([...seed.slice(start, end).matchAll(/P\.(\w+)/g)].map((m) => m[1]));
 }
 
-describe('GET /procurement/purchase-orders/:id/bill-payments — gate', () => {
+describe('PO money reads (bill-payments, settlement) — gate', () => {
   const required = Reflect.getMetadata(
     REQUIRED_PERMISSIONS_KEY,
     PurchaseOrderController.prototype.getBillPayments,
@@ -29,6 +29,19 @@ describe('GET /procurement/purchase-orders/:id/bill-payments — gate', () => {
 
   it('requires view:procurement AND view:commitment-ledger', () => {
     expect(required).toEqual([PERMISSIONS.procurementView, PERMISSIONS.commitmentsView]);
+  });
+
+  it('the settlement read (money) has the same gate; receiving (no money) keeps the class gate', () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PurchaseOrderController.prototype.getSettlement),
+    ).toEqual([PERMISSIONS.procurementView, PERMISSIONS.commitmentsView]);
+    expect(Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PurchaseOrderController.prototype.getReceiving)).toBeUndefined();
+    expect(Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PurchaseOrderController)).toEqual([PERMISSIONS.procurementView]);
+  });
+
+  it.each(['Finance Officer', 'Construction Director'])('%s holds both gates', (role) => {
+    const perms = seededPermissions(role);
+    expect(perms.has('procurementView') && perms.has('commitmentsView')).toBe(true);
   });
 
   it('the Procurement Manager already holds both — no role-grant change', () => {
@@ -44,13 +57,27 @@ describe('GET /procurement/purchase-orders/:id/bill-payments — gate', () => {
 
 describe('SettlementQueryService.getBillPayments', () => {
   const identity = { userId: 'u', activeOrganizationId: 'o', roles: [], permissions: [] } as never;
-  function build(exists: boolean, bills: unknown[]) {
+  function build(exists: boolean, bills: unknown[], member = true) {
     const repo = {
       purchaseOrderExists: jest.fn().mockResolvedValue(exists),
+      findPoProjectIds: jest.fn().mockResolvedValue(['prj-1']),
       findBillPaymentsForPo: jest.fn().mockResolvedValue(bills),
+      findPoForSettlement: jest.fn(),
     };
-    return new SettlementQueryService({ getClient: () => ({}) } as never, repo as never);
+    const projectAccess = {
+      assertMember: jest.fn(async () => {
+        if (!member) throw new ForbiddenException('You are not a member of this project.');
+      }),
+    };
+    return new SettlementQueryService({ getClient: () => ({}) } as never, repo as never, projectAccess as never);
   }
+
+  it('a non-member of a project the PO is coded to is refused (bill payments, settlement, receiving)', async () => {
+    const svc = build(true, [], false);
+    await expect(svc.getBillPayments(identity, 'po')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.getSettlementForViewer(identity, 'po')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.getReceiving(identity, 'po')).rejects.toBeInstanceOf(ForbiddenException);
+  });
 
   it('404 for a PO outside the organisation', async () => {
     await expect(build(false, []).getBillPayments(identity, 'po')).rejects.toBeInstanceOf(NotFoundException);

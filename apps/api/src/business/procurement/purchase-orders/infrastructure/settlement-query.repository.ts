@@ -74,6 +74,16 @@ export class SettlementQueryRepository {
     });
   }
 
+  /** The distinct projects a PO's lines (any revision) are coded to — what project access checks. */
+  async findPoProjectIds(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
+    const lines = await prisma.purchaseOrderLine.findMany({
+      where: { projectId: { not: null }, revision: { purchaseOrderId, purchaseOrder: { organizationId } } },
+      select: { projectId: true },
+      distinct: ['projectId'],
+    });
+    return lines.map((l) => l.projectId).filter((id): id is string => Boolean(id));
+  }
+
   async purchaseOrderExists(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
     const po = await prisma.purchaseOrder.findFirst({
       where: { id: purchaseOrderId, organizationId },

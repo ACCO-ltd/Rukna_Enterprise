@@ -40,6 +40,7 @@ import type {
   PoRevisionAttachment,
   PurchaseOrder,
   PurchaseOrderSettlement,
+  PurchaseOrderReceiving,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
@@ -342,6 +343,11 @@ export function confirmPurchaseOrder(id: string): Promise<PurchaseOrder> {
  */
 export function getPurchaseOrderSettlement(id: string): Promise<PurchaseOrderSettlement> {
   return apiClient<PurchaseOrderSettlement>(`/procurement/purchase-orders/${id}/settlement`);
+}
+
+/** Receiving only (no money) — readable with `view:procurement`; the Receiving tab uses it. */
+export function getPurchaseOrderReceiving(id: string): Promise<PurchaseOrderReceiving> {
+  return apiClient<PurchaseOrderReceiving>(`/procurement/purchase-orders/${id}/receiving`);
 }
 
 /**

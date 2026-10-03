@@ -1088,7 +1088,7 @@ import { WorkflowsPrismaRepository } from '../../../platform/workflows/infrastru
 function buildSettlementService(): SettlementQueryService {
   const tenancy = { getClient: () => prisma } as unknown as TenancyService;
   const repo = new SettlementQueryRepository();
-  return new SettlementQueryService(tenancy, repo);
+  return new SettlementQueryService(tenancy, repo, { assertMember: async () => undefined } as never);
 }
 
 /**
@@ -1580,7 +1580,7 @@ test('T37 — All settlement conditions met causes PO status to become CLOSED', 
   // Trigger autoCloseIfSettled via PurchaseOrderService wired with the real settlement service.
   // Using static imports (already imported above in the T26-T38 block).
   const tenancy37 = { getClient: () => prisma } as unknown as TenancyService;
-  const realSettlementSvc37 = new SettlementQueryService(tenancy37, new SettlementQueryRepository());
+  const realSettlementSvc37 = new SettlementQueryService(tenancy37, new SettlementQueryRepository(), { assertMember: async () => undefined } as never);
   const realPoSvc37 = new PurchaseOrderService(
     tenancy37,
     svc.poRepo,

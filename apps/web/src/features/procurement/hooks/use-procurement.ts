@@ -53,6 +53,7 @@ import {
   getProjectCommitmentSummary,
   getPurchaseOrder,
   getPurchaseOrderSettlement,
+  getPurchaseOrderReceiving,
   getSupplierBill,
   getSupplierBillActivity,
   getSupplierBillApprovals,
@@ -123,6 +124,7 @@ import type {
   PoRevisionAttachment,
   PurchaseOrder,
   PurchaseOrderSettlement,
+  PurchaseOrderReceiving,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
@@ -196,6 +198,8 @@ export const procurementKeys = {
     [...procurementKeys.commitments(), 'purchase-order', poId] as const,
   purchaseOrderSettlement: (poId: string) =>
     [...procurementKeys.all, 'po-settlement', poId] as const,
+  purchaseOrderReceiving: (poId: string) =>
+    [...procurementKeys.all, 'po-receiving', poId] as const,
   poRevisionAttachments: (poId: string) =>
     [...procurementKeys.all, 'po-revision-attachments', poId] as const,
   grnAttachments: (grnId: string) =>
@@ -611,7 +615,20 @@ export function useConfirmPurchaseOrder() {
   });
 }
 
-/** Full reconciliation read model for a PO — funding, receiving, settlement status. */
+/** Receiving only (ordered vs accepted per line, no money) — `view:procurement`. */
+export function usePurchaseOrderReceiving(poId: string): UseQueryResult<PurchaseOrderReceiving> {
+  return useQuery({
+    queryKey: procurementKeys.purchaseOrderReceiving(poId),
+    queryFn: () => getPurchaseOrderReceiving(poId),
+    enabled: Boolean(poId),
+  });
+}
+
+/**
+ * Full reconciliation read model for a PO — funding, receiving, settlement status. Carries money:
+ * the API requires `view:procurement` + `view:commitment-ledger` (ADR-043 review M2), so callers
+ * pass `enabled: false` for anyone without both.
+ */
 export function usePurchaseOrderSettlement(
   poId: string,
   options?: { enabled?: boolean },
@@ -1132,6 +1149,7 @@ export function useCreateBuyerAdvance(poId: string) {
     meta: { successToast: 'procurement.feedback.buyerAdvanceCreated' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
   });
 }
@@ -1143,6 +1161,7 @@ export function useCreateAdvanceReturn(advanceId: string, poId: string) {
     meta: { successToast: 'procurement.feedback.advanceReturnRecorded' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
   });
 }
@@ -1155,6 +1174,7 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
     meta: { successToast: 'procurement.feedback.evidenceAllocated' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
     },
@@ -1183,6 +1203,7 @@ export function usePostBuyerAdvance(advanceId: string, poId: string) {
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
   });
 }

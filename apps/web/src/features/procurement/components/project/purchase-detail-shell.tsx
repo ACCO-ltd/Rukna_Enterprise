@@ -43,8 +43,10 @@ import {
   useGoodsReceipts,
   usePoRevisionAttachments,
   usePurchaseOrder,
+  usePurchaseOrderReceiving,
   usePurchaseOrderSettlement,
 } from '../../hooks/use-procurement';
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { moneyToApi } from '../../quantities';
 import { activeRevision, revisionTotalMinor } from '../../quantities';
 import type {
@@ -82,6 +84,11 @@ export function PurchaseDetailShell({
 
   const [tab, setTab] = useState<Tab>('items');
   const [amending, setAmending] = useState(false);
+  // Funding and Settlement carry money (bill totals, payments, advances): the settlement read needs
+  // view:procurement + view:commitment-ledger (ADR-043 review M2). Without both the tabs are simply
+  // not offered — Receiving reads its own money-free endpoint.
+  const { can } = usePermissions();
+  const canSeeMoney = can(PROCUREMENT_PERMISSIONS.view) && can(PROCUREMENT_PERMISSIONS.viewCommitments);
 
   const po = usePurchaseOrder(poId);
   const confirm = useConfirmPurchaseOrder();
@@ -112,9 +119,9 @@ export function PurchaseDetailShell({
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'items', label: t('tabs.items') },
-    { key: 'funding', label: t('tabs.funding') },
+    ...(canSeeMoney ? [{ key: 'funding' as const, label: t('tabs.funding') }] : []),
     { key: 'receiving', label: t('tabs.receiving') },
-    { key: 'settlement', label: t('tabs.settlement') },
+    ...(canSeeMoney ? [{ key: 'settlement' as const, label: t('tabs.settlement') }] : []),
   ];
 
   return (
@@ -206,9 +213,9 @@ export function PurchaseDetailShell({
           locale={locale}
         />
       )}
-      {tab === 'funding' && <FundingTab poId={poId} locale={locale} isOpen={isOpen} />}
+      {tab === 'funding' && canSeeMoney && <FundingTab poId={poId} locale={locale} isOpen={isOpen} />}
       {tab === 'receiving' && <ReceivingTab poId={poId} locale={locale} isOpen={isOpen} />}
-      {tab === 'settlement' && <SettlementTab poId={poId} order={order} locale={locale} />}
+      {tab === 'settlement' && canSeeMoney && <SettlementTab poId={poId} order={order} locale={locale} />}
 
       {/* Amend dialog */}
       {amending && active ? (
@@ -1019,7 +1026,7 @@ function ReceivingTab({
   isOpen: boolean;
 }) {
   const t = useTranslations('procurement.project.purchase.receiving');
-  const settlement = usePurchaseOrderSettlement(poId);
+  const settlement = usePurchaseOrderReceiving(poId);
   const grns = useGoodsReceipts({ purchaseOrderId: poId });
 
   if (settlement.isPending || grns.isPending) return <Skeleton className="h-64 w-full" />;
