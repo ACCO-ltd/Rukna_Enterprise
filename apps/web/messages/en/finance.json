@@ -516,7 +516,6 @@
       "NO_PAYMENT_RECORDED": "No payment recorded yet",
       "PARTLY_PAID": "Part paid — the balance is still outstanding",
       "OPENING_BALANCE_BILL": "Opening balance from the previous system — already in the ledger, not posted again",
-      "OPENING_BALANCE_NOT_PAYABLE": "Opening balance from the previous system — it cannot be paid in Rukna yet",
       "POSTING_FAILED": "Posting failed",
       "CONTRACT_NOT_ACTIVE": "The contract is not active yet",
       "MILESTONE_NOT_LINKED": "No progress milestone is linked to this stage",

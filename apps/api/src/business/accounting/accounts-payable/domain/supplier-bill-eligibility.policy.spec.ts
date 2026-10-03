@@ -70,8 +70,13 @@ describe('billPostingBlock — the post command order', () => {
 });
 
 describe('billSettlementBlock / paymentPostingBlock / release', () => {
-  it('only POSTED bills are paid; allocation may not exceed the outstanding', () => {
+  it('only bills in the ledger (POSTED / OPENING_BALANCE) are paid; allocation may not exceed the outstanding', () => {
     expect(billSettlementBlock({ postingStatus: 'APPROVED', outstandingAmount: '10' })).toBe('BILL_NOT_POSTED');
+    expect(billSettlementBlock({ postingStatus: 'NOT_POSTED', outstandingAmount: '10' })).toBe('BILL_NOT_POSTED');
+    expect(billSettlementBlock({ postingStatus: 'REVERSED', outstandingAmount: '10' })).toBe('BILL_NOT_POSTED');
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' })).toBeNull();
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '0' })).toBe('NOTHING_OUTSTANDING');
+    expect(billSettlementBlock({ postingStatus: 'OPENING_BALANCE', outstandingAmount: '10' }, new Decimal(11))).toBe('EXCEEDS_OUTSTANDING');
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '0' })).toBe('NOTHING_OUTSTANDING');
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '10' })).toBeNull();
     expect(billSettlementBlock({ postingStatus: 'POSTED', outstandingAmount: '10' }, new Decimal(11))).toBe('EXCEEDS_OUTSTANDING');
@@ -181,17 +186,36 @@ describe('supplierBillEligibility — steps', () => {
     expect(stepOf(e, 'PAYMENT_APPROVED')).toMatchObject({ status: 'PENDING', code: 'NO_PAYMENT_RECORDED', owner: 'FINANCE' });
   });
 
-  it('opening-balance bill: in the ledger already, not postable, not payable in Rukna — said plainly', () => {
+  it('opening-balance bill: in the ledger already, never posted again, but payable like a posted bill', () => {
     const e = supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE' }, { postingPeriod: null }));
     expect(e.canPost).toBe(false);
-    expect(e.canPay).toBe(false);
-    expect(e.blockedReason).toBe('OPENING_BALANCE_NOT_PAYABLE');
-    expect(stepOf(e, 'POSTED')).toMatchObject({ status: 'DONE', detail: 'Opening balance from the previous system — already in the ledger' });
+    expect(e.canPay).toBe(true);
+    expect(e.blockedReason).toBeNull();
+    expect(stepOf(e, 'POSTED')).toMatchObject({
+      status: 'DONE',
+      detail: 'Opening balance — carried from the previous system, already in the ledger',
+    });
     expect(stepOf(e, 'PERIOD_OPEN').status).toBe('NOT_APPLICABLE');
     for (const key of ['PAYMENT_APPROVED', 'PAYMENT_RELEASED', 'PAID']) {
-      expect(stepOf(e, key)).toMatchObject({ status: 'BLOCKED', code: 'OPENING_BALANCE_NOT_PAYABLE' });
-      expect(stepOf(e, key).detail).toMatch(/cannot be paid in Rukna yet/);
+      expect(stepOf(e, key)).toMatchObject({ status: 'PENDING', code: 'NO_PAYMENT_RECORDED' });
     }
+  });
+
+  it('opening-balance bill: part paid, in flight and paid in full read exactly as for a posted bill', () => {
+    const ob = (outstandingAmount: string, rest: Partial<BillEligibilityFacts> = {}) =>
+      supplierBillEligibility(facts({ postingStatus: 'OPENING_BALANCE', outstandingAmount }, { postingPeriod: null, ...rest }));
+    const posted = { postingStatus: 'POSTED', payment: { documentStatus: 'APPROVED', postingStatus: 'POSTED', underDualControl: false, signatures: 0 } };
+    const part = ob('400', { allocations: [posted] });
+    expect(part.canPay).toBe(true);
+    expect(stepOf(part, 'PAID')).toMatchObject({ status: 'PENDING', code: 'PARTLY_PAID' });
+    const paid = ob('0', { allocations: [posted] });
+    expect(paid.canPay).toBe(false);
+    expect(paid.blockedReason).toBe('FULLY_PAID');
+    expect(stepOf(paid, 'PAID').status).toBe('DONE');
+    const drafted = ob('0', {
+      allocations: [{ postingStatus: 'NOT_POSTED', payment: { documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', underDualControl: true, signatures: 0 } }],
+    });
+    expect(drafted.blockedReason).toBe('PAYMENT_AWAITING_APPROVAL');
   });
 
   it('part paid with nothing in flight reads PARTLY_PAID, not "no payment recorded"', () => {
@@ -315,6 +339,7 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
     ['POSTED', '0'],
     ['REVERSED', '100'],
     ['OPENING_BALANCE', '100'],
+    ['OPENING_BALANCE', '0'],
   ])('posting %s, outstanding %s', async (postingStatus, outstandingAmount) => {
     const bill = { ...base, postingStatus, outstandingAmount };
     const e = supplierBillEligibility(facts(bill as never));

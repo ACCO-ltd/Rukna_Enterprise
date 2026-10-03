@@ -16,7 +16,7 @@
  *   1. the bill exists and is in this org
  *   2. `bill.supplierId === payment.supplierId`   (same supplier)
  *   3. `bill.currencyCode === payment.currencyCode` (currency match — USD-only here)
- *   4. `bill.postingStatus === 'POSTED'`           (a live AP liability)
+ *   4. `bill.postingStatus` is POSTED or OPENING_BALANCE (a live AP liability)
  *   5. `amount ≤ bill.outstandingAmount`           (per-bill ceiling)
  *
  * and, across all of them, `Σ amount ≤ totalAmount`. The remainder (`totalAmount − Σ`) is
@@ -30,13 +30,14 @@
 
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
+import { isSettleableBill } from './bill-actions';
 import { moneyToApi } from './quantities';
 import type { PaymentAllocationPayload, SupplierBill } from './types';
 
 // ─── The bills a new payment may settle ──────────────────────────────────────────
 
 /**
- * The outstanding POSTED bills for the payment's supplier, in this currency — the "Apply to
+ * The outstanding POSTED (or opening-balance) bills for the payment's supplier, in this currency — the "Apply to
  * bills" list. Oldest first, the order an accounts-payable clerk settles in.
  *
  * There is no server-side "outstanding POSTED bills" filter: `GET /bills?supplierId=` returns
@@ -54,7 +55,7 @@ export function applyToBills(
       (bill) =>
         bill.supplierId === supplierId &&
         bill.currencyCode === currencyCode &&
-        bill.postingStatus === 'POSTED' &&
+        isSettleableBill(bill) &&
         toMinorUnits(bill.outstandingAmount, MONEY_SCALE) > 0,
     )
     .sort((a, b) => a.billDate.localeCompare(b.billDate));

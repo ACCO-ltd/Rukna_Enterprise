@@ -114,6 +114,16 @@ export function canPost(bill: SupplierBill): boolean {
 }
 
 /**
+ * Is the bill a live AP liability a payment can settle? Mirrors the server's
+ * `SETTLEABLE_POSTING_STATUSES` (supplier-bill-eligibility.policy.ts): a POSTED bill (AP credited
+ * by its own journal) or an OPENING_BALANCE bill carried over from the previous system (AP credited
+ * by the opening-balance journal). Either one has a real outstanding balance to pay.
+ */
+export function isSettleableBill(bill: Pick<SupplierBill, 'postingStatus'>): boolean {
+  return bill.postingStatus === 'POSTED' || bill.postingStatus === 'OPENING_BALANCE';
+}
+
+/**
  * `supplier-bill.service.ts:317` — reversal is refused while any allocation against this bill
  * is POSTED.
  *

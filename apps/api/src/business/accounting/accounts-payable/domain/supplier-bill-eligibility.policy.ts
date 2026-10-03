@@ -97,16 +97,24 @@ export function billPostingBlock(bill: BillPostingFacts): BillPostBlock | null {
 export type BillSettlementBlock = 'BILL_NOT_POSTED' | 'NOTHING_OUTSTANDING' | 'EXCEEDS_OUTSTANDING';
 
 /**
- * May a payment be allocated to the bill? Only a POSTED bill is a live AP liability (AP is
- * credited at EVT-AP-001), and an allocation may not exceed the balance no payment covers yet.
- * With `amount` the command's check (EXCEEDS_OUTSTANDING); without it the read model's
+ * The posting statuses whose bill is a live AP liability, i.e. whose balance already sits on the
+ * AP control account: POSTED (credited by the bill's own EVT-AP-001 journal) and OPENING_BALANCE
+ * (credited by the opening-balance journal, EVT-OPB-001, when the bill was carried over from the
+ * previous system). A payment settles either one the same way — Dr AP control / Cr Bank.
+ */
+export const SETTLEABLE_POSTING_STATUSES: readonly string[] = ['POSTED', 'OPENING_BALANCE'];
+
+/**
+ * May a payment be allocated to the bill? Only a bill in the ledger (POSTED, or carried in as an
+ * OPENING_BALANCE) is a live AP liability, and an allocation may not exceed the balance no payment
+ * covers yet. With `amount` the command's check (EXCEEDS_OUTSTANDING); without it the read model's
  * "is there anything left to pay" (NOTHING_OUTSTANDING).
  */
 export function billSettlementBlock(
   bill: { postingStatus: string; outstandingAmount: Decimal | string | number },
   amount?: Decimal,
 ): BillSettlementBlock | null {
-  if (bill.postingStatus !== 'POSTED') return 'BILL_NOT_POSTED';
+  if (!SETTLEABLE_POSTING_STATUSES.includes(bill.postingStatus)) return 'BILL_NOT_POSTED';
   const outstanding = new Decimal(bill.outstandingAmount.toString());
   if (amount !== undefined) return amount.gt(outstanding) ? 'EXCEEDS_OUTSTANDING' : null;
   return outstanding.lte(0) ? 'NOTHING_OUTSTANDING' : null;
@@ -299,7 +307,7 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   // 5. Posted to the ledger.
   steps.push(
     openingBalance
-      ? step('POSTED', 'FINANCE', 'DONE', null, 'Opening balance from the previous system — already in the ledger')
+      ? step('POSTED', 'FINANCE', 'DONE', null, 'Opening balance — carried from the previous system, already in the ledger')
       : inLedger
       ? step('POSTED', 'FINANCE', 'DONE')
       : reversed
@@ -309,19 +317,13 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
           : step('POSTED', 'FINANCE', 'PENDING', 'BILL_NOT_POSTED'),
   );
 
-  // 6–8. Payment: approved → released (dual control) → posted.
-  if (openingBalance) {
-    // The payment command settles only POSTED bills (`billSettlementBlock`), so an imported balance
-    // cannot be paid in Rukna yet — said plainly rather than "not posted".
-    const detail = 'Opening balance from the previous system — it cannot be paid in Rukna yet';
-    steps.push(step('PAYMENT_APPROVED', 'FINANCE', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
-    steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
-    steps.push(step('PAID', 'FINANCE', 'BLOCKED', 'OPENING_BALANCE_NOT_PAYABLE', detail));
-  } else if (reversed) {
+  // 6–8. Payment: approved → released (dual control) → posted. An opening-balance bill is paid
+  // exactly like a posted one (its balance is on AP control), so it falls through to the same steps.
+  if (reversed) {
     steps.push(step('PAYMENT_APPROVED', 'APPROVER', 'NOT_APPLICABLE'));
     steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'NOT_APPLICABLE'));
     steps.push(step('PAID', 'FINANCE', 'NOT_APPLICABLE'));
-  } else if (bill.postingStatus !== 'POSTED') {
+  } else if (!inLedger) {
     steps.push(step('PAYMENT_APPROVED', 'APPROVER', 'PENDING', 'BILL_NOT_POSTED'));
     steps.push(step('PAYMENT_RELEASED', 'SIGNATORIES', 'PENDING', 'BILL_NOT_POSTED'));
     steps.push(step('PAID', 'FINANCE', 'PENDING', 'BILL_NOT_POSTED'));
@@ -366,14 +368,12 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
   const canPay = settlementBlock === null;
 
   let blockedReason: SupplierBillBlockedReason | null = null;
-  if (openingBalance) {
-    blockedReason = 'OPENING_BALANCE_NOT_PAYABLE';
-  } else if (bill.postingStatus !== 'POSTED') {
+  if (!inLedger) {
     // The next action is posting (or nothing, for a reversed bill).
     if (postBlock && postBlock !== 'BILL_ALREADY_POSTED') blockedReason = postBlock;
     else if (periodBlock) blockedReason = periodBlock;
   } else if (!canPay) {
-    // Posted with nothing uncovered: the balance sits on a payment in flight, or it is paid.
+    // In the ledger with nothing uncovered: the balance sits on a payment in flight, or it is paid.
     const pendingPayment = steps.find(
       (s) => s.status === 'PENDING' && (s.key === 'PAYMENT_APPROVED' || s.key === 'PAYMENT_RELEASED' || s.key === 'PAID'),
     );

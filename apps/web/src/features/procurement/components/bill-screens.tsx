@@ -46,6 +46,7 @@ import { formatDate } from '@/lib/format';
 
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
+import { isSettleableBill } from '../bill-actions';
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
@@ -201,9 +202,10 @@ export function SupplierBillsList({
             numeric: true,
             sortable: true,
             plainValue: (bill: SupplierBill) => Number(bill.outstandingAmount),
-            // The bill's stored balance — what no payment covers yet. Only meaningful once posted.
+            // The bill's stored balance — what no payment covers yet. Only meaningful once in the
+            // ledger (posted, or carried in as an opening balance).
             render: (bill: SupplierBill) =>
-              bill.postingStatus === 'POSTED' ? (
+              isSettleableBill(bill) ? (
                 <MoneyDisplay value={bill.outstandingAmount} />
               ) : (
                 <span className="text-muted-foreground">
@@ -372,7 +374,7 @@ function SupplierBillDocument({ bill, back }: { bill: SupplierBill; back?: { hre
                   className="ms-auto max-w-sm"
                   rows={totals.rows}
                   total={totals.total}
-                  amountDue={bill.postingStatus === 'POSTED' ? totals.amountDue : undefined}
+                  amountDue={isSettleableBill(bill) ? totals.amountDue : undefined}
                 />
               </div>
             ),

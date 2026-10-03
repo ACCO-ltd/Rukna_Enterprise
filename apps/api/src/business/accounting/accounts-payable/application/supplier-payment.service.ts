@@ -136,17 +136,17 @@ export class SupplierPaymentService {
         if (bill.currencyCode !== dto.currencyCode) {
           throw new BadRequestException(`Bill ${alloc.supplierBillId} currency does not match payment currency`);
         }
-        // A bill is only a live AP liability once POSTED (AP is credited at EVT-AP-001). Settling a
-        // DRAFT/SUBMITTED/REJECTED/CANCELLED or REVERSED bill would debit AP with no matching balance,
-        // so only a POSTED bill is a valid direct-settlement target (mirrors allocateAdvance). This also
-        // rejects an already-settled bill defensively — its outstanding is 0, caught below either way.
+        // A bill is a live AP liability once its balance is on AP control: POSTED (credited at
+        // EVT-AP-001) or OPENING_BALANCE (credited by the opening-balance journal EVT-OPB-001).
+        // Settling a DRAFT/SUBMITTED/REJECTED/CANCELLED or REVERSED bill would debit AP with no
+        // matching balance, so only those two are valid settlement targets (mirrors allocateAdvance).
         // One rule for this command and `GET /bills/:id/eligibility` (ADR-043).
         const allocAmt = new Decimal(alloc.amount);
         const outstanding = new Decimal(bill.outstandingAmount.toString());
         const settlementBlock = billSettlementBlock(bill, allocAmt);
         if (settlementBlock === 'BILL_NOT_POSTED') {
           throw new BadRequestException(
-            `Bill ${alloc.supplierBillId} is not POSTED (status: ${bill.postingStatus}) and cannot be settled by a payment`,
+            `Bill ${alloc.supplierBillId} is not POSTED (status: ${bill.postingStatus}) and cannot be settled by a payment — only POSTED or OPENING_BALANCE bills can`,
           );
         }
         if (settlementBlock) {
@@ -399,7 +399,7 @@ export class SupplierPaymentService {
     const bill = await this.billRepo.findById(prisma, orgId, dto.supplierBillId);
     if (!bill) throw new NotFoundException(`SupplierBill ${dto.supplierBillId} not found`);
     if (billSettlementBlock(bill, amount) === 'BILL_NOT_POSTED') {
-      throw new BadRequestException(`Bill must be POSTED before advance allocation`);
+      throw new BadRequestException(`Bill must be POSTED (or an OPENING_BALANCE bill) before advance allocation`);
     }
     if (bill.supplierId !== payment.supplierId) {
       throw new BadRequestException(`Bill supplier does not match payment supplier`);

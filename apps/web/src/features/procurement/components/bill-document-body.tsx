@@ -42,6 +42,7 @@ import {
   useSupplierBillApprovals,
   useSupplierBillPayments,
 } from '../hooks/use-procurement';
+import { isSettleableBill } from '../bill-actions';
 import { savedNetVariance } from '../bill-create';
 import type { BillApprovalStepState, SupplierBill } from '../types';
 import { ClassificationChips } from './classification-chips';
@@ -283,7 +284,7 @@ export function useBillSummary(bill: SupplierBill): TotalsRow[] {
   const tPosting = useTranslations('procurement.postingStatus');
   const locale = useLocale() as 'en';
   const payments = useSupplierBillPayments(bill.id);
-  const live = bill.postingStatus === 'POSTED';
+  const live = isSettleableBill(bill);
   const paid = payments.data;
   const rows: TotalsRow[] = [
     {
