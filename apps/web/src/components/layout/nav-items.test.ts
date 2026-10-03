@@ -87,6 +87,38 @@ describe('NAV_DOMAINS', () => {
     });
   });
 
+  describe('finance domain (ADR-043)', () => {
+    const finance = () => NAV_DOMAINS.find((d) => d.moduleKey === 'accounting')!;
+
+    it('is labelled Finance and keeps every existing route', () => {
+      expect(finance().labelKey).toBe('finance');
+      expect(finance().href).toBe('/accounting');
+    });
+
+    it('leads with Overview and Projects, then the named sections in order', () => {
+      const groups = groupNavItems(finance().items);
+      expect(groups.map((g) => g.key)).toEqual([
+        undefined,
+        'receivables',
+        'payables',
+        'banking',
+        'ledger',
+        'reports',
+        'acctSetup',
+      ]);
+      expect(groups[0]!.items.map((i) => i.labelKey)).toEqual(['financeOverview', 'financeProjects']);
+      expect(groups.find((g) => g.key === 'banking')!.items.map((i) => i.href)).toEqual([
+        '/finance/accounting/bank-accounts',
+        '/finance/accounting/reconciliation',
+      ]);
+    });
+
+    it('gates Projects on the same permission as GET /finance/projects', () => {
+      const projects = finance().items.find((i) => i.href === '/finance/projects');
+      expect(projects?.permissionKey).toBe('view:financial-position');
+    });
+  });
+
   describe('procurement domain', () => {
     const procurement = () => NAV_DOMAINS.find((d) => d.moduleKey === 'procurement')!;
 
