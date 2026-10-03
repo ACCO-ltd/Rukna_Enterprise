@@ -73,7 +73,7 @@ export class ClientInvoiceOverdueSource implements NotificationSource<ClientInvo
         daysOverdue,
         bucket,
         actionUrl: invoice.projectId
-          ? `/projects/${invoice.projectId}/commercial/billing-collection`
+          ? `/finance/projects/${invoice.projectId}/billing`
           : `/finance/accounting/invoices/${invoice.id}`,
       });
     }
