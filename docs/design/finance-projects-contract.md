@@ -256,7 +256,8 @@ see them.
 | Value | Rule (`stageCollectionStatus`, `commercial/domain/stage-collection-status.policy.ts`) |
 | --- | --- |
 | `NOT_READY` | no live invoice and the raise blocker (`installmentBillingBlocker`) stands, or a date stage before its date (unless marked ready) |
-| `READY_TO_BILL` | no live invoice and nothing blocks raising it; or marked ready; or a DRAFT invoice (`deriveInvoiceState`) Finance is preparing |
+| `VERIFIED` | no live invoice, nothing blocks raising it (and a date stage's date has come), not marked ready — "Verified — awaiting ready to bill" (added with decision 1) |
+| `READY_TO_BILL` | marked ready (`readyToBillAt`) with nothing blocking; or a DRAFT invoice (`deriveInvoiceState`) Finance is preparing |
 | `BILLED` | invoice ISSUED and nothing collected (or not POSTED: reversed / opening balance) |
 | `PART_PAID` | POSTED, 0 < balance < total, not overdue |
 | `PAID` | POSTED, balance ≤ 0 |
@@ -322,5 +323,7 @@ cancelled one does not block).
 | --- | --- |
 | Commercial → payment schedule (`mode="project"`) | per row, while the stage has no invoice: **Mark ready to bill** (enabled by `billingEligibility.canPrepare`; disabled with the blocking reason in words) or **Undo ready** once marked. Shown to `view:contract` + (`mark-ready:billing` or `manage:receivable`). Success toast; refreshes the project's commercial reads and the Finance portfolio (*To bill*). Not shown in Finance's own schedule, where preparing records readiness. |
 
-Note: `collectionStatus` already reads *Ready to bill* for a verified stage that nobody has marked
-(Phase 3 rule); Finance's *To bill* queue counts only marked (`readyToBillAt`) or prepared stages.
+`collectionStatus` follows the mark: a verified stage nobody has marked reads `VERIFIED`
+("Verified — awaiting ready to bill"); `READY_TO_BILL` = marked or a draft being prepared —
+consistent with Finance's *To bill* queue (marked only). Finance may still prepare an unmarked
+stage (unchanged; preparing records readiness, D2).

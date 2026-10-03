@@ -228,9 +228,10 @@ export function installmentDisplayState(inst: CommercialPaymentScheduleInstallme
  *
  * `mode` (ADR-043 Phase 3):
  *  - `project` (the project's Commercial tab) — the status column is the stage's money-free
- *    billing / collection status (`collectionStatus`: Not ready · Ready to bill · Billed · Part
- *    paid · Paid · Overdue), never an amount-bearing word; invoice links and the "Open in Finance"
- *    link render only for a finance reader (`view:financial-position`). No billing command.
+ *    billing / collection status (`collectionStatus`: Not ready · Verified — awaiting ready to
+ *    bill · Ready to bill · Billed · Part paid · Paid · Overdue), never an amount-bearing word;
+ *    invoice links and the "Open in Finance" link render only for a finance reader
+ *    (`view:financial-position`). The one command here is Mark ready / Undo ready (ADR-043 d.1).
  *  - `finance` — Finance's Billing tab: the billing-pipeline word (Draft / Ready / Billed …) that
  *    tells the finance team what to prepare or issue.
  */

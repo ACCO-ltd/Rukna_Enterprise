@@ -275,6 +275,7 @@ export const STATUS_REGISTRY = {
    */
   stageCollection: {
     NOT_READY: 'neutral',
+    VERIFIED: 'attention',
     READY_TO_BILL: 'progress',
     BILLED: 'progress',
     PART_PAID: 'attention',

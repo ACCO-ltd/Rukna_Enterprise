@@ -145,6 +145,7 @@ describe('Contract view — payment schedule', () => {
 describe('Contract view — money-free billing status (ADR-043 Phase 3)', () => {
   const statuses = [
     ['NOT_READY', 'Not ready'],
+    ['VERIFIED', 'Verified — awaiting ready to bill'],
     ['READY_TO_BILL', 'Ready to bill'],
     ['BILLED', 'Billed'],
     ['PART_PAID', 'Part paid'],
@@ -228,7 +229,7 @@ describe('Mark ready to bill (ADR-043 decision 1)', () => {
   beforeEach(() => {
     schedule.installments = [
       stageFixture({ id: 'paid', sortOrder: 0, name: 'Advance', status: 'PAID', invoiceId: 'inv-1', invoiceState: 'ISSUED', collectionStatus: 'PAID' }),
-      stageFixture({ id: 'ok', sortOrder: 1, name: 'Substructure', status: 'NEXT', billingEligibility: eligible('ok') }),
+      stageFixture({ id: 'ok', sortOrder: 1, name: 'Substructure', status: 'NEXT', collectionStatus: 'VERIFIED', billingEligibility: eligible('ok') }),
       stageFixture({ id: 'wait', sortOrder: 2, name: 'Frame', billingBlocker: 'MILESTONE_NOT_VERIFIED', billingEligibility: notVerified('wait') }),
       stageFixture({ id: 'ready', sortOrder: 3, name: 'Roof', status: 'NEXT', readyToBill: true, readyToBillAt: '2026-10-01T00:00:00Z', collectionStatus: 'READY_TO_BILL', billingEligibility: eligible('ready') }),
       stageFixture({ id: 'draft', sortOrder: 4, name: 'Finishes', status: 'BILLED', readyToBill: true, invoiceId: 'inv-2', invoiceState: 'DRAFT', collectionStatus: 'READY_TO_BILL' }),

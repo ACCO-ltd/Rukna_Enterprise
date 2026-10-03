@@ -99,6 +99,12 @@ the existing project-access rule applies per row.
   undo → mark again no longer collides on the audit outbox's unique key.
 - Marking ready puts the stage in Finance's *To bill* queue (`readyToBillAt`); preparing an invoice
   still records readiness itself when Construction has not (D2).
+- **Status follows the mark.** `collectionStatus` gains **`VERIFIED`** ("Verified — awaiting ready
+  to bill"): nothing blocks raising the stage (milestone verified / advance due / date reached) but
+  Construction has not marked it. **`READY_TO_BILL`** now means marked (`readyToBillAt`) or a draft
+  Finance is preparing — the same set Finance's *To bill* queue counts. One rule
+  (`stageCollectionStatus`) for the Commercial schedule and Progress → milestones. **No behaviour
+  change for Finance:** Finance can still prepare an unmarked (VERIFIED) stage; preparing marks it.
 - **Production:** the live tenant gets the grant from a targeted, additive script
   (`prisma/seeds/grant-construction-mark-ready.seed.ts`) — one permission, one role — not by
   re-running the team-role seed, which would re-add grants removed in Admin → Roles.

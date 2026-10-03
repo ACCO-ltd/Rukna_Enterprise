@@ -263,12 +263,19 @@ describe('ProgrammeService (ADR-021 ph.2 milestones)', () => {
 
     describe('ADR-043 Phase 3 — money-free collection status', () => {
       const pm = { ...identity, permissions: [PERMISSIONS.projectsView] };
-      const stageWith = (invoice: ReturnType<typeof postedInvoice> | null, status = 'VERIFIED') =>
-        build({ milestones: [storedMilestone({ status, installments: [releaseInstallment({ clientInvoice: invoice })] })] });
+      const stageWith = (invoice: ReturnType<typeof postedInvoice> | null, status = 'VERIFIED', readyToBillAt: Date | null = null) =>
+        build({ milestones: [storedMilestone({ status, installments: [releaseInstallment({ clientInvoice: invoice, readyToBillAt })] })] });
+
+      it('PM sees VERIFIED until Construction marks it, then READY_TO_BILL — never money (ADR-043 decision 1)', async () => {
+        const unmarked = await stageWith(null).service.listMilestones(pm, 'p-1');
+        expect(unmarked[0].releases[0]).toMatchObject({ collectionStatus: 'VERIFIED', amount: null, percentage: null });
+        const marked = await stageWith(null, 'VERIFIED', new Date('2026-10-01')).service.listMilestones(pm, 'p-1');
+        expect(marked[0].releases[0]).toMatchObject({ collectionStatus: 'READY_TO_BILL', amount: null, percentage: null });
+      });
 
       it.each([
         ['NOT_READY', null, 'PLANNED'],
-        ['READY_TO_BILL', null, 'VERIFIED'],
+        ['VERIFIED', null, 'VERIFIED'],
         ['READY_TO_BILL', postedInvoice({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }), 'VERIFIED'],
         ['BILLED', postedInvoice(), 'VERIFIED'],
         ['PART_PAID', postedInvoice({ outstandingAmount: decimal('100000.00') }), 'VERIFIED'],

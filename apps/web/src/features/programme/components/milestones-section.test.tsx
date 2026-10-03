@@ -97,6 +97,7 @@ describe('MilestonesSection — Releases affordance (P2 milestone → payment br
 
   it.each([
     ['NOT_READY', 'Not ready'],
+    ['VERIFIED', 'Verified — awaiting ready to bill'],
     ['READY_TO_BILL', 'Ready to bill'],
     ['BILLED', 'Billed'],
     ['PART_PAID', 'Part paid'],
