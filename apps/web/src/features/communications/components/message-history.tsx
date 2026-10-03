@@ -9,11 +9,12 @@ import { formatDateTime } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
 
 import type { CommunicationResourceType } from '../api';
-import { useCommunications, useResolveCommunication } from '../hooks';
+import { useCommunicationsFor, useResolveCommunication } from '../hooks';
 import { MESSAGE_STATUS_TONE, statusTime } from '../message-status';
 
 export interface MessageHistoryProps {
-  resourceType: CommunicationResourceType;
+  /** One kind of record, or several kept for the same id (an invoice: sends + reminders). */
+  resourceType: CommunicationResourceType | readonly CommunicationResourceType[];
   resourceId: string;
   /** May the viewer settle an UNKNOWN message (manage:receivable)? */
   canResolve: boolean;
@@ -40,7 +41,10 @@ export function MessageHistory({
   showTitle = true,
 }: MessageHistoryProps) {
   const t = useTranslations('common.messaging.history');
-  const messages = useCommunications(resourceType, resourceId);
+  const types = typeof resourceType === 'string' ? [resourceType] : resourceType;
+  const messages = useCommunicationsFor(types, resourceId);
+  // With several kinds listed together, each row says what it was (Invoice / Payment reminder …).
+  const showPurpose = types.length > 1;
 
   if (messages.isPending) return null;
   if (messages.isError) return <Alert variant="error" messages={[t('loadFailed')]} />;
@@ -61,6 +65,7 @@ export function MessageHistory({
               message={message}
               canResolve={canResolve}
               invalidateOnResolve={invalidateOnResolve}
+              showPurpose={showPurpose}
             />
           ))}
         </ul>
@@ -73,10 +78,12 @@ function MessageRow({
   message,
   canResolve,
   invalidateOnResolve,
+  showPurpose = false,
 }: {
   message: OutboundMessageView;
   canResolve: boolean;
   invalidateOnResolve?: ReadonlyArray<readonly unknown[]>;
+  showPurpose?: boolean;
 }) {
   const t = useTranslations('common.messaging.history');
   const locale = useLocale() as 'en';
@@ -110,7 +117,12 @@ function MessageRow({
     <li className="space-y-2 px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-body-sm text-foreground">{t('via', { number })}</p>
+          <p className="text-body-sm text-foreground">
+            {showPurpose ? (
+              <span className="font-medium">{t(`purpose.${message.purpose}`)} · </span>
+            ) : null}
+            {t('via', { number })}
+          </p>
           <p className="text-caption text-muted-foreground">
             {formatDateTime(statusTime(message), locale)}
           </p>

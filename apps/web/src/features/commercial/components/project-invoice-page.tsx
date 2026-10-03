@@ -24,13 +24,15 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { invoiceKeys } from '@/features/accounting/hooks/use-invoices';
 import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
 import { MessageHistory } from '@/features/communications/components/message-history';
+import { InvoiceReminderDialog } from '@/features/communications/components/invoice-reminder-dialog';
+import { daysOverdue, hasOutstanding } from '@/features/communications/reminder-eligibility';
 import { PostingStatus, StatusBadge } from '@/components/status-badge';
 import {
   useAccountingReadiness,
   useLedgerBlocked,
 } from '@/features/finance/hooks/use-accounting-readiness';
 import { ApiError } from '@/lib/api-client';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 
 import { getIssuedInvoiceDocument } from '../api/commercial-api';
 import { useBillingPackages, useCommercialBilling } from '../hooks/use-commercial';
@@ -48,10 +50,14 @@ import { InvoicePaper } from './invoice-paper';
 import { RecordPaymentDialog } from './record-payment-dialog';
 import { SendInvoiceDialog } from './send-invoice-dialog';
 
+/** An invoice's messages: the invoice sends and its reminders (ADR-042). */
+const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
+
 type Pending =
   | 'issue'
   | 'send'
   | 'whatsapp'
+  | 'reminder'
   | 'payment'
   | 'edit'
   | 'delete'
@@ -144,6 +150,7 @@ function InvoiceDocumentView({
   const t = useTranslations('commercial.invoicePage');
   const tDoc = useTranslations('accounting.invoices.docStatus');
   const tPosting = useTranslations('accounting.invoices.postingStatus');
+  const tReminder = useTranslations('common.messaging.reminder');
   const locale = useLocale() as 'en';
   const router = useRouter();
 
@@ -194,6 +201,10 @@ function InvoiceDocumentView({
   const hasBalance =
     document.settlementStatus === 'UNPAID' || document.settlementStatus === 'PARTIALLY_PAID';
   const chasing = collects && hasBalance && lifecycle !== 'PAID';
+  // ADR-042 step 4 — a manual WhatsApp payment / overdue reminder: the WhatsApp send rule plus
+  // something still outstanding (the server refuses a paid invoice the same way).
+  const canRemind =
+    canWhatsApp && hasBalance && lifecycle !== 'PAID' && hasOutstanding(document.balanceDue);
 
   const primaryLabel: Record<'issue' | 'send' | 'payment', string> = {
     issue: t('issue'),
@@ -232,6 +243,9 @@ function InvoiceDocumentView({
       : []),
     ...(canWhatsApp
       ? [{ key: 'whatsapp', label: t('sendWhatsApp'), onSelect: () => setPending('whatsapp') }]
+      : []),
+    ...(canRemind
+      ? [{ key: 'reminder', label: tReminder('action'), onSelect: () => setPending('reminder') }]
       : []),
     ...(canPay && primary !== 'payment'
       ? [{ key: 'payment', label: t('recordPayment'), onSelect: () => setPending('payment') }]
@@ -350,7 +364,7 @@ function InvoiceDocumentView({
 
           {collects ? (
             <MessageHistory
-              resourceType="client_invoice"
+              resourceType={INVOICE_MESSAGE_TYPES}
               resourceId={document.id}
               canResolve={caps.canSend}
               invalidateOnResolve={[commercialInvoiceKeys.all(projectId), invoiceKeys.all]}
@@ -457,6 +471,18 @@ function InvoiceDocumentView({
           invoiceNumber={document.invoiceNumber}
           installmentId={installmentId}
           onClose={() => setPending(null)}
+        />
+      ) : null}
+
+      {canRemind && pending === 'reminder' ? (
+        <InvoiceReminderDialog
+          open
+          onClose={() => setPending(null)}
+          invoiceId={document.id}
+          invoiceNumber={document.invoiceNumber ?? ''}
+          outstanding={formatMoney(document.balanceDue, document.currency, locale)}
+          daysOverdue={daysOverdue(document.dueDate)}
+          invalidate={[commercialInvoiceKeys.all(projectId), invoiceKeys.all]}
         />
       ) : null}
 

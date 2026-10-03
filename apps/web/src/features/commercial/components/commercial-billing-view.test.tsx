@@ -33,6 +33,11 @@ vi.mock('../hooks/use-commercial', () => ({
 vi.mock('./prepare-invoice-dialog', () => ({
   PrepareInvoiceDialog: ({ installmentId }: { installmentId: string }) => <div role="dialog">prepare {installmentId}</div>,
 }));
+vi.mock('@/features/communications/components/invoice-reminder-dialog', () => ({
+  InvoiceReminderDialog: ({ invoiceId, daysOverdue }: { invoiceId: string; daysOverdue: number }) => (
+    <div role="dialog">reminder {invoiceId} {daysOverdue}</div>
+  ),
+}));
 vi.mock('./record-payment-dialog', () => ({
   RecordPaymentDialog: ({ preselectedInvoice }: { preselectedInvoice: { invoiceId: string } | null }) => (
     <div role="dialog">payment {preselectedInvoice?.invoiceId ?? 'none'}</div>
@@ -163,6 +168,42 @@ describe('Billing — invoices and payments', () => {
     expect(within(table).getByText('Overdue')).toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: 'Unpaid (1)' }));
     expect(within(tableIn('Invoices')).queryByText('Separate charge · SC-02 Temporary site power')).not.toBeInTheDocument();
+  });
+
+  it('offers Send reminder on an issued invoice with a balance, to a receivables manager only', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CommercialBillingView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['manage:receivable'],
+    });
+    const table = tableIn('Invoices');
+    const buttons = within(table).getAllByRole('button', { name: /Send reminder/ });
+    // The draft (no number, not posted) gets none; the overdue issued invoice gets one.
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName('Send reminder · INV-2026-0130');
+    await user.click(buttons[0]);
+    expect(screen.getByRole('dialog')).toHaveTextContent('reminder inv-130 9');
+  });
+
+  it('offers no reminder on a paid invoice', () => {
+    billing.invoices = [
+      invoiceRow({
+        id: 'inv-paid',
+        invoiceNumber: 'INV-2026-0131',
+        documentStatus: 'APPROVED',
+        postingStatus: 'POSTED',
+        status: 'PAID',
+        outstandingAmount: '0.00',
+      }),
+    ];
+    renderWithProviders(<CommercialBillingView projectId="p1" workspace={workspaceFixture()} />, {
+      permissions: ['manage:receivable'],
+    });
+    expect(screen.queryByRole('button', { name: /Send reminder/ })).not.toBeInTheDocument();
+  });
+
+  it('hides Send reminder from a viewer who cannot manage receivables', () => {
+    render(workspaceFixture());
+    expect(screen.queryByRole('button', { name: /Send reminder/ })).not.toBeInTheDocument();
   });
 
   it('lists payments with date, receipt number, bank reference, account and what they paid', () => {

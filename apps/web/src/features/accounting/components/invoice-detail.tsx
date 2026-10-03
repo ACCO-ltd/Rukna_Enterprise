@@ -17,6 +17,8 @@ import { AccountingSetupNotice } from '@/features/finance/components/accounting-
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
 import { MessageHistory } from '@/features/communications/components/message-history';
+import { InvoiceReminderDialog } from '@/features/communications/components/invoice-reminder-dialog';
+import { canSendReminder, daysOverdue } from '@/features/communications/reminder-eligibility';
 
 import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
@@ -33,7 +35,10 @@ import { InvoiceDocumentPreview, MobileInvoicePreviewTrigger } from './invoice-d
 import { InvoiceStatusBadges } from './invoice-status-badges';
 import { PostInvoiceDialog } from './post-invoice-dialog';
 
-type OpenDialog = 'approve' | 'post' | 'reverse' | 'whatsapp' | null;
+/** An invoice's messages: the invoice sends and its reminders (ADR-042). */
+const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
+
+type OpenDialog = 'approve' | 'post' | 'reverse' | 'whatsapp' | 'reminder' | null;
 
 export function InvoiceDetail({
   invoiceId,
@@ -52,6 +57,7 @@ export function InvoiceDetail({
   const t = useTranslations('accounting.invoices');
   const tCommon = useTranslations('common');
   const tLifecycle = useTranslations('common.lifecycleErrors');
+  const tReminder = useTranslations('common.messaging.reminder');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
   const ledgerBlockedState = useLedgerBlocked();
@@ -97,6 +103,8 @@ export function InvoiceDetail({
     data.postingStatus === 'POSTED' &&
     data.documentStatus !== 'CANCELLED' &&
     Boolean(data.invoiceNumber);
+  // ADR-042 step 4 — a manual payment / overdue reminder while something is still outstanding.
+  const remindable = canSendReminder(data);
   // Post needs a ready ledger. When it is not, the action is withheld and the notice below the
   // header says why and where to fix it — never a button that fails and rolls back (A7).
   const ledgerBlocked = ledgerBlockedState;
@@ -164,6 +172,12 @@ export function InvoiceDetail({
               {issued ? (
                 <Button variant="outline" onClick={() => setDialog('whatsapp')}>
                   {t('sendWhatsApp')}
+                </Button>
+              ) : null}
+
+              {remindable ? (
+                <Button variant="outline" onClick={() => setDialog('reminder')}>
+                  {tReminder('action')}
                 </Button>
               ) : null}
 
@@ -237,7 +251,7 @@ export function InvoiceDetail({
           {issued && mayManage ? (
             <RecordPanel title={t('messagesHeading')}>
               <MessageHistory
-                resourceType="client_invoice"
+                resourceType={INVOICE_MESSAGE_TYPES}
                 resourceId={invoiceId}
                 canResolve
                 showTitle={false}
@@ -286,6 +300,18 @@ export function InvoiceDetail({
           invoiceId={invoiceId}
           title={t('whatsappTitle')}
           subtitle={t('whatsappSubtitle', { number: data.invoiceNumber ?? '' })}
+          invalidate={[invoiceKeys.all, ['commercial']]}
+        />
+      ) : null}
+
+      {remindable && mayManage ? (
+        <InvoiceReminderDialog
+          open={dialog === 'reminder'}
+          onClose={() => setDialog(null)}
+          invoiceId={invoiceId}
+          invoiceNumber={data.invoiceNumber ?? ''}
+          outstanding={money(data.outstandingAmount)}
+          daysOverdue={daysOverdue(data.dueDate)}
           invalidate={[invoiceKeys.all, ['commercial']]}
         />
       ) : null}

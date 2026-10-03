@@ -13,8 +13,10 @@ import type {
 import { ActionList, Alert, Button, MoneyDisplay, Notice, Skeleton, StatusPill, ViewSwitcher, type ActionListItem } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
-import { formatDate } from '@/lib/format';
-import { usePermissions } from '@/features/auth/permissions/can';
+import { formatDate, formatMoney } from '@/lib/format';
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { InvoiceReminderDialog } from '@/features/communications/components/invoice-reminder-dialog';
+import { canSendReminder } from '@/features/communications/reminder-eligibility';
 import { statusTone } from '@/lib/status-registry';
 import { useAccountingReadiness } from '@/features/finance/hooks/use-accounting-readiness';
 
@@ -62,6 +64,11 @@ export function CommercialBillingView({
   const payable = receivables.filter((row) => row.canRecordPayment);
   const { capabilities, financialsVisible } = workspace;
   const canRecordPayment = capabilities.canRecordPayment && financialsVisible;
+  // ADR-042 step 4 — manual WhatsApp reminder, for a viewer who manages receivables (the API's gate).
+  const { can } = usePermissions();
+  const canRemind = can(ACCOUNTING_PERMISSIONS.manageReceivables) && financialsVisible;
+  const [reminderFor, setReminderFor] = useState<CommercialInvoiceRow | null>(null);
+  const locale = useLocale() as 'en' | 'ar';
 
   return (
     <div className="space-y-4">
@@ -98,7 +105,12 @@ export function CommercialBillingView({
         </Alert>
       ) : (
         <>
-          <InvoicesPanel projectId={projectId} invoices={billing.data.invoices} financialsVisible={financialsVisible} />
+          <InvoicesPanel
+            projectId={projectId}
+            invoices={billing.data.invoices}
+            financialsVisible={financialsVisible}
+            onRemind={canRemind ? setReminderFor : undefined}
+          />
           <PaymentsPanel
             receipts={billing.data.receipts}
             financialsVisible={financialsVisible}
@@ -109,6 +121,18 @@ export function CommercialBillingView({
 
       {prepareFor ? (
         <PrepareInvoiceDialog projectId={projectId} installmentId={prepareFor} open onClose={() => setPrepareFor(null)} />
+      ) : null}
+
+      {reminderFor ? (
+        <InvoiceReminderDialog
+          open
+          onClose={() => setReminderFor(null)}
+          invoiceId={reminderFor.id}
+          invoiceNumber={reminderFor.invoiceNumber ?? ''}
+          outstanding={formatMoney(reminderFor.outstandingAmount, reminderFor.currency, locale)}
+          daysOverdue={reminderFor.daysOverdue}
+          invalidate={[['commercial']]}
+        />
       ) : null}
 
       {paymentFor !== null ? (
@@ -336,11 +360,15 @@ function InvoicesPanel({
   projectId,
   invoices,
   financialsVisible,
+  onRemind,
 }: {
   projectId: string;
   invoices: CommercialInvoiceRow[];
   financialsVisible: boolean;
+  /** Set when the viewer may send a WhatsApp reminder; offered on rows with a balance. */
+  onRemind?: (row: CommercialInvoiceRow) => void;
 }) {
+  const tReminder = useTranslations('common.messaging.reminder');
   const t = useTranslations('commercial.billingView');
   const tDoc = useTranslations('commercial.billingView.documentStatus');
   const tCol = useTranslations('commercial.billingView.collectionStatus');
@@ -422,6 +450,21 @@ function InvoicesPanel({
         data={rows}
         rowKey={(row) => row.id}
         rowHref={(row) => `/projects/${projectId}/commercial/invoices/${row.id}`}
+        rowActions={
+          onRemind
+            ? (row) =>
+                canSendReminder(row) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRemind(row)}
+                    aria-label={`${tReminder('action')} · ${row.invoiceNumber ?? ''}`}
+                  >
+                    {tReminder('action')}
+                  </Button>
+                ) : null
+            : undefined
+        }
         // A project holds a handful of invoices; search appears only when there are enough to need it.
         toolbar={live.length > 20}
         sortControl={false}

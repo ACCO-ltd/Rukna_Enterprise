@@ -2937,6 +2937,9 @@ model InvoiceFollowUp {
   occurredAt     DateTime       @map("occurred_at")
   recordedAt     DateTime       @default(now()) @map("recorded_at")
   recordedBy     String         @map("recorded_by")
+  // ADR-042 WhatsApp V1 step 4 — the OutboundMessage (a reminder Rukna sent on WhatsApp) this
+  // follow-up records; null for a hand-recorded follow-up. Unique: one follow-up per message.
+  outboundMessageId String?     @unique @map("outbound_message_id")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 

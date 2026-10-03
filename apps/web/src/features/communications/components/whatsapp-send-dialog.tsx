@@ -37,6 +37,7 @@ const OTHER = '__other__';
 const HARD_BLOCKS: ReadonlySet<WhatsAppSendBlockedReason> = new Set([
   'NOT_POSTED',
   'REVERSED',
+  'NOTHING_OUTSTANDING',
   'WHATSAPP_NOT_CONFIGURED',
   'TEMPLATE_NOT_CONFIGURED',
 ]);
@@ -158,6 +159,8 @@ function WhatsAppSendDialogBody({
     ...(extraItems ?? []),
   ];
   const multi = items.length > 1;
+  // A text-only message (a reminder) has no attachment to list.
+  const textOnly = Boolean(data) && !data?.filename && !multi;
   // Settled = WhatsApp took it (reached) or may have (unknown): never sent again from here.
   const isDone = (key: string) => {
     const m = results[key]?.message;
@@ -338,25 +341,29 @@ function WhatsAppSendDialogBody({
               >
                 {data.message}
               </p>
-              <p className="text-caption text-muted-foreground">{t('messageHint')}</p>
+              <p className="text-caption text-muted-foreground">
+                {textOnly ? t('messageHintTextOnly') : t('messageHint')}
+              </p>
             </div>
 
-            <div className="space-y-1.5 text-body-sm">
-              <span className="text-muted-foreground">
-                {multi ? t('attachmentsMany', { count: items.length }) : t('attachment')}
-              </span>
-              <ul className="space-y-1">
-                {items.map((item) => (
-                  <li
-                    key={item.key}
-                    className="flex min-w-0 items-center gap-1.5 font-medium text-foreground"
-                  >
-                    <FileText size={16} aria-hidden="true" className="shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {textOnly ? null : (
+              <div className="space-y-1.5 text-body-sm">
+                <span className="text-muted-foreground">
+                  {multi ? t('attachmentsMany', { count: items.length }) : t('attachment')}
+                </span>
+                <ul className="space-y-1">
+                  {items.map((item) => (
+                    <li
+                      key={item.key}
+                      className="flex min-w-0 items-center gap-1.5 font-medium text-foreground"
+                    >
+                      <FileText size={16} aria-hidden="true" className="shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </>
         ) : null}
       </FormDialogBody>

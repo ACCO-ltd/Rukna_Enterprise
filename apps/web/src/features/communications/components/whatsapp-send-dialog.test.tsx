@@ -158,6 +158,24 @@ describe('WhatsAppSendDialog', () => {
     );
   });
 
+  it('a text-only message (a reminder) lists no attachment', async () => {
+    renderDialog({ preview: preview({ filename: null }) });
+    expect(await screen.findByText(/please find attached invoice INV-000042/)).toBeInTheDocument();
+    expect(screen.queryByText('Attachment')).not.toBeInTheDocument();
+    expect(screen.getByText(/sends this approved message as it is/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send on WhatsApp' })).toBeEnabled();
+  });
+
+  it('a paid invoice blocks the reminder in words, with no Send button', async () => {
+    renderDialog({
+      preview: preview({ filename: null, sendable: false, blockedReason: 'NOTHING_OUTSTANDING' }),
+    });
+    expect(
+      await screen.findByText(/fully paid, so there is nothing to remind/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send on WhatsApp' })).not.toBeInTheDocument();
+  });
+
   it('explains a hard block in words with no Send button', async () => {
     renderDialog({
       preview: preview({ sendable: false, blockedReason: 'TEMPLATE_NOT_CONFIGURED' }),

@@ -203,7 +203,8 @@
         "WHATSAPP_NOT_CONFIGURED": "WhatsApp sending is not set up on this server. Ask an administrator to connect WhatsApp.",
         "TEMPLATE_NOT_CONFIGURED": "The WhatsApp message template for this is not set up on this server. Ask an administrator to add it.",
         "NO_RECIPIENT": "This client has no saved WhatsApp or phone number. Enter the number to send to.",
-        "REVERSED": "This document has been reversed, so it cannot be sent."
+        "REVERSED": "This document has been reversed, so it cannot be sent.",
+        "NOTHING_OUTSTANDING": "This invoice is fully paid, so there is nothing to remind the client about."
       },
       "sentManyToast": "Sent {count} invoices on WhatsApp to {number}",
       "attachmentsMany": "{count} messages, one attachment each",
@@ -212,7 +213,8 @@
         "notSent": "Not sent yet",
         "sent": "Sent",
         "unknown": "Not confirmed"
-      }
+      },
+      "messageHintTextOnly": "WhatsApp sends this approved message as it is. It cannot be edited."
     },
     "history": {
       "title": "Messages",
@@ -232,7 +234,21 @@
       "markFailed": "Mark as not sent",
       "resolveFailed": "Could not update the message. Try again.",
       "resolvedSent": "Marked as sent",
-      "resolvedFailed": "Marked as not sent — you can send it again"
+      "resolvedFailed": "Marked as not sent — you can send it again",
+      "purpose": {
+        "INVOICE": "Invoice",
+        "RECEIPT": "Receipt",
+        "PAYMENT_REMINDER": "Payment reminder",
+        "OVERDUE_REMINDER": "Overdue reminder"
+      }
+    },
+    "reminder": {
+      "action": "Send reminder",
+      "titlePayment": "Send payment reminder on WhatsApp",
+      "titleOverdue": "Send overdue reminder on WhatsApp",
+      "title": "Send reminder on WhatsApp",
+      "subtitle": "Invoice {number} · {amount} outstanding. Rukna records the reminder as a follow-up.",
+      "subtitleOverdue": "Invoice {number} · {amount} outstanding, {days, plural, one {# day} other {# days}} overdue. Rukna records the reminder as a follow-up."
     }
   }
 }

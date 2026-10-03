@@ -23,6 +23,7 @@ vi.mock('../hooks/use-invoices', () => ({
 }));
 vi.mock('@/features/communications/hooks', () => ({
   useCommunications: () => ({ isPending: false, isError: false, data: [] }),
+  useCommunicationsFor: () => ({ isPending: false, isError: false, data: [] }),
   useResolveCommunication: () => ({ isPending: false, mutate: vi.fn() }),
   communicationKeys: { all: ['communications'], resource: () => ['communications'] },
 }));
@@ -146,6 +147,25 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.getByText('Balance due')).toBeInTheDocument();
     expect(screen.queryByText('Draft total')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reverse' })).toBeInTheDocument();
+    // ADR-042 step 4 — something is still owed, so a WhatsApp reminder is offered.
+    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
+
+  it('offers no reminder once the invoice is fully paid', () => {
+    mocks.useInvoice.mockReturnValue({
+      data: invoice({
+        invoiceNumber: 'INV-2026-0042',
+        documentStatus: 'APPROVED',
+        postingStatus: 'POSTED',
+        outstandingAmount: '0.00',
+      }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
+      permissions: ['manage:receivable'],
+    });
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
   });
 });
 
