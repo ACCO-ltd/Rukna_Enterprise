@@ -865,16 +865,16 @@ export class CommercialBillingService {
         }
 
         // D2 — preparing IS the ready-to-bill decision now; keep its audit trail.
-        // Conditional: if Construction marked it meanwhile, their mark stands and no event is added.
-        const markedAt = installment.readyToBillAt
-          ? null
-          : await this.repo.markInstallmentReadyToBill(
-              tx as never,
-              orgId,
-              installmentId,
-              identity.userId,
-              'Prepared for billing',
-            );
+        // Always attempted, under the row lock taken above — never trusting the pre-lock read: an
+        // undo that committed first leaves it unset, so preparing must mark it (D2). Conditional
+        // (`readyToBillAt IS NULL`): an existing mark stands and no second event is added.
+        const markedAt = await this.repo.markInstallmentReadyToBill(
+          tx as never,
+          orgId,
+          installmentId,
+          identity.userId,
+          'Prepared for billing',
+        );
         if (markedAt) {
           await this.auditOutbox.record(tx, {
             organizationId: orgId,

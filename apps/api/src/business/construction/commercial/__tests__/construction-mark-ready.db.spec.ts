@@ -7,6 +7,16 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import type { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import type { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import type { InvoiceDocumentService } from '../../../accounting/accounts-receivable/application/invoice-document.service.js';
+import type { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
+import { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
+import { ClientInvoiceRepository } from '../../../accounting/accounts-receivable/infrastructure/client-invoice.repository.js';
+import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
+import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
+import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
+import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
+import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
+import { VariationOrderService } from '../../variations/application/variation-order.service.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
 import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
@@ -58,15 +68,29 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
 
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;
     const projectAccess = { assertContract: async () => undefined, assertMember: async () => undefined } as unknown as ProjectAccessService;
+    // Real prepare path (drafts only — nothing is posted, so no posting port / resolver is used).
+    await seedDefaultSalesTax(prisma, orgId);
+    const auditOutbox = new TransactionalAuditOutboxService();
+    const clientInvoiceService = new ClientInvoiceService(
+      tenancy,
+      new ClientInvoiceRepository(),
+      new DocumentSequenceRepository(),
+      {} as never,
+      {} as never,
+      {} as unknown as InvoiceDocumentService,
+      {} as unknown as PlatformFileService,
+      new TaxCodeService(tenancy, new TaxCodeRepository()),
+    );
+    const variationRepo = new VariationOrderPrismaRepository();
     service = new CommercialBillingService(
       tenancy,
       projectAccess,
       new CommercialPrismaRepository(),
+      variationRepo,
+      new VariationOrderService(tenancy, variationRepo, projectAccess, auditOutbox),
+      clientInvoiceService,
       {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      new TransactionalAuditOutboxService(),
+      auditOutbox,
     );
 
     const project = await prisma.project.create({
@@ -121,7 +145,9 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
   afterAll(async () => {
     await prisma.$executeRaw`DELETE FROM audit_outbox_events WHERE organization_id = ${orgId}`;
     await prisma.auditLog.deleteMany({ where: { orgId } });
+    await prisma.variationBillingAllocation.deleteMany({ where: { organizationId: orgId } });
     await prisma.clientInvoice.deleteMany({ where: { organizationId: orgId } });
+    await prisma.documentNumberSequence.deleteMany({ where: { organizationId: orgId } });
     await prisma.contractPaymentInstallment.deleteMany({ where: { contract: { organizationId: orgId } } });
     await prisma.contract.deleteMany({ where: { organizationId: orgId } });
     await prisma.client.deleteMany({ where: { organizationId: orgId } });
@@ -131,6 +157,7 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
     await prisma.rolePermission.deleteMany({ where: { role: { organizationId: orgId } } });
     await prisma.role.deleteMany({ where: { organizationId: orgId } });
     await prisma.user.deleteMany({ where: { organizationId: orgId } });
+    await cleanupSalesTax(prisma, orgId);
     await prisma.$executeRaw`DELETE FROM organizations WHERE id = ${orgId}`;
     await prisma.$disconnect();
   });
@@ -226,47 +253,73 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
     expect(events).toBe(1);
   });
 
-  it('MR-10: undo racing Finance’s prepare waits for it, then is refused (409) — readiness stays', async () => {
-    const raced = (
+  // ─── Undo ready vs Finance's REAL prepare, both lock orders ─────────────────────
+  //
+  // A gate transaction holds the stage's row lock while both commands pass their (pre-lock) fast
+  // checks and queue on the lock; releasing it lets them run in queue order (Postgres grants a row
+  // lock to waiters first-come). Whatever the order, the prepared draft must end up marked ready
+  // (it is in Finance's To bill queue), and undo either ran first (prepare then re-marks) or 409s.
+
+  async function readyAdvanceStage(name: string, sortOrder: number) {
+    const id = (
       await prisma.contractPaymentInstallment.create({
-        data: { contractId, name: 'Race 2', sortOrder: 10, percentage: new Decimal('0.0000'), triggerType: 'ADVANCE', milestoneLabel: 'Race 2' },
+        data: { contractId, name, sortOrder, percentage: new Decimal('0.0100'), triggerType: 'ADVANCE', milestoneLabel: name },
       })
     ).id;
-    await service.markReadyToBill(identity, raced, undefined, projectId);
+    await service.markReadyToBill(identity, id, undefined, projectId);
+    return id;
+  }
 
-    // Stand-in for prepare: take the stage's row lock, create the draft, hold until released.
+  async function race(stageId: string, first: 'undo' | 'prepare') {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     let locked!: () => void;
     const holding = new Promise<void>((resolve) => (locked = resolve));
-    const prepare = prisma.$transaction(
+    const holder = prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT id FROM contract_payment_installments WHERE id = ${raced} FOR UPDATE`;
-        await tx.clientInvoice.create({
-          data: {
-            organizationId: orgId, clientId, invoiceDate: new Date('2026-10-01'), currencyCode: 'USD',
-            subtotal: new Decimal('0'), vatAmount: new Decimal('0'), totalAmount: new Decimal('0'), outstandingAmount: new Decimal('0'),
-            billingAddressSnapshot: {}, createdBy: identity.userId, sourceInstallmentId: raced, documentStatus: 'DRAFT',
-          },
-        });
+        await tx.$queryRaw`SELECT id FROM contract_payment_installments WHERE id = ${stageId} FOR UPDATE`;
         locked();
         await gate;
       },
-      { timeout: 20000 },
+      { timeout: 30000 },
     );
     await holding;
-    // The undo's pre-check sees no invoice yet (uncommitted); it must block on the lock, then refuse.
-    const undo = service.revokeReadyToBill(identity, raced, undefined, projectId);
-    const outcome = undo.then(
-      () => 'revoked',
-      (error: { status?: number; getStatus?: () => number }) => error.getStatus?.() ?? error.status,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    const settle = <T,>(p: Promise<T>) =>
+      p.then(
+        () => 'ok' as const,
+        (error: { getStatus?: () => number; status?: number }) => error.getStatus?.() ?? error.status ?? 'error',
+      );
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 700));
+    const runUndo = () => settle(service.revokeReadyToBill(identity, stageId, undefined, projectId));
+    const runPrepare = () => settle(service.preparePackage(identity, projectId, stageId, { invoiceDate: '2026-10-01' }));
+    const a = first === 'undo' ? runUndo() : runPrepare();
+    await pause(); // the first command has done its fast checks and is queued on the lock
+    const b = first === 'undo' ? runPrepare() : runUndo();
+    await pause();
     release();
-    await prepare;
-    expect(await outcome).toBe(409);
-    const row = await prisma.contractPaymentInstallment.findUniqueOrThrow({ where: { id: raced } });
-    expect(row.readyToBillAt).not.toBeNull();
+    await holder;
+    const [undo, prepare] = first === 'undo' ? [await a, await b] : [await b, await a];
+    const row = await prisma.contractPaymentInstallment.findUniqueOrThrow({ where: { id: stageId } });
+    const draft = await prisma.clientInvoice.findFirst({ where: { sourceInstallmentId: stageId, documentStatus: 'DRAFT' } });
+    return { undo, prepare, readyToBillAt: row.readyToBillAt, draft };
+  }
+
+  it('MR-10: undo queued before prepare — undo runs, prepare re-marks under the lock (never a draft left unmarked)', async () => {
+    const stageId = await readyAdvanceStage('Race undo-first', 10);
+    const r = await race(stageId, 'undo');
+    expect(r.prepare).toBe('ok');
+    expect(r.draft).not.toBeNull();
+    expect(r.readyToBillAt).not.toBeNull();
+    expect(r.undo).toBe('ok');
+  });
+
+  it('MR-11: prepare queued before undo — prepare runs, undo is refused 409, readiness stays', async () => {
+    const stageId = await readyAdvanceStage('Race prepare-first', 11);
+    const r = await race(stageId, 'prepare');
+    expect(r.prepare).toBe('ok');
+    expect(r.draft).not.toBeNull();
+    expect(r.readyToBillAt).not.toBeNull();
+    expect(r.undo).toBe(409);
   });
 
   it('MR-08: a stage is not found through another project’s route', async () => {
