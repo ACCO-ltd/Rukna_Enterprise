@@ -36,8 +36,20 @@ export class ProgrammeRepository {
             name: true,
             percentage: true,
             triggerType: true,
-            contract: { select: { contractValue: true, currency: true } },
-            clientInvoice: { select: { id: true } },
+            // ADR-043 Phase 3 — the facts the money-free collection status reads.
+            readyToBillAt: true,
+            dueDate: true,
+            contract: { select: { contractValue: true, currency: true, status: true } },
+            clientInvoice: {
+              select: {
+                id: true,
+                documentStatus: true,
+                postingStatus: true,
+                totalAmount: true,
+                outstandingAmount: true,
+                dueDate: true,
+              },
+            },
           },
         },
         // ADR-021 amendment (2026-09-28) — the packages that make up this stage, with the leaf ids

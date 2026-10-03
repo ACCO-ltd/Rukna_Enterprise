@@ -60,6 +60,7 @@ import {
   deriveInvoiceState,
   deriveReleasedBy,
 } from '../domain/commercial-workspace.policy.js';
+import { stageCollectionStatus } from '../domain/stage-collection-status.policy.js';
 import {
   computeReceivablePosition,
   isLiveStageInvoice,
@@ -1251,6 +1252,13 @@ export class CommercialService {
         releasedBy: deriveReleasedBy(releaseFacts),
         invoiceId: inv?.id ?? null,
         invoiceState: deriveInvoiceState(inv),
+        // ADR-043 Phase 3 — the money-free status project roles read; present whatever the
+        // caller's money visibility (a status is not money; the amounts above stay redacted).
+        collectionStatus: stageCollectionStatus(
+          { ...inst, contractStatus: contract.status },
+          inv ?? null,
+          today,
+        ),
         billingEligibility: stageBillingEligibility({
           installmentId: inst.id,
           contractStatus: contract.status,
