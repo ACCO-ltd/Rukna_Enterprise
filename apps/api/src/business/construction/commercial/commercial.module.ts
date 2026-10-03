@@ -48,6 +48,6 @@ import { CommercialController } from './presentation/commercial.controller.js';
     CommercialWorkspaceService,
   ],
   controllers: [CommercialController],
-  exports: [CommercialService, CommercialBillingService],
+  exports: [CommercialService, CommercialBillingService, CommercialPrismaRepository],
 })
 export class CommercialModule {}

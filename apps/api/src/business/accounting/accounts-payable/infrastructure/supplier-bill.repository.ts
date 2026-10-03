@@ -65,6 +65,17 @@ export function normalizeSupplierInvoiceNumber(value: string): string {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+/**
+ * A bill belongs to a project when it is coded to it on its header or on any line — a bill for
+ * several projects is coded per line, and each of those projects must see it. One rule for the
+ * bills list (`GET /bills?projectId`) and the Finance portfolio's bills to pay (ADR-043).
+ */
+export function supplierBillProjectWhere(projectId: string | { in: string[] }) {
+  return {
+    OR: [{ projectId }, { lines: { some: { projectId } } }],
+  };
+}
+
 @Injectable()
 export class SupplierBillRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
@@ -101,14 +112,7 @@ export class SupplierBillRepository {
       where: {
         organizationId,
         ...(filter.supplierId ? { supplierId: filter.supplierId } : {}),
-        ...(filter.projectId
-          ? {
-              OR: [
-                { projectId: filter.projectId },
-                { lines: { some: { projectId: filter.projectId } } },
-              ],
-            }
-          : {}),
+        ...(filter.projectId ? supplierBillProjectWhere(filter.projectId) : {}),
       },
       include: { supplier: { select: { id: true, code: true, name: true } } },
       orderBy: { billDate: 'desc' },

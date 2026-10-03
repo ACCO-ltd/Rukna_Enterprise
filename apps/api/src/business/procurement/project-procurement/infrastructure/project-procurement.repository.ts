@@ -39,6 +39,18 @@ export class ProjectProcurementRepository {
     });
   }
 
+  /**
+   * `groupByStage` for many projects in one query (ADR-043 Finance portfolio) — same ledger, same
+   * filter, grouped by project as well. Fold each project's rows with `addStage` + `buildPosition`.
+   */
+  groupByProjectAndStage(prisma: TenantPrisma, organizationId: string, projectIds: string[]) {
+    return prisma.commitmentLedgerEntry.groupBy({
+      by: ['projectId', 'stage'],
+      where: { organizationId, projectId: { in: projectIds } },
+      _sum: { amount: true },
+    });
+  }
+
   /** Ledger totals per BOQ node (null = the project-level, non-BOQ bucket) and stage. */
   groupByBoqNodeAndStage(
     prisma: TenantPrisma,

@@ -60,6 +60,11 @@ import {
   deriveInvoiceState,
   deriveReleasedBy,
 } from '../domain/commercial-workspace.policy.js';
+import {
+  computeReceivablePosition,
+  isLiveStageInvoice,
+  scheduleBaseValue,
+} from '../domain/receivable-position.js';
 
 const ZERO = new Decimal(0);
 
@@ -1148,14 +1153,12 @@ export class CommercialService {
     // A cancelled draft is not the stage's invoice (deleting a draft also releases its source tag).
     const byInstallment = new Map(
       invoices
-        .filter((inv) => inv.sourceInstallmentId && inv.documentStatus !== 'CANCELLED')
+        .filter((inv) => inv.sourceInstallmentId && isLiveStageInvoice(inv))
         .map((inv) => [inv.sourceInstallmentId, inv]),
     );
     // T-6 — the schedule is frozen against the base value. Fall back to contractValue for a legacy
     // contract whose base was never set (M-4: never fail a legacy contract).
-    const baseValue = new Decimal(
-      (contract.baseContractValue ?? contract.contractValue).toString(),
-    );
+    const baseValue = scheduleBaseValue(contract);
 
     // Fraction of a posted invoice already collected (0..1). Non-posted invoices count as 0.
     const collectedFraction = (inv: InvoiceRow): Decimal => {
@@ -1681,20 +1684,21 @@ export class CommercialService {
         draftInvoiceCount: null,
       };
     } else {
-      const grossIssued = overviewData.invoices.reduce((s, i) => s.plus(i.totalAmount), ZERO);
-      const outstanding = overviewData.invoices.reduce((s, i) => s.plus(i.outstandingAmount), ZERO);
-      // D5 — the one overdue rule (whole UTC days past due > 0, server clock), as billing uses.
-      const overdue = overviewData.invoices.reduce((s, i) => {
-        if (!i.dueDate || daysPastDue(i.dueDate, today) <= 0) return s;
-        return i.outstandingAmount.gt(ZERO) ? s.plus(i.outstandingAmount) : s;
-      }, ZERO);
+      // The one receivable formula, shared with the Finance portfolio (ADR-043). D5 — the one
+      // overdue rule (whole UTC days past due > 0, server clock), as billing uses.
+      const position = computeReceivablePosition({
+        invoices: overviewData.invoices,
+        postedCreditNotesSum: overviewData.postedCreditNotesSum,
+        collectedSum: overviewData.collectedSum,
+        today,
+      });
       financialPosition = {
-        grossIssued: grossIssued.toFixed(2),
+        grossIssued: position.grossIssued.toFixed(2),
         postedCreditNotes: overviewData.postedCreditNotesSum.toFixed(2),
-        netBilled: grossIssued.minus(overviewData.postedCreditNotesSum).toFixed(2),
-        collected: overviewData.collectedSum.toFixed(2),
-        outstanding: outstanding.toFixed(2),
-        overdue: overdue.toFixed(2),
+        netBilled: position.netBilled.toFixed(2),
+        collected: position.collected.toFixed(2),
+        outstanding: position.outstanding.toFixed(2),
+        overdue: position.overdue.toFixed(2),
         draftInvoiceCount: overviewData.draftInvoiceCount,
       };
     }

@@ -71,6 +71,35 @@ export interface InvoiceCollectionData {
 
 export type CollectionDataByInvoice = Map<string, InvoiceCollectionData>;
 
+/** One project's posted receivables — see `findPostedReceivablesByProject`. */
+export interface PostedReceivables {
+  invoices: {
+    id: string;
+    invoiceNumber: string | null;
+    invoiceDate: Date;
+    dueDate: Date | null;
+    totalAmount: Decimal;
+    outstandingAmount: Decimal;
+    sourceInstallmentId: string | null;
+    deliveryCount: number;
+  }[];
+  postedCreditNotesSum: Decimal;
+  collectedSum: Decimal;
+}
+
+/**
+ * A project's live client contract: the CLIENT_CONTRACT that is not cancelled or terminated (the
+ * newest wins). One rule for `findMainContract` and the Finance portfolio's batched read.
+ */
+export function mainContractWhere(organizationId: string, projectId: string | { in: string[] }) {
+  return {
+    organizationId,
+    projectId,
+    contractKind: 'CLIENT_CONTRACT' as const,
+    status: { notIn: ['CANCELLED', 'TERMINATED'] as never[] },
+  };
+}
+
 /**
  * Read-only aggregation for the Commercial workspace. Construction reads AR data
  * (ClientInvoice, ClientReceiptAllocation) — construction → accounting, allowed by
@@ -81,12 +110,7 @@ export class CommercialPrismaRepository {
   /** The effective (non-terminal) main client contract for a project, with its terms. */
   findMainContract(prisma: TenantPrisma, organizationId: string, projectId: string) {
     return prisma.contract.findFirst({
-      where: {
-        organizationId,
-        projectId,
-        contractKind: 'CLIENT_CONTRACT',
-        status: { notIn: ['CANCELLED', 'TERMINATED'] as never[] },
-      },
+      where: mainContractWhere(organizationId, projectId),
       orderBy: { createdAt: 'desc' },
       include: {
         client: { select: { id: true, name: true } },
@@ -777,19 +801,7 @@ export class CommercialPrismaRepository {
     prisma: TenantPrisma,
     organizationId: string,
     projectId: string,
-  ): Promise<{
-    invoices: {
-      id: string;
-      invoiceNumber: string | null;
-      invoiceDate: Date;
-      dueDate: Date | null;
-      totalAmount: Decimal;
-      outstandingAmount: Decimal;
-      sourceInstallmentId: string | null;
-      deliveryCount: number;
-    }[];
-    postedCreditNotesSum: Decimal;
-    collectedSum: Decimal;
+  ): Promise<PostedReceivables & {
     collectionData: CollectionDataByInvoice;
     /** Live invoices not yet posted (draft or approved) — raised, but not billed yet. */
     draftInvoiceCount: number;
@@ -802,10 +814,36 @@ export class CommercialPrismaRepository {
         postingStatus: { in: ['NOT_POSTED', 'PENDING', 'FAILED'] },
       },
     });
+    const receivables = (await this.findPostedReceivablesByProject(prisma, organizationId, [projectId])).get(
+      projectId,
+    ) ?? { invoices: [], postedCreditNotesSum: new Decimal(0), collectedSum: new Decimal(0) };
+    const invoiceIds = receivables.invoices.map((i) => i.id);
+    const collectionData: CollectionDataByInvoice =
+      invoiceIds.length === 0 ? new Map() : await this.findInvoiceCollectionData(prisma, organizationId, invoiceIds);
+
+    return { ...receivables, collectionData, draftInvoiceCount };
+  }
+
+  /**
+   * The posted receivables of several projects in four queries — the one definition behind the
+   * Commercial Overview (one project) and the Finance portfolio (ADR-043, many projects).
+   *
+   * Per project: every POSTED invoice, the POSTED credit-note total against them and the POSTED
+   * receipt-allocation total against them. A project with no posted invoice is absent from the map.
+   */
+  async findPostedReceivablesByProject(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectIds: string[],
+  ): Promise<Map<string, PostedReceivables>> {
+    const result = new Map<string, PostedReceivables>();
+    if (projectIds.length === 0) return result;
+
     const rawInvoices = await prisma.clientInvoice.findMany({
-      where: { organizationId, projectId, postingStatus: 'POSTED' },
+      where: { organizationId, projectId: { in: projectIds }, postingStatus: 'POSTED' },
       select: {
         id: true,
+        projectId: true,
         invoiceNumber: true,
         invoiceDate: true,
         dueDate: true,
@@ -815,49 +853,91 @@ export class CommercialPrismaRepository {
         _count: { select: { deliveries: true } },
       },
     });
+    if (rawInvoices.length === 0) return result;
 
-    const invoices = rawInvoices.map((inv) => ({
-      id: inv.id,
-      invoiceNumber: inv.invoiceNumber,
-      invoiceDate: inv.invoiceDate,
-      dueDate: inv.dueDate,
-      totalAmount: new Decimal(inv.totalAmount.toString()),
-      outstandingAmount: new Decimal(inv.outstandingAmount.toString()),
-      sourceInstallmentId: inv.sourceInstallmentId,
-      deliveryCount: inv._count.deliveries,
-    }));
-
-    const invoiceIds = invoices.map((i) => i.id);
-
-    if (invoiceIds.length === 0) {
-      return {
-        invoices,
+    const projectOfInvoice = new Map<string, string>();
+    for (const inv of rawInvoices) {
+      if (!inv.projectId) continue;
+      projectOfInvoice.set(inv.id, inv.projectId);
+      const entry = result.get(inv.projectId) ?? {
+        invoices: [],
         postedCreditNotesSum: new Decimal(0),
         collectedSum: new Decimal(0),
-        collectionData: new Map(),
-        draftInvoiceCount,
       };
+      entry.invoices.push({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+        totalAmount: new Decimal(inv.totalAmount.toString()),
+        outstandingAmount: new Decimal(inv.outstandingAmount.toString()),
+        sourceInstallmentId: inv.sourceInstallmentId,
+        deliveryCount: inv._count.deliveries,
+      });
+      result.set(inv.projectId, entry);
     }
 
-    const [cnAggregate, allocationAggregate, collectionData] = await Promise.all([
-      prisma.creditNote.aggregate({
+    const invoiceIds = [...projectOfInvoice.keys()];
+    const [creditNotes, allocations] = await Promise.all([
+      prisma.creditNote.groupBy({
+        by: ['invoiceId'],
         where: { organizationId, invoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
         _sum: { totalAmount: true },
       }),
-      prisma.clientReceiptAllocation.aggregate({
+      prisma.clientReceiptAllocation.groupBy({
+        by: ['clientInvoiceId'],
         where: { organizationId, clientInvoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
         _sum: { allocatedAmount: true },
       }),
-      this.findInvoiceCollectionData(prisma, organizationId, invoiceIds),
     ]);
+    for (const row of creditNotes) {
+      const entry = result.get(projectOfInvoice.get(row.invoiceId) ?? '');
+      if (entry) entry.postedCreditNotesSum = entry.postedCreditNotesSum.plus(row._sum.totalAmount?.toString() ?? 0);
+    }
+    for (const row of allocations) {
+      const entry = result.get(projectOfInvoice.get(row.clientInvoiceId) ?? '');
+      if (entry) entry.collectedSum = entry.collectedSum.plus(row._sum.allocatedAmount?.toString() ?? 0);
+    }
+    return result;
+  }
 
-    return {
-      invoices,
-      postedCreditNotesSum: new Decimal(cnAggregate._sum.totalAmount?.toString() ?? 0),
-      collectedSum: new Decimal(allocationAggregate._sum.allocatedAmount?.toString() ?? 0),
-      collectionData,
-      draftInvoiceCount,
-    };
+  /**
+   * The live client contract of each project — the same rule as `findMainContract` (newest
+   * CLIENT_CONTRACT that is not cancelled or terminated), for many projects in one query.
+   */
+  async findMainContractsByProject(prisma: TenantPrisma, organizationId: string, projectIds: string[]) {
+    const contracts = await prisma.contract.findMany({
+      where: mainContractWhere(organizationId, { in: projectIds }),
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        projectId: true,
+        currency: true,
+        contractValue: true,
+        baseContractValue: true,
+        client: { select: { name: true } },
+      },
+    });
+    const byProject = new Map<string, (typeof contracts)[number]>();
+    for (const c of contracts) if (!byProject.has(c.projectId)) byProject.set(c.projectId, c);
+    return byProject;
+  }
+
+  /**
+   * Payment-schedule stages marked ready to bill on the given contracts, with the stage's invoice
+   * (if any) so the caller can apply the live-invoice rule.
+   */
+  findReadyToBillInstallments(prisma: TenantPrisma, contractIds: string[]) {
+    if (contractIds.length === 0) return Promise.resolve([]);
+    return prisma.contractPaymentInstallment.findMany({
+      where: { contractId: { in: contractIds }, readyToBillAt: { not: null } },
+      select: {
+        id: true,
+        contractId: true,
+        percentage: true,
+        clientInvoice: { select: { id: true, documentStatus: true } },
+      },
+    });
   }
 
   // ─── Commercial tab redesign (2026-09-28) ──────────────────────────────────────

@@ -22,6 +22,10 @@ import { ProjectFinancialPositionController } from './presentation/project-finan
     ProjectFinanceOverviewService,
   ],
   controllers: [ProjectFinancialPositionController],
-  exports: [ProjectFinancialPositionService, ProjectCostReconciliationService],
+  exports: [
+    ProjectFinancialPositionService,
+    ProjectCostReconciliationService,
+    ProjectFinancialPositionRepository,
+  ],
 })
 export class FinancialPositionModule {}

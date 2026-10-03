@@ -5,7 +5,6 @@ import {
   type FinanceActivityRow,
   type FinanceAttentionItem,
   type FinanceControlStatus,
-  type ProjectAccountingPosition,
   type ProjectFinanceOverviewResponse,
   type ProjectFinancePeriod,
   type RequestIdentity,
@@ -18,6 +17,7 @@ import { AccountingReadinessService } from '../../accounting-core/application/ac
 import { SETUP_HREF } from '../../accounting-core/application/accounting-guide.service.js';
 import { ProjectCostReconciliationService } from './project-cost-reconciliation.service.js';
 import { ProjectFinancialPositionRepository } from '../infrastructure/project-financial-position.repository.js';
+import { buildAccountingPosition } from './accounting-position.js';
 
 /** A period closing inside this many days is worth flagging before it does. */
 const PERIOD_CLOSING_WARNING_DAYS = 14;
@@ -89,7 +89,7 @@ export class ProjectFinanceOverviewService {
     const billingVariance = billedNet.minus(revenue);
     const billingReconciled = billingVariance.isZero();
 
-    const accountingPosition = this.buildAccountingPosition(
+    const accountingPosition = buildAccountingPosition(
       readiness.ready,
       readiness.blockers,
       revenue,
@@ -147,45 +147,6 @@ export class ProjectFinanceOverviewService {
       attention,
       activity: await this.buildActivity(prisma, orgId, projectId, mayViewFinancials),
       asOf: cost.asOf,
-    };
-  }
-
-  /**
-   * Posted revenue and cost for the project.
-   *
-   * When the ledger cannot accept a posting at all, every figure is null rather than zero: a
-   * project whose accounting was never configured has not earned nothing, and the two states
-   * must not look the same on screen.
-   */
-  private buildAccountingPosition(
-    ready: boolean,
-    blockers: ProjectAccountingPosition['blockers'],
-    revenue: Decimal,
-    projectCost: Decimal,
-    mayViewFinancials: boolean,
-  ): ProjectAccountingPosition {
-    if (!ready || !mayViewFinancials) {
-      return {
-        available: false,
-        revenue: null,
-        projectCost: null,
-        grossProfit: null,
-        marginPercent: null,
-        blockers: ready ? [] : blockers,
-      };
-    }
-
-    const grossProfit = revenue.minus(projectCost);
-    return {
-      available: true,
-      revenue: revenue.toFixed(2),
-      projectCost: projectCost.toFixed(2),
-      grossProfit: grossProfit.toFixed(2),
-      // No revenue means no denominator. A margin of 0% would claim the project broke even.
-      marginPercent: revenue.greaterThan(0)
-        ? Math.round(grossProfit.div(revenue).mul(1000).toNumber()) / 10
-        : null,
-      blockers: [],
     };
   }
 
