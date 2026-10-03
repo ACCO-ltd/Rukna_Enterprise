@@ -16,6 +16,8 @@ export interface InvoiceForWhatsApp {
   documentStatus: string;
   currencyCode: string;
   totalAmount: string;
+  /** Decimal string — what is still owed (reminders name this, not the total). */
+  outstandingAmount: string;
   dueDate: Date | null;
   billingAddressSnapshot: unknown;
 }
@@ -39,11 +41,18 @@ export class InvoiceWhatsAppRepository {
         documentStatus: true,
         currencyCode: true,
         totalAmount: true,
+        outstandingAmount: true,
         dueDate: true,
         billingAddressSnapshot: true,
       },
     });
-    return row ? { ...row, totalAmount: row.totalAmount.toFixed(2) } : null;
+    return row
+      ? {
+          ...row,
+          totalAmount: row.totalAmount.toFixed(2),
+          outstandingAmount: row.outstandingAmount.toFixed(2),
+        }
+      : null;
   }
 
   async findClientName(db: Db, organizationId: string, clientId: string): Promise<string | null> {
@@ -112,6 +121,44 @@ export class InvoiceWhatsAppRepository {
     outboundMessageId: string,
   ): Promise<number> {
     const { count } = await db.clientInvoiceDelivery.deleteMany({
+      where: { organizationId, outboundMessageId, method: 'WHATSAPP' },
+    });
+    return count;
+  }
+
+  /**
+   * WhatsApp V1 step 4 — records that a reminder Rukna sent reached the client: the same
+   * InvoiceFollowUp row a hand-recorded WhatsApp follow-up writes (so the collection timeline shows
+   * it). Exactly once per message: `outbound_message_id` is unique and a repeat is skipped.
+   */
+  async recordReminderFollowUp(
+    db: Db,
+    data: {
+      organizationId: string;
+      invoiceId: string;
+      note: string;
+      occurredAt: Date;
+      recordedBy: string;
+      outboundMessageId: string;
+    },
+  ): Promise<boolean> {
+    const { count } = await db.invoiceFollowUp.createMany({
+      data: [{ ...data, method: 'WHATSAPP', contactPerson: null }],
+      skipDuplicates: true,
+    });
+    return count === 1;
+  }
+
+  /**
+   * Removes the follow-up a reminder recorded, once WhatsApp reports that message FAILED. Only the
+   * row linked to that message — never a hand-recorded follow-up. Returns how many rows went (0/1).
+   */
+  async voidReminderFollowUp(
+    db: Db,
+    organizationId: string,
+    outboundMessageId: string,
+  ): Promise<number> {
+    const { count } = await db.invoiceFollowUp.deleteMany({
       where: { organizationId, outboundMessageId, method: 'WHATSAPP' },
     });
     return count;

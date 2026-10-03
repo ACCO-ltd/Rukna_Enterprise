@@ -218,6 +218,25 @@ export class CommunicationService {
     return rows.map(toView);
   }
 
+  /**
+   * The message already recorded under this idempotency key for this record, or null — so a caller
+   * can answer a replay with the original message before re-checking whether a send is allowed now.
+   */
+  async findForResourceByKey(
+    identity: RequestIdentity,
+    idempotencyKey: string,
+    resourceType: string,
+    resourceId: string,
+  ): Promise<OutboundMessageView | null> {
+    const row = await this.messages.findByKey(
+      this.tenancy.getClient(),
+      identity.activeOrganizationId,
+      idempotencyKey,
+    );
+    if (!row || row.resourceType !== resourceType || row.resourceId !== resourceId) return null;
+    return toView(row);
+  }
+
   async listForResource(
     identity: RequestIdentity,
     resourceType: string,

@@ -9,11 +9,12 @@ import { formatDateTime } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
 
 import type { CommunicationResourceType } from '../api';
-import { useCommunications, useResolveCommunication } from '../hooks';
+import { useCommunications, useCommunicationsFor, useResolveCommunication } from '../hooks';
 import { MESSAGE_STATUS_TONE, statusTime } from '../message-status';
 
 export interface MessageHistoryProps {
-  resourceType: CommunicationResourceType;
+  /** One kind of record, or several kept for the same id (an invoice: sends + reminders). */
+  resourceType: CommunicationResourceType | readonly CommunicationResourceType[];
   resourceId: string;
   /** May the viewer settle an UNKNOWN message (manage:receivable)? */
   canResolve: boolean;
@@ -31,36 +32,70 @@ export interface MessageHistoryProps {
  * (polled for a few minutes after a send). An Unknown message — WhatsApp never confirmed it —
  * offers "Mark as sent" / "Mark as not sent" once the user has checked with the client.
  */
-export function MessageHistory({
+export function MessageHistory({ resourceType, ...rest }: MessageHistoryProps) {
+  return typeof resourceType === 'string' ? (
+    <SingleHistory resourceType={resourceType} {...rest} />
+  ) : (
+    <MergedHistory resourceTypes={resourceType} {...rest} />
+  );
+}
+
+type HistoryViewProps = Omit<MessageHistoryProps, 'resourceType'>;
+
+function SingleHistory({
   resourceType,
-  resourceId,
+  ...rest
+}: HistoryViewProps & { resourceType: CommunicationResourceType }) {
+  const messages = useCommunications(resourceType, rest.resourceId);
+  return <HistoryList messages={messages} showPurpose={false} {...rest} />;
+}
+
+/** Several kinds kept for the same record (an invoice: sends + reminders), merged newest first. */
+function MergedHistory({
+  resourceTypes,
+  ...rest
+}: HistoryViewProps & { resourceTypes: readonly CommunicationResourceType[] }) {
+  const messages = useCommunicationsFor(resourceTypes, rest.resourceId);
+  // Listed together, each row says what it was (Invoice / Payment reminder …).
+  return <HistoryList messages={messages} showPurpose={resourceTypes.length > 1} {...rest} />;
+}
+
+function HistoryList({
+  messages,
+  showPurpose,
   canResolve,
   invalidateOnResolve,
   hideWhenEmpty = false,
   showTitle = true,
-}: MessageHistoryProps) {
+}: HistoryViewProps & {
+  messages: { isPending: boolean; isError: boolean; data?: OutboundMessageView[] };
+  showPurpose: boolean;
+}) {
   const t = useTranslations('common.messaging.history');
-  const messages = useCommunications(resourceType, resourceId);
 
   if (messages.isPending) return null;
-  if (messages.isError) return <Alert variant="error" messages={[t('loadFailed')]} />;
-  if (hideWhenEmpty && messages.data.length === 0) return null;
+  if (messages.isError || !messages.data) {
+    return <Alert variant="error" messages={[t('loadFailed')]} />;
+  }
+  const data = messages.data;
+  if (hideWhenEmpty && data.length === 0) return null;
 
   return (
     <section aria-label={t('title')} className="space-y-3">
       {showTitle ? (
         <h3 className="text-body-sm font-semibold text-foreground">{t('title')}</h3>
       ) : null}
-      {messages.data.length === 0 ? (
+      {data.length === 0 ? (
         <p className="text-body-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul className="divide-y divide-border rounded-panel border border-border">
-          {messages.data.map((message) => (
+          {data.map((message) => (
             <MessageRow
               key={message.id}
               message={message}
               canResolve={canResolve}
               invalidateOnResolve={invalidateOnResolve}
+              showPurpose={showPurpose}
             />
           ))}
         </ul>
@@ -73,10 +108,12 @@ function MessageRow({
   message,
   canResolve,
   invalidateOnResolve,
+  showPurpose = false,
 }: {
   message: OutboundMessageView;
   canResolve: boolean;
   invalidateOnResolve?: ReadonlyArray<readonly unknown[]>;
+  showPurpose?: boolean;
 }) {
   const t = useTranslations('common.messaging.history');
   const locale = useLocale() as 'en';
@@ -110,7 +147,12 @@ function MessageRow({
     <li className="space-y-2 px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-body-sm text-foreground">{t('via', { number })}</p>
+          <p className="text-body-sm text-foreground">
+            {showPurpose ? (
+              <span className="font-medium">{t(`purpose.${message.purpose}`)} · </span>
+            ) : null}
+            {t('via', { number })}
+          </p>
           <p className="text-caption text-muted-foreground">
             {formatDateTime(statusTime(message), locale)}
           </p>

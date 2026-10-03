@@ -9,6 +9,10 @@ export type WhatsAppSendBlockedReason =
   | 'NOT_POSTED'
   /** The document was posted and has since been reversed — it must not be sent. */
   | 'REVERSED'
+  /** A reminder (WhatsApp V1 step 4) for an invoice with nothing left to collect. */
+  | 'NOTHING_OUTSTANDING'
+  /** A reminder for an opening-balance invoice with neither a number nor the prior system's ref. */
+  | 'NO_INVOICE_REFERENCE'
   | 'NO_RECIPIENT'
   | 'TEMPLATE_NOT_CONFIGURED'
   | 'WHATSAPP_NOT_CONFIGURED';
@@ -37,8 +41,8 @@ export interface WhatsAppSendPreview {
   defaultRecipient: string | null;
   /** The message body exactly as the client will read it. */
   message: string;
-  /** The attached PDF's file name, e.g. 'RCP-000017.pdf'. */
-  filename: string;
+  /** The attached PDF's file name, e.g. 'RCP-000017.pdf'; null for a text-only message (a reminder). */
+  filename: string | null;
   /** True when `blockedReason` is null. */
   sendable: boolean;
   blockedReason: WhatsAppSendBlockedReason | null;
@@ -53,4 +57,20 @@ export interface WhatsAppSendRequest {
    * a repeat returns the same message instead of sending twice; a retry after FAILED re-sends.
    */
   idempotencyKey: string;
+}
+
+/** Which reminder template a manual reminder uses (WhatsApp V1 step 4). */
+export type WhatsAppReminderKind = 'PAYMENT_REMINDER' | 'OVERDUE_REMINDER';
+
+/**
+ * `GET /invoices/:id/whatsapp-reminder/preview` — a text-only message (`filename` null). The kind
+ * follows the invoice's due date: past it → OVERDUE_REMINDER, otherwise PAYMENT_REMINDER.
+ */
+export interface WhatsAppReminderPreview extends WhatsAppSendPreview {
+  kind: WhatsAppReminderKind;
+  /** Decimal string — what is still owed, the amount the reminder names. */
+  outstandingAmount: string;
+  currencyCode: string;
+  /** Whole days past the due date (0 when not yet due or no due date). */
+  daysPastDue: number;
 }

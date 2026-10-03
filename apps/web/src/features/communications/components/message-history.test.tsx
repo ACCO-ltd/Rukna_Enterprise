@@ -151,4 +151,32 @@ describe('shouldPollMessages', () => {
     expect(shouldPollMessages(undefined, now)).toBe(false);
     expect(shouldPollMessages([], now)).toBe(false);
   });
+
+  it("lists an invoice's sends and reminders together, newest first, each labelled", async () => {
+    vi.mocked(api.listCommunications).mockImplementation(async (resourceType) =>
+      resourceType === 'client_invoice_reminder'
+        ? [
+            message({
+              id: 'r1',
+              purpose: 'OVERDUE_REMINDER',
+              resourceType: 'client_invoice_reminder',
+              createdAt: '2026-10-05T10:00:00.000Z',
+            }),
+          ]
+        : [message({ id: 'i1' })],
+    );
+    renderWithProviders(
+      <MessageHistory
+        resourceType={['client_invoice', 'client_invoice_reminder']}
+        resourceId="inv1"
+        canResolve
+      />,
+      { withToast: true },
+    );
+    const items = await screen.findAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent(/Overdue reminder/);
+    expect(items[1]).toHaveTextContent(/Invoice/);
+    expect(api.listCommunications).toHaveBeenCalledWith('client_invoice_reminder', 'inv1');
+  });
 });

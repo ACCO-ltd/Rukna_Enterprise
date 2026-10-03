@@ -142,6 +142,10 @@ export const WHATSAPP_REFUSAL_MESSAGE: Record<
 > = {
   NOT_POSTED: 'Only an issued invoice can be sent. Issue the invoice first.',
   REVERSED: 'This invoice has been reversed, so it cannot be sent.',
+  NOTHING_OUTSTANDING:
+    'This invoice is fully paid, so there is nothing to remind the client about.',
+  NO_INVOICE_REFERENCE:
+    'This opening-balance invoice has no invoice number or reference to quote to the client.',
   WHATSAPP_NOT_CONFIGURED:
     'WhatsApp sending is not set up on this server. Ask an administrator to connect WhatsApp.',
   TEMPLATE_NOT_CONFIGURED:
