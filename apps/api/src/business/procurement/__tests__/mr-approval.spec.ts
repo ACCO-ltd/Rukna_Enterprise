@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import { PERMISSIONS, WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { REQUIRED_PERMISSIONS_KEY } from '../../../common/decorators/require-permissions.decorator.js';
 import { MaterialRequestController } from '../material-requests/presentation/material-request.controller.js';
-import { MaterialRequestService, estimatedTotal } from '../material-requests/application/material-request.service.js';
+import { MaterialRequestService, estimatedTotal, todayDateOnly } from '../material-requests/application/material-request.service.js';
 import { MaterialRequestRepository } from '../material-requests/infrastructure/material-request.repository.js';
 import { MaterialRepository } from '../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../catalogue/infrastructure/uom.repository.js';
@@ -34,7 +34,6 @@ async function draftMr(estimatedUnitPrice?: number) {
   return svc.create(env.identity, {
     requestScope: 'PROJECT',
     projectId: env.projectId,
-    requestedDate: '2026-08-10',
     currencyCode: estimatedUnitPrice !== undefined ? 'USD' : undefined,
     lines: [
       {
@@ -191,5 +190,44 @@ describe('estimatedTotal', () => {
         { requestedQuantity: 3, estimatedUnitPrice: null },
       ])?.toString(),
     ).toBe('20');
+  });
+});
+
+describe('MR requested date is server-set', () => {
+  it('stamps today (date-only) when the client sends none', async () => {
+    const before = todayDateOnly();
+    const mr = await draftMr();
+    const after = todayDateOnly();
+    const stored = (await prisma.materialRequest.findUniqueOrThrow({ where: { id: mr.id } })).requestedDate;
+    expect([before.getTime(), after.getTime()]).toContain(stored.getTime());
+  });
+
+  it('ignores a client-sent requestedDate', async () => {
+    const mr = await svc.create(env.identity, {
+      requestScope: 'ORGANIZATION',
+      requestedDate: '2001-01-01',
+      lines: [{ lineType: 'MATERIAL', materialCode: 'REBAR-12', description: 'x', uomCode: 'TON', requestedQuantity: 1 }],
+    });
+    const stored = (await prisma.materialRequest.findUniqueOrThrow({ where: { id: mr.id } })).requestedDate;
+    expect(stored.toISOString().slice(0, 10)).not.toBe('2001-01-01');
+    expect(stored.getTime()).toBe(todayDateOnly().getTime());
+  });
+
+  it('todayDateOnly is the UTC calendar day at midnight', () => {
+    expect(todayDateOnly(new Date('2026-10-04T23:30:00Z')).toISOString()).toBe('2026-10-04T00:00:00.000Z');
+  });
+
+  it('the create DTO accepts a request without requestedDate', async () => {
+    const { validate } = await import('class-validator');
+    const { plainToInstance } = await import('class-transformer');
+    const { CreateMaterialRequestDto } = await import(
+      '../material-requests/presentation/dto/create-material-request.dto.js'
+    );
+    const dto = plainToInstance(CreateMaterialRequestDto, {
+      requestScope: 'ORGANIZATION',
+      lines: [{ lineType: 'MATERIAL', materialCode: 'M', description: 'x', uomCode: 'TON', requestedQuantity: 1 }],
+    });
+    const errors = await validate(dto);
+    expect(errors.find((e) => e.property === 'requestedDate')).toBeUndefined();
   });
 });

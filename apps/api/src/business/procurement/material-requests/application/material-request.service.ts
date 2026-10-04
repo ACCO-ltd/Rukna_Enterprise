@@ -38,7 +38,8 @@ export interface CreateMrLineDto {
 export interface CreateMaterialRequestDto {
   requestScope: MaterialRequestScope;
   projectId?: string;
-  requestedDate: string;
+  /** Ignored — the server stamps the request date (see todayDateOnly). */
+  requestedDate?: string;
   requiredByDate?: string;
   title?: string;
   currencyCode?: string;
@@ -177,7 +178,8 @@ export class MaterialRequestService {
         requestScope: dto.requestScope,
         projectId: dto.projectId,
         requestedBy: identity.userId,
-        requestedDate: new Date(dto.requestedDate),
+        // Server-set: the day the request is raised, never a client-supplied date.
+        requestedDate: todayDateOnly(),
         requiredByDate: dto.requiredByDate ? new Date(dto.requiredByDate) : undefined,
         title: dto.title,
         currencyCode: dto.currencyCode,
@@ -349,4 +351,9 @@ export function estimatedTotal(
       sum.add(new Decimal(l.requestedQuantity).mul(new Decimal(l.estimatedUnitPrice as Decimal.Value))),
     new Decimal(0),
   );
+}
+
+/** Today's date (server clock, UTC calendar day) at midnight — the shape a @db.Date column holds. */
+export function todayDateOnly(now: Date = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
