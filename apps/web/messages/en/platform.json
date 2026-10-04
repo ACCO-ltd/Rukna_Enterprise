@@ -109,7 +109,8 @@
       "acctSetup": "Setup & close"
     },
     "postingProfiles": "Posting profiles",
-    "taxCodes": "Tax"
+    "taxCodes": "Tax",
+    "invoiceSettings": "Invoice settings"
   },
   "admin": {
     "title": "Administration",
