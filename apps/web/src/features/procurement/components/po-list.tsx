@@ -1,166 +1,253 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FilterBar, FilterField, Select } from '@erp/ui';
+import {
+  Button,
+  EmptyState,
+  StatusText,
+  type FilterValues,
+  type ListFilterField,
+  type StatusTone,
+} from '@erp/ui';
+import { Plus } from 'lucide-react';
 
-import { formatDate } from '@/lib/format';
-import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
-
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
+import { formatDate, formatMoney } from '@/lib/format';
 
-import { usePurchaseOrders } from '../hooks/use-procurement';
+import { useCancelPurchaseOrder, usePurchaseOrders, useSuppliers } from '../hooks/use-procurement';
 import { latestRevision } from '../quantities';
-import type { PurchaseOrder, PurchaseOrderStatus } from '../types';
+import type { PurchaseOrder, PurchaseOrderDeliveryStatus, PurchaseOrderStatus } from '../types';
+import { ListRowMenu, errorText } from './list-row-menu';
 import { ProcurementStatusBadge } from './procurement-badges';
 
-const STATUSES: PurchaseOrderStatus[] = ['OPEN', 'CLOSED', 'CANCELLED'];
+const STATUSES: PurchaseOrderStatus[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED'];
+
+const DELIVERY_TONE: Record<PurchaseOrderDeliveryStatus, StatusTone> = {
+  NOT_RECEIVED: 'neutral',
+  PARTLY_RECEIVED: 'progress',
+  RECEIVED: 'success',
+};
 
 /**
- * Purchase order list (§12.6).
+ * The revision a reader should see named: the server's `activeRevisionNumber` when the enriched
+ * list read sends it, else the listed revision only when it is the ACTIVE one — the list carries
+ * the highest-numbered revision, which is a draft while an amendment is in progress (P14).
+ */
+export function poRevisionNumber(po: PurchaseOrder): number | null {
+  if (po.activeRevisionNumber !== undefined) return po.activeRevisionNumber;
+  const latest = latestRevision(po.revisions);
+  return latest?.status === 'ACTIVE' ? latest.revisionNumber : null;
+}
+
+/**
+ * Purchase order list (shared list pattern, clients-list reference).
  *
- * Two columns §12.6 asks for are missing, both because the list payload cannot support
- * them (P14). `findAll` embeds `revisions: { orderBy: revisionNumber desc, take: 1 }`
- * with **no lines**, so:
- *
- *  - "Total Amount" would need one detail fetch per row. It is omitted, and a line under
- *    the table says why rather than leaving a column silently absent.
- *  - The revision shown is the highest-numbered, which is the DRAFT whenever one is in
- *    progress — not the ACTIVE revision. The column is labelled "latest revision" and
- *    carries that revision's own status, which is what the payload actually contains.
- *
- * Calling it "Revision" and showing a draft number would be a quiet lie on a screen
- * people use to check what has been committed.
+ * Status, Project and Supplier run on the server. Project, Total and Delivery come from the
+ * enriched list read; until it ships they render "—" rather than a figure the plain row cannot
+ * support. Total follows the money gate: the server's `moneyVisible`, else
+ * `view:commitment-ledger`; hidden money is an absent column, never $0.
  */
 export function PoList() {
-  const t = useTranslations('procurement.po');
+  const t = useTranslations('procurement.po.list');
+  const tPo = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const tStatus = useTranslations('procurement.status');
   const { can } = usePermissions();
+  const mayCreate = can(PROCUREMENT_PERMISSIONS.createOrder);
 
-  const [status, setStatus] = useState<PurchaseOrderStatus | ''>('');
-  const statusId = useId();
-  // Project filter (flow plan follow-up): pre-set from `?projectId=` so a project's
-  // "Open Procurement" lands on its own orders. Server-side — a PO matches on any line.
+  // Pre-set from `?projectId=` so a project's "Open procurement" lands on its own orders.
   const projectFilter = useProjectFilter();
-  const [projectId, setProjectId] = useState(projectFilter.initialProjectId ?? '');
-  const projectFieldId = useId();
-
+  const [filters, setFilters] = useState<FilterValues>((): FilterValues =>
+    projectFilter.initialProjectId ? { project: projectFilter.initialProjectId } : {},
+  );
   const orders = usePurchaseOrders({
-    ...(status ? { status } : {}),
-    ...(projectId ? { projectId } : {}),
+    ...(filters.status ? { status: filters.status as PurchaseOrderStatus } : {}),
+    ...(filters.project ? { projectId: filters.project } : {}),
+    ...(filters.supplier ? { supplierId: filters.supplier } : {}),
   });
+  const suppliers = useSuppliers();
+  const cancel = useCancelPurchaseOrder();
+  const [cancelling, setCancelling] = useState<PurchaseOrder | null>(null);
+
+  const rows = useMemo(() => orders.data ?? [], [orders.data]);
+  const moneyVisible =
+    rows.find((po) => po.moneyVisible !== undefined)?.moneyVisible ??
+    can(PROCUREMENT_PERMISSIONS.viewCommitments);
+
+  const supplierOptions = useMemo(
+    () =>
+      (suppliers.data ?? [])
+        .map((s) => ({ value: s.id, label: s.name }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [suppliers.data],
+  );
+
+  const dash = <span className="text-muted-foreground">{tc('notAvailable')}</span>;
 
   const columns: GridColumn<PurchaseOrder>[] = [
     {
-      key: 'number',
-      header: t('number'),
+      key: 'order',
+      header: t('columns.order'),
       sticky: true,
       sortable: true,
-      plainValue: (po) => po.poNumber,
-      render: (po) => <span className="font-mono text-caption font-medium">{po.poNumber}</span>,
-    },
-    {
-      key: 'supplier',
-      header: tc('supplier'),
-      sortable: true,
-      // `findAll` includes the whole supplier relation, so a name is expected here. The
-      // fallback is for absence, not for a missing endpoint — that was P14/P16 and it is fixed.
-      plainValue: (po) => po.supplier?.name ?? '',
-      render: (po) => po.supplier?.name ?? <span className="text-muted-foreground">{tc('notAvailable')}</span>,
-    },
-    {
-      key: 'revision',
-      header: t('revision'),
-      numeric: true,
-      sortable: true,
-      plainValue: (po) => latestRevision(po.revisions)?.revisionNumber ?? 0,
-      render: (po) => latestRevision(po.revisions)?.revisionNumber ?? tc('notAvailable'),
-    },
-    {
-      key: 'revisionStatus',
-      header: t('revisionStatus'),
+      card: 'title',
+      plainValue: (po) => `${po.poNumber} ${po.supplier?.name ?? ''}`,
+      // The grid wraps this cell in the row's one link.
       render: (po) => {
-        const revision = latestRevision(po.revisions);
-        return revision ? <ProcurementStatusBadge vocabulary="poRevision" status={revision.status} /> : null;
+        const revision = poRevisionNumber(po);
+        return (
+          <span className="block min-w-0">
+            <span className="block font-semibold text-brand-primary">
+              {po.poNumber}
+              {revision !== null && revision > 1 ? (
+                <span className="font-normal text-muted-foreground">
+                  {' · '}
+                  {t('revision', { number: revision })}
+                </span>
+              ) : null}
+            </span>
+            <span className="block max-w-[18rem] truncate text-caption font-normal text-muted-foreground">
+              {po.supplier?.name ?? tc('notAvailable')}
+            </span>
+          </span>
+        );
       },
     },
     {
-      key: 'effectiveFrom',
-      header: t('effectiveFrom'),
+      key: 'project',
+      header: t('columns.project'),
       sortable: true,
-      plainValue: (po) => latestRevision(po.revisions)?.effectiveFrom ?? '',
-      render: (po, ctx) => (
-        <bdi>{formatDate(latestRevision(po.revisions)?.effectiveFrom, ctx.locale) ?? tc('notAvailable')}</bdi>
-      ),
+      card: 'subtitle',
+      plainValue: (po) => po.project?.name ?? '',
+      render: (po) =>
+        po.project ? <span className="block max-w-[16rem] truncate">{po.project.name}</span> : dash,
     },
     {
-      key: 'status',
-      header: tc('status'),
-      render: (po) => <ProcurementStatusBadge vocabulary="purchaseOrder" status={po.status} />,
+      key: 'ordered',
+      header: t('columns.ordered'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (po) => latestRevision(po.revisions)?.effectiveFrom ?? '',
+      render: (po, ctx) => formatDate(latestRevision(po.revisions)?.effectiveFrom, ctx.locale) ?? dash,
+    },
+    {
+      key: 'delivery',
+      header: t('columns.delivery'),
+      sortable: true,
+      plainValue: (po) => (po.deliveryStatus ? t(`delivery.${po.deliveryStatus}`) : ''),
+      render: (po) =>
+        po.deliveryStatus ? (
+          <StatusText tone={DELIVERY_TONE[po.deliveryStatus]}>{t(`delivery.${po.deliveryStatus}`)}</StatusText>
+        ) : (
+          dash
+        ),
     },
   ];
+  if (moneyVisible) {
+    columns.push({
+      key: 'total',
+      header: t('columns.total'),
+      numeric: true,
+      sortable: true,
+      card: 'amount',
+      plainValue: (po) => (po.total == null ? null : Number(po.total)),
+      render: (po) =>
+        po.total == null ? dash : <span className="tabular-nums">{formatMoney(po.total, 'USD')}</span>,
+    });
+  }
+  columns.push({
+    key: 'status',
+    header: t('columns.status'),
+    card: 'status',
+    render: (po) => <ProcurementStatusBadge vocabulary="purchaseOrder" status={po.status} />,
+  });
+
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'status',
+      type: 'select',
+      label: t('filters.status'),
+      options: STATUSES.map((value) => ({ value, label: tStatus(value) })),
+    },
+    { key: 'project', type: 'select', label: t('filters.project'), options: projectFilter.options },
+    { key: 'supplier', type: 'select', label: t('filters.supplier'), options: supplierOptions },
+  ];
+
+  const isNarrowed = Object.values(filters).some(Boolean);
+  const isFirstUse = !isNarrowed && orders.data !== undefined && rows.length === 0;
+
+  const createAction = mayCreate ? (
+    <Button asChild>
+      <Link href="/procurement/orders/new">
+        <Plus className="size-4" aria-hidden="true" />
+        {t('new')}
+      </Link>
+    </Button>
+  ) : undefined;
 
   return (
-    <div className="space-y-6">
-      {orders.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
+    <div className="space-y-3">
       <PlatformDataGrid
         columns={columns}
-        data={orders.data ?? []}
+        data={rows}
         rowKey={(po) => po.id}
-        label={t('title')}
+        label={tPo('title')}
         isLoading={orders.isPending}
+        isError={orders.isError}
+        errorMessage={tc('loadFailed')}
+        onRetry={() => void orders.refetch()}
         rowHref={(po) => `/procurement/orders/${po.id}`}
-        noMatchMessage={t('empty')}
+        searchLabel={t('searchLabel')}
+        searchPlaceholder={t('searchPlaceholder')}
+        resultLabel={(count) => t('countLabel', { count })}
+        noMatchMessage={t('noMatches')}
         pagination={{ defaultPageSize: 25 }}
-        toolbarActions={
-          can(PROCUREMENT_PERMISSIONS.createOrder) ? (
-            <Button asChild>
-              <Link href="/procurement/orders/new">{t('new')}</Link>
-            </Button>
+        filters={filterFields}
+        filterValues={filters}
+        onFilterValuesChange={setFilters}
+        rowActions={(po) => (
+          <ListRowMenu
+            label={tc('rowMenu', { number: po.poNumber })}
+            openHref={`/procurement/orders/${po.id}`}
+            openLabel={tc('open')}
+            commands={
+              mayCreate && po.status === 'DRAFT'
+                ? [{ key: 'cancel', label: tPo('cancelOrder'), onSelect: () => setCancelling(po) }]
+                : []
+            }
+          />
+        )}
+        emptyState={
+          isFirstUse ? (
+            <EmptyState title={t('empty')} description={t('emptyHint')} action={createAction} />
           ) : undefined
         }
-        toolbarFilters={
-          <FilterBar>
-            <FilterField id={statusId} label={tc('status')}>
-              <Select
-                id={statusId}
-                value={status}
-                onChange={(value) => setStatus(value as PurchaseOrderStatus | '')}
-              >
-                <option value="">{tc('all')}</option>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {tStatus(s)}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-            <FilterField id={projectFieldId} label={tc('project')}>
-              <Select id={projectFieldId} value={projectId} onChange={(value) => setProjectId(value)}>
-                <option value="">{tc('all')}</option>
-                {projectFilter.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-          </FilterBar>
-        }
-        onClearFilters={() => {
-          setStatus('');
-          setProjectId('');
-        }}
+        toolbarActions={createAction}
       />
+      {!moneyVisible && !orders.isPending && !orders.isError && !isFirstUse ? (
+        <p className="text-caption text-muted-foreground">{t('moneyHidden')}</p>
+      ) : null}
 
-      <div className="space-y-1 text-xs text-muted-foreground">
-        <p>{t('totalUnavailable')}</p>
-        <p>{t('latestRevisionNotice')}</p>
-      </div>
+      {cancelling ? (
+        <ConfirmActionDialog
+          title={tPo('cancelTitle', { number: cancelling.poNumber })}
+          description={tPo('cancelBody')}
+          confirmLabel={tPo('cancelOrder')}
+          destructive
+          isPending={cancel.isPending}
+          errorMessage={cancel.error ? errorText(cancel.error, tc('loadFailed')) : undefined}
+          onConfirm={() => cancel.mutate(cancelling.id, { onSuccess: () => setCancelling(null) })}
+          onDismiss={() => {
+            cancel.reset();
+            setCancelling(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

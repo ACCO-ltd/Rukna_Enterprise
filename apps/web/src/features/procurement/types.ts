@@ -48,6 +48,18 @@ export type MaterialRequestStatus =
 
 export type MaterialRequestScope = 'PROJECT' | 'ORGANIZATION';
 
+export type MaterialRequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+/** How much of an order has arrived — the PO list's Delivery column (enriched list read). */
+export type PurchaseOrderDeliveryStatus = 'NOT_RECEIVED' | 'PARTLY_RECEIVED' | 'RECEIVED';
+
+/** A small project reference embedded on an enriched list row. */
+export interface ProcurementProjectRef {
+  id: string;
+  code?: string;
+  name: string;
+}
+
 export type PurchaseOrderStatus = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED';
 
 export type PurchaseOrderRevisionStatus =
@@ -172,6 +184,8 @@ export interface MaterialRequestLine {
   notes: string | null;
   material: Pick<Material, 'code' | 'name'> | null;
   uom: Pick<UnitOfMeasure, 'code' | 'symbol'> | null;
+  /** The requester's estimate (ADR-022). A scalar column, so it rides on list and detail. */
+  estimatedUnitPrice?: Money | null;
 }
 
 export interface MaterialRequest {
@@ -194,6 +208,18 @@ export interface MaterialRequest {
   description: string | null;
   notes: string | null;
   lines: MaterialRequestLine[];
+  /** Short name for the requirement. Scalar column — present on list and detail. */
+  title?: string | null;
+  priority?: MaterialRequestPriority;
+  currencyCode?: string | null;
+  // ── Enriched list fields (backend procurement refinement). Optional until they ship; every
+  // screen falls back to what the plain row carries when they are absent.
+  /** Σ requested × estimated unit price, server-side. `null` when nothing is estimated. */
+  estimatedTotal?: Money | null;
+  requester?: { id: string; name: string } | null;
+  project?: ProcurementProjectRef | null;
+  /** The server's verdict on whether this viewer may see the estimate. */
+  moneyVisible?: boolean;
 }
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────────
@@ -355,6 +381,14 @@ export interface PurchaseOrder {
    * not the ACTIVE one (P14).
    */
   revisions: PurchaseOrderRevision[];
+  // ── Enriched list fields (backend procurement refinement). Optional until they ship; the
+  // list renders "—" when absent rather than computing a figure the payload cannot support.
+  project?: ProcurementProjectRef | null;
+  /** The active revision's total. `null` when withheld from a money-blind viewer. */
+  total?: Money | null;
+  deliveryStatus?: PurchaseOrderDeliveryStatus | null;
+  activeRevisionNumber?: number;
+  moneyVisible?: boolean;
 }
 
 // ─── Goods receipts ──────────────────────────────────────────────────────────────
@@ -389,7 +423,13 @@ export interface GoodsReceipt {
   postedAt: ApiDate | null;
   postedBy: string | null;
   lines: GoodsReceiptLine[];
-  purchaseOrder?: Pick<PurchaseOrder, 'poNumber'> | null;
+  /** `poNumber` today; the enriched list read may send `{ id, number }` instead. */
+  purchaseOrder?: { id?: string; poNumber?: string; number?: string } | null;
+  // ── Enriched list fields (backend procurement refinement). Optional until they ship.
+  supplier?: { id: string; name: string } | null;
+  project?: ProcurementProjectRef | null;
+  /** Display name of whoever recorded the delivery. */
+  deliveredBy?: string | null;
 }
 
 // ─── Bill matching ───────────────────────────────────────────────────────────────

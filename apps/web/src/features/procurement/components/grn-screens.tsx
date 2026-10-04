@@ -16,20 +16,24 @@ import {
   Alert,
   Button,
   DatePicker,
+  EmptyState,
   FormField,
   Input,
   Select,
   Table,
   TableBody,
   TableCell,
-  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
   TableScroll,
+  type FilterValues,
+  type ListFilterField,
 } from '@erp/ui';
+import { Plus } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatNumber } from '@/lib/format';
@@ -44,9 +48,10 @@ import {
   useGoodsReceipts,
   usePostGoodsReceipt,
   usePurchaseOrders,
+  useSuppliers,
 } from '../hooks/use-procurement';
 import { activeRevision, quantityToApi } from '../quantities';
-import type { CreateGrnLinePayload, GoodsReceipt } from '../types';
+import type { CreateGrnLinePayload, GoodsReceipt, GoodsReceiptStatus } from '../types';
 import {
   GrnLineEditor,
   grnLineError,
@@ -56,79 +61,204 @@ import {
   type GrnLineDraft,
 } from './grn-line-editor';
 import { ClassificationChips } from './classification-chips';
+import { ListRowMenu, errorText } from './list-row-menu';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { QuantitySplit } from './material-picker';
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
-export function GrnList() {
-  const t = useTranslations('procurement.grn');
-  const tc = useTranslations('procurement.common');
-  const locale = useLocale() as 'en' | 'ar';
-  const { can } = usePermissions();
+const GRN_STATUSES: GoodsReceiptStatus[] = ['DRAFT', 'EXCEPTION_PENDING', 'POSTED', 'CANCELLED'];
 
+/**
+ * Goods receipt list (shared list pattern, clients-list reference).
+ *
+ * The API filters receipts by purchase order only, so Status narrows the fetched set here.
+ * Supplier, project and who delivered come from the enriched list read when it ships; until
+ * then supplier and PO number fall back to the supplier and order lists, and the rest to "—".
+ */
+export function GrnList() {
+  const t = useTranslations('procurement.grn.list');
+  const tGrn = useTranslations('procurement.grn');
+  const tc = useTranslations('procurement.common');
+  const tStatus = useTranslations('procurement.status');
+  const { can } = usePermissions();
+  const mayReceive = can(PROCUREMENT_PERMISSIONS.createReceipt);
+
+  const [filters, setFilters] = useState<FilterValues>({});
   const receipts = useGoodsReceipts();
   const orders = usePurchaseOrders();
+  const suppliers = useSuppliers();
+  const cancel = useCancelGoodsReceipt();
+  const [cancelling, setCancelling] = useState<GoodsReceipt | null>(null);
 
-  const poNumber = (id: string) =>
-    orders.data?.find((po) => po.id === id)?.poNumber ?? null;
+  const all = useMemo(() => receipts.data ?? [], [receipts.data]);
+  const visible = useMemo(
+    () => all.filter((grn) => !filters.status || grn.status === filters.status),
+    [all, filters],
+  );
+
+  const poNumberOf = (grn: GoodsReceipt): string | null =>
+    grn.purchaseOrder?.number ??
+    grn.purchaseOrder?.poNumber ??
+    orders.data?.find((po) => po.id === grn.purchaseOrderId)?.poNumber ??
+    null;
+  const supplierOf = (grn: GoodsReceipt): string | null =>
+    grn.supplier?.name ?? suppliers.data?.find((s) => s.id === grn.supplierId)?.name ?? null;
+
+  const dash = <span className="text-muted-foreground">{tc('notAvailable')}</span>;
+
+  const columns: GridColumn<GoodsReceipt>[] = [
+    {
+      key: 'receipt',
+      header: t('columns.receipt'),
+      sticky: true,
+      sortable: true,
+      card: 'title',
+      plainValue: (grn) => `${grn.grnNumber} ${supplierOf(grn) ?? ''}`,
+      // The grid wraps this cell in the row's one link.
+      render: (grn) => (
+        <span className="block min-w-0">
+          <span className="block font-semibold text-brand-primary">{grn.grnNumber}</span>
+          <span className="block max-w-[18rem] truncate text-caption font-normal text-muted-foreground">
+            {supplierOf(grn) ?? tc('notAvailable')}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'purchaseOrder',
+      header: t('columns.purchaseOrder'),
+      sortable: true,
+      card: 'subtitle',
+      plainValue: (grn) => poNumberOf(grn) ?? '',
+      render: (grn) => {
+        const number = poNumberOf(grn);
+        return number ? (
+          <Link
+            href={`/procurement/orders/${grn.purchaseOrderId}`}
+            className="font-medium text-brand-primary underline-offset-2 hover:underline"
+          >
+            {number}
+          </Link>
+        ) : (
+          dash
+        );
+      },
+    },
+    {
+      key: 'project',
+      header: t('columns.project'),
+      sortable: true,
+      plainValue: (grn) => grn.project?.name ?? '',
+      render: (grn) =>
+        grn.project ? <span className="block max-w-[16rem] truncate">{grn.project.name}</span> : dash,
+    },
+    {
+      key: 'delivered',
+      header: t('columns.delivered'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (grn) => grn.deliveryDate,
+      render: (grn, ctx) => (
+        <span className="block">
+          <span className="block">{formatDate(grn.deliveryDate, ctx.locale) ?? tc('notAvailable')}</span>
+          {grn.deliveredBy ? (
+            <span className="block text-caption text-muted-foreground">{t('by', { name: grn.deliveredBy })}</span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'deliveryNote',
+      header: t('columns.deliveryNote'),
+      sortable: true,
+      plainValue: (grn) => grn.deliveryNoteRef ?? '',
+      render: (grn) => grn.deliveryNoteRef ?? dash,
+    },
+    {
+      key: 'status',
+      header: t('columns.status'),
+      card: 'status',
+      render: (grn) => <ProcurementStatusBadge vocabulary="grn" status={grn.status} />,
+    },
+  ];
+
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'status',
+      type: 'select',
+      label: t('filters.status'),
+      options: GRN_STATUSES.map((value) => ({ value, label: tStatus(value) })),
+    },
+  ];
+
+  const createAction = mayReceive ? (
+    <Button asChild>
+      <Link href="/procurement/grn/new">
+        <Plus className="size-4" aria-hidden="true" />
+        {t('new')}
+      </Link>
+    </Button>
+  ) : undefined;
 
   return (
-    <div className="space-y-6">
-      {can(PROCUREMENT_PERMISSIONS.createReceipt) ? (
-        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
-          <Button asChild>
-            <Link href="/procurement/grn/new">{t('new')}</Link>
-          </Button>
-        </div>
+    <>
+      <PlatformDataGrid
+        columns={columns}
+        data={visible}
+        rowKey={(grn) => grn.id}
+        label={tGrn('title')}
+        isLoading={receipts.isPending}
+        isError={receipts.isError}
+        errorMessage={tc('loadFailed')}
+        onRetry={() => void receipts.refetch()}
+        rowHref={(grn) => `/procurement/grn/${grn.id}`}
+        searchLabel={t('searchLabel')}
+        searchPlaceholder={t('searchPlaceholder')}
+        resultLabel={(count) => t('countLabel', { count })}
+        noMatchMessage={t('noMatches')}
+        pagination={{ defaultPageSize: 25 }}
+        defaultSort={{ key: 'delivered', direction: 'desc' }}
+        filters={filterFields}
+        filterValues={filters}
+        onFilterValuesChange={setFilters}
+        rowActions={(grn) => (
+          <ListRowMenu
+            label={tc('rowMenu', { number: grn.grnNumber })}
+            openHref={`/procurement/grn/${grn.id}`}
+            openLabel={tc('open')}
+            commands={
+              mayReceive && grn.status === 'DRAFT'
+                ? [{ key: 'cancel', label: tGrn('cancelReceipt'), onSelect: () => setCancelling(grn) }]
+                : []
+            }
+          />
+        )}
+        // First use only — a filter that empties the list gets the grid's filtered-empty state.
+        emptyState={
+          all.length === 0 ? (
+            <EmptyState title={t('empty')} description={t('emptyHint')} action={createAction} />
+          ) : undefined
+        }
+        toolbarActions={createAction}
+      />
+
+      {cancelling ? (
+        <ConfirmActionDialog
+          title={tGrn('cancelTitle', { number: cancelling.grnNumber })}
+          description={tGrn('cancelBody')}
+          confirmLabel={tGrn('cancelReceipt')}
+          destructive
+          isPending={cancel.isPending}
+          errorMessage={cancel.error ? errorText(cancel.error, tc('loadFailed')) : undefined}
+          onConfirm={() => cancel.mutate(cancelling.id, { onSuccess: () => setCancelling(null) })}
+          onDismiss={() => {
+            cancel.reset();
+            setCancelling(null);
+          }}
+        />
       ) : null}
-
-      {receipts.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('number')}</TableHead>
-              <TableHead>{t('purchaseOrder')}</TableHead>
-              <TableHead>{t('deliveryDate')}</TableHead>
-              <TableHead>{t('deliveryNoteRef')}</TableHead>
-              <TableHead>{tc('status')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(receipts.data ?? []).length === 0 ? (
-              <TableEmpty colSpan={5}>{t('empty')}</TableEmpty>
-            ) : (
-              (receipts.data ?? []).map((grn) => (
-                <TableRow key={grn.id}>
-                  <TableCell>
-                    <Link
-                      href={`/procurement/grn/${grn.id}`}
-                      className="font-mono text-xs font-medium text-brand-primary underline-offset-2 hover:underline"
-                    >
-                      {grn.grnNumber}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {grn.purchaseOrder?.poNumber ?? poNumber(grn.purchaseOrderId) ?? tc('notAvailable')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <bdi>{formatDate(grn.deliveryDate, locale) ?? tc('notAvailable')}</bdi>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {grn.deliveryNoteRef ?? tc('notAvailable')}
-                  </TableCell>
-                  <TableCell>
-                    <ProcurementStatusBadge vocabulary="grn" status={grn.status} />
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
-    </div>
+    </>
   );
 }
 

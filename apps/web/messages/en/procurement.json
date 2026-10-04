@@ -54,7 +54,10 @@
     "permissionDenied": "You do not have permission to perform this action.",
     "moreActions": "More actions",
     "loading": "Loading",
-    "notInProject": "This bill is not coded to this project."
+    "notInProject": "This bill is not coded to this project.",
+    "rowMenu": "Actions for {number}",
+    "open": "Open",
+    "overhead": "ACCO overhead"
   },
   "lineType": {
     "MATERIAL": "Material",
@@ -247,7 +250,7 @@
     "lockedShort": "Locked"
   },
   "mr": {
-    "title": "Material Requests",
+    "title": "Material requests",
     "subtitle": "Internal requests for materials and services, scoped to a project or to the organisation.",
     "new": "New Material Request",
     "number": "MR Number",
@@ -298,10 +301,35 @@
     "priorityField": "Priority",
     "estimatedUnitPrice": "Estimated unit price",
     "estimatedValueHint": "Enter a quantity and unit price to estimate this line",
-    "estimatedValueIs": "Estimated value {value}"
+    "estimatedValueIs": "Estimated value {value}",
+    "list": {
+      "searchLabel": "Search material requests",
+      "searchPlaceholder": "Search by request number or title",
+      "new": "New request",
+      "countLabel": "{count, plural, one {# request} other {# requests}}",
+      "empty": "No material requests yet",
+      "emptyHint": "Raise a request when a site or the office needs materials or services.",
+      "noMatches": "No requests match these filters",
+      "moneyHidden": "Estimates are hidden for your role.",
+      "untitled": "{count, plural, one {# item} other {# items}}",
+      "noDate": "No date",
+      "urgent": "Urgent",
+      "requestedBy": "by {name}",
+      "columns": {
+        "request": "Request",
+        "for": "For",
+        "neededBy": "Needed by",
+        "estimate": "Estimate",
+        "status": "Status"
+      },
+      "filters": {
+        "status": "Status",
+        "requestedFor": "Requested for"
+      }
+    }
   },
   "po": {
-    "title": "Purchase Orders",
+    "title": "Purchase orders",
     "subtitle": "Orders placed with suppliers. Approving a revision commits cost to the project.",
     "new": "New Purchase Order",
     "backToList": "Back to orders",
@@ -313,8 +341,6 @@
     "deliveryAddress": "Delivery Address",
     "empty": "No purchase orders yet.",
     "createTitle": "New purchase order",
-    "totalUnavailable": "Order totals are not shown in this list because line data is only available after opening an order.",
-    "latestRevisionNotice": "The revision shown is the most recent one, which is not necessarily the active one.",
     "createSubtitle": "One order to a supplier. Issue it to commit the cost, or save it as a draft.",
     "detailTitle": "Purchase order {number}",
     "revisionTab": "Rev {number}",
@@ -375,10 +401,39 @@
         "PAID": "Paid",
         "REVERSED": "Reversed"
       }
+    },
+    "list": {
+      "searchLabel": "Search purchase orders",
+      "searchPlaceholder": "Search by PO number or supplier",
+      "new": "New order",
+      "countLabel": "{count, plural, one {# order} other {# orders}}",
+      "empty": "No purchase orders yet",
+      "emptyHint": "Order from a supplier to commit cost to a project or to overhead.",
+      "noMatches": "No orders match these filters",
+      "moneyHidden": "Order totals are hidden for your role.",
+      "revision": "revision {number}",
+      "columns": {
+        "order": "Order",
+        "project": "Project",
+        "ordered": "Ordered",
+        "delivery": "Delivery",
+        "total": "Total",
+        "status": "Status"
+      },
+      "delivery": {
+        "NOT_RECEIVED": "Not received",
+        "PARTLY_RECEIVED": "Partly received",
+        "RECEIVED": "Received"
+      },
+      "filters": {
+        "status": "Status",
+        "project": "Project",
+        "supplier": "Supplier"
+      }
     }
   },
   "grn": {
-    "title": "Goods Receipts",
+    "title": "Goods receipts",
     "subtitle": "Deliveries recorded against an active purchase order revision.",
     "new": "New Goods Receipt",
     "number": "GRN Number",
@@ -442,6 +497,27 @@
     },
     "split": {
       "label": "Received {received} — accepted {accepted}, rejected {rejected}"
+    },
+    "list": {
+      "searchLabel": "Search goods receipts",
+      "searchPlaceholder": "Search by receipt number, PO or delivery note",
+      "new": "Receive delivery",
+      "countLabel": "{count, plural, one {# receipt} other {# receipts}}",
+      "empty": "No deliveries received yet",
+      "emptyHint": "Receive a delivery against a confirmed purchase order when goods arrive on site.",
+      "noMatches": "No receipts match these filters",
+      "by": "by {name}",
+      "columns": {
+        "receipt": "Receipt",
+        "purchaseOrder": "Purchase order",
+        "project": "Project",
+        "delivered": "Delivered",
+        "deliveryNote": "Delivery note",
+        "status": "Status"
+      },
+      "filters": {
+        "status": "Status"
+      }
     }
   },
   "bills": {
