@@ -18,6 +18,7 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
 import { SettlementQueryService } from '../application/settlement-query.service.js';
+import { ReceivabilityService } from '../application/receivability.service.js';
 import {
   CreatePurchaseOrderDto,
   RevisePurchaseOrderDto,
@@ -33,6 +34,7 @@ export class PurchaseOrderController {
   constructor(
     private readonly service: PurchaseOrderService,
     private readonly settlementQuery: SettlementQueryService,
+    private readonly receivability: ReceivabilityService,
   ) {}
 
   @Get()
@@ -55,6 +57,17 @@ export class PurchaseOrderController {
   @ApiOperation({ summary: 'Create a purchase order (DRAFT)' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreatePurchaseOrderDto) {
     return this.service.create(identity, dto);
+  }
+
+  // Declared before ':id' so the literal segment is not captured as an id.
+  @Get('receivable')
+  @RequirePermissions(PERMISSIONS.procurementView, PERMISSIONS.goodsReceiptsCreate)
+  @ApiOperation({
+    summary:
+      'OPEN POs with quantity left to receive, each with canReceive / blockedReason / receiptException for the caller (no prices)',
+  })
+  listReceivable(@CurrentUser() identity: RequestIdentity) {
+    return this.receivability.listReceivable(identity);
   }
 
   @Get(':id')

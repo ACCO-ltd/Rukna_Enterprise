@@ -78,17 +78,7 @@ export class GoodsReceiptService {
     if (!po) throw new NotFoundException(`Purchase order ${dto.purchaseOrderId} not found`);
     if (po.status !== 'OPEN') throw new ConflictException('Can only receive against an OPEN purchase order');
 
-    // ADR-022 CONST-DOA-003: a PO creator cannot receive goods against their own order. The
-    // Procurement Officer's Store-Keeper access (CONST-DOA-002) does not exempt this — access is
-    // not authority. CONST-DOA-004: the one sanctioned override is an APPROVED receipt exception
-    // (independent supervisor verification + CFO approval), which clears this receiver.
-    const cleared = await this.receiptExceptions.isReceiptCleared(prisma, po.id, identity.userId);
-    await this.sod.assertAllowed({
-      organizationId: orgId,
-      action: 'RECEIVE_GOODS',
-      actorUserId: identity.userId,
-      purchaseOrderCreatorUserId: cleared ? undefined : po.createdBy,
-    });
+    await this.assertMayReceive(identity, po);
 
     const activeRevision = po.revisions.find(r => r.status === 'ACTIVE');
     if (!activeRevision) throw new ConflictException('Purchase order has no ACTIVE revision to receive against');
@@ -123,6 +113,11 @@ export class GoodsReceiptService {
 
         if (!accepted.add(rejected).equals(new Decimal(line.receivedQuantity))) {
           throw new BadRequestException(`Line ${i + 1}: acceptedQuantity + rejectedQuantity must equal receivedQuantity`);
+        }
+        // Rejected goods go back to the supplier and may be disputed or re-billed: the reason is
+        // the evidence, so it is required whenever anything is rejected.
+        if (rejected.greaterThan(0) && !line.rejectionReason?.trim()) {
+          throw new BadRequestException(`Line ${i + 1}: rejectionReason is required when rejectedQuantity is greater than 0`);
         }
 
         return {
@@ -232,7 +227,11 @@ export class GoodsReceiptService {
     if (grn.status !== 'DRAFT') throw new ConflictException(`GRN is ${grn.status} — only DRAFT GRNs can be posted`);
 
     const po = await this.poRepo.findById(prisma, orgId, grn.purchaseOrderId);
-    const activeRev = po?.revisions.find(r => r.status === 'ACTIVE');
+    if (!po) throw new NotFoundException(`Purchase order ${grn.purchaseOrderId} not found`);
+    // Posting is the act that records the receipt, so the receiving SoD applies to the poster too —
+    // a PO creator cannot post a GRN someone else drafted against their own order (ADR-022).
+    await this.assertMayReceive(identity, po);
+    const activeRev = po.revisions.find(r => r.status === 'ACTIVE');
     if (!activeRev) throw new ConflictException('Associated PO has no ACTIVE revision');
 
     await prisma.$transaction(async (tx) => {
@@ -318,6 +317,25 @@ export class GoodsReceiptService {
     await this.purchaseOrderService.autoCloseIfSettled(identity, grn.purchaseOrderId);
 
     return this.repo.findById(prisma, orgId, id);
+  }
+
+  /**
+   * ADR-022 CONST-DOA-003: a PO creator cannot receive goods against their own order. The
+   * Procurement Officer's Store-Keeper access (CONST-DOA-002) does not exempt this — access is
+   * not authority. CONST-DOA-004: the one sanctioned override is an APPROVED receipt exception
+   * (independent supervisor verification + CFO approval), which clears this receiver. A denial is
+   * a 403 with details.code = 'PO_CREATOR_CANNOT_RECEIVE_GOODS'. The receivable-PO read model
+   * (ReceivabilityService) answers the same question without throwing.
+   */
+  private async assertMayReceive(identity: RequestIdentity, po: { id: string; createdBy: string }) {
+    const prisma = this.tenancy.getClient();
+    const cleared = await this.receiptExceptions.isReceiptCleared(prisma, po.id, identity.userId);
+    await this.sod.assertAllowed({
+      organizationId: identity.activeOrganizationId,
+      action: 'RECEIVE_GOODS',
+      actorUserId: identity.userId,
+      purchaseOrderCreatorUserId: cleared ? undefined : po.createdBy,
+    });
   }
 
   async listAttachments(identity: RequestIdentity, grnId: string) {
