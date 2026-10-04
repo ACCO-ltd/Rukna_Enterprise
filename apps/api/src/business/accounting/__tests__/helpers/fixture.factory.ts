@@ -429,6 +429,7 @@ export class AccountingFixtureFactory {
     await prisma.$executeRaw`DELETE FROM clients WHERE organization_id = ${orgId}`;
 
     await prisma.$executeRaw`DELETE FROM tax_policy WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM invoice_document_policy WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM tax_codes WHERE organization_id = ${orgId}`;
 
     await prisma.$executeRaw`DELETE FROM organizations WHERE id = ${orgId}`;

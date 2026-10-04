@@ -54,8 +54,8 @@ describe('ReceiptDocumentService', () => {
     expect(all).toEqual(
       expect.arrayContaining([
         'ACCO Ltd',
-        'Tax reg. TIN-1',
-        'PAYMENT RECEIPT',
+        'Tax Reg. TIN-1',
+        'RECEIPT',
         'RCP-000017',
         'Hodan Construction Ltd',
         'KM4, Mogadishu',
