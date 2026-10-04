@@ -7,7 +7,7 @@ import {
   salesTaxLabel,
   type InvoiceLineSource,
 } from './invoice-view-model';
-import { maskAccountNumber, brandView } from './pdf-kit';
+import { brandView } from './pdf-kit';
 import { shortInvoiceFixture, variationTaxInvoiceFixture } from './document-pdf.fixtures';
 
 describe('buildInvoiceViewModel', () => {
@@ -70,16 +70,28 @@ describe('buildInvoiceViewModel', () => {
   });
 
   describe('payment information', () => {
-    it('masks the account number to its last four and quotes the invoice number as reference', () => {
+    it('prints the FULL receiving account number and quotes the invoice number as reference', () => {
       const vm = buildInvoiceViewModel(shortInvoiceFixture);
       expect(vm.payment?.rows).toEqual([
         { label: 'Bank Name', value: 'Premier Bank' },
         { label: 'Account Name', value: 'Example Construction Ltd — Operating' },
-        { label: 'Account Number', value: 'USD …4410' },
+        { label: 'Account Number', value: '0102 0033 4410 (USD)' },
         { label: 'SWIFT Code', value: 'PBSMSOSM' },
         { label: 'Reference', value: 'INV-000123' },
       ]);
-      expect(JSON.stringify(vm)).not.toContain('0102 0033');
+    });
+
+    it('omits the card when the account is in another currency than the invoice', () => {
+      const vm = buildInvoiceViewModel({
+        ...shortInvoiceFixture,
+        payment: { ...shortInvoiceFixture.payment!, currencyCode: 'SOS' },
+      });
+      expect(vm.payment).toBeNull();
+      // Case and whitespace are not a mismatch.
+      expect(
+        buildInvoiceViewModel({ ...shortInvoiceFixture, payment: { ...shortInvoiceFixture.payment!, currencyCode: 'usd ' } })
+          .payment,
+      ).not.toBeNull();
     });
 
     it('omits the card with no bank account, and the SWIFT row with no SWIFT code', () => {
@@ -173,11 +185,6 @@ describe('clientAddressLines', () => {
 });
 
 describe('pdf-kit helpers', () => {
-  it('masks account numbers to the last four characters', () => {
-    expect(maskAccountNumber('0102 0033 4410', 'USD')).toBe('USD …4410');
-    expect(maskAccountNumber('12', null)).toBe('…12');
-  });
-
   it('builds the footer line from the last address line, and accepts only a valid brand colour', () => {
     const base = { ...shortInvoiceFixture.org };
     expect(brandView(base).footerLine).toBe('Example Construction Ltd · Mogadishu, Somalia');
@@ -230,6 +237,14 @@ describe('buildInvoiceLines', () => {
       ['Stage 2 of 4 – Substructure complete', '123750.00'],
       ['VO-04 Delete parapet cladding', '-5000.00'],
     ]);
+  });
+
+  it('rounds the stage amount in Decimal, matching the invoice service (no float drift)', () => {
+    // 10.05 × 0.5 = 5.025 → 5.03 half-up; in binary floats 5.025 × 100 is 502.4999… and rounds to 5.02.
+    const lines = buildInvoiceLines(
+      stage({ subtotal: '5.03', installment: { name: 'S', position: 1, count: 2, percentage: '0.5', scheduleBase: '10.05' } }),
+    );
+    expect(lines[0]).toMatchObject({ amount: '5.03', detail: '50% of the contract value of USD 10.05' });
   });
 
   it('never prints a percentage claim that no longer adds up to the subtotal', () => {

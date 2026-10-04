@@ -98,13 +98,18 @@ describe('InvoiceDocumentSettingsPanel', () => {
     expect(offered.some((text) => text?.includes('Operating b2') || text?.includes('Operating b3'))).toBe(false);
   });
 
-  it('previews the chosen account masked and saves the edited settings', async () => {
+  it('previews the chosen account in full with its currency and saves the edited settings', async () => {
     const user = userEvent.setup();
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
 
     await chooseOption(user, screen.getByLabelText('Bank account'), 'b1');
-    expect(screen.getAllByText('USD …4410').length).toBeGreaterThan(0);
-    expect(screen.queryByText('0102 0033 4410')).not.toBeInTheDocument();
+    // The preview shows the full number the invoice prints, its currency and the currency rule.
+    expect(screen.getByText('0102 0033 4410')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Only USD invoices print these bank details. Invoices in other currencies print without a Payment Information card.',
+      ),
+    ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Invoice notes'), 'Pay within 30 days.');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));

@@ -1,10 +1,11 @@
+import { Decimal } from '@prisma/client/runtime/library';
+
 import {
   brandView,
   countryName,
   formatAmount,
   formatDate,
   formatMoney,
-  maskAccountNumber,
   splitLines,
   type BrandView,
   type KeyValue,
@@ -230,13 +231,19 @@ export function defaultInvoiceNotes(termDays: number | null): string[] {
   return notes;
 }
 
+/**
+ * The payee's own receiving account, printed in FULL — a client cannot pay into a masked number.
+ * Omitted (never a wrong-currency account) when the account's currency is not the invoice's, and
+ * when any of the details a payment needs is blank.
+ */
 function paymentCard(input: InvoiceDocumentInput): InvoiceViewModel['payment'] {
   const bank = input.payment;
   if (!bank || !bank.bankName.trim() || !bank.accountName.trim() || !bank.accountNumber.trim()) return null;
+  if (bank.currencyCode.trim().toUpperCase() !== input.currencyCode.trim().toUpperCase()) return null;
   const rows: KeyValue[] = [
     { label: 'Bank Name', value: bank.bankName.trim() },
     { label: 'Account Name', value: bank.accountName.trim() },
-    { label: 'Account Number', value: maskAccountNumber(bank.accountNumber, bank.currencyCode) },
+    { label: 'Account Number', value: `${bank.accountNumber.trim()} (${bank.currencyCode.trim().toUpperCase()})` },
   ];
   if (bank.swiftCode?.trim()) rows.push({ label: 'SWIFT Code', value: bank.swiftCode.trim() });
   rows.push({ label: 'Reference', value: input.invoiceNumber ?? 'Quote the invoice number' });
@@ -309,8 +316,8 @@ export interface InvoiceLineSource {
   }>;
 }
 
-const cents = (value: string | number) => Math.round(Number(value) * 100);
-const fromCents = (value: number) => (value / 100).toFixed(2);
+/** Amounts as Decimal, rounded to cents like the invoice service — never binary floats. */
+const money2 = (value: string | Decimal) => new Decimal(value).toDecimalPlaces(2);
 
 /**
  * The invoice's line table from what it was raised for. Never invents a figure: a breakdown is
@@ -321,37 +328,36 @@ export function buildInvoiceLines(source: InvoiceLineSource): InvoiceDocumentLin
   const single = (title: string, detail: string | null): InvoiceDocumentLine[] => [
     { title, detail, quantity: '1', unitPrice: source.subtotal, amount: source.subtotal },
   ];
-  const subtotal = cents(source.subtotal);
+  const subtotal = money2(source.subtotal);
 
   if (source.installment) {
     const stage = source.installment;
-    const pct = Number(stage.percentage) * 100;
-    const pctLabel = Number.isFinite(pct) ? String(Number(pct.toFixed(2))) : null;
-    const stageAmount = Math.round(Number(stage.scheduleBase) * Number(stage.percentage) * 100);
+    const percentage = new Decimal(stage.percentage);
+    const pctLabel = percentage.mul(100).toDecimalPlaces(2).toString();
+    // Same rule as ClientInvoiceService.generateFromInstallment: pct × base, rounded to cents.
+    const stageAmount = new Decimal(stage.scheduleBase).mul(percentage).toDecimalPlaces(2);
     const title =
       stage.count > 1 ? `Stage ${stage.position} of ${stage.count} – ${stage.name}` : stage.name;
-    const detail = pctLabel
-      ? `${pctLabel}% of the contract value of ${formatMoney(stage.scheduleBase, source.currencyCode)}`
-      : null;
+    const detail = `${pctLabel}% of the contract value of ${formatMoney(stage.scheduleBase, source.currencyCode)}`;
 
     const omissions = source.variations.filter((v) => v.treatment === 'STAGE_REDUCTION');
-    const omissionCents = omissions.map((v) => -Math.abs(cents(v.amount)));
-    const total = stageAmount + omissionCents.reduce((sum, value) => sum + value, 0);
-    if (Number.isFinite(stageAmount) && total === subtotal) {
+    const omissionAmounts = omissions.map((v) => money2(v.amount).abs().neg());
+    const total = omissionAmounts.reduce((sum, value) => sum.plus(value), stageAmount);
+    if (total.equals(subtotal)) {
       return [
-        { title, detail, quantity: '1', unitPrice: fromCents(stageAmount), amount: fromCents(stageAmount) },
+        { title, detail, quantity: '1', unitPrice: stageAmount.toFixed(2), amount: stageAmount.toFixed(2) },
         ...omissions.map((v, i) => ({
           title: `${v.reference} ${v.title}`.trim(),
           detail: 'Omission variation deducted from this stage',
           quantity: '1',
-          unitPrice: fromCents(omissionCents[i]),
-          amount: fromCents(omissionCents[i]),
+          unitPrice: omissionAmounts[i].toFixed(2),
+          amount: omissionAmounts[i].toFixed(2),
         })),
       ];
     }
     // The stage figure no longer reconciles to the subtotal (e.g. the schedule base changed):
     // print the stage for its invoiced subtotal and drop the percentage claim.
-    return single(title, stageAmount === subtotal ? detail : null);
+    return single(title, stageAmount.equals(subtotal) ? detail : null);
   }
 
   const billedVariation = source.variations.find((v) => v.treatment === 'INVOICE');

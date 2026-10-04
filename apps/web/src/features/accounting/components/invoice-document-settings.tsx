@@ -52,7 +52,7 @@ function toDraft(settings: InvoiceDocumentSettings): Draft {
   };
 }
 
-/** "USD …4410" — the form shows the account the way the invoice will print it. */
+/** "USD …4410" — a compact label for the picker; the invoice itself prints the full number. */
 export function maskedAccount(bank: Pick<BankAccount, 'accountNumber' | 'currencyCode'>): string {
   return `${bank.currencyCode} …${bank.accountNumber.replace(/\s+/g, '').slice(-4)}`;
 }
@@ -155,7 +155,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
             <option value="">{t('noBankAccount')}</option>
             {candidates.map((bank) => (
               <option key={bank.id} value={bank.id}>
-                {bank.bankName} · {bank.accountName} · {maskedAccount(bank)}
+                {bank.bankName} · {bank.accountName} · {maskedAccount(bank)} · {bank.currencyCode}
               </option>
             ))}
           </Select>
@@ -168,10 +168,17 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
             <dt className="text-muted-foreground">{t('previewAccountName')}</dt>
             <dd className="text-foreground">{selectedBank.accountName}</dd>
             <dt className="text-muted-foreground">{t('previewAccountNumber')}</dt>
-            <dd className="tabular-nums text-foreground">{maskedAccount(selectedBank)}</dd>
+            <dd className="tabular-nums text-foreground">{selectedBank.accountNumber}</dd>
+            <dt className="text-muted-foreground">{t('previewCurrency')}</dt>
+            <dd className="text-foreground">{selectedBank.currencyCode}</dd>
             <dt className="text-muted-foreground">{t('previewSwift')}</dt>
             <dd className="text-foreground">{selectedBank.swiftCode ?? t('previewSwiftNone')}</dd>
           </dl>
+        ) : null}
+        {selectedBank ? (
+          <p className="text-xs text-muted-foreground">
+            {t('currencyHint', { currency: selectedBank.currencyCode })}
+          </p>
         ) : (
           <p className="text-xs text-muted-foreground">{t('noBankHint')}</p>
         )}

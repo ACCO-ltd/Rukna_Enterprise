@@ -333,13 +333,6 @@ export function formatMoney(value: string, currencyCode: string): string {
   return `${currencyCode} ${formatAmount(value)}`;
 }
 
-/** "USD …4410" — only the last four characters of an account number ever reach a document. */
-export function maskAccountNumber(accountNumber: string, currencyCode: string | null): string {
-  const compact = accountNumber.replace(/\s+/g, '');
-  const tail = compact.slice(-4);
-  return `${currencyCode ? `${currencyCode} ` : ''}…${tail}`;
-}
-
 /** 'SO' → 'Somalia'; an unknown code is returned as given. */
 export function countryName(code: string | null | undefined): string | null {
   const trimmed = code?.trim();
