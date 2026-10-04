@@ -258,9 +258,6 @@
     "requestedDate": "Requested",
     "requiredBy": "Required By",
     "empty": "No material requests yet.",
-    "createTitle": "New material request",
-    "stepHeader": "Details",
-    "stepLines": "Lines",
     "scopeProject": "Project",
     "scopeOrganization": "Organisation",
     "selectProject": "Select a project",
@@ -288,20 +285,6 @@
     "workflowCompleted": "This request completed the configured {total}-step approval workflow.",
     "workflowCancelled": "This request was cancelled.",
     "workflowProgressNote": "Shows the configured approval chain and current position.",
-    "lineError": {
-      "materialRequired": "Choose a material. Material lines cannot be free text.",
-      "descriptionRequired": "Enter a description.",
-      "quantityMustBePositive": "Enter a quantity greater than zero."
-    },
-    "scopeError": {
-      "projectRequired": "Project-scoped requests require a project to be selected."
-    },
-    "titleField": "Title",
-    "titlePlaceholder": "e.g. Reinforcement steel",
-    "priorityField": "Priority",
-    "estimatedUnitPrice": "Estimated unit price",
-    "estimatedValueHint": "Enter a quantity and unit price to estimate this line",
-    "estimatedValueIs": "Estimated value {value}",
     "list": {
       "searchLabel": "Search material requests",
       "searchPlaceholder": "Search by request number or title",
@@ -325,6 +308,72 @@
       "filters": {
         "status": "Status",
         "requestedFor": "Requested for"
+      }
+    },
+    "create": {
+      "eyebrow": "Material request",
+      "title": "New request",
+      "intro": "The number is assigned when you save. You submit it for approval from the saved request.",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "discard": "Discard",
+      "stepOf": "step {n} of {total}",
+      "stages": {
+        "DRAFT": "Draft",
+        "SUBMITTED": "Submitted",
+        "APPROVED": "Approved",
+        "ORDERED": "Ordered"
+      },
+      "requestSection": "Request",
+      "forLabel": "What is it for?",
+      "forProject": "A project",
+      "forProjectHint": "The cost is charged to the project.",
+      "forOverhead": "ACCO overhead",
+      "forOverheadHint": "Office, yard or plant — not charged to a project.",
+      "project": "Project",
+      "projectPlaceholder": "Choose a project",
+      "projectSearch": "Search by code or name",
+      "projectEmpty": "No projects match",
+      "neededBy": "Needed on site by",
+      "neededByHint": "Leave empty if there's no deadline.",
+      "priority": "Priority",
+      "titleField": "Title",
+      "titleHint": "Shown in lists, e.g. \"Rebar for level 2 slab\".",
+      "itemsSection": "Items",
+      "linesLabel": "Requested items",
+      "lineTitle": "Item {n}",
+      "lineTitleNamed": "Item {n} — {name}",
+      "addLine": "Add an item",
+      "removeLine": "Remove item {n}",
+      "columns": {
+        "item": "Item",
+        "type": "Type",
+        "unit": "Unit",
+        "quantity": "Quantity",
+        "price": "Est. unit price",
+        "amount": "Est. amount",
+        "spend": "Spend category"
+      },
+      "itemPlaceholder": "Search materials",
+      "itemSearch": "Search by name or code",
+      "itemEmpty": "No material matches",
+      "addOneOff": "Add \"{text}\" as a one-off item",
+      "addOneOffEmpty": "Add a one-off item",
+      "typeMaterial": "Material",
+      "typeService": "Service",
+      "typeOther": "Other",
+      "chooseUnit": "Choose",
+      "chooseSpend": "None",
+      "estimatedTotal": "Estimated total",
+      "notEstimated": "Not estimated",
+      "note": "Note to the buyer",
+      "noteHint": "Brand, delivery point, who to call on site.",
+      "optional": "optional",
+      "errors": {
+        "project": "Choose the project this is for.",
+        "item": "Choose an item, or type its name and add it as a one-off item.",
+        "unit": "Choose a unit.",
+        "quantity": "Enter a quantity greater than zero."
       }
     }
   },

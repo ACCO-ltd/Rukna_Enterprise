@@ -73,7 +73,7 @@ export function MrDetail({ id }: { id: string }) {
       <div className="space-y-4">
         <Alert variant="error" messages={[tc('loadFailed')]} />
         <Button variant="outline" asChild>
-          <Link href="/procurement/material-requests">{t('backToList')}</Link>
+          <Link href="/procurement/requests">{t('backToList')}</Link>
         </Button>
       </div>
     );
@@ -93,7 +93,7 @@ export function MrDetail({ id }: { id: string }) {
       {/* ── Back link ─────────────────────────────────────────────────────── */}
       <div>
         <Link
-          href="/procurement/material-requests"
+          href="/procurement/requests"
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
         >
           <ChevronStartIcon />

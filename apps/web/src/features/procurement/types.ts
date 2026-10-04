@@ -167,6 +167,13 @@ export interface Material {
   materialCategory: MaterialCategory | null;
   defaultSpendCategory: SpendCategory | null;
   baseUom: UnitOfMeasure | null;
+  /**
+   * A reference price the catalogue may offer — the material's own estimate, or the last price
+   * paid on a purchase order. Optional until the backend sends them; prefills a request's
+   * estimate when present.
+   */
+  estimatedUnitPrice?: Money | null;
+  lastPurchasePrice?: Money | null;
 }
 
 // ─── Material requests ───────────────────────────────────────────────────────────
@@ -722,13 +729,22 @@ export interface CreateMrLinePayload {
   boqNodeId?: string;
   spendCategoryId?: string;
   notes?: string;
+  /** The requester's estimate. Absent when blank — never sent as 0 (ADR-022). */
+  estimatedUnitPrice?: number;
 }
 
+/**
+ * `POST /procurement/material-requests`. The server stamps `requestedDate` itself, so it is not
+ * sent. `notes` carries the "Note to the buyer".
+ */
 export interface CreateMaterialRequestPayload {
   requestScope: MaterialRequestScope;
   projectId?: string;
-  requestedDate: string;
   requiredByDate?: string;
+  title?: string;
+  priority?: MaterialRequestPriority;
+  /** Sent only when a line carries an estimate — an amount needs its currency. */
+  currencyCode?: string;
   description?: string;
   notes?: string;
   lines: CreateMrLinePayload[];
