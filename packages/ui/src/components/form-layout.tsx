@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 
 import { cn } from '../lib/utils';
+import { Combobox } from './combobox';
 
 // ─── Record create header ─────────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ export function FormGroup({
 
 // ─── Line items editor ────────────────────────────────────────────────────────
 
-export interface LineColumn<T> {
+interface LineColumnBase {
   key: string;
   header: string;
   required?: boolean;
@@ -142,10 +143,130 @@ export interface LineColumn<T> {
   align?: 'start' | 'end';
   /** The id of the control in this cell, so the phone label can point at it. */
   controlId?: (index: number) => string;
-  /** The editor (or read-only value) for this cell. */
-  cell: (row: T, index: number) => React.ReactNode;
   /** Hide from the phone card — e.g. a derived figure already in the card title. */
   hideOnCard?: boolean;
+}
+
+/** A column whose cell the caller renders — an input, a select, a read-only figure. */
+export interface LineCellColumn<T> extends LineColumnBase {
+  type?: 'cell';
+  /** The editor (or read-only value) for this cell. */
+  cell: (row: T, index: number) => React.ReactNode;
+}
+
+/**
+ * A column whose cell is a searchable pick from a catalogue — "Item" over materials — built on
+ * `Combobox`, so it is keyboard driven (arrows, Enter, Escape) and lays out in the phone card
+ * like any other cell. `onCreate` adds a pinned last row that hands back the typed text, for a
+ * one-off entry that is not in the catalogue; `valueLabel` then shows that text on the trigger.
+ *
+ * Give `options` for a list held client-side, or `search` as well to drive a server search that
+ * replaces `options` as results arrive. Build one with `comboboxColumn` to keep the option type.
+ */
+export interface LineComboboxColumn<T, O> extends LineColumnBase {
+  type: 'combobox';
+  options: readonly O[];
+  search?: {
+    onQueryChange: (query: string) => void;
+    loading?: boolean;
+    loadingLabel?: string;
+  };
+  getOptionValue: (option: O) => string;
+  getOptionLabel: (option: O) => string;
+  /** Quiet trailing text on a row — a code. Also matched by the filter. */
+  getOptionHint?: (option: O) => string | undefined;
+  /** Secondary line under a row's label — a category, a unit. */
+  getOptionCaption?: (option: O) => React.ReactNode;
+  /** The picked option's value for this row, or `''`. */
+  value: (row: T) => string;
+  /** Trigger text when the row's value is not an option — a one-off entry. */
+  valueLabel?: (row: T) => string | undefined;
+  onPick: (row: T, index: number, option: O) => void;
+  onCreate?: (row: T, index: number, text: string) => void;
+  /** The pinned create row — a string, or built from the typed text. */
+  createLabel?: string | ((text: string) => string);
+  placeholder: string;
+  searchPlaceholder?: string;
+  emptyLabel?: string;
+  disabled?: (row: T, index: number) => boolean;
+}
+
+export type LineColumn<T> = LineCellColumn<T> | LineComboboxColumn<T, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/** Builds a combobox column while keeping its option type checked against its callbacks. */
+export function comboboxColumn<T, O>(column: LineComboboxColumn<T, O>): LineColumn<T> {
+  return column as LineComboboxColumn<T, unknown> as LineColumn<T>;
+}
+
+function LineComboboxCell<T>({
+  column,
+  row,
+  index,
+  id,
+  invalid,
+  readOnly,
+}: {
+  column: LineComboboxColumn<T, unknown>;
+  row: T;
+  index: number;
+  id: string;
+  invalid: boolean;
+  readOnly: boolean;
+}) {
+  const { options, getOptionValue, getOptionLabel, getOptionHint, getOptionCaption } = column;
+  const byValue = React.useMemo(() => {
+    const map = new Map<string, unknown>();
+    for (const option of options) map.set(getOptionValue(option), option);
+    return map;
+  }, [options, getOptionValue]);
+  const items = React.useMemo(
+    () =>
+      options.map((option) => ({
+        value: getOptionValue(option),
+        label: getOptionLabel(option),
+        hint: getOptionHint?.(option),
+        caption: getOptionCaption?.(option),
+      })),
+    [options, getOptionValue, getOptionLabel, getOptionHint, getOptionCaption],
+  );
+  const { onCreate, createLabel } = column;
+  if (readOnly) {
+    const picked = byValue.get(column.value(row));
+    return (
+      <span id={id}>
+        {picked !== undefined ? getOptionLabel(picked) : (column.valueLabel?.(row) ?? '—')}
+      </span>
+    );
+  }
+  return (
+    <Combobox
+      id={id}
+      value={column.value(row)}
+      fallbackLabel={column.valueLabel?.(row)}
+      onChange={(value) => {
+        const option = byValue.get(value);
+        if (option !== undefined) column.onPick(row, index, option);
+      }}
+      options={items}
+      placeholder={column.placeholder}
+      searchPlaceholder={column.searchPlaceholder ?? column.placeholder}
+      emptyLabel={column.emptyLabel ?? 'No matches'}
+      footerAction={
+        onCreate
+          ? {
+              label: createLabel ?? 'Add as a one-off item',
+              onSelect: (text) => onCreate(row, index, text),
+            }
+          : undefined
+      }
+      onQueryChange={column.search?.onQueryChange}
+      loading={column.search?.loading}
+      loadingLabel={column.search?.loadingLabel}
+      disabled={column.disabled?.(row, index)}
+      invalid={invalid}
+      aria-required={column.required || undefined}
+    />
+  );
 }
 
 export interface LineNote {
@@ -199,6 +320,7 @@ export function LineItemsEditor<T>({
   className,
 }: LineItemsEditorProps<T>) {
   const removable = !readOnly && Boolean(onRemove);
+  const baseId = React.useId();
   const tracks = ['2rem', ...columns.map((c) => c.width), removable ? '2.5rem' : null]
     .filter(Boolean)
     .join(' ');
@@ -253,7 +375,9 @@ export function LineItemsEditor<T>({
                   </span>
                   {columns.map((col) => {
                     const error = rowErrors[col.key];
-                    const controlId = col.controlId?.(index);
+                    const controlId =
+                      col.controlId?.(index) ??
+                      (col.type === 'combobox' ? `${baseId}-${col.key}-${index}` : undefined);
                     return (
                       <div
                         key={col.key}
@@ -277,7 +401,20 @@ export function LineItemsEditor<T>({
                             </span>
                           ) : null}
                         </label>
-                        <div className={cn(readOnly && 'py-2 text-body-sm')}>{col.cell(row, index)}</div>
+                        <div className={cn(readOnly && 'py-2 text-body-sm')}>
+                          {col.type === 'combobox' ? (
+                            <LineComboboxCell
+                              column={col as LineComboboxColumn<T, unknown>}
+                              row={row}
+                              index={index}
+                              id={controlId!}
+                              invalid={Boolean(error)}
+                              readOnly={readOnly}
+                            />
+                          ) : (
+                            col.cell(row, index)
+                          )}
+                        </div>
                         {error ? (
                           <p className="mt-1 text-caption font-medium text-danger" role="alert">
                             {error}
