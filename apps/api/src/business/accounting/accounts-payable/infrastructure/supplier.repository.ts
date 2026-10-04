@@ -49,4 +49,9 @@ export class SupplierRepository {
   update(prisma: TenantPrisma, id: string, data: UpdateSupplierData) {
     return prisma.supplier.update({ where: { id }, data });
   }
+
+  /** The separate activate/deactivate flow — the only writer of `status`. */
+  setStatus(prisma: TenantPrisma, id: string, status: SupplierStatus) {
+    return prisma.supplier.update({ where: { id }, data: { status } });
+  }
 }

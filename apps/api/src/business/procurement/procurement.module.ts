@@ -6,6 +6,7 @@ import { GoodsReceiptsModule } from './goods-receipts/goods-receipts.module.js';
 import { BillMatchingModule } from './bill-matching/bill-matching.module.js';
 import { CommitmentLedgerModule } from './commitment-ledger/commitment-ledger.module.js';
 import { ProjectProcurementModule } from './project-procurement/project-procurement.module.js';
+import { SupplierDirectoryModule } from './supplier-directory/supplier-directory.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ProjectProcurementModule } from './project-procurement/project-procurem
     GoodsReceiptsModule,
     BillMatchingModule,
     ProjectProcurementModule,
+    SupplierDirectoryModule,
   ],
   exports: [
     CatalogueModule,

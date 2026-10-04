@@ -109,4 +109,47 @@ export class SupplierService {
       return updated;
     });
   }
+
+  /** ACTIVE → INACTIVE. Audited. History (POs, bills) is untouched — they reference the FK. */
+  deactivate(identity: RequestIdentity, id: string) {
+    return this.changeStatus(identity, id, 'ACTIVE', 'INACTIVE', 'supplier.deactivate', 'SUPPLIER_DEACTIVATED');
+  }
+
+  /** INACTIVE → ACTIVE. Audited. */
+  reactivate(identity: RequestIdentity, id: string) {
+    return this.changeStatus(identity, id, 'INACTIVE', 'ACTIVE', 'supplier.reactivate', 'SUPPLIER_REACTIVATED');
+  }
+
+  private async changeStatus(
+    identity: RequestIdentity,
+    id: string,
+    from: SupplierStatus,
+    to: SupplierStatus,
+    sourceCommand: string,
+    eventType: string,
+  ) {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const existing = await this.repo.findById(prisma, orgId, id);
+    if (!existing) throw new NotFoundException(`Supplier ${id} not found`);
+    if (existing.status !== from) {
+      throw new ConflictException(`Supplier ${existing.code} is ${existing.status} — cannot change it to ${to}`);
+    }
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.setStatus(tx, id, to);
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'UPDATE',
+        resourceType: 'Supplier',
+        resourceId: id,
+        sourceCommand,
+        eventType,
+        idempotencyKey: `${sourceCommand}-${id}-${updated.updatedAt.getTime()}`,
+        before: { status: from },
+        after: { status: to },
+      });
+      return updated;
+    });
+  }
 }
