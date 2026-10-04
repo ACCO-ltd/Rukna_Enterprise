@@ -34,12 +34,10 @@ export interface InvoiceDocumentLine {
   amount: string;
 }
 
-export interface InvoicePaymentDetails {
+/** One row of the "Bank Account Details" table, as typed in the invoice settings. */
+export interface InvoicePaymentAccount {
   bankName: string;
-  accountName: string;
   accountNumber: string;
-  swiftCode: string | null;
-  currencyCode: string;
 }
 
 export interface InvoiceSignatory {
@@ -72,8 +70,8 @@ export interface InvoiceDocumentInput {
   };
   project: { code: string; name: string; location: string | null } | null;
   lines: InvoiceDocumentLine[];
-  /** The bank account the organisation chose for invoices; null → no Payment Information card. */
-  payment: InvoicePaymentDetails | null;
+  /** The organisation's "Bank Account Details" rows; none → no bank card. */
+  paymentAccounts: InvoicePaymentAccount[];
   /** The organisation's invoice notes (one per line); null → the default notes. */
   notes: string | null;
   signatory: InvoiceSignatory | null;
@@ -99,7 +97,12 @@ export interface InvoiceViewModel {
   columns: { index: string; description: string; quantity: string; unitPrice: string; amount: string };
   lines: InvoiceLineView[];
   totals: Array<KeyValue & { emphasis: boolean }>;
-  payment: { title: string; subtitle: string; rows: KeyValue[] } | null;
+  payment: {
+    title: string;
+    columns: { bank: string; accountNumber: string };
+    rows: Array<{ bank: string; accountNumber: string }>;
+    reference: KeyValue;
+  } | null;
   notes: string[];
   signature: { name: string | null; title: string | null; company: string; date: string };
   footerNote: string | null;
@@ -232,25 +235,19 @@ export function defaultInvoiceNotes(termDays: number | null): string[] {
 }
 
 /**
- * The payee's own receiving account, printed in FULL — a client cannot pay into a masked number.
- * Omitted (never a wrong-currency account) when the account's currency is not the invoice's, and
- * when any of the details a payment needs is blank.
+ * The "Bank Account Details" table: one row per typed bank account, printed in full (a client
+ * cannot pay into a masked number), then the reference to quote. No complete row → no card.
  */
 function paymentCard(input: InvoiceDocumentInput): InvoiceViewModel['payment'] {
-  const bank = input.payment;
-  if (!bank || !bank.bankName.trim() || !bank.accountName.trim() || !bank.accountNumber.trim()) return null;
-  if (bank.currencyCode.trim().toUpperCase() !== input.currencyCode.trim().toUpperCase()) return null;
-  const rows: KeyValue[] = [
-    { label: 'Bank Name', value: bank.bankName.trim() },
-    { label: 'Account Name', value: bank.accountName.trim() },
-    { label: 'Account Number', value: `${bank.accountNumber.trim()} (${bank.currencyCode.trim().toUpperCase()})` },
-  ];
-  if (bank.swiftCode?.trim()) rows.push({ label: 'SWIFT Code', value: bank.swiftCode.trim() });
-  rows.push({ label: 'Reference', value: input.invoiceNumber ?? 'Quote the invoice number' });
+  const rows = input.paymentAccounts
+    .map((account) => ({ bank: account.bankName.trim(), accountNumber: account.accountNumber.trim() }))
+    .filter((row) => row.bank && row.accountNumber);
+  if (rows.length === 0) return null;
   return {
-    title: 'Payment Information',
-    subtitle: 'Please make payment to the following bank account.',
+    title: 'Bank Account Details',
+    columns: { bank: 'Bank', accountNumber: 'Account number' },
     rows,
+    reference: { label: 'Reference', value: input.invoiceNumber ?? 'Quote the invoice number' },
   };
 }
 

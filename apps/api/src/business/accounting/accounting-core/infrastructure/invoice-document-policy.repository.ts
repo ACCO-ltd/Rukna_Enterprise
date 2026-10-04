@@ -3,28 +3,27 @@ import { Prisma, type InvoiceDocumentPolicy, type PrismaClient } from '@prisma/c
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
+/** One row of the invoice's "Bank Account Details" table, as typed in the invoice settings. */
+export interface InvoicePaymentAccount {
+  bankName: string;
+  accountNumber: string;
+}
+
 /**
- * The invoice document settings as an invoice freezes them: plain printable values, resolved from
- * the policy's ids at the moment of the snapshot (so a later edit of the bank account or the
- * signatory's name never reaches an invoice already raised). Stored in
- * `ClientInvoice.billingAddressSnapshot.org.invoiceDocument`.
+ * The invoice document settings as an invoice freezes them, stored in
+ * `ClientInvoice.billingAddressSnapshot.org.invoiceDocument` when the invoice is raised and again
+ * when it is issued — so a later edit never reaches an invoice already raised.
  */
 export interface InvoiceDocumentSnapshot {
-  bank: {
-    bankName: string;
-    accountName: string;
-    accountNumber: string;
-    swiftCode: string | null;
-    currencyCode: string;
-  } | null;
+  paymentAccounts: InvoicePaymentAccount[];
   notes: string | null;
   signatory: { name: string; title: string | null } | null;
 }
 
 export interface InvoiceDocumentPolicyWrite {
-  bankAccountId: string | null;
+  paymentAccounts: InvoicePaymentAccount[];
   notes: string | null;
-  signatoryUserId: string | null;
+  signatoryName: string | null;
   signatoryTitle: string | null;
 }
 
@@ -36,10 +35,16 @@ export class InvoiceDocumentPolicyRepository {
   }
 
   upsert(prisma: TenantPrisma, organizationId: string, data: InvoiceDocumentPolicyWrite, updatedBy: string) {
+    const row = {
+      paymentAccounts: data.paymentAccounts as unknown as Prisma.InputJsonValue,
+      notes: data.notes,
+      signatoryName: data.signatoryName,
+      signatoryTitle: data.signatoryTitle,
+    };
     return prisma.invoiceDocumentPolicy.upsert({
       where: { organizationId },
-      create: { organizationId, ...data, updatedBy },
-      update: { ...data, updatedBy },
+      create: { organizationId, ...row, updatedBy },
+      update: { ...row, updatedBy },
     });
   }
 
@@ -63,47 +68,61 @@ export class InvoiceDocumentPolicyRepository {
 }
 
 /**
- * Resolve the settings to the values an invoice prints. A bank account that is missing, closed or
- * not open for receipts prints nothing (no Payment Information card rather than stale details); a
- * signatory who is no longer an active user of the organisation leaves the signature line blank.
- *
- * A plain function on the tenant client (not a service method) so the invoice snapshot can take it
- * inside the invoice-creating transaction.
+ * The stored `payment_accounts` JSON as rows — tolerant of anything malformed (a non-array, a row
+ * missing a field), which is skipped rather than printed half-empty.
+ */
+export function readPaymentAccounts(value: unknown): InvoicePaymentAccount[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== 'object') return [];
+    const { bankName, accountNumber } = row as Record<string, unknown>;
+    if (typeof bankName !== 'string' || typeof accountNumber !== 'string') return [];
+    const bank = bankName.trim();
+    const number = accountNumber.trim();
+    return bank && number ? [{ bankName: bank, accountNumber: number }] : [];
+  });
+}
+
+/** The policy as the values an invoice prints. No policy → no bank table, default notes, blank signature. */
+export function toInvoiceDocumentSnapshot(policy: InvoiceDocumentPolicy | null): InvoiceDocumentSnapshot {
+  if (!policy) return { paymentAccounts: [], notes: null, signatory: null };
+  const name = policy.signatoryName?.trim() || null;
+  return {
+    paymentAccounts: readPaymentAccounts(policy.paymentAccounts),
+    notes: policy.notes?.trim() ? policy.notes : null,
+    signatory: name ? { name, title: policy.signatoryTitle?.trim() || null } : null,
+  };
+}
+
+/**
+ * Read and resolve the settings for an invoice snapshot. A plain function on the tenant client (not
+ * a service method) so the invoice snapshot can take it inside the invoice-creating transaction.
  */
 export async function resolveInvoiceDocumentSnapshot(
   prisma: TenantPrisma,
   organizationId: string,
 ): Promise<InvoiceDocumentSnapshot> {
-  const policy = await prisma.invoiceDocumentPolicy.findUnique({ where: { organizationId } });
-  if (!policy) return { bank: null, notes: null, signatory: null };
+  return toInvoiceDocumentSnapshot(await prisma.invoiceDocumentPolicy.findUnique({ where: { organizationId } }));
+}
 
-  const [bank, user] = await Promise.all([
-    policy.bankAccountId
-      ? prisma.bankAccount.findFirst({
-          where: { id: policy.bankAccountId, organizationId, status: 'ACTIVE', allowsReceipts: true },
-          select: { bankName: true, accountName: true, accountNumber: true, swiftCode: true, currencyCode: true },
-        })
-      : null,
-    policy.signatoryUserId
-      ? prisma.user.findFirst({
-          where: { id: policy.signatoryUserId, organizationId, status: 'ACTIVE' },
-          select: { firstName: true, lastName: true },
-        })
-      : null,
-  ]);
-
-  const name = user ? `${user.firstName} ${user.lastName}`.trim() : '';
+/**
+ * A frozen snapshot in either shape: the current one, or the single-bank shape of the first
+ * template-v2 release (`bank: { bankName, accountNumber, … }`), read as a one-row table.
+ */
+export function normalizeInvoiceDocumentSnapshot(value: unknown): InvoiceDocumentSnapshot {
+  const snap = (value ?? {}) as Record<string, unknown>;
+  const legacyBank = snap.bank as { bankName?: unknown; accountNumber?: unknown } | null | undefined;
+  const paymentAccounts =
+    snap.paymentAccounts !== undefined
+      ? readPaymentAccounts(snap.paymentAccounts)
+      : readPaymentAccounts(legacyBank ? [legacyBank] : []);
+  const signatory = snap.signatory as { name?: unknown; title?: unknown } | null | undefined;
+  const name = typeof signatory?.name === 'string' ? signatory.name.trim() : '';
   return {
-    bank: bank
-      ? {
-          bankName: bank.bankName,
-          accountName: bank.accountName,
-          accountNumber: bank.accountNumber,
-          swiftCode: bank.swiftCode,
-          currencyCode: bank.currencyCode,
-        }
+    paymentAccounts,
+    notes: typeof snap.notes === 'string' && snap.notes.trim() ? snap.notes : null,
+    signatory: name
+      ? { name, title: typeof signatory?.title === 'string' && signatory.title.trim() ? signatory.title.trim() : null }
       : null,
-    notes: policy.notes?.trim() ? policy.notes : null,
-    signatory: name ? { name, title: policy.signatoryTitle?.trim() || null } : null,
   };
 }

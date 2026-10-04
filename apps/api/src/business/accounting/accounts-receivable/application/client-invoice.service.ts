@@ -34,6 +34,7 @@ import {
 import { clientInvoiceTax } from '../../accounting-core/domain/tax-amount.js';
 import { TaxCodeService } from '../../accounting-core/application/tax-code.service.js';
 import {
+  normalizeInvoiceDocumentSnapshot,
   resolveInvoiceDocumentSnapshot,
   type InvoiceDocumentSnapshot,
 } from '../../accounting-core/infrastructure/invoice-document-policy.repository.js';
@@ -1020,7 +1021,10 @@ export class ClientInvoiceService {
         }
       : liveClient;
     const org = snapshot.org ?? fallbackOrg;
-    const invoiceDocument = org?.invoiceDocument ?? liveInvoiceDocument;
+    // A frozen snapshot may be in the first template-v2 shape (one linked bank): read either.
+    const invoiceDocument = org?.invoiceDocument
+      ? normalizeInvoiceDocumentSnapshot(org.invoiceDocument)
+      : liveInvoiceDocument;
     const description =
       snapshot.description ??
       snapshot.installment ??
@@ -1052,7 +1056,7 @@ export class ClientInvoiceService {
       },
       project,
       lines: buildInvoiceLines(lineSource),
-      payment: invoiceDocument?.bank ?? null,
+      paymentAccounts: invoiceDocument?.paymentAccounts ?? [],
       notes: invoiceDocument?.notes ?? null,
       signatory: invoiceDocument?.signatory ?? null,
       org: {

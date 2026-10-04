@@ -731,21 +731,27 @@ export interface ReconciliationReport {
   blocksClose: boolean;
 }
 
+/** One row of the invoice's "Bank Account Details" table. */
+export interface InvoicePaymentAccount {
+  bankName: string;
+  accountNumber: string;
+}
+
 /** `GET /invoice-document-settings` — what the client invoice PDF prints beyond the invoice. */
 export interface InvoiceDocumentSettings {
-  bankAccountId: string | null;
+  paymentAccounts: InvoicePaymentAccount[];
   /** The organisation's own notes, one per line; null while the defaults apply. */
   notes: string | null;
   defaultNotes: string[];
-  signatoryUserId: string | null;
+  signatoryName: string | null;
   signatoryTitle: string | null;
   updatedAt: string | null;
 }
 
-/** `PUT /invoice-document-settings` — omitted keeps, null clears. */
+/** `PUT /invoice-document-settings` — omitted keeps, null clears; `paymentAccounts` replaces the table. */
 export interface UpdateInvoiceDocumentSettingsBody {
-  bankAccountId?: string | null;
+  paymentAccounts?: InvoicePaymentAccount[];
   notes?: string | null;
-  signatoryUserId?: string | null;
+  signatoryName?: string | null;
   signatoryTitle?: string | null;
 }

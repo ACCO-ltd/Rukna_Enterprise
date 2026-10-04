@@ -112,9 +112,18 @@ describe('invoice PDF (real renderer)', () => {
       'Subtotal',
       'Sales Tax 0%',
       'Total Due',
-      'Payment Information',
-      'Account Number',
-      '0102 0033 4410 (USD)',
+      'Bank Account Details',
+      'Bank',
+      'Account number',
+      'Salaam Bank',
+      '33020045871',
+      'Dahabshiil Bank',
+      'Premier Bank',
+      '0102 0033 4410',
+      'My Bank',
+      '7700 5512 09',
+      'Reference: ',
+      'INV-000123',
       'Notes',
       'Please quote the invoice number in your payment.',
       'AUTHORIZED SIGNATURE',
@@ -141,7 +150,7 @@ describe('invoice PDF (real renderer)', () => {
     const all = pages.join('\n');
     for (let n = 1; n <= 40; n += 1) expect(all).toContain(`Line item ${n} `);
     const last = pages[pages.length - 1];
-    expectInOrder(last, ['Line item 40 ', 'Subtotal', 'Total Due', 'Payment Information', 'AUTHORIZED SIGNATURE']);
+    expectInOrder(last, ['Line item 40 ', 'Subtotal', 'Total Due', 'Bank Account Details', 'AUTHORIZED SIGNATURE']);
     expect(pages.slice(0, -1).join('\n')).not.toContain('Total Due');
   }, 60_000);
 });

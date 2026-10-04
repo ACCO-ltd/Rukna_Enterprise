@@ -1,21 +1,21 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 
-import { InvoiceDocumentSettingsService } from './invoice-document-settings.service';
+import { InvoiceDocumentSettingsService, validatePaymentAccounts } from './invoice-document-settings.service';
 import {
   InvoiceDocumentPolicyRepository,
+  normalizeInvoiceDocumentSnapshot,
+  readPaymentAccounts,
   resolveInvoiceDocumentSnapshot,
 } from '../infrastructure/invoice-document-policy.repository';
 
 const identity = { userId: 'u-1', activeOrganizationId: 'org-1' } as never;
 
-function fakePrisma(over: { policy?: object | null; bank?: object | null; user?: object | null } = {}) {
+function fakePrisma(policy: object | null = null) {
   const prisma = {
     invoiceDocumentPolicy: {
-      findUnique: jest.fn().mockResolvedValue(over.policy ?? null),
+      findUnique: jest.fn().mockResolvedValue(policy),
       upsert: jest.fn().mockResolvedValue({}),
     },
-    bankAccount: { findFirst: jest.fn().mockResolvedValue(over.bank ?? null) },
-    user: { findFirst: jest.fn().mockResolvedValue(over.user ?? null) },
     auditLog: { create: jest.fn() },
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
   };
@@ -23,37 +23,39 @@ function fakePrisma(over: { policy?: object | null; bank?: object | null; user?:
 }
 
 function build(prisma: ReturnType<typeof fakePrisma>) {
-  return new InvoiceDocumentSettingsService(
-    { getClient: () => prisma } as never,
-    new InvoiceDocumentPolicyRepository(),
-  );
+  return new InvoiceDocumentSettingsService({ getClient: () => prisma } as never, new InvoiceDocumentPolicyRepository());
 }
 
+const banks = (n: number) => Array.from({ length: n }, (_, i) => ({ bankName: `Bank ${i + 1}`, accountNumber: `${i + 1}000` }));
+
 describe('InvoiceDocumentSettingsService', () => {
-  it('reads defaults when nothing is configured', async () => {
+  it('reads an empty table and defaults when nothing is configured', async () => {
     const view = await build(fakePrisma()).get(identity);
-    expect(view).toMatchObject({ bankAccountId: null, notes: null, signatoryUserId: null, signatoryTitle: null });
+    expect(view).toMatchObject({ paymentAccounts: [], notes: null, signatoryName: null, signatoryTitle: null });
     expect(view.defaultNotes.length).toBeGreaterThan(0);
   });
 
-  it('saves a receipts-enabled bank account, trimmed notes and a signatory, with an audit row', async () => {
-    const prisma = fakePrisma({
-      bank: { status: 'ACTIVE', allowsReceipts: true, accountName: 'Operating' },
-      user: { id: 'u-2' },
-    });
+  it('saves trimmed bank rows in order, notes and a typed signatory, with an audit row', async () => {
+    const prisma = fakePrisma();
     await build(prisma).update(identity, {
-      bankAccountId: 'bank-1',
+      paymentAccounts: [
+        { bankName: ' Salaam Bank ', accountNumber: ' 33020045871 ' },
+        { bankName: 'Premier Bank', accountNumber: '0102 0033 4410' },
+      ],
       notes: '  Quote the invoice number.  ',
-      signatoryUserId: 'u-2',
+      signatoryName: ' Ahmed Ali ',
       signatoryTitle: 'Finance Manager',
     });
     expect(prisma.invoiceDocumentPolicy.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
           organizationId: 'org-1',
-          bankAccountId: 'bank-1',
+          paymentAccounts: [
+            { bankName: 'Salaam Bank', accountNumber: '33020045871' },
+            { bankName: 'Premier Bank', accountNumber: '0102 0033 4410' },
+          ],
           notes: 'Quote the invoice number.',
-          signatoryUserId: 'u-2',
+          signatoryName: 'Ahmed Ali',
           signatoryTitle: 'Finance Manager',
           updatedBy: 'u-1',
         }),
@@ -62,55 +64,78 @@ describe('InvoiceDocumentSettingsService', () => {
     expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses a closed or payments-only bank account and an unknown signatory', async () => {
-    await expect(
-      build(fakePrisma({ bank: { status: 'CLOSED', allowsReceipts: true, accountName: 'Old' } })).update(identity, {
-        bankAccountId: 'bank-1',
-      }),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    await expect(build(fakePrisma()).update(identity, { bankAccountId: 'missing' })).rejects.toBeInstanceOf(
-      UnprocessableEntityException,
-    );
-    await expect(build(fakePrisma()).update(identity, { signatoryUserId: 'ghost' })).rejects.toBeInstanceOf(
-      UnprocessableEntityException,
-    );
-  });
-
-  it('keeps omitted fields, clears nulls/blanks, and drops the title with the signatory', async () => {
+  it('keeps omitted fields and clears nulls/blanks', async () => {
     const prisma = fakePrisma({
-      policy: { bankAccountId: 'bank-1', notes: 'Keep me', signatoryUserId: 'u-2', signatoryTitle: 'CFO', updatedAt: new Date() },
+      paymentAccounts: [{ bankName: 'My Bank', accountNumber: '1' }],
+      notes: 'Keep me',
+      signatoryName: 'Ahmed Ali',
+      signatoryTitle: 'CFO',
+      updatedAt: new Date(),
     });
-    await build(prisma).update(identity, { signatoryUserId: null, notes: '   ' });
+    await build(prisma).update(identity, { signatoryTitle: null, notes: '   ' });
     expect(prisma.invoiceDocumentPolicy.upsert.mock.calls[0][0].update).toMatchObject({
-      bankAccountId: 'bank-1',
+      paymentAccounts: [{ bankName: 'My Bank', accountNumber: '1' }],
       notes: null,
-      signatoryUserId: null,
+      signatoryName: 'Ahmed Ali',
       signatoryTitle: null,
     });
   });
+
+  it('refuses a row missing either field, more than eight rows, and over-long text', async () => {
+    const service = build(fakePrisma());
+    await expect(
+      service.update(identity, { paymentAccounts: [{ bankName: 'Salaam Bank', accountNumber: '  ' }] }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(service.update(identity, { paymentAccounts: banks(9) })).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    await expect(service.update(identity, { signatoryName: 'x'.repeat(121) })).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    expect(validatePaymentAccounts(banks(8))).toHaveLength(8);
+    expect(validatePaymentAccounts([])).toEqual([]);
+  });
 });
 
-describe('resolveInvoiceDocumentSnapshot', () => {
-  it('resolves the configured account and signatory to printable values', async () => {
+describe('invoice document snapshot', () => {
+  it('resolves the policy to printable values', async () => {
     const prisma = fakePrisma({
-      policy: { bankAccountId: 'bank-1', notes: 'Note', signatoryUserId: 'u-2', signatoryTitle: ' CFO ' },
-      bank: { bankName: 'Premier Bank', accountName: 'Operating', accountNumber: '0011223344', swiftCode: null, currencyCode: 'USD' },
-      user: { firstName: 'Ahmed', lastName: 'Ali' },
+      paymentAccounts: [{ bankName: 'Dahabshiil Bank', accountNumber: '100-2287' }],
+      notes: 'Note',
+      signatoryName: 'Ahmed Ali',
+      signatoryTitle: ' CFO ',
     });
     expect(await resolveInvoiceDocumentSnapshot(prisma as never, 'org-1')).toEqual({
-      bank: { bankName: 'Premier Bank', accountName: 'Operating', accountNumber: '0011223344', swiftCode: null, currencyCode: 'USD' },
+      paymentAccounts: [{ bankName: 'Dahabshiil Bank', accountNumber: '100-2287' }],
       notes: 'Note',
       signatory: { name: 'Ahmed Ali', title: 'CFO' },
     });
-    // Only an ACTIVE, receipts-enabled account of this organisation is ever printed.
-    expect(prisma.bankAccount.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'bank-1', organizationId: 'org-1', status: 'ACTIVE', allowsReceipts: true } }),
-    );
+    expect(await resolveInvoiceDocumentSnapshot(fakePrisma() as never, 'org-1')).toEqual({
+      paymentAccounts: [],
+      notes: null,
+      signatory: null,
+    });
   });
 
-  it('prints nothing for settings that no longer resolve', async () => {
-    const prisma = fakePrisma({ policy: { bankAccountId: 'gone', notes: '  ', signatoryUserId: 'left', signatoryTitle: 'CFO' } });
-    expect(await resolveInvoiceDocumentSnapshot(prisma as never, 'org-1')).toEqual({ bank: null, notes: null, signatory: null });
-    expect(await resolveInvoiceDocumentSnapshot(fakePrisma() as never, 'org-1')).toEqual({ bank: null, notes: null, signatory: null });
+  it('skips malformed stored rows rather than printing them half-empty', () => {
+    expect(readPaymentAccounts('nope')).toEqual([]);
+    expect(
+      readPaymentAccounts([{ bankName: 'A', accountNumber: '1' }, { bankName: 'B' }, null, { bankName: ' ', accountNumber: '2' }]),
+    ).toEqual([{ bankName: 'A', accountNumber: '1' }]);
+  });
+
+  it('reads the first template-v2 single-bank snapshot as a one-row table', () => {
+    expect(
+      normalizeInvoiceDocumentSnapshot({
+        bank: { bankName: 'Premier Bank', accountName: 'Ops', accountNumber: '0102', swiftCode: null, currencyCode: 'USD' },
+        notes: null,
+        signatory: { name: 'Ahmed Ali', title: null },
+      }),
+    ).toEqual({
+      paymentAccounts: [{ bankName: 'Premier Bank', accountNumber: '0102' }],
+      notes: null,
+      signatory: { name: 'Ahmed Ali', title: null },
+    });
+    expect(normalizeInvoiceDocumentSnapshot({ bank: null, notes: null, signatory: null }).paymentAccounts).toEqual([]);
   });
 });
