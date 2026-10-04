@@ -18,6 +18,7 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { MaterialRequestService } from '../application/material-request.service.js';
 import { CreateMaterialRequestDto } from './dto/create-material-request.dto.js';
+import { RejectMaterialRequestDto } from './dto/reject-material-request.dto.js';
 
 @ApiTags('Procurement — Material Requests')
 @ApiBearerAuth('access-token')
@@ -68,6 +69,30 @@ export class MaterialRequestController {
   @ApiOperation({ summary: 'Submit MR for approval: DRAFT → SUBMITTED' })
   submit(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.service.submit(identity, id);
+  }
+
+  @Post(':id/approve')
+  @RequirePermissions(PERMISSIONS.materialRequestsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Approve a submitted MR: SUBMITTED → APPROVED. The requester cannot approve their own (ADR-022).',
+  })
+  approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.approve(identity, id);
+  }
+
+  @Post(':id/reject')
+  @RequirePermissions(PERMISSIONS.materialRequestsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Send a submitted MR back to the requester with a reason: SUBMITTED → DRAFT' })
+  reject(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: RejectMaterialRequestDto,
+  ) {
+    return this.service.reject(identity, id, dto.reason);
   }
 
   @Post(':id/cancel')

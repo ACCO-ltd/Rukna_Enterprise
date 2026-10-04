@@ -116,11 +116,11 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   const sod = { assertAllowed: async () => undefined } as unknown as SegregationOfDutiesService;
   const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
   const projectAccess   = new ProjectAccessService(tenancy);
-  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox, sod);
   const commandGovernance = new CommandGovernanceService(
     new WorkflowTriggerResolverService(tenancy),
     new WorkflowsPrismaRepository(tenancy),
   );
+  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox, sod, commandGovernance);
   // No-op settlement stub: autoCloseIfSettled reads this and returns early (OPEN ≠ SETTLED).
   const noOpSettlement = { getSettlement: async () => ({ settlementStatus: 'OPEN' as const }) } as unknown as SettlementQueryService;
   const poService       = new PurchaseOrderService(tenancy, poRepo, poAttachmentRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance, sod, noOpSettlement);

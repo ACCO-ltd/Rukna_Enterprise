@@ -96,10 +96,28 @@ export class MaterialRequestRepository {
     });
   }
 
-  updateStatus(prisma: TenantPrisma, id: string, status: MaterialRequestStatus, extra?: { approvalInstanceId?: string }) {
+  /**
+   * Moves the request to `status`. With `expectedStatus`, the write only lands while the row is
+   * still in that status (compare-and-set) and returns null otherwise.
+   */
+  async updateStatus(
+    prisma: TenantPrisma,
+    id: string,
+    status: MaterialRequestStatus,
+    extra?: { approvalInstanceId?: string; expectedStatus?: MaterialRequestStatus },
+  ) {
+    const { expectedStatus, ...data } = extra ?? {};
+    if (expectedStatus) {
+      const { count } = await prisma.materialRequest.updateMany({
+        where: { id, status: expectedStatus },
+        data: { status, ...data },
+      });
+      if (count === 0) return null;
+      return prisma.materialRequest.findUniqueOrThrow({ where: { id }, include: MR_INCLUDE });
+    }
     return prisma.materialRequest.update({
       where: { id },
-      data: { status, ...extra },
+      data: { status, ...data },
       include: MR_INCLUDE,
     });
   }

@@ -345,6 +345,9 @@ export type GovernedEntity =
   | 'Project'
   | 'InterimPaymentApplication'
   | 'PurchaseOrder'
+  // ADR-022 CONST-DOA-001 — a material request's submission (DRAFT → SUBMITTED) is the governed
+  // request transition (policy-transition-registry MATERIAL_REQUEST 'DRAFT:SUBMITTED').
+  | 'MaterialRequest'
   | 'SupplierBill'
   | 'SupplierPayment'
   // ADR-016 CONST-BOQ-018 — baselining fixes the scope a contract is signed against and
