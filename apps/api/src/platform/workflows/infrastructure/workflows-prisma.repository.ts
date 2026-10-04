@@ -273,6 +273,20 @@ export class WorkflowsPrismaRepository {
     });
   }
 
+  /**
+   * Who gave the final APPROVE on an instance — the actor of its latest APPROVE action. Null
+   * when the instance has no APPROVE action (it was never approved by a person).
+   */
+  async findFinalApproverId(instanceId: string): Promise<string | null> {
+    const prisma = this.tenancyService.getClient();
+    const action = await prisma.approvalAction.findFirst({
+      where: { instanceId, action: 'APPROVE' },
+      orderBy: [{ stepOrder: 'desc' }, { actedAt: 'desc' }],
+      select: { actorId: true },
+    });
+    return action?.actorId ?? null;
+  }
+
   async findInstanceById(id: string, organizationId?: string) {
     const prisma = this.tenancyService.getClient();
     return prisma.approvalInstance.findFirst({
