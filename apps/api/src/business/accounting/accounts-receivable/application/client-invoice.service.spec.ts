@@ -30,9 +30,25 @@ const effectiveIpc = {
   },
 };
 
-/** Every ClientInvoiceService test needs this — snapshotOrgBranding reads it unconditionally. */
-function orgMock() {
-  return { findUnique: jest.fn().mockResolvedValue(null) };
+/**
+ * Every ClientInvoiceService test needs these — snapshotOrgBranding reads the organisation and its
+ * invoice document settings unconditionally.
+ */
+function brandingMocks() {
+  return {
+    organization: { findUnique: jest.fn().mockResolvedValue(null) },
+    invoiceDocumentPolicy: { findUnique: jest.fn().mockResolvedValue(null) },
+  };
+}
+
+/** What the invoice PDF reads at render time besides the invoice (project, source records). */
+function renderSourceMocks() {
+  return {
+    project: { findFirst: jest.fn().mockResolvedValue(null) },
+    contract: { findFirst: jest.fn().mockResolvedValue(null) },
+    contractPaymentInstallment: { findUnique: jest.fn().mockResolvedValue(null) },
+    variationBillingAllocation: { findMany: jest.fn().mockResolvedValue([]) },
+  };
 }
 
 function build(ipc: unknown) {
@@ -42,7 +58,7 @@ function build(ipc: unknown) {
   };
   const prisma = {
     interimPaymentCertificate: { findFirst: jest.fn().mockResolvedValue(ipc) },
-    organization: orgMock(),
+    ...brandingMocks(),
   };
   const tenancy = { getClient: () => prisma };
   const service = new ClientInvoiceService(
@@ -144,7 +160,7 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
       findInstallmentForBilling: jest.fn().mockResolvedValue(inst),
       create: jest.fn(),
     };
-    const prisma = { organization: orgMock() };
+    const prisma = { ...brandingMocks() };
     const tenancy = { getClient: () => prisma };
     const service = new ClientInvoiceService(
       tenancy as never,
@@ -300,7 +316,7 @@ describe('ADR-029 R-4 — generateFromSeparateCharge (one-off separate-charge bi
       findSeparateChargeForBilling: jest.fn().mockResolvedValue(node),
       create: jest.fn(),
     };
-    const tenancy = { getClient: () => ({ organization: orgMock() }) };
+    const tenancy = { getClient: () => ({ ...brandingMocks() }) };
     const service = new ClientInvoiceService(
       tenancy as never,
       repo as never,
@@ -421,7 +437,7 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
       // Compare-and-set; defaults to winning the race (documentFileId was null).
       bindDocumentFileIdIfUnset: jest.fn().mockResolvedValue(true),
     };
-    const tenancy = { getClient: () => ({ organization: orgMock(), client: { findUnique: jest.fn() } }) };
+    const tenancy = { getClient: () => ({ ...brandingMocks(), ...renderSourceMocks(), client: { findUnique: jest.fn() } }) };
     const documentService = { render: jest.fn().mockResolvedValue(Buffer.from('pdf-bytes')) };
     const files = {
       getDownloadUrl: jest.fn().mockResolvedValue({ url: 'https://signed.example/x', originalName: 'x', mimeType: 'application/pdf' }),
@@ -461,9 +477,14 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
 
     expect(documentService.render).toHaveBeenCalledTimes(1);
     const rendered = documentService.render.mock.calls[0][0];
-    expect(rendered.clientName).toBe('Hayat Market');
-    expect(rendered.lineDescription).toBe('Structure');
+    expect(rendered.client.name).toBe('Hayat Market');
+    expect(rendered.lines).toEqual([
+      { title: 'Structure', detail: null, quantity: '1', unitPrice: '23092.40', amount: '23092.40' },
+    ]);
     expect(rendered.org.name).toBe('ACCO');
+    // A pre-template-v2 snapshot has no invoice document settings: read live (none configured).
+    expect(rendered.payment).toBeNull();
+    expect(rendered.signatory).toBeNull();
 
     expect(files.storeGenerated).toHaveBeenCalledTimes(1);
     expect(repo.bindDocumentFileIdIfUnset).toHaveBeenCalledWith(expect.anything(), 'inv-1', 'file-new');
@@ -502,8 +523,8 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     const rendered = documentService.render.mock.calls[0][0];
     // No `client`/`org` keys in the old snapshot shape → falls back to a live lookup (mocked to
     // return nothing here) and then to the old flat keys / a generic label, never a crash.
-    expect(rendered.clientName).toBe('Legacy Co');
-    expect(rendered.lineDescription).toBe('Advance');
+    expect(rendered.client.name).toBe('Legacy Co');
+    expect(rendered.lines[0].title).toBe('Advance');
   });
 
   it('throws NotFoundException for an invoice outside the caller tenant', async () => {

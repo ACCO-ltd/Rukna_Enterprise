@@ -21,6 +21,10 @@ export const View = noopComponent;
 export const Text = noopComponent;
 export const Image = noopComponent;
 
+export const Font = {
+  registerHyphenationCallback: (): void => undefined,
+};
+
 export const StyleSheet = {
   create: <T>(styles: T): T => styles,
 };

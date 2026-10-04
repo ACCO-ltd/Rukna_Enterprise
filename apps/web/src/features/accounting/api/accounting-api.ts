@@ -28,6 +28,7 @@ import type {
   CreateFiscalYearPayload,
   CreateJournalPayload,
   FiscalYear,
+  InvoiceDocumentSettings,
   JournalEntry,
   MigrationReport,
   MonthlyPL,
@@ -37,6 +38,7 @@ import type {
   ReverseJournalPayload,
   RunReconciliationPayload,
   TrialBalance,
+  UpdateInvoiceDocumentSettingsBody,
 } from '../types';
 
 // ─── Chart of accounts ───────────────────────────────────────────────────────────
@@ -592,4 +594,20 @@ export function rebuildSnapshot(periodId: string): Promise<unknown> {
 /** Year-end: posts the closing journal, zeroes the P&L into retained earnings, closes the FY. */
 export function closeFiscalYear(fiscalYearId: string): Promise<unknown> {
   return apiClient<unknown>(`/periods/fiscal-year/${fiscalYearId}/close`, { method: 'POST' });
+}
+
+/** `GET /invoice-document-settings` — bank account, notes and signatory for the invoice PDF. */
+export function getInvoiceDocumentSettings(): Promise<InvoiceDocumentSettings> {
+  return apiClient<InvoiceDocumentSettings>('/invoice-document-settings');
+}
+
+/** `PUT /invoice-document-settings` — `manage:accounting`; 422 `INVOICE_SETTINGS_INVALID`. */
+export function updateInvoiceDocumentSettings(
+  body: UpdateInvoiceDocumentSettingsBody,
+): Promise<InvoiceDocumentSettings> {
+  return apiClient<InvoiceDocumentSettings>('/invoice-document-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }

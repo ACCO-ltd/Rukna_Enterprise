@@ -46,6 +46,8 @@ import {
   setPostingProfileActive,
   createTaxCode,
   listTaxCodes,
+  getInvoiceDocumentSettings,
+  updateInvoiceDocumentSettings,
   setDefaultOutputTaxCode,
   setTaxCodeActive,
 } from '../api/accounting-api';
@@ -85,6 +87,8 @@ import type {
   ProfitLoss,
   ReverseJournalPayload,
   TrialBalance,
+  InvoiceDocumentSettings,
+  UpdateInvoiceDocumentSettingsBody,
 } from '../types';
 import { ApiError } from '@/lib/api-client';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
@@ -99,6 +103,7 @@ export const accountingKeys = {
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
   taxCodes: () => [...accountingKeys.all, 'tax-codes'] as const,
+  invoiceDocumentSettings: () => [...accountingKeys.all, 'invoice-document-settings'] as const,
   bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
   signatories: (bankAccountId: string) =>
     [...accountingKeys.all, 'signatories', bankAccountId] as const,
@@ -846,6 +851,27 @@ export function useRunAccountingSetup() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.all });
       void qc.invalidateQueries({ queryKey: ['procurement'] });
+    },
+  });
+}
+
+// ─── Invoice document settings ──────────────────────────────────────────────────
+
+/** Bank account, notes and signatory printed on client invoice PDFs. */
+export function useInvoiceDocumentSettings(): UseQueryResult<InvoiceDocumentSettings, Error> {
+  return useQuery({
+    queryKey: accountingKeys.invoiceDocumentSettings(),
+    queryFn: getInvoiceDocumentSettings,
+  });
+}
+
+export function useUpdateInvoiceDocumentSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateInvoiceDocumentSettingsBody) => updateInvoiceDocumentSettings(body),
+    meta: { successToast: 'accounting.feedback.invoiceSettingsSaved', flashRow: false },
+    onSuccess: (view) => {
+      qc.setQueryData(accountingKeys.invoiceDocumentSettings(), view);
     },
   });
 }

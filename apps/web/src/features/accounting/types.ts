@@ -730,3 +730,22 @@ export interface ReconciliationReport {
   /** A variance over 0.01 blocks period close. The close-gate reads the same rule. */
   blocksClose: boolean;
 }
+
+/** `GET /invoice-document-settings` — what the client invoice PDF prints beyond the invoice. */
+export interface InvoiceDocumentSettings {
+  bankAccountId: string | null;
+  /** The organisation's own notes, one per line; null while the defaults apply. */
+  notes: string | null;
+  defaultNotes: string[];
+  signatoryUserId: string | null;
+  signatoryTitle: string | null;
+  updatedAt: string | null;
+}
+
+/** `PUT /invoice-document-settings` — omitted keeps, null clears. */
+export interface UpdateInvoiceDocumentSettingsBody {
+  bankAccountId?: string | null;
+  notes?: string | null;
+  signatoryUserId?: string | null;
+  signatoryTitle?: string | null;
+}

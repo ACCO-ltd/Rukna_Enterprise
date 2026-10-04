@@ -33,6 +33,12 @@ import {
 } from '../domain/installment-billing-eligibility.js';
 import { clientInvoiceTax } from '../../accounting-core/domain/tax-amount.js';
 import { TaxCodeService } from '../../accounting-core/application/tax-code.service.js';
+import {
+  resolveInvoiceDocumentSnapshot,
+  type InvoiceDocumentSnapshot,
+} from '../../accounting-core/infrastructure/invoice-document-policy.repository.js';
+import { buildInvoiceLines } from './document-pdf/invoice-view-model.js';
+import { loadInvoiceLineSource, loadInvoiceProject } from './document-pdf/invoice-document-data.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
 interface OrgBrandingSnapshot {
@@ -43,6 +49,20 @@ interface OrgBrandingSnapshot {
   brandColorHex: string | null;
   invoiceFooterNote: string | null;
   invoiceTemplate: string;
+  /**
+   * The invoice document settings (bank account, notes, signatory) as resolved when the snapshot
+   * was taken. Absent on invoices raised before the invoice-template-v2 redesign.
+   */
+  invoiceDocument?: InvoiceDocumentSnapshot;
+}
+
+/** `billingAddressSnapshot.client`; city/country absent on invoices raised before template v2. */
+interface ClientSnapshot {
+  name: string;
+  address: string | null;
+  taxNumber: string | null;
+  city?: string | null;
+  countryCode?: string | null;
 }
 
 export interface GenerateInvoiceFromIpcDto {
@@ -242,18 +262,22 @@ export class ClientInvoiceService {
     prisma: Prisma.TransactionClient,
     organizationId: string,
   ): Promise<OrgBrandingSnapshot | null> {
-    return prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: {
-        name: true,
-        logoFileId: true,
-        legalAddress: true,
-        taxRegistrationNumber: true,
-        brandColorHex: true,
-        invoiceFooterNote: true,
-        invoiceTemplate: true,
-      },
-    });
+    const [org, invoiceDocument] = await Promise.all([
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: {
+          name: true,
+          logoFileId: true,
+          legalAddress: true,
+          taxRegistrationNumber: true,
+          brandColorHex: true,
+          invoiceFooterNote: true,
+          invoiceTemplate: true,
+        },
+      }),
+      resolveInvoiceDocumentSnapshot(prisma as TenantPrisma, organizationId),
+    ]);
+    return org ? { ...org, invoiceDocument } : null;
   }
 
   /**
@@ -306,6 +330,8 @@ export class ClientInvoiceService {
             name: contract.client.name,
             address: contract.client.address,
             taxNumber: contract.client.taxNumber,
+            city: contract.client.city,
+            countryCode: contract.client.countryCode,
           },
           description: `Interim Certificate ${ipc.certificateRef ?? `#${ipc.certificateNumber}`}`,
           org,
@@ -413,6 +439,8 @@ export class ClientInvoiceService {
             name: contract.client.name,
             address: contract.client.address,
             taxNumber: contract.client.taxNumber,
+            city: contract.client.city,
+            countryCode: contract.client.countryCode,
           },
           description: installment.name,
           org,
@@ -509,6 +537,8 @@ export class ClientInvoiceService {
             name: contract.client.name,
             address: contract.client.address,
             taxNumber: contract.client.taxNumber,
+            city: contract.client.city,
+            countryCode: contract.client.countryCode,
           },
           description: `${node.code} — ${node.description}`,
           org,
@@ -554,7 +584,7 @@ export class ClientInvoiceService {
       this.snapshotOrgBranding(prisma, orgId),
       prisma.client.findUnique({
         where: { id: dto.clientId },
-        select: { name: true, address: true, taxNumber: true },
+        select: { name: true, address: true, taxNumber: true, city: true, countryCode: true },
       }),
     ]);
 
@@ -579,7 +609,13 @@ export class ClientInvoiceService {
       paymentTerms: dto.paymentTerms,
       billingAddressSnapshot: {
         client: client
-          ? { name: client.name, address: client.address, taxNumber: client.taxNumber }
+          ? {
+              name: client.name,
+              address: client.address,
+              taxNumber: client.taxNumber,
+              city: client.city,
+              countryCode: client.countryCode,
+            }
           : null,
         description: dto.label,
         org,
@@ -946,7 +982,7 @@ export class ClientInvoiceService {
     }
 
     const snapshot = (invoice.billingAddressSnapshot ?? {}) as {
-      client?: { name: string; address: string | null; taxNumber: string | null } | null;
+      client?: ClientSnapshot | null;
       description?: string;
       org?: OrgBrandingSnapshot | null;
       // Pre-round-3 shapes (see the other billingAddressSnapshot writers) — read only as a
@@ -956,48 +992,75 @@ export class ClientInvoiceService {
       separateCharge?: string;
     };
 
-    // Old invoices never captured a client/org snapshot — fall back to a live lookup rather than
-    // rendering a document with no identity at all. Not "frozen" for these, but there is nothing
-    // to freeze: the feature that freezes them did not exist when they were created.
-    const [fallbackClient, fallbackOrg] = await Promise.all([
-      snapshot.client !== undefined
-        ? null
-        : prisma.client.findUnique({
+    // Old invoices never captured a client/org snapshot (or, before invoice-template-v2, the
+    // client's city/country and the invoice document settings) — fall back to a live lookup rather
+    // than rendering a document with no identity at all. Not "frozen" for these, but there is
+    // nothing to freeze: the feature that freezes them did not exist when they were created.
+    const needsLiveClient = !snapshot.client || snapshot.client.city === undefined;
+    const [liveClient, fallbackOrg, liveInvoiceDocument] = await Promise.all([
+      needsLiveClient
+        ? prisma.client.findUnique({
             where: { id: invoice.clientId },
-            select: { name: true, address: true, taxNumber: true },
-          }),
+            select: { name: true, address: true, taxNumber: true, city: true, countryCode: true },
+          })
+        : null,
       snapshot.org !== undefined ? null : this.snapshotOrgBranding(prisma, invoice.organizationId),
+      snapshot.org && snapshot.org.invoiceDocument === undefined
+        ? resolveInvoiceDocumentSnapshot(prisma, invoice.organizationId)
+        : null,
     ]);
-    const client = snapshot.client ?? fallbackClient;
+    const client: ClientSnapshot | null = snapshot.client
+      ? {
+          ...snapshot.client,
+          city: snapshot.client.city !== undefined ? snapshot.client.city : (liveClient?.city ?? null),
+          countryCode:
+            snapshot.client.countryCode !== undefined
+              ? snapshot.client.countryCode
+              : (liveClient?.countryCode ?? null),
+        }
+      : liveClient;
     const org = snapshot.org ?? fallbackOrg;
+    const invoiceDocument = org?.invoiceDocument ?? liveInvoiceDocument;
     const description =
       snapshot.description ??
       snapshot.installment ??
       snapshot.separateCharge ??
       `Invoice ${invoice.invoiceNumber ?? id}`;
 
-    const logo = org ? await this.files.readBytesForRendering(org.logoFileId) : null;
+    const [logo, project, lineSource] = await Promise.all([
+      org ? this.files.readBytesForRendering(org.logoFileId) : null,
+      loadInvoiceProject(prisma, invoice.organizationId, invoice.projectId),
+      loadInvoiceLineSource(prisma, invoice, description),
+    ]);
 
     const pdf = await this.documentService.render({
       invoiceNumber: invoice.invoiceNumber,
       invoiceDate: invoice.invoiceDate,
       dueDate: invoice.dueDate,
+      paymentTerms: invoice.paymentTerms,
       currencyCode: invoice.currencyCode,
       subtotal: invoice.subtotal.toString(),
       vatAmount: invoice.vatAmount.toString(),
       taxRatePercent: invoice.taxRate.toString(),
       totalAmount: invoice.totalAmount.toString(),
-      paymentTerms: invoice.paymentTerms,
-      clientName: client?.name ?? snapshot.clientName ?? 'Client',
-      clientAddress: client?.address ?? null,
-      clientTaxNumber: client?.taxNumber ?? null,
-      lineDescription: description,
+      client: {
+        name: client?.name ?? snapshot.clientName ?? 'Client',
+        address: client?.address ?? null,
+        city: client?.city ?? null,
+        countryCode: client?.countryCode ?? null,
+        taxNumber: client?.taxNumber ?? null,
+      },
+      project,
+      lines: buildInvoiceLines(lineSource),
+      payment: invoiceDocument?.bank ?? null,
+      notes: invoiceDocument?.notes ?? null,
+      signatory: invoiceDocument?.signatory ?? null,
       org: {
         name: org?.name ?? 'Invoice',
         legalAddress: org?.legalAddress ?? null,
         taxRegistrationNumber: org?.taxRegistrationNumber ?? null,
         brandColorHex: org?.brandColorHex ?? null,
-        invoiceFooterNote: org?.invoiceFooterNote ?? null,
+        footerNote: org?.invoiceFooterNote ?? null,
         template: org?.invoiceTemplate === 'COMPACT' ? 'COMPACT' : 'STANDARD',
         logo,
       },
