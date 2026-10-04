@@ -1495,8 +1495,6 @@
     "mrApproved": "Material request {ref} approved",
     "mrCancelled": "Material request {ref} cancelled",
     "poCreated": "Purchase order {ref} created",
-    "poSubmitted": "Purchase order {ref} submitted for approval",
-    "poApproved": "Purchase order {ref} approved",
     "poRevised": "Purchase order {ref} revised",
     "poCancelled": "Purchase order {ref} cancelled",
     "poConfirmed": "Purchase order {ref} confirmed",

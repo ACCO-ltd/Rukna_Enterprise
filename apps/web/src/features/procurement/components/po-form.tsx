@@ -9,17 +9,15 @@
  *
  * ─── D3: one action, "Issue purchase order" ─────────────────────────────────────────
  *
- * The primary action performs the direct issue path by orchestrating the existing
- * endpoints as one user action: create (DRAFT) → submit (DRAFT→SUBMITTED) → approve
- * (SUBMITTED→ACTIVE, which writes the COMMITTED commitment-ledger entries). The ceremonial
- * approve step is removed from the create UX.
+ * The primary action creates the DRAFT and then confirms it — one governed call
+ * (`POST /procurement/purchase-orders/:id/confirm`) that marks the revision ACTIVE and writes
+ * the COMMITTED commitment-ledger entries.
  *
- * Submit is the governed transition (ADR-011). With no DoA binding it proceeds and we go
- * straight on to approve; with a binding it returns 409 carrying an `approvalInstanceId`,
- * the server having opened an approval instead of transitioning. We hold that id, render
- * the real {@link ApprovalPanel}, and offer a "Complete issue" re-drive — the same honest
- * gate seam every governed action uses. We never fabricate an approval: if a chain is
- * pending, the order stays SUBMITTED until approvers act.
+ * With no DoA binding confirm issues the order straight away. With a binding it answers 409
+ * carrying an `approvalInstanceId`, the server having opened an approval instead of issuing.
+ * We hold that id, render the real {@link ApprovalPanel}, and offer "Complete issue", which
+ * calls confirm again once approvers have acted (ADR-015 re-drive). We never fabricate an
+ * approval: while the chain is pending the order stays a DRAFT.
  *
  * "Save draft" stops after create — the order sits as a DRAFT the user can issue later
  * from its detail page.
@@ -41,11 +39,7 @@ import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/
 import { formatMoney } from '@/lib/format';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
-import {
-  useApprovePurchaseOrder,
-  useCreatePurchaseOrder,
-  useSubmitPurchaseOrder,
-} from '../hooks/use-procurement';
+import { useConfirmPurchaseOrder, useCreatePurchaseOrder } from '../hooks/use-procurement';
 import { moneyToApi, quantityToApi } from '../quantities';
 import type { CreatePoLinePayload, CreatePurchaseOrderPayload } from '../types';
 import {
@@ -106,8 +100,7 @@ export function PoForm({
   };
 
   const create = useCreatePurchaseOrder();
-  const submit = useSubmitPurchaseOrder();
-  const approve = useApprovePurchaseOrder();
+  const confirm = useConfirmPurchaseOrder();
 
   const hasLineError = lines.some(
     (l) => poLineError(l) !== null || poLineCostTargetIncomplete(l),
@@ -181,33 +174,30 @@ export function PoForm({
   }
 
   /**
-   * Create → submit (gated) → approve. If submit gates, hold the approval instance and
-   * wait; "Complete issue" re-runs from submit once approvers have acted.
+   * Create (once) → confirm. If confirm gates, hold the approval instance and wait;
+   * "Complete issue" calls confirm again once approvers have acted.
    */
   const runIssue = useCallback(async () => {
     setIssueError(null);
     setBusy(true);
     try {
       const id = await ensureCreated();
-
       try {
-        await submit.mutateAsync(id);
+        await confirm.mutateAsync(id);
       } catch (e) {
         // 409 with an approvalInstanceId is the gate, not a failure: a DoA binding exists
-        // and the server opened an approval instead of moving to SUBMITTED.
+        // and the server opened an approval instead of issuing the order.
         const instanceId =
           e instanceof ApiError && e.status === 409
             ? (e.details?.approvalInstanceId as string | undefined)
             : undefined;
         if (instanceId) {
           setApprovalInstanceId(instanceId);
-          return; // wait for approvers; the order stays DRAFT/SUBMITTED, nothing faked
+          return; // wait for approvers; the order stays a DRAFT, nothing faked
         }
         throw e;
       }
-
       setApprovalInstanceId(null);
-      await approve.mutateAsync({ id });
       router.push(`${redirectBase}/${id}`);
     } catch (e) {
       setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
@@ -215,7 +205,7 @@ export function PoForm({
       setBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ensureCreated, submit, approve, router]);
+  }, [ensureCreated, confirm, router]);
 
   function handleIssue() {
     if (!validate()) return;
@@ -284,7 +274,7 @@ export function PoForm({
 
       {issueError ? <Alert variant="error" messages={[issueError]} /> : null}
 
-      {/* Gate: shown only when a DoA binding actually opened an approval on submit.
+      {/* Gate: shown only when a DoA binding actually opened an approval on confirm.
           The order is created and awaiting approval; "Complete issue" re-drives. */}
       {approvalInstanceId ? (
         <Card>

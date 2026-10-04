@@ -28,7 +28,6 @@ import {
   approveSupplierBill,
   approveSupplierPayment,
   releaseSupplierPayment,
-  approvePurchaseOrder,
   cancelGoodsReceipt,
   cancelMaterialRequest,
   cancelPurchaseOrder,
@@ -86,7 +85,6 @@ import {
   resolveMatchException,
   runBillMatch,
   submitMaterialRequest,
-  submitPurchaseOrder,
   submitSupplierBill,
   updateSupplierBill,
   updateSupplier,
@@ -516,42 +514,6 @@ export function useCreatePurchaseOrder() {
     },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] }),
-  });
-}
-
-export function useSubmitPurchaseOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => submitPurchaseOrder(id),
-    meta: {
-      successToast: {
-        key: 'procurement.feedback.poSubmitted',
-        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
-      },
-    },
-    onSuccess: (po) => {
-      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
-      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
-    },
-  });
-}
-
-/** Writes commitment entries — the ledger and every summary card go stale together. */
-export function useApprovePurchaseOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id }: { id: string }) => approvePurchaseOrder(id),
-    meta: {
-      successToast: {
-        key: 'procurement.feedback.poApproved',
-        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
-      },
-    },
-    onSuccess: (po) => {
-      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
-      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
-      qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
-    },
   });
 }
 

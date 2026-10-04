@@ -297,35 +297,13 @@ export function createPurchaseOrder(
   });
 }
 
-export function submitPurchaseOrder(id: string): Promise<PurchaseOrder> {
-  return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/submit`, {
-    method: 'POST',
-  });
-}
-
-/**
- * `POST /procurement/purchase-orders/:id/approve`
- *
- * Marks the SUBMITTED revision ACTIVE, supersedes the previous ACTIVE one, and writes
- * `COMMITTED` commitment ledger entries.
- *
- * The supersede reversal is wrong (P11): it reverses the **full** original line value
- * rather than the uncommitted balance, so if goods were already received against the
- * superseded revision, `COMMITTED` is reduced twice and goes negative. The approve drawer
- * therefore does not repeat §12.6's promise about the uncommitted balance.
- */
-export function approvePurchaseOrder(id: string): Promise<PurchaseOrder> {
-  return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/approve`, {
-    method: 'POST',
-  });
-}
-
 /**
  * `POST /procurement/purchase-orders/:id/confirm`
  *
- * Single-actor action that replaces the old submit → approve two-step. Validates the DRAFT
- * revision, marks it ACTIVE, sets PO status to OPEN, and writes COMMITTED ledger entries.
- * No DoA routing — the buyer who raised the order confirms it directly.
+ * Issues the order: validates the DRAFT revision, marks it ACTIVE, sets PO status to OPEN, and
+ * writes COMMITTED ledger entries. When a DoA policy gates the order the server answers 409 with
+ * `details.approvalInstanceId` instead of transitioning; calling confirm again once the approval
+ * completes finishes the issue (ADR-015 re-drive).
  */
 export function confirmPurchaseOrder(id: string): Promise<PurchaseOrder> {
   return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/confirm`, {
