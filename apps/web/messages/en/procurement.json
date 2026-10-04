@@ -1088,14 +1088,6 @@
     "accruedHint": "Goods received and accepted, bill not yet posted.",
     "actualHint": "Supplier bill posted to the general ledger.",
     "viewLedger": "View Commitment Ledger",
-    "selectProject": "Select a project",
-    "selectProjectHint": "The ledger is queried per project — there is no organisation-wide view.",
-    "stage": "Stage",
-    "eventType": "Event",
-    "sourceDoc": "Source Document",
-    "reportingAmount": "Amount",
-    "empty": "No commitment entries for this selection.",
-    "filterByBoqNode": "BOQ node",
     "sourceType": {
       "PURCHASE_ORDER_REVISION": "Purchase order",
       "GOODS_RECEIPT": "Goods receipt",
@@ -1104,7 +1096,47 @@
     },
     "projectSectionTitle": "Cost position",
     "projectSectionHint": "Project cost from approved purchase orders through to posted supplier bills.",
-    "openProcurement": "Open Procurement"
+    "openProcurement": "Open Procurement",
+    "ledger": {
+      "project": "Project",
+      "projectPlaceholder": "Choose a project",
+      "projectSearch": "Search by code or name",
+      "projectEmpty": "No projects match",
+      "stageLabel": "Stage",
+      "view": {
+        "ALL": "All",
+        "COMMITTED": "Ordered",
+        "ACCRUED": "Received",
+        "ACTUAL": "Billed"
+      },
+      "stage": {
+        "COMMITTED": "Ordered",
+        "ACCRUED": "Received",
+        "ACTUAL": "Billed"
+      },
+      "orderedHint": "Committed · not yet received",
+      "receivedHint": "Accrued · not yet billed",
+      "billedHint": "Actual · posted supplier bills",
+      "total": "Total",
+      "totalHint": "Cost so far",
+      "summaryLabel": "Project cost position",
+      "entries": "Commitment entries",
+      "columns": {
+        "date": "Date",
+        "document": "Document",
+        "chargedTo": "Charged to",
+        "stage": "Stage",
+        "amount": "Amount"
+      },
+      "overhead": "Overhead",
+      "releasedOnReceipt": "Released on receipt",
+      "noProjectTitle": "Choose a project",
+      "noProjectBody": "See what is ordered, received and billed for one project, and every entry behind it.",
+      "emptyTitle": "No entries yet",
+      "emptyBody": "Entries appear when an order is confirmed, a delivery is received or a supplier bill is posted.",
+      "hiddenTitle": "Cost figures are hidden for your role",
+      "hiddenBody": "Ask someone with access to the commitment ledger for the project's cost position."
+    }
   },
   "project": {
     "title": "Procurement",

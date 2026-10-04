@@ -689,6 +689,10 @@ export interface CommitmentLedgerEntry {
   projectId: string | null;
   boqNodeId: string | null;
   supplierId: string | null;
+  /** Labels batch-resolved on the entry read: "PO-2026-0007 (Rev 2)", "GRN-…", "BILL-…". */
+  documentNumber?: string | null;
+  supplierName?: string | null;
+  boqNode?: { id: string; code: string; name: string } | null;
 }
 
 export interface CommitmentSummary {
