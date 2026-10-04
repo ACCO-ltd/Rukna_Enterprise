@@ -27,13 +27,18 @@ import type { Supplier } from '../types';
 
 const mocks = vi.hoisted(() => ({
   useSuppliers: vi.fn(),
+  useSupplier: vi.fn(),
+  useSupplierDirectory: vi.fn(),
+  useDeactivateSupplier: vi.fn(),
+  useReactivateSupplier: vi.fn(),
   useCreateSupplier: vi.fn(),
   useUpdateSupplier: vi.fn(),
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
 
-import { SupplierList, filterSuppliers } from './supplier-list';
+import { SupplierList } from './supplier-list';
+import type { SupplierDirectoryRow } from '../types';
 import { SupplierPicker, supplierOptionLabel } from './supplier-picker';
 import { openSelect } from '@/test/choose-option';
 
@@ -65,9 +70,42 @@ function loaded(data: Supplier[]) {
 
 const updateMutate = vi.fn();
 
+const row = (supplier: Supplier, patch: Partial<SupplierDirectoryRow> = {}): SupplierDirectoryRow => ({
+  id: supplier.id,
+  code: supplier.code,
+  name: supplier.name,
+  status: supplier.status,
+  primaryContact: null,
+  paymentTermsDays: supplier.paymentTermsDays,
+  defaultCurrency: supplier.defaultCurrency,
+  openOrderCount: 0,
+  payableBalance: null,
+  payableBalances: null,
+  moneyVisible: false,
+  ...patch,
+});
+const statusCommand = () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null });
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.useSuppliers.mockReturnValue(loaded([RASHID, BAREBONES]));
+  mocks.useSupplierDirectory.mockReturnValue({
+    ...loaded([]),
+    data: [
+      row(RASHID, {
+        primaryContact: { name: 'Hassan Ali', phone: '+252616666666' },
+        openOrderCount: 2,
+        payableBalance: '1250.00',
+        payableBalances: [{ currencyCode: 'USD', amount: '1250.00' }],
+        moneyVisible: true,
+      }),
+      row(BAREBONES, { status: 'INACTIVE', moneyVisible: true }),
+    ],
+    refetch: vi.fn(),
+  });
+  mocks.useSupplier.mockImplementation((id: string) => ({ data: id === 'sup-1' ? RASHID : undefined }));
+  mocks.useDeactivateSupplier.mockReturnValue(statusCommand());
+  mocks.useReactivateSupplier.mockReturnValue(statusCommand());
   mocks.useCreateSupplier.mockReturnValue({
     mutate: vi.fn(),
     isPending: false,
@@ -85,85 +123,73 @@ beforeEach(() => {
 /** The permission the edit affordance and the PATCH endpoint both gate on. */
 const MANAGE_PAYABLE = [ACCOUNTING_PERMISSIONS.managePayables];
 
-describe('filterSuppliers', () => {
-  const all = [RASHID, BAREBONES];
-
-  it('returns everything for an empty or whitespace query', () => {
-    expect(filterSuppliers(all, '')).toHaveLength(2);
-    expect(filterSuppliers(all, '   ')).toHaveLength(2);
-  });
-
-  it('matches on code and name, case-insensitively', () => {
-    expect(filterSuppliers(all, 'sup-002')).toEqual([BAREBONES]);
-    expect(filterSuppliers(all, 'rashid')).toEqual([RASHID]);
-    expect(filterSuppliers(all, 'CEMENT')).toEqual([BAREBONES]);
-  });
-
-
-});
-
 describe('SupplierList', () => {
-  it('renders each supplier with its code, tax number and payment terms', () => {
-    renderWithProviders(<SupplierList />);
+  const table = async () => within(await screen.findByRole('table'));
 
-    expect(screen.getByText('SUP-001')).toBeInTheDocument();
-    expect(screen.getByText('Al-Rashid Trading')).toBeInTheDocument();
-    expect(screen.getByText('310122445500003')).toBeInTheDocument();
-    expect(screen.getByText('30 days')).toBeInTheDocument();
+  it('shows supplier + code, contact, terms, open orders, what we owe and status', async () => {
+    renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
+    const grid = await table();
+
+    expect(grid.getByText('Al-Rashid Trading')).toBeInTheDocument();
+    expect(grid.getByText('SUP-001')).toBeInTheDocument();
+    expect(grid.getByText('Hassan Ali')).toBeInTheDocument();
+    expect(grid.getByText('Net 30 days')).toBeInTheDocument();
+    expect(grid.getByText('2 open')).toBeInTheDocument();
+    expect(grid.getByText('None')).toBeInTheDocument();
+    expect(grid.getByText('$1,250.00')).toBeInTheDocument();
+    expect(screen.queryByText(/permanent once created/i)).not.toBeInTheDocument();
   });
 
-  it('falls back to a placeholder for every optional field left empty', () => {
-    renderWithProviders(<SupplierList />);
-
-    // Horn Cement has no tax number or terms — two placeholders on its row.
-    expect(screen.getByText('Horn Cement')).toBeInTheDocument();
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+  it("hides what we owe when the server says money is not visible — never $0", async () => {
+    mocks.useSupplierDirectory.mockReturnValue({ ...loaded([]), data: [row(RASHID)], refetch: vi.fn() });
+    renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
+    const grid = await table();
+    expect(grid.queryByRole('columnheader', { name: /We owe/ })).not.toBeInTheDocument();
+    expect(screen.getByText('What we owe is hidden for your role.')).toBeInTheDocument();
   });
 
-  /**
-   * A15 / D8. `PATCH /suppliers/:id` exists but is gated on `manage:payable`. A viewer who
-   * lacks it must not see an Edit control the server would reject — and there is still no
-   * deactivate control, because this endpoint cannot move `status`.
-   */
-  it('hides the edit control from a user without manage:payable', () => {
+  it('hides every row command from a user without manage:payable', async () => {
     renderWithProviders(<SupplierList />);
-
-    expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument();
+    await table();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
   });
 
-  it('shows an edit control per row for a holder of manage:payable', () => {
+  it('offers Deactivate… on an active supplier and Reactivate on an inactive one', async () => {
+    const user = userEvent.setup();
+    const reactivate = statusCommand();
+    mocks.useReactivateSupplier.mockReturnValue(reactivate);
     renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
 
-    expect(
-      screen.getByRole('button', { name: /edit sup-001/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /edit sup-002/i }),
-    ).toBeInTheDocument();
-    // Still no deactivate — status is a separate flow this endpoint cannot reach.
-    expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument();
+    await user.click((await table()).getByRole('button', { name: 'Actions for Al-Rashid Trading' }));
+    expect(await screen.findByRole('menuitem', { name: 'Deactivate…' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click((await table()).getByRole('button', { name: 'Actions for Horn Cement' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Reactivate' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reactivate' }));
+    expect(reactivate.mutate).toHaveBeenCalledWith('sup-2', expect.anything());
   });
 
-  it('tells the user to create one when the list is empty', () => {
-    mocks.useSuppliers.mockReturnValue(loaded([]));
-    renderWithProviders(<SupplierList />);
-
-    expect(screen.getByText(/create one before raising a purchase order/i)).toBeInTheDocument();
+  it('first use: says to add a supplier', async () => {
+    mocks.useSupplierDirectory.mockReturnValue({ ...loaded([]), data: [], refetch: vi.fn() });
+    renderWithProviders(<SupplierList />, { permissions: ['manage:supplier'] });
+    expect(await screen.findByText('No suppliers yet')).toBeInTheDocument();
   });
 });
 
 describe('SupplierList — edit form (A15 / D8)', () => {
-  async function openEditor(supplierName: RegExp) {
+  async function openEditor() {
     const user = userEvent.setup();
     renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
-    await user.click(screen.getByRole('button', { name: supplierName }));
+    const grid = within(await screen.findByRole('table'));
+    await user.click(grid.getByRole('button', { name: 'Actions for Al-Rashid Trading' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     const dialog = await screen.findByRole('dialog');
     return { user, dialog };
   }
 
   it('pre-fills every editable field from the supplier and shows the code read-only', async () => {
-    const { dialog } = await openEditor(/edit sup-001/i);
+    const { dialog } = await openEditor();
 
     // Code is context, not an input: rendered read-only, never editable.
     const code = within(dialog).getByDisplayValue('SUP-001');
@@ -180,7 +206,7 @@ describe('SupplierList — edit form (A15 / D8)', () => {
   });
 
   it('sends only the changed field as a PATCH, with no code or status', async () => {
-    const { user, dialog } = await openEditor(/edit sup-001/i);
+    const { user, dialog } = await openEditor();
 
     const name = within(dialog).getByDisplayValue('Al-Rashid Trading');
     await user.clear(name);
@@ -198,7 +224,7 @@ describe('SupplierList — edit form (A15 / D8)', () => {
   });
 
   it('refuses to submit an empty name and never calls the mutation', async () => {
-    const { user, dialog } = await openEditor(/edit sup-001/i);
+    const { user, dialog } = await openEditor();
 
     const name = within(dialog).getByDisplayValue('Al-Rashid Trading');
     await user.clear(name);
@@ -209,7 +235,7 @@ describe('SupplierList — edit form (A15 / D8)', () => {
   });
 
   it('refuses to submit when nothing changed rather than provoking the server 400', async () => {
-    const { user, dialog } = await openEditor(/edit sup-001/i);
+    const { user, dialog } = await openEditor();
 
     await user.click(within(dialog).getByRole('button', { name: /save changes/i }));
 
@@ -226,7 +252,7 @@ describe('SupplierList — edit form (A15 / D8)', () => {
       error: new ApiError(404, 'Supplier sup-1 not found', 'NOT_FOUND'),
     });
 
-    const { dialog } = await openEditor(/edit sup-001/i);
+    const { dialog } = await openEditor();
     expect(within(dialog).getByText(/supplier sup-1 not found/i)).toBeInTheDocument();
   });
 });

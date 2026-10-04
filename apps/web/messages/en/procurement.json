@@ -54,7 +54,11 @@
     "permissionDenied": "You do not have permission to perform this action.",
     "moreActions": "More actions",
     "loading": "Loading",
-    "notInProject": "This bill is not coded to this project."
+    "notInProject": "This bill is not coded to this project.",
+    "rowMenu": "Actions for {number}",
+    "open": "Open",
+    "overhead": "ACCO overhead",
+    "moreProjects": "+{count} more"
   },
   "lineType": {
     "MATERIAL": "Material",
@@ -122,43 +126,46 @@
     "axis": "Match"
   },
   "uom": {
-    "title": "Units of Measure",
+    "title": "Units of measure",
     "subtitle": "Units used across the material catalogue and every procurement line.",
-    "new": "New Unit of Measure",
+    "new": "New unit",
     "symbol": "Symbol",
     "createTitle": "New unit of measure",
     "codeHint": "Up to 20 characters. Uppercase is conventional.",
     "symbolHint": "Up to 10 characters — for example m³ or t.",
     "deactivate": "Deactivate",
     "deactivateTitle": "Deactivate {code}?",
-    "deactivateBody": "New materials can no longer be created against this unit. Materials already using it keep it.",
-    "deactivateWarning": "This list shows active units only, so {code} will disappear from it and cannot be shown again or reactivated. The server also does not check whether materials are still using it.",
-    "activeOnlyNotice": "This list shows active units only. The API has no status filter, so deactivated units cannot be displayed.",
-    "empty": "No units of measure yet. Create one before adding materials."
+    "deactivateBody": "New materials can no longer use this unit. Materials already using it keep it.",
+    "emptyTitle": "No units of measure yet",
+    "emptyHint": "Create a unit before adding materials.",
+    "searchPlaceholder": "Search by code, name or symbol",
+    "countLabel": "{count, plural, one {# unit} other {# units}}"
   },
   "materialCategory": {
-    "title": "Material Categories",
+    "title": "Material categories",
     "subtitle": "The operational hierarchy for the catalogue — for example Steel, then Rebar.",
-    "new": "New Material Category",
+    "new": "New category",
     "createTitle": "New material category",
     "parent": "Parent Category",
     "parentHint": "Leave empty to create a top-level category.",
     "noParent": "None — top level",
     "deactivateTitle": "Deactivate {code}?",
-    "deactivateBody": "Deactivating a parent hides its child categories from this tree as well.",
-    "empty": "No material categories yet."
+    "deactivateBody": "It can no longer be picked for new materials. Deactivating a parent hides its children from the active list too.",
+    "emptyTitle": "No material categories yet",
+    "emptyHint": "Group the catalogue, for example Steel, then Rebar."
   },
   "spendCategory": {
-    "title": "Spend Categories",
+    "title": "Spend categories",
     "subtitle": "The financial hierarchy that drives approval routing, tolerance policy and commitment attribution. This is not the same thing as a material category.",
-    "new": "New Spend Category",
+    "new": "New category",
     "createTitle": "New spend category",
     "parent": "Parent Spend Category",
     "parentHint": "Leave empty to create a top-level spend category.",
     "noParent": "None — top level",
     "deactivateTitle": "Deactivate {code}?",
-    "deactivateBody": "Deactivating a parent hides its child categories from this tree as well.",
-    "empty": "No spend categories yet."
+    "deactivateBody": "It can no longer be picked on new lines. Deactivating a parent hides its children from the active list too.",
+    "emptyTitle": "No spend categories yet",
+    "emptyHint": "The financial grouping that drives approval routing and cost attribution — not the same as a material category."
   },
   "supplier": {
     "title": "Suppliers",
@@ -175,7 +182,6 @@
     "paymentTermsDays": "{days} days",
     "codeHint": "Up to 50 characters and unique within the organisation. Uppercase is conventional.",
     "empty": "No suppliers yet. Create one before raising a purchase order.",
-    "writeOnceNotice": "A supplier's code is permanent once created. Its name, tax number, currency, payment terms and address can be corrected from the Edit action; its active status cannot be changed here.",
     "noEditWarning": "The code is permanent — it identifies this supplier on every order, bill and payment. The other details can be corrected later from the Edit action.",
     "edit": "Edit",
     "editAction": "Edit {code}",
@@ -218,12 +224,36 @@
         "code": "Enter a short code.",
         "terms": "Choose the payment terms."
       }
+    },
+    "list": {
+      "new": "New supplier",
+      "searchPlaceholder": "Search by name or code",
+      "countLabel": "{count, plural, one {# supplier} other {# suppliers}}",
+      "empty": "No suppliers yet",
+      "emptyHint": "Add the suppliers you buy from before raising a purchase order.",
+      "noMatches": "No suppliers match these filters",
+      "moneyHidden": "What we owe is hidden for your role.",
+      "netDays": "Net {days} days",
+      "noOpenOrders": "None",
+      "openOrders": "{count} open",
+      "columns": {
+        "supplier": "Supplier",
+        "contact": "Contact",
+        "terms": "Terms",
+        "openOrders": "Open orders",
+        "owe": "We owe",
+        "status": "Status"
+      },
+      "deactivateTitle": "Deactivate {name}?",
+      "deactivateBody": "It can no longer be picked on new orders, bills or payments. Existing documents are unaffected.",
+      "reactivateTitle": "Reactivate {name}?",
+      "reactivateBody": "It can be picked on new orders, bills and payments again."
     }
   },
   "material": {
     "title": "Materials",
     "subtitle": "The material catalogue. Every MATERIAL procurement line draws its unit from here.",
-    "new": "New Material",
+    "new": "New material",
     "createTitle": "New material",
     "baseUom": "Base Unit of Measure",
     "baseUomWarning": "Once the material is created, the unit of measure cannot be changed. All purchase orders and goods receipts for this material will use this unit.",
@@ -234,12 +264,13 @@
     "discontinue": "Discontinue",
     "discontinueTitle": "Discontinue {code}?",
     "discontinueBody": "This material can no longer be added to new requests or orders.",
-    "discontinueWarning": "This list shows active materials only, so {code} will disappear from it and cannot be shown again.",
-    "activeOnlyNotice": "This list shows active materials only. The API has no status filter, so discontinued materials cannot be displayed.",
-    "empty": "No materials yet. Create a unit of measure and a material category first.",
     "pickerPlaceholder": "Search by code or name",
     "pickerNoMatch": "No material matches that.",
-    "pickerHint": "The full catalogue is loaded and filtered here — the API has no search parameter."
+    "pickerHint": "The full catalogue is loaded and filtered here — the API has no search parameter.",
+    "emptyTitle": "No materials yet",
+    "emptyHint": "Create a unit of measure and a material category first.",
+    "countLabel": "{count, plural, one {# material} other {# materials}}",
+    "discontinueMenu": "Discontinue…"
   },
   "uomDisplay": {
     "label": "Unit",
@@ -247,7 +278,7 @@
     "lockedShort": "Locked"
   },
   "mr": {
-    "title": "Material Requests",
+    "title": "Material requests",
     "subtitle": "Internal requests for materials and services, scoped to a project or to the organisation.",
     "new": "New Material Request",
     "number": "MR Number",
@@ -255,9 +286,6 @@
     "requestedDate": "Requested",
     "requiredBy": "Required By",
     "empty": "No material requests yet.",
-    "createTitle": "New material request",
-    "stepHeader": "Details",
-    "stepLines": "Lines",
     "scopeProject": "Project",
     "scopeOrganization": "Organisation",
     "selectProject": "Select a project",
@@ -285,23 +313,112 @@
     "workflowCompleted": "This request completed the configured {total}-step approval workflow.",
     "workflowCancelled": "This request was cancelled.",
     "workflowProgressNote": "Shows the configured approval chain and current position.",
-    "lineError": {
-      "materialRequired": "Choose a material. Material lines cannot be free text.",
-      "descriptionRequired": "Enter a description.",
-      "quantityMustBePositive": "Enter a quantity greater than zero."
+    "list": {
+      "searchLabel": "Search material requests",
+      "searchPlaceholder": "Search by request number or title",
+      "new": "New request",
+      "countLabel": "{count, plural, one {# request} other {# requests}}",
+      "empty": "No material requests yet",
+      "emptyHint": "Raise a request when a site or the office needs materials or services.",
+      "noMatches": "No requests match these filters",
+      "moneyHidden": "Estimates are hidden for your role.",
+      "untitled": "{count, plural, one {# item} other {# items}}",
+      "noDate": "No date",
+      "urgent": "Urgent",
+      "requestedBy": "by {name}",
+      "columns": {
+        "request": "Request",
+        "for": "For",
+        "neededBy": "Needed by",
+        "estimate": "Estimate",
+        "status": "Status"
+      },
+      "filters": {
+        "status": "Status",
+        "requestedFor": "Requested for"
+      }
     },
-    "scopeError": {
-      "projectRequired": "Project-scoped requests require a project to be selected."
+    "create": {
+      "eyebrow": "Material request",
+      "title": "New request",
+      "intro": "The number is assigned when you save. You submit it for approval from the saved request.",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "discard": "Discard",
+      "stepOf": "step {n} of {total}",
+      "stages": {
+        "DRAFT": "Draft",
+        "SUBMITTED": "Submitted",
+        "APPROVED": "Approved",
+        "ORDERED": "Ordered"
+      },
+      "requestSection": "Request",
+      "forLabel": "What is it for?",
+      "forProject": "A project",
+      "forProjectHint": "The cost is charged to the project.",
+      "forOverhead": "ACCO overhead",
+      "forOverheadHint": "Office, yard or plant — not charged to a project.",
+      "project": "Project",
+      "projectPlaceholder": "Choose a project",
+      "projectSearch": "Search by code or name",
+      "projectEmpty": "No projects match",
+      "neededBy": "Needed on site by",
+      "neededByHint": "Leave empty if there's no deadline.",
+      "priority": "Priority",
+      "titleField": "Title",
+      "titleHint": "Shown in lists, e.g. \"Rebar for level 2 slab\".",
+      "itemsSection": "Items",
+      "linesLabel": "Requested items",
+      "lineTitle": "Item {n}",
+      "lineTitleNamed": "Item {n} — {name}",
+      "addLine": "Add an item",
+      "removeLine": "Remove item {n}",
+      "columns": {
+        "item": "Item",
+        "type": "Type",
+        "unit": "Unit",
+        "quantity": "Quantity",
+        "price": "Est. unit price",
+        "amount": "Est. amount",
+        "spend": "Spend category"
+      },
+      "itemPlaceholder": "Search materials",
+      "itemSearch": "Search by name or code",
+      "itemEmpty": "No material matches",
+      "addOneOff": "Add \"{text}\" as a one-off item",
+      "addOneOffEmpty": "Add a one-off item",
+      "typeMaterial": "Material",
+      "typeService": "Service",
+      "typeOther": "Other",
+      "chooseUnit": "Choose",
+      "chooseSpend": "None",
+      "estimatedTotal": "Estimated total",
+      "notEstimated": "Not estimated",
+      "note": "Note to the buyer",
+      "noteHint": "Brand, delivery point, who to call on site.",
+      "optional": "optional",
+      "errors": {
+        "project": "Choose the project this is for.",
+        "item": "Choose an item, or type its name and add it as a one-off item.",
+        "unit": "Choose a unit.",
+        "quantity": "Enter a quantity greater than zero."
+      }
     },
-    "titleField": "Title",
-    "titlePlaceholder": "e.g. Reinforcement steel",
-    "priorityField": "Priority",
-    "estimatedUnitPrice": "Estimated unit price",
-    "estimatedValueHint": "Enter a quantity and unit price to estimate this line",
-    "estimatedValueIs": "Estimated value {value}"
+    "approveOwnRequest": "You raised this request, so someone else must approve it.",
+    "submitAwaitingApproval": "This request was routed for approval. Once the approver acts, complete the submission.",
+    "completeSubmit": "Complete submission",
+    "reject": {
+      "action": "Reject",
+      "title": "Reject {number}?",
+      "subtitle": "It goes back to the requester as a draft, with your reason.",
+      "reason": "Reason",
+      "reasonHint": "What needs to change before it can be approved.",
+      "reasonRequired": "Enter a reason.",
+      "confirm": "Reject request"
+    }
   },
   "po": {
-    "title": "Purchase Orders",
+    "title": "Purchase orders",
     "subtitle": "Orders placed with suppliers. Approving a revision commits cost to the project.",
     "new": "New Purchase Order",
     "backToList": "Back to orders",
@@ -313,8 +430,6 @@
     "deliveryAddress": "Delivery Address",
     "empty": "No purchase orders yet.",
     "createTitle": "New purchase order",
-    "totalUnavailable": "Order totals are not shown in this list because line data is only available after opening an order.",
-    "latestRevisionNotice": "The revision shown is the most recent one, which is not necessarily the active one.",
     "createSubtitle": "One order to a supplier. Issue it to commit the cost, or save it as a draft.",
     "detailTitle": "Purchase order {number}",
     "revisionTab": "Rev {number}",
@@ -375,10 +490,39 @@
         "PAID": "Paid",
         "REVERSED": "Reversed"
       }
+    },
+    "list": {
+      "searchLabel": "Search purchase orders",
+      "searchPlaceholder": "Search by PO number or supplier",
+      "new": "New order",
+      "countLabel": "{count, plural, one {# order} other {# orders}}",
+      "empty": "No purchase orders yet",
+      "emptyHint": "Order from a supplier to commit cost to a project or to overhead.",
+      "noMatches": "No orders match these filters",
+      "moneyHidden": "Order totals are hidden for your role.",
+      "revision": "revision {number}",
+      "columns": {
+        "order": "Order",
+        "project": "Project",
+        "ordered": "Ordered",
+        "delivery": "Delivery",
+        "total": "Total",
+        "status": "Status"
+      },
+      "delivery": {
+        "NOT_RECEIVED": "Not received",
+        "PARTLY_RECEIVED": "Partly received",
+        "RECEIVED": "Received"
+      },
+      "filters": {
+        "status": "Status",
+        "project": "Project",
+        "supplier": "Supplier"
+      }
     }
   },
   "grn": {
-    "title": "Goods Receipts",
+    "title": "Goods receipts",
     "subtitle": "Deliveries recorded against an active purchase order revision.",
     "new": "New Goods Receipt",
     "number": "GRN Number",
@@ -388,28 +532,71 @@
     "empty": "No goods receipts yet.",
     "createTitle": "Receive a delivery",
     "createSubtitle": "Record what arrived against an open order. A clean delivery is accepted and posted in one step; report a discrepancy only on the lines that need it.",
-    "selectPo": "Select a purchase order",
-    "selectPoHint": "Only open orders with an active revision can be received against.",
-    "noReceivablePo": "There is no open purchase order with an active revision to receive against.",
     "linesTitle": "Delivered lines",
     "orderedQuantity": "Ordered",
     "previouslyReceived": "Previously received",
-    "remaining": "Remaining",
     "receivedQuantity": "Received",
-    "receivedNow": "Received now",
     "acceptedQuantity": "Accepted",
     "rejectedQuantity": "Rejected",
     "rejectionReason": "Rejection reason",
     "qualityStatus": "Quality",
-    "noIssues": "No issues",
-    "reportDiscrepancy": "Report discrepancy",
-    "acceptanceModeLabel": "Acceptance for {description}",
-    "emptyLinesHint": "Lines left at zero are not submitted. Fill in only what was delivered.",
-    "allLinesEmpty": "Enter a received quantity on at least one line.",
-    "overReceiptToleratedFlag": "This exceeds the remaining balance by {amount}. It is within the allowed over-receipt, so it will still be recorded and posted.",
-    "overReceiptExceptionFlag": "This exceeds the remaining balance by {amount} — more than the allowed over-receipt, so the receipt will be flagged for review and held instead of posted.",
-    "overReceiptToleranceNote": "The exact tolerance is set per organisation and is not available here, so this is a best estimate — the server makes the final decision.",
-    "receive": "Receive",
+    "receive": {
+      "nothingTitle": "Nothing to receive",
+      "nothingBody": "There are no open purchase orders. A delivery can be received once its order is confirmed.",
+      "goToOrders": "Go to purchase orders",
+      "post": "Post receipt",
+      "posting": "Posting…",
+      "discard": "Discard",
+      "deliverySection": "Delivery",
+      "purchaseOrder": "Purchase order",
+      "poPlaceholder": "Choose an order",
+      "poSearch": "Search by PO no. or supplier",
+      "poEmpty": "No open order matches",
+      "poHint": "Only open orders are listed.",
+      "poPicked": "{supplier} · {project}",
+      "deliveredOn": "Delivered on",
+      "deliveryNote": "Delivery note no.",
+      "deliveryNoteHint": "From the supplier's paper, if there is one.",
+      "optional": "optional",
+      "arrivedSection": "What arrived",
+      "arrivedHint": "Quantities are filled with what's still due. Change only what's different.",
+      "linesLabel": "Delivered lines",
+      "lineTitle": "Line {n}",
+      "columns": {
+        "item": "Item",
+        "stillDue": "Still due",
+        "deliveredNow": "Delivered now",
+        "problem": "Problem"
+      },
+      "orderedBefore": "Ordered {ordered} · {before} received before",
+      "reportProblem": "Report a problem",
+      "removeProblem": "No problem",
+      "rejectedQty": "Rejected quantity",
+      "reason": "Reason",
+      "reasonHint": "What was wrong — damaged, wrong size, failed test.",
+      "staysOpen": "{qty} stays open on the order",
+      "overTolerated": "{qty} more than still due. It's recorded and flagged on the order.",
+      "overException": "{qty} more than still due — more than the allowed over-receipt, so the receipt is held for review instead of posted.",
+      "acceptedValue": "Accepted value {amount} moves from ordered to received",
+      "confirmTitle": "Post this receipt?",
+      "confirmBody": "Posted receipts can't be edited.",
+      "errors": {
+        "rejectedOverDelivered": "Rejected can't be more than delivered.",
+        "reasonRequired": "Say why it was rejected.",
+        "purchaseOrder": "Choose the order this delivery is for.",
+        "nothingDelivered": "Enter what arrived on at least one line."
+      },
+      "sod": {
+        "title": "You raised this order, so someone else must receive it.",
+        "body": "Ask a colleague to receive the delivery, or request an exception if no one else is on site.",
+        "request": "Request an exception…",
+        "pending": "An exception was requested for this order. It can be received once it is approved.",
+        "dialogTitle": "Request a receipt exception",
+        "dialogBody": "Explain why you need to receive this order yourself. An approver will review it.",
+        "reasonLabel": "Reason",
+        "submit": "Request exception"
+      }
+    },
     "post": "Post",
     "postTitle": "Post {number}",
     "postBody": "Posting moves the accepted value from committed to accrued in the commitment ledger. A posted receipt cannot be changed.",
@@ -433,7 +620,6 @@
       "PARTIALLY_ACCEPTED": "Partially accepted",
       "REJECTED": "Rejected"
     },
-    "qualityRejectedUnavailable": "A fully rejected line cannot be recorded — the API requires an accepted quantity above zero (P6).",
     "lineError": {
       "receivedMustBePositive": "Enter a received quantity greater than zero, or leave the line empty.",
       "acceptedMustBePositive": "The accepted quantity must be greater than zero. The API cannot record a fully rejected line (P6).",
@@ -442,6 +628,27 @@
     },
     "split": {
       "label": "Received {received} — accepted {accepted}, rejected {rejected}"
+    },
+    "list": {
+      "searchLabel": "Search goods receipts",
+      "searchPlaceholder": "Search by receipt number, PO or delivery note",
+      "new": "Receive delivery",
+      "countLabel": "{count, plural, one {# receipt} other {# receipts}}",
+      "empty": "No deliveries received yet",
+      "emptyHint": "Receive a delivery against a confirmed purchase order when goods arrive on site.",
+      "noMatches": "No receipts match these filters",
+      "by": "by {name}",
+      "columns": {
+        "receipt": "Receipt",
+        "purchaseOrder": "Purchase order",
+        "project": "Project",
+        "delivered": "Delivered",
+        "deliveryNote": "Delivery note",
+        "status": "Status"
+      },
+      "filters": {
+        "status": "Status"
+      }
     }
   },
   "bills": {
@@ -908,14 +1115,6 @@
     "accruedHint": "Goods received and accepted, bill not yet posted.",
     "actualHint": "Supplier bill posted to the general ledger.",
     "viewLedger": "View Commitment Ledger",
-    "selectProject": "Select a project",
-    "selectProjectHint": "The ledger is queried per project — there is no organisation-wide view.",
-    "stage": "Stage",
-    "eventType": "Event",
-    "sourceDoc": "Source Document",
-    "reportingAmount": "Amount",
-    "empty": "No commitment entries for this selection.",
-    "filterByBoqNode": "BOQ node",
     "sourceType": {
       "PURCHASE_ORDER_REVISION": "Purchase order",
       "GOODS_RECEIPT": "Goods receipt",
@@ -924,7 +1123,47 @@
     },
     "projectSectionTitle": "Cost position",
     "projectSectionHint": "Project cost from approved purchase orders through to posted supplier bills.",
-    "openProcurement": "Open Procurement"
+    "openProcurement": "Open Procurement",
+    "ledger": {
+      "project": "Project",
+      "projectPlaceholder": "Choose a project",
+      "projectSearch": "Search by code or name",
+      "projectEmpty": "No projects match",
+      "stageLabel": "Stage",
+      "view": {
+        "ALL": "All",
+        "COMMITTED": "Ordered",
+        "ACCRUED": "Received",
+        "ACTUAL": "Billed"
+      },
+      "stage": {
+        "COMMITTED": "Ordered",
+        "ACCRUED": "Received",
+        "ACTUAL": "Billed"
+      },
+      "orderedHint": "Committed · not yet received",
+      "receivedHint": "Accrued · not yet billed",
+      "billedHint": "Actual · posted supplier bills",
+      "total": "Total",
+      "totalHint": "Cost so far",
+      "summaryLabel": "Project cost position",
+      "entries": "Commitment entries",
+      "columns": {
+        "date": "Date",
+        "document": "Document",
+        "chargedTo": "Charged to",
+        "stage": "Stage",
+        "amount": "Amount"
+      },
+      "overhead": "Overhead",
+      "releasedOnReceipt": "Released on receipt",
+      "noProjectTitle": "Choose a project",
+      "noProjectBody": "See what is ordered, received and billed for one project, and every entry behind it.",
+      "emptyTitle": "No entries yet",
+      "emptyBody": "Entries appear when an order is confirmed, a delivery is received or a supplier bill is posted.",
+      "hiddenTitle": "Cost figures are hidden for your role",
+      "hiddenBody": "Ask someone with access to the commitment ledger for the project's cost position."
+    }
   },
   "project": {
     "title": "Procurement",
@@ -1450,17 +1689,16 @@
     }
   },
   "advances": {
-    "title": "Buyer Advances",
+    "title": "Buyer advances",
     "subtitle": "Cash advances disbursed to buyers against a purchase order.",
     "empty": "No buyer advances recorded",
-    "emptyDesc": "Buyer advances are recorded from within a purchase order's settlement tab.",
+    "emptyDesc": "Buyer advances are recorded from a purchase order's settlement tab.",
     "noMatches": "No advances match the current filter",
     "countLabel": "{count, plural, one {# advance} other {# advances}}",
     "filterByPostingStatus": "Posting status",
-    "allPostingStatuses": "All statuses",
     "colAmount": "Amount",
     "colAdvancedAt": "Date",
-    "colPo": "Purchase Order",
+    "colPo": "Purchase order",
     "colOutstanding": "Outstanding",
     "colPosting": "Posting",
     "detailTitle": "Buyer Advance",
@@ -1477,7 +1715,10 @@
     "colReturnMethod": "Method",
     "colReceivedAt": "Received",
     "colBill": "Bill",
-    "colAllocated": "Allocated"
+    "colAllocated": "Allocated",
+    "colAdvance": "Advanced on",
+    "colSupplier": "Supplier",
+    "searchPlaceholder": "Search by PO no., supplier or reference"
   },
   "feedback": {
     "supplierCreated": "Supplier {name} created",
@@ -1495,8 +1736,6 @@
     "mrApproved": "Material request {ref} approved",
     "mrCancelled": "Material request {ref} cancelled",
     "poCreated": "Purchase order {ref} created",
-    "poSubmitted": "Purchase order {ref} submitted for approval",
-    "poApproved": "Purchase order {ref} approved",
     "poRevised": "Purchase order {ref} revised",
     "poCancelled": "Purchase order {ref} cancelled",
     "poConfirmed": "Purchase order {ref} confirmed",
@@ -1529,6 +1768,28 @@
     "budgetCreated": "Cost budget created",
     "budgetSaved": "Cost budget saved",
     "budgetDiscarded": "Cost budget discarded",
-    "budgetBaselined": "Cost budget baselined"
+    "budgetBaselined": "Cost budget baselined",
+    "receiptExceptionRequested": "Receipt exception requested",
+    "mrRejected": "Material request {ref} sent back to the requester",
+    "reactivated": "Reactivated",
+    "supplierDeactivated": "{name} deactivated",
+    "supplierReactivated": "{name} reactivated"
+  },
+  "setup": {
+    "status": "Status",
+    "statusOption": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive",
+      "ALL": "All"
+    },
+    "rowMenu": "Actions for {code}",
+    "deactivateMenu": "Deactivate…",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "reactivateTitle": "Reactivate {code}?",
+    "reactivateBody": "It can be picked on new requests and orders again.",
+    "searchPlaceholder": "Search by code or name",
+    "noMatches": "Nothing matches these filters",
+    "categoryCount": "{count, plural, one {# category} other {# categories}}"
   }
 }

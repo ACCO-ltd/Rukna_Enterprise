@@ -82,6 +82,28 @@ describe('moduleTabs', () => {
     expect(tabs.find((t) => t.active)?.key).toBe('/clients');
   });
 
+  it('lays out the procurement tabs in flow order with Setup as the one dropdown', () => {
+    const tabs = moduleTabs(domain('procurement'), '/procurement/requests', allowAll);
+    expect(tabs.map((t) => t.labelKey)).toEqual([
+      'materialRequests',
+      'purchaseOrders',
+      'goodsReceipts',
+      'supplierBills',
+      'buyerAdvances',
+      'commitments',
+      'suppliers',
+      'group.setup',
+    ]);
+    const setup = tabs.find((t) => t.kind === 'menu');
+    expect(setup?.kind === 'menu' && setup.items.map((i) => i.labelKey)).toEqual([
+      'materials',
+      'materialCategories',
+      'unitsOfMeasure',
+      'spendCategories',
+    ]);
+    expect(tabs.find((t) => t.active)?.key).toBe('/procurement/requests');
+  });
+
   it('never marks a cross-link active', () => {
     const tabs = moduleTabs(domain('procurement'), '/finance/accounting/bills', allowAll);
     expect(tabs.some((t) => t.active)).toBe(false);

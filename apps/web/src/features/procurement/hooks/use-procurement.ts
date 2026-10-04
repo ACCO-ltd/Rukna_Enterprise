@@ -22,13 +22,24 @@ import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from 
 import { unitOfMeasureKeys } from '@/features/units-of-measure/hooks/use-units-of-measure';
 import {
   allocateAdvance,
+  getSupplier,
+  deactivateSupplier,
+  listAllBuyerAdvances,
+  listSupplierDirectory,
+  reactivateMaterial,
+  reactivateMaterialCategory,
+  reactivateSpendCategory,
+  reactivateSupplier,
+  reactivateUom,
+  rejectMaterialRequest,
+  createReceiptException,
+  listReceivablePurchaseOrders,
   approveGoodsReceiptException,
   approveMatchException,
   approveMaterialRequest,
   approveSupplierBill,
   approveSupplierPayment,
   releaseSupplierPayment,
-  approvePurchaseOrder,
   cancelGoodsReceipt,
   cancelMaterialRequest,
   cancelPurchaseOrder,
@@ -86,7 +97,6 @@ import {
   resolveMatchException,
   runBillMatch,
   submitMaterialRequest,
-  submitPurchaseOrder,
   submitSupplierBill,
   updateSupplierBill,
   updateSupplier,
@@ -99,6 +109,10 @@ import {
   createEvidenceAllocation,
 } from '../api/procurement-api';
 import type {
+  CatalogueStatusFilter,
+  SupplierDirectoryRow,
+  CreateReceiptExceptionPayload,
+  ReceivablePurchaseOrder,
   BillActivityEntry,
   BillApprovals,
   BillPayments,
@@ -115,6 +129,7 @@ import type {
   CreatePurchaseOrderPayload,
   CreateUomPayload,
   GoodsReceipt,
+  GoodsReceiptStatus,
   GrnAttachment,
   Material,
   MaterialCategory,
@@ -173,6 +188,7 @@ export const procurementKeys = {
   purchaseOrders: (status?: string, supplierId?: string, projectId?: string) =>
     [...procurementKeys.all, 'purchase-orders', status ?? 'all', supplierId ?? 'all', projectId ?? 'all'] as const,
   purchaseOrder: (id: string) => [...procurementKeys.all, 'purchase-order', id] as const,
+  receivablePurchaseOrders: () => [...procurementKeys.all, 'purchase-orders', 'receivable'] as const,
   goodsReceipts: (purchaseOrderId?: string) =>
     [...procurementKeys.all, 'goods-receipts', purchaseOrderId ?? 'all'] as const,
   goodsReceipt: (id: string) => [...procurementKeys.all, 'goods-receipt', id] as const,
@@ -210,21 +226,25 @@ export const procurementKeys = {
 
 // ─── Catalogue ───────────────────────────────────────────────────────────────────
 
-export function useUoms(): UseQueryResult<UnitOfMeasure[]> {
-  return useQuery({ queryKey: procurementKeys.uoms(), queryFn: listUoms });
-}
-
-export function useMaterialCategories(): UseQueryResult<MaterialCategory[]> {
+/** Pickers call these bare (the server's default, ACTIVE); setup lists pass a status. */
+export function useUoms(status?: CatalogueStatusFilter): UseQueryResult<UnitOfMeasure[]> {
   return useQuery({
-    queryKey: procurementKeys.materialCategories(),
-    queryFn: listMaterialCategories,
+    queryKey: status ? [...procurementKeys.uoms(), status] : procurementKeys.uoms(),
+    queryFn: () => listUoms(status),
   });
 }
 
-export function useSpendCategories(): UseQueryResult<SpendCategory[]> {
+export function useMaterialCategories(status?: CatalogueStatusFilter): UseQueryResult<MaterialCategory[]> {
   return useQuery({
-    queryKey: procurementKeys.spendCategories(),
-    queryFn: listSpendCategories,
+    queryKey: status ? [...procurementKeys.materialCategories(), status] : procurementKeys.materialCategories(),
+    queryFn: () => listMaterialCategories(status),
+  });
+}
+
+export function useSpendCategories(status?: CatalogueStatusFilter): UseQueryResult<SpendCategory[]> {
+  return useQuery({
+    queryKey: status ? [...procurementKeys.spendCategories(), status] : procurementKeys.spendCategories(),
+    queryFn: () => listSpendCategories(status),
   });
 }
 
@@ -236,9 +256,12 @@ export function useSpendCategories(): UseQueryResult<SpendCategory[]> {
 export function useMaterials(filters?: {
   materialCategoryId?: string;
   spendCategoryId?: string;
+  status?: CatalogueStatusFilter;
 }): UseQueryResult<Material[]> {
   return useQuery({
-    queryKey: procurementKeys.materials(filters?.materialCategoryId, filters?.spendCategoryId),
+    queryKey: filters?.status
+      ? [...procurementKeys.materials(filters.materialCategoryId, filters.spendCategoryId), filters.status]
+      : procurementKeys.materials(filters?.materialCategoryId, filters?.spendCategoryId),
     queryFn: () => listMaterials(filters),
   });
 }
@@ -412,19 +435,96 @@ export function useDiscontinueMaterial() {
   });
 }
 
+export function useReactivateUom() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reactivateUom(id),
+    meta: { successToast: 'procurement.feedback.reactivated' },
+    onSuccess: () => invalidateUnitLists(qc),
+  });
+}
+
+export function useReactivateMaterialCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reactivateMaterialCategory(id),
+    meta: { successToast: 'procurement.feedback.reactivated' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.materialCategories() }),
+  });
+}
+
+export function useReactivateSpendCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reactivateSpendCategory(id),
+    meta: { successToast: 'procurement.feedback.reactivated' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.spendCategories() }),
+  });
+}
+
+export function useReactivateMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reactivateMaterial(id),
+    meta: { successToast: 'procurement.feedback.reactivated' },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'materials'] }),
+  });
+}
+
+/** One supplier's full master record — read when its edit form opens. */
+export function useSupplier(id: string): UseQueryResult<Supplier> {
+  return useQuery({
+    queryKey: [...procurementKeys.all, 'supplier', id],
+    queryFn: () => getSupplier(id),
+    enabled: Boolean(id),
+  });
+}
+
+/** The supplier directory — the Suppliers page. Pickers keep `useSuppliers`. */
+export function useSupplierDirectory(filters?: {
+  status?: CatalogueStatusFilter;
+  search?: string;
+}): UseQueryResult<SupplierDirectoryRow[]> {
+  return useQuery({
+    queryKey: [...procurementKeys.all, 'supplier-directory', filters?.status ?? 'ALL', filters?.search ?? ''],
+    queryFn: () => listSupplierDirectory(filters),
+  });
+}
+
+function useSupplierStatusChange(action: (id: string) => Promise<Supplier>, feedbackKey: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => action(id),
+    meta: {
+      successToast: { key: feedbackKey, values: (supplier) => ({ name: (supplier as Supplier).name }) },
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'supplier-directory'] });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] });
+    },
+  });
+}
+
+export const useDeactivateSupplier = () =>
+  useSupplierStatusChange(deactivateSupplier, 'procurement.feedback.supplierDeactivated');
+export const useReactivateSupplier = () =>
+  useSupplierStatusChange(reactivateSupplier, 'procurement.feedback.supplierReactivated');
+
 // ─── Material requests ───────────────────────────────────────────────────────────
 
 export function useMaterialRequests(filters?: {
   status?: MaterialRequestStatus;
   projectId?: string;
   scope?: MaterialRequestScope;
+  requestedFor?: string;
+  search?: string;
 }): UseQueryResult<MaterialRequest[]> {
   return useQuery({
-    queryKey: procurementKeys.materialRequests(
-      filters?.status,
-      filters?.projectId,
-      filters?.scope,
-    ),
+    queryKey: [
+      ...procurementKeys.materialRequests(filters?.status, filters?.projectId, filters?.scope),
+      filters?.requestedFor ?? 'all',
+      filters?.search ?? '',
+    ],
     queryFn: () => listMaterialRequests(filters),
   });
 }
@@ -483,15 +583,37 @@ export const useApproveMaterialRequest = () =>
 export const useCancelMaterialRequest = () =>
   useMrTransition(cancelMaterialRequest, 'procurement.feedback.mrCancelled');
 
+/** SUBMITTED → DRAFT with a reason, so the requester can change it and submit again. */
+export function useRejectMaterialRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => rejectMaterialRequest(id, reason),
+    meta: {
+      successToast: {
+        key: 'procurement.feedback.mrRejected',
+        values: (mr) => ({ ref: (mr as MaterialRequest).mrNumber }),
+      },
+    },
+    onSuccess: (mr) => {
+      qc.invalidateQueries({ queryKey: procurementKeys.materialRequest(mr.id) });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'material-requests'] });
+    },
+  });
+}
+
 // ─── Purchase orders ─────────────────────────────────────────────────────────────
 
 export function usePurchaseOrders(filters?: {
   status?: PurchaseOrderStatus;
   supplierId?: string;
   projectId?: string;
+  search?: string;
 }): UseQueryResult<PurchaseOrder[]> {
   return useQuery({
-    queryKey: procurementKeys.purchaseOrders(filters?.status, filters?.supplierId, filters?.projectId),
+    queryKey: [
+      ...procurementKeys.purchaseOrders(filters?.status, filters?.supplierId, filters?.projectId),
+      filters?.search ?? '',
+    ],
     queryFn: () => listPurchaseOrders(filters),
   });
 }
@@ -516,42 +638,6 @@ export function useCreatePurchaseOrder() {
     },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] }),
-  });
-}
-
-export function useSubmitPurchaseOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => submitPurchaseOrder(id),
-    meta: {
-      successToast: {
-        key: 'procurement.feedback.poSubmitted',
-        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
-      },
-    },
-    onSuccess: (po) => {
-      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
-      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
-    },
-  });
-}
-
-/** Writes commitment entries — the ledger and every summary card go stale together. */
-export function useApprovePurchaseOrder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id }: { id: string }) => approvePurchaseOrder(id),
-    meta: {
-      successToast: {
-        key: 'procurement.feedback.poApproved',
-        values: (po) => ({ ref: (po as PurchaseOrder).poNumber }),
-      },
-    },
-    onSuccess: (po) => {
-      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
-      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
-      qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
-    },
   });
 }
 
@@ -665,9 +751,11 @@ export function useGoodsReceiptAttachments(
 
 export function useGoodsReceipts(filters?: {
   purchaseOrderId?: string;
+  status?: GoodsReceiptStatus;
+  search?: string;
 }): UseQueryResult<GoodsReceipt[]> {
   return useQuery({
-    queryKey: procurementKeys.goodsReceipts(filters?.purchaseOrderId),
+    queryKey: [...procurementKeys.goodsReceipts(filters?.purchaseOrderId), filters?.status ?? 'all', filters?.search ?? ''],
     queryFn: () => listGoodsReceipts(filters),
   });
 }
@@ -677,6 +765,24 @@ export function useGoodsReceipt(id: string): UseQueryResult<GoodsReceipt> {
     queryKey: procurementKeys.goodsReceipt(id),
     queryFn: () => getGoodsReceipt(id),
     enabled: Boolean(id),
+  });
+}
+
+/** Open orders the viewer can receive against, each with the server's receive verdict. */
+export function useReceivablePurchaseOrders(): UseQueryResult<ReceivablePurchaseOrder[]> {
+  return useQuery({
+    queryKey: procurementKeys.receivablePurchaseOrders(),
+    queryFn: listReceivablePurchaseOrders,
+  });
+}
+
+/** Asks for a receipt exception; the order's verdict (and its `receiptException`) changes. */
+export function useCreateReceiptException() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateReceiptExceptionPayload) => createReceiptException(payload),
+    meta: { successToast: { key: 'procurement.feedback.receiptExceptionRequested' } },
+    onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.receivablePurchaseOrders() }),
   });
 }
 
@@ -1186,7 +1292,7 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
-      qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'buyer-advances'] });
     },
   });
 }
@@ -1195,6 +1301,14 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
 
 export function useGetBuyerAdvance(id: string): UseQueryResult<BuyerAdvance> {
   return useQuery({ queryKey: procurementKeys.buyerAdvance(id), queryFn: () => getBuyerAdvance(id) });
+}
+
+/** The organisation's advances, newest first (the Buyer advances page). */
+export function useAllBuyerAdvances(): UseQueryResult<BuyerAdvance[]> {
+  return useQuery({
+    queryKey: [...procurementKeys.all, 'buyer-advances', 'all'],
+    queryFn: () => listAllBuyerAdvances(),
+  });
 }
 
 export function useListBuyerAdvances(purchaseOrderId: string): UseQueryResult<BuyerAdvance[]> {
@@ -1211,7 +1325,7 @@ export function usePostBuyerAdvance(advanceId: string, poId: string) {
     meta: { successToast: 'procurement.feedback.buyerAdvancePosted' },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
-      qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'buyer-advances'] });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },

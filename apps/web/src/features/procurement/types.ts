@@ -34,6 +34,10 @@ export type ApiDate = string;
 // ─── Shared enums ────────────────────────────────────────────────────────────────
 
 export type MasterDataStatus = 'ACTIVE' | 'INACTIVE';
+
+/** The catalogue and supplier lists' status filter. Catalogue lists default to ACTIVE (the
+ * picker view); INACTIVE on materials covers DISCONTINUED too. */
+export type CatalogueStatusFilter = 'ACTIVE' | 'INACTIVE' | 'ALL';
 export type MaterialStatus = 'ACTIVE' | 'INACTIVE' | 'DISCONTINUED';
 export type ProcurementLineType = 'MATERIAL' | 'SERVICE' | 'OTHER';
 
@@ -47,6 +51,18 @@ export type MaterialRequestStatus =
   | 'CLOSED';
 
 export type MaterialRequestScope = 'PROJECT' | 'ORGANIZATION';
+
+export type MaterialRequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+/** How much of an order has arrived — the PO list's Delivery column (enriched list read). */
+export type PurchaseOrderDeliveryStatus = 'NOT_RECEIVED' | 'PARTLY_RECEIVED' | 'RECEIVED';
+
+/** A small project reference embedded on an enriched list row. */
+export interface ProcurementProjectRef {
+  id: string;
+  code?: string;
+  name: string;
+}
 
 export type PurchaseOrderStatus = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED';
 
@@ -155,6 +171,13 @@ export interface Material {
   materialCategory: MaterialCategory | null;
   defaultSpendCategory: SpendCategory | null;
   baseUom: UnitOfMeasure | null;
+  /**
+   * A reference price the catalogue may offer — the material's own estimate, or the last price
+   * paid on a purchase order. Optional until the backend sends them; prefills a request's
+   * estimate when present.
+   */
+  estimatedUnitPrice?: Money | null;
+  lastPurchasePrice?: Money | null;
 }
 
 // ─── Material requests ───────────────────────────────────────────────────────────
@@ -172,6 +195,8 @@ export interface MaterialRequestLine {
   notes: string | null;
   material: Pick<Material, 'code' | 'name'> | null;
   uom: Pick<UnitOfMeasure, 'code' | 'symbol'> | null;
+  /** The requester's estimate (ADR-022). A scalar column, so it rides on list and detail. */
+  estimatedUnitPrice?: Money | null;
 }
 
 export interface MaterialRequest {
@@ -194,6 +219,18 @@ export interface MaterialRequest {
   description: string | null;
   notes: string | null;
   lines: MaterialRequestLine[];
+  /** Short name for the requirement. Scalar column — present on list and detail. */
+  title?: string | null;
+  priority?: MaterialRequestPriority;
+  currencyCode?: string | null;
+  // ── List read fields (GET /procurement/material-requests). Absent on the detail read.
+  /** Σ requested × estimated unit price, server-side. `null` when nothing is estimated or the
+   * viewer may not see money (`moneyVisible: false`). */
+  estimatedTotal?: Money | null;
+  requester?: { id: string; name: string } | null;
+  project?: ProcurementProjectRef | null;
+  /** The server's verdict on whether this viewer may see the estimate. */
+  moneyVisible?: boolean;
 }
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────────
@@ -221,6 +258,24 @@ export interface Supplier {
   /** Free-text postal address. Editable via PATCH; not captured on the create form. */
   address: string | null;
   status: MasterDataStatus;
+}
+
+/**
+ * `GET /procurement/suppliers` (view:procurement) — the supplier directory row. Money (what we
+ * owe) is null unless `moneyVisible` (view:commitment-ledger, decided server-side).
+ */
+export interface SupplierDirectoryRow {
+  id: string;
+  code: string;
+  name: string;
+  status: MasterDataStatus;
+  primaryContact: { name: string; phone: string | null } | null;
+  paymentTermsDays: number | null;
+  defaultCurrency: string | null;
+  openOrderCount: number;
+  payableBalance: Money | null;
+  payableBalances: { currencyCode: string; amount: Money }[] | null;
+  moneyVisible: boolean;
 }
 
 /**
@@ -355,6 +410,17 @@ export interface PurchaseOrder {
    * not the ACTIVE one (P14).
    */
   revisions: PurchaseOrderRevision[];
+  // ── List read fields (GET /procurement/purchase-orders). Absent on the detail read.
+  /** The order's project — the first when its lines span several (`projectCount`). */
+  project?: ProcurementProjectRef | null;
+  projectCount?: number;
+  /** The active revision's total. `null` when withheld from a money-blind viewer. */
+  total?: Money | null;
+  currencyCode?: string;
+  deliveryStatus?: PurchaseOrderDeliveryStatus | null;
+  activeRevisionNumber?: number | null;
+  revisionStatus?: PurchaseOrderRevisionStatus;
+  moneyVisible?: boolean;
 }
 
 // ─── Goods receipts ──────────────────────────────────────────────────────────────
@@ -389,7 +455,14 @@ export interface GoodsReceipt {
   postedAt: ApiDate | null;
   postedBy: string | null;
   lines: GoodsReceiptLine[];
-  purchaseOrder?: Pick<PurchaseOrder, 'poNumber'> | null;
+  /** The list read sends `{ id, number }`; the detail read `{ poNumber }`. */
+  purchaseOrder?: { id?: string; poNumber?: string; number?: string } | null;
+  // ── List read fields (GET /procurement/goods-receipts). Absent on the detail read.
+  supplier?: { id: string; name: string } | null;
+  project?: ProcurementProjectRef | null;
+  projectCount?: number;
+  /** Whoever recorded the delivery. */
+  deliveredBy?: { id: string; name: string } | null;
 }
 
 // ─── Bill matching ───────────────────────────────────────────────────────────────
@@ -638,6 +711,10 @@ export interface CommitmentLedgerEntry {
   projectId: string | null;
   boqNodeId: string | null;
   supplierId: string | null;
+  /** Labels batch-resolved on the entry read: "PO-2026-0007 (Rev 2)", "GRN-…", "BILL-…". */
+  documentNumber?: string | null;
+  supplierName?: string | null;
+  boqNode?: { id: string; code: string; name: string } | null;
 }
 
 export interface CommitmentSummary {
@@ -682,13 +759,22 @@ export interface CreateMrLinePayload {
   boqNodeId?: string;
   spendCategoryId?: string;
   notes?: string;
+  /** The requester's estimate. Absent when blank — never sent as 0 (ADR-022). */
+  estimatedUnitPrice?: number;
 }
 
+/**
+ * `POST /procurement/material-requests`. The server stamps `requestedDate` itself, so it is not
+ * sent. `notes` carries the "Note to the buyer".
+ */
 export interface CreateMaterialRequestPayload {
   requestScope: MaterialRequestScope;
   projectId?: string;
-  requestedDate: string;
   requiredByDate?: string;
+  title?: string;
+  priority?: MaterialRequestPriority;
+  /** Sent only when a line carries an estimate — an amount needs its currency. */
+  currencyCode?: string;
   description?: string;
   notes?: string;
   lines: CreateMrLinePayload[];
@@ -740,6 +826,53 @@ export interface CreateGrnLinePayload {
   rejectionReason?: string;
   qualityStatus: QualityStatus;
   notes?: string;
+}
+
+/** Why the viewer may not receive against an order (segregation of duties, decided server-side). */
+export type ReceiveBlockedReason = 'PO_CREATOR_CANNOT_RECEIVE_GOODS';
+
+export interface ReceiptExceptionRef {
+  id: string;
+  status: string;
+}
+
+/** One line still open on a receivable order. Quantities are decimal strings; no prices. */
+export interface ReceivablePoLine {
+  purchaseOrderLineId: string;
+  lineNumber: number;
+  description: string;
+  uomCode: string;
+  uomSymbol: string;
+  orderedQuantity: Quantity;
+  /** Accepted on earlier receipts. */
+  acceptedQuantity: Quantity;
+  remainingQuantity: Quantity;
+}
+
+/**
+ * `GET /procurement/purchase-orders/receivable` (view:procurement + create:goods-receipt) — the
+ * open orders with something left to receive, each with its open lines and the server's verdict
+ * on whether *this viewer* may receive it (segregation of duties). Carries no prices.
+ */
+export interface ReceivablePurchaseOrder {
+  id: string;
+  poNumber: string;
+  status: 'OPEN';
+  supplier: { id: string; name: string };
+  activeRevisionId: string;
+  activeRevisionNumber: number;
+  expectedDeliveryDate: ApiDate | null;
+  projects: ProcurementProjectRef[];
+  lines: ReceivablePoLine[];
+  canReceive: boolean;
+  blockedReason: ReceiveBlockedReason | null;
+  receiptException: ReceiptExceptionRef | null;
+}
+
+/** `POST /procurement/receipt-exceptions` — ask for someone else's receipt to be allowed. */
+export interface CreateReceiptExceptionPayload {
+  purchaseOrderId: string;
+  reason: string;
 }
 
 export interface CreateGoodsReceiptPayload {
@@ -1081,6 +1214,9 @@ export interface BuyerAdvanceEvidenceAllocation {
 
 export interface BuyerAdvance {
   id: string;
+  /** On the list read (org-wide or per PO). */
+  purchaseOrder?: { id: string; poNumber: string };
+  supplier?: { id: string; name: string };
   organizationId: string;
   purchaseOrderId: string;
   recipientUserId: string;

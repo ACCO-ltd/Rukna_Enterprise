@@ -16,6 +16,7 @@ import {
   RecordCreateHeader,
   Select,
   SwitchField,
+  comboboxColumn,
 } from '@erp/ui';
 import { ArrowLeft, ClipboardCheck, Receipt, Signpost, Users } from 'lucide-react';
 
@@ -176,6 +177,14 @@ export function FormsSection() {
         />
       </Specimen>
 
+      <Specimen
+        label="LineItemsEditor — combobox column"
+        token="comboboxColumn({ type: 'combobox', options, onPick, onCreate })"
+        note="Pick an item from a catalogue by keyboard or pointer; the pinned last row adds what was typed as a one-off item. Works in the phone card too."
+      >
+        <ComboboxLinesSpecimen />
+      </Specimen>
+
       <Specimen label="Record create header + form groups" token="<RecordCreateHeader> · <FormGroup>">
         <div className="space-y-6">
           <RecordCreateHeader icon={<Users size={20} />}>
@@ -227,5 +236,82 @@ export function FormsSection() {
 
       <RecordDialogSpecimen />
     </Section>
+  );
+}
+
+interface DemoMaterial {
+  id: string;
+  code: string;
+  name: string;
+  unit: string;
+}
+
+interface DemoRequestLine {
+  id: string;
+  materialId: string;
+  description: string;
+  unit: string;
+  qty: string;
+}
+
+const DEMO_MATERIALS: DemoMaterial[] = [
+  { id: 'rb12', code: 'RB-12', name: 'Rebar 12mm', unit: 'ton' },
+  { id: 'cm50', code: 'CM-50', name: 'Cement 50kg', unit: 'bag' },
+  { id: 'sd01', code: 'SD-01', name: 'Washed sand', unit: 'm3' },
+];
+
+function ComboboxLinesSpecimen() {
+  const [lines, setLines] = useState<DemoRequestLine[]>([
+    { id: '1', materialId: 'cm50', description: 'Cement 50kg', unit: 'bag', qty: '120' },
+    { id: '2', materialId: '', description: '', unit: '', qty: '' },
+  ]);
+  const update = (index: number, patch: Partial<DemoRequestLine>) =>
+    setLines((all) => all.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+
+  return (
+    <LineItemsEditor<DemoRequestLine>
+      label="Request lines"
+      rows={lines}
+      rowKey={(line) => line.id}
+      cardTitle={(line, i) => (line.description ? `Line ${i + 1} — ${line.description}` : `Line ${i + 1}`)}
+      onAdd={() => setLines((all) => [...all, { id: String(Date.now()), materialId: '', description: '', unit: '', qty: '' }])}
+      onRemove={(index) => setLines((all) => all.filter((_, i) => i !== index))}
+      columns={[
+        comboboxColumn<DemoRequestLine, DemoMaterial>({
+          type: 'combobox',
+          key: 'item',
+          header: 'Item',
+          required: true,
+          width: 'minmax(0,2fr)',
+          options: DEMO_MATERIALS,
+          getOptionValue: (m) => m.id,
+          getOptionLabel: (m) => m.name,
+          getOptionHint: (m) => m.code,
+          value: (line) => line.materialId,
+          valueLabel: (line) => (line.materialId ? undefined : line.description || undefined),
+          onPick: (_line, i, m) => update(i, { materialId: m.id, description: m.name, unit: m.unit }),
+          onCreate: (_line, i, text) => update(i, { materialId: '', description: text, unit: 'ea' }),
+          createLabel: (text) => (text ? `Add "${text}" as a one-off item` : 'Add a one-off item'),
+          placeholder: 'Search materials',
+        }),
+        {
+          key: 'unit',
+          header: 'Unit',
+          width: '5rem',
+          cell: (line) => <span className="block pt-2 text-body-sm text-muted-foreground">{line.unit || '—'}</span>,
+        },
+        {
+          key: 'qty',
+          header: 'Quantity',
+          required: true,
+          width: '8rem',
+          align: 'end',
+          controlId: (i) => `fs-req-${i}-qty`,
+          cell: (line, i) => (
+            <QuantityInput id={`fs-req-${i}-qty`} value={line.qty} onValueChange={(v) => update(i, { qty: v })} />
+          ),
+        },
+      ]}
+    />
   );
 }

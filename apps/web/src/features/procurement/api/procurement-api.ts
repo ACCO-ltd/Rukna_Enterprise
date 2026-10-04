@@ -15,6 +15,11 @@ import { apiClient } from '@/lib/api-client';
 import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from '@erp/types';
 
 import type {
+  CatalogueStatusFilter,
+  SupplierDirectoryRow,
+  CreateReceiptExceptionPayload,
+  ReceiptExceptionRef,
+  ReceivablePurchaseOrder,
   BillActivityEntry,
   BillApprovals,
   BillPayments,
@@ -31,6 +36,7 @@ import type {
   CreatePurchaseOrderPayload,
   CreateUomPayload,
   GoodsReceipt,
+  GoodsReceiptStatus,
   GrnAttachment,
   Material,
   MaterialCategory,
@@ -84,8 +90,12 @@ function queryParams(input: Record<string, string | undefined>): Record<string, 
  * deactivated unit — §12.4's status filter cannot be built, and deactivation is a one-way
  * trapdoor from the UI's point of view.
  */
-export function listUoms(): Promise<UnitOfMeasure[]> {
-  return apiClient<UnitOfMeasure[]>('/procurement/uom');
+export function listUoms(status?: CatalogueStatusFilter): Promise<UnitOfMeasure[]> {
+  return apiClient<UnitOfMeasure[]>('/procurement/uom', { params: queryParams({ status }) });
+}
+
+export function reactivateUom(id: string): Promise<UnitOfMeasure> {
+  return apiClient<UnitOfMeasure>(`/procurement/uom/${id}/reactivate`, { method: 'POST' });
 }
 
 export function getUom(id: string): Promise<UnitOfMeasure> {
@@ -113,8 +123,12 @@ export function deactivateUom(id: string): Promise<UnitOfMeasure> {
 // ─── Material categories ─────────────────────────────────────────────────────────
 
 /** `GET /procurement/material-categories` — roots with one level of `children` nested. */
-export function listMaterialCategories(): Promise<MaterialCategory[]> {
-  return apiClient<MaterialCategory[]>('/procurement/material-categories');
+export function listMaterialCategories(status?: CatalogueStatusFilter): Promise<MaterialCategory[]> {
+  return apiClient<MaterialCategory[]>('/procurement/material-categories', { params: queryParams({ status }) });
+}
+
+export function reactivateMaterialCategory(id: string): Promise<MaterialCategory> {
+  return apiClient<MaterialCategory>(`/procurement/material-categories/${id}/reactivate`, { method: 'POST' });
 }
 
 export function createMaterialCategory(
@@ -141,8 +155,12 @@ export function deactivateMaterialCategory(id: string): Promise<MaterialCategory
  * categories drive approval routing, tolerance policy and commitment attribution. Never
  * label these "cost category" or "material category" in the UI (§12.4).
  */
-export function listSpendCategories(): Promise<SpendCategory[]> {
-  return apiClient<SpendCategory[]>('/procurement/spend-categories');
+export function listSpendCategories(status?: CatalogueStatusFilter): Promise<SpendCategory[]> {
+  return apiClient<SpendCategory[]>('/procurement/spend-categories', { params: queryParams({ status }) });
+}
+
+export function reactivateSpendCategory(id: string): Promise<SpendCategory> {
+  return apiClient<SpendCategory>(`/procurement/spend-categories/${id}/reactivate`, { method: 'POST' });
 }
 
 export function createSpendCategory(payload: CreateCategoryPayload): Promise<SpendCategory> {
@@ -198,18 +216,62 @@ export function discontinueMaterial(id: string): Promise<Material> {
   return apiClient<Material>(`/procurement/materials/${id}/discontinue`, { method: 'POST' });
 }
 
+export function reactivateMaterial(id: string): Promise<Material> {
+  return apiClient<Material>(`/procurement/materials/${id}/reactivate`, { method: 'POST' });
+}
+
+/** `GET /procurement/suppliers` — the supplier directory (status default ALL, search). */
+export function listSupplierDirectory(filters?: {
+  status?: CatalogueStatusFilter;
+  search?: string;
+}): Promise<SupplierDirectoryRow[]> {
+  return apiClient<SupplierDirectoryRow[]>('/procurement/suppliers', {
+    params: queryParams({ status: filters?.status, search: filters?.search }),
+  });
+}
+
+/** `GET /suppliers/:id` (manage:payable) — the full master record, for the edit form. */
+export function getSupplier(id: string): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}`);
+}
+
+/** `POST /suppliers/:id/deactivate` (manage:payable) — 409 unless ACTIVE. */
+export function deactivateSupplier(id: string): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}/deactivate`, { method: 'POST' });
+}
+
+/** `POST /suppliers/:id/reactivate` (manage:payable) — 409 unless INACTIVE. */
+export function reactivateSupplier(id: string): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}/reactivate`, { method: 'POST' });
+}
+
+/** `GET /buyer-advances` without a PO — the organisation's advances, newest first, capped. */
+export function listAllBuyerAdvances(limit?: number): Promise<BuyerAdvance[]> {
+  return apiClient<BuyerAdvance[]>('/buyer-advances', {
+    params: queryParams({ limit: limit === undefined ? undefined : String(limit) }),
+  });
+}
+
 // ─── Material requests ───────────────────────────────────────────────────────────
 
+/**
+ * `requestedFor` is a project id or `overhead` — the list's "Requested for" filter. `search`
+ * matches number and title server-side.
+ */
 export function listMaterialRequests(filters?: {
   status?: MaterialRequestStatus;
   projectId?: string;
   scope?: MaterialRequestScope;
+  requestedFor?: string;
+  search?: string;
 }): Promise<MaterialRequest[]> {
   return apiClient<MaterialRequest[]>('/procurement/material-requests', {
     params: queryParams({
       status: filters?.status,
       projectId: filters?.projectId,
       scope: filters?.scope,
+      requestedFor: filters?.requestedFor,
+      search: filters?.search,
     }),
   });
 }
@@ -242,6 +304,18 @@ export function submitMaterialRequest(id: string): Promise<MaterialRequest> {
   });
 }
 
+/** `POST /procurement/material-requests/:id/reject` — SUBMITTED → DRAFT, with the reason. */
+export function rejectMaterialRequest(id: string, reason: string): Promise<MaterialRequest> {
+  return apiClient<MaterialRequest>(`/procurement/material-requests/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * `POST /procurement/material-requests/:id/approve` (approve:material-request). A requester may
+ * not approve their own request: 403 with `details.code = REQUESTER_CANNOT_APPROVE_OWN_REQUEST`.
+ */
 export function approveMaterialRequest(id: string): Promise<MaterialRequest> {
   return apiClient<MaterialRequest>(`/procurement/material-requests/${id}/approve`, {
     method: 'POST',
@@ -277,9 +351,15 @@ export function listPurchaseOrders(filters?: {
   status?: PurchaseOrderStatus;
   supplierId?: string;
   projectId?: string;
+  search?: string;
 }): Promise<PurchaseOrder[]> {
   return apiClient<PurchaseOrder[]>('/procurement/purchase-orders', {
-    params: queryParams({ status: filters?.status, supplierId: filters?.supplierId, projectId: filters?.projectId }),
+    params: queryParams({
+      status: filters?.status,
+      supplierId: filters?.supplierId,
+      projectId: filters?.projectId,
+      search: filters?.search,
+    }),
   });
 }
 
@@ -297,35 +377,13 @@ export function createPurchaseOrder(
   });
 }
 
-export function submitPurchaseOrder(id: string): Promise<PurchaseOrder> {
-  return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/submit`, {
-    method: 'POST',
-  });
-}
-
-/**
- * `POST /procurement/purchase-orders/:id/approve`
- *
- * Marks the SUBMITTED revision ACTIVE, supersedes the previous ACTIVE one, and writes
- * `COMMITTED` commitment ledger entries.
- *
- * The supersede reversal is wrong (P11): it reverses the **full** original line value
- * rather than the uncommitted balance, so if goods were already received against the
- * superseded revision, `COMMITTED` is reduced twice and goes negative. The approve drawer
- * therefore does not repeat §12.6's promise about the uncommitted balance.
- */
-export function approvePurchaseOrder(id: string): Promise<PurchaseOrder> {
-  return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/approve`, {
-    method: 'POST',
-  });
-}
-
 /**
  * `POST /procurement/purchase-orders/:id/confirm`
  *
- * Single-actor action that replaces the old submit → approve two-step. Validates the DRAFT
- * revision, marks it ACTIVE, sets PO status to OPEN, and writes COMMITTED ledger entries.
- * No DoA routing — the buyer who raised the order confirms it directly.
+ * Issues the order: validates the DRAFT revision, marks it ACTIVE, sets PO status to OPEN, and
+ * writes COMMITTED ledger entries. When a DoA policy gates the order the server answers 409 with
+ * `details.approvalInstanceId` instead of transitioning; calling confirm again once the approval
+ * completes finishes the issue (ADR-015 re-drive).
  */
 export function confirmPurchaseOrder(id: string): Promise<PurchaseOrder> {
   return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/confirm`, {
@@ -402,11 +460,30 @@ export function cancelPurchaseOrder(id: string): Promise<PurchaseOrder> {
 
 // ─── Goods receipts ──────────────────────────────────────────────────────────────
 
+/**
+ * `GET /procurement/purchase-orders/receivable` — open orders with something left to receive,
+ * their open lines, and the server's per-viewer receive verdict (`canReceive`, `blockedReason`,
+ * `receiptException`). The frontend never decides segregation of duties itself.
+ */
+export function listReceivablePurchaseOrders(): Promise<ReceivablePurchaseOrder[]> {
+  return apiClient<ReceivablePurchaseOrder[]>('/procurement/purchase-orders/receivable');
+}
+
+/** `POST /procurement/receipt-exceptions` — the PO's creator asks to receive it themselves. */
+export function createReceiptException(payload: CreateReceiptExceptionPayload): Promise<ReceiptExceptionRef> {
+  return apiClient<ReceiptExceptionRef>('/procurement/receipt-exceptions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function listGoodsReceipts(filters?: {
   purchaseOrderId?: string;
+  status?: GoodsReceiptStatus;
+  search?: string;
 }): Promise<GoodsReceipt[]> {
   return apiClient<GoodsReceipt[]>('/procurement/goods-receipts', {
-    params: queryParams({ purchaseOrderId: filters?.purchaseOrderId }),
+    params: queryParams({ purchaseOrderId: filters?.purchaseOrderId, status: filters?.status, search: filters?.search }),
   });
 }
 
