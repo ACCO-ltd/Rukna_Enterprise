@@ -23,6 +23,7 @@ import { useCancelPurchaseOrder, usePurchaseOrders, useSuppliers } from '../hook
 import { latestRevision } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderDeliveryStatus, PurchaseOrderStatus } from '../types';
 import { ListRowMenu, errorText } from './list-row-menu';
+import { useListControls } from './use-list-controls';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 const STATUSES: PurchaseOrderStatus[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED'];
@@ -47,10 +48,10 @@ export function poRevisionNumber(po: PurchaseOrder): number | null {
 /**
  * Purchase order list (shared list pattern, clients-list reference).
  *
- * Status, Project and Supplier run on the server. Project, Total and Delivery come from the
- * enriched list read; until it ships they render "—" rather than a figure the plain row cannot
- * support. Total follows the money gate: the server's `moneyVisible`, else
- * `view:commitment-ledger`; hidden money is an absent column, never $0.
+ * Search, Status, Project and Supplier run on the server; sort and paging are local. Project,
+ * Total, Delivery and the active revision come from the list read and render "—" when a row
+ * has none. Total follows the server's `moneyVisible` (else `view:commitment-ledger`); hidden
+ * money is an absent column, never $0.
  */
 export function PoList() {
   const t = useTranslations('procurement.po.list');
@@ -65,10 +66,12 @@ export function PoList() {
   const [filters, setFilters] = useState<FilterValues>((): FilterValues =>
     projectFilter.initialProjectId ? { project: projectFilter.initialProjectId } : {},
   );
+  const controls = useListControls();
   const orders = usePurchaseOrders({
     ...(filters.status ? { status: filters.status as PurchaseOrderStatus } : {}),
     ...(filters.project ? { projectId: filters.project } : {}),
     ...(filters.supplier ? { supplierId: filters.supplier } : {}),
+    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
   });
   const suppliers = useSuppliers();
   const cancel = useCancelPurchaseOrder();
@@ -125,7 +128,18 @@ export function PoList() {
       card: 'subtitle',
       plainValue: (po) => po.project?.name ?? '',
       render: (po) =>
-        po.project ? <span className="block max-w-[16rem] truncate">{po.project.name}</span> : dash,
+        po.project ? (
+          <span className="block min-w-0">
+            <span className="block max-w-[16rem] truncate">{po.project.name}</span>
+            {po.projectCount && po.projectCount > 1 ? (
+              <span className="block text-caption text-muted-foreground">
+                {tc('moreProjects', { count: po.projectCount - 1 })}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          dash
+        ),
     },
     {
       key: 'ordered',
@@ -157,7 +171,7 @@ export function PoList() {
       card: 'amount',
       plainValue: (po) => (po.total == null ? null : Number(po.total)),
       render: (po) =>
-        po.total == null ? dash : <span className="tabular-nums">{formatMoney(po.total, 'USD')}</span>,
+        po.total == null ? dash : <span className="tabular-nums">{formatMoney(po.total, po.currencyCode ?? 'USD')}</span>,
     });
   }
   columns.push({
@@ -178,7 +192,8 @@ export function PoList() {
     { key: 'supplier', type: 'select', label: t('filters.supplier'), options: supplierOptions },
   ];
 
-  const isNarrowed = Object.values(filters).some(Boolean);
+  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
+  const view = controls.view(rows, columns);
   const isFirstUse = !isNarrowed && orders.data !== undefined && rows.length === 0;
 
   const createAction = mayCreate ? (
@@ -194,7 +209,7 @@ export function PoList() {
     <div className="space-y-3">
       <PlatformDataGrid
         columns={columns}
-        data={rows}
+        data={view.data}
         rowKey={(po) => po.id}
         label={tPo('title')}
         isLoading={orders.isPending}
@@ -206,10 +221,13 @@ export function PoList() {
         searchPlaceholder={t('searchPlaceholder')}
         resultLabel={(count) => t('countLabel', { count })}
         noMatchMessage={t('noMatches')}
-        pagination={{ defaultPageSize: 25 }}
+        server={view.server}
         filters={filterFields}
         filterValues={filters}
-        onFilterValuesChange={setFilters}
+        onFilterValuesChange={(next) => {
+          setFilters(next);
+          controls.resetPage();
+        }}
         rowActions={(po) => (
           <ListRowMenu
             label={tc('rowMenu', { number: po.poNumber })}

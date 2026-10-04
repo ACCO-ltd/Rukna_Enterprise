@@ -53,9 +53,7 @@ import {
   useGoodsReceipts,
   usePostGoodsReceipt,
   usePurchaseOrder,
-  usePurchaseOrders,
   useReceivablePurchaseOrders,
-  useSuppliers,
 } from '../hooks/use-procurement';
 import { activeRevision } from '../quantities';
 import type { GoodsReceipt, GoodsReceiptStatus } from '../types';
@@ -71,6 +69,7 @@ import {
 } from './grn-line-editor';
 import { ClassificationChips } from './classification-chips';
 import { ListRowMenu, errorText } from './list-row-menu';
+import { useListControls } from './use-list-controls';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { QuantitySplit } from './material-picker';
 
@@ -81,9 +80,8 @@ const GRN_STATUSES: GoodsReceiptStatus[] = ['DRAFT', 'EXCEPTION_PENDING', 'POSTE
 /**
  * Goods receipt list (shared list pattern, clients-list reference).
  *
- * The API filters receipts by purchase order only, so Status narrows the fetched set here.
- * Supplier, project and who delivered come from the enriched list read when it ships; until
- * then supplier and PO number fall back to the supplier and order lists, and the rest to "—".
+ * Search and Status run on the server; sort and paging are local. Supplier, purchase order,
+ * project and who delivered come with each row of the list read.
  */
 export function GrnList() {
   const t = useTranslations('procurement.grn.list');
@@ -94,25 +92,19 @@ export function GrnList() {
   const mayReceive = can(PROCUREMENT_PERMISSIONS.createReceipt);
 
   const [filters, setFilters] = useState<FilterValues>({});
-  const receipts = useGoodsReceipts();
-  const orders = usePurchaseOrders();
-  const suppliers = useSuppliers();
+  const controls = useListControls();
+  const receipts = useGoodsReceipts({
+    ...(filters.status ? { status: filters.status as GoodsReceiptStatus } : {}),
+    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
+  });
   const cancel = useCancelGoodsReceipt();
   const [cancelling, setCancelling] = useState<GoodsReceipt | null>(null);
 
   const all = useMemo(() => receipts.data ?? [], [receipts.data]);
-  const visible = useMemo(
-    () => all.filter((grn) => !filters.status || grn.status === filters.status),
-    [all, filters],
-  );
 
   const poNumberOf = (grn: GoodsReceipt): string | null =>
-    grn.purchaseOrder?.number ??
-    grn.purchaseOrder?.poNumber ??
-    orders.data?.find((po) => po.id === grn.purchaseOrderId)?.poNumber ??
-    null;
-  const supplierOf = (grn: GoodsReceipt): string | null =>
-    grn.supplier?.name ?? suppliers.data?.find((s) => s.id === grn.supplierId)?.name ?? null;
+    grn.purchaseOrder?.number ?? grn.purchaseOrder?.poNumber ?? null;
+  const supplierOf = (grn: GoodsReceipt): string | null => grn.supplier?.name ?? null;
 
   const dash = <span className="text-muted-foreground">{tc('notAvailable')}</span>;
 
@@ -160,7 +152,18 @@ export function GrnList() {
       sortable: true,
       plainValue: (grn) => grn.project?.name ?? '',
       render: (grn) =>
-        grn.project ? <span className="block max-w-[16rem] truncate">{grn.project.name}</span> : dash,
+        grn.project ? (
+          <span className="block min-w-0">
+            <span className="block max-w-[16rem] truncate">{grn.project.name}</span>
+            {grn.projectCount && grn.projectCount > 1 ? (
+              <span className="block text-caption text-muted-foreground">
+                {tc('moreProjects', { count: grn.projectCount - 1 })}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          dash
+        ),
     },
     {
       key: 'delivered',
@@ -172,7 +175,7 @@ export function GrnList() {
         <span className="block">
           <span className="block">{formatDate(grn.deliveryDate, ctx.locale) ?? tc('notAvailable')}</span>
           {grn.deliveredBy ? (
-            <span className="block text-caption text-muted-foreground">{t('by', { name: grn.deliveredBy })}</span>
+            <span className="block text-caption text-muted-foreground">{t('by', { name: grn.deliveredBy.name })}</span>
           ) : null}
         </span>
       ),
@@ -201,6 +204,9 @@ export function GrnList() {
     },
   ];
 
+  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
+  const view = controls.view(all, columns);
+
   const createAction = mayReceive ? (
     <Button asChild>
       <Link href="/procurement/grn/new">
@@ -214,7 +220,7 @@ export function GrnList() {
     <>
       <PlatformDataGrid
         columns={columns}
-        data={visible}
+        data={view.data}
         rowKey={(grn) => grn.id}
         label={tGrn('title')}
         isLoading={receipts.isPending}
@@ -226,11 +232,13 @@ export function GrnList() {
         searchPlaceholder={t('searchPlaceholder')}
         resultLabel={(count) => t('countLabel', { count })}
         noMatchMessage={t('noMatches')}
-        pagination={{ defaultPageSize: 25 }}
-        defaultSort={{ key: 'delivered', direction: 'desc' }}
+        server={view.server}
         filters={filterFields}
         filterValues={filters}
-        onFilterValuesChange={setFilters}
+        onFilterValuesChange={(next) => {
+          setFilters(next);
+          controls.resetPage();
+        }}
         rowActions={(grn) => (
           <ListRowMenu
             label={tc('rowMenu', { number: grn.grnNumber })}
@@ -245,7 +253,7 @@ export function GrnList() {
         )}
         // First use only — a filter that empties the list gets the grid's filtered-empty state.
         emptyState={
-          all.length === 0 ? (
+          !isNarrowed && receipts.data !== undefined && all.length === 0 ? (
             <EmptyState title={t('empty')} description={t('emptyHint')} action={createAction} />
           ) : undefined
         }

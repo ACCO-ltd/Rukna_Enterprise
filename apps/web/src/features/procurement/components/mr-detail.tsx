@@ -25,6 +25,8 @@ import {
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ApiError } from '@/lib/api-client';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { formatDate, formatNumber } from '@/lib/format';
 import { useProjects } from '@/features/projects/hooks/use-projects';
@@ -35,14 +37,24 @@ import { useWorkflowDefinition } from '@/features/workflows/hooks/use-workflow-d
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
 import {
+  useApproveMaterialRequest,
   useCancelMaterialRequest,
   useMaterialRequest,
+  useRejectMaterialRequest,
   useSubmitMaterialRequest,
 } from '../hooks/use-procurement';
 import type { MaterialRequest, MaterialRequestStatus } from '../types';
+import { MrRejectDialog } from './mr-reject-dialog';
 import { ProcurementStatusBadge } from './procurement-badges';
 
-type PendingAction = 'submit' | 'cancel';
+type PendingAction = 'submit' | 'cancel' | 'approve';
+
+/** A 409 carrying an approvalInstanceId is the DoA gate, not a failure (ADR-015). */
+function gateInstanceId(error: unknown): string | null {
+  return error instanceof ApiError && error.status === 409
+    ? ((error.details?.approvalInstanceId as string | undefined) ?? null)
+    : null;
+}
 
 export function MrDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.mr');
@@ -55,9 +67,16 @@ export function MrDetail({ id }: { id: string }) {
   useModuleTrail(mr.data?.mrNumber);
   const projects = useProjects();
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  // Set when submit was routed for approval (409): the panel shows and "Complete submission"
+  // calls submit again once approvers have acted.
+  const [gatedInstanceId, setGatedInstanceId] = useState<string | null>(null);
+  const { can } = usePermissions();
 
   const submit = useSubmitMaterialRequest();
   const cancel = useCancelMaterialRequest();
+  const approve = useApproveMaterialRequest();
+  const reject = useRejectMaterialRequest();
 
   if (mr.isPending) {
     return (
@@ -82,10 +101,33 @@ export function MrDetail({ id }: { id: string }) {
   const request: MaterialRequest = mr.data;
   const projectName = projects.data?.find((p) => p.id === request.projectId)?.name ?? null;
   const isTerminal = request.status === 'CANCELLED' || request.status === 'CLOSED';
-  const mutation = pending === 'submit' ? submit : cancel;
+  const mutation = pending === 'submit' ? submit : pending === 'approve' ? approve : cancel;
+  const mayApprove = request.status === 'SUBMITTED' && can(PROCUREMENT_PERMISSIONS.approveRequest);
 
   const run = () => {
-    mutation.mutate(id, { onSuccess: () => setPending(null) });
+    mutation.mutate(id, {
+      onSuccess: () => {
+        setPending(null);
+        setGatedInstanceId(null);
+      },
+      onError: (error) => {
+        const instanceId = pending === 'submit' ? gateInstanceId(error) : null;
+        if (instanceId) {
+          setGatedInstanceId(instanceId);
+          setPending(null);
+          mutation.reset();
+        }
+      },
+    });
+  };
+
+  /** The server's refusal in words — the own-request rule gets its own sentence. */
+  const errorFor = (error: unknown): string | undefined => {
+    if (!error) return undefined;
+    if (error instanceof ApiError && error.details?.code === 'REQUESTER_CANNOT_APPROVE_OWN_REQUEST') {
+      return t('approveOwnRequest');
+    }
+    return error instanceof ApiError && error.message ? error.message : tc('loadFailed');
   };
 
   return (
@@ -134,6 +176,16 @@ export function MrDetail({ id }: { id: string }) {
                 {t('submit')}
               </Button>
             ) : null}
+            {mayApprove ? (
+              <>
+                <Button type="button" size="sm" onClick={() => setPending('approve')}>
+                  {t('approve')}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setRejecting(true)}>
+                  {t('reject.action')}
+                </Button>
+              </>
+            ) : null}
             {['DRAFT', 'SUBMITTED', 'APPROVED'].includes(request.status) ? (
               <Button
                 type="button"
@@ -147,6 +199,21 @@ export function MrDetail({ id }: { id: string }) {
           </CardFooter>
         ) : null}
       </Card>
+
+      {/* ── Submit routed for approval (409 gate) ──────────────────────────── */}
+      {gatedInstanceId && request.status === 'DRAFT' ? (
+        <Card>
+          <CardContent className="space-y-3">
+            <Alert variant="info" messages={[t('submitAwaitingApproval')]} />
+            <ApprovalPanel instanceId={gatedInstanceId} transactionType={WorkflowTransactionType.MATERIAL_REQUEST} />
+            <div className="border-t border-border pt-3">
+              <Button type="button" loading={submit.isPending} onClick={() => setPending('submit')}>
+                {t('completeSubmit')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* ── Approval workflow chain ────────────────────────────────────────── */}
       <WorkflowChain instanceId={request.approvalInstanceId} status={request.status} />
@@ -261,9 +328,25 @@ export function MrDetail({ id }: { id: string }) {
           description={t(`${pending}Body`)}
           confirmLabel={t(pending === 'cancel' ? 'cancelRequest' : pending)}
           isPending={mutation.isPending}
-          errorMessage={mutation.isError ? tc('loadFailed') : undefined}
+          errorMessage={errorFor(mutation.error)}
           onConfirm={run}
-          onDismiss={() => setPending(null)}
+          onDismiss={() => {
+            mutation.reset();
+            setPending(null);
+          }}
+        />
+      ) : null}
+
+      {rejecting ? (
+        <MrRejectDialog
+          number={request.mrNumber}
+          busy={reject.isPending}
+          error={reject.error ? (errorFor(reject.error) ?? null) : null}
+          onReject={(reason) => reject.mutate({ id, reason }, { onSuccess: () => setRejecting(false) })}
+          onClose={() => {
+            reject.reset();
+            setRejecting(false);
+          }}
         />
       ) : null}
     </div>

@@ -219,9 +219,9 @@ export interface MaterialRequest {
   title?: string | null;
   priority?: MaterialRequestPriority;
   currencyCode?: string | null;
-  // ── Enriched list fields (backend procurement refinement). Optional until they ship; every
-  // screen falls back to what the plain row carries when they are absent.
-  /** Σ requested × estimated unit price, server-side. `null` when nothing is estimated. */
+  // ── List read fields (GET /procurement/material-requests). Absent on the detail read.
+  /** Σ requested × estimated unit price, server-side. `null` when nothing is estimated or the
+   * viewer may not see money (`moneyVisible: false`). */
   estimatedTotal?: Money | null;
   requester?: { id: string; name: string } | null;
   project?: ProcurementProjectRef | null;
@@ -388,13 +388,16 @@ export interface PurchaseOrder {
    * not the ACTIVE one (P14).
    */
   revisions: PurchaseOrderRevision[];
-  // ── Enriched list fields (backend procurement refinement). Optional until they ship; the
-  // list renders "—" when absent rather than computing a figure the payload cannot support.
+  // ── List read fields (GET /procurement/purchase-orders). Absent on the detail read.
+  /** The order's project — the first when its lines span several (`projectCount`). */
   project?: ProcurementProjectRef | null;
+  projectCount?: number;
   /** The active revision's total. `null` when withheld from a money-blind viewer. */
   total?: Money | null;
+  currencyCode?: string;
   deliveryStatus?: PurchaseOrderDeliveryStatus | null;
-  activeRevisionNumber?: number;
+  activeRevisionNumber?: number | null;
+  revisionStatus?: PurchaseOrderRevisionStatus;
   moneyVisible?: boolean;
 }
 
@@ -430,13 +433,14 @@ export interface GoodsReceipt {
   postedAt: ApiDate | null;
   postedBy: string | null;
   lines: GoodsReceiptLine[];
-  /** `poNumber` today; the enriched list read may send `{ id, number }` instead. */
+  /** The list read sends `{ id, number }`; the detail read `{ poNumber }`. */
   purchaseOrder?: { id?: string; poNumber?: string; number?: string } | null;
-  // ── Enriched list fields (backend procurement refinement). Optional until they ship.
+  // ── List read fields (GET /procurement/goods-receipts). Absent on the detail read.
   supplier?: { id: string; name: string } | null;
   project?: ProcurementProjectRef | null;
-  /** Display name of whoever recorded the delivery. */
-  deliveredBy?: string | null;
+  projectCount?: number;
+  /** Whoever recorded the delivery. */
+  deliveredBy?: { id: string; name: string } | null;
 }
 
 // ─── Bill matching ───────────────────────────────────────────────────────────────

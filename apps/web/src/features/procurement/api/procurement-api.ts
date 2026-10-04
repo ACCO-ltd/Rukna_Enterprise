@@ -34,6 +34,7 @@ import type {
   CreatePurchaseOrderPayload,
   CreateUomPayload,
   GoodsReceipt,
+  GoodsReceiptStatus,
   GrnAttachment,
   Material,
   MaterialCategory,
@@ -203,16 +204,24 @@ export function discontinueMaterial(id: string): Promise<Material> {
 
 // ─── Material requests ───────────────────────────────────────────────────────────
 
+/**
+ * `requestedFor` is a project id or `overhead` — the list's "Requested for" filter. `search`
+ * matches number and title server-side.
+ */
 export function listMaterialRequests(filters?: {
   status?: MaterialRequestStatus;
   projectId?: string;
   scope?: MaterialRequestScope;
+  requestedFor?: string;
+  search?: string;
 }): Promise<MaterialRequest[]> {
   return apiClient<MaterialRequest[]>('/procurement/material-requests', {
     params: queryParams({
       status: filters?.status,
       projectId: filters?.projectId,
       scope: filters?.scope,
+      requestedFor: filters?.requestedFor,
+      search: filters?.search,
     }),
   });
 }
@@ -245,6 +254,18 @@ export function submitMaterialRequest(id: string): Promise<MaterialRequest> {
   });
 }
 
+/** `POST /procurement/material-requests/:id/reject` — SUBMITTED → DRAFT, with the reason. */
+export function rejectMaterialRequest(id: string, reason: string): Promise<MaterialRequest> {
+  return apiClient<MaterialRequest>(`/procurement/material-requests/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * `POST /procurement/material-requests/:id/approve` (approve:material-request). A requester may
+ * not approve their own request: 403 with `details.code = REQUESTER_CANNOT_APPROVE_OWN_REQUEST`.
+ */
 export function approveMaterialRequest(id: string): Promise<MaterialRequest> {
   return apiClient<MaterialRequest>(`/procurement/material-requests/${id}/approve`, {
     method: 'POST',
@@ -280,9 +301,15 @@ export function listPurchaseOrders(filters?: {
   status?: PurchaseOrderStatus;
   supplierId?: string;
   projectId?: string;
+  search?: string;
 }): Promise<PurchaseOrder[]> {
   return apiClient<PurchaseOrder[]>('/procurement/purchase-orders', {
-    params: queryParams({ status: filters?.status, supplierId: filters?.supplierId, projectId: filters?.projectId }),
+    params: queryParams({
+      status: filters?.status,
+      supplierId: filters?.supplierId,
+      projectId: filters?.projectId,
+      search: filters?.search,
+    }),
   });
 }
 
@@ -402,9 +429,11 @@ export function createReceiptException(payload: CreateReceiptExceptionPayload): 
 
 export function listGoodsReceipts(filters?: {
   purchaseOrderId?: string;
+  status?: GoodsReceiptStatus;
+  search?: string;
 }): Promise<GoodsReceipt[]> {
   return apiClient<GoodsReceipt[]>('/procurement/goods-receipts', {
-    params: queryParams({ purchaseOrderId: filters?.purchaseOrderId }),
+    params: queryParams({ purchaseOrderId: filters?.purchaseOrderId, status: filters?.status, search: filters?.search }),
   });
 }
 

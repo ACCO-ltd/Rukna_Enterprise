@@ -14,9 +14,9 @@ import { useProjects } from '@/features/projects/hooks/use-projects';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useCancelMaterialRequest, useMaterialRequests } from '../hooks/use-procurement';
-import { mrEstimatedTotal } from '../list-figures';
 import type { MaterialRequest, MaterialRequestStatus } from '../types';
 import { ListRowMenu, errorText } from './list-row-menu';
+import { useListControls } from './use-list-controls';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 const STATUSES: MaterialRequestStatus[] = [
@@ -37,16 +37,16 @@ const OPEN_STATUSES: ReadonlySet<MaterialRequestStatus> = new Set([
   'PARTIALLY_ORDERED',
 ]);
 
-/** The "Requested for" filter's overhead choice — maps to `scope=ORGANIZATION`. */
+/** The "Requested for" filter's overhead choice — the API's `requestedFor=overhead`. */
 export const OVERHEAD_FILTER = 'overhead';
 
 /**
  * Material request list (shared list pattern, clients-list reference).
  *
- * Status and "Requested for" run on the server (`status`, `scope`, `projectId` — exactly what
- * the controller reads); the grid's search, sort and paging layer on that set. The estimate
- * follows the money gate: the server's `moneyVisible` when it sends one, else
- * `view:commitment-ledger`. Hidden money is an absent column, never $0.
+ * Search, Status and "Requested for" run on the server (`search`, `status`, `requestedFor` = a
+ * project id or `overhead`); sort and paging are local. The estimate is the server's
+ * `estimatedTotal` and follows its `moneyVisible` verdict (else `view:commitment-ledger`):
+ * hidden money is an absent column, never $0.
  */
 export function MrList() {
   const t = useTranslations('procurement.mr.list');
@@ -60,14 +60,11 @@ export function MrList() {
   const [filters, setFilters] = useState<FilterValues>((): FilterValues =>
     projectFilter.initialProjectId ? { for: projectFilter.initialProjectId } : {},
   );
-  const requestedFor = filters.for || '';
+  const controls = useListControls();
   const requests = useMaterialRequests({
     ...(filters.status ? { status: filters.status as MaterialRequestStatus } : {}),
-    ...(requestedFor === OVERHEAD_FILTER
-      ? { scope: 'ORGANIZATION' as const }
-      : requestedFor
-        ? { projectId: requestedFor }
-        : {}),
+    ...(filters.for ? { requestedFor: filters.for } : {}),
+    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
   });
   const projects = useProjects();
   const cancel = useCancelMaterialRequest();
@@ -145,18 +142,14 @@ export function MrList() {
       numeric: true,
       sortable: true,
       card: 'amount',
-      plainValue: (mr) => {
-        const total = mrEstimatedTotal(mr);
-        return total === null ? null : Number(total);
-      },
-      render: (mr) => {
-        const total = mrEstimatedTotal(mr);
-        return total === null ? (
+      plainValue: (mr) => (mr.estimatedTotal == null ? null : Number(mr.estimatedTotal)),
+      // Null is "nothing estimated" — never shown as $0.
+      render: (mr) =>
+        mr.estimatedTotal == null ? (
           <span className="text-muted-foreground">{tc('notAvailable')}</span>
         ) : (
-          <span className="tabular-nums">{formatMoney(total, 'USD')}</span>
-        );
-      },
+          <span className="tabular-nums">{formatMoney(mr.estimatedTotal, mr.currencyCode ?? 'USD')}</span>
+        ),
     });
   }
   columns.push({
@@ -181,7 +174,8 @@ export function MrList() {
     },
   ];
 
-  const isNarrowed = Object.values(filters).some(Boolean);
+  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
+  const view = controls.view(rows, columns);
   const isFirstUse = !isNarrowed && requests.data !== undefined && rows.length === 0;
 
   const createAction = mayCreate ? (
@@ -197,7 +191,7 @@ export function MrList() {
     <div className="space-y-3">
       <PlatformDataGrid
         columns={columns}
-        data={rows}
+        data={view.data}
         rowKey={(mr) => mr.id}
         label={tMr('title')}
         isLoading={requests.isPending}
@@ -209,10 +203,13 @@ export function MrList() {
         searchPlaceholder={t('searchPlaceholder')}
         resultLabel={(count) => t('countLabel', { count })}
         noMatchMessage={t('noMatches')}
-        pagination={{ defaultPageSize: 25 }}
+        server={view.server}
         filters={filterFields}
         filterValues={filters}
-        onFilterValuesChange={setFilters}
+        onFilterValuesChange={(next) => {
+          setFilters(next);
+          controls.resetPage();
+        }}
         rowActions={(mr) => (
           <ListRowMenu
             label={tc('rowMenu', { number: mr.mrNumber })}

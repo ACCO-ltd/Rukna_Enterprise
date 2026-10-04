@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -131,11 +131,10 @@ describe('MrList', () => {
           priority: 'URGENT',
           requiredByDate: '2026-10-10',
           requester: { id: 'u1', name: 'Hamza Ali' },
-          lines: [
-            { requestedQuantity: '10', estimatedUnitPrice: '850.00' } as MaterialRequest['lines'][number],
-          ],
+          estimatedTotal: '8500.00',
+          moneyVisible: true,
         }),
-        mr({ id: '2', requestScope: 'ORGANIZATION', projectId: null, status: 'DRAFT' }),
+        mr({ id: '2', requestScope: 'ORGANIZATION', projectId: null, status: 'DRAFT', estimatedTotal: null }),
       ]),
     );
     renderWithProviders(<MrList />, { permissions: [MONEY] });
@@ -156,19 +155,20 @@ describe('MrList', () => {
 
   it('hides the estimate column for a money-blind role and says so once', async () => {
     hooks.useMaterialRequests.mockReturnValue(
-      loaded([mr({ id: '1', lines: [{ requestedQuantity: '1', estimatedUnitPrice: '5' } as never] })]),
+      loaded([mr({ id: '1', estimatedTotal: null, moneyVisible: false })]),
     );
-    renderWithProviders(<MrList />, { permissions: ['create:material-request'] });
+    renderWithProviders(<MrList />, { permissions: ['create:material-request', MONEY] });
 
+    // The server's verdict wins over the permission.
     expect((await table()).queryByRole('columnheader', { name: /Estimate/ })).not.toBeInTheDocument();
     expect(screen.getByText('Estimates are hidden for your role.')).toBeInTheDocument();
   });
 
-  it('maps "ACCO overhead" to scope=ORGANIZATION and a project to projectId', async () => {
+  it('sends "Requested for" as requestedFor (a project id or overhead)', async () => {
     hooks.useMaterialRequests.mockReturnValue(loaded([mr({ id: '1' })]));
     search.params = new URLSearchParams('projectId=p1');
     renderWithProviders(<MrList />);
-    expect(hooks.useMaterialRequests).toHaveBeenLastCalledWith({ projectId: 'p1' });
+    expect(hooks.useMaterialRequests).toHaveBeenLastCalledWith({ requestedFor: 'p1' });
   });
 
   it('first use: title, hint and the primary — no Clear filters', async () => {
@@ -217,13 +217,15 @@ describe('PoList', () => {
     expect(await screen.findByText('ACCO-HDN-26-0005 · Hodan villa')).toBeInTheDocument();
   });
 
-  it('renders the enriched fields when present: project, delivery, total, revision > 1', async () => {
+  it('renders the list read: project (+ more), delivery, total, revision > 1', async () => {
     hooks.usePurchaseOrders.mockReturnValue(
       loaded([
         po({
           id: '1',
           project: { id: 'p1', name: 'Hodan villa' },
+          projectCount: 3,
           total: '12500.00',
+          currencyCode: 'USD',
           deliveryStatus: 'PARTLY_RECEIVED',
           activeRevisionNumber: 2,
         }),
@@ -236,12 +238,13 @@ describe('PoList', () => {
     expect(link).toHaveTextContent('PO-2026-0001 · revision 2');
     expect(link).toHaveTextContent('Bakaal Steel');
     expect(grid.getByText('Hodan villa')).toBeInTheDocument();
+    expect(grid.getByText('+2 more')).toBeInTheDocument();
     expect(grid.getByText('Partly received')).toBeInTheDocument();
     expect(grid.getByText('$12,500.00')).toBeInTheDocument();
     expect(grid.getByText('Open')).toBeInTheDocument();
   });
 
-  it('shows "—" for the enriched fields when the list does not send them, and no revision at 1', async () => {
+  it('shows "—" where a row has no project, delivery or total, and no revision at 1', async () => {
     hooks.usePurchaseOrders.mockReturnValue(loaded([po({ id: '1' })]));
     renderWithProviders(<PoList />, { permissions: [MONEY] });
 
@@ -276,8 +279,10 @@ describe('GrnList', () => {
         grn({
           id: '1',
           purchaseOrderId: '1',
+          purchaseOrder: { id: '1', number: 'PO-2026-0001' },
+          supplier: { id: 's1', name: 'Bakaal Steel' },
           deliveryNoteRef: 'DN-4410',
-          deliveredBy: 'Omar Site',
+          deliveredBy: { id: 'u2', name: 'Omar Site' },
           project: { id: 'p1', name: 'Hodan villa' },
         }),
       ]),
@@ -307,5 +312,16 @@ describe('GrnList', () => {
     renderWithProviders(<GrnList />, { permissions: [] });
     await table();
     expect(screen.queryByRole('link', { name: /Receive delivery/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('server search', () => {
+  it('sends what is typed in the search box to the API, debounced', async () => {
+    const user = userEvent.setup();
+    hooks.usePurchaseOrders.mockReturnValue(loaded([po({ id: '1' })]));
+    renderWithProviders(<PoList />, { permissions: [MONEY] });
+
+    await user.type(await screen.findByRole('searchbox'), 'bakaal');
+    await waitFor(() => expect(hooks.usePurchaseOrders).toHaveBeenLastCalledWith({ search: 'bakaal' }));
   });
 });

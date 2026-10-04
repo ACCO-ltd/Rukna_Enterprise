@@ -57,7 +57,8 @@
     "notInProject": "This bill is not coded to this project.",
     "rowMenu": "Actions for {number}",
     "open": "Open",
-    "overhead": "ACCO overhead"
+    "overhead": "ACCO overhead",
+    "moreProjects": "+{count} more"
   },
   "lineType": {
     "MATERIAL": "Material",
@@ -375,6 +376,18 @@
         "unit": "Choose a unit.",
         "quantity": "Enter a quantity greater than zero."
       }
+    },
+    "approveOwnRequest": "You raised this request, so someone else must approve it.",
+    "submitAwaitingApproval": "This request was routed for approval. Once the approver acts, complete the submission.",
+    "completeSubmit": "Complete submission",
+    "reject": {
+      "action": "Reject",
+      "title": "Reject {number}?",
+      "subtitle": "It goes back to the requester as a draft, with your reason.",
+      "reason": "Reason",
+      "reasonHint": "What needs to change before it can be approved.",
+      "reasonRequired": "Enter a reason.",
+      "confirm": "Reject request"
     }
   },
   "po": {
@@ -1695,6 +1708,7 @@
     "budgetSaved": "Cost budget saved",
     "budgetDiscarded": "Cost budget discarded",
     "budgetBaselined": "Cost budget baselined",
-    "receiptExceptionRequested": "Receipt exception requested"
+    "receiptExceptionRequested": "Receipt exception requested",
+    "mrRejected": "Material request {ref} sent back to the requester"
   }
 }
