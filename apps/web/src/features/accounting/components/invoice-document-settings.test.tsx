@@ -2,146 +2,125 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { chooseOption, openSelect } from '@/test/choose-option';
 import { renderWithProviders } from '@/test/render';
 
-import type { BankAccount, InvoiceDocumentSettings } from '../types';
-import {
-  InvoiceDocumentSettingsPanel,
-  invoiceBankCandidates,
-  maskedAccount,
-} from './invoice-document-settings';
+import type { InvoiceDocumentSettings } from '../types';
+import { InvoiceDocumentSettingsPanel, incompleteRows, rowsToSave } from './invoice-document-settings';
 
-/** Accounting → Invoice settings: the bank account, notes and signatory on invoice PDFs. */
+/** Accounting → Invoice settings: the bank table, notes and signatory on invoice PDFs. */
 
 const mocks = vi.hoisted(() => ({
   useInvoiceDocumentSettings: vi.fn(),
   useUpdateInvoiceDocumentSettings: vi.fn(),
-  useBankAccounts: vi.fn(),
-  useUsers: vi.fn(),
 }));
 
 vi.mock('../hooks/use-accounting', () => ({
   useInvoiceDocumentSettings: mocks.useInvoiceDocumentSettings,
   useUpdateInvoiceDocumentSettings: mocks.useUpdateInvoiceDocumentSettings,
-  useBankAccounts: mocks.useBankAccounts,
 }));
-vi.mock('@/features/users/hooks/use-users', () => ({ useUsers: mocks.useUsers }));
-
-const bank = (id: string, extra: Partial<BankAccount> = {}): BankAccount => ({
-  id,
-  glAccountId: `gl-${id}`,
-  bankName: 'Premier Bank',
-  accountName: `Operating ${id}`,
-  accountNumber: '0102 0033 4410',
-  iban: null,
-  swiftCode: 'PBSMSOSM',
-  currencyCode: 'USD',
-  branch: null,
-  allowsReceipts: true,
-  allowsPayments: true,
-  isReconcilable: true,
-  status: 'ACTIVE',
-  ...extra,
-});
 
 const SETTINGS: InvoiceDocumentSettings = {
-  bankAccountId: null,
+  paymentAccounts: [],
   notes: null,
   defaultNotes: ['Please quote the invoice number in your payment.', 'This invoice is issued in accordance with the project contract.'],
-  signatoryUserId: null,
+  signatoryName: null,
   signatoryTitle: null,
   updatedAt: null,
 };
 
 const mutate = vi.fn();
+const settingsWith = (over: Partial<InvoiceDocumentSettings>) =>
+  mocks.useInvoiceDocumentSettings.mockReturnValue({ data: { ...SETTINGS, ...over }, isError: false, isPending: false });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.useInvoiceDocumentSettings.mockReturnValue({ data: SETTINGS, isError: false, isPending: false });
+  settingsWith({});
   mocks.useUpdateInvoiceDocumentSettings.mockReturnValue({ mutate, isPending: false, isError: false });
-  mocks.useBankAccounts.mockReturnValue({
-    data: [bank('b1'), bank('b2', { allowsReceipts: false }), bank('b3', { status: 'CLOSED' })],
-    isPending: false,
-    isError: false,
-  });
-  mocks.useUsers.mockReturnValue({
-    data: [{ id: 'u1', firstName: 'Ahmed', lastName: 'Ali', email: 'ahmed@example.com', status: 'ACTIVE' }],
-    isPending: false,
-    isError: false,
-  });
 });
 
 const MANAGE = ['view:accounting', 'manage:accounting'];
 const VIEW = ['view:accounting'];
 
-describe('helpers', () => {
-  it('masks to the last four with the currency, and offers only active receipt accounts', () => {
-    expect(maskedAccount(bank('b1'))).toBe('USD …4410');
-    expect(invoiceBankCandidates([bank('b1'), bank('b2', { allowsReceipts: false }), bank('b3', { status: 'CLOSED' })]).map((b) => b.id)).toEqual(['b1']);
+describe('row helpers', () => {
+  it('flags half-filled rows and drops fully blank ones', () => {
+    const rows = [
+      { bankName: 'Salaam Bank', accountNumber: '' },
+      { bankName: ' ', accountNumber: ' ' },
+      { bankName: ' Premier Bank ', accountNumber: ' 0102 ' },
+    ];
+    expect(incompleteRows(rows)).toEqual([0]);
+    expect(rowsToSave(rows.slice(1))).toEqual([{ bankName: 'Premier Bank', accountNumber: '0102' }]);
   });
 });
 
 describe('InvoiceDocumentSettingsPanel', () => {
-  it('shows the standard notes and no payment card while nothing is configured', async () => {
-    const user = userEvent.setup();
+  it('starts with no banks, the standard notes and Save disabled', () => {
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
     expect(screen.getByRole('heading', { name: 'Invoice settings' })).toBeInTheDocument();
-    expect(screen.getByText('Left blank, invoices print the standard notes:')).toBeInTheDocument();
+    expect(screen.getByText('No bank accounts yet — invoices print without a Bank Account Details table.')).toBeInTheDocument();
     expect(screen.getByText('Please quote the invoice number in your payment.')).toBeInTheDocument();
-    expect(screen.getByText('With no account chosen, invoices print no Payment Information card.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled();
-    // Only the receipts-enabled active account is offered.
-    await openSelect(user, screen.getByLabelText('Bank account'));
-    const offered = screen.getAllByRole('option').map((option) => option.textContent);
-    expect(offered.some((text) => text?.includes('Operating b1'))).toBe(true);
-    expect(offered.some((text) => text?.includes('Operating b2') || text?.includes('Operating b3'))).toBe(false);
   });
 
-  it('previews the chosen account in full with its currency and saves the edited settings', async () => {
+  it('adds typed bank rows and a typed signatory, and saves them trimmed', async () => {
     const user = userEvent.setup();
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
 
-    await chooseOption(user, screen.getByLabelText('Bank account'), 'b1');
-    // The preview shows the full number the invoice prints, its currency and the currency rule.
-    expect(screen.getByText('0102 0033 4410')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Only USD invoices print these bank details. Invoices in other currencies print without a Payment Information card.',
-      ),
-    ).toBeInTheDocument();
-
-    await user.type(screen.getByLabelText('Invoice notes'), 'Pay within 30 days.');
+    await user.click(screen.getByRole('button', { name: 'Add bank' }));
+    await user.type(screen.getByLabelText('Bank 1'), 'Salaam Bank');
+    await user.type(screen.getByLabelText('Account number 1'), '33020045871');
+    await user.click(screen.getByRole('button', { name: 'Add bank' }));
+    await user.type(screen.getByLabelText('Bank 2'), ' Premier Bank ');
+    await user.type(screen.getByLabelText('Account number 2'), '0102 0033 4410');
+    await user.type(screen.getByLabelText('Name'), 'Ahmed Ali');
+    await user.type(screen.getByLabelText('Title'), 'Finance Manager');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
 
     expect(mutate).toHaveBeenCalledWith({
-      bankAccountId: 'b1',
-      notes: 'Pay within 30 days.',
-      signatoryUserId: null,
-      signatoryTitle: null,
+      paymentAccounts: [
+        { bankName: 'Salaam Bank', accountNumber: '33020045871' },
+        { bankName: 'Premier Bank', accountNumber: '0102 0033 4410' },
+      ],
+      notes: null,
+      signatoryName: 'Ahmed Ali',
+      signatoryTitle: 'Finance Manager',
     });
   });
 
-  it('shows the saved signatory and lets Finance remove it', async () => {
+  it('refuses to save a row with only one of its two fields', async () => {
     const user = userEvent.setup();
-    mocks.useInvoiceDocumentSettings.mockReturnValue({
-      data: { ...SETTINGS, signatoryUserId: 'u1', signatoryTitle: 'Finance Manager' },
-      isError: false,
-      isPending: false,
+    renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
+    await user.click(screen.getByRole('button', { name: 'Add bank' }));
+    await user.type(screen.getByLabelText('Bank 1'), 'Dahabshiil Bank');
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(screen.getByText('Each bank needs both a bank name and an account number.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('removes a saved bank and caps the table at eight rows', async () => {
+    const user = userEvent.setup();
+    settingsWith({
+      paymentAccounts: Array.from({ length: 8 }, (_, i) => ({ bankName: `Bank ${i + 1}`, accountNumber: `${i}` })),
+      updatedAt: '2026-10-04T00:00:00Z',
     });
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
+    expect(screen.queryByRole('button', { name: 'Add bank' })).not.toBeInTheDocument();
+    expect(screen.getByText('An invoice prints at most 8 bank accounts.')).toBeInTheDocument();
 
-    expect(screen.getByLabelText('Title')).toHaveValue('Finance Manager');
-    await user.click(screen.getByRole('button', { name: 'Remove signatory' }));
+    await user.click(screen.getByRole('button', { name: 'Remove bank 1' }));
+    expect(screen.getByRole('button', { name: 'Add bank' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ signatoryUserId: null, signatoryTitle: null }));
+    expect(mutate.mock.calls[0][0].paymentAccounts).toHaveLength(7);
+    expect(mutate.mock.calls[0][0].paymentAccounts[0]).toEqual({ bankName: 'Bank 2', accountNumber: '1' });
   });
 
   it('is read-only without manage:accounting', () => {
+    settingsWith({ paymentAccounts: [{ bankName: 'My Bank', accountNumber: '7700' }] });
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: VIEW });
     expect(screen.getByText('Only Finance (manage accounting) can change these settings.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Bank account')).toBeDisabled();
+    expect(screen.getByLabelText('Bank 1')).toBeDisabled();
     expect(screen.getByLabelText('Invoice notes')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Add bank' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
   });
 

@@ -3695,15 +3695,16 @@ model TaxPolicy {
   @@map("tax_policy")
 }
 
-// What a client invoice PDF prints beyond the invoice itself: the bank account clients are asked
-// to pay into, the notes, and the authorised signatory. Plain ids (no FK) like the other policy
-// aggregates; the service validates them on write and the invoice snapshot freezes the resolved
-// values (ClientInvoice.billingAddressSnapshot.org.invoiceDocument).
+// What a client invoice PDF prints beyond the invoice itself: the "Bank Account Details" table
+// (typed rows of bank name + account number — deliberately not linked to accounting bank
+// accounts), the notes, and the authorised signatory's typed name and title. The invoice
+// snapshot freezes these values (ClientInvoice.billingAddressSnapshot.org.invoiceDocument).
 model InvoiceDocumentPolicy {
   organizationId  String   @id @map("organization_id")
-  bankAccountId   String?  @map("bank_account_id")
+  /// [{ bankName, accountNumber }], at most 8 rows, in print order.
+  paymentAccounts Json     @default("[]") @map("payment_accounts")
   notes           String?  @db.Text
-  signatoryUserId String?  @map("signatory_user_id")
+  signatoryName   String?  @map("signatory_name") @db.VarChar(120)
   signatoryTitle  String?  @map("signatory_title") @db.VarChar(120)
   updatedBy       String   @map("updated_by")
   updatedAt       DateTime @updatedAt @map("updated_at")

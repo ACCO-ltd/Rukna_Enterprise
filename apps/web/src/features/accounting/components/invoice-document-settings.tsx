@@ -3,63 +3,57 @@
 /**
  * Accounting → Invoice settings.
  *
- * What the client invoice PDF prints beyond the invoice itself: the bank account clients are asked
- * to pay into (Payment Information, account number masked to its last four), the numbered notes,
- * and the authorised signatory. `view:accounting` reads; `manage:accounting` edits.
+ * What the client invoice PDF prints beyond the invoice itself: the "Bank Account Details" table
+ * (typed rows of bank name + account number, like ACCO's own invoices — not linked to the
+ * accounting bank accounts), the numbered notes, and the authorised signatory's name and title.
+ * `view:accounting` reads; `manage:accounting` edits.
  *
  * An invoice freezes these when it is raised and again when it is issued, and a generated PDF never
  * changes — so an edit here reaches the next invoices, not documents already produced.
  */
 
-import { useId, useMemo, useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  Combobox,
-  type ComboboxOption,
-  FormField,
-  Input,
-  Notice,
-  Select,
-  Textarea,
-} from '@erp/ui';
+import { Alert, Button, FormField, Input, Notice, Textarea } from '@erp/ui';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
-import { useUsers } from '@/features/users/hooks/use-users';
 import { ApiError } from '@/lib/api-client';
 
-import {
-  useBankAccounts,
-  useInvoiceDocumentSettings,
-  useUpdateInvoiceDocumentSettings,
-} from '../hooks/use-accounting';
-import type { BankAccount, InvoiceDocumentSettings } from '../types';
+import { useInvoiceDocumentSettings, useUpdateInvoiceDocumentSettings } from '../hooks/use-accounting';
+import type { InvoiceDocumentSettings, InvoicePaymentAccount } from '../types';
+
+export const MAX_PAYMENT_ACCOUNTS = 8;
 
 interface Draft {
-  bankAccountId: string;
+  paymentAccounts: InvoicePaymentAccount[];
   notes: string;
-  signatoryUserId: string;
+  signatoryName: string;
   signatoryTitle: string;
 }
 
 function toDraft(settings: InvoiceDocumentSettings): Draft {
   return {
-    bankAccountId: settings.bankAccountId ?? '',
+    paymentAccounts: settings.paymentAccounts.map((row) => ({ ...row })),
     notes: settings.notes ?? '',
-    signatoryUserId: settings.signatoryUserId ?? '',
+    signatoryName: settings.signatoryName ?? '',
     signatoryTitle: settings.signatoryTitle ?? '',
   };
 }
 
-/** "USD …4410" — a compact label for the picker; the invoice itself prints the full number. */
-export function maskedAccount(bank: Pick<BankAccount, 'accountNumber' | 'currencyCode'>): string {
-  return `${bank.currencyCode} …${bank.accountNumber.replace(/\s+/g, '').slice(-4)}`;
+/** Indexes of rows with one field filled and the other blank (a fully blank row is just dropped). */
+export function incompleteRows(rows: InvoicePaymentAccount[]): number[] {
+  return rows.flatMap((row, i) => {
+    const bank = row.bankName.trim();
+    const number = row.accountNumber.trim();
+    return (bank && !number) || (!bank && number) ? [i] : [];
+  });
 }
 
-/** Only an active account that accepts receipts can be printed for clients to pay into. */
-export function invoiceBankCandidates(banks: BankAccount[]): BankAccount[] {
-  return banks.filter((bank) => bank.status === 'ACTIVE' && bank.allowsReceipts);
+/** The rows to save: trimmed, fully blank rows removed. */
+export function rowsToSave(rows: InvoicePaymentAccount[]): InvoicePaymentAccount[] {
+  return rows
+    .map((row) => ({ bankName: row.bankName.trim(), accountNumber: row.accountNumber.trim() }))
+    .filter((row) => row.bankName || row.accountNumber);
 }
 
 export function InvoiceDocumentSettingsPanel() {
@@ -80,47 +74,38 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
   const t = useTranslations('accounting.invoiceSettings');
   const { can } = usePermissions();
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageChart);
-  const ids = {
-    bank: useId(),
-    signatory: useId(),
-    title: useId(),
-    notes: useId(),
-  };
+  const baseId = useId();
+  const ids = { name: `${baseId}-name`, title: `${baseId}-title`, notes: `${baseId}-notes` };
 
-  const banks = useBankAccounts();
-  const users = useUsers();
   const save = useUpdateInvoiceDocumentSettings();
-
   const saved = toDraft(settings);
   const [draft, setDraft] = useState<Draft>(saved);
+  const [showErrors, setShowErrors] = useState(false);
 
-  const candidates = useMemo(() => invoiceBankCandidates(banks.data ?? []), [banks.data]);
-  const selectedBank = candidates.find((bank) => bank.id === draft.bankAccountId) ?? null;
-
-  const userOptions = useMemo<ComboboxOption[]>(
-    () =>
-      (users.data ?? [])
-        .filter((user) => user.status === 'ACTIVE')
-        .map((user) => ({
-          value: user.id,
-          label: `${user.firstName} ${user.lastName}`.trim() || user.email,
-          hint: user.email,
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [users.data],
-  );
-
-  const dirty = (Object.keys(draft) as Array<keyof Draft>).some((key) => draft[key] !== saved[key]);
-  const patch = (next: Partial<Draft>) => setDraft((current) => ({ ...current, ...next }));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const disabled = !mayManage || save.isPending;
+  const incomplete = incompleteRows(draft.paymentAccounts);
+
+  const patch = (next: Partial<Draft>) => setDraft((current) => ({ ...current, ...next }));
+  const patchRow = (index: number, next: Partial<InvoicePaymentAccount>) =>
+    patch({
+      paymentAccounts: draft.paymentAccounts.map((row, i) => (i === index ? { ...row, ...next } : row)),
+    });
+  const removeRow = (index: number) =>
+    patch({ paymentAccounts: draft.paymentAccounts.filter((_, i) => i !== index) });
+  const addRow = () => patch({ paymentAccounts: [...draft.paymentAccounts, { bankName: '', accountNumber: '' }] });
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (incomplete.length > 0) {
+      setShowErrors(true);
+      return;
+    }
     save.mutate({
-      bankAccountId: draft.bankAccountId || null,
+      paymentAccounts: rowsToSave(draft.paymentAccounts),
       notes: draft.notes.trim() ? draft.notes : null,
-      signatoryUserId: draft.signatoryUserId || null,
-      signatoryTitle: draft.signatoryUserId && draft.signatoryTitle.trim() ? draft.signatoryTitle : null,
+      signatoryName: draft.signatoryName.trim() || null,
+      signatoryTitle: draft.signatoryTitle.trim() || null,
     });
   }
 
@@ -142,46 +127,74 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
 
       <section className="space-y-3 rounded-panel border border-border bg-surface p-4">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">{t('paymentTitle')}</h3>
-          <p className="text-xs text-muted-foreground">{t('paymentHint')}</p>
+          <h3 className="text-sm font-semibold text-foreground">{t('banksTitle')}</h3>
+          <p className="text-xs text-muted-foreground">{t('banksHint')}</p>
         </div>
-        <FormField htmlFor={ids.bank} label={t('bankAccount')}>
-          <Select
-            id={ids.bank}
-            value={draft.bankAccountId}
-            onChange={(value) => patch({ bankAccountId: value })}
-            disabled={disabled || banks.isPending}
-          >
-            <option value="">{t('noBankAccount')}</option>
-            {candidates.map((bank) => (
-              <option key={bank.id} value={bank.id}>
-                {bank.bankName} · {bank.accountName} · {maskedAccount(bank)} · {bank.currencyCode}
-              </option>
-            ))}
-          </Select>
-        </FormField>
-        {banks.isError ? <Alert variant="error" messages={[t('banksLoadFailed')]} /> : null}
-        {selectedBank ? (
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">{t('previewBank')}</dt>
-            <dd className="text-foreground">{selectedBank.bankName}</dd>
-            <dt className="text-muted-foreground">{t('previewAccountName')}</dt>
-            <dd className="text-foreground">{selectedBank.accountName}</dd>
-            <dt className="text-muted-foreground">{t('previewAccountNumber')}</dt>
-            <dd className="tabular-nums text-foreground">{selectedBank.accountNumber}</dd>
-            <dt className="text-muted-foreground">{t('previewCurrency')}</dt>
-            <dd className="text-foreground">{selectedBank.currencyCode}</dd>
-            <dt className="text-muted-foreground">{t('previewSwift')}</dt>
-            <dd className="text-foreground">{selectedBank.swiftCode ?? t('previewSwiftNone')}</dd>
-          </dl>
-        ) : null}
-        {selectedBank ? (
-          <p className="text-xs text-muted-foreground">
-            {t('currencyHint', { currency: selectedBank.currencyCode })}
-          </p>
+
+        {draft.paymentAccounts.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t('noBanks')}</p>
         ) : (
-          <p className="text-xs text-muted-foreground">{t('noBankHint')}</p>
+          <ul className="space-y-2" aria-label={t('banksTitle')}>
+            {draft.paymentAccounts.map((row, index) => {
+              const rowInvalid = showErrors && incomplete.includes(index);
+              return (
+                <li key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                  <FormField htmlFor={`${baseId}-bank-${index}`} label={t('bankName', { n: index + 1 })}>
+                    <Input
+                      id={`${baseId}-bank-${index}`}
+                      value={row.bankName}
+                      onChange={(event) => patchRow(index, { bankName: event.target.value })}
+                      placeholder={t('bankNamePlaceholder')}
+                      maxLength={100}
+                      disabled={disabled}
+                      aria-invalid={rowInvalid && !row.bankName.trim() ? true : undefined}
+                      autoComplete="off"
+                    />
+                  </FormField>
+                  <FormField htmlFor={`${baseId}-number-${index}`} label={t('accountNumber', { n: index + 1 })}>
+                    <Input
+                      id={`${baseId}-number-${index}`}
+                      value={row.accountNumber}
+                      onChange={(event) => patchRow(index, { accountNumber: event.target.value })}
+                      placeholder={t('accountNumberPlaceholder')}
+                      maxLength={50}
+                      disabled={disabled}
+                      className="tabular-nums"
+                      aria-invalid={rowInvalid && !row.accountNumber.trim() ? true : undefined}
+                      autoComplete="off"
+                    />
+                  </FormField>
+                  {mayManage ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeRow(index)}
+                      disabled={disabled}
+                      aria-label={t('removeBankLabel', { n: index + 1 })}
+                    >
+                      {t('removeBank')}
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         )}
+
+        {showErrors && incomplete.length > 0 ? (
+          <Alert variant="error" messages={[t('rowIncomplete')]} />
+        ) : null}
+
+        {mayManage ? (
+          draft.paymentAccounts.length < MAX_PAYMENT_ACCOUNTS ? (
+            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={disabled}>
+              {t('addBank')}
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t('maxBanks', { max: MAX_PAYMENT_ACCOUNTS })}</p>
+          )
+        ) : null}
       </section>
 
       <section className="space-y-3 rounded-panel border border-border bg-surface p-4">
@@ -189,47 +202,30 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <h3 className="text-sm font-semibold text-foreground">{t('signatoryTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('signatoryHint')}</p>
         </div>
-        {users.isError ? (
-          <Alert variant="error" messages={[t('usersLoadFailed')]} />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField htmlFor={ids.signatory} label={t('signatory')}>
-              <Combobox
-                id={ids.signatory}
-                value={draft.signatoryUserId}
-                onChange={(value) => patch({ signatoryUserId: value })}
-                options={userOptions}
-                placeholder={t('signatoryPlaceholder')}
-                searchPlaceholder={t('signatorySearch')}
-                emptyLabel={t('signatoryEmpty')}
-                loading={users.isPending}
-                disabled={disabled || users.isPending}
-              />
-            </FormField>
-            <FormField htmlFor={ids.title} label={t('jobTitle')}>
-              <Input
-                id={ids.title}
-                value={draft.signatoryTitle}
-                onChange={(event) => patch({ signatoryTitle: event.target.value })}
-                placeholder={t('jobTitlePlaceholder')}
-                maxLength={120}
-                disabled={disabled || !draft.signatoryUserId}
-                autoComplete="off"
-              />
-            </FormField>
-          </div>
-        )}
-        {draft.signatoryUserId && mayManage ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => patch({ signatoryUserId: '', signatoryTitle: '' })}
-            disabled={disabled}
-          >
-            {t('clearSignatory')}
-          </Button>
-        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor={ids.name} label={t('signatoryName')}>
+            <Input
+              id={ids.name}
+              value={draft.signatoryName}
+              onChange={(event) => patch({ signatoryName: event.target.value })}
+              placeholder={t('signatoryNamePlaceholder')}
+              maxLength={120}
+              disabled={disabled}
+              autoComplete="off"
+            />
+          </FormField>
+          <FormField htmlFor={ids.title} label={t('jobTitle')}>
+            <Input
+              id={ids.title}
+              value={draft.signatoryTitle}
+              onChange={(event) => patch({ signatoryTitle: event.target.value })}
+              placeholder={t('jobTitlePlaceholder')}
+              maxLength={120}
+              disabled={disabled}
+              autoComplete="off"
+            />
+          </FormField>
+        </div>
       </section>
 
       <section className="space-y-3 rounded-panel border border-border bg-surface p-4">
@@ -267,7 +263,15 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <Button type="submit" loading={save.isPending} disabled={!dirty || save.isPending}>
             {t('save')}
           </Button>
-          <Button type="button" variant="outline" disabled={!dirty || save.isPending} onClick={() => setDraft(saved)}>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!dirty || save.isPending}
+            onClick={() => {
+              setDraft(saved);
+              setShowErrors(false);
+            }}
+          >
             {t('discard')}
           </Button>
         </div>

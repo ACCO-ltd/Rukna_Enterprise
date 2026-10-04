@@ -483,7 +483,7 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     ]);
     expect(rendered.org.name).toBe('ACCO');
     // A pre-template-v2 snapshot has no invoice document settings: read live (none configured).
-    expect(rendered.payment).toBeNull();
+    expect(rendered.paymentAccounts).toEqual([]);
     expect(rendered.signatory).toBeNull();
 
     expect(files.storeGenerated).toHaveBeenCalledTimes(1);

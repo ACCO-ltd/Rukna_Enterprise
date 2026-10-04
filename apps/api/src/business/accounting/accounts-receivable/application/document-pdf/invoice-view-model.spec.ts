@@ -69,46 +69,41 @@ describe('buildInvoiceViewModel', () => {
     expect(buildInvoiceViewModel({ ...shortInvoiceFixture, project: null }).project).toBeNull();
   });
 
-  describe('payment information', () => {
-    it('prints the FULL receiving account number and quotes the invoice number as reference', () => {
+  describe('bank account details', () => {
+    it('prints one row per bank, the full account number, then the reference', () => {
       const vm = buildInvoiceViewModel(shortInvoiceFixture);
-      expect(vm.payment?.rows).toEqual([
-        { label: 'Bank Name', value: 'Premier Bank' },
-        { label: 'Account Name', value: 'Example Construction Ltd — Operating' },
-        { label: 'Account Number', value: '0102 0033 4410 (USD)' },
-        { label: 'SWIFT Code', value: 'PBSMSOSM' },
-        { label: 'Reference', value: 'INV-000123' },
-      ]);
+      expect(vm.payment).toEqual({
+        title: 'Bank Account Details',
+        columns: { bank: 'Bank', accountNumber: 'Account number' },
+        rows: [
+          { bank: 'Salaam Bank', accountNumber: '33020045871' },
+          { bank: 'Dahabshiil Bank', accountNumber: '100-2287-4410' },
+          { bank: 'Premier Bank', accountNumber: '0102 0033 4410' },
+          { bank: 'My Bank', accountNumber: '7700 5512 09' },
+        ],
+        reference: { label: 'Reference', value: 'INV-000123' },
+      });
     });
 
-    it('omits the card when the account is in another currency than the invoice', () => {
-      const vm = buildInvoiceViewModel({
-        ...shortInvoiceFixture,
-        payment: { ...shortInvoiceFixture.payment!, currencyCode: 'SOS' },
-      });
-      expect(vm.payment).toBeNull();
-      // Case and whitespace are not a mismatch.
+    it('omits the card with no rows, and skips incomplete rows', () => {
+      expect(buildInvoiceViewModel({ ...shortInvoiceFixture, paymentAccounts: [] }).payment).toBeNull();
       expect(
-        buildInvoiceViewModel({ ...shortInvoiceFixture, payment: { ...shortInvoiceFixture.payment!, currencyCode: 'usd ' } })
-          .payment,
-      ).not.toBeNull();
-    });
-
-    it('omits the card with no bank account, and the SWIFT row with no SWIFT code', () => {
-      expect(buildInvoiceViewModel({ ...shortInvoiceFixture, payment: null }).payment).toBeNull();
-      const noSwift = buildInvoiceViewModel({
-        ...shortInvoiceFixture,
-        payment: { ...shortInvoiceFixture.payment!, swiftCode: null },
-      });
-      expect(noSwift.payment?.rows.map((r) => r.label)).not.toContain('SWIFT Code');
-    });
-
-    it('omits the card when the bank details are blank rather than printing empty rows', () => {
+        buildInvoiceViewModel({ ...shortInvoiceFixture, paymentAccounts: [{ bankName: ' ', accountNumber: '1' }] }).payment,
+      ).toBeNull();
       const vm = buildInvoiceViewModel({
         ...shortInvoiceFixture,
-        payment: { ...shortInvoiceFixture.payment!, accountNumber: '  ' },
+        paymentAccounts: [
+          { bankName: ' Salaam Bank ', accountNumber: ' 1 ' },
+          { bankName: 'Ghost', accountNumber: '' },
+        ],
       });
-      expect(vm.payment).toBeNull();
+      expect(vm.payment?.rows).toEqual([{ bank: 'Salaam Bank', accountNumber: '1' }]);
+    });
+
+    it('asks to quote the invoice number on an unnumbered draft', () => {
+      expect(buildInvoiceViewModel({ ...shortInvoiceFixture, invoiceNumber: null }).payment?.reference.value).toBe(
+        'Quote the invoice number',
+      );
     });
   });
 
