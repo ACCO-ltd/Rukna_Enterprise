@@ -8,7 +8,7 @@ describe('UomService.listLookup', () => {
   const tenancy = { getClient: jest.fn(() => prisma) } as unknown as TenancyService;
   const findLookup = jest.fn();
   const repo = { findLookup } as unknown as UomRepository;
-  const service = new UomService(tenancy, repo);
+  const service = new UomService(tenancy, repo, {} as never);
   const identity = { userId: 'u1', activeOrganizationId: 'org-acco' } as RequestIdentity;
 
   beforeEach(() => findLookup.mockReset().mockResolvedValue([]));

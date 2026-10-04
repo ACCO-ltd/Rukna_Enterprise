@@ -114,7 +114,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   // ADR-022: SoD is exercised in dedicated specs; the shared harness no-ops it so existing
   // fixtures (which reuse a single actor id) are not newly blocked by segregation rules.
   const sod = { assertAllowed: async () => undefined } as unknown as SegregationOfDutiesService;
-  const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
+  const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo, noOpAuditOutbox);
   const projectAccess   = new ProjectAccessService(tenancy);
   const commandGovernance = new CommandGovernanceService(
     new WorkflowTriggerResolverService(tenancy),

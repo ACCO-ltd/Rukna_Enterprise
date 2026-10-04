@@ -35,12 +35,12 @@ export class MaterialRepository {
   findAll(
     prisma: TenantPrisma,
     organizationId: string,
-    filters?: { status?: MaterialStatus; materialCategoryId?: string; spendCategoryId?: string },
+    filters?: { statuses?: MaterialStatus[]; materialCategoryId?: string; spendCategoryId?: string },
   ) {
     return prisma.material.findMany({
       where: {
         organizationId,
-        ...(filters?.status ? { status: filters.status } : {}),
+        ...(filters?.statuses ? { status: { in: filters.statuses } } : {}),
         ...(filters?.materialCategoryId ? { materialCategoryId: filters.materialCategoryId } : {}),
         ...(filters?.spendCategoryId ? { defaultSpendCategoryId: filters.spendCategoryId } : {}),
       },
