@@ -140,3 +140,25 @@ describe('LineItemsEditor — combobox column', () => {
     expect(screen.getByText('Rebar 12mm')).toBeInTheDocument();
   });
 });
+
+describe('LineItemsEditor — row detail and neutral notes', () => {
+  it('renders a row detail under that row only, and a quiet note', () => {
+    render(
+      <LineItemsEditor<{ id: string; open: boolean }>
+        label="Delivered lines"
+        rows={[
+          { id: 'a', open: true },
+          { id: 'b', open: false },
+        ]}
+        rowKey={(r) => r.id}
+        cardTitle={(r) => r.id}
+        columns={[{ key: 'x', header: 'X', width: '1fr', cell: (r) => r.id }]}
+        detail={(r) => (r.open ? <p>Rejected quantity for {r.id}</p> : null)}
+        note={(r) => (r.open ? null : { tone: 'neutral', text: `2 stays open on ${r.id}` })}
+      />,
+    );
+    expect(screen.getByText('Rejected quantity for a')).toBeInTheDocument();
+    expect(screen.queryByText('Rejected quantity for b')).not.toBeInTheDocument();
+    expect(screen.getByText('2 stays open on b')).toHaveClass('text-muted-foreground');
+  });
+});

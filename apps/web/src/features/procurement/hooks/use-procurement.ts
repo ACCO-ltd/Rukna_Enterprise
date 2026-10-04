@@ -22,6 +22,8 @@ import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from 
 import { unitOfMeasureKeys } from '@/features/units-of-measure/hooks/use-units-of-measure';
 import {
   allocateAdvance,
+  createReceiptException,
+  listReceivablePurchaseOrders,
   approveGoodsReceiptException,
   approveMatchException,
   approveMaterialRequest,
@@ -97,6 +99,8 @@ import {
   createEvidenceAllocation,
 } from '../api/procurement-api';
 import type {
+  CreateReceiptExceptionPayload,
+  ReceivablePurchaseOrder,
   BillActivityEntry,
   BillApprovals,
   BillPayments,
@@ -171,6 +175,7 @@ export const procurementKeys = {
   purchaseOrders: (status?: string, supplierId?: string, projectId?: string) =>
     [...procurementKeys.all, 'purchase-orders', status ?? 'all', supplierId ?? 'all', projectId ?? 'all'] as const,
   purchaseOrder: (id: string) => [...procurementKeys.all, 'purchase-order', id] as const,
+  receivablePurchaseOrders: () => [...procurementKeys.all, 'purchase-orders', 'receivable'] as const,
   goodsReceipts: (purchaseOrderId?: string) =>
     [...procurementKeys.all, 'goods-receipts', purchaseOrderId ?? 'all'] as const,
   goodsReceipt: (id: string) => [...procurementKeys.all, 'goods-receipt', id] as const,
@@ -639,6 +644,24 @@ export function useGoodsReceipt(id: string): UseQueryResult<GoodsReceipt> {
     queryKey: procurementKeys.goodsReceipt(id),
     queryFn: () => getGoodsReceipt(id),
     enabled: Boolean(id),
+  });
+}
+
+/** Open orders the viewer can receive against, each with the server's receive verdict. */
+export function useReceivablePurchaseOrders(): UseQueryResult<ReceivablePurchaseOrder[]> {
+  return useQuery({
+    queryKey: procurementKeys.receivablePurchaseOrders(),
+    queryFn: listReceivablePurchaseOrders,
+  });
+}
+
+/** Asks for a receipt exception; the order's verdict (and its `receiptException`) changes. */
+export function useCreateReceiptException() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateReceiptExceptionPayload) => createReceiptException(payload),
+    meta: { successToast: { key: 'procurement.feedback.receiptExceptionRequested' } },
+    onSuccess: () => qc.invalidateQueries({ queryKey: procurementKeys.receivablePurchaseOrders() }),
   });
 }
 

@@ -15,6 +15,9 @@ import { apiClient } from '@/lib/api-client';
 import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from '@erp/types';
 
 import type {
+  CreateReceiptExceptionPayload,
+  ReceiptExceptionRef,
+  ReceivablePurchaseOrder,
   BillActivityEntry,
   BillApprovals,
   BillPayments,
@@ -379,6 +382,23 @@ export function cancelPurchaseOrder(id: string): Promise<PurchaseOrder> {
 }
 
 // ─── Goods receipts ──────────────────────────────────────────────────────────────
+
+/**
+ * `GET /procurement/purchase-orders/receivable` — open orders with something left to receive,
+ * their open lines, and the server's per-viewer receive verdict (`canReceive`, `blockedReason`,
+ * `receiptException`). The frontend never decides segregation of duties itself.
+ */
+export function listReceivablePurchaseOrders(): Promise<ReceivablePurchaseOrder[]> {
+  return apiClient<ReceivablePurchaseOrder[]>('/procurement/purchase-orders/receivable');
+}
+
+/** `POST /procurement/receipt-exceptions` — the PO's creator asks to receive it themselves. */
+export function createReceiptException(payload: CreateReceiptExceptionPayload): Promise<ReceiptExceptionRef> {
+  return apiClient<ReceiptExceptionRef>('/procurement/receipt-exceptions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
 
 export function listGoodsReceipts(filters?: {
   purchaseOrderId?: string;

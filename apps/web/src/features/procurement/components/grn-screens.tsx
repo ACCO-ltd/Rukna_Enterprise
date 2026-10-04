@@ -8,18 +8,21 @@
  * misread by someone scanning the sidebar for where a customer payment went.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  Combobox,
   DatePicker,
   EmptyState,
+  FormActionBar,
   FormField,
   Input,
-  Select,
+  Notice,
+  SkeletonRecord,
   Table,
   TableBody,
   TableCell,
@@ -33,31 +36,37 @@ import {
 import { Plus } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatNumber } from '@/lib/format';
-import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
+import { formatDate, formatMoney, formatNumber } from '@/lib/format';
+import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import {
   useApproveGoodsReceiptException,
   useCancelGoodsReceipt,
   useCreateGoodsReceipt,
+  useCreateReceiptException,
   useGoodsReceipt,
   useGoodsReceipts,
   usePostGoodsReceipt,
+  usePurchaseOrder,
   usePurchaseOrders,
+  useReceivablePurchaseOrders,
   useSuppliers,
 } from '../hooks/use-procurement';
-import { activeRevision, quantityToApi } from '../quantities';
-import type { CreateGrnLinePayload, GoodsReceipt, GoodsReceiptStatus } from '../types';
+import { activeRevision } from '../quantities';
+import type { GoodsReceipt, GoodsReceiptStatus } from '../types';
 import {
   GrnLineEditor,
-  grnLineError,
-  grnLineQuantities,
-  grnLinesFromPo,
+  acceptedValueMinor,
+  grnLineControlId,
+  grnLineErrors,
+  grnLinesFromReceivable,
   submittableGrnLines,
+  toGrnLinePayload,
   type GrnLineDraft,
 } from './grn-line-editor';
 import { ClassificationChips } from './classification-chips';
@@ -262,115 +271,143 @@ export function GrnList() {
   );
 }
 
-// ─── Receive (create + post in one action) ─────────────────────────────────────────
+// ─── Receive a delivery (create + post in one action) ───────────────────────────────
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** The receipt 403 that carries the segregation-of-duties refusal. */
+function isCreatorCannotReceive(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.details?.code === 'PO_CREATOR_CANNOT_RECEIVE_GOODS'
+  );
+}
+
 /**
- * Record a delivery against a PO. Round 2, single-screen, acceptance-by-default (D5).
+ * Receive a delivery against an open purchase order.
  *
- * The two-step Sprint-5 wizard is collapsed: pick a PO in the header and the line table
- * pre-fills one stacked block per open PO line, each accepted whole by default. Delivery
- * date and an optional note ref sit in the header; a sticky footer holds the single
- * primary action, **Receive**.
+ * Every line arrives prefilled with what is still due; the receiver changes only what is
+ * different and posts. "Post receipt" confirms first (posted receipts can't be edited), then
+ * creates the receipt and posts it as one action (D5):
  *
- * ─── Receive = record + post in one action (D5) ─────────────────────────────────────
+ *   create → DRAFT → post → POSTED. If the server routed an out-of-tolerance over-receipt to
+ *   EXCEPTION_PENDING (A1) the receipt is recorded and held, not forced through — we open its
+ *   detail, where the exception lives. A create that succeeded is never repeated on a retry
+ *   after the post failed (`createdIdRef`).
  *
- * "Receive" orchestrates the existing endpoints:
- *   create the GRN → if it comes back DRAFT (clean), post it (DRAFT→POSTED) → done.
- *   If it comes back EXCEPTION_PENDING, the over-receipt exceeded the org tolerance (A1),
- *   so we do NOT force a post: the receipt is recorded and held, and we route to its detail
- *   where the honest exception state and the gated `approve-exception` action live.
- *
- * The ceremonial standalone Post step is gone from the normal path — a clean delivery is
- * received and posted as one action. Post survives only as the second half of this
- * orchestration and as the follow-up once a held receipt's exception is cleared.
+ * Segregation of duties is the server's: the receivable list says whether this viewer may
+ * receive each order (`canReceive`), and the receipt's own 403 says so if the list could not.
+ * Either way the screen explains it and offers to request an exception — it never decides.
  */
 export function GrnForm({ initialPoId }: { initialPoId?: string }) {
-  const t = useTranslations('procurement.grn');
+  const t = useTranslations('procurement.grn.receive');
+  const tErr = useTranslations('procurement.grn.receive.errors');
+  const tGrn = useTranslations('procurement.grn');
   const tc = useTranslations('procurement.common');
+  const tForm = useTranslations('common.formState');
+  const tCommon = useTranslations('common');
   const router = useRouter();
+  const { can } = usePermissions();
+  const moneyVisible = can(PROCUREMENT_PERMISSIONS.viewCommitments);
   // The module header owns the page's h1 (ADR-035); the form names itself in the breadcrumb.
-  useModuleTrail(t('createTitle'));
+  useModuleTrail(tGrn('createTitle'));
 
-  const [purchaseOrderId, setPurchaseOrderId] = useState('');
+  const receivable = useReceivablePurchaseOrders();
+  const [purchaseOrderId, setPurchaseOrderId] = useState(initialPoId ?? '');
   const [deliveryDate, setDeliveryDate] = useState(today);
   const [deliveryNoteRef, setDeliveryNoteRef] = useState('');
-  const [lines, setLines] = useState<GrnLineDraft[]>([]);
+  const [edited, setEdited] = useState<GrnLineDraft[] | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [receiveError, setReceiveError] = useState<string | null>(null);
+  const [refusedPoIds, setRefusedPoIds] = useState<ReadonlySet<string>>(new Set());
+  const [requestingException, setRequestingException] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   // A create that already succeeded must not run again if the follow-up post fails and the
   // user retries — that would raise a duplicate GRN for the same delivery.
   const createdIdRef = useRef<string | null>(null);
 
-  const orders = usePurchaseOrders({ status: 'OPEN' });
   const create = useCreateGoodsReceipt();
   const post = usePostGoodsReceipt();
+  const requestException = useCreateReceiptException();
 
-  /** Only an OPEN order with an ACTIVE revision can be received against (§6.30). */
-  const receivable = useMemo(
-    () => (orders.data ?? []).filter((po) => activeRevision(po.revisions) !== null),
-    [orders.data],
+  const orders = useMemo(() => receivable.data ?? [], [receivable.data]);
+  const selected = orders.find((po) => po.id === purchaseOrderId) ?? null;
+  const blocked = selected !== null && (!selected.canReceive || refusedPoIds.has(selected.id));
+
+  // The receivable read carries each open line but no prices. The order's own unit prices are
+  // read only for someone who may see money, and only to value what is accepted.
+  const order = usePurchaseOrder(moneyVisible && selected && !blocked ? selected.id : '');
+  const unitPrices = useMemo(
+    () =>
+      Object.fromEntries(
+        (activeRevision(order.data?.revisions ?? [])?.lines ?? []).map((line) => [line.id, line.unitPrice]),
+      ) as Record<string, string>,
+    [order.data],
   );
 
-  // A GRN opened from a purchase order link has a valid default selection, but no state
-  // transition is needed just to render that default. Keeping it derived avoids an extra
-  // render when the asynchronous order list arrives.
-  const linkedPurchaseOrder = useMemo(
-    () => (purchaseOrderId ? null : receivable.find((po) => po.id === initialPoId) ?? null),
-    [initialPoId, purchaseOrderId, receivable],
+  const prefilled = useMemo(() => (selected ? grnLinesFromReceivable(selected.lines) : null), [selected]);
+  const lines = edited ?? prefilled;
+
+  const projectName = selected && selected.projects.length > 0 ? selected.projects.map((p) => p.name).join(', ') : null;
+  const supplierName = selected?.supplier.name ?? tc('notAvailable');
+
+  const poOptions = useMemo(
+    () =>
+      orders.map((po) => ({
+        value: po.id,
+        label: `${po.poNumber} · ${po.supplier.name}`,
+        caption: po.projects.length > 0 ? po.projects.map((p) => p.name).join(', ') : undefined,
+      })),
+    [orders],
   );
-  const selectedPurchaseOrderId = purchaseOrderId || linkedPurchaseOrder?.id || '';
-  const selectedLines =
-    purchaseOrderId || !linkedPurchaseOrder
-      ? lines
-      : grnLinesFromPo(activeRevision(linkedPurchaseOrder.revisions)?.lines ?? []);
 
   const selectPo = (id: string) => {
     setPurchaseOrderId(id);
-    const po = receivable.find((p) => p.id === id);
-    const revision = po ? activeRevision(po.revisions) : null;
-    setLines(revision?.lines ? grnLinesFromPo(revision.lines) : []);
+    setEdited(null);
     setShowErrors(false);
     setReceiveError(null);
     createdIdRef.current = null;
   };
 
-  const changeLines = (nextLines: GrnLineDraft[]) => {
-    // Once a linked PO is edited, materialize its derived default so the user's edits
-    // remain the source of truth for the rest of the receive flow.
-    if (!purchaseOrderId && linkedPurchaseOrder) setPurchaseOrderId(linkedPurchaseOrder.id);
-    setLines(nextLines);
-  };
-
-  const submittable = submittableGrnLines(selectedLines);
-  const hasLineError = selectedLines.some((l) => grnLineError(l) !== null);
-
-  function buildLines(): CreateGrnLinePayload[] {
-    // Untouched rows are omitted, not sent as zeros — @IsPositive() would reject the whole
-    // request over a line nobody delivered against (P6).
-    return submittable.map((line): CreateGrnLinePayload => {
-      const q = grnLineQuantities(line);
-      return {
-        purchaseOrderLineId: line.purchaseOrderLineId,
-        receivedQuantity: quantityToApi(q.receivedMinor),
-        acceptedQuantity: quantityToApi(q.acceptedMinor),
-        ...(q.rejectedMinor > 0 ? { rejectedQuantity: quantityToApi(q.rejectedMinor) } : {}),
-        ...(line.mode === 'discrepancy' && line.rejectionReason.trim()
-          ? { rejectionReason: line.rejectionReason.trim() }
-          : {}),
-        ...(line.mode === 'discrepancy' && line.notes.trim()
-          ? { notes: line.notes.trim() }
-          : {}),
-        // Acceptance-by-default: a clean line is ACCEPTED whole (D5); a discrepancy line
-        // carries whatever quality the user chose.
-        qualityStatus: line.mode === 'clean' ? 'ACCEPTED' : line.qualityStatus,
-      };
+  // ── Validation ──────────────────────────────────────────────────────────────────
+  const submittable = submittableGrnLines(lines ?? []);
+  const lineErrors = (lines ?? []).map(grnLineErrors);
+  const summaryErrors: FormFieldError[] = [];
+  if (!purchaseOrderId) {
+    summaryErrors.push({ label: t('purchaseOrder'), fieldId: 'grn-po', message: tErr('purchaseOrder') });
+  }
+  lineErrors.forEach((errors, i) => {
+    const label = t('lineTitle', { n: i + 1 });
+    if (errors.rejected) {
+      summaryErrors.push({ label, fieldId: grnLineControlId('rejected', i), message: tErr(errors.rejected) });
+    }
+    if (errors.reason) {
+      summaryErrors.push({ label, fieldId: grnLineControlId('reason', i), message: tErr(errors.reason) });
+    }
+  });
+  if (lines && lines.length > 0 && submittable.length === 0) {
+    summaryErrors.push({
+      label: t('arrivedSection'),
+      fieldId: grnLineControlId('delivered', 0),
+      message: tErr('nothingDelivered'),
     });
+  }
+  const showSummary = (showErrors && summaryErrors.length > 0) || receiveError !== null;
+
+  const dirty = Boolean(purchaseOrderId && purchaseOrderId !== initialPoId) || edited !== null || deliveryNoteRef.trim() !== '';
+  const leave = () => router.push('/procurement/grn');
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setShowErrors(true);
+    if (summaryErrors.length > 0 || !lines) return;
+    setConfirming(true);
   }
 
   const runReceive = useCallback(async () => {
@@ -383,111 +420,226 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
         grn = { id: createdIdRef.current, status: 'DRAFT' } as GoodsReceipt;
       } else {
         grn = await create.mutateAsync({
-          purchaseOrderId: selectedPurchaseOrderId,
+          purchaseOrderId,
           deliveryDate,
           ...(deliveryNoteRef.trim() ? { deliveryNoteRef: deliveryNoteRef.trim() } : {}),
-          lines: buildLines(),
+          lines: submittableGrnLines(lines ?? []).map(toGrnLinePayload),
         });
         createdIdRef.current = grn.id;
       }
 
-      // The server routed an out-of-tolerance over-receipt to EXCEPTION_PENDING (A1). It is
-      // recorded and held — do not force a post. Show the honest state on its detail page.
+      // Over-receipt beyond tolerance (A1): recorded and held — never force a post.
       if (grn.status === 'EXCEPTION_PENDING') {
         router.push(`/procurement/grn/${grn.id}`);
         return;
       }
 
-      // Clean receipt: post it (DRAFT → POSTED) so record + post is one action (D5).
       await post.mutateAsync({ id: grn.id });
       router.push(`/procurement/grn/${grn.id}`);
     } catch (e) {
+      setConfirming(false);
+      if (isCreatorCannotReceive(e)) {
+        setRefusedPoIds((current) => new Set(current).add(purchaseOrderId));
+        return;
+      }
       setReceiveError(e instanceof ApiError ? e.message : tc('loadFailed'));
     } finally {
       setBusy(false);
     }
-    // buildLines reads current state; it is intentionally not a dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [create, post, router, selectedPurchaseOrderId, deliveryDate, deliveryNoteRef]);
+  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef, lines, tc]);
 
-  function handleReceive() {
-    setShowErrors(true);
-    if (hasLineError || submittable.length === 0 || !selectedPurchaseOrderId) return;
-    void runReceive();
+  // ── States before the form ─────────────────────────────────────────────────────
+  if (receivable.isPending) return <SkeletonRecord label={tc('loading')} />;
+  if (receivable.isError) {
+    return (
+      <Alert
+        variant="error"
+        messages={[tc('loadFailed')]}
+        action={
+          <Button type="button" variant="outline" onClick={() => void receivable.refetch()}>
+            {tc('retry')}
+          </Button>
+        }
+      />
+    );
+  }
+  if (orders.length === 0) {
+    return (
+      <EmptyState
+        title={t('nothingTitle')}
+        description={t('nothingBody')}
+        action={
+          <Button asChild variant="outline">
+            <Link href="/procurement/orders">{t('goToOrders')}</Link>
+          </Button>
+        }
+      />
+    );
   }
 
-  const canReceive = selectedPurchaseOrderId !== '' && selectedLines.length > 0;
+  const acceptedMinor =
+    moneyVisible && lines && order.data
+      ? acceptedValueMinor(lines.map((line) => ({ ...line, unitPrice: unitPrices[line.purchaseOrderLineId] ?? null })))
+      : 0;
+  const pendingException =
+    selected?.receiptException && selected.receiptException.status !== 'REJECTED' ? selected.receiptException : null;
 
   return (
-    <div className="space-y-6 pb-28">
-      <p className="text-body-sm text-muted-foreground">{t('createSubtitle')}</p>
+    <>
+      <form onSubmit={handleSubmit} noValidate>
+        <FormActionBar
+          save={
+            blocked ? null : (
+              <Button type="submit" loading={busy} loadingText={t('posting')}>
+                {t('post')}
+              </Button>
+            )
+          }
+          discard={
+            <Button type="button" variant="ghost" onClick={() => (dirty ? setConfirmLeave(true) : leave())}>
+              {t('discard')}
+            </Button>
+          }
+          saveState={dirty ? 'dirty' : 'new'}
+          saveStateLabels={{ new: tForm('new'), dirty: tForm('dirty'), clean: tForm('clean') }}
+        />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField htmlFor="grn-po" label={t('purchaseOrder')}>
-          <Select id="grn-po" value={selectedPurchaseOrderId} onChange={(value) => selectPo(value)}>
-            <option value="">{t('selectPo')}</option>
-            {receivable.map((po) => (
-              <option key={po.id} value={po.id}>
-                {po.poNumber} · {po.supplier?.name ?? tc('notAvailable')}
-              </option>
-            ))}
-          </Select>
-          <p className="text-xs text-muted-foreground">{t('selectPoHint')}</p>
-        </FormField>
+        <div className="space-y-8">
+          <div className="scroll-mt-32">
+            {showSummary ? (
+              <FormErrorSummary
+                errors={showErrors ? summaryErrors : []}
+                formErrors={receiveError ? [receiveError] : []}
+              />
+            ) : null}
+          </div>
 
-        <FormField htmlFor="grn-date" label={t('deliveryDate')}>
-          <DatePicker
-            id="grn-date"
-            value={deliveryDate}
-            onChange={(value) => setDeliveryDate(value)}
-          />
-        </FormField>
+          <section aria-labelledby="grn-delivery" className="space-y-4">
+            <h2 id="grn-delivery" className="border-b border-border pb-2 text-body font-semibold text-foreground">
+              {t('deliverySection')}
+            </h2>
+            <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              <FormField
+                htmlFor="grn-po"
+                label={t('purchaseOrder')}
+                required
+                hint={
+                  selected
+                    ? projectName
+                      ? t('poPicked', { supplier: supplierName, project: projectName })
+                      : supplierName
+                    : t('poHint')
+                }
+                error={showErrors && !purchaseOrderId ? tErr('purchaseOrder') : undefined}
+                className="sm:col-span-2"
+              >
+                <Combobox
+                  id="grn-po"
+                  value={purchaseOrderId}
+                  onChange={selectPo}
+                  options={poOptions}
+                  placeholder={t('poPlaceholder')}
+                  searchPlaceholder={t('poSearch')}
+                  emptyLabel={t('poEmpty')}
+                  invalid={showErrors && !purchaseOrderId}
+                  aria-required
+                />
+              </FormField>
 
-        <FormField
-          htmlFor="grn-note"
-          label={`${t('deliveryNoteRef')} (${tc('optional')})`}
-        >
-          <Input
-            id="grn-note"
-            value={deliveryNoteRef}
-            onChange={(e) => setDeliveryNoteRef(e.target.value)}
-          />
-        </FormField>
-      </div>
+              <FormField htmlFor="grn-date" label={t('deliveredOn')} required>
+                <DatePicker id="grn-date" value={deliveryDate} onChange={(value) => setDeliveryDate(value)} />
+              </FormField>
 
-      {receivable.length === 0 && !orders.isPending ? (
-        <Alert variant="info" messages={[t('noReceivablePo')]} />
-      ) : null}
+              <FormField
+                htmlFor="grn-note"
+                label={`${t('deliveryNote')} (${t('optional')})`}
+                hint={t('deliveryNoteHint')}
+              >
+                <Input id="grn-note" value={deliveryNoteRef} onChange={(e) => setDeliveryNoteRef(e.target.value)} />
+              </FormField>
+            </div>
+          </section>
 
-      {orders.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+          {blocked ? (
+            <Notice
+              tone="attention"
+              title={t('sod.title')}
+              action={
+                pendingException ? undefined : (
+                  <Button type="button" variant="outline" onClick={() => setRequestingException(true)}>
+                    {t('sod.request')}
+                  </Button>
+                )
+              }
+            >
+              {pendingException ? t('sod.pending') : t('sod.body')}
+            </Notice>
+          ) : selected ? (
+            <section aria-labelledby="grn-arrived" className="space-y-4">
+              <div className="border-b border-border pb-2">
+                <h2 id="grn-arrived" className="text-body font-semibold text-foreground">
+                  {t('arrivedSection')}
+                </h2>
+                <p className="text-caption text-muted-foreground">{t('arrivedHint')}</p>
+              </div>
 
-      {selectedLines.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            {t('linesTitle')}
-          </h2>
-          <GrnLineEditor lines={selectedLines} onChange={changeLines} showErrors={showErrors} />
-        </section>
-      ) : null}
+              {lines ? <GrnLineEditor lines={lines} onChange={setEdited} showErrors={showErrors} /> : null}
 
-      {showErrors && submittable.length === 0 && selectedLines.length > 0 ? (
-        <Alert variant="error" messages={[t('allLinesEmpty')]} />
-      ) : null}
-
-      {receiveError ? <Alert variant="error" messages={[receiveError]} /> : null}
-
-      {/* ── Sticky footer: the single primary action ──────────────────────────────── */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 md:start-16 lg:start-[var(--sidebar-width)]">
-        <div className="flex w-full max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6 lg:px-8">
-          <Button type="button" variant="outline" disabled={busy} onClick={() => router.back()}>
-            {tc('cancel')}
-          </Button>
-          <Button type="button" disabled={busy || !canReceive} onClick={handleReceive}>
-            {t('receive')}
-          </Button>
+              {moneyVisible && lines && acceptedMinor > 0 ? (
+                <p className="text-body-sm text-muted-foreground" aria-live="polite">
+                  {t('acceptedValue', {
+                    amount: formatMoney(fromMinorUnits(acceptedMinor, MONEY_SCALE), 'USD') ?? '',
+                  })}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
         </div>
-      </div>
-    </div>
+      </form>
+
+      {confirming ? (
+        <ConfirmActionDialog
+          title={t('confirmTitle')}
+          description={t('confirmBody')}
+          confirmLabel={t('post')}
+          isPending={busy}
+          onConfirm={() => void runReceive()}
+          onDismiss={() => setConfirming(false)}
+        />
+      ) : null}
+
+      {requestingException && selected ? (
+        <ConfirmActionDialog
+          title={t('sod.dialogTitle')}
+          description={t('sod.dialogBody')}
+          confirmLabel={t('sod.submit')}
+          reason={{ required: true, label: t('sod.reasonLabel') }}
+          isPending={requestException.isPending}
+          errorMessage={requestException.error ? errorText(requestException.error, tc('loadFailed')) : undefined}
+          onConfirm={(reason) =>
+            requestException.mutate(
+              { purchaseOrderId: selected.id, reason: reason.trim() },
+              { onSuccess: () => setRequestingException(false) },
+            )
+          }
+          onDismiss={() => {
+            requestException.reset();
+            setRequestingException(false);
+          }}
+        />
+      ) : null}
+
+      {confirmLeave ? (
+        <ConfirmActionDialog
+          title={tCommon('unsavedChanges.title')}
+          description={tCommon('unsavedChanges.body')}
+          confirmLabel={tCommon('unsavedChanges.leave')}
+          isPending={false}
+          onConfirm={leave}
+          onDismiss={() => setConfirmLeave(false)}
+        />
+      ) : null}
+    </>
   );
 }
 

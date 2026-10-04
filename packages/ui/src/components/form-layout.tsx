@@ -270,7 +270,8 @@ function LineComboboxCell<T>({
 }
 
 export interface LineNote {
-  tone: 'warning' | 'danger';
+  /** `neutral` is a quiet fact about the line — "4 bag stays open on the order". */
+  tone: 'neutral' | 'warning' | 'danger';
   text: string;
 }
 
@@ -284,6 +285,11 @@ export interface LineItemsEditorProps<T> {
   errors?: (index: number) => Partial<Record<string, string>> | undefined;
   /** A note that spans the row — "Billing 20 bag more than received on GRN-2026-0154". */
   note?: (row: T, index: number) => LineNote | null;
+  /**
+   * Extra controls under one row, spanning its width — a line's "Report a problem" fields.
+   * Return null for rows that have none.
+   */
+  detail?: (row: T, index: number) => React.ReactNode;
   /** The phone card's title — "Line 1 — Site mobilisation". */
   cardTitle: (row: T, index: number) => string;
   onAdd?: () => void;
@@ -311,6 +317,7 @@ export function LineItemsEditor<T>({
   columns,
   errors,
   note,
+  detail,
   cardTitle,
   onAdd,
   addLabel = 'Add a line',
@@ -355,6 +362,7 @@ export function LineItemsEditor<T>({
           {rows.map((row, index) => {
             const rowErrors = errors?.(index) ?? {};
             const rowNote = note?.(row, index) ?? null;
+            const rowDetail = detail?.(row, index) ?? null;
             return (
               <div
                 key={rowKey(row, index)}
@@ -434,12 +442,18 @@ export function LineItemsEditor<T>({
                   <p
                     className={cn(
                       'mt-2 text-caption font-medium md:ps-11',
-                      rowNote.tone === 'warning' ? 'text-warning' : 'text-danger',
+                      rowNote.tone === 'warning'
+                        ? 'text-warning'
+                        : rowNote.tone === 'danger'
+                          ? 'text-danger'
+                          : 'font-normal text-muted-foreground',
                     )}
                   >
                     {rowNote.text}
                   </p>
                 ) : null}
+
+                {rowDetail ? <div className="mt-3 md:ps-11">{rowDetail}</div> : null}
               </div>
             );
           })}

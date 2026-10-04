@@ -798,6 +798,53 @@ export interface CreateGrnLinePayload {
   notes?: string;
 }
 
+/** Why the viewer may not receive against an order (segregation of duties, decided server-side). */
+export type ReceiveBlockedReason = 'PO_CREATOR_CANNOT_RECEIVE_GOODS';
+
+export interface ReceiptExceptionRef {
+  id: string;
+  status: string;
+}
+
+/** One line still open on a receivable order. Quantities are decimal strings; no prices. */
+export interface ReceivablePoLine {
+  purchaseOrderLineId: string;
+  lineNumber: number;
+  description: string;
+  uomCode: string;
+  uomSymbol: string;
+  orderedQuantity: Quantity;
+  /** Accepted on earlier receipts. */
+  acceptedQuantity: Quantity;
+  remainingQuantity: Quantity;
+}
+
+/**
+ * `GET /procurement/purchase-orders/receivable` (view:procurement + create:goods-receipt) — the
+ * open orders with something left to receive, each with its open lines and the server's verdict
+ * on whether *this viewer* may receive it (segregation of duties). Carries no prices.
+ */
+export interface ReceivablePurchaseOrder {
+  id: string;
+  poNumber: string;
+  status: 'OPEN';
+  supplier: { id: string; name: string };
+  activeRevisionId: string;
+  activeRevisionNumber: number;
+  expectedDeliveryDate: ApiDate | null;
+  projects: ProcurementProjectRef[];
+  lines: ReceivablePoLine[];
+  canReceive: boolean;
+  blockedReason: ReceiveBlockedReason | null;
+  receiptException: ReceiptExceptionRef | null;
+}
+
+/** `POST /procurement/receipt-exceptions` — ask for someone else's receipt to be allowed. */
+export interface CreateReceiptExceptionPayload {
+  purchaseOrderId: string;
+  reason: string;
+}
+
 export interface CreateGoodsReceiptPayload {
   purchaseOrderId: string;
   deliveryDate: string;
