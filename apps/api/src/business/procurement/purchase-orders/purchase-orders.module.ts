@@ -11,6 +11,8 @@ import { PurchaseOrderService } from './application/purchase-order.service.js';
 import { SettlementQueryService } from './application/settlement-query.service.js';
 import { ReceivabilityRepository } from './infrastructure/receivability.repository.js';
 import { ReceivabilityService } from './application/receivability.service.js';
+import { PurchaseOrderListRepository } from './infrastructure/purchase-order-list.repository.js';
+import { PurchaseOrderListService } from './application/purchase-order-list.service.js';
 import { PurchaseOrderController } from './presentation/purchase-order.controller.js';
 
 @Module({
@@ -21,9 +23,11 @@ import { PurchaseOrderController } from './presentation/purchase-order.controlle
     PurchaseOrderAttachmentRepository,
     SettlementQueryRepository,
     ReceivabilityRepository,
+    PurchaseOrderListRepository,
     PurchaseOrderService,
     SettlementQueryService,
     ReceivabilityService,
+    PurchaseOrderListService,
   ],
   exports: [PurchaseOrderService, PurchaseOrderRepository, SettlementQueryService, ReceivabilityService],
 })

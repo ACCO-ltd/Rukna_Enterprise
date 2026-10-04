@@ -8,6 +8,8 @@ import { GoodsReceiptRepository } from './infrastructure/goods-receipt.repositor
 import { GrnAttachmentRepository } from './infrastructure/grn-attachment.repository.js';
 import { ReceiptExceptionRepository } from './infrastructure/receipt-exception.repository.js';
 import { GoodsReceiptService } from './application/goods-receipt.service.js';
+import { GoodsReceiptListRepository } from './infrastructure/goods-receipt-list.repository.js';
+import { GoodsReceiptListService } from './application/goods-receipt-list.service.js';
 import { ReceiptExceptionService } from './application/receipt-exception.service.js';
 import { GoodsReceiptController } from './presentation/goods-receipt.controller.js';
 import { ReceiptExceptionController } from './presentation/receipt-exception.controller.js';
@@ -15,7 +17,15 @@ import { ReceiptExceptionController } from './presentation/receipt-exception.con
 @Module({
   imports: [TenancyModule, PurchaseOrdersModule, CommitmentLedgerModule, AuditLogsModule, WorkflowsModule],
   controllers: [GoodsReceiptController, ReceiptExceptionController],
-  providers: [GoodsReceiptRepository, GrnAttachmentRepository, ReceiptExceptionRepository, GoodsReceiptService, ReceiptExceptionService],
+  providers: [
+    GoodsReceiptRepository,
+    GrnAttachmentRepository,
+    ReceiptExceptionRepository,
+    GoodsReceiptListRepository,
+    GoodsReceiptService,
+    ReceiptExceptionService,
+    GoodsReceiptListService,
+  ],
   exports: [GoodsReceiptService, GoodsReceiptRepository],
 })
 export class GoodsReceiptsModule {}

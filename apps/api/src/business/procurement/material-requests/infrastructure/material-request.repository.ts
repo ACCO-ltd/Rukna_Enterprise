@@ -62,26 +62,70 @@ export class MaterialRequestRepository {
   findAll(
     prisma: TenantPrisma,
     organizationId: string,
-    filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope },
+    filters?: {
+      status?: MaterialRequestStatus;
+      projectId?: string;
+      scope?: MaterialRequestScope;
+      /** Free-text: MR number or title, or a project in `searchProjectIds`. */
+      search?: string;
+      searchProjectIds?: string[];
+    },
     accessibleProjectIds?: string[],
   ) {
+    const search = filters?.search?.trim();
     return prisma.materialRequest.findMany({
       where: {
         organizationId,
         ...(filters?.status ? { status: filters.status } : {}),
         ...(filters?.projectId ? { projectId: filters.projectId } : {}),
         ...(filters?.scope ? { requestScope: filters.scope } : {}),
-        ...(accessibleProjectIds
-          ? {
-              OR: [
-                { requestScope: 'ORGANIZATION' },
-                { projectId: { in: accessibleProjectIds } },
-              ],
-            }
-          : {}),
+        AND: [
+          accessibleProjectIds
+            ? {
+                OR: [
+                  { requestScope: 'ORGANIZATION' },
+                  { projectId: { in: accessibleProjectIds } },
+                ],
+              }
+            : {},
+          search
+            ? {
+                OR: [
+                  { mrNumber: { contains: search, mode: 'insensitive' } },
+                  { title: { contains: search, mode: 'insensitive' } },
+                  ...(filters?.searchProjectIds?.length
+                    ? [{ projectId: { in: filters.searchProjectIds } }]
+                    : []),
+                ],
+              }
+            : {},
+        ],
       },
       include: MR_INCLUDE,
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Projects in the org whose code or name contains `search` (MR list free-text search). */
+  async findProjectIdsMatching(prisma: TenantPrisma, organizationId: string, search: string) {
+    const rows = await prisma.project.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { code: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  findProjectLabels(prisma: TenantPrisma, organizationId: string, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return prisma.project.findMany({
+      where: { organizationId, id: { in: ids } },
+      select: { id: true, code: true, name: true },
     });
   }
 

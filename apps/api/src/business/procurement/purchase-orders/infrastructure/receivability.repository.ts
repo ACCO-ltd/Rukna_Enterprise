@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 /**
  * Reads behind "what can I receive?" — OPEN purchase orders with their ACTIVE revision's lines,
- * the quantity already accepted on POSTED receipts, and the PO-creator receipt exceptions
+ * and the PO-creator receipt exceptions
  * (ADR-022 CONST-DOA-004). No money is read here.
  */
 @Injectable()
@@ -42,21 +41,6 @@ export class ReceivabilityRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
-  }
-
-  /** Accepted quantity per PO line across POSTED receipts — the receiving read model's rule. */
-  async acceptedByLine(prisma: TenantPrisma, purchaseOrderLineIds: string[]): Promise<Map<string, Decimal>> {
-    const byLine = new Map<string, Decimal>();
-    if (purchaseOrderLineIds.length === 0) return byLine;
-    const lines = await prisma.goodsReceiptLine.findMany({
-      where: { purchaseOrderLineId: { in: purchaseOrderLineIds }, grn: { status: 'POSTED' } },
-      select: { purchaseOrderLineId: true, acceptedQuantity: true },
-    });
-    for (const line of lines) {
-      const prev = byLine.get(line.purchaseOrderLineId) ?? new Decimal(0);
-      byLine.set(line.purchaseOrderLineId, prev.add(line.acceptedQuantity as Decimal));
-    }
-    return byLine;
   }
 
   /** Each PO's most recent receipt exception naming `receiverUserId` (newest first). */

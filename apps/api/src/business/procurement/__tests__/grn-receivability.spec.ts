@@ -9,6 +9,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '../../../common/decorators/require-per
 import { PurchaseOrderController } from '../purchase-orders/presentation/purchase-order.controller.js';
 import { ReceivabilityService } from '../purchase-orders/application/receivability.service.js';
 import { ReceivabilityRepository } from '../purchase-orders/infrastructure/receivability.repository.js';
+import { PurchaseOrderListRepository } from '../purchase-orders/infrastructure/purchase-order-list.repository.js';
 import { GoodsReceiptService } from '../goods-receipts/application/goods-receipt.service.js';
 import { GoodsReceiptRepository } from '../goods-receipts/infrastructure/goods-receipt.repository.js';
 import { GrnAttachmentRepository } from '../goods-receipts/infrastructure/grn-attachment.repository.js';
@@ -110,7 +111,7 @@ beforeAll(async () => {
     sod,
     new ReceiptExceptionService(tenancy, new ReceiptExceptionRepository(), poRepo),
   );
-  receivability = new ReceivabilityService(tenancy, new ReceivabilityRepository(), sod, new ProjectAccessService(tenancy));
+  receivability = new ReceivabilityService(tenancy, new ReceivabilityRepository(), new PurchaseOrderListRepository(), sod, new ProjectAccessService(tenancy));
 });
 
 afterAll(async () => {

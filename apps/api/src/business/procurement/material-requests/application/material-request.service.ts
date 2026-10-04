@@ -8,6 +8,8 @@ import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { MaterialRequestStatus, MaterialRequestScope, ProcurementLineType } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
+import { canSeeProcurementMoney, moneyOrNull } from '../../shared/procurement-money.js';
 import { MaterialRequestRepository } from '../infrastructure/material-request.repository.js';
 import { MaterialRepository } from '../../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
@@ -70,15 +72,67 @@ export class MaterialRequestService {
     private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
-  async findAll(identity: RequestIdentity, filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope }) {
+  /**
+   * `GET /procurement/material-requests`. Backward compatible: each row is the MR with its lines
+   * as before, plus `project`, `requester`, `estimatedTotal` and `moneyVisible`.
+   * `requestedFor` = a project id, or 'overhead' for organization-scoped requests; it combines with
+   * the older `projectId` / `scope` params (which keep working).
+   */
+  async findAll(
+    identity: RequestIdentity,
+    filters?: {
+      status?: MaterialRequestStatus;
+      projectId?: string;
+      scope?: MaterialRequestScope;
+      requestedFor?: string;
+      search?: string;
+    },
+  ) {
     const prisma = this.tenancy.getClient();
-    if (filters?.projectId) await this.projectAccess.assertMember(identity, filters.projectId);
-    return this.repo.findAll(
+    const orgId = identity.activeOrganizationId;
+    const { requestedFor, search, ...rest } = filters ?? {};
+    const effective: {
+      status?: MaterialRequestStatus;
+      projectId?: string;
+      scope?: MaterialRequestScope;
+      search?: string;
+      searchProjectIds?: string[];
+    } = { ...rest };
+    if (requestedFor === 'overhead') effective.scope = 'ORGANIZATION';
+    else if (requestedFor) effective.projectId = requestedFor;
+    if (effective.projectId) await this.projectAccess.assertMember(identity, effective.projectId);
+    if (search?.trim()) {
+      effective.search = search;
+      effective.searchProjectIds = await this.repo.findProjectIdsMatching(prisma, orgId, search.trim());
+    }
+
+    const rows = await this.repo.findAll(
       prisma,
-      identity.activeOrganizationId,
-      filters,
+      orgId,
+      effective,
       await this.projectAccess.accessibleProjectIds(identity),
     );
+
+    const moneyVisible = canSeeProcurementMoney(identity);
+    const [name, projects] = await Promise.all([
+      loadActorNames(prisma, rows.map((r) => r.requestedBy)),
+      this.repo.findProjectLabels(
+        prisma,
+        orgId,
+        [...new Set(rows.map((r) => r.projectId).filter((v): v is string => Boolean(v)))],
+      ),
+    ]);
+    const projectById = new Map<string, { id: string; code: string; name: string }>(
+      projects.map((p) => [p.id, p] as const),
+    );
+
+    return rows.map((mr) => ({
+      ...mr,
+      project: mr.projectId ? (projectById.get(mr.projectId) ?? null) : null,
+      requester: { id: mr.requestedBy, name: name(mr.requestedBy) },
+      estimatedTotal: moneyOrNull(moneyVisible, estimatedTotal(mr.lines)),
+      moneyVisible,
+    }));
   }
 
   async findById(identity: RequestIdentity, id: string) {

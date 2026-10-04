@@ -33,6 +33,8 @@ export class MaterialRequestController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'projectId', required: false })
   @ApiQuery({ name: 'scope', required: false, enum: ['PROJECT', 'ORGANIZATION'] })
+  @ApiQuery({ name: 'requestedFor', required: false, description: "A project id, or 'overhead'" })
+  @ApiQuery({ name: 'search', required: false, description: 'MR number, title, or project code/name' })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('status', new ParseEnumPipe(MaterialRequestStatus, { optional: true }))
@@ -40,11 +42,15 @@ export class MaterialRequestController {
     @Query('projectId') projectId?: string,
     @Query('scope', new ParseEnumPipe(MaterialRequestScope, { optional: true }))
     scope?: MaterialRequestScope,
+    @Query('requestedFor') requestedFor?: string,
+    @Query('search') search?: string,
   ) {
     return this.service.findAll(identity, {
       status,
       projectId,
       scope,
+      requestedFor,
+      search,
     });
   }
 

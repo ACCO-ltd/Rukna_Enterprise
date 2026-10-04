@@ -5,6 +5,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { ReceivabilityRepository } from '../infrastructure/receivability.repository.js';
+import { PurchaseOrderListRepository } from '../infrastructure/purchase-order-list.repository.js';
 
 /** Why the caller cannot receive a PO — the SoD rule code the GRN 403 carries in details.code. */
 export type ReceiveBlockedReason = 'PO_CREATOR_CANNOT_RECEIVE_GOODS';
@@ -48,6 +49,7 @@ export class ReceivabilityService {
   constructor(
     private readonly tenancy: TenancyService,
     private readonly repo: ReceivabilityRepository,
+    private readonly receiving: PurchaseOrderListRepository,
     private readonly sod: SegregationOfDutiesService,
     private readonly projectAccess: ProjectAccessService,
   ) {}
@@ -74,7 +76,7 @@ export class ReceivabilityService {
     const lineIds = visible.flatMap((po) => po.revisions[0].lines.map((l) => l.id));
     const poIds = visible.map((po) => po.id);
     const [accepted, exceptions] = await Promise.all([
-      this.repo.acceptedByLine(prisma, lineIds),
+      this.receiving.acceptedByLine(prisma, lineIds),
       this.repo.findLatestExceptions(prisma, orgId, poIds, identity.userId),
     ]);
     // Newest first: the first row per PO is the one to show; any APPROVED row clears the caller —

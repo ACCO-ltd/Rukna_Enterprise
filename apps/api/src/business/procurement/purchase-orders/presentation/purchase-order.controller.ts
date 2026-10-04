@@ -19,6 +19,7 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
 import { SettlementQueryService } from '../application/settlement-query.service.js';
 import { ReceivabilityService } from '../application/receivability.service.js';
+import { PurchaseOrderListService } from '../application/purchase-order-list.service.js';
 import {
   CreatePurchaseOrderDto,
   RevisePurchaseOrderDto,
@@ -35,6 +36,7 @@ export class PurchaseOrderController {
     private readonly service: PurchaseOrderService,
     private readonly settlementQuery: SettlementQueryService,
     private readonly receivability: ReceivabilityService,
+    private readonly listService: PurchaseOrderListService,
   ) {}
 
   @Get()
@@ -42,14 +44,16 @@ export class PurchaseOrderController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'supplierId', required: false })
   @ApiQuery({ name: 'projectId', required: false })
+  @ApiQuery({ name: 'search', required: false, description: 'PO number or supplier name' })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('status', new ParseEnumPipe(PurchaseOrderStatus, { optional: true }))
     status?: PurchaseOrderStatus,
     @Query('supplierId') supplierId?: string,
     @Query('projectId') projectId?: string,
+    @Query('search') search?: string,
   ) {
-    return this.service.findAll(identity, { status, supplierId, projectId });
+    return this.listService.list(identity, { status, supplierId, projectId, search });
   }
 
   @Post()
