@@ -2,124 +2,92 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  FormField,
-  Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { FormField, Input, type FilterValues } from '@erp/ui';
 
-import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
-import { usePermissions } from '@/features/auth/permissions/can';
-import { PROCUREMENT_PERMISSIONS } from '@/features/auth/permissions/can';
+import { type GridColumn } from '@/components/platform-data-grid';
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
-import { useCreateUom, useDeactivateUom, useUoms } from '../hooks/use-procurement';
+import { useCreateUom, useDeactivateUom, useReactivateUom, useUoms } from '../hooks/use-procurement';
 import type { UnitOfMeasure } from '../types';
+import { CatalogueListScreen, statusFrom, useStatusFilterField } from './catalogue-list';
 import { ProcurementStatusBadge } from './procurement-badges';
-import { CreateForm, SetupScreen } from './setup-shell';
+import { CreateForm } from './setup-shell';
 
 /**
- * Units of measure (§12.4).
- *
- * §12.4 asks for a status filter. There is none, and cannot be: `uom.service.ts` passes a
- * hard-coded `'ACTIVE'` and the controller takes no `status` parameter (P2). So the list
- * is active-only and says so, and the deactivate dialog warns that the row will vanish
- * rather than change state in front of the user — which is what actually happens.
+ * Units of measure (§12.4) — the shared setup list: Status filter (Active by default),
+ * New unit, and Deactivate… / Reactivate per row.
  */
 export function UomList() {
   const t = useTranslations('procurement.uom');
+  const tSetup = useTranslations('procurement.setup');
   const tc = useTranslations('procurement.common');
   const { can } = usePermissions();
-
-  const uoms = useUoms();
-  const [pendingDeactivate, setPendingDeactivate] = useState<UnitOfMeasure | null>(null);
-  const deactivate = useDeactivateUom();
-
   const canManage = can(PROCUREMENT_PERMISSIONS.manageConfig);
 
-  return (
-    <>
-      <SetupScreen
-        notice={t('activeOnlyNotice')}
-        createLabel={t('new')}
-        createTitle={t('createTitle')}
-        canCreate={canManage}
-        createForm={(close) => <UomCreateForm onDone={close} />}
-        isPending={uoms.isPending}
-        isError={uoms.isError}
-      >
-        <TableScroll aria-label={t('title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{tc('code')}</TableHead>
-                <TableHead>{tc('name')}</TableHead>
-                <TableHead>{t('symbol')}</TableHead>
-                <TableHead>{tc('status')}</TableHead>
-                <TableHead>
-                  <span className="sr-only">{tc('actions')}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(uoms.data ?? []).length === 0 ? (
-                <TableEmpty colSpan={5}>{t('empty')}</TableEmpty>
-              ) : (
-                (uoms.data ?? []).map((uom) => (
-                  <TableRow key={uom.id}>
-                    <TableCell className="font-mono text-xs">{uom.code}</TableCell>
-                    <TableCell>
-                      <span className="text-sm text-foreground">{uom.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      <bdi className="text-sm">{uom.symbol}</bdi>
-                    </TableCell>
-                    <TableCell>
-                      <ProcurementStatusBadge vocabulary="masterData" status={uom.status} />
-                    </TableCell>
-                    <TableCell>
-                      {canManage && uom.status === 'ACTIVE' ? (
-                        <button
-                          type="button"
-                          onClick={() => setPendingDeactivate(uom)}
-                          className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline"
-                        >
-                          {t('deactivate')}
-                        </button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableScroll>
-      </SetupScreen>
+  const [filters, setFilters] = useState<FilterValues>({});
+  const uoms = useUoms(statusFrom(filters));
+  const deactivate = useDeactivateUom();
+  const reactivate = useReactivateUom();
+  const statusField = useStatusFilterField();
 
-      {pendingDeactivate ? (
-        <ConfirmActionDialog
-          title={t('deactivateTitle', { code: pendingDeactivate.code })}
-          description={`${t('deactivateBody')} ${t('deactivateWarning', {
-            code: pendingDeactivate.code,
-          })}`}
-          confirmLabel={t('deactivate')}
-          isPending={deactivate.isPending}
-          errorMessage={deactivate.isError ? tc('loadFailed') : undefined}
-          onConfirm={() =>
-            deactivate.mutate(pendingDeactivate.id, {
-              onSuccess: () => setPendingDeactivate(null),
-            })
-          }
-          onDismiss={() => setPendingDeactivate(null)}
-        />
-      ) : null}
-    </>
+  const columns: GridColumn<UnitOfMeasure>[] = [
+    {
+      key: 'code',
+      header: tc('code'),
+      sticky: true,
+      sortable: true,
+      plainValue: (uom) => uom.code,
+      render: (uom) => <span className="font-mono text-caption">{uom.code}</span>,
+    },
+    { key: 'name', header: tc('name'), sortable: true, plainValue: (uom) => uom.name, render: (uom) => uom.name },
+    {
+      key: 'symbol',
+      header: t('symbol'),
+      plainValue: (uom) => uom.symbol,
+      render: (uom) => <bdi>{uom.symbol}</bdi>,
+    },
+    {
+      key: 'status',
+      header: tc('status'),
+      render: (uom) => <ProcurementStatusBadge vocabulary="masterData" status={uom.status} />,
+    },
+  ];
+
+  return (
+    <CatalogueListScreen<UnitOfMeasure>
+      label={t('title')}
+      rows={uoms.data ?? []}
+      isPending={uoms.isPending}
+      isError={uoms.isError}
+      onRetry={() => void uoms.refetch()}
+      columns={columns}
+      filterFields={[statusField]}
+      filterValues={filters}
+      onFilterValuesChange={setFilters}
+      canManage={canManage}
+      createLabel={t('new')}
+      createTitle={t('createTitle')}
+      createForm={(close) => <UomCreateForm onDone={close} />}
+      emptyTitle={t('emptyTitle')}
+      emptyHint={t('emptyHint')}
+      searchPlaceholder={t('searchPlaceholder')}
+      countLabel={(count) => t('countLabel', { count })}
+      retire={{
+        label: tSetup('deactivateMenu'),
+        title: (uom) => t('deactivateTitle', { code: uom.code }),
+        body: t('deactivateBody'),
+        confirmLabel: tSetup('deactivate'),
+        destructive: true,
+        command: deactivate,
+      }}
+      reactivate={{
+        label: tSetup('reactivate'),
+        title: (uom) => tSetup('reactivateTitle', { code: uom.code }),
+        body: tSetup('reactivateBody'),
+        confirmLabel: tSetup('reactivate'),
+        command: reactivate,
+      }}
+    />
   );
 }
 

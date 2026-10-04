@@ -34,6 +34,10 @@ export type ApiDate = string;
 // ─── Shared enums ────────────────────────────────────────────────────────────────
 
 export type MasterDataStatus = 'ACTIVE' | 'INACTIVE';
+
+/** The catalogue and supplier lists' status filter. Catalogue lists default to ACTIVE (the
+ * picker view); INACTIVE on materials covers DISCONTINUED too. */
+export type CatalogueStatusFilter = 'ACTIVE' | 'INACTIVE' | 'ALL';
 export type MaterialStatus = 'ACTIVE' | 'INACTIVE' | 'DISCONTINUED';
 export type ProcurementLineType = 'MATERIAL' | 'SERVICE' | 'OTHER';
 
@@ -254,6 +258,24 @@ export interface Supplier {
   /** Free-text postal address. Editable via PATCH; not captured on the create form. */
   address: string | null;
   status: MasterDataStatus;
+}
+
+/**
+ * `GET /procurement/suppliers` (view:procurement) — the supplier directory row. Money (what we
+ * owe) is null unless `moneyVisible` (view:commitment-ledger, decided server-side).
+ */
+export interface SupplierDirectoryRow {
+  id: string;
+  code: string;
+  name: string;
+  status: MasterDataStatus;
+  primaryContact: { name: string; phone: string | null } | null;
+  paymentTermsDays: number | null;
+  defaultCurrency: string | null;
+  openOrderCount: number;
+  payableBalance: Money | null;
+  payableBalances: { currencyCode: string; amount: Money }[] | null;
+  moneyVisible: boolean;
 }
 
 /**
@@ -1192,6 +1214,9 @@ export interface BuyerAdvanceEvidenceAllocation {
 
 export interface BuyerAdvance {
   id: string;
+  /** On the list read (org-wide or per PO). */
+  purchaseOrder?: { id: string; poNumber: string };
+  supplier?: { id: string; name: string };
   organizationId: string;
   purchaseOrderId: string;
   recipientUserId: string;

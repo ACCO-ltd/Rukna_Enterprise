@@ -15,6 +15,8 @@ import { apiClient } from '@/lib/api-client';
 import type { PurchaseOrderBillPaymentsResponse, SupplierBillEligibility } from '@erp/types';
 
 import type {
+  CatalogueStatusFilter,
+  SupplierDirectoryRow,
   CreateReceiptExceptionPayload,
   ReceiptExceptionRef,
   ReceivablePurchaseOrder,
@@ -88,8 +90,12 @@ function queryParams(input: Record<string, string | undefined>): Record<string, 
  * deactivated unit — §12.4's status filter cannot be built, and deactivation is a one-way
  * trapdoor from the UI's point of view.
  */
-export function listUoms(): Promise<UnitOfMeasure[]> {
-  return apiClient<UnitOfMeasure[]>('/procurement/uom');
+export function listUoms(status?: CatalogueStatusFilter): Promise<UnitOfMeasure[]> {
+  return apiClient<UnitOfMeasure[]>('/procurement/uom', { params: queryParams({ status }) });
+}
+
+export function reactivateUom(id: string): Promise<UnitOfMeasure> {
+  return apiClient<UnitOfMeasure>(`/procurement/uom/${id}/reactivate`, { method: 'POST' });
 }
 
 export function getUom(id: string): Promise<UnitOfMeasure> {
@@ -117,8 +123,12 @@ export function deactivateUom(id: string): Promise<UnitOfMeasure> {
 // ─── Material categories ─────────────────────────────────────────────────────────
 
 /** `GET /procurement/material-categories` — roots with one level of `children` nested. */
-export function listMaterialCategories(): Promise<MaterialCategory[]> {
-  return apiClient<MaterialCategory[]>('/procurement/material-categories');
+export function listMaterialCategories(status?: CatalogueStatusFilter): Promise<MaterialCategory[]> {
+  return apiClient<MaterialCategory[]>('/procurement/material-categories', { params: queryParams({ status }) });
+}
+
+export function reactivateMaterialCategory(id: string): Promise<MaterialCategory> {
+  return apiClient<MaterialCategory>(`/procurement/material-categories/${id}/reactivate`, { method: 'POST' });
 }
 
 export function createMaterialCategory(
@@ -145,8 +155,12 @@ export function deactivateMaterialCategory(id: string): Promise<MaterialCategory
  * categories drive approval routing, tolerance policy and commitment attribution. Never
  * label these "cost category" or "material category" in the UI (§12.4).
  */
-export function listSpendCategories(): Promise<SpendCategory[]> {
-  return apiClient<SpendCategory[]>('/procurement/spend-categories');
+export function listSpendCategories(status?: CatalogueStatusFilter): Promise<SpendCategory[]> {
+  return apiClient<SpendCategory[]>('/procurement/spend-categories', { params: queryParams({ status }) });
+}
+
+export function reactivateSpendCategory(id: string): Promise<SpendCategory> {
+  return apiClient<SpendCategory>(`/procurement/spend-categories/${id}/reactivate`, { method: 'POST' });
 }
 
 export function createSpendCategory(payload: CreateCategoryPayload): Promise<SpendCategory> {
@@ -200,6 +214,42 @@ export function createMaterial(payload: CreateMaterialPayload): Promise<Material
 
 export function discontinueMaterial(id: string): Promise<Material> {
   return apiClient<Material>(`/procurement/materials/${id}/discontinue`, { method: 'POST' });
+}
+
+export function reactivateMaterial(id: string): Promise<Material> {
+  return apiClient<Material>(`/procurement/materials/${id}/reactivate`, { method: 'POST' });
+}
+
+/** `GET /procurement/suppliers` — the supplier directory (status default ALL, search). */
+export function listSupplierDirectory(filters?: {
+  status?: CatalogueStatusFilter;
+  search?: string;
+}): Promise<SupplierDirectoryRow[]> {
+  return apiClient<SupplierDirectoryRow[]>('/procurement/suppliers', {
+    params: queryParams({ status: filters?.status, search: filters?.search }),
+  });
+}
+
+/** `GET /suppliers/:id` (manage:payable) — the full master record, for the edit form. */
+export function getSupplier(id: string): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}`);
+}
+
+/** `POST /suppliers/:id/deactivate` (manage:payable) — 409 unless ACTIVE. */
+export function deactivateSupplier(id: string): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}/deactivate`, { method: 'POST' });
+}
+
+/** `POST /suppliers/:id/reactivate` (manage:payable) — 409 unless INACTIVE. */
+export function reactivateSupplier(id: string): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}/reactivate`, { method: 'POST' });
+}
+
+/** `GET /buyer-advances` without a PO — the organisation's advances, newest first, capped. */
+export function listAllBuyerAdvances(limit?: number): Promise<BuyerAdvance[]> {
+  return apiClient<BuyerAdvance[]>('/buyer-advances', {
+    params: queryParams({ limit: limit === undefined ? undefined : String(limit) }),
+  });
 }
 
 // ─── Material requests ───────────────────────────────────────────────────────────

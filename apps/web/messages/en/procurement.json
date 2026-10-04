@@ -126,43 +126,46 @@
     "axis": "Match"
   },
   "uom": {
-    "title": "Units of Measure",
+    "title": "Units of measure",
     "subtitle": "Units used across the material catalogue and every procurement line.",
-    "new": "New Unit of Measure",
+    "new": "New unit",
     "symbol": "Symbol",
     "createTitle": "New unit of measure",
     "codeHint": "Up to 20 characters. Uppercase is conventional.",
     "symbolHint": "Up to 10 characters — for example m³ or t.",
     "deactivate": "Deactivate",
     "deactivateTitle": "Deactivate {code}?",
-    "deactivateBody": "New materials can no longer be created against this unit. Materials already using it keep it.",
-    "deactivateWarning": "This list shows active units only, so {code} will disappear from it and cannot be shown again or reactivated. The server also does not check whether materials are still using it.",
-    "activeOnlyNotice": "This list shows active units only. The API has no status filter, so deactivated units cannot be displayed.",
-    "empty": "No units of measure yet. Create one before adding materials."
+    "deactivateBody": "New materials can no longer use this unit. Materials already using it keep it.",
+    "emptyTitle": "No units of measure yet",
+    "emptyHint": "Create a unit before adding materials.",
+    "searchPlaceholder": "Search by code, name or symbol",
+    "countLabel": "{count, plural, one {# unit} other {# units}}"
   },
   "materialCategory": {
-    "title": "Material Categories",
+    "title": "Material categories",
     "subtitle": "The operational hierarchy for the catalogue — for example Steel, then Rebar.",
-    "new": "New Material Category",
+    "new": "New category",
     "createTitle": "New material category",
     "parent": "Parent Category",
     "parentHint": "Leave empty to create a top-level category.",
     "noParent": "None — top level",
     "deactivateTitle": "Deactivate {code}?",
-    "deactivateBody": "Deactivating a parent hides its child categories from this tree as well.",
-    "empty": "No material categories yet."
+    "deactivateBody": "It can no longer be picked for new materials. Deactivating a parent hides its children from the active list too.",
+    "emptyTitle": "No material categories yet",
+    "emptyHint": "Group the catalogue, for example Steel, then Rebar."
   },
   "spendCategory": {
-    "title": "Spend Categories",
+    "title": "Spend categories",
     "subtitle": "The financial hierarchy that drives approval routing, tolerance policy and commitment attribution. This is not the same thing as a material category.",
-    "new": "New Spend Category",
+    "new": "New category",
     "createTitle": "New spend category",
     "parent": "Parent Spend Category",
     "parentHint": "Leave empty to create a top-level spend category.",
     "noParent": "None — top level",
     "deactivateTitle": "Deactivate {code}?",
-    "deactivateBody": "Deactivating a parent hides its child categories from this tree as well.",
-    "empty": "No spend categories yet."
+    "deactivateBody": "It can no longer be picked on new lines. Deactivating a parent hides its children from the active list too.",
+    "emptyTitle": "No spend categories yet",
+    "emptyHint": "The financial grouping that drives approval routing and cost attribution — not the same as a material category."
   },
   "supplier": {
     "title": "Suppliers",
@@ -179,7 +182,6 @@
     "paymentTermsDays": "{days} days",
     "codeHint": "Up to 50 characters and unique within the organisation. Uppercase is conventional.",
     "empty": "No suppliers yet. Create one before raising a purchase order.",
-    "writeOnceNotice": "A supplier's code is permanent once created. Its name, tax number, currency, payment terms and address can be corrected from the Edit action; its active status cannot be changed here.",
     "noEditWarning": "The code is permanent — it identifies this supplier on every order, bill and payment. The other details can be corrected later from the Edit action.",
     "edit": "Edit",
     "editAction": "Edit {code}",
@@ -222,12 +224,36 @@
         "code": "Enter a short code.",
         "terms": "Choose the payment terms."
       }
+    },
+    "list": {
+      "new": "New supplier",
+      "searchPlaceholder": "Search by name or code",
+      "countLabel": "{count, plural, one {# supplier} other {# suppliers}}",
+      "empty": "No suppliers yet",
+      "emptyHint": "Add the suppliers you buy from before raising a purchase order.",
+      "noMatches": "No suppliers match these filters",
+      "moneyHidden": "What we owe is hidden for your role.",
+      "netDays": "Net {days} days",
+      "noOpenOrders": "None",
+      "openOrders": "{count} open",
+      "columns": {
+        "supplier": "Supplier",
+        "contact": "Contact",
+        "terms": "Terms",
+        "openOrders": "Open orders",
+        "owe": "We owe",
+        "status": "Status"
+      },
+      "deactivateTitle": "Deactivate {name}?",
+      "deactivateBody": "It can no longer be picked on new orders, bills or payments. Existing documents are unaffected.",
+      "reactivateTitle": "Reactivate {name}?",
+      "reactivateBody": "It can be picked on new orders, bills and payments again."
     }
   },
   "material": {
     "title": "Materials",
     "subtitle": "The material catalogue. Every MATERIAL procurement line draws its unit from here.",
-    "new": "New Material",
+    "new": "New material",
     "createTitle": "New material",
     "baseUom": "Base Unit of Measure",
     "baseUomWarning": "Once the material is created, the unit of measure cannot be changed. All purchase orders and goods receipts for this material will use this unit.",
@@ -238,12 +264,13 @@
     "discontinue": "Discontinue",
     "discontinueTitle": "Discontinue {code}?",
     "discontinueBody": "This material can no longer be added to new requests or orders.",
-    "discontinueWarning": "This list shows active materials only, so {code} will disappear from it and cannot be shown again.",
-    "activeOnlyNotice": "This list shows active materials only. The API has no status filter, so discontinued materials cannot be displayed.",
-    "empty": "No materials yet. Create a unit of measure and a material category first.",
     "pickerPlaceholder": "Search by code or name",
     "pickerNoMatch": "No material matches that.",
-    "pickerHint": "The full catalogue is loaded and filtered here — the API has no search parameter."
+    "pickerHint": "The full catalogue is loaded and filtered here — the API has no search parameter.",
+    "emptyTitle": "No materials yet",
+    "emptyHint": "Create a unit of measure and a material category first.",
+    "countLabel": "{count, plural, one {# material} other {# materials}}",
+    "discontinueMenu": "Discontinue…"
   },
   "uomDisplay": {
     "label": "Unit",
@@ -1662,17 +1689,16 @@
     }
   },
   "advances": {
-    "title": "Buyer Advances",
+    "title": "Buyer advances",
     "subtitle": "Cash advances disbursed to buyers against a purchase order.",
     "empty": "No buyer advances recorded",
-    "emptyDesc": "Buyer advances are recorded from within a purchase order's settlement tab.",
+    "emptyDesc": "Buyer advances are recorded from a purchase order's settlement tab.",
     "noMatches": "No advances match the current filter",
     "countLabel": "{count, plural, one {# advance} other {# advances}}",
     "filterByPostingStatus": "Posting status",
-    "allPostingStatuses": "All statuses",
     "colAmount": "Amount",
     "colAdvancedAt": "Date",
-    "colPo": "Purchase Order",
+    "colPo": "Purchase order",
     "colOutstanding": "Outstanding",
     "colPosting": "Posting",
     "detailTitle": "Buyer Advance",
@@ -1689,7 +1715,10 @@
     "colReturnMethod": "Method",
     "colReceivedAt": "Received",
     "colBill": "Bill",
-    "colAllocated": "Allocated"
+    "colAllocated": "Allocated",
+    "colAdvance": "Advanced on",
+    "colSupplier": "Supplier",
+    "searchPlaceholder": "Search by PO no., supplier or reference"
   },
   "feedback": {
     "supplierCreated": "Supplier {name} created",
@@ -1741,6 +1770,26 @@
     "budgetDiscarded": "Cost budget discarded",
     "budgetBaselined": "Cost budget baselined",
     "receiptExceptionRequested": "Receipt exception requested",
-    "mrRejected": "Material request {ref} sent back to the requester"
+    "mrRejected": "Material request {ref} sent back to the requester",
+    "reactivated": "Reactivated",
+    "supplierDeactivated": "{name} deactivated",
+    "supplierReactivated": "{name} reactivated"
+  },
+  "setup": {
+    "status": "Status",
+    "statusOption": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive",
+      "ALL": "All"
+    },
+    "rowMenu": "Actions for {code}",
+    "deactivateMenu": "Deactivate…",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "reactivateTitle": "Reactivate {code}?",
+    "reactivateBody": "It can be picked on new requests and orders again.",
+    "searchPlaceholder": "Search by code or name",
+    "noMatches": "Nothing matches these filters",
+    "categoryCount": "{count, plural, one {# category} other {# categories}}"
   }
 }

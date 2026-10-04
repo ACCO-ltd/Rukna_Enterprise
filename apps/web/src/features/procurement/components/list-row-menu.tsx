@@ -37,8 +37,9 @@ export function ListRowMenu({
 }: {
   /** Accessible name — "Actions for MR-2026-0012". */
   label: string;
-  openHref: string;
-  openLabel: string;
+  /** Omit for a row with no page of its own (catalogue entries). */
+  openHref?: string;
+  openLabel?: string;
   commands?: ListRowCommand[];
 }) {
   return (
@@ -51,9 +52,11 @@ export function ListRowMenu({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link href={openHref}>{openLabel}</Link>
-            </DropdownMenuItem>
+            {openHref ? (
+              <DropdownMenuItem asChild>
+                <Link href={openHref}>{openLabel}</Link>
+              </DropdownMenuItem>
+            ) : null}
             {commands.map((command) => (
               <DropdownMenuItem key={command.key} onSelect={command.onSelect}>
                 {command.label}

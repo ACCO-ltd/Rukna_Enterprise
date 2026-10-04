@@ -15,6 +15,10 @@ import { renderWithProviders } from '@/test/render';
 const mocks = vi.hoisted(() => ({
   useCreateSupplier: vi.fn(),
   useSuppliers: vi.fn(),
+  useSupplier: vi.fn(() => ({ data: undefined })),
+  useSupplierDirectory: vi.fn(() => ({ data: [], isPending: false, isError: false, refetch: vi.fn() })),
+  useDeactivateSupplier: vi.fn(() => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null })),
+  useReactivateSupplier: vi.fn(() => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null })),
   useUpdateSupplier: vi.fn(),
 }));
 const routerMocks = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }));
@@ -132,13 +136,13 @@ describe('SupplierList — New supplier', () => {
   it('links to the create page for a user who can manage suppliers', () => {
     renderWithProviders(<SupplierList />, { permissions: MANAGE });
 
-    expect(screen.getByRole('link', { name: 'New Supplier' })).toHaveAttribute('href', '/procurement/suppliers/new');
+    expect(screen.getAllByRole('link', { name: 'New supplier' })[0]).toHaveAttribute('href', '/procurement/suppliers/new');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('is withheld without the permission', () => {
     renderWithProviders(<SupplierList />);
 
-    expect(screen.queryByRole('link', { name: 'New Supplier' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'New supplier' })).not.toBeInTheDocument();
   });
 });

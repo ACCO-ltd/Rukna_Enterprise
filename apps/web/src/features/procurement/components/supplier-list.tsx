@@ -1,172 +1,265 @@
 'use client';
 
 /**
- * The supplier master (Tier A).
+ * The supplier directory (GET /procurement/suppliers) on the shared list pattern.
  *
- * Not one of §12.4's four setup screens — suppliers had no endpoint when that section was
- * written — but the same shape, so it reuses `SetupScreen` and `CreateForm` rather than
- * inventing a fifth layout.
+ * Search and Status run on the server (status default All). Columns: supplier (name + code),
+ * contact, terms, open orders, what we owe, status. "We owe" follows the server's
+ * `moneyVisible` (view:commitment-ledger) — hidden money is an absent column, never $0.
  *
- * Two things make it different from its four neighbours, and both come from the API:
- *
- *  - **Correction, not deactivation** (A15 / D8, merged in PR 152). `PATCH /suppliers/:id` edits
- *    the master fields — name, tax number, currency, terms, address — so the actions column
- *    carries an Edit control. It carries no deactivate: `status` is owned by a separate flow
- *    and this endpoint cannot move it. The supplier `code` is the stable identity and is not
- *    editable, so it is shown read-only in the form.
- *  - **The list is not filtered to ACTIVE.** `status` is a real query parameter here rather
- *    than a hard-coded `'ACTIVE'` (P2), so an inactive supplier would be visible if one
- *    could exist. None can, which is why the column is rendered but no filter is offered.
+ * Row commands are the permissions the endpoints enforce: Edit (PATCH /suppliers/:id) and
+ * Deactivate… / Reactivate (POST /suppliers/:id/deactivate|reactivate) all need manage:payable.
+ * The supplier code is the permanent identity; that is said once, as the Code field's hint on
+ * the create and edit forms, not as a banner here.
  */
 
 import { useId, useMemo, useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  FormField,
-  Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, Button, EmptyState, FormField, Input, type FilterValues, type ListFilterField } from '@erp/ui';
+import { Plus } from 'lucide-react';
 
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import {
   ACCOUNTING_PERMISSIONS,
   PROCUREMENT_PERMISSIONS,
   usePermissions,
 } from '@/features/auth/permissions/can';
+import { formatMoney } from '@/lib/format';
+import { formatPhone } from '@/lib/phone';
 
-import { useSuppliers, useUpdateSupplier } from '../hooks/use-procurement';
-import type { Supplier, UpdateSupplierPayload } from '../types';
+import {
+  useDeactivateSupplier,
+  useReactivateSupplier,
+  useSupplier,
+  useSupplierDirectory,
+  useUpdateSupplier,
+} from '../hooks/use-procurement';
+import type { CatalogueStatusFilter, Supplier, SupplierDirectoryRow, UpdateSupplierPayload } from '../types';
+import { ListRowMenu, errorText } from './list-row-menu';
 import { ProcurementStatusBadge } from './procurement-badges';
-import { CreateForm, SetupScreen } from './setup-shell';
-
-/** Case-insensitive match across the three fields a user would search by. */
-export function filterSuppliers(suppliers: Supplier[], query: string): Supplier[] {
-  const q = query.trim().toLocaleLowerCase();
-  if (!q) return suppliers;
-  return suppliers.filter((s) =>
-    [s.code, s.name]
-      .some((field) => field.toLocaleLowerCase().includes(q)),
-  );
-}
+import { CreateForm } from './setup-shell';
+import { useListControls } from './use-list-controls';
 
 export function SupplierList() {
   const t = useTranslations('procurement.supplier');
+  const tList = useTranslations('procurement.supplier.list');
+  const tSetup = useTranslations('procurement.setup');
   const tc = useTranslations('procurement.common');
   const { can } = usePermissions();
 
-  const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState<Supplier | null>(null);
-  const suppliers = useSuppliers();
-  const searchId = useId();
+  const canCreate = can(PROCUREMENT_PERMISSIONS.manageSuppliers);
+  // Edit and the status commands gate on the permission their endpoints enforce.
+  const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
 
-  const canManage = can(PROCUREMENT_PERMISSIONS.manageSuppliers);
-  // The edit affordance is gated on the permission the API enforces on `PATCH /suppliers/:id`
-  // (`manage:payable`), not on `manage:supplier` — matching the endpoint's own guard means a
-  // viewer never sees an Edit button the server would reject.
-  const canEdit = can(ACCOUNTING_PERMISSIONS.managePayables);
+  const [filters, setFilters] = useState<FilterValues>({});
+  const controls = useListControls();
+  const directory = useSupplierDirectory({
+    ...(filters.status ? { status: filters.status as CatalogueStatusFilter } : {}),
+    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = useSupplier(editingId ?? '');
+  const [pending, setPending] = useState<{ row: SupplierDirectoryRow; action: 'deactivate' | 'reactivate' } | null>(null);
+  const deactivate = useDeactivateSupplier();
+  const reactivate = useReactivateSupplier();
+  const command = pending?.action === 'reactivate' ? reactivate : deactivate;
 
-  // Filtered in the browser: `GET /suppliers` takes no `search` parameter, the same gap
-  // materials have (P1). A supplier master is small and bounded, so one fetch beats one
-  // request per keystroke.
-  const rows = useMemo(
-    () => filterSuppliers(suppliers.data ?? [], query),
-    [suppliers.data, query],
-  );
+  const rows = useMemo(() => directory.data ?? [], [directory.data]);
+  const moneyVisible =
+    rows.find((row) => row.moneyVisible !== undefined)?.moneyVisible ?? can(PROCUREMENT_PERMISSIONS.viewCommitments);
+
+  const dash = <span className="text-muted-foreground">{tc('notAvailable')}</span>;
+
+  const columns: GridColumn<SupplierDirectoryRow>[] = [
+    {
+      key: 'supplier',
+      header: tList('columns.supplier'),
+      sticky: true,
+      sortable: true,
+      card: 'title',
+      plainValue: (row) => row.name,
+      render: (row) => (
+        <span className="block min-w-0">
+          <span className="block truncate font-medium text-foreground">{row.name}</span>
+          <span className="block font-mono text-caption text-muted-foreground">{row.code}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'contact',
+      header: tList('columns.contact'),
+      card: 'subtitle',
+      render: (row) =>
+        row.primaryContact ? (
+          <span className="block min-w-0">
+            <span className="block truncate">{row.primaryContact.name}</span>
+            {row.primaryContact.phone ? (
+              <span className="block text-caption tabular-nums text-muted-foreground" dir="ltr">
+                {formatPhone(row.primaryContact.phone)}
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          dash
+        ),
+    },
+    {
+      key: 'terms',
+      header: tList('columns.terms'),
+      sortable: true,
+      plainValue: (row) => row.paymentTermsDays,
+      render: (row) =>
+        row.paymentTermsDays === null ? dash : tList('netDays', { days: row.paymentTermsDays }),
+    },
+    {
+      key: 'openOrders',
+      header: tList('columns.openOrders'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (row) => row.openOrderCount,
+      render: (row) =>
+        row.openOrderCount === 0 ? (
+          <span className="text-muted-foreground">{tList('noOpenOrders')}</span>
+        ) : (
+          tList('openOrders', { count: row.openOrderCount })
+        ),
+    },
+  ];
+  if (moneyVisible) {
+    columns.push({
+      key: 'owe',
+      header: tList('columns.owe'),
+      numeric: true,
+      sortable: true,
+      card: 'amount',
+      plainValue: (row) => (row.payableBalance === null ? null : Number(row.payableBalance)),
+      render: (row) => {
+        // Several currencies are listed one per line; a single balance reads as one figure.
+        const balances = row.payableBalances ?? [];
+        if (balances.length > 1) {
+          return (
+            <span className="block tabular-nums">
+              {balances.map((b) => (
+                <span key={b.currencyCode} className="block">
+                  {formatMoney(b.amount, b.currencyCode)}
+                </span>
+              ))}
+            </span>
+          );
+        }
+        if (row.payableBalance === null) return dash;
+        return (
+          <span className="tabular-nums">
+            {formatMoney(row.payableBalance, balances[0]?.currencyCode ?? row.defaultCurrency ?? 'USD')}
+          </span>
+        );
+      },
+    });
+  }
+  columns.push({
+    key: 'status',
+    header: tList('columns.status'),
+    card: 'status',
+    render: (row) => <ProcurementStatusBadge vocabulary="masterData" status={row.status} />,
+  });
+
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'status',
+      type: 'select',
+      label: tSetup('status'),
+      options: (['ACTIVE', 'INACTIVE'] as const).map((value) => ({ value, label: tSetup(`statusOption.${value}`) })),
+    },
+  ];
+
+  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
+  const isFirstUse = !isNarrowed && directory.data !== undefined && rows.length === 0;
+  const view = controls.view(rows, columns);
+
+  const createAction = canCreate ? (
+    <Button asChild>
+      <Link href="/procurement/suppliers/new">
+        <Plus className="size-4" aria-hidden="true" />
+        {tList('new')}
+      </Link>
+    </Button>
+  ) : undefined;
 
   return (
-    <SetupScreen
-      notice={t('writeOnceNotice')}
-      createLabel={t('new')}
-      canCreate={canManage}
-      // A full page (ADR-037): master-data creation is never a dialog.
-      createHref="/procurement/suppliers/new"
-      isPending={suppliers.isPending}
-      isError={suppliers.isError}
-    >
-      <div className="max-w-sm">
-        <label
-          htmlFor={searchId}
-          className="mb-1 block text-xs font-medium text-muted-foreground"
-        >
-          {tc('search')}
-        </label>
-        <Input
-          id={searchId}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('searchPlaceholder')}
-          autoComplete="off"
-        />
-      </div>
-
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{tc('code')}</TableHead>
-              <TableHead>{tc('name')}</TableHead>
-              <TableHead>{t('taxNumber')}</TableHead>
-              <TableHead>{t('paymentTerms')}</TableHead>
-              <TableHead>{tc('status')}</TableHead>
-              <TableHead>
-                <span className="sr-only">{tc('actions')}</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableEmpty colSpan={6}>
-                {query ? tc('noResults') : t('empty')}
-              </TableEmpty>
-            ) : (
-              rows.map((supplier) => (
-                <TableRow key={supplier.id}>
-                  <TableCell className="font-mono text-xs">{supplier.code}</TableCell>
-                  <TableCell>
-                    <span className="text-sm text-foreground">{supplier.name}</span>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {supplier.taxNumber ?? tc('notAvailable')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {supplier.paymentTermsDays === null
-                      ? tc('notAvailable')
-                      : t('paymentTermsDays', { days: supplier.paymentTermsDays })}
-                  </TableCell>
-                  <TableCell>
-                    <ProcurementStatusBadge vocabulary="masterData" status={supplier.status} />
-                  </TableCell>
-                  <TableCell className="text-end">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditing(supplier)}
-                        aria-label={t('editAction', { code: supplier.code })}
-                        className="min-h-11 text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-                      >
-                        {t('edit')}
-                      </button>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
-
-      {editing ? (
-        <SupplierEditForm supplier={editing} onDone={() => setEditing(null)} />
+    <div className="space-y-3">
+      <PlatformDataGrid
+        columns={columns}
+        data={view.data}
+        rowKey={(row) => row.id}
+        label={t('title')}
+        isLoading={directory.isPending}
+        isError={directory.isError}
+        errorMessage={tc('loadFailed')}
+        onRetry={() => void directory.refetch()}
+        searchPlaceholder={tList('searchPlaceholder')}
+        resultLabel={(count) => tList('countLabel', { count })}
+        noMatchMessage={tList('noMatches')}
+        server={view.server}
+        filters={filterFields}
+        filterValues={filters}
+        onFilterValuesChange={(next) => {
+          setFilters(next);
+          controls.resetPage();
+        }}
+        rowActions={
+          canManage
+            ? (row) => (
+                <ListRowMenu
+                  label={tc('rowMenu', { number: row.name })}
+                  commands={[
+                    { key: 'edit', label: t('edit'), onSelect: () => setEditingId(row.id) },
+                    row.status === 'ACTIVE'
+                      ? {
+                          key: 'deactivate',
+                          label: tSetup('deactivateMenu'),
+                          onSelect: () => setPending({ row, action: 'deactivate' }),
+                        }
+                      : {
+                          key: 'reactivate',
+                          label: tSetup('reactivate'),
+                          onSelect: () => setPending({ row, action: 'reactivate' }),
+                        },
+                  ]}
+                />
+              )
+            : undefined
+        }
+        emptyState={
+          isFirstUse ? <EmptyState title={tList('empty')} description={tList('emptyHint')} action={createAction} /> : undefined
+        }
+        toolbarActions={createAction}
+      />
+      {!moneyVisible && !directory.isPending && !directory.isError && !isFirstUse ? (
+        <p className="text-caption text-muted-foreground">{tList('moneyHidden')}</p>
       ) : null}
-    </SetupScreen>
+
+      {editingId && editing.data ? (
+        <SupplierEditForm supplier={editing.data} onDone={() => setEditingId(null)} />
+      ) : null}
+
+      {pending ? (
+        <ConfirmActionDialog
+          title={tList(pending.action === 'deactivate' ? 'deactivateTitle' : 'reactivateTitle', { name: pending.row.name })}
+          description={tList(pending.action === 'deactivate' ? 'deactivateBody' : 'reactivateBody')}
+          confirmLabel={pending.action === 'deactivate' ? tSetup('deactivate') : tSetup('reactivate')}
+          destructive={pending.action === 'deactivate'}
+          isPending={command.isPending}
+          errorMessage={command.error ? errorText(command.error, tc('loadFailed')) : undefined}
+          onConfirm={() => command.mutate(pending.row.id, { onSuccess: () => setPending(null) })}
+          onDismiss={() => {
+            command.reset();
+            setPending(null);
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -180,7 +273,7 @@ export function SupplierList() {
  * The `code` is shown read-only because it is the supplier's identity and the endpoint drops
  * it; `status` is absent entirely, owned by a separate flow the endpoint cannot reach.
  */
-function SupplierEditForm({
+export function SupplierEditForm({
   supplier,
   onDone,
 }: {

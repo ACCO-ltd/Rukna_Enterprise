@@ -1,11 +1,16 @@
 'use client';
 
+/**
+ * The materials catalogue on the shared setup list: Status (Active by default — Inactive also
+ * covers discontinued), material category and spend category in the one Filter panel, New
+ * material, and Discontinue… / Reactivate per row.
+ */
+
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, FilterBar, FilterField, FormField, Input, Select, Textarea } from '@erp/ui';
+import { Alert, FormField, Input, Select, Textarea, type FilterValues } from '@erp/ui';
 
-import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { type GridColumn } from '@/components/platform-data-grid';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import {
@@ -13,14 +18,15 @@ import {
   useDiscontinueMaterial,
   useMaterialCategories,
   useMaterials,
+  useReactivateMaterial,
   useSpendCategories,
   useUoms,
 } from '../hooks/use-procurement';
 import type { Material, MaterialCategory, SpendCategory } from '../types';
+import { CatalogueListScreen, statusFrom, useStatusFilterField } from './catalogue-list';
 import { ProcurementStatusBadge } from './procurement-badges';
-import { CreateForm, SetupScreen } from './setup-shell';
+import { CreateForm } from './setup-shell';
 
-/** Flattens a two-level category tree into option rows, children indented. */
 function flatten<T extends { id: string; code: string; name: string; children?: T[] }>(
   roots: T[] | undefined,
 ): { id: string; code: string; label: string }[] {
@@ -29,38 +35,29 @@ function flatten<T extends { id: string; code: string; name: string; children?: 
     ...(root.children ?? []).map((child) => ({
       id: child.id,
       code: child.code,
-      label: `  ↳ ${child.code} · ${child.name}`,
+      label: `  ↳ ${child.code} · ${child.name}`,
     })),
   ]);
 }
 
-/**
- * The material catalogue (§12.4).
- *
- * Category filters are server-side — `materialCategoryId` and `spendCategoryId` are the
- * two parameters the controller reads. Status is not among them and the service hard-codes
- * `ACTIVE` (P2), so there is no status filter and discontinuing a material removes it from
- * the only view there is.
- */
 export function MaterialsList() {
   const t = useTranslations('procurement.material');
+  const tSetup = useTranslations('procurement.setup');
   const tc = useTranslations('procurement.common');
   const { can } = usePermissions();
+  const canManage = can(PROCUREMENT_PERMISSIONS.manageConfig);
 
-  const [materialCategoryId, setMaterialCategoryId] = useState('');
-  const [spendCategoryId, setSpendCategoryId] = useState('');
-  const [pending, setPending] = useState<Material | null>(null);
-
+  const [filters, setFilters] = useState<FilterValues>({});
   const materials = useMaterials({
-    ...(materialCategoryId ? { materialCategoryId } : {}),
-    ...(spendCategoryId ? { spendCategoryId } : {}),
+    status: statusFrom(filters),
+    ...(filters.category ? { materialCategoryId: filters.category } : {}),
+    ...(filters.spend ? { spendCategoryId: filters.spend } : {}),
   });
   const categories = useMaterialCategories();
   const spendCategories = useSpendCategories();
   const discontinue = useDiscontinueMaterial();
-
-  const canManage = can(PROCUREMENT_PERMISSIONS.manageConfig);
-  const filterIds = { category: useId(), spend: useId() };
+  const reactivate = useReactivateMaterial();
+  const statusField = useStatusFilterField();
 
   const columns: GridColumn<Material>[] = [
     {
@@ -76,17 +73,13 @@ export function MaterialsList() {
       header: tc('name'),
       sortable: true,
       plainValue: (material) => material.name,
-      render: (material) => <span className="text-sm text-foreground">{material.name}</span>,
+      render: (material) => material.name,
     },
     {
       key: 'baseUom',
       header: t('baseUom'),
       plainValue: (material) => material.baseUom?.symbol ?? material.baseUom?.code ?? '',
-      render: (material) => (
-        <bdi className="text-sm">
-          {material.baseUom?.symbol ?? material.baseUom?.code ?? tc('notAvailable')}
-        </bdi>
-      ),
+      render: (material) => <bdi>{material.baseUom?.symbol ?? material.baseUom?.code ?? tc('notAvailable')}</bdi>,
     },
     {
       key: 'materialCategory',
@@ -94,9 +87,7 @@ export function MaterialsList() {
       sortable: true,
       plainValue: (material) => material.materialCategory?.name ?? '',
       render: (material) => (
-        <span className="text-sm text-muted-foreground">
-          {material.materialCategory?.name ?? tc('notAvailable')}
-        </span>
+        <span className="text-muted-foreground">{material.materialCategory?.name ?? tc('notAvailable')}</span>
       ),
     },
     {
@@ -105,9 +96,7 @@ export function MaterialsList() {
       sortable: true,
       plainValue: (material) => material.defaultSpendCategory?.name ?? '',
       render: (material) => (
-        <span className="text-sm text-muted-foreground">
-          {material.defaultSpendCategory?.name ?? tc('notAvailable')}
-        </span>
+        <span className="text-muted-foreground">{material.defaultSpendCategory?.name ?? tc('notAvailable')}</span>
       ),
     },
     {
@@ -118,85 +107,54 @@ export function MaterialsList() {
   ];
 
   return (
-    <>
-      <SetupScreen
-        notice={t('activeOnlyNotice')}
-        createLabel={t('new')}
-        createTitle={t('createTitle')}
-        canCreate={canManage}
-        createForm={(close) => <MaterialCreateForm onDone={close} />}
-        isPending={materials.isPending}
-        isError={materials.isError}
-      >
-        <FilterBar>
-          <FilterField id={filterIds.category} label={t('filterByCategory')}>
-            <Select
-              id={filterIds.category}
-              value={materialCategoryId}
-              onChange={(value) => setMaterialCategoryId(value)}
-            >
-              <option value="">{tc('all')}</option>
-              {flatten<MaterialCategory>(categories.data).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </Select>
-          </FilterField>
-
-          <FilterField id={filterIds.spend} label={t('filterBySpendCategory')}>
-            <Select
-              id={filterIds.spend}
-              value={spendCategoryId}
-              onChange={(value) => setSpendCategoryId(value)}
-            >
-              <option value="">{tc('all')}</option>
-              {flatten<SpendCategory>(spendCategories.data).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </Select>
-          </FilterField>
-        </FilterBar>
-
-        <PlatformDataGrid
-          columns={columns}
-          data={materials.data ?? []}
-          rowKey={(material) => material.id}
-          label={t('title')}
-          noMatchMessage={t('empty')}
-          pagination={{ defaultPageSize: 25 }}
-          rowActions={(material) =>
-            canManage && material.status === 'ACTIVE' ? (
-              <button
-                type="button"
-                onClick={() => setPending(material)}
-                className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline"
-              >
-                {t('discontinue')}
-              </button>
-            ) : null
-          }
-        />
-      </SetupScreen>
-
-      {pending ? (
-        <ConfirmActionDialog
-          title={t('discontinueTitle', { code: pending.code })}
-          description={`${t('discontinueBody')} ${t('discontinueWarning', {
-            code: pending.code,
-          })}`}
-          confirmLabel={t('discontinue')}
-          isPending={discontinue.isPending}
-          errorMessage={discontinue.isError ? tc('loadFailed') : undefined}
-          onConfirm={() =>
-            discontinue.mutate(pending.id, { onSuccess: () => setPending(null) })
-          }
-          onDismiss={() => setPending(null)}
-        />
-      ) : null}
-    </>
+    <CatalogueListScreen<Material>
+      label={t('title')}
+      rows={materials.data ?? []}
+      isPending={materials.isPending}
+      isError={materials.isError}
+      onRetry={() => void materials.refetch()}
+      columns={columns}
+      filterFields={[
+        statusField,
+        {
+          key: 'category',
+          type: 'select',
+          label: t('filterByCategory'),
+          options: flatten<MaterialCategory>(categories.data).map((c) => ({ value: c.id, label: c.label.trim() })),
+        },
+        {
+          key: 'spend',
+          type: 'select',
+          label: t('filterBySpendCategory'),
+          options: flatten<SpendCategory>(spendCategories.data).map((c) => ({ value: c.id, label: c.label.trim() })),
+        },
+      ]}
+      filterValues={filters}
+      onFilterValuesChange={setFilters}
+      canManage={canManage}
+      createLabel={t('new')}
+      createTitle={t('createTitle')}
+      createForm={(close) => <MaterialCreateForm onDone={close} />}
+      emptyTitle={t('emptyTitle')}
+      emptyHint={t('emptyHint')}
+      searchPlaceholder={tSetup('searchPlaceholder')}
+      countLabel={(count) => t('countLabel', { count })}
+      retire={{
+        label: t('discontinueMenu'),
+        title: (material) => t('discontinueTitle', { code: material.code }),
+        body: t('discontinueBody'),
+        confirmLabel: t('discontinue'),
+        destructive: true,
+        command: discontinue,
+      }}
+      reactivate={{
+        label: tSetup('reactivate'),
+        title: (material) => tSetup('reactivateTitle', { code: material.code }),
+        body: tSetup('reactivateBody'),
+        confirmLabel: tSetup('reactivate'),
+        command: reactivate,
+      }}
+    />
   );
 }
 
