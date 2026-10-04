@@ -213,6 +213,37 @@ export class BuyerAdvanceService {
     });
   }
 
+  /**
+   * `GET /buyer-advances[?purchaseOrderId=&limit=]`. With a PO: that PO's advances (unchanged
+   * order). Without: the organisation's advances, newest first, capped at `limit` (default 100,
+   * max 500). Each row adds `purchaseOrder: { id, poNumber }` and `supplier: { id, name }`.
+   */
+  async list(identity: RequestIdentity, opts: { purchaseOrderId?: string; limit?: number } = {}) {
+    const prisma = this.tenancyService.getClient();
+    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+    const advances = await this.advanceRepo.findForList(prisma, identity.activeOrganizationId, {
+      purchaseOrderId: opts.purchaseOrderId,
+      limit,
+    });
+    return advances.map(({ purchaseOrder, ...advance }) => {
+      const evidenceTotal = advance.evidenceAllocations.reduce(
+        (sum, ea) => sum.plus(ea.allocatedAmount as unknown as Decimal),
+        new Decimal(0),
+      );
+      const returnsTotal = advance.returns.reduce(
+        (sum, r) => sum.plus(r.amount as unknown as Decimal),
+        new Decimal(0),
+      );
+      const outstanding = (advance.amount as unknown as Decimal).minus(evidenceTotal).minus(returnsTotal);
+      return {
+        ...advance,
+        outstanding,
+        purchaseOrder: { id: purchaseOrder.id, poNumber: purchaseOrder.poNumber },
+        supplier: purchaseOrder.supplier,
+      };
+    });
+  }
+
   async findByPurchaseOrder(identity: RequestIdentity, purchaseOrderId: string) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId } = identity;
