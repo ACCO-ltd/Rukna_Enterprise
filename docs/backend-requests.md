@@ -46,3 +46,51 @@ leaf ids are still returned, since `priced` is visible to every tier. The Delive
 packages section and the schedule wizard show one quiet note: "Weights are split evenly. Value-based
 weighting needs cost access — adjust the weights, or ask the Construction Director."
 
+
+---
+
+# Backend requests — Procurement refine (2026-10-04)
+
+Branch `feat/procurement-refine`. Asked by the procurement UI refine; all API-only (no migration).
+Money on the new list fields is `null` unless the caller holds `view:commitment-ledger` (cost
+visibility — the gate the PO money reads already use, ADR-043 decision 4); rows carry
+`moneyVisible`. List endpoints still return arrays, and every previous row field is kept.
+
+| # | Ask | Status | Contract |
+|---|---|---|---|
+| 1 | PO confirm through governance | **Done** | `POST /procurement/purchase-orders/:id/confirm` evaluates the seeded `PurchaseOrder DRAFT→SUBMITTED` binding with the draft revision total. Gated → 409 `{ error.details.approvalInstanceId }`, nothing written; pending → same id; once APPROVED, calling confirm again consumes it and confirms, writing `revision.approvalInstanceId` and `approvedBy` = the final approver (else the confirmer). Cancel closes an open approval; attaching evidence to the draft voids an unconsumed grant. No binding → confirms as before. |
+| 2 | Material request approval | **Done** | Submit is gated (`MaterialRequest DRAFT→SUBMITTED`, amount = Σ qty × estimatedUnitPrice, null when unpriced) — 409 + `approvalInstanceId` like the PO. `POST /procurement/material-requests/:id/approve` (SUBMITTED→APPROVED) and `POST …/:id/reject` `{ reason }` (SUBMITTED→DRAFT, reason on the audit trail), both `approve:material-request`. Approve enforces `REQUESTER_CANNOT_APPROVE_OWN_REQUEST` (403, `details.code`). |
+| 3 | Server-set MR requested date | **Done** | `requestedDate` is optional and ignored on create; the server stamps today (UTC calendar day). |
+| 4a | Receivable POs | **Done** | `GET /procurement/purchase-orders/receivable` (`view:procurement` + `create:goods-receipt`) → `[{ id, poNumber, status:'OPEN', supplier{id,name}, activeRevisionId, activeRevisionNumber, expectedDeliveryDate, projects[{id,code,name}], lines[{ purchaseOrderLineId, lineNumber, description, uomCode, uomSymbol, orderedQuantity, acceptedQuantity, remainingQuantity }], canReceive, blockedReason: 'PO_CREATOR_CANNOT_RECEIVE_GOODS'|null, receiptException: {id,status}|null }]`. Only POs with remaining quantity (ordered − accepted on POSTED GRNs); project-scoped; no prices. |
+| 4b | GRN rules | **Done** | SoD re-checked on post. Every SoD 403 now carries `error.details.code` = the rule code (message unchanged). `rejectionReason` required when `rejectedQuantity > 0` (400). Over-receipt policy unchanged. |
+| 5a | PO list | **Done** | `GET /procurement/purchase-orders?status&supplierId&projectId&search` adds `project`, `projectCount`, `total`, `currencyCode`, `deliveryStatus` (NOT_RECEIVED/PARTLY_RECEIVED/RECEIVED; null for DRAFT/CANCELLED), `activeRevisionNumber`, `revisionStatus`, `moneyVisible`. Project-scoped (org-level POs visible to all). |
+| 5b | MR list | **Done** | `GET /procurement/material-requests?…&requestedFor=<projectId>|overhead&search` adds `estimatedTotal`, `requester{id,name}`, `project`, `moneyVisible`. `scope` / `projectId` still work. |
+| 5c | GRN list | **Done** | `GET /procurement/goods-receipts?purchaseOrderId&status&search` adds `supplier{id,name}`, `purchaseOrder{id,number}`, `project`, `projectCount`, `deliveredBy{id,name}` (the user who recorded it). Project-scoped. |
+| 5d | Supplier directory | **Done** | `GET /procurement/suppliers?status=ACTIVE|INACTIVE|ALL&search` (`view:procurement`) → `{ id, code, name, status, primaryContact{name,phone}|null, paymentTermsDays, defaultCurrency, openOrderCount, payableBalance, payableBalances[{currencyCode,amount}], moneyVisible }`. Supplier has no type field — none returned. `POST /suppliers/:id/deactivate` / `reactivate` (`manage:payable`, audited, 409 on a no-op). |
+| 5e | Catalogue status | **Done** | `GET /procurement/{materials,material-categories,spend-categories,uom}?status=ACTIVE|INACTIVE|ALL` (default ACTIVE). `POST …/:id/reactivate` on all four, audited; deactivate/discontinue are now audited too and 409 when already inactive. |
+| 5f | Buyer advances | **Done** | `GET /buyer-advances` without `purchaseOrderId` lists org-wide, newest first (`limit`, default 100, max 500); rows add `purchaseOrder{id,poNumber}` and `supplier{id,name}`. |
+| 5g | Commitment entries | **Done** | `GET /procurement/commitment-ledger/projects/:projectId` and `/purchase-orders/:poId` rows add `documentNumber`, `supplierName`, `boqNode{id,code,name}` (batch-resolved). `GET /projects/:projectId/procurement/cost` only had the last 10 entries with a PO reference, so it was not reused. |
+
+## Still open
+
+- **(a) Prices reach money-blind roles.** PO / MR / GRN list *and detail* still return unit prices
+  (PO lines, MR `estimatedUnitPrice`) to anyone with `view:procurement`; only the new aggregate
+  fields are gated. Server-side redaction needs an Eng Ahmed / product decision, because Project
+  Managers create POs and need to enter prices.
+- **(b) MR line `boqNodeId` is unvalidated and not inherited by PO lines.** The MR create path
+  stores any `boqNodeId`. The cost target that matters is the PO line's: PO line DTO →
+  `resolveLines` → `cost-target.policy` `validateCostTarget` → confirm writes COMMITTED → GRN reads
+  `poLine.boqNodeId`. Allocating an MR line to a PO line does not copy or check its node.
+- **(c) Who may approve a material request?** `approve:material-request` exists but no ACCO team
+  role holds it (only ADMIN, via the admin refresh). Granting it is a role decision — not done here.
+- **(d) Requester ≠ approver inside the approval engine.** The workflow `ApprovalService` checks
+  the step role and the system-admin rule only; it does not stop the initiator approving their own
+  instance. A PO creator who holds a chain role could approve their own PO. Needs an SoD rule /
+  engine change (Eng Ahmed).
+- **(e) MR double approval.** If an MR binding is activated, a request goes through the chain on
+  submit *and* still needs the explicit approve. No MR binding is seeded today.
+- **(f) Band currency.** PO / MR amounts are passed to the band resolver in document currency (no
+  FX to USD).
+- **(g) Supplier status is not enforced.** PO create does not refuse an INACTIVE supplier.
+- **(h)** `view:financial-position` still gates money on the project procurement tab, so the
+  Procurement Manager sees nulls there while seeing figures on these lists.
