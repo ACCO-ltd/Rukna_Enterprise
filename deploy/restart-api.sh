@@ -8,6 +8,10 @@
 #      unhealthy → put the last known-good .env back, recreate again, and fail the run;
 #                  the edited file is kept as api.env.failed-<time> for you to fix
 #
+# "Healthy" means the API started and answers its health check — not that every setting is right
+# (a wrong SMTP password or WhatsApp token still starts). The dated copies let you go back by hand:
+#   cp ~/rukna-env-backups/api.env.<date> apps/api/.env && bash deploy/restart-api.sh
+#
 # The copies live in $ENV_STATE_DIR, outside the git checkout, readable only by this user.
 # ALWAYS uses deploy/docker-compose.prod.yml; only the rukna_api container is touched.
 set -euo pipefail
@@ -43,10 +47,11 @@ wait_healthy() {
 }
 
 echo "── restart rukna_api with the current apps/api/.env ──"
-compose up -d --no-deps --force-recreate rukna_api
+# Even if the recreate itself fails (the old container may already be stopped), go on to the
+# health check so the rollback below can bring the API back.
+compose up -d --no-deps --force-recreate rukna_api || echo "::warning::compose up failed — checking health and rolling back if needed."
 
 if wait_healthy; then
-  curl -fsS "$API_HEALTH_URL"; echo
   cp "$env_file" "$last_good"
   cp "$env_file" "$ENV_STATE_DIR/api.env.$(date +%F_%H%M%S)"
   ls -1t "$ENV_STATE_DIR"/api.env.20* 2> /dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm --
@@ -64,7 +69,7 @@ failed="$ENV_STATE_DIR/api.env.failed-$(date +%F_%H%M%S)"
 cp "$env_file" "$failed"
 cp "$last_good" "$env_file"
 echo "── rolled back to the last known-good .env (your edit is saved as $failed) ──"
-compose up -d --no-deps --force-recreate rukna_api
+compose up -d --no-deps --force-recreate rukna_api || true
 if wait_healthy; then
   echo "::error::Rolled back: the API is running again on the previous settings. Fix the edit and retry."
 else

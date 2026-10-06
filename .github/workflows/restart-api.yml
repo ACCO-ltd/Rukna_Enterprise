@@ -47,6 +47,8 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST" 'bash -seuo pipefail' <<'REMOTE'
           cd ~/Rukna_Enterprise
           git fetch origin main
-          git show origin/main:deploy/restart-api.sh > /tmp/rukna-restart-api.sh
-          bash /tmp/rukna-restart-api.sh
+          script=$(mktemp)
+          trap 'rm -f "$script"' EXIT
+          git show origin/main:deploy/restart-api.sh > "$script"
+          bash "$script"
           REMOTE
