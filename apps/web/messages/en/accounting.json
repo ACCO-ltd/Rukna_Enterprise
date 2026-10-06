@@ -1403,6 +1403,15 @@
     "showNotesHint": "Off by default: the minimal invoice has no notes.",
     "footerAddressHint": "Up to {lines} lines of {chars} characters each.",
     "footerAddressInvalid": "The footer fits 2 lines of 60 characters each. Shorten the address.",
-    "limitHint": "Up to {chars} characters."
+    "limitHint": "Up to {chars} characters.",
+    "previewTitle": "Invoice preview",
+    "previewHint": "The real PDF with your current settings, updated as you type. The client, project and amounts are a sample.",
+    "previewUpdating": "Updating…",
+    "previewLoading": "Rendering the preview…",
+    "previewFailed": "The preview could not be rendered.",
+    "previewOpen": "Open full size",
+    "previewFrame": "Invoice preview (PDF)",
+    "previewUnsaved": "Not saved yet",
+    "previewPartial": "Some values are not complete yet and are left out of the preview until they are."
   }
 }

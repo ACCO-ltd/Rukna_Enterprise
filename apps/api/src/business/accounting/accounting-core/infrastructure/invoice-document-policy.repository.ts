@@ -47,6 +47,15 @@ export interface InvoiceDocumentPolicyWrite {
   showNotes: boolean;
 }
 
+/**
+ * The settings fields as stored — a policy row, or settings resolved but not saved (the preview).
+ * The JSON columns are read leniently ({@link readPaymentAccounts}, {@link readPhones}).
+ */
+export type StoredInvoiceDocumentSettings = Omit<InvoiceDocumentPolicyWrite, 'paymentAccounts' | 'footerPhones'> & {
+  paymentAccounts: unknown;
+  footerPhones: unknown;
+};
+
 /** The organisation's invoice document settings (`InvoiceDocumentPolicy`). */
 @Injectable()
 export class InvoiceDocumentPolicyRepository {
@@ -126,7 +135,7 @@ const EMPTY_SNAPSHOT: InvoiceDocumentSnapshot = {
 };
 
 /** The policy as the values an invoice prints. No policy → defaults (nothing optional shown). */
-export function toInvoiceDocumentSnapshot(policy: InvoiceDocumentPolicy | null): InvoiceDocumentSnapshot {
+export function toInvoiceDocumentSnapshot(policy: StoredInvoiceDocumentSettings | null): InvoiceDocumentSnapshot {
   if (!policy) return EMPTY_SNAPSHOT;
   const name = policy.signatoryName?.trim() || null;
   return {

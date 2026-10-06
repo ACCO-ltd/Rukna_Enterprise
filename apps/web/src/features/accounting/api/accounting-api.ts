@@ -611,3 +611,19 @@ export function updateInvoiceDocumentSettings(
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * `POST /invoice-document-settings/preview` — a sample invoice PDF printed with these settings,
+ * saved or not. Nothing is stored; 422 `INVOICE_SETTINGS_INVALID` as a save would.
+ */
+export function previewInvoiceDocumentSettings(
+  body: UpdateInvoiceDocumentSettingsBody,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  return apiClient<Blob>('/invoice-document-settings/preview', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify(body),
+    responseType: 'blob',
+  });
+}

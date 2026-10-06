@@ -8,6 +8,7 @@ import {
   readPhones,
   type InvoiceDocumentPolicyWrite,
   type InvoicePaymentAccount,
+  type StoredInvoiceDocumentSettings,
 } from '../infrastructure/invoice-document-policy.repository.js';
 
 /** The standard invoice notes, shown on invoices while the organisation has written none. */
@@ -121,54 +122,7 @@ export class InvoiceDocumentSettingsService {
     const orgId = identity.activeOrganizationId;
     const before = await this.repo.find(prisma, orgId);
 
-    const next: InvoiceDocumentPolicyWrite = {
-      paymentAccounts:
-        input.paymentAccounts === undefined
-          ? readPaymentAccounts(before?.paymentAccounts)
-          : validatePaymentAccounts(input.paymentAccounts),
-      notes: pick(input.notes, before?.notes),
-      signatoryName: pick(input.signatoryName, before?.signatoryName),
-      signatoryTitle: pick(input.signatoryTitle, before?.signatoryTitle),
-      tagline: pick(input.tagline, before?.tagline),
-      footerAddress: pickMultiline(input.footerAddress, before?.footerAddress),
-      footerPhones:
-        input.footerPhones === undefined ? readPhones(before?.footerPhones) : validatePhones(input.footerPhones),
-      footerEmail: pick(input.footerEmail, before?.footerEmail),
-      footerWebsite: pick(input.footerWebsite, before?.footerWebsite),
-      showBankDetails: input.showBankDetails ?? before?.showBankDetails ?? false,
-      showNotes: input.showNotes ?? before?.showNotes ?? false,
-    };
-
-    if (next.notes && next.notes.length > INVOICE_NOTES_MAX_LENGTH) {
-      throw invalid(`Invoice notes are limited to ${INVOICE_NOTES_MAX_LENGTH} characters.`);
-    }
-    for (const [field, value, max] of [
-      ['Signatory name', next.signatoryName, SIGNATORY_MAX_LENGTH],
-      ['Signatory title', next.signatoryTitle, SIGNATORY_MAX_LENGTH],
-      ['The tagline', next.tagline, TAGLINE_MAX_LENGTH],
-      ['The footer email', next.footerEmail, EMAIL_MAX_LENGTH],
-      ['The footer website', next.footerWebsite, WEBSITE_MAX_LENGTH],
-    ] as const) {
-      if (value && value.length > max) throw invalid(`${field} is limited to ${max} characters.`);
-    }
-    if (next.footerAddress) {
-      const lines = next.footerAddress.split('\n');
-      if (lines.length > FOOTER_ADDRESS_MAX_LINES) {
-        throw invalid(`The footer address fits ${FOOTER_ADDRESS_MAX_LINES} lines; it has ${lines.length}.`);
-      }
-      const long = lines.find((line) => line.length > FOOTER_LINE_MAX_LENGTH);
-      if (long) {
-        throw invalid(
-          `Each footer address line fits ${FOOTER_LINE_MAX_LENGTH} characters; "${long.slice(0, 30)}…" has ${long.length}.`,
-        );
-      }
-    }
-    if (next.footerEmail && !EMAIL.test(next.footerEmail)) {
-      throw invalid(`"${next.footerEmail}" is not an email address.`);
-    }
-    if (next.footerWebsite && !WEBSITE.test(next.footerWebsite)) {
-      throw invalid(`"${next.footerWebsite}" is not a website address (e.g. www.acco.com).`);
-    }
+    const next = resolveInvoiceDocumentSettings(input, before);
 
     await prisma.$transaction(async (tx) => {
       await this.repo.upsert(tx, orgId, next, identity.userId);
@@ -195,6 +149,66 @@ export class InvoiceDocumentSettingsService {
     });
     return this.get(identity);
   }
+}
+
+/**
+ * The settings as they would be stored: `input` over `before` (an omitted field keeps its value,
+ * `null` / blank clears it), validated. Shared by the save and the live preview, so the preview
+ * refuses exactly what a save would refuse. 422 INVOICE_SETTINGS_INVALID.
+ */
+export function resolveInvoiceDocumentSettings(
+  input: UpdateInvoiceDocumentSettingsInput,
+  before: StoredInvoiceDocumentSettings | null,
+): InvoiceDocumentPolicyWrite {
+  const next: InvoiceDocumentPolicyWrite = {
+    paymentAccounts:
+      input.paymentAccounts === undefined
+        ? readPaymentAccounts(before?.paymentAccounts)
+        : validatePaymentAccounts(input.paymentAccounts),
+    notes: pick(input.notes, before?.notes),
+    signatoryName: pick(input.signatoryName, before?.signatoryName),
+    signatoryTitle: pick(input.signatoryTitle, before?.signatoryTitle),
+    tagline: pick(input.tagline, before?.tagline),
+    footerAddress: pickMultiline(input.footerAddress, before?.footerAddress),
+    footerPhones:
+      input.footerPhones === undefined ? readPhones(before?.footerPhones) : validatePhones(input.footerPhones),
+    footerEmail: pick(input.footerEmail, before?.footerEmail),
+    footerWebsite: pick(input.footerWebsite, before?.footerWebsite),
+    showBankDetails: input.showBankDetails ?? before?.showBankDetails ?? false,
+    showNotes: input.showNotes ?? before?.showNotes ?? false,
+  };
+
+  if (next.notes && next.notes.length > INVOICE_NOTES_MAX_LENGTH) {
+    throw invalid(`Invoice notes are limited to ${INVOICE_NOTES_MAX_LENGTH} characters.`);
+  }
+  for (const [field, value, max] of [
+    ['Signatory name', next.signatoryName, SIGNATORY_MAX_LENGTH],
+    ['Signatory title', next.signatoryTitle, SIGNATORY_MAX_LENGTH],
+    ['The tagline', next.tagline, TAGLINE_MAX_LENGTH],
+    ['The footer email', next.footerEmail, EMAIL_MAX_LENGTH],
+    ['The footer website', next.footerWebsite, WEBSITE_MAX_LENGTH],
+  ] as const) {
+    if (value && value.length > max) throw invalid(`${field} is limited to ${max} characters.`);
+  }
+  if (next.footerAddress) {
+    const lines = next.footerAddress.split('\n');
+    if (lines.length > FOOTER_ADDRESS_MAX_LINES) {
+      throw invalid(`The footer address fits ${FOOTER_ADDRESS_MAX_LINES} lines; it has ${lines.length}.`);
+    }
+    const long = lines.find((line) => line.length > FOOTER_LINE_MAX_LENGTH);
+    if (long) {
+      throw invalid(
+        `Each footer address line fits ${FOOTER_LINE_MAX_LENGTH} characters; "${long.slice(0, 30)}…" has ${long.length}.`,
+      );
+    }
+  }
+  if (next.footerEmail && !EMAIL.test(next.footerEmail)) {
+    throw invalid(`"${next.footerEmail}" is not an email address.`);
+  }
+  if (next.footerWebsite && !WEBSITE.test(next.footerWebsite)) {
+    throw invalid(`"${next.footerWebsite}" is not a website address (e.g. www.acco.com).`);
+  }
+  return next;
 }
 
 /** Every row needs both a bank name and an account number (trimmed); at most eight rows. */
