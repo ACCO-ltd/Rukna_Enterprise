@@ -339,7 +339,10 @@ export function LineItemsEditor<T>({
 
   return (
     <div className={cn('space-y-3', className)}>
-      <div role="table" aria-label={label} style={gridStyle} className="md:rounded-panel md:border md:border-border md:bg-surface">
+      {/* The desktop grid scrolls inside its own frame: a wide line set (many fixed-width
+          columns at tablet widths) must never push the page sideways. */}
+      <div className="md:overflow-x-auto md:rounded-panel md:border md:border-border md:bg-surface">
+      <div role="table" aria-label={label} style={gridStyle} className="md:w-max md:min-w-full">
         {/* Header — desktop only; on phones every cell carries its own label. */}
         <div role="rowgroup" className="hidden md:block">
           <div
@@ -461,6 +464,7 @@ export function LineItemsEditor<T>({
             );
           })}
         </div>
+      </div>
       </div>
 
       {onAdd && !readOnly ? (
