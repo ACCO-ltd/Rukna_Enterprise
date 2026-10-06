@@ -248,7 +248,7 @@ export function buildKitStyles(p: Palette, compact: boolean) {
     footerColumn: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingRight: 12 },
     footerColumnRuled: { borderLeftWidth: 0.75, borderLeftColor: p.border, paddingLeft: 14 },
     footerIcon: { width: 12, height: 12, marginRight: 8 },
-    footerText: { fontSize: 8, color: p.muted, lineHeight: 1.5, textOverflow: 'ellipsis' },
+    footerText: { fontSize: 8, color: p.muted, lineHeight: 1.5, maxLines: 1, textOverflow: 'ellipsis' },
     pageNumber: {
       position: 'absolute',
       left: PAGE_MARGIN_X,
@@ -390,13 +390,21 @@ export function documentFooter(s: KitStyles, brand: BrandView, columns: FooterCo
           ...columns.map((column, i) =>
             h(
               View,
-              { style: i === 0 ? s.footerColumn : [s.footerColumn, s.footerColumnRuled], key: `f${i}` },
+              {
+                style: [
+                  s.footerColumn,
+                  // The address carries the longest lines: give it the widest column.
+                  column.icon === 'pin' ? { flex: 1.45 } : {},
+                  i === 0 ? {} : s.footerColumnRuled,
+                ],
+                key: `f${i}`,
+              },
               lineIcon(s, column.icon, brand.palette.navy),
               h(
                 View,
-                { style: { flex: 1 } },
+                { style: { flex: 1, overflow: 'hidden' } },
                 ...column.lines.map((line, j) =>
-                  h(Text, { style: s.footerText, maxLines: 1, key: `fl${j}` }, line),
+                  h(Text, { style: s.footerText, key: `fl${j}` }, line),
                 ),
               ),
             ),
