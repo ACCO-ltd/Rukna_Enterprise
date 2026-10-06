@@ -96,7 +96,7 @@ export function InvoiceSettingsPreview({ body, unsaved, partial }: InvoiceSettin
             role="status"
             aria-live="polite"
           >
-            {updating || !url ? (
+            {updating || (!url && !error) ? (
               <>
                 <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
                 {url ? t('previewUpdating') : t('previewLoading')}
