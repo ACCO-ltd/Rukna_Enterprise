@@ -18,6 +18,19 @@ export interface InvoiceDocumentSnapshot {
   paymentAccounts: InvoicePaymentAccount[];
   notes: string | null;
   signatory: { name: string; title: string | null } | null;
+  tagline: string | null;
+  /** The footer contact strip. A null address falls back to the organisation's legal address. */
+  footer: InvoiceFooterContacts;
+  /** The optional sections — OFF unless Finance turns them on (and for snapshots older than them). */
+  showBankDetails: boolean;
+  showNotes: boolean;
+}
+
+export interface InvoiceFooterContacts {
+  address: string | null;
+  phones: string[];
+  email: string | null;
+  website: string | null;
 }
 
 export interface InvoiceDocumentPolicyWrite {
@@ -25,6 +38,13 @@ export interface InvoiceDocumentPolicyWrite {
   notes: string | null;
   signatoryName: string | null;
   signatoryTitle: string | null;
+  tagline: string | null;
+  footerAddress: string | null;
+  footerPhones: string[];
+  footerEmail: string | null;
+  footerWebsite: string | null;
+  showBankDetails: boolean;
+  showNotes: boolean;
 }
 
 /** The organisation's invoice document settings (`InvoiceDocumentPolicy`). */
@@ -36,10 +56,9 @@ export class InvoiceDocumentPolicyRepository {
 
   upsert(prisma: TenantPrisma, organizationId: string, data: InvoiceDocumentPolicyWrite, updatedBy: string) {
     const row = {
+      ...data,
       paymentAccounts: data.paymentAccounts as unknown as Prisma.InputJsonValue,
-      notes: data.notes,
-      signatoryName: data.signatoryName,
-      signatoryTitle: data.signatoryTitle,
+      footerPhones: data.footerPhones as unknown as Prisma.InputJsonValue,
     };
     return prisma.invoiceDocumentPolicy.upsert({
       where: { organizationId },
@@ -83,14 +102,46 @@ export function readPaymentAccounts(value: unknown): InvoicePaymentAccount[] {
   });
 }
 
-/** The policy as the values an invoice prints. No policy → no bank table, default notes, blank signature. */
+/** Stored phone numbers (JSON) as trimmed, non-empty strings, at most two. */
+export function readPhones(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+const text = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() ? value.trim() : null;
+
+const EMPTY_SNAPSHOT: InvoiceDocumentSnapshot = {
+  paymentAccounts: [],
+  notes: null,
+  signatory: null,
+  tagline: null,
+  footer: { address: null, phones: [], email: null, website: null },
+  showBankDetails: false,
+  showNotes: false,
+};
+
+/** The policy as the values an invoice prints. No policy → defaults (nothing optional shown). */
 export function toInvoiceDocumentSnapshot(policy: InvoiceDocumentPolicy | null): InvoiceDocumentSnapshot {
-  if (!policy) return { paymentAccounts: [], notes: null, signatory: null };
+  if (!policy) return EMPTY_SNAPSHOT;
   const name = policy.signatoryName?.trim() || null;
   return {
     paymentAccounts: readPaymentAccounts(policy.paymentAccounts),
     notes: policy.notes?.trim() ? policy.notes : null,
     signatory: name ? { name, title: policy.signatoryTitle?.trim() || null } : null,
+    tagline: text(policy.tagline),
+    footer: {
+      address: policy.footerAddress?.trim() ? policy.footerAddress.trim() : null,
+      phones: readPhones(policy.footerPhones),
+      email: text(policy.footerEmail),
+      website: text(policy.footerWebsite),
+    },
+    showBankDetails: policy.showBankDetails,
+    showNotes: policy.showNotes,
   };
 }
 
@@ -106,8 +157,9 @@ export async function resolveInvoiceDocumentSnapshot(
 }
 
 /**
- * A frozen snapshot in either shape: the current one, or the single-bank shape of the first
- * template-v2 release (`bank: { bankName, accountNumber, … }`), read as a one-row table.
+ * A frozen snapshot in any of its shapes: the current one; the bank-table shape (no tagline,
+ * footer or switches — read with those at their defaults, so nothing optional shows); or the
+ * single-bank shape of the first template-v2 release (`bank: { … }`), read as a one-row table.
  */
 export function normalizeInvoiceDocumentSnapshot(value: unknown): InvoiceDocumentSnapshot {
   const snap = (value ?? {}) as Record<string, unknown>;
@@ -118,11 +170,21 @@ export function normalizeInvoiceDocumentSnapshot(value: unknown): InvoiceDocumen
       : readPaymentAccounts(legacyBank ? [legacyBank] : []);
   const signatory = snap.signatory as { name?: unknown; title?: unknown } | null | undefined;
   const name = typeof signatory?.name === 'string' ? signatory.name.trim() : '';
+  const footer = (snap.footer ?? {}) as Record<string, unknown>;
   return {
     paymentAccounts,
     notes: typeof snap.notes === 'string' && snap.notes.trim() ? snap.notes : null,
     signatory: name
       ? { name, title: typeof signatory?.title === 'string' && signatory.title.trim() ? signatory.title.trim() : null }
       : null,
+    tagline: text(snap.tagline),
+    footer: {
+      address: text(footer.address),
+      phones: readPhones(footer.phones),
+      email: text(footer.email),
+      website: text(footer.website),
+    },
+    showBankDetails: snap.showBankDetails === true,
+    showNotes: snap.showNotes === true,
   };
 }

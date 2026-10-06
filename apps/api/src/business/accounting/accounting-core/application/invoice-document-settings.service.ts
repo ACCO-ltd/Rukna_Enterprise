@@ -5,6 +5,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import {
   InvoiceDocumentPolicyRepository,
   readPaymentAccounts,
+  readPhones,
   type InvoiceDocumentPolicyWrite,
   type InvoicePaymentAccount,
 } from '../infrastructure/invoice-document-policy.repository.js';
@@ -21,6 +22,16 @@ export const MAX_PAYMENT_ACCOUNTS = 8;
 export const BANK_NAME_MAX_LENGTH = 100;
 export const ACCOUNT_NUMBER_MAX_LENGTH = 50;
 export const SIGNATORY_MAX_LENGTH = 120;
+export const TAGLINE_MAX_LENGTH = 80;
+export const FOOTER_ADDRESS_MAX_LENGTH = 300;
+export const PHONE_MAX_LENGTH = 40;
+export const MAX_FOOTER_PHONES = 2;
+export const EMAIL_MAX_LENGTH = 254;
+export const WEBSITE_MAX_LENGTH = 200;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A host with a dot, optionally with a scheme and a path: "www.acco.com", "https://acco.com/x". */
+const WEBSITE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/\S*)?$/i;
+const PHONE = /^\+?[0-9 ()./-]{5,}$/;
 
 export interface InvoiceDocumentSettingsView {
   /** The "Bank Account Details" rows, in print order. */
@@ -30,6 +41,16 @@ export interface InvoiceDocumentSettingsView {
   defaultNotes: string[];
   signatoryName: string | null;
   signatoryTitle: string | null;
+  tagline: string | null;
+  /** Null → invoices print the organisation's legal address in the footer. */
+  footerAddress: string | null;
+  /** The organisation's legal address, shown as the footer default. */
+  defaultFooterAddress: string | null;
+  footerPhones: string[];
+  footerEmail: string | null;
+  footerWebsite: string | null;
+  showBankDetails: boolean;
+  showNotes: boolean;
   updatedAt: string | null;
 }
 
@@ -38,6 +59,13 @@ export interface UpdateInvoiceDocumentSettingsInput {
   notes?: string | null;
   signatoryName?: string | null;
   signatoryTitle?: string | null;
+  tagline?: string | null;
+  footerAddress?: string | null;
+  footerPhones?: string[];
+  footerEmail?: string | null;
+  footerWebsite?: string | null;
+  showBankDetails?: boolean;
+  showNotes?: boolean;
 }
 
 const invalid = (message: string) =>
@@ -58,13 +86,26 @@ export class InvoiceDocumentSettingsService {
   ) {}
 
   async get(identity: RequestIdentity): Promise<InvoiceDocumentSettingsView> {
-    const policy = await this.repo.find(this.tenancy.getClient(), identity.activeOrganizationId);
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const [policy, org] = await Promise.all([
+      this.repo.find(prisma, orgId),
+      prisma.organization.findUnique({ where: { id: orgId }, select: { legalAddress: true } }),
+    ]);
     return {
       paymentAccounts: readPaymentAccounts(policy?.paymentAccounts),
       notes: policy?.notes ?? null,
       defaultNotes: DEFAULT_INVOICE_NOTES,
       signatoryName: policy?.signatoryName ?? null,
       signatoryTitle: policy?.signatoryTitle ?? null,
+      tagline: policy?.tagline ?? null,
+      footerAddress: policy?.footerAddress ?? null,
+      defaultFooterAddress: org?.legalAddress?.trim() || null,
+      footerPhones: readPhones(policy?.footerPhones),
+      footerEmail: policy?.footerEmail ?? null,
+      footerWebsite: policy?.footerWebsite ?? null,
+      showBankDetails: policy?.showBankDetails ?? false,
+      showNotes: policy?.showNotes ?? false,
       updatedAt: policy?.updatedAt.toISOString() ?? null,
     };
   }
@@ -86,18 +127,34 @@ export class InvoiceDocumentSettingsService {
       notes: pick(input.notes, before?.notes),
       signatoryName: pick(input.signatoryName, before?.signatoryName),
       signatoryTitle: pick(input.signatoryTitle, before?.signatoryTitle),
+      tagline: pick(input.tagline, before?.tagline),
+      footerAddress: pickMultiline(input.footerAddress, before?.footerAddress),
+      footerPhones:
+        input.footerPhones === undefined ? readPhones(before?.footerPhones) : validatePhones(input.footerPhones),
+      footerEmail: pick(input.footerEmail, before?.footerEmail),
+      footerWebsite: pick(input.footerWebsite, before?.footerWebsite),
+      showBankDetails: input.showBankDetails ?? before?.showBankDetails ?? false,
+      showNotes: input.showNotes ?? before?.showNotes ?? false,
     };
 
     if (next.notes && next.notes.length > INVOICE_NOTES_MAX_LENGTH) {
       throw invalid(`Invoice notes are limited to ${INVOICE_NOTES_MAX_LENGTH} characters.`);
     }
-    for (const [field, value] of [
-      ['Signatory name', next.signatoryName],
-      ['Signatory title', next.signatoryTitle],
+    for (const [field, value, max] of [
+      ['Signatory name', next.signatoryName, SIGNATORY_MAX_LENGTH],
+      ['Signatory title', next.signatoryTitle, SIGNATORY_MAX_LENGTH],
+      ['The tagline', next.tagline, TAGLINE_MAX_LENGTH],
+      ['The footer address', next.footerAddress, FOOTER_ADDRESS_MAX_LENGTH],
+      ['The footer email', next.footerEmail, EMAIL_MAX_LENGTH],
+      ['The footer website', next.footerWebsite, WEBSITE_MAX_LENGTH],
     ] as const) {
-      if (value && value.length > SIGNATORY_MAX_LENGTH) {
-        throw invalid(`${field} is limited to ${SIGNATORY_MAX_LENGTH} characters.`);
-      }
+      if (value && value.length > max) throw invalid(`${field} is limited to ${max} characters.`);
+    }
+    if (next.footerEmail && !EMAIL.test(next.footerEmail)) {
+      throw invalid(`"${next.footerEmail}" is not an email address.`);
+    }
+    if (next.footerWebsite && !WEBSITE.test(next.footerWebsite)) {
+      throw invalid(`"${next.footerWebsite}" is not a website address (e.g. www.acco.com).`);
     }
 
     await prisma.$transaction(async (tx) => {
@@ -111,6 +168,13 @@ export class InvoiceDocumentSettingsService {
               notes: before.notes,
               signatoryName: before.signatoryName,
               signatoryTitle: before.signatoryTitle,
+              tagline: before.tagline,
+              footerAddress: before.footerAddress,
+              footerPhones: readPhones(before.footerPhones),
+              footerEmail: before.footerEmail,
+              footerWebsite: before.footerWebsite,
+              showBankDetails: before.showBankDetails,
+              showNotes: before.showNotes,
             }
           : null,
         after: next,
@@ -144,6 +208,32 @@ export function validatePaymentAccounts(
     }
     return { bankName, accountNumber };
   });
+}
+
+/** At most two phone numbers, trimmed; blanks dropped. */
+export function validatePhones(phones: unknown): string[] {
+  if (!Array.isArray(phones)) throw invalid('Phone numbers must be a list.');
+  const cleaned = phones.map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean);
+  if (cleaned.length > MAX_FOOTER_PHONES) {
+    throw invalid(`At most ${MAX_FOOTER_PHONES} phone numbers print in the footer.`);
+  }
+  for (const phone of cleaned) {
+    if (phone.length > PHONE_MAX_LENGTH || !PHONE.test(phone)) {
+      throw invalid(`"${phone}" is not a phone number.`);
+    }
+  }
+  return cleaned;
+}
+
+/** Like {@link pick}, keeping line breaks: each line trimmed, blank lines dropped. */
+function pickMultiline(value: string | null | undefined, current: string | null | undefined): string | null {
+  if (value === undefined) return current ?? null;
+  if (value === null) return null;
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 /** `undefined` keeps the current value; `null` or blank text clears it; text is trimmed. */
