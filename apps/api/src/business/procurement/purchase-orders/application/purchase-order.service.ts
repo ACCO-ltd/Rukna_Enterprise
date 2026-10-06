@@ -117,13 +117,19 @@ export class PurchaseOrderService {
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also create a PO to that vendor.
     const supplier = await prisma.supplier.findFirst({
       where: { id: dto.supplierId, organizationId: orgId },
-      select: { createdBy: true },
+      select: { createdBy: true, status: true, name: true },
     });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+    // An inactive supplier is retired from new business; existing orders to it carry on.
+    if (supplier.status !== 'ACTIVE')
+      throw new ConflictException(
+        `${supplier.name} is inactive, so new purchase orders cannot be raised to it. Reactivate the supplier or choose another.`,
+      );
     await this.sod.assertAllowed({
       organizationId: orgId,
       action: 'CREATE_PURCHASE_ORDER',
       actorUserId: identity.userId,
-      vendorMaintainerUserId: supplier?.createdBy ?? undefined,
+      vendorMaintainerUserId: supplier.createdBy ?? undefined,
     });
 
     const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);

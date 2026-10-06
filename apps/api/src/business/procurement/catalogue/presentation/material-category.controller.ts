@@ -3,7 +3,10 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiPropertyOptional } f
 import { IsIn, IsOptional } from 'class-validator';
 import type { CatalogueStatusFilter } from '../application/catalogue-status.js';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
-import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
@@ -20,24 +23,28 @@ class CatalogueStatusQueryDto {
 @ApiTags('Procurement — Material Categories')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
-@RequirePermissions(PERMISSIONS.procurementConfigManage)
+// Reads feed the buyer's order and request forms (view:procurement); every write stays with
+// the catalogue maintainer (manage:procurement-config). Each handler carries its own gate.
 @Controller('procurement/material-categories')
 export class MaterialCategoryController {
   constructor(private readonly service: MaterialCategoryService) {}
 
   @Get()
+  @RequireAnyPermission(PERMISSIONS.procurementView, PERMISSIONS.procurementConfigManage)
   @ApiOperation({ summary: 'List material categories (root + children tree)' })
   findAll(@CurrentUser() identity: RequestIdentity, @Query() query: CatalogueStatusQueryDto) {
     return this.service.findAll(identity, query.status ?? 'ACTIVE');
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.procurementConfigManage)
   @ApiOperation({ summary: 'Create a material category' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateMaterialCategoryDto) {
     return this.service.create(identity, dto);
   }
 
   @Get(':id')
+  @RequireAnyPermission(PERMISSIONS.procurementView, PERMISSIONS.procurementConfigManage)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Get material category with children' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -45,6 +52,7 @@ export class MaterialCategoryController {
   }
 
   @Post(':id/deactivate')
+  @RequirePermissions(PERMISSIONS.procurementConfigManage)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Deactivate a material category' })
@@ -53,6 +61,7 @@ export class MaterialCategoryController {
   }
 
   @Post(':id/reactivate')
+  @RequirePermissions(PERMISSIONS.procurementConfigManage)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Reactivate an inactive material category (audited; 409 unless INACTIVE)' })

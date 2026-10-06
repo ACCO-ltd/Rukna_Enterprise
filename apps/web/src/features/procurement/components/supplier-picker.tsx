@@ -25,12 +25,12 @@ import { Alert, Select } from '@erp/ui';
 
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
-import { useCreateSupplier, useSuppliers } from '../hooks/use-procurement';
+import { useCreateSupplier, useSupplierDirectory, useSuppliers } from '../hooks/use-procurement';
 import { CreateInPickerDialog } from './create-in-picker-dialog';
 import type { Supplier } from '../types';
 
 /** How a supplier reads in a list of options: `SUP-001 · Al-Rashid Trading`. */
-export function supplierOptionLabel(supplier: Supplier): string {
+export function supplierOptionLabel(supplier: Pick<Supplier, 'code' | 'name'>): string {
   return `${supplier.code} · ${supplier.name}`;
 }
 
@@ -41,6 +41,11 @@ interface SupplierPickerProps {
   disabled?: boolean;
   /** Marks the underlying select required. The caller still guards its own submit. */
   required?: boolean;
+  /**
+   * `payables` (default): every supplier from `GET /suppliers`, for bills and payments.
+   * `procurement`: ACTIVE suppliers from the procurement directory, for purchase orders.
+   */
+  source?: 'payables' | 'procurement';
 }
 
 export function SupplierPicker({
@@ -49,6 +54,7 @@ export function SupplierPicker({
   onChange,
   disabled,
   required,
+  source = 'payables',
 }: SupplierPickerProps) {
   const t = useTranslations('procurement.supplier');
   const tc = useTranslations('procurement.common');
@@ -56,7 +62,10 @@ export function SupplierPicker({
   // the same split `SetupScreen` uses.
   const tCommon = useTranslations('common');
 
-  const suppliers = useSuppliers();
+  const fromProcurement = source === 'procurement';
+  const payables = useSuppliers(undefined, { enabled: !fromProcurement });
+  const directory = useSupplierDirectory({ status: 'ACTIVE' }, { enabled: fromProcurement });
+  const suppliers = fromProcurement ? directory : payables;
   const { can } = usePermissions();
   const canManage = can(PROCUREMENT_PERMISSIONS.manageSuppliers);
   const create = useCreateSupplier();

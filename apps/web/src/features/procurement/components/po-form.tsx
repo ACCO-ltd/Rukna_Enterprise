@@ -227,7 +227,13 @@ export function PoForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField htmlFor={ids.supplier} label={tc('supplier')}>
-          <SupplierPicker id={ids.supplier} value={supplierId} onChange={setSupplierId} required />
+          <SupplierPicker
+            id={ids.supplier}
+            value={supplierId}
+            onChange={setSupplierId}
+            required
+            source="procurement"
+          />
           {showErrors && !supplierId ? (
             <p className="mt-1 text-xs font-medium text-danger" role="alert">
               {t('supplierRequired')}

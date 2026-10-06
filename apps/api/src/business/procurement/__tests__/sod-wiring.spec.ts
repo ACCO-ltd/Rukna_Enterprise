@@ -21,7 +21,9 @@ describe('Procurement SoD wiring (ADR-022)', () => {
   it('purchase order: the vendor maintainer creating a PO is checked as CREATE_PURCHASE_ORDER', async () => {
     const sod = denyingSod();
     const prisma = {
-      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice' }) },
+      supplier: {
+        findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice', status: 'ACTIVE', name: 'Bakaal Steel' }),
+      },
     };
     const svc = new PurchaseOrderService(
       { getClient: () => prisma } as never,

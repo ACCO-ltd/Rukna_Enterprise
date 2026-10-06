@@ -296,6 +296,29 @@ describe('SupplierPicker', () => {
    * state of every environment — not an error. An empty `<select>` here reads as a broken
    * screen; a link to the place that fixes it does not.
    */
+  it('reads the payables master by default and leaves the directory disabled', () => {
+    renderWithProviders(<Picker />);
+    expect(mocks.useSuppliers).toHaveBeenCalledWith(undefined, { enabled: true });
+    expect(mocks.useSupplierDirectory).toHaveBeenCalledWith({ status: 'ACTIVE' }, { enabled: false });
+  });
+
+  /**
+   * A buyer raising an order holds view:procurement but not manage:payable, so the order form
+   * reads the procurement directory — ACTIVE suppliers only, so a retired supplier is not offered.
+   */
+  it('reads ACTIVE suppliers from the procurement directory for a purchase order', async () => {
+    const user = userEvent.setup();
+    mocks.useSuppliers.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    mocks.useSupplierDirectory.mockReturnValue({ data: [row(RASHID)], isPending: false, isError: false });
+    renderWithProviders(<SupplierPicker id="supplier" value="" onChange={() => {}} source="procurement" />);
+
+    expect(mocks.useSuppliers).toHaveBeenCalledWith(undefined, { enabled: false });
+    expect(mocks.useSupplierDirectory).toHaveBeenCalledWith({ status: 'ACTIVE' }, { enabled: true });
+    await openSelect(user, screen.getByRole('combobox'));
+    expect(screen.getByRole('option', { name: 'SUP-001 · Al-Rashid Trading' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'SUP-002 · Horn Cement' })).not.toBeInTheDocument();
+  });
+
   it('links to the Suppliers screen instead of rendering an empty select', () => {
     mocks.useSuppliers.mockReturnValue(loaded([]));
     renderWithProviders(<Picker />);

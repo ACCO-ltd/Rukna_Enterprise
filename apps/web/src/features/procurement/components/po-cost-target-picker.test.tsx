@@ -207,3 +207,28 @@ describe('PoCostTargetPicker — BOQ node select', () => {
     expect(screen.getByText(/no committed BOQ yet/i)).toBeInTheDocument();
   });
 });
+
+describe('PoCostTargetPicker — without BOQ access', () => {
+  const chosen: CostTargetValue = { notChargeable: false, projectId: 'proj-1', boqNodeId: null, spendCategoryId: null };
+
+  it('explains in words why the BOQ item select is unavailable, and reads no BOQ', () => {
+    renderWithProviders(<PoCostTargetPicker value={chosen} onChange={vi.fn()} showError={false} />, {
+      permissions: ['view:procurement', 'create:purchase-order'],
+    });
+
+    expect(screen.getByText(/Your role can't see this project's BOQ/)).toBeInTheDocument();
+    expect(screen.getByLabelText('BOQ cost node')).toBeDisabled();
+    expect(mocks.useBoqWorkspace).toHaveBeenCalledWith('proj-1', { enabled: false });
+    expect(screen.queryByText(/no committed BOQ yet/)).not.toBeInTheDocument();
+  });
+
+  it('offers the BOQ items to a role that holds view:boq', () => {
+    renderWithProviders(<PoCostTargetPicker value={chosen} onChange={vi.fn()} showError={false} />, {
+      permissions: ['view:procurement', 'create:purchase-order', 'view:boq'],
+    });
+
+    expect(screen.queryByText(/Your role can't see this project's BOQ/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('BOQ cost node')).not.toBeDisabled();
+    expect(mocks.useBoqWorkspace).toHaveBeenCalledWith('proj-1', { enabled: true });
+  });
+});

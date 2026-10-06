@@ -276,12 +276,14 @@ export function useMaterials(filters?: {
  * parameter, so the picker filters this in memory rather than per keystroke — the list is
  * a supplier master, not a transaction log, and fetching it once is cheaper than debouncing.
  */
-export function useSuppliers(filters?: {
-  status?: 'ACTIVE' | 'INACTIVE';
-}): UseQueryResult<Supplier[]> {
+export function useSuppliers(
+  filters?: { status?: 'ACTIVE' | 'INACTIVE' },
+  options?: { enabled?: boolean },
+): UseQueryResult<Supplier[]> {
   return useQuery({
     queryKey: procurementKeys.suppliers(filters?.status),
     queryFn: () => listSuppliers(filters),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -299,8 +301,11 @@ export function useCreateSupplier() {
         values: (supplier) => ({ name: (supplier as Supplier).name }),
       },
     },
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
+    onSuccess: () => {
+      // The order form's picker reads the procurement directory, not the payables list.
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'supplier-directory'] });
+    },
   });
 }
 
@@ -320,8 +325,11 @@ export function useUpdateSupplier() {
         values: (supplier) => ({ name: (supplier as Supplier).name }),
       },
     },
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
+    onSuccess: () => {
+      // The order form's picker reads the procurement directory, not the payables list.
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'supplier-directory'] });
+    },
   });
 }
 
@@ -480,14 +488,18 @@ export function useSupplier(id: string): UseQueryResult<Supplier> {
   });
 }
 
-/** The supplier directory — the Suppliers page. Pickers keep `useSuppliers`. */
-export function useSupplierDirectory(filters?: {
-  status?: CatalogueStatusFilter;
-  search?: string;
-}): UseQueryResult<SupplierDirectoryRow[]> {
+/**
+ * The supplier directory (`view:procurement`) — the Suppliers page, and the purchase-order
+ * supplier picker, which a buyer without `manage:payable` must still be able to load.
+ */
+export function useSupplierDirectory(
+  filters?: { status?: CatalogueStatusFilter; search?: string },
+  options?: { enabled?: boolean },
+): UseQueryResult<SupplierDirectoryRow[]> {
   return useQuery({
     queryKey: [...procurementKeys.all, 'supplier-directory', filters?.status ?? 'ALL', filters?.search ?? ''],
     queryFn: () => listSupplierDirectory(filters),
+    enabled: options?.enabled ?? true,
   });
 }
 

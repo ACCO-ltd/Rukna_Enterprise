@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   useUpdateSupplierBill: vi.fn(),
   useSupplierBill: vi.fn(),
   useSuppliers: vi.fn(),
+  // Disabled for bills and payments, which read the payables master.
+  useSupplierDirectory: () => ({ data: undefined, isPending: true, isError: false }),
   useSupplierBills: vi.fn(),
   // SupplierPicker offers "New supplier" from the picker itself.
   useCreateSupplier: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),

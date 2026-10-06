@@ -59,10 +59,18 @@ export const boqKeys = {
  * catch a 404 and translate it, which meant a genuine 404 (wrong project id) looked
  * identical to a legitimate starting state.
  */
-export function useBoqWorkspace(projectId: string): UseQueryResult<BoqWorkspaceResponse, Error> {
+/**
+ * Never fetches without a project: an empty id would request `/projects//boq/workspace`.
+ * `enabled: false` lets a caller that cannot read the BOQ skip the request entirely.
+ */
+export function useBoqWorkspace(
+  projectId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<BoqWorkspaceResponse, Error> {
   return useQuery({
     queryKey: boqKeys.workspace(projectId),
     queryFn: () => getBoqWorkspace(projectId),
+    enabled: Boolean(projectId) && (options?.enabled ?? true),
   });
 }
 
@@ -73,7 +81,7 @@ export function useBoqTree(
   return useQuery({
     queryKey: boqKeys.tree(projectId, versionId ?? 'none'),
     queryFn: () => getBoqTree(projectId, versionId!),
-    enabled: versionId !== null,
+    enabled: Boolean(projectId) && versionId !== null,
   });
 }
 

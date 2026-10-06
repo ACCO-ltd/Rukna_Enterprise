@@ -2197,7 +2197,12 @@ All MATERIAL procurement lines use a UoM from this table. `MATERIAL` lines are l
 | `POST` | `/procurement/uom/:id/deactivate` | Deactivate |
 | `GET` | `/units-of-measure?status=ACTIVE` | Read-only lookup for pickers (`view:project`) |
 
-The four `/procurement/uom` routes require `manage:procurement-config`.
+The `/procurement/uom` reads (`GET` list and `GET /:id`) require `view:procurement` or
+`manage:procurement-config`; the writes (create, deactivate, reactivate) require
+`manage:procurement-config`. The same split applies to `/procurement/materials`,
+`/procurement/material-categories` and `/procurement/spend-categories`: a buyer holding
+`view:procurement` loads the catalogue into order and request forms without being able to
+change it.
 
 **`GET /units-of-measure`** (ADR-039) is the registry as a lookup for anyone in the organization
 who picks a unit — the BOQ unit column first. Requires `view:project` (like `GET /districts`;

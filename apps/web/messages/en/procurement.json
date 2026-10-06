@@ -79,6 +79,7 @@
     "selectNode": "Select a cost node",
     "selectProjectFirst": "Choose a project first",
     "loadingNodes": "Loading cost nodes…",
+    "noBoqAccess": "Your role can't see this project's BOQ, so you can't pick a BOQ item. Choose a project-level cost category instead, or ask someone with BOQ access.",
     "noBaseline": "This project has no committed BOQ yet, so it has no cost nodes to charge to.",
     "noLeafNodes": "This project's committed BOQ has no active cost items to charge to.",
     "nodesLoadFailed": "The BOQ cost nodes could not be loaded.",
