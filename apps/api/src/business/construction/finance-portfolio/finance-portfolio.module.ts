@@ -19,5 +19,7 @@ import { FinancePortfolioController } from './presentation/finance-portfolio.con
   imports: [TenancyModule, AccountingCoreModule, FinancialPositionModule, ProjectProcurementModule, CommercialModule],
   providers: [FinancePortfolioService, FinanceCashflowService],
   controllers: [FinancePortfolioController, FinanceCashflowController],
+  // The Dashboard (`GET /dashboard`) reads the portfolio's rows rather than re-deriving them.
+  exports: [FinancePortfolioService],
 })
 export class FinancePortfolioModule {}

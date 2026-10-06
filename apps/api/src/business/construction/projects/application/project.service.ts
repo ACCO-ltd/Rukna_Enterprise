@@ -248,6 +248,49 @@ export class ProjectService {
     };
   }
 
+  /**
+   * The newest `take` events across a bounded set of projects (the Dashboard's "Latest activity").
+   * Each project's stream is the same query as `GET /projects/:id/activity` (same families, same
+   * permission gates); the targets — and the amount redaction in `buildActivityTarget` — are loaded
+   * only for the events that survive the merge. `projects` must already be scoped to the caller
+   * (the Dashboard passes ids from `ProjectAccessService.accessibleProjectIds`).
+   */
+  async getRecentActivityAcross(
+    identity: RequestIdentity,
+    projects: ReadonlyArray<{ id: string; name: string }>,
+    take: number,
+  ): Promise<Array<ProjectActivityEventResponse & { project: { id: string; name: string } }>> {
+    if (projects.length === 0 || take <= 0) return [];
+    const perProject = await Promise.all(
+      projects.map(async (project) => ({
+        project,
+        rows: await this.loadActivity(identity, project.id, { cursor: null, take }),
+      })),
+    );
+    const merged = perProject
+      .flatMap(({ project, rows }) => rows.map((row) => ({ project, row })))
+      .sort((a, b) => b.row.createdAt.getTime() - a.row.createdAt.getTime() || (a.row.id < b.row.id ? 1 : -1))
+      .slice(0, take);
+
+    const byProject = new Map<string, { project: { id: string; name: string }; rows: ProjectActivityRow[] }>();
+    for (const { project, row } of merged) {
+      const group = byProject.get(project.id) ?? { project, rows: [] };
+      group.rows.push(row);
+      byProject.set(project.id, group);
+    }
+    const eventsById = new Map<string, ProjectActivityEventResponse & { project: { id: string; name: string } }>();
+    await Promise.all(
+      [...byProject.values()].map(async ({ project, rows }) => {
+        const events = await this.toActivityEvents(identity, project.id, rows);
+        for (const event of events) eventsById.set(event.id, { ...event, project: { id: project.id, name: project.name } });
+      }),
+    );
+    return merged.flatMap(({ row }) => {
+      const event = eventsById.get(row.id);
+      return event ? [event] : [];
+    });
+  }
+
   private loadActivity(
     identity: RequestIdentity,
     id: string,
@@ -410,6 +453,23 @@ export class ProjectService {
       { ...this.toReadinessSnapshot(project), evidence },
       lifecycleCommand,
       this.callerAuthority(identity, lifecycleCommand),
+    );
+  }
+
+  /**
+   * Start readiness for a set of Preparation projects in one snapshot query (the Dashboard). The
+   * same snapshot mapping and pure policy as `getReadiness(…, 'start')`, without the evidence
+   * timestamps (the Dashboard shows no `satisfiedAt`). `ids` must already be scoped to the caller.
+   */
+  async getStartReadinessMany(
+    identity: RequestIdentity,
+    ids: string[],
+  ): Promise<Map<string, ProjectReadinessResponse>> {
+    const prisma = this.tenancyService.getClient();
+    const records = await this.repo.findReadinessSnapshots(prisma, identity.activeOrganizationId, ids);
+    const authority = this.callerAuthority(identity, 'start');
+    return new Map(
+      records.map((record) => [record.id, evaluateReadiness(this.toReadinessSnapshot(record), 'start', authority)]),
     );
   }
 

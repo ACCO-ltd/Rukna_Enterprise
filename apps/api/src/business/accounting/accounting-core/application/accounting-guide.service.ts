@@ -40,14 +40,10 @@ export class AccountingGuideService {
       identity.permissions.includes('*') || identity.permissions.includes(perm);
 
     const readiness = await this.readiness.getReadiness(identity);
-    const hasBlocker = (code: string) => readiness.blockers.some((b) => b.code === code);
 
     // Shared facts (a handful of cheap queries, run together).
-    const [bankAccounts, openingJournal, currentPeriod, fiscalYear] = await Promise.all([
-      prisma.bankAccount.count({ where: { organizationId: orgId } }),
-      prisma.journalEntry.count({
-        where: { organizationId: orgId, sourceDocumentType: 'OPENING_BALANCE' },
-      }),
+    const [setup, currentPeriod, fiscalYear] = await Promise.all([
+      this.loadSetup(prisma, orgId, readiness, can),
       prisma.accountingPeriod.findFirst({
         where: { organizationId: orgId, startDate: { lte: today }, endDate: { gte: today } },
         orderBy: { startDate: 'desc' },
@@ -59,7 +55,6 @@ export class AccountingGuideService {
       }),
     ]);
 
-    const setup = this.buildSetup(readiness.ready, hasBlocker, bankAccounts, openingJournal, can);
     const daily = await this.buildDaily(prisma, orgId, readiness.ready, can);
     const monthEnd = await this.buildMonthEnd(prisma, orgId, readiness.ready, currentPeriod, can);
     const yearEnd = await this.buildYearEnd(prisma, orgId, readiness.ready, fiscalYear, can);
@@ -75,7 +70,35 @@ export class AccountingGuideService {
     };
   }
 
+  /**
+   * Only the first-time setup cycle — what the Dashboard (`GET /dashboard`) reads for its
+   * "accounting setup" to-do and setup step, so it says exactly what the guide says.
+   */
+  async getSetupCycle(identity: RequestIdentity): Promise<{ ready: boolean; cycle: GuideCycle }> {
+    const can = (perm: string) =>
+      identity.permissions.includes('*') || identity.permissions.includes(perm);
+    const readiness = await this.readiness.getReadiness(identity);
+    const cycle = await this.loadSetup(this.tenancy.getClient(), identity.activeOrganizationId, readiness, can);
+    return { ready: readiness.ready, cycle };
+  }
+
   // ── Setup ──────────────────────────────────────────────────────────────────
+  private async loadSetup(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    readiness: { ready: boolean; blockers: ReadonlyArray<{ code: string }> },
+    can: (p: string) => boolean,
+  ): Promise<GuideCycle> {
+    const hasBlocker = (code: string) => readiness.blockers.some((b) => b.code === code);
+    const [bankAccounts, openingJournal] = await Promise.all([
+      prisma.bankAccount.count({ where: { organizationId: orgId } }),
+      prisma.journalEntry.count({
+        where: { organizationId: orgId, sourceDocumentType: 'OPENING_BALANCE' },
+      }),
+    ]);
+    return this.buildSetup(readiness.ready, hasBlocker, bankAccounts, openingJournal, can);
+  }
+
   private buildSetup(
     ready: boolean,
     hasBlocker: (code: string) => boolean,

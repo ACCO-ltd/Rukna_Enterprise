@@ -6,6 +6,9 @@ import type {
   FinancePortfolioTotals,
 } from '@erp/types';
 
+import { deriveInvoiceState } from '../../commercial/domain/commercial-workspace.policy.js';
+import { scheduleBaseValue } from '../../commercial/domain/receivable-position.js';
+
 /**
  * Pure assembly rules for the Finance portfolio (ADR-043). Every figure arrives already computed
  * by the shared per-project formulas (`computeReceivablePosition`, `buildPosition`,
@@ -14,6 +17,29 @@ import type {
  */
 
 const ZERO = new Decimal(0);
+
+/**
+ * A payment-schedule stage marked ready to bill, as the portfolio and the Dashboard count it
+ * (ADR-043 decision 1). The stage's invoice state is the payment schedule's own rule
+ * (`deriveInvoiceState`): ISSUED (posted, reversed or opening balance) is billed → null; DRAFT
+ * (not yet posted, incl. pending/failed) stays "to bill" as "draft prepared"; none (no invoice, or
+ * a cancelled one) stays "to bill" as "not prepared". Priced as the payment schedule prices it:
+ * `scheduleBaseValue` × percentage.
+ */
+export function readyStageToBill(
+  stage: {
+    percentage: { toString(): string };
+    clientInvoice: { documentStatus: string; postingStatus: string } | null;
+  },
+  contract: { baseContractValue: { toString(): string } | null; contractValue: { toString(): string } },
+): { draftPrepared: boolean; amount: Decimal } | null {
+  const invoiceState = deriveInvoiceState(stage.clientInvoice);
+  if (invoiceState === 'ISSUED') return null;
+  return {
+    draftPrepared: invoiceState === 'DRAFT',
+    amount: scheduleBaseValue(contract).mul(stage.percentage.toString()),
+  };
+}
 
 /** Does the row belong in the morning queue? (ADR-043 decision 5.) */
 export function inQueue(row: FinancePortfolioRow, queue: FinancePortfolioQueue): boolean {

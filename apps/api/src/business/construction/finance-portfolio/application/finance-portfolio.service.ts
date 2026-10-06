@@ -22,14 +22,16 @@ import {
   type StageTotals,
 } from '../../../procurement/project-procurement/domain/project-cost-rollup.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
-import { deriveInvoiceState } from '../../commercial/domain/commercial-workspace.policy.js';
 import { CommercialPrismaRepository } from '../../commercial/infrastructure/commercial-prisma.repository.js';
-import {
-  computeReceivablePosition,
-  scheduleBaseValue,
-} from '../../commercial/domain/receivable-position.js';
+import { computeReceivablePosition } from '../../commercial/domain/receivable-position.js';
 import { findBillsToPay } from '../infrastructure/bills-to-pay.query.js';
-import { inQueue, matchesSearch, portfolioTotals, queueCounts } from '../domain/finance-portfolio.policy.js';
+import {
+  inQueue,
+  matchesSearch,
+  portfolioTotals,
+  queueCounts,
+  readyStageToBill,
+} from '../domain/finance-portfolio.policy.js';
 
 const ZERO = new Decimal(0);
 
@@ -91,8 +93,13 @@ export class FinancePortfolioService {
     return { item, moneyVisible: built.moneyVisible, marginVisible: built.marginVisible, asOf: built.asOf };
   }
 
-  /** The rows for the caller's projects (optionally one project / one status), batched. */
-  private async buildRows(identity: RequestIdentity, filter: { projectId?: string; status?: string }) {
+  /**
+   * The rows for the caller's projects (optionally one project / one status), batched. Public so
+   * the Dashboard (`GET /dashboard`) reads the very same rows rather than re-deriving them; the
+   * caller's project access and money gate are applied here. `contracts` is the main contract per
+   * project behind each row's contract value.
+   */
+  async buildRows(identity: RequestIdentity, filter: { projectId?: string; status?: string }) {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
     const today = new Date();
@@ -149,20 +156,20 @@ export class FinancePortfolioService {
     }
 
     const contractById = new Map([...contracts.values()].map((c) => [c.id, c]));
-    // ADR-043 decision 1 — Finance issues invoices. The stage's invoice state is the payment
+    // ADR-043 decision 1 — Finance issues invoices. `readyStageToBill` applies the payment
     // schedule's own rule (`deriveInvoiceState`): ISSUED (posted, reversed or opening balance) is
     // billed; DRAFT (not yet posted, incl. pending/failed) stays "to bill" as "draft prepared";
     // none (no invoice, or a cancelled one) stays "to bill" as "not prepared".
     const ready = new Map<string, { count: number; draftCount: number; amount: Decimal }>();
     for (const inst of readyInstallments) {
-      const invoiceState = deriveInvoiceState(inst.clientInvoice);
-      if (invoiceState === 'ISSUED') continue; // billed
       const contract = contractById.get(inst.contractId);
       if (!contract) continue;
+      const toBill = readyStageToBill(inst, contract);
+      if (!toBill) continue; // billed
       const entry = ready.get(contract.projectId) ?? { count: 0, draftCount: 0, amount: ZERO };
       entry.count += 1;
-      if (invoiceState === 'DRAFT') entry.draftCount += 1;
-      entry.amount = entry.amount.plus(scheduleBaseValue(contract).mul(inst.percentage.toString()));
+      if (toBill.draftPrepared) entry.draftCount += 1;
+      entry.amount = entry.amount.plus(toBill.amount);
       ready.set(contract.projectId, entry);
     }
 
@@ -241,6 +248,6 @@ export class FinancePortfolioService {
       };
     };
 
-    return { rows: allRows, distinctBills, moneyVisible, marginVisible, asOf: today.toISOString() };
+    return { rows: allRows, contracts, distinctBills, moneyVisible, marginVisible, asOf: today.toISOString() };
   }
 }

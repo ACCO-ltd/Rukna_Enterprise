@@ -2912,6 +2912,100 @@ yet"). Render a neutral hidden/restricted state or omit the item — never `$0`,
 REJECTED, reversed (`WITHDRAWN`), or a variation on another project — is **400** "Rebaselining must
 cite an adopted variation on this project's contract." An unknown id is still 404.
 
+### 6.36 Dashboard — `GET /dashboard` (2026-10-06)
+
+The caller's first screen (design-system decisions P30–P32). One read, no query parameters. Every
+authenticated user may call it — there is **no** `@RequirePermissions`; each part is gated inside
+the read model. Contract: `DashboardResponse` in `packages/types/src/dashboard.ts`.
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| `GET` | `/dashboard` | authenticated | Scoped to the caller's projects (`ProjectAccessService`) and permissions |
+
+**Gates**
+
+- **Money** (`moneyVisible`): the Finance portfolio's rule — the `view-margin:boq` tier
+  (`resolveBoqVisibility(...).canViewMargin`) **and** `view:financial-position`. When false:
+  `figures` is `null`, every money field on project rows and to-do rows is `null` (never `"0.00"`),
+  and `INVOICE_OVERDUE` rows are not produced.
+- **Scope** (`projectScope`): `ALL` for the org-wide roles (no membership filter), else `MINE`
+  (projects the caller is an active member of).
+- **Stage** is decided on the whole organisation, not the caller: `NEW` (no project other than
+  CANCELLED), `PREPARATION` (≥ 1 DRAFT and none ever started), else `RUNNING`.
+
+**To-do rows** — ordered danger → attention → neutral, then in the order below; per-record kinds
+capped at 5.
+
+| `kind` | Tone | Shown when the caller holds | `href` |
+|---|---|---|---|
+| `INVOICE_OVERDUE` | danger | money visible | `/finance/accounting/invoices/:id` (most days late first) |
+| `MATERIAL_REQUEST_AWAITING_APPROVAL` | attention | `approve:material-request` (not their own) | `/procurement/requests/:id` (earliest need first) |
+| `BILL_MATCH_EXCEPTION` | attention | `manage:payable` | `/finance/accounting/bills/:id` |
+| `BILLS_AWAITING_APPROVAL` | attention | `manage:payable` (bills they did not enter) | `/finance/accounting/bills` (one aggregated row) |
+| `ACCOUNTING_SETUP_INCOMPLETE` | attention | `view:accounting`, setup cycle not done | `/finance/accounting/guide` |
+| `REPORTS_TO_REVIEW` | neutral | `approve:progress` | `/projects/:id/progress/review` (per project) |
+| `MILESTONE_READY_TO_VERIFY` | neutral | `manage:project` | `/projects/:id/progress/review` |
+| `STAGE_READY_TO_BILL` | neutral | `manage:receivable` | `/finance/projects/:id/billing` (`view:financial-position`), else `/projects/:id/commercial/contract` |
+| `PROJECT_READY_TO_START` | neutral | `manage:project` | `/projects/:id` |
+| `PROJECTS_WITHOUT_CONTRACT` | neutral | `view:contract` | `/projects` (count of DRAFT client-contract projects) |
+
+`STAGE_READY_TO_BILL` = a stage marked ready whose invoice is not issued (the portfolio's rule)
+**and** that `installmentBillingBlocker(at: 'raise')` clears. `amount` is null when money is hidden.
+
+**Figures** (one entry per currency; `[]` when nothing is active, owed or payable):
+`contractValueInProgress` = Σ recorded main-contract value of ACTIVE projects (never the
+estimate); receivables over POSTED client invoices with a balance (`ALL` → the whole organisation,
+including invoices tied to no project; `MINE` → their projects), aging by whole UTC days past due
+with 61–90 and 90+ folded into `over60`; payables over POSTED supplier bills with a balance,
+`dueThisWeek` = due within 7 days, overdue included.
+
+**Projects**: `inProgress` (ACTIVE, PRACTICAL_COMPLETION, CLOSEOUT) carry the Finance portfolio
+row's contract value / outstanding / overdue and the schedule-variance `plannedPercent` /
+`physicalPercent` (each null when there is no plan / no work package). `inPreparation` (DRAFT)
+carry Start readiness `{done, total}`, `nextStep` (first open condition in
+`PREPARATION_STEP_ORDER`, owner from `PREPARATION_STEP_OWNER`) and `value` (executed main contract
+→ `CONTRACT`, else the creation estimate → `ESTIMATE`, else null; null when money is hidden).
+
+**Activity**: the newest 5 events across the caller's 10 most recently updated open projects —
+the same stream and permission families as `GET /projects/:id/activity`, never with an amount.
+
+**Setup** (stage `NEW` only, else `null`): `CLIENT` (`create:client`), `PROJECT`
+(`create:project`), `ACCOUNTING` (`manage:accounting`; done = ledger ready), `SUPPLIERS`
+(optional; a supplier and a catalogue material; `manage:payable`), `TEAM` (more than one active
+user; `manage:user`). `canAct` says whether the caller holds the step's permission.
+
+```json
+{
+  "organizationName": "ACCO Ltd",
+  "stage": "RUNNING",
+  "moneyVisible": true,
+  "projectScope": "ALL",
+  "todo": [
+    {
+      "key": "invoice-overdue:clx…", "kind": "INVOICE_OVERDUE", "tone": "danger",
+      "href": "/finance/accounting/invoices/clx…", "amount": "10000.00", "currency": "USD",
+      "invoiceNumber": "INV-0042", "clientName": "Hodan Trading", "projectName": "Clinic",
+      "dueDate": "2026-07-28", "daysLate": 70
+    }
+  ],
+  "figures": [
+    {
+      "currency": "USD", "contractValueInProgress": "500000.00", "activeProjectCount": 2,
+      "receivables": {
+        "outstanding": "125000.00", "unpaidInvoiceCount": 4, "overdue": "105000.00",
+        "overdueInvoiceCount": 3, "oldestDaysLate": 70,
+        "aging": { "notDue": "20000.00", "days1To30": "5000.00", "days31To60": "90000.00", "over60": "10000.00" }
+      },
+      "payables": { "outstanding": "1000.00", "unpaidBillCount": 1, "dueThisWeek": "1000.00" }
+    }
+  ],
+  "projects": { "inProgress": [], "inPreparation": [], "statusCounts": { "ACTIVE": 2, "DRAFT": 1 } },
+  "activity": [],
+  "setup": null,
+  "asOf": "2026-10-06T09:00:00.000Z"
+}
+```
+
 ---
 
 ## 9. What Is NOT Built Yet (Do Not Call)

@@ -69,6 +69,7 @@ import {
   isLiveStageInvoice,
   scheduleBaseValue,
 } from '../domain/receivable-position.js';
+import { AGING_BUCKETS, agingBucket } from '../domain/receivable-aging.js';
 import { issuePostingDate, stageBillingEligibility, stagePrepareBlock } from '../domain/stage-billing-eligibility.policy.js';
 import { PeriodValidator } from '../../../accounting/accounting-core/application/validators/period.validator.js';
 
@@ -92,14 +93,6 @@ const ADVANCE_PERMISSION: Partial<Record<string, string>> = {
 // methods because none of them touch instance state, and a rule with no dependencies is far
 // easier to reason about (and to test) sitting on its own.
 
-const AGING_BUCKETS: ReadonlyArray<CommercialAgingBucket['bucket']> = [
-  'NOT_DUE',
-  'DAYS_1_30',
-  'DAYS_31_60',
-  'DAYS_61_90',
-  'DAYS_90_PLUS',
-];
-
 /** Midnight UTC for a moment — so "how many days late" counts calendar days, not elapsed hours. */
 function utcMidnight(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -112,14 +105,6 @@ function utcMidnight(date: Date): number {
  */
 function daysBetweenUtc(todayUtc: number, dueDate: Date): number {
   return daysPastDue(dueDate, new Date(todayUtc));
-}
-
-function agingBucket(daysLate: number): CommercialAgingBucket['bucket'] {
-  if (daysLate <= 0) return 'NOT_DUE';
-  if (daysLate <= 30) return 'DAYS_1_30';
-  if (daysLate <= 60) return 'DAYS_31_60';
-  if (daysLate <= 90) return 'DAYS_61_90';
-  return 'DAYS_90_PLUS';
 }
 
 function emptyAging(): CommercialAgingBucket[] {

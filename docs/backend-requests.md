@@ -1,3 +1,33 @@
+# Dashboard (GET /dashboard) — 2026-10-06
+
+What the Dashboard rebuild (design-system P30–P32, contract `packages/types/src/dashboard.ts`)
+asked of the backend, and where each ask stands (branch `feat/dashboard-rebuild`). Endpoint
+details: [`reference/api-reference.md` §6.36](reference/api-reference.md#636-dashboard--get-dashboard-2026-10-06).
+Every figure is read through the module that already owns it; the dashboard adds no formula.
+
+| # | Ask | Status | Notes |
+|---|---|---|---|
+| D1 | Stage NEW / PREPARATION / RUNNING | **Done** | Decided on the organisation's project statuses (not the caller's). |
+| D2 | Money gate | **Done** | The Finance portfolio's exact rule: `view-margin:boq` tier + `view:financial-position`. Hidden money is `null`; `figures` is `null`. |
+| D3 | To do: overdue invoices | **Done** | POSTED, balance > 0, `daysPastDue > 0` (the D5 rule). Most days late first, max 5. Money-visible callers only. |
+| D4 | To do: stages ready to bill | **Done** | The portfolio's "to bill" rule (`readyStageToBill`, now shared) plus `installmentBillingBlocker(at: 'raise')`. `manage:receivable`. Max 5. |
+| D5 | To do: material requests awaiting approval | **Done** | SUBMITTED, not requested by the caller; `approve:material-request`. A member-scoped approver sees only their projects' requests. The approve route itself is a separate PR. |
+| D6 | To do: bill match exceptions | **Done** | `matchStatus = EXCEPTION`, unposted, not rejected/cancelled; `manage:payable`. |
+| D7 | To do: bills awaiting approval | **Partial** | SUBMITTED bills the caller did not enter (`createdBy` — a bill records no submitter; the clerk who enters it submits it). "Submitted at" is the bill's `updatedAt` (a submitted bill cannot be edited). The bills list has no status filter in its URL yet, so the row links to the full list. |
+| D8 | To do: accounting setup incomplete | **Done** | The guide's own setup cycle (`AccountingGuideService.getSetupCycle`, extracted from `getGuide`); `view:accounting`. |
+| D9 | To do: reports to review | **Done** | SUBMITTED DPRs grouped per project in one query; `approve:progress`. |
+| D10 | To do: milestones ready to verify | **Done** | `ProgrammeService.listMilestones` `readyToVerify`, in-progress projects only; `manage:project`. Links to Progress → Review, where Verify lives. |
+| D11 | To do: project ready to start / projects without contract | **Done** | Start readiness (`evaluateReadiness('start')`); "without contract" = the `ACTIVE_MAIN_CONTRACT` condition unmet on a CLIENT_CONTRACT draft. The projects list has no status filter in its URL yet. |
+| D12 | Figures: contract value in progress, receivables, payables | **Done** | Per currency. Receivables org-wide for `ALL` scope (incl. invoices with no project), the caller's projects for `MINE`; folded by `computeReceivablePosition`. Payables via the portfolio's bills-to-pay rule (`findOpenPostedBills`). |
+| D13 | Receivables aging | **Done** | Bucket rule moved to `commercial/domain/receivable-aging.ts`, shared with the Commercial billing read model; 61–90 and 90+ fold into `over60`. |
+| D14 | Progress per started project | **Done** | `ProgressService.getScheduleReading`: the schedule-variance planned % and roll-up physical %; null (not 0) with no plan / no work package. One call per started project (bounded), a failure gives nulls. |
+| D15 | Preparation readiness + next step + value | **Done** | One batched snapshot query (`findReadinessSnapshots`); next step in `PREPARATION_STEP_ORDER`. Value = executed main contract, else the creation estimate. |
+| D16 | Activity | **Done** | Newest 5 across the caller's 10 most recently updated open projects; same stream and gates as `GET /projects/:id/activity`; no amounts. |
+| D17 | Setup checklist (stage NEW) | **Done** | Client, project, accounting (ledger ready), suppliers + catalogue material (optional; `manage:payable`), team (> 1 active user). |
+| D18 | Approvals assigned to a specific approver | **Not built** | `ApprovalInstance` has no assignee. Bill and material-request approvals are shown to everyone holding the approve permission, minus their own. |
+| D19 | Purchase-order approvals | **Not built** | Purchase orders have no approval step to wait on. |
+| D20 | One organisation base currency | **Not built** | The organisation has no base currency; figures are returned per currency and never added across currencies. |
+
 # Backend requests — Progress redesign
 
 What the Progress tab redesign asked of the backend, and where each ask stands. Status as of
