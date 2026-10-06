@@ -340,8 +340,10 @@ export function LineItemsEditor<T>({
   return (
     <div className={cn('space-y-3', className)}>
       {/* The desktop grid scrolls inside its own frame: a wide line set (many fixed-width
-          columns at tablet widths) must never push the page sideways. */}
-      <div className="md:overflow-x-auto md:rounded-panel md:border md:border-border md:bg-surface">
+          columns at tablet widths) must never push the page sideways. `relative` makes the frame
+          the containing block of absolutely positioned descendants (sr-only labels, native
+          selects), which would otherwise escape the clip and still widen the page. */}
+      <div className="md:relative md:overflow-x-auto md:rounded-panel md:border md:border-border md:bg-surface">
       <div role="table" aria-label={label} style={gridStyle} className="md:w-max md:min-w-full">
         {/* Header — desktop only; on phones every cell carries its own label. */}
         <div role="rowgroup" className="hidden md:block">
