@@ -78,7 +78,7 @@ const meterStrokeTone: Record<ProgressTone, string> = {
   danger: 'text-danger',
 };
 
-export interface MeterProps {
+export interface RingMeterProps {
   value: number;
   max?: number;
   /** Outer diameter in px. */
@@ -91,7 +91,15 @@ export interface MeterProps {
 }
 
 /** Circular/donut meter — the "68% · $6.8M of $10.0M" ring pattern. */
-export function Meter({ value, max = 100, size = 96, strokeWidth = 8, tone = 'default', label, className }: MeterProps) {
+export function RingMeter({
+  value,
+  max = 100,
+  size = 96,
+  strokeWidth = 8,
+  tone = 'default',
+  label,
+  className,
+}: RingMeterProps) {
   const percent = clampPercent(value, max);
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -126,5 +134,65 @@ export function Meter({ value, max = 100, size = 96, strokeWidth = 8, tone = 'de
         {label ?? `${Math.round(percent)}%`}
       </div>
     </div>
+  );
+}
+
+export type MeterTone = 'attention' | 'danger' | 'success';
+
+const meterFillTone: Record<MeterTone, string> = {
+  attention: 'bg-warning',
+  danger: 'bg-danger',
+  success: 'bg-success',
+};
+
+export interface MeterProps {
+  /** The ratio, 0–100. */
+  value: number;
+  /** The planned position, 0–100 — drawn as a tick so "behind" shows without a second bar. */
+  target?: number | null;
+  /**
+   * Recolours the fill. Only pass it when the same state is written next to the meter
+   * ("6 pts behind plan", "Ready to start") — the colour is never the only signal.
+   */
+  tone?: MeterTone;
+  /** Accessible name. */
+  label: string;
+  className?: string;
+}
+
+const clamp100 = (n: number) => Math.min(100, Math.max(0, n));
+
+/**
+ * One ratio against a limit, beside its number in a table cell or a list row: progress against
+ * plan, steps done. The fill is ink; `target` draws a tick at the plan. Always pair it with the
+ * value ("49%", "3 of 5") — a bar alone is not data. For change over time use the S-curve.
+ */
+export function Meter({ value, target, tone, label, className }: MeterProps) {
+  const v = clamp100(Number.isFinite(value) ? value : 0);
+  return (
+    <span
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(v)}
+      className={cn('relative inline-block h-1.5 w-16 shrink-0 rounded-full bg-muted', className)}
+    >
+      <span
+        className={cn(
+          'absolute inset-y-0 start-0 rounded-full transition-[width] duration-(--motion-layout) ease-brand',
+          tone ? meterFillTone[tone] : 'bg-foreground',
+        )}
+        style={{ width: `${v}%` }}
+      />
+      {target != null && Number.isFinite(target) ? (
+        <span
+          data-testid="meter-target"
+          aria-hidden="true"
+          className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-progress rtl:translate-x-1/2"
+          style={{ insetInlineStart: `${clamp100(target)}%` }}
+        />
+      ) : null}
+    </span>
   );
 }

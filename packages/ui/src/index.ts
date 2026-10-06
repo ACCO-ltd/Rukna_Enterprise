@@ -27,8 +27,10 @@ export type { ButtonProps } from './components/button';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './components/card';
 export { EmptyState } from './components/empty-state';
 export type { EmptyStateProps } from './components/empty-state';
-export { Progress, Meter } from './components/progress';
-export type { ProgressProps, MeterProps, ProgressTone } from './components/progress';
+export { Progress, Meter, RingMeter } from './components/progress';
+export type { ProgressProps, MeterProps, MeterTone, RingMeterProps, ProgressTone } from './components/progress';
+export { CellPrimary } from './components/cell-primary';
+export type { CellPrimaryProps } from './components/cell-primary';
 export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './components/tooltip';
 export {
   Dialog,
