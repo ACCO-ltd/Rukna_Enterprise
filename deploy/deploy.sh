@@ -77,10 +77,13 @@ if [ "$up_rc" -ne 0 ]; then
 fi
 # The API container must be running the image that was just built — otherwise the old code is
 # still serving and the health checks below would pass without anything having shipped.
-if [ "$(docker inspect rukna_api --format '{{.Image}}')" != "$(docker image inspect rukna-api:latest --format '{{.Id}}')" ]; then
-  echo "::error::rukna_api is not running the newly built image."
-  exit 1
-fi
+for pair in rukna_api:rukna-api rukna_web:rukna-web; do
+  container="${pair%%:*}"; image="${pair##*:}:latest"
+  if [ "$(docker inspect "$container" --format '{{.Image}}')" != "$(docker image inspect "$image" --format '{{.Id}}')" ]; then
+    echo "::error::$container is not running the newly built $image."
+    exit 1
+  fi
+done
 
 echo "── 5/5 health ──"
 for _ in $(seq 1 36); do
