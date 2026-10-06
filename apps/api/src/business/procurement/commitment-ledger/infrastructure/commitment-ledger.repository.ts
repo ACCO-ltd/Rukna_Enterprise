@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient, CommitmentStage, CommitmentSourceDocType } from '@prisma/client';
-import type { Decimal } from '@prisma/client/runtime/library';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -104,7 +104,9 @@ export class CommitmentLedgerRepository {
 
     const get = (stage: CommitmentStage): Decimal => {
       const row = rows.find(r => r.stage === stage);
-      return (row?._sum?.reportingAmount as Decimal | null) ?? (0 as unknown as Decimal);
+      // An empty stage sums to null. Answer a real Decimal so the wire shape is always a
+      // decimal string ("0"), never the bare number 0 the web parser cannot read.
+      return (row?._sum?.reportingAmount as Decimal | null) ?? new Decimal(0);
     };
 
     return { committed: get('COMMITTED'), accrued: get('ACCRUED'), actual: get('ACTUAL') };

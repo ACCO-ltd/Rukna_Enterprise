@@ -106,6 +106,19 @@ describe('CommitmentLedger', () => {
     expect(grid.getByText('Overhead')).toBeInTheDocument();
   });
 
+  it('renders an empty stage that arrives as a bare number 0 without crashing', () => {
+    hooks.summary.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: { committed: '1000.00', accrued: 0, actual: 0 },
+    });
+    renderWithProviders(<CommitmentLedger initialProjectId="p1" />, { permissions: [MONEY] });
+
+    expect(screen.getByText('Cost so far')).toBeInTheDocument();
+    expect(screen.getAllByText('$1,000.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$0.00').length).toBeGreaterThan(0);
+  });
+
   it('maps Ordered / Received / Billed to the COMMITTED / ACCRUED / ACTUAL stages', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CommitmentLedger initialProjectId="p1" />, { permissions: [MONEY] });
