@@ -6,26 +6,25 @@ import { Alert, Button, ReadinessChecklist, type ReadinessStep } from '@erp/ui';
 
 import { usePermissions, type PermissionKey } from '@/features/auth/permissions/can';
 import { formatDate } from '@/lib/format';
-import type { ProjectReadinessConditionResponse } from '@erp/types';
+import {
+  PREPARATION_STEP_ORDER,
+  PREPARATION_STEP_OWNER,
+  type PreparationStepCode,
+  type ProjectReadinessConditionResponse,
+} from '@erp/types';
 import { useProjectReadiness } from '../hooks/use-project';
 import { PROJECT_PERMISSIONS } from '../permissions';
 import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail } from '../types';
 
-/** The business order the steps are read in. Codes the server adds later are appended. */
-const PREPARATION_ORDER = [
-  'CLIENT_ACTIVE',
-  'BOQ_BASELINED',
-  'ACTIVE_MAIN_CONTRACT',
-  'CONTRACT_START_DATE',
-  'DELIVERY_TEAM',
-  'PROGRAMME_DATES',
-] as const;
+/** The business order the steps are read in (shared with the dashboard's "next step"). */
+const PREPARATION_ORDER = PREPARATION_STEP_ORDER;
 
-type PreparationCode = (typeof PREPARATION_ORDER)[number];
+type PreparationCode = PreparationStepCode;
 
 /**
- * Where each step's work is done, who may open that place, and who owns the step.
+ * Where each step's work is done and who may open that place. Who owns each step is shared
+ * with the dashboard (`PREPARATION_STEP_OWNER`).
  *
  * There is deliberately no dependency map here: which step waits for which is the server's
  * `blockedBy` on each condition (only genuine data dependencies — e.g. the contract start date
@@ -37,28 +36,24 @@ const STEP_CONFIG: Record<
   {
     path: string;
     permission: PermissionKey;
-    owner: 'projectManager' | 'commercialTeam' | 'quantitySurveyor';
   }
 > = {
-  CLIENT_ACTIVE: { path: 'edit', permission: 'manage:project', owner: 'projectManager' },
-  BOQ_BASELINED: { path: 'boq', permission: 'view:boq', owner: 'quantitySurveyor' },
+  CLIENT_ACTIVE: { path: 'edit', permission: 'manage:project' },
+  BOQ_BASELINED: { path: 'boq', permission: 'view:boq' },
   // Straight to the page that does the job, not to a route that redirects to it.
   ACTIVE_MAIN_CONTRACT: {
     path: 'commercial/contract',
     permission: 'view:contract',
-    owner: 'commercialTeam',
   },
   CONTRACT_START_DATE: {
     path: 'commercial/contract',
     permission: 'view:contract',
-    owner: 'commercialTeam',
   },
   DELIVERY_TEAM: {
     path: 'members?add=1',
     permission: 'manage:project-member',
-    owner: 'projectManager',
   },
-  PROGRAMME_DATES: { path: 'edit', permission: 'manage:project', owner: 'projectManager' },
+  PROGRAMME_DATES: { path: 'edit', permission: 'manage:project' },
 };
 
 function isKnown(code: string): code is PreparationCode {
@@ -125,7 +120,7 @@ export function ProjectReadiness({ project }: { project: ProjectDetail }) {
         config && t.has(`descriptions.${condition.code}`)
           ? t(`descriptions.${condition.code}`)
           : undefined,
-      owner: config ? t(config.owner) : undefined,
+      owner: isKnown(condition.code) ? t(PREPARATION_STEP_OWNER[condition.code]) : undefined,
       state: condition.satisfied ? 'done' : blocker ? 'waiting' : 'open',
       waitingFor: blocker ? titleOf(blocker) : undefined,
       doneAt,
