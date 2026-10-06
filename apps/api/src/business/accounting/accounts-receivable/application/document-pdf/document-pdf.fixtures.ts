@@ -3,44 +3,49 @@ import type { ReceiptDocumentInput } from '../receipt-document.service.js';
 
 /**
  * Sample documents for the PDF tests and for rendering previews by hand
- * (`test/pdf/render-fixture.ts`). Illustrative data only — never used at runtime.
+ * (`test/pdf/render-fixture.ts`). Illustrative data only — never used at runtime. The minimal
+ * invoice reproduces the owner's mock.
  */
 
+const LEGAL_ADDRESS = 'Olow Tower, Maka Al-Mukarama Road\nMogadishu, Somalia';
+
 const org: InvoiceDocumentInput['org'] = {
-  name: 'Example Construction Ltd',
-  legalAddress: 'KM4 Business Centre, 3rd Floor\nMogadishu, Somalia',
-  taxRegistrationNumber: 'TIN-100200300',
+  name: 'ACCO Ltd',
+  legalAddress: LEGAL_ADDRESS,
+  taxRegistrationNumber: '100045678',
   brandColorHex: null,
-  footerNote: null,
   template: 'STANDARD',
   logo: null,
+  tagline: 'Construction & Development',
 };
 
-const base: InvoiceDocumentInput = {
-  invoiceNumber: 'INV-000123',
-  invoiceDate: new Date('2026-10-01T00:00:00Z'),
-  dueDate: new Date('2026-10-31T00:00:00Z'),
+const footer: InvoiceDocumentInput['footer'] = {
+  address: LEGAL_ADDRESS,
+  phones: ['+252 61 234 5678', '+252 90 123 4567'],
+  email: 'info@acco.com',
+  website: 'www.acco.com',
+};
+
+/** The owner's minimal mock, field for field. */
+export const minimalInvoiceFixture: InvoiceDocumentInput = {
+  invoiceNumber: 'INV-000003',
+  invoiceDate: new Date('2026-10-04T00:00:00Z'),
+  dueDate: new Date('2026-11-03T00:00:00Z'),
   paymentTerms: 'Net 30',
   currencyCode: 'USD',
-  subtotal: '123750.00',
-  vatAmount: '0.00',
-  totalAmount: '123750.00',
-  taxRatePercent: '0',
-  client: {
-    name: 'Hodan Real Estate Ltd',
-    address: 'Maka Al Mukarama Road',
-    city: 'Mogadishu',
-    countryCode: 'SO',
-    taxNumber: null,
-  },
-  project: { code: 'ACC-BN-26-004', name: 'Hodan Mixed-Use Building', location: 'Hodan District, Mogadishu' },
+  subtotal: '8000.00',
+  vatAmount: '400.00',
+  totalAmount: '8400.00',
+  taxRatePercent: '5',
+  client: { name: 'Ahmed Shirie', address: null, city: 'Mogadishu', countryCode: 'SO', taxNumber: '254708023039' },
+  project: { code: 'ACCO-DHL-26-0012', name: 'ABC', location: 'Dharkeynley, KM4, Mogadishu' },
   lines: [
     {
-      title: 'Stage 2 of 4 – Substructure complete',
-      detail: '30% of the contract value of USD 412,500.00',
+      title: 'Stage 1 of 4 – Advance (mobilisation)',
+      detail: '40% of the contract value of USD 20,000.00',
       quantity: '1',
-      unitPrice: '123750.00',
-      amount: '123750.00',
+      unitPrice: '8000.00',
+      amount: '8000.00',
     },
   ],
   paymentAccounts: [
@@ -50,30 +55,18 @@ const base: InvoiceDocumentInput = {
     { bankName: 'My Bank', accountNumber: '7700 5512 09' },
   ],
   notes: null,
-  signatory: { name: 'Ahmed Ali', title: 'Finance Manager' },
+  showBankDetails: false,
+  showNotes: false,
+  signatory: { name: 'Ahmed Abdi Hassan', title: 'CEO' },
+  footer,
   org,
 };
 
-export const shortInvoiceFixture: InvoiceDocumentInput = base;
-
-export const variationTaxInvoiceFixture: InvoiceDocumentInput = {
-  ...base,
-  invoiceNumber: 'INV-000124',
-  subtotal: '18400.00',
-  vatAmount: '920.00',
-  totalAmount: '19320.00',
-  taxRatePercent: '5',
-  client: { ...base.client, taxNumber: 'TIN-555-0192' },
-  lines: [
-    {
-      title: 'VO-03 Additional shop fronts to ground floor',
-      detail: 'Client-approved variation',
-      quantity: '1',
-      unitPrice: '18400.00',
-      amount: '18400.00',
-    },
-  ],
-  notes: 'Please quote the invoice number in your payment.\nVariation billed separately from the stage invoices.',
+/** The same invoice with the optional Bank Account Details and Notes switched on. */
+export const bankNotesInvoiceFixture: InvoiceDocumentInput = {
+  ...minimalInvoiceFixture,
+  showBankDetails: true,
+  showNotes: true,
 };
 
 const manyLines: InvoiceDocumentLine[] = Array.from({ length: 40 }, (_, i) => ({
@@ -86,13 +79,12 @@ const manyLines: InvoiceDocumentLine[] = Array.from({ length: 40 }, (_, i) => ({
 const manySubtotal = manyLines.reduce((sum, line) => sum + Number(line.amount), 0);
 
 export const fortyLineInvoiceFixture: InvoiceDocumentInput = {
-  ...base,
+  ...minimalInvoiceFixture,
   invoiceNumber: 'INV-000125',
   lines: manyLines,
   subtotal: manySubtotal.toFixed(2),
   vatAmount: (manySubtotal * 0.05).toFixed(2),
   totalAmount: (manySubtotal * 1.05).toFixed(2),
-  taxRatePercent: '5',
 };
 
 export const receiptFixture: ReceiptDocumentInput = {
@@ -109,14 +101,15 @@ export const receiptFixture: ReceiptDocumentInput = {
   bankAccountLabel: 'Premier Bank — Operating',
   reference: 'Stage 2',
   bankReference: 'TRX-88213',
-  clientName: 'Hodan Real Estate Ltd',
-  clientAddress: 'Maka Al Mukarama Road, Mogadishu',
-  org: { ...org, footerNote: org.footerNote },
+  clientName: 'Ahmed Shirie',
+  clientAddress: 'Mogadishu, Somalia',
+  org,
+  footer,
 };
 
 export const documentFixtures = {
-  'invoice-short': { kind: 'invoice', input: shortInvoiceFixture },
-  'invoice-variation-tax': { kind: 'invoice', input: variationTaxInvoiceFixture },
+  'invoice-minimal': { kind: 'invoice', input: minimalInvoiceFixture },
+  'invoice-bank-notes': { kind: 'invoice', input: bankNotesInvoiceFixture },
   'invoice-40-lines': { kind: 'invoice', input: fortyLineInvoiceFixture },
   receipt: { kind: 'receipt', input: receiptFixture },
 } as const;

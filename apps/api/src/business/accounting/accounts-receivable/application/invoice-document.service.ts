@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { Document, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer';
+import { Document, Page, Text, View, renderToBuffer } from '@react-pdf/renderer';
 
 import {
-  amountPanel,
   buildKitStyles,
   divider,
   documentFooter,
   documentHeader,
-  pageNumbers,
   h,
-  sectionLabel,
+  infoColumns,
+  pageNumbers,
+  topBar,
+  totalsBlock,
   type KitStyles,
-  type Palette,
 } from './document-pdf/pdf-kit.js';
 import {
   INVOICE_TEMPLATE_VERSION,
@@ -28,14 +28,15 @@ export type {
 } from './document-pdf/invoice-view-model.js';
 
 /**
- * The branded client invoice PDF (A4) — header with the organisation's identity and the invoice
- * facts, Bill To / Project / Amount Due, the line table, totals, bank account details and notes,
- * the authorised signature and the page footer. See
- * {@link ClientInvoiceService.getOrGenerateDocument} for when it runs: lazily, on first request,
- * then stored and IMMUTABLE — this layout only reaches documents generated after it shipped.
+ * The client invoice PDF (A4) in the owner's minimal layout: brand bar, logo + tagline + address
+ * and the INVOICE facts, Bill To | Project, the line table, totals with the Total Due box, the
+ * optional Bank Account Details and Notes (off unless the settings turn them on), the signature
+ * and the footer contact strip. See {@link ClientInvoiceService.getOrGenerateDocument} for when it
+ * runs: lazily, on first request, then stored and IMMUTABLE — a layout change only reaches
+ * documents generated after it shipped.
  *
  * What each section shows is decided by {@link buildInvoiceViewModel}; this file only lays it out.
- * The header, footer and cards are shared with the payment receipt (document-pdf/pdf-kit.ts).
+ * The header, info band, totals and footer are shared with the receipt (document-pdf/pdf-kit.ts).
  */
 @Injectable()
 export class InvoiceDocumentService {
@@ -47,9 +48,7 @@ export class InvoiceDocumentService {
 /** Exported for the unit test, which walks the element tree for its text. */
 export function InvoiceDocument({ input }: { input: InvoiceDocumentInput }) {
   const vm = buildInvoiceViewModel(input);
-  const { palette, compact } = vm.brand;
-  const kit = buildKitStyles(palette, compact);
-  const s = buildInvoiceStyles(palette, compact);
+  const s = buildKitStyles(vm.brand.palette, vm.brand.compact);
 
   return h(
     Document,
@@ -61,141 +60,106 @@ export function InvoiceDocument({ input }: { input: InvoiceDocumentInput }) {
     },
     h(
       Page,
-      { size: 'A4', style: kit.page },
-      documentHeader(kit, vm.brand, vm.title, vm.meta),
-      divider(kit),
-      parties(kit, s, vm),
+      { size: 'A4', style: s.page },
+      topBar(s),
+      documentHeader(s, vm.brand, vm.title, vm.meta),
+      divider(s),
+      infoColumns(s, vm.billTo, vm.project),
       lineTable(s, vm),
       h(
-        // Totals, payment/notes and signature stay together rather than splitting across pages.
+        // Totals, the optional sections and the signature stay together rather than splitting.
         View,
         { wrap: false },
-        totals(s, vm),
-        paymentAndNotes(kit, s, vm),
+        totalsBlock(s, vm.totals, vm.total),
+        optionalSections(s, vm),
         signature(s, vm),
-        vm.footerNote ? h(Text, { style: s.footerNote }, vm.footerNote) : null,
       ),
-      documentFooter(kit, vm.brand, vm.thanks),
-      pageNumbers(kit),
+      documentFooter(s, vm.brand, vm.footer),
+      pageNumbers(s),
     ),
   );
 }
 
-function parties(kit: KitStyles, s: InvoiceStyles, vm: InvoiceViewModel) {
-  return h(
-    View,
-    { style: s.partiesRow },
-    h(
-      View,
-      { style: s.partyColumn },
-      sectionLabel(kit, 'BILL TO'),
-      h(Text, { style: kit.strong }, vm.billTo.name),
-      ...vm.billTo.lines.map((line, i) => h(Text, { style: kit.small, key: `bt${i}` }, line)),
-      h(Text, { style: kit.small }, vm.billTo.taxLine),
-    ),
-    h(
-      View,
-      { style: s.partyColumn },
-      vm.project ? sectionLabel(kit, 'PROJECT') : null,
-      vm.project ? h(Text, { style: kit.strong }, vm.project.code) : null,
-      vm.project ? h(Text, { style: kit.small }, vm.project.name) : null,
-      vm.project?.location ? h(Text, { style: kit.small }, vm.project.location) : null,
-    ),
-    amountPanel(kit, vm.amountDue.label, vm.amountDue.value, s.amountColumn),
-  );
-}
+const COL = { index: 26, qty: 40, money: 96 };
 
-function lineTable(s: InvoiceStyles, vm: InvoiceViewModel) {
+function lineTable(s: KitStyles, vm: InvoiceViewModel) {
+  const cols = vm.columns;
   return h(
     View,
     { style: s.table },
     // `fixed` repeats the header row on every page the table continues onto.
     h(
       View,
-      { style: s.tableHeader, fixed: true },
-      h(Text, { style: [s.th, s.colIndex] }, vm.columns.index),
-      h(Text, { style: [s.th, s.colDescription] }, vm.columns.description),
-      h(Text, { style: [s.th, s.colQty] }, vm.columns.quantity),
-      h(Text, { style: [s.th, s.colMoney] }, vm.columns.unitPrice),
-      h(Text, { style: [s.th, s.colMoney] }, vm.columns.amount),
+      { style: s.thRow, fixed: true },
+      h(Text, { style: [s.cell, s.th, { width: COL.index }] }, cols.index),
+      h(Text, { style: [s.cell, s.th, { flex: 1 }] }, cols.description),
+      h(Text, { style: [s.cell, s.th, { width: COL.qty, textAlign: 'right' }] }, cols.quantity),
+      h(Text, { style: [s.cell, s.th, { width: COL.money + 10, textAlign: 'right' }] }, cols.unitPrice),
+      h(Text, { style: [s.cell, s.th, s.ruledCell, { width: COL.money, textAlign: 'right' }] }, cols.amount),
     ),
     ...vm.lines.map((line, i) =>
       h(
         View,
-        { style: i === vm.lines.length - 1 ? [s.tr, s.trLast] : s.tr, wrap: false, key: `l${i}` },
-        h(Text, { style: [s.td, s.colIndex, s.muted] }, line.index),
+        { style: i === vm.lines.length - 1 ? s.trLast : s.tr, wrap: false, key: `l${i}` },
+        h(Text, { style: [s.cell, s.td, { width: COL.index, color: '#6B7280' }] }, line.index),
         h(
           View,
-          { style: s.colDescription },
+          { style: [s.cell, { flex: 1 }] },
           h(Text, { style: s.lineTitle }, line.title),
           line.detail ? h(Text, { style: s.lineDetail }, line.detail) : null,
         ),
-        h(Text, { style: [s.td, s.colQty] }, line.quantity),
-        h(Text, { style: [s.td, s.colMoney] }, line.unitPrice),
-        h(Text, { style: [s.td, s.colMoney, s.amountCell] }, line.amount),
+        h(Text, { style: [s.cell, s.td, { width: COL.qty, textAlign: 'right' }] }, line.quantity),
+        h(Text, { style: [s.cell, s.td, { width: COL.money + 10, textAlign: 'right' }] }, line.unitPrice),
+        h(
+          Text,
+          { style: [s.cell, s.td, s.ruledCell, { width: COL.money, textAlign: 'right', fontFamily: 'Helvetica-Bold' }] },
+          line.amount,
+        ),
       ),
     ),
   );
 }
 
-function totals(s: InvoiceStyles, vm: InvoiceViewModel) {
-  return h(
-    View,
-    { style: s.totalsBox },
-    ...vm.totals.map((row, i) =>
-      h(
-        View,
-        { style: row.emphasis ? s.totalRowStrong : s.totalRow, key: `t${i}` },
-        h(Text, { style: row.emphasis ? s.totalLabelStrong : s.totalLabel }, row.label),
-        h(Text, { style: row.emphasis ? s.totalValueStrong : s.totalValue }, row.value),
-      ),
-    ),
-  );
-}
-
-function paymentAndNotes(kit: KitStyles, s: InvoiceStyles, vm: InvoiceViewModel) {
+/** Bank Account Details and Notes — minimal: a small heading and plain rows, no cards. */
+function optionalSections(s: KitStyles, vm: InvoiceViewModel) {
   if (!vm.payment && vm.notes.length === 0) return null;
+  const muted = { fontSize: 8.5, color: '#6B7280' };
+  const strong = { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#14213D' };
   return h(
     View,
-    { style: s.cardsRow },
+    { style: { flexDirection: 'row', marginBottom: 6 } },
     vm.payment
       ? h(
           View,
-          { style: [kit.card, s.cardHalf] },
-          h(Text, { style: [kit.cardTitle, s.bankTitle] }, vm.payment.title),
-          h(
-            View,
-            { style: s.bankHeader },
-            h(Text, { style: [s.bankTh, s.bankCol] }, vm.payment.columns.bank),
-            h(Text, { style: [s.bankTh, s.accountCol] }, vm.payment.columns.accountNumber),
-          ),
+          { style: { flex: 1, paddingRight: 20 } },
+          h(Text, { style: s.sectionTitle }, vm.payment.title),
           ...vm.payment.rows.map((row, i) =>
             h(
               View,
-              { style: s.bankRow, key: `b${i}` },
-              h(Text, { style: [s.bankTd, s.bankCol] }, row.bank),
-              h(Text, { style: [s.bankTd, s.accountCol, s.accountNumber] }, row.accountNumber),
+              { style: { flexDirection: 'row', marginBottom: 2 }, key: `b${i}` },
+              h(Text, { style: [muted, { width: 110 }] }, row.bank),
+              h(Text, { style: strong }, row.accountNumber),
             ),
           ),
           h(
             View,
-            { style: s.referenceRow },
-            h(Text, { style: s.referenceLabel }, `${vm.payment.reference.label}: `),
-            h(Text, { style: s.referenceValue }, vm.payment.reference.value),
+            { style: { flexDirection: 'row', marginTop: 3 } },
+            h(Text, { style: [muted, { width: 110 }] }, vm.payment.reference.label),
+            h(Text, { style: strong }, vm.payment.reference.value),
           ),
         )
       : null,
     vm.notes.length > 0
       ? h(
           View,
-          { style: [kit.card, s.cardHalf, vm.payment ? s.cardGap : {}] },
-          h(Text, { style: [kit.cardTitle, s.notesTitle] }, 'Notes'),
+          { style: { flex: 1 } },
+          h(Text, { style: s.sectionTitle }, 'Notes'),
           ...vm.notes.map((note, i) =>
             h(
               View,
-              { style: s.noteRow, key: `n${i}` },
-              h(Text, { style: s.noteNumber }, `${i + 1}.`),
-              h(Text, { style: s.noteText }, note),
+              { style: { flexDirection: 'row', marginBottom: 2 }, key: `n${i}` },
+              h(Text, { style: [muted, { width: 12 }] }, `${i + 1}.`),
+              h(Text, { style: [muted, { flex: 1 }] }, note),
             ),
           ),
         )
@@ -203,98 +167,16 @@ function paymentAndNotes(kit: KitStyles, s: InvoiceStyles, vm: InvoiceViewModel)
   );
 }
 
-function signature(s: InvoiceStyles, vm: InvoiceViewModel) {
+/** Line, then name, title, company and date — or the blank line alone when no signatory is set. */
+function signature(s: KitStyles, vm: InvoiceViewModel) {
   const sig = vm.signature;
   return h(
     View,
-    { style: s.signatureBlock },
-    h(Text, { style: s.signatureLabel }, 'AUTHORIZED SIGNATURE'),
+    { style: s.signature },
     h(View, { style: s.signatureLine }),
     sig.name ? h(Text, { style: s.signatureName }, sig.name) : null,
     sig.name && sig.title ? h(Text, { style: s.signatureMeta }, sig.title) : null,
     sig.name ? h(Text, { style: s.signatureMeta }, sig.company) : null,
-    sig.name ? h(Text, { style: s.signatureMeta }, `Date: ${sig.date}`) : null,
+    sig.name ? h(Text, { style: s.signatureMeta }, sig.date) : null,
   );
-}
-
-type InvoiceStyles = ReturnType<typeof buildInvoiceStyles>;
-
-function buildInvoiceStyles(p: Palette, compact: boolean) {
-  const rowPad = compact ? 6 : 8;
-  return StyleSheet.create({
-    partiesRow: { flexDirection: 'row', marginBottom: compact ? 16 : 22 },
-    partyColumn: { width: '33%', paddingRight: 14 },
-    amountColumn: { width: '34%', justifyContent: 'center' },
-    // Table
-    table: { marginBottom: 12 },
-    tableHeader: {
-      flexDirection: 'row',
-      backgroundColor: p.panel,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: p.border,
-      paddingVertical: 6,
-      paddingHorizontal: 6,
-    },
-    th: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: p.accent, letterSpacing: 0.6 },
-    tr: {
-      flexDirection: 'row',
-      paddingVertical: rowPad,
-      paddingHorizontal: 6,
-      borderBottomWidth: 1,
-      borderBottomColor: '#EDF0F4',
-    },
-    trLast: { borderBottomColor: p.border },
-    td: { fontSize: 9 },
-    muted: { color: p.faint },
-    colIndex: { width: 22 },
-    colDescription: { flex: 1, paddingRight: 10 },
-    colQty: { width: 36, textAlign: 'right' },
-    colMoney: { width: 92, textAlign: 'right' },
-    amountCell: { fontFamily: 'Helvetica-Bold' },
-    lineTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
-    lineDetail: { fontSize: 8, color: p.muted, marginTop: 2 },
-    // Totals
-    totalsBox: { alignSelf: 'flex-end', width: 240, marginBottom: compact ? 14 : 20 },
-    totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, paddingHorizontal: 6 },
-    totalLabel: { fontSize: 9, color: p.muted },
-    totalValue: { fontSize: 9 },
-    totalRowStrong: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 6,
-      paddingVertical: 8,
-      paddingHorizontal: 6,
-      backgroundColor: p.accentSoft,
-      borderRadius: 4,
-    },
-    totalLabelStrong: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: p.accent },
-    totalValueStrong: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: p.accent },
-    // Payment + notes
-    cardsRow: { flexDirection: 'row', marginBottom: compact ? 16 : 24 },
-    cardHalf: { flex: 1 },
-    cardGap: { marginLeft: 12 },
-    notesTitle: { marginBottom: 8 },
-    bankTitle: { marginBottom: 8 },
-    bankHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: p.border, paddingBottom: 4 },
-    bankTh: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: p.accent, letterSpacing: 0.6 },
-    bankRow: { flexDirection: 'row', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#EDF0F4' },
-    bankTd: { fontSize: 8.5 },
-    bankCol: { flex: 1, paddingRight: 8 },
-    accountCol: { flex: 1.2 },
-    accountNumber: { fontFamily: 'Helvetica-Bold' },
-    referenceRow: { flexDirection: 'row', marginTop: 8 },
-    referenceLabel: { fontSize: 8.5, color: p.muted },
-    referenceValue: { fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
-    noteRow: { flexDirection: 'row', marginBottom: 3 },
-    noteNumber: { fontSize: 8.5, color: p.accent, fontFamily: 'Helvetica-Bold', width: 14 },
-    noteText: { fontSize: 8.5, color: p.ink, flex: 1 },
-    // Signature
-    signatureBlock: { width: 220, marginTop: 4 },
-    signatureLabel: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: p.accent, letterSpacing: 1, marginBottom: 28 },
-    signatureLine: { borderBottomWidth: 1, borderBottomColor: p.ink, marginBottom: 5 },
-    signatureName: { fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
-    signatureMeta: { fontSize: 8.5, color: p.muted },
-    footerNote: { fontSize: 8, color: p.muted, marginTop: 14 },
-  });
 }

@@ -3,11 +3,14 @@ import { Decimal } from '@prisma/client/runtime/library';
 import {
   brandView,
   countryName,
+  footerColumns,
   formatAmount,
   formatDate,
   formatMoney,
   splitLines,
   type BrandView,
+  type FooterColumn,
+  type FooterContactsInput,
   type KeyValue,
   type OrgIdentityInput,
 } from './pdf-kit.js';
@@ -21,7 +24,7 @@ import {
  */
 
 /** Stamped into the PDF metadata so a stored document says which layout produced it. */
-export const INVOICE_TEMPLATE_VERSION = 'invoice-template-v2';
+export const INVOICE_TEMPLATE_VERSION = 'invoice-template-v3-minimal';
 
 export interface InvoiceDocumentLine {
   /** Bold first line, e.g. "Stage 2 of 4 – Substructure complete" or "VO-03 Additional shop fronts". */
@@ -70,12 +73,16 @@ export interface InvoiceDocumentInput {
   };
   project: { code: string; name: string; location: string | null } | null;
   lines: InvoiceDocumentLine[];
-  /** The organisation's "Bank Account Details" rows; none → no bank card. */
+  /** The organisation's "Bank Account Details" rows; printed only with `showBankDetails`. */
   paymentAccounts: InvoicePaymentAccount[];
-  /** The organisation's invoice notes (one per line); null → the default notes. */
+  /** The organisation's invoice notes (one per line); null → the default notes. Printed only with `showNotes`. */
   notes: string | null;
+  showBankDetails: boolean;
+  showNotes: boolean;
   signatory: InvoiceSignatory | null;
-  org: OrgIdentityInput & { footerNote: string | null };
+  /** The footer contact strip; null → the organisation's legal address only. */
+  footer: FooterContactsInput | null;
+  org: OrgIdentityInput;
 }
 
 export interface InvoiceLineView {
@@ -91,22 +98,23 @@ export interface InvoiceViewModel {
   brand: BrandView;
   title: 'INVOICE';
   meta: KeyValue[];
-  billTo: { name: string; lines: string[]; taxLine: string };
-  project: { code: string; name: string; location: string | null } | null;
-  amountDue: { label: string; value: string };
+  billTo: { label: string; name: string; lines: string[] };
+  project: { label: string; name: string; lines: string[] } | null;
   columns: { index: string; description: string; quantity: string; unitPrice: string; amount: string };
   lines: InvoiceLineView[];
-  totals: Array<KeyValue & { emphasis: boolean }>;
+  totals: KeyValue[];
+  total: KeyValue;
+  /** Null unless the settings turn the section on and there is a complete row. */
   payment: {
     title: string;
     columns: { bank: string; accountNumber: string };
     rows: Array<{ bank: string; accountNumber: string }>;
     reference: KeyValue;
   } | null;
+  /** Empty unless the settings turn the section on. */
   notes: string[];
   signature: { name: string | null; title: string | null; company: string; date: string };
-  footerNote: string | null;
-  thanks: string;
+  footer: FooterColumn[];
 }
 
 export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewModel {
@@ -130,52 +138,55 @@ export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewM
     amount: formatAmount(line.amount),
   }));
 
+  const signatoryName = input.signatory?.name?.trim() || null;
   return {
     brand: brandView(input.org),
     title: 'INVOICE',
     meta,
     billTo: {
+      label: 'Bill To',
       name: input.client.name,
-      lines: clientAddressLines(input.client),
-      taxLine: `Tax Reg. ${input.client.taxNumber?.trim() || '—'}`,
+      lines: [...clientAddressLines(input.client), `Tax Reg. ${input.client.taxNumber?.trim() || '—'}`],
     },
-    project: input.project
-      ? { code: input.project.code, name: input.project.name, location: input.project.location?.trim() || null }
-      : null,
-    amountDue: { label: 'AMOUNT DUE', value: money(input.totalAmount) },
+    project: input.project ? projectColumn(input.project) : null,
     columns: {
       index: '#',
-      description: 'DESCRIPTION',
-      quantity: 'QTY',
-      unitPrice: `UNIT PRICE (${currency})`,
-      amount: `AMOUNT (${currency})`,
+      description: 'Description',
+      quantity: 'Qty',
+      unitPrice: `Unit Price (${currency})`,
+      amount: `Amount (${currency})`,
     },
     lines,
     totals: [
-      { label: 'Subtotal', value: money(input.subtotal), emphasis: false },
-      { label: salesTaxLabel(input), value: money(input.vatAmount), emphasis: false },
-      { label: 'Total Due', value: money(input.totalAmount), emphasis: true },
+      { label: 'Subtotal', value: money(input.subtotal) },
+      { label: salesTaxLabel(input), value: money(input.vatAmount) },
     ],
-    payment: paymentCard(input),
-    notes: invoiceNotes(input.notes, terms?.days ?? null),
+    total: { label: 'Total Due', value: money(input.totalAmount) },
+    payment: input.showBankDetails ? paymentCard(input) : null,
+    notes: input.showNotes ? invoiceNotes(input.notes, terms?.days ?? null) : [],
     signature: {
-      name: input.signatory?.name?.trim() || null,
-      title: input.signatory ? input.signatory.title?.trim() || null : null,
+      name: signatoryName,
+      title: signatoryName ? input.signatory?.title?.trim() || null : null,
       company: input.org.name,
       date: formatDate(input.invoiceDate),
     },
-    footerNote: input.org.footerNote?.trim() || null,
-    thanks: 'Thank you for your business.',
+    footer: footerColumns(input.footer, input.org.legalAddress),
   };
 }
 
-/** "Sales Tax 5%" from the invoice's own rate (ADR-041), else derived from the amounts. */
+/** "ACCO-DHL-26-0012" bold, then the name and location on one line ("ABC, Dharkeynley, KM4, Mogadishu"). */
+function projectColumn(project: NonNullable<InvoiceDocumentInput['project']>): NonNullable<InvoiceViewModel['project']> {
+  const where = [project.name?.trim(), project.location?.trim()].filter((part): part is string => Boolean(part));
+  return { label: 'Project', name: project.code, lines: where.length > 0 ? [where.join(', ')] : [] };
+}
+
+/** "Sales Tax (5%)" from the invoice's own rate (ADR-041), else derived from the amounts. */
 export function salesTaxLabel(input: Pick<InvoiceDocumentInput, 'taxRatePercent' | 'subtotal' | 'vatAmount'>): string {
   const rate =
     input.taxRatePercent !== null && input.taxRatePercent !== undefined && input.taxRatePercent !== ''
       ? trimRate(Number(input.taxRatePercent))
       : derivedRate(input.subtotal, input.vatAmount);
-  return rate !== null ? `Sales Tax ${rate}%` : 'Sales Tax';
+  return rate !== null ? `Sales Tax (${rate}%)` : 'Sales Tax';
 }
 
 function trimRate(rate: number): string | null {

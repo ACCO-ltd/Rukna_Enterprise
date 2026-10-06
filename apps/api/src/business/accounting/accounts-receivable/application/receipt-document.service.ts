@@ -1,29 +1,31 @@
 import { Injectable } from '@nestjs/common';
-import { Document, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer';
+import { Document, Page, Text, View, renderToBuffer } from '@react-pdf/renderer';
 
 import {
-  amountPanel,
   brandView,
   buildKitStyles,
   divider,
   documentFooter,
   documentHeader,
-  pageNumbers,
+  footerColumns,
   formatDate,
   formatMoney,
   h,
-  sectionLabel,
+  infoColumns,
+  pageNumbers,
   splitLines,
+  topBar,
+  totalsBlock,
+  type FooterContactsInput,
   type KeyValue,
-  type Palette,
 } from './document-pdf/pdf-kit.js';
 
 /**
  * The branded payment-receipt PDF (WhatsApp V1 step 3) — the receipt counterpart of
- * {@link InvoiceDocumentService}. The header, footer, palette and cards come from the shared
- * document kit (document-pdf/pdf-kit.ts), so the two documents always wear the same brand. See
- * `PaymentReceiptDocumentService` for when it runs: lazily, on first request for a POSTED receipt,
- * then frozen.
+ * {@link InvoiceDocumentService}, in the same minimal layout (brand bar, header, two-column info
+ * band, ruled table, total box, footer contact strip) from the shared kit (document-pdf/pdf-kit.ts).
+ * See `PaymentReceiptDocumentService` for when it runs: lazily, on first request for a POSTED
+ * receipt, then frozen.
  */
 
 export interface ReceiptDocumentAllocation {
@@ -55,13 +57,16 @@ export interface ReceiptDocumentInput {
     legalAddress: string | null;
     taxRegistrationNumber: string | null;
     brandColorHex: string | null;
-    footerNote: string | null;
     template: 'STANDARD' | 'COMPACT';
     logo: { buffer: Buffer; mimeType: string } | null;
+    /** From the invoice settings; optional. */
+    tagline?: string | null;
   };
+  /** The footer contact strip (invoice settings); null → the legal address only. */
+  footer?: FooterContactsInput | null;
 }
 
-export const RECEIPT_TEMPLATE_VERSION = 'receipt-template-v2';
+export const RECEIPT_TEMPLATE_VERSION = 'receipt-template-v3-minimal';
 
 @Injectable()
 export class ReceiptDocumentService {
@@ -73,8 +78,7 @@ export class ReceiptDocumentService {
 /** Exported for the unit test, which walks the element tree for its text. */
 export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
   const brand = brandView(input.org);
-  const kit = buildKitStyles(brand.palette, brand.compact);
-  const s = buildReceiptStyles(brand.palette, brand.compact);
+  const s = buildKitStyles(brand.palette, brand.compact);
   const money = (value: string) => formatMoney(value, input.currencyCode);
   const hasUnallocated = Number(input.unallocatedAmount) > 0;
 
@@ -82,12 +86,11 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
     { label: 'Receipt No.', value: input.receiptNumber },
     { label: 'Date Received', value: formatDate(input.receiptDate) },
   ];
-  const facts: KeyValue[] = [
-    input.paymentMethod ? { label: 'Payment method', value: humanise(input.paymentMethod) } : null,
-    input.bankAccountLabel ? { label: 'Received into', value: input.bankAccountLabel } : null,
-    input.reference ? { label: 'Reference', value: input.reference } : null,
-    input.bankReference ? { label: 'Bank reference', value: input.bankReference } : null,
-  ].filter((row): row is KeyValue => row !== null);
+  const facts: string[] = [
+    input.bankAccountLabel ? `Received into ${input.bankAccountLabel}` : null,
+    input.reference ? `Reference: ${input.reference}` : null,
+    input.bankReference ? `Bank reference: ${input.bankReference}` : null,
+  ].filter((line): line is string => line !== null);
 
   const rows = [
     ...input.allocations.map((allocation) => ({
@@ -109,35 +112,14 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
     },
     h(
       Page,
-      { size: 'A4', style: kit.page },
-      documentHeader(kit, brand, 'RECEIPT', meta),
-      divider(kit),
-
-      // Received from · payment facts · amount received.
-      h(
-        View,
-        { style: s.partiesRow },
-        h(
-          View,
-          { style: s.partyColumn },
-          sectionLabel(kit, 'RECEIVED FROM'),
-          h(Text, { style: kit.strong }, input.clientName),
-          ...splitLines(input.clientAddress).map((line, i) => h(Text, { style: kit.small, key: `ca${i}` }, line)),
-        ),
-        h(
-          View,
-          { style: s.partyColumn },
-          facts.length > 0 ? sectionLabel(kit, 'PAYMENT') : null,
-          ...facts.map((row, i) =>
-            h(
-              View,
-              { style: s.factRow, key: `f${i}` },
-              h(Text, { style: s.factLabel }, row.label),
-              h(Text, { style: s.factValue }, row.value),
-            ),
-          ),
-        ),
-        amountPanel(kit, 'AMOUNT RECEIVED', money(input.totalAmount), s.amountColumn),
+      { size: 'A4', style: s.page },
+      topBar(s),
+      documentHeader(s, brand, 'RECEIPT', meta),
+      divider(s),
+      infoColumns(
+        s,
+        { label: 'Received From', name: input.clientName, lines: splitLines(input.clientAddress) },
+        { label: 'Payment', name: input.paymentMethod ? humanise(input.paymentMethod) : 'Payment', lines: facts },
       ),
 
       // What the payment was applied to.
@@ -146,30 +128,23 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
         { style: s.table },
         h(
           View,
-          { style: s.tableHeader, fixed: true },
-          h(Text, { style: [s.th, s.colDescription] }, 'APPLIED TO'),
-          h(Text, { style: [s.th, s.colAmount] }, 'AMOUNT APPLIED'),
+          { style: s.thRow, fixed: true },
+          h(Text, { style: [s.cell, s.th, { flex: 1 }] }, 'Applied To'),
+          h(Text, { style: [s.cell, s.th, s.ruledCell, { width: 150, textAlign: 'right' }] }, 'Amount Applied'),
         ),
         ...rows.map((row, i) =>
           h(
             View,
-            { style: s.tr, wrap: false, key: `a${i}` },
-            h(Text, { style: [s.td, s.colDescription] }, row.description),
-            h(Text, { style: [s.td, s.colAmount] }, row.amount),
+            { style: i === rows.length - 1 ? s.trLast : s.tr, wrap: false, key: `a${i}` },
+            h(Text, { style: [s.cell, s.td, { flex: 1 }] }, row.description),
+            h(Text, { style: [s.cell, s.td, s.ruledCell, { width: 150, textAlign: 'right' }] }, row.amount),
           ),
         ),
       ),
 
-      h(
-        View,
-        { style: s.totalRowStrong, wrap: false },
-        h(Text, { style: s.totalStrong }, 'Total received'),
-        h(Text, { style: s.totalStrong }, money(input.totalAmount)),
-      ),
-
-      !brand.compact && input.org.footerNote ? h(Text, { style: s.footerNote }, input.org.footerNote) : null,
-      documentFooter(kit, brand, 'Thank you for your payment.'),
-      pageNumbers(kit),
+      totalsBlock(s, [], { label: 'Total Received', value: money(input.totalAmount) }),
+      documentFooter(s, brand, footerColumns(input.footer, input.org.legalAddress)),
+      pageNumbers(s),
     ),
   );
 }
@@ -179,48 +154,4 @@ function humanise(value: string): string {
   if (!/^[A-Z][A-Z0-9_]*$/.test(value)) return value;
   const words = value.toLowerCase().replace(/_/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function buildReceiptStyles(p: Palette, compact: boolean) {
-  return StyleSheet.create({
-    partiesRow: { flexDirection: 'row', marginBottom: compact ? 16 : 22 },
-    partyColumn: { width: '33%', paddingRight: 14 },
-    amountColumn: { width: '34%', justifyContent: 'center' },
-    factRow: { flexDirection: 'column', marginBottom: 4 },
-    factLabel: { fontSize: 7.5, color: p.faint },
-    factValue: { fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
-    table: { marginBottom: 12 },
-    tableHeader: {
-      flexDirection: 'row',
-      backgroundColor: p.panel,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-      borderColor: p.border,
-      paddingVertical: 6,
-      paddingHorizontal: 6,
-    },
-    th: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: p.accent, letterSpacing: 0.6 },
-    tr: {
-      flexDirection: 'row',
-      paddingVertical: compact ? 6 : 8,
-      paddingHorizontal: 6,
-      borderBottomWidth: 1,
-      borderBottomColor: '#EDF0F4',
-    },
-    td: { fontSize: 9 },
-    colDescription: { flex: 1 },
-    colAmount: { width: 150, textAlign: 'right' },
-    totalRowStrong: {
-      alignSelf: 'flex-end',
-      width: 240,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingVertical: 8,
-      paddingHorizontal: 6,
-      backgroundColor: p.accentSoft,
-      borderRadius: 4,
-    },
-    totalStrong: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: p.accent },
-    footerNote: { fontSize: 8, color: p.muted, marginTop: 18 },
-  });
 }
