@@ -3706,6 +3706,17 @@ model InvoiceDocumentPolicy {
   notes           String?  @db.Text
   signatoryName   String?  @map("signatory_name") @db.VarChar(120)
   signatoryTitle  String?  @map("signatory_title") @db.VarChar(120)
+  /// Letter-spaced line under the logo, e.g. "CONSTRUCTION & DEVELOPMENT".
+  tagline         String?  @db.VarChar(80)
+  /// Footer contact strip; the address falls back to the organisation's legal address.
+  footerAddress   String?  @map("footer_address") @db.Text
+  /// Up to two phone numbers, in print order.
+  footerPhones    Json     @default("[]") @map("footer_phones")
+  footerEmail     String?  @map("footer_email") @db.VarChar(254)
+  footerWebsite   String?  @map("footer_website") @db.VarChar(200)
+  /// The bank table and the notes are off unless Finance turns them on.
+  showBankDetails Boolean  @default(false) @map("show_bank_details")
+  showNotes       Boolean  @default(false) @map("show_notes")
   updatedBy       String   @map("updated_by")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

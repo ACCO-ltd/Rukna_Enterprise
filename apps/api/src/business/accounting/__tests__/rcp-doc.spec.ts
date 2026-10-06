@@ -89,7 +89,11 @@ beforeAll(async () => {
   await prisma.clientContact.create({
     data: { clientId: env.clientId, name: 'Amina', role: 'Finance', whatsappPhone: '+252615555555', isPrimary: true },
   });
-  await prisma.organization.update({ where: { id: env.orgId }, data: { name: 'ACCO Ltd', invoiceFooterNote: 'Thank you.' } });
+  await prisma.organization.update({ where: { id: env.orgId }, data: { name: 'ACCO Ltd' } });
+  // The receipt shares the invoice settings' tagline and footer contacts.
+  await prisma.invoiceDocumentPolicy.create({
+    data: { organizationId: env.orgId, tagline: 'Construction & Development', footerEmail: 'info@acco.com', updatedBy: 'test' },
+  });
 
   const tenancy = { getClient: () => prisma } as never;
   const files = new PlatformFileService(
@@ -233,7 +237,8 @@ describe('RCP-02 document generated once and frozen', () => {
       clientAddress: 'KM4, Mogadishu',
       paymentMethod: 'BANK_TRANSFER',
       reference: 'Stage 2',
-      org: expect.objectContaining({ name: 'ACCO Ltd', footerNote: 'Thank you.' }),
+      org: expect.objectContaining({ name: 'ACCO Ltd', tagline: 'Construction & Development' }),
+      footer: expect.objectContaining({ email: 'info@acco.com' }),
     });
     expect(input.allocations.map((a: { amount: string }) => a.amount)).toEqual(['3000.00', '1500.00']);
     expect(input.allocations[0].invoiceNumber).toBeTruthy();
@@ -252,7 +257,7 @@ describe('RCP-02 document generated once and frozen', () => {
       arAccountCode: env.accounts.arCode,
       unappliedAccountCode: env.accounts.unaplCode,
     });
-    await prisma.organization.update({ where: { id: env.orgId }, data: { invoiceFooterNote: 'Changed.' } });
+    await prisma.invoiceDocumentPolicy.update({ where: { organizationId: env.orgId }, data: { tagline: 'Changed' } });
 
     const again = await run(() => documents.getOrGenerateReceiptDocument(me, receipt.id));
     expect(again.url).toBe(first.url);

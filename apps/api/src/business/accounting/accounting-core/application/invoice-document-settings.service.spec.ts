@@ -17,6 +17,7 @@ function fakePrisma(policy: object | null = null) {
       upsert: jest.fn().mockResolvedValue({}),
     },
     auditLog: { create: jest.fn() },
+    organization: { findUnique: jest.fn().mockResolvedValue({ legalAddress: 'Olow Tower\nMogadishu, Somalia' }) },
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
   };
   return prisma;
@@ -31,7 +32,20 @@ const banks = (n: number) => Array.from({ length: n }, (_, i) => ({ bankName: `B
 describe('InvoiceDocumentSettingsService', () => {
   it('reads an empty table and defaults when nothing is configured', async () => {
     const view = await build(fakePrisma()).get(identity);
-    expect(view).toMatchObject({ paymentAccounts: [], notes: null, signatoryName: null, signatoryTitle: null });
+    expect(view).toMatchObject({
+      paymentAccounts: [],
+      notes: null,
+      signatoryName: null,
+      signatoryTitle: null,
+      tagline: null,
+      footerAddress: null,
+      defaultFooterAddress: 'Olow Tower\nMogadishu, Somalia',
+      footerPhones: [],
+      footerEmail: null,
+      footerWebsite: null,
+      showBankDetails: false,
+      showNotes: false,
+    });
     expect(view.defaultNotes.length).toBeGreaterThan(0);
   });
 
@@ -97,6 +111,50 @@ describe('InvoiceDocumentSettingsService', () => {
   });
 });
 
+describe('InvoiceDocumentSettingsService - minimal layout settings', () => {
+  it('saves the tagline, a trimmed multi-line footer address, phones, email, website and the switches', async () => {
+    const prisma = fakePrisma();
+    await build(prisma).update(identity, {
+      tagline: ' Construction & Development ',
+      footerAddress: '  Olow Tower, Maka Al-Mukarama Road \n\n Mogadishu, Somalia ',
+      footerPhones: [' +252 61 234 5678 ', '', '+252 90 123 4567'],
+      footerEmail: 'info@acco.com',
+      footerWebsite: 'www.acco.com',
+      showBankDetails: true,
+      showNotes: true,
+    });
+    expect(prisma.invoiceDocumentPolicy.upsert.mock.calls[0][0].create).toMatchObject({
+      tagline: 'Construction & Development',
+      footerAddress: 'Olow Tower, Maka Al-Mukarama Road\nMogadishu, Somalia',
+      footerPhones: ['+252 61 234 5678', '+252 90 123 4567'],
+      footerEmail: 'info@acco.com',
+      footerWebsite: 'www.acco.com',
+      showBankDetails: true,
+      showNotes: true,
+    });
+  });
+
+  it('accepts a website with or without a scheme and refuses malformed contacts', async () => {
+    const service = build(fakePrisma());
+    await expect(service.update(identity, { footerWebsite: 'https://acco.com/contact' })).resolves.toBeDefined();
+    for (const bad of [
+      { footerEmail: 'info@acco' },
+      { footerWebsite: 'not a site' },
+      { footerPhones: ['+252 1', '+252 2', '+252 3'] },
+      { footerPhones: ['call me'] },
+      { footerPhones: ['+252 ' + '1'.repeat(30)] },
+      { footerEmail: `${'a'.repeat(75)}@acco.com` },
+      { footerWebsite: `www.${'a'.repeat(80)}.com` },
+      { tagline: 'x'.repeat(81) },
+      // The footer strip holds two lines of 60 characters.
+      { footerAddress: 'x'.repeat(300) },
+      { footerAddress: 'Olow Tower\nMaka Al-Mukarama Road\nMogadishu' },
+    ]) {
+      await expect(service.update(identity, bad)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    }
+  });
+});
+
 describe('invoice document snapshot', () => {
   it('resolves the policy to printable values', async () => {
     const prisma = fakePrisma({
@@ -104,16 +162,31 @@ describe('invoice document snapshot', () => {
       notes: 'Note',
       signatoryName: 'Ahmed Ali',
       signatoryTitle: ' CFO ',
+      tagline: 'ACCO',
+      footerAddress: null,
+      footerPhones: ['+252 61 234 5678'],
+      footerEmail: 'info@acco.com',
+      footerWebsite: null,
+      showBankDetails: true,
+      showNotes: false,
     });
-    expect(await resolveInvoiceDocumentSnapshot(prisma as never, 'org-1')).toEqual({
+    expect(await resolveInvoiceDocumentSnapshot(prisma as never, 'org-1')).toMatchObject({
       paymentAccounts: [{ bankName: 'Dahabshiil Bank', accountNumber: '100-2287' }],
       notes: 'Note',
       signatory: { name: 'Ahmed Ali', title: 'CFO' },
+      tagline: 'ACCO',
+      footer: { address: null, phones: ['+252 61 234 5678'], email: 'info@acco.com', website: null },
+      showBankDetails: true,
+      showNotes: false,
     });
     expect(await resolveInvoiceDocumentSnapshot(fakePrisma() as never, 'org-1')).toEqual({
       paymentAccounts: [],
       notes: null,
       signatory: null,
+      tagline: null,
+      footer: { address: null, phones: [], email: null, website: null },
+      showBankDetails: false,
+      showNotes: false,
     });
   });
 
@@ -131,11 +204,40 @@ describe('invoice document snapshot', () => {
         notes: null,
         signatory: { name: 'Ahmed Ali', title: null },
       }),
-    ).toEqual({
+    ).toMatchObject({
       paymentAccounts: [{ bankName: 'Premier Bank', accountNumber: '0102' }],
       notes: null,
       signatory: { name: 'Ahmed Ali', title: null },
+      // Older snapshots predate the minimal layout: no tagline or footer contacts, and the bank
+      // details and notes they were issued with keep printing.
+      tagline: null,
+      footer: { address: null, phones: [], email: null, website: null },
+      showBankDetails: true,
+      showNotes: true,
     });
-    expect(normalizeInvoiceDocumentSnapshot({ bank: null, notes: null, signatory: null }).paymentAccounts).toEqual([]);
+    const noBank = normalizeInvoiceDocumentSnapshot({ bank: null, notes: null, signatory: null });
+    expect(noBank.paymentAccounts).toEqual([]);
+    expect(noBank.showBankDetails).toBe(false);
+    expect(noBank.showNotes).toBe(true);
+  });
+
+  it('keeps the bank table and notes of a bank-table snapshot (#271), and honours explicit switches', () => {
+    const legacy = normalizeInvoiceDocumentSnapshot({
+      paymentAccounts: [{ bankName: 'Salaam Bank', accountNumber: '330' }],
+      notes: 'Pay by transfer.',
+      signatory: null,
+    });
+    expect(legacy).toMatchObject({ showBankDetails: true, showNotes: true });
+    expect(
+      normalizeInvoiceDocumentSnapshot({ paymentAccounts: [], notes: null, signatory: null }).showBankDetails,
+    ).toBe(false);
+    const current = normalizeInvoiceDocumentSnapshot({
+      paymentAccounts: [{ bankName: 'Salaam Bank', accountNumber: '330' }],
+      notes: 'Pay by transfer.',
+      signatory: null,
+      showBankDetails: false,
+      showNotes: false,
+    });
+    expect(current).toMatchObject({ showBankDetails: false, showNotes: false });
   });
 });

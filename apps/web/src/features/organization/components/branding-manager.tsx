@@ -77,7 +77,6 @@ function BrandingForm({ org }: { org: OrganizationDto }) {
     org.taxRegistrationNumber ?? '',
   );
   const [brandColorHex, setBrandColorHex] = useState(org.brandColorHex ?? '');
-  const [invoiceFooterNote, setInvoiceFooterNote] = useState(org.invoiceFooterNote ?? '');
   const [invoiceTemplate, setInvoiceTemplate] = useState<'STANDARD' | 'COMPACT'>(
     org.invoiceTemplate === 'COMPACT' ? 'COMPACT' : 'STANDARD',
   );
@@ -128,7 +127,6 @@ function BrandingForm({ org }: { org: OrganizationDto }) {
       legalAddress: legalAddress.trim() || null,
       taxRegistrationNumber: taxRegistrationNumber.trim() || null,
       brandColorHex: brandColorHex.trim() || null,
-      invoiceFooterNote: invoiceFooterNote.trim() || null,
       invoiceTemplate,
     });
   }
@@ -221,17 +219,6 @@ function BrandingForm({ org }: { org: OrganizationDto }) {
             className="w-32 font-mono"
           />
         </div>
-      </FormField>
-
-      <FormField htmlFor="branding-footer" label={t('footerLabel')}>
-        <Textarea
-          id="branding-footer"
-          rows={2}
-          value={invoiceFooterNote}
-          onChange={(e) => setInvoiceFooterNote(e.target.value)}
-          maxLength={2000}
-          placeholder={t('footerPlaceholder')}
-        />
       </FormField>
 
       <div>

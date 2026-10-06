@@ -3911,7 +3911,6 @@ export interface CommercialInvoiceDocumentResponse {
     taxRegistrationNumber: string | null;
     /** Short-lived URL for the logo image, or null. */
     logoUrl: string | null;
-    footerNote: string | null;
   };
   billTo: { name: string; address: string | null };
   invoiceDate: string | null;

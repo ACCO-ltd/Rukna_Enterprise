@@ -3,9 +3,10 @@
 /**
  * Accounting → Invoice settings.
  *
- * What the client invoice PDF prints beyond the invoice itself: the "Bank Account Details" table
- * (typed rows of bank name + account number, like ACCO's own invoices — not linked to the
- * accounting bank accounts), the numbered notes, and the authorised signatory's name and title.
+ * What the client invoice PDF prints beyond the invoice itself: the tagline under the logo, the
+ * footer contact strip (address, phones, email, website), the authorised signatory's name and
+ * title, and two optional sections that are off unless switched on — the "Bank Account Details"
+ * table (typed rows, not linked to the accounting bank accounts) and the numbered notes.
  * `view:accounting` reads; `manage:accounting` edits.
  *
  * An invoice freezes these when it is raised and again when it is issued, and a generated PDF never
@@ -14,7 +15,7 @@
 
 import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Notice, Textarea } from '@erp/ui';
+import { Alert, Button, CheckboxField, FormField, Input, Notice, Textarea } from '@erp/ui';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
@@ -29,6 +30,14 @@ interface Draft {
   notes: string;
   signatoryName: string;
   signatoryTitle: string;
+  tagline: string;
+  footerAddress: string;
+  phone1: string;
+  phone2: string;
+  footerEmail: string;
+  footerWebsite: string;
+  showBankDetails: boolean;
+  showNotes: boolean;
 }
 
 function toDraft(settings: InvoiceDocumentSettings): Draft {
@@ -37,7 +46,43 @@ function toDraft(settings: InvoiceDocumentSettings): Draft {
     notes: settings.notes ?? '',
     signatoryName: settings.signatoryName ?? '',
     signatoryTitle: settings.signatoryTitle ?? '',
+    tagline: settings.tagline ?? '',
+    footerAddress: settings.footerAddress ?? '',
+    phone1: settings.footerPhones[0] ?? '',
+    phone2: settings.footerPhones[1] ?? '',
+    footerEmail: settings.footerEmail ?? '',
+    footerWebsite: settings.footerWebsite ?? '',
+    showBankDetails: settings.showBankDetails,
+    showNotes: settings.showNotes,
   };
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const WEBSITE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/\S*)?$/i;
+
+/** The footer strip's limits — the same as the server's. */
+export const FOOTER_LIMITS = { addressLines: 2, lineLength: 60, phone: 30, email: 80, website: 80 } as const;
+
+type ContactProblem = 'address' | 'email' | 'website';
+
+/** The contact fields that would be refused on save, for inline errors before the round trip. */
+export function contactProblems(
+  draft: Pick<Draft, 'footerEmail' | 'footerWebsite'> & { footerAddress?: string },
+): ContactProblem[] {
+  const problems: ContactProblem[] = [];
+  const addressLines = (draft.footerAddress ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (
+    addressLines.length > FOOTER_LIMITS.addressLines ||
+    addressLines.some((line) => line.length > FOOTER_LIMITS.lineLength)
+  ) {
+    problems.push('address');
+  }
+  if (draft.footerEmail.trim() && !EMAIL.test(draft.footerEmail.trim())) problems.push('email');
+  if (draft.footerWebsite.trim() && !WEBSITE.test(draft.footerWebsite.trim())) problems.push('website');
+  return problems;
 }
 
 /** Indexes of rows with one field filled and the other blank (a fully blank row is just dropped). */
@@ -75,7 +120,19 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
   const { can } = usePermissions();
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageChart);
   const baseId = useId();
-  const ids = { name: `${baseId}-name`, title: `${baseId}-title`, notes: `${baseId}-notes` };
+  const ids = {
+    name: `${baseId}-name`,
+    title: `${baseId}-title`,
+    notes: `${baseId}-notes`,
+    tagline: `${baseId}-tagline`,
+    address: `${baseId}-address`,
+    phone1: `${baseId}-phone1`,
+    phone2: `${baseId}-phone2`,
+    email: `${baseId}-email`,
+    website: `${baseId}-website`,
+    showBank: `${baseId}-show-bank`,
+    showNotes: `${baseId}-show-notes`,
+  };
 
   const save = useUpdateInvoiceDocumentSettings();
   const saved = toDraft(settings);
@@ -85,6 +142,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const disabled = !mayManage || save.isPending;
   const incomplete = incompleteRows(draft.paymentAccounts);
+  const contacts = contactProblems(draft);
 
   const patch = (next: Partial<Draft>) => setDraft((current) => ({ ...current, ...next }));
   const patchRow = (index: number, next: Partial<InvoicePaymentAccount>) =>
@@ -97,7 +155,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (incomplete.length > 0) {
+    if (incomplete.length > 0 || contacts.length > 0) {
       setShowErrors(true);
       return;
     }
@@ -106,6 +164,13 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
       notes: draft.notes.trim() ? draft.notes : null,
       signatoryName: draft.signatoryName.trim() || null,
       signatoryTitle: draft.signatoryTitle.trim() || null,
+      tagline: draft.tagline.trim() || null,
+      footerAddress: draft.footerAddress.trim() ? draft.footerAddress : null,
+      footerPhones: [draft.phone1, draft.phone2].map((p) => p.trim()).filter(Boolean),
+      footerEmail: draft.footerEmail.trim() || null,
+      footerWebsite: draft.footerWebsite.trim() || null,
+      showBankDetails: draft.showBankDetails,
+      showNotes: draft.showNotes,
     });
   }
 
@@ -127,9 +192,120 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
 
       <section className="space-y-3 rounded-panel border border-border bg-surface p-4">
         <div>
+          <h3 className="text-sm font-semibold text-foreground">{t('headerTitle')}</h3>
+          <p className="text-xs text-muted-foreground">{t('headerHint')}</p>
+        </div>
+        <FormField htmlFor={ids.tagline} label={t('tagline')}>
+          <Input
+            id={ids.tagline}
+            value={draft.tagline}
+            onChange={(event) => patch({ tagline: event.target.value })}
+            placeholder={t('taglinePlaceholder')}
+            maxLength={80}
+            disabled={disabled}
+            autoComplete="off"
+          />
+        </FormField>
+      </section>
+
+      <section className="space-y-3 rounded-panel border border-border bg-surface p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{t('footerTitle')}</h3>
+          <p className="text-xs text-muted-foreground">{t('footerHint')}</p>
+        </div>
+        <FormField
+          htmlFor={ids.address}
+          label={t('footerAddress')}
+          hint={t('footerAddressHint', { lines: FOOTER_LIMITS.addressLines, chars: FOOTER_LIMITS.lineLength })}
+          error={showErrors && contacts.includes('address') ? t('footerAddressInvalid') : undefined}
+        >
+          <Textarea
+            id={ids.address}
+            value={draft.footerAddress}
+            onChange={(event) => patch({ footerAddress: event.target.value })}
+            rows={2}
+            maxLength={FOOTER_LIMITS.addressLines * (FOOTER_LIMITS.lineLength + 1)}
+            disabled={disabled}
+            placeholder={settings.defaultFooterAddress ?? t('footerAddressPlaceholder')}
+          />
+        </FormField>
+        {!draft.footerAddress.trim() && settings.defaultFooterAddress ? (
+          <p className="text-xs text-muted-foreground">{t('footerAddressDefault')}</p>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor={ids.phone1} label={t('phone', { n: 1 })} hint={t('limitHint', { chars: FOOTER_LIMITS.phone })}>
+            <Input
+              id={ids.phone1}
+              type="tel"
+              value={draft.phone1}
+              onChange={(event) => patch({ phone1: event.target.value })}
+              placeholder="+252 61 234 5678"
+              maxLength={FOOTER_LIMITS.phone}
+              disabled={disabled}
+              autoComplete="off"
+            />
+          </FormField>
+          <FormField htmlFor={ids.phone2} label={t('phone', { n: 2 })} hint={t('limitHint', { chars: FOOTER_LIMITS.phone })}>
+            <Input
+              id={ids.phone2}
+              type="tel"
+              value={draft.phone2}
+              onChange={(event) => patch({ phone2: event.target.value })}
+              placeholder="+252 90 123 4567"
+              maxLength={FOOTER_LIMITS.phone}
+              disabled={disabled}
+              autoComplete="off"
+            />
+          </FormField>
+          <FormField
+            htmlFor={ids.email}
+            label={t('email')}
+            hint={t('limitHint', { chars: FOOTER_LIMITS.email })}
+            error={showErrors && contacts.includes('email') ? t('emailInvalid') : undefined}
+          >
+            <Input
+              id={ids.email}
+              type="email"
+              value={draft.footerEmail}
+              onChange={(event) => patch({ footerEmail: event.target.value })}
+              placeholder="info@acco.com"
+              maxLength={FOOTER_LIMITS.email}
+              disabled={disabled}
+              autoComplete="off"
+            />
+          </FormField>
+          <FormField
+            htmlFor={ids.website}
+            label={t('website')}
+            hint={t('limitHint', { chars: FOOTER_LIMITS.website })}
+            error={showErrors && contacts.includes('website') ? t('websiteInvalid') : undefined}
+          >
+            <Input
+              id={ids.website}
+              value={draft.footerWebsite}
+              onChange={(event) => patch({ footerWebsite: event.target.value })}
+              placeholder="www.acco.com"
+              maxLength={FOOTER_LIMITS.website}
+              disabled={disabled}
+              autoComplete="off"
+            />
+          </FormField>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-panel border border-border bg-surface p-4">
+        <div>
           <h3 className="text-sm font-semibold text-foreground">{t('banksTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('banksHint')}</p>
         </div>
+        <CheckboxField
+          id={ids.showBank}
+          label={t('showBankDetails')}
+          description={t('showBankDetailsHint')}
+          checked={draft.showBankDetails}
+          onChange={(event) => patch({ showBankDetails: event.target.checked })}
+          disabled={disabled}
+        />
 
         {draft.paymentAccounts.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t('noBanks')}</p>
@@ -233,6 +409,14 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <h3 className="text-sm font-semibold text-foreground">{t('notesTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('notesHint')}</p>
         </div>
+        <CheckboxField
+          id={ids.showNotes}
+          label={t('showNotes')}
+          description={t('showNotesHint')}
+          checked={draft.showNotes}
+          onChange={(event) => patch({ showNotes: event.target.checked })}
+          disabled={disabled}
+        />
         <FormField htmlFor={ids.notes} label={t('notes')}>
           <Textarea
             id={ids.notes}

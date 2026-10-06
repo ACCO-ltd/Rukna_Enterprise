@@ -1428,8 +1428,6 @@
     "addressLabel": "Legal address",
     "taxLabel": "Tax registration number",
     "colorLabel": "Brand color",
-    "footerLabel": "Invoice footer note",
-    "footerPlaceholder": "e.g. payment instructions or a thank-you note",
     "templateLabel": "Invoice layout",
     "templateStandard": "Standard",
     "templateCompact": "Compact",

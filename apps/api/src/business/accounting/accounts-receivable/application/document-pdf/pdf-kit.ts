@@ -1,38 +1,48 @@
 import * as React from 'react';
-import { Font, Image, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { Circle, Font, Image, Path, Rect, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
 
 /**
  * Shared building blocks for the organisation's client-facing PDFs (the invoice and the payment
- * receipt): palette, base styles, the branded header, the page footer and the small cards both
- * documents use. One place draws the brand, so the two documents cannot drift apart.
+ * receipt), in the owner's minimal layout: a thin brand bar along the top, the logo + tagline +
+ * address on the left and the big dark document title with its facts on the right, a two-column
+ * info band, a lightly ruled table, a soft total box, and a footer contact strip (address /
+ * phones / email + website, each behind a small line icon). One place draws the brand, so the two
+ * documents cannot drift apart.
  *
- * Every helper is a plain function that RETURNS primitives (`View` / `Text` / `Image`) rather than
- * a React component: the element tree stays made of primitives only, which is what the unit tests
- * walk (under Jest `@react-pdf/renderer` is a stub whose primitives render nothing).
+ * Every helper is a plain function that RETURNS primitives rather than a React component: the
+ * element tree stays made of primitives only, which is what the unit tests walk (under Jest
+ * `@react-pdf/renderer` is a stub whose primitives render nothing).
  *
  * Written with `React.createElement` — `apps/api` has no JSX compiler setup.
  */
 
 export const h = React.createElement;
 
-// Never hyphenate: account names, references and amounts must print exactly as recorded. (A
+// Never hyphenate: account numbers, references and amounts must print exactly as recorded. (A
 // process-wide react-pdf setting; every document in this API wants it.)
 Font.registerHyphenationCallback((word: string) => [word]);
 
-/** The reference template's navy-blue accent; an organisation's own brand colour replaces it. */
+/** The reference template's blue; an organisation's own brand colour replaces it. */
 export const DEFAULT_ACCENT = '#1F3FA8';
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
-/** A4 page height in points. */
-const A4_HEIGHT = 841.89;
+/** A4 in points. */
+export const A4_WIDTH = 595.28;
+export const A4_HEIGHT = 841.89;
+export const PAGE_MARGIN_X = 44;
+/** Height reserved at the bottom of every page for the footer strip. */
+const FOOTER_HEIGHT = 92;
 
 export interface Palette {
   accent: string;
-  /** Light tint of the accent, for the emphasised "amount due" box. */
+  /** Light tint of the accent, for the total box. */
   accentSoft: string;
+  /** Dark navy for the document title and strong text. */
+  navy: string;
   ink: string;
   muted: string;
   faint: string;
   border: string;
+  /** Table header fill. */
   panel: string;
 }
 
@@ -40,20 +50,22 @@ export function paletteFor(brandColorHex: string | null | undefined): Palette {
   const accent = HEX_COLOR.test(brandColorHex ?? '') ? (brandColorHex as string).toUpperCase() : DEFAULT_ACCENT;
   return {
     accent,
-    accentSoft: tint(accent, 0.92),
-    ink: '#1A1F36',
-    muted: '#5B6475',
-    faint: '#8A93A3',
-    border: '#DDE2EA',
-    panel: '#F6F8FB',
+    accentSoft: mix(accent, '#FFFFFF', 0.92),
+    navy: '#14213D',
+    ink: '#1F2937',
+    muted: '#6B7280',
+    faint: '#9CA3AF',
+    border: '#E2E6EC',
+    panel: '#F4F6F9',
   };
 }
 
-/** Mix a #RRGGBB colour toward white by `amount` (0 = unchanged, 1 = white). */
-function tint(hex: string, amount: number): string {
+/** Mix two #RRGGBB colours: 0 = `a`, 1 = `b`. */
+function mix(a: string, b: string, amount: number): string {
   const channel = (i: number) => {
-    const value = parseInt(hex.slice(i, i + 2), 16);
-    return Math.round(value + (255 - value) * amount)
+    const x = parseInt(a.slice(i, i + 2), 16);
+    const y = parseInt(b.slice(i, i + 2), 16);
+    return Math.round(x + (y - x) * amount)
       .toString(16)
       .padStart(2, '0');
   };
@@ -65,11 +77,11 @@ export interface BrandView {
   orgName: string;
   /** `data:` URI of the logo, or null for a text wordmark. */
   logoSrc: string | null;
+  /** Letter-spaced line under the logo, e.g. "CONSTRUCTION & DEVELOPMENT"; null for none. */
+  tagline: string | null;
   addressLines: string[];
   /** "Tax Reg. 123", or null when the organisation has no tax number. */
   taxLine: string | null;
-  /** "<Company> · <last address line>" for the page footer. */
-  footerLine: string;
   palette: Palette;
   compact: boolean;
 }
@@ -81,20 +93,60 @@ export interface OrgIdentityInput {
   brandColorHex: string | null;
   template: 'STANDARD' | 'COMPACT';
   logo: { buffer: Buffer; mimeType: string } | null;
+  /** From the invoice settings; optional. */
+  tagline?: string | null;
 }
 
 export function brandView(org: OrgIdentityInput): BrandView {
-  const addressLines = splitLines(org.legalAddress);
-  const locality = addressLines.length > 0 ? addressLines[addressLines.length - 1] : null;
   return {
     orgName: org.name,
     logoSrc: org.logo ? `data:${org.logo.mimeType};base64,${org.logo.buffer.toString('base64')}` : null,
-    addressLines,
+    tagline: org.tagline?.trim() ? org.tagline.trim().toUpperCase() : null,
+    addressLines: splitLines(org.legalAddress),
     taxLine: org.taxRegistrationNumber?.trim() ? `Tax Reg. ${org.taxRegistrationNumber.trim()}` : null,
-    footerLine: locality ? `${org.name} · ${locality}` : org.name,
     palette: paletteFor(org.brandColorHex),
     compact: org.template === 'COMPACT',
   };
+}
+
+/** The footer contact strip, as typed in the invoice settings. */
+export interface FooterContactsInput {
+  /** Null → the organisation's legal address. */
+  address: string | null;
+  phones: string[];
+  email: string | null;
+  website: string | null;
+}
+
+export type FooterIcon = 'pin' | 'phone' | 'mail';
+export interface FooterColumn {
+  icon: FooterIcon;
+  lines: string[];
+}
+
+/** Longest footer line that fits its column; anything longer is cut with an ellipsis. */
+export const FOOTER_LINE_MAX = 60;
+
+/** `value` cut to `max` characters, ending in "…" when it was longer. */
+export function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * The footer's columns — address (first two lines), phones (up to two), email + website — each
+ * only when it has something to say. Lines are cut to fit (the settings validate the same limits;
+ * this is the defence for older or legal-address values), so nothing overflows the strip.
+ */
+export function footerColumns(contacts: FooterContactsInput | null | undefined, legalAddress: string | null): FooterColumn[] {
+  const fit = (line: string) => truncate(line, FOOTER_LINE_MAX);
+  const address = splitLines(contacts?.address ?? legalAddress).slice(0, 2).map(fit);
+  const phones = (contacts?.phones ?? []).map((p) => p.trim()).filter(Boolean).slice(0, 2).map(fit);
+  const web = [contacts?.email, contacts?.website].map((v) => v?.trim() ?? '').filter(Boolean).map(fit);
+  const columns: FooterColumn[] = [];
+  if (address.length > 0) columns.push({ icon: 'pin', lines: address });
+  if (phones.length > 0) columns.push({ icon: 'phone', lines: phones });
+  if (web.length > 0) columns.push({ icon: 'mail', lines: web });
+  return columns;
 }
 
 export interface KeyValue {
@@ -107,114 +159,115 @@ export type KitStyles = ReturnType<typeof buildKitStyles>;
 export function buildKitStyles(p: Palette, compact: boolean) {
   return StyleSheet.create({
     page: {
-      paddingTop: compact ? 28 : 36,
-      // Room for the fixed footer.
-      paddingBottom: 72,
-      paddingHorizontal: compact ? 32 : 40,
+      paddingTop: compact ? 44 : 52,
+      paddingBottom: FOOTER_HEIGHT + 16,
+      paddingHorizontal: PAGE_MARGIN_X,
       fontSize: 9,
       fontFamily: 'Helvetica',
       color: p.ink,
-      lineHeight: 1.35,
+      lineHeight: 1.4,
     },
+    topBar: { position: 'absolute', top: 24, left: PAGE_MARGIN_X, right: PAGE_MARGIN_X, height: 3, backgroundColor: p.accent },
     // Header
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    headerLeft: { flexDirection: 'column', width: '55%' },
-    headerRight: { flexDirection: 'column', alignItems: 'flex-end', width: '45%' },
-    logo: { maxHeight: compact ? 34 : 44, maxWidth: 170, marginBottom: 8, objectFit: 'contain' },
-    wordmark: {
-      fontSize: compact ? 15 : 18,
-      lineHeight: 1.15,
-      fontFamily: 'Helvetica-Bold',
-      color: p.accent,
-      marginBottom: 6,
-    },
-    orgName: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-    small: { fontSize: 8.5, color: p.muted },
+    headerLeft: { flexDirection: 'column', width: '56%' },
+    headerRight: { flexDirection: 'column', alignItems: 'flex-end', width: '44%' },
+    logo: { height: compact ? 28 : 32, maxWidth: 200, objectFit: 'contain', objectPosition: 'left' },
+    wordmark: { fontSize: compact ? 19 : 22, lineHeight: 1.1, fontFamily: 'Helvetica-Bold', color: p.accent },
+    tagline: { fontSize: 6.5, letterSpacing: 1.8, color: p.muted, marginTop: 5 },
+    addressBlock: { marginTop: 12 },
+    small: { fontSize: 8.5, color: p.muted, lineHeight: 1.5 },
     docTitle: {
-      fontSize: compact ? 22 : 26,
-      lineHeight: 1.1,
+      fontSize: compact ? 22 : 25.5,
+      lineHeight: 1.05,
       fontFamily: 'Helvetica-Bold',
-      color: p.accent,
-      letterSpacing: 2,
-      marginBottom: 10,
+      color: p.navy,
+      letterSpacing: 1.5,
+      marginBottom: 14,
     },
-    metaRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 3 },
-    metaLabel: { fontSize: 8.5, color: p.muted, width: 80, textAlign: 'right', marginRight: 10 },
-    metaValue: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', minWidth: 80, textAlign: 'right' },
-    divider: { borderBottomWidth: 1, borderBottomColor: p.border, marginTop: compact ? 14 : 20, marginBottom: compact ? 14 : 18 },
-    // Section labels + cards
-    sectionLabel: {
-      fontSize: 7.5,
-      fontFamily: 'Helvetica-Bold',
-      color: p.accent,
-      letterSpacing: 1,
-      marginBottom: 5,
-    },
-    strong: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-    card: {
-      borderWidth: 1,
-      borderColor: p.border,
-      borderRadius: 6,
-      backgroundColor: p.panel,
-      padding: 12,
-    },
-    cardTitle: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-    cardSubtitle: { fontSize: 8, color: p.muted, marginBottom: 8 },
-    kvRow: { flexDirection: 'row', marginBottom: 3 },
-    kvLabel: { fontSize: 8.5, color: p.muted, width: 92 },
-    kvValue: { fontSize: 8.5, flex: 1, fontFamily: 'Helvetica-Bold' },
-    amountBox: {
-      alignSelf: 'flex-start',
-      borderWidth: 1,
-      borderColor: tintBorder(p),
-      borderRadius: 6,
-      backgroundColor: p.accentSoft,
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-    },
-    amountValue: { fontSize: compact ? 16 : 18, lineHeight: 1.15, fontFamily: 'Helvetica-Bold', color: p.accent, marginTop: 2 },
-    // Footer (fixed on every page)
-    footer: {
-      position: 'absolute',
-      left: compact ? 32 : 40,
-      right: compact ? 32 : 40,
-      bottom: 28,
+    metaRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 },
+    metaLabel: { fontSize: 8.5, color: p.muted, width: 84, textAlign: 'right', marginRight: 14 },
+    metaValue: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: p.navy, width: 82, textAlign: 'right' },
+    divider: { borderBottomWidth: 0.75, borderBottomColor: p.border, marginTop: compact ? 18 : 24, marginBottom: compact ? 16 : 20 },
+    // Two-column info band
+    infoRow: { flexDirection: 'row', marginBottom: compact ? 18 : 24 },
+    infoColumn: { flex: 1, paddingRight: 16 },
+    infoColumnRight: { flex: 1, paddingLeft: 20, borderLeftWidth: 0.75, borderLeftColor: p.border },
+    infoLabel: { fontSize: 8.5, color: p.muted, marginBottom: 5 },
+    infoName: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: p.navy, marginBottom: 2 },
+    // Table
+    table: { borderWidth: 0.75, borderColor: p.border, borderRadius: 3, marginBottom: 14 },
+    th: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: p.ink },
+    thRow: {
       flexDirection: 'row',
-      alignItems: 'flex-end',
+      backgroundColor: p.panel,
+      borderBottomWidth: 0.75,
+      borderBottomColor: p.border,
     },
-    footerRule: { flex: 1, borderBottomWidth: 1, borderBottomColor: p.border, marginRight: 16, marginBottom: 4 },
-    footerRight: { flexDirection: 'column', alignItems: 'flex-end' },
-    footerThanks: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: p.accent },
-    footerSmall: { fontSize: 7.5, color: p.faint, marginTop: 1 },
+    tr: { flexDirection: 'row', borderBottomWidth: 0.75, borderBottomColor: p.border },
+    trLast: { flexDirection: 'row' },
+    cell: { paddingVertical: compact ? 6 : 8, paddingHorizontal: 8 },
+    /** The thin vertical rule before the Amount column. */
+    ruledCell: { borderLeftWidth: 0.75, borderLeftColor: p.border },
+    td: { fontSize: 9 },
+    lineTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: p.navy },
+    lineDetail: { fontSize: 8, color: p.muted, marginTop: 2 },
+    // Totals
+    totals: {
+      alignSelf: 'flex-end',
+      width: 236,
+      marginBottom: compact ? 18 : 26,
+      borderTopWidth: 0.75,
+      borderTopColor: p.border,
+      paddingTop: 6,
+    },
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, paddingHorizontal: 10 },
+    totalLabel: { fontSize: 9, color: p.muted },
+    totalValue: { fontSize: 9, color: p.ink },
+    totalDue: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      backgroundColor: p.accentSoft,
+      borderRadius: 4,
+    },
+    totalDueText: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: p.accent },
+    // Optional minimal sections
+    sectionTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: p.navy, marginBottom: 5 },
+    // Signature
+    signature: { width: 200, marginTop: 30 },
+    signatureLine: { borderBottomWidth: 0.75, borderBottomColor: p.ink, marginBottom: 6 },
+    signatureName: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: p.navy },
+    signatureMeta: { fontSize: 8.5, color: p.muted },
+    // Footer strip (fixed on every page)
+    footer: { position: 'absolute', left: PAGE_MARGIN_X, right: PAGE_MARGIN_X, bottom: 0, height: FOOTER_HEIGHT },
+    footerRule: { borderTopWidth: 0.75, borderTopColor: p.border },
+    footerRow: { flexDirection: 'row', paddingTop: 16 },
+    footerColumn: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingRight: 12 },
+    footerColumnRuled: { borderLeftWidth: 0.75, borderLeftColor: p.border, paddingLeft: 14 },
+    footerIcon: { width: 12, height: 12, marginRight: 8 },
+    footerText: { fontSize: 8, color: p.muted, lineHeight: 1.5, maxLines: 1, textOverflow: 'ellipsis' },
     pageNumber: {
       position: 'absolute',
-      left: compact ? 32 : 40,
-      right: compact ? 32 : 40,
+      left: PAGE_MARGIN_X,
+      right: PAGE_MARGIN_X,
       // Placed from the top: react-pdf drops a dynamic (`render`) text anchored with `bottom`.
-      top: A4_HEIGHT - 26,
+      top: A4_HEIGHT - 22,
       fontSize: 7,
       color: p.faint,
+      textAlign: 'right',
     },
   });
 }
 
-/** A shade between the soft fill and the accent, for the amount box outline. */
-function tintBorder(p: Palette): string {
-  return mix(p.accentSoft, p.accent, 0.25);
+/** The thin brand bar across the top edge of every page. */
+export function topBar(s: KitStyles) {
+  return h(View, { style: s.topBar, fixed: true });
 }
 
-function mix(a: string, b: string, amount: number): string {
-  const channel = (i: number) => {
-    const x = parseInt(a.slice(i, i + 2), 16);
-    const y = parseInt(b.slice(i, i + 2), 16);
-    return Math.round(x + (y - x) * amount)
-      .toString(16)
-      .padStart(2, '0');
-  };
-  return `#${channel(1)}${channel(3)}${channel(5)}`.toUpperCase();
-}
-
-/** Org identity on the left; the document title and its key/value facts on the right. */
+/** Logo (or the name as a wordmark) + tagline + address on the left; title and facts on the right. */
 export function documentHeader(s: KitStyles, brand: BrandView, title: string, meta: KeyValue[]) {
   return h(
     View,
@@ -222,13 +275,16 @@ export function documentHeader(s: KitStyles, brand: BrandView, title: string, me
     h(
       View,
       { style: s.headerLeft },
-      brand.logoSrc
-        ? h(Image, { style: s.logo, src: brand.logoSrc })
+      brand.logoSrc ? h(Image, { style: s.logo, src: brand.logoSrc }) : h(Text, { style: s.wordmark }, brand.orgName),
+      brand.tagline ? h(Text, { style: s.tagline }, brand.tagline) : null,
+      brand.addressLines.length > 0 || brand.taxLine
+        ? h(
+            View,
+            { style: s.addressBlock },
+            ...brand.addressLines.map((line, i) => h(Text, { style: s.small, key: `addr${i}` }, line)),
+            brand.taxLine ? h(Text, { style: s.small }, brand.taxLine) : null,
+          )
         : null,
-      // Without a logo the name itself is the wordmark; with one, the name sits under it.
-      h(Text, { style: brand.logoSrc ? s.orgName : s.wordmark }, brand.orgName),
-      ...brand.addressLines.map((line, i) => h(Text, { style: s.small, key: `addr${i}` }, line)),
-      brand.taxLine ? h(Text, { style: s.small }, brand.taxLine) : null,
     ),
     h(
       View,
@@ -250,47 +306,115 @@ export function divider(s: KitStyles) {
   return h(View, { style: s.divider });
 }
 
-export function sectionLabel(s: KitStyles, label: string) {
-  return h(Text, { style: s.sectionLabel }, label);
+export interface InfoColumn {
+  label: string;
+  /** Bold first line. */
+  name: string;
+  lines: string[];
 }
 
-export function keyValueRows(s: KitStyles, rows: KeyValue[]) {
-  return rows.map((row, i) =>
+/** Two columns split by a thin vertical rule ("Bill To" | "Project", "Received From" | "Payment"). */
+export function infoColumns(s: KitStyles, left: InfoColumn, right: InfoColumn | null) {
+  const column = (info: InfoColumn, style: object) =>
     h(
       View,
-      { style: s.kvRow, key: `kv${i}` },
-      h(Text, { style: s.kvLabel }, row.label),
-      h(Text, { style: s.kvValue }, row.value),
+      { style },
+      h(Text, { style: s.infoLabel }, info.label),
+      h(Text, { style: s.infoName }, info.name),
+      ...info.lines.map((line, i) => h(Text, { style: s.small, key: `l${i}` }, line)),
+    );
+  return h(
+    View,
+    { style: s.infoRow },
+    column(left, s.infoColumn),
+    right ? column(right, s.infoColumnRight) : h(View, { style: s.infoColumn }),
+  );
+}
+
+/** Totals on the right; the last row in the soft accent box. */
+export function totalsBlock(s: KitStyles, rows: KeyValue[], total: KeyValue) {
+  return h(
+    View,
+    { style: s.totals, wrap: false },
+    ...rows.map((row, i) =>
+      h(
+        View,
+        { style: s.totalRow, key: `t${i}` },
+        h(Text, { style: s.totalLabel }, row.label),
+        h(Text, { style: s.totalValue }, row.value),
+      ),
+    ),
+    h(
+      View,
+      { style: s.totalDue },
+      h(Text, { style: s.totalDueText }, total.label),
+      h(Text, { style: s.totalDueText }, total.value),
     ),
   );
 }
 
-/** The emphasised light box with a label and a large accent-coloured amount. */
-export function amountPanel(s: KitStyles, label: string, value: string, style?: object) {
-  return h(
-    View,
-    { style: style ? [s.amountBox, style] : s.amountBox },
-    h(Text, { style: s.sectionLabel }, label),
-    h(Text, { style: s.amountValue }, value),
-  );
+/** A small line icon (24×24 viewBox, stroked in the accent colour). */
+export function lineIcon(s: KitStyles, icon: FooterIcon, color: string) {
+  const stroke = { stroke: color, strokeWidth: 1.8, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const shapes =
+    icon === 'pin'
+      ? [
+          h(Path, { key: 'p', d: 'M12 22s7-7.4 7-12.5A7 7 0 0 0 5 9.5C5 14.6 12 22 12 22z', ...stroke }),
+          h(Circle, { key: 'c', cx: 12, cy: 9.5, r: 2.6, ...stroke }),
+        ]
+      : icon === 'phone'
+        ? [
+            h(Path, {
+              key: 'p',
+              d: 'M21 16.5v3a2 2 0 0 1-2.2 2A19 19 0 0 1 2.5 5.2 2 2 0 0 1 4.5 3h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.4 10.8a16 16 0 0 0 4.8 4.8l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z',
+              ...stroke,
+            }),
+          ]
+        : [
+            h(Rect, { key: 'r', x: 2.5, y: 5, width: 19, height: 14, rx: 2, ...stroke }),
+            h(Path, { key: 'p', d: 'M3 6.5l9 6.5 9-6.5', ...stroke }),
+          ];
+  return h(Svg, { style: s.footerIcon, viewBox: '0 0 24 24' }, ...shapes);
 }
 
-/** Left rule, right "Thank you…" + the company line; repeated on every page. */
-export function documentFooter(s: KitStyles, brand: BrandView, thanks: string) {
+/** Full-width rule, then the contact columns split by thin vertical rules; on every page. */
+export function documentFooter(s: KitStyles, brand: BrandView, columns: FooterColumn[]) {
   return h(
     View,
     { style: s.footer, fixed: true },
     h(View, { style: s.footerRule }),
-    h(
-      View,
-      { style: s.footerRight },
-      h(Text, { style: s.footerThanks }, thanks),
-      h(Text, { style: s.footerSmall }, brand.footerLine),
-    ),
+    columns.length > 0
+      ? h(
+          View,
+          { style: s.footerRow },
+          ...columns.map((column, i) =>
+            h(
+              View,
+              {
+                style: [
+                  s.footerColumn,
+                  // The address carries the longest lines: give it the widest column.
+                  column.icon === 'pin' ? { flex: 1.45 } : {},
+                  i === 0 ? {} : s.footerColumnRuled,
+                ],
+                key: `f${i}`,
+              },
+              lineIcon(s, column.icon, brand.palette.navy),
+              h(
+                View,
+                { style: { flex: 1, overflow: 'hidden' } },
+                ...column.lines.map((line, j) =>
+                  h(Text, { style: s.footerText, key: `fl${j}` }, line),
+                ),
+              ),
+            ),
+          ),
+        )
+      : null,
   );
 }
 
-/** "Page 2 of 3" under the footer, on documents longer than one page. */
+/** "Page 2 of 3" in the footer, on documents longer than one page. */
 export function pageNumbers(s: KitStyles) {
   return h(Text, {
     style: s.pageNumber,
