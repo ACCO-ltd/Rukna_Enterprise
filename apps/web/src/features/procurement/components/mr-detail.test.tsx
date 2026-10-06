@@ -19,8 +19,11 @@ vi.mock('@/features/workflows/components/approval-panel', () => ({
   ApprovalPanel: ({ instanceId }: { instanceId: string | null }) => (instanceId ? <div>Approval panel {instanceId}</div> : null),
 }));
 vi.mock('@/features/workflows/hooks/use-approval', () => ({ useApprovalStep: () => ({ isPending: false, data: null }) }));
+const workflow = vi.hoisted(() => ({
+  definition: vi.fn<(...args: unknown[]) => unknown>(() => ({ isPending: false, data: { steps: [] } })),
+}));
 vi.mock('@/features/workflows/hooks/use-workflow-definition', () => ({
-  useWorkflowDefinition: () => ({ isPending: false, data: { steps: [] } }),
+  useWorkflowDefinition: (...args: unknown[]) => workflow.definition(...args),
 }));
 
 const state = vi.hoisted(() => ({ request: null as unknown }));
@@ -137,5 +140,22 @@ describe('MrDetail — heading', () => {
     renderWithProviders(<MrDetail id="mr1" />, { permissions: ['create:material-request'] });
 
     expect(screen.getByRole('heading', { level: 2, name: 'Cement for blockwork' })).toBeInTheDocument();
+  });
+});
+
+describe('MrDetail — approval chain', () => {
+  it('reads no workflow definition for a request that went through no approval', () => {
+    state.request = request({ approvalInstanceId: null });
+    renderWithProviders(<MrDetail id="mr1" />, { permissions: ['create:material-request'] });
+
+    expect(workflow.definition).toHaveBeenCalledWith('MATERIAL_REQUEST', { enabled: false });
+    expect(workflow.definition).not.toHaveBeenCalledWith('MATERIAL_REQUEST', { enabled: true });
+  });
+
+  it('reads the definition once the request carries an approval instance', () => {
+    state.request = request({ approvalInstanceId: 'ai-3' });
+    renderWithProviders(<MrDetail id="mr1" />, { permissions: ['create:material-request'] });
+
+    expect(workflow.definition).toHaveBeenCalledWith('MATERIAL_REQUEST', { enabled: true });
   });
 });

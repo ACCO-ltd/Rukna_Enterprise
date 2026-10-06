@@ -374,9 +374,17 @@ function WorkflowChain({
   const tCommon = useTranslations('common');
 
   const stepQuery = useApprovalStep(instanceId);
-  const definition = useWorkflowDefinition(WorkflowTransactionType.MATERIAL_REQUEST);
+  // A request with no approval instance went through no workflow — the governance binding
+  // gates submit and records the instance. Without one there is no chain to draw, and the
+  // definition read would only 404 for an organization that has none configured.
+  const hasWorkflow = instanceId !== null;
+  const definition = useWorkflowDefinition(WorkflowTransactionType.MATERIAL_REQUEST, {
+    enabled: hasWorkflow,
+  });
 
-  const isLoading = definition.isPending || (instanceId !== null && stepQuery.isPending);
+  if (!hasWorkflow) return null;
+
+  const isLoading = definition.isPending || stepQuery.isPending;
 
   if (isLoading) {
     return (
