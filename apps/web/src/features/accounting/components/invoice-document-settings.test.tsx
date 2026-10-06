@@ -5,7 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 
 import type { InvoiceDocumentSettings } from '../types';
-import { InvoiceDocumentSettingsPanel, incompleteRows, rowsToSave } from './invoice-document-settings';
+import {
+  InvoiceDocumentSettingsPanel,
+  contactProblems,
+  incompleteRows,
+  rowsToSave,
+} from './invoice-document-settings';
 
 /** Accounting → Invoice settings: the bank table, notes and signatory on invoice PDFs. */
 
@@ -25,7 +30,30 @@ const SETTINGS: InvoiceDocumentSettings = {
   defaultNotes: ['Please quote the invoice number in your payment.', 'This invoice is issued in accordance with the project contract.'],
   signatoryName: null,
   signatoryTitle: null,
+  tagline: null,
+  footerAddress: null,
+  defaultFooterAddress: 'Olow Tower, Maka Al-Mukarama Road\nMogadishu, Somalia',
+  footerPhones: [],
+  footerEmail: null,
+  footerWebsite: null,
+  showBankDetails: false,
+  showNotes: false,
   updatedAt: null,
+};
+
+/** What a save sends for the untouched defaults; tests override the fields they change. */
+const UNCHANGED = {
+  paymentAccounts: [],
+  notes: null,
+  signatoryName: null,
+  signatoryTitle: null,
+  tagline: null,
+  footerAddress: null,
+  footerPhones: [],
+  footerEmail: null,
+  footerWebsite: null,
+  showBankDetails: false,
+  showNotes: false,
 };
 
 const mutate = vi.fn();
@@ -57,7 +85,7 @@ describe('InvoiceDocumentSettingsPanel', () => {
   it('starts with no banks, the standard notes and Save disabled', () => {
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
     expect(screen.getByRole('heading', { name: 'Invoice settings' })).toBeInTheDocument();
-    expect(screen.getByText('No bank accounts yet — invoices print without a Bank Account Details table.')).toBeInTheDocument();
+    expect(screen.getByText('No bank accounts yet.')).toBeInTheDocument();
     expect(screen.getByText('Please quote the invoice number in your payment.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled();
   });
@@ -77,14 +105,54 @@ describe('InvoiceDocumentSettingsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
 
     expect(mutate).toHaveBeenCalledWith({
+      ...UNCHANGED,
       paymentAccounts: [
         { bankName: 'Salaam Bank', accountNumber: '33020045871' },
         { bankName: 'Premier Bank', accountNumber: '0102 0033 4410' },
       ],
-      notes: null,
       signatoryName: 'Ahmed Ali',
       signatoryTitle: 'Finance Manager',
     });
+  });
+
+  it('saves the tagline, footer contacts and the two section switches', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
+
+    expect(screen.getByText('Left blank, the footer prints the organisation address shown above.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Print bank account details on invoices')).not.toBeChecked();
+    expect(screen.getByLabelText('Print notes on invoices')).not.toBeChecked();
+
+    await user.type(screen.getByLabelText('Tagline'), 'Construction & Development');
+    await user.type(screen.getByLabelText('Phone 1'), '+252 61 234 5678');
+    await user.type(screen.getByLabelText('Phone 2'), '+252 90 123 4567');
+    await user.type(screen.getByLabelText('Email'), 'info@acco.com');
+    await user.type(screen.getByLabelText('Website'), 'www.acco.com');
+    await user.click(screen.getByLabelText('Print bank account details on invoices'));
+    await user.click(screen.getByLabelText('Print notes on invoices'));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(mutate).toHaveBeenCalledWith({
+      ...UNCHANGED,
+      tagline: 'Construction & Development',
+      footerPhones: ['+252 61 234 5678', '+252 90 123 4567'],
+      footerEmail: 'info@acco.com',
+      footerWebsite: 'www.acco.com',
+      showBankDetails: true,
+      showNotes: true,
+    });
+  });
+
+  it('refuses a malformed email or website before saving', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
+    await user.type(screen.getByLabelText('Email'), 'info@acco');
+    await user.type(screen.getByLabelText('Website'), 'not a site');
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(screen.getByText('Enter an email address like info@acco.com.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a website like www.acco.com.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+    expect(contactProblems({ footerEmail: 'a@b.co', footerWebsite: 'https://acco.com/x' })).toEqual([]);
   });
 
   it('refuses to save a row with only one of its two fields', async () => {

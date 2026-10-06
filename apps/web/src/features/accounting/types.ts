@@ -745,6 +745,15 @@ export interface InvoiceDocumentSettings {
   defaultNotes: string[];
   signatoryName: string | null;
   signatoryTitle: string | null;
+  tagline: string | null;
+  /** Null → invoices print the organisation's legal address (`defaultFooterAddress`). */
+  footerAddress: string | null;
+  defaultFooterAddress: string | null;
+  footerPhones: string[];
+  footerEmail: string | null;
+  footerWebsite: string | null;
+  showBankDetails: boolean;
+  showNotes: boolean;
   updatedAt: string | null;
 }
 
@@ -754,4 +763,11 @@ export interface UpdateInvoiceDocumentSettingsBody {
   notes?: string | null;
   signatoryName?: string | null;
   signatoryTitle?: string | null;
+  tagline?: string | null;
+  footerAddress?: string | null;
+  footerPhones?: string[];
+  footerEmail?: string | null;
+  footerWebsite?: string | null;
+  showBankDetails?: boolean;
+  showNotes?: boolean;
 }
