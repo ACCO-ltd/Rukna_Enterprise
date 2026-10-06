@@ -122,3 +122,20 @@ describe('MrDetail — submit routed for approval', () => {
     expect(screen.getByRole('button', { name: 'Complete submission' })).toBeInTheDocument();
   });
 });
+
+describe('MrDetail — heading', () => {
+  it('leads with the request title, and keeps the description beneath it', () => {
+    state.request = request({ title: 'Reinforcement steel', description: 'For the level 2 slab pour.' });
+    renderWithProviders(<MrDetail id="mr1" />, { permissions: ['create:material-request'] });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Reinforcement steel' })).toBeInTheDocument();
+    expect(screen.getByText('For the level 2 slab pour.')).toBeInTheDocument();
+  });
+
+  it('falls back to the description when a request has no title', () => {
+    state.request = request({ title: null, description: 'Cement for blockwork' });
+    renderWithProviders(<MrDetail id="mr1" />, { permissions: ['create:material-request'] });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Cement for blockwork' })).toBeInTheDocument();
+  });
+});

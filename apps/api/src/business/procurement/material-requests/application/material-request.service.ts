@@ -365,6 +365,9 @@ export class MaterialRequestService {
           'The material request changed while this was in progress. Reload and retry.',
         );
       }
+      // Approval approves each line for what was requested, in the same transaction, so an
+      // APPROVED request never carries a null approved quantity.
+      const result = to === 'APPROVED' ? await this.repo.approveRequestedQuantities(tx, id) : updated;
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
@@ -385,7 +388,7 @@ export class MaterialRequestService {
         },
       });
 
-      return updated;
+      return result;
     });
   }
 }

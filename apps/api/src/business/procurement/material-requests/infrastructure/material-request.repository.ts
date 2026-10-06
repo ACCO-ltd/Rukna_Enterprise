@@ -166,6 +166,19 @@ export class MaterialRequestRepository {
     });
   }
 
+  /**
+   * On approval each line is approved for what was requested, unless a quantity was already
+   * set. Returns the request re-read with its lines. Runs inside the approve transaction.
+   */
+  async approveRequestedQuantities(prisma: TenantPrisma, id: string) {
+    await prisma.$executeRaw`
+      UPDATE material_request_lines
+         SET approved_quantity = requested_quantity
+       WHERE material_request_id = ${id}
+         AND approved_quantity IS NULL`;
+    return prisma.materialRequest.findUniqueOrThrow({ where: { id }, include: MR_INCLUDE });
+  }
+
   nextMrNumber(prisma: TenantPrisma, organizationId: string): Promise<number> {
     return prisma.materialRequest.count({ where: { organizationId } }).then(n => n + 1);
   }

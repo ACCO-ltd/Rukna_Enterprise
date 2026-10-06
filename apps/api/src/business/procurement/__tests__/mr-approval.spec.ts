@@ -110,8 +110,16 @@ describe('MR approval — no governance binding', () => {
     await expect(svc.approve(env.identity, mr.id)).rejects.toBeInstanceOf(ForbiddenException);
     expect(await status(mr.id)).toBe('SUBMITTED');
 
-    await svc.approve(approver, mr.id);
+    const approved = await svc.approve(approver, mr.id);
     expect(await status(mr.id)).toBe('APPROVED');
+    expect(approved.lines.every((l) => l.approvedQuantity?.toString() === '4')).toBe(true);
+
+    // Each line is approved for what was requested, in the same write.
+    const lines = await prisma.materialRequestLine.findMany({ where: { materialRequestId: mr.id } });
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line.approvedQuantity?.toString()).toBe(line.requestedQuantity.toString());
+    }
 
     // Approving twice is a state conflict, not a second write.
     await expect(svc.approve(approver, mr.id)).rejects.toBeInstanceOf(ConflictException);

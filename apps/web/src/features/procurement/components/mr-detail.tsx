@@ -157,14 +157,20 @@ export function MrDetail({ id }: { id: string }) {
             </Badge>
           </div>
 
-          {/* Primary heading */}
+          {/* Primary heading: the request's short title — what the list shows — then the
+              longer description for older requests raised before titles existed. */}
           <h2 className="mt-2 text-h1 font-bold text-foreground">
-            {request.description ?? t('detailTitle', { number: request.mrNumber })}
+            {request.title?.trim() || request.description || t('detailTitle', { number: request.mrNumber })}
           </h2>
 
           {/* Subtitle: project name */}
           {projectName ? (
             <p className="mt-1 text-sm text-muted-foreground">{projectName}</p>
+          ) : null}
+
+          {/* The justification, when the heading is the title rather than the description. */}
+          {request.title?.trim() && request.description ? (
+            <p className="mt-2 max-w-prose text-sm text-foreground">{request.description}</p>
           ) : null}
         </CardContent>
 
