@@ -105,6 +105,10 @@ esac
 
 compose ps
 docker image prune -f > /dev/null || true
+# `compose up` recreates rukna_api whenever apps/api/.env changed, so a healthy deploy also proves
+# the current settings work: keep them as the known-good copy deploy/restart-api.sh rolls back to.
+env_state_dir="${ENV_STATE_DIR:-$HOME/rukna-env-backups}"
+( umask 077 && mkdir -p "$env_state_dir" && cp apps/api/.env "$env_state_dir/api.env.last-good" ) || true
 echo "Deploy of $after complete."
 }
 

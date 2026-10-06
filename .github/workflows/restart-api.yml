@@ -1,0 +1,54 @@
+name: Restart API
+
+# One click to apply an edit to apps/api/.env on the VPS (Actions → Restart API → Run workflow).
+# Edit the file on the box first (nano ~/Rukna_Enterprise/apps/api/.env); secrets never leave the
+# server. deploy/restart-api.sh recreates rukna_api, waits for the health check, saves the file as
+# the last known-good copy, or rolls back to that copy and fails the run if the API does not start.
+#
+# Uses the same secrets as the Deploy workflow: DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_USER and the
+# optional DEPLOY_KNOWN_HOSTS.
+
+on:
+  workflow_dispatch:
+
+# Shares the Deploy workflow's lock: a restart never runs during a deploy, and vice versa.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  restart:
+    name: Restart rukna_api
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Restart over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ] || [ -z "${DEPLOY_USER:-}" ]; then
+            echo "::error::Missing DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_USER secret(s)."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          # Run the script as it is on main without touching the rest of the checkout.
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o ServerAliveInterval=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -seuo pipefail' <<'REMOTE'
+          cd ~/Rukna_Enterprise
+          git fetch origin main
+          script=$(mktemp)
+          trap 'rm -f "$script"' EXIT
+          git show origin/main:deploy/restart-api.sh > "$script"
+          bash "$script"
+          REMOTE
