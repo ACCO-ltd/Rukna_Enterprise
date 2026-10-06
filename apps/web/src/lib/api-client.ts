@@ -7,6 +7,8 @@ interface FetchOptions extends RequestInit {
   params?: Record<string, string>;
   /** Skip the Authorization header and the refresh-retry cycle (login, refresh itself). */
   skipAuth?: boolean;
+  /** `blob` for binary responses (a PDF); JSON otherwise. */
+  responseType?: 'json' | 'blob';
 }
 
 export class ApiError extends Error {
@@ -99,7 +101,7 @@ export function endSession(): void {
 // ─── Request pipeline ──────────────────────────────────────────────────────────
 
 export async function apiClient<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-  const { params, skipAuth, ...fetchOptions } = options;
+  const { params, skipAuth, responseType, ...fetchOptions } = options;
 
   let res = await executeRequest(endpoint, params, fetchOptions, skipAuth);
 
@@ -125,6 +127,7 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
     throw await toApiError(res);
   }
 
+  if (responseType === 'blob') return (await res.blob()) as T;
   return parseBody<T>(res);
 }
 

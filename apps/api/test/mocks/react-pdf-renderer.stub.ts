@@ -20,6 +20,14 @@ export const Page = noopComponent;
 export const View = noopComponent;
 export const Text = noopComponent;
 export const Image = noopComponent;
+export const Svg = noopComponent;
+export const Path = noopComponent;
+export const Circle = noopComponent;
+export const Rect = noopComponent;
+
+export const Font = {
+  registerHyphenationCallback: (): void => undefined,
+};
 
 export const StyleSheet = {
   create: <T>(styles: T): T => styles,

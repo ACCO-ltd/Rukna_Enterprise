@@ -730,3 +730,44 @@ export interface ReconciliationReport {
   /** A variance over 0.01 blocks period close. The close-gate reads the same rule. */
   blocksClose: boolean;
 }
+
+/** One row of the invoice's "Bank Account Details" table. */
+export interface InvoicePaymentAccount {
+  bankName: string;
+  accountNumber: string;
+}
+
+/** `GET /invoice-document-settings` — what the client invoice PDF prints beyond the invoice. */
+export interface InvoiceDocumentSettings {
+  paymentAccounts: InvoicePaymentAccount[];
+  /** The organisation's own notes, one per line; null while the defaults apply. */
+  notes: string | null;
+  defaultNotes: string[];
+  signatoryName: string | null;
+  signatoryTitle: string | null;
+  tagline: string | null;
+  /** Null → invoices print the organisation's legal address (`defaultFooterAddress`). */
+  footerAddress: string | null;
+  defaultFooterAddress: string | null;
+  footerPhones: string[];
+  footerEmail: string | null;
+  footerWebsite: string | null;
+  showBankDetails: boolean;
+  showNotes: boolean;
+  updatedAt: string | null;
+}
+
+/** `PUT /invoice-document-settings` — omitted keeps, null clears; `paymentAccounts` replaces the table. */
+export interface UpdateInvoiceDocumentSettingsBody {
+  paymentAccounts?: InvoicePaymentAccount[];
+  notes?: string | null;
+  signatoryName?: string | null;
+  signatoryTitle?: string | null;
+  tagline?: string | null;
+  footerAddress?: string | null;
+  footerPhones?: string[];
+  footerEmail?: string | null;
+  footerWebsite?: string | null;
+  showBankDetails?: boolean;
+  showNotes?: boolean;
+}

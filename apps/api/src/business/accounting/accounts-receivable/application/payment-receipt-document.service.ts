@@ -6,6 +6,10 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { PaymentReceiptArRepository } from '../infrastructure/payment-receipt-ar.repository.js';
 import { ReceiptDocumentService, type ReceiptDocumentInput } from './receipt-document.service.js';
+import {
+  resolveInvoiceDocumentSnapshot,
+  type InvoiceDocumentSnapshot,
+} from '../../accounting-core/infrastructure/invoice-document-policy.repository.js';
 
 type ReceiptForDocument = NonNullable<Awaited<ReturnType<PaymentReceiptArRepository['findForDocument']>>>;
 
@@ -79,8 +83,13 @@ export class PaymentReceiptDocumentService {
       return { fileId: receipt.documentFileId, receiptNumber };
     }
 
-    const logo = await this.files.readBytesForRendering(receipt.organization.logoFileId);
-    const pdf = await this.renderer.render(toDocumentInput(receipt, receiptNumber, logo));
+    // The tagline and footer contacts come from the invoice settings, read at first render (the
+    // receipt document is then frozen like the rest of it).
+    const [logo, settings] = await Promise.all([
+      this.files.readBytesForRendering(receipt.organization.logoFileId),
+      resolveInvoiceDocumentSnapshot(prisma, identity.activeOrganizationId),
+    ]);
+    const pdf = await this.renderer.render(toDocumentInput(receipt, receiptNumber, logo, settings));
 
     const file = await this.files.storeGenerated(identity, {
       originalName: receiptPdfFilename(receiptNumber),
@@ -123,6 +132,7 @@ function toDocumentInput(
   receipt: ReceiptForDocument,
   receiptNumber: string,
   logo: { buffer: Buffer; mimeType: string } | null,
+  settings: InvoiceDocumentSnapshot | null = null,
 ): ReceiptDocumentInput {
   const total = receipt.totalAmount;
   const applied = receipt.initialAllocations.reduce((sum, a) => sum.plus(a.allocatedAmount), new Decimal(0));
@@ -148,10 +158,11 @@ function toDocumentInput(
       legalAddress: org.legalAddress,
       taxRegistrationNumber: org.taxRegistrationNumber,
       brandColorHex: org.brandColorHex,
-      footerNote: org.invoiceFooterNote,
       template: org.invoiceTemplate === 'COMPACT' ? 'COMPACT' : 'STANDARD',
       logo,
+      tagline: settings?.tagline ?? null,
     },
+    footer: settings?.footer ?? null,
   };
 }
 

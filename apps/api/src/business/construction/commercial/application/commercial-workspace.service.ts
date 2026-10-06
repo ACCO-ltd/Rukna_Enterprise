@@ -55,7 +55,6 @@ interface InvoiceSnapshot {
     logoFileId: string | null;
     legalAddress: string | null;
     taxRegistrationNumber: string | null;
-    invoiceFooterNote: string | null;
   } | null;
   clientName?: string;
   installment?: string;
@@ -529,7 +528,6 @@ export class CommercialWorkspaceService {
         legalAddress: org?.legalAddress ?? null,
         taxRegistrationNumber: org?.taxRegistrationNumber ?? null,
         logoUrl,
-        footerNote: org?.invoiceFooterNote ?? null,
       },
       billTo: {
         name: snapshot.client?.name ?? snapshot.clientName ?? inv.client.name,

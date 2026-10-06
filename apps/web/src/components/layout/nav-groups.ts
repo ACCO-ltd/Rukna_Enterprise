@@ -148,6 +148,7 @@ export const NAV_DOMAINS: NavDomain[] = [
       // Setup & close
       { href: '/finance/accounting/posting-profiles', labelKey: 'postingProfiles', iconKey: 'git-branch', groupKey: 'acctSetup' },
       { href: '/finance/accounting/tax', labelKey: 'taxCodes', iconKey: 'tag', groupKey: 'acctSetup' },
+      { href: '/finance/accounting/invoice-settings', labelKey: 'invoiceSettings', iconKey: 'receipt', groupKey: 'acctSetup' },
       { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance', iconKey: 'book-open', groupKey: 'acctSetup' },
       { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar', groupKey: 'acctSetup' },
     ],

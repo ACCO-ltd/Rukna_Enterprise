@@ -4,22 +4,30 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { Observable, from } from 'rxjs';
 import { concatMap, map } from 'rxjs/operators';
 import type { RequestIdentity } from '@erp/types';
 
+import { NO_AUDIT_KEY } from '../../../common/decorators/no-audit.decorator.js';
 import { AuditLogsService } from './audit-logs.service.js';
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly auditLogs: AuditLogsService) {}
+  constructor(
+    private readonly auditLogs: AuditLogsService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request & { user?: RequestIdentity }>();
     if (READ_METHODS.has(request.method) || !request.user || request.path.startsWith('/auth/')) {
+      return next.handle();
+    }
+    if (this.reflector.getAllAndOverride<boolean>(NO_AUDIT_KEY, [context.getHandler(), context.getClass()])) {
       return next.handle();
     }
 

@@ -21,6 +21,8 @@ import { InvoiceWhatsAppRepository } from './infrastructure/invoice-whatsapp.rep
 import { InvoiceReminderWhatsAppController } from './presentation/invoice-reminder-whatsapp.controller.js';
 import { InvoiceReminderWhatsAppService } from './application/invoice-reminder-whatsapp.service.js';
 import { CustomerReceiptController } from './presentation/customer-receipt.controller.js';
+import { InvoiceSettingsPreviewController } from './presentation/invoice-settings-preview.controller.js';
+import { InvoiceSettingsPreviewService } from './application/invoice-settings-preview.service.js';
 
 @Module({
   imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule, AuditLogsModule],
@@ -29,6 +31,7 @@ import { CustomerReceiptController } from './presentation/customer-receipt.contr
     CustomerReceiptController,
     InvoiceWhatsAppController,
     InvoiceReminderWhatsAppController,
+    InvoiceSettingsPreviewController,
   ],
   providers: [
     ClientInvoiceRepository,
@@ -44,6 +47,7 @@ import { CustomerReceiptController } from './presentation/customer-receipt.contr
     InvoiceWhatsAppRepository,
     InvoiceWhatsAppService,
     InvoiceReminderWhatsAppService,
+    InvoiceSettingsPreviewService,
   ],
   exports: [
     ClientInvoiceService,

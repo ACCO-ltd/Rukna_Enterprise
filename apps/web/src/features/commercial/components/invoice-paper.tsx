@@ -87,7 +87,6 @@ export function InvoicePaper({
       totals={hidden ? [] : totals}
       total={hidden ? undefined : { label: t('totalDue'), value: money(document.total) }}
       totalsHiddenLabel={hidden ? t('totalsHidden') : undefined}
-      footer={document.issuer.footerNote ?? undefined}
       watermark={isDraft ? t('watermark') : undefined}
     />
   );

@@ -17,7 +17,6 @@ export function makeInvoiceDocument(
       legalAddress: 'Olow Tower, Mogadishu',
       taxRegistrationNumber: 'TIN-778',
       logoUrl: null,
-      footerNote: 'Thank you for your business.',
     },
     billTo: { name: 'Hormuud Holdings', address: 'KM4, Mogadishu' },
     invoiceDate: null,

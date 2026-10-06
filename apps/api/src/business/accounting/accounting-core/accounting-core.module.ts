@@ -11,6 +11,7 @@ import { BankAccountSignatoryRepository } from './infrastructure/bank-account-si
 import { DocumentSequenceRepository } from './infrastructure/document-sequence.repository.js';
 import { JournalRepository } from './infrastructure/journal.repository.js';
 import { TaxCodeRepository } from './infrastructure/tax-code.repository.js';
+import { InvoiceDocumentPolicyRepository } from './infrastructure/invoice-document-policy.repository.js';
 import { AccountingPostingService } from './infrastructure/accounting-posting.service.js';
 
 import { AccountingConfigurationService } from './application/accounting-configuration.service.js';
@@ -24,6 +25,7 @@ import { OpeningBalanceService } from './application/opening-balance.service.js'
 import { ReconciliationService } from './application/reconciliation.service.js';
 import { PostingAccountResolver } from './application/posting-account-resolver.service.js';
 import { TaxCodeService } from './application/tax-code.service.js';
+import { InvoiceDocumentSettingsService } from './application/invoice-document-settings.service.js';
 
 import { AccountingReadinessController } from './presentation/accounting-readiness.controller.js';
 import { AccountingGuideController } from './presentation/accounting-guide.controller.js';
@@ -33,6 +35,7 @@ import { BankAccountController } from './presentation/bank-account.controller.js
 import { OpeningBalanceController } from './presentation/opening-balance.controller.js';
 import { ReconciliationController } from './presentation/reconciliation.controller.js';
 import { TaxCodeController } from './presentation/tax-code.controller.js';
+import { InvoiceDocumentSettingsController } from './presentation/invoice-document-settings.controller.js';
 
 @Module({
   imports: [TenancyModule],
@@ -45,6 +48,7 @@ import { TaxCodeController } from './presentation/tax-code.controller.js';
     OpeningBalanceController,
     ReconciliationController,
     TaxCodeController,
+    InvoiceDocumentSettingsController,
   ],
   providers: [
     // Repositories
@@ -56,6 +60,7 @@ import { TaxCodeController } from './presentation/tax-code.controller.js';
     DocumentSequenceRepository,
     JournalRepository,
     TaxCodeRepository,
+    InvoiceDocumentPolicyRepository,
     // Phase 2 posting engine
     {
       provide: ACCOUNTING_POSTING_PORT,
@@ -73,6 +78,7 @@ import { TaxCodeController } from './presentation/tax-code.controller.js';
     ReconciliationService,
     PostingAccountResolver,
     TaxCodeService,
+    InvoiceDocumentSettingsService,
   ],
   exports: [
     ACCOUNTING_POSTING_PORT,

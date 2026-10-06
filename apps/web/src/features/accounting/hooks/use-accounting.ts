@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
   approveJournal,
@@ -46,6 +46,9 @@ import {
   setPostingProfileActive,
   createTaxCode,
   listTaxCodes,
+  getInvoiceDocumentSettings,
+  updateInvoiceDocumentSettings,
+  previewInvoiceDocumentSettings,
   setDefaultOutputTaxCode,
   setTaxCodeActive,
 } from '../api/accounting-api';
@@ -85,6 +88,8 @@ import type {
   ProfitLoss,
   ReverseJournalPayload,
   TrialBalance,
+  InvoiceDocumentSettings,
+  UpdateInvoiceDocumentSettingsBody,
 } from '../types';
 import { ApiError } from '@/lib/api-client';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
@@ -99,6 +104,7 @@ export const accountingKeys = {
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
   taxCodes: () => [...accountingKeys.all, 'tax-codes'] as const,
+  invoiceDocumentSettings: () => [...accountingKeys.all, 'invoice-document-settings'] as const,
   bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
   signatories: (bankAccountId: string) =>
     [...accountingKeys.all, 'signatories', bankAccountId] as const,
@@ -846,6 +852,47 @@ export function useRunAccountingSetup() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.all });
       void qc.invalidateQueries({ queryKey: ['procurement'] });
+    },
+  });
+}
+
+// ─── Invoice document settings ──────────────────────────────────────────────────
+
+/** Bank account, notes and signatory printed on client invoice PDFs. */
+export function useInvoiceDocumentSettings(): UseQueryResult<InvoiceDocumentSettings, Error> {
+  return useQuery({
+    queryKey: accountingKeys.invoiceDocumentSettings(),
+    queryFn: getInvoiceDocumentSettings,
+  });
+}
+
+/**
+ * The sample invoice PDF for these settings. Keyed by the settings themselves, so going back to an
+ * earlier value reuses its render; the last PDF stays on screen while the next one renders.
+ */
+export function useInvoiceSettingsPreview(
+  body: UpdateInvoiceDocumentSettingsBody,
+  enabled = true,
+): UseQueryResult<Blob, Error> {
+  return useQuery({
+    queryKey: [...accountingKeys.invoiceDocumentSettings(), 'preview', JSON.stringify(body)],
+    // Typing on cancels a render nobody will see.
+    queryFn: ({ signal }) => previewInvoiceDocumentSettings(body, signal),
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+    gcTime: 60_000,
+    retry: false,
+    enabled,
+  });
+}
+
+export function useUpdateInvoiceDocumentSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateInvoiceDocumentSettingsBody) => updateInvoiceDocumentSettings(body),
+    meta: { successToast: 'accounting.feedback.invoiceSettingsSaved', flashRow: false },
+    onSuccess: (view) => {
+      qc.setQueryData(accountingKeys.invoiceDocumentSettings(), view);
     },
   });
 }
