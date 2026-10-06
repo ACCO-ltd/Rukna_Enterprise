@@ -7,133 +7,146 @@ import {
   salesTaxLabel,
   type InvoiceLineSource,
 } from './invoice-view-model';
-import { brandView } from './pdf-kit';
-import { shortInvoiceFixture, variationTaxInvoiceFixture } from './document-pdf.fixtures';
+import { brandView, footerColumns } from './pdf-kit';
+import { bankNotesInvoiceFixture, minimalInvoiceFixture } from './document-pdf.fixtures';
 
-describe('buildInvoiceViewModel', () => {
-  it('puts the invoice facts in the header in the reference order', () => {
-    const vm = buildInvoiceViewModel(shortInvoiceFixture);
+describe('buildInvoiceViewModel — the minimal layout', () => {
+  const vm = buildInvoiceViewModel(minimalInvoiceFixture);
+
+  it('puts the invoice facts in the header in the mock order', () => {
     expect(vm.title).toBe('INVOICE');
     expect(vm.meta).toEqual([
-      { label: 'Invoice No.', value: 'INV-000123' },
-      { label: 'Invoice Date', value: 'Oct 1, 2026' },
-      { label: 'Due Date', value: 'Oct 31, 2026' },
+      { label: 'Invoice No.', value: 'INV-000003' },
+      { label: 'Invoice Date', value: 'Oct 4, 2026' },
+      { label: 'Due Date', value: 'Nov 3, 2026' },
       { label: 'Payment Terms', value: 'Net 30 days' },
     ]);
   });
 
   it('omits the due date and terms when the invoice has neither, and prints DRAFT unnumbered', () => {
-    const vm = buildInvoiceViewModel({ ...shortInvoiceFixture, invoiceNumber: null, dueDate: null, paymentTerms: null });
-    expect(vm.meta.map((m) => m.label)).toEqual(['Invoice No.', 'Invoice Date']);
-    expect(vm.meta[0].value).toBe('DRAFT');
+    const draft = buildInvoiceViewModel({ ...minimalInvoiceFixture, invoiceNumber: null, dueDate: null, paymentTerms: null });
+    expect(draft.meta.map((m) => m.label)).toEqual(['Invoice No.', 'Invoice Date']);
+    expect(draft.meta[0].value).toBe('DRAFT');
   });
 
-  it('shows the amount due, the currency in the column headers and the totals with the tax rate', () => {
-    const vm = buildInvoiceViewModel(variationTaxInvoiceFixture);
-    expect(vm.amountDue).toEqual({ label: 'AMOUNT DUE', value: 'USD 19,320.00' });
-    expect(vm.columns.unitPrice).toBe('UNIT PRICE (USD)');
-    expect(vm.columns.amount).toBe('AMOUNT (USD)');
-    expect(vm.totals).toEqual([
-      { label: 'Subtotal', value: 'USD 18,400.00', emphasis: false },
-      { label: 'Sales Tax 5%', value: 'USD 920.00', emphasis: false },
-      { label: 'Total Due', value: 'USD 19,320.00', emphasis: true },
-    ]);
+  it('brands with the name as wordmark, the upper-cased tagline, address and tax number', () => {
+    expect(vm.brand).toMatchObject({
+      orgName: 'ACCO Ltd',
+      logoSrc: null,
+      tagline: 'CONSTRUCTION & DEVELOPMENT',
+      addressLines: ['Olow Tower, Maka Al-Mukarama Road', 'Mogadishu, Somalia'],
+      taxLine: 'Tax Reg. 100045678',
+    });
+    expect(brandView({ ...minimalInvoiceFixture.org, tagline: '  ' }).tagline).toBeNull();
   });
 
-  it('renders each line with its sub-description, quantity and grouped amounts', () => {
-    const vm = buildInvoiceViewModel(shortInvoiceFixture);
+  it('shows Bill To and Project as two plain columns (project name and location on one line)', () => {
+    expect(vm.billTo).toEqual({
+      label: 'Bill To',
+      name: 'Ahmed Shirie',
+      lines: ['Mogadishu, Somalia', 'Tax Reg. 254708023039'],
+    });
+    expect(vm.project).toEqual({ label: 'Project', name: 'ACCO-DHL-26-0012', lines: ['ABC, Dharkeynley, KM4, Mogadishu'] });
+    expect(buildInvoiceViewModel({ ...minimalInvoiceFixture, project: null }).project).toBeNull();
+    expect(
+      buildInvoiceViewModel({ ...minimalInvoiceFixture, client: { ...minimalInvoiceFixture.client, taxNumber: null } }).billTo.lines,
+    ).toContain('Tax Reg. —');
+  });
+
+  it('labels the table in normal case with the currency, and totals with "Sales Tax (5%)"', () => {
+    expect(vm.columns).toEqual({
+      index: '#',
+      description: 'Description',
+      quantity: 'Qty',
+      unitPrice: 'Unit Price (USD)',
+      amount: 'Amount (USD)',
+    });
     expect(vm.lines).toEqual([
       {
         index: '1',
-        title: 'Stage 2 of 4 – Substructure complete',
-        detail: '30% of the contract value of USD 412,500.00',
+        title: 'Stage 1 of 4 – Advance (mobilisation)',
+        detail: '40% of the contract value of USD 20,000.00',
         quantity: '1',
-        unitPrice: '123,750.00',
-        amount: '123,750.00',
+        unitPrice: '8,000.00',
+        amount: '8,000.00',
       },
     ]);
+    expect(vm.totals).toEqual([
+      { label: 'Subtotal', value: 'USD 8,000.00' },
+      { label: 'Sales Tax (5%)', value: 'USD 400.00' },
+    ]);
+    expect(vm.total).toEqual({ label: 'Total Due', value: 'USD 8,400.00' });
   });
 
   it('falls back to one line for the subtotal when the invoice has no lines', () => {
-    const vm = buildInvoiceViewModel({ ...shortInvoiceFixture, lines: [] });
-    expect(vm.lines).toHaveLength(1);
-    expect(vm.lines[0]).toMatchObject({ title: 'Invoice INV-000123', amount: '123,750.00', detail: null });
+    const empty = buildInvoiceViewModel({ ...minimalInvoiceFixture, lines: [] });
+    expect(empty.lines).toHaveLength(1);
+    expect(empty.lines[0]).toMatchObject({ title: 'Invoice INV-000003', amount: '8,000.00', detail: null });
   });
 
-  it('prints the client tax number, or a dash when there is none', () => {
-    expect(buildInvoiceViewModel(shortInvoiceFixture).billTo.taxLine).toBe('Tax Reg. —');
-    expect(buildInvoiceViewModel(variationTaxInvoiceFixture).billTo.taxLine).toBe('Tax Reg. TIN-555-0192');
+  it('builds the footer strip: address, phones, email + website', () => {
+    expect(vm.footer).toEqual([
+      { icon: 'pin', lines: ['Olow Tower, Maka Al-Mukarama Road', 'Mogadishu, Somalia'] },
+      { icon: 'phone', lines: ['+252 61 234 5678', '+252 90 123 4567'] },
+      { icon: 'mail', lines: ['info@acco.com', 'www.acco.com'] },
+    ]);
   });
 
-  it('omits the project column when the invoice has no project', () => {
-    expect(buildInvoiceViewModel({ ...shortInvoiceFixture, project: null }).project).toBeNull();
+  it('leaves the bank details and notes out unless the settings switch them on', () => {
+    expect(vm.payment).toBeNull();
+    expect(vm.notes).toEqual([]);
+    const on = buildInvoiceViewModel(bankNotesInvoiceFixture);
+    expect(on.payment?.rows).toHaveLength(4);
+    expect(on.payment?.reference).toEqual({ label: 'Reference', value: 'INV-000003' });
+    expect(on.notes[0]).toBe('Please quote the invoice number in your payment.');
   });
 
-  describe('bank account details', () => {
-    it('prints one row per bank, the full account number, then the reference', () => {
-      const vm = buildInvoiceViewModel(shortInvoiceFixture);
-      expect(vm.payment).toEqual({
-        title: 'Bank Account Details',
-        columns: { bank: 'Bank', accountNumber: 'Account number' },
-        rows: [
-          { bank: 'Salaam Bank', accountNumber: '33020045871' },
-          { bank: 'Dahabshiil Bank', accountNumber: '100-2287-4410' },
-          { bank: 'Premier Bank', accountNumber: '0102 0033 4410' },
-          { bank: 'My Bank', accountNumber: '7700 5512 09' },
-        ],
-        reference: { label: 'Reference', value: 'INV-000123' },
-      });
+  it('omits the bank section with no complete rows even when switched on, and skips incomplete rows', () => {
+    expect(buildInvoiceViewModel({ ...bankNotesInvoiceFixture, paymentAccounts: [] }).payment).toBeNull();
+    const partial = buildInvoiceViewModel({
+      ...bankNotesInvoiceFixture,
+      paymentAccounts: [
+        { bankName: ' Salaam Bank ', accountNumber: ' 1 ' },
+        { bankName: 'Ghost', accountNumber: '' },
+      ],
     });
-
-    it('omits the card with no rows, and skips incomplete rows', () => {
-      expect(buildInvoiceViewModel({ ...shortInvoiceFixture, paymentAccounts: [] }).payment).toBeNull();
-      expect(
-        buildInvoiceViewModel({ ...shortInvoiceFixture, paymentAccounts: [{ bankName: ' ', accountNumber: '1' }] }).payment,
-      ).toBeNull();
-      const vm = buildInvoiceViewModel({
-        ...shortInvoiceFixture,
-        paymentAccounts: [
-          { bankName: ' Salaam Bank ', accountNumber: ' 1 ' },
-          { bankName: 'Ghost', accountNumber: '' },
-        ],
-      });
-      expect(vm.payment?.rows).toEqual([{ bank: 'Salaam Bank', accountNumber: '1' }]);
-    });
-
-    it('asks to quote the invoice number on an unnumbered draft', () => {
-      expect(buildInvoiceViewModel({ ...shortInvoiceFixture, invoiceNumber: null }).payment?.reference.value).toBe(
-        'Quote the invoice number',
-      );
-    });
+    expect(partial.payment?.rows).toEqual([{ bank: 'Salaam Bank', accountNumber: '1' }]);
   });
 
-  describe('signature', () => {
-    it('names the signatory, title, company and date', () => {
-      expect(buildInvoiceViewModel(shortInvoiceFixture).signature).toEqual({
-        name: 'Ahmed Ali',
-        title: 'Finance Manager',
-        company: 'Example Construction Ltd',
-        date: 'Oct 1, 2026',
-      });
-    });
+  it('signs with name, title, company and date, or leaves the line blank', () => {
+    expect(vm.signature).toEqual({ name: 'Ahmed Abdi Hassan', title: 'CEO', company: 'ACCO Ltd', date: 'Oct 4, 2026' });
+    const blank = buildInvoiceViewModel({ ...minimalInvoiceFixture, signatory: null }).signature;
+    expect(blank.name).toBeNull();
+    expect(blank.title).toBeNull();
+  });
+});
 
-    it('leaves the line blank with no signatory', () => {
-      const sig = buildInvoiceViewModel({ ...shortInvoiceFixture, signatory: null }).signature;
-      expect(sig.name).toBeNull();
-      expect(sig.title).toBeNull();
-    });
+describe('footerColumns', () => {
+  it('falls back to the legal address, keeps two lines/phones at most, and drops empty columns', () => {
+    expect(footerColumns(null, 'A\nB\nC')).toEqual([{ icon: 'pin', lines: ['A', 'B'] }]);
+    expect(footerColumns({ address: null, phones: ['1', '2', '3'], email: null, website: ' ' }, null)).toEqual([
+      { icon: 'phone', lines: ['1', '2'] },
+    ]);
+    expect(footerColumns({ address: null, phones: [], email: null, website: null }, null)).toEqual([]);
+  });
+
+  it('accepts only a valid brand colour', () => {
+    const base = { ...minimalInvoiceFixture.org };
+    expect(brandView(base).palette.accent).toBe('#1F3FA8');
+    expect(brandView({ ...base, brandColorHex: '#0f766e' }).palette.accent).toBe('#0F766E');
+    expect(brandView({ ...base, brandColorHex: 'red' }).palette.accent).toBe('#1F3FA8');
   });
 });
 
 describe('salesTaxLabel', () => {
   it('uses the invoice rate (ADR-041), trimmed', () => {
-    expect(salesTaxLabel({ taxRatePercent: '5.0000', subtotal: '100', vatAmount: '5' })).toBe('Sales Tax 5%');
-    expect(salesTaxLabel({ taxRatePercent: '12.5', subtotal: '100', vatAmount: '12.5' })).toBe('Sales Tax 12.5%');
-    expect(salesTaxLabel({ taxRatePercent: '0', subtotal: '100', vatAmount: '0' })).toBe('Sales Tax 0%');
+    expect(salesTaxLabel({ taxRatePercent: '5.0000', subtotal: '100', vatAmount: '5' })).toBe('Sales Tax (5%)');
+    expect(salesTaxLabel({ taxRatePercent: '12.5', subtotal: '100', vatAmount: '12.5' })).toBe('Sales Tax (12.5%)');
+    expect(salesTaxLabel({ taxRatePercent: '0', subtotal: '100', vatAmount: '0' })).toBe('Sales Tax (0%)');
   });
 
   it('derives the rate from the amounts only without one, and drops it when it cannot', () => {
-    expect(salesTaxLabel({ taxRatePercent: null, subtotal: '200', vatAmount: '10' })).toBe('Sales Tax 5%');
+    expect(salesTaxLabel({ taxRatePercent: null, subtotal: '200', vatAmount: '10' })).toBe('Sales Tax (5%)');
     expect(salesTaxLabel({ taxRatePercent: null, subtotal: '0', vatAmount: '0' })).toBe('Sales Tax');
   });
 });
@@ -176,17 +189,6 @@ describe('clientAddressLines', () => {
       clientAddressLines({ name: 'C', address: 'KM4, Mogadishu', city: 'Mogadishu', countryCode: 'SO', taxNumber: null }),
     ).toEqual(['KM4, Mogadishu', 'Somalia']);
     expect(clientAddressLines({ name: 'C', address: null, city: null, countryCode: null, taxNumber: null })).toEqual([]);
-  });
-});
-
-describe('pdf-kit helpers', () => {
-  it('builds the footer line from the last address line, and accepts only a valid brand colour', () => {
-    const base = { ...shortInvoiceFixture.org };
-    expect(brandView(base).footerLine).toBe('Example Construction Ltd · Mogadishu, Somalia');
-    expect(brandView({ ...base, legalAddress: null }).footerLine).toBe('Example Construction Ltd');
-    expect(brandView(base).palette.accent).toBe('#1F3FA8');
-    expect(brandView({ ...base, brandColorHex: '#0f766e' }).palette.accent).toBe('#0F766E');
-    expect(brandView({ ...base, brandColorHex: 'red' }).palette.accent).toBe('#1F3FA8');
   });
 });
 

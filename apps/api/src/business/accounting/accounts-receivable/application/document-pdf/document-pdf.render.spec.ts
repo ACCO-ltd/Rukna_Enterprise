@@ -81,102 +81,114 @@ afterAll(() => {
 });
 
 describe('invoice PDF (real renderer)', () => {
-  it('a short invoice is one A4 page with every section in reading order', () => {
-    const pdf = render('invoice-short');
+  it('the minimal invoice is one A4 page with the mock sections in reading order', () => {
+    const pdf = render('invoice-minimal');
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pdf.toString('latin1')).toMatch(/\/MediaBox \[0 0 595\.28\d* 841\.89\d*\]/); // A4
-    expect(pdf.toString('latin1')).toContain('invoice-template-v2');
+    expect(pdf.toString('latin1')).toContain('invoice-template-v3-minimal');
     const pages = pagesText(pdf);
     expect(pages).toHaveLength(1);
     expectInOrder(pages[0], [
-      'Example Construction Ltd',
-      'Tax Reg. TIN-100200300',
+      'ACCO Ltd',
+      'CONSTRUCTION & DEVELOPMENT',
+      'Olow Tower, Maka Al-Mukarama Road',
+      'Tax Reg. 100045678',
       'INVOICE',
       'Invoice No.',
-      'INV-000123',
+      'INV-000003',
+      'Invoice Date',
+      'Oct 4, 2026',
+      'Due Date',
+      'Nov 3, 2026',
       'Payment Terms',
       'Net 30 days',
-      'BILL TO',
-      'Hodan Real Estate Ltd',
+      'Bill To',
+      'Ahmed Shirie',
       'Mogadishu, Somalia',
-      'Tax Reg. ',
-      'PROJECT',
-      'ACC-BN-26-004',
-      'AMOUNT DUE',
-      'USD 123,750.00',
-      'DESCRIPTION',
-      'UNIT PRICE (USD)',
-      'AMOUNT (USD)',
-      'Stage 2 of 4 ',
-      '30% of the contract value of USD 412,500.00',
+      'Tax Reg. 254708023039',
+      'Project',
+      'ACCO-DHL-26-0012',
+      'ABC, Dharkeynley, KM4, Mogadishu',
+      'Description',
+      'Unit Price (USD)',
+      'Amount (USD)',
+      'Stage 1 of 4 – Advance (mobilisation)',
+      '40% of the contract value of USD 20,000.00',
+      '8,000.00',
       'Subtotal',
-      'Sales Tax 0%',
+      'Sales Tax (5%)',
+      'USD 400.00',
       'Total Due',
-      'Bank Account Details',
-      'Bank',
-      'Account number',
-      'Salaam Bank',
-      '33020045871',
-      'Dahabshiil Bank',
-      'Premier Bank',
-      '0102 0033 4410',
-      'My Bank',
-      '7700 5512 09',
-      'Reference: ',
-      'INV-000123',
-      'Notes',
-      'Please quote the invoice number in your payment.',
-      'AUTHORIZED SIGNATURE',
-      'Ahmed Ali',
-      'Finance Manager',
-      'Thank you for your business.',
-      'Example Construction Ltd · Mogadishu, Somalia',
+      'USD 8,400.00',
+      'Ahmed Abdi Hassan',
+      'CEO',
+      '+252 61 234 5678',
+      '+252 90 123 4567',
+      'info@acco.com',
+      'www.acco.com',
     ]);
+    // Not in the mock: no amount-due box, no section headings in capitals, no thank-you line,
+    // and the optional sections are off by default.
+    for (const absent of ['AMOUNT DUE', 'AUTHORIZED SIGNATURE', 'Thank you', 'Bank Account Details', 'Notes']) {
+      expect(pages[0]).not.toContain(absent);
+    }
   }, 60_000);
 
-  it('a variation invoice carries the VO line and the tax rate', () => {
-    const [page] = pagesText(render('invoice-variation-tax'));
-    expectInOrder(page, ['VO-03 Additional shop fronts', 'Client-approved variation', 'Sales Tax 5%', 'USD 920.00', 'USD 19,320.00']);
+  it('switched on, the bank details and notes print between the totals and the signature', () => {
+    const [page] = pagesText(render('invoice-bank-notes'));
+    expectInOrder(page, [
+      'Total Due',
+      'Bank Account Details',
+      'Salaam Bank',
+      '33020045871',
+      'My Bank',
+      'Reference',
+      'INV-000003',
+      'Notes',
+      'Please quote the invoice number in your payment.',
+      'Ahmed Abdi Hassan',
+    ]);
   }, 60_000);
 
   it('a 40-line invoice paginates: header repeated per page, totals whole on the last page', () => {
     const pages = pagesText(render('invoice-40-lines'));
     expect(pages.length).toBeGreaterThanOrEqual(2);
     for (const page of pages) {
-      expect(page).toContain('DESCRIPTION');
-      expect(page).toContain('Thank you for your business.');
+      expect(page).toContain('Description');
+      expect(page).toContain('info@acco.com');
     }
     pages.forEach((page, i) => expect(page).toContain(`Page ${i + 1} of ${pages.length}`));
     const all = pages.join('\n');
     for (let n = 1; n <= 40; n += 1) expect(all).toContain(`Line item ${n} `);
     const last = pages[pages.length - 1];
-    expectInOrder(last, ['Line item 40 ', 'Subtotal', 'Total Due', 'Bank Account Details', 'AUTHORIZED SIGNATURE']);
+    expectInOrder(last, ['Line item 40 ', 'Subtotal', 'Total Due', 'Ahmed Abdi Hassan']);
     expect(pages.slice(0, -1).join('\n')).not.toContain('Total Due');
   }, 60_000);
 });
 
 describe('receipt PDF (real renderer)', () => {
-  it('shares the brand header and footer and keeps the receipt content', () => {
+  it('wears the same minimal kit and keeps the receipt content', () => {
     const pages = pagesText(render('receipt'));
     expect(pages).toHaveLength(1);
     expectInOrder(pages[0], [
-      'Example Construction Ltd',
-      'Tax Reg. TIN-100200300',
+      'ACCO Ltd',
+      'CONSTRUCTION & DEVELOPMENT',
+      'Tax Reg. 100045678',
       'RECEIPT',
       'Receipt No.',
       'RCP-000017',
-      'RECEIVED FROM',
-      'Hodan Real Estate Ltd',
+      'Received From',
+      'Ahmed Shirie',
+      'Payment',
       'Bank transfer',
-      'AMOUNT RECEIVED',
-      'USD 50,000.00',
-      'APPLIED TO',
+      'Applied To',
       'Invoice INV-000121',
       'USD 30,000.00',
       'Unallocated when the payment was recorded',
-      'Total received',
-      'Thank you for your payment.',
-      'Example Construction Ltd · Mogadishu, Somalia',
+      'Total Received',
+      'USD 50,000.00',
+      '+252 61 234 5678',
+      'info@acco.com',
     ]);
   }, 60_000);
 });

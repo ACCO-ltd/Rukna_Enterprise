@@ -26,10 +26,11 @@ const sample = (over: Partial<ReceiptDocumentInput> = {}): ReceiptDocumentInput 
     legalAddress: 'Mogadishu',
     taxRegistrationNumber: 'TIN-1',
     brandColorHex: '#0F766E',
-    footerNote: 'Thank you.',
     template: 'STANDARD',
     logo: null,
+    tagline: 'Construction & Development',
   },
+  footer: { address: 'Olow Tower\nMogadishu, Somalia', phones: ['+252 61 234 5678'], email: 'info@acco.com', website: null },
   ...over,
 });
 
@@ -49,7 +50,7 @@ describe('ReceiptDocumentService', () => {
     expect(pdf.length).toBeGreaterThan(0);
   });
 
-  it('carries the org, receipt number, client, amount, method, bank, references and footer', () => {
+  it('carries the org, tagline, receipt number, client, amount, method, bank, references and footer contacts', () => {
     const all = texts(ReceiptDocument({ input: sample() }));
     expect(all).toEqual(
       expect.arrayContaining([
@@ -61,11 +62,14 @@ describe('ReceiptDocumentService', () => {
         'KM4, Mogadishu',
         'Oct 2, 2026',
         'Bank transfer',
-        'Premier Bank — ACCO Operating',
-        'Stage 2',
-        'TRX-1',
+        'Received into Premier Bank — ACCO Operating',
+        'Reference: Stage 2',
+        'Bank reference: TRX-1',
         'USD 5,000.00',
-        'Thank you.',
+        'CONSTRUCTION & DEVELOPMENT',
+        'Olow Tower',
+        '+252 61 234 5678',
+        'info@acco.com',
       ]),
     );
   });
@@ -96,7 +100,7 @@ describe('ReceiptDocumentService', () => {
       }),
     );
     expect(all).toContain('EVC Plus');
-    expect(all).not.toContain('Received into');
-    expect(all).not.toContain('Reference');
+    expect(all.some((t) => t.startsWith('Received into'))).toBe(false);
+    expect(all.some((t) => t.startsWith('Reference'))).toBe(false);
   });
 });
