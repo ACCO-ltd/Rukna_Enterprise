@@ -527,7 +527,8 @@ export interface PlatformDataGridProps<T> {
   toolbar?: boolean;
   /**
    * A heading row inside the list panel, above the rows — a dashboard table's title, its
-   * one-line summary and one link (`<PanelHeader>`).
+   * one-line summary and one link (`<PanelHeader>`). The title carries the count, so an
+   * unpaginated list drops its "Showing n of n" footer.
    */
   header?: React.ReactNode;
 
@@ -1298,7 +1299,8 @@ export function PlatformDataGrid<T>({
               onPageSizeChange={handlePageSizeChange}
             />
           </div>
-        ) : visible.length > 0 ? (
+        ) : visible.length > 0 && !header ? (
+          // A list with a header row already states its count in the title.
           <div className="border-t border-border px-4 py-3">
             <p className="text-body-sm text-muted-foreground">
               {t('showingOf', { shown: visible.length, total: rowCount })}

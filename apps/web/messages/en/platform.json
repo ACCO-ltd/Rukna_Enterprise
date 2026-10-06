@@ -293,7 +293,8 @@
           "owner": "Administrator",
           "action": "Invite people"
         }
-      }
+      },
+      "optionalHint": "You can do this later."
     }
   },
   "projects": {

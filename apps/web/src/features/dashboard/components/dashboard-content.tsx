@@ -110,7 +110,13 @@ function WorkView({ data }: { data: DashboardResponse }) {
             <ActivityTimeline
               compact
               label={t('activity.title')}
-              entries={toEntries(data.activity)}
+              entries={toEntries(data.activity).map((entry, i) => {
+                // Across projects an event that names no record still says which project it was.
+                const project = data.activity[i]?.project;
+                return entry.target || !project
+                  ? entry
+                  : { ...entry, target: project.name, href: `/projects/${project.id}` };
+              })}
               renderLink={({ href, className, children }) => (
                 <Link href={href} className={className}>
                   {children}
@@ -166,6 +172,7 @@ function SetupView({ data }: { data: DashboardResponse }) {
       steps={steps}
       summary={requiredLeft > 0 ? t('summary', { count: requiredLeft }) : t('summaryDone')}
       footnote={t('footnote')}
+      labels={{ skippable: t('optionalHint') }}
       linkAs={Link}
       className="rounded-panel border border-border bg-surface p-4 sm:p-6"
     />
