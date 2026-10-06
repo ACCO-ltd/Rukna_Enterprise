@@ -34,7 +34,12 @@ import { useApprovalStep } from '@/features/workflows/hooks/use-approval';
 import { useWorkflowDefinition } from '@/features/workflows/hooks/use-workflow-definition';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { useSession } from '@/features/auth/session/use-session';
+import { ApiError } from '@/lib/api-client';
+
 import {
+  useApproveMaterialRequest,
   useCancelMaterialRequest,
   useMaterialRequest,
   useSubmitMaterialRequest,
@@ -42,7 +47,7 @@ import {
 import type { MaterialRequest, MaterialRequestStatus } from '../types';
 import { ProcurementStatusBadge } from './procurement-badges';
 
-type PendingAction = 'submit' | 'cancel';
+type PendingAction = 'submit' | 'approve' | 'cancel';
 
 export function MrDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.mr');
@@ -57,7 +62,10 @@ export function MrDetail({ id }: { id: string }) {
   const [pending, setPending] = useState<PendingAction | null>(null);
 
   const submit = useSubmitMaterialRequest();
+  const approve = useApproveMaterialRequest();
   const cancel = useCancelMaterialRequest();
+  const { can } = usePermissions();
+  const session = useSession();
 
   if (mr.isPending) {
     return (
@@ -82,7 +90,13 @@ export function MrDetail({ id }: { id: string }) {
   const request: MaterialRequest = mr.data;
   const projectName = projects.data?.find((p) => p.id === request.projectId)?.name ?? null;
   const isTerminal = request.status === 'CANCELLED' || request.status === 'CLOSED';
-  const mutation = pending === 'submit' ? submit : cancel;
+  const mutation = pending === 'submit' ? submit : pending === 'approve' ? approve : cancel;
+  // Approve: a submitted request, for someone who holds the permission — never the requester,
+  // whom the server refuses (the requester-cannot-approve rule).
+  const canApprove =
+    request.status === 'SUBMITTED' &&
+    can(PROCUREMENT_PERMISSIONS.approveRequest) &&
+    request.requestedBy !== session.user?.id;
 
   const run = () => {
     mutation.mutate(id, { onSuccess: () => setPending(null) });
@@ -132,6 +146,11 @@ export function MrDetail({ id }: { id: string }) {
             {request.status === 'DRAFT' ? (
               <Button type="button" size="sm" onClick={() => setPending('submit')}>
                 {t('submit')}
+              </Button>
+            ) : null}
+            {canApprove ? (
+              <Button type="button" size="sm" onClick={() => setPending('approve')}>
+                {t('approve')}
               </Button>
             ) : null}
             {['DRAFT', 'SUBMITTED', 'APPROVED'].includes(request.status) ? (
@@ -261,7 +280,13 @@ export function MrDetail({ id }: { id: string }) {
           description={t(`${pending}Body`)}
           confirmLabel={t(pending === 'cancel' ? 'cancelRequest' : pending)}
           isPending={mutation.isPending}
-          errorMessage={mutation.isError ? tc('loadFailed') : undefined}
+          errorMessage={
+            mutation.isError
+              ? mutation.error instanceof ApiError
+                ? mutation.error.message
+                : tc('loadFailed')
+              : undefined
+          }
           onConfirm={run}
           onDismiss={() => setPending(null)}
         />
