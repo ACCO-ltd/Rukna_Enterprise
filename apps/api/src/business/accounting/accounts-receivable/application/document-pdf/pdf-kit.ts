@@ -149,7 +149,7 @@ export type KitStyles = ReturnType<typeof buildKitStyles>;
 export function buildKitStyles(p: Palette, compact: boolean) {
   return StyleSheet.create({
     page: {
-      paddingTop: compact ? 34 : 42,
+      paddingTop: compact ? 44 : 52,
       paddingBottom: FOOTER_HEIGHT + 16,
       paddingHorizontal: PAGE_MARGIN_X,
       fontSize: 9,
@@ -157,18 +157,18 @@ export function buildKitStyles(p: Palette, compact: boolean) {
       color: p.ink,
       lineHeight: 1.4,
     },
-    topBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 4, backgroundColor: p.accent },
+    topBar: { position: 'absolute', top: 24, left: PAGE_MARGIN_X, right: PAGE_MARGIN_X, height: 3, backgroundColor: p.accent },
     // Header
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
     headerLeft: { flexDirection: 'column', width: '56%' },
     headerRight: { flexDirection: 'column', alignItems: 'flex-end', width: '44%' },
-    logo: { maxHeight: compact ? 46 : 58, maxWidth: 210, objectFit: 'contain', objectPosition: 'left' },
+    logo: { height: compact ? 28 : 32, maxWidth: 200, objectFit: 'contain', objectPosition: 'left' },
     wordmark: { fontSize: compact ? 19 : 22, lineHeight: 1.1, fontFamily: 'Helvetica-Bold', color: p.accent },
-    tagline: { fontSize: 7, letterSpacing: 1.8, color: p.muted, marginTop: 5 },
+    tagline: { fontSize: 6.5, letterSpacing: 1.8, color: p.muted, marginTop: 5 },
     addressBlock: { marginTop: 12 },
     small: { fontSize: 8.5, color: p.muted, lineHeight: 1.5 },
     docTitle: {
-      fontSize: compact ? 26 : 30,
+      fontSize: compact ? 22 : 25.5,
       lineHeight: 1.05,
       fontFamily: 'Helvetica-Bold',
       color: p.navy,
@@ -203,7 +203,14 @@ export function buildKitStyles(p: Palette, compact: boolean) {
     lineTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: p.navy },
     lineDetail: { fontSize: 8, color: p.muted, marginTop: 2 },
     // Totals
-    totals: { alignSelf: 'flex-end', width: 236, marginBottom: compact ? 18 : 26 },
+    totals: {
+      alignSelf: 'flex-end',
+      width: 236,
+      marginBottom: compact ? 18 : 26,
+      borderTopWidth: 0.75,
+      borderTopColor: p.border,
+      paddingTop: 6,
+    },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, paddingHorizontal: 10 },
     totalLabel: { fontSize: 9, color: p.muted },
     totalValue: { fontSize: 9, color: p.ink },
@@ -225,12 +232,12 @@ export function buildKitStyles(p: Palette, compact: boolean) {
     signatureName: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: p.navy },
     signatureMeta: { fontSize: 8.5, color: p.muted },
     // Footer strip (fixed on every page)
-    footer: { position: 'absolute', left: 0, right: 0, bottom: 0, height: FOOTER_HEIGHT },
+    footer: { position: 'absolute', left: PAGE_MARGIN_X, right: PAGE_MARGIN_X, bottom: 0, height: FOOTER_HEIGHT },
     footerRule: { borderTopWidth: 0.75, borderTopColor: p.border },
-    footerRow: { flexDirection: 'row', paddingHorizontal: PAGE_MARGIN_X, paddingTop: 16 },
-    footerColumn: { flex: 1, flexDirection: 'row', paddingRight: 12 },
+    footerRow: { flexDirection: 'row', paddingTop: 16 },
+    footerColumn: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingRight: 12 },
     footerColumnRuled: { borderLeftWidth: 0.75, borderLeftColor: p.border, paddingLeft: 14 },
-    footerIcon: { width: 11, height: 11, marginRight: 8, marginTop: 1 },
+    footerIcon: { width: 12, height: 12, marginRight: 8 },
     footerText: { fontSize: 8, color: p.muted, lineHeight: 1.5 },
     pageNumber: {
       position: 'absolute',
@@ -374,7 +381,7 @@ export function documentFooter(s: KitStyles, brand: BrandView, columns: FooterCo
             h(
               View,
               { style: i === 0 ? s.footerColumn : [s.footerColumn, s.footerColumnRuled], key: `f${i}` },
-              lineIcon(s, column.icon, brand.palette.accent),
+              lineIcon(s, column.icon, brand.palette.navy),
               h(View, null, ...column.lines.map((line, j) => h(Text, { style: s.footerText, key: `fl${j}` }, line))),
             ),
           ),
