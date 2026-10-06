@@ -1,3 +1,5 @@
+import { deflateSync } from 'node:zlib';
+
 import type { InvoiceDocumentInput, InvoiceDocumentLine } from './invoice-view-model.js';
 import type { ReceiptDocumentInput } from '../receipt-document.service.js';
 
@@ -107,10 +109,52 @@ export const receiptFixture: ReceiptDocumentInput = {
   footer,
 };
 
+/** A real, valid PNG of one colour — `width`×`height` RGB — built without image libraries. */
+export function solidPng(width: number, height: number, rgb: [number, number, number]): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const sum = Buffer.alloc(4);
+    sum.writeUInt32BE(crc(body));
+    return Buffer.concat([len, body, sum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => rgb).flat())]);
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** The minimal invoice with a wide (6:1) logo, to prove the logo is sized to the header. */
+export const logoInvoiceFixture: InvoiceDocumentInput = {
+  ...minimalInvoiceFixture,
+  org: { ...org, logo: { buffer: solidPng(240, 40, [31, 63, 168]), mimeType: 'image/png' } },
+};
+
 export const documentFixtures = {
   'invoice-minimal': { kind: 'invoice', input: minimalInvoiceFixture },
   'invoice-bank-notes': { kind: 'invoice', input: bankNotesInvoiceFixture },
   'invoice-40-lines': { kind: 'invoice', input: fortyLineInvoiceFixture },
+  'invoice-logo': { kind: 'invoice', input: logoInvoiceFixture },
   receipt: { kind: 'receipt', input: receiptFixture },
 } as const;
 

@@ -60,9 +60,26 @@ function toDraft(settings: InvoiceDocumentSettings): Draft {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WEBSITE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/\S*)?$/i;
 
+/** The footer strip's limits — the same as the server's. */
+export const FOOTER_LIMITS = { addressLines: 2, lineLength: 60, phone: 30, email: 80, website: 80 } as const;
+
+type ContactProblem = 'address' | 'email' | 'website';
+
 /** The contact fields that would be refused on save, for inline errors before the round trip. */
-export function contactProblems(draft: Pick<Draft, 'footerEmail' | 'footerWebsite'>): Array<'email' | 'website'> {
-  const problems: Array<'email' | 'website'> = [];
+export function contactProblems(
+  draft: Pick<Draft, 'footerEmail' | 'footerWebsite'> & { footerAddress?: string },
+): ContactProblem[] {
+  const problems: ContactProblem[] = [];
+  const addressLines = (draft.footerAddress ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (
+    addressLines.length > FOOTER_LIMITS.addressLines ||
+    addressLines.some((line) => line.length > FOOTER_LIMITS.lineLength)
+  ) {
+    problems.push('address');
+  }
   if (draft.footerEmail.trim() && !EMAIL.test(draft.footerEmail.trim())) problems.push('email');
   if (draft.footerWebsite.trim() && !WEBSITE.test(draft.footerWebsite.trim())) problems.push('website');
   return problems;
@@ -196,13 +213,18 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <h3 className="text-sm font-semibold text-foreground">{t('footerTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('footerHint')}</p>
         </div>
-        <FormField htmlFor={ids.address} label={t('footerAddress')}>
+        <FormField
+          htmlFor={ids.address}
+          label={t('footerAddress')}
+          hint={t('footerAddressHint', { lines: FOOTER_LIMITS.addressLines, chars: FOOTER_LIMITS.lineLength })}
+          error={showErrors && contacts.includes('address') ? t('footerAddressInvalid') : undefined}
+        >
           <Textarea
             id={ids.address}
             value={draft.footerAddress}
             onChange={(event) => patch({ footerAddress: event.target.value })}
             rows={2}
-            maxLength={300}
+            maxLength={FOOTER_LIMITS.addressLines * (FOOTER_LIMITS.lineLength + 1)}
             disabled={disabled}
             placeholder={settings.defaultFooterAddress ?? t('footerAddressPlaceholder')}
           />
@@ -211,26 +233,26 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <p className="text-xs text-muted-foreground">{t('footerAddressDefault')}</p>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor={ids.phone1} label={t('phone', { n: 1 })}>
+          <FormField htmlFor={ids.phone1} label={t('phone', { n: 1 })} hint={t('limitHint', { chars: FOOTER_LIMITS.phone })}>
             <Input
               id={ids.phone1}
               type="tel"
               value={draft.phone1}
               onChange={(event) => patch({ phone1: event.target.value })}
               placeholder="+252 61 234 5678"
-              maxLength={40}
+              maxLength={FOOTER_LIMITS.phone}
               disabled={disabled}
               autoComplete="off"
             />
           </FormField>
-          <FormField htmlFor={ids.phone2} label={t('phone', { n: 2 })}>
+          <FormField htmlFor={ids.phone2} label={t('phone', { n: 2 })} hint={t('limitHint', { chars: FOOTER_LIMITS.phone })}>
             <Input
               id={ids.phone2}
               type="tel"
               value={draft.phone2}
               onChange={(event) => patch({ phone2: event.target.value })}
               placeholder="+252 90 123 4567"
-              maxLength={40}
+              maxLength={FOOTER_LIMITS.phone}
               disabled={disabled}
               autoComplete="off"
             />
@@ -238,6 +260,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <FormField
             htmlFor={ids.email}
             label={t('email')}
+            hint={t('limitHint', { chars: FOOTER_LIMITS.email })}
             error={showErrors && contacts.includes('email') ? t('emailInvalid') : undefined}
           >
             <Input
@@ -246,7 +269,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
               value={draft.footerEmail}
               onChange={(event) => patch({ footerEmail: event.target.value })}
               placeholder="info@acco.com"
-              maxLength={254}
+              maxLength={FOOTER_LIMITS.email}
               disabled={disabled}
               autoComplete="off"
             />
@@ -254,6 +277,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
           <FormField
             htmlFor={ids.website}
             label={t('website')}
+            hint={t('limitHint', { chars: FOOTER_LIMITS.website })}
             error={showErrors && contacts.includes('website') ? t('websiteInvalid') : undefined}
           >
             <Input
@@ -261,7 +285,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
               value={draft.footerWebsite}
               onChange={(event) => patch({ footerWebsite: event.target.value })}
               placeholder="www.acco.com"
-              maxLength={200}
+              maxLength={FOOTER_LIMITS.website}
               disabled={disabled}
               autoComplete="off"
             />

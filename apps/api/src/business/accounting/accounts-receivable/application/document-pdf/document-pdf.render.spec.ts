@@ -31,6 +31,23 @@ function render(fixture: string): Buffer {
   return readFileSync(out);
 }
 
+/** Every Flate content stream, inflated. */
+function inflatedStreams(pdf: Buffer): string[] {
+  const raw = pdf.toString('latin1');
+  const out: string[] = [];
+  const streamRe = /stream\r?\n/g;
+  let match: RegExpExecArray | null;
+  while ((match = streamRe.exec(raw))) {
+    const start = match.index + match[0].length;
+    try {
+      out.push(inflateSync(pdf.subarray(start, raw.indexOf('endstream', start))).toString('latin1'));
+    } catch {
+      // not a Flate content stream
+    }
+  }
+  return out;
+}
+
 /**
  * Text of each page, in drawing order: every TJ/Tj string of every (Flate) content stream, decoded
  * as the standard-14 fonts' WinAnsi bytes. Enough for the Helvetica documents these are.
@@ -163,6 +180,23 @@ describe('invoice PDF (real renderer)', () => {
     const last = pages[pages.length - 1];
     expectInOrder(last, ['Line item 40 ', 'Subtotal', 'Total Due', 'Ahmed Abdi Hassan']);
     expect(pages.slice(0, -1).join('\n')).not.toContain('Total Due');
+  }, 60_000);
+});
+
+describe('logo sizing (real renderer, real PNG)', () => {
+  it('draws a wide logo 32pt high with its aspect ratio kept, and no duplicate name line', () => {
+    const pdf = render('invoice-logo');
+    const raw = pdf.toString('latin1');
+    expect(raw).toContain('/Subtype /Image');
+    expect(raw).toMatch(/\/Width 240\s*\/Height 40/);
+    // The image placement: "<w> 0 0 -<h> … cm /I1 Do" — 240×40 drawn at 32pt high → 192pt wide.
+    const drawn = inflatedStreams(pdf).join('\n').match(/([\d.]+) 0 0 -([\d.]+) [\d.-]+ [\d.-]+ cm\s*\/I\w*\d* Do/);
+    expect(drawn).not.toBeNull();
+    expect(Number(drawn![2])).toBe(32);
+    expect(Number(drawn![1])).toBe(192);
+    // With a logo the company name is not printed again as a wordmark in the header.
+    const [page] = pagesText(pdf);
+    expect(page.indexOf('ACCO Ltd')).toBeGreaterThan(page.indexOf('INVOICE'));
   }, 60_000);
 });
 

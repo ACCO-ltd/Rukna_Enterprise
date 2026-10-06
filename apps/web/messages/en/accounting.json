@@ -1400,6 +1400,9 @@
     "showBankDetails": "Print bank account details on invoices",
     "showBankDetailsHint": "Off by default: the minimal invoice has no bank section.",
     "showNotes": "Print notes on invoices",
-    "showNotesHint": "Off by default: the minimal invoice has no notes."
+    "showNotesHint": "Off by default: the minimal invoice has no notes.",
+    "footerAddressHint": "Up to {lines} lines of {chars} characters each.",
+    "footerAddressInvalid": "The footer fits 2 lines of 60 characters each. Shorten the address.",
+    "limitHint": "Up to {chars} characters."
   }
 }

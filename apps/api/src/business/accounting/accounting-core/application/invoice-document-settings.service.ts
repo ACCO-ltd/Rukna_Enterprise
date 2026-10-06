@@ -23,11 +23,13 @@ export const BANK_NAME_MAX_LENGTH = 100;
 export const ACCOUNT_NUMBER_MAX_LENGTH = 50;
 export const SIGNATORY_MAX_LENGTH = 120;
 export const TAGLINE_MAX_LENGTH = 80;
-export const FOOTER_ADDRESS_MAX_LENGTH = 300;
-export const PHONE_MAX_LENGTH = 40;
+/** The footer strip has room for two address lines of about 60 characters each. */
+export const FOOTER_ADDRESS_MAX_LINES = 2;
+export const FOOTER_LINE_MAX_LENGTH = 60;
+export const PHONE_MAX_LENGTH = 30;
 export const MAX_FOOTER_PHONES = 2;
-export const EMAIL_MAX_LENGTH = 254;
-export const WEBSITE_MAX_LENGTH = 200;
+export const EMAIL_MAX_LENGTH = 80;
+export const WEBSITE_MAX_LENGTH = 80;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** A host with a dot, optionally with a scheme and a path: "www.acco.com", "https://acco.com/x". */
 const WEBSITE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/\S*)?$/i;
@@ -144,11 +146,22 @@ export class InvoiceDocumentSettingsService {
       ['Signatory name', next.signatoryName, SIGNATORY_MAX_LENGTH],
       ['Signatory title', next.signatoryTitle, SIGNATORY_MAX_LENGTH],
       ['The tagline', next.tagline, TAGLINE_MAX_LENGTH],
-      ['The footer address', next.footerAddress, FOOTER_ADDRESS_MAX_LENGTH],
       ['The footer email', next.footerEmail, EMAIL_MAX_LENGTH],
       ['The footer website', next.footerWebsite, WEBSITE_MAX_LENGTH],
     ] as const) {
       if (value && value.length > max) throw invalid(`${field} is limited to ${max} characters.`);
+    }
+    if (next.footerAddress) {
+      const lines = next.footerAddress.split('\n');
+      if (lines.length > FOOTER_ADDRESS_MAX_LINES) {
+        throw invalid(`The footer address fits ${FOOTER_ADDRESS_MAX_LINES} lines; it has ${lines.length}.`);
+      }
+      const long = lines.find((line) => line.length > FOOTER_LINE_MAX_LENGTH);
+      if (long) {
+        throw invalid(
+          `Each footer address line fits ${FOOTER_LINE_MAX_LENGTH} characters; "${long.slice(0, 30)}…" has ${long.length}.`,
+        );
+      }
     }
     if (next.footerEmail && !EMAIL.test(next.footerEmail)) {
       throw invalid(`"${next.footerEmail}" is not an email address.`);
@@ -218,9 +231,10 @@ export function validatePhones(phones: unknown): string[] {
     throw invalid(`At most ${MAX_FOOTER_PHONES} phone numbers print in the footer.`);
   }
   for (const phone of cleaned) {
-    if (phone.length > PHONE_MAX_LENGTH || !PHONE.test(phone)) {
-      throw invalid(`"${phone}" is not a phone number.`);
+    if (phone.length > PHONE_MAX_LENGTH) {
+      throw invalid(`A footer phone number fits ${PHONE_MAX_LENGTH} characters.`);
     }
+    if (!PHONE.test(phone)) throw invalid(`"${phone}" is not a phone number.`);
   }
   return cleaned;
 }

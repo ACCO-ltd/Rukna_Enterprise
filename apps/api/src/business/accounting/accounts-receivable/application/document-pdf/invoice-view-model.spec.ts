@@ -130,6 +130,12 @@ describe('footerColumns', () => {
     expect(footerColumns({ address: null, phones: [], email: null, website: null }, null)).toEqual([]);
   });
 
+  it('cuts an over-long line (a 300-character address) so it cannot overflow the strip', () => {
+    const [address] = footerColumns({ address: 'x'.repeat(300), phones: [], email: null, website: null }, null);
+    expect(address.lines[0]).toHaveLength(60);
+    expect(address.lines[0].endsWith('\u2026')).toBe(true);
+  });
+
   it('accepts only a valid brand colour', () => {
     const base = { ...minimalInvoiceFixture.org };
     expect(brandView(base).palette.accent).toBe('#1F3FA8');

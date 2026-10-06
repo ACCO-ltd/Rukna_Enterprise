@@ -119,7 +119,7 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
       infoColumns(
         s,
         { label: 'Received From', name: input.clientName, lines: splitLines(input.clientAddress) },
-        { label: 'Payment', name: input.paymentMethod ? humanise(input.paymentMethod) : 'Payment', lines: facts },
+        paymentColumn(input.paymentMethod, facts),
       ),
 
       // What the payment was applied to.
@@ -147,6 +147,16 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
       pageNumbers(s),
     ),
   );
+}
+
+/**
+ * The "Payment" column: the method in bold over the receipt's facts. Without a method the first
+ * fact leads (never "Payment" under the "Payment" label); with nothing to say there is no column.
+ */
+function paymentColumn(method: string | null, facts: string[]) {
+  if (method) return { label: 'Payment', name: humanise(method), lines: facts };
+  if (facts.length === 0) return null;
+  return { label: 'Payment', name: facts[0], lines: facts.slice(1) };
 }
 
 /** 'BANK_TRANSFER' → 'Bank transfer'; free text is shown as typed. */

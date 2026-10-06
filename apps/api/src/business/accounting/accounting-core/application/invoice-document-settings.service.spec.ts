@@ -142,7 +142,13 @@ describe('InvoiceDocumentSettingsService - minimal layout settings', () => {
       { footerWebsite: 'not a site' },
       { footerPhones: ['+252 1', '+252 2', '+252 3'] },
       { footerPhones: ['call me'] },
+      { footerPhones: ['+252 ' + '1'.repeat(30)] },
+      { footerEmail: `${'a'.repeat(75)}@acco.com` },
+      { footerWebsite: `www.${'a'.repeat(80)}.com` },
       { tagline: 'x'.repeat(81) },
+      // The footer strip holds two lines of 60 characters.
+      { footerAddress: 'x'.repeat(300) },
+      { footerAddress: 'Olow Tower\nMaka Al-Mukarama Road\nMogadishu' },
     ]) {
       await expect(service.update(identity, bad)).rejects.toBeInstanceOf(UnprocessableEntityException);
     }
@@ -202,12 +208,36 @@ describe('invoice document snapshot', () => {
       paymentAccounts: [{ bankName: 'Premier Bank', accountNumber: '0102' }],
       notes: null,
       signatory: { name: 'Ahmed Ali', title: null },
-      // Older snapshots predate the minimal layout: its options read as their defaults.
+      // Older snapshots predate the minimal layout: no tagline or footer contacts, and the bank
+      // details and notes they were issued with keep printing.
       tagline: null,
       footer: { address: null, phones: [], email: null, website: null },
+      showBankDetails: true,
+      showNotes: true,
+    });
+    const noBank = normalizeInvoiceDocumentSnapshot({ bank: null, notes: null, signatory: null });
+    expect(noBank.paymentAccounts).toEqual([]);
+    expect(noBank.showBankDetails).toBe(false);
+    expect(noBank.showNotes).toBe(true);
+  });
+
+  it('keeps the bank table and notes of a bank-table snapshot (#271), and honours explicit switches', () => {
+    const legacy = normalizeInvoiceDocumentSnapshot({
+      paymentAccounts: [{ bankName: 'Salaam Bank', accountNumber: '330' }],
+      notes: 'Pay by transfer.',
+      signatory: null,
+    });
+    expect(legacy).toMatchObject({ showBankDetails: true, showNotes: true });
+    expect(
+      normalizeInvoiceDocumentSnapshot({ paymentAccounts: [], notes: null, signatory: null }).showBankDetails,
+    ).toBe(false);
+    const current = normalizeInvoiceDocumentSnapshot({
+      paymentAccounts: [{ bankName: 'Salaam Bank', accountNumber: '330' }],
+      notes: 'Pay by transfer.',
+      signatory: null,
       showBankDetails: false,
       showNotes: false,
     });
-    expect(normalizeInvoiceDocumentSnapshot({ bank: null, notes: null, signatory: null }).paymentAccounts).toEqual([]);
+    expect(current).toMatchObject({ showBankDetails: false, showNotes: false });
   });
 });

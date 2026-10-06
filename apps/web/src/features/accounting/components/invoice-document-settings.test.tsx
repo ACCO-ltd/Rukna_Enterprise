@@ -155,6 +155,17 @@ describe('InvoiceDocumentSettingsPanel', () => {
     expect(contactProblems({ footerEmail: 'a@b.co', footerWebsite: 'https://acco.com/x' })).toEqual([]);
   });
 
+  it('refuses a footer address that cannot fit two lines of 60 characters', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });
+    expect(screen.getByText('Up to 2 lines of 60 characters each.')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Address'), 'x'.repeat(70));
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(screen.getByText('The footer fits 2 lines of 60 characters each. Shorten the address.')).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+    expect(contactProblems({ footerEmail: '', footerWebsite: '', footerAddress: 'a\nb\nc' })).toEqual(['address']);
+  });
+
   it('refuses to save a row with only one of its two fields', async () => {
     const user = userEvent.setup();
     renderWithProviders(<InvoiceDocumentSettingsPanel />, { permissions: MANAGE });

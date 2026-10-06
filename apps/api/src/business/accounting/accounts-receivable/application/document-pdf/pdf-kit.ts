@@ -124,14 +124,24 @@ export interface FooterColumn {
   lines: string[];
 }
 
+/** Longest footer line that fits its column; anything longer is cut with an ellipsis. */
+export const FOOTER_LINE_MAX = 60;
+
+/** `value` cut to `max` characters, ending in "…" when it was longer. */
+export function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`;
+}
+
 /**
  * The footer's columns — address (first two lines), phones (up to two), email + website — each
- * only when it has something to say.
+ * only when it has something to say. Lines are cut to fit (the settings validate the same limits;
+ * this is the defence for older or legal-address values), so nothing overflows the strip.
  */
 export function footerColumns(contacts: FooterContactsInput | null | undefined, legalAddress: string | null): FooterColumn[] {
-  const address = splitLines(contacts?.address ?? legalAddress).slice(0, 2);
-  const phones = (contacts?.phones ?? []).map((p) => p.trim()).filter(Boolean).slice(0, 2);
-  const web = [contacts?.email, contacts?.website].map((v) => v?.trim() ?? '').filter(Boolean);
+  const fit = (line: string) => truncate(line, FOOTER_LINE_MAX);
+  const address = splitLines(contacts?.address ?? legalAddress).slice(0, 2).map(fit);
+  const phones = (contacts?.phones ?? []).map((p) => p.trim()).filter(Boolean).slice(0, 2).map(fit);
+  const web = [contacts?.email, contacts?.website].map((v) => v?.trim() ?? '').filter(Boolean).map(fit);
   const columns: FooterColumn[] = [];
   if (address.length > 0) columns.push({ icon: 'pin', lines: address });
   if (phones.length > 0) columns.push({ icon: 'phone', lines: phones });
@@ -238,7 +248,7 @@ export function buildKitStyles(p: Palette, compact: boolean) {
     footerColumn: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingRight: 12 },
     footerColumnRuled: { borderLeftWidth: 0.75, borderLeftColor: p.border, paddingLeft: 14 },
     footerIcon: { width: 12, height: 12, marginRight: 8 },
-    footerText: { fontSize: 8, color: p.muted, lineHeight: 1.5 },
+    footerText: { fontSize: 8, color: p.muted, lineHeight: 1.5, textOverflow: 'ellipsis' },
     pageNumber: {
       position: 'absolute',
       left: PAGE_MARGIN_X,
@@ -382,7 +392,13 @@ export function documentFooter(s: KitStyles, brand: BrandView, columns: FooterCo
               View,
               { style: i === 0 ? s.footerColumn : [s.footerColumn, s.footerColumnRuled], key: `f${i}` },
               lineIcon(s, column.icon, brand.palette.navy),
-              h(View, null, ...column.lines.map((line, j) => h(Text, { style: s.footerText, key: `fl${j}` }, line))),
+              h(
+                View,
+                { style: { flex: 1 } },
+                ...column.lines.map((line, j) =>
+                  h(Text, { style: s.footerText, maxLines: 1, key: `fl${j}` }, line),
+                ),
+              ),
             ),
           ),
         )

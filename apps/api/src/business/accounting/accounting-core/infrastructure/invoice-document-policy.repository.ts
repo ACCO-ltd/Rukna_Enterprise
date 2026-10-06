@@ -158,8 +158,9 @@ export async function resolveInvoiceDocumentSnapshot(
 
 /**
  * A frozen snapshot in any of its shapes: the current one; the bank-table shape (no tagline,
- * footer or switches — read with those at their defaults, so nothing optional shows); or the
- * single-bank shape of the first template-v2 release (`bank: { … }`), read as a one-row table.
+ * footer or switches — the bank table shows when it holds rows and the notes show, as they did
+ * when it was issued); or the single-bank shape of the first template-v2 release
+ * (`bank: { … }`), read as a one-row table.
  */
 export function normalizeInvoiceDocumentSnapshot(value: unknown): InvoiceDocumentSnapshot {
   const snap = (value ?? {}) as Record<string, unknown>;
@@ -184,7 +185,10 @@ export function normalizeInvoiceDocumentSnapshot(value: unknown): InvoiceDocumen
       email: text(footer.email),
       website: text(footer.website),
     },
-    showBankDetails: snap.showBankDetails === true,
-    showNotes: snap.showNotes === true,
+    // Snapshots frozen before the switches existed (#270/#271, on production) always printed the
+    // bank details they held and the notes: keep printing what was issued with them.
+    showBankDetails:
+      typeof snap.showBankDetails === 'boolean' ? snap.showBankDetails : paymentAccounts.length > 0,
+    showNotes: typeof snap.showNotes === 'boolean' ? snap.showNotes : true,
   };
 }

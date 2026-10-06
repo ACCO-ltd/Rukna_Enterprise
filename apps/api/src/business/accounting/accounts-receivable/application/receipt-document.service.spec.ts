@@ -93,6 +93,18 @@ describe('ReceiptDocumentService', () => {
     expect(none.some((t) => t.startsWith('Unallocated when the payment was recorded'))).toBe(true);
   });
 
+  it('without a payment method, leads the Payment column with the first fact, never "Payment" twice', () => {
+    const all = texts(ReceiptDocument({ input: sample({ paymentMethod: null }) }));
+    expect(all.filter((t) => t === 'Payment')).toHaveLength(1);
+    expect(all).toContain('Received into Premier Bank — ACCO Operating');
+    const bare = texts(
+      ReceiptDocument({
+        input: sample({ paymentMethod: null, bankAccountLabel: null, reference: null, bankReference: null }),
+      }),
+    );
+    expect(bare).not.toContain('Payment');
+  });
+
   it('omits optional facts that are absent and keeps free-text payment methods as typed', () => {
     const all = texts(
       ReceiptDocument({

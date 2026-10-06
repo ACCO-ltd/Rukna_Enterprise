@@ -46,20 +46,23 @@ export class UpdateInvoiceDocumentSettingsDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80)
   tagline?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Footer address, one line per line; null → the legal address' })
-  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(300)
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Footer address: at most 2 lines of 60 characters; null → the legal address',
+  })
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(130)
   footerAddress?: string | null;
 
-  @ApiPropertyOptional({ type: [String], description: 'Up to two phone numbers' })
-  @IsOptional() @IsArray() @ArrayMaxSize(2) @IsString({ each: true }) @MaxLength(40, { each: true })
+  @ApiPropertyOptional({ type: [String], description: 'Up to two phone numbers, 30 characters each' })
+  @IsOptional() @IsArray() @ArrayMaxSize(2) @IsString({ each: true }) @MaxLength(30, { each: true })
   footerPhones?: string[];
 
   @ApiPropertyOptional({ nullable: true, example: 'info@acco.com' })
-  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(254)
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80)
   footerEmail?: string | null;
 
   @ApiPropertyOptional({ nullable: true, example: 'www.acco.com' })
-  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200)
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80)
   footerWebsite?: string | null;
 
   @ApiPropertyOptional({ description: 'Print the Bank Account Details section' })
