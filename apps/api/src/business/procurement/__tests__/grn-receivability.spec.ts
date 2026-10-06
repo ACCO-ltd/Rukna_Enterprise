@@ -215,4 +215,12 @@ describe('GRN receiving rules', () => {
     const ok = await draftGrn(storekeeper, po.id, lineId, 5, 3, 'Bent bars');
     expect(ok!.lines[0].rejectionReason).toBe('Bent bars');
   });
+
+  it('the receipt detail names its purchase order and supplier', async () => {
+    const po = await confirmedPo(3);
+    const draft = await draftGrn(storekeeper, po.id, po.revisions[0].lines[0].id, 3);
+    const detail = await grn.findById(storekeeper, draft!.id);
+    expect(detail.purchaseOrder).toEqual({ id: po.id, poNumber: po.poNumber });
+    expect(detail.supplier).toEqual({ id: env.supplierId, name: 'Test Steel Co.' });
+  });
 });

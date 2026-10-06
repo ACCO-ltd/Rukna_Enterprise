@@ -460,10 +460,11 @@ export interface GoodsReceipt {
    */
   overReceiptFlag?: boolean;
   lines: GoodsReceiptLine[];
-  /** The list read sends `{ id, number }`; the detail read `{ poNumber }`. */
+  /** The list read sends `{ id, number }`; the detail read `{ id, poNumber }`. */
   purchaseOrder?: { id?: string; poNumber?: string; number?: string } | null;
-  // ── List read fields (GET /procurement/goods-receipts). Absent on the detail read.
+  /** On the list and the detail read alike. */
   supplier?: { id: string; name: string } | null;
+  // ── List read fields (GET /procurement/goods-receipts). Absent on the detail read.
   project?: ProcurementProjectRef | null;
   projectCount?: number;
   /** Whoever recorded the delivery. */

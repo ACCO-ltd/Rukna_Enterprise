@@ -56,6 +56,8 @@ const RECEIPT: GoodsReceipt = {
   postedAt: '2026-09-25T10:00:00Z',
   postedBy: 'u1',
   overReceiptFlag: false,
+  purchaseOrder: { id: 'po1', poNumber: 'PO-00007' },
+  supplier: { id: 's1', name: 'Bakaal Steel' },
   lines: [
     {
       id: 'gl1',
@@ -98,5 +100,15 @@ describe('GrnDetail', () => {
     renderWithProviders(<GrnDetail id="grn-1" />);
 
     expect(screen.queryByText('Over-receipt')).not.toBeInTheDocument();
+  });
+
+  it('links its purchase order, names the supplier, and labels the posted date', () => {
+    hooks.receipt.mockReturnValue(loaded(RECEIPT));
+    renderWithProviders(<GrnDetail id="grn-1" />);
+
+    expect(screen.getByRole('link', { name: 'PO-00007' })).toHaveAttribute('href', '/procurement/orders/po1');
+    expect(screen.getByText('Bakaal Steel')).toBeInTheDocument();
+    expect(screen.getByText('Posted on')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Goods receipts' })).toHaveAttribute('href', '/procurement/grn');
   });
 });

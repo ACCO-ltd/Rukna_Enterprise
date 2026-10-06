@@ -8,7 +8,7 @@
  * misread by someone scanning the sidebar for where a customer payment went.
  */
 
-import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
@@ -33,7 +33,7 @@ import {
   type FilterValues,
   type ListFilterField,
 } from '@erp/ui';
-import { Plus } from 'lucide-react';
+import { ChevronLeft, Plus } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
@@ -692,8 +692,20 @@ export function GrnDetail({ id }: { id: string }) {
   const q = (v: string) => parseMinorUnits(v, QUANTITY_SCALE) ?? 0;
   const canApproveException = can(PROCUREMENT_PERMISSIONS.approveReceiptException);
 
+  const poNumber = receipt.purchaseOrder?.poNumber ?? receipt.purchaseOrder?.number ?? null;
+
   return (
     <div className="space-y-6">
+      <div>
+        <Link
+          href="/procurement/grn"
+          className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        >
+          <ChevronLeft className="size-3.5 rtl:rotate-180" aria-hidden="true" />
+          {t('backToList')}
+        </Link>
+      </div>
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -756,7 +768,7 @@ export function GrnDetail({ id }: { id: string }) {
         <Alert variant="warning" title={t('overReceiptTitle')} messages={[t('overReceiptBody')]} />
       ) : null}
 
-      <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-5">
         <Field
           label={t('deliveryDate')}
           value={formatDate(receipt.deliveryDate, locale) ?? tc('notAvailable')}
@@ -764,10 +776,22 @@ export function GrnDetail({ id }: { id: string }) {
         <Field label={t('deliveryNoteRef')} value={receipt.deliveryNoteRef ?? tc('notAvailable')} />
         <Field
           label={t('purchaseOrder')}
-          value={receipt.purchaseOrder?.poNumber ?? tc('notAvailable')}
+          value={
+            poNumber ? (
+              <Link
+                href={`/procurement/orders/${receipt.purchaseOrderId}`}
+                className="font-medium text-brand-primary underline-offset-2 hover:underline"
+              >
+                {poNumber}
+              </Link>
+            ) : (
+              tc('notAvailable')
+            )
+          }
         />
+        <Field label={t('supplier')} value={receipt.supplier?.name ?? tc('notAvailable')} />
         <Field
-          label={t('post')}
+          label={t('postedOn')}
           value={formatDate(receipt.postedAt, locale) ?? tc('notAvailable')}
         />
       </dl>
@@ -871,7 +895,7 @@ export function GrnDetail({ id }: { id: string }) {
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
