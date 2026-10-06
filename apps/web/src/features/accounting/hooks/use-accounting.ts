@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
   approveJournal,
@@ -48,6 +48,7 @@ import {
   listTaxCodes,
   getInvoiceDocumentSettings,
   updateInvoiceDocumentSettings,
+  previewInvoiceDocumentSettings,
   setDefaultOutputTaxCode,
   setTaxCodeActive,
 } from '../api/accounting-api';
@@ -862,6 +863,26 @@ export function useInvoiceDocumentSettings(): UseQueryResult<InvoiceDocumentSett
   return useQuery({
     queryKey: accountingKeys.invoiceDocumentSettings(),
     queryFn: getInvoiceDocumentSettings,
+  });
+}
+
+/**
+ * The sample invoice PDF for these settings. Keyed by the settings themselves, so going back to an
+ * earlier value reuses its render; the last PDF stays on screen while the next one renders.
+ */
+export function useInvoiceSettingsPreview(
+  body: UpdateInvoiceDocumentSettingsBody,
+  enabled = true,
+): UseQueryResult<Blob, Error> {
+  return useQuery({
+    queryKey: [...accountingKeys.invoiceDocumentSettings(), 'preview', JSON.stringify(body)],
+    // Typing on cancels a render nobody will see.
+    queryFn: ({ signal }) => previewInvoiceDocumentSettings(body, signal),
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+    gcTime: 60_000,
+    retry: false,
+    enabled,
   });
 }
 

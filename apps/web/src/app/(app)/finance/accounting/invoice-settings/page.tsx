@@ -2,7 +2,7 @@ import { InvoiceDocumentSettingsPanel } from '@/features/accounting/components/i
 
 export default function InvoiceSettingsPage() {
   return (
-    <div className="w-full max-w-3xl">
+    <div className="w-full max-w-7xl">
       <InvoiceDocumentSettingsPanel />
     </div>
   );
