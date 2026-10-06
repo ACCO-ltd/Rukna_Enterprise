@@ -77,7 +77,7 @@ describe('PurchaseDetailShell — money tabs follow the settlement gate', () => 
   it('a Project Manager (view:procurement only) gets no Funding / Settlement tab and no settlement read', () => {
     renderWithProviders(<PurchaseDetailShell projectId="p1" poId="po1" />, { permissions: ['view:procurement'] });
     expect(screen.queryByRole('button', { name: /^Funding/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Settlement$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /settlement$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Receiving/ })).toBeInTheDocument();
     expect(hooks.usePurchaseOrderSettlement).not.toHaveBeenCalled();
   });
@@ -87,6 +87,6 @@ describe('PurchaseDetailShell — money tabs follow the settlement gate', () => 
       permissions: ['view:procurement', 'view:commitment-ledger'],
     });
     expect(screen.getByRole('button', { name: /^Funding/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Settlement$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /settlement$/i })).toBeInTheDocument();
   });
 });

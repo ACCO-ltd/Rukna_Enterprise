@@ -27,14 +27,19 @@ export interface StatusCommand {
   reset: () => void;
 }
 
-/** The Status filter every setup list carries. Empty means the default, Active. */
+/**
+ * The Status filter every setup list carries. Empty means the default, Active — so the
+ * "no filter" option is labelled Active rather than the panel's generic "Any", which would sit
+ * beside "All" and read as the same choice.
+ */
 export function useStatusFilterField(): ListFilterField {
   const t = useTranslations('procurement.setup');
   return {
     key: 'status',
     type: 'select',
     label: t('status'),
-    options: (['ACTIVE', 'INACTIVE', 'ALL'] as const).map((value) => ({ value, label: t(`statusOption.${value}`) })),
+    anyLabel: t('statusOption.ACTIVE'),
+    options: (['INACTIVE', 'ALL'] as const).map((value) => ({ value, label: t(`statusOption.${value}`) })),
   };
 }
 
@@ -132,7 +137,7 @@ export function CatalogueListScreen<T extends { id: string; code: string; status
         searchPlaceholder={searchPlaceholder}
         resultLabel={countLabel}
         noMatchMessage={t('noMatches')}
-        pagination={{ defaultPageSize: 50 }}
+        pagination={{ defaultPageSize: 25 }}
         sortControl={!tree}
         filters={filterFields}
         filterValues={filterValues}

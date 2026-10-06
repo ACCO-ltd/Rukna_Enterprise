@@ -898,7 +898,7 @@ export function GrnDetail({ id }: { id: string }) {
 function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs font-medium text-muted-foreground">
         {label}
       </dt>
       <dd className="mt-1 truncate text-sm text-foreground">{value}</dd>

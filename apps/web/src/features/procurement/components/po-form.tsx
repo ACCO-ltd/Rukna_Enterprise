@@ -289,7 +289,7 @@ export function PoForm({
       </div>
 
       <div>
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">
           {tc('lines')}
         </h2>
         <PoLineEditor

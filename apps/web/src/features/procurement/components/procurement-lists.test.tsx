@@ -185,7 +185,7 @@ describe('MrList', () => {
     search.params = new URLSearchParams('projectId=p1');
     renderWithProviders(<MrList />);
 
-    expect((await screen.findAllByText('No requests match these filters')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Nothing matches these filters.')).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Clear filters' }).length).toBeGreaterThan(0);
     expect(screen.queryByText('No material requests yet')).not.toBeInTheDocument();
   });
@@ -244,13 +244,14 @@ describe('PoList', () => {
     expect(grid.getByText('Open')).toBeInTheDocument();
   });
 
-  it('shows "—" where a row has no project, delivery or total, and no revision at 1', async () => {
+  it('names an order with no project as overhead, shows "—" for no delivery or total, and no revision at 1', async () => {
     hooks.usePurchaseOrders.mockReturnValue(loaded([po({ id: '1' })]));
     renderWithProviders(<PoList />, { permissions: [MONEY] });
 
     const grid = await table();
     expect(grid.getByRole('link', { name: /PO-2026-0001/ })).not.toHaveTextContent('revision');
-    expect(grid.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+    expect(grid.getByText('ACCO overhead')).toBeInTheDocument();
+    expect(grid.getAllByText('—').length).toBeGreaterThanOrEqual(2);
     expect(grid.queryByText('$0.00')).not.toBeInTheDocument();
   });
 

@@ -62,6 +62,7 @@ export function MaterialsList() {
   const columns: GridColumn<Material>[] = [
     {
       key: 'code',
+      card: 'subtitle',
       header: tc('code'),
       sticky: true,
       sortable: true,
@@ -70,6 +71,7 @@ export function MaterialsList() {
     },
     {
       key: 'name',
+      card: 'title',
       header: tc('name'),
       sortable: true,
       plainValue: (material) => material.name,
@@ -77,12 +79,14 @@ export function MaterialsList() {
     },
     {
       key: 'baseUom',
+      card: 'meta',
       header: t('baseUom'),
       plainValue: (material) => material.baseUom?.symbol ?? material.baseUom?.code ?? '',
       render: (material) => <bdi>{material.baseUom?.symbol ?? material.baseUom?.code ?? tc('notAvailable')}</bdi>,
     },
     {
       key: 'materialCategory',
+      card: 'meta',
       header: t('materialCategory'),
       sortable: true,
       plainValue: (material) => material.materialCategory?.name ?? '',
@@ -101,6 +105,7 @@ export function MaterialsList() {
     },
     {
       key: 'status',
+      card: 'status',
       header: tc('status'),
       render: (material) => <ProcurementStatusBadge vocabulary="masterData" status={material.status} />,
     },

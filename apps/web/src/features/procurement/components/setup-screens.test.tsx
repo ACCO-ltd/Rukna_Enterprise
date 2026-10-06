@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { openSelect } from '@/test/choose-option';
 
 import type { Material, MaterialCategory, SpendCategory, UnitOfMeasure } from '../types';
 
@@ -127,9 +128,9 @@ describe('UomList', () => {
   it('renders the unit with its symbol', () => {
     renderWithProviders(<UomList />);
 
-    expect(screen.getByText('TON')).toBeInTheDocument();
-    expect(screen.getByText('Metric Ton')).toBeInTheDocument();
-    expect(screen.getByText('t')).toBeInTheDocument();
+    expect(screen.getAllByText('TON').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Metric Ton').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('t').length).toBeGreaterThan(0);
   });
 
   it('lists active units by default and no banner about the API', () => {
@@ -167,9 +168,9 @@ describe('MaterialsList', () => {
   it('renders a material with its base unit and both categories', () => {
     renderWithProviders(<MaterialsList />);
 
-    expect(screen.getByText('REBAR-12MM')).toBeInTheDocument();
-    expect(screen.getByText('12mm Deformed Steel Rebar')).toBeInTheDocument();
-    expect(screen.getByText('Direct Material')).toBeInTheDocument();
+    expect(screen.getAllByText('REBAR-12MM').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('12mm Deformed Steel Rebar').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Direct Material').length).toBeGreaterThan(0);
   });
 
   it('offers Status and both category filters in the one Filter panel', async () => {
@@ -181,6 +182,17 @@ describe('MaterialsList', () => {
     expect(within(panel).getByText('Material category')).toBeInTheDocument();
     expect(within(panel).getByText('Spend category')).toBeInTheDocument();
     expect(within(panel).getByText('Status')).toBeInTheDocument();
+  });
+
+  it('offers Active, Inactive and All in the status filter — no separate "Any"', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MaterialsList />);
+
+    await user.click(screen.getAllByRole('button', { name: /^Filter/ })[0]!);
+    const panel = await screen.findByRole('dialog');
+    await openSelect(user, within(panel).getByLabelText('Status'));
+    const options = screen.getAllByRole('option').map((o) => o.textContent?.trim());
+    expect(options).toEqual(['Active', 'Inactive', 'All']);
   });
 
   it('names the retire command Discontinue… for a material', async () => {
@@ -196,8 +208,8 @@ describe('MaterialCategoriesScreen', () => {
   it('renders a child category beneath its parent, indented', () => {
     renderWithProviders(<MaterialCategoriesScreen />);
 
-    expect(screen.getByText('Steel & Metal Products')).toBeInTheDocument();
-    expect(screen.getByText('Reinforcing Bar')).toBeInTheDocument();
+    expect(screen.getAllByText('Steel & Metal Products').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Reinforcing Bar').length).toBeGreaterThan(0);
 
     // The child row carries the depth marker; the root row does not.
     const rows = screen.getAllByRole('row');

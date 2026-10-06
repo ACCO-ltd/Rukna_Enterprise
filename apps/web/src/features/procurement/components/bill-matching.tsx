@@ -237,7 +237,7 @@ function ReconCell({
 }) {
   return (
     <div className={divider ? 'sm:border-s sm:border-border sm:ps-4 sm:ms-4' : undefined}>
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs font-medium text-muted-foreground">
         {label}
       </dt>
       <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{value}</dd>

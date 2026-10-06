@@ -73,6 +73,7 @@ export function CategoryTree({
   const columns: GridColumn<CategoryRow>[] = [
     {
       key: 'code',
+      card: 'subtitle',
       header: tc('code'),
       sticky: true,
       plainValue: (category) => category.code,
@@ -87,9 +88,10 @@ export function CategoryTree({
         </span>
       ),
     },
-    { key: 'name', header: tc('name'), plainValue: (category) => category.name, render: (category) => category.name },
+    { key: 'name', card: 'title', header: tc('name'), plainValue: (category) => category.name, render: (category) => category.name },
     {
       key: 'status',
+      card: 'status',
       header: tc('status'),
       render: (category) => <ProcurementStatusBadge vocabulary="masterData" status={category.status} />,
     },

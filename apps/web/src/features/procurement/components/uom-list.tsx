@@ -33,21 +33,24 @@ export function UomList() {
   const columns: GridColumn<UnitOfMeasure>[] = [
     {
       key: 'code',
+      card: 'subtitle',
       header: tc('code'),
       sticky: true,
       sortable: true,
       plainValue: (uom) => uom.code,
       render: (uom) => <span className="font-mono text-caption">{uom.code}</span>,
     },
-    { key: 'name', header: tc('name'), sortable: true, plainValue: (uom) => uom.name, render: (uom) => uom.name },
+    { key: 'name', card: 'title', header: tc('name'), sortable: true, plainValue: (uom) => uom.name, render: (uom) => uom.name },
     {
       key: 'symbol',
+      card: 'meta',
       header: t('symbol'),
       plainValue: (uom) => uom.symbol,
       render: (uom) => <bdi>{uom.symbol}</bdi>,
     },
     {
       key: 'status',
+      card: 'status',
       header: tc('status'),
       render: (uom) => <ProcurementStatusBadge vocabulary="masterData" status={uom.status} />,
     },

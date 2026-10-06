@@ -161,6 +161,8 @@ describe('MrForm', () => {
     await user.type(await screen.findByPlaceholderText('Search by name or code'), 'Crane hire');
     await user.click(screen.getByRole('option', { name: 'Add "Crane hire" as a one-off item' }));
     expect(lines().getByRole('combobox', { name: /Item/ })).toHaveTextContent('Crane hire');
+    // The list closes without returning focus; it moves on to the one-off's next field.
+    await waitFor(() => expect(lines().getByLabelText('Type')).toHaveFocus());
 
     await user.type(lines().getByLabelText(/Quantity/), '3');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
@@ -176,6 +178,16 @@ describe('MrForm', () => {
       requestScope: 'ORGANIZATION',
       lines: [{ lineType: 'SERVICE', description: 'Crane hire', uomCode: 'DAY', requestedQuantity: 3 }],
     });
+  });
+
+  it('moves focus to the new row after Add an item', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MrForm />, { permissions: [MONEY] });
+
+    await user.click(screen.getByRole('button', { name: 'Add an item' }));
+    const items = lines().getAllByRole('combobox', { name: /Item/ });
+    expect(items).toHaveLength(2);
+    await waitFor(() => expect(items[1]).toHaveFocus());
   });
 
   it('shows no prices or totals to a money-blind role', () => {

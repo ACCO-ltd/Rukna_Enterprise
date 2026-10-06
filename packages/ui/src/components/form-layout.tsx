@@ -189,6 +189,8 @@ export interface LineComboboxColumn<T, O> extends LineColumnBase {
   searchPlaceholder?: string;
   emptyLabel?: string;
   disabled?: (row: T, index: number) => boolean;
+  /** Extra classes on the floating list — a `min-w-*` so rows are not cut to a narrow column. */
+  panelClassName?: string;
 }
 
 export type LineColumn<T> = LineCellColumn<T> | LineComboboxColumn<T, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -265,6 +267,7 @@ function LineComboboxCell<T>({
       disabled={column.disabled?.(row, index)}
       invalid={invalid}
       aria-required={column.required || undefined}
+      panelClassName={column.panelClassName}
     />
   );
 }

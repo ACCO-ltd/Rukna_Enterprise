@@ -154,6 +154,15 @@ export function flattenSpendCategories(roots: readonly SpendCategory[]): SpendCa
 
 export const mrItemControlId = (column: string, index: number) => `mr-item-${index}-${column}`;
 
+/**
+ * Moves focus to a control once the row it belongs to has rendered: the new row's item after
+ * "Add an item", the row's type after "Add … as a one-off item" (the list closes without
+ * returning focus, which would otherwise drop to the page).
+ */
+function focusAfterRender(id: string) {
+  requestAnimationFrame(() => document.getElementById(id)?.focus());
+}
+
 interface MrItemsEditorProps {
   items: MrItemDraft[];
   onChange: (items: MrItemDraft[]) => void;
@@ -201,7 +210,10 @@ export function MrItemsEditor({
       key: 'item',
       header: tCol('item'),
       required: true,
-      width: 'minmax(0,2.4fr)',
+      // Wide enough that the trigger reads "Search materials" in full, not "Search mater…";
+      // the list itself opens wider than the column so names and codes are not cut.
+      width: 'minmax(11rem,2.4fr)',
+      panelClassName: 'min-w-72',
       controlId: (i) => mrItemControlId('item', i),
       options: activeMaterials,
       getOptionValue: (m) => m.id,
@@ -211,7 +223,10 @@ export function MrItemsEditor({
       value: (item) => item.material?.id ?? '',
       valueLabel: (item) => (item.material ? undefined : item.description || undefined),
       onPick: (item, i, material) => patch(i, pickMaterial(item, material)),
-      onCreate: (item, i, text) => patch(i, oneOffItem(item, text)),
+      onCreate: (item, i, text) => {
+        patch(i, oneOffItem(item, text));
+        focusAfterRender(mrItemControlId('type', i));
+      },
       createLabel: (text) => (text ? t('addOneOff', { text }) : t('addOneOffEmpty')),
       placeholder: t('itemPlaceholder'),
       searchPlaceholder: t('itemSearch'),
@@ -363,7 +378,10 @@ export function MrItemsEditor({
       cardTitle={(item, i) =>
         item.description ? t('lineTitleNamed', { n: i + 1, name: item.description }) : t('lineTitle', { n: i + 1 })
       }
-      onAdd={onAdd}
+      onAdd={() => {
+        onAdd();
+        focusAfterRender(mrItemControlId('item', items.length));
+      }}
       addLabel={t('addLine')}
       onRemove={items.length > 1 ? (index) => onChange(items.filter((_, i) => i !== index)) : undefined}
       removeLabel={(i) => t('removeLine', { n: i + 1 })}

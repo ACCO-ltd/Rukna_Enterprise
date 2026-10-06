@@ -126,7 +126,8 @@ export function PoList() {
       header: t('columns.project'),
       sortable: true,
       card: 'subtitle',
-      plainValue: (po) => po.project?.name ?? '',
+      // An order with no project-coded line is overhead, named as the request list names it.
+      plainValue: (po) => po.project?.name ?? tc('overhead'),
       render: (po) =>
         po.project ? (
           <span className="block min-w-0">
@@ -138,7 +139,7 @@ export function PoList() {
             ) : null}
           </span>
         ) : (
-          dash
+          <span className="text-muted-foreground">{tc('overhead')}</span>
         ),
     },
     {
