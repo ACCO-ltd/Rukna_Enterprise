@@ -30,6 +30,8 @@ export type { EmptyStateProps } from './components/empty-state';
 export { Progress, Meter, RingMeter } from './components/progress';
 export type { ProgressProps, MeterProps, MeterTone, RingMeterProps, ProgressTone } from './components/progress';
 export { CellPrimary } from './components/cell-primary';
+export { Panel, PanelHeader } from './components/panel';
+export type { PanelProps, PanelHeaderProps } from './components/panel';
 export type { CellPrimaryProps } from './components/cell-primary';
 export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './components/tooltip';
 export {

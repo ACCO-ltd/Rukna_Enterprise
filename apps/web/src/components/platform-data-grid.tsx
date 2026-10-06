@@ -525,6 +525,11 @@ export interface PlatformDataGridProps<T> {
    * handful of invoices — where a search box is furniture, not a tool.
    */
   toolbar?: boolean;
+  /**
+   * A heading row inside the list panel, above the rows — a dashboard table's title, its
+   * one-line summary and one link (`<PanelHeader>`).
+   */
+  header?: React.ReactNode;
 
   /**
    * The order the list is in before anyone touches a header.
@@ -596,6 +601,7 @@ export function PlatformDataGrid<T>({
   onClearFilters,
   sortControl = true,
   toolbar = true,
+  header,
   defaultSort,
   filters,
   filterValues,
@@ -1033,6 +1039,7 @@ export function PlatformDataGrid<T>({
           single container does better, and the count now reads as a property of the table
           under it instead of a sentence stranded above it. */}
       <section className="overflow-hidden rounded-panel border border-border bg-surface">
+        {header ? <div className="border-b border-border px-4 py-3">{header}</div> : null}
         {/* ── Money in view — only for lists that total a column ─────────── */}
         {footerSummary ? (
           <div className="border-b border-border px-4 py-3">
