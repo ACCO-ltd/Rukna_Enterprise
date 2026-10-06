@@ -100,12 +100,11 @@ export function dashboardAgingKey(bucket: AgingBucket): keyof DashboardReceivabl
 
 export interface FigureInputs {
   today: Date;
-  /** ACTIVE projects the caller sees, with their currency and recorded main-contract value (if any). */
-  activeProjects: ReadonlyArray<{
-    currency: string | null;
-    contractValue: Decimal | null;
-    contractCurrency: string | null;
-  }>;
+  /**
+   * ACTIVE projects the caller sees: the recorded main contract's value and currency, or — for a
+   * project with no contract — `contractValue: null` and the project's own currency.
+   */
+  activeProjects: ReadonlyArray<{ currency: string | null; contractValue: Decimal | null }>;
   /** POSTED client invoices with a balance. */
   openInvoices: ReadonlyArray<{
     currencyCode: string;
@@ -124,24 +123,21 @@ const DUE_SOON_DAYS = 7;
  * The headline money, one entry per currency (never added across currencies), in currency-code
  * order. Receivables use `computeReceivablePosition` — the Commercial Overview's formula — over the
  * open invoices of each currency; aging buckets each invoice by `agingBucket(daysPastDue)`.
- * Empty when nothing is active, owed or payable (the web hides the strip).
+ *
+ * "Never zeros": a currency gets an entry only when something is active (an ACTIVE project) or
+ * invoiced (an unpaid posted invoice) in it. Payables in a currency with neither are omitted —
+ * there is no strip to carry them. Empty when nothing qualifies (the web hides the strip).
  */
 export function buildFigures(input: FigureInputs): DashboardFigures[] {
   const { today, activeProjects, openInvoices, openBills } = input;
-  if (activeProjects.length === 0 && openInvoices.length === 0 && openBills.length === 0) return [];
 
   const currencies = new Set<string>();
-  for (const p of activeProjects) {
-    if (p.currency) currencies.add(p.currency);
-    if (p.contractValue && p.contractCurrency) currencies.add(p.contractCurrency);
-  }
+  for (const p of activeProjects) if (p.currency) currencies.add(p.currency);
   for (const inv of openInvoices) currencies.add(inv.currencyCode);
-  for (const bill of openBills) currencies.add(bill.currencyCode);
 
   return [...currencies].sort().map((currency) => {
-    const contractValue = activeProjects
-      .filter((p) => p.contractValue && p.contractCurrency === currency)
-      .reduce((sum, p) => sum.plus(p.contractValue!), ZERO);
+    const active = activeProjects.filter((p) => p.currency === currency);
+    const contractValue = active.reduce((sum, p) => sum.plus(p.contractValue ?? ZERO), ZERO);
     const invoices = openInvoices.filter((inv) => inv.currencyCode === currency);
     // Only the open-balance side of the position is read: credit notes and receipts are already
     // inside each invoice's `outstandingAmount` (the AR subledger value).
@@ -170,7 +166,7 @@ export function buildFigures(input: FigureInputs): DashboardFigures[] {
     return {
       currency,
       contractValueInProgress: contractValue.toFixed(2),
-      activeProjectCount: activeProjects.filter((p) => p.currency === currency).length,
+      activeProjectCount: active.length,
       receivables: {
         outstanding: position.outstanding.toFixed(2),
         unpaidInvoiceCount: invoices.length,

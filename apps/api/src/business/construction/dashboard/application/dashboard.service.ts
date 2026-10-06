@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   PERMISSIONS,
@@ -14,9 +14,9 @@ import {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { AccountingGuideService } from '../../../accounting/accounting-core/application/accounting-guide.service.js';
-import { installmentBillingBlocker } from '../../../accounting/accounts-receivable/domain/installment-billing-eligibility.js';
 import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import { daysPastDue } from '../../commercial/domain/commercial-workspace.policy.js';
+import { stagePrepareBlock } from '../../commercial/domain/stage-billing-eligibility.policy.js';
 import { CommercialPrismaRepository } from '../../commercial/infrastructure/commercial-prisma.repository.js';
 import { FinancePortfolioService } from '../../finance-portfolio/application/finance-portfolio.service.js';
 import { readyStageToBill } from '../../finance-portfolio/domain/finance-portfolio.policy.js';
@@ -39,17 +39,43 @@ import {
 import {
   countOrgProjectsByStatus,
   findBillMatchExceptions,
-  findBillsAwaitingApproval,
   findDashboardProjects,
   findMaterialRequestsAwaitingApproval,
   findOrganizationName,
   findReportsAwaitingReview,
   findSetupFacts,
+  summarizeBillsAwaitingApproval,
 } from '../infrastructure/dashboard.queries.js';
 
 /** How many of the caller's projects feed "Latest activity", and how many events it shows. */
 const ACTIVITY_PROJECTS = 10;
 const ACTIVITY_EVENTS = 5;
+
+/**
+ * Progress readings and milestone lists are per-project reads (about a dozen queries each), so
+ * they run for at most this many started projects (the most recently updated), this many at a
+ * time. Rows beyond the cap carry null percentages and raise no milestone to-dos.
+ */
+const PER_PROJECT_CAP = 25;
+const PER_PROJECT_CONCURRENCY = 4;
+
+/** `fn` over `items` with at most `limit` in flight; results in input order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 const isoDate = (d: Date | null | undefined): string | null =>
   d ? d.toISOString().slice(0, 10) : null;
@@ -65,7 +91,7 @@ const dec = (v: { toString(): string }) => new Decimal(v.toString());
  *   `computeReceivablePosition` and `agingBucket` (in `buildFigures`);
  * - payables: `findOpenPostedBills`, the portfolio's bills-to-pay rule;
  * - stages to bill: `findReadyToBillInstallments` + `readyStageToBill` (the portfolio's rule) +
- *   `installmentBillingBlocker(at: 'raise')`;
+ *   `stagePrepareBlock` (the prepare command's guard);
  * - Preparation readiness: `ProjectService.getStartReadinessMany` (`evaluateReadiness('start')`);
  * - planned / physical %: `ProgressService.getScheduleReading`; milestones ready to verify:
  *   `ProgrammeService.listMilestones`; activity: `ProjectService.getRecentActivityAcross`;
@@ -76,6 +102,8 @@ const dec = (v: { toString(): string }) => new Decimal(v.toString());
  */
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(
     private readonly tenancy: TenancyService,
     private readonly projectAccess: ProjectAccessService,
@@ -119,6 +147,13 @@ export class DashboardService {
       .slice(0, ACTIVITY_PROJECTS)
       .map((p) => ({ id: p.id, name: p.name }));
     const contracts = [...portfolio.contracts.values()];
+    const perProject = [...inProgress]
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(0, PER_PROJECT_CAP);
+    const warn = (what: string, projectId: string, err: unknown) =>
+      this.logger.warn(
+        `Dashboard: ${what} failed for project ${projectId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
 
     // ── Phase 2: every source, gated, in parallel ─────────────────────────────────────────
     const [
@@ -140,20 +175,18 @@ export class DashboardService {
         identity,
         drafts.map((p) => p.id),
       ),
-      Promise.all(
-        inProgress.map((p) =>
-          this.progress
-            .getScheduleReading(identity, p.id)
-            .catch(() => ({ plannedPercent: null, physicalPercent: null })),
-        ),
+      mapWithConcurrency(perProject, PER_PROJECT_CONCURRENCY, (p) =>
+        this.progress.getScheduleReading(identity, p.id).catch((err: unknown) => {
+          warn('schedule reading', p.id, err);
+          return { plannedPercent: null, physicalPercent: null };
+        }),
       ),
       can(PERMISSIONS.projectsManage)
-        ? Promise.all(
-            inProgress.map((p) =>
-              this.programme
-                .listMilestones(identity, p.id)
-                .catch((): ProgrammeMilestoneResponse[] => []),
-            ),
+        ? mapWithConcurrency(perProject, PER_PROJECT_CONCURRENCY, (p) =>
+            this.programme.listMilestones(identity, p.id).catch((err: unknown) => {
+              warn('milestone list', p.id, err);
+              return [] as ProgrammeMilestoneResponse[];
+            }),
           )
         : Promise.resolve([] as ProgrammeMilestoneResponse[][]),
       this.projects.getRecentActivityAcross(identity, activityProjects, ACTIVITY_EVENTS),
@@ -161,20 +194,21 @@ export class DashboardService {
         ? this.commercialRepo.findOpenPostedInvoices(prisma, orgId, scope)
         : Promise.resolve([]),
       moneyVisible ? findOpenPostedBills(prisma, orgId, scope) : Promise.resolve([]),
-      can(PERMISSIONS.materialRequestsApprove)
+      // The request page is behind `view:procurement` as well as the approve permission.
+      can(PERMISSIONS.materialRequestsApprove) && can(PERMISSIONS.procurementView)
         ? findMaterialRequestsAwaitingApproval(prisma, orgId, identity.userId, scope)
         : Promise.resolve([]),
       can(PERMISSIONS.payablesManage)
         ? findBillMatchExceptions(prisma, orgId, scope)
         : Promise.resolve([]),
       can(PERMISSIONS.payablesManage)
-        ? findBillsAwaitingApproval(prisma, orgId, identity.userId, scope)
-        : Promise.resolve([]),
+        ? summarizeBillsAwaitingApproval(prisma, orgId, scope)
+        : Promise.resolve(null),
       can(PERMISSIONS.progressApprove)
         ? findReportsAwaitingReview(prisma, orgId, projectIds)
         : Promise.resolve([]),
       can(PERMISSIONS.accountingView) || stage === 'NEW'
-        ? this.accountingGuide.getSetupCycle(identity)
+        ? this.accountingGuide.getSetupCycle(identity, portfolio.readiness)
         : Promise.resolve(null),
       stage === 'NEW' ? findSetupFacts(prisma, orgId) : Promise.resolve(null),
       can(PERMISSIONS.receivablesManage)
@@ -186,16 +220,18 @@ export class DashboardService {
     ]);
 
     // ── Projects ───────────────────────────────────────────────────────────────────────
-    const inProgressRows: DashboardProjectInProgress[] = inProgress.map((p, i) => {
+    const readingById = new Map(perProject.map((p, i) => [p.id, readings[i]]));
+    const inProgressRows: DashboardProjectInProgress[] = inProgress.map((p) => {
       const row = rowById.get(p.id);
+      const reading = readingById.get(p.id);
       return {
         id: p.id,
         code: p.code,
         name: p.name,
         clientName: row?.clientName ?? p.client?.name ?? p.clientName ?? null,
         status: p.status,
-        physicalPercent: readings[i]?.physicalPercent ?? null,
-        plannedPercent: readings[i]?.plannedPercent ?? null,
+        physicalPercent: reading?.physicalPercent ?? null,
+        plannedPercent: reading?.plannedPercent ?? null,
         currency: row?.currency ?? p.currency ?? null,
         contractValue: row?.contractValue ?? null,
         outstanding: row?.outstanding ?? null,
@@ -243,11 +279,10 @@ export class DashboardService {
             .filter((p) => p.status === 'ACTIVE')
             .map((p) => {
               const contract = portfolio.contracts.get(p.id);
-              return {
-                currency: rowById.get(p.id)?.currency ?? p.currency ?? null,
-                contractValue: contract ? dec(contract.contractValue) : null,
-                contractCurrency: contract?.currency ?? null,
-              };
+              // Counted and summed in one currency: the contract's, else the project's.
+              return contract
+                ? { currency: contract.currency, contractValue: dec(contract.contractValue) }
+                : { currency: p.currency ?? null, contractValue: null };
             }),
           openInvoices: openInvoices.map((inv) => ({
             currencyCode: inv.currencyCode,
@@ -319,24 +354,19 @@ export class DashboardService {
       });
     }
 
-    if (billsAwaiting.length > 0) {
-      const oldest = billsAwaiting[0]!;
-      const currencies = new Set(billsAwaiting.map((b) => b.currencyCode));
+    if (billsAwaiting) {
+      const { oldest, byCurrency } = billsAwaiting;
       // One sum only when every bill is in one currency — money is never added across currencies.
-      const single = moneyVisible && currencies.size === 1;
+      const single = moneyVisible && byCurrency.length === 1 ? byCurrency[0]! : null;
       todo.push({
         key: 'bills-awaiting-approval',
         kind: 'BILLS_AWAITING_APPROVAL',
         tone: TODO_TONE.BILLS_AWAITING_APPROVAL,
         // The bills list has no status filter in the URL yet; it opens on the full list.
         href: '/finance/accounting/bills',
-        amount: single
-          ? (billsAwaiting as Array<(typeof billsAwaiting)[number]>)
-              .reduce((sum, b) => sum.plus(dec(b.totalAmount)), new Decimal(0))
-              .toFixed(2)
-          : null,
-        currency: single ? oldest.currencyCode : null,
-        count: billsAwaiting.length,
+        amount: single ? dec(single.total ?? 0).toFixed(2) : null,
+        currency: single ? single.currency : null,
+        count: billsAwaiting.count,
         oldestBillNumber: oldest.billNumber,
         oldestSupplierName: oldest.supplier?.name ?? null,
         oldestSubmittedAt: oldest.updatedAt.toISOString(),
@@ -371,7 +401,7 @@ export class DashboardService {
       });
     }
 
-    inProgress.forEach((p, i) => {
+    perProject.forEach((p, i) => {
       for (const m of milestones[i] ?? []) {
         if (!m.readyToVerify) continue;
         todo.push({
@@ -454,8 +484,9 @@ export class DashboardService {
 
   /**
    * STAGE_READY_TO_BILL rows: a stage marked ready whose invoice is not issued (`readyStageToBill`,
-   * the portfolio's rule) AND that `installmentBillingBlocker(at: 'raise')` clears — so the row
-   * never points at a stage the invoice generator would refuse.
+   * the portfolio's rule) AND that the prepare command's own guard (`stagePrepareBlock`: contract
+   * ACTIVE, then CONST-COM-011) clears — so the row never points at a stage the command would
+   * refuse; a reopened (non-ACTIVE) contract produces none.
    */
   private async stagesToBill(
     identity: RequestIdentity,
@@ -470,16 +501,18 @@ export class DashboardService {
       if (!contract) return [];
       const toBill = readyStageToBill(stage, contract);
       if (!toBill) return [];
-      const blocker = installmentBillingBlocker(
-        {
+      const block = stagePrepareBlock({
+        contractStatus: contract.status,
+        installment: {
           triggerType: stage.triggerType,
           programmeMilestoneId: stage.programmeMilestoneId,
           programmeMilestone: stage.programmeMilestone,
-          contractStatus: contract.status,
         },
-        { at: 'raise' },
-      );
-      return blocker === null ? [{ stage, contract, toBill }] : [];
+        invoice: stage.clientInvoice,
+      });
+      // A prepared draft trips STAGE_ALREADY_INVOICED; it still needs issuing, so it stays a row.
+      const clear = block === null || (block === 'STAGE_ALREADY_INVOICED' && toBill.draftPrepared);
+      return clear ? [{ stage, contract, toBill }] : [];
     });
     if (candidates.length === 0) return [];
 

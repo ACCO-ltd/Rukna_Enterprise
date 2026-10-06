@@ -2939,9 +2939,9 @@ capped at 5.
 | `kind` | Tone | Shown when the caller holds | `href` |
 |---|---|---|---|
 | `INVOICE_OVERDUE` | danger | money visible | `/finance/accounting/invoices/:id` (most days late first) |
-| `MATERIAL_REQUEST_AWAITING_APPROVAL` | attention | `approve:material-request` (not their own) | `/procurement/requests/:id` (earliest need first) |
+| `MATERIAL_REQUEST_AWAITING_APPROVAL` | attention | `approve:material-request` + `view:procurement` (not their own) | `/procurement/requests/:id` (earliest need first) |
 | `BILL_MATCH_EXCEPTION` | attention | `manage:payable` | `/finance/accounting/bills/:id` |
-| `BILLS_AWAITING_APPROVAL` | attention | `manage:payable` (bills they did not enter) | `/finance/accounting/bills` (one aggregated row) |
+| `BILLS_AWAITING_APPROVAL` | attention | `manage:payable` (all SUBMITTED bills) | `/finance/accounting/bills` (one aggregated row) |
 | `ACCOUNTING_SETUP_INCOMPLETE` | attention | `view:accounting`, setup cycle not done | `/finance/accounting/guide` |
 | `REPORTS_TO_REVIEW` | neutral | `approve:progress` | `/projects/:id/progress/review` (per project) |
 | `MILESTONE_READY_TO_VERIFY` | neutral | `manage:project` | `/projects/:id/progress/review` |
@@ -2950,9 +2950,11 @@ capped at 5.
 | `PROJECTS_WITHOUT_CONTRACT` | neutral | `view:contract` | `/projects` (count of DRAFT client-contract projects) |
 
 `STAGE_READY_TO_BILL` = a stage marked ready whose invoice is not issued (the portfolio's rule)
-**and** that `installmentBillingBlocker(at: 'raise')` clears. `amount` is null when money is hidden.
+**and** that the prepare guard `stagePrepareBlock` clears (contract ACTIVE, then CONST-COM-011;
+`STAGE_ALREADY_INVOICED` ignored for a prepared draft). `amount` is null when money is hidden.
 
-**Figures** (one entry per currency; `[]` when nothing is active, owed or payable):
+**Figures** (one entry per currency in which something is active or invoiced; `[]` when none —
+never a strip of zeros, so payables in a currency with neither are omitted):
 `contractValueInProgress` = Σ recorded main-contract value of ACTIVE projects (never the
 estimate); receivables over POSTED client invoices with a balance (`ALL` → the whole organisation,
 including invoices tied to no project; `MINE` → their projects), aging by whole UTC days past due
@@ -2961,7 +2963,8 @@ with 61–90 and 90+ folded into `over60`; payables over POSTED supplier bills w
 
 **Projects**: `inProgress` (ACTIVE, PRACTICAL_COMPLETION, CLOSEOUT) carry the Finance portfolio
 row's contract value / outstanding / overdue and the schedule-variance `plannedPercent` /
-`physicalPercent` (each null when there is no plan / no work package). `inPreparation` (DRAFT)
+`physicalPercent` (each null when there is no plan / no work package; read for the 25 most
+recently updated started projects only, 4 at a time — rows beyond get null). `inPreparation` (DRAFT)
 carry Start readiness `{done, total}`, `nextStep` (first open condition in
 `PREPARATION_STEP_ORDER`, owner from `PREPARATION_STEP_OWNER`) and `value` (executed main contract
 → `CONTRACT`, else the creation estimate → `ESTIMATE`, else null; null when money is hidden).

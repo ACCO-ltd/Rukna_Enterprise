@@ -248,6 +248,14 @@ export class FinancePortfolioService {
       };
     };
 
-    return { rows: allRows, contracts, distinctBills, moneyVisible, marginVisible, asOf: today.toISOString() };
+    return {
+      rows: allRows,
+      contracts,
+      readiness,
+      distinctBills,
+      moneyVisible,
+      marginVisible,
+      asOf: today.toISOString(),
+    };
   }
 }

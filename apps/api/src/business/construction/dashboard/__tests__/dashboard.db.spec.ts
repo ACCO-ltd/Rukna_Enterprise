@@ -50,7 +50,10 @@ describe('DashboardService — GET /dashboard', () => {
   let projB: string; // ACTIVE, no contract
   let projP: string; // the Preparation org's DRAFT project
   let invLate70: string;
+  let invB: string;
   let advanceStage: string;
+  let draftStage: string;
+  let reopenedStage: string;
 
   const finance = (orgId: string): RequestIdentity => ({
     userId,
@@ -66,9 +69,32 @@ describe('DashboardService — GET /dashboard', () => {
       PERMISSIONS.contractsView,
       PERMISSIONS.projectsManage,
       PERMISSIONS.materialRequestsApprove,
+      PERMISSIONS.procurementView,
       PERMISSIONS.clientsCreate,
     ],
   });
+  // Member-scoped (projA only) with the payable / receivable work permissions but no money tier.
+  const scopedClerk: RequestIdentity = {
+    userId,
+    activeOrganizationId: runOrg,
+    tenantSlug: runOrg,
+    roles: ['Project Manager'],
+    permissions: [
+      PERMISSIONS.payablesManage,
+      PERMISSIONS.receivablesManage,
+      PERMISSIONS.contractsView,
+    ],
+  };
+  // Member-scoped (projA only) but money-visible — MINE-scope figures.
+  const scopedFinance: RequestIdentity = {
+    ...scopedClerk,
+    permissions: [
+      PERMISSIONS.financialPositionView,
+      PERMISSIONS.boqViewMargin,
+      PERMISSIONS.payablesManage,
+      PERMISSIONS.receivablesManage,
+    ],
+  };
   // Money-blind, member-scoped (sees projA only) — the Project Manager shape.
   const pm: RequestIdentity = {
     userId,
@@ -254,7 +280,77 @@ describe('DashboardService — GET /dashboard', () => {
       },
     });
 
+    // Stage 3: a time-based stage with its draft invoice already prepared → still to bill (issue it).
+    draftStage = (
+      await prisma.contractPaymentInstallment.create({
+        data: {
+          contractId: contract.id,
+          name: 'Handover',
+          sortOrder: 3,
+          percentage: new Decimal('0.1'),
+          triggerType: 'TIME_BASED',
+          readyToBillAt: new Date('2026-09-01'),
+        },
+      })
+    ).id;
+    await prisma.clientInvoice.create({
+      data: {
+        organizationId: runOrg,
+        clientId: runClient,
+        projectId: projA,
+        contractId: contract.id,
+        sourceInstallmentId: draftStage,
+        invoiceDate: new Date('2026-09-02'),
+        dueDate: new Date('2026-10-02'),
+        subtotal: new Decimal(50_000),
+        vatAmount: new Decimal(0),
+        totalAmount: new Decimal(50_000),
+        outstandingAmount: new Decimal(50_000),
+        currencyCode: 'USD',
+        billingAddressSnapshot: {},
+        postingStatus: 'NOT_POSTED',
+        documentStatus: 'DRAFT',
+        createdBy: userId,
+      },
+    });
+
+    // projB: a REOPENED main contract (ACTIVE → DRAFT) with a ready advance → never a to-bill row.
+    const boqB = await prisma.boq.create({
+      data: { organizationId: runOrg, projectId: projB, currency: 'USD' },
+    });
+    const verB = await prisma.boqVersion.create({
+      data: { boqId: boqB.id, versionNumber: 1, status: 'BASELINED', createdBy: userId },
+    });
+    const contractB = await prisma.contract.create({
+      data: {
+        organizationId: runOrg,
+        projectId: projB,
+        clientId: runClient,
+        boqVersionId: verB.id,
+        contractNumber: `CT-B-${suffix}`,
+        contractValue: new Decimal(100_000),
+        baseContractValue: new Decimal(100_000),
+        currency: 'USD',
+        status: 'DRAFT',
+        billingModel: 'MILESTONE' as never,
+        createdBy: userId,
+      },
+    });
+    reopenedStage = (
+      await prisma.contractPaymentInstallment.create({
+        data: {
+          contractId: contractB.id,
+          name: 'Advance B',
+          sortOrder: 1,
+          percentage: new Decimal('0.4'),
+          triggerType: 'ADVANCE',
+          readyToBillAt: new Date('2026-09-01'),
+        },
+      })
+    ).id;
+
     const now = Date.now();
+    invB = await makeInvoice(runOrg, runClient, projB, 3_000, 3_000, new Date(now - 5 * DAY)); // 1–30, projB
     await makeInvoice(runOrg, runClient, projA, 150_000, 90_000, new Date(now - 40 * DAY)); // 31–60
     invLate70 = await makeInvoice(
       runOrg,
@@ -287,6 +383,33 @@ describe('DashboardService — GET /dashboard', () => {
         createdBy: otherUser,
       },
     });
+    // projB: a posted bill (payables) and two bills awaiting approval — one per project; the
+    // projA one was entered by the caller (still in the queue: approve has no creator rule).
+    for (const [tag, projectId, amount, posted, createdBy] of [
+      ['PB', projB, 700, true, otherUser],
+      ['SA', projA, 2_000, false, userId],
+      ['SB', projB, 3_000, false, otherUser],
+    ] as const) {
+      await prisma.supplierBill.create({
+        data: {
+          organizationId: runOrg,
+          supplierId,
+          supplierInvoiceNumber: `SI-${tag}-${suffix}`,
+          supplierInvoiceNumberNorm: `SI${tag}${suffix}`,
+          billDate: new Date('2026-09-20'),
+          dueDate: new Date(now + 3 * DAY),
+          currencyCode: 'USD',
+          projectId,
+          subtotal: new Decimal(amount),
+          vatAmount: new Decimal(0),
+          totalAmount: new Decimal(amount),
+          outstandingAmount: new Decimal(amount),
+          documentStatus: posted ? 'APPROVED' : 'SUBMITTED',
+          postingStatus: posted ? 'POSTED' : 'NOT_POSTED',
+          createdBy,
+        },
+      });
+    }
 
     for (const [n, requestedBy] of [
       ['1', otherUser],
@@ -427,31 +550,32 @@ describe('DashboardService — GET /dashboard', () => {
     expect(runFinance.figures).toHaveLength(1);
     const usd = runFinance.figures![0]!;
     expect(usd.currency).toBe('USD');
-    expect(usd.contractValueInProgress).toBe('500000.00');
+    // projA's ACTIVE contract + projB's reopened (DRAFT) one: the portfolio's main-contract rule.
+    expect(usd.contractValueInProgress).toBe('600000.00');
     expect(usd.activeProjectCount).toBe(2);
     expect(usd.receivables).toEqual({
-      outstanding: '125000.00',
-      unpaidInvoiceCount: 4,
-      overdue: '105000.00',
-      overdueInvoiceCount: 3,
+      outstanding: '128000.00',
+      unpaidInvoiceCount: 5,
+      overdue: '108000.00',
+      overdueInvoiceCount: 4,
       oldestDaysLate: 70,
       aging: {
         notDue: '20000.00',
-        days1To30: '5000.00',
+        days1To30: '8000.00',
         days31To60: '90000.00',
         over60: '10000.00',
       },
     });
     expect(usd.payables).toEqual({
-      outstanding: '1000.00',
-      unpaidBillCount: 1,
-      dueThisWeek: '1000.00',
+      outstanding: '1700.00',
+      unpaidBillCount: 2,
+      dueThisWeek: '1700.00',
     });
   });
 
   it('DSH-4: overdue invoices lead the to-do list, most days late first, linked to the invoice', () => {
     const overdue = runFinance.todo.filter((t) => t.kind === 'INVOICE_OVERDUE');
-    expect(overdue).toHaveLength(3);
+    expect(overdue).toHaveLength(4);
     expect(runFinance.todo[0]).toMatchObject({
       kind: 'INVOICE_OVERDUE',
       tone: 'danger',
@@ -462,7 +586,7 @@ describe('DashboardService — GET /dashboard', () => {
       href: `/finance/accounting/invoices/${invLate70}`,
     });
     expect(overdue.map((t) => (t.kind === 'INVOICE_OVERDUE' ? t.daysLate : 0))).toEqual([
-      70, 40, 10,
+      70, 40, 10, 5,
     ]);
     const tones = runFinance.todo.map((t) => t.tone);
     const rank = { danger: 0, attention: 1, neutral: 2 } as const;
@@ -478,6 +602,8 @@ describe('DashboardService — GET /dashboard', () => {
       requiredByDate: '2026-10-10',
     });
 
+    // The prepare guard (`stagePrepareBlock`) decides: the unlinked work stage and projB's
+    // reopened contract give no row; a prepared draft stays a row (it needs issuing).
     const stages = runFinance.todo.filter((t) => t.kind === 'STAGE_READY_TO_BILL');
     expect(stages).toEqual([
       expect.objectContaining({
@@ -489,7 +615,22 @@ describe('DashboardService — GET /dashboard', () => {
         draftPrepared: false,
         href: `/finance/projects/${projA}/billing`,
       }),
+      expect.objectContaining({
+        key: `stage-ready:${draftStage}`,
+        stageNumber: 3,
+        amount: '50000.00',
+        draftPrepared: true,
+      }),
     ]);
+    expect(JSON.stringify(runFinance.todo)).not.toContain(reopenedStage);
+
+    // Bills awaiting approval: one aggregated row, the caller's own bill included.
+    expect(runFinance.todo.find((t) => t.kind === 'BILLS_AWAITING_APPROVAL')).toMatchObject({
+      count: 2,
+      amount: '5000.00',
+      currency: 'USD',
+      href: '/finance/accounting/bills',
+    });
     // The accounting setup cycle is not finished (stubbed readiness) → one attention row.
     expect(runFinance.todo.find((t) => t.kind === 'ACCOUNTING_SETUP_INCOMPLETE')).toMatchObject({
       href: '/finance/accounting/guide',
@@ -509,6 +650,8 @@ describe('DashboardService — GET /dashboard', () => {
     });
     expect(runPm.projects.statusCounts).toEqual({ ACTIVE: 1 });
     expect(runPm.todo.some((t) => t.kind === 'INVOICE_OVERDUE')).toBe(false);
+    // approve:material-request without view:procurement (the request page's gate) → no row.
+    expect(runPm.todo.some((t) => t.kind === 'MATERIAL_REQUEST_AWAITING_APPROVAL')).toBe(false);
     expect(runPm.todo.every((t) => t.amount === null)).toBe(true);
     expect(runPm.todo.find((t) => t.kind === 'REPORTS_TO_REVIEW')).toMatchObject({
       count: 1,
@@ -531,6 +674,50 @@ describe('DashboardService — GET /dashboard', () => {
     expect(runPm.activity.map((e) => e.id)).toEqual(
       [6, 4, 2, 0].map((i) => `dsh-evt-${suffix}-${i}`),
     );
+  });
+
+  it('DSH-9: a member-scoped clerk with payable/receivable work but no money tier sees no amounts and nothing of other projects', async () => {
+    const res = await dashboard.get(scopedClerk);
+    expect(res.moneyVisible).toBe(false);
+    expect(res.projectScope).toBe('MINE');
+    expect(res.figures).toBeNull();
+    expect(res.todo.every((t) => t.amount === null && t.currency === null)).toBe(true);
+    expect(res.todo.some((t) => t.kind === 'INVOICE_OVERDUE')).toBe(false);
+    expect(res.todo.find((t) => t.kind === 'BILLS_AWAITING_APPROVAL')).toMatchObject({ count: 1 });
+    expect(res.todo.filter((t) => t.kind === 'STAGE_READY_TO_BILL').map((t) => t.key)).toEqual([
+      `stage-ready:${advanceStage}`,
+      `stage-ready:${draftStage}`,
+    ]);
+    const json = JSON.stringify(res);
+    expect(json).not.toContain(projB);
+    expect(json).not.toMatch(/"-?\d+\.\d{2}"/);
+  });
+
+  it('DSH-10: MINE scope — invoices and bills on a non-member project (or none) are excluded', async () => {
+    const res = await dashboard.get(scopedFinance);
+    expect(res.moneyVisible).toBe(true);
+    expect(res.projectScope).toBe('MINE');
+    const usd = res.figures![0]!;
+    expect(usd.contractValueInProgress).toBe('500000.00');
+    expect(usd.activeProjectCount).toBe(1);
+    expect(usd.receivables).toMatchObject({
+      outstanding: '120000.00',
+      unpaidInvoiceCount: 3,
+      overdue: '100000.00',
+      overdueInvoiceCount: 2,
+    });
+    expect(usd.payables).toEqual({
+      outstanding: '1000.00',
+      unpaidBillCount: 1,
+      dueThisWeek: '1000.00',
+    });
+    const overdue = res.todo.filter((t) => t.kind === 'INVOICE_OVERDUE');
+    expect(overdue.map((t) => (t.kind === 'INVOICE_OVERDUE' ? t.daysLate : 0))).toEqual([70, 40]);
+    expect(JSON.stringify(res.todo)).not.toContain(invB);
+    expect(res.todo.find((t) => t.kind === 'BILLS_AWAITING_APPROVAL')).toMatchObject({
+      count: 1,
+      amount: '2000.00',
+    });
   });
 
   it('DSH-7: Preparation — readiness, next step in checklist order, the estimate as value', async () => {

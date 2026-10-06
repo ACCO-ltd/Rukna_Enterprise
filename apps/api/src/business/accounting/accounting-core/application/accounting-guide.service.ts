@@ -72,12 +72,16 @@ export class AccountingGuideService {
 
   /**
    * Only the first-time setup cycle — what the Dashboard (`GET /dashboard`) reads for its
-   * "accounting setup" to-do and setup step, so it says exactly what the guide says.
+   * "accounting setup" to-do and setup step, so it says exactly what the guide says. A caller that
+   * already holds this request's readiness (`AccountingReadinessService.getReadiness`) passes it in.
    */
-  async getSetupCycle(identity: RequestIdentity): Promise<{ ready: boolean; cycle: GuideCycle }> {
+  async getSetupCycle(
+    identity: RequestIdentity,
+    known?: { ready: boolean; blockers: ReadonlyArray<{ code: string }> },
+  ): Promise<{ ready: boolean; cycle: GuideCycle }> {
     const can = (perm: string) =>
       identity.permissions.includes('*') || identity.permissions.includes(perm);
-    const readiness = await this.readiness.getReadiness(identity);
+    const readiness = known ?? (await this.readiness.getReadiness(identity));
     const cycle = await this.loadSetup(this.tenancy.getClient(), identity.activeOrganizationId, readiness, can);
     return { ready: readiness.ready, cycle };
   }

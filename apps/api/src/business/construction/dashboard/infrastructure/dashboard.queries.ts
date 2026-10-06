@@ -110,36 +110,42 @@ export function findBillMatchExceptions(
 }
 
 /**
- * SUBMITTED supplier bills the caller did not enter. A bill records who entered it (`createdBy`)
- * but not who pressed Submit, and the clerk who enters a bill is the one who submits it — the same
- * person the reject rule (`SupplierBillService.reject`) keeps away from deciding on it. The last
- * update of a SUBMITTED bill is its submission (a submitted bill cannot be edited; auto-match runs
- * in the same request), so `updatedAt` stands for "submitted at".
+ * SUBMITTED supplier bills — the approval queue — as a count, a total per currency and the oldest
+ * bill, in two bounded queries (never the whole list). No creator exclusion: `SupplierBillService.approve`
+ * has no creator rule, so the queue is the module's. A SUBMITTED bill cannot be edited (its last
+ * update is the submission; auto-match runs in the same request), so `updatedAt` stands for
+ * "submitted at".
  */
-export function findBillsAwaitingApproval(
+export async function summarizeBillsAwaitingApproval(
   prisma: TenantPrisma,
   organizationId: string,
-  callerUserId: string,
   projectIds: string[] | null,
 ) {
-  if (projectIds !== null && projectIds.length === 0) return Promise.resolve([]);
-  return prisma.supplierBill.findMany({
-    where: {
-      organizationId,
-      documentStatus: 'SUBMITTED',
-      createdBy: { not: callerUserId },
-      ...(projectIds !== null ? supplierBillProjectWhere({ in: projectIds }) : {}),
-    },
-    select: {
-      id: true,
-      billNumber: true,
-      currencyCode: true,
-      totalAmount: true,
-      updatedAt: true,
-      supplier: { select: { name: true } },
-    },
-    orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
-  });
+  if (projectIds !== null && projectIds.length === 0) return null;
+  const where = {
+    organizationId,
+    documentStatus: 'SUBMITTED' as const,
+    ...(projectIds !== null ? supplierBillProjectWhere({ in: projectIds }) : {}),
+  };
+  const [byCurrency, oldest] = await Promise.all([
+    prisma.supplierBill.groupBy({
+      by: ['currencyCode'],
+      where,
+      _count: { _all: true },
+      _sum: { totalAmount: true },
+    }),
+    prisma.supplierBill.findFirst({
+      where,
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      select: { billNumber: true, updatedAt: true, supplier: { select: { name: true } } },
+    }),
+  ]);
+  if (!oldest) return null;
+  return {
+    count: byCurrency.reduce((n, g) => n + g._count._all, 0),
+    byCurrency: byCurrency.map((g) => ({ currency: g.currencyCode, total: g._sum.totalAmount })),
+    oldest,
+  };
 }
 
 /** SUBMITTED daily reports per project — count and oldest report date — in one grouped query. */

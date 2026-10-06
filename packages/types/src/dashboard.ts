@@ -66,7 +66,7 @@ export interface DashboardTodoBillMatchException extends DashboardTodoBase {
   supplierName: string | null;
 }
 
-/** Supplier bills waiting for approval that the caller may approve (not their own). */
+/** Supplier bills waiting for approval (SUBMITTED), for a caller who may approve them. */
 export interface DashboardTodoBillsAwaitingApproval extends DashboardTodoBase {
   kind: 'BILLS_AWAITING_APPROVAL';
   count: number;
@@ -141,7 +141,10 @@ export interface DashboardReceivablesAging {
 
 /**
  * The headline money, one entry per currency (money is never added across currencies). Only for
- * callers who see money, over the projects they may see.
+ * callers who see money, over the projects they may see. A currency gets an entry only when
+ * something is active (an ACTIVE project, counted in its contract's currency) or invoiced (an
+ * unpaid posted invoice) in it — never a strip of zeros. Payables in a currency with no entry are
+ * therefore not shown here.
  */
 export interface DashboardFigures {
   currency: string;

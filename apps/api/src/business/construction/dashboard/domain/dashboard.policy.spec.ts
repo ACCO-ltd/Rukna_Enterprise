@@ -97,9 +97,9 @@ describe('buildFigures', () => {
     const figures = buildFigures({
       today: TODAY,
       activeProjects: [
-        { currency: 'USD', contractValue: d(1000), contractCurrency: 'USD' },
-        { currency: 'USD', contractValue: null, contractCurrency: null }, // no recorded contract
-        { currency: 'SOS', contractValue: d(5), contractCurrency: 'SOS' },
+        { currency: 'USD', contractValue: d(1000) },
+        { currency: 'USD', contractValue: null }, // no recorded contract: counted, adds nothing
+        { currency: 'SOS', contractValue: d(5) },
       ],
       openInvoices: [
         {
@@ -146,6 +146,46 @@ describe('buildFigures', () => {
     expect(sos.receivables.oldestDaysLate).toBeNull();
     expect(sos.receivables.aging.notDue).toBe('7.00');
     expect(sos.payables).toEqual({ outstanding: '0.00', unpaidBillCount: 0, dueThisWeek: '0.00' });
+  });
+
+  it('never zeros: no entry for a currency with nothing active or invoiced (payables-only omitted)', () => {
+    const bill = { outstandingAmount: d(50), dueDate: daysAgo(1) };
+    expect(
+      buildFigures({
+        today: TODAY,
+        activeProjects: [],
+        openInvoices: [],
+        openBills: [{ currencyCode: 'USD', ...bill }],
+      }),
+    ).toEqual([]);
+    const figures = buildFigures({
+      today: TODAY,
+      activeProjects: [{ currency: 'USD', contractValue: null }],
+      openInvoices: [],
+      openBills: [
+        { currencyCode: 'USD', ...bill },
+        { currencyCode: 'EUR', ...bill },
+      ],
+    });
+    expect(figures.map((f) => [f.currency, f.activeProjectCount, f.payables.outstanding])).toEqual([
+      ['USD', 1, '50.00'],
+    ]);
+  });
+
+  it('a project is counted in the currency its contract value is summed in', () => {
+    const figures = buildFigures({
+      today: TODAY,
+      activeProjects: [{ currency: 'SOS', contractValue: d(9) }], // project in USD, contract in SOS
+      openInvoices: [],
+      openBills: [],
+    });
+    expect(figures).toEqual([
+      expect.objectContaining({
+        currency: 'SOS',
+        activeProjectCount: 1,
+        contractValueInProgress: '9.00',
+      }),
+    ]);
   });
 });
 
