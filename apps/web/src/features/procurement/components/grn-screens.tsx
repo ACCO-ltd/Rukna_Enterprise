@@ -60,6 +60,7 @@ import type { GoodsReceipt, GoodsReceiptStatus } from '../types';
 import {
   GrnLineEditor,
   acceptedValueMinor,
+  anyOverStillDue,
   grnLineControlId,
   grnLineErrors,
   grnLinesFromReceivable,
@@ -301,9 +302,10 @@ function isCreatorCannotReceive(error: unknown): boolean {
  * different and posts. "Post receipt" confirms first (posted receipts can't be edited), then
  * creates the receipt and posts it as one action (D5):
  *
- *   create → DRAFT → post → POSTED. If the server routed an out-of-tolerance over-receipt to
- *   EXCEPTION_PENDING (A1) the receipt is recorded and held, not forced through — we open its
- *   detail, where the exception lives. A create that succeeded is never repeated on a retry
+ *   create → DRAFT → post → POSTED. An over-receipt beyond tolerance is flagged
+ *   (`overReceiptFlag`) and posts like any other receipt. Should a receipt ever come back
+ *   EXCEPTION_PENDING (A1's hold, not produced by the server today) it is not forced through —
+ *   we open its detail, where the exception lives. A create that succeeded is never repeated on a retry
  *   after the post failed (`createdIdRef`).
  *
  * Segregation of duties is the server's: the receivable list says whether this viewer may
@@ -436,7 +438,8 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
         createdIdRef.current = grn.id;
       }
 
-      // Over-receipt beyond tolerance (A1): recorded and held — never force a post.
+      // A held receipt (A1) is never forced through. The server does not hold over-receipts
+      // today — it flags them and lets them post — but if it ever does, respect the hold.
       if (grn.status === 'EXCEPTION_PENDING') {
         router.push(`/procurement/grn/${grn.id}`);
         return;
@@ -608,7 +611,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
       {confirming ? (
         <ConfirmActionDialog
           title={t('confirmTitle')}
-          description={t('confirmBody')}
+          description={
+            lines && anyOverStillDue(submittableGrnLines(lines))
+              ? `${t('confirmBody')} ${t('confirmOverReceipt')}`
+              : t('confirmBody')
+          }
           confirmLabel={t('post')}
           isPending={busy}
           onConfirm={() => void runReceive()}
@@ -743,6 +750,10 @@ export function GrnDetail({ id }: { id: string }) {
 
       {receipt.status === 'POSTED' ? (
         <Alert variant="info" messages={[t('postedNotice')]} />
+      ) : null}
+
+      {receipt.overReceiptFlag ? (
+        <Alert variant="warning" title={t('overReceiptTitle')} messages={[t('overReceiptBody')]} />
       ) : null}
 
       <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-4">

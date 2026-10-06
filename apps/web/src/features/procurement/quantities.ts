@@ -170,7 +170,10 @@ export function overReceiptPercent(
   return ((totalAfter - orderedMinor) / orderedMinor) * 100;
 }
 
-/** True when this line would likely hold the whole receipt at `EXCEPTION_PENDING`. */
+/**
+ * True when this line likely exceeds the server's over-receipt tolerance, so the receipt would
+ * carry `overReceiptFlag`. The server records and posts it regardless — it does not hold it.
+ */
 export function exceedsOverReceiptTolerance(
   orderedMinor: number,
   previouslyReceivedMinor: number,
@@ -185,10 +188,10 @@ export function exceedsOverReceiptTolerance(
  * over-receipt display. Three outcomes, one per D5/A1 case:
  *
  *  - `within`   — received ≤ remaining, the normal path, nothing to flag.
- *  - `tolerated`— received > remaining but within the assumed tolerance, so the server
- *                 will likely still accept and post it: show an inline over-receipt flag.
- *  - `exception`— received exceeds the assumed tolerance, so the server will route the
- *                 whole receipt to EXCEPTION_PENDING: warn that it will be held for review.
+ *  - `tolerated`— received > remaining but within the assumed tolerance: recorded, not flagged.
+ *  - `exception`— received likely exceeds the tolerance: the server sets `overReceiptFlag` on
+ *                 the receipt. It still posts; the server does not hold an over-receipt
+ *                 (no path sets EXCEPTION_PENDING today), so the UI must not say it will.
  *
  * `overByMinor` is the amount the delivery exceeds the remaining balance by — used to say
  * "exceeds remaining by N" without asserting a percentage the client cannot know (P9). It

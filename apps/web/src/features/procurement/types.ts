@@ -454,6 +454,11 @@ export interface GoodsReceipt {
   deliveryNoteRef: string | null;
   postedAt: ApiDate | null;
   postedBy: string | null;
+  /**
+   * Set when cumulative receipt exceeds an ordered line by more than the over-receipt tolerance.
+   * Informational: the receipt still posts. Optional because the list read may omit it.
+   */
+  overReceiptFlag?: boolean;
   lines: GoodsReceiptLine[];
   /** The list read sends `{ id, number }`; the detail read `{ poNumber }`. */
   purchaseOrder?: { id?: string; poNumber?: string; number?: string } | null;

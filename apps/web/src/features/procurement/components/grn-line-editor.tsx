@@ -104,6 +104,11 @@ export function grnLineErrors(line: GrnLineDraft): GrnLineErrors {
 }
 
 /** The rows that will be sent — a line nothing arrived on is not part of this delivery. */
+/** True when any line delivers more than is still due on its order line. */
+export function anyOverStillDue(lines: readonly GrnLineDraft[]): boolean {
+  return lines.some((line) => q(line.delivered) > stillDueMinor(line));
+}
+
 export function submittableGrnLines(lines: readonly GrnLineDraft[]): GrnLineDraft[] {
   return lines.filter((line) => q(line.delivered) > 0);
 }
@@ -218,11 +223,10 @@ export function GrnLineEditor({
     if (delivered < due) return { tone: 'neutral', text: t('staysOpen', { qty: qty(due - delivered, line.uomSymbol) }) };
     const over = overReceiptState(q(line.orderedQuantity), q(line.receivedBefore), delivered);
     if (over.state === 'within') return null;
-    const amount = qty(over.overByMinor, line.uomSymbol);
-    return {
-      tone: 'warning',
-      text: over.state === 'exception' ? t('overException', { qty: amount }) : t('overTolerated', { qty: amount }),
-    };
+    // One neutral note whatever the size of the overage. The server flags the receipt only
+    // beyond its over-receipt tolerance, which no endpoint exposes, and it never holds a
+    // receipt for it — so the client must not predict a flag or a hold it cannot know.
+    return { tone: 'warning', text: t('overReceived', { qty: qty(over.overByMinor, line.uomSymbol) }) };
   };
 
   return (

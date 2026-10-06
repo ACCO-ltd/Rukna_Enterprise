@@ -163,7 +163,25 @@ describe('GrnForm', () => {
     await user.type(delivered, '62');
     expect(table().getByText(/2 bag more than still due/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Post receipt' }));
-    expect(await screen.findByRole('dialog', { name: 'Post this receipt?' })).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'Post this receipt?' });
+    expect(within(dialog).getByText(/Some lines are more than still due/)).toBeInTheDocument();
+  });
+
+  /**
+   * The server flags a receipt beyond its over-receipt tolerance and still posts it; it never
+   * holds one. Whatever the size of the overage the note must not promise a hold.
+   */
+  it('words a large over-receipt neutrally — flagged, never held', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<GrnForm />, { permissions: [MONEY] });
+    await pickOrder(user);
+
+    const delivered = table().getByLabelText('Delivered now');
+    await user.clear(delivered);
+    await user.type(delivered, '200');
+    expect(table().getByText(/140 bag more than still due/)).toBeInTheDocument();
+    expect(table().getByText(/flagged as an over-receipt/)).toBeInTheDocument();
+    expect(screen.queryByText(/held for review/)).not.toBeInTheDocument();
   });
 
   it('reports a problem inline and validates it', async () => {
@@ -194,6 +212,7 @@ describe('GrnForm', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Post this receipt?' });
     expect(within(dialog).getByText("Posted receipts can't be edited.")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/more than still due/)).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Post receipt' }));
 
     await waitFor(() => expect(routerMocks.push).toHaveBeenCalledWith('/procurement/grn/grn-1'));
