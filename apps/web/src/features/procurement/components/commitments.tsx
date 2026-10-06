@@ -386,7 +386,13 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
             toolbar={false}
             pagination={{ defaultPageSize: 25 }}
             defaultSort={{ key: 'date', direction: 'desc' }}
-            emptyState={<EmptyState variant="inline" title={t('emptyTitle')} description={t('emptyBody')} />}
+            emptyState={
+              view === 'ALL' ? (
+                <EmptyState variant="inline" title={t('emptyTitle')} description={t('emptyBody')} />
+              ) : (
+                <EmptyState variant="inline" title={t('stageEmptyTitle')} description={t('stageEmptyBody')} />
+              )
+            }
           />
         </>
       )}

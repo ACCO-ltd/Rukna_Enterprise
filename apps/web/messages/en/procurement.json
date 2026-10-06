@@ -611,7 +611,7 @@
     "cancelReceipt": "Cancel receipt",
     "cancelTitle": "Cancel {number}?",
     "cancelBody": "A cancelled receipt cannot be reopened.",
-    "postedNotice": "This receipt is posted and immutable.",
+    "postedNotice": "This receipt is posted and can no longer be changed.",
     "postedOn": "Posted on",
     "supplier": "Supplier",
     "backToList": "Goods receipts",
@@ -1165,12 +1165,14 @@
         "stage": "Stage",
         "amount": "Amount"
       },
-      "overhead": "Overhead",
+      "overhead": "No BOQ item",
       "releasedOnReceipt": "Released on receipt",
       "noProjectTitle": "Choose a project",
       "noProjectBody": "See what is ordered, received and billed for one project, and every entry behind it.",
       "emptyTitle": "No entries yet",
       "emptyBody": "Entries appear when an order is confirmed, a delivery is received or a supplier bill is posted.",
+      "stageEmptyTitle": "Nothing at this stage",
+      "stageEmptyBody": "No entries for this project are at this stage yet. Choose All to see every entry.",
       "hiddenTitle": "Cost figures are hidden for your role",
       "hiddenBody": "Ask someone with access to the commitment ledger for the project's cost position."
     }

@@ -30,7 +30,9 @@ export function ApprovalPanel({
 
   const { user } = useSession();
   const step = useApprovalStep(instanceId);
-  const definition = useWorkflowDefinition(transactionType);
+  // Only a routed document has a chain to place the step in; reading the definition for every
+  // unrouted document 404s wherever no definition is configured.
+  const definition = useWorkflowDefinition(transactionType, { enabled: Boolean(instanceId) });
   const action = useApprovalAction(instanceId ?? '', () => setPending(null));
 
   // Nothing to show on a document that was never routed for approval.

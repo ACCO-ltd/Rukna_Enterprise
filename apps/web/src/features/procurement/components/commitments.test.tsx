@@ -103,7 +103,7 @@ describe('CommitmentLedger', () => {
     expect(grid.getByRole('link', { name: 'GRN-2026-0003' })).toHaveAttribute('href', '/procurement/grn/grn1');
     expect(grid.getByText('Released on receipt')).toBeInTheDocument();
     expect(grid.getByText('($250.00)')).toBeInTheDocument();
-    expect(grid.getByText('Overhead')).toBeInTheDocument();
+    expect(grid.getByText('No BOQ item')).toBeInTheDocument();
   });
 
   it('renders an empty stage that arrives as a bare number 0 without crashing', () => {
