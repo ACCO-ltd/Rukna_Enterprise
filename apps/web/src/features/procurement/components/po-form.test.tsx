@@ -103,3 +103,28 @@ describe('PoForm issue', () => {
     expect(routerMocks.push).not.toHaveBeenCalled();
   });
 });
+
+describe('PoForm refusals', () => {
+  it('explains the vendor-maintainer rule in plain words instead of the raw message', async () => {
+    hooks.create.mockRejectedValue(
+      new ApiError(403, 'SoD rule VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT violated', 'FORBIDDEN', [], {
+        code: 'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT',
+      }),
+    );
+    await issue();
+
+    expect(
+      await screen.findByText("You maintain this supplier's record, so someone else must raise orders to them."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/SoD rule/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the server message for any other refusal', async () => {
+    hooks.create.mockRejectedValue(
+      new ApiError(409, 'Retired Cement Ltd is inactive, so new purchase orders cannot be raised to it.', 'CONFLICT'),
+    );
+    await issue();
+
+    expect(await screen.findByText(/Retired Cement Ltd is inactive/)).toBeInTheDocument();
+  });
+});

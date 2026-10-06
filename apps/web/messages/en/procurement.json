@@ -467,6 +467,10 @@
       "quantityMustBePositive": "Enter a quantity greater than zero.",
       "priceMustBePositive": "Enter a unit price greater than zero. The API does not accept a zero-priced line."
     },
+    "refusal": {
+      "VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT": "You maintain this supplier's record, so someone else must raise orders to them.",
+      "SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION": "System administrators can't approve business transactions. Ask someone in the approval chain to act on this order."
+    },
     "billPayments": {
       "title": "Supplier bills & payments",
       "hint": "Bills raised against this order and how far each is paid.",

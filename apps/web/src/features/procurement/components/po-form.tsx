@@ -57,6 +57,17 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Refusal codes the order form explains in its own words (procurement.po.refusal.*). */
+const PO_REFUSAL_CODES = [
+  'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT',
+  'SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION',
+] as const;
+type PoRefusalCode = (typeof PO_REFUSAL_CODES)[number];
+
+function isPoRefusalCode(code: unknown): code is PoRefusalCode {
+  return typeof code === 'string' && (PO_REFUSAL_CODES as readonly string[]).includes(code);
+}
+
 /**
  * `moduleChrome`: the form sits under the Procurement module header (ADR-035), which owns the
  * page's `h1`. The form then names itself in the breadcrumb instead of repeating a title. The
@@ -157,6 +168,17 @@ export function PoForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [create]);
 
+  /**
+   * The server's refusal in words. A segregation-of-duties refusal names a rule code; the raw
+   * message describes the rule, not what the buyer should do, so it gets its own sentence.
+   */
+  function refusalMessage(error: unknown): string {
+    if (!(error instanceof ApiError)) return tc('loadFailed');
+    const code = error.details?.code;
+    if (isPoRefusalCode(code)) return t(`refusal.${code}`);
+    return error.message || tc('loadFailed');
+  }
+
   function handleSaveDraft() {
     if (!validate()) return;
     setIssueError(null);
@@ -166,7 +188,7 @@ export function PoForm({
         const id = await ensureCreated();
         router.push(`${redirectBase}/${id}`);
       } catch (e) {
-        setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
+        setIssueError(refusalMessage(e));
       } finally {
         setBusy(false);
       }
@@ -200,7 +222,7 @@ export function PoForm({
       setApprovalInstanceId(null);
       router.push(`${redirectBase}/${id}`);
     } catch (e) {
-      setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
+      setIssueError(refusalMessage(e));
     } finally {
       setBusy(false);
     }
