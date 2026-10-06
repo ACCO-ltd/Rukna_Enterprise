@@ -128,23 +128,173 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "portfolioHeading": "Portfolio",
-    "totalProjects": "All projects",
-    "recentHeading": "Recently created",
-    "empty": "No projects yet.",
-    "emptyHint": "Projects you create will appear here.",
-    "loadFailed": "Could not load projects.",
+    "subtitle": "{company} · {today}",
+    "loadFailed": "The dashboard could not be loaded.",
     "retry": "Try again",
-    "noContractValue": "Not set",
-    "viewAll": "View all projects",
-    "kpiActive": "On site",
-    "kpiPending": "Pending",
-    "kpiFinished": "Finished",
-    "colProject": "Project",
-    "colClient": "Client",
-    "colStatus": "Status",
-    "colValue": "Contract value",
-    "kpiClients": "Clients"
+    "figures": {
+      "label": "Where the money stands",
+      "currencyLabel": "Where the money stands, {currency}",
+      "contractValue": "Contract value in progress",
+      "activeProjects": "{count, plural, one {# active project} other {# active projects}}",
+      "clientsOwe": "Clients owe us",
+      "unpaidInvoices": "{count, plural, one {# unpaid invoice} other {# unpaid invoices}}",
+      "overdue": "Overdue",
+      "overdueSub": "{count, plural, one {# invoice} other {# invoices}} · {days, plural, one {# day late} other {# days late}}",
+      "nothingOverdue": "Nothing overdue",
+      "weOwe": "We owe suppliers",
+      "dueThisWeek": "{amount} due this week"
+    },
+    "todo": {
+      "title": "To do · {count}",
+      "label": "To do",
+      "empty": "Nothing needs you right now",
+      "emptyHint": "Approvals, overdue invoices and reviews show here when they're yours to act on.",
+      "INVOICE_OVERDUE": {
+        "title": "{number} is {days, plural, one {# day} other {# days}} overdue",
+        "due": "due {date}",
+        "action": "Open invoice"
+      },
+      "MATERIAL_REQUEST_AWAITING_APPROVAL": {
+        "title": "{number} is waiting for your approval",
+        "neededBy": "needed on site by {date}",
+        "action": "Review request"
+      },
+      "BILL_MATCH_EXCEPTION": {
+        "title": "{number} doesn't match its delivery",
+        "titleNoNumber": "A supplier bill doesn't match its delivery",
+        "text": "The billed quantities or prices differ from the order or what was received.",
+        "action": "Review bill"
+      },
+      "BILLS_AWAITING_APPROVAL": {
+        "title": "{count, plural, one {# supplier bill is} other {# supplier bills are}} waiting for approval",
+        "oldest": "Oldest: {number} from {supplier}, submitted {date}",
+        "oldestNoSupplier": "Oldest: {number}, submitted {date}",
+        "action": "Review bills"
+      },
+      "ACCOUNTING_SETUP_INCOMPLETE": {
+        "title": "Accounting setup isn't finished",
+        "text": "{count, plural, one {# item left} other {# items left}}. Invoices and bills can't be posted until it's done.",
+        "action": "Open accounting setup"
+      },
+      "REPORTS_TO_REVIEW": {
+        "title": "{count, plural, one {# daily report is} other {# daily reports are}} waiting for your review",
+        "text": "{project} · the oldest is from {date}",
+        "action": "Review reports"
+      },
+      "MILESTONE_READY_TO_VERIFY": {
+        "title": "{milestone} is ready to verify",
+        "action": "Verify"
+      },
+      "STAGE_READY_TO_BILL": {
+        "title": "Stage {stage} of {project} is ready to bill",
+        "verified": "{milestone} was verified on {date}.",
+        "milestone": "{milestone}.",
+        "draft": "A draft invoice is ready to issue.",
+        "action": "Open billing"
+      },
+      "PROJECT_READY_TO_START": {
+        "title": "{project} is ready to start",
+        "text": "Every step before starting is done.",
+        "action": "Open project"
+      },
+      "PROJECTS_WITHOUT_CONTRACT": {
+        "title": "{count, plural, one {# project has} other {# projects have}} no contract yet",
+        "text": "Billing can't start until the signed contract is recorded.",
+        "action": "Show projects"
+      }
+    },
+    "aging": {
+      "title": "Receivables by age",
+      "link": "Invoices",
+      "notDue": "Not yet due",
+      "days1To30": "1–30 days late",
+      "days31To60": "31–60 days late",
+      "over60": "Over 60 days late"
+    },
+    "activity": {
+      "title": "Latest activity",
+      "empty": "Nothing has happened on your projects yet."
+    },
+    "inProgress": {
+      "title": "Projects in progress · {count}",
+      "mineTitle": "My projects · {count}",
+      "label": "Projects in progress",
+      "allProjects": "All projects",
+      "empty": "No project has started yet.",
+      "colProject": "Project",
+      "colProgress": "Progress",
+      "colContractValue": "Contract value",
+      "colClientOwes": "Client owes",
+      "colStatus": "Status",
+      "projectSub": "{code} · {client}",
+      "progressLabel": "Progress of {project}",
+      "behind": "{points, plural, one {# pt behind plan} other {# pts behind plan}}",
+      "onPlan": "On plan",
+      "complete": "Complete",
+      "noPlan": "No plan yet",
+      "notMeasured": "Not measured yet",
+      "overdue": "{amount} overdue"
+    },
+    "otherStatuses": {
+      "DRAFT": "{count} in preparation",
+      "DRAFT_MORE": "{count} more in preparation",
+      "ACTIVE": "{count} active",
+      "PRACTICAL_COMPLETION": "{count} in practical completion",
+      "CLOSEOUT": "{count} in closeout",
+      "CLOSED": "{count} closed",
+      "CANCELLED": "{count} cancelled"
+    },
+    "inPreparation": {
+      "title": "In preparation · {count}",
+      "label": "Projects in preparation",
+      "sub": "What each project still needs before it can start.",
+      "colProject": "Project",
+      "colReady": "Ready",
+      "colNextStep": "Next step",
+      "colValue": "Contract value",
+      "readyCount": "{done} of {total}",
+      "readinessLabel": "Steps done for {project}",
+      "readyToStart": "Ready to start",
+      "estimated": "Estimated value"
+    },
+    "setup": {
+      "title": "Get {company} ready",
+      "summary": "{count, plural, one {# step} other {# steps}} before the first project can run from quotation to cash.",
+      "summaryDone": "Every required step is done.",
+      "footnote": "This list disappears once the first project is created.",
+      "steps": {
+        "CLIENT": {
+          "title": "Add your first client",
+          "description": "Clients are shared by every project, invoice and receipt.",
+          "owner": "Finance or a director",
+          "action": "New client"
+        },
+        "PROJECT": {
+          "title": "Create the first project",
+          "description": "A project holds its BOQ, contract, progress, purchasing and billing.",
+          "owner": "Managing director",
+          "action": "New project"
+        },
+        "ACCOUNTING": {
+          "title": "Finish accounting setup",
+          "description": "The chart of accounts and invoice numbering. Invoices and bills can't be posted until it's done.",
+          "owner": "Finance",
+          "action": "Open accounting setup"
+        },
+        "SUPPLIERS": {
+          "title": "Add suppliers and materials",
+          "description": "Needed before the first purchase order.",
+          "owner": "Procurement",
+          "action": "Open procurement"
+        },
+        "TEAM": {
+          "title": "Invite your team",
+          "description": "Give each person the role that matches their work.",
+          "owner": "Administrator",
+          "action": "Invite people"
+        }
+      }
+    }
   },
   "projects": {
     "title": "Projects",

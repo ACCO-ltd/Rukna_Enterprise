@@ -2,173 +2,196 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
-import { ProjectStatus } from '@erp/types';
+import {
+  ActivityTimeline,
+  Alert,
+  Button,
+  Panel,
+  ReadinessChecklist,
+  type ReadinessStep,
+} from '@erp/ui';
+import type { DashboardResponse, DashboardSetupStepCode } from '@erp/types';
 
-import { MetricStrip, type Metric } from '@/components/widget/metric-strip';
-import { WidgetShell } from '@/components/widget/widget-shell';
-import { useClients } from '@/features/clients/hooks/use-clients';
-import { useProjects } from '@/features/projects/hooks/use-projects';
-import { formatNumber } from '@/lib/format';
+import { ModuleHeader } from '@/components/layout/module-chrome';
+import { useProjectActivityEntries } from '@/features/projects/activity-labels';
+import { formatDate } from '@/lib/format';
 
-import { summarizeProjects } from '../summarize-projects';
-import { PortfolioTableWidget } from './portfolio-table-widget';
+import { useDashboard } from '../hooks';
+import { DashboardFigureStrips, ReceivablesByAge } from './dashboard-money';
+import { ProjectsInPreparationTable, ProjectsInProgressTable } from './dashboard-projects';
+import { DashboardTodo } from './dashboard-todo';
 
-const ACTIVE_STATUSES: ProjectStatus[] = [
-  ProjectStatus.ACTIVE,
-  ProjectStatus.PRACTICAL_COMPLETION,
-  ProjectStatus.CLOSEOUT,
-];
+type Locale = 'en' | 'ar';
 
-// ADR-019 CONST-PLC-001: APPROVED and MOBILIZING retired into DRAFT ("Preparation") —
-// projects still being prepared count as pending, not active.
-const PENDING_STATUSES: ProjectStatus[] = [ProjectStatus.DRAFT];
+/** Where each setup step's work is done. */
+const SETUP_HREF: Record<DashboardSetupStepCode, string> = {
+  CLIENT: '/clients/new',
+  PROJECT: '/projects/new',
+  ACCOUNTING: '/finance/accounting/guide',
+  SUPPLIERS: '/procurement/suppliers',
+  TEAM: '/admin/users',
+};
 
-const FINISHED_STATUSES: ProjectStatus[] = [
-  ProjectStatus.CLOSED,
-  ProjectStatus.CANCELLED,
-];
-
-function countStatuses(
-  statusCounts: { status: ProjectStatus; count: number }[],
-  statuses: ProjectStatus[],
-): number {
-  return statusCounts
-    .filter((s) => statuses.includes(s.status))
-    .reduce((acc, s) => acc + s.count, 0);
-}
-
+/**
+ * The landing page (P30–P32). It answers, in order: what needs me, where the money stands, how
+ * each project is doing — and follows the company's stage and the reader's permissions, both
+ * decided by `GET /dashboard`. No primary button: the dashboard has no primary action.
+ */
 export function DashboardContent() {
   const t = useTranslations('platform.dashboard');
-  const locale = useLocale() as 'en' | 'ar';
-  const { data, isPending, isError, refetch, isFetching } = useProjects();
-  const { data: clients, isPending: clientsLoading, isError: clientsError } = useClients();
+  const locale = useLocale() as Locale;
+  const query = useDashboard();
+  const today = formatDate(new Date().toISOString(), locale) ?? '';
 
-  // Client KPI is independent of the projects query — compute it early so it
-  // renders even when the projects fetch fails (D-07 failure isolation).
-  const clientCount = clients?.length ?? 0;
-  const clientValue = (clientsLoading || clientsError) ? '—' : (formatNumber(clientCount, locale) ?? clientCount);
+  const header = (company?: string) => (
+    <ModuleHeader
+      title={t('title')}
+      crumbs={[]}
+      description={company ? t('subtitle', { company, today }) : today}
+    />
+  );
 
-  if (isPending) return <DashboardSkeleton />;
-
-  if (isError) {
+  if (query.isPending) {
     return (
-      <div className="space-y-8">
+      <>
+        {header()}
+        <DashboardSkeleton />
+      </>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <>
+        {header()}
         <Alert variant="error" messages={[t('loadFailed')]}>
           <div className="mt-3">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                void refetch();
-              }}
-              disabled={isFetching}
+              onClick={() => void query.refetch()}
+              disabled={query.isFetching}
             >
               {t('retry')}
             </Button>
           </div>
         </Alert>
-        {/* Failure isolation (D4): the client metric is independent of the failed
-            projects query, so it still renders — as a reduced one-metric strip. */}
-        <WidgetShell id="portfolio-heading" title={t('portfolioHeading')}>
-          <MetricStrip
-            aria-label={t('portfolioHeading')}
-            metrics={[{ label: t('kpiClients'), value: clientValue, href: '/clients' }]}
-          />
-        </WidgetShell>
-      </div>
+      </>
     );
   }
 
-  const summary = summarizeProjects(data);
+  const data = query.data;
+  return (
+    <>
+      {header(data.organizationName)}
+      {data.stage === 'NEW' ? <SetupView data={data} /> : <WorkView data={data} />}
+    </>
+  );
+}
 
-  if (summary.total === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-        <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-      </div>
-    );
-  }
-
-  const active = countStatuses(summary.statusCounts, ACTIVE_STATUSES);
-  const pending = countStatuses(summary.statusCounts, PENDING_STATUSES);
-  const finished = countStatuses(summary.statusCounts, FINISHED_STATUSES);
-
-  // Same five metrics, same hrefs and values as the retired KpiCard grid (D2).
-  // "Finished" has no filtered list route today, so it carries no href.
-  const metrics: Metric[] = [
-    {
-      label: t('totalProjects'),
-      value: formatNumber(summary.total, locale) ?? summary.total,
-      href: '/projects',
-    },
-    {
-      label: t('kpiActive'),
-      value: formatNumber(active, locale) ?? active,
-      href: '/projects',
-    },
-    {
-      label: t('kpiPending'),
-      value: formatNumber(pending, locale) ?? pending,
-      href: '/projects',
-    },
-    {
-      label: t('kpiFinished'),
-      value: formatNumber(finished, locale) ?? finished,
-    },
-    {
-      label: t('kpiClients'),
-      value: clientValue,
-      href: '/clients',
-    },
-  ];
+/** Stages PREPARATION and RUNNING: figures, To do beside the rail, then the projects. */
+function WorkView({ data }: { data: DashboardResponse }) {
+  const t = useTranslations('platform.dashboard');
+  const toEntries = useProjectActivityEntries();
+  const running = data.stage === 'RUNNING';
+  // P31: no strip of zeros — only money roles, only once something is active or invoiced.
+  const figures =
+    running && data.moneyVisible && data.figures && data.figures.length > 0 ? data.figures : null;
 
   return (
-    <div className="space-y-8">
-      {/* §3a interim: metric strip + reused portfolio table. The §3b "requires your
-          action" queue slots in below this strip when GET /attention-items ships
-          (#105) — no fake queue until then (doctrine §4, §6). */}
-      <WidgetShell id="portfolio-heading" title={t('portfolioHeading')}>
-        <MetricStrip aria-label={t('portfolioHeading')} metrics={metrics} />
-      </WidgetShell>
+    <div className="space-y-6">
+      {figures ? <DashboardFigureStrips figures={figures} /> : null}
 
-      <WidgetShell id="recent-heading" title={t('recentHeading')}>
-        <PortfolioTableWidget projects={summary.recent} />
-      </WidgetShell>
-
-      <div>
-        <Link
-          href="/projects"
-          className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary hover:text-brand-primary-hover"
-        >
-          {t('viewAll')}
-        </Link>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
+        <DashboardTodo items={data.todo} />
+        <div className="space-y-6">
+          {figures ? <ReceivablesByAge figures={figures} /> : null}
+          <Panel title={t('activity.title')}>
+            <ActivityTimeline
+              compact
+              label={t('activity.title')}
+              entries={toEntries(data.activity)}
+              renderLink={({ href, className, children }) => (
+                <Link href={href} className={className}>
+                  {children}
+                </Link>
+              )}
+              empty={<p className="text-body-sm text-muted-foreground">{t('activity.empty')}</p>}
+            />
+          </Panel>
+        </div>
       </div>
+
+      {running ? (
+        <ProjectsInProgressTable
+          projects={data.projects.inProgress}
+          statusCounts={data.projects.statusCounts}
+          moneyVisible={data.moneyVisible}
+          mine={data.projectScope === 'MINE'}
+        />
+      ) : (
+        <ProjectsInPreparationTable
+          projects={data.projects.inPreparation}
+          moneyVisible={data.moneyVisible}
+        />
+      )}
     </div>
+  );
+}
+
+/** Stage NEW: "Get {company} ready" replaces everything else (P32). */
+function SetupView({ data }: { data: DashboardResponse }) {
+  const t = useTranslations('platform.dashboard.setup');
+  const steps: ReadinessStep[] = (data.setup ?? []).map((step) => ({
+    key: step.code,
+    title: t(`steps.${step.code}.title`),
+    description: t(`steps.${step.code}.description`),
+    owner: t(`steps.${step.code}.owner`),
+    state: step.done ? 'done' : 'open',
+    optional: step.optional,
+    href: step.canAct ? SETUP_HREF[step.code] : undefined,
+    // Action buttons only for people who may do the step.
+    action:
+      !step.done && step.canAct ? (
+        <Button asChild variant="outline" size="sm">
+          <Link href={SETUP_HREF[step.code]}>{t(`steps.${step.code}.action`)}</Link>
+        </Button>
+      ) : undefined,
+  }));
+  const requiredLeft = steps.filter((s) => s.state !== 'done' && !s.optional).length;
+
+  return (
+    <ReadinessChecklist
+      title={t('title', { company: data.organizationName })}
+      steps={steps}
+      summary={requiredLeft > 0 ? t('summary', { count: requiredLeft }) : t('summaryDone')}
+      footnote={t('footnote')}
+      linkAs={Link}
+      className="rounded-panel border border-border bg-surface p-4 sm:p-6"
+    />
   );
 }
 
 function DashboardSkeleton() {
   const t = useTranslations('common');
-
   return (
-    <div role="status" aria-live="polite" className="space-y-8">
+    <div role="status" aria-live="polite" className="space-y-6">
       <span className="sr-only">{t('loading')}</span>
-
-      {/* Strip-shaped: a single hairline-bounded row, not five card blocks. */}
-      <div
-        className="grid grid-cols-2 border-y border-border sm:grid-cols-3 lg:grid-cols-5"
-        aria-hidden="true"
-      >
-        {[0, 1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-2 border-y border-border lg:grid-cols-4" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => (
           <div key={i} className={`space-y-2 px-4 py-3 ${i === 0 ? '' : 'border-s border-border'}`}>
-            <div className="h-3 w-16 animate-pulse rounded-control bg-muted" />
-            <div className="h-7 w-12 animate-pulse rounded-control bg-muted" />
+            <div className="h-3 w-24 animate-pulse rounded-control bg-muted" />
+            <div className="h-7 w-28 animate-pulse rounded-control bg-muted" />
           </div>
         ))}
       </div>
-      <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+      <div
+        className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]"
+        aria-hidden="true"
+      >
+        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" />
+        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" />
+      </div>
     </div>
   );
 }
