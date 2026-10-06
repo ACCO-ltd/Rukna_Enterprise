@@ -21,16 +21,24 @@ MIN_BACKUP_BYTES="${MIN_BACKUP_BYTES:-20000}"
 API_HEALTH_URL="${API_HEALTH_URL:-https://api.rukna.site/api/v1/health}"
 WEB_URL="${WEB_URL:-https://acco.rukna.site}"
 
+# Everything runs inside main(), which bash reads in full before executing: the `git reset --hard`
+# below rewrites this very file, and a script being rewritten mid-read can run garbage.
+main() {
 cd "$REPO_DIR"
 compose() { docker compose -f deploy/docker-compose.prod.yml "$@"; }
 
 echo "── 1/5 backup ──"
 mkdir -p "$BACKUP_DIR"
 backup="$BACKUP_DIR/rukna_backup_predeploy_$(date +%F_%H%M%S).sql.gz"
-docker exec rukna_postgres pg_dumpall -U erp_user | gzip > "$backup"
-gzip -t "$backup"
+# A failed or truncated dump must not linger and count towards the $KEEP kept backups.
+if ! docker exec rukna_postgres pg_dumpall -U erp_user | gzip > "$backup" || ! gzip -t "$backup"; then
+  rm -f "$backup"
+  echo "::error::Database backup failed — nothing was deployed."
+  exit 1
+fi
 size=$(stat -c%s "$backup")
 if [ "$size" -lt "$MIN_BACKUP_BYTES" ]; then
+  rm -f "$backup"
   echo "::error::Backup is only $size bytes — refusing to deploy without a real backup ($backup)."
   exit 1
 fi
@@ -46,7 +54,9 @@ after=$(git rev-parse --short HEAD)
 echo "deploying $before → $after"
 
 echo "── 3/5 rebuild + restart ──"
-compose up -d --build
+# A failed migration makes `up` itself fail (rukna_api waits for migrate to succeed); let step 4
+# report it with the migrate log and the backup path instead of stopping here silently.
+compose up -d --build || true
 
 echo "── 4/5 migrations ──"
 compose logs migrate | grep -E "Applying migration|No pending migrations|All migrations|Error" || true
@@ -63,7 +73,12 @@ for _ in $(seq 1 36); do
   sleep 5
 done
 curl -fsS "$API_HEALTH_URL"; echo
-web_status=$(curl -s -o /dev/null -w '%{http_code}' "$WEB_URL")
+web_status=000
+for _ in $(seq 1 24); do
+  web_status=$(curl -s -o /dev/null -w '%{http_code}' "$WEB_URL" || true)
+  case "$web_status" in 200|307|308) break ;; esac
+  sleep 5
+done
 echo "web $WEB_URL → $web_status"
 case "$web_status" in
   200|307|308) ;;
@@ -71,5 +86,8 @@ case "$web_status" in
 esac
 
 compose ps
-docker image prune -f > /dev/null
+docker image prune -f > /dev/null || true
 echo "Deploy of $after complete."
+}
+
+main "$@"

@@ -15,6 +15,8 @@ name: Deploy
 #                     user's ~/.ssh/authorized_keys (whole file incl. BEGIN/END lines)
 #   DEPLOY_HOST     — 169.58.180.80
 #   DEPLOY_USER     — deploy
+#   DEPLOY_KNOWN_HOSTS (optional) — the VPS host key line(s) from `ssh-keyscan 169.58.180.80`;
+#                     pins the server's identity instead of trusting the first key seen
 #
 # Note: the VPS `git fetch` authenticates to GitHub with the credential stored on the box
 # (credential.helper store / a PAT). If that credential is revoked, auto-deploy's fetch
@@ -46,6 +48,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ] || [ -z "${DEPLOY_USER:-}" ]; then
@@ -55,7 +58,13 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Prefer the pinned host key (secret DEPLOY_KNOWN_HOSTS = output of `ssh-keyscan <host>` run
+          # once from a trusted machine); without it, fall back to trusting the key seen right now.
+          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
           # deploy/deploy.sh does backup → pull → rebuild → migration check → health check, and fails
           # on the first problem. Take the script from the new main first, so a fix to the script
           # itself applies to this very deploy; the script then brings the whole checkout to main.
