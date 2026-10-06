@@ -172,8 +172,20 @@ describe('SupplierList', () => {
 
   it('first use: says to add a supplier', async () => {
     mocks.useSupplierDirectory.mockReturnValue({ ...loaded([]), data: [], refetch: vi.fn() });
-    renderWithProviders(<SupplierList />, { permissions: ['manage:supplier'] });
+    renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
     expect(await screen.findByText('No suppliers yet')).toBeInTheDocument();
+  });
+
+  it('offers New supplier to a holder of manage:payable — the permission POST /suppliers enforces', async () => {
+    renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
+    await table();
+    expect(screen.getByRole('link', { name: /New supplier/ })).toHaveAttribute('href', '/procurement/suppliers/new');
+  });
+
+  it('hides New supplier from a user without manage:payable', async () => {
+    renderWithProviders(<SupplierList />);
+    await table();
+    expect(screen.queryByRole('link', { name: /New supplier/ })).not.toBeInTheDocument();
   });
 });
 

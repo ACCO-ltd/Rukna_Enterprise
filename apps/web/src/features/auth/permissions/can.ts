@@ -111,11 +111,11 @@ export const PROCUREMENT_PERMISSIONS = {
    * would mean a buyer holding `create:purchase-order` could not add the supplier their own
    * order needs, which is the one thing that must not happen on the screen this unblocks.
    *
-   * Spelled `manage:supplier` to match the live singular convention (`manage:role`,
-   * `manage:user`). Raise it on #28 alongside the `manageConfig`
-   * naming question rather than settling it here.
+   * Must match what the API enforces: `POST/PATCH /suppliers` and supplier deactivate/reactivate
+   * are guarded by `manage:payable` (PERMISSIONS.payablesManage). The earlier `manage:supplier`
+   * key never existed in the backend catalog, so the create button was hidden from everyone.
    */
-  manageSuppliers: 'manage:supplier',
+  manageSuppliers: 'manage:payable',
   /** Create a material request. Submit is available to the requester. */
   createRequest: 'create:material-request',
   /** Approve a material request. */
