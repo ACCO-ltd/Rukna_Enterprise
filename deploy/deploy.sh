@@ -54,9 +54,13 @@ after=$(git rev-parse --short HEAD)
 echo "deploying $before → $after"
 
 echo "── 3/5 rebuild + restart ──"
-# A failed migration makes `up` itself fail (rukna_api waits for migrate to succeed); let step 4
-# report it with the migrate log and the backup path instead of stopping here silently.
-compose up -d --build || true
+# Build first, on its own: a build failure stops here while the old containers keep serving
+# (no downtime), so a broken build can never be reported as a deploy.
+compose build
+# A failed migration makes `up` fail too (rukna_api waits for migrate to succeed). Remember the
+# result so step 4 can show the migrate log and the backup path before failing the deploy.
+up_rc=0
+compose up -d || up_rc=$?
 
 echo "── 4/5 migrations ──"
 compose logs migrate | grep -E "Applying migration|No pending migrations|All migrations|Error" || true
@@ -64,6 +68,17 @@ migrate_exit=$(docker inspect rukna-migrate-1 --format '{{.State.ExitCode}}')
 if [ "$migrate_exit" != "0" ]; then
   echo "::error::Database migrations failed (migrate exit $migrate_exit). Backup: $backup"
   compose logs --tail 80 migrate
+  exit 1
+fi
+if [ "$up_rc" -ne 0 ]; then
+  echo "::error::Starting the new containers failed (compose up exit $up_rc). Backup: $backup"
+  compose ps
+  exit 1
+fi
+# The API container must be running the image that was just built — otherwise the old code is
+# still serving and the health checks below would pass without anything having shipped.
+if [ "$(docker inspect rukna_api --format '{{.Image}}')" != "$(docker image inspect rukna-api:latest --format '{{.Id}}')" ]; then
+  echo "::error::rukna_api is not running the newly built image."
   exit 1
 fi
 
