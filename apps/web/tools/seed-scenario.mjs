@@ -212,18 +212,19 @@ async function main() {
     // not declare it and the ValidationPipe runs with forbidNonWhitelisted — sending it
     // is a 400. See D3. The client is created ACTIVE by schema default, which the project's
     // CLIENT_ACTIVE start-readiness condition requires.
+    //
+    // The client redesign (#256) made a primary contact REQUIRED on create — "a client is
+    // someone ACCO can reach" (CreateClientDto.primaryContact, @IsDefined). The old separate
+    // `POST /clients/:id/contacts` step is gone: the first contact is created inline and is
+    // automatically the primary. `phone` must be E.164 (ContactInputDto → domain/client-input).
+    primaryContact: {
+      name: 'Yusuf Ahmed',
+      role: 'Commercial Director',
+      phone: '+252612345678',
+      email: `yusuf.${RUN.toLowerCase()}@baraka.example`,
+    },
   });
   ok(client.code);
-
-  step('add client contact');
-  await post(`/clients/${client.id}/contacts`, {
-    name: 'Yusuf Ahmed',
-    role: 'Commercial Director',
-    email: `yusuf.${RUN.toLowerCase()}@baraka.example`,
-    phone: '+252 61 000 0000',
-    isPrimary: true,
-  });
-  ok();
 
   // ── Project ───────────────────────────────────────────────────────────────────
   // A project now requires a `districtId` (ADR-025 meaningful project codes + district
