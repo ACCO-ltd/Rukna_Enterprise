@@ -79,6 +79,12 @@ jobs:
       - name: Generate Prisma clients
         run: pnpm --filter @erp/api run db:generate
 
+      # Build before anything runs: the provisioning and seed scripts run via tsx and import
+      # @erp/types, which must be compiled to dist first; and the API/web `start` steps need
+      # dist/.next. The build needs no database, so it is safe to run up front.
+      - name: Build (packages + api + web)
+        run: pnpm build
+
       - name: Migrate platform schema
         run: pnpm --filter @erp/api run db:migrate:platform:prod
 
@@ -108,9 +114,6 @@ jobs:
         env:
           ACCO_ORG_SLUG: acco
         run: pnpm exec tsx prisma/seeds/dev-activate-doa-bands.seed.ts
-
-      - name: Build (packages + api + web)
-        run: pnpm build
 
       - name: Install Playwright Chrome
         run: pnpm --filter @erp/web exec playwright install --with-deps chrome
