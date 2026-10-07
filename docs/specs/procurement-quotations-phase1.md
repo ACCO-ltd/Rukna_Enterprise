@@ -81,6 +81,11 @@ always in **`error.details.code`** (403s keep `error.code = "FORBIDDEN"`, as SoD
 | 409 | `QUOTATION_CANCELLED` · `QUOTATION_FROZEN` · `QUOTATION_NOT_COLLECTING` · `QUOTATION_NOT_AWAITING_DECISION` · `QUOTATION_NOT_PENDING_APPROVAL` · `QUOTATION_NOT_AWARDED` · `QUOTES_REQUIRED` · `QUOTE_TOTALS_MISSING` · `QUOTE_NOT_ACTIVE` · `QUOTE_PHOTO_DUPLICATE` · `QUOTE_COUNT_EXCEPTION_REQUIRED` (`details.required`, `details.distinct`) · `NON_LOWEST_REASON_REQUIRED` · `NON_LOWEST_NOTE_REQUIRED` · `AWARD_PENDING_DIFFERENT_CHOICE` · `AWARD_PENDING_APPROVAL` (`details.approvalInstanceId`) · `SUPPLIER_INACTIVE` · `MATERIAL_REQUEST_NOT_APPROVED` · `MATERIAL_REQUEST_ALREADY_ORDERED` · `PURCHASE_ORDER_LIVE` · `PURCHASE_ORDER_CONFIRMED` · `FILE_NOT_ATTACHABLE` (not uploaded / already bound) · `QUOTATION_CHANGED` |
 | 422 | `PO_EXCEEDS_AWARD` · `ORDER_LINES_REQUIRED` · `ORDER_LINE_NOT_ON_REQUEST` · `ORDER_LINE_DUPLICATED` · `ORDER_LINE_QUANTITY_INVALID` · `ORDER_LINE_AMOUNT_INVALID` |
 
+Quote photo files (`GET /files/:id…`) answer 403 unless the caller holds view:procurement AND
+view:commitment-ledger — as a QUOTATION_PHOTO and also as the PO's quotation evidence.
+`GET /procurement/purchase-orders/:id/revision-attachments` rows gain `quotationEvidence: boolean`
+and omit quotation-evidence rows for callers who may not download them.
+
 PO confirm (`POST /procurement/purchase-orders/:id/confirm`) adds 409 `PO_EXCEEDS_AWARD`
 (`details.quotationRequestId`) and 409 `AWARD_CHANGED`.
 
@@ -123,11 +128,16 @@ purchaseOrder: { id, poNumber, status } | null, cancelledBy, cancelledAt, cancel
 createdBy: Person, createdAt, updatedAt,
 lines: [{ id, lineNumber, description, quantity, uom: { code, name } | null, estimatedUnitPrice*, estimatedAmount* }],
 quotes: [{ id, store: { supplierId, name, registered }, status, rejectReason, rejectNote, replacesQuoteId, uploadedBy: Person, createdAt,
-  photos: [{ id, fileId, pageNumber, capturedAt, receivedAt, source, sha256, reusedOn: string[] }],
+  photoCount, photos: [{ id, fileId, pageNumber, capturedAt, receivedAt, source, sha256, reusedOn: string[] }],
   enteredTotal*, enteredBy: Person | null, enteredAt, isLowest: boolean | null }],
 supplierMatches: [{ quoteId, suppliers: [{ id, code, name }] }],
 approval: { instanceId, status, currentStepOrder, currentStepRole, steps: [{ stepOrder, roleRequired, approvedBy: Person | null, approvedAt }] } | null,
-allowedActions: [{ action, enabled, reasonCode }], moneyVisible }`.
+allowedActions: [{ action, enabled, reasonCode }], moneyVisible, photosVisible }`.
+**`photosVisible`** = the caller holds `view:procurement` AND `view:commitment-ledger` (the same rule
+as downloading the photo). When false every quote's `photos` is `[]` (no file ids, hashes or reuse
+links) and `photoCount` still gives the page count — show "Quote photos are hidden for your role".
+Note `moneyVisible` can be true while `photosVisible` is false (an `award:quotation` holder without
+cost visibility).
 `allowedActions[].action` ∈ `ADD_QUOTE · ADD_PAGE · WITHDRAW_QUOTE · SEND · REOPEN · ENTER_TOTAL ·
 REJECT_QUOTE · ASK_ANOTHER · AWARD · WITHDRAW_AWARD · REQUEST_REDECISION · RAISE_ORDER · CANCEL`;
 `reasonCode` is one of the codes above (a SoD rule code for a barred selector). A command whose

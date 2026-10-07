@@ -47,13 +47,35 @@ export type FileOwner =
   | { kind: 'RECEIPT_DOCUMENT'; receiptId: string }
   // Procurement attachments: quotation evidence on a PO revision, delivery note on a GRN.
   // Neither lives inside a project — they are org-level records. Reachable by procurementView.
-  | { kind: 'PO_REVISION_ATTACHMENT'; attachmentId: string; revisionId: string; organizationId: string }
+  | {
+      kind: 'PO_REVISION_ATTACHMENT';
+      attachmentId: string;
+      revisionId: string;
+      organizationId: string;
+      /**
+       * ADR-044 — the file is a quotation photo (a QuotePhoto) attached to the PO as the award's
+       * evidence. It shows supplier prices, so it keeps the quote photo's money rule rather than
+       * the plain view:procurement rule of other PO attachments.
+       */
+      quotationEvidence: boolean;
+    }
   | { kind: 'GRN_ATTACHMENT'; attachmentId: string; grnId: string; organizationId: string }
-  // ADR-044 — a page of a store's paper quotation. Money evidence (it shows prices), so it is NOT
-  // readable on view:procurement alone: only quotation collectors/selectors and cost-visibility
-  // holders. (Once a winning photo is also attached to the PO it raised, PO_REVISION_ATTACHMENT's
-  // rule applies to it too — one owner granting access is enough.)
+  // ADR-044 — a page of a store's paper quotation. Money evidence (it shows supplier prices), so it
+  // is readable only with view:procurement AND view:commitment-ledger. The same rule follows the
+  // photo when it is attached to the PO as quotation evidence (PO_REVISION_ATTACHMENT
+  // quotationEvidence), so money-blind roles cannot reach it through the order either.
   | { kind: 'QUOTATION_PHOTO'; photoId: string; quoteId: string; quotationRequestId: string };
+
+/**
+ * ADR-044 — who may see a quotation photo's bytes: procurement access plus cost visibility
+ * (view:commitment-ledger). The quotation read models use the same rule for `photosVisible`.
+ */
+export function canSeeQuotationPhotos(identity: RequestIdentity): boolean {
+  return (
+    identity.permissions.includes(PERMISSIONS.procurementView) &&
+    identity.permissions.includes(PERMISSIONS.commitmentsView)
+  );
+}
 
 export interface FileOwnership {
   fileId: string;
@@ -212,6 +234,8 @@ export class FileAuthorizationService {
         attachmentId: a.id,
         revisionId: a.purchaseOrderRevisionId,
         organizationId: a.organizationId,
+        // A quotation photo stays a quotation photo wherever it is attached.
+        quotationEvidence: Boolean(file.quotePhoto),
       })),
       ...file.grnAttachments.map((a) => ({
         kind: 'GRN_ATTACHMENT' as const,
@@ -350,14 +374,15 @@ export class FileAuthorizationService {
       // Procurement attachments are org-level (no project). Any holder of procurementView can
       // read them — the same guard that gates the PO and GRN list endpoints.
       case 'PO_REVISION_ATTACHMENT':
+        return owner.quotationEvidence
+          ? canSeeQuotationPhotos(identity)
+          : identity.permissions.includes(PERMISSIONS.procurementView);
       case 'GRN_ATTACHMENT':
         return identity.permissions.includes(PERMISSIONS.procurementView);
-      // ADR-044 §5 — photos are money: collectors, selectors, or cost visibility. Never
-      // view:procurement alone (a money-blind Project Manager holds that).
+      // ADR-044 §5 — photos are money: never view:procurement alone (a money-blind Project Manager
+      // or Site Engineer holds that).
       case 'QUOTATION_PHOTO':
-        return [PERMISSIONS.quotationsCollect, PERMISSIONS.quotationsAward, PERMISSIONS.commitmentsView].some((p) =>
-          identity.permissions.includes(p),
-        );
+        return canSeeQuotationPhotos(identity);
     }
   }
 

@@ -32,6 +32,7 @@ import { SegregationOfDutiesService } from '../../../../platform/workflows/appli
 import { validateCostTarget, costTargetViolationMessage } from '../domain/cost-target.policy.js';
 import { awardCoverage, type CoverageResult } from '../domain/award-coverage.policy.js';
 import { SettlementQueryService } from './settlement-query.service.js';
+import { canSeeQuotationPhotos } from '../../../../platform/files/application/file-authorization.service.js';
 
 export interface CreatePoLineDto {
   lineType: ProcurementLineType;
@@ -592,7 +593,17 @@ export class PurchaseOrderService {
       po.revisions.find((r) => r.status === 'ACTIVE');
     if (!revision) throw new NotFoundException(`No active or draft revision for purchase order ${poId}`);
 
-    return this.attachmentRepo.listByRevision(prisma, revision.id);
+    // ADR-044 — the award's quotation photos show supplier prices: listed only to callers who may
+    // download them (the same rule as FileAuthorizationService), never to money-blind roles.
+    const photosVisible = canSeeQuotationPhotos(identity);
+    const attachments = await this.attachmentRepo.listByRevision(prisma, revision.id);
+    return attachments
+      .filter((a) => photosVisible || a.file.quotePhoto === null)
+      .map(({ file: { quotePhoto, ...file }, ...attachment }) => ({
+        ...attachment,
+        file,
+        quotationEvidence: quotePhoto !== null,
+      }));
   }
 
   async attachToRevision(identity: RequestIdentity, poId: string, dto: AttachPoRevisionFileDto) {

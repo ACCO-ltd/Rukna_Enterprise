@@ -5,6 +5,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
+import { canSeeQuotationPhotos } from '../../../../platform/files/application/file-authorization.service.js';
 import { moneyOrNull } from '../../shared/procurement-money.js';
 import { distinctCount, normaliseStoreName } from '../domain/quote-count.policy.js';
 import { lowestQuoteIds } from '../domain/quote-selection.policy.js';
@@ -95,6 +96,9 @@ export class QuotationQueryService {
     const orgId = identity.activeOrganizationId;
     const moneyVisible = this.access.moneyVisible(identity);
     const money = (d: Decimal | null) => moneyOrNull(moneyVisible, d);
+    // Quote photos show supplier prices: the same rule as their file download (403 otherwise), so
+    // a money-blind caller gets no file ids, hashes or reuse links — only page counts.
+    const photosVisible = canSeeQuotationPhotos(identity);
 
     const [mr, linkedPo, project] = await Promise.all([
       this.repo.findMaterialRequest(db, orgId, request.materialRequestId),
@@ -115,7 +119,7 @@ export class QuotationQueryService {
     const caller = await this.access.callerFacts(identity, request, mr.requestedBy);
     const facts = this.access.facts(request, linkedPo);
 
-    const hashes = request.quotes.flatMap((q) => q.photos.map((p) => p.sha256));
+    const hashes = photosVisible ? request.quotes.flatMap((q) => q.photos.map((p) => p.sha256)) : [];
     const reuse = await this.repo.findPhotoReuse(db, orgId, [...new Set(hashes)], request.id);
 
     // Likely registered suppliers for each new-store quote (same normalised name), so the selector
@@ -249,7 +253,8 @@ export class QuotationQueryService {
         replacesQuoteId: q.replacesQuoteId,
         uploadedBy: person(q.uploadedBy)!,
         createdAt: q.createdAt,
-        photos: q.photos.map((p) => ({
+        photoCount: q.photos.length,
+        photos: (photosVisible ? q.photos : []).map((p) => ({
           id: p.id,
           fileId: p.platformFileId,
           pageNumber: p.pageNumber,
@@ -279,6 +284,8 @@ export class QuotationQueryService {
         reasonCode,
       })),
       moneyVisible,
+      /** False → every quote's `photos` is [] (see `photoCount`): "Quote photos are hidden for your role". */
+      photosVisible,
     };
   }
 }

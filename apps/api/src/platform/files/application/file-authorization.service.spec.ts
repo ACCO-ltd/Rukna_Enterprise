@@ -55,6 +55,7 @@ interface FileRow {
   receiptDocumentFor: { id: string }[];
   poRevisionAttachments: { id: string; purchaseOrderRevisionId: string; organizationId: string }[];
   grnAttachments: { id: string; goodsReceiptNoteId: string; organizationId: string }[];
+  quotePhoto: { id: string; quoteId: string; quote: { quotationRequestId: string } } | null;
 }
 
 /** A revision binding on the given project — the register's owner shape, in one place. */
@@ -80,6 +81,7 @@ function fileRow(over: Partial<FileRow> = {}): FileRow {
     receiptDocumentFor: [],
     poRevisionAttachments: [],
     grnAttachments: [],
+    quotePhoto: null,
     ...over,
   };
 }
@@ -442,6 +444,47 @@ describe('FileAuthorizationService', () => {
     it('denies a caller without manage:receivable', async () => {
       const { service } = build(document, []);
       await expect(service.assertCanRead({ ...BOB, permissions: [] }, 'file-1')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  /** ADR-044 — quotation photos carry supplier prices: view:procurement AND view:commitment-ledger. */
+  describe('quotation photos', () => {
+    const P = PERMISSIONS;
+    const quotePhoto = { id: 'qp-1', quoteId: 'q-1', quote: { quotationRequestId: 'qr-1' } };
+    const poAttachment = [{ id: 'att-1', purchaseOrderRevisionId: 'rev-9', organizationId: 'org-1' }];
+    const photo = fileRow({ uploadedBy: 'someone-else', lifecycle: 'IMMUTABLE', quotePhoto });
+    const evidence = fileRow({ uploadedBy: 'someone-else', lifecycle: 'IMMUTABLE', quotePhoto, poRevisionAttachments: poAttachment });
+    const plainPoFile = fileRow({ uploadedBy: 'someone-else', lifecycle: 'IMMUTABLE', poRevisionAttachments: poAttachment });
+
+    const costViewer = { ...BOB, permissions: [P.procurementView, P.commitmentsView] };
+    const moneyBlind = { ...BOB, permissions: [P.procurementView] };
+    const collectorWithoutCost = { ...BOB, permissions: [P.procurementView, P.quotationsCollect, P.quotationsAward] };
+    const costWithoutProcurement = { ...BOB, permissions: [P.commitmentsView] };
+
+    it.each([
+      ['the quote photo', photo],
+      ['the photo attached to the PO as evidence', evidence],
+    ])('%s: readable with procurement + cost visibility only', async (_label, row) => {
+      await expect(build(row).service.assertCanRead(costViewer, 'file-1')).resolves.toBeTruthy();
+      for (const caller of [moneyBlind, collectorWithoutCost, costWithoutProcurement]) {
+        await expect(build(row).service.assertCanRead(caller, 'file-1')).rejects.toBeInstanceOf(ForbiddenException);
+      }
+    });
+
+    it('marks the PO attachment of a quote photo as quotation evidence', async () => {
+      const { owners } = await build(evidence).service.assertCanRead(costViewer, 'file-1');
+      expect(owners).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'PO_REVISION_ATTACHMENT', quotationEvidence: true }),
+          expect.objectContaining({ kind: 'QUOTATION_PHOTO', quotationRequestId: 'qr-1' }),
+        ]),
+      );
+    });
+
+    it('other PO revision attachments keep the view:procurement rule', async () => {
+      await expect(build(plainPoFile).service.assertCanRead(moneyBlind, 'file-1')).resolves.toMatchObject({
+        owners: [{ kind: 'PO_REVISION_ATTACHMENT', quotationEvidence: false }],
+      });
     });
   });
 });

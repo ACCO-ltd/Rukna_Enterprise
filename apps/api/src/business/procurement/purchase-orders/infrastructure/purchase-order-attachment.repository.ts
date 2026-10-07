@@ -60,7 +60,20 @@ export class PurchaseOrderAttachmentRepository {
   listByRevision(prisma: TenantPrisma, purchaseOrderRevisionId: string) {
     return prisma.purchaseOrderRevisionAttachment.findMany({
       where: { purchaseOrderRevisionId },
-      include: { file: { select: { id: true, originalName: true, mimeType: true, sizeBytes: true, status: true, lifecycle: true } } },
+      include: {
+        file: {
+          select: {
+            id: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+            status: true,
+            lifecycle: true,
+            // ADR-044 — a quotation photo carries supplier prices (see listRevisionAttachments).
+            quotePhoto: { select: { id: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'asc' },
     });
   }
