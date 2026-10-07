@@ -1697,6 +1697,27 @@ export class ProgressService {
     };
   }
 
+  /**
+   * The two percentages the Dashboard's portfolio table shows for a started project — the same
+   * planned curve (`resolvePlannedCurve` + `plannedPercentAt`) and weighted roll-up (`getRollup`)
+   * as `getScheduleVariance`. `plannedPercent` is null when no curve resolves (no baseline, no
+   * targets, no usable project dates); `physicalPercent` is null before any work package exists
+   * (the roll-up's 0 then means "nothing to measure", not "nothing done").
+   */
+  async getScheduleReading(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<{ plannedPercent: number | null; physicalPercent: number | null }> {
+    const [planned, rollup] = await Promise.all([
+      this.resolvePlannedCurve(identity, projectId),
+      this.getRollup(identity, projectId),
+    ]);
+    return {
+      plannedPercent: plannedPercentAt(planned.points, new Date()),
+      physicalPercent: rollup.packages.length > 0 ? rollup.physicalPercent : null,
+    };
+  }
+
   // ── Round-2 Progress-over-time (BE-1): immutable snapshots + curve + comparison ──
 
   /**

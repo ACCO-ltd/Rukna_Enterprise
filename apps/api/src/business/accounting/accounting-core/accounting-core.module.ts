@@ -84,6 +84,8 @@ import { InvoiceDocumentSettingsController } from './presentation/invoice-docume
     ACCOUNTING_POSTING_PORT,
     AccountingConfigurationService,
     AccountingReadinessService,
+    // The Dashboard reads the setup cycle (`getSetupCycle`) so its to-do matches the guide.
+    AccountingGuideService,
     FiscalYearService,
     AccountService,
     BankAccountService,

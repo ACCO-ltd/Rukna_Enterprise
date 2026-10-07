@@ -196,6 +196,19 @@ export class ProjectPrismaRepository {
     });
   }
 
+  /** `findReadinessSnapshot` for a set of projects in one query (the Dashboard's Preparation list). */
+  async findReadinessSnapshots(
+    prisma: TenantPrisma,
+    organizationId: string,
+    ids: string[],
+  ): Promise<ProjectReadinessRecord[]> {
+    if (ids.length === 0) return [];
+    return prisma.project.findMany({
+      where: { id: { in: ids }, organizationId },
+      include: PROJECT_READINESS_INCLUDE,
+    });
+  }
+
   /**
    * The effective contract's signature events, newest first: `contract.record-signed` (ADR-032,
    * creates the contract ACTIVE) and `contract.activate` (legacy DRAFT -> ACTIVE). Outbox rows,

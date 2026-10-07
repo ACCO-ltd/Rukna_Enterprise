@@ -46,6 +46,11 @@ interface MetricStripProps {
   'aria-label'?: string;
   /** Segments per row from `lg`, so the row fills instead of leaving a gap. Defaults to 5. */
   columns?: 2 | 3 | 4 | 5;
+  /**
+   * `eyebrow` (default): uppercase micro labels. `sentence`: sentence-case labels, as the
+   * dashboard's design reads ("Contract value in progress").
+   */
+  labelStyle?: 'eyebrow' | 'sentence';
 }
 
 const LG_COLUMNS = {
@@ -79,7 +84,12 @@ export function segmentRules(index: number, columns: 2 | 3 | 4 | 5): string {
  * The one metric strip for workspaces (flow plan B4): Commercial overview, Billing & collection
  * and the dashboard all use it, so a figure's label and value look the same on every tab.
  */
-export function MetricStrip({ metrics, 'aria-label': ariaLabel, columns = 5 }: MetricStripProps) {
+export function MetricStrip({
+  metrics,
+  'aria-label': ariaLabel,
+  columns = 5,
+  labelStyle = 'eyebrow',
+}: MetricStripProps) {
   return (
     // Border rules, not cards: a top+bottom hairline on the strip and a vertical hairline
     // between segments. On a narrow viewport the row wraps to a 2-/3-column grid, still
@@ -89,7 +99,13 @@ export function MetricStrip({ metrics, 'aria-label': ariaLabel, columns = 5 }: M
       className={`grid grid-cols-2 border-y border-border ${SM_COLUMNS[smColumns(columns)]} ${LG_COLUMNS[columns]}`}
     >
       {metrics.map((metric, index) => (
-        <MetricSegment key={metric.label} metric={metric} index={index} columns={columns} />
+        <MetricSegment
+          key={metric.label}
+          metric={metric}
+          index={index}
+          columns={columns}
+          labelStyle={labelStyle}
+        />
       ))}
     </dl>
   );
@@ -99,10 +115,12 @@ function MetricSegment({
   metric,
   index,
   columns,
+  labelStyle,
 }: {
   metric: Metric;
   index: number;
   columns: 2 | 3 | 4 | 5;
+  labelStyle: 'eyebrow' | 'sentence';
 }) {
   const { label, value, sublabel, sublabelTone, href, tone } = metric;
   const unavailable = value === null || value === undefined;
@@ -115,7 +133,15 @@ function MetricSegment({
 
   const body = (
     <>
-      <dt className="text-micro font-semibold uppercase text-muted-foreground">{label}</dt>
+      <dt
+        className={
+          labelStyle === 'sentence'
+            ? 'text-caption font-medium text-muted-foreground'
+            : 'text-micro font-semibold uppercase text-muted-foreground'
+        }
+      >
+        {label}
+      </dt>
       <LtrValue
         as="dd"
         className={`mt-1 block text-h2 font-semibold tabular-nums ${

@@ -11,13 +11,22 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
  * forecast's supplier-bill outflows, so the two always agree.
  */
 export function findBillsToPay(prisma: TenantPrisma, organizationId: string, projectIds: string[]) {
-  if (projectIds.length === 0) return Promise.resolve([]);
+  return findOpenPostedBills(prisma, organizationId, projectIds);
+}
+
+/**
+ * The same "to pay" rule, also organisation-wide: `projectIds === null` drops the project filter
+ * (bills coded to no project included). Behind the Dashboard's payables figures, so they agree
+ * with the portfolio's bills to pay for the same projects.
+ */
+export function findOpenPostedBills(prisma: TenantPrisma, organizationId: string, projectIds: string[] | null) {
+  if (projectIds !== null && projectIds.length === 0) return Promise.resolve([]);
   return prisma.supplierBill.findMany({
     where: {
       organizationId,
       postingStatus: 'POSTED',
       outstandingAmount: { gt: 0 },
-      ...supplierBillProjectWhere({ in: projectIds }),
+      ...(projectIds !== null ? supplierBillProjectWhere({ in: projectIds }) : {}),
     },
     select: {
       id: true,

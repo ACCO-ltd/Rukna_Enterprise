@@ -6,6 +6,7 @@ import { IpaModule } from './ipa/ipa.module.js';
 import { IpcModule } from './ipc/ipc.module.js';
 import { CommercialModule } from './commercial/commercial.module.js';
 import { FinancePortfolioModule } from './finance-portfolio/finance-portfolio.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
 import { ProgressModule } from './progress/progress.module.js';
 import { ProgrammeModule } from './programme/programme.module.js';
@@ -14,7 +15,7 @@ import { ProjectSubtypesModule } from './project-subtypes/project-subtypes.modul
 import { VariationsModule } from './variations/variations.module.js';
 
 @Module({
-  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, FinancePortfolioModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule],
+  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, FinancePortfolioModule, DashboardModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule],
   exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule],
 })
 export class ConstructionModule {}

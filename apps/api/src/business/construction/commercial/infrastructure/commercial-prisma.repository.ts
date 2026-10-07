@@ -967,7 +967,8 @@ export class CommercialPrismaRepository {
 
   /**
    * Payment-schedule stages marked ready to bill on the given contracts, with the stage's invoice
-   * (if any) so the caller can apply the live-invoice rule.
+   * (if any) so the caller can apply the live-invoice rule, and the facts
+   * `installmentBillingBlocker` reads (trigger + linked milestone) plus the stage's label.
    */
   findReadyToBillInstallments(prisma: TenantPrisma, contractIds: string[]) {
     if (contractIds.length === 0) return Promise.resolve([]);
@@ -976,8 +977,54 @@ export class CommercialPrismaRepository {
       select: {
         id: true,
         contractId: true,
+        name: true,
         percentage: true,
+        triggerType: true,
+        milestoneLabel: true,
+        programmeMilestoneId: true,
+        programmeMilestone: { select: { status: true, name: true, verifiedAt: true } },
         clientInvoice: { select: { id: true, documentStatus: true, postingStatus: true } },
+      },
+    });
+  }
+
+  /**
+   * The stage ids of the given contracts in schedule order (`sortOrder`, as `findPaymentInstallments`
+   * reads it), so a caller can name a stage by its 1-based position.
+   */
+  findInstallmentOrder(prisma: TenantPrisma, contractIds: string[]) {
+    if (contractIds.length === 0) return Promise.resolve([]);
+    return prisma.contractPaymentInstallment.findMany({
+      where: { contractId: { in: contractIds } },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, contractId: true },
+    });
+  }
+
+  /**
+   * Every POSTED client invoice still carrying a balance — the unpaid side of
+   * `findPostedReceivablesByProject` (same posting filter), across the organisation or, given
+   * `projectIds`, across those projects only. `null` = organisation-wide, including invoices not
+   * tied to any project. Behind the Dashboard's receivables figures and overdue to-dos.
+   */
+  findOpenPostedInvoices(prisma: TenantPrisma, organizationId: string, projectIds: string[] | null) {
+    if (projectIds !== null && projectIds.length === 0) return Promise.resolve([]);
+    return prisma.clientInvoice.findMany({
+      where: {
+        organizationId,
+        postingStatus: 'POSTED',
+        outstandingAmount: { gt: 0 },
+        ...(projectIds !== null ? { projectId: { in: projectIds } } : {}),
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        projectId: true,
+        dueDate: true,
+        currencyCode: true,
+        totalAmount: true,
+        outstandingAmount: true,
+        client: { select: { name: true } },
       },
     });
   }

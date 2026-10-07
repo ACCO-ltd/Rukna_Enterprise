@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Avatar, Badge, Button, Card, MoneyDisplay, StatusPill, StatusText, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Pagination, Progress, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { Alert, Avatar, Badge, Button, Card, MoneyDisplay, StatusPill, StatusText, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, RingMeter, Pagination, Progress, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 import { FileX, Receipt, TriangleAlert } from 'lucide-react';
 
 import { ProgressStepper, type Step } from '@/components/progress-stepper';
@@ -485,7 +485,10 @@ export function PatternsSection() {
           </div>
         </Specimen>
 
-        <Specimen label="Progress and Meter" token="<Progress value max tone> · <Meter value max>">
+        <Specimen
+          label="Progress, Meter and RingMeter"
+          token="<Progress value max tone> · <Meter value target tone label> · <RingMeter value max>"
+        >
           <div className="flex flex-col gap-6">
             <div className="max-w-sm space-y-3">
               <div className="flex items-center justify-between text-body-sm">
@@ -495,9 +498,19 @@ export function PatternsSection() {
               <Progress value={84.8} tone="warning" label="Budget exposure" />
               <Progress value={48} tone="default" size="sm" label="Actual to date" />
             </div>
+            <div className="flex flex-col gap-2 text-body-sm">
+              <span className="flex items-center gap-2">
+                <Meter value={49} target={55} label="Progress against plan" />
+                49% <span className="text-warning">6 pts behind plan</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <Meter value={100} tone="success" label="Readiness" />
+                5 of 5 <span className="text-success">Ready to start</span>
+              </span>
+            </div>
             <div className="flex flex-wrap items-center gap-8">
-              <Meter value={68} tone="default" />
-              <Meter value={92} tone="danger" size={72} strokeWidth={6} />
+              <RingMeter value={68} tone="default" />
+              <RingMeter value={92} tone="danger" size={72} strokeWidth={6} />
             </div>
           </div>
         </Specimen>
