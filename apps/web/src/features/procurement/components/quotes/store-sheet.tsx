@@ -131,6 +131,8 @@ export function StoreSheet({
           <Label htmlFor="quote-store-search">{t('searchLabel')}</Label>
           <Input
             id="quote-store-search"
+            // The server keeps a new store name to 120 characters (STORE_NAME_TOO_LONG).
+            maxLength={120}
             className="mt-1.5"
             value={query}
             autoComplete="off"

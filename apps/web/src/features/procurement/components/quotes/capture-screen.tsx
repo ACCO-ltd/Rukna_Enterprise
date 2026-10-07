@@ -62,6 +62,7 @@ import {
 } from './quote-shared';
 import { StoreSheet } from './store-sheet';
 
+const MAX_PAGES_PER_QUOTE = 10;
 const EXCEPTION_REASONS: QuoteCountExceptionReason[] = ['ONLY_ONE_SUPPLIER', 'URGENT', 'FRAMEWORK_SUPPLIER'];
 
 /** Where the next picked photo goes. */
@@ -159,7 +160,9 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
   const preparingBlock = preparing > 0 ? { kind: 'uploading' as const, count: preparing } : null;
   const effectiveBlock = preparingBlock ?? block;
 
-  const onPicked = (files: File[], via: CaptureVia) => {
+  const onPicked = (picked: File[], via: CaptureVia) => {
+    // A quote takes at most 10 photos (server rule); a gallery pick beyond that is cut, not refused.
+    const files = picked.slice(0, MAX_PAGES_PER_QUOTE);
     const target = pickTarget;
     setPickTarget({ kind: 'new' });
     setPreparing((n) => n + files.length);

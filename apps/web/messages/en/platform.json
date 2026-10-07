@@ -2145,7 +2145,8 @@
         "SUPPLIER_BILL": "Supplier Bill",
         "PAYMENT_RECEIPT": "Payment Receipt",
         "MANUAL_JOURNAL": "Manual Journal",
-        "BOQ_BASELINE": "BOQ Baseline"
+        "BOQ_BASELINE": "BOQ Baseline",
+        "QUOTATION_AWARD": "Quotation award"
       }
     }
   },

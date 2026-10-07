@@ -38,7 +38,7 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
-import type { WorkflowTransactionType } from '@/features/workflows/types';
+import { WorkflowTransactionType } from '@/features/workflows/types';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -70,8 +70,8 @@ import { ChooseDialog } from './choose-dialog';
 import { PhotoViewer } from './photo-viewer';
 import { QuotationStatusPill, QuotePhotoImage, WaitingTime, useRefusalText } from './quote-shared';
 
-/** The award's governed transition (ADR-044 §7); not yet in `@erp/types`' enum. */
-const QUOTATION_AWARD = 'QUOTATION_AWARD' as WorkflowTransactionType;
+/** The award's governed transition (ADR-044 §7). */
+const QUOTATION_AWARD = WorkflowTransactionType.QUOTATION_AWARD;
 const REJECT_REASONS: QuoteRejectReason[] = ['ILLEGIBLE', 'WRONG_ITEMS', 'INCOMPLETE', 'OTHER'];
 
 type SaveState = 'saving' | 'saved' | 'failed';
