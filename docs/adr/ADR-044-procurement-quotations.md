@@ -225,9 +225,14 @@ outbox's unique key).
 Reads: the list and detail endpoints require `view:procurement` plus either quotation permission.
 Money fields (estimate, entered totals, awarded total, lowest flag) are returned through
 `moneyOrNull` when the caller holds `view:commitment-ledger` **or** `award:quotation`; otherwise
-`null` with `moneyVisible: false` (PR #279 pattern). Photos are money (they show prices), so the new
-file owner kind `QUOTATION_PHOTO` is readable by `collect:quotation`, `award:quotation` or
-`view:commitment-ledger` — **not** by `view:procurement` alone (unlike `PO_REVISION_ATTACHMENT`).
+`null` with `moneyVisible: false` (PR #279 pattern). Photos are money (they show supplier prices), so
+the new file owner kind `QUOTATION_PHOTO` is readable only with `view:procurement` **and**
+`view:commitment-ledger`, plus project access (membership or a project-access bypass role) for a
+project's quotation — never by `view:procurement` alone. The same rule follows a winning photo when
+it is attached to the PO as quotation evidence (other `PO_REVISION_ATTACHMENT`s keep
+`view:procurement`). The detail returns photo ids only when the caller passes it (`photosVisible`).
+*(Amended 2026-10-07 after review: the first draft also admitted `collect:`/`award:quotation`
+without cost visibility.)*
 ADMIN is re-linked to every catalogue permission on deploy, as today.
 
 **Why not reuse `approve:material-request`?** It is held by people who approve *need* (Construction

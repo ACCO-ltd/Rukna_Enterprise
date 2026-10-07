@@ -390,7 +390,7 @@ describe('ADR-044 Q3 — collecting quotations', () => {
   });
 
   describe('QUOTATION_PHOTO file access (R10 photos)', () => {
-    it('collectors, selectors and cost-visibility holders read; view:procurement alone does not', async () => {
+    it('procurement + cost-visibility holders (collector, selectors, CFO, CD) read; view:procurement alone does not', async () => {
       const mr = await createApprovedMr(prisma, env);
       const request = await s.collected(mr.id, ['Hodan']);
       const fileId = request.quotes[0].photos[0].fileId;
