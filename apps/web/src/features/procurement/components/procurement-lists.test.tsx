@@ -60,6 +60,7 @@ function mr(overrides: Partial<MaterialRequest> & { id: string }): MaterialReque
     projectId: 'p1',
     status: 'SUBMITTED',
     approvalInstanceId: null,
+    requestedBy: 'someone-else',
     requestedDate: '2026-10-01',
     requiredByDate: null,
     description: null,

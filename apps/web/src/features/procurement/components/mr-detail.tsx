@@ -36,9 +36,7 @@ import { useApprovalStep } from '@/features/workflows/hooks/use-approval';
 import { useWorkflowDefinition } from '@/features/workflows/hooks/use-workflow-definition';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
-import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
-import { ApiError } from '@/lib/api-client';
 
 import {
   useApproveMaterialRequest,
@@ -107,12 +105,12 @@ export function MrDetail({ id }: { id: string }) {
   const projectName = projects.data?.find((p) => p.id === request.projectId)?.name ?? null;
   const isTerminal = request.status === 'CANCELLED' || request.status === 'CLOSED';
   const mutation = pending === 'submit' ? submit : pending === 'approve' ? approve : cancel;
-  // Approve/reject: a submitted request outside a workflow (one with an approval instance is
-  // decided on its steps), for a holder of the permission who is not the requester — the
-  // server refuses the requester anyway (REQUESTER_CANNOT_APPROVE_OWN_REQUEST).
+  // Approve/reject: a submitted request, for a holder of the permission who is not the requester
+  // (the server refuses the requester anyway: REQUESTER_CANNOT_APPROVE_OWN_REQUEST). An
+  // approvalInstanceId does not hide them: the DoA chain clears DRAFT → SUBMITTED and is consumed
+  // on submit, so SUBMITTED → APPROVED is still this explicit step.
   const mayApprove =
     request.status === 'SUBMITTED' &&
-    !request.approvalInstanceId &&
     can(PROCUREMENT_PERMISSIONS.approveRequest) &&
     request.requestedBy !== session.user?.id;
 
@@ -397,10 +395,6 @@ function WorkflowChain({
   if (!hasWorkflow) return null;
 
   const isLoading = definition.isPending || stepQuery.isPending;
-
-  // No workflow instance: this request is not being approved through the configured chain (it is
-  // approved directly), so drawing the chain would claim steps that never ran.
-  if (instanceId === null) return null;
 
   if (isLoading) {
     return (

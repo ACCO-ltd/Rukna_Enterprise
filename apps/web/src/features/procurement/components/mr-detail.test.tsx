@@ -48,6 +48,7 @@ const request = (patch: Partial<MaterialRequest> = {}): MaterialRequest => ({
   projectId: null,
   status: 'SUBMITTED',
   approvalInstanceId: null,
+  requestedBy: 'someone-else',
   requestedDate: '2026-10-01',
   requiredByDate: null,
   description: null,
