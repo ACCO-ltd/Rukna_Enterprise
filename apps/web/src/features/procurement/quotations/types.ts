@@ -59,12 +59,11 @@ export interface QuotationRequestRow {
   moneyVisible: boolean;
 }
 
-/**
- * The list envelope. The spec says "rows"; whether they arrive bare or paged was open when this
- * was written, so the API wrapper accepts both and always hands the screens this shape.
- */
+/** `GET /procurement/quotation-requests` envelope (spec §0a). */
 export interface QuotationRequestPage {
   items: QuotationRequestRow[];
+  page: number;
+  limit: number;
   total: number;
 }
 
@@ -117,10 +116,18 @@ export interface SupplierMatch {
   suppliers: Array<{ id: string; code?: string | null; name: string }>;
 }
 
+/** The award's approval chain: pending while AWARD_PENDING_APPROVAL, or the one the award consumed. */
 export interface QuotationApprovalSummary {
   instanceId: string;
   status: string;
-  currentStep?: { roleRequired: string; stepOrder?: number } | null;
+  currentStepOrder: number | null;
+  currentStepRole: string | null;
+  steps: Array<{
+    stepOrder: number;
+    roleRequired: string;
+    approvedBy: { id: string; name: string } | null;
+    approvedAt: ApiDate | null;
+  }>;
 }
 
 /** The choice awaiting DoA approval (AWARD_PENDING_APPROVAL). */
@@ -148,18 +155,31 @@ export interface QuotationAward {
   nonLowestNote?: string | null;
 }
 
+/** `allowedActions[].action` (spec §0a). */
+export type QuotationActionName =
+  | 'ADD_QUOTE'
+  | 'ADD_PAGE'
+  | 'WITHDRAW_QUOTE'
+  | 'SEND'
+  | 'REOPEN'
+  | 'ENTER_TOTAL'
+  | 'REJECT_QUOTE'
+  | 'ASK_ANOTHER'
+  | 'AWARD'
+  | 'WITHDRAW_AWARD'
+  | 'REQUEST_REDECISION'
+  | 'RAISE_ORDER'
+  | 'CANCEL';
+
 /**
- * `allowedActions[]` — one per command, from the backend's `quotation-state.policy.ts` (the
- * single source for "why can't I"). Action names are matched loosely (case and separators
- * ignored) because the backend's spelling was not fixed when this was written; see
- * `findAction` in `quote-rules.ts`.
+ * One per command, from the backend's state policy — the single source for "why can't I". A
+ * command whose action is disabled is refused with exactly `reasonCode` (a SoD rule code for a
+ * barred selector).
  */
 export interface QuotationAllowedAction {
-  action: string;
+  action: QuotationActionName;
   enabled: boolean;
-  reasonCode?: string | null;
-  /** `SOD` when a segregation-of-duties rule blocks (reasonCode is then the rule code). */
-  blockKind?: 'PERMISSION' | 'STATE' | 'SOD' | 'PRECONDITION' | null;
+  reasonCode: string | null;
 }
 
 export interface QuotationRequestDetail {
@@ -175,17 +195,17 @@ export interface QuotationRequestDetail {
     priority?: string | null;
     status?: string;
     requestedBy?: PersonRef;
-    /** Not on the server's read model yet; shown when present. */
     requiredByDate?: ApiDate | null;
   };
   project: ProcurementProjectRef | null;
   estimateAmount: Money | null;
-  /** BOQ budget remaining on the MR's cost targets, when the server can say. Optional. */
+  /** BOQ budget remaining on the MR's cost targets — not on the read model yet; shown when present. */
   boqRemainingAmount?: Money | null;
   requiredQuoteCount: number;
   quoteCount?: number;
   distinctSupplierCount: number;
   exceptionReason: QuoteCountExceptionReason | null;
+  exceptionAccepted?: { by: PersonRef; at: ApiDate | null } | null;
   returnNote: string | null;
   returnedAt?: ApiDate | null;
   returnedBy?: PersonRef;
@@ -199,6 +219,9 @@ export interface QuotationRequestDetail {
   proposal: QuotationProposal | null;
   award: QuotationAward | null;
   purchaseOrder: { id: string; poNumber: string; status: string } | null;
+  cancelledBy?: PersonRef;
+  cancelledAt?: ApiDate | null;
+  cancelReason?: string | null;
   createdBy?: PersonRef;
   createdAt?: ApiDate;
   lines: QuotationLine[];
@@ -212,8 +235,10 @@ export interface QuotationRequestDetail {
 /** The MR detail's quotation summary (Q8). Absent on servers that predate it. */
 export interface MaterialRequestQuotationSummary {
   id: string;
+  number?: string;
   status: QuotationRequestStatus;
   quoteCount: number;
+  distinctSupplierCount?: number;
   requiredQuoteCount: number;
 }
 
@@ -226,9 +251,13 @@ export interface QuotePhotoPayload {
 }
 
 export interface AddQuotePayload {
+  /** UUID; a replay with the same value is a no-op. */
   clientRef: string;
   supplierId?: string;
+  /** ≤ 120 characters. */
   storeName?: string;
+  replacesQuoteId?: string;
+  /** 1–10 photos. */
   photos: QuotePhotoPayload[];
 }
 
@@ -243,21 +272,28 @@ export interface AwardPayload {
 
 export type OrderSplitMode = 'ESTIMATE' | 'SINGLE_LINE' | 'MANUAL';
 
+/** Only lines with quantity still to order; `amount`/`unitPrice` are null in MANUAL mode. */
 export interface OrderDraftLine {
   materialRequestLineId: string;
+  lineNumber?: number;
   description: string;
   quantity: Quantity;
   maxQuantity: Quantity;
-  uom: string | null;
+  uom: QuotationLine['uom'];
   amount?: Money | null;
   unitPrice?: Money | null;
 }
 
 export interface OrderDraft {
-  supplier: { id: string | null; name: string } | null;
+  quotationRequestId?: string;
+  number?: string;
+  supplier: { id: string | null; code?: string | null; name: string } | null;
+  currencyCode?: string | null;
   awardedTotal: Money | null;
+  paymentPath?: QuotationPaymentPath | null;
   splitMode: OrderSplitMode;
   lines: OrderDraftLine[];
+  moneyVisible?: boolean;
 }
 
 export interface RaiseOrderLine {

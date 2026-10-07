@@ -43,7 +43,10 @@ export function GetQuotesEntry({ request }: { request: MaterialRequest }) {
         <Link href={href}>
           {summary.status === 'AWARDED'
             ? t('chosen')
-            : t('openQuotes', { count: summary.quoteCount, required: summary.requiredQuoteCount })}
+            : t('openQuotes', {
+                count: summary.distinctSupplierCount ?? summary.quoteCount,
+                required: summary.requiredQuoteCount,
+              })}
           <ArrowRight className="size-4" aria-hidden="true" />
         </Link>
       </Button>

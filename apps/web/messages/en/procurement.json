@@ -1875,7 +1875,29 @@
       "forbidden": "You don't have permission to do this.",
       "conflict": "Someone else changed this request. It has been refreshed.",
       "offline": "No connection. Try again when you have signal.",
-      "generic": "That did not work. Try again."
+      "generic": "That did not work. Try again.",
+      "AWARD_CHANGED": "The chosen quote changed after this order was raised. Cancel it and raise the order again.",
+      "PURCHASE_ORDER_LIVE": "A draft order from this choice is still open. Cancel it first.",
+      "PURCHASE_ORDER_CONFIRMED": "An order from this choice was already issued. Cancel the quotes and start a new request.",
+      "QUOTATION_CHANGED": "Someone else changed this request. It has been refreshed.",
+      "QUOTATION_CANCELLED": "This request was cancelled.",
+      "QUOTATION_NOT_AWAITING_DECISION": "This request is not waiting for a choice any more.",
+      "QUOTATION_NOT_PENDING_APPROVAL": "There is no choice waiting for approval.",
+      "QUOTATION_NOT_AWARDED": "No quote has been chosen yet.",
+      "QUOTES_REQUIRED": "Add at least one quote first.",
+      "QUOTE_NOT_ACTIVE": "That quote was removed or rejected.",
+      "NON_LOWEST_NOTE_REQUIRED": "Say why you chose this quote.",
+      "SUPPLIER_INACTIVE": "That supplier is inactive. Pick another, or ask finance to reactivate it.",
+      "MATERIAL_REQUEST_ALREADY_ORDERED": "Everything on this request is already on an order.",
+      "MISSING_PERMISSION": "You don't have permission to do this.",
+      "STORE_REQUIRED": "Choose a store for this quote.",
+      "STORE_NAME_TOO_LONG": "That store name is too long (120 characters at most).",
+      "PHOTO_REQUIRED": "Add a photo of the quote.",
+      "FILE_NOT_ATTACHABLE": "This photo could not be attached. Take it again.",
+      "TOTAL_INVALID": "Enter the total as an amount above 0, with at most 2 decimals.",
+      "ORDER_LINES_REQUIRED": "Include at least one line.",
+      "ORDER_LINE_QUANTITY_INVALID": "A quantity is more than the request still needs.",
+      "ORDER_LINE_AMOUNT_INVALID": "Every included line needs an amount above 0."
     },
     "feedback": {
       "sent": "Sent to finance",
@@ -2119,7 +2141,11 @@
         "redrive": "Complete the choice",
         "withdraw": "Withdraw choice",
         "withdrawTitle": "Withdraw the choice?",
-        "withdrawBody": "The approval stops and the quotes are open to choose again."
+        "withdrawBody": "The approval stops and the quotes are open to choose again.",
+        "chain": "Approval chain",
+        "stepApproved": "Approved by {name}",
+        "stepCurrent": "Waiting",
+        "stepWaiting": "Next"
       },
       "awarded": {
         "title": "Chosen: {store}",
@@ -2175,7 +2201,8 @@
         "sendBack": "Send back to finance",
         "sendBackTitle": "Send back to finance?",
         "sendBackBody": "Finance chooses again. The chosen quote is cleared.",
-        "sendBackReason": "Reason"
+        "sendBackReason": "Reason",
+        "sendBackBodyCancelsDraft": "The draft order is cancelled and finance chooses again. The chosen quote is cleared."
       },
       "evidence": {
         "title": "Approved by quotation award {ref}",

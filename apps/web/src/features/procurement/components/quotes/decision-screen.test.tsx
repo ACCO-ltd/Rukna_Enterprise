@@ -228,8 +228,8 @@ describe('QuoteDecisionScreen', () => {
     render({
       quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '90.00' })],
       allowedActions: [
-        { action: 'ENTER_TOTAL', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT', blockKind: 'SOD' },
-        { action: 'AWARD', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT', blockKind: 'SOD' },
+        { action: 'ENTER_TOTAL', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT' },
+        { action: 'AWARD', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT' },
       ],
     });
     expect(await screen.findByText("You can't choose on this request")).toBeInTheDocument();

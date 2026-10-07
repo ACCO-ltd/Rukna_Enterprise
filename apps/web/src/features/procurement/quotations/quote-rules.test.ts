@@ -12,26 +12,27 @@ import {
   sendBlock,
   storeKey,
 } from './quote-rules';
+import type { QuotationAllowedAction } from './types';
 
 describe('findAction / actionEnabled', () => {
-  const actions = [
+  const actions: QuotationAllowedAction[] = [
     { action: 'ENTER_TOTAL', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT' },
-    { action: 'reopen', enabled: true },
+    { action: 'REOPEN', enabled: true, reasonCode: null },
   ];
-  it('matches regardless of case and separators', () => {
-    expect(findAction(actions, 'enterTotal')?.enabled).toBe(false);
+  it('finds the verdict by the server action name', () => {
+    expect(findAction(actions, 'ENTER_TOTAL')?.enabled).toBe(false);
     expect(findAction(actions, 'REOPEN')?.enabled).toBe(true);
-    expect(findAction(actions, 'award')).toBeNull();
+    expect(findAction(actions, 'AWARD')).toBeNull();
   });
   it('falls back only when the server sent no verdict', () => {
-    expect(actionEnabled(actions, 'enter-total', true)).toBe(false);
-    expect(actionEnabled(actions, 'award', true)).toBe(true);
-    expect(actionEnabled(undefined, 'award', false)).toBe(false);
+    expect(actionEnabled(actions, 'ENTER_TOTAL', true)).toBe(false);
+    expect(actionEnabled(actions, 'AWARD', true)).toBe(true);
+    expect(actionEnabled(undefined, 'AWARD', false)).toBe(false);
   });
   it('reads the SoD bar from the server, never computing it', () => {
     expect(selectionBarCode({ allowedActions: actions })).toBe('QUOTE_UPLOADER_CANNOT_SELECT');
     expect(
-      selectionBarCode({ allowedActions: [{ action: 'award', enabled: false, reasonCode: 'QUOTE_TOTALS_MISSING' }] }),
+      selectionBarCode({ allowedActions: [{ action: 'AWARD', enabled: false, reasonCode: 'QUOTE_TOTALS_MISSING' }] }),
     ).toBeNull();
     expect(selectionBarCode({ allowedActions: [] })).toBeNull();
   });

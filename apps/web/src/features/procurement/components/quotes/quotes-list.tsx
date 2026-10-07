@@ -27,7 +27,12 @@ export function QuotesList() {
   const tReason = useTranslations('procurement.quotes.exceptionReason');
   const [queue, setQueue] = useState<CollectorQueue>('collect');
   useResumeQuoteUploads();
-  const rows = useQuotationRequests({ queue }, { poll: queue === 'waiting' });
+  // The buyer's own requests on their working queues; "Chosen — raise order" shows every award, since
+  // any buyer who may create orders can raise it.
+  const rows = useQuotationRequests(
+    { queue, ...(queue === 'awarded' ? {} : { mine: true }) },
+    { poll: queue === 'waiting' },
+  );
   const data = rows.data?.items ?? [];
   const moneyVisible = data.some((row) => row.moneyVisible);
 

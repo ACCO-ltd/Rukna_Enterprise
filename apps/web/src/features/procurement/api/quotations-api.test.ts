@@ -13,7 +13,6 @@ import {
   getOrderDraft,
   getQuotationRequest,
   listQuotationRequests,
-  normalizeQuotationPage,
   openQuotationRequest,
   raiseOrder,
   rejectQuote,
@@ -42,15 +41,15 @@ describe('quotations api', () => {
     apiClient.mockResolvedValue({});
   });
 
-  it('lists a queue with its filters and normalises bare or paged rows', async () => {
-    apiClient.mockResolvedValueOnce([{ id: 'a' }]);
-    await expect(listQuotationRequests({ queue: 'decide', projectId: 'p1', q: 'cem' })).resolves.toEqual({
-      items: [{ id: 'a' }],
-      total: 1,
+  it('lists a queue with its filters and returns the paged envelope', async () => {
+    const page = { items: [{ id: 'a' }], page: 1, limit: 25, total: 1 };
+    apiClient.mockResolvedValueOnce(page);
+    await expect(listQuotationRequests({ queue: 'collect', projectId: 'p1', q: 'cem', mine: true, limit: 50 })).resolves.toBe(page);
+    expect(lastCall()).toMatchObject({
+      path: BASE,
+      method: 'GET',
+      params: { queue: 'collect', projectId: 'p1', q: 'cem', mine: 'true', limit: '50' },
     });
-    expect(lastCall()).toMatchObject({ path: BASE, method: 'GET', params: { queue: 'decide', projectId: 'p1', q: 'cem' } });
-    expect(normalizeQuotationPage({ items: [], total: 7 })).toEqual({ items: [], total: 7 });
-    expect(normalizeQuotationPage(undefined)).toEqual({ items: [], total: 0 });
   });
 
   it.each([

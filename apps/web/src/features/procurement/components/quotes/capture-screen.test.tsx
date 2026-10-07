@@ -226,7 +226,7 @@ describe('QuoteCaptureScreen — after send', () => {
         sentAt: '2026-10-07T07:42:00.000Z',
         waitingWorkingMinutes: 37,
         quotes: [quoteFixture({ id: 'k1', name: 'Hodan' })],
-        allowedActions: [{ action: 'REOPEN', enabled: true }],
+        allowedActions: [{ action: 'REOPEN', enabled: true, reasonCode: null }],
       }),
     );
     expect(await screen.findByText('Waiting for finance', { selector: 'p' })).toBeInTheDocument();

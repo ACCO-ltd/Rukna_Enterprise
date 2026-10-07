@@ -53,7 +53,7 @@ const awarded = (patch: Partial<QuotationRequestDetail> = {}): QuotationRequestD
       supplier: { id: 's9', name: 'Xamar Steel', code: 'QS-00001' },
       paymentPath: 'FINANCE_PAYS_SUPPLIER',
     },
-    allowedActions: [{ action: 'RAISE_ORDER', enabled: true }],
+    allowedActions: [{ action: 'RAISE_ORDER', enabled: true, reasonCode: null }],
     ...patch,
   });
 

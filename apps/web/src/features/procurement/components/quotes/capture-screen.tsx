@@ -195,11 +195,11 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
   };
 
   const mayReopen =
-    detail.status === 'AWAITING_DECISION' && mayCollect && actionEnabled(detail.allowedActions, 'reopen', true);
+    detail.status === 'AWAITING_DECISION' && mayCollect && actionEnabled(detail.allowedActions, 'REOPEN', true);
   const mayCancel =
     mayCollect &&
     detail.status !== 'CANCELLED' &&
-    actionEnabled(detail.allowedActions, 'cancel', detail.status !== 'AWARDED' || !detail.purchaseOrder);
+    actionEnabled(detail.allowedActions, 'CANCEL', detail.status !== 'AWARDED' || !detail.purchaseOrder);
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-4 pb-8">

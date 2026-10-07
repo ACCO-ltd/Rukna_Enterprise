@@ -29,6 +29,7 @@ import { PROCUREMENT_PERMISSIONS, QUOTATION_PERMISSIONS, usePermissions } from '
 import { formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, sumMinorUnits } from '@/lib/money';
 
+import { useCancelPurchaseOrder } from '../../hooks/use-procurement';
 import { useOrderDraft, useRaiseOrder, useRequestRedecision } from '../../hooks/use-quotations';
 import { minorToMoney } from '../../quotations/order-rules';
 import { actionEnabled, uomLabel } from '../../quotations/quote-rules';
@@ -47,7 +48,7 @@ export function OrderCard({ detail }: { detail: QuotationRequestDetail }) {
   const mayRaise =
     can(QUOTATION_PERMISSIONS.collect) &&
     can(PROCUREMENT_PERMISSIONS.createOrder) &&
-    actionEnabled(detail.allowedActions, 'raiseOrder', !detail.purchaseOrder);
+    actionEnabled(detail.allowedActions, 'RAISE_ORDER', !detail.purchaseOrder);
   const liveOrder = detail.purchaseOrder && detail.purchaseOrder.status !== 'CANCELLED' ? detail.purchaseOrder : null;
   // Prefetched, so the tap already knows whether the split needs typing (MANUAL → line editor).
   const draft = useOrderDraft(detail.id, { enabled: Boolean(award) && mayRaise && !liveOrder });
@@ -213,13 +214,42 @@ function RaiseOrderDialog({ detail, onClose }: { detail: QuotationRequestDetail;
   );
 }
 
-/** 422/409 `PO_EXCEEDS_AWARD`: lower the amounts, or send it back to finance to choose again. */
-export function ExceedsAward({ requestId }: { requestId: string }) {
+/**
+ * 422 (raise-order) / 409 (PO confirm) `PO_EXCEEDS_AWARD`: lower the amounts, or send it back to
+ * finance to choose again. The server refuses a re-decision while a draft order from the award is
+ * live (`PURCHASE_ORDER_LIVE`), so when there is one it is cancelled first, then re-decision runs.
+ */
+export function ExceedsAward({
+  requestId,
+  draftPurchaseOrderId,
+}: {
+  requestId: string;
+  /** The live draft PO raised from this award, when the refusal came from confirming it. */
+  draftPurchaseOrderId?: string | null;
+}) {
   const t = useTranslations('procurement.quotes.order.exceeds');
   const router = useRouter();
   const redecide = useRequestRedecision(requestId);
+  const cancelPo = useCancelPurchaseOrder();
   const refusal = useRefusalText();
   const [open, setOpen] = useState(false);
+  const [poCancelled, setPoCancelled] = useState(false);
+  const busy = cancelPo.isPending || redecide.isPending;
+
+  const sendBack = async (reason: string) => {
+    try {
+      if (draftPurchaseOrderId && !poCancelled) {
+        await cancelPo.mutateAsync(draftPurchaseOrderId);
+        setPoCancelled(true);
+      }
+      await redecide.mutateAsync(reason);
+      setOpen(false);
+      router.push(`/procurement/quotes/${requestId}`);
+    } catch {
+      // The dialog shows the refusal; a retry skips the cancel if it already went through.
+    }
+  };
+
   return (
     <Notice
       tone="danger"
@@ -234,20 +264,14 @@ export function ExceedsAward({ requestId }: { requestId: string }) {
       {open ? (
         <ConfirmActionDialog
           title={t('sendBackTitle')}
-          description={t('sendBackBody')}
+          description={draftPurchaseOrderId ? t('sendBackBodyCancelsDraft') : t('sendBackBody')}
           confirmLabel={t('sendBack')}
           reason={{ label: t('sendBackReason'), required: true }}
-          isPending={redecide.isPending}
-          errorMessage={refusal(redecide.error)}
-          onConfirm={(text) =>
-            redecide.mutate(text, {
-              onSuccess: () => {
-                setOpen(false);
-                router.push(`/procurement/quotes/${requestId}`);
-              },
-            })
-          }
+          isPending={busy}
+          errorMessage={refusal(cancelPo.error ?? redecide.error)}
+          onConfirm={(text) => void sendBack(text)}
           onDismiss={() => {
+            cancelPo.reset();
             redecide.reset();
             setOpen(false);
           }}

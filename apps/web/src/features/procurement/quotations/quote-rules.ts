@@ -12,6 +12,7 @@ import { MONEY_SCALE, parseMinorUnits } from '@/lib/money';
 import type {
   PersonRef,
   Quote,
+  QuotationActionName,
   QuotationAllowedAction,
   QuotationRequestDetail,
   QuotationRequestStatus,
@@ -19,28 +20,21 @@ import type {
 
 // ─── allowedActions ──────────────────────────────────────────────────────────────
 
-/** Case- and separator-insensitive, so `ENTER_TOTAL`, `enterTotal` and `enter-total` agree. */
-function norm(name: string): string {
-  return name.toLowerCase().replace(/[^a-z]/g, '');
-}
-
 /**
- * The server's verdict for one action, or `null` when the server sent none for it (an older
- * build, or an action that does not apply). Callers fall back to status + permission then, and
- * the server still refuses whatever is not allowed.
+ * The server's verdict for one action, or `null` when it sent none (the screen then falls back to
+ * status + permission, and the server still refuses whatever is not allowed).
  */
 export function findAction(
   actions: QuotationAllowedAction[] | null | undefined,
-  name: string,
+  name: QuotationActionName,
 ): QuotationAllowedAction | null {
-  const wanted = norm(name);
-  return actions?.find((entry) => norm(entry.action) === wanted) ?? null;
+  return actions?.find((entry) => entry.action === name) ?? null;
 }
 
 /** Enabled unless the server said no. */
 export function actionEnabled(
   actions: QuotationAllowedAction[] | null | undefined,
-  name: string,
+  name: QuotationActionName,
   fallback: boolean,
 ): boolean {
   const verdict = findAction(actions, name);
@@ -55,14 +49,9 @@ export const SOD_CODES = new Set(['QUOTE_UPLOADER_CANNOT_SELECT', 'REQUESTER_CAN
  * (never computed here), or null.
  */
 export function selectionBarCode(detail: Pick<QuotationRequestDetail, 'allowedActions'>): string | null {
-  for (const name of ['award', 'enterTotal']) {
+  for (const name of ['AWARD', 'ENTER_TOTAL'] as const) {
     const verdict = findAction(detail.allowedActions, name);
-    if (
-      verdict &&
-      !verdict.enabled &&
-      verdict.reasonCode &&
-      (verdict.blockKind === 'SOD' || SOD_CODES.has(verdict.reasonCode))
-    ) {
+    if (verdict && !verdict.enabled && verdict.reasonCode && SOD_CODES.has(verdict.reasonCode)) {
       return verdict.reasonCode;
     }
   }

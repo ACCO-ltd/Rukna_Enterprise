@@ -52,6 +52,7 @@ import { PoAmendDialog } from './po-amend-dialog';
 import { PoBillPaymentsSection } from './po-bill-payments';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { AwardEvidence } from './quotes/award-evidence';
+import { ExceedsAward } from './quotes/order-raise';
 import { refusalCode } from './quotes/quote-shared';
 
 export function PoDetail({ id }: { id: string }) {
@@ -72,16 +73,24 @@ export function PoDetail({ id }: { id: string }) {
 
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // ADR-044: confirming a draft raised from a quotation award that now exceeds it (409
+  // PO_EXCEEDS_AWARD) names the request, so the page can offer "Send back to finance".
+  const [exceedsRequestId, setExceedsRequestId] = useState<string | null>(null);
 
   const runConfirm = useCallback(async () => {
     setConfirmError(null);
+    setExceedsRequestId(null);
     setConfirming(true);
     try {
       await confirm.mutateAsync(id);
     } catch (e) {
       // ADR-044: a draft raised from a quotation award may not exceed the award.
-      if (refusalCode(e) === 'PO_EXCEEDS_AWARD') {
-        setConfirmError(`${tQuotes('refusal.PO_EXCEEDS_AWARD')} ${tQuotes('order.exceeds.body')}`);
+      const code = refusalCode(e);
+      const requestId = e instanceof ApiError ? (e.details?.quotationRequestId as string | undefined) : undefined;
+      if (code === 'PO_EXCEEDS_AWARD' && requestId) {
+        setExceedsRequestId(requestId);
+      } else if (code === 'PO_EXCEEDS_AWARD' || code === 'AWARD_CHANGED') {
+        setConfirmError(tQuotes(`refusal.${code}`));
       } else {
         setConfirmError(e instanceof ApiError ? e.message : tc('loadFailed'));
       }
@@ -194,6 +203,9 @@ export function PoDetail({ id }: { id: string }) {
             </div>
 
             {confirmError ? <Alert variant="error" messages={[confirmError]} /> : null}
+            {exceedsRequestId ? (
+              <ExceedsAward requestId={exceedsRequestId} draftPurchaseOrderId={order.id} />
+            ) : null}
 
             <Button
               type="button"

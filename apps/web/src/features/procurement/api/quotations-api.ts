@@ -12,7 +12,6 @@ import type {
   QuotationQueue,
   QuotationRequestDetail,
   QuotationRequestPage,
-  QuotationRequestRow,
   QuotePhotoPayload,
   QuoteRejectReason,
   QuoteCountExceptionReason,
@@ -28,43 +27,38 @@ function post<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-/** The list arrives bare or paged; both become `{ items, total }`. */
-export function normalizeQuotationPage(
-  raw: QuotationRequestRow[] | Partial<QuotationRequestPage> & { data?: QuotationRequestRow[] } | null | undefined,
-): QuotationRequestPage {
-  if (Array.isArray(raw)) return { items: raw, total: raw.length };
-  const items = raw?.items ?? raw?.data ?? [];
-  return { items, total: typeof raw?.total === 'number' ? raw.total : items.length };
-}
-
 export interface QuotationListFilters {
   queue: QuotationQueue;
   projectId?: string;
   q?: string;
+  /** Only requests I created or uploaded to. The server defaults it to true for `waiting`. */
+  mine?: boolean;
   page?: number;
+  /** Default 25, at most 100. */
+  limit?: number;
 }
 
-export async function listQuotationRequests(
-  filters: QuotationListFilters,
-): Promise<QuotationRequestPage> {
+/** `GET /` → `{ items, page, limit, total }` (spec §0a). */
+export function listQuotationRequests(filters: QuotationListFilters): Promise<QuotationRequestPage> {
   const params: Record<string, string> = { queue: filters.queue };
   if (filters.projectId) params.projectId = filters.projectId;
   if (filters.q) params.q = filters.q;
+  if (filters.mine !== undefined) params.mine = String(filters.mine);
   if (filters.page) params.page = String(filters.page);
-  const raw = await apiClient<Parameters<typeof normalizeQuotationPage>[0]>(BASE, { params });
-  return normalizeQuotationPage(raw);
+  if (filters.limit) params.limit = String(filters.limit);
+  return apiClient<QuotationRequestPage>(BASE, { params });
 }
 
 export function getQuotationRequest(id: string): Promise<QuotationRequestDetail> {
   return apiClient<QuotationRequestDetail>(`${BASE}/${id}`);
 }
 
-/** Opens (or returns the existing live) request for an approved MR. */
+/** Opens (201) or returns the existing live (200) request for an approved MR. */
 export function openQuotationRequest(materialRequestId: string): Promise<QuotationRequestDetail> {
   return post(BASE, { materialRequestId });
 }
 
-/** Idempotent on `clientRef` — a replay returns the first quote. */
+/** 1–10 photos. Idempotent on `clientRef`: a replay returns the detail with no new quote. */
 export function addQuote(id: string, payload: AddQuotePayload): Promise<QuotationRequestDetail> {
   return post(`${BASE}/${id}/quotes`, payload);
 }
@@ -116,7 +110,10 @@ export function askForAnotherQuote(id: string, note: string): Promise<QuotationR
   return post(`${BASE}/${id}/ask-another`, { note });
 }
 
-/** 200 → AWARDED; 409 `{ approvalInstanceId }` → routed for approval (ADR-015 re-drive). */
+/**
+ * 200 → AWARDED; 409 with `details.code = AWARD_PENDING_APPROVAL` and `details.approvalInstanceId`
+ * → routed for approval. Re-drive with the same body or `{}` (ADR-015).
+ */
 export function awardQuotation(id: string, payload: AwardPayload): Promise<QuotationRequestDetail> {
   return post(`${BASE}/${id}/award`, payload);
 }

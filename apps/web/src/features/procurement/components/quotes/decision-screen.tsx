@@ -55,6 +55,7 @@ import {
   actionEnabled,
   activeQuotes,
   allTotalsEntered,
+  findAction,
   lowestQuoteIds,
   selectionBarCode,
   totalMinor,
@@ -126,7 +127,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const deciding = detail.status === 'AWAITING_DECISION';
   const mayAward = can(QUOTATION_PERMISSIONS.award);
   const barCode = selectionBarCode(detail);
-  const canEnter = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'enterTotal', true);
+  const canEnter = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'ENTER_TOTAL', true);
 
   // ── Totals: local drafts over the server's values; autosave on blur ─────────────
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -188,10 +189,13 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const ask = useAskForAnotherQuote(detail.id);
   const withdraw = useWithdrawAward(detail.id);
 
-  const chooseEnabled =
-    deciding && mayAward && !barCode && allEntered && actionEnabled(detail.allowedActions, 'award', true);
-  const mayAsk = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'askAnother', true);
-  const mayReject = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'rejectQuote', true);
+  // The server says QUOTE_TOTALS_MISSING until the typed totals have saved; they are flushed before
+  // the award, so locally complete totals are enough to offer Choose.
+  const awardVerdict = findAction(detail.allowedActions, 'AWARD');
+  const awardOpen = !awardVerdict || awardVerdict.enabled || awardVerdict.reasonCode === 'QUOTE_TOTALS_MISSING';
+  const chooseEnabled = deciding && mayAward && !barCode && allEntered && awardOpen;
+  const mayAsk = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'ASK_ANOTHER', true);
+  const mayReject = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'REJECT_QUOTE', true);
 
   const runAward = async (payload: AwardPayload) => {
     try {
@@ -202,9 +206,11 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
     award.mutate(payload, {
       onSuccess: () => setChoosing(null),
       onError: (error) => {
-        // 409 + approvalInstanceId is the DoA gate, not a failure (ADR-015).
+        // 409 AWARD_PENDING_APPROVAL (+ approvalInstanceId) is the DoA gate, not a failure (ADR-015).
         const instance =
-          error instanceof ApiError && error.status === 409
+          error instanceof ApiError &&
+          error.status === 409 &&
+          (error.details?.code === 'AWARD_PENDING_APPROVAL' || error.details?.approvalInstanceId)
             ? ((error.details?.approvalInstanceId as string | undefined) ?? null)
             : null;
         if (instance) {
@@ -291,6 +297,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
               })}
             </p>
           </Notice>
+          {detail.approval?.steps.length ? <ApprovalSteps approval={detail.approval} /> : null}
           <ApprovalPanel instanceId={pendingInstance} transactionType={QUOTATION_AWARD} />
           {mayAward ? (
             <div className="flex flex-wrap gap-2">
@@ -560,6 +567,34 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
 }
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────────
+
+/** The award's chain from the read model: each step, who approved it, which one is current. */
+function ApprovalSteps({ approval }: { approval: NonNullable<QuotationRequestDetail['approval']> }) {
+  const t = useTranslations('procurement.quotes.decision.pending');
+  return (
+    <ol className="space-y-1 rounded-panel border border-border bg-surface p-3 text-body-sm" aria-label={t('chain')}>
+      {[...approval.steps]
+        .sort((a, b) => a.stepOrder - b.stepOrder)
+        .map((step) => {
+          const current = step.stepOrder === approval.currentStepOrder && !step.approvedBy;
+          return (
+            <li key={step.stepOrder} className="flex flex-wrap items-center justify-between gap-2">
+              <span className={cn('font-medium', current ? 'text-foreground' : 'text-muted-foreground')}>
+                {step.stepOrder}. {step.roleRequired}
+              </span>
+              <span className={cn('text-caption', step.approvedBy ? 'text-success' : 'text-muted-foreground')}>
+                {step.approvedBy
+                  ? t('stepApproved', { name: step.approvedBy.name })
+                  : current
+                    ? t('stepCurrent')
+                    : t('stepWaiting')}
+              </span>
+            </li>
+          );
+        })}
+    </ol>
+  );
+}
 
 function ContextStrip({
   detail,
