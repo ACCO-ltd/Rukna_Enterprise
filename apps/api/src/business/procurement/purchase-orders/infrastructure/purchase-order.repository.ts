@@ -245,6 +245,12 @@ export class PurchaseOrderRepository {
     });
   }
 
+  /** `SELECT … FOR UPDATE` on the material request (serialises with quotation open — review L2). */
+  async lockMaterialRequest(prisma: TenantPrisma, organizationId: string, materialRequestId: string) {
+    await prisma.$queryRaw`
+      SELECT id FROM material_requests WHERE id = ${materialRequestId} AND organization_id = ${organizationId} FOR UPDATE`;
+  }
+
   /** Review M1 — the award's order is confirmed: its quotation round is closed (idempotent). */
   closeAwardRound(prisma: TenantPrisma, purchaseOrderId: string) {
     return prisma.quotationRequest.updateMany({

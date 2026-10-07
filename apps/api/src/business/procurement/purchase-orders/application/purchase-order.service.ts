@@ -789,6 +789,11 @@ export class PurchaseOrderService {
         // new round.
         if (!checkedRequests.has(mrLine.request.id)) {
           checkedRequests.add(mrLine.request.id);
+          // Review L2: the same MR row lock quotation open() takes, so a manual PO and a round
+          // opening on one MR serialise and each sees the other. The raise-order path skips it: its
+          // round is already the MR's live round, and it holds the request lock (taking the MR lock
+          // after it would invert the MR-cancel order, MR → request).
+          if (!raisingQuotationRequestId) await this.repo.lockMaterialRequest(prisma, orgId, mrLine.request.id);
           const rounds = await this.repo.findQuotationRoundsForMaterialRequest(prisma, orgId, mrLine.request.id);
           const block = manualOrderBlock(rounds, raisingQuotationRequestId);
           if (block) {
