@@ -21,6 +21,13 @@ export function deriveNotificationSeverity(
       return 'URGENT';
     case 'CLIENT_INVOICE_OVERDUE':
       return bucket === 60 || bucket === 90 ? 'URGENT' : 'WARNING';
+    // ADR-044 §10 — finance has quotes to choose / procurement has another quote to fetch: both
+    // are someone's next action. An award is news, not a demand.
+    case 'QUOTES_READY':
+    case 'ANOTHER_QUOTE_REQUESTED':
+      return 'WARNING';
+    case 'QUOTATION_AWARDED':
+      return 'INFO';
     default: {
       // Exhaustiveness guard: a new kind must declare its severity here.
       const _exhaustive: never = kind;

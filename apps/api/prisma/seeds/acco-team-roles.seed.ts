@@ -145,6 +145,9 @@ const ROLES: TeamRoleSpec[] = [
       P.goodsReceiptsCreate,
       P.goodsReceiptsPost,
       P.commitmentsView,
+      // ADR-044 — the field buyer collects competitive quotes (photos only, never a price).
+      // (Live tenant: granted by prisma/seeds/grant-quotation-permissions.seed.ts.)
+      P.quotationsCollect,
       // Cost-targeting a PO line picks a BOQ node in a project.
       P.projectsView,
       P.boqView,
@@ -181,6 +184,9 @@ const ROLES: TeamRoleSpec[] = [
       P.procurementView,
       // Owner decision 2026-10-06 — the finance team approves material requests.
       P.materialRequestsApprove,
+      // ADR-044 — finance types the quote totals and awards; the award approves the PO.
+      // (Live tenant: granted by prisma/seeds/grant-quotation-permissions.seed.ts.)
+      P.quotationsAward,
       // ADR-029 §8 A-2 — commercial sees the BOQ margin tier (contract value, contingency, margin).
       P.boqView,
       P.boqViewMargin,

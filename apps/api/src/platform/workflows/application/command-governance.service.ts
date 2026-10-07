@@ -1,5 +1,6 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import type { Prisma } from '@prisma/client';
 import type { RequestIdentity, GovernedEntity, WorkflowTransactionType } from '@erp/types';
 import { WorkflowTriggerResolverService } from './workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
@@ -134,6 +135,53 @@ export class CommandGovernanceService {
     const latest = await this.repo.findLatestInstanceForTransaction(transactionType, resourceId);
     if (latest?.status === 'PENDING' || latest?.status === 'APPROVED') return latest.status;
     return null;
+  }
+
+  /**
+   * The latest approval for a document with its chain and recorded actions (null when none) —
+   * read-only. ADR-044 §6: the award command vets every approver before the instance is consumed.
+   */
+  async latestApproval(transactionType: WorkflowTransactionType, resourceId: string) {
+    const instance = await this.repo.findLatestInstanceWithChain(transactionType, resourceId);
+    if (!instance) return null;
+    const steps = instance.definition.steps;
+    return {
+      id: instance.id,
+      status: instance.status,
+      evaluatedAmount: instance.evaluatedAmount as Decimal | null,
+      initiatedAt: instance.initiatedAt,
+      currentStepOrder: instance.currentStepOrder,
+      currentStepRole: steps.find((s) => s.stepOrder === instance.currentStepOrder)?.roleRequired ?? null,
+      steps,
+      actions: instance.actions,
+    };
+  }
+
+  /**
+   * For each document with a PENDING approval, the role its current step requires — batched, for
+   * "waiting on me" queues (ADR-044 §12 `decide`).
+   */
+  async pendingStepRoles(transactionType: WorkflowTransactionType, resourceIds: string[]): Promise<Map<string, string>> {
+    const instances = await this.repo.findPendingInstancesFor(transactionType, resourceIds);
+    const roles = new Map<string, string>();
+    for (const instance of instances) {
+      const step = instance.definition.steps.find((s) => s.stepOrder === instance.currentStepOrder);
+      if (step) roles.set(instance.transactionId, step.roleRequired);
+    }
+    return roles;
+  }
+
+  /**
+   * Same as {@link voidOpenApproval} but inside the caller's transaction, voiding every open
+   * instance — for commands whose state change must never commit without the void (ADR-044 H1).
+   */
+  voidOpenApprovalIn(tx: Prisma.TransactionClient, transactionType: WorkflowTransactionType, resourceId: string) {
+    return this.repo.voidOpenInstancesIn(tx, transactionType, resourceId);
+  }
+
+  /** What an instance was opened for: document, evaluated amount, opening time. */
+  approvalFacts(instanceId: string) {
+    return this.repo.findInstanceFacts(instanceId);
   }
 
   /**

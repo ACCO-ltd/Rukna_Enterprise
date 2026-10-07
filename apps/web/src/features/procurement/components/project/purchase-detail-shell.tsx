@@ -27,7 +27,7 @@ import {
   cn,
 } from '@erp/ui';
 
-import { formatDate, formatMoney, formatNumber } from '@/lib/format';
+import { formatDate, formatMoney, formatNumber, formatUnitPrice } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 import { statusTone } from '@/lib/status-registry';
 import { useFileUpload } from '@/features/files/hooks/use-file-upload';
@@ -66,6 +66,7 @@ import { PoAmendDialog } from '../po-amend-dialog';
 import { ProcurementStatusBadge } from '../procurement-badges';
 import { SectionPanel } from './section-panel';
 import { PoBillPaymentsSection } from '../po-bill-payments';
+import { AwardEvidence } from '../quotes/award-evidence';
 
 type Tab = 'items' | 'funding' | 'receiving' | 'settlement';
 
@@ -178,6 +179,9 @@ export function PurchaseDetailShell({
           </CardFooter>
         )}
       </Card>
+
+      {/* ADR-044: raised from a quotation award — the award is its approval */}
+      <AwardEvidence order={order} revision={current} />
 
       {/* Tab nav */}
       <nav aria-label={t('tabsLabel')}>
@@ -338,7 +342,7 @@ function ItemsTab({
                       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                         {formatNumber(line.orderedQuantity, locale)}{' '}
                         {line.uom?.symbol ?? line.uom?.code ?? ''} ×{' '}
-                        {formatMoney(line.unitPrice, current.currencyCode, locale)}
+                        {formatUnitPrice(line.unitPrice, current.currencyCode, locale)}
                       </p>
                       <ClassificationChips
                         className="mt-2 flex flex-wrap items-center gap-1.5"

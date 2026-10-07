@@ -73,6 +73,8 @@ const CFO: GovernedRoleSpec = {
     P.matchingExceptionsApprove,
     P.ipaApprove,
     P.contractsApprove,
+    // ADR-044 — may choose between competitive quotations (the award approves the PO).
+    P.quotationsAward,
     // Finance visibility to review what is being approved.
     P.financialPositionView,
     P.accountingView,
@@ -109,6 +111,8 @@ const CEO: GovernedRoleSpec = {
     P.purchaseOrdersApprove,
     P.matchingExceptionsApprove,
     P.goodsReceiptExceptionsApprove,
+    // ADR-044 — may choose between competitive quotations (the award approves the PO).
+    P.quotationsAward,
     P.boqCommit,
     P.boqManageContingency,
     // Full oversight visibility.

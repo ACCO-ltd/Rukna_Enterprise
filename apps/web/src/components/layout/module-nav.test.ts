@@ -86,6 +86,7 @@ describe('moduleTabs', () => {
     const tabs = moduleTabs(domain('procurement'), '/procurement/requests', allowAll);
     expect(tabs.map((t) => t.labelKey)).toEqual([
       'materialRequests',
+      'quotes',
       'purchaseOrders',
       'goodsReceipts',
       'supplierBills',
@@ -102,6 +103,28 @@ describe('moduleTabs', () => {
       'spendCategories',
     ]);
     expect(tabs.find((t) => t.active)?.key).toBe('/procurement/requests');
+  });
+
+  it('shows Quotes only to a collector, and Quotes to choose (badged) only to an award holder', () => {
+    const only = (key: string) => (permission: string) => permission === key;
+    const collector = moduleTabs(domain('procurement'), '/procurement/quotes', only('collect:quotation'));
+    expect(collector.find((t) => t.key === '/procurement/quotes')?.active).toBe(true);
+    expect(
+      moduleTabs(domain('procurement'), '/procurement/requests', () => false).some(
+        (t) => t.key === '/procurement/quotes',
+      ),
+    ).toBe(false);
+
+    const finance = domain('accounting');
+    const payablesFor = (can: (p: string) => boolean) => {
+      const menu = moduleTabs(finance, '/finance/quotes', can).find((t) => t.key === 'payables');
+      return menu?.kind === 'menu' ? menu.items : [];
+    };
+    const selector = payablesFor(only('award:quotation'));
+    const inbox = selector.find((i) => i.href === '/finance/quotes');
+    expect(inbox?.badge).toBe('quotesToChoose');
+    expect(inbox?.active).toBe(true);
+    expect(payablesFor(() => false).some((i) => i.href === '/finance/quotes')).toBe(false);
   });
 
   it('never marks a cross-link active', () => {

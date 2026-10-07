@@ -56,3 +56,32 @@ describe('notificationCopy — the wire kind becomes a localizable key + values'
     expect(notificationCopy(item({ contextData: null })).values).toEqual({});
   });
 });
+
+describe('notificationCopy — quotation kinds (ADR-044)', () => {
+  it.each(['QUOTES_READY', 'QUOTATION_AWARDED', 'ANOTHER_QUOTE_REQUESTED'])(
+    '%s fills the optional values so the copy never shows a placeholder',
+    (kind) => {
+      const copy = notificationCopy(
+        item({ kind: kind as NotificationItem['kind'], contextData: { number: 'QR-00041', mrNumber: 'MR-00123', quoteCount: 3 } }),
+      );
+      expect(copy.titleKey).toBe(`${kind}.title`);
+      expect(copy.values).toEqual({
+        number: 'QR-00041',
+        mrNumber: 'MR-00123',
+        quoteCount: 3,
+        projectName: 'none',
+        note: 'none',
+      });
+    },
+  );
+
+  it('keeps the values the server sent', () => {
+    const copy = notificationCopy(
+      item({
+        kind: 'ANOTHER_QUOTE_REQUESTED' as NotificationItem['kind'],
+        contextData: { number: 'QR-1', mrNumber: 'MR-1', quoteCount: 2, note: 'Try Xamar', projectName: 'HQ' },
+      }),
+    );
+    expect(copy.values).toMatchObject({ note: 'Try Xamar', projectName: 'HQ' });
+  });
+});

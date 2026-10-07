@@ -65,7 +65,15 @@ export interface NavItem {
   crossLink?: boolean;
   /** Retained for test helpers; hidden in production navigation. */
   disabled?: boolean;
+  /**
+   * A live count shown beside the label (e.g. Finance's "Quotes to choose"). The key names a
+   * count source in `nav-badges.tsx`; the item's own permission gate still decides visibility.
+   */
+  badge?: NavBadgeKey;
 }
+
+/** Live counts a nav item can carry. */
+export type NavBadgeKey = 'quotesToChoose';
 
 export interface NavDomain {
   /** Translation key — also used as the collapse-store key. */
@@ -131,6 +139,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       // Payables
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', groupKey: 'payables' },
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
+      // ADR-044 — finance's inbox of quotation requests waiting for a choice; counts the decide queue.
+      { href: '/finance/quotes', labelKey: 'quotesToChoose', iconKey: 'check-circle', groupKey: 'payables', permissionKey: 'award:quotation', badge: 'quotesToChoose' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
       { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'banking' },
@@ -165,6 +175,8 @@ export const NAV_DOMAINS: NavDomain[] = [
     // Accounting. Master data groups under "Setup".
     items: [
       { href: '/procurement/requests', labelKey: 'materialRequests', iconKey: 'clipboard' },
+      // ADR-044 — the field buyer's quotation photos, between an approved request and its order.
+      { href: '/procurement/quotes', labelKey: 'quotes', iconKey: 'receipt', permissionKey: 'collect:quotation' },
       { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },

@@ -40,6 +40,32 @@ export class ProjectAccessService {
     return [...new Set(memberships.map((membership) => membership.projectId))];
   }
 
+  /**
+   * Of `userIds`, those who can reach `projectId`: active project members, or active org members
+   * holding a bypass role. Batched; for notification audiences (ADR-044 review M3).
+   */
+  async usersWithAccess(organizationId: string, projectId: string, userIds: string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const prisma = this.tenancyService.getClient();
+    const [members, bypass] = await Promise.all([
+      prisma.projectMember.findMany({
+        where: { projectId, removedAt: null, userId: { in: userIds } },
+        select: { userId: true },
+      }),
+      prisma.organizationMembership.findMany({
+        where: {
+          organizationId,
+          userId: { in: userIds },
+          status: 'ACTIVE',
+          removedAt: null,
+          roles: { some: { removedAt: null, role: { name: { in: [...PROJECT_MEMBERSHIP_BYPASS_ROLES] } } } },
+        },
+        select: { userId: true },
+      }),
+    ]);
+    return new Set([...members, ...bypass].map((r) => r.userId));
+  }
+
   async assertMember(identity: RequestIdentity, projectId: string): Promise<void> {
     const prisma = this.tenancyService.getClient();
     const project = await prisma.project.findFirst({

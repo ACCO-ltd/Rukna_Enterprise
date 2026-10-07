@@ -8,6 +8,7 @@ import {
 
 import {
   accoPurchaseOrderBands,
+  accoQuotationAwardBands,
   accoSupplierPaymentBands,
   accoVariationOrderBands,
   type ValueBand,
@@ -49,6 +50,9 @@ const ACTIVE_SOD_CODES = new Set<string>([
   'JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL',
   'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT',
   'SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION',
+  // ADR-044 §6 — the quote collector and the MR requester cannot choose between the quotes.
+  'QUOTE_UPLOADER_CANNOT_SELECT',
+  'REQUESTER_CANNOT_SELECT',
 ]);
 
 async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {
@@ -167,6 +171,7 @@ async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: st
     ['VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT', 'A vendor maintainer cannot create a purchase order or process a supplier payment.'],
     ['JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL', 'A journal preparer cannot approve the same journal.'],
     ['SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION', 'A system administrator cannot approve a business transaction.'],
+    ...QUOTATION_SOD_RULES,
   ] as const;
 
   for (const [code, description] of sodRules) {
@@ -478,7 +483,41 @@ async function seedProcurementValueBands(
     transactionType: WorkflowTransactionType.VARIATION,
     bands: accoVariationOrderBands(),
   });
+  await seedQuotationAwardBands(prisma, organizationId);
 }
+
+/**
+ * ADR-044 §7 — the quotation award bands (the PO bands, bound to QuotationRequest
+ * AWAITING_DECISION → AWARDED). Seeded INACTIVE. Exported so the targeted live-tenant seed
+ * (`grant-quotation-sod-rules.seed.ts`) can add them without re-running the whole governance seed.
+ */
+export async function seedQuotationAwardBands(
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<void> {
+  await seedBandSet(prisma, organizationId, QUOTATION_AWARD_BAND_SET);
+}
+
+/** ADR-044 §7 — the award transition the quotation bands bind. */
+export const QUOTATION_AWARD_BAND_SET = {
+  entityType: 'QuotationRequest',
+  fromState: 'AWAITING_DECISION',
+  toState: 'AWARDED',
+  transactionType: WorkflowTransactionType.QUOTATION_AWARD,
+  bands: accoQuotationAwardBands(),
+};
+
+/** ADR-044 §6 — the two selection SoD rules (code, description). */
+export const QUOTATION_SOD_RULES = [
+  [
+    'QUOTE_UPLOADER_CANNOT_SELECT',
+    'A person who opened a quotation request or uploaded any of its quotes cannot enter totals or choose the winner.',
+  ],
+  [
+    'REQUESTER_CANNOT_SELECT',
+    'The requester of a material request cannot enter totals or choose the winning quotation for it.',
+  ],
+] as const;
 
 async function seedBandSet(
   prisma: PrismaClient,

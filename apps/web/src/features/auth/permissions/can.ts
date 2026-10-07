@@ -141,6 +141,20 @@ export const PROCUREMENT_PERMISSIONS = {
   viewCommitments: 'view:commitment-ledger',
 } as const satisfies Record<string, PermissionKey>;
 
+/**
+ * Competitive quotations (ADR-044 §5). Two separate keys on purpose: the field buyer who
+ * photographs quotes (`collect`) must never be the person who types the totals and chooses
+ * (`award`, CRITICAL — it sets the price money flows from). Raising the order additionally needs
+ * `PROCUREMENT_PERMISSIONS.createOrder`. Segregation of duties (uploader / requester cannot
+ * select) is decided by the server only; the UI renders its refusal.
+ */
+export const QUOTATION_PERMISSIONS = {
+  /** Open a request, add/withdraw photos, send, reopen, cancel. */
+  collect: 'collect:quotation',
+  /** Enter totals, reject a quote, ask for another, award, withdraw an award. */
+  award: 'award:quotation',
+} as const satisfies Record<string, PermissionKey>;
+
 // ─── Core logic (shared by plain functions and the hook) ──────────────────────
 
 function canWith(user: AuthenticatedUser | null, permission: PermissionKey): boolean {

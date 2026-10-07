@@ -21,10 +21,59 @@ export class PurchaseOrderAttachmentRepository {
     return prisma.purchaseOrderRevisionAttachment.create({ data });
   }
 
+  /**
+   * ADR-044 §8 — attach already-IMMUTABLE evidence (the winning quotation photos) to a draft
+   * revision. An internal path: the public attach rule (TEMPORARY and uploaded by the caller) is for
+   * fresh uploads, not for evidence another record already froze. The files' lifecycle is untouched.
+   */
+  async attachImmutableEvidence(
+    prisma: TenantPrisma,
+    data: {
+      organizationId: string;
+      purchaseOrderRevisionId: string;
+      platformFileIds: string[];
+      purpose: PoRevisionAttachmentPurpose;
+      supplierRef?: string;
+      attachedBy: string;
+    },
+  ) {
+    if (data.platformFileIds.length === 0) return;
+    const files = await prisma.platformFile.findMany({
+      where: { id: { in: data.platformFileIds }, organizationId: data.organizationId, lifecycle: 'IMMUTABLE' },
+      select: { id: true },
+    });
+    if (files.length !== new Set(data.platformFileIds).size) {
+      throw new Error('Quotation evidence must be immutable files of this organization');
+    }
+    await prisma.purchaseOrderRevisionAttachment.createMany({
+      data: data.platformFileIds.map((platformFileId) => ({
+        organizationId: data.organizationId,
+        purchaseOrderRevisionId: data.purchaseOrderRevisionId,
+        platformFileId,
+        purpose: data.purpose,
+        supplierRef: data.supplierRef,
+        attachedBy: data.attachedBy,
+      })),
+    });
+  }
+
   listByRevision(prisma: TenantPrisma, purchaseOrderRevisionId: string) {
     return prisma.purchaseOrderRevisionAttachment.findMany({
       where: { purchaseOrderRevisionId },
-      include: { file: { select: { id: true, originalName: true, mimeType: true, sizeBytes: true, status: true, lifecycle: true } } },
+      include: {
+        file: {
+          select: {
+            id: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+            status: true,
+            lifecycle: true,
+            // ADR-044 — a quotation photo carries supplier prices (see listRevisionAttachments).
+            quotePhoto: { select: { id: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'asc' },
     });
   }

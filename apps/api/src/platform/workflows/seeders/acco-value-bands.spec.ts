@@ -2,6 +2,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 import {
   accoPurchaseOrderBands,
+  accoQuotationAwardBands,
   accoSupplierPaymentBands,
   ACCO_ROLES,
   type ValueBand,
@@ -18,6 +19,7 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
   describe.each([
     ['Purchase Orders', accoPurchaseOrderBands()],
     ['Supplier Payments', accoSupplierPaymentBands()],
+    ['Quotation awards (ADR-044)', accoQuotationAwardBands()],
   ])('%s — the bands partition the amount axis', (_label, bands: ValueBand[]) => {
     it('starts at the floor and ends unbounded', () => {
       expect(bands[0].minAmount).toBeNull();
@@ -57,6 +59,22 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
       ACCO_ROLES.FINANCE_OFFICER,
       ACCO_ROLES.CFO,
       ACCO_ROLES.CEO,
+    ]);
+  });
+
+  it('ADR-044 §7 — the quotation award bands are the PO bands verbatim (same cut-offs, same chains)', () => {
+    const award = accoQuotationAwardBands();
+    const po = accoPurchaseOrderBands();
+    expect(award.map((b) => [b.minAmount, b.maxAmount, b.steps])).toEqual(
+      po.map((b) => [b.minAmount, b.maxAmount, b.steps]),
+    );
+    // Distinct names: a band definition is found by name and carries its transaction type.
+    for (const b of award) expect(po.map((p) => p.name)).not.toContain(b.name);
+    expect(award.map((b) => b.name)).toEqual([
+      'Quote award ≤ $100',
+      'Quote award $100.01–$1,000',
+      'Quote award $1,000.01–$50,000',
+      'Quote award > $50,000',
     ]);
   });
 

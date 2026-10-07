@@ -1,4 +1,6 @@
-﻿/**
+﻿import type { MaterialRequestQuotationSummary } from './quotations/types';
+
+/**
  * ─── Procurement API types ──────────────────────────────────────────────────────
  *
  * Hand-written against the controllers and DTOs in
@@ -233,6 +235,11 @@ export interface MaterialRequest {
   project?: ProcurementProjectRef | null;
   /** The server's verdict on whether this viewer may see the estimate. */
   moneyVisible?: boolean;
+  /**
+   * The live competitive-quotation request on this MR (ADR-044 Q8), or null. Absent on servers
+   * that predate quotations — read it as "none".
+   */
+  quotation?: MaterialRequestQuotationSummary | null;
 }
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────────
@@ -1028,6 +1035,8 @@ export interface PoRevisionAttachment {
   purchaseOrderRevisionId: string;
   platformFileId: string;
   purpose: 'QUOTATION' | 'OTHER';
+  /** The file is a quote photo raised from a quotation award (ADR-044); omitted for callers who may not read it. */
+  quotationEvidence?: boolean;
   supplierRef: string | null;
   attachedBy: string;
   createdAt: ApiDate;

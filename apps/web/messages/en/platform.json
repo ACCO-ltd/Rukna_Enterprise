@@ -86,6 +86,9 @@
     "spendCategories": "Spend categories",
     "materials": "Materials",
     "materialRequests": "Material requests",
+    "quotes": "Quotes",
+    "quotesToChoose": "Quotes to choose",
+    "quotesToChooseCount": "{count, plural, one {# request waiting} other {# requests waiting}}",
     "purchaseOrders": "Purchase orders",
     "goodsReceipts": "Goods receipts",
     "buyerAdvances": "Buyer advances",
@@ -2142,7 +2145,8 @@
         "SUPPLIER_BILL": "Supplier Bill",
         "PAYMENT_RECEIPT": "Payment Receipt",
         "MANUAL_JOURNAL": "Manual Journal",
-        "BOQ_BASELINE": "BOQ Baseline"
+        "BOQ_BASELINE": "BOQ Baseline",
+        "QUOTATION_AWARD": "Quotation award"
       }
     }
   },

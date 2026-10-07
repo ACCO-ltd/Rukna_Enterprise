@@ -33,10 +33,27 @@ export interface NotificationCopy {
 }
 
 export function notificationCopy(item: NotificationItem): NotificationCopy {
+  const values = item.contextData ?? {};
   return {
     titleKey: `${item.kind}.title`,
     impactKey: `${item.kind}.impact`,
     // next-intl needs a defined value per placeholder; a null contextData becomes an empty bag.
-    values: item.contextData ?? {},
+    values: QUOTATION_KINDS.has(item.kind) ? { ...QUOTATION_DEFAULTS, ...values } : values,
   };
 }
+
+/**
+ * Competitive-quotation kinds (ADR-044 §10), written as each step happens rather than by the daily
+ * generator. Their `contextData` is `{ number, mrNumber, projectName?, quoteCount, note? }` — never
+ * an amount. The optional values default to `none`, which the ICU `select` in the catalogue
+ * renders as nothing, so a request without a project or a note still reads cleanly.
+ */
+export const QUOTATION_NOTIFICATION_KINDS = ['QUOTES_READY', 'QUOTATION_AWARDED', 'ANOTHER_QUOTE_REQUESTED'] as const;
+const QUOTATION_KINDS: ReadonlySet<string> = new Set(QUOTATION_NOTIFICATION_KINDS);
+const QUOTATION_DEFAULTS: Record<string, string | number> = {
+  number: '',
+  mrNumber: '',
+  projectName: 'none',
+  quoteCount: 0,
+  note: 'none',
+};

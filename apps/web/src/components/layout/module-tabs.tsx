@@ -19,6 +19,7 @@ import { ChevronDown } from 'lucide-react';
 import { guardedNavigate } from '@/lib/use-unsaved-changes-guard';
 
 import type { ModuleTab } from './module-nav';
+import { badgeKeysIn, NavCount, useNavBadgeCounts, type NavBadgeCounts } from './nav-badges';
 
 interface ModuleTabsProps {
   tabs: ModuleTab[];
@@ -82,17 +83,23 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
     return () => observer.disconnect();
   }, [measure, tabs]);
 
+  const counts = useNavBadgeCounts(badgeKeysIn(tabs));
   const label = (key: string) => t(`nav.${key}`);
+  /** Plain-text count suffix for the phone picker, whose options cannot hold a pill. */
+  const countSuffix = (badge: keyof NavBadgeCounts | undefined) => {
+    const count = badge ? counts[badge] : null;
+    return count ? ` (${count})` : '';
+  };
   const shown = tabs.slice(0, fit);
   const overflow = tabs.slice(fit);
 
   // Every destination, flattened for the phone picker: "Receivables › Client invoices".
   const destinations = tabs.flatMap((tab) =>
     tab.kind === 'link'
-      ? [{ href: tab.href, text: label(tab.labelKey), active: tab.active }]
+      ? [{ href: tab.href, text: `${label(tab.labelKey)}${countSuffix(tab.badge)}`, active: tab.active }]
       : tab.items.map((item) => ({
           href: item.href,
-          text: `${label(tab.labelKey)} › ${label(item.labelKey)}`,
+          text: `${label(tab.labelKey)} › ${label(item.labelKey)}${countSuffix(item.badge)}`,
           active: item.active,
         })),
   );
@@ -128,7 +135,7 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
       {/* ── Wider: tabs, with More for whatever does not fit ─────────── */}
       <div ref={rowRef} className="relative hidden min-w-0 items-center min-[560px]:flex">
         {shown.map((tab) => (
-          <TabItem key={tab.key} tab={tab} label={label} />
+          <TabItem key={tab.key} tab={tab} label={label} counts={counts} />
         ))}
         {overflow.length > 0 ? (
           <DropdownMenu>
@@ -143,6 +150,7 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
                 tab.kind === 'link' ? (
                   <MenuLink key={tab.key} href={tab.href} active={tab.active}>
                     {label(tab.labelKey)}
+                    {tab.badge ? <NavCount badge={tab.badge} count={counts[tab.badge]} className="ms-auto" /> : null}
                   </MenuLink>
                 ) : (
                   <div key={tab.key}>
@@ -153,6 +161,9 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
                     {tab.items.map((item) => (
                       <MenuLink key={item.href} href={item.href} active={item.active}>
                         {label(item.labelKey)}
+                        {item.badge ? (
+                          <NavCount badge={item.badge} count={counts[item.badge]} className="ms-auto" />
+                        ) : null}
                       </MenuLink>
                     ))}
                   </div>
@@ -182,7 +193,15 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
   );
 }
 
-function TabItem({ tab, label }: { tab: ModuleTab; label: (key: string) => string }) {
+function TabItem({
+  tab,
+  label,
+  counts,
+}: {
+  tab: ModuleTab;
+  label: (key: string) => string;
+  counts: NavBadgeCounts;
+}) {
   if (tab.kind === 'link') {
     return (
       <Link
@@ -191,19 +210,26 @@ function TabItem({ tab, label }: { tab: ModuleTab; label: (key: string) => strin
         className={cn(TAB_CLASS, tab.active ? TAB_ACTIVE : TAB_IDLE)}
       >
         {label(tab.labelKey)}
+        {tab.badge ? <NavCount badge={tab.badge} count={counts[tab.badge]} /> : null}
       </Link>
     );
   }
+  // A group carries the count of its badged item, so a waiting inbox shows before it is opened.
+  const badged = tab.items.find((item) => item.badge);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className={cn(TAB_CLASS, tab.active ? TAB_ACTIVE : TAB_IDLE)}>
         {label(tab.labelKey)}
+        {badged?.badge ? <NavCount badge={badged.badge} count={counts[badged.badge]} /> : null}
         <ChevronDown size={14} aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-52">
         {tab.items.map((item) => (
           <MenuLink key={item.href} href={item.href} active={item.active}>
             {label(item.labelKey)}
+            {item.badge ? (
+              <NavCount badge={item.badge} count={counts[item.badge]} className="ms-auto" />
+            ) : null}
           </MenuLink>
         ))}
       </DropdownMenuContent>

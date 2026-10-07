@@ -21,5 +21,17 @@
   "CLIENT_INVOICE_OVERDUE": {
     "title": "Invoice overdue: {invoiceNumber}",
     "impact": "{daysOverdue, plural, one {# day overdue} other {# days overdue}}"
+  },
+  "QUOTES_READY": {
+    "title": "{mrNumber}: quotes ready to choose",
+    "impact": "{number} · {quoteCount, plural, one {# quote} other {# quotes}}{projectName, select, none {} other { · {projectName}}}"
+  },
+  "QUOTATION_AWARDED": {
+    "title": "{mrNumber}: quote chosen",
+    "impact": "{number} · raise the order{projectName, select, none {} other { · {projectName}}}"
+  },
+  "ANOTHER_QUOTE_REQUESTED": {
+    "title": "{mrNumber}: finance asked for another quote",
+    "impact": "{number}{note, select, none {} other { · “{note}”}}"
   }
 }

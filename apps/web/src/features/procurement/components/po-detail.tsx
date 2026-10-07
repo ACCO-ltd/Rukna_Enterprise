@@ -36,7 +36,7 @@ import { Alert, Button, Card, CardContent, CardFooter, CardHeader, CardTitle } f
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatMoney, formatNumber } from '@/lib/format';
+import { formatDate, formatMoney, formatNumber, formatUnitPrice } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
@@ -51,11 +51,15 @@ import { ClassificationChips } from './classification-chips';
 import { PoAmendDialog } from './po-amend-dialog';
 import { PoBillPaymentsSection } from './po-bill-payments';
 import { ProcurementStatusBadge } from './procurement-badges';
+import { AwardEvidence } from './quotes/award-evidence';
+import { ExceedsAward } from './quotes/order-raise';
+import { refusalCode } from './quotes/quote-shared';
 
 export function PoDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const tCommon = useTranslations('common');
+  const tQuotes = useTranslations('procurement.quotes');
   const locale = useLocale() as 'en';
   const { can } = usePermissions();
 
@@ -69,18 +73,31 @@ export function PoDetail({ id }: { id: string }) {
 
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // ADR-044: confirming a draft raised from a quotation award that now exceeds it (409
+  // PO_EXCEEDS_AWARD) names the request, so the page can offer "Send back to finance".
+  const [exceedsRequestId, setExceedsRequestId] = useState<string | null>(null);
 
   const runConfirm = useCallback(async () => {
     setConfirmError(null);
+    setExceedsRequestId(null);
     setConfirming(true);
     try {
       await confirm.mutateAsync(id);
     } catch (e) {
-      setConfirmError(e instanceof ApiError ? e.message : tc('loadFailed'));
+      // ADR-044: a draft raised from a quotation award may not exceed the award.
+      const code = refusalCode(e);
+      const requestId = e instanceof ApiError ? (e.details?.quotationRequestId as string | undefined) : undefined;
+      if (code === 'PO_EXCEEDS_AWARD' && requestId) {
+        setExceedsRequestId(requestId);
+      } else if (code === 'PO_EXCEEDS_AWARD' || code === 'AWARD_CHANGED') {
+        setConfirmError(tQuotes(`refusal.${code}`));
+      } else {
+        setConfirmError(e instanceof ApiError ? e.message : tc('loadFailed'));
+      }
     } finally {
       setConfirming(false);
     }
-  }, [id, confirm, tc]);
+  }, [id, confirm, tc, tQuotes]);
 
   if (po.isPending) {
     return (
@@ -173,6 +190,9 @@ export function PoDetail({ id }: { id: string }) {
         ) : null}
       </Card>
 
+      {/* ── ADR-044: raised from a quotation award — the award is its approval ── */}
+      <AwardEvidence order={order} revision={current} />
+
       {/* ── Confirm a DRAFT revision — single action, no approval routing ───── */}
       {draft ? (
         <Card>
@@ -183,10 +203,15 @@ export function PoDetail({ id }: { id: string }) {
             </div>
 
             {confirmError ? <Alert variant="error" messages={[confirmError]} /> : null}
+            {exceedsRequestId ? (
+              <ExceedsAward requestId={exceedsRequestId} draftPurchaseOrderId={order.id} />
+            ) : null}
 
             <Button
               type="button"
-              disabled={confirming || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
+              // POST /purchase-orders/:id/confirm requires create:purchase-order; whether an approval is
+              // needed is the server's DoA gate (a PO from a quotation award needs none).
+              disabled={confirming || !can(PROCUREMENT_PERMISSIONS.createOrder)}
               onClick={() => void runConfirm()}
             >
               {isDraftPo ? t('issueOrder') : t('issueRevision')}
@@ -365,7 +390,7 @@ function RevisionPanel({
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                     {formatNumber(line.orderedQuantity, locale)} {line.uom?.symbol ?? line.uom?.code ?? ''}
                     {' × '}
-                    {formatMoney(line.unitPrice, revision.currencyCode, locale)}
+                    {formatUnitPrice(line.unitPrice, revision.currencyCode, locale)}
                   </p>
                   {/* Read-only classification chips (D7). Spend category shows the value
                       when the line carries one, or "Derived on issue" until then. The

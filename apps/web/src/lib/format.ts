@@ -58,6 +58,25 @@ export function formatMoney(
 }
 
 /**
+ * A unit price: 2 decimals, or up to 4 when the price is not a whole cent — so 100 × $5.5666 reads
+ * as $5.5666 each, not a rounded $5.57 that does not multiply back to the line amount.
+ */
+export function formatUnitPrice(
+  value: string | number | null | undefined,
+  currency: string | null | undefined,
+  locale: Locale = 'en',
+): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(amount)) return null;
+  return new Intl.NumberFormat(numericLocale(locale), {
+    ...(currency ? { style: 'currency' as const, currency } : {}),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(amount);
+}
+
+/**
  * Formats a count or quantity. Never used to derive a monetary total.
  *
  * `fractionDigits` pins the decimal places exactly. BOQ quantities are `Decimal(18,3)` and

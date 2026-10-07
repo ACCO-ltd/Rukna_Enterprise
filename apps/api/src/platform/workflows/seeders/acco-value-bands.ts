@@ -92,6 +92,17 @@ export function accoVariationOrderBands(): ValueBand[] {
 }
 
 /**
+ * ADR-044 §7 — a quotation award (AWAITING_DECISION → AWARDED) IS the purchase order's approval, so
+ * it routes through the PO bands verbatim: same cut-offs, same cumulative chains (one source of
+ * numbers). Only the names differ, because a band's WorkflowDefinition is found by name and carries
+ * the transaction type (QUOTATION_AWARD, not PURCHASE_ORDER). Seeded INACTIVE alongside the PO bands
+ * and activated together with them — they are one control.
+ */
+export function accoQuotationAwardBands(): ValueBand[] {
+  return accoPurchaseOrderBands().map((b) => ({ ...b, name: b.name.replace(/^PO /, 'Quote award ') }));
+}
+
+/**
  * CONST-DOA-005 — Supplier Payments. (Payment *release* additionally needs two bank signatories —
  * a separate dual control, Phase 4.)
  *   ≤ $1,000            Finance Officer (after AP certification)

@@ -260,6 +260,62 @@ export class WorkflowsPrismaRepository {
   }
 
   /**
+   * The most recent instance for a transaction with its chain (steps) and every recorded action —
+   * for commands that must vet the approvers before consuming (ADR-044 §6) and for read models
+   * that show the chain's progress.
+   */
+  async findLatestInstanceWithChain(transactionType: WorkflowTransactionType, transactionId: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findFirst({
+      where: { transactionId, transactionType },
+      orderBy: { initiatedAt: 'desc' },
+      include: {
+        definition: { select: { steps: { orderBy: { stepOrder: 'asc' }, select: { stepOrder: true, roleRequired: true } } } },
+        actions: { orderBy: { actedAt: 'asc' }, select: { stepOrder: true, action: true, actorId: true, actedAt: true } },
+      },
+    });
+  }
+
+  /**
+   * Closes every open (PENDING / APPROVED-unconsumed) instance of a document inside the caller's
+   * transaction, so the document's state change and the void commit together (ADR-044 review H1).
+   */
+  async voidOpenInstancesIn(
+    tx: Prisma.TransactionClient,
+    transactionType: WorkflowTransactionType,
+    transactionId: string,
+  ): Promise<number> {
+    const { count } = await tx.approvalInstance.updateMany({
+      where: { transactionType, transactionId, status: { in: ['PENDING', 'APPROVED'] } },
+      data: { status: 'CANCELLED' as never },
+    });
+    return count;
+  }
+
+  /** The facts that bind an instance to what it approved. */
+  findInstanceFacts(id: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findUnique({
+      where: { id },
+      select: { transactionId: true, transactionType: true, evaluatedAmount: true, initiatedAt: true },
+    });
+  }
+
+  /** PENDING instances for many documents of one type, with their chain — one query. */
+  findPendingInstancesFor(transactionType: WorkflowTransactionType, transactionIds: string[]) {
+    if (transactionIds.length === 0) return Promise.resolve([]);
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findMany({
+      where: { transactionType, transactionId: { in: transactionIds }, status: 'PENDING' },
+      select: {
+        transactionId: true,
+        currentStepOrder: true,
+        definition: { select: { steps: { select: { stepOrder: true, roleRequired: true } } } },
+      },
+    });
+  }
+
+  /**
    * Marks an approval instance as consumed once its entity transition has been driven
    * through (ADR-015). There is no dedicated CONSUMED enum value yet — that needs a
    * Prisma client regen — so CANCELLED is the terminal "closed" state. The approver audit

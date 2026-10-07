@@ -40,6 +40,7 @@ import { formatMoney } from '@/lib/format';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
 import { useConfirmPurchaseOrder, useCreatePurchaseOrder } from '../hooks/use-procurement';
+import { QuotationInProgressNotice, quotationInProgress } from './quotes/quotation-in-progress';
 import { moneyToApi, quantityToApi } from '../quantities';
 import type { CreatePoLinePayload, CreatePurchaseOrderPayload } from '../types';
 import {
@@ -100,6 +101,8 @@ export function PoForm({
   const [approvalInstanceId, setApprovalInstanceId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [issueError, setIssueError] = useState<string | null>(null);
+  // ADR-044: a request with a live quotation round is ordered from the quotation, not here.
+  const [quotationBlock, setQuotationBlock] = useState<unknown>(null);
   // A create that already succeeded must not run again on a retry after a later step failed.
   const orderIdRef = useRef<string | null>(null);
 
@@ -179,16 +182,25 @@ export function PoForm({
     return error.message || tc('loadFailed');
   }
 
+  function fail(error: unknown) {
+    if (quotationInProgress(error)) {
+      setQuotationBlock(error);
+      return;
+    }
+    setIssueError(refusalMessage(error));
+  }
+
   function handleSaveDraft() {
     if (!validate()) return;
     setIssueError(null);
+    setQuotationBlock(null);
     setBusy(true);
     void (async () => {
       try {
         const id = await ensureCreated();
         router.push(`${redirectBase}/${id}`);
       } catch (e) {
-        setIssueError(refusalMessage(e));
+        fail(e);
       } finally {
         setBusy(false);
       }
@@ -201,6 +213,7 @@ export function PoForm({
    */
   const runIssue = useCallback(async () => {
     setIssueError(null);
+    setQuotationBlock(null);
     setBusy(true);
     try {
       const id = await ensureCreated();
@@ -222,7 +235,7 @@ export function PoForm({
       setApprovalInstanceId(null);
       router.push(`${redirectBase}/${id}`);
     } catch (e) {
-      setIssueError(refusalMessage(e));
+      fail(e);
     } finally {
       setBusy(false);
     }
@@ -301,6 +314,7 @@ export function PoForm({
       </div>
 
       {issueError ? <Alert variant="error" messages={[issueError]} /> : null}
+      <QuotationInProgressNotice error={quotationBlock} />
 
       {/* Gate: shown only when a DoA binding actually opened an approval on confirm.
           The order is created and awaiting approval; "Complete issue" re-drives. */}

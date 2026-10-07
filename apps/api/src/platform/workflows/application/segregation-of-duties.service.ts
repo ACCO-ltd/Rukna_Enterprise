@@ -9,7 +9,10 @@ export type SodAction =
   | 'CREATE_PURCHASE_ORDER'
   | 'PROCESS_SUPPLIER_PAYMENT'
   | 'APPROVE_MANUAL_JOURNAL'
-  | 'APPROVE_BUSINESS_TRANSACTION';
+  | 'APPROVE_BUSINESS_TRANSACTION'
+  // ADR-044 §6 — entering a quote total, rejecting a quote, asking for another, awarding (and
+  // approving an award: the award command evaluates it for every approver on the instance).
+  | 'SELECT_QUOTATION';
 
 export interface SodEvaluationContext {
   organizationId: string;
@@ -21,6 +24,8 @@ export interface SodEvaluationContext {
   supplierBillApproverUserId?: string;
   vendorMaintainerUserId?: string;
   journalPreparerUserId?: string;
+  /** ADR-044 §6 — the request's creator and every quote/photo uploader, withdrawn quotes included. */
+  quoteUploaderUserIds?: string[];
   isSystemAdministrator?: boolean;
   at?: Date;
 }
@@ -100,6 +105,18 @@ export class SegregationOfDutiesService {
       activeCodes.has('JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL') &&
       sameActor(context.journalPreparerUserId)
     ) return 'JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL';
+
+    if (
+      context.action === 'SELECT_QUOTATION' &&
+      activeCodes.has('QUOTE_UPLOADER_CANNOT_SELECT') &&
+      (context.quoteUploaderUserIds ?? []).includes(context.actorUserId)
+    ) return 'QUOTE_UPLOADER_CANNOT_SELECT';
+
+    if (
+      context.action === 'SELECT_QUOTATION' &&
+      activeCodes.has('REQUESTER_CANNOT_SELECT') &&
+      sameActor(context.requesterUserId)
+    ) return 'REQUESTER_CANNOT_SELECT';
 
     if (
       context.action === 'APPROVE_BUSINESS_TRANSACTION' &&

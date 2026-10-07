@@ -161,6 +161,34 @@ export class PurchaseOrderRepository {
   }
 
   /**
+   * Quantity of each MR line already on a LIVE order: allocations on lines of a revision that is
+   * still in play (not CANCELLED, not SUPERSEDED — a superseded revision's quantity lives on in its
+   * successor's own allocations) of a purchase order that is not CANCELLED. A cancelled order frees
+   * its quantity, so an MR line can be ordered again (ADR-044 §8 re-raise after a cancelled draft).
+   */
+  async liveAllocatedQuantities(prisma: TenantPrisma, mrLineIds: string[]): Promise<Map<string, Decimal>> {
+    if (mrLineIds.length === 0) return new Map();
+    const rows = await prisma.purchaseOrderLineRequestAllocation.groupBy({
+      by: ['materialRequestLineId'],
+      where: {
+        materialRequestLineId: { in: mrLineIds },
+        purchaseOrderLine: {
+          revision: {
+            status: { notIn: ['CANCELLED', 'SUPERSEDED'] },
+            purchaseOrder: { status: { not: 'CANCELLED' } },
+          },
+        },
+      },
+      _sum: { allocatedQuantity: true },
+    });
+    return new Map(
+      rows
+        .filter((r) => r._sum.allocatedQuantity !== null)
+        .map((r) => [r.materialRequestLineId, r._sum.allocatedQuantity as Decimal] as const),
+    );
+  }
+
+  /**
    * Resolves a BOQ node (org-scoped) into the facts a cost-target check needs: which project's
    * BOQ owns it, whether it is a billable leaf item, and whether it is still active. Returns null
    * when the id resolves to no node in this org — the service treats that as BOQ_NODE_NOT_FOUND.
@@ -183,6 +211,85 @@ export class PurchaseOrderRepository {
       isLeaf: node.isLeaf,
       isActive: node.isActive,
     };
+  }
+
+  /**
+   * ADR-044 §7 — the quotation request whose award this PO was raised from (read from
+   * `quotation_requests` directly: no import of the quotation module, no cycle). Null for a PO not
+   * raised from an award.
+   */
+  findAwardForPurchaseOrder(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
+    return prisma.quotationRequest.findFirst({
+      where: { purchaseOrderId, organizationId },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        purchaseOrderId: true,
+        awardedSupplierId: true,
+        awardedTotal: true,
+        awardedBy: true,
+        awardFinalApproverId: true,
+        awardApprovalInstanceId: true,
+        materialRequest: { select: { lines: { select: { id: true } } } },
+      },
+    });
+  }
+
+  /** ADR-044 — the MR's non-cancelled quotation rounds (newest first), for the manual-order guard. */
+  findQuotationRoundsForMaterialRequest(prisma: TenantPrisma, organizationId: string, materialRequestId: string) {
+    return prisma.quotationRequest.findMany({
+      where: { organizationId, materialRequestId, status: { not: 'CANCELLED' } },
+      select: { id: true, number: true, closedAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** `SELECT … FOR UPDATE` on the material request (serialises with quotation open — review L2). */
+  async lockMaterialRequest(prisma: TenantPrisma, organizationId: string, materialRequestId: string) {
+    await prisma.$queryRaw`
+      SELECT id FROM material_requests WHERE id = ${materialRequestId} AND organization_id = ${organizationId} FOR UPDATE`;
+  }
+
+  /** Review M1 — the award's order is confirmed: its quotation round is closed (idempotent). */
+  closeAwardRound(prisma: TenantPrisma, purchaseOrderId: string) {
+    return prisma.quotationRequest.updateMany({
+      where: { purchaseOrderId, status: 'AWARDED', closedAt: null },
+      data: { closedAt: new Date() },
+    });
+  }
+
+  /** Takes the award's row lock and confirms it still covers `purchaseOrderId`. */
+  async lockAwardFor(prisma: TenantPrisma, quotationRequestId: string, purchaseOrderId: string): Promise<boolean> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM quotation_requests
+       WHERE id = ${quotationRequestId}
+         AND purchase_order_id = ${purchaseOrderId}
+         AND status = 'AWARDED'
+       FOR UPDATE`;
+    return rows.length === 1;
+  }
+
+  /** The MR lines each PO line allocates to. */
+  async mrLinesByPoLine(prisma: TenantPrisma, purchaseOrderLineIds: string[]): Promise<Map<string, string[]>> {
+    const rows = await prisma.purchaseOrderLineRequestAllocation.findMany({
+      where: { purchaseOrderLineId: { in: purchaseOrderLineIds } },
+      select: { purchaseOrderLineId: true, materialRequestLineId: true },
+    });
+    const byLine = new Map<string, string[]>();
+    for (const row of rows) {
+      byLine.set(row.purchaseOrderLineId, [...(byLine.get(row.purchaseOrderLineId) ?? []), row.materialRequestLineId]);
+    }
+    return byLine;
+  }
+
+  /** ADR-044 §8 — first use of the revision's quotation columns. */
+  setRevisionQuotation(
+    prisma: TenantPrisma,
+    revisionId: string,
+    data: { quotationRef: string; quotationDate: Date | null; quotedAmount: Decimal },
+  ) {
+    return prisma.purchaseOrderRevision.update({ where: { id: revisionId }, data });
   }
 
   countPoNumbers(prisma: TenantPrisma, organizationId: string): Promise<number> {
