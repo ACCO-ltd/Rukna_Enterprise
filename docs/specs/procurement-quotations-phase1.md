@@ -193,6 +193,52 @@ projectName?, quoteCount, note? }` (`@erp/types` `QuotationNotificationContext`)
    revisions) — needed so a cancelled draft frees its quantity for a re-raise.
 10. **PO `effectiveFrom`** of a raised order is the award date (the source document's date).
 
+## 0b. Phase 2 addendum — WhatsApp alerts to staff + SLA (2026-10-07)
+
+Decisions: ADR-044 "Phase 2". Templates: `docs/integrations/whatsapp-templates.md` §5–9.
+
+**API changes (additive).**
+
+- `GET /procurement/quotation-requests/:id` (and every command's response) gains
+  `messages: StaffAlertLogEntry[]` (`@erp/types`), oldest first:
+  `{ id, recipientName, recipientPhoneMasked: '…678', purpose: QUOTE_READY|QUOTE_REMINDER|QUOTE_ESCALATION|QUOTE_CHOSEN|QUOTE_ANOTHER,
+  status: QUEUED|SENT|DELIVERED|READ|FAILED|UNKNOWN, queuedAt, sentAt, deliveredAt, readAt, failedAt, failureReason }`.
+  `failureReason` is plain words for FAILED / UNKNOWN (or the last error while a retry is pending);
+  null once the alert got through. Withdrawn alerts read FAILED with e.g. "Not sent: finance already
+  decided."
+- `PATCH /users/:id` (`manage:users`) accepts `whatsappPhone: string | null` (international form,
+  normalised to E.164; 400 `WHATSAPP_PHONE_INVALID` with `field`) and `whatsappAlertsEnabled: boolean`
+  (400 when turned on without a number; clearing the number turns it off). `GET /users` and
+  `GET /users/:id` return both fields.
+
+**Events → alerts** (to opted-in users only; in-app unchanged):
+
+| # | Event | Alert | Round in the key |
+|---|---|---|---|
+| W1 | send (S2) | QUOTE_READY → selectors | `sendCount.sentAt` |
+| W2 | re-decision requested | QUOTE_READY → selectors | new `sentAt` |
+| W3 | award withdrawn | QUOTE_READY → selectors (same round: no repeat) | unchanged |
+| W4 | ≥ 2 working h awaiting | QUOTE_REMINDER → selectors | `sendCount.sentAt` |
+| W5 | ≥ 4 working h awaiting | QUOTE_ESCALATION → CFO + CEO | `sendCount.sentAt` |
+| W6 | award completes | QUOTE_CHOSEN → collectors | award instant |
+| W7 | ask-another (S6) | QUOTE_ANOTHER → collectors | `sendCount` |
+
+Refusals / non-events: kill switch off or WhatsApp unconfigured → nothing queued; a user without a
+number, with alerts off, or inactive → no row; an SoD-barred award holder → no READY/REMINDER; a
+non-urgent request outside Sat–Thu 07:00–17:00 → no reminder/escalation; the request left
+AWAITING_DECISION → no reminder/escalation, and queued selector alerts are withdrawn at dispatch.
+
+**Web.** Administration → Users → Edit: "WhatsApp number" (`+252 61 234 5678` placeholder, shape
+check `+` and 8–15 digits after dropping spaces/dashes/brackets; the server decides) and a "Send
+WhatsApp alerts" switch (disabled until there is a number). Decision and capture screens: a compact
+"WhatsApp" section listing each alert newest first — purpose · name · masked number · time · status
+(Queued / Sent / Delivered / Read / Not sent / Not confirmed), with the reason when it failed.
+
+**Rollout.** Migrate (`20261011120000_quotation_whatsapp_alerts`) → get the five templates approved
+in Meta (§5–9 of the templates doc; button base = the tenant's web address) → admins enter staff
+numbers and switch alerts on → set `QUOTATION_WHATSAPP_ENABLED=true` and restart the API. Rollback:
+set it back to `false` (queued alerts are withdrawn, nothing new is queued).
+
 ---
 
 ## 1. Backend tickets (build order)

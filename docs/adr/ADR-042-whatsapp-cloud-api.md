@@ -100,6 +100,9 @@ UI in this phase.
    template's DOCUMENT header — never as a public link to our storage.
 8. **No queue yet** — sending is synchronous inside the caller's request (one upload + one send,
    at most 2 × 20 s). A job queue comes when volume or scheduled reminders need it.
+   *Update 2026-10-07 (ADR-044 phase 2):* a background queue now exists for staff alerts —
+   `OutboundMessage` rows with `nextAttemptAt`, sent by `OutboundMessageDispatcher` every minute
+   with retry/back-off, a lease and per-feature dispatch guards. Client messages stay synchronous.
 9. **Templates** are configured per server (`WHATSAPP_TEMPLATE_INVOICE`, `…_RECEIPT`,
    `…_PAYMENT_REMINDER`, `…_OVERDUE_REMINDER`, `WHATSAPP_TEMPLATE_LANGUAGE` default `en`,
    `WHATSAPP_GRAPH_VERSION` default `v21.0`) and resolved by `whatsapp-templates.ts`. Texts to
