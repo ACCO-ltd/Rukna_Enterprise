@@ -191,6 +191,8 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const chooseRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const focusChoosePending = useRef(false);
+  const quotesRef = useRef<HTMLElement>(null);
+  const scrolledToQuotes = useRef(false);
   const [current, setCurrent] = useState(0);
   const showCard = (index: number) => {
     const card = cardRefs.current[index];
@@ -274,6 +276,17 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
     }
   };
   useEffect(focusLowestChoose);
+  // Finance decides from a phone link: open with the first photo and its Total on screen rather
+  // than the module header and context card (≈1,200 px down at 375). Once, phones only, and only
+  // while there is a decision to make — on a desktop everything already fits side by side.
+  useEffect(() => {
+    if (scrolledToQuotes.current || !deciding || !mayAward) return;
+    const section = quotesRef.current;
+    if (!section || typeof section.scrollIntoView !== 'function') return;
+    if (typeof window.matchMedia !== 'function' || !window.matchMedia('(max-width: 1023px)').matches) return;
+    scrolledToQuotes.current = true;
+    section.scrollIntoView({ block: 'start' });
+  }, [deciding, mayAward]);
   // Any key or pointer press after that is the user moving on: stop putting focus back.
   useEffect(() => {
     const stop = () => {
@@ -430,7 +443,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
       {saveError ? <Alert variant="error" messages={[refusal(saveError) ?? '']} /> : null}
 
       {/* ── Quotes: swipe on a phone, side by side from 1024 px ────────────── */}
-      <section aria-label={t('quotesLabel')}>
+      <section ref={quotesRef} aria-label={t('quotesLabel')} className="scroll-mt-16">
         {quotes.length > 1 ? (
           <div className="mb-2 flex items-center justify-between gap-2 lg:hidden">
             <Button

@@ -106,6 +106,35 @@ beforeEach(() => {
 });
 
 describe('QuoteDecisionScreen', () => {
+  it('opens on a phone with the first photo and its Total on screen, once', async () => {
+    const matchMedia = vi.fn().mockReturnValue({ matches: true });
+    vi.stubGlobal('matchMedia', matchMedia);
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
+    try {
+      render({ quotes: three() });
+      await screen.findByLabelText('Total for Hodan');
+      expect(matchMedia).toHaveBeenCalledWith('(max-width: 1023px)');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not scroll on a desktop, or when there is nothing to decide', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView);
+    try {
+      render({ quotes: three() });
+      await screen.findByLabelText('Total for Hodan');
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('moves to the next total on Enter and autosaves each on blur', async () => {
     const user = userEvent.setup();
     render({ quotes: three() });
