@@ -174,6 +174,7 @@ export class QuotationOrderService {
       const winning = request.quotes.find((q) => q.id === request.awardedQuoteId)!;
       const firstPhoto = winning.photos[0];
       const po = await this.purchaseOrders.createDraftFromAward(ctx.tx, identity, {
+        quotationRequestId: request.id,
         supplierId: request.awardedSupplierId!,
         currencyCode: request.currencyCode,
         // The award is the source document of this order: its date, never the clock.

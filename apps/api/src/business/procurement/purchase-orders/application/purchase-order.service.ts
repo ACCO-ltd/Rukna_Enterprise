@@ -31,6 +31,7 @@ import {
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { validateCostTarget, costTargetViolationMessage } from '../domain/cost-target.policy.js';
 import { awardCoverage, type CoverageResult } from '../domain/award-coverage.policy.js';
+import { quotationBlocksManualOrder } from '../domain/quotation-bypass.policy.js';
 import { SettlementQueryService } from './settlement-query.service.js';
 import { canSeeQuotationPhotos } from '../../../../platform/files/application/file-authorization.service.js';
 
@@ -91,6 +92,8 @@ export type ResolvedPoLine = CreatePoLineData & LineAllocations;
 
 /** ADR-044 §8 — a DRAFT PO raised from a quotation award, inside the caller's transaction. */
 export interface DraftFromAwardInput {
+  /** The quotation request raising this order — the one live round allowed to order its MR. */
+  quotationRequestId: string;
   supplierId: string;
   currencyCode: string;
   /** The source document's date (the award), never the clock. */
@@ -198,6 +201,7 @@ export class PurchaseOrderService {
       expectedDeliveryDate: input.expectedDeliveryDate,
       lines: input.lines,
       sourceCommand: 'quotation.raise-order',
+      raisingQuotationRequestId: input.quotationRequestId,
     });
 
     await this.repo.setRevisionQuotation(tx, created.revisionId, {
@@ -251,6 +255,7 @@ export class PurchaseOrderService {
       expectedDeliveryDate?: Date;
       lines: ResolvedPoLine[];
       sourceCommand: string;
+      raisingQuotationRequestId?: string;
     },
   ) {
     const orgId = identity.activeOrganizationId;
@@ -268,7 +273,7 @@ export class PurchaseOrderService {
     });
 
     const revision = created!.revisions[0];
-    await this.wireAllocations(tx, orgId, revision.lines, input.lines);
+    await this.wireAllocations(tx, orgId, revision.lines, input.lines, input.raisingQuotationRequestId);
 
     await this.auditOutbox.record(tx, {
       organizationId: orgId,
@@ -747,7 +752,9 @@ export class PurchaseOrderService {
     orgId: string,
     revLines: RevisionLineForAllocation[],
     dtoLines: LineAllocations[],
+    raisingQuotationRequestId?: string,
   ) {
+    const checkedRequests = new Set<string>();
     for (let i = 0; i < revLines.length; i++) {
       const poLine = revLines[i];
       const dtoLine = dtoLines[i];
@@ -762,7 +769,7 @@ export class PurchaseOrderService {
           select: {
             approvedQuantity: true,
             requestedQuantity: true,
-            request: { select: { mrNumber: true, status: true } },
+            request: { select: { id: true, mrNumber: true, status: true } },
           },
         });
         if (!mrLine) {
@@ -772,6 +779,27 @@ export class PurchaseOrderService {
           throw new BadRequestException(
             `${mrLine.request.mrNumber} is ${mrLine.request.status.toLowerCase()}, not approved, so it cannot be ordered.`,
           );
+        }
+
+        // ADR-044 — no manual bypass of a live quotation round: only its own raise-order may order
+        // the MR until the award has been ordered.
+        if (!checkedRequests.has(mrLine.request.id)) {
+          checkedRequests.add(mrLine.request.id);
+          const quotation = await this.repo.findLiveQuotationForMaterialRequest(prisma, orgId, mrLine.request.id);
+          if (quotationBlocksManualOrder(quotation, raisingQuotationRequestId)) {
+            throw new ConflictException({
+              errorCode: 'QUOTATION_IN_PROGRESS',
+              message:
+                `${mrLine.request.mrNumber} is being quoted in ${quotation!.number}. Order it from that ` +
+                'quotation (Raise the order) or cancel the quotation request first.',
+              details: {
+                code: 'QUOTATION_IN_PROGRESS',
+                quotationRequestId: quotation!.id,
+                quotationNumber: quotation!.number,
+                materialRequestId: mrLine.request.id,
+              },
+            });
+          }
         }
 
         // Rule ALLOC-001: total PO allocations for an MR line must not exceed MR requestedQuantity.

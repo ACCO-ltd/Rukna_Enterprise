@@ -86,6 +86,12 @@ view:commitment-ledger — as a QUOTATION_PHOTO and also as the PO's quotation e
 `GET /procurement/purchase-orders/:id/revision-attachments` rows gain `quotationEvidence: boolean`
 and omit quotation-evidence rows for callers who may not download them.
 
+Manual PO bypass guard: `POST /procurement/purchase-orders` and `POST …/:id/revise` answer 409
+`QUOTATION_IN_PROGRESS` (`details: { code, quotationRequestId, quotationNumber, materialRequestId }`)
+when a line allocates to an MR whose quotation request is COLLECTING, AWAITING_DECISION, RETURNED,
+AWARD_PENDING_APPROVAL, or AWARDED with no order raised (none linked or the linked one cancelled).
+The request's own raise-order is exempt. Show "Order it from QR-… (Raise the order)" with a link.
+
 PO confirm (`POST /procurement/purchase-orders/:id/confirm`) adds 409 `PO_EXCEEDS_AWARD`
 (`details.quotationRequestId`) and 409 `AWARD_CHANGED`.
 

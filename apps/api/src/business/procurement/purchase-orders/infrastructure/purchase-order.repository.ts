@@ -236,6 +236,21 @@ export class PurchaseOrderRepository {
     });
   }
 
+  /** ADR-044 — the MR's live (non-cancelled) quotation request, as the bypass guard needs it. */
+  async findLiveQuotationForMaterialRequest(prisma: TenantPrisma, organizationId: string, materialRequestId: string) {
+    const request = await prisma.quotationRequest.findFirst({
+      where: { organizationId, materialRequestId, status: { not: 'CANCELLED' } },
+      select: { id: true, number: true, status: true, purchaseOrder: { select: { status: true } } },
+    });
+    if (!request) return null;
+    return {
+      id: request.id,
+      number: request.number,
+      status: request.status,
+      purchaseOrderStatus: request.purchaseOrder?.status ?? null,
+    };
+  }
+
   /** Takes the award's row lock and confirms it still covers `purchaseOrderId`. */
   async lockAwardFor(prisma: TenantPrisma, quotationRequestId: string, purchaseOrderId: string): Promise<boolean> {
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
