@@ -56,6 +56,8 @@ export interface UpdateUserData {
   firstName?: string;
   lastName?: string;
   status?: UserStatus;
+  whatsappPhone?: string | null;
+  whatsappAlertsEnabled?: boolean;
 }
 
 export interface CreateUserWithMembershipData {
@@ -79,4 +81,6 @@ export interface UserWithRolesRecord {
   status: UserStatus;
   membershipStatus: import('@erp/types').MembershipStatus | null;
   roles: { id: string; name: string }[];
+  whatsappPhone: string | null;
+  whatsappAlertsEnabled: boolean;
 }

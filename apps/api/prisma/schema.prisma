@@ -109,6 +109,10 @@ model User {
   firstName                  String     @map("first_name")
   lastName                   String     @map("last_name")
   status                     UserStatus @default(ACTIVE)
+  /// ADR-044 phase 2 — staff WhatsApp number for operational alerts (E.164, e.g. +252612345678).
+  whatsappPhone              String?    @map("whatsapp_phone") @db.VarChar(16)
+  /// Opt-in: alerts go to WhatsApp only when this is on AND the number is set.
+  whatsappAlertsEnabled      Boolean    @default(false) @map("whatsapp_alerts_enabled")
   organizationId             String     @map("organization_id")
   createdAt                  DateTime   @default(now()) @map("created_at")
   updatedAt                  DateTime   @updatedAt @map("updated_at")
@@ -5449,6 +5453,12 @@ enum MessagePurpose {
   RECEIPT
   PAYMENT_REMINDER
   OVERDUE_REMINDER
+  /// ADR-044 phase 2 — staff alerts for competitive quotations (background-sent).
+  QUOTE_READY
+  QUOTE_REMINDER
+  QUOTE_ESCALATION
+  QUOTE_CHOSEN
+  QUOTE_ANOTHER
 }
 
 enum MessageStatus {
@@ -5490,8 +5500,18 @@ model OutboundMessage {
   createdBy         String         @map("created_by")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
+  /// ADR-044 phase 2 — the staff user a background alert is for (null for client messages).
+  recipientUserId   String?        @map("recipient_user_id")
+  /// Background sends only: `{ body: string[], buttonUrlSuffix?: string }` (no amounts, ever).
+  templateParams    Json?          @map("template_params")
+  /// Background sends only: send attempts so far (claimed attempts, incl. a crash mid-send).
+  attemptCount      Int            @default(0) @map("attempt_count")
+  /// Background sends only: when the dispatcher may (re)try this QUEUED row. Null = not a
+  /// background row (client messages are sent synchronously and are never picked up), or settled.
+  nextAttemptAt     DateTime?      @map("next_attempt_at")
 
   @@unique([organizationId, idempotencyKey], map: "outbound_messages_org_idempotency_key")
+  @@index([status, nextAttemptAt], map: "outbound_messages_dispatch_idx")
   @@index([organizationId, resourceType, resourceId], map: "outbound_messages_org_resource_idx")
   @@index([organizationId, clientId], map: "outbound_messages_org_client_idx")
   @@map("outbound_messages")

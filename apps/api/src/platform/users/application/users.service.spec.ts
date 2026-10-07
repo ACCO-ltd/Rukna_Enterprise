@@ -21,6 +21,8 @@ const sampleRecord: UserWithRolesRecord = {
   status: UserStatus.ACTIVE,
   membershipStatus: MembershipStatus.ACTIVE,
   roles: [{ id: 'r-1', name: 'QS' }],
+  whatsappPhone: null,
+  whatsappAlertsEnabled: false,
 };
 
 function build(
@@ -181,5 +183,40 @@ describe('UsersService', () => {
     const [, , hash, expiresAt] = repo.regenerateTemporaryPassword.mock.calls[0];
     expect(await bcrypt.compare(result.temporaryPassword, hash)).toBe(true);
     expect(expiresAt).toEqual(result.expiresAt);
+  });
+
+  describe('update: WhatsApp alert settings (ADR-044 phase 2)', () => {
+    it('stores the number as E.164, turns alerts on, and audits with a masked number', async () => {
+      const { repo, audit, service } = build();
+      await service.update(identity, 'u-1', { whatsappPhone: ' +252 61 234 5678 ', whatsappAlertsEnabled: true });
+      expect(repo.update).toHaveBeenCalledWith('u-1', { whatsappPhone: '+252612345678', whatsappAlertsEnabled: true });
+      const logged = audit.log.mock.calls[0][0];
+      expect(logged).toMatchObject({ action: 'USER_WHATSAPP_CHANGED', resourceId: 'u-1' });
+      expect(JSON.stringify(logged)).not.toContain('612345678');
+      expect(logged.after.whatsappPhone).toBe('…678');
+    });
+
+    it('refuses a number without + or that is not a phone number', async () => {
+      const { repo, service } = build();
+      await expect(service.update(identity, 'u-1', { whatsappPhone: '0612345678' })).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.update(identity, 'u-1', { whatsappPhone: '+2521' })).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.update(identity, 'u-1', { whatsappPhone: '+252abc' })).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses turning alerts on without a number; clearing the number turns them off', async () => {
+      const { repo, service } = build();
+      await expect(service.update(identity, 'u-1', { whatsappAlertsEnabled: true })).rejects.toBeInstanceOf(BadRequestException);
+      repo.findByIdWithRoles.mockResolvedValueOnce({ ...sampleRecord, whatsappPhone: '+252612345678', whatsappAlertsEnabled: true });
+      await service.update(identity, 'u-1', { whatsappPhone: '' });
+      expect(repo.update).toHaveBeenCalledWith('u-1', { whatsappPhone: null, whatsappAlertsEnabled: false });
+    });
+
+    it('a name-only edit leaves the WhatsApp settings alone and writes no WhatsApp audit', async () => {
+      const { repo, audit, service } = build();
+      await service.update(identity, 'u-1', { firstName: 'Fadumo' });
+      expect(repo.update).toHaveBeenCalledWith('u-1', { firstName: 'Fadumo' });
+      expect(audit.log).not.toHaveBeenCalled();
+    });
   });
 });

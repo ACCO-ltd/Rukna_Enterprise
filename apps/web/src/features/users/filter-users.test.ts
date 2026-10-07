@@ -14,6 +14,8 @@ function user(
     status: UserStatus.ACTIVE,
     membershipStatus: null,
     roles: [],
+    whatsappPhone: null,
+    whatsappAlertsEnabled: false,
     ...overrides,
   };
 }

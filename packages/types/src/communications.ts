@@ -7,7 +7,44 @@
 
 export type MessageChannel = 'WHATSAPP' | 'EMAIL';
 
-export type MessagePurpose = 'INVOICE' | 'RECEIPT' | 'PAYMENT_REMINDER' | 'OVERDUE_REMINDER';
+export type MessagePurpose =
+  | 'INVOICE'
+  | 'RECEIPT'
+  | 'PAYMENT_REMINDER'
+  | 'OVERDUE_REMINDER'
+  // ADR-044 phase 2 — WhatsApp alerts to staff about competitive quotations (sent in the background).
+  | 'QUOTE_READY'
+  | 'QUOTE_REMINDER'
+  | 'QUOTE_ESCALATION'
+  | 'QUOTE_CHOSEN'
+  | 'QUOTE_ANOTHER';
+
+export type StaffAlertPurpose = Extract<
+  MessagePurpose,
+  'QUOTE_READY' | 'QUOTE_REMINDER' | 'QUOTE_ESCALATION' | 'QUOTE_CHOSEN' | 'QUOTE_ANOTHER'
+>;
+
+/**
+ * ADR-044 phase 2 — one WhatsApp alert in a quotation request's delivery log (`messages` on the
+ * request detail). No full phone number: only its last 3 digits. No message text, no amounts.
+ */
+export interface StaffAlertLogEntry {
+  id: string;
+  recipientName: string;
+  /** `…678` — the last 3 digits of the number it went to. */
+  recipientPhoneMasked: string;
+  purpose: StaffAlertPurpose;
+  /** QUEUED (incl. retrying) · SENT · DELIVERED · READ · FAILED · UNKNOWN (sent, never confirmed). */
+  status: MessageStatus;
+  /** ISO; when the alert was queued. */
+  queuedAt: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  failedAt: string | null;
+  /** Plain words, present when FAILED / UNKNOWN (or while a retry is pending). */
+  failureReason: string | null;
+}
 
 /** UNKNOWN: the send went out but WhatsApp never confirmed it — may or may not have arrived; never auto-retried. */
 export type MessageStatus = 'QUEUED' | 'UNKNOWN' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';

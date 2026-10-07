@@ -23,6 +23,16 @@ export const WHATSAPP_TEMPLATE_BODIES: Record<MessagePurpose, string> = {
     'Hello {{1}}, this is a reminder from {{5}} that invoice {{2}} for {{3}} is due on {{4}}. If you have already paid, please ignore this message. Thank you.',
   OVERDUE_REMINDER:
     'Hello {{1}}, invoice {{2}} from {{5}} for {{3}} was due on {{4}} and is now overdue. Please arrange payment, or reply to this message if there is a problem with the invoice.',
+  // ADR-044 phase 2 — staff alerts (Somali; registered at Meta under language `en`).
+  QUOTE_READY:
+    'Codsiga quotation-ka {{1}} ee {{2}} (mashruuca {{3}}): {{4}} quotation ayaa diyaar ah. Fadlan dooro dukaanka laga iibsanayo.',
+  QUOTE_REMINDER:
+    "Xusuusin: Quotation-ka {{1}} ee {{2}} wuxuu sugayaa go'aankaaga muddo {{3}}. Iibsaduhu suuqa ayuu kugu sugayaa.",
+  QUOTE_ESCALATION:
+    "Kor u qaadis: Quotation-ka {{1}} ee {{2}} (mashruuca {{3}}) wuxuu sugayay go'aanka maaliyadda muddo {{4}}. Fadlan arag.",
+  QUOTE_CHOSEN: 'Dukaanka {{1}} ayaa loo doortay {{2}}. Lacag bixinta: {{3}}. Fadlan samee dalabka iibka.',
+  QUOTE_ANOTHER:
+    'Maaliyaddu waxay u baahan tahay quotation kale oo loogu talagalay {{1}}. Qoraalka maaliyadda: {{2}}. Mahadsanid.',
 };
 
 /** The message text with {{1}}…{{n}} filled from `params` (positional, 1-based). */

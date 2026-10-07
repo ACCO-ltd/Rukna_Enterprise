@@ -95,6 +95,16 @@ describe('WhatsAppClient (ADR-042 phase 2)', () => {
     expect(JSON.parse(init.body).template.components).toBeUndefined();
   });
 
+  it('sends the dynamic URL suffix of the first button (staff alerts, ADR-044 phase 2)', async () => {
+    fetchMock.mockResolvedValue(json(200, { messages: [{ id: 'wamid.3' }] }));
+    await client().sendTemplate({ ...message, bodyParams: ['QR-00001'], buttonUrlSuffix: 'cmq123' });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body).template.components).toEqual([
+      { type: 'body', parameters: [{ type: 'text', text: 'QR-00001' }] },
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'cmq123' }] },
+    ]);
+  });
+
   it('uploads media as multipart and returns the media id', async () => {
     fetchMock.mockResolvedValue(json(200, { id: 'MEDIA9' }));
     await expect(client().uploadMedia(Buffer.from('%PDF-1.4'), 'application/pdf', 'INV-1.pdf')).resolves.toBe('MEDIA9');
@@ -234,5 +244,19 @@ describe('resolveWhatsAppTemplate', () => {
     const c = cfg({ WHATSAPP_TEMPLATE_RECEIPT: 'r', WHATSAPP_TEMPLATE_LANGUAGE: 'en_GB' });
     expect(resolveWhatsAppTemplate(c, 'RECEIPT')).toEqual({ name: 'r', language: 'en_GB' });
     expect(resolveWhatsAppTemplate(c, 'OVERDUE_REMINDER')).toBeNull();
+  });
+
+  it('staff quotation alerts default to the submitted names in language en, overridable by env', () => {
+    expect(resolveWhatsAppTemplate(cfg({ WHATSAPP_TEMPLATE_LANGUAGE: 'en_GB' }), 'QUOTE_READY')).toEqual({
+      name: 'quote_ready_so',
+      language: 'en',
+    });
+    expect(resolveWhatsAppTemplate(cfg({}), 'QUOTE_ANOTHER')?.name).toBe('quote_another_so');
+    expect(
+      resolveWhatsAppTemplate(
+        cfg({ WHATSAPP_TEMPLATE_QUOTE_ESCALATION: 'esc_v2', WHATSAPP_TEMPLATE_QUOTE_LANGUAGE: 'en_US' }),
+        'QUOTE_ESCALATION',
+      ),
+    ).toEqual({ name: 'esc_v2', language: 'en_US' });
   });
 });

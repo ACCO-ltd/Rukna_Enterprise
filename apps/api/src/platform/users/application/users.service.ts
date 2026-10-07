@@ -15,6 +15,7 @@ import type {
   UserWithRolesRecord,
 } from '../domain/interfaces/users-repository.interface.js';
 import type { UserEntity } from '../domain/entities/user.entity.js';
+import { maskStaffPhone, nextStaffWhatsAppSettings } from '../domain/staff-whatsapp.policy.js';
 import type { CreateUserDto } from '../presentation/dto/create-user.dto.js';
 import type { UpdateUserDto } from '../presentation/dto/update-user.dto.js';
 import type { SetUserPasswordDto } from '../presentation/dto/set-user-password.dto.js';
@@ -116,10 +117,22 @@ export class UsersService {
   async update(identity: RequestIdentity, id: string, dto: UpdateUserDto): Promise<UserWithRolesRecord> {
     const orgId = identity.activeOrganizationId;
     await this.requireUser(id, orgId);
+    // ADR-044 phase 2 — WhatsApp alert settings: E.164 number, alerts only ON with a number.
+    const touchesWhatsApp = dto.whatsappPhone !== undefined || dto.whatsappAlertsEnabled !== undefined;
+    const current = touchesWhatsApp ? await this.findByIdWithRoles(id, orgId) : null;
+    const whatsapp = current ? nextStaffWhatsAppSettings(current, dto) : null;
     await this.usersRepository.update(id, {
       ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
       ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+      ...(whatsapp ?? {}),
     });
+    if (current && whatsapp && (current.whatsappPhone !== whatsapp.whatsappPhone || current.whatsappAlertsEnabled !== whatsapp.whatsappAlertsEnabled)) {
+      // The number is masked in the audit trail.
+      await this.audit(identity, 'USER_WHATSAPP_CHANGED', id, {
+        whatsappPhone: whatsapp.whatsappPhone ? maskStaffPhone(whatsapp.whatsappPhone) : null,
+        whatsappAlertsEnabled: whatsapp.whatsappAlertsEnabled,
+      });
+    }
     return this.findByIdWithRoles(id, orgId);
   }
 
