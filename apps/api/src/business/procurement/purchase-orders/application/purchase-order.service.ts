@@ -15,7 +15,10 @@ import type {
   PoRevisionAttachmentPurpose,
 } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import { PurchaseOrderRepository } from '../infrastructure/purchase-order.repository.js';
+import {
+  PurchaseOrderRepository,
+  type CreatePoLineData,
+} from '../infrastructure/purchase-order.repository.js';
 import { PurchaseOrderAttachmentRepository } from '../infrastructure/purchase-order-attachment.repository.js';
 import { MaterialRepository } from '../../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
@@ -27,6 +30,7 @@ import {
 } from '../../../../platform/workflows/application/command-governance.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { validateCostTarget, costTargetViolationMessage } from '../domain/cost-target.policy.js';
+import { awardCoverage, type CoverageResult } from '../domain/award-coverage.policy.js';
 import { SettlementQueryService } from './settlement-query.service.js';
 
 export interface CreatePoLineDto {
@@ -77,6 +81,32 @@ type TenantPrisma = Omit<
 
 type RevisionLineForAllocation = { id: string };
 
+type LineAllocations = {
+  mrLineAllocations?: Array<{ materialRequestLineId: string; allocatedQuantity: number | Decimal }>;
+};
+
+/** A PO line whose codes are already resolved, plus its MR allocations (ADR-044 raise-order). */
+export type ResolvedPoLine = CreatePoLineData & LineAllocations;
+
+/** ADR-044 §8 — a DRAFT PO raised from a quotation award, inside the caller's transaction. */
+export interface DraftFromAwardInput {
+  supplierId: string;
+  currencyCode: string;
+  /** The source document's date (the award), never the clock. */
+  effectiveFrom: Date;
+  reason: string;
+  deliveryAddress?: string;
+  expectedDeliveryDate?: Date;
+  lines: ResolvedPoLine[];
+  quotation: {
+    ref: string;
+    date: Date | null;
+    amount: Decimal;
+    /** The winning quote's photos — already IMMUTABLE evidence. */
+    evidenceFileIds: string[];
+  };
+}
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(
@@ -114,9 +144,82 @@ export class PurchaseOrderService {
     if (!dto.lines || dto.lines.length === 0)
       throw new BadRequestException('At least one line is required');
 
+    await this.assertSupplierOrderable(prisma, identity, dto.supplierId);
+
+    const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);
+    const count = await this.repo.countPoNumbers(prisma, orgId);
+    const poNumber = `PO-${String(count + 1).padStart(5, '0')}`;
+
+    const po = await prisma.$transaction((tx) =>
+      this.writeDraft(tx, identity, {
+        supplierId: dto.supplierId,
+        poNumber,
+        currencyCode: dto.currencyCode,
+        effectiveFrom: new Date(dto.effectiveFrom),
+        reason: dto.reason,
+        deliveryAddress: dto.deliveryAddress,
+        expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : undefined,
+        lines: resolvedLines.map((line, i) => ({ ...line, mrLineAllocations: dto.lines[i].mrLineAllocations })),
+        sourceCommand: 'po.create',
+      }),
+    );
+
+    return this.repo.findById(prisma, orgId, po.id);
+  }
+
+  /**
+   * ADR-044 §8 — the quotation award's "Raise the order": a DRAFT PO built from the MR lines, created
+   * in the caller's transaction (so the request's PO link commits with it). Same rules as `create`
+   * — supplier ACTIVE, the vendor-maintainer SoD, cost targets, MR allocation caps — plus the
+   * quotation evidence: the winning photos are attached to revision 1 (already IMMUTABLE, so the
+   * public attach rule "TEMPORARY and uploaded by you" does not apply) and the revision's
+   * quotationRef / quotationDate / quotedAmount are written.
+   */
+  async createDraftFromAward(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    input: DraftFromAwardInput,
+  ): Promise<{ id: string; poNumber: string }> {
+    const orgId = identity.activeOrganizationId;
+    if (input.lines.length === 0) throw new BadRequestException('At least one line is required');
+    await this.assertSupplierOrderable(tx, identity, input.supplierId);
+    for (const [i, line] of input.lines.entries()) await this.assertCostTarget(tx, orgId, line, i);
+
+    const count = await this.repo.countPoNumbers(tx, orgId);
+    const poNumber = `PO-${String(count + 1).padStart(5, '0')}`;
+    const created = await this.writeDraft(tx, identity, {
+      supplierId: input.supplierId,
+      poNumber,
+      currencyCode: input.currencyCode,
+      effectiveFrom: input.effectiveFrom,
+      reason: input.reason,
+      deliveryAddress: input.deliveryAddress,
+      expectedDeliveryDate: input.expectedDeliveryDate,
+      lines: input.lines,
+      sourceCommand: 'quotation.raise-order',
+    });
+
+    await this.repo.setRevisionQuotation(tx, created.revisionId, {
+      quotationRef: input.quotation.ref,
+      quotationDate: input.quotation.date,
+      quotedAmount: input.quotation.amount,
+    });
+    await this.attachmentRepo.attachImmutableEvidence(tx, {
+      organizationId: orgId,
+      purchaseOrderRevisionId: created.revisionId,
+      platformFileIds: input.quotation.evidenceFileIds,
+      purpose: 'QUOTATION',
+      supplierRef: input.quotation.ref,
+      attachedBy: identity.userId,
+    });
+    return { id: created.id, poNumber };
+  }
+
+  /** ADR-022 CONST-DOA-003 + supplier status: may `identity` raise a PO to this supplier? */
+  private async assertSupplierOrderable(prisma: TenantPrisma, identity: RequestIdentity, supplierId: string) {
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also create a PO to that vendor.
     const supplier = await prisma.supplier.findFirst({
-      where: { id: dto.supplierId, organizationId: orgId },
+      where: { id: supplierId, organizationId: identity.activeOrganizationId },
       select: { createdBy: true, status: true, name: true },
     });
     if (!supplier) throw new NotFoundException('Supplier not found');
@@ -126,51 +229,59 @@ export class PurchaseOrderService {
         `${supplier.name} is inactive, so new purchase orders cannot be raised to it. Reactivate the supplier or choose another.`,
       );
     await this.sod.assertAllowed({
-      organizationId: orgId,
+      organizationId: identity.activeOrganizationId,
       action: 'CREATE_PURCHASE_ORDER',
       actorUserId: identity.userId,
       vendorMaintainerUserId: supplier.createdBy ?? undefined,
     });
+  }
 
-    const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);
-    const count = await this.repo.countPoNumbers(prisma, orgId);
-    const poNumber = `PO-${String(count + 1).padStart(5, '0')}`;
-
-    const po = await prisma.$transaction(async (tx) => {
-      const created = await this.repo.createWithRevision(tx, {
-        organizationId: orgId,
-        supplierId: dto.supplierId,
-        poNumber,
-        currencyCode: dto.currencyCode,
-        effectiveFrom: new Date(dto.effectiveFrom),
-        reason: dto.reason,
-        deliveryAddress: dto.deliveryAddress,
-        expectedDeliveryDate: dto.expectedDeliveryDate
-          ? new Date(dto.expectedDeliveryDate)
-          : undefined,
-        createdBy: identity.userId,
-        lines: resolvedLines,
-      });
-
-      const revision = created!.revisions[0];
-      await this.wireAllocations(tx, orgId, revision.lines, dto.lines);
-
-      await this.auditOutbox.record(tx, {
-        organizationId: orgId,
-        actorUserId: identity.userId,
-        action: 'CREATE',
-        resourceType: 'PurchaseOrder',
-        resourceId: created!.id,
-        sourceCommand: 'po.create',
-        eventType: 'PO_CREATED',
-        idempotencyKey: `po-create-${created!.id}`,
-        after: { poNumber, supplierId: dto.supplierId, status: 'DRAFT' },
-      });
-
-      return created;
+  /** Header + revision 1 + MR allocations + PO_CREATED audit, inside `tx`. */
+  private async writeDraft(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    input: {
+      supplierId: string;
+      poNumber: string;
+      currencyCode: string;
+      effectiveFrom: Date;
+      reason?: string;
+      deliveryAddress?: string;
+      expectedDeliveryDate?: Date;
+      lines: ResolvedPoLine[];
+      sourceCommand: string;
+    },
+  ) {
+    const orgId = identity.activeOrganizationId;
+    const created = await this.repo.createWithRevision(tx, {
+      organizationId: orgId,
+      supplierId: input.supplierId,
+      poNumber: input.poNumber,
+      currencyCode: input.currencyCode,
+      effectiveFrom: input.effectiveFrom,
+      reason: input.reason,
+      deliveryAddress: input.deliveryAddress,
+      expectedDeliveryDate: input.expectedDeliveryDate,
+      createdBy: identity.userId,
+      lines: input.lines.map(({ mrLineAllocations: _allocations, ...line }) => line),
     });
 
-    return this.repo.findById(prisma, orgId, po!.id);
+    const revision = created!.revisions[0];
+    await this.wireAllocations(tx, orgId, revision.lines, input.lines);
+
+    await this.auditOutbox.record(tx, {
+      organizationId: orgId,
+      actorUserId: identity.userId,
+      action: 'CREATE',
+      resourceType: 'PurchaseOrder',
+      resourceId: created!.id,
+      sourceCommand: input.sourceCommand,
+      eventType: 'PO_CREATED',
+      idempotencyKey: `po-create-${created!.id}`,
+      after: { poNumber: input.poNumber, supplierId: input.supplierId, status: 'DRAFT' },
+    });
+
+    return { id: created!.id, revisionId: revision.id };
   }
 
   async confirm(identity: RequestIdentity, id: string) {
@@ -191,24 +302,69 @@ export class PurchaseOrderService {
       (sum, l) => sum.add((l.unitPrice as Decimal).mul(l.orderedQuantity as Decimal)),
       new Decimal(0),
     );
-    const governance = await this.commandGovernance.evaluateStateTransition(
-      identity,
-      'PurchaseOrder',
-      'DRAFT',
-      'SUBMITTED',
-      po.id,
-      draftTotal,
-    );
-    throwIfGated(governance.gate, 'Purchase order confirmation requires workflow approval.');
-    // Record who actually approved: the final approver of the consumed approval, else the
-    // confirmer (no approval was required).
-    const consumed = governance.consumedApproval;
-    const approvedBy = consumed?.finalApproverId ?? identity.userId;
+    // ADR-044 §7 — a PO raised from a quotation award is already approved by the award (made under
+    // the same PO bands): when covered, governance is not evaluated and the award's approval is
+    // recorded instead. A covered PO above the award is refused outright; a PO not from an award
+    // (or an amendment, a swapped supplier, foreign lines) takes the normal gate below, unchanged.
+    const award = await this.repo.findAwardForPurchaseOrder(prisma, identity.activeOrganizationId, po.id);
+    let coverage: CoverageResult = { kind: 'NOT_FROM_AWARD' };
+    if (award) {
+      const allocations = await this.repo.mrLinesByPoLine(prisma, draft.lines.map((l) => l.id));
+      coverage = awardCoverage({
+        award: {
+          status: award.status,
+          purchaseOrderId: award.purchaseOrderId,
+          awardedSupplierId: award.awardedSupplierId,
+          awardedTotal: award.awardedTotal as Decimal | null,
+          materialRequestLineIds: award.materialRequest.lines.map((l) => l.id),
+        },
+        purchaseOrder: { id: po.id, supplierId: po.supplierId },
+        revisions: po.revisions.map((r) => ({ status: r.status, approvedAt: r.approvedAt })),
+        draftLines: draft.lines.map((l) => ({ mrLineIds: allocations.get(l.id) ?? [] })),
+        draftTotal,
+      });
+    }
+    if (coverage.kind === 'EXCEEDS_AWARD') {
+      throw new ConflictException({
+        errorCode: 'PO_EXCEEDS_AWARD',
+        message: `This order exceeds the quotation award ${award!.number}. Send it back to finance for a new decision.`,
+        details: { code: 'PO_EXCEEDS_AWARD', quotationRequestId: award!.id },
+      });
+    }
+    const covered = coverage.kind === 'COVERED' ? award! : null;
+
+    let consumed: { instanceId: string; finalApproverId: string | null } | null = null;
+    if (!covered) {
+      const governance = await this.commandGovernance.evaluateStateTransition(
+        identity,
+        'PurchaseOrder',
+        'DRAFT',
+        'SUBMITTED',
+        po.id,
+        draftTotal,
+      );
+      throwIfGated(governance.gate, 'Purchase order confirmation requires workflow approval.');
+      consumed = governance.consumedApproval;
+    }
+    // Record who actually approved: the award's final approver (or the selector when no band
+    // gated the award), else the final approver of the consumed approval, else the confirmer.
+    const approvedBy = covered
+      ? (covered.awardFinalApproverId ?? covered.awardedBy ?? identity.userId)
+      : (consumed?.finalApproverId ?? identity.userId);
+    const approvalInstanceId = covered ? covered.awardApprovalInstanceId : (consumed?.instanceId ?? null);
 
     // When amending an already-confirmed PO, supersede the current ACTIVE revision
     const currentActive = po.revisions.find((r) => r.status === 'ACTIVE');
 
     await prisma.$transaction(async (tx) => {
+      // The award must still stand when the PO it covers is confirmed (under the request's lock).
+      if (covered && !(await this.repo.lockAwardFor(tx, covered.id, po.id))) {
+        throw new ConflictException({
+          errorCode: 'AWARD_CHANGED',
+          message: `Quotation award ${covered.number} changed — reload and try again.`,
+          details: { code: 'AWARD_CHANGED' },
+        });
+      }
       if (currentActive) {
         await this.repo.updateRevisionStatus(tx, currentActive.id, 'SUPERSEDED');
         // P11: reverse only the net uncommitted balance (committed - already_accrued)
@@ -243,7 +399,7 @@ export class PurchaseOrderService {
       await this.repo.updateRevisionStatus(tx, draft.id, 'ACTIVE', {
         approvedBy,
         approvedAt: new Date(),
-        ...(consumed ? { approvalInstanceId: consumed.instanceId } : {}),
+        ...(approvalInstanceId ? { approvalInstanceId } : {}),
       });
       await this.repo.updatePoStatus(tx, po.id, 'OPEN', draft.id);
 
@@ -287,8 +443,11 @@ export class PurchaseOrderService {
           revisionStatus: 'ACTIVE',
           poStatus: 'OPEN',
           approvedBy,
-          approvalInstanceId: consumed?.instanceId ?? null,
+          approvalInstanceId,
+          ...(covered ? { coveredByQuotationRequestId: covered.id } : {}),
         },
+        ...(covered ? { reason: `Covered by quotation award ${covered.number}` } : {}),
+        ...(approvalInstanceId ? { approvalInstanceId } : {}),
       });
     });
 
@@ -507,23 +666,7 @@ export class PurchaseOrderService {
           resolvedUomId = uom.id;
         }
 
-        // Cost-target (A3/D7). Resolve the node only when one was supplied; the policy decides
-        // which of the three valid attributions this is — corporate, project-level (non-BOQ),
-        // or BOQ-coded — and rejects the two impossible ones.
-        const resolvedNode = line.boqNodeId
-          ? await this.repo.resolveCostNode(prisma, orgId, line.boqNodeId)
-          : null;
-        const violation = validateCostTarget(
-          {
-            projectId: line.projectId,
-            boqNodeId: line.boqNodeId,
-            spendCategoryId: line.spendCategoryId,
-          },
-          resolvedNode,
-        );
-        if (violation) {
-          throw new BadRequestException(`Line ${i + 1}: ${costTargetViolationMessage(violation)}`);
-        }
+        await this.assertCostTarget(prisma, orgId, line, i);
 
         const qty = new Decimal(line.orderedQuantity);
         const price = new Decimal(line.unitPrice);
@@ -545,6 +688,27 @@ export class PurchaseOrderService {
         };
       }),
     );
+  }
+
+  /**
+   * Cost-target (A3/D7). Resolve the node only when one was supplied; the policy decides which of
+   * the three valid attributions this is — corporate, project-level (non-BOQ), or BOQ-coded — and
+   * rejects the two impossible ones.
+   */
+  private async assertCostTarget(
+    prisma: TenantPrisma,
+    orgId: string,
+    line: { projectId?: string | null; boqNodeId?: string | null; spendCategoryId?: string | null },
+    i: number,
+  ) {
+    const resolvedNode = line.boqNodeId ? await this.repo.resolveCostNode(prisma, orgId, line.boqNodeId) : null;
+    const violation = validateCostTarget(
+      { projectId: line.projectId, boqNodeId: line.boqNodeId, spendCategoryId: line.spendCategoryId },
+      resolvedNode,
+    );
+    if (violation) {
+      throw new BadRequestException(`Line ${i + 1}: ${costTargetViolationMessage(violation)}`);
+    }
   }
 
   /**
@@ -571,7 +735,7 @@ export class PurchaseOrderService {
     prisma: Prisma.TransactionClient,
     orgId: string,
     revLines: RevisionLineForAllocation[],
-    dtoLines: CreatePoLineDto[],
+    dtoLines: LineAllocations[],
   ) {
     for (let i = 0; i < revLines.length; i++) {
       const poLine = revLines[i];
@@ -579,23 +743,32 @@ export class PurchaseOrderService {
       if (!dtoLine.mrLineAllocations?.length) continue;
 
       for (const alloc of dtoLine.mrLineAllocations) {
-        // Rule ALLOC-001: total PO allocations for an MR line must not exceed MR requestedQuantity
-        const mrLine = await prisma.materialRequestLine.findUnique({
-          where: { id: alloc.materialRequestLineId },
-          include: {
-            poAllocations: {
-              select: { allocatedQuantity: true },
-            },
+        // ADR-044 §8 hardening: the MR line must be in the caller's organization (another tenant's
+        // id reads as not found) and its request approved — an order cannot draw on a requirement
+        // nobody approved.
+        const mrLine = await prisma.materialRequestLine.findFirst({
+          where: { id: alloc.materialRequestLineId, request: { organizationId: orgId } },
+          select: {
+            approvedQuantity: true,
+            requestedQuantity: true,
+            request: { select: { mrNumber: true, status: true } },
           },
         });
         if (!mrLine) {
           throw new BadRequestException(`MR line ${alloc.materialRequestLineId} not found`);
         }
+        if (mrLine.request.status !== 'APPROVED' && mrLine.request.status !== 'PARTIALLY_ORDERED') {
+          throw new BadRequestException(
+            `${mrLine.request.mrNumber} is ${mrLine.request.status.toLowerCase()}, not approved, so it cannot be ordered.`,
+          );
+        }
 
-        const existingTotal = mrLine.poAllocations.reduce(
-          (sum, allocation) => sum.add(allocation.allocatedQuantity),
-          new Decimal(0),
-        );
+        // Rule ALLOC-001: total PO allocations for an MR line must not exceed MR requestedQuantity.
+        // Only LIVE orders count (a cancelled PO's quantity is free again).
+        const existingTotal =
+          (await this.repo.liveAllocatedQuantities(prisma, [alloc.materialRequestLineId])).get(
+            alloc.materialRequestLineId,
+          ) ?? new Decimal(0);
         const newTotal = existingTotal.add(new Decimal(alloc.allocatedQuantity));
         const cap = (mrLine.approvedQuantity ?? mrLine.requestedQuantity) as Decimal;
 

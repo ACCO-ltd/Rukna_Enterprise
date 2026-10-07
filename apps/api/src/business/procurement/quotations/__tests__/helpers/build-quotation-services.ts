@@ -25,6 +25,12 @@ import { QuotationCollectService } from '../../application/quotation-collect.ser
 import { QuotationMaterialRequestLink } from '../../application/quotation-material-request-link.service.js';
 import { QuotationSelectionService } from '../../application/quotation-selection.service.js';
 import { QuotationAwardService } from '../../application/quotation-award.service.js';
+import { QuotationOrderService } from '../../application/quotation-order.service.js';
+import { PurchaseOrderAttachmentRepository } from '../../../purchase-orders/infrastructure/purchase-order-attachment.repository.js';
+import { PurchaseOrderService } from '../../../purchase-orders/application/purchase-order.service.js';
+import type { SettlementQueryService } from '../../../purchase-orders/application/settlement-query.service.js';
+import { CommitmentLedgerRepository } from '../../../commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter } from '../../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { ApprovalService } from '../../../../../platform/workflows/application/approval.service.js';
 import type { WorkflowsService } from '../../../../../platform/workflows/application/workflows.service.js';
 
@@ -47,6 +53,20 @@ export function buildQuotationServices(prisma: PrismaClient) {
   const link = new QuotationMaterialRequestLink(repo, runner, collect);
   const selection = new QuotationSelectionService(runner, query);
   const awards = new QuotationAwardService(tenancy, repo, access, runner, query, audit, commandGovernance, approvals, sod);
+  const noOpSettlement = { getSettlement: async () => ({ settlementStatus: 'OPEN' as const }) } as unknown as SettlementQueryService;
+  const poService = new PurchaseOrderService(
+    tenancy,
+    poRepo,
+    new PurchaseOrderAttachmentRepository(),
+    new MaterialRepository(),
+    new UomRepository(),
+    new CommitmentLedgerWriter(new CommitmentLedgerRepository()),
+    audit,
+    commandGovernance,
+    sod,
+    noOpSettlement,
+  );
+  const orders = new QuotationOrderService(tenancy, repo, poRepo, poService, access, runner, query);
 
   const mrService = new MaterialRequestService(
     tenancy,
@@ -77,6 +97,8 @@ export function buildQuotationServices(prisma: PrismaClient) {
     selection,
     awards,
     approvals,
+    poService,
+    orders,
     link,
     mrService,
     fileAuth,

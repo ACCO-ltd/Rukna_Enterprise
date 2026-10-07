@@ -213,6 +213,62 @@ export class PurchaseOrderRepository {
     };
   }
 
+  /**
+   * ADR-044 §7 — the quotation request whose award this PO was raised from (read from
+   * `quotation_requests` directly: no import of the quotation module, no cycle). Null for a PO not
+   * raised from an award.
+   */
+  findAwardForPurchaseOrder(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
+    return prisma.quotationRequest.findFirst({
+      where: { purchaseOrderId, organizationId },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        purchaseOrderId: true,
+        awardedSupplierId: true,
+        awardedTotal: true,
+        awardedBy: true,
+        awardFinalApproverId: true,
+        awardApprovalInstanceId: true,
+        materialRequest: { select: { lines: { select: { id: true } } } },
+      },
+    });
+  }
+
+  /** Takes the award's row lock and confirms it still covers `purchaseOrderId`. */
+  async lockAwardFor(prisma: TenantPrisma, quotationRequestId: string, purchaseOrderId: string): Promise<boolean> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM quotation_requests
+       WHERE id = ${quotationRequestId}
+         AND purchase_order_id = ${purchaseOrderId}
+         AND status = 'AWARDED'
+       FOR UPDATE`;
+    return rows.length === 1;
+  }
+
+  /** The MR lines each PO line allocates to. */
+  async mrLinesByPoLine(prisma: TenantPrisma, purchaseOrderLineIds: string[]): Promise<Map<string, string[]>> {
+    const rows = await prisma.purchaseOrderLineRequestAllocation.findMany({
+      where: { purchaseOrderLineId: { in: purchaseOrderLineIds } },
+      select: { purchaseOrderLineId: true, materialRequestLineId: true },
+    });
+    const byLine = new Map<string, string[]>();
+    for (const row of rows) {
+      byLine.set(row.purchaseOrderLineId, [...(byLine.get(row.purchaseOrderLineId) ?? []), row.materialRequestLineId]);
+    }
+    return byLine;
+  }
+
+  /** ADR-044 §8 — first use of the revision's quotation columns. */
+  setRevisionQuotation(
+    prisma: TenantPrisma,
+    revisionId: string,
+    data: { quotationRef: string; quotationDate: Date | null; quotedAmount: Decimal },
+  ) {
+    return prisma.purchaseOrderRevision.update({ where: { id: revisionId }, data });
+  }
+
   countPoNumbers(prisma: TenantPrisma, organizationId: string): Promise<number> {
     return prisma.purchaseOrder.count({ where: { organizationId } });
   }

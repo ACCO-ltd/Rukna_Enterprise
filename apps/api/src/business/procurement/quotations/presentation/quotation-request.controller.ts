@@ -13,8 +13,10 @@ import { QuotationCollectService } from '../application/quotation-collect.servic
 import { QuotationQueryService } from '../application/quotation-query.service.js';
 import { QuotationSelectionService } from '../application/quotation-selection.service.js';
 import { QuotationAwardService } from '../application/quotation-award.service.js';
+import { QuotationOrderService } from '../application/quotation-order.service.js';
 import {
   AddQuoteDto,
+  RaiseOrderDto,
   AwardQuotationDto,
   AskAnotherQuoteDto,
   EnterQuoteTotalDto,
@@ -43,6 +45,7 @@ export class QuotationRequestController {
     private readonly query: QuotationQueryService,
     private readonly selection: QuotationSelectionService,
     private readonly awards: QuotationAwardService,
+    private readonly orders: QuotationOrderService,
   ) {}
 
   @Post()
@@ -165,6 +168,31 @@ export class QuotationRequestController {
   @ApiOperation({ summary: 'Withdraw a pending award: AWARD_PENDING_APPROVAL → AWAITING_DECISION (instance voided)' })
   withdrawAward(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.awards.withdrawAward(identity, id);
+  }
+
+  @Post(':id/request-redecision')
+  @RequirePermissions(P.procurementView)
+  @RequireAnyPermission(P.quotationsCollect, P.quotationsAward)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Send an award back to finance: AWARDED → AWAITING_DECISION (no order from it was ever issued)',
+  })
+  requestRedecision(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: QuotationReasonDto) {
+    return this.orders.requestRedecision(identity, id, dto.reason);
+  }
+
+  @Get(':id/order-draft')
+  @RequirePermissions(P.procurementView, P.quotationsCollect, P.purchaseOrdersCreate)
+  @ApiOperation({ summary: 'Preview the purchase order "Raise the order" would create (split mode, lines, prices)' })
+  orderDraft(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.orders.orderDraft(identity, id);
+  }
+
+  @Post(':id/raise-order')
+  @RequirePermissions(P.procurementView, P.quotationsCollect, P.purchaseOrdersCreate)
+  @ApiOperation({ summary: 'Raise the DRAFT purchase order from the award → { purchaseOrderId }' })
+  raiseOrder(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: RaiseOrderDto) {
+    return this.orders.raiseOrder(identity, id, dto);
   }
 
   @Post(':id/cancel')

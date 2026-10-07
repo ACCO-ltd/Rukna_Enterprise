@@ -308,6 +308,9 @@ export class QuotationAwardService {
           },
         });
         supplierId = supplier.id;
+        // The store is now a registered supplier: the quote names it from here on (its photos and
+        // total are untouched), so a re-decision cannot register the same store twice.
+        await tx.quote.update({ where: { id: chosen.id }, data: { supplierId: supplier.id, storeName: null } });
         await this.auditOutbox.record(tx, {
           organizationId: request.organizationId,
           actorUserId: request.proposedBy,

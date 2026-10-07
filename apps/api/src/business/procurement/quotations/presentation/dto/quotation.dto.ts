@@ -148,6 +148,45 @@ export class AwardQuotationDto {
   awardSupplierId?: string;
 }
 
+export class RaiseOrderLineDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  materialRequestLineId: string;
+
+  @ApiProperty({ example: '50', description: '0 < quantity ≤ the MR line’s remaining quantity (≤ 4 dp)' })
+  @IsNotEmpty()
+  quantity: string;
+
+  @ApiProperty({ example: '1147.50', description: 'Line amount (≤ 2 dp); Σ amount ≤ the awarded total' })
+  @IsNotEmpty()
+  amount: string;
+}
+
+export class RaiseOrderDto {
+  @ApiPropertyOptional({
+    type: [RaiseOrderLineDto],
+    description: 'Adjusted lines (drop lines, lower quantities, set amounts). Omit to use the automatic split.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => RaiseOrderLineDto)
+  lines?: RaiseOrderLineDto[];
+
+  @ApiPropertyOptional({ example: '2026-10-12' })
+  @IsOptional()
+  @IsDateString()
+  expectedDeliveryDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryAddress?: string;
+}
+
 export class QuotationReasonDto {
   @ApiProperty({ maxLength: 1000 })
   @IsString()
