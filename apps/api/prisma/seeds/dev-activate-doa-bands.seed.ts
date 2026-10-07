@@ -23,6 +23,7 @@ import { PrismaClient } from '@prisma/client';
 
 import {
   accoPurchaseOrderBands,
+  accoQuotationAwardBands,
   accoSupplierPaymentBands,
 } from '../../src/platform/workflows/seeders/acco-value-bands.js';
 import { accoApprovalChains } from '../../src/platform/workflows/seeders/acco-lifecycle-chains.js';
@@ -34,7 +35,14 @@ const DISABLE = process.argv.includes('--off');
 // Every ACCO governance definition the seeder created (value bands + fixed lifecycle chains),
 // and every distinct approver role any of them can demand — derived from the specs so this
 // script never drifts from what was seeded.
-const ALL_BANDS = [...accoPurchaseOrderBands(), ...accoSupplierPaymentBands()];
+// ADR-044 §7 — the quotation award bands ARE the PO approval, so they switch with the PO bands.
+const PO_BAND_NAMES = accoPurchaseOrderBands().map((b) => b.name);
+const AWARD_BAND_NAMES = accoQuotationAwardBands().map((b) => b.name);
+const ALL_BANDS = [
+  ...accoPurchaseOrderBands(),
+  ...accoQuotationAwardBands(),
+  ...accoSupplierPaymentBands(),
+];
 const ALL_CHAINS = accoApprovalChains();
 const DEF_NAMES = [...ALL_BANDS.map((b) => b.name), ...ALL_CHAINS.map((c) => c.name)];
 const APPROVER_ROLES = [
@@ -53,6 +61,27 @@ async function main() {
     select: { id: true },
   });
   const defIds = defs.map((d) => d.id);
+
+  // ADR-044 §7 — PO bands and quotation award bands are one control: refuse to switch one set
+  // without the other (a tenant seeded before ADR-044 must run grant-quotation-sod-rules first).
+  const present = new Set(
+    (
+      await prisma.workflowDefinition.findMany({
+        where: { organizationId: org.id, name: { in: [...PO_BAND_NAMES, ...AWARD_BAND_NAMES] } },
+        select: { name: true },
+      })
+    ).map((d) => d.name),
+  );
+  const poComplete = PO_BAND_NAMES.every((n) => present.has(n));
+  const awardComplete = AWARD_BAND_NAMES.every((n) => present.has(n));
+  if (poComplete !== awardComplete) {
+    throw new Error(
+      'PO bands and quotation award bands must be switched together, but only ' +
+        `${poComplete ? 'the PO bands' : 'the award bands'} are seeded. Run ` +
+        'prisma/seeds/grant-quotation-sod-rules.seed.ts (or the governance seed) first.',
+    );
+  }
+
   await prisma.workflowDefinition.updateMany({ where: { id: { in: defIds } }, data: { isActive } });
   await prisma.workflowTriggerBinding.updateMany({
     where: { workflowDefinitionId: { in: defIds } },

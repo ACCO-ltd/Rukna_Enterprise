@@ -205,6 +205,11 @@ export class ProcurementFixtureFactory {
     // buyer_advance_evidence_allocations and advance_returns reference buyer_advances
     // supplier_payment_purchase_allocations references supplier_payments AND purchase_orders
     // → must be deleted before BOTH supplier_payments (accounting section) AND purchase_orders (below).
+    // ADR-044 quotations reference MRs, POs and suppliers — remove them first.
+    await prisma.$executeRaw`DELETE FROM quotation_quote_photos WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM quotation_quotes WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM quotation_requests WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM purchase_order_revision_attachments WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM buyer_advance_evidence_allocations WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM advance_returns WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM buyer_advances WHERE organization_id = ${orgId}`;

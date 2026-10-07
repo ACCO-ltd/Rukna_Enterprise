@@ -91,6 +91,10 @@ model Organization {
   buyerAdvanceEvidenceAllocations    BuyerAdvanceEvidenceAllocation[]
   poRevisionAttachments              PurchaseOrderRevisionAttachment[]
   grnAttachments                     GoodsReceiptAttachment[]
+  // ADR-044 — competitive quotations
+  quotationRequests                  QuotationRequest[]
+  quotationQuotes                    Quote[]
+  quotationQuotePhotos               QuotePhoto[]
 
   @@map("organizations")
 }
@@ -293,6 +297,10 @@ enum NotificationKind {
   STAGE_PAYMENT_DUE
   STAGE_PAYMENT_OVERDUE
   CLIENT_INVOICE_OVERDUE
+  // ADR-044 §10 — event-driven quotation notifications (NotificationWriter, not the daily cron).
+  QUOTES_READY
+  QUOTATION_AWARDED
+  ANOTHER_QUOTE_REQUESTED
 }
 
 enum NotificationSeverity {
@@ -2069,6 +2077,9 @@ model PlatformFile {
   invoiceDocumentFor      ClientInvoice[]          @relation("ClientInvoiceDocument")
   // The generated branded PDF for a posted payment receipt — same storeGenerated path, immutable.
   receiptDocumentFor      PaymentReceipt[]         @relation("PaymentReceiptDocument")
+  // ADR-044 — a page of a store's paper quotation. Money evidence: readable only by quotation
+  // collectors/selectors and cost-visibility holders (QUOTATION_PHOTO owner kind).
+  quotePhoto              QuotePhoto?
 
   @@index([organizationId])
   @@index([lifecycle, createdAt])
@@ -2638,6 +2649,9 @@ model Supplier {
   // ADR-022 CONST-DOA-003: the vendor maintainer. Nullable — suppliers created before this
   // field have an unknown maintainer, so the VENDOR_MAINTAINER SoD rule cannot fire for them.
   createdBy        String?                   @map("created_by")
+  // ADR-044 — quotes collected from this supplier, and awards made to it.
+  quotationQuotes  Quote[]
+  quotationAwards  QuotationRequest[]        @relation("QuotationAwardedSupplier")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -3802,6 +3816,8 @@ enum WorkflowTransactionType {
   MANUAL_JOURNAL
   // ADR-016 CONST-BOQ-018 — baselining a BOQ version routes through the ADR-011 gate.
   BOQ_BASELINE
+  // ADR-044 §7 — a quotation award (AWAITING_DECISION → AWARDED) is the PO's DoA approval.
+  QUOTATION_AWARD
 }
 
 enum ApprovalStatus {
@@ -4563,8 +4579,10 @@ model MaterialRequest {
   createdAt          DateTime                @default(now()) @map("created_at")
   updatedAt          DateTime                @updatedAt @map("updated_at")
 
-  organization Organization          @relation(fields: [organizationId], references: [id])
-  lines        MaterialRequestLine[]
+  organization      Organization          @relation(fields: [organizationId], references: [id])
+  lines             MaterialRequestLine[]
+  // ADR-044 — at most one live (non-CANCELLED) quotation request (partial unique index in SQL).
+  quotationRequests QuotationRequest[]
 
   @@unique([organizationId, mrNumber])
   @@index([organizationId, status])
@@ -4631,6 +4649,8 @@ model PurchaseOrder {
   receiptExceptions           PoReceiptException[]
   paymentPurchaseAllocations  SupplierPaymentPurchaseAllocation[]
   buyerAdvances               BuyerAdvance[]
+  // ADR-044 §8 — the quotation award this order was raised from (the link lives on the request).
+  quotationRequest            QuotationRequest?
 
   @@unique([organizationId, poNumber])
   @@index([organizationId, status])
@@ -4780,6 +4800,192 @@ model PurchaseOrderRevisionAttachment {
 
   @@index([purchaseOrderRevisionId])
   @@map("purchase_order_revision_attachments")
+}
+
+// ─── ADR-044: Competitive quotations (MR → quotes → award → PO) ──────────────
+
+enum QuotationRequestStatus {
+  COLLECTING
+  AWAITING_DECISION
+  RETURNED
+  AWARD_PENDING_APPROVAL
+  AWARDED
+  CANCELLED
+}
+
+enum QuoteStatus {
+  ACTIVE
+  WITHDRAWN
+  REJECTED
+}
+
+enum QuoteRejectReason {
+  ILLEGIBLE
+  WRONG_ITEMS
+  INCOMPLETE
+  OTHER
+}
+
+enum QuoteCountExceptionReason {
+  ONLY_ONE_SUPPLIER
+  URGENT
+  FRAMEWORK_SUPPLIER
+}
+
+enum NonLowestReason {
+  FASTER_DELIVERY
+  BETTER_QUALITY
+  HAS_STOCK
+  OTHER
+}
+
+enum QuotationPaymentPath {
+  BUYER_CASH
+  FINANCE_PAYS_SUPPLIER
+}
+
+enum QuotePhotoSource {
+  CAMERA
+  GALLERY
+  UNKNOWN
+}
+
+/// ADR-044 — one round of competitive quotations for an APPROVED material request. The collector
+/// (procurement) photographs paper quotes; the selector (finance) types each total and awards; the
+/// award is the PO's DoA approval. One live request per MR (partial unique index, migration SQL).
+model QuotationRequest {
+  id                      String                     @id @default(cuid())
+  organizationId          String                     @map("organization_id")
+  /// QR-00001, unique per organization.
+  number                  String                     @db.VarChar(30)
+  materialRequestId       String                     @map("material_request_id")
+  /// Copied from the MR at open (list filters, notification context).
+  projectId               String?                    @map("project_id")
+  currencyCode            String                     @map("currency_code") @db.VarChar(3)
+  status                  QuotationRequestStatus     @default(COLLECTING)
+  /// MR priority = URGENT at open — the SLA clock counts clock hours, not working hours.
+  urgent                  Boolean                    @default(false)
+  /// Σ qty × estimatedUnitPrice when EVERY MR line is priced, else null (unknown, not zero).
+  estimateAmount          Decimal?                   @map("estimate_amount") @db.Decimal(18, 2)
+  /// 3 or 1 (§4 quote-count rule), recomputed on send and at award.
+  requiredQuoteCount      Int                        @default(1) @map("required_quote_count")
+  exceptionReason         QuoteCountExceptionReason? @map("exception_reason")
+  exceptionAcceptedBy     String?                    @map("exception_accepted_by")
+  exceptionAcceptedAt     DateTime?                  @map("exception_accepted_at")
+  returnNote              String?                    @map("return_note")
+  returnedBy              String?                    @map("returned_by")
+  returnedAt              DateTime?                  @map("returned_at")
+  /// Increments on each send — notification dedupe keys and SLA cycles carry it.
+  sendCount               Int                        @default(0) @map("send_count")
+  firstSentAt             DateTime?                  @map("first_sent_at")
+  /// Latest send; the SLA clock starts here.
+  sentAt                  DateTime?                  @map("sent_at")
+  /// Award (or ask-another) time — closes the SLA clock for the cycle.
+  decidedAt               DateTime?                  @map("decided_at")
+  // The choice awaiting DoA approval (AWARD_PENDING_APPROVAL).
+  proposedQuoteId         String?                    @map("proposed_quote_id")
+  proposedBy              String?                    @map("proposed_by")
+  proposedAt              DateTime?                  @map("proposed_at")
+  proposedPaymentPath     QuotationPaymentPath?      @map("proposed_payment_path")
+  proposedNonLowestReason NonLowestReason?           @map("proposed_non_lowest_reason")
+  proposedNonLowestNote   String?                    @map("proposed_non_lowest_note")
+  /// The registered supplier the proposal awards to (the quote's, or the selector's override for a
+  /// new store); null = a new store the proposer registers when the award completes.
+  proposedSupplierId      String?                    @map("proposed_supplier_id")
+  proposedAcceptException Boolean                    @default(false) @map("proposed_accept_exception")
+  // The award.
+  awardedQuoteId          String?                    @map("awarded_quote_id")
+  awardedTotal            Decimal?                   @map("awarded_total") @db.Decimal(18, 2)
+  awardedSupplierId       String?                    @map("awarded_supplier_id")
+  awardedBy               String?                    @map("awarded_by")
+  awardedAt               DateTime?                  @map("awarded_at")
+  awardApprovalInstanceId String?                    @map("award_approval_instance_id")
+  awardFinalApproverId    String?                    @map("award_final_approver_id")
+  nonLowestReason         NonLowestReason?           @map("non_lowest_reason")
+  nonLowestNote           String?                    @map("non_lowest_note")
+  /// Recorded only in Phase 1; Phase 3 executes it (buyer advance / bill → payment).
+  paymentPath             QuotationPaymentPath?      @map("payment_path")
+  /// The PO raised from the award.
+  purchaseOrderId         String?                    @unique @map("purchase_order_id")
+  cancelledBy             String?                    @map("cancelled_by")
+  cancelledAt             DateTime?                  @map("cancelled_at")
+  cancelReason            String?                    @map("cancel_reason")
+  createdBy               String                     @map("created_by")
+  createdAt               DateTime                   @default(now()) @map("created_at")
+  updatedAt               DateTime                   @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  materialRequest MaterialRequest @relation(fields: [materialRequestId], references: [id])
+  awardedSupplier Supplier?       @relation("QuotationAwardedSupplier", fields: [awardedSupplierId], references: [id])
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  quotes          Quote[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, sentAt])
+  @@index([materialRequestId])
+  @@map("quotation_requests")
+}
+
+/// ADR-044 — one store's quotation for the whole MR. Exactly one of supplierId / storeName (CHECK in
+/// SQL). `enteredTotal` is typed by finance only; the collector never sends a money field.
+model Quote {
+  id                 String             @id @default(cuid())
+  organizationId     String             @map("organization_id")
+  quotationRequestId String             @map("quotation_request_id")
+  supplierId         String?            @map("supplier_id")
+  storeName          String?            @map("store_name") @db.VarChar(120)
+  /// `supplier:<id>` or `name:<normalised name>` — the distinct-supplier identity (§4).
+  storeKey           String             @map("store_key") @db.VarChar(200)
+  status             QuoteStatus        @default(ACTIVE)
+  rejectReason       QuoteRejectReason? @map("reject_reason")
+  rejectNote         String?            @map("reject_note")
+  enteredTotal       Decimal?           @map("entered_total") @db.Decimal(18, 2)
+  enteredBy          String?            @map("entered_by")
+  enteredAt          DateTime?          @map("entered_at")
+  /// The collector who added the quote.
+  uploadedBy         String             @map("uploaded_by")
+  /// Idempotency key from the phone's upload queue.
+  clientRef          String             @map("client_ref") @db.Uuid
+  /// Set when a photo replacement creates a new quote; the replaced quote becomes WITHDRAWN.
+  replacesQuoteId    String?            @map("replaces_quote_id")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  quotationRequest QuotationRequest @relation(fields: [quotationRequestId], references: [id])
+  supplier         Supplier?        @relation(fields: [supplierId], references: [id])
+  photos           QuotePhoto[]
+
+  @@unique([quotationRequestId, clientRef])
+  @@index([organizationId])
+  @@index([quotationRequestId, status])
+  @@map("quotation_quotes")
+}
+
+/// ADR-044 — one photographed page of a quote. The file is IMMUTABLE once the request is sent;
+/// `sha256` is copied from PlatformFile.checksumSha256 at bind time as evidence.
+model QuotePhoto {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  quoteId        String           @map("quote_id")
+  platformFileId String           @unique @map("platform_file_id")
+  pageNumber     Int              @map("page_number")
+  sha256         String           @db.Char(64)
+  /// Device time at capture (client-reported, not proof).
+  capturedAt     DateTime         @map("captured_at")
+  /// Server time at bind.
+  receivedAt     DateTime         @default(now()) @map("received_at")
+  /// Best-effort provenance hint (ADR-044 §9), never proof.
+  source         QuotePhotoSource
+  uploadedBy     String           @map("uploaded_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  quote        Quote        @relation(fields: [quoteId], references: [id])
+  file         PlatformFile @relation(fields: [platformFileId], references: [id])
+
+  @@unique([quoteId, pageNumber])
+  @@index([organizationId, sha256])
+  @@map("quotation_quote_photos")
 }
 
 // ─── Sprint 5: Goods Receipt ──────────────────────────────────────────────────

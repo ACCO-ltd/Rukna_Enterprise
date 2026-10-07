@@ -10,7 +10,27 @@
 export type NotificationKind =
   | 'STAGE_PAYMENT_DUE'
   | 'STAGE_PAYMENT_OVERDUE'
-  | 'CLIENT_INVOICE_OVERDUE';
+  | 'CLIENT_INVOICE_OVERDUE'
+  // ADR-044 §10 — event-driven quotation notifications (written in the command's transaction).
+  | 'QUOTES_READY'
+  | 'QUOTATION_AWARDED'
+  | 'ANOTHER_QUOTE_REQUESTED';
+
+/**
+ * ADR-044 §10 — `contextData` of the three quotation kinds. Interpolation values only, and never an
+ * amount: a notification is readable by people who may not see money.
+ */
+export interface QuotationNotificationContext {
+  /** The quotation request number (QR-00001). */
+  number: string;
+  /** The material request number (MR-00001). */
+  mrNumber: string;
+  projectName?: string;
+  /** ACTIVE quotes on the request when the event happened. */
+  quoteCount: number;
+  /** Finance's note on ANOTHER_QUOTE_REQUESTED. */
+  note?: string;
+}
 
 export type NotificationSeverity = 'INFO' | 'WARNING' | 'URGENT';
 

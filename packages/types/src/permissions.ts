@@ -105,6 +105,10 @@ export const PERMISSIONS = {
   goodsReceiptExceptionsApprove: 'approve:goods-receipt-exception',
   matchingExceptionsApprove: 'approve:matching-exception',
   commitmentsView: 'view:commitment-ledger',
+  // ADR-044 — competitive quotations. Collecting photographs paper quotes (no money field ever);
+  // awarding types the totals and chooses, and stands in for the PO's DoA approval.
+  quotationsCollect: 'collect:quotation',
+  quotationsAward: 'award:quotation',
   // The project's cost budget — what it intends to spend, against which the commitment ledger
   // is read. Authoring and baselining are separate because they are different acts: drafting a
   // budget is planning, baselining one sets the figure the project is measured against and
@@ -140,11 +144,14 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
   'purchase-order': 'Procurement', 'goods-receipt': 'Procurement',
   'goods-receipt-exception': 'Procurement', 'matching-exception': 'Procurement',
   'commitment-ledger': 'Procurement',
+  quotation: 'Procurement',
   'project-budget': 'Procurement',
 };
 
 function riskFor(action: string): PermissionDefinition['riskClass'] {
-  if (['approve', 'issue', 'post', 'baseline', 'supersede'].includes(action)) return 'CRITICAL';
+  // `award` (ADR-044) sets the price money flows from and stands in for the PO approval.
+  if (['approve', 'award', 'issue', 'post', 'baseline', 'supersede'].includes(action))
+    return 'CRITICAL';
   // `manage-contingency` decides how the internal buffer is spent — a commercial-authority act, so
   // it carries the same review weight as a plain `manage`. `edit-scope`/`edit-cost` are the split
   // halves of `manage` (ADR-029 A-1), and mutate the BOQ, so they carry the same weight.
@@ -155,7 +162,9 @@ function riskFor(action: string): PermissionDefinition['riskClass'] {
   )
     return 'HIGH';
   // `mark-ready` puts a stage in Finance's "to bill" queue; it moves no money and posts nothing.
-  if (['create', 'mark-ready'].includes(action)) return 'MEDIUM';
+  // `collect` (ADR-044) opens quotation requests and binds quote photos — no money, but it feeds
+  // the award, so it is reviewed like `create` rather than like a read.
+  if (['create', 'collect', 'mark-ready'].includes(action)) return 'MEDIUM';
   // `view-margin` exposes profitability — a read, but a commercially sensitive one, so it is a
   // review signal above an ordinary view (`view-cost`/`view` stay LOW).
   if (action === 'view-margin') return 'MEDIUM';
@@ -241,6 +250,10 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.goodsReceiptExceptionsApprove]: 'Approve goods receipt exceptions',
   [PERMISSIONS.matchingExceptionsApprove]: 'Approve supplier bill matching exceptions',
   [PERMISSIONS.commitmentsView]: 'View the commitment ledger',
+  [PERMISSIONS.quotationsCollect]:
+    'Collect competitive quotations: open a quote request on an approved material request, photograph store quotes, send them to finance (no prices)',
+  [PERMISSIONS.quotationsAward]:
+    'Choose between competitive quotations: enter quote totals, reject a quote, ask for another, and award (the award approves the purchase order)',
   [PERMISSIONS.projectBudgetManage]: 'Draft and edit project cost budgets',
   [PERMISSIONS.projectBudgetBaseline]: 'Baseline a project cost budget',
 };

@@ -21,6 +21,8 @@ export enum WorkflowTransactionType {
   MANUAL_JOURNAL = 'MANUAL_JOURNAL',
   // ADR-016 — BOQ version baselining routes through the ADR-011 gate.
   BOQ_BASELINE = 'BOQ_BASELINE',
+  // ADR-044 §7 — a quotation award is the purchase order's DoA approval.
+  QUOTATION_AWARD = 'QUOTATION_AWARD',
 }
 
 export enum ApprovalStatus {
@@ -358,4 +360,7 @@ export type GovernedEntity =
   | 'DailyProgressReport'
   // ADR-026 CONST-VAR-010 — a VariationOrder's internal approval (PENDING_INTERNAL →
   // INTERNAL_APPROVED) is amount-banded on |net price| through the same governance gate.
-  | 'VariationOrder';
+  | 'VariationOrder'
+  // ADR-044 §7 — the award (AWAITING_DECISION → AWARDED), banded on the chosen quote's total with
+  // the PO bands; the PO raised from it is covered and does not ask for a second approval.
+  | 'QuotationRequest';
