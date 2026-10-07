@@ -62,6 +62,116 @@ escalation, executing the payment path, partial awards, OCR.
 
 ---
 
+## 0a. API as implemented (backend Q1–Q8, 2026-10-07)
+
+The binding wire contract for the frontend tickets. Base path `/procurement/quotation-requests`.
+Money values are 2-dp strings (unit prices 4-dp), `null` unless `moneyVisible`
+(`view:commitment-ledger` ∨ `award:quotation`). Dates are ISO strings. `Person = { id, name }`.
+
+### Errors
+
+Standard envelope `{ success: false, error: { code, message, details } }`. The machine code is
+always in **`error.details.code`** (403s keep `error.code = "FORBIDDEN"`, as SoD 403s already do;
+409/422 also repeat it in `error.code`). 404 for an unknown or other-org id. Codes:
+
+| HTTP | `details.code` |
+|---|---|
+| 400 | `STORE_REQUIRED` · `PHOTO_REQUIRED` · `FILE_NOT_ATTACHABLE` (bad mime/size/checksum) · `CAPTURED_AT_INVALID` · `STORE_NAME_TOO_LONG` · `TOTAL_INVALID` · `NOTE_REQUIRED` · `REASON_REQUIRED` · `QUOTE_REQUIRED` · `PAYMENT_PATH_REQUIRED` · `AWARD_SUPPLIER_OVERRIDE_NOT_ALLOWED` · `ORDER_LINE_INVALID` · `EXPECTED_DELIVERY_DATE_INVALID` |
+| 403 | `MISSING_PERMISSION` · `QUOTE_UPLOADER_CANNOT_SELECT` · `REQUESTER_CANNOT_SELECT` · `SUPPLIER_REGISTRATION_REQUIRES_PAYABLES` · `FILE_NOT_ATTACHABLE` (not your upload) |
+| 409 | `QUOTATION_CANCELLED` · `QUOTATION_FROZEN` · `QUOTATION_NOT_COLLECTING` · `QUOTATION_NOT_AWAITING_DECISION` · `QUOTATION_NOT_PENDING_APPROVAL` · `QUOTATION_NOT_AWARDED` · `QUOTES_REQUIRED` · `QUOTE_TOTALS_MISSING` · `QUOTE_NOT_ACTIVE` · `QUOTE_PHOTO_DUPLICATE` · `QUOTE_COUNT_EXCEPTION_REQUIRED` (`details.required`, `details.distinct`) · `NON_LOWEST_REASON_REQUIRED` · `NON_LOWEST_NOTE_REQUIRED` · `AWARD_PENDING_DIFFERENT_CHOICE` · `AWARD_PENDING_APPROVAL` (`details.approvalInstanceId`) · `SUPPLIER_INACTIVE` · `MATERIAL_REQUEST_NOT_APPROVED` · `MATERIAL_REQUEST_ALREADY_ORDERED` · `PURCHASE_ORDER_LIVE` · `PURCHASE_ORDER_CONFIRMED` · `FILE_NOT_ATTACHABLE` (not uploaded / already bound) · `QUOTATION_CHANGED` |
+| 422 | `PO_EXCEEDS_AWARD` · `ORDER_LINES_REQUIRED` · `ORDER_LINE_NOT_ON_REQUEST` · `ORDER_LINE_DUPLICATED` · `ORDER_LINE_QUANTITY_INVALID` · `ORDER_LINE_AMOUNT_INVALID` |
+
+PO confirm (`POST /procurement/purchase-orders/:id/confirm`) adds 409 `PO_EXCEEDS_AWARD`
+(`details.quotationRequestId`) and 409 `AWARD_CHANGED`.
+
+### Endpoints
+
+| Method & path | Gate (all + view:procurement) | Body → response |
+|---|---|---|
+| `GET /` | collect ∨ award | query `queue=collect\|returned\|waiting\|decide\|awarded\|all` (default `all`), `projectId`, `q`, `mine` (bool; default true for `waiting`), `page` (1), `limit` (25, ≤ 100) → **`{ items: Row[], page, limit, total }`** |
+| `GET /:id` | collect ∨ award | → `Detail` |
+| `POST /` | collect | `{ materialRequestId }` → `Detail`; **201** new, **200** the existing live request |
+| `POST /:id/quotes` | collect | `{ clientRef: uuid, supplierId? \| storeName? (≤120), replacesQuoteId?, photos: [{ platformFileId, capturedAt, source: CAMERA\|GALLERY\|UNKNOWN }] (1–10) }` → 200 `Detail` (a repeated `clientRef` returns 200 with no new quote) |
+| `POST /:id/quotes/:quoteId/photos` | collect | `{ platformFileId, capturedAt, source }` → 200 `Detail` (same file twice = no-op) |
+| `POST /:id/quotes/:quoteId/withdraw` | collect | — → 200 `Detail` |
+| `POST /:id/send` | collect | `{ exceptionReason?: ONLY_ONE_SUPPLIER\|URGENT\|FRAMEWORK_SUPPLIER }` → 200 `Detail` |
+| `POST /:id/reopen` | collect | `{ reason }` → 200 `Detail` |
+| `PUT /:id/quotes/:quoteId/total` | award | `{ total: "1234.50" }` → 200 `Detail` |
+| `POST /:id/quotes/:quoteId/reject` | award | `{ reason: ILLEGIBLE\|WRONG_ITEMS\|INCOMPLETE\|OTHER, note? }` → 200 `Detail` |
+| `POST /:id/ask-another` | award | `{ note }` → 200 `Detail` |
+| `POST /:id/award` | award | `{ quoteId, paymentPath: BUYER_CASH\|FINANCE_PAYS_SUPPLIER, nonLowestReason?, nonLowestNote?, acceptException?, awardSupplierId? }`; re-drive with the same body or `{}` → 200 `Detail` (AWARDED) or 409 `AWARD_PENDING_APPROVAL` with `details.approvalInstanceId` |
+| `POST /:id/withdraw-award` | award | — → 200 `Detail` |
+| `POST /:id/request-redecision` | collect ∨ award | `{ reason }` → 200 `Detail` |
+| `GET /:id/order-draft` | collect + create:purchase-order | → `OrderDraft` |
+| `POST /:id/raise-order` | collect + create:purchase-order | `{ lines?: [{ materialRequestLineId, quantity: "50", amount: "1147.50" }], expectedDeliveryDate?, deliveryAddress? }` → **201** `{ purchaseOrderId }` |
+| `POST /:id/cancel` | collect ∨ award | `{ reason }` → 200 `Detail` |
+
+`Row = { id, number, mr: { id, number, title }, project: { id, code, name } | null, status,
+quoteCount, distinctSupplierCount, requiredQuoteCount, exceptionReason, urgent, sentAt,
+waitingWorkingMinutes: number | null, slaTone: none|amber|red, estimateAmount*, lowestTotal*,
+awardedTotal*, moneyVisible }` (`waitingWorkingMinutes` is null unless AWAITING_DECISION /
+AWARD_PENDING_APPROVAL).
+
+`Detail = { id, number, status, urgent, currencyCode,
+materialRequest: { id, number, title, priority, status, requestedBy: Person }, project | null,
+estimateAmount*, requiredQuoteCount, quoteCount, distinctSupplierCount, exceptionReason,
+exceptionAccepted: { by: Person, at } | null, returnNote, returnedBy: Person | null, returnedAt,
+sendCount, firstSentAt, sentAt, decidedAt, waitingWorkingMinutes, slaTone, lowestTotal*,
+proposal: { quoteId, proposedBy, proposedAt, paymentPath, nonLowestReason, nonLowestNote, supplierId, acceptException } | null,
+award: { quoteId, total*, supplier: { id, code, name } | null, awardedBy, awardedAt, approvalInstanceId, finalApprover: Person | null, paymentPath, nonLowestReason, nonLowestNote } | null,
+purchaseOrder: { id, poNumber, status } | null, cancelledBy, cancelledAt, cancelReason,
+createdBy: Person, createdAt, updatedAt,
+lines: [{ id, lineNumber, description, quantity, uom: { code, name } | null, estimatedUnitPrice*, estimatedAmount* }],
+quotes: [{ id, store: { supplierId, name, registered }, status, rejectReason, rejectNote, replacesQuoteId, uploadedBy: Person, createdAt,
+  photos: [{ id, fileId, pageNumber, capturedAt, receivedAt, source, sha256, reusedOn: string[] }],
+  enteredTotal*, enteredBy: Person | null, enteredAt, isLowest: boolean | null }],
+supplierMatches: [{ quoteId, suppliers: [{ id, code, name }] }],
+approval: { instanceId, status, currentStepOrder, currentStepRole, steps: [{ stepOrder, roleRequired, approvedBy: Person | null, approvedAt }] } | null,
+allowedActions: [{ action, enabled, reasonCode }], moneyVisible }`.
+`allowedActions[].action` ∈ `ADD_QUOTE · ADD_PAGE · WITHDRAW_QUOTE · SEND · REOPEN · ENTER_TOTAL ·
+REJECT_QUOTE · ASK_ANOTHER · AWARD · WITHDRAW_AWARD · REQUEST_REDECISION · RAISE_ORDER · CANCEL`;
+`reasonCode` is one of the codes above (a SoD rule code for a barred selector). A command whose
+action is disabled is refused with exactly that code.
+
+`OrderDraft = { quotationRequestId, number, supplier: { id, code, name }, currencyCode,
+awardedTotal*, paymentPath, splitMode: ESTIMATE|SINGLE_LINE|MANUAL, lines: [{ materialRequestLineId,
+lineNumber, description, quantity, maxQuantity, uom, amount*, unitPrice* }], moneyVisible }`
+(only lines with quantity still to order; `amount`/`unitPrice` null in MANUAL mode).
+
+`GET /procurement/material-requests/:id` gains `quotation: { id, number, status, quoteCount,
+distinctSupplierCount, requiredQuoteCount } | null` (the live request).
+
+Notifications: kinds `QUOTES_READY` (→ `/finance/quotes/:id`), `ANOTHER_QUOTE_REQUESTED` and
+`QUOTATION_AWARDED` (→ `/procurement/quotes/:id`); `contextData = { number, mrNumber,
+projectName?, quoteCount, note? }` (`@erp/types` `QuotationNotificationContext`).
+
+### Deviations from §1 / ADR-044 (recorded with the build)
+
+1. **List envelope.** `GET /` returns `{ items, page, limit, total }` (the ADR listed bare rows);
+   added `limit` and `mine` params. `collect` = all COLLECTING requests (pass `mine=true` for "mine").
+2. **Error code location** is `error.details.code` (see above), the existing SoD convention.
+3. **Award 409** carries `details.code = AWARD_PENDING_APPROVAL` alongside `approvalInstanceId`.
+4. **Self-approval** happens when the proposer's step is the instance's *current* step (the engine
+   approves steps in order). In S8 (CD → FO → CFO) the FO's step is recorded when the FO re-drives
+   after the CD approved; a proposer holding several consecutive step roles walks them in one call.
+5. **Re-decision with a live draft PO** is refused (`PURCHASE_ORDER_LIVE`): cancel the draft PO
+   first. The UI's "Send back to finance" after a confirm-time `PO_EXCEEDS_AWARD` must cancel the
+   draft, then call `request-redecision`. A request whose PO was confirmed and later cancelled cannot
+   raise again (`PURCHASE_ORDER_CONFIRMED`); it can be cancelled and a new request opened.
+6. **Model:** two extra columns on `quotation_requests` — `proposed_supplier_id` (the supplier a
+   pending proposal awards to; null = register the store on completion) and
+   `proposed_accept_exception`. A store registered by an award becomes that quote's `supplierId`
+   (store name cleared), so a re-award cannot register it twice.
+7. **Award bands** are the PO bands with names `Quote award …` (a band definition is found by
+   name and carries its transaction type, so the PO names could not be reused verbatim).
+8. **Required count at send** with an unknown estimate is 3 (the server asks for a reason when
+   fewer); at award the ADR rule applies (estimate known and > 100, or award > 100).
+9. **MR allocation caps** now count only live orders (not cancelled POs, not cancelled/superseded
+   revisions) — needed so a cancelled draft frees its quantity for a re-raise.
+10. **PO `effectiveFrom`** of a raised order is the award date (the source document's date).
+
+---
+
 ## 1. Backend tickets (build order)
 
 Write areas: `apps/api/prisma/` (schema, migration, seeds), `apps/api/src/business/procurement/quotations/`

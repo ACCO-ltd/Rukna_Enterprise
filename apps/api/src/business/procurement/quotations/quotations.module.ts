@@ -14,6 +14,7 @@ import { QuotationCollectService } from './application/quotation-collect.service
 import { QuotationSelectionService } from './application/quotation-selection.service.js';
 import { QuotationAwardService } from './application/quotation-award.service.js';
 import { QuotationOrderService } from './application/quotation-order.service.js';
+import { QuotationListService } from './application/quotation-list.service.js';
 import { QuotationMaterialRequestLink } from './application/quotation-material-request-link.service.js';
 import { QuotationRequestController } from './presentation/quotation-request.controller.js';
 
@@ -35,6 +36,7 @@ import { QuotationRequestController } from './presentation/quotation-request.con
     QuotationSelectionService,
     QuotationAwardService,
     QuotationOrderService,
+    QuotationListService,
     QuotationMaterialRequestLink,
   ],
   exports: [QuotationMaterialRequestLink],

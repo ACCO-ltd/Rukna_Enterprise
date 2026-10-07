@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -7,6 +7,9 @@ import {
   IsBoolean,
   IsDateString,
   IsIn,
+  IsInt,
+  Max,
+  Min,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -19,6 +22,55 @@ import {
 
 export const QUOTE_PHOTO_SOURCES = ['CAMERA', 'GALLERY', 'UNKNOWN'] as const;
 export const QUOTE_COUNT_EXCEPTION_REASONS = ['ONLY_ONE_SUPPLIER', 'URGENT', 'FRAMEWORK_SUPPLIER'] as const;
+
+export const QUOTATION_QUEUE_VALUES = ['collect', 'returned', 'waiting', 'decide', 'awarded', 'all'] as const;
+
+export class ListQuotationRequestsQuery {
+  @ApiPropertyOptional({
+    enum: QUOTATION_QUEUE_VALUES,
+    description:
+      'collect = COLLECTING · returned = RETURNED · waiting = AWAITING_DECISION/AWARD_PENDING_APPROVAL (mine) · ' +
+      'decide = AWAITING_DECISION (oldest sentAt first) + AWARD_PENDING_APPROVAL where I hold the current step · ' +
+      'awarded = AWARDED without a live PO · all (default)',
+  })
+  @IsOptional()
+  @IsIn(QUOTATION_QUEUE_VALUES)
+  queue?: (typeof QUOTATION_QUEUE_VALUES)[number];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
+  @ApiPropertyOptional({ description: 'QR number, MR number or title, project code or name' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @ApiPropertyOptional({ description: 'Only requests I opened or quoted on. Default true for waiting, false otherwise.' })
+  @IsOptional()
+  @Transform(({ obj, key }) => {
+    const raw = (obj as Record<string, unknown>)[key];
+    return raw === undefined ? undefined : raw === true || raw === 'true';
+  })
+  mine?: boolean;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 25, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
 
 export class OpenQuotationRequestDto {
   @ApiProperty({ description: 'An APPROVED material request with nothing ordered yet' })

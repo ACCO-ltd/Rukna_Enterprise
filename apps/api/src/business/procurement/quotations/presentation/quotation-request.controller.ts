@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -14,8 +14,10 @@ import { QuotationQueryService } from '../application/quotation-query.service.js
 import { QuotationSelectionService } from '../application/quotation-selection.service.js';
 import { QuotationAwardService } from '../application/quotation-award.service.js';
 import { QuotationOrderService } from '../application/quotation-order.service.js';
+import { QuotationListService } from '../application/quotation-list.service.js';
 import {
   AddQuoteDto,
+  ListQuotationRequestsQuery,
   RaiseOrderDto,
   AwardQuotationDto,
   AskAnotherQuoteDto,
@@ -46,7 +48,18 @@ export class QuotationRequestController {
     private readonly selection: QuotationSelectionService,
     private readonly awards: QuotationAwardService,
     private readonly orders: QuotationOrderService,
+    private readonly lists: QuotationListService,
   ) {}
+
+  @Get()
+  @RequirePermissions(P.procurementView)
+  @RequireAnyPermission(P.quotationsCollect, P.quotationsAward)
+  @ApiOperation({
+    summary: 'Quotation queues → { items, page, limit, total }; money fields null unless visible',
+  })
+  list(@CurrentUser() identity: RequestIdentity, @Query() query: ListQuotationRequestsQuery) {
+    return this.lists.list(identity, query);
+  }
 
   @Post()
   @RequirePermissions(P.procurementView, P.quotationsCollect)

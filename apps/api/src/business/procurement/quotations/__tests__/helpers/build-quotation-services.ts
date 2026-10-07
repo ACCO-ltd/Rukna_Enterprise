@@ -27,6 +27,7 @@ import { QuotationSelectionService } from '../../application/quotation-selection
 import { QuotationAwardService } from '../../application/quotation-award.service.js';
 import { QuotationOrderService } from '../../application/quotation-order.service.js';
 import { QuotationNotifier } from '../../application/quotation-notifier.service.js';
+import { QuotationListService } from '../../application/quotation-list.service.js';
 import { NotificationWriter } from '../../../../../platform/notifications/application/notification-writer.service.js';
 import { PurchaseOrderAttachmentRepository } from '../../../purchase-orders/infrastructure/purchase-order-attachment.repository.js';
 import { PurchaseOrderService } from '../../../purchase-orders/application/purchase-order.service.js';
@@ -70,6 +71,7 @@ export function buildQuotationServices(prisma: PrismaClient) {
     noOpSettlement,
   );
   const orders = new QuotationOrderService(tenancy, repo, poRepo, poService, access, runner, query, notifier);
+  const lists = new QuotationListService(tenancy, projectAccess, commandGovernance, access, query);
 
   const mrService = new MaterialRequestService(
     tenancy,
@@ -103,6 +105,7 @@ export function buildQuotationServices(prisma: PrismaClient) {
     poService,
     orders,
     notifier,
+    lists,
     link,
     mrService,
     fileAuth,

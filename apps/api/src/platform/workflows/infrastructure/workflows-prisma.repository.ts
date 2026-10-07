@@ -276,6 +276,20 @@ export class WorkflowsPrismaRepository {
     });
   }
 
+  /** PENDING instances for many documents of one type, with their chain — one query. */
+  findPendingInstancesFor(transactionType: WorkflowTransactionType, transactionIds: string[]) {
+    if (transactionIds.length === 0) return Promise.resolve([]);
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findMany({
+      where: { transactionType, transactionId: { in: transactionIds }, status: 'PENDING' },
+      select: {
+        transactionId: true,
+        currentStepOrder: true,
+        definition: { select: { steps: { select: { stepOrder: true, roleRequired: true } } } },
+      },
+    });
+  }
+
   /**
    * Marks an approval instance as consumed once its entity transition has been driven
    * through (ADR-015). There is no dedicated CONSUMED enum value yet — that needs a

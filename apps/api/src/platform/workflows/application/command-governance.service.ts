@@ -155,6 +155,20 @@ export class CommandGovernanceService {
   }
 
   /**
+   * For each document with a PENDING approval, the role its current step requires — batched, for
+   * "waiting on me" queues (ADR-044 §12 `decide`).
+   */
+  async pendingStepRoles(transactionType: WorkflowTransactionType, resourceIds: string[]): Promise<Map<string, string>> {
+    const instances = await this.repo.findPendingInstancesFor(transactionType, resourceIds);
+    const roles = new Map<string, string>();
+    for (const instance of instances) {
+      const step = instance.definition.steps.find((s) => s.stepOrder === instance.currentStepOrder);
+      if (step) roles.set(instance.transactionId, step.roleRequired);
+    }
+    return roles;
+  }
+
+  /**
    * Voids a granted-but-unused approval, so a document edited after approval must be approved
    * again: an approval covers the content the approvers saw, not whatever the document later
    * becomes. Marks it consumed (CANCELLED), exactly as the gate does when it uses one.
