@@ -169,6 +169,8 @@ export class QuotationQueryService {
         priority: mr.priority,
         status: mr.status,
         requestedBy: person(mr.requestedBy)!,
+        // The decision screen's "Needed by" (ADR-044 wireframe E).
+        requiredByDate: mr.requiredByDate,
       },
       project,
       estimateAmount: money(dec(request.estimateAmount)),

@@ -113,7 +113,7 @@ awardedTotal*, moneyVisible }` (`waitingWorkingMinutes` is null unless AWAITING_
 AWARD_PENDING_APPROVAL).
 
 `Detail = { id, number, status, urgent, currencyCode,
-materialRequest: { id, number, title, priority, status, requestedBy: Person }, project | null,
+materialRequest: { id, number, title, priority, status, requestedBy: Person, requiredByDate }, project | null,
 estimateAmount*, requiredQuoteCount, quoteCount, distinctSupplierCount, exceptionReason,
 exceptionAccepted: { by: Person, at } | null, returnNote, returnedBy: Person | null, returnedAt,
 sendCount, firstSentAt, sentAt, decidedAt, waitingWorkingMinutes, slaTone, lowestTotal*,
