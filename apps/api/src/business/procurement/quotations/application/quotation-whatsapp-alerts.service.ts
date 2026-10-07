@@ -23,6 +23,8 @@ import {
 
 /** Env kill switch (default off): when not exactly 'true', nothing is queued. */
 export const QUOTATION_WHATSAPP_ENABLED = 'QUOTATION_WHATSAPP_ENABLED';
+/** Optional ISO instant: the SLA chaser ignores rounds sent before it (review M3). */
+export const QUOTATION_WHATSAPP_SINCE = 'QUOTATION_WHATSAPP_SINCE';
 
 export interface QueueAlertInput {
   organizationId: string;
@@ -54,6 +56,7 @@ export interface QueueAlertInput {
 export class QuotationWhatsAppAlerts {
   private readonly logger = new Logger(QuotationWhatsAppAlerts.name);
   private warnedUnconfigured = false;
+  private warnedSince = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -64,6 +67,21 @@ export class QuotationWhatsAppAlerts {
   /** The kill switch alone (QUOTATION_WHATSAPP_ENABLED === 'true'). */
   switchedOn(): boolean {
     return this.config.get<string>(QUOTATION_WHATSAPP_ENABLED) === 'true';
+  }
+
+  /** QUOTATION_WHATSAPP_SINCE as a date; null when unset or unparseable (logged once). */
+  chaseSince(): Date | null {
+    const raw = this.config.get<string>(QUOTATION_WHATSAPP_SINCE)?.trim();
+    if (!raw) return null;
+    const at = new Date(raw);
+    if (Number.isNaN(at.getTime())) {
+      if (!this.warnedSince) {
+        this.warnedSince = true;
+        this.logger.warn(`${QUOTATION_WHATSAPP_SINCE} is not a valid date — ignored (3-day lookback only)`);
+      }
+      return null;
+    }
+    return at;
   }
 
   /** Whether alerts are queued at all right now (kill switch on and WhatsApp configured). */

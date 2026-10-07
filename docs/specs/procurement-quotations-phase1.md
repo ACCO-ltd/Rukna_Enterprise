@@ -236,7 +236,9 @@ WhatsApp alerts" switch (disabled until there is a number). Decision and capture
 
 **Rollout.** Migrate (`20261011120000_quotation_whatsapp_alerts`) → get the five templates approved
 in Meta (§5–9 of the templates doc; button base = the tenant's web address) → admins enter staff
-numbers and switch alerts on → set `QUOTATION_WHATSAPP_ENABLED=true` and restart the API. Rollback:
+numbers and switch alerts on → set `QUOTATION_WHATSAPP_ENABLED=true` **and `QUOTATION_WHATSAPP_SINCE=<now, ISO UTC>`** (so
+requests already waiting are not all chased at once; the chaser also ignores rounds sent more than 3
+days ago) and restart the API. Rollback:
 set it back to `false` (queued alerts are withdrawn, nothing new is queued).
 
 ---

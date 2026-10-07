@@ -351,4 +351,62 @@ describe('ADR-044 phase 2 — quotation WhatsApp alerts', () => {
       expect(await alerts(request.id, 'QUOTE_ANOTHER')).toHaveLength(0);
     });
   });
+
+  describe('review M3 / L6 — the SLA chaser only chases recent rounds, and skips finished ones', () => {
+    const at = (iso: string) => new Date(iso);
+    const SENT = at('2026-10-10T05:00:00Z'); // Saturday 08:00 Mogadishu
+
+    async function waiting(sentAt: Date, urgent = true) {
+      const mr = await createApprovedMr(prisma, env);
+      const request = await s.collected(mr.id);
+      await svc.collect.send(env.as('collector'), request.id);
+      await prisma.quotationRequest.update({ where: { id: request.id }, data: { sentAt, urgent } });
+      return request;
+    }
+
+    it('a round sent more than 3 days ago is not chased (no burst when the switch is first turned on)', async () => {
+      const old = await waiting(at('2026-10-06T05:00:00Z'));
+      await svc.slaJob.runTenant(at('2026-10-10T07:00:00Z'));
+      expect(await alerts(old.id, 'QUOTE_REMINDER')).toHaveLength(0);
+      expect(await alerts(old.id, 'QUOTE_ESCALATION')).toHaveLength(0);
+    });
+
+    it('a round sent before QUOTATION_WHATSAPP_SINCE is not chased', async () => {
+      const since = buildQuotationServices(prisma, {
+        env: { QUOTATION_WHATSAPP_ENABLED: 'true', QUOTATION_WHATSAPP_SINCE: '2026-10-10T06:00:00Z' },
+      });
+      const before = await waiting(SENT);
+      await since.slaJob.runTenant(at('2026-10-10T12:00:00Z'));
+      expect(await alerts(before.id, 'QUOTE_REMINDER')).toHaveLength(0);
+    });
+
+    it('once both alerts exist for the round, the request is not re-processed', async () => {
+      const request = await waiting(SENT);
+      await svc.slaJob.runTenant(at('2026-10-10T10:00:00Z')); // urgent: 5 clock hours
+      expect(await alerts(request.id, 'QUOTE_ESCALATION')).toHaveLength(1);
+      const spy = jest.spyOn(svc.notifier, 'selectorIdsFor');
+      try {
+        await svc.slaJob.runTenant(at('2026-10-10T10:05:00Z'));
+        expect(spy.mock.calls.filter(([, r]) => r.id === request.id)).toHaveLength(0);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('due-ness is decided from the locked in-transaction read (L6)', async () => {
+      const request = await waiting(SENT);
+      const original = svc.repo.lockById.bind(svc.repo);
+      // Between the scan and the lock, the quotes were sent again (fresh round, nothing due).
+      const spy = jest.spyOn(svc.repo, 'lockById').mockImplementation(async (tx, org, id) => {
+        const locked = await original(tx, org, id);
+        return locked && id === request.id ? { ...locked, sentAt: at('2026-10-10T09:59:00Z') } : locked;
+      });
+      try {
+        await svc.slaJob.runTenant(at('2026-10-10T10:00:00Z'));
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await alerts(request.id, 'QUOTE_REMINDER')).toHaveLength(0);
+    });
+  });
 });

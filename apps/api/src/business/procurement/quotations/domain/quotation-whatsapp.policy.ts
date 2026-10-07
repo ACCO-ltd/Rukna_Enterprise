@@ -114,6 +114,19 @@ export function roundOfKey(key: string): string | null {
   return parts.length === 5 && parts[0] === 'quotation-wa' ? parts[3] : null;
 }
 
+/** Review M3 — the SLA chaser only looks at rounds sent within this window. */
+export const SLA_LOOKBACK_MS = 3 * 24 * 60 * 60_000;
+
+/**
+ * The earliest send instant the SLA chaser still chases: the last 3 days, and never before
+ * `since` (QUOTATION_WHATSAPP_SINCE — set it to the moment the switch is first turned on, so rounds
+ * that were already waiting then are not all reminded and escalated at once).
+ */
+export function slaChaseFrom(now: Date, since: Date | null): Date {
+  const lookback = now.getTime() - SLA_LOOKBACK_MS;
+  return new Date(since ? Math.max(lookback, since.getTime()) : lookback);
+}
+
 export interface SlaAlertsDue {
   reminder: boolean;
   escalation: boolean;

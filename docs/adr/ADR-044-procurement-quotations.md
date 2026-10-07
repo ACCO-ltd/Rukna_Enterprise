@@ -534,8 +534,12 @@ Locked by the product owner 2026-10-07. Spec addendum: `docs/specs/procurement-q
 5. **SLA chaser** (`QuotationSlaAlertJob`, every 5 minutes, every tenant): for each request
    AWAITING_DECISION, `waitingMinutes(sentAt, now, urgent)` (the Phase 1 working-time function: Sat–Thu
    07:00–17:00 Africa/Mogadishu, urgent = clock hours) ≥ 120 → reminder, ≥ 240 → escalation. A
-   non-urgent request is never chased outside working hours (also covers a missed run). Re-checked
-   under a fresh read inside the job's transaction; the dispatch guard covers a decision made between
+   non-urgent request is never chased outside working hours (also covers a missed run). Review M3:
+   only rounds sent within the last **3 days** and not before `QUOTATION_WHATSAPP_SINCE` (optional
+   ISO instant; set it to the moment the switch is turned on, so requests already waiting then are
+   not all chased at once) are looked at, and a round whose due reminder / escalation rows already
+   exist is skipped without a transaction. Review L6: due-ness is re-decided from the request read
+   under its row lock inside the job's transaction; the dispatch guard covers a decision made between
    queueing and sending.
 
 6. **Switches.** `QUOTATION_WHATSAPP_ENABLED` (default **false**): unless `true`, nothing is queued,

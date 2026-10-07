@@ -4,8 +4,15 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../../platform/database/prisma.service.js';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { tenancyStorage } from '../../../../platform/tenancy/tenancy.context.js';
+import { errorCode } from '../../../../platform/messaging/communication.service.js';
 import { QuotationRequestRepository } from '../infrastructure/quotation-request.repository.js';
-import { decisionRound, slaAlertsDue } from '../domain/quotation-whatsapp.policy.js';
+import {
+  QUOTATION_MESSAGE_RESOURCE,
+  decisionRound,
+  roundOfKey,
+  slaAlertsDue,
+  slaChaseFrom,
+} from '../domain/quotation-whatsapp.policy.js';
 import { QuotationNotifier } from './quotation-notifier.service.js';
 import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js';
 
@@ -80,19 +87,41 @@ export class QuotationSlaAlertJob {
   async runTenant(now: Date = new Date()): Promise<SlaRunSummary> {
     const summary: SlaRunSummary = { checked: 0, remindersQueued: 0, escalationsQueued: 0 };
     const prisma = this.tenancy.getClient();
+    // Review M3: only rounds sent within the lookback (and after QUOTATION_WHATSAPP_SINCE).
+    const from = slaChaseFrom(now, this.alerts.chaseSince());
     const waiting = await prisma.quotationRequest.findMany({
-      where: { status: 'AWAITING_DECISION', sentAt: { not: null } },
-      select: { id: true, organizationId: true, status: true, sentAt: true, urgent: true },
+      where: { status: 'AWAITING_DECISION', sentAt: { gte: from } },
+      select: { id: true, organizationId: true, status: true, sentAt: true, urgent: true, sendCount: true },
       orderBy: { sentAt: 'asc' },
     });
-    for (const candidate of waiting) {
-      summary.checked += 1;
-      const due = slaAlertsDue(candidate, now);
-      if (!due.reminder && !due.escalation) continue;
+    const candidates = waiting
+      .map((request) => ({ request, due: slaAlertsDue(request, now) }))
+      .filter(({ due }) => due.reminder || due.escalation);
+    summary.checked = waiting.length;
+    // Review M3: a round whose due alerts already exist is finished — no transaction, no lookups.
+    const queued = new Set(
+      (
+        await prisma.outboundMessage.findMany({
+          where: {
+            resourceType: QUOTATION_MESSAGE_RESOURCE,
+            resourceId: { in: candidates.map((c) => c.request.id) },
+            purpose: { in: ['QUOTE_REMINDER', 'QUOTE_ESCALATION'] },
+          },
+          select: { resourceId: true, purpose: true, idempotencyKey: true },
+        })
+      ).map((m) => `${m.resourceId}|${m.purpose}|${roundOfKey(m.idempotencyKey)}`),
+    );
+    for (const { request: candidate, due: scanned } of candidates) {
+      const round = decisionRound(candidate);
+      const has = (purpose: string) => queued.has(`${candidate.id}|${purpose}|${round}`);
+      if ((!scanned.reminder || has('QUOTE_REMINDER')) && (!scanned.escalation || has('QUOTE_ESCALATION'))) continue;
       try {
         await prisma.$transaction(async (tx) => {
-          const request = await this.repo.findById(tx, candidate.organizationId, candidate.id);
-          if (!request || request.status !== 'AWAITING_DECISION') return;
+          // Review L6: decide from the locked, in-transaction read, not the scan.
+          const request = await this.repo.lockById(tx, candidate.organizationId, candidate.id);
+          if (!request || !request.sentAt || request.sentAt < from) return;
+          const due = slaAlertsDue(request, now);
+          if (!due.reminder && !due.escalation) return;
           const mr = await this.repo.findMaterialRequest(tx, request.organizationId, request.materialRequestId);
           if (!mr) return;
           const facts = { ...(await this.notifier.alertFacts(tx, request, mr.mrNumber)), waitingMinutes: due.waitingMinutes };
@@ -119,7 +148,7 @@ export class QuotationSlaAlertJob {
           }
         });
       } catch (error) {
-        this.logger.error(`Quotation SLA check of ${candidate.id} failed: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.error(`Quotation SLA check of ${candidate.id} failed: ${errorCode(error)}`);
       }
     }
     return summary;
