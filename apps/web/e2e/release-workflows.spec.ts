@@ -61,7 +61,8 @@ test.describe('release-critical creation workflows', () => {
       await app.goto(`${applicationPath}/certificates/new`);
       // The @erp/ui Select is a Radix combobox now, not a native <select>: open it and pick.
       await app.getByLabel('Certificate Outcome').click();
-      await app.getByRole('option', { name: 'Certified' }).click();
+      // 'Certified' is a substring of 'Partially Certified' — match exactly.
+      await app.getByRole('option', { name: 'Certified', exact: true }).click();
       await app.getByRole('button', { name: 'Continue to Items' }).click();
       await app.getByRole('button', { name: 'Continue to Review' }).click();
       await app.getByRole('button', { name: 'Issue Certificate' }).click();

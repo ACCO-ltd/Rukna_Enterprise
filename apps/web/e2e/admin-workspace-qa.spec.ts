@@ -83,6 +83,9 @@ test.describe('Administration workspace', () => {
   });
 
   test('draws the six screens as one tab row, in IA order', async ({ app }) => {
+    // The horizontal tab row is desktop chrome (it becomes a picker at 375px, covered separately);
+    // pin a desktop width so this runs meaningfully on the mobile project too.
+    await app.setViewportSize({ width: 1440, height: 900 });
     await app.goto('/admin/users');
 
     const tabs = app.getByRole('navigation', { name: NAV_LABEL }).getByRole('link');
@@ -90,6 +93,7 @@ test.describe('Administration workspace', () => {
   });
 
   test('moves the lit tab as you navigate, and keeps the workspace heading', async ({ app }) => {
+    await app.setViewportSize({ width: 1440, height: 900 });
     await app.goto('/admin/users');
     const nav = app.getByRole('navigation', { name: NAV_LABEL });
 
