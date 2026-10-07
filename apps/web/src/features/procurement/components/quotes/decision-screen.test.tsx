@@ -45,6 +45,29 @@ import { QuoteDecisionScreen } from './decision-screen';
 
 const SELECTOR = ['view:procurement', 'award:quotation'];
 
+function pendingWith(approval: { status: string; currentStepOrder: number | null }): Partial<QuotationRequestDetail> {
+  return {
+    status: 'AWARD_PENDING_APPROVAL',
+    quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '5000.00' })],
+    proposal: { quoteId: 'k1', paymentPath: 'BUYER_CASH' },
+    approval: {
+      instanceId: 'inst-9',
+      status: approval.status,
+      currentStepOrder: approval.currentStepOrder,
+      currentStepRole: approval.currentStepOrder ? 'Finance Officer' : null,
+      steps: [
+        { stepOrder: 1, roleRequired: 'Construction Director', approvedBy: { id: 'cd', name: 'Cabdi' }, approvedAt: '2026-10-07T08:00:00Z' },
+        {
+          stepOrder: 2,
+          roleRequired: 'Finance Officer',
+          approvedBy: approval.status === 'APPROVED' ? { id: 'fo', name: 'Faadumo' } : null,
+          approvedAt: approval.status === 'APPROVED' ? '2026-10-07T09:00:00Z' : null,
+        },
+      ],
+    },
+  };
+}
+
 const three = () => [
   quoteFixture({ id: 'k1', name: 'Hodan' }),
   quoteFixture({ id: 'k2', name: 'Bakaara' }),
@@ -281,6 +304,27 @@ describe('QuoteDecisionScreen', () => {
     const chain = await screen.findByRole('list', { name: 'Approval chain' });
     expect(within(chain).getByText('Approved by Cabdi')).toBeInTheDocument();
     expect(within(chain).getByText('Waiting')).toBeInTheDocument();
+  });
+
+  it('shows the chain to a selector without workflow access, but no approve panel that would fail to load', async () => {
+    render(pendingWith({ status: 'PENDING', currentStepOrder: 2 }));
+    expect(await screen.findByRole('list', { name: 'Approval chain' })).toBeInTheDocument();
+    expect(screen.queryByText(/^Approval chain inst-/)).not.toBeInTheDocument();
+  });
+
+  it('mounts the approve panel for someone who can act on the step', async () => {
+    api.detail = null;
+    const detail = pendingWith({ status: 'PENDING', currentStepOrder: 2 });
+    api.get.mockImplementation(async () => detailFixture({ status: 'AWAITING_DECISION', ...detail }));
+    renderWithProviders(<QuoteDecisionScreen id="qr1" />, { permissions: [...SELECTOR, 'manage:workflow'] });
+    expect(await screen.findByText('Approval chain inst-9')).toBeInTheDocument();
+  });
+
+  it('says Approved — complete the choice once every step approved', async () => {
+    render(pendingWith({ status: 'APPROVED', currentStepOrder: null }));
+    expect(await screen.findByText('Approved — complete the choice')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Complete the choice' })).toBeInTheDocument();
+    expect(screen.queryByText(/^Approval chain inst-/)).not.toBeInTheDocument();
   });
 
   it('still offers Choose while the server only lacks the typed totals (QUOTE_TOTALS_MISSING)', async () => {

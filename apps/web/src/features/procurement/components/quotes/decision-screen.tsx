@@ -37,6 +37,7 @@ import { Check, ChevronLeft, ChevronRight, Expand, TriangleAlert } from 'lucide-
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { useSession } from '@/features/auth/session/use-session';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { WorkflowTransactionType } from '@/features/workflows/types';
 import { ApiError } from '@/lib/api-client';
@@ -120,6 +121,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const tException = useTranslations('procurement.quotes.exceptionReason');
   const refusal = useRefusalText();
   const { can } = usePermissions();
+  const session = useSession();
   const currency = detail.currencyCode ?? 'USD';
   const money = (value: string | null | undefined) => formatMoney(value ?? null, currency) ?? '—';
 
@@ -227,6 +229,12 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const proposedQuote = detail.proposal ? detail.quotes.find((q) => q.id === detail.proposal?.quoteId) : null;
   const pendingInstance = detail.approval?.instanceId ?? detail.award?.approvalInstanceId ?? gatedInstance;
   const short = detail.distinctSupplierCount < detail.requiredQuoteCount;
+  // Every step approved: only the re-drive is left ("Approved — complete the choice").
+  const chainApproved = detail.approval?.status === 'APPROVED';
+  const roles = session.user?.roles ?? [];
+  const currentRole = detail.approval?.currentStepRole ?? null;
+  const mayActOnStep =
+    can('manage:workflow') || (currentRole !== null && roles.includes(currentRole)) || (!detail.approval && Boolean(gatedInstance));
 
   return (
     <div className="space-y-4 pb-8">
@@ -290,20 +298,25 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
       ) : null}
       {detail.status === 'AWARD_PENDING_APPROVAL' || gatedInstance ? (
         <section className="space-y-3">
-          <Notice tone="info" title={t('pending.title')}>
+          <Notice tone={chainApproved ? 'success' : 'info'} title={chainApproved ? t('pending.approvedTitle') : t('pending.title')}>
             <p className="mt-1">
-              {t('pending.body', {
+              {t(chainApproved ? 'pending.approvedBody' : 'pending.body', {
                 store: proposedQuote?.store.name ?? '—',
                 total: money(proposedQuote?.enteredTotal),
               })}
             </p>
           </Notice>
+          {/* The chain comes from the quotation's own read model, so everyone sees it; the
+              approve/reject panel (workflow reads) only for those who can act on it. */}
           {detail.approval?.steps.length ? <ApprovalSteps approval={detail.approval} /> : null}
-          <ApprovalPanel instanceId={pendingInstance} transactionType={QUOTATION_AWARD} />
+          {!chainApproved && mayActOnStep ? (
+            <ApprovalPanel instanceId={pendingInstance} transactionType={QUOTATION_AWARD} />
+          ) : null}
           {mayAward ? (
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
+                variant={chainApproved ? 'default' : 'outline'}
                 className="min-h-11"
                 loading={award.isPending}
                 onClick={() => award.mutate({}, { onError: () => undefined })}

@@ -2145,7 +2145,9 @@
         "chain": "Approval chain",
         "stepApproved": "Approved by {name}",
         "stepCurrent": "Waiting",
-        "stepWaiting": "Next"
+        "stepWaiting": "Next",
+        "approvedTitle": "Approved — complete the choice",
+        "approvedBody": "Every approver signed off on {store} at {total}. Complete the choice to award it."
       },
       "awarded": {
         "title": "Chosen: {store}",
