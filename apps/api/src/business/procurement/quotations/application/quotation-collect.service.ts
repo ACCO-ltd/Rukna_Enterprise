@@ -7,6 +7,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { PurchaseOrderRepository } from '../../purchase-orders/infrastructure/purchase-order.repository.js';
+import { PurchaseOrderService } from '../../purchase-orders/application/purchase-order.service.js';
 import {
   quotationBadRequest,
   quotationConflict,
@@ -60,6 +61,7 @@ export class QuotationCollectService {
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly notifier: QuotationNotifier,
+    private readonly purchaseOrders: PurchaseOrderService,
   ) {}
 
   /**
@@ -342,6 +344,15 @@ export class QuotationCollectService {
 
   /** The cancel write + audit, shared with the MR-cancel cascade. */
   async cancelInContext(ctx: CommandContext, reason: string, sourceCommand: string) {
+    // Review L3: an award's still-draft order goes with it, in this same transaction.
+    if (ctx.request.status === 'AWARDED' && ctx.request.purchaseOrderId && ctx.linkedPo?.status === 'DRAFT') {
+      await this.purchaseOrders.cancelDraftInTransaction(
+        ctx.tx,
+        ctx.identity,
+        ctx.request.purchaseOrderId,
+        `Quotation ${ctx.request.number} cancelled: ${reason}`,
+      );
+    }
     const updated = await this.runner.writeRequest(ctx, ctx.request.status, {
       status: 'CANCELLED',
       cancelledBy: ctx.identity.userId,

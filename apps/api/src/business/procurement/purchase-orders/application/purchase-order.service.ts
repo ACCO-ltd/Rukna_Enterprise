@@ -220,6 +220,49 @@ export class PurchaseOrderService {
     return { id: created.id, poNumber };
   }
 
+  /**
+   * Review L3 — cancel a never-confirmed DRAFT purchase order inside the caller's transaction (the
+   * quotation cancel that raised it). No commitment was ever written for a draft, so there is
+   * nothing to reverse; its revisions are cancelled, any approval opened for it is voided in the
+   * same transaction, and the cancellation is audited.
+   */
+  async cancelDraftInTransaction(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    purchaseOrderId: string,
+    reason: string,
+  ): Promise<void> {
+    const orgId = identity.activeOrganizationId;
+    const po = await tx.purchaseOrder.findFirst({
+      where: { id: purchaseOrderId, organizationId: orgId },
+      select: { id: true, status: true, revisions: { select: { id: true, status: true, approvedAt: true } } },
+    });
+    if (!po) throw new NotFoundException(`Purchase order ${purchaseOrderId} not found`);
+    if (po.status !== 'DRAFT' || po.revisions.some((r) => r.approvedAt !== null || r.status === 'ACTIVE')) {
+      throw new ConflictException('Only a never-confirmed draft purchase order can be cancelled this way.');
+    }
+    for (const rev of po.revisions) {
+      if (rev.status !== 'SUPERSEDED' && rev.status !== 'CANCELLED') {
+        await this.repo.updateRevisionStatus(tx, rev.id, 'CANCELLED');
+      }
+    }
+    await this.repo.updatePoStatus(tx, po.id, 'CANCELLED');
+    await this.commandGovernance.voidOpenApprovalIn(tx, WorkflowTransactionType.PURCHASE_ORDER, po.id);
+    await this.auditOutbox.record(tx, {
+      organizationId: orgId,
+      actorUserId: identity.userId,
+      action: 'CANCEL',
+      resourceType: 'PurchaseOrder',
+      resourceId: po.id,
+      sourceCommand: 'quotation.cancel',
+      eventType: 'PO_CANCELLED',
+      idempotencyKey: `po-cancel-${po.id}`,
+      before: { status: 'DRAFT' },
+      after: { status: 'CANCELLED' },
+      reason,
+    });
+  }
+
   /** ADR-022 CONST-DOA-003 + supplier status: may `identity` raise a PO to this supplier? */
   private async assertSupplierOrderable(prisma: TenantPrisma, identity: RequestIdentity, supplierId: string) {
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also create a PO to that vendor.
