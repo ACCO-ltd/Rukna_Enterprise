@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { test as base, expect, type Page } from '@playwright/test';
 
-import { signIn } from './fixtures';
+import { scenario, signIn } from './fixtures';
 
 /**
  * Browser acceptance gate for the project Documents workspace (Phase 7A).
@@ -32,7 +32,10 @@ import { signIn } from './fixtures';
  * responsive and empty-state cases run unconditionally.
  */
 
-const PROJECT = process.env['QA_DOCUMENTS_PROJECT_ID'] ?? '';
+// Manual runs pass QA_DOCUMENTS_PROJECT_ID; in CI fall back to the seeded scenario project so
+// the read/responsive cases run without a hand-set env var. (`??` short-circuits, so the lazy
+// scenario file is only read when the env var is absent — i.e. under a seeded CI run.)
+const PROJECT = process.env['QA_DOCUMENTS_PROJECT_ID'] ?? scenario.projectId;
 const RUN_WRITES = process.env['QA_DOCUMENTS_WRITE'] === '1';
 const OUT = resolve(process.cwd(), 'e2e/.artifacts/project-documents-qa');
 mkdirSync(OUT, { recursive: true });
