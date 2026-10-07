@@ -319,13 +319,9 @@ export class QuotationCollectService {
   /** Any state but an award whose order was issued. A pending award approval is voided. */
   async cancel(identity: RequestIdentity, id: string, reason: string) {
     const text = requireText(reason, 'A reason is required to cancel a quotation request.');
-    const from = await this.runner.run(identity, id, 'CANCEL', async (ctx) => {
+    await this.runner.run(identity, id, 'CANCEL', async (ctx) => {
       await this.cancelInContext(ctx, text, 'quotation.cancel');
-      return ctx.request.status;
     });
-    if (from === 'AWARD_PENDING_APPROVAL') {
-      await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.QUOTATION_AWARD, id);
-    }
     return this.query.detail(identity, id);
   }
 
@@ -344,6 +340,8 @@ export class QuotationCollectService {
       after: { status: 'CANCELLED' },
       reason,
     });
+    // Review H1: a pending award's approval is voided in the same transaction as the cancel.
+    await this.commandGovernance.voidOpenApprovalIn(ctx.tx, WorkflowTransactionType.QUOTATION_AWARD, ctx.request.id);
     await this.notifier.cancelled(ctx);
   }
 

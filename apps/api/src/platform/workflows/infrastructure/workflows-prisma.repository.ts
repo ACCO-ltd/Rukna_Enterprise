@@ -276,6 +276,31 @@ export class WorkflowsPrismaRepository {
     });
   }
 
+  /**
+   * Closes every open (PENDING / APPROVED-unconsumed) instance of a document inside the caller's
+   * transaction, so the document's state change and the void commit together (ADR-044 review H1).
+   */
+  async voidOpenInstancesIn(
+    tx: Prisma.TransactionClient,
+    transactionType: WorkflowTransactionType,
+    transactionId: string,
+  ): Promise<number> {
+    const { count } = await tx.approvalInstance.updateMany({
+      where: { transactionType, transactionId, status: { in: ['PENDING', 'APPROVED'] } },
+      data: { status: 'CANCELLED' as never },
+    });
+    return count;
+  }
+
+  /** The facts that bind an instance to what it approved. */
+  findInstanceFacts(id: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findUnique({
+      where: { id },
+      select: { transactionId: true, transactionType: true, evaluatedAmount: true, initiatedAt: true },
+    });
+  }
+
   /** PENDING instances for many documents of one type, with their chain — one query. */
   findPendingInstancesFor(transactionType: WorkflowTransactionType, transactionIds: string[]) {
     if (transactionIds.length === 0) return Promise.resolve([]);

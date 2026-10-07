@@ -39,8 +39,9 @@ export class QuotationMaterialRequestLink {
         `A purchase order was raised from quotation ${ctx.request.number}. Cancel that order before cancelling the material request.`,
       );
     }
+    // cancelInContext voids any pending award approval inside this same transaction.
     await this.collect.cancelInContext(ctx, 'Material request cancelled', 'mr.cancel');
-    return { voidAwardApprovalFor: ctx.request.status === 'AWARD_PENDING_APPROVAL' ? live.id : null };
+    return { voidAwardApprovalFor: null };
   }
 
   /** The MR detail's `quotation` field: the live request's progress, or null. */

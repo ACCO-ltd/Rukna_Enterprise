@@ -78,12 +78,22 @@ export class QuotationAwardService {
     if (!mr) throw new NotFoundException(`Material request ${request.materialRequestId} not found`);
     const chosen = request.quotes.find((q) => q.id === request.proposedQuoteId)!;
     const total = new Decimal(chosen.enteredTotal!.toString());
+    // The exact proposal this call evaluates; completion is refused if it changed meanwhile.
+    const proposal = { quoteId: chosen.id, proposedAt: request.proposedAt!, total };
 
     let consumed: { instanceId: string; finalApproverId: string | null } | null = null;
     let lastGateId: string | null = null;
     for (let i = 0; ; i++) {
       const approval = await this.commandGovernance.latestApproval(WorkflowTransactionType.QUOTATION_AWARD, id);
       const live = approval && (approval.status === 'PENDING' || approval.status === 'APPROVED') ? approval : null;
+      // Review H1: an open instance counts only if it was opened for THIS proposal (after it was
+      // made, at its total). Anything else — left over from a withdrawn or re-made proposal — is
+      // voided, and governance opens a fresh one for the current proposal.
+      if (live && !bindsProposal(live, proposal)) {
+        await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.QUOTATION_AWARD, id);
+        lastGateId = null;
+        continue;
+      }
       if (live) await this.assertApproversMaySelect(orgId, request, mr.requestedBy, live);
 
       // Selection counts as the selector's approval: the proposer approves their own step.
@@ -126,7 +136,7 @@ export class QuotationAwardService {
       });
     }
 
-    await this.complete(identity, id, consumed);
+    await this.complete(identity, id, consumed, proposal);
     return this.query.detail(identity, id);
   }
 
@@ -143,9 +153,10 @@ export class QuotationAwardService {
         before: { status: 'AWARD_PENDING_APPROVAL', quoteId: ctx.request.proposedQuoteId },
         after: { status: 'AWAITING_DECISION' },
       });
+      // Review H1: the void commits with the withdrawal, never after it.
+      await this.commandGovernance.voidOpenApprovalIn(ctx.tx, WorkflowTransactionType.QUOTATION_AWARD, id);
       await this.notifier.awardWithdrawn(ctx);
     });
-    await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.QUOTATION_AWARD, id);
     return this.query.detail(identity, id);
   }
 
@@ -196,6 +207,8 @@ export class QuotationAwardService {
       proposedSupplierId: supplierId,
       proposedAcceptException: short,
     });
+    // proposedAt is the API clock, the same clock Prisma stamps an approval instance's initiatedAt
+    // with — so "the instance was opened after this proposal" is a sound comparison (review H1).
     await this.runner.audit(ctx, updated.updatedAt, {
       eventType: 'QUOTATION_AWARD_PROPOSED',
       sourceCommand: 'quotation.award',
@@ -285,7 +298,23 @@ export class QuotationAwardService {
     identity: RequestIdentity,
     id: string,
     consumed: { instanceId: string; finalApproverId: string | null } | null,
+    proposal: BoundProposal,
   ) {
+    // Review H1: the consumed approval must be this document's, at this total, opened for this proposal.
+    if (consumed) {
+      const facts = await this.commandGovernance.approvalFacts(consumed.instanceId);
+      const evaluated = facts?.evaluatedAmount === null || facts?.evaluatedAmount === undefined
+        ? null
+        : new Decimal(facts.evaluatedAmount.toString());
+      if (
+        !facts ||
+        facts.transactionId !== id ||
+        facts.transactionType !== 'QUOTATION_AWARD' ||
+        !bindsProposal({ evaluatedAmount: evaluated, initiatedAt: facts.initiatedAt }, proposal)
+      ) {
+        throw quotationConflict('QUOTATION_CHANGED');
+      }
+    }
     const prisma = this.tenancy.getClient();
     await prisma.$transaction(async (tx) => {
       const ctx = await this.runner.context(tx, identity, id);
@@ -294,6 +323,15 @@ export class QuotationAwardService {
         throw quotationConflict('QUOTATION_CHANGED');
       }
       const chosen = request.quotes.find((q) => q.id === request.proposedQuoteId)!;
+      // The proposal (quote, time, total) must be exactly the one that was evaluated.
+      if (
+        chosen.id !== proposal.quoteId ||
+        request.proposedAt?.getTime() !== proposal.proposedAt.getTime() ||
+        chosen.enteredTotal === null ||
+        !new Decimal(chosen.enteredTotal.toString()).equals(proposal.total)
+      ) {
+        throw quotationConflict('QUOTATION_CHANGED');
+      }
       let supplierId = request.proposedSupplierId;
       const now = new Date();
 
@@ -363,6 +401,24 @@ export class QuotationAwardService {
       await this.notifier.awarded(ctx);
     });
   }
+}
+
+interface BoundProposal {
+  quoteId: string;
+  proposedAt: Date;
+  total: Decimal;
+}
+
+/** Was this approval instance opened for this proposal (after it was made, at its total)? */
+function bindsProposal(
+  instance: { evaluatedAmount: Decimal | null; initiatedAt: Date },
+  proposal: BoundProposal,
+): boolean {
+  return (
+    instance.evaluatedAmount !== null &&
+    new Decimal(instance.evaluatedAmount.toString()).equals(proposal.total) &&
+    instance.initiatedAt.getTime() >= proposal.proposedAt.getTime()
+  );
 }
 
 const CLEARED_PROPOSAL = {

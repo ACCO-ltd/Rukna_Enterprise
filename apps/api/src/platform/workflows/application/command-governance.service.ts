@@ -1,5 +1,6 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import type { Prisma } from '@prisma/client';
 import type { RequestIdentity, GovernedEntity, WorkflowTransactionType } from '@erp/types';
 import { WorkflowTriggerResolverService } from './workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
@@ -147,6 +148,8 @@ export class CommandGovernanceService {
     return {
       id: instance.id,
       status: instance.status,
+      evaluatedAmount: instance.evaluatedAmount as Decimal | null,
+      initiatedAt: instance.initiatedAt,
       currentStepOrder: instance.currentStepOrder,
       currentStepRole: steps.find((s) => s.stepOrder === instance.currentStepOrder)?.roleRequired ?? null,
       steps,
@@ -166,6 +169,19 @@ export class CommandGovernanceService {
       if (step) roles.set(instance.transactionId, step.roleRequired);
     }
     return roles;
+  }
+
+  /**
+   * Same as {@link voidOpenApproval} but inside the caller's transaction, voiding every open
+   * instance — for commands whose state change must never commit without the void (ADR-044 H1).
+   */
+  voidOpenApprovalIn(tx: Prisma.TransactionClient, transactionType: WorkflowTransactionType, resourceId: string) {
+    return this.repo.voidOpenInstancesIn(tx, transactionType, resourceId);
+  }
+
+  /** What an instance was opened for: document, evaluated amount, opening time. */
+  approvalFacts(instanceId: string) {
+    return this.repo.findInstanceFacts(instanceId);
   }
 
   /**
