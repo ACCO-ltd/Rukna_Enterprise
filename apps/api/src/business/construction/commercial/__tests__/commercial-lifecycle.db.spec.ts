@@ -602,6 +602,83 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
     });
   });
 
+  // ─── Scenario K: recordProjectPayment idempotency (release-gate A1) ──────────
+  // A client may safely retry a payment after a network blip. The idempotencyKey makes the
+  // retry resolve to the SAME receipt instead of posting the money twice. Two layers:
+  //   K-01 — the service short-circuits a repeat key to the existing receipt (no duplicate).
+  //   K-02 — the DB partial-unique index refuses a second row for the same non-null key (the
+  //          guarantee that still holds under a concurrent double-submit), while allowing many
+  //          null keys (receipts recorded without a key).
+
+  describe('Scenario K — recordProjectPayment idempotency', () => {
+    it('K-01: a repeat call with the same idempotencyKey returns the existing receipt, creating no duplicate', async () => {
+      const key = `idem-${randomUUID()}`;
+      const client = await prisma.client.findFirstOrThrow({ where: { organizationId: orgId } });
+
+      // The "first submit" that already committed a receipt under this key.
+      const seeded = await prisma.paymentReceipt.create({
+        data: {
+          organizationId: orgId,
+          clientId: client.id,
+          receiptDate: new Date('2026-09-18'),
+          accountingDate: new Date('2026-09-18'),
+          totalAmount: new Decimal('50000.00'),
+          unallocatedAmount: new Decimal('50000.00'),
+          currencyCode: 'USD',
+          createdBy: 'u1',
+          idempotencyKey: key,
+        },
+      });
+
+      // The "retry": same key. The service must early-return before it ever reads the bank
+      // account, so a deliberately bogus bankAccountId proves the short-circuit fired.
+      const result = await service.recordProjectPayment(identity, projectId, {
+        bankAccountId: 'bank-should-never-be-read',
+        receiptDate: '2026-09-18',
+        amount: '50000.00',
+        currency: 'USD',
+        allocations: [],
+        idempotencyKey: key,
+      });
+
+      expect(result.receiptId).toBe(seeded.id);
+      expect(result.amount).toBe('50000.00');
+
+      const rows = await prisma.paymentReceipt.findMany({ where: { idempotencyKey: key } });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('K-02: the DB refuses a second receipt for the same non-null key, but allows many null keys', async () => {
+      const client = await prisma.client.findFirstOrThrow({ where: { organizationId: orgId } });
+      const key = `idem-${randomUUID()}`;
+      const base = {
+        organizationId: orgId,
+        clientId: client.id,
+        receiptDate: new Date('2026-09-18'),
+        accountingDate: new Date('2026-09-18'),
+        totalAmount: new Decimal('1000.00'),
+        unallocatedAmount: new Decimal('1000.00'),
+        currencyCode: 'USD',
+        createdBy: 'u1',
+      };
+
+      await prisma.paymentReceipt.create({ data: { ...base, idempotencyKey: key } });
+
+      // Second row, same key → partial-unique-index violation (P2002): no double-post.
+      await expect(
+        prisma.paymentReceipt.create({ data: { ...base, idempotencyKey: key } }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+
+      // Two receipts with no key are both allowed (index is partial: WHERE key IS NOT NULL).
+      await prisma.paymentReceipt.create({ data: { ...base, idempotencyKey: null } });
+      await prisma.paymentReceipt.create({ data: { ...base, idempotencyKey: null } });
+      const nullKeyed = await prisma.paymentReceipt.count({
+        where: { organizationId: orgId, idempotencyKey: null },
+      });
+      expect(nullKeyed).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   // ─── Scenario F: Multi-invoice receipt ────────────────────────────────────
   // A single payment allocating to both M1 invoice and voAddition VO invoice.
 

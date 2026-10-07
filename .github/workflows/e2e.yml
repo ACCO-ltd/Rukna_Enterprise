@@ -1,0 +1,169 @@
+name: E2E
+
+# Release-gate item B1 (docs/release/construction-v1-release-gate.md): the Playwright suite is the
+# only check that exercises the full stack — API + web + a seeded tenant — across the billing chain
+# and at a real 375px viewport. It ran only locally and by hand; this wires it into CI.
+#
+# ⚠ FIRST-RUN STATUS: this workflow is authored from the real provisioning/seed/build scripts but has
+# not yet been observed green on a Linux runner. Treat the first PR run as a shakeout. Do NOT mark it
+# a required status check until it passes once. The most likely thing to need a tweak is the tenant
+# seed step (see "Seed a billing scenario" below): the IPA submit transition is a REQUIRED governed
+# transition, and whether a freshly provisioned + DOA-activated tenant lets the lone admin walk it
+# (vs. needing a separate approver / governance left off) can only be confirmed from the first run's
+# logs.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  # Platform registry DB (tenant lookup) and the migrations-only tenant URL. The acco tenant DB
+  # (rukna_acco) is created by tenant:provision on the same server.
+  PLATFORM_DATABASE_URL: postgresql://erp_user:erp_password@localhost:5432/rukna_platform
+  DATABASE_URL: postgresql://erp_user:erp_password@localhost:5432/rukna_acco
+  # JWT secrets must be ≥32 chars (config validation). Ephemeral CI values — not secrets.
+  JWT_ACCESS_SECRET: ci-e2e-access-secret-which-is-long-enough-32
+  JWT_REFRESH_SECRET: ci-e2e-refresh-secret-which-is-long-enough-32
+  JWT_ACCESS_EXPIRES: 15m
+  JWT_REFRESH_EXPIRES: 7d
+  FRONTEND_URL: http://acco.localhost:3000
+  # The web derives the API base from the page host via this template (apps/web/src/lib/tenant.ts).
+  # NEXT_PUBLIC_* is inlined at build time, so it must be present for `pnpm build`.
+  NEXT_PUBLIC_API_URL_TEMPLATE: http://{slug}.localhost:3001/api/v1
+  # The seed-scenario admin. A throwaway CI credential for an ephemeral DB (≥12 chars).
+  RUKNA_DEMO_PASSWORD: acco.admin@123
+  # Playwright reads CI for retries/forbidOnly/github-reporter.
+  CI: 'true'
+
+jobs:
+  e2e:
+    name: Playwright E2E (billing chain + 375px)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: erp_password
+          POSTGRES_DB: rukna_platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user -d rukna_platform"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma clients
+        run: pnpm --filter @erp/api run db:generate
+
+      - name: Migrate platform schema
+        run: pnpm --filter @erp/api run db:migrate:platform:prod
+
+      # Provision the acco tenant: creates rukna_acco, applies the tenant migration chain, seeds the
+      # org/admin/districts/units/roles/workflow definitions, and registers the tenant in the registry.
+      - name: Provision acco tenant
+        working-directory: apps/api
+        run: >-
+          pnpm exec tsx scripts/tenant-provision.ts
+          --slug=acco --name="ACCO Ltd"
+          --admin-email=admin@acco.com --admin-password="$RUKNA_DEMO_PASSWORD"
+
+      # The billing scenario posts invoices/receipts to the GL — it needs the accounting foundation
+      # (chart of accounts, fiscal year + open period, posting config). Idempotent.
+      - name: Seed accounting foundation
+        working-directory: apps/api
+        env:
+          ACCO_ORG_SLUG: acco
+        run: pnpm exec tsx prisma/seeds/accounting-phase1.seed.ts
+
+      # Activate the ACCO governance chains and grant the admin the approver roles, so the IPA submit
+      # transition is walkable without a second user. ⚠ FIRST-RUN WATCH: if the scenario seed still
+      # 422s on IPA submit-for-approval, the IPA internal-approval chain needs its own activation (or
+      # SoD blocks the admin and the seed needs a dedicated approver). Adjust from the first run's log.
+      - name: Activate governance (make IPA submit seedable)
+        working-directory: apps/api
+        env:
+          ACCO_ORG_SLUG: acco
+        run: pnpm exec tsx prisma/seeds/dev-activate-doa-bands.seed.ts
+
+      - name: Build (packages + api + web)
+        run: pnpm build
+
+      - name: Install Playwright Chrome
+        run: pnpm --filter @erp/web exec playwright install --with-deps chrome
+
+      # Node (web SSR) on Linux does not resolve arbitrary *.localhost; Chromium does. Make the host
+      # resolvable for any server-side call. The browser and the node:http seeder do not need this.
+      - name: Make acco.localhost resolvable
+        run: echo "127.0.0.1 acco.localhost" | sudo tee -a /etc/hosts
+
+      - name: Start API
+        working-directory: apps/api
+        env:
+          NODE_ENV: production
+          PORT: '3001'
+        run: |
+          node dist/main &
+          echo "API_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:3001/api/v1/health >/dev/null 2>&1; then
+              echo "API is up"; exit 0
+            fi
+            sleep 3
+          done
+          echo "API did not become healthy in time"; exit 1
+
+      - name: Start web
+        working-directory: apps/web
+        run: |
+          pnpm exec next start -p 3000 &
+          echo "WEB_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:3000/login >/dev/null 2>&1; then
+              echo "Web is up"; exit 0
+            fi
+            sleep 3
+          done
+          echo "Web did not become ready in time"; exit 1
+
+      # globalSetup seeds the scenario over HTTP (acco.localhost:3001, via node:http with the Host
+      # header). Playwright reuses the already-running web (reuseExistingServer + probe on :3000).
+      - name: Run E2E suite
+        working-directory: apps/web
+        env:
+          E2E_BASE_URL: http://acco.localhost:3000
+        run: pnpm exec playwright test
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
+          if-no-files-found: ignore
