@@ -25,6 +25,19 @@ describe('order split policy (ADR-044 §8)', () => {
     expect(split.lines[0].amount!.greaterThan(split.lines[2].amount!)).toBe(true);
   });
 
+  it('review L1: amounts sit on the 2-dp grid and sum to the total; stored line amounts never exceed it', () => {
+    const total = d('1.00');
+    const split = splitAwardAcrossLines(total, [
+      { id: 'a', quantity: d(1), estimatedUnitPrice: d('0.505') },
+      { id: 'b', quantity: d(1), estimatedUnitPrice: d('0.495') },
+    ]);
+    expect(split.lines.map((l) => l.amount!.toFixed(2))).toEqual(['0.50', '0.50']);
+    // extendedAmount is stored Decimal(18,2), rounded half-up — the sum must stay within the award.
+    const stored = split.lines.reduce((sum, l) => sum.add(l.unitPrice!.mul(l.quantity).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)), d(0));
+    expect(stored.lessThanOrEqualTo(total)).toBe(true);
+    expect(split.lines.reduce((sum, l) => sum.add(l.amount!), d(0)).toFixed(2)).toBe('1.00');
+  });
+
   it('SINGLE_LINE: one line takes the whole total exactly', () => {
     const split = splitAwardAcrossLines(d('918.00'), [{ id: 'l1', quantity: d(40), estimatedUnitPrice: null }]);
     expect(split.mode).toBe('SINGLE_LINE');

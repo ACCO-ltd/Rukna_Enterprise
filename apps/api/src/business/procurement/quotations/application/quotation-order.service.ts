@@ -163,13 +163,18 @@ export class QuotationOrderService {
           unitOfMeasureId: line.unitOfMeasureId,
           orderedQuantity: p.quantity,
           unitPrice: p.unitPrice,
-          extendedAmount: p.quantity.mul(p.unitPrice),
+          // Stored Decimal(18,2): rounded here exactly as the column would, and checked below.
+          extendedAmount: p.quantity.mul(p.unitPrice).toDecimalPlaces(2, Decimal.ROUND_HALF_UP),
           spendCategoryId: line.spendCategoryId ?? line.material?.defaultSpendCategoryId ?? undefined,
           projectId,
           boqNodeId: line.boqNodeId ?? undefined,
           mrLineAllocations: [{ materialRequestLineId: line.id, allocatedQuantity: p.quantity }],
         };
       });
+
+      // Review L1: the stored line amounts must also stay within the award.
+      const stored = lines.reduce((sum, l) => sum.add(l.extendedAmount), new Decimal(0));
+      if (stored.greaterThan(total)) throw quotationUnprocessable('PO_EXCEEDS_AWARD');
 
       const winning = request.quotes.find((q) => q.id === request.awardedQuoteId)!;
       const firstPhoto = winning.photos[0];

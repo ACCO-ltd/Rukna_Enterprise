@@ -37,24 +37,28 @@ export function splitAwardAcrossLines(
   total: Decimal,
   lines: ReadonlyArray<SplitLineInput>,
 ): { mode: SplitMode; lines: SplitLine[] } {
-  const priced = (share: Decimal, l: SplitLineInput): SplitLine => ({
+  // Review L1: amounts sit on the 2-dp grid and the unit price derives from the AMOUNT, so the
+  // stored line amount round₂(qty × unitPrice) ≤ amount (rounding never passes a grid point above).
+  const priced = (amount: Decimal, l: SplitLineInput): SplitLine => ({
     id: l.id,
     quantity: l.quantity,
-    amount: floor2(share),
-    unitPrice: floor4(share.div(l.quantity)),
+    amount,
+    unitPrice: floor4(amount.div(l.quantity)),
   });
 
   if (lines.length === 1) {
-    return { mode: 'SINGLE_LINE', lines: [priced(total, lines[0])] };
+    return { mode: 'SINGLE_LINE', lines: [priced(floor2(total), lines[0])] };
   }
 
   const values = lines.map((l) => (l.estimatedUnitPrice === null ? null : l.quantity.mul(l.estimatedUnitPrice)));
   const sum = values.reduce<Decimal>((s, v) => (v === null ? s : s.add(v)), new Decimal(0));
   if (lines.length > 1 && values.every((v) => v !== null) && sum.greaterThan(0)) {
-    return {
-      mode: 'ESTIMATE',
-      lines: lines.map((l, i) => priced(total.mul(values[i]!).div(sum), l)),
-    };
+    // Each share floored to the cent; the rounding remainder goes to the last line, so the amounts
+    // sum to the award exactly and none exceeds it.
+    const amounts = lines.map((_, i) => floor2(total.mul(values[i]!).div(sum)));
+    const others = amounts.slice(0, -1).reduce((s, a) => s.add(a), new Decimal(0));
+    amounts[amounts.length - 1] = floor2(total).sub(others);
+    return { mode: 'ESTIMATE', lines: lines.map((l, i) => priced(amounts[i], l)) };
   }
 
   return {
