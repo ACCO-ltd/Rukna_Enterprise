@@ -105,15 +105,10 @@ jobs:
           ACCO_ORG_SLUG: acco
         run: pnpm exec tsx prisma/seeds/accounting-phase1.seed.ts
 
-      # Activate the ACCO governance chains and grant the admin the approver roles, so the IPA submit
-      # transition is walkable without a second user. ⚠ FIRST-RUN WATCH: if the scenario seed still
-      # 422s on IPA submit-for-approval, the IPA internal-approval chain needs its own activation (or
-      # SoD blocks the admin and the seed needs a dedicated approver). Adjust from the first run's log.
-      - name: Activate governance (make IPA submit seedable)
-        working-directory: apps/api
-        env:
-          ACCO_ORG_SLUG: acco
-        run: pnpm exec tsx prisma/seeds/dev-activate-doa-bands.seed.ts
+      # NOTE: governance is deliberately left INACTIVE (as `tenant:provision` seeds it). The scenario
+      # seed walks the whole chain as a lone admin; activating the ACCO chains would gate the BOQ
+      # commit-to-contract and IPA transitions (409 "requires workflow approval") with no second
+      # approver to clear them. Verified locally: with bindings inactive the full chain seeds green.
 
       - name: Install Playwright Chrome
         run: pnpm --filter @erp/web exec playwright install --with-deps chrome

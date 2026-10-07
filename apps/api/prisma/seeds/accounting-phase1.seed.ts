@@ -117,7 +117,7 @@ async function main() {
   const EFFECTIVE_FROM = new Date('2026-01-01');
 
   // ── 8. Tax codes ──────────────────────────────────────────────────────────
-  await prisma.taxCode.upsert({
+  const outputVat = await prisma.taxCode.upsert({
     where: { organizationId_code: { organizationId: orgId, code: 'VAT5_OUT' } },
     create: {
       organizationId: orgId, code: 'VAT5_OUT', name: 'Output VAT 5%',
@@ -135,7 +135,14 @@ async function main() {
     },
     update: { rate: 5, status: 'ACTIVE' },
   });
-  console.log('  ✓ TaxCodes (VAT5_OUT, VAT5_IN)');
+  // ADR-041: raising a client invoice needs a default OUTPUT tax code on the tax policy, or the
+  // API answers 409 "No default sales tax is set". The migration set this for existing orgs; a
+  // freshly seeded tenant must set it here.
+  await prisma.taxPolicy.update({
+    where: { organizationId: orgId },
+    data: { defaultOutputTaxCodeId: outputVat.id, updatedBy: SEED_USER },
+  });
+  console.log('  ✓ TaxCodes (VAT5_OUT = default sales tax, VAT5_IN)');
 
   // ── 9. Minimum COA ────────────────────────────────────────────────────────
   type CoaRow = {

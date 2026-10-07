@@ -275,10 +275,17 @@ async function main() {
   const nodes = await buildBoqTree(project.id, draftVersion.id);
   ok(`${nodes.leaves.length} leaf items under 2 sections`);
 
-  // A contract can only reference a BASELINED version (contract.service.ts:60).
-  step('baseline the BOQ version');
-  await post(`/projects/${project.id}/boq/versions/${draftVersion.id}/baseline`);
-  ok('DRAFT → BASELINED');
+  // ADR-029: the contract value must tie out to the committed BOQ total — the BOQ is the priced
+  // scope, so the contract cannot be set below or away from it. Derive it from the leaves this
+  // script just priced rather than hardcoding, so re-pricing the BOQ never desyncs the contract.
+  const boqTotal = nodes.leaves.reduce((sum, leaf) => sum + leaf.quantity * leaf.unitRate, 0);
+
+  // ADR-029 renamed baseline → commit; the old /baseline route 308-redirects, which this
+  // script's node:http client does not follow. A contract accepts a COMMITTED or BASELINED
+  // version (contract.service COMMITTED_BOQ_STATUSES), so committing here still satisfies it.
+  step('commit the BOQ version');
+  await post(`/projects/${project.id}/boq/versions/${draftVersion.id}/commit`);
+  ok('DRAFT → COMMITTED');
 
   // ── Contract ──────────────────────────────────────────────────────────────────
   step('create contract');
@@ -287,7 +294,7 @@ async function main() {
     clientId: client.id,
     boqVersionId: draftVersion.id,
     contractNumber: `ACCO-2026-${RUN}`,
-    contractValue: '4500000.00',
+    contractValue: boqTotal.toFixed(2),
     currency: 'USD',
     billingModel: 'MEASURED_IPC',
     startDate: '2026-02-01',
@@ -312,15 +319,15 @@ async function main() {
   await post(`/contracts/${contract.id}/advance-terms`, {
     advanceType: 'MOBILIZATION',
     description: 'Mobilization advance',
-    amount: '450000.00',
+    amount: (boqTotal * 0.1).toFixed(2), // 10% of the contract value
     recoveryRate: '0.1000', // 10% of each certificate
   });
-  ok('450,000 USD at 10% recovery');
+  ok('10% mobilization advance at 10% recovery');
 
   step('add guarantee and deliverable');
   await post(`/contracts/${contract.id}/guarantees`, {
     guaranteeType: 'PERFORMANCE',
-    amount: '450000.00',
+    amount: (boqTotal * 0.1).toFixed(2),
     currency: 'USD',
     issuer: 'Salaam Bank',
     beneficiary: 'Baraka Real Estate LLC',
@@ -374,6 +381,12 @@ async function main() {
   ok('project is ACTIVE');
 
   // ── Payment application ───────────────────────────────────────────────────────
+  // The contract now carries its signing-snapshot BOQ version (created on activation), whose node
+  // ids differ from the draft nodes built above. Resolve the leaves to claim against from it.
+  step('resolve contract BOQ leaves');
+  const claimLeaves = await contractBoqLeaves(contract.id, project.id);
+  ok(`${claimLeaves.length} leaves on the contract version`);
+
   step('create payment application');
   const ipa = await post('/ipa', {
     contractId: contract.id,
@@ -384,14 +397,14 @@ async function main() {
   ok();
 
   step('claim BOQ lines');
-  for (const leaf of nodes.leaves) {
+  for (const leaf of claimLeaves) {
     await post(`/ipa/${ipa.id}/items`, {
       boqNodeId: leaf.id,
       // ~40% of the contracted quantity claimed to date.
       cumulativeClaimed: (leaf.quantity * 0.4).toFixed(3),
     });
   }
-  ok(`${nodes.leaves.length} lines`);
+  ok(`${claimLeaves.length} lines`);
 
   const ipaWithItems = await get(`/ipa/${ipa.id}`);
   const gross = Number(ipaWithItems.totalPeriodAmount);
@@ -458,7 +471,7 @@ async function main() {
     periodTo: '2026-06-30',
     notes: `Certification workflow ${RUN}`,
   });
-  for (const leaf of nodes.leaves) {
+  for (const leaf of claimLeaves) {
     await post(`/ipa/${certificationIpa.id}/items`, {
       boqNodeId: leaf.id,
       cumulativeClaimed: (leaf.quantity * 0.5).toFixed(3),
@@ -630,6 +643,26 @@ async function buildBoqTree(projectId, versionId) {
   }
 
   return { leaves };
+}
+
+/**
+ * The leaves of the contract's BOQ version. Activating a contract snapshots the BOQ (ADR-032
+ * signing snapshot) into a new version whose node ids differ from the draft nodes this script
+ * created — so IPA items must claim against these, not `nodes.leaves`. Re-fetches the contract
+ * for its current (post-activation) boqVersionId, then reads that version's tree.
+ */
+async function contractBoqLeaves(contractId, projectId) {
+  const contract = await get(`/contracts/${contractId}`);
+  const tree = await get(`/projects/${projectId}/boq/versions/${contract.boqVersionId}/tree`);
+  const leaves = [];
+  const walk = (list) => {
+    for (const node of list ?? []) {
+      if (node.isLeaf) leaves.push({ id: node.id, quantity: Number(node.quantity) });
+      else walk(node.children);
+    }
+  };
+  walk(Array.isArray(tree) ? tree : (tree.nodes ?? tree.items ?? []));
+  return leaves;
 }
 
 /**
