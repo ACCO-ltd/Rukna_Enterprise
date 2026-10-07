@@ -17,6 +17,7 @@ import {
 } from '@tanstack/react-query';
 
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { getFileDownloadUrl } from '@/features/files/api/files-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 import {
@@ -54,7 +55,9 @@ import { procurementKeys } from './use-procurement';
 export const QUOTATION_POLL_MS = 60_000;
 
 export const quotationKeys = {
-  all: [...procurementKeys.all, 'quotations'] as const,
+  // Under `procurementKeys.all` (['procurement']) so a procurement-wide invalidation reaches it;
+  // spelled out rather than spread so this module does not need use-procurement at load time.
+  all: ['procurement', 'quotations'] as const,
   lists: () => [...quotationKeys.all, 'list'] as const,
   list: (filters: QuotationListFilters) =>
     [
@@ -66,7 +69,23 @@ export const quotationKeys = {
     ] as const,
   detail: (id: string) => [...quotationKeys.all, 'detail', id] as const,
   orderDraft: (id: string) => [...quotationKeys.all, 'order-draft', id] as const,
+  photo: (fileId: string) => [...quotationKeys.all, 'photo-url', fileId] as const,
 };
+
+/** Signed photo URLs live ~15 minutes; reuse one for 10, then fetch a fresh one. */
+const PHOTO_URL_STALE_MS = 10 * 60_000;
+
+/** A short-lived signed URL for a quote photo (owner kind QUOTATION_PHOTO; 403 when money-blind). */
+export function useQuotePhotoUrl(fileId: string | null) {
+  return useQuery({
+    queryKey: quotationKeys.photo(fileId ?? ''),
+    queryFn: () => getFileDownloadUrl(fileId!),
+    enabled: Boolean(fileId),
+    staleTime: PHOTO_URL_STALE_MS,
+    gcTime: PHOTO_URL_STALE_MS,
+    retry: 1,
+  });
+}
 
 export function useQuotationRequests(
   filters: QuotationListFilters,
@@ -94,13 +113,17 @@ export function useQuotesToChooseCount(options?: { enabled?: boolean }): number 
 
 export function useQuotationRequest(
   id: string | null,
-  options?: { poll?: boolean },
+  options?: { poll?: boolean | ((detail: QuotationRequestDetail | undefined) => boolean) },
 ): UseQueryResult<QuotationRequestDetail> {
+  const poll = options?.poll;
   return useQuery({
     queryKey: quotationKeys.detail(id ?? ''),
     queryFn: () => getQuotationRequest(id!),
     enabled: Boolean(id),
-    refetchInterval: options?.poll ? QUOTATION_POLL_MS : false,
+    refetchInterval: (query) => {
+      const on = typeof poll === 'function' ? poll(query.state.data) : Boolean(poll);
+      return on ? QUOTATION_POLL_MS : false;
+    },
   });
 }
 
