@@ -209,7 +209,9 @@ export function PoDetail({ id }: { id: string }) {
 
             <Button
               type="button"
-              disabled={confirming || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
+              // POST /purchase-orders/:id/confirm requires create:purchase-order; whether an approval is
+              // needed is the server's DoA gate (a PO from a quotation award needs none).
+              disabled={confirming || !can(PROCUREMENT_PERMISSIONS.createOrder)}
               onClick={() => void runConfirm()}
             >
               {isDraftPo ? t('issueOrder') : t('issueRevision')}
