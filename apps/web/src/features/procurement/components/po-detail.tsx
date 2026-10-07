@@ -51,11 +51,14 @@ import { ClassificationChips } from './classification-chips';
 import { PoAmendDialog } from './po-amend-dialog';
 import { PoBillPaymentsSection } from './po-bill-payments';
 import { ProcurementStatusBadge } from './procurement-badges';
+import { AwardEvidence } from './quotes/award-evidence';
+import { refusalCode } from './quotes/quote-shared';
 
 export function PoDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const tCommon = useTranslations('common');
+  const tQuotes = useTranslations('procurement.quotes');
   const locale = useLocale() as 'en';
   const { can } = usePermissions();
 
@@ -76,11 +79,16 @@ export function PoDetail({ id }: { id: string }) {
     try {
       await confirm.mutateAsync(id);
     } catch (e) {
-      setConfirmError(e instanceof ApiError ? e.message : tc('loadFailed'));
+      // ADR-044: a draft raised from a quotation award may not exceed the award.
+      if (refusalCode(e) === 'PO_EXCEEDS_AWARD') {
+        setConfirmError(`${tQuotes('refusal.PO_EXCEEDS_AWARD')} ${tQuotes('order.exceeds.body')}`);
+      } else {
+        setConfirmError(e instanceof ApiError ? e.message : tc('loadFailed'));
+      }
     } finally {
       setConfirming(false);
     }
-  }, [id, confirm, tc]);
+  }, [id, confirm, tc, tQuotes]);
 
   if (po.isPending) {
     return (
@@ -172,6 +180,9 @@ export function PoDetail({ id }: { id: string }) {
           </CardFooter>
         ) : null}
       </Card>
+
+      {/* ── ADR-044: raised from a quotation award — the award is its approval ── */}
+      <AwardEvidence order={order} revision={current} />
 
       {/* ── Confirm a DRAFT revision — single action, no approval routing ───── */}
       {draft ? (

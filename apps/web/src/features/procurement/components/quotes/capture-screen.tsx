@@ -50,6 +50,7 @@ import type {
   QuotationRequestDetail,
   QuoteCountExceptionReason,
 } from '../../quotations/types';
+import { OrderCard } from './order-raise';
 import { usePhotoPicker } from './photo-picker';
 import {
   LocalPhoto,
@@ -231,6 +232,7 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
       </header>
 
       <StatusNotice detail={detail} />
+      {detail.status === 'AWARDED' ? <OrderCard detail={detail} /> : null}
 
       {/* ── Quotes ─────────────────────────────────────────────────────────── */}
       {collecting ? (
