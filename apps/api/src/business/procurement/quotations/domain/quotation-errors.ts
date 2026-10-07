@@ -52,6 +52,8 @@ const MESSAGES: Record<string, string> = {
   ORDER_LINE_AMOUNT_INVALID: 'An order line amount must be positive with at most 2 decimals.',
   AWARD_CHANGED: 'The award behind this purchase order changed — reload and try again.',
   QUOTATION_CHANGED: 'The quotation request changed since you opened it — reload and try again.',
+  CLIENT_REF_CONFLICT:
+    'A different upload was already recorded under this upload key. Start a new quote instead of retrying with other photos.',
 };
 
 export function quotationMessage(code: string): string {

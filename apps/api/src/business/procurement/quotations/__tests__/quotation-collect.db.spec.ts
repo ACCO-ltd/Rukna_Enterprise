@@ -165,8 +165,10 @@ describe('ADR-044 Q3 — collecting quotations', () => {
       const mr = await createApprovedMr(prisma, env);
       const request = await s.open(mr.id);
       const clientRef = randomUUID();
-      await s.addQuote(request.id, { storeName: 'Hodan' }, { clientRef });
-      const replay = await s.addQuote(request.id, { storeName: 'Hodan' }, { clientRef });
+      // A true replay: the phone's queue re-sends the same upload (same photo files).
+      const photos = [await s.photo('collector')];
+      await svc.collect.addQuote(env.as('collector'), request.id, { clientRef, storeName: 'Hodan', photos });
+      const replay = await svc.collect.addQuote(env.as('collector'), request.id, { clientRef, storeName: 'Hodan', photos });
       expect(replay.quotes).toHaveLength(1);
       expect(await prisma.quote.count({ where: { quotationRequestId: request.id } })).toBe(1);
     });

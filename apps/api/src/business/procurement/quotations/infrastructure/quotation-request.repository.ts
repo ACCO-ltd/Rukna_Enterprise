@@ -96,7 +96,7 @@ export class QuotationRequestRepository {
   findQuoteByClientRef(db: Db, quotationRequestId: string, clientRef: string) {
     return db.quote.findUnique({
       where: { quotationRequestId_clientRef: { quotationRequestId, clientRef } },
-      select: { id: true },
+      select: { id: true, photos: { select: { platformFileId: true } } },
     });
   }
 

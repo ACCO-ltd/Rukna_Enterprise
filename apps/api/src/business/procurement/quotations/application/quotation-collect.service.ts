@@ -212,17 +212,30 @@ export class QuotationCollectService {
             },
           });
         },
-        async (ctx) => {
-          return Boolean(await this.repo.findQuoteByClientRef(ctx.tx, ctx.request.id, input.clientRef));
-        },
+        async (ctx) => this.isReplay(await this.repo.findQuoteByClientRef(ctx.tx, ctx.request.id, input.clientRef), input),
       );
     } catch (error) {
       // Two deliveries of one queued upload raced: the unique (request, clientRef) kept the first.
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
       const prisma = this.tenancy.getClient();
-      if (!(await this.repo.findQuoteByClientRef(prisma, id, input.clientRef))) throw error;
+      const existing = await this.repo.findQuoteByClientRef(prisma, id, input.clientRef);
+      if (!existing) throw error;
+      this.isReplay(existing, input);
     }
     return this.query.detail(identity, id);
+  }
+
+  /**
+   * A quote already carries this clientRef: a true replay (same photo files) is answered without
+   * writing; a different upload under the same key is refused (review L5) — never a silent success.
+   */
+  private isReplay(existing: { photos: Array<{ platformFileId: string }> } | null, input: AddQuoteInput): boolean {
+    if (!existing) return false;
+    const before = new Set(existing.photos.map((p) => p.platformFileId));
+    const now = new Set(input.photos.map((p) => p.platformFileId));
+    const same = before.size === now.size && [...now].every((fileId) => before.has(fileId));
+    if (!same) throw quotationConflict('CLIENT_REF_CONFLICT');
+    return true;
   }
 
   /** An extra page on an ACTIVE quote. Idempotent: the same file twice is one page. */
