@@ -104,7 +104,13 @@ export class QuotationCommandRunner {
     ctx: CommandContext,
     from: QuotationStatus,
     data: Prisma.QuotationRequestUncheckedUpdateManyInput,
+    options: { collectActor?: boolean } = {},
   ) {
+    // Review H2: a collect command's actor becomes an evidence toucher (barred from selecting).
+    const actor = ctx.identity.userId;
+    if (options.collectActor && !(ctx.request.collectActorIds ?? []).includes(actor)) {
+      data = { ...data, collectActorIds: { push: actor } };
+    }
     const { count } = await ctx.tx.quotationRequest.updateMany({
       where: { id: ctx.request.id, organizationId: ctx.request.organizationId, status: from },
       data: { ...data, updatedAt: new Date() },

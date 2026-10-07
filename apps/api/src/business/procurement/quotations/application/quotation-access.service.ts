@@ -39,13 +39,16 @@ export class QuotationAccessService {
   }
 
   /**
-   * Everyone who touched the evidence: the request's creator and the uploader of every quote and
-   * photo, WITHDRAWN and REJECTED ones included (ADR-044 §6 — having touched it is enough).
+   * Everyone who touched the evidence (ADR-044 §6 — having touched it is enough): the request's
+   * creator, the uploader of every quote and photo and whoever withdrew one (WITHDRAWN and REJECTED
+   * quotes included), and every actor of a collect command — add, page, withdraw, send (with or
+   * without a count exception), reopen (review H2).
    */
   evidenceTouchers(request: QuotationRequestAggregate): string[] {
-    const ids = new Set<string>([request.createdBy]);
+    const ids = new Set<string>([request.createdBy, ...(request.collectActorIds ?? [])]);
     for (const quote of request.quotes) {
       ids.add(quote.uploadedBy);
+      if (quote.withdrawnBy) ids.add(quote.withdrawnBy);
       for (const photo of quote.photos) ids.add(photo.uploadedBy);
     }
     return [...ids];

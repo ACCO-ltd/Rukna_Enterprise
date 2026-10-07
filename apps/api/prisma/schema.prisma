@@ -4910,6 +4910,9 @@ model QuotationRequest {
   cancelledBy             String?                    @map("cancelled_by")
   cancelledAt             DateTime?                  @map("cancelled_at")
   cancelReason            String?                    @map("cancel_reason")
+  /// Review H2: every user who ran a collect command (add, page, withdraw, send, reopen) — all are
+  /// evidence touchers for QUOTE_UPLOADER_CANNOT_SELECT.
+  collectActorIds         String[]                   @default([]) @map("collect_actor_ids")
   createdBy               String                     @map("created_by")
   createdAt               DateTime                   @default(now()) @map("created_at")
   updatedAt               DateTime                   @updatedAt @map("updated_at")
@@ -4948,6 +4951,8 @@ model Quote {
   clientRef          String             @map("client_ref") @db.Uuid
   /// Set when a photo replacement creates a new quote; the replaced quote becomes WITHDRAWN.
   replacesQuoteId    String?            @map("replaces_quote_id")
+  /// Who withdrew it (review H2: having withdrawn evidence bars selecting on the request).
+  withdrawnBy        String?            @map("withdrawn_by")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 

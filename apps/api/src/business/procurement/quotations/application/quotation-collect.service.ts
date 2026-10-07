@@ -155,7 +155,10 @@ export class QuotationCollectService {
           const photos = await this.bindPhotos(ctx, input.photos, 1, replaced?.id ?? null);
 
           if (replaced) {
-            await ctx.tx.quote.update({ where: { id: replaced.id }, data: { status: 'WITHDRAWN' } });
+            await ctx.tx.quote.update({
+              where: { id: replaced.id },
+              data: { status: 'WITHDRAWN', withdrawnBy: identity.userId },
+            });
           }
           const quote = await ctx.tx.quote.create({
             data: {
@@ -170,7 +173,7 @@ export class QuotationCollectService {
               photos: { create: photos },
             },
           });
-          const updated = await this.runner.writeRequest(ctx, ctx.request.status, {});
+          const updated = await this.runner.writeRequest(ctx, ctx.request.status, {}, { collectActor: true });
           if (replaced) {
             await this.runner.audit(ctx, updated.updatedAt, {
               eventType: 'QUOTE_WITHDRAWN',
@@ -221,7 +224,7 @@ export class QuotationCollectService {
         const nextPage = Math.max(0, ...quote.photos.map((p) => p.pageNumber)) + 1;
         const [data] = await this.bindPhotos(ctx, [photo], nextPage, null);
         await ctx.tx.quotePhoto.create({ data: { ...data, quoteId: quote.id } });
-        const updated = await this.runner.writeRequest(ctx, ctx.request.status, {});
+        const updated = await this.runner.writeRequest(ctx, ctx.request.status, {}, { collectActor: true });
         await this.runner.audit(ctx, updated.updatedAt, {
           eventType: 'QUOTE_PAGE_ADDED',
           sourceCommand: 'quotation.add-page',
@@ -242,8 +245,8 @@ export class QuotationCollectService {
       const quote = ctx.request.quotes.find((q) => q.id === quoteId);
       if (!quote) throw new NotFoundException(`Quote ${quoteId} not found on this request`);
       if (quote.status !== 'ACTIVE') throw quotationConflict('QUOTE_NOT_ACTIVE');
-      await ctx.tx.quote.update({ where: { id: quote.id }, data: { status: 'WITHDRAWN' } });
-      const updated = await this.runner.writeRequest(ctx, ctx.request.status, {});
+      await ctx.tx.quote.update({ where: { id: quote.id }, data: { status: 'WITHDRAWN', withdrawnBy: identity.userId } });
+      const updated = await this.runner.writeRequest(ctx, ctx.request.status, {}, { collectActor: true });
       await this.runner.audit(ctx, updated.updatedAt, {
         eventType: 'QUOTE_WITHDRAWN',
         sourceCommand: 'quotation.withdraw-quote',
@@ -279,7 +282,7 @@ export class QuotationCollectService {
         sentAt: now,
         firstSentAt: ctx.request.firstSentAt ?? now,
         decidedAt: null,
-      });
+      }, { collectActor: true });
       const frozen = await this.repo.freezeActivePhotos(ctx.tx, ctx.request.id, `quotation sent ${ctx.request.number}`);
       await this.runner.audit(ctx, updated.updatedAt, {
         eventType: 'QUOTATION_SENT',
@@ -303,7 +306,7 @@ export class QuotationCollectService {
   async reopen(identity: RequestIdentity, id: string, reason: string) {
     const text = requireText(reason, 'A reason is required to reopen a sent request.');
     await this.runner.run(identity, id, 'REOPEN', async (ctx) => {
-      const updated = await this.runner.writeRequest(ctx, 'AWAITING_DECISION', { status: 'COLLECTING' });
+      const updated = await this.runner.writeRequest(ctx, 'AWAITING_DECISION', { status: 'COLLECTING' }, { collectActor: true });
       await this.runner.audit(ctx, updated.updatedAt, {
         eventType: 'QUOTATION_REOPENED',
         sourceCommand: 'quotation.reopen',
