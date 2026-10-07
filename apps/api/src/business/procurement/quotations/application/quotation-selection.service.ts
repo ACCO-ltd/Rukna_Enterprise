@@ -5,6 +5,7 @@ import { quotationBadRequest, quotationConflict } from '../domain/quotation-erro
 import { parseQuoteTotal } from '../domain/quote-selection.policy.js';
 import { QuotationCommandRunner, type CommandContext } from './quotation-command-runner.service.js';
 import { QuotationQueryService } from './quotation-query.service.js';
+import { QuotationNotifier } from './quotation-notifier.service.js';
 
 export type QuoteRejectReasonInput = 'ILLEGIBLE' | 'WRONG_ITEMS' | 'INCOMPLETE' | 'OTHER';
 
@@ -19,6 +20,7 @@ export class QuotationSelectionService {
   constructor(
     private readonly runner: QuotationCommandRunner,
     private readonly query: QuotationQueryService,
+    private readonly notifier: QuotationNotifier,
   ) {}
 
   /** Overwritable until award; every write audited with before/after. */
@@ -91,6 +93,7 @@ export class QuotationSelectionService {
         after: { status: 'RETURNED' },
         reason: text,
       });
+      await this.notifier.returned(ctx, updated, text);
     });
     return this.query.detail(identity, id);
   }

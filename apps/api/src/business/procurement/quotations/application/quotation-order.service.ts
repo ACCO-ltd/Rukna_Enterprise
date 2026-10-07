@@ -20,6 +20,7 @@ import { QuotationRequestRepository, type Db, type MaterialRequestForQuotation }
 import { QuotationAccessService } from './quotation-access.service.js';
 import { QuotationCommandRunner } from './quotation-command-runner.service.js';
 import { QuotationQueryService } from './quotation-query.service.js';
+import { QuotationNotifier } from './quotation-notifier.service.js';
 
 export interface RaiseOrderLineInput {
   materialRequestLineId: string;
@@ -52,6 +53,7 @@ export class QuotationOrderService {
     private readonly access: QuotationAccessService,
     private readonly runner: QuotationCommandRunner,
     private readonly query: QuotationQueryService,
+    private readonly notifier: QuotationNotifier,
   ) {}
 
   /** `GET /:id/order-draft` — what one tap on "Raise the order" would create. */
@@ -202,6 +204,7 @@ export class QuotationOrderService {
           adjusted: Boolean(manual),
         },
       });
+      await this.notifier.orderRaised(ctx);
       return { purchaseOrderId: po.id };
     });
     return result!;
@@ -246,6 +249,7 @@ export class QuotationOrderService {
         after: { status: 'AWAITING_DECISION' },
         reason: text,
       });
+      await this.notifier.redecisionRequested(ctx, updated);
     });
     return this.query.detail(identity, id);
   }

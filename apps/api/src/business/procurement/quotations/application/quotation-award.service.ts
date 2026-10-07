@@ -14,6 +14,7 @@ import { QuotationRequestRepository } from '../infrastructure/quotation-request.
 import { QuotationAccessService } from './quotation-access.service.js';
 import { QuotationCommandRunner, type CommandContext } from './quotation-command-runner.service.js';
 import { QuotationQueryService } from './quotation-query.service.js';
+import { QuotationNotifier } from './quotation-notifier.service.js';
 
 export type QuotationPaymentPathInput = 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER';
 export type NonLowestReasonInput = 'FASTER_DELIVERY' | 'BETTER_QUALITY' | 'HAS_STOCK' | 'OTHER';
@@ -56,6 +57,7 @@ export class QuotationAwardService {
     private readonly commandGovernance: CommandGovernanceService,
     private readonly approvals: ApprovalService,
     private readonly sod: SegregationOfDutiesService,
+    private readonly notifier: QuotationNotifier,
   ) {}
 
   async award(identity: RequestIdentity, id: string, input: AwardInput) {
@@ -141,6 +143,7 @@ export class QuotationAwardService {
         before: { status: 'AWARD_PENDING_APPROVAL', quoteId: ctx.request.proposedQuoteId },
         after: { status: 'AWAITING_DECISION' },
       });
+      await this.notifier.awardWithdrawn(ctx);
     });
     await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.QUOTATION_AWARD, id);
     return this.query.detail(identity, id);
@@ -209,6 +212,7 @@ export class QuotationAwardService {
         distinctSupplierCount: distinct,
       },
     });
+    await this.notifier.awardProposed(ctx);
   }
 
   /**
@@ -356,6 +360,7 @@ export class QuotationAwardService {
         },
         approvalInstanceId: consumed?.instanceId,
       });
+      await this.notifier.awarded(ctx);
     });
   }
 }

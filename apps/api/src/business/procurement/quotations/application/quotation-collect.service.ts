@@ -21,6 +21,7 @@ import {
 import { QuotationAccessService } from './quotation-access.service.js';
 import { QuotationCommandRunner, type CommandContext } from './quotation-command-runner.service.js';
 import { QuotationQueryService } from './quotation-query.service.js';
+import { QuotationNotifier } from './quotation-notifier.service.js';
 
 export type QuotePhotoSourceInput = 'CAMERA' | 'GALLERY' | 'UNKNOWN';
 
@@ -58,6 +59,7 @@ export class QuotationCollectService {
     private readonly query: QuotationQueryService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly notifier: QuotationNotifier,
   ) {}
 
   /**
@@ -292,6 +294,7 @@ export class QuotationCollectService {
           photosFrozen: frozen,
         },
       });
+      await this.notifier.sent(ctx, updated);
     });
     return this.query.detail(identity, id);
   }
@@ -308,6 +311,7 @@ export class QuotationCollectService {
         after: { status: 'COLLECTING' },
         reason: text,
       });
+      await this.notifier.reopened(ctx);
     });
     return this.query.detail(identity, id);
   }
@@ -340,6 +344,7 @@ export class QuotationCollectService {
       after: { status: 'CANCELLED' },
       reason,
     });
+    await this.notifier.cancelled(ctx);
   }
 
   private async resolveStoreKey(ctx: CommandContext, input: AddQuoteInput): Promise<string> {
