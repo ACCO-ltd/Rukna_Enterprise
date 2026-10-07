@@ -345,7 +345,7 @@ export class MaterialRequestService {
 
   private async writeTransition(
     identity: RequestIdentity,
-    mr: { id: string; status: MaterialRequestStatus },
+    mr: { id: string; mrNumber: string; status: MaterialRequestStatus },
     to: MaterialRequestStatus,
     sourceCommand: string,
     extra: { approvalInstanceId?: string; reason?: string } = {},
@@ -355,14 +355,19 @@ export class MaterialRequestService {
     const fromStatus = mr.status;
 
     return prisma.$transaction(async (tx) => {
-      // Guarded on the status read above, so a concurrent transition cannot be overwritten.
-      const updated = await this.repo.updateStatus(tx, id, to, {
-        expectedStatus: fromStatus,
-        ...(extra.approvalInstanceId ? { approvalInstanceId: extra.approvalInstanceId } : {}),
-      });
+      // Compare-and-set on the status read above, so a concurrent transition (e.g. cancelled
+      // while being approved) cannot be overwritten.
+      const updated = await this.repo.updateStatus(
+        tx,
+        identity.activeOrganizationId,
+        id,
+        fromStatus,
+        to,
+        extra.approvalInstanceId ? { approvalInstanceId: extra.approvalInstanceId } : undefined,
+      );
       if (!updated) {
         throw new ConflictException(
-          'The material request changed while this was in progress. Reload and retry.',
+          `Material request ${mr.mrNumber} has changed since you opened it — reload and try again.`,
         );
       }
       // Approval approves each line for what was requested, in the same transaction, so an

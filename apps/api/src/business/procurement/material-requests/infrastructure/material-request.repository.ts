@@ -141,29 +141,25 @@ export class MaterialRequestRepository {
   }
 
   /**
-   * Moves the request to `status`. With `expectedStatus`, the write only lands while the row is
-   * still in that status (compare-and-set) and returns null otherwise.
+   * Move a request from `from` to `to` only if it is still in `from` — a compare-and-set, so two
+   * people acting at once (a requester cancelling while finance approves) cannot overwrite each
+   * other. Null when the request changed since it was read. `extra` records the approval that
+   * cleared a governed transition (ADR-011).
    */
   async updateStatus(
     prisma: TenantPrisma,
+    organizationId: string,
     id: string,
-    status: MaterialRequestStatus,
-    extra?: { approvalInstanceId?: string; expectedStatus?: MaterialRequestStatus },
+    from: MaterialRequestStatus,
+    to: MaterialRequestStatus,
+    extra?: { approvalInstanceId?: string },
   ) {
-    const { expectedStatus, ...data } = extra ?? {};
-    if (expectedStatus) {
-      const { count } = await prisma.materialRequest.updateMany({
-        where: { id, status: expectedStatus },
-        data: { status, ...data },
-      });
-      if (count === 0) return null;
-      return prisma.materialRequest.findUniqueOrThrow({ where: { id }, include: MR_INCLUDE });
-    }
-    return prisma.materialRequest.update({
-      where: { id },
-      data: { status, ...data },
-      include: MR_INCLUDE,
+    const { count } = await prisma.materialRequest.updateMany({
+      where: { id, organizationId, status: from },
+      data: { status: to, ...(extra ?? {}) },
     });
+    if (count === 0) return null;
+    return prisma.materialRequest.findFirst({ where: { id, organizationId }, include: MR_INCLUDE });
   }
 
   /**
