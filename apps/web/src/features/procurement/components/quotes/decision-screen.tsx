@@ -75,6 +75,7 @@ import {
   QuotationStatusPill,
   QuotePhotoImage,
   WaitingTime,
+  refusalCode,
   useRefusalText,
 } from './quote-shared';
 
@@ -204,6 +205,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const [viewing, setViewing] = useState<{ quote: Quote; page: number } | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const [gatedInstance, setGatedInstance] = useState<string | null>(null);
+  const [changed, setChanged] = useState(false);
   const award = useAwardQuotation(detail.id);
   const reject = useRejectQuote(detail.id);
   const ask = useAskForAnotherQuote(detail.id);
@@ -239,6 +241,11 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
         if (instance) {
           setGatedInstance(instance);
           setChoosing(null);
+          award.reset();
+        } else if (refusalCode(error) === 'QUOTATION_CHANGED') {
+          // The request was reloaded (the hook refetches on any refusal): review it afresh.
+          setChoosing(null);
+          setChanged(true);
           award.reset();
         }
       },
@@ -417,6 +424,9 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
         </section>
       ) : null}
 
+      {changed ? (
+        <Notice tone="attention">{tRefusal('QUOTATION_CHANGED')}</Notice>
+      ) : null}
       {saveError ? <Alert variant="error" messages={[refusal(saveError) ?? '']} /> : null}
 
       {/* ── Quotes: swipe on a phone, side by side from 1024 px ────────────── */}

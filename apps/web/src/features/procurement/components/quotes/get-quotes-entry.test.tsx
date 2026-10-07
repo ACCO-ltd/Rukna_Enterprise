@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api-client';
 import { renderWithProviders } from '@/test/render';
 
 import { detailFixture } from '../../quotations/test-fixtures';
@@ -78,5 +79,24 @@ describe('GetQuotesEntry (wireframe A)', () => {
       permissions: ['collect:quotation'],
     });
     expect(screen.queryByRole('button', { name: 'Get quotes' })).not.toBeInTheDocument();
+  });
+
+  it('offers Get quotes again once a round closed with quantity left (summary null)', () => {
+    renderWithProviders(<GetQuotesEntry request={mr({ status: 'PARTIALLY_ORDERED', quotation: null })} />, {
+      permissions: ['collect:quotation'],
+    });
+    expect(screen.getByRole('button', { name: 'Get quotes' })).toBeInTheDocument();
+  });
+
+  it('says when everything is already ordered (409 MATERIAL_REQUEST_ALREADY_ORDERED)', async () => {
+    const user = userEvent.setup();
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    api.open.mockRejectedValue(
+      new ApiError(409, 'Ordered', 'MATERIAL_REQUEST_ALREADY_ORDERED', [], { code: 'MATERIAL_REQUEST_ALREADY_ORDERED' }),
+    );
+    renderWithProviders(<GetQuotesEntry request={mr()} />, { permissions: ['collect:quotation'] });
+    await user.click(screen.getByRole('button', { name: 'Get quotes' }));
+    expect(await screen.findByText('Everything on this request is already ordered.')).toBeInTheDocument();
+    click.mockRestore();
   });
 });

@@ -53,7 +53,8 @@ export function GetQuotesEntry({ request }: { request: MaterialRequest }) {
     );
   }
 
-  if (request.status !== 'APPROVED' || !mayCollect) return null;
+  // An approved request, or one partly ordered whose remaining quantity needs a new round.
+  if ((request.status !== 'APPROVED' && request.status !== 'PARTIALLY_ORDERED') || !mayCollect) return null;
   return <GetQuotesButton materialRequestId={request.id} />;
 }
 

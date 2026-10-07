@@ -1885,7 +1885,7 @@
       "AWARD_CHANGED": "The chosen quote changed after this order was raised. Cancel it and raise the order again.",
       "PURCHASE_ORDER_LIVE": "A draft order from this choice is still open. Cancel it first.",
       "PURCHASE_ORDER_CONFIRMED": "An order from this choice was already issued. Cancel the quotes and start a new request.",
-      "QUOTATION_CHANGED": "Someone else changed this request. It has been refreshed.",
+      "QUOTATION_CHANGED": "The choice changed while you were deciding — review and choose again.",
       "QUOTATION_CANCELLED": "This request was cancelled.",
       "QUOTATION_NOT_AWAITING_DECISION": "This request is not waiting for a choice any more.",
       "QUOTATION_NOT_PENDING_APPROVAL": "There is no choice waiting for approval.",
@@ -1894,7 +1894,7 @@
       "QUOTE_NOT_ACTIVE": "That quote was removed or rejected.",
       "NON_LOWEST_NOTE_REQUIRED": "Say why you chose this quote.",
       "SUPPLIER_INACTIVE": "That supplier is inactive. Pick another, or ask finance to reactivate it.",
-      "MATERIAL_REQUEST_ALREADY_ORDERED": "Everything on this request is already on an order.",
+      "MATERIAL_REQUEST_ALREADY_ORDERED": "Everything on this request is already ordered.",
       "MISSING_PERMISSION": "You don't have permission to do this.",
       "STORE_REQUIRED": "Choose a store for this quote.",
       "STORE_NAME_TOO_LONG": "That store name is too long (120 characters at most).",
@@ -1903,7 +1903,8 @@
       "TOTAL_INVALID": "Enter the total as an amount above 0, with at most 2 decimals.",
       "ORDER_LINES_REQUIRED": "Include at least one line.",
       "ORDER_LINE_QUANTITY_INVALID": "A quantity is more than the request still needs.",
-      "ORDER_LINE_AMOUNT_INVALID": "Every included line needs an amount above 0."
+      "ORDER_LINE_AMOUNT_INVALID": "Every included line needs an amount above 0.",
+      "CLIENT_REF_CONFLICT": "This photo did not save. Tap retry to add it again as a new quote."
     },
     "feedback": {
       "sent": "Sent to finance",
@@ -2240,6 +2241,10 @@
       "body": "This request is being quoted ({quotationNumber}). Order it from the quotation.",
       "link": "Open {quotationNumber}"
     },
-    "noAccess": "You don't have access to this quotation."
+    "noAccess": "You don't have access to this quotation.",
+    "roundRequired": {
+      "body": "Any quantity left needs a new quotation round.",
+      "link": "Get quotes on the material request"
+    }
   }
 }

@@ -433,6 +433,28 @@ describe('QuoteDecisionScreen', () => {
     expect(await screen.findByText("You don't have access to this quotation.")).toBeInTheDocument();
   });
 
+  it('reloads and says so when the choice changed while deciding (409 QUOTATION_CHANGED)', async () => {
+    const user = userEvent.setup();
+    api.award.mockRejectedValue(
+      new ApiError(409, 'Changed', 'QUOTATION_CHANGED', [], { code: 'QUOTATION_CHANGED' }),
+    );
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '90.00' })],
+      requiredQuoteCount: 1,
+      distinctSupplierCount: 1,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Choose Hodan' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('radio', { name: 'Buyer pays cash' }));
+    const loads = api.get.mock.calls.length;
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    expect(
+      await screen.findByText('The choice changed while you were deciding — review and choose again.'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(loads));
+  });
+
   it('asks for another quote with a quick note', async () => {
     const user = userEvent.setup();
     api.ask.mockResolvedValue(detailFixture({ status: 'RETURNED' }));

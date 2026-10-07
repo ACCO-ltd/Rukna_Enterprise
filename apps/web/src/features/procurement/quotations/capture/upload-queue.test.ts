@@ -281,4 +281,33 @@ describe('upload queue', () => {
     expect(classifyError(storage).retryable).toBe(true);
     expect(classifyError(new Error('no secure context')).retryable).toBe(false);
   });
+
+  it('never retries a CLIENT_REF_CONFLICT under the same clientRef: keeps the photo for a fresh add', async () => {
+    const refs: string[] = [];
+    let conflict = true;
+    const addQuote = vi.fn(async (_id: string, payload: AddQuotePayload) => {
+      refs.push(payload.clientRef);
+      if (conflict) throw new HttpError(409, 'CLIENT_REF_CONFLICT', { code: 'CLIENT_REF_CONFLICT' });
+      return detailWith([{ id: 'quote-2', clientRef: payload.clientRef, fileIds: payload.photos.map((p) => p.platformFileId) }]);
+    });
+    const { queue, upload } = harness({ addQuote });
+    await queue.start();
+    const first = await queue.capture('qr1', page(), { storeName: 'Hodan', label: 'Hodan' });
+    await settle();
+
+    const item = queue.getSnapshot()[0]!;
+    expect(item.phase).toBe('failed');
+    expect(item.failureCode).toBe('CLIENT_REF_CONFLICT');
+    expect(item.clientRef).not.toBe(first);
+    expect(item.pages).toHaveLength(1); // the photo is kept
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(addQuote).toHaveBeenCalledTimes(1);
+
+    conflict = false;
+    await queue.retry(item.clientRef);
+    await settle();
+    expect(refs).toEqual([first, item.clientRef]);
+    expect(upload).toHaveBeenCalledTimes(2); // fresh upload for the fresh quote
+    expect(queue.getSnapshot()).toEqual([]);
+  });
 });

@@ -384,6 +384,12 @@ export class UploadQueue {
     } catch (error) {
       const verdict = classifyError(error);
       const item = this.items.get(clientRef);
+      if (item && verdict.code === 'CLIENT_REF_CONFLICT') {
+        // The server holds a different quote under this clientRef: that key can never succeed.
+        // Keep the photo, under a fresh key and with fresh uploads, and let the buyer re-add it.
+        await this.replaceClientRef(item, verdict);
+        return;
+      }
       if (item) {
         const attempts = item.attempts + 1;
         await this.save({
@@ -397,6 +403,21 @@ export class UploadQueue {
       this.inFlight = null;
       this.emit();
     }
+  }
+
+  private async replaceClientRef(item: QueuedQuote, failure: { code: string; retryable: boolean }): Promise<void> {
+    this.items.delete(item.clientRef);
+    this.progress.delete(item.clientRef);
+    await this.deps.store.delete(item.clientRef).catch(() => undefined);
+    await this.save({
+      ...item,
+      clientRef: this.deps.uuid(),
+      quoteId: null,
+      pages: item.pages.map((page) => ({ ...page, fileId: null, bound: false })),
+      attempts: 0,
+      nextAttemptAt: Number.POSITIVE_INFINITY,
+      failure: { code: failure.code, retryable: false },
+    });
   }
 
   private async uploadPages(clientRef: string): Promise<void> {
