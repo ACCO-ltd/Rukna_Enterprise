@@ -121,7 +121,7 @@ async function main() {
     where: { organizationId_code: { organizationId: orgId, code: 'VAT5_OUT' } },
     create: {
       organizationId: orgId, code: 'VAT5_OUT', name: 'Output VAT 5%',
-      rate: 5, taxType: 'VAT', recoveryMethod: 'FULLY_RECOVERABLE',
+      rate: 5, taxType: 'VAT', direction: 'OUTPUT', recoveryMethod: 'FULLY_RECOVERABLE',
       effectiveFrom: EFFECTIVE_FROM, status: 'ACTIVE', createdBy: SEED_USER,
     },
     update: { rate: 5, status: 'ACTIVE' },
@@ -130,7 +130,7 @@ async function main() {
     where: { organizationId_code: { organizationId: orgId, code: 'VAT5_IN' } },
     create: {
       organizationId: orgId, code: 'VAT5_IN', name: 'Input VAT 5% (Non-Recoverable)',
-      rate: 5, taxType: 'VAT', recoveryMethod: 'NON_RECOVERABLE',
+      rate: 5, taxType: 'VAT', direction: 'INPUT', recoveryMethod: 'NON_RECOVERABLE',
       effectiveFrom: EFFECTIVE_FROM, status: 'ACTIVE', createdBy: SEED_USER,
     },
     update: { rate: 5, status: 'ACTIVE' },
