@@ -39,7 +39,7 @@ vi.mock('@/features/roles/hooks/use-roles', () => ({
   }),
 }));
 
-import { CreateUserDialog, EMAIL_SHAPE, EditUserDialog } from './user-form-dialogs';
+import { CreateUserDialog, EMAIL_SHAPE, EditUserDialog, WHATSAPP_E164, compactPhone } from './user-form-dialogs';
 
 const USER = {
   id: 'u1',
@@ -163,6 +163,62 @@ describe('EditUserDialog', () => {
 
     expect(mocks.update).toHaveBeenCalledWith(
       { id: 'u1', payload: { firstName: 'Amina', lastName: 'Hassan' } },
+      expect.any(Object),
+    );
+  });
+});
+
+describe('EditUserDialog — WhatsApp alerts (ADR-044 phase 2)', () => {
+  const WITH_PHONE = { ...USER, whatsappPhone: '+252612345678', whatsappAlertsEnabled: true } as UserWithRolesResponse;
+
+  it('normalises the typed number', () => {
+    expect(compactPhone(' +252 61-234 (5678) ')).toBe('+252612345678');
+    expect(WHATSAPP_E164.test('+252612345678')).toBe(true);
+    expect(WHATSAPP_E164.test('0612345678')).toBe(false);
+    expect(WHATSAPP_E164.test('+0612345678')).toBe(false);
+  });
+
+  it('the alerts switch is off and disabled until a number is typed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EditUserDialog user={USER} onOpenChange={vi.fn()} />);
+    const toggle = screen.getByRole('switch', { name: 'Send WhatsApp alerts' });
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText('Add a WhatsApp number to turn alerts on.')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/WhatsApp number/), '+252 61 234 5678');
+    expect(toggle).toBeEnabled();
+    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(mocks.update).toHaveBeenCalledWith(
+      {
+        id: 'u1',
+        payload: { firstName: 'Amina', lastName: 'Ali', whatsappPhone: '+252612345678', whatsappAlertsEnabled: true },
+      },
+      expect.any(Object),
+    );
+  });
+
+  it('refuses a number without the country code before any request', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EditUserDialog user={USER} onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText(/WhatsApp number/), '0612345678');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText(/Enter the number in international form/)).toBeInTheDocument();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('opens seeded with the number and switch; clearing the number turns alerts off', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EditUserDialog user={WITH_PHONE} onOpenChange={vi.fn()} />);
+    expect(screen.getByLabelText(/WhatsApp number/)).toHaveValue('+252612345678');
+    expect(screen.getByRole('switch', { name: 'Send WhatsApp alerts' })).toBeChecked();
+
+    await user.clear(screen.getByLabelText(/WhatsApp number/));
+    expect(screen.getByRole('switch', { name: 'Send WhatsApp alerts' })).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(mocks.update).toHaveBeenCalledWith(
+      { id: 'u1', payload: { firstName: 'Amina', lastName: 'Ali', whatsappPhone: null, whatsappAlertsEnabled: false } },
       expect.any(Object),
     );
   });

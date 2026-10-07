@@ -75,6 +75,7 @@ import {
   useDurationText,
   useRefusalText,
 } from './quote-shared';
+import { WhatsAppLog } from './whatsapp-log';
 import { StoreSheet } from './store-sheet';
 
 const MAX_PAGES_PER_QUOTE = 10;
@@ -437,6 +438,8 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
           </FormDialogFooter>
         </FormDialog>
       ) : null}
+
+      <WhatsAppLog messages={detail.messages} />
 
       {withdrawing ? (
         <ConfirmActionDialog

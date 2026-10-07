@@ -2233,6 +2233,24 @@
         "photosHidden": "Quote photos are hidden for your role."
       }
     },
+    "whatsappLog": {
+      "title": "WhatsApp",
+      "purpose": {
+        "QUOTE_READY": "Quotes ready",
+        "QUOTE_REMINDER": "Reminder",
+        "QUOTE_ESCALATION": "Escalation",
+        "QUOTE_CHOSEN": "Store chosen",
+        "QUOTE_ANOTHER": "Another quote"
+      },
+      "status": {
+        "QUEUED": "Queued",
+        "SENT": "Sent",
+        "DELIVERED": "Delivered",
+        "READ": "Read",
+        "FAILED": "Not sent",
+        "UNKNOWN": "Not confirmed"
+      }
+    },
     "photosHidden": {
       "title": "Quote photos are hidden for your role",
       "count": "{count, plural, =0 {No photos} one {# photo} other {# photos}}"

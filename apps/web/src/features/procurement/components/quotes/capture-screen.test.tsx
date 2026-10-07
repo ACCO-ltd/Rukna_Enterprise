@@ -284,3 +284,26 @@ describe('QuoteCaptureScreen — after send', () => {
     expect(screen.getByRole('button', { name: 'Snap quote' })).toBeInTheDocument();
   });
 });
+
+describe('WhatsApp log (ADR-044 phase 2)', () => {
+  it('shows who was alerted on WhatsApp and the delivery status', async () => {
+    render(detailFixture({ status: 'AWARDED', messages: [
+        {
+          id: 'm1',
+          recipientName: 'Fadumo Ali',
+          recipientPhoneMasked: '…678',
+          purpose: 'QUOTE_CHOSEN',
+          status: 'DELIVERED',
+          queuedAt: '2026-10-07T07:00:10.000Z',
+          sentAt: '2026-10-07T07:00:20.000Z',
+          deliveredAt: '2026-10-07T07:00:30.000Z',
+          readAt: null,
+          failedAt: null,
+          failureReason: null,
+        },
+      ] }));
+    const log = await screen.findByRole('region', { name: 'WhatsApp' });
+    expect(log).toHaveTextContent('Fadumo Ali');
+    expect(log).toHaveTextContent('Delivered');
+  });
+});

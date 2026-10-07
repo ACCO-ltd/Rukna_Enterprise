@@ -2,7 +2,7 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormDialogClose, FormField, Input } from '@erp/ui';
+import { Alert, Button, FormDialogClose, FormField, Input, SwitchField } from '@erp/ui';
 
 import type { UserWithRolesResponse } from '@erp/types';
 
@@ -27,6 +27,17 @@ const MIN_PASSWORD_LENGTH = 12;
  * the browser's own `type="email"` check no longer runs; the server remains the authority.
  */
 export const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * A staff WhatsApp number as the API stores it (E.164: `+` then 8–15 digits), after dropping the
+ * spaces, dashes and brackets people type. A shape check only — the server validates the number.
+ */
+export const WHATSAPP_E164 = /^\+[1-9]\d{7,14}$/;
+
+/** The typed number without separators (`+252 61 234 5678` → `+252612345678`); '' when blank. */
+export function compactPhone(value: string): string {
+  return value.trim().replace(/[\s\-().]/g, '');
+}
 
 /** Same members, in any order. */
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
@@ -274,17 +285,28 @@ export function EditUserDialog({
   const t = useTranslations('platform.users.form');
   const tc = useTranslations('common');
   const update = useUpdateUser();
-  const ids = { firstName: useId(), lastName: useId() };
+  const ids = { firstName: useId(), lastName: useId(), whatsappPhone: useId(), whatsappAlerts: useId() };
 
   // Seed from the user each time a different user opens.
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [whatsappAlerts, setWhatsappAlerts] = useState(false);
+  const [tried, setTried] = useState(false);
   const [seededFor, setSeededFor] = useState<string | null>(null);
   if (user && seededFor !== user.id) {
     setSeededFor(user.id);
     setFirstName(user.firstName);
     setLastName(user.lastName);
+    setWhatsappPhone(user.whatsappPhone ?? '');
+    setWhatsappAlerts(user.whatsappAlertsEnabled ?? false);
+    setTried(false);
   }
+
+  const phone = compactPhone(whatsappPhone);
+  const phoneValid = phone === '' || WHATSAPP_E164.test(phone);
+  // Alerts need a number: with the number cleared the switch is off and disabled.
+  const alertsOn = phone !== '' && whatsappAlerts;
 
   function close(next: boolean) {
     if (!next) {
@@ -297,17 +319,33 @@ export function EditUserDialog({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) return;
+    setTried(true);
     const first = firstName.trim();
     const last = lastName.trim();
-    if (!first || !last) return;
+    if (!first || !last || !phoneValid) return;
 
+    const nextPhone = phone === '' ? null : phone;
+    const whatsappChanged =
+      nextPhone !== (user.whatsappPhone ?? null) || alertsOn !== (user.whatsappAlertsEnabled ?? false);
     update.mutate(
-      { id: user.id, payload: { firstName: first, lastName: last } },
+      {
+        id: user.id,
+        payload: {
+          firstName: first,
+          lastName: last,
+          ...(whatsappChanged ? { whatsappPhone: nextPhone, whatsappAlertsEnabled: alertsOn } : {}),
+        },
+      },
       { onSuccess: () => close(false) },
     );
   }
 
-  const dirty = Boolean(user) && (firstName !== user?.firstName || lastName !== user?.lastName);
+  const dirty =
+    Boolean(user) &&
+    (firstName !== user?.firstName ||
+      lastName !== user?.lastName ||
+      whatsappPhone !== (user?.whatsappPhone ?? '') ||
+      alertsOn !== (user?.whatsappAlertsEnabled ?? false));
 
   return (
     <FormDialogShell
@@ -353,6 +391,34 @@ export function EditUserDialog({
               />
             </FormField>
           </div>
+
+          <FormField
+            htmlFor={ids.whatsappPhone}
+            label={t('whatsappPhone')}
+            hint={t('whatsappPhoneHint')}
+            error={tried && !phoneValid ? t('whatsappPhoneInvalid') : undefined}
+          >
+            <Input
+              id={ids.whatsappPhone}
+              name="whatsappPhone"
+              type="tel"
+              inputMode="tel"
+              placeholder="+252 61 234 5678"
+              value={whatsappPhone}
+              onChange={(e) => setWhatsappPhone(e.target.value)}
+              autoComplete="off"
+              disabled={update.isPending}
+            />
+          </FormField>
+
+          <SwitchField
+            id={ids.whatsappAlerts}
+            label={t('whatsappAlerts')}
+            description={phone === '' ? t('whatsappAlertsNeedsNumber') : t('whatsappAlertsHint')}
+            checked={alertsOn}
+            onCheckedChange={setWhatsappAlerts}
+            disabled={update.isPending || phone === ''}
+          />
 
           {update.error ? (
             <Alert variant="error" messages={[apiMessage(update.error, t('editFailed'))!]} />

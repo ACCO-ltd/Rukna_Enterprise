@@ -78,6 +78,7 @@ import {
   refusalCode,
   useRefusalText,
 } from './quote-shared';
+import { WhatsAppLog } from './whatsapp-log';
 
 /** The award's governed transition (ADR-044 §7). */
 const QUOTATION_AWARD = WorkflowTransactionType.QUOTATION_AWARD;
@@ -649,6 +650,8 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
           {t('askAnother')}
         </Button>
       ) : null}
+
+      <WhatsAppLog messages={detail.messages} />
 
       {/* ── Dialogs ───────────────────────────────────────────────────────── */}
       {choosing ? (
