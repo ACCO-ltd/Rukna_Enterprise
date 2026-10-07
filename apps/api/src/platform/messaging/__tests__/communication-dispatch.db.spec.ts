@@ -251,3 +251,48 @@ describe('WB-05 webhook status', () => {
     expect(await byKey(a.idempotencyKey)).toMatchObject({ status: 'DELIVERED' });
   });
 });
+
+describe('WB-06 review M1/L2 — claim per send, attempt cap, post-accept failure', () => {
+  it('claims each row only right before sending it (a slow send does not eat the next lease)', async () => {
+    const first = alert();
+    const second = alert();
+    const now = new Date();
+    await repo.enqueueMany(prisma, [first], new Date(now.getTime() - 2000));
+    await repo.enqueueMany(prisma, [second], new Date(now.getTime() - 1000));
+    const seenWhileFirstSending: Array<{ attemptCount: number }> = [];
+    whatsapp.sendTemplate.mockImplementationOnce(async () => {
+      seenWhileFirstSending.push(await byKey(second.idempotencyKey));
+      return { providerMessageId: `wamid.wb.${randomUUID()}` };
+    });
+    expect((await run(() => service.dispatchDue())).sent).toBe(2);
+    expect(seenWhileFirstSending[0]).toMatchObject({ attemptCount: 0, status: 'QUEUED' });
+  });
+
+  it('a row that already used its attempts (e.g. crashes after claim) fails without another send', async () => {
+    const a = alert();
+    const now = new Date();
+    await repo.enqueueMany(prisma, [a], now);
+    await prisma.outboundMessage.updateMany({
+      where: { organizationId: orgId, idempotencyKey: a.idempotencyKey },
+      data: { attemptCount: BACKGROUND_MAX_ATTEMPTS, errorCode: 'NETWORK', errorMessage: 'Could not reach WhatsApp.' },
+    });
+    expect((await run(() => service.dispatchDue(now))).failed).toBe(1);
+    expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+    expect(await byKey(a.idempotencyKey)).toMatchObject({ status: 'FAILED', errorCode: 'NETWORK', nextAttemptAt: null });
+  });
+
+  it('if recording the accepted send fails, the row is settled UNKNOWN and never re-sent', async () => {
+    const a = alert();
+    const now = new Date();
+    await repo.enqueueMany(prisma, [a], now);
+    const spy = jest.spyOn(repo, 'markSent').mockRejectedValueOnce(new Error('db hiccup'));
+    try {
+      await run(() => service.dispatchDue(now));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await byKey(a.idempotencyKey)).toMatchObject({ status: 'UNKNOWN', nextAttemptAt: null });
+    await run(() => service.dispatchDue(new Date(now.getTime() + 600_000)));
+    expect(whatsapp.sendTemplate).toHaveBeenCalledTimes(1);
+  });
+});

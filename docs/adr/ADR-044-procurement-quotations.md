@@ -511,14 +511,18 @@ Locked by the product owner 2026-10-07. Spec addendum: `docs/specs/procurement-q
 4. **Background sender** (`platform/messaging/OutboundMessageDispatcher`, `@nestjs/schedule` every
    minute, every ACTIVE tenant inside `tenancyStorage.run` — ADR-031 Decision 3). Picks only rows
    with `nextAttemptAt` set (client invoices/receipts stay synchronous and are never picked up),
-   claims each with a 5-minute lease (`attemptCount + 1`), then: older than 12 h → FAILED `EXPIRED`;
+   claims them **one at a time, right before sending each**, with the time read at that claim and a
+   5-minute lease (`attemptCount + 1`) — longer than one send can take (20 s client timeout), so a
+   second replica can never claim a row that is still being sent. Then: a row past its attempt cap
+   (a process kept dying mid-send) → FAILED with its last error, not sent again; older than 12 h → FAILED `EXPIRED`;
    the owning feature's **dispatch guard** says it is no longer wanted → FAILED `NOT_NEEDED`
    (quotation: selector alerts need AWAITING_DECISION in the same round, chosen needs AWARDED,
    another needs RETURNED, nothing for a cancelled request or when the kill switch is off) → send.
    `RATE_LIMITED` / `NETWORK` / `PROVIDER_ERROR` retry after 1, 2, 5, 15 min, FAILED after 5
    attempts; other refusals fail at once; an unanswered send is UNKNOWN and never retried (ADR-042
    item 4). Sent rows follow ADR-042's provider-id → route → SENT order, so the existing webhook moves
-   them to DELIVERED / READ / FAILED. Background sends are not audited (no acting user, as for
+   them to DELIVERED / READ / FAILED. If recording a send Meta accepted fails, the row is settled
+   UNKNOWN (best effort) so it is never re-sent. Background sends are not audited (no acting user, as for
    webhooks); the row is the record. A process dying mid-send retries after the lease (at-least-once
    in that crash only).
 

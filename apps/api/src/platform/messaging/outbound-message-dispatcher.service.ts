@@ -41,8 +41,11 @@ export class OutboundMessageDispatcher {
     }
   }
 
-  /** One pass over every ACTIVE tenant. Public for a manual trigger or a spec. */
-  async dispatchAllTenants(now: Date = new Date()): Promise<DispatchSummary> {
+  /**
+   * One pass over every ACTIVE tenant. Public for a manual trigger or a spec. `now` pins the clock
+   * for tests only; otherwise each claim reads the time itself (review M1).
+   */
+  async dispatchAllTenants(now?: Date): Promise<DispatchSummary> {
     const total: DispatchSummary = { sent: 0, retrying: 0, failed: 0, unknown: 0, cancelled: 0 };
     if (!this.communication.isWhatsAppConfigured()) {
       if (!this.warnedUnconfigured) {

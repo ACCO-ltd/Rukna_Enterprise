@@ -306,6 +306,18 @@ export class OutboundMessageRepository {
     });
   }
 
+  /**
+   * Review L2 — Meta accepted the send but recording it failed: whatever state the row is in short
+   * of a recorded outcome, it becomes UNKNOWN and leaves the schedule, so it is never re-sent.
+   */
+  async settleAcceptedUnrecorded(db: Db, id: string, errorCode: string, errorMessage: string): Promise<void> {
+    await db.outboundMessage.updateMany({
+      where: { id, status: 'QUEUED' },
+      data: { status: 'UNKNOWN', errorCode, errorMessage },
+    });
+    await db.outboundMessage.updateMany({ where: { id }, data: { nextAttemptAt: null } });
+  }
+
   /** Background rows for a record (the quotation delivery log), oldest first. */
   listBackgroundForResource(
     db: Db,

@@ -138,6 +138,20 @@ export const BACKGROUND_MAX_AGE_MS = 12 * 60 * 60_000;
 /** Transient refusals worth another attempt; anything else definite fails at once. */
 const RETRYABLE: ReadonlySet<string> = new Set(['RATE_LIMITED', 'NETWORK', 'PROVIDER_ERROR', 'NOT_CONFIGURED']);
 
+const ACCEPTED_UNRECORDED_MESSAGE =
+  'WhatsApp accepted this message but Rukna could not record it, so its delivery is not tracked.';
+
+/** A loggable error code — never the error text (Prisma messages can echo values like numbers). */
+export function errorCode(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string' || typeof code === 'number') return String(code);
+    const name = (error as { name?: unknown }).name;
+    if (typeof name === 'string') return name;
+  }
+  return 'UNKNOWN_ERROR';
+}
+
 export interface DispatchSummary {
   sent: number;
   retrying: number;
@@ -317,18 +331,25 @@ export class CommunicationService {
    *   retried: it may have arrived).
    *
    * Not audited: there is no acting user (like webhook status changes); the row is the record.
+   *
+   * Review M1: rows are claimed ONE AT A TIME, immediately before each is sent, with the time read
+   * at that claim — so a slow send (up to the client's 20 s timeout) never eats into the lease of a
+   * row claimed earlier, and a second dispatcher (another replica) can never claim a row this one
+   * is still about to send. `now` pins the clock for tests; production passes nothing.
    */
-  async dispatchDue(now: Date = new Date(), limit = 50): Promise<DispatchSummary> {
+  async dispatchDue(now?: Date, limit = 50): Promise<DispatchSummary> {
     const summary: DispatchSummary = { sent: 0, retrying: 0, failed: 0, unknown: 0, cancelled: 0 };
     const db = this.tenancy.getClient();
-    const rows = await this.messages.claimDue(db, now, new Date(now.getTime() + BACKGROUND_LEASE_MS), limit);
-    for (const row of rows) {
+    for (let i = 0; i < limit; i++) {
+      const at = now ?? new Date();
+      const [row] = await this.messages.claimDue(db, at, new Date(at.getTime() + BACKGROUND_LEASE_MS), 1);
+      if (!row) break;
       try {
-        summary[await this.dispatchOne(db, row, now)] += 1;
+        summary[await this.dispatchOne(db, row, at)] += 1;
       } catch (error) {
         // A bug or a database error on one row must not stop the others; the lease retries it.
         this.logger.error(
-          `Background ${row.purpose} message ${row.id} not dispatched: ${error instanceof Error ? error.message : String(error)}`,
+          `Background ${row.purpose} message ${row.id} not dispatched: ${errorCode(error)}`,
         );
       }
     }
@@ -553,6 +574,12 @@ export class CommunicationService {
       await fail(EXPIRED, EXPIRED_MESSAGE);
       return 'failed';
     }
+    // Review L2: claims count attempts, so a row claimed again after its cap (e.g. a process that
+    // kept dying mid-send) is settled with its last error instead of being sent once more.
+    if (row.attemptCount > BACKGROUND_MAX_ATTEMPTS) {
+      await fail(row.errorCode ?? 'PROVIDER_ERROR', row.errorMessage ?? describeWhatsAppError('PROVIDER_ERROR'));
+      return 'failed';
+    }
     const guard = this.dispatchGuards.get(row.resourceType);
     const notNeeded = guard ? await guard(db, row) : null;
     if (notNeeded) {
@@ -611,12 +638,24 @@ export class CommunicationService {
     }
 
     // Same order as a synchronous send (see deliver): provider id → route → SENT.
-    await this.messages.attachProviderId(db, row.id, providerMessageId);
-    await this.recordRoute(providerMessageId);
-    await db.$transaction(async (tx) => {
-      await this.messages.markSent(tx, row.id, providerMessageId, new Date());
-      await this.messages.clearSchedule(tx, row.id);
-    });
+    try {
+      await this.messages.attachProviderId(db, row.id, providerMessageId);
+      await this.recordRoute(providerMessageId);
+      await db.$transaction(async (tx) => {
+        await this.messages.markSent(tx, row.id, providerMessageId, new Date());
+        await this.messages.clearSchedule(tx, row.id);
+      });
+    } catch (error) {
+      // Review L2: Meta accepted it — it must never be sent again after the lease. Settle it as
+      // UNKNOWN (best effort: if this write fails too, the error is logged).
+      this.logger.error(`Background ${row.purpose} message ${row.id} sent but not recorded: ${errorCode(error)}`);
+      try {
+        await this.messages.settleAcceptedUnrecorded(db, row.id, OUTCOME_UNKNOWN, ACCEPTED_UNRECORDED_MESSAGE);
+      } catch (settleError) {
+        this.logger.error(`Background message ${row.id} could not be settled: ${errorCode(settleError)}`);
+      }
+      return 'unknown';
+    }
     return 'sent';
   }
 
