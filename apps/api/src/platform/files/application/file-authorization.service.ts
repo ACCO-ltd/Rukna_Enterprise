@@ -58,13 +58,22 @@ export type FileOwner =
        * the plain view:procurement rule of other PO attachments.
        */
       quotationEvidence: boolean;
+      /** The quotation's project when quotationEvidence (review M2), else null. */
+      quotationProjectId: string | null;
     }
   | { kind: 'GRN_ATTACHMENT'; attachmentId: string; grnId: string; organizationId: string }
   // ADR-044 — a page of a store's paper quotation. Money evidence (it shows supplier prices), so it
   // is readable only with view:procurement AND view:commitment-ledger. The same rule follows the
   // photo when it is attached to the PO as quotation evidence (PO_REVISION_ATTACHMENT
   // quotationEvidence), so money-blind roles cannot reach it through the order either.
-  | { kind: 'QUOTATION_PHOTO'; photoId: string; quoteId: string; quotationRequestId: string };
+  | {
+      kind: 'QUOTATION_PHOTO';
+      photoId: string;
+      quoteId: string;
+      quotationRequestId: string;
+      /** The quotation's project — reachable only by its members or the bypass roles (review M2). */
+      projectId: string | null;
+    };
 
 /**
  * ADR-044 — who may see a quotation photo's bytes: procurement access plus cost visibility
@@ -172,7 +181,11 @@ export class FileAuthorizationService {
           },
         },
         quotePhoto: {
-          select: { id: true, quoteId: true, quote: { select: { quotationRequestId: true } } },
+          select: {
+            id: true,
+            quoteId: true,
+            quote: { select: { quotationRequestId: true, quotationRequest: { select: { projectId: true } } } },
+          },
         },
       },
     });
@@ -236,6 +249,7 @@ export class FileAuthorizationService {
         organizationId: a.organizationId,
         // A quotation photo stays a quotation photo wherever it is attached.
         quotationEvidence: Boolean(file.quotePhoto),
+        quotationProjectId: file.quotePhoto?.quote.quotationRequest?.projectId ?? null,
       })),
       ...file.grnAttachments.map((a) => ({
         kind: 'GRN_ATTACHMENT' as const,
@@ -250,6 +264,7 @@ export class FileAuthorizationService {
               photoId: file.quotePhoto.id,
               quoteId: file.quotePhoto.quoteId,
               quotationRequestId: file.quotePhoto.quote.quotationRequestId,
+              projectId: file.quotePhoto.quote.quotationRequest?.projectId ?? null,
             },
           ]
         : []),
@@ -375,15 +390,24 @@ export class FileAuthorizationService {
       // read them — the same guard that gates the PO and GRN list endpoints.
       case 'PO_REVISION_ATTACHMENT':
         return owner.quotationEvidence
-          ? canSeeQuotationPhotos(identity)
+          ? this.canReachQuotationPhoto(identity, owner.quotationProjectId)
           : identity.permissions.includes(PERMISSIONS.procurementView);
       case 'GRN_ATTACHMENT':
         return identity.permissions.includes(PERMISSIONS.procurementView);
       // ADR-044 §5 — photos are money: never view:procurement alone (a money-blind Project Manager
       // or Site Engineer holds that).
       case 'QUOTATION_PHOTO':
-        return canSeeQuotationPhotos(identity);
+        return this.canReachQuotationPhoto(identity, owner.projectId);
     }
+  }
+
+  /**
+   * A quotation photo: the money rule, and — for a project's quotation — the same project access
+   * as the quotation detail (members, or the project-access bypass roles). Review M2.
+   */
+  private async canReachQuotationPhoto(identity: RequestIdentity, projectId: string | null): Promise<boolean> {
+    if (!canSeeQuotationPhotos(identity)) return false;
+    return projectId ? this.isProjectMember(identity, projectId) : true;
   }
 
   /**

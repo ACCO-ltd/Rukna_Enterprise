@@ -52,7 +52,7 @@ export function buildQuotationServices(prisma: PrismaClient) {
   const query = new QuotationQueryService(tenancy, repo, access, commandGovernance);
   // approve() never touches WorkflowsService (only initiate() does).
   const approvals = new ApprovalService(workflowsRepo, {} as WorkflowsService, sod);
-  const notifier = new QuotationNotifier(new NotificationWriter(), access, sod);
+  const notifier = new QuotationNotifier(new NotificationWriter(), access, sod, projectAccess);
   const collect = new QuotationCollectService(tenancy, repo, poRepo, access, runner, query, audit, commandGovernance, notifier);
   const link = new QuotationMaterialRequestLink(repo, runner, collect);
   const selection = new QuotationSelectionService(runner, query, notifier);

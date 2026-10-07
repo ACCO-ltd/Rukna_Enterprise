@@ -4,6 +4,7 @@ import { PERMISSIONS } from '@erp/types';
 
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { NotificationWriter } from '../../../../platform/notifications/application/notification-writer.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { QuotationAccessService } from './quotation-access.service.js';
 import type { CommandContext } from './quotation-command-runner.service.js';
 
@@ -36,6 +37,7 @@ export class QuotationNotifier {
     private readonly writer: NotificationWriter,
     private readonly access: QuotationAccessService,
     private readonly sod: SegregationOfDutiesService,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   async sent(ctx: CommandContext, after: NotifiedRequest) {
@@ -85,8 +87,8 @@ export class QuotationNotifier {
   }
 
   /**
-   * Active org members holding award:quotation through an active role, minus anyone the
-   * SELECT_QUOTATION SoD bars on this request (they could not act on the notification).
+   * Active org members holding award:quotation through an active role who can reach the request's
+   * project, minus anyone the SELECT_QUOTATION SoD bars on this request (they could not act on it).
    */
   async selectorIds(ctx: CommandContext): Promise<string[]> {
     const [action, resource] = PERMISSIONS.quotationsAward.split(':');
@@ -105,9 +107,18 @@ export class QuotationNotifier {
       },
       select: { userId: true },
     });
+    // Review M3: a project's quotation pings only those who can open it (members or bypass roles).
+    const reachable = ctx.request.projectId
+      ? await this.projectAccess.usersWithAccess(
+          ctx.request.organizationId,
+          ctx.request.projectId,
+          memberships.map((m) => m.userId),
+        )
+      : null;
     const codes = await this.sod.activeRuleCodes(ctx.request.organizationId);
     const eligible: string[] = [];
     for (const { userId } of memberships) {
+      if (reachable && !reachable.has(userId)) continue;
       const barred = await this.access.selectionBarredBy(
         ctx.request.organizationId,
         userId,
