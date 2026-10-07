@@ -29,6 +29,11 @@ const api = vi.hoisted(() => ({
   draft: null as unknown,
   raise: vi.fn(),
   redecide: vi.fn(),
+  cancelPo: vi.fn(),
+}));
+vi.mock('../../api/procurement-api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  cancelPurchaseOrder: (...args: unknown[]) => api.cancelPo(...args),
 }));
 vi.mock('../../api/quotations-api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -39,7 +44,7 @@ vi.mock('../../api/quotations-api', async (importOriginal) => ({
 }));
 
 import { OrderAdjustScreen } from './order-adjust-screen';
-import { OrderCard } from './order-raise';
+import { ExceedsAward, OrderCard } from './order-raise';
 
 const BUYER = ['view:procurement', 'collect:quotation', 'create:purchase-order'];
 
@@ -171,5 +176,44 @@ describe('OrderAdjustScreen', () => {
     await user.type(qty, '41');
     expect(screen.getByText('More than requested')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create draft order' })).toBeDisabled();
+  });
+});
+
+describe('ExceedsAward — send back to finance', () => {
+  it('cancels the live draft order first, then requests a re-decision', async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    api.cancelPo.mockImplementation(async () => {
+      calls.push('cancel');
+      return { id: 'po7', poNumber: 'PO-00007' };
+    });
+    api.redecide.mockImplementation(async () => {
+      calls.push('redecide');
+      return detailFixture({ status: 'AWAITING_DECISION' });
+    });
+    renderWithProviders(<ExceedsAward requestId="qr1" draftPurchaseOrderId="po7" />, {
+      permissions: BUYER,
+      withToast: true,
+    });
+    await user.click(screen.getByRole('button', { name: 'Send back to finance' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), 'Prices went up');
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to finance' }));
+    await waitFor(() => expect(calls).toEqual(['cancel', 'redecide']));
+    expect(api.cancelPo).toHaveBeenCalledWith('po7');
+    expect(api.redecide).toHaveBeenCalledWith('qr1', 'Prices went up');
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/procurement/quotes/qr1'));
+  });
+
+  it('goes straight to re-decision when no order exists yet (raise-order refused)', async () => {
+    const user = userEvent.setup();
+    api.redecide.mockResolvedValue(detailFixture({ status: 'AWAITING_DECISION' }));
+    renderWithProviders(<ExceedsAward requestId="qr1" />, { permissions: BUYER, withToast: true });
+    await user.click(screen.getByRole('button', { name: 'Send back to finance' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), 'Over');
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to finance' }));
+    await waitFor(() => expect(api.redecide).toHaveBeenCalledWith('qr1', 'Over'));
+    expect(api.cancelPo).not.toHaveBeenCalled();
   });
 });

@@ -241,6 +241,63 @@ describe('QuoteDecisionScreen', () => {
     expect(screen.queryByRole('button', { name: 'Ask for another quote' })).not.toBeInTheDocument();
   });
 
+  it('treats 409 AWARD_PENDING_APPROVAL as the approval gate and shows the chain', async () => {
+    const user = userEvent.setup();
+    api.award.mockRejectedValue(
+      new ApiError(409, 'Pending', 'AWARD_PENDING_APPROVAL', [], {
+        code: 'AWARD_PENDING_APPROVAL',
+        approvalInstanceId: 'inst-9',
+      }),
+    );
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '5000.00' })],
+      requiredQuoteCount: 1,
+      distinctSupplierCount: 1,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Choose Hodan' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('radio', { name: 'Finance pays supplier' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    expect(await screen.findByText('Approval chain inst-9')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('lists the award chain steps from the read model while pending', async () => {
+    render({
+      status: 'AWARD_PENDING_APPROVAL',
+      quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '5000.00' })],
+      proposal: { quoteId: 'k1', paymentPath: 'BUYER_CASH' },
+      approval: {
+        instanceId: 'inst-9',
+        status: 'PENDING',
+        currentStepOrder: 2,
+        currentStepRole: 'Finance Officer',
+        steps: [
+          { stepOrder: 1, roleRequired: 'Construction Director', approvedBy: { id: 'cd', name: 'Cabdi' }, approvedAt: '2026-10-07T08:00:00Z' },
+          { stepOrder: 2, roleRequired: 'Finance Officer', approvedBy: null, approvedAt: null },
+        ],
+      },
+    });
+    const chain = await screen.findByRole('list', { name: 'Approval chain' });
+    expect(within(chain).getByText('Approved by Cabdi')).toBeInTheDocument();
+    expect(within(chain).getByText('Waiting')).toBeInTheDocument();
+  });
+
+  it('still offers Choose while the server only lacks the typed totals (QUOTE_TOTALS_MISSING)', async () => {
+    const user = userEvent.setup();
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Hodan' })],
+      requiredQuoteCount: 1,
+      distinctSupplierCount: 1,
+      allowedActions: [
+        { action: 'ENTER_TOTAL', enabled: true, reasonCode: null },
+        { action: 'AWARD', enabled: false, reasonCode: 'QUOTE_TOTALS_MISSING' },
+      ],
+    });
+    await user.type(await screen.findByLabelText('Total for Hodan'), '90');
+    expect(screen.getByRole('button', { name: 'Choose Hodan' })).toBeInTheDocument();
+  });
+
   it('asks for another quote with a quick note', async () => {
     const user = userEvent.setup();
     api.ask.mockResolvedValue(detailFixture({ status: 'RETURNED' }));
