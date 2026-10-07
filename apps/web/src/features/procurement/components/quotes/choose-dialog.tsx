@@ -41,6 +41,7 @@ export function ChooseDialog({
   totalText,
   lowestText,
   isLowest,
+  canRegisterSupplier,
   busy,
   error,
   onChoose,
@@ -53,6 +54,8 @@ export function ChooseDialog({
   /** The lowest total, formatted — shown when this one is not it. */
   lowestText: string | null;
   isLowest: boolean;
+  /** Holds manage:payable — may register a new store as a supplier on award. */
+  canRegisterSupplier: boolean;
   busy: boolean;
   error: string | null;
   onChoose: (payload: AwardPayload) => void;
@@ -68,12 +71,17 @@ export function ChooseDialog({
   const [note, setNote] = useState('');
   const [payBy, setPayBy] = useState<QuotationPaymentPath | ''>('');
   const [accept, setAccept] = useState(false);
-  const [supplier, setSupplier] = useState<string>(NEW_SUPPLIER);
+  const matches = detail.supplierMatches.find((m) => m.quoteId === quote.id)?.suppliers ?? [];
+  const offerMatches = !quote.store.registered && matches.length > 0;
+  // A matching registered supplier is the default; registering a new one is an explicit choice.
+  const [supplier, setSupplier] = useState<string>(() => (offerMatches ? matches[0]!.id : NEW_SUPPLIER));
   const [tried, setTried] = useState(false);
 
   const short = detail.distinctSupplierCount < detail.requiredQuoteCount;
-  const matches = detail.supplierMatches.find((m) => m.quoteId === quote.id)?.suppliers ?? [];
-  const offerMatches = !quote.store.registered && matches.length > 0;
+  const registersNew = !quote.store.registered && supplier === NEW_SUPPLIER;
+  // The server refuses a new store without manage:payable (SUPPLIER_REGISTRATION_REQUIRES_PAYABLES);
+  // say so up front rather than after the tap. The server still decides.
+  const cannotRegister = registersNew && !canRegisterSupplier;
 
   const missing = {
     reason: !isLowest && !reason,
@@ -81,7 +89,7 @@ export function ChooseDialog({
     accept: short && !accept,
     payBy: !payBy,
   };
-  const invalid = Object.values(missing).some(Boolean);
+  const invalid = Object.values(missing).some(Boolean) || cannotRegister;
 
   return (
     <FormDialog
@@ -158,6 +166,13 @@ export function ChooseDialog({
           </Notice>
         ) : null}
 
+        {registersNew && !offerMatches ? (
+          <Notice tone={cannotRegister ? 'attention' : 'info'}>
+            {cannotRegister ? t('registerNeedsPayables') : t('registersNew', { name: quote.store.name })}
+          </Notice>
+        ) : null}
+        {offerMatches && cannotRegister ? <Notice tone="attention">{t('registerNeedsPayables')}</Notice> : null}
+
         {offerMatches ? (
           <ChoiceCards
             label={t('supplier')}
@@ -165,12 +180,12 @@ export function ChooseDialog({
             onChange={setSupplier}
             columns={1}
             options={[
-              { value: NEW_SUPPLIER, label: t('supplierNew', { name: quote.store.name }), hint: t('supplierNewHint') },
               ...matches.map((m) => ({
                 value: m.id,
                 label: t('supplierExisting', { name: m.name }),
                 hint: m.code ? t('supplierExistingHint', { code: m.code }) : undefined,
               })),
+              { value: NEW_SUPPLIER, label: t('supplierNew', { name: quote.store.name }), hint: t('supplierNewHint') },
             ]}
           />
         ) : null}
@@ -196,7 +211,7 @@ export function ChooseDialog({
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
-        <Button type="submit" className="min-h-11" loading={busy}>
+        <Button type="submit" className="min-h-11" loading={busy} disabled={cannotRegister}>
           {t('confirm')}
         </Button>
       </FormDialogFooter>

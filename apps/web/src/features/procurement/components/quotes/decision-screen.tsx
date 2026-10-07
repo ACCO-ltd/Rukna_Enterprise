@@ -229,6 +229,13 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const proposedQuote = detail.proposal ? detail.quotes.find((q) => q.id === detail.proposal?.quoteId) : null;
   const pendingInstance = detail.approval?.instanceId ?? detail.award?.approvalInstanceId ?? gatedInstance;
   const short = detail.distinctSupplierCount < detail.requiredQuoteCount;
+  // An unregistered store with no matching supplier can only be awarded by someone who may
+  // register it (manage:payable); say so on the card, before Choose. The server still decides.
+  const mayRegister = can('manage:payable');
+  const needsRegistrar = (quote: Quote) =>
+    !mayRegister &&
+    !quote.store.registered &&
+    !detail.supplierMatches.some((m) => m.quoteId === quote.id && m.suppliers.length > 0);
   // Every step approved: only the re-drive is left ("Approved — complete the choice").
   const chainApproved = detail.approval?.status === 'APPROVED';
   const roles = session.user?.roles ?? [];
@@ -464,7 +471,11 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
 
                 {deciding && mayAward && !barCode ? (
                   <div className="mt-3 space-y-2">
-                    {chooseEnabled ? (
+                    {needsRegistrar(quote) ? (
+                      <p className="rounded-control bg-warning-subtle px-3 py-2 text-center text-caption text-foreground">
+                        {t('chooseDialog.registerNeedsPayables')}
+                      </p>
+                    ) : chooseEnabled ? (
                       <Button
                         type="button"
                         size="lg"
@@ -513,6 +524,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
           totalText={money(valueOf(choosing))}
           lowestText={lowestValue ? money(lowestValue) : null}
           isLowest={lowest.has(choosing.id)}
+          canRegisterSupplier={mayRegister}
           busy={award.isPending || enterTotal.isPending}
           error={award.error ? (refusal(award.error) ?? null) : null}
           onChoose={(payload) => void runAward(payload)}

@@ -43,7 +43,8 @@ vi.mock('../../api/quotations-api', async (importOriginal) => ({
 
 import { QuoteDecisionScreen } from './decision-screen';
 
-const SELECTOR = ['view:procurement', 'award:quotation'];
+// A Finance Officer: may also register a new store as a supplier (manage:payable).
+const SELECTOR = ['view:procurement', 'award:quotation', 'manage:payable'];
 
 function pendingWith(approval: { status: string; currentStepOrder: number | null }): Partial<QuotationRequestDetail> {
   return {
@@ -355,6 +356,51 @@ describe('QuoteDecisionScreen', () => {
     expect(screen.getByText('1 photo')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Open photo full screen/ })).not.toBeInTheDocument();
+  });
+
+  it('defaults the supplier to a registered match; registering a new one is an explicit choice', async () => {
+    const user = userEvent.setup();
+    api.award.mockResolvedValue(detailFixture({ status: 'AWARDED' }));
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Xamar Steel', enteredTotal: '90.00' })],
+      requiredQuoteCount: 1,
+      distinctSupplierCount: 1,
+      supplierMatches: [{ quoteId: 'k1', suppliers: [{ id: 's9', code: 'SUP-9', name: 'Xamar Steel Ltd' }] }],
+    });
+    await user.click(await screen.findByRole('button', { name: 'Choose Xamar Steel' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('radio', { name: 'Xamar Steel Ltd' })).toHaveAttribute('aria-checked', 'true');
+    await user.click(within(dialog).getByRole('radio', { name: 'Buyer pays cash' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    await waitFor(() =>
+      expect(api.award).toHaveBeenCalledWith('qr1', { quoteId: 'k1', paymentPath: 'BUYER_CASH', awardSupplierId: 's9' }),
+    );
+  });
+
+  it('says a new store will be registered when nothing matches', async () => {
+    const user = userEvent.setup();
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Bakaara Market', enteredTotal: '90.00' })],
+      requiredQuoteCount: 1,
+      distinctSupplierCount: 1,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Choose Bakaara Market' }));
+    expect(
+      await screen.findByText('Choosing this store registers it as a new supplier: Bakaara Market'),
+    ).toBeInTheDocument();
+  });
+
+  it('tells a selector without manage:payable up front that a Finance Officer must register the store', async () => {
+    api.detail = detailFixture({
+      status: 'AWAITING_DECISION',
+      quotes: [quoteFixture({ id: 'k1', name: 'Bakaara Market', enteredTotal: '90.00' })],
+      requiredQuoteCount: 1,
+      distinctSupplierCount: 1,
+    });
+    api.get.mockImplementation(async () => api.detail);
+    renderWithProviders(<QuoteDecisionScreen id="qr1" />, { permissions: ['view:procurement', 'award:quotation'] });
+    expect(await screen.findByText('A Finance Officer must register this store first.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose Bakaara Market' })).not.toBeInTheDocument();
   });
 
   it('asks for another quote with a quick note', async () => {

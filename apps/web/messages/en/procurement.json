@@ -2133,7 +2133,9 @@
         "supplierExisting": "{name}",
         "supplierExistingHint": "Registered supplier {code}",
         "confirm": "Choose",
-        "routed": "Your choice needs approval. It is waiting for the next approver."
+        "routed": "Your choice needs approval. It is waiting for the next approver.",
+        "registersNew": "Choosing this store registers it as a new supplier: {name}",
+        "registerNeedsPayables": "A Finance Officer must register this store first."
       },
       "pending": {
         "title": "Waiting for approval",
