@@ -230,12 +230,15 @@ export {
   FormGroup,
   LineItemsEditor,
   RECORD_NAME_INPUT,
+  comboboxColumn,
   RecordCreateHeader,
 } from './components/form-layout';
 export type {
   FormActionBarProps,
   FormSaveState,
+  LineCellColumn,
   LineColumn,
+  LineComboboxColumn,
   LineItemsEditorProps,
   LineNote,
 } from './components/form-layout';

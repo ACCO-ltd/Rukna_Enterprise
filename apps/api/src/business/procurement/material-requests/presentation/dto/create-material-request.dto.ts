@@ -80,9 +80,18 @@ export class CreateMaterialRequestDto {
   @IsString()
   projectId?: string;
 
-  @ApiProperty({ example: '2026-08-07' })
+  /**
+   * Deprecated and ignored: the server stamps the request date (today, date-only) when the
+   * request is raised. Still accepted so older clients that send it keep working.
+   */
+  @ApiPropertyOptional({
+    example: '2026-08-07',
+    deprecated: true,
+    description: 'Ignored — the server sets the requested date to today.',
+  })
+  @IsOptional()
   @IsDateString()
-  requestedDate: string;
+  requestedDate?: string;
 
   @ApiPropertyOptional({ example: '2026-08-21' })
   @IsOptional()

@@ -19,7 +19,8 @@ import { PermissionsGuard } from '../../../../common/guards/permissions.guard.js
 
 /**
  * `GET /units-of-measure` is readable with `view:project` (the BOQ unit picker), while the
- * registry's management routes on `/procurement/uom` keep `manage:procurement-config`. Stands in
+ * registry's management routes on `/procurement/uom` need `view:procurement` to read and
+ * `manage:procurement-config` to write. Stands in
  * for the JWT with an `x-perms` header and runs the real global PermissionsGuard. No database.
  */
 @Injectable()

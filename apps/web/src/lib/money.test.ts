@@ -72,6 +72,17 @@ describe('parseMinorUnits', () => {
   it('accepts a trailing decimal point', () => {
     expect(parseMinorUnits('1234.', MONEY_SCALE)).toBe(123400);
   });
+
+  it('tolerates a bare number where a decimal string was expected', () => {
+    expect(parseMinorUnits(0, MONEY_SCALE)).toBe(0);
+    expect(parseMinorUnits(12.5, MONEY_SCALE)).toBe(1250);
+    expect(parseMinorUnits(-3, MONEY_SCALE)).toBe(-300);
+  });
+
+  it('rejects non-finite numbers', () => {
+    expect(parseMinorUnits(Number.NaN, MONEY_SCALE)).toBeNull();
+    expect(parseMinorUnits(Number.POSITIVE_INFINITY, MONEY_SCALE)).toBeNull();
+  });
 });
 
 describe('toMinorUnits', () => {

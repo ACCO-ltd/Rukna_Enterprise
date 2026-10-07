@@ -15,39 +15,31 @@
  * figures that are now correct, which costs more than it ever bought.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Coins, HandCoins, Receipt, TrendingUp } from 'lucide-react';
 import {
   Alert,
-  Card,
-  CardHeader,
-  CardTitle,
   cn,
-  RadioGroup,
+  Combobox,
+  EmptyState,
   RecordPanel,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
+  StatusText,
+  ViewSwitcher,
+  type StatusTone,
 } from '@erp/ui';
+
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { MetricStrip } from '@/components/widget/metric-strip';
+import { MONEY_SCALE, fromMinorUnits, sumMinorUnits } from '@/lib/money';
 
 import { formatDate, formatMoney } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 
 import { useProjectCommitmentSummary, useProjectCommitments } from '../hooks/use-procurement';
-import type { CommitmentStage } from '../types';
-import { ClassificationChips } from './classification-chips';
-import { CommitmentStageTag } from './procurement-badges';
-
-const STAGES: CommitmentStage[] = ['COMMITTED', 'ACCRUED', 'ACTUAL'];
+import type { CommitmentLedgerEntry, CommitmentStage } from '../types';
 
 // ─── Project cost position (§12.9) ────────────────────────────
 
@@ -193,182 +185,215 @@ export function ProjectCommitmentsCard({
 
 // ─── Ledger screen ────────────────────────────────────────────────────────────
 
+type StageView = 'ALL' | CommitmentStage;
+
+const STAGE_VIEWS: StageView[] = ['ALL', 'COMMITTED', 'ACCRUED', 'ACTUAL'];
+
+const STAGE_TEXT_TONE: Record<CommitmentStage, StatusTone> = {
+  COMMITTED: 'progress',
+  ACCRUED: 'attention',
+  ACTUAL: 'success',
+};
+
+/** A signed amount: negatives in parentheses, the accounting convention. */
+function signedMoney(value: string, currency: string | null): string {
+  const negative = value.trim().startsWith('-');
+  const formatted = formatMoney(negative ? value.trim().slice(1) : value, currency) ?? value;
+  return negative ? `(${formatted})` : formatted;
+}
+
+function documentHref(entry: CommitmentLedgerEntry): string | null {
+  if (entry.sourceDocumentType === 'GOODS_RECEIPT') return `/procurement/grn/${entry.sourceDocumentId}`;
+  if (entry.sourceDocumentType === 'SUPPLIER_BILL') return `/finance/accounting/bills/${entry.sourceDocumentId}`;
+  return entry.purchaseOrderId ? `/procurement/orders/${entry.purchaseOrderId}` : null;
+}
+
+/**
+ * The commitment ledger for one project: what is ordered, received and billed, and every entry
+ * behind those figures. Ordered/Received/Billed are the plain names for the COMMITTED/ACCRUED/
+ * ACTUAL stages. The whole screen is money, so a viewer without `view:commitment-ledger` sees
+ * one hidden state rather than a page of blanks.
+ */
 export function CommitmentLedger({ initialProjectId }: { initialProjectId?: string }) {
-  const t = useTranslations('procurement.commitments');
+  const t = useTranslations('procurement.commitments.ledger');
   const tc = useTranslations('procurement.common');
   const tSource = useTranslations('procurement.commitments.sourceType');
-  const locale = useLocale() as 'en' | 'ar';
+  const { can } = usePermissions();
+  const allowed = can(PROCUREMENT_PERMISSIONS.viewCommitments);
 
   const [projectId, setProjectId] = useState(initialProjectId ?? '');
-  const [stage, setStage] = useState<CommitmentStage | ''>('');
+  const [view, setView] = useState<StageView>('ALL');
 
   const projects = useProjects();
-  const entries = useProjectCommitments(projectId, stage ? { stage } : undefined);
-  const summary = useProjectCommitmentSummary(projectId, { enabled: Boolean(projectId) });
+  const ledgerProject = allowed ? projectId : '';
+  const entries = useProjectCommitments(ledgerProject, view === 'ALL' ? undefined : { stage: view });
+  const summary = useProjectCommitmentSummary(ledgerProject, { enabled: Boolean(ledgerProject) });
 
   const project = projects.data?.find((p) => p.id === projectId) ?? null;
+  const currency = project?.currency ?? 'USD';
+
+  const projectOptions = useMemo(
+    () => (projects.data ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.code })),
+    [projects.data],
+  );
+
+  if (!allowed) {
+    return <EmptyState title={t('hiddenTitle')} description={t('hiddenBody')} />;
+  }
+
+  const total =
+    summary.data !== undefined
+      ? fromMinorUnits(
+          sumMinorUnits([summary.data.committed, summary.data.accrued, summary.data.actual], MONEY_SCALE),
+          MONEY_SCALE,
+        )
+      : null;
+  const money = (value: string | null | undefined) =>
+    value === null || value === undefined ? null : formatMoney(value, currency);
+
+  const columns: GridColumn<CommitmentLedgerEntry>[] = [
+    {
+      key: 'date',
+      header: t('columns.date'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (entry) => entry.accountingDate,
+      render: (entry, ctx) => formatDate(entry.accountingDate, ctx.locale) ?? tc('notAvailable'),
+    },
+    {
+      key: 'document',
+      header: t('columns.document'),
+      sticky: true,
+      card: 'title',
+      plainValue: (entry) => entry.documentNumber ?? tSource(entry.sourceDocumentType),
+      render: (entry) => {
+        const href = documentHref(entry);
+        const label = entry.documentNumber ?? tSource(entry.sourceDocumentType);
+        return (
+          <span className="block min-w-0">
+            {href ? (
+              <Link href={href} className="font-medium text-brand-primary underline-offset-2 hover:underline">
+                {label}
+              </Link>
+            ) : (
+              <span className="font-medium text-foreground">{label}</span>
+            )}
+            {entry.supplierName ? (
+              <span className="block truncate text-caption text-muted-foreground">{entry.supplierName}</span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'chargedTo',
+      header: t('columns.chargedTo'),
+      card: 'subtitle',
+      plainValue: (entry) => (entry.boqNode ? `${entry.boqNode.code} ${entry.boqNode.name}` : t('overhead')),
+      render: (entry) =>
+        entry.boqNode ? (
+          <span className="block min-w-0">
+            <span className="font-mono text-caption text-muted-foreground">{entry.boqNode.code}</span>{' '}
+            <span className="text-foreground">{entry.boqNode.name}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{t('overhead')}</span>
+        ),
+    },
+    {
+      key: 'stage',
+      header: t('columns.stage'),
+      card: 'status',
+      render: (entry) => (
+        <span className="block">
+          <StatusText tone={STAGE_TEXT_TONE[entry.stage]}>{t(`stage.${entry.stage}`)}</StatusText>
+          {entry.stage === 'COMMITTED' &&
+          entry.sourceDocumentType === 'GOODS_RECEIPT' &&
+          entry.reportingAmount.trim().startsWith('-') ? (
+            <span className="block text-caption text-muted-foreground">{t('releasedOnReceipt')}</span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'amount',
+      header: t('columns.amount'),
+      numeric: true,
+      sortable: true,
+      card: 'amount',
+      plainValue: (entry) => Number(entry.reportingAmount),
+      render: (entry) => <span className="tabular-nums">{signedMoney(entry.reportingAmount, currency)}</span>,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* ── Project + stage filters ───────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-4">
-        <div className="min-w-56 flex-1">
-          <label
-            htmlFor="ledger-project"
-            className="mb-1 block text-xs font-medium text-muted-foreground"
-          >
-            {tc('project')}
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="w-full sm:w-80">
+          <label htmlFor="ledger-project" className="mb-1 block text-caption font-medium text-muted-foreground">
+            {t('project')}
           </label>
-          <Select
+          <Combobox
             id="ledger-project"
             value={projectId}
-            onChange={(value) => setProjectId(value)}
-          >
-            <option value="">{t('selectProject')}</option>
-            {(projects.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code} · {p.name}
-              </option>
-            ))}
-          </Select>
-          <p className="mt-1 text-xs text-muted-foreground">{t('selectProjectHint')}</p>
+            onChange={setProjectId}
+            options={projectOptions}
+            placeholder={t('projectPlaceholder')}
+            searchPlaceholder={t('projectSearch')}
+            emptyLabel={t('projectEmpty')}
+            loading={projects.isPending}
+          />
         </div>
+        {projectId ? (
+          <ViewSwitcher
+            aria-label={t('stageLabel')}
+            appearance="segmented"
+            value={view}
+            onValueChange={(next) => setView(next as StageView)}
+            items={STAGE_VIEWS.map((value) => ({ value, label: t(`view.${value}`) }))}
+          />
+        ) : null}
       </div>
 
-      {/* ── Stage filter ──────────────────────────────────────────────────── */}
-      <RadioGroup<CommitmentStage | ''>
-        label={t('stage')}
-        name="stage"
-        value={stage}
-        onChange={setStage}
-        options={[
-          { value: '', label: tc('all') },
-          ...STAGES.map((s) => ({
-            value: s,
-            label: t(s.toLowerCase() as 'committed' | 'accrued' | 'actual'),
-          })),
-        ]}
-      />
-
-      {/* ── No project selected ────────────────────────────────────────────── */}
       {projectId === '' ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center shadow-e2">
-          <p className="text-sm font-medium text-foreground">{t('selectProject')}</p>
-          <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-            {t('selectProjectHint')}
-          </p>
-        </div>
+        <EmptyState title={t('noProjectTitle')} description={t('noProjectBody')} />
       ) : (
         <>
-          {/* ── Summary tiles (when project is selected) ─────────────────── */}
-          {summary.data ? (
-            <dl className="grid gap-px overflow-hidden rounded-panel border border-border bg-border shadow-e2 sm:grid-cols-3">
-              {(
-                [
-                  ['committed', summary.data.committed, t('committedHint')],
-                  ['accrued', summary.data.accrued, t('accruedHint')],
-                  ['actual', summary.data.actual, t('actualHint')],
-                ] as const
-              ).map(([key, value, hint]) => (
-                <div key={key} className="bg-surface px-5 py-4">
-                  <dt className="text-xs font-medium text-muted-foreground" title={hint}>
-                    {t(key)}
-                  </dt>
-                  <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-                    {formatMoney(value, project?.currency ?? null, locale) ?? tc('notAvailable')}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : summary.isPending ? (
-            <div className="grid gap-px overflow-hidden rounded-panel border border-border bg-border sm:grid-cols-3">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="bg-surface px-5 py-4" aria-hidden="true">
-                  <div className="h-3 w-20 animate-pulse rounded bg-muted" />
-                  <div className="mt-2 h-4 w-24 animate-pulse rounded bg-muted" />
-                </div>
-              ))}
-            </div>
-          ) : null}
+          {summary.isError ? (
+            <Alert variant="error" messages={[tc('loadFailed')]} />
+          ) : (
+            <MetricStrip
+              aria-label={t('summaryLabel')}
+              columns={4}
+              metrics={[
+                { label: t('view.COMMITTED'), value: money(summary.data?.committed), sublabel: t('orderedHint') },
+                { label: t('view.ACCRUED'), value: money(summary.data?.accrued), sublabel: t('receivedHint') },
+                { label: t('view.ACTUAL'), value: money(summary.data?.actual), sublabel: t('billedHint') },
+                { label: t('total'), value: money(total), sublabel: t('totalHint') },
+              ]}
+            />
+          )}
 
-          {/* ── Error ────────────────────────────────────────────────────── */}
-          {entries.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
-          {/* ── Ledger table ─────────────────────────────────────────────── */}
-          <Card className="gap-0 py-0">
-            <CardHeader className="border-b border-border py-4">
-              <CardTitle className="text-h3">{t('title')}</CardTitle>
-            </CardHeader>
-
-            <TableScroll aria-label={t('title')}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{tc('date')}</TableHead>
-                    <TableHead>{t('eventType')}</TableHead>
-                    <TableHead>{t('stage')}</TableHead>
-                    <TableHead className="text-end">{t('reportingAmount')}</TableHead>
-                    <TableHead>{t('sourceDoc')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(entries.data ?? []).length === 0 ? (
-                    <TableEmpty colSpan={5}>{t('empty')}</TableEmpty>
-                  ) : (
-                    (entries.data ?? []).map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="text-sm text-muted-foreground">
-                          <bdi>
-                            {formatDate(entry.accountingDate, locale) ?? tc('notAvailable')}
-                          </bdi>
-                        </TableCell>
-                        <TableCell className="text-sm">{entry.eventType}</TableCell>
-                        <TableCell>
-                          <CommitmentStageTag stage={entry.stage} />
-                        </TableCell>
-                        <TableCell className="text-end">
-                          <span className="block font-medium tabular-nums">
-                            {formatMoney(entry.reportingAmount, project?.currency ?? null, locale)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {entry.sourceDocumentType === 'PURCHASE_ORDER_REVISION' &&
-                          entry.purchaseOrderId ? (
-                            <Link
-                              href={`/procurement/orders/${entry.purchaseOrderId}`}
-                              className="font-medium text-brand-primary underline-offset-2 hover:underline"
-                            >
-                              {tSource(entry.sourceDocumentType)}
-                            </Link>
-                          ) : entry.sourceDocumentType === 'GOODS_RECEIPT' ? (
-                            <Link
-                              href={`/procurement/grn/${entry.sourceDocumentId}`}
-                              className="font-medium text-brand-primary underline-offset-2 hover:underline"
-                            >
-                              {tSource(entry.sourceDocumentType)}
-                            </Link>
-                          ) : (
-                            <span className="text-muted-foreground">
-                              {tSource(entry.sourceDocumentType)}
-                            </span>
-                          )}
-                          {/* Read-only cost-target chip (D7). A commitment entry carries a
-                              boqNodeId when it is attributed to a cost target; only the id is
-                              sent, so the chip states a target is set without naming it. The
-                              spendCategoryId is likewise id-only, so no spend-category chip is
-                              faked here. */}
-                          <ClassificationChips
-                            className="mt-1.5 flex flex-wrap items-center gap-1.5"
-                            hasCostTarget={Boolean(entry.boqNodeId)}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableScroll>
-          </Card>
+          <PlatformDataGrid
+            columns={columns}
+            data={entries.data ?? []}
+            rowKey={(entry) => entry.id}
+            label={t('entries')}
+            isLoading={entries.isPending}
+            isError={entries.isError}
+            errorMessage={tc('loadFailed')}
+            onRetry={() => void entries.refetch()}
+            toolbar={false}
+            pagination={{ defaultPageSize: 25 }}
+            defaultSort={{ key: 'date', direction: 'desc' }}
+            emptyState={
+              view === 'ALL' ? (
+                <EmptyState variant="inline" title={t('emptyTitle')} description={t('emptyBody')} />
+              ) : (
+                <EmptyState variant="inline" title={t('stageEmptyTitle')} description={t('stageEmptyBody')} />
+              )
+            }
+          />
         </>
       )}
     </div>

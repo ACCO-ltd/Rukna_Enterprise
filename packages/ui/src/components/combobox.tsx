@@ -79,8 +79,17 @@ export interface ComboboxProps {
   searchPlaceholder: string;
   /** Shown in place of the list when the filter matches nothing. */
   emptyLabel: string;
-  /** Pinned last row — "Create new …". Closes the panel before running. */
-  footerAction?: { label: string; onSelect: () => void };
+  /**
+   * Pinned last row — "Create new …". Closes the panel before running. `onSelect` receives the
+   * text typed in the filter, and `label` may be a function of it — 'Add "rebar" as a one-off
+   * item' — so the escape hatch can carry what the user was looking for.
+   */
+  footerAction?: { label: string | ((query: string) => string); onSelect: (query: string) => void };
+  /**
+   * Trigger text when `value` matches no option — a free-text entry the caller holds outside
+   * the option list (a one-off line item). Ignored when an option is selected.
+   */
+  fallbackLabel?: string;
   /**
    * Shows a loading row instead of the list — for a server-driven search where `options`
    * hasn't caught up with what was just typed yet. The filter input stays interactive.
@@ -119,6 +128,7 @@ export function Combobox({
   searchPlaceholder,
   emptyLabel,
   footerAction,
+  fallbackLabel,
   loading,
   loadingLabel,
   onQueryChange,
@@ -190,9 +200,10 @@ export function Combobox({
   const commit = (index: number) => {
     if (index === footerIndex && footerAction) {
       // Closing first matters: the action opens a dialog, and two layers competing for focus
-      // is how a dialog ends up behind a listbox.
+      // is how a dialog ends up behind a listbox. The query is read before close clears it.
+      const typed = query.trim();
       close(false);
-      footerAction.onSelect();
+      footerAction.onSelect(typed);
       return;
     }
     const option = results[index];
@@ -253,8 +264,17 @@ export function Combobox({
             className,
           )}
         >
-          <span className={cn('min-w-0 truncate', selected ? 'text-foreground' : 'text-muted-foreground')}>
-            {selected ? (renderValue ? renderValue(selected) : selected.label) : placeholder}
+          <span
+            className={cn(
+              'min-w-0 truncate',
+              selected || fallbackLabel ? 'text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {selected
+              ? renderValue
+                ? renderValue(selected)
+                : selected.label
+              : fallbackLabel || placeholder}
           </span>
           <CaretGlyph open={open} />
         </button>
@@ -398,7 +418,9 @@ export function Combobox({
                   )}
                 >
                   <PlusGlyph />
-                  {footerAction.label}
+                  {typeof footerAction.label === 'function'
+                    ? footerAction.label(query.trim())
+                    : footerAction.label}
                 </button>
               </div>
             ) : null}

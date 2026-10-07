@@ -54,13 +54,19 @@ export class BuyerAdvanceController {
   }
 
   @Get()
-  @ApiQuery({ name: 'purchaseOrderId', required: true, description: 'Filter advances by purchase order' })
-  @ApiOperation({ summary: 'List buyer advances for a purchase order' })
+  @ApiQuery({ name: 'purchaseOrderId', required: false, description: 'Filter advances by purchase order; omit for org-wide' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Org-wide cap (default 100, max 500)' })
+  @ApiOperation({ summary: 'List buyer advances (one PO, or org-wide newest first) with PO number and supplier' })
   findByPurchaseOrder(
     @CurrentUser() identity: RequestIdentity,
-    @Query('purchaseOrderId') purchaseOrderId: string,
+    @Query('purchaseOrderId') purchaseOrderId?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.buyerAdvanceService.findByPurchaseOrder(identity, purchaseOrderId);
+    const n = limit !== undefined ? Number.parseInt(limit, 10) : undefined;
+    return this.buyerAdvanceService.list(identity, {
+      purchaseOrderId: purchaseOrderId || undefined,
+      limit: n !== undefined && Number.isFinite(n) ? n : undefined,
+    });
   }
 
   @Post(':id/post')

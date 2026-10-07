@@ -117,6 +117,9 @@ export function SetupScreen({
 /** The create dialog's title, from `SetupScreen` to the `CreateForm` its render prop returns. */
 const CreateDialogTitle = createContext<string | null>(null);
 
+/** Names the create dialog a list opens — the same title `SetupScreen` supplies. */
+export const CreateDialogTitleProvider = CreateDialogTitle.Provider;
+
 interface CreateFormProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isPending: boolean;

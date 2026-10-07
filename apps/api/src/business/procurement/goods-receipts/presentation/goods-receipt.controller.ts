@@ -1,13 +1,15 @@
 import {
   Controller, Get, Post, Body, Param, Query,
-  HttpCode, HttpStatus, UseGuards,
+  HttpCode, HttpStatus, UseGuards, ParseEnumPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
+import { GrnStatus } from '@prisma/client';
 import { GoodsReceiptService } from '../application/goods-receipt.service.js';
+import { GoodsReceiptListService } from '../application/goods-receipt-list.service.js';
 import { CreateGoodsReceiptDto } from './dto/create-goods-receipt.dto.js';
 import { AttachGrnFileDto } from './dto/attach-grn-file.dto.js';
 
@@ -17,16 +19,23 @@ import { AttachGrnFileDto } from './dto/attach-grn-file.dto.js';
 @RequirePermissions(PERMISSIONS.procurementView)
 @Controller('procurement/goods-receipts')
 export class GoodsReceiptController {
-  constructor(private readonly service: GoodsReceiptService) {}
+  constructor(
+    private readonly service: GoodsReceiptService,
+    private readonly listService: GoodsReceiptListService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List goods receipts' })
   @ApiQuery({ name: 'purchaseOrderId', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'POSTED', 'CANCELLED', 'EXCEPTION_PENDING'] })
+  @ApiQuery({ name: 'search', required: false, description: 'GRN number, delivery note, PO number or supplier' })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('purchaseOrderId') purchaseOrderId?: string,
+    @Query('status', new ParseEnumPipe(GrnStatus, { optional: true })) status?: GrnStatus,
+    @Query('search') search?: string,
   ) {
-    return this.service.findAll(identity, { purchaseOrderId });
+    return this.listService.list(identity, { purchaseOrderId, status, search });
   }
 
   @Post()

@@ -45,6 +45,9 @@ export interface CreateGrnData {
 }
 
 const GRN_INCLUDE = {
+  // The detail names the order and supplier it was received against, not just their ids.
+  purchaseOrder: { select: { id: true, poNumber: true } },
+  supplier: { select: { id: true, name: true } },
   lines: {
     include: {
       material: true,

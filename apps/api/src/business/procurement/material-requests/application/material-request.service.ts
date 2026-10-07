@@ -4,16 +4,22 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { MaterialRequestStatus, MaterialRequestScope, ProcurementLineType } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
+import { canSeeProcurementMoney, moneyOrNull } from '../../shared/procurement-money.js';
 import { MaterialRequestRepository } from '../infrastructure/material-request.repository.js';
 import { MaterialRepository } from '../../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
+import {
+  CommandGovernanceService,
+  throwIfGated,
+} from '../../../../platform/workflows/application/command-governance.service.js';
 
 export interface CreateMrLineDto {
   lineType: ProcurementLineType;
@@ -34,7 +40,8 @@ export interface CreateMrLineDto {
 export interface CreateMaterialRequestDto {
   requestScope: MaterialRequestScope;
   projectId?: string;
-  requestedDate: string;
+  /** Ignored — the server stamps the request date (see todayDateOnly). */
+  requestedDate?: string;
   requiredByDate?: string;
   title?: string;
   currencyCode?: string;
@@ -62,17 +69,70 @@ export class MaterialRequestService {
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly sod: SegregationOfDutiesService,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
-  async findAll(identity: RequestIdentity, filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope }) {
+  /**
+   * `GET /procurement/material-requests`. Backward compatible: each row is the MR with its lines
+   * as before, plus `project`, `requester`, `estimatedTotal` and `moneyVisible`.
+   * `requestedFor` = a project id, or 'overhead' for organization-scoped requests; it combines with
+   * the older `projectId` / `scope` params (which keep working).
+   */
+  async findAll(
+    identity: RequestIdentity,
+    filters?: {
+      status?: MaterialRequestStatus;
+      projectId?: string;
+      scope?: MaterialRequestScope;
+      requestedFor?: string;
+      search?: string;
+    },
+  ) {
     const prisma = this.tenancy.getClient();
-    if (filters?.projectId) await this.projectAccess.assertMember(identity, filters.projectId);
-    return this.repo.findAll(
+    const orgId = identity.activeOrganizationId;
+    const { requestedFor, search, ...rest } = filters ?? {};
+    const effective: {
+      status?: MaterialRequestStatus;
+      projectId?: string;
+      scope?: MaterialRequestScope;
+      search?: string;
+      searchProjectIds?: string[];
+    } = { ...rest };
+    if (requestedFor === 'overhead') effective.scope = 'ORGANIZATION';
+    else if (requestedFor) effective.projectId = requestedFor;
+    if (effective.projectId) await this.projectAccess.assertMember(identity, effective.projectId);
+    if (search?.trim()) {
+      effective.search = search;
+      effective.searchProjectIds = await this.repo.findProjectIdsMatching(prisma, orgId, search.trim());
+    }
+
+    const rows = await this.repo.findAll(
       prisma,
-      identity.activeOrganizationId,
-      filters,
+      orgId,
+      effective,
       await this.projectAccess.accessibleProjectIds(identity),
     );
+
+    const moneyVisible = canSeeProcurementMoney(identity);
+    const [name, projects] = await Promise.all([
+      loadActorNames(prisma, rows.map((r) => r.requestedBy)),
+      this.repo.findProjectLabels(
+        prisma,
+        orgId,
+        [...new Set(rows.map((r) => r.projectId).filter((v): v is string => Boolean(v)))],
+      ),
+    ]);
+    const projectById = new Map<string, { id: string; code: string; name: string }>(
+      projects.map((p) => [p.id, p] as const),
+    );
+
+    return rows.map((mr) => ({
+      ...mr,
+      project: mr.projectId ? (projectById.get(mr.projectId) ?? null) : null,
+      requester: { id: mr.requestedBy, name: name(mr.requestedBy) },
+      estimatedTotal: moneyOrNull(moneyVisible, estimatedTotal(mr.lines)),
+      moneyVisible,
+    }));
   }
 
   async findById(identity: RequestIdentity, id: string) {
@@ -172,7 +232,8 @@ export class MaterialRequestService {
         requestScope: dto.requestScope,
         projectId: dto.projectId,
         requestedBy: identity.userId,
-        requestedDate: new Date(dto.requestedDate),
+        // Server-set: the day the request is raised, never a client-supplied date.
+        requestedDate: todayDateOnly(),
         requiredByDate: dto.requiredByDate ? new Date(dto.requiredByDate) : undefined,
         title: dto.title,
         currencyCode: dto.currencyCode,
@@ -198,24 +259,57 @@ export class MaterialRequestService {
     });
   }
 
+  /**
+   * DRAFT → SUBMITTED, through the governance seam (ADR-011). The policy registry routes
+   * MATERIAL_REQUEST on 'DRAFT:SUBMITTED', so that is the gated transition; the estimated value
+   * (sum of requested qty × estimated unit price) selects the amount band (ADR-022 CONST-DOA-001).
+   * No active binding → submits directly (backward-compatible). A binding throws 409 with
+   * details.approvalInstanceId; once approved, submitting again re-drives and consumes it.
+   */
   async submit(identity: RequestIdentity, id: string) {
-    return this.transition(identity, id, 'SUBMITTED', 'mr.submit');
+    const mr = await this.loadForTransition(identity, id, 'SUBMITTED');
+    const governance = await this.commandGovernance.evaluateStateTransition(
+      identity,
+      'MaterialRequest',
+      'DRAFT',
+      'SUBMITTED',
+      mr.id,
+      estimatedTotal(mr.lines),
+    );
+    throwIfGated(governance.gate, 'Material request submission requires workflow approval.');
+    return this.writeTransition(identity, mr, 'SUBMITTED', 'mr.submit', {
+      approvalInstanceId: governance.consumedApproval?.instanceId,
+    });
   }
 
+  /** SUBMITTED → APPROVED by a person holding approve:material-request; never the requester. */
   async approve(identity: RequestIdentity, id: string) {
     return this.transition(identity, id, 'APPROVED', 'mr.approve');
   }
 
-  async cancel(identity: RequestIdentity, id: string) {
-    return this.transition(identity, id, 'CANCELLED', 'mr.cancel');
+  /**
+   * SUBMITTED → DRAFT: the approver sends the request back to the requester with a reason, who
+   * can correct and resubmit it. The reason is kept on the audit trail.
+   */
+  async reject(identity: RequestIdentity, id: string, reason: string) {
+    if (!reason?.trim()) {
+      throw new BadRequestException('A reason is required to reject a material request');
+    }
+    const mr = await this.loadForTransition(identity, id, 'DRAFT');
+    if (mr.status !== 'SUBMITTED') {
+      throw new ConflictException(`Cannot reject a material request in ${mr.status}`);
+    }
+    return this.writeTransition(identity, mr, 'DRAFT', 'mr.reject', { reason: reason.trim() });
   }
 
-  private async transition(
-    identity: RequestIdentity,
-    id: string,
-    to: MaterialRequestStatus,
-    sourceCommand: string,
-  ) {
+  async cancel(identity: RequestIdentity, id: string) {
+    const updated = await this.transition(identity, id, 'CANCELLED', 'mr.cancel');
+    // A cancelled request will never be submitted: close any approval still open for it.
+    await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.MATERIAL_REQUEST, id);
+    return updated;
+  }
+
+  private async loadForTransition(identity: RequestIdentity, id: string, to: MaterialRequestStatus) {
     const prisma = this.tenancy.getClient();
     const mr = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!mr) throw new NotFoundException(`Material request ${id} not found`);
@@ -225,6 +319,16 @@ export class MaterialRequestService {
     if (!allowed.includes(to)) {
       throw new ConflictException(`Cannot transition MR from ${mr.status} to ${to}`);
     }
+    return mr;
+  }
+
+  private async transition(
+    identity: RequestIdentity,
+    id: string,
+    to: MaterialRequestStatus,
+    sourceCommand: string,
+  ) {
+    const mr = await this.loadForTransition(identity, id, to);
 
     // ADR-022 CONST-DOA-003: a requester cannot approve their own material request.
     if (to === 'APPROVED') {
@@ -236,16 +340,39 @@ export class MaterialRequestService {
       });
     }
 
+    return this.writeTransition(identity, mr, to, sourceCommand);
+  }
+
+  private async writeTransition(
+    identity: RequestIdentity,
+    mr: { id: string; mrNumber: string; status: MaterialRequestStatus },
+    to: MaterialRequestStatus,
+    sourceCommand: string,
+    extra: { approvalInstanceId?: string; reason?: string } = {},
+  ) {
+    const prisma = this.tenancy.getClient();
+    const id = mr.id;
     const fromStatus = mr.status;
 
     return prisma.$transaction(async (tx) => {
-      const updated = await this.repo.updateStatus(tx, identity.activeOrganizationId, id, fromStatus, to);
-      // Someone else moved the request since it was read (e.g. cancelled while being approved).
+      // Compare-and-set on the status read above, so a concurrent transition (e.g. cancelled
+      // while being approved) cannot be overwritten.
+      const updated = await this.repo.updateStatus(
+        tx,
+        identity.activeOrganizationId,
+        id,
+        fromStatus,
+        to,
+        extra.approvalInstanceId ? { approvalInstanceId: extra.approvalInstanceId } : undefined,
+      );
       if (!updated) {
         throw new ConflictException(
           `Material request ${mr.mrNumber} has changed since you opened it — reload and try again.`,
         );
       }
+      // Approval approves each line for what was requested, in the same transaction, so an
+      // APPROVED request never carries a null approved quantity.
+      const result = to === 'APPROVED' ? await this.repo.approveRequestedQuantities(tx, id) : updated;
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
@@ -255,12 +382,40 @@ export class MaterialRequestService {
         resourceId: id,
         sourceCommand,
         eventType: `MR_${to}`,
-        idempotencyKey: `mr-transition-${id}-${fromStatus}-to-${to}`,
+        // A request can be returned and resubmitted, so the same from→to pair can recur; the
+        // row's new updatedAt makes the key unique per occurrence (and stable for a replay).
+        idempotencyKey: `mr-transition-${id}-${fromStatus}-to-${to}-${updated.updatedAt.getTime()}`,
         before: { status: fromStatus },
-        after: { status: to },
+        after: {
+          status: to,
+          ...(extra.approvalInstanceId ? { approvalInstanceId: extra.approvalInstanceId } : {}),
+          ...(extra.reason ? { reason: extra.reason } : {}),
+        },
       });
 
-      return updated;
+      return result;
     });
   }
+}
+
+/**
+ * The request's estimated value: sum of requested quantity × estimated unit price over the lines
+ * that carry an estimate. Null when no line is priced — an unpriced request has no value to band
+ * on, which is not the same as a zero-value one (ADR-022 CONST-DOA-001).
+ */
+export function estimatedTotal(
+  lines: Array<{ requestedQuantity: Decimal.Value; estimatedUnitPrice: Decimal.Value | null }>,
+): Decimal | null {
+  const priced = lines.filter((l) => l.estimatedUnitPrice !== null && l.estimatedUnitPrice !== undefined);
+  if (priced.length === 0) return null;
+  return priced.reduce(
+    (sum, l) =>
+      sum.add(new Decimal(l.requestedQuantity).mul(new Decimal(l.estimatedUnitPrice as Decimal.Value))),
+    new Decimal(0),
+  );
+}
+
+/** Today's date (server clock, UTC calendar day) at midnight — the shape a @db.Date column holds. */
+export function todayDateOnly(now: Date = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }

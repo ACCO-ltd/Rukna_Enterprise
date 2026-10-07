@@ -1,16 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
   EmptyState,
-  FilterBar,
-  FilterField,
-  Select,
   SectionHeader,
+  type FilterValues,
+  type ListFilterField,
   Table,
   TableBody,
   TableCell,
@@ -27,7 +26,7 @@ import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-gr
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useGetBuyerAdvance, useListBuyerAdvances, usePostBuyerAdvance } from '../hooks/use-procurement';
+import { useAllBuyerAdvances, useGetBuyerAdvance, usePostBuyerAdvance } from '../hooks/use-procurement';
 import type { BuyerAdvance, BillPostingStatus } from '../types';
 import { PostingStatusBadge } from './procurement-badges';
 
@@ -39,55 +38,70 @@ export function BuyerAdvancesList() {
   const t = useTranslations('procurement.advances');
   const tc = useTranslations('procurement.common');
   const tPosting = useTranslations('procurement.postingStatus');
-  const locale = useLocale() as 'en';
 
-  // The advances list requires a purchaseOrderId, but on the standalone advances
-  // page we show all advances. The API requires purchaseOrderId so we use the
-  // per-PO list when coming from a PO. For the standalone nav entry the user
-  // can navigate directly to advances from the PO settlement tab.
-  // This list is intentionally read-only — advances are created from the PO.
+  // Org-wide, newest first (GET /buyer-advances without a PO). Advances are created from a
+  // purchase order's settlement tab, so this page has no primary of its own.
+  const query = useAllBuyerAdvances();
+  const [filters, setFilters] = useState<FilterValues>({});
 
-  const [postingFilter, setPostingFilter] = useState<BillPostingStatus | ''>('');
-  const [purchaseOrderId] = useState<string | undefined>(undefined);
-
-  // The API requires purchaseOrderId; on the standalone page we can't list all
-  // advances. Disable the query and show the empty state with a hint.
-  const query = useListBuyerAdvances(purchaseOrderId ?? '');
-  const enabled = Boolean(purchaseOrderId);
-
-  const data = enabled ? (query.data ?? []) : [];
-  const visible = postingFilter
-    ? data.filter((a) => a.postingStatus === postingFilter)
-    : data;
+  const data = useMemo(() => query.data ?? [], [query.data]);
+  const visible = useMemo(
+    () => (filters.posting ? data.filter((a) => a.postingStatus === filters.posting) : data),
+    [data, filters],
+  );
 
   const columns: GridColumn<BuyerAdvance>[] = [
     {
-      key: 'po',
-      header: t('colPo'),
-      render: (adv) => (
-        <Link href={`/procurement/orders/${adv.purchaseOrderId}`} className="font-mono text-xs hover:underline">
-          {adv.purchaseOrderId.slice(0, 8)}…
-        </Link>
+      key: 'advancedAt',
+      header: t('colAdvance'),
+      sticky: true,
+      sortable: true,
+      card: 'title',
+      plainValue: (adv) => adv.advancedAt,
+      // The grid wraps this cell in the row's one link, to the advance.
+      render: (adv, ctx) => (
+        <span className="block min-w-0">
+          <span className="block font-semibold text-brand-primary">{formatDate(adv.advancedAt, ctx.locale)}</span>
+          {adv.reference ? (
+            <span className="block truncate text-caption font-normal text-muted-foreground">{adv.reference}</span>
+          ) : null}
+        </span>
       ),
     },
     {
-      key: 'advancedAt',
-      header: t('colAdvancedAt'),
+      key: 'po',
+      header: t('colPo'),
       sortable: true,
-      plainValue: (adv) => adv.advancedAt,
-      render: (adv, ctx) => (
-        <span className="text-muted-foreground">{formatDate(adv.advancedAt, ctx.locale)}</span>
-      ),
+      card: 'subtitle',
+      plainValue: (adv) => adv.purchaseOrder?.poNumber ?? '',
+      render: (adv) =>
+        adv.purchaseOrder ? (
+          <Link
+            href={`/procurement/orders/${adv.purchaseOrder.id}`}
+            className="font-medium text-brand-primary underline-offset-2 hover:underline"
+          >
+            {adv.purchaseOrder.poNumber}
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">{tc('notAvailable')}</span>
+        ),
+    },
+    {
+      key: 'supplier',
+      header: t('colSupplier'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (adv) => adv.supplier?.name ?? '',
+      render: (adv) => adv.supplier?.name ?? <span className="text-muted-foreground">{tc('notAvailable')}</span>,
     },
     {
       key: 'amount',
       header: t('colAmount'),
       numeric: true,
       sortable: true,
+      card: 'amount',
       plainValue: (adv) => Number(adv.amount),
-      render: (adv, ctx) => (
-        <bdi className="tabular-nums">{formatMoney(adv.amount, adv.currencyCode, ctx.locale)}</bdi>
-      ),
+      render: (adv, ctx) => <bdi className="tabular-nums">{formatMoney(adv.amount, adv.currencyCode, ctx.locale)}</bdi>,
     },
     {
       key: 'outstanding',
@@ -102,66 +116,45 @@ export function BuyerAdvancesList() {
     {
       key: 'posting',
       header: t('colPosting'),
+      card: 'status',
       render: (adv) => <PostingStatusBadge status={adv.postingStatus} />,
     },
   ];
 
-  if (!enabled) {
-    return (
-      <div className="space-y-6">
-        <EmptyState
-          icon={<Wallet size={28} aria-hidden="true" />}
-          title={t('empty')}
-          description={t('emptyDesc')}
-        />
-      </div>
-    );
-  }
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'posting',
+      type: 'select',
+      label: t('filterByPostingStatus'),
+      options: POSTING_STATUSES.map((s) => ({ value: s, label: tPosting(s) })),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <PlatformDataGrid
-        columns={columns}
-        data={visible}
-        rowKey={(adv) => adv.id}
-        label={t('title')}
-        isLoading={query.isPending && enabled}
-        isError={query.isError}
-        errorMessage={tc('loadFailed')}
-        rowHref={(adv) => `/procurement/advances/${adv.id}`}
-        emptyState={
-          data.length === 0 ? (
-            <EmptyState
-              icon={<Wallet size={28} aria-hidden="true" />}
-              title={t('empty')}
-              description={t('emptyDesc')}
-            />
-          ) : undefined
-        }
-        noMatchMessage={t('noMatches')}
-        resultLabel={(count) => t('countLabel', { count })}
-        pagination={{ defaultPageSize: 25 }}
-        toolbarFilters={
-          <FilterBar>
-            <FilterField id="adv-posting-status" label={t('filterByPostingStatus')}>
-              <Select
-                id="adv-posting-status"
-                value={postingFilter}
-                onChange={(value) => setPostingFilter(value as BillPostingStatus | '')}
-              >
-                <option value="">{t('allPostingStatuses')}</option>
-                {POSTING_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {tPosting(s)}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-          </FilterBar>
-        }
-        onClearFilters={postingFilter !== '' ? () => setPostingFilter('') : undefined}
-      />
-    </div>
+    <PlatformDataGrid
+      columns={columns}
+      data={visible}
+      rowKey={(adv) => adv.id}
+      label={t('title')}
+      isLoading={query.isPending}
+      isError={query.isError}
+      errorMessage={tc('loadFailed')}
+      onRetry={() => void query.refetch()}
+      rowHref={(adv) => `/procurement/advances/${adv.id}`}
+      emptyState={
+        data.length === 0 ? (
+          <EmptyState icon={<Wallet size={28} aria-hidden="true" />} title={t('empty')} description={t('emptyDesc')} />
+        ) : undefined
+      }
+      searchPlaceholder={t('searchPlaceholder')}
+      noMatchMessage={t('noMatches')}
+      resultLabel={(count) => t('countLabel', { count })}
+      pagination={{ defaultPageSize: 25 }}
+      defaultSort={{ key: 'advancedAt', direction: 'desc' }}
+      filters={filterFields}
+      filterValues={filters}
+      onFilterValuesChange={setFilters}
+    />
   );
 }
 
@@ -336,7 +329,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 truncate text-sm text-foreground">{value}</dd>
     </div>
   );

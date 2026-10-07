@@ -162,14 +162,16 @@ export function ModuleTabs({ tabs, navLabel }: ModuleTabsProps) {
           </DropdownMenu>
         ) : null}
 
-        {/* Off-screen ruler: every tab at its natural width, so the fit is measured, not guessed. */}
+        {/* Off-screen ruler: every tab at its natural width, so the fit is measured, not guessed.
+            Zero-size and clipped so the ruler never widens the page (each child's offsetWidth is
+            unaffected); otherwise a long tab set scrolls the whole page sideways at tablet widths. */}
         <div
           ref={measureRef}
           aria-hidden="true"
-          className="pointer-events-none invisible absolute start-0 top-0 flex"
+          className="pointer-events-none invisible absolute start-0 top-0 flex h-0 w-0 overflow-hidden"
         >
           {tabs.map((tab) => (
-            <span key={tab.key} className={cn(TAB_CLASS, TAB_IDLE)}>
+            <span key={tab.key} className={cn(TAB_CLASS, TAB_IDLE, 'shrink-0')}>
               {label(tab.labelKey)}
               {tab.kind === 'menu' ? <ChevronDown size={14} /> : null}
             </span>

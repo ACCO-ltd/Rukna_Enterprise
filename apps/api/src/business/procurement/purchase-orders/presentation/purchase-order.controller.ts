@@ -18,6 +18,8 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
 import { SettlementQueryService } from '../application/settlement-query.service.js';
+import { ReceivabilityService } from '../application/receivability.service.js';
+import { PurchaseOrderListService } from '../application/purchase-order-list.service.js';
 import {
   CreatePurchaseOrderDto,
   RevisePurchaseOrderDto,
@@ -33,6 +35,8 @@ export class PurchaseOrderController {
   constructor(
     private readonly service: PurchaseOrderService,
     private readonly settlementQuery: SettlementQueryService,
+    private readonly receivability: ReceivabilityService,
+    private readonly listService: PurchaseOrderListService,
   ) {}
 
   @Get()
@@ -40,14 +44,16 @@ export class PurchaseOrderController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'supplierId', required: false })
   @ApiQuery({ name: 'projectId', required: false })
+  @ApiQuery({ name: 'search', required: false, description: 'PO number or supplier name' })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('status', new ParseEnumPipe(PurchaseOrderStatus, { optional: true }))
     status?: PurchaseOrderStatus,
     @Query('supplierId') supplierId?: string,
     @Query('projectId') projectId?: string,
+    @Query('search') search?: string,
   ) {
-    return this.service.findAll(identity, { status, supplierId, projectId });
+    return this.listService.list(identity, { status, supplierId, projectId, search });
   }
 
   @Post()
@@ -55,6 +61,17 @@ export class PurchaseOrderController {
   @ApiOperation({ summary: 'Create a purchase order (DRAFT)' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreatePurchaseOrderDto) {
     return this.service.create(identity, dto);
+  }
+
+  // Declared before ':id' so the literal segment is not captured as an id.
+  @Get('receivable')
+  @RequirePermissions(PERMISSIONS.procurementView, PERMISSIONS.goodsReceiptsCreate)
+  @ApiOperation({
+    summary:
+      'OPEN POs with quantity left to receive, each with canReceive / blockedReason / receiptException for the caller (no prices)',
+  })
+  listReceivable(@CurrentUser() identity: RequestIdentity) {
+    return this.receivability.listReceivable(identity);
   }
 
   @Get(':id')

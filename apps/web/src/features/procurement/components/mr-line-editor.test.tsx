@@ -1,301 +1,121 @@
-import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { renderWithProviders } from '@/test/render';
-import { chooseOption, openSelect } from '@/test/choose-option';
-
-import type { Material, SpendCategory, UnitOfMeasure } from '../types';
-
-/**
- * The MR line editor is where the two rules that make a material request valid are
- * enforced client-side, so it gets a component test rather than only logic coverage:
- *
- *  - a MATERIAL line must name a material (rule CAT-001)
- *  - a MATERIAL line's unit is the material's own and is not editable (rule UOM-001)
- *
- * `quantities.test.ts` already proves `validateMrLine` decides correctly. What it cannot
- * prove is that choosing a material actually locks the unit control in the DOM — which is
- * the part a user experiences and the part a refactor breaks.
- */
-
-const mocks = vi.hoisted(() => ({
-  useMaterials: vi.fn(),
-  useUoms: vi.fn(),
-  // UomDisplay offers "Add a unit" from the picker itself, so the hook it uses must exist.
-  useCreateUom: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
-}));
-
-vi.mock('../hooks/use-procurement', () => mocks);
-
+import type { Material } from '../types';
 import {
-  MrLineEditor,
-  emptyMrLine,
-  estimatedLineValue,
-  mrLineError,
-  type MrLineDraft,
+  emptyMrItem,
+  mrItemAmount,
+  mrItemErrors,
+  mrItemsTotal,
+  oneOffItem,
+  pickMaterial,
+  toMrLinePayload,
+  type MrItemDraft,
 } from './mr-line-editor';
 
-const TON: UnitOfMeasure = {
-  id: 'uom-1',
-  code: 'TON',
-  name: 'Metric Ton',
-  symbol: 't',
+const rebar = {
+  id: 'm1',
+  code: 'RB-12',
+  name: 'Rebar 12mm',
   status: 'ACTIVE',
-};
+  defaultSpendCategoryId: 'sc-steel',
+  baseUom: { id: 'u1', code: 'TON', name: 'Tonne', symbol: 't', status: 'ACTIVE' },
+} as Material;
 
-const LOT: UnitOfMeasure = {
-  id: 'uom-2',
-  code: 'LOT',
-  name: 'Lot',
-  symbol: 'lot',
-  status: 'ACTIVE',
-};
+const item = (patch: Partial<MrItemDraft> = {}): MrItemDraft => ({ ...emptyMrItem('k'), ...patch });
 
-const REBAR: Material = {
-  id: 'mat-1',
-  code: 'REBAR-12MM',
-  name: '12mm Deformed Steel Rebar',
-  description: null,
-  status: 'ACTIVE',
-  materialCategoryId: 'cat-1',
-  defaultSpendCategoryId: 'spend-1',
-  baseUnitOfMeasureId: 'uom-1',
-  materialCategory: null,
-  defaultSpendCategory: null,
-  baseUom: TON,
-};
-
-const SPEND: SpendCategory[] = [
-  {
-    id: 'spend-1',
-    code: 'DIRECT_MATERIAL',
-    name: 'Direct Material',
-    status: 'ACTIVE',
-    parentId: null,
-    children: [],
-  },
-];
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.useMaterials.mockReturnValue({ data: [REBAR], isLoading: false, isError: false });
-  mocks.useUoms.mockReturnValue({ data: [TON, LOT], isLoading: false, isError: false });
-});
-
-/** Renders the editor as a controlled component and reports what it emits. */
-function setup(initial: MrLineDraft[] = [emptyMrLine('line-1')], showErrors = false) {
-  const onChange = vi.fn();
-  renderWithProviders(
-    <MrLineEditor
-      lines={initial}
-      onChange={onChange}
-      spendCategories={SPEND}
-      showErrors={showErrors}
-    />,
-  );
-  return { onChange };
-}
-
-describe('MrLineEditor — material selection', () => {
-  it('locks the unit to the material once one is chosen (rule UOM-001)', async () => {
-    const user = userEvent.setup();
-    const { onChange } = setup();
-
-    await user.type(screen.getByRole('combobox', { name: '' }), 'REBAR');
-    await user.click(await screen.findByRole('option', { name: /REBAR-12MM/ }));
-
-    const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
-    expect(emitted[0]!.material?.code).toBe('REBAR-12MM');
-    expect(emitted[0]!.uomCode).toBe('TON');
-  });
-
-  it('fills an empty description from the material name', async () => {
-    const user = userEvent.setup();
-    const { onChange } = setup();
-
-    await user.type(screen.getByRole('combobox', { name: '' }), 'REBAR');
-    await user.click(await screen.findByRole('option', { name: /REBAR-12MM/ }));
-
-    const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
-    expect(emitted[0]!.description).toBe('12mm Deformed Steel Rebar');
-  });
-
-  it('does not overwrite a description the user has already written', async () => {
-    const user = userEvent.setup();
-    const typed: MrLineDraft = { ...emptyMrLine('line-1'), description: 'Pile cap rebar' };
-    const { onChange } = setup([typed]);
-
-    await user.type(screen.getByRole('combobox', { name: '' }), 'REBAR');
-    await user.click(await screen.findByRole('option', { name: /REBAR-12MM/ }));
-
-    const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
-    expect(emitted[0]!.description).toBe('Pile cap rebar');
-  });
-
-  it('renders the locked unit as text with a lock, not as a disabled select', () => {
-    const withMaterial: MrLineDraft = {
-      ...emptyMrLine('line-1'),
-      material: REBAR,
+describe('pickMaterial', () => {
+  it('takes the unit, spend category and type from the catalogue', () => {
+    const picked = pickMaterial(item(), rebar);
+    expect(picked).toMatchObject({
+      material: rebar,
+      description: 'Rebar 12mm',
+      lineType: 'MATERIAL',
       uomCode: 'TON',
-    };
-    setup([withMaterial]);
+      spendCategoryId: 'sc-steel',
+      estimatedUnitPrice: '',
+    });
+  });
 
-    // The symbol is shown, and there is no unit select to be tempted by.
-    expect(screen.getByTitle('Locked to material base unit')).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /LOT/ })).not.toBeInTheDocument();
+  it("prefills the estimate from the material's own price, else the last price paid", () => {
+    expect(pickMaterial(item(), { ...rebar, estimatedUnitPrice: '850.00' }).estimatedUnitPrice).toBe('850.00');
+    expect(pickMaterial(item(), { ...rebar, lastPurchasePrice: '820.50' }).estimatedUnitPrice).toBe('820.50');
+  });
+
+  it('keeps a typed estimate when the material offers none', () => {
+    expect(pickMaterial(item({ estimatedUnitPrice: '99' }), rebar).estimatedUnitPrice).toBe('99');
   });
 });
 
-describe('MrLineEditor — line type', () => {
-  it('offers a free unit select on a SERVICE line', async () => {
-    const user = userEvent.setup();
-    const service: MrLineDraft = { ...emptyMrLine('line-1'), lineType: 'SERVICE' };
-    setup([service]);
-
-    // A SERVICE line has no material picker and does have a unit to choose.
-    expect(screen.queryByPlaceholderText('Search by code or name')).not.toBeInTheDocument();
-    await openSelect(user, screen.getByRole('combobox', { name: 'Unit' }));
-    expect(screen.getByRole('option', { name: /LOT/ })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-
-    await user.click(screen.getByRole('combobox', { name: 'Type' }));
+describe('oneOffItem', () => {
+  it('names the item by the typed text, as OTHER with no unit yet', () => {
+    expect(oneOffItem(pickMaterial(item(), rebar), '  Site signage ')).toMatchObject({
+      material: null,
+      description: 'Site signage',
+      lineType: 'OTHER',
+      uomCode: '',
+      spendCategoryId: '',
+    });
   });
 
-  it('clears the material when switching away from MATERIAL', async () => {
-    const user = userEvent.setup();
-    const withMaterial: MrLineDraft = {
-      ...emptyMrLine('line-1'),
-      material: REBAR,
+  it('keeps the type and unit already chosen on a one-off when renamed', () => {
+    const service = item({ description: 'Crane hire', lineType: 'SERVICE', uomCode: 'DAY' });
+    expect(oneOffItem(service, 'Mobile crane hire')).toMatchObject({ lineType: 'SERVICE', uomCode: 'DAY' });
+  });
+});
+
+describe('mrItemErrors', () => {
+  it('asks for an item, a unit and a quantity on an empty row', () => {
+    expect(mrItemErrors(item())).toEqual({ item: 'item', unit: 'unit', quantity: 'quantity' });
+  });
+
+  it('needs no unit on a catalogue item — the material carries it', () => {
+    expect(mrItemErrors({ ...pickMaterial(item(), rebar), quantity: '2' })).toEqual({});
+  });
+
+  it('needs a unit on a one-off item', () => {
+    expect(mrItemErrors(item({ description: 'Signage', quantity: '1' }))).toEqual({ unit: 'unit' });
+  });
+
+  it('refuses a zero or unparseable quantity', () => {
+    expect(mrItemErrors({ ...pickMaterial(item(), rebar), quantity: '0' })).toEqual({ quantity: 'quantity' });
+    expect(mrItemErrors({ ...pickMaterial(item(), rebar), quantity: 'abc' })).toEqual({ quantity: 'quantity' });
+  });
+});
+
+describe('estimates', () => {
+  it('multiplies quantity by estimated price to the cent', () => {
+    expect(mrItemAmount(item({ quantity: '2.5', estimatedUnitPrice: '10.50' }))).toBe('26.25');
+    expect(mrItemAmount(item({ quantity: '2', estimatedUnitPrice: '' }))).toBeNull();
+  });
+
+  it('totals only the estimated items, and is null — not zero — when none is', () => {
+    expect(
+      mrItemsTotal([
+        item({ quantity: '2', estimatedUnitPrice: '10' }),
+        item({ quantity: '3', estimatedUnitPrice: '' }),
+        item({ quantity: '1', estimatedUnitPrice: '5.25' }),
+      ]),
+    ).toBe('25.25');
+    expect(mrItemsTotal([item({ quantity: '3' })])).toBeNull();
+  });
+});
+
+describe('toMrLinePayload', () => {
+  it('sends a catalogue item as MATERIAL with its code and base unit', () => {
+    expect(toMrLinePayload({ ...pickMaterial(item(), rebar), quantity: '2.5', estimatedUnitPrice: '850' })).toEqual({
+      lineType: 'MATERIAL',
+      description: 'Rebar 12mm',
       uomCode: 'TON',
-    };
-    const { onChange } = setup([withMaterial]);
-
-    await chooseOption(user, screen.getByRole('combobox', { name: 'Type' }), 'SERVICE');
-
-    const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
-    expect(emitted[0]!.lineType).toBe('SERVICE');
-    expect(emitted[0]!.material).toBeNull();
-  });
-});
-
-describe('MrLineEditor — validation', () => {
-  it('stays quiet until the user has tried to submit', () => {
-    setup([emptyMrLine('line-1')], false);
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      requestedQuantity: 2.5,
+      materialCode: 'RB-12',
+      estimatedUnitPrice: 850,
+      spendCategoryId: 'sc-steel',
+    });
   });
 
-  it('reports a MATERIAL line with no material (rule CAT-001)', () => {
-    setup([emptyMrLine('line-1')], true);
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Choose a material. Material lines cannot be free text.',
-    );
-  });
-
-  it('reports a missing quantity once a material is chosen', () => {
-    const line: MrLineDraft = {
-      ...emptyMrLine('line-1'),
-      material: REBAR,
-      uomCode: 'TON',
-      description: '12mm rebar',
-      quantity: '',
-    };
-    setup([line], true);
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Enter a quantity greater than zero.',
-    );
-  });
-
-  it('accepts a complete line', () => {
-    const line: MrLineDraft = {
-      ...emptyMrLine('line-1'),
-      material: REBAR,
-      uomCode: 'TON',
-      description: '12mm rebar',
-      quantity: '25',
-    };
-    setup([line], true);
-
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(mrLineError(line)).toBeNull();
-  });
-
-  /** A typo must not read as a valid zero — `parseMinorUnits` returns null, not 0. */
-  it('rejects an unparseable quantity rather than treating it as zero', () => {
-    const line: MrLineDraft = {
-      ...emptyMrLine('line-1'),
-      material: REBAR,
-      description: '12mm rebar',
-      quantity: '25o',
-    };
-    expect(mrLineError(line)).toBe('quantityMustBePositive');
-  });
-});
-
-describe('MrLineEditor — rows', () => {
-  it('adds a line with a distinct key', async () => {
-    const user = userEvent.setup();
-    const { onChange } = setup();
-
-    await user.click(screen.getByRole('button', { name: 'Add line' }));
-
-    const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
-    expect(emitted).toHaveLength(2);
-    expect(emitted[1]!.key).not.toBe(emitted[0]!.key);
-  });
-
-  it('does not offer to remove the only line', () => {
-    setup([emptyMrLine('line-1')]);
-    expect(screen.queryByRole('button', { name: 'Remove line' })).not.toBeInTheDocument();
-  });
-
-  it('removes the right line when there are several', async () => {
-    const user = userEvent.setup();
-    const lines = [emptyMrLine('line-1'), emptyMrLine('line-2')];
-    const { onChange } = setup(lines);
-
-    const second = screen.getAllByRole('group')[1]!;
-    await user.click(within(second).getByRole('button', { name: 'Remove line' }));
-
-    const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
-    expect(emitted.map((l) => l.key)).toEqual(['line-1']);
-  });
-
-});
-
-describe('estimatedLineValue', () => {
-  function draft(overrides: Partial<MrLineDraft> = {}): MrLineDraft {
-    return { ...emptyMrLine('l1'), ...overrides };
-  }
-
-  /**
-   * ADR-022 CONST-DOA-001 routes approval by monetary threshold, so this figure has a governance
-   * consequence — and a requirement nobody has estimated is a real, common state. Null rather
-   * than 0: "$0.00" would tell an approver the requirement is free.
-   */
-  it('is null until both a quantity and a unit price are entered', () => {
-    expect(estimatedLineValue(draft({ quantity: '', estimatedUnitPrice: '' }))).toBeNull();
-    expect(estimatedLineValue(draft({ quantity: '500', estimatedUnitPrice: '' }))).toBeNull();
-    expect(estimatedLineValue(draft({ quantity: '', estimatedUnitPrice: '100' }))).toBeNull();
-  });
-
-  it('multiplies quantity by unit price to two decimals', () => {
-    expect(estimatedLineValue(draft({ quantity: '500', estimatedUnitPrice: '100' }))).toBe(
-      '50000.00',
-    );
-    expect(estimatedLineValue(draft({ quantity: '2.5', estimatedUnitPrice: '10.50' }))).toBe(
-      '26.25',
-    );
-  });
-
-  /** A zero estimate is a deliberate statement and stays one; only blank means "not estimated". */
-  it('treats an explicit zero as a value, not as absent', () => {
-    expect(estimatedLineValue(draft({ quantity: '10', estimatedUnitPrice: '0' }))).toBe('0.00');
-  });
-
-  it('refuses to guess at unparseable input', () => {
-    expect(estimatedLineValue(draft({ quantity: 'abc', estimatedUnitPrice: '100' }))).toBeNull();
+  it('sends a one-off item with its own type and unit, and no estimate when blank', () => {
+    expect(
+      toMrLinePayload(item({ description: 'Crane hire', lineType: 'SERVICE', uomCode: 'DAY', quantity: '3' })),
+    ).toEqual({ lineType: 'SERVICE', description: 'Crane hire', uomCode: 'DAY', requestedQuantity: 3 });
   });
 });

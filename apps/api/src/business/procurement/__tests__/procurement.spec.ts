@@ -114,6 +114,7 @@ async function createAndPostGrn(
         receivedQuantity: received,
         acceptedQuantity: accepted,
         rejectedQuantity: rejected,
+        rejectionReason: rejected > 0 ? 'Damaged on delivery' : undefined,
         qualityStatus: rejected > 0 ? 'REJECTED' : 'ACCEPTED',
       },
     ],

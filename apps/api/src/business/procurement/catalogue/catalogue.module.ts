@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { UomRepository } from './infrastructure/uom.repository.js';
 import { MaterialCategoryRepository } from './infrastructure/material-category.repository.js';
 import { SpendCategoryRepository } from './infrastructure/spend-category.repository.js';
@@ -15,7 +16,7 @@ import { SpendCategoryController } from './presentation/spend-category.controlle
 import { MaterialController } from './presentation/material.controller.js';
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, AuditLogsModule],
   controllers: [
     UomController,
     UnitsOfMeasureController,

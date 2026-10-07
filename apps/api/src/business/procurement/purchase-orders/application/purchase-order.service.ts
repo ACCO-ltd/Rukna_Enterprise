@@ -5,7 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 import type {
   Prisma,
@@ -21,7 +21,10 @@ import { MaterialRepository } from '../../catalogue/infrastructure/material.repo
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
 import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
-import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
+import {
+  CommandGovernanceService,
+  throwIfGated,
+} from '../../../../platform/workflows/application/command-governance.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { validateCostTarget, costTargetViolationMessage } from '../domain/cost-target.policy.js';
 import { SettlementQueryService } from './settlement-query.service.js';
@@ -114,13 +117,19 @@ export class PurchaseOrderService {
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also create a PO to that vendor.
     const supplier = await prisma.supplier.findFirst({
       where: { id: dto.supplierId, organizationId: orgId },
-      select: { createdBy: true },
+      select: { createdBy: true, status: true, name: true },
     });
+    if (!supplier) throw new NotFoundException('Supplier not found');
+    // An inactive supplier is retired from new business; existing orders to it carry on.
+    if (supplier.status !== 'ACTIVE')
+      throw new ConflictException(
+        `${supplier.name} is inactive, so new purchase orders cannot be raised to it. Reactivate the supplier or choose another.`,
+      );
     await this.sod.assertAllowed({
       organizationId: orgId,
       action: 'CREATE_PURCHASE_ORDER',
       actorUserId: identity.userId,
-      vendorMaintainerUserId: supplier?.createdBy ?? undefined,
+      vendorMaintainerUserId: supplier.createdBy ?? undefined,
     });
 
     const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);
@@ -172,6 +181,30 @@ export class PurchaseOrderService {
     const draft = po.revisions.find((r) => r.status === 'DRAFT');
     if (!draft) throw new ConflictException('No DRAFT revision to confirm');
 
+    // Governance seam (ADR-011 / ADR-022 CONST-DOA-005). Confirming a draft is the PO's request
+    // transition; the seeded value bands bind `PurchaseOrder DRAFT → SUBMITTED`, so that is the
+    // key evaluated here, with the draft's value selecting the band. No active binding → proceeds
+    // (backward-compatible). A binding opens (or returns the pending) approval and throws 409 with
+    // details.approvalInstanceId before anything is written. Once approved, calling confirm again
+    // re-drives: the approval is consumed (single-use, ADR-015) and the confirm goes through.
+    const draftTotal = draft.lines.reduce(
+      (sum, l) => sum.add((l.unitPrice as Decimal).mul(l.orderedQuantity as Decimal)),
+      new Decimal(0),
+    );
+    const governance = await this.commandGovernance.evaluateStateTransition(
+      identity,
+      'PurchaseOrder',
+      'DRAFT',
+      'SUBMITTED',
+      po.id,
+      draftTotal,
+    );
+    throwIfGated(governance.gate, 'Purchase order confirmation requires workflow approval.');
+    // Record who actually approved: the final approver of the consumed approval, else the
+    // confirmer (no approval was required).
+    const consumed = governance.consumedApproval;
+    const approvedBy = consumed?.finalApproverId ?? identity.userId;
+
     // When amending an already-confirmed PO, supersede the current ACTIVE revision
     const currentActive = po.revisions.find((r) => r.status === 'ACTIVE');
 
@@ -208,8 +241,9 @@ export class PurchaseOrderService {
       }
 
       await this.repo.updateRevisionStatus(tx, draft.id, 'ACTIVE', {
-        approvedBy: identity.userId,
+        approvedBy,
         approvedAt: new Date(),
+        ...(consumed ? { approvalInstanceId: consumed.instanceId } : {}),
       });
       await this.repo.updatePoStatus(tx, po.id, 'OPEN', draft.id);
 
@@ -249,7 +283,12 @@ export class PurchaseOrderService {
         eventType: 'PO_CONFIRMED',
         idempotencyKey: `po-confirm-${id}-rev-${draft.id}`,
         before: { revisionStatus: 'DRAFT' },
-        after: { revisionStatus: 'ACTIVE', poStatus: 'OPEN' },
+        after: {
+          revisionStatus: 'ACTIVE',
+          poStatus: 'OPEN',
+          approvedBy,
+          approvalInstanceId: consumed?.instanceId ?? null,
+        },
       });
     });
 
@@ -376,6 +415,10 @@ export class PurchaseOrderService {
       });
     });
 
+    // A cancelled PO will never be confirmed: close any approval still open for it, so approvers
+    // are not left deciding on a dead document and a stale grant cannot be reused.
+    await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.PURCHASE_ORDER, po.id);
+
     return this.repo.findById(prisma, identity.activeOrganizationId, id);
   }
 
@@ -433,6 +476,11 @@ export class PurchaseOrderService {
       where: { id: dto.platformFileId },
       data: { lifecycle: 'BOUND', boundAt: new Date(), lifecycleReason: `po-revision draft ${draft.id}`.slice(0, 120) },
     });
+
+    // The draft's evidence changed: an approval already granted covered what the approvers saw,
+    // not this, so it is voided and confirming opens a fresh one. A PENDING approval is left
+    // open — approvers deciding now see the new evidence.
+    await this.commandGovernance.voidUnconsumedApproval(WorkflowTransactionType.PURCHASE_ORDER, po.id);
 
     return attachment;
   }

@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SpendCategoryRepository } from '../infrastructure/spend-category.repository.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { changeCatalogueStatus, type CatalogueStatusFilter } from './catalogue-status.js';
 
 export interface CreateSpendCategoryDto {
   code: string;
@@ -14,11 +16,12 @@ export class SpendCategoryService {
   constructor(
     private readonly tenancy: TenancyService,
     private readonly repo: SpendCategoryRepository,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
-  findAll(identity: RequestIdentity) {
+  findAll(identity: RequestIdentity, status: CatalogueStatusFilter = 'ACTIVE') {
     const prisma = this.tenancy.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, 'ACTIVE');
+    return this.repo.findAll(prisma, identity.activeOrganizationId, status);
   }
 
   async findById(identity: RequestIdentity, id: string) {
@@ -49,6 +52,33 @@ export class SpendCategoryService {
     const prisma = this.tenancy.getClient();
     const cat = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!cat) throw new NotFoundException(`Spend category ${id} not found`);
-    return this.repo.setStatus(prisma, id, 'INACTIVE');
+    return changeCatalogueStatus(prisma, this.auditOutbox, identity, {
+      resourceType: 'SpendCategory',
+      resourceId: id,
+      label: `Spend category ${cat.code}`,
+      from: cat.status,
+      to: 'INACTIVE',
+      allowedFrom: ['ACTIVE'],
+      sourceCommand: 'spend-category.deactivate',
+      eventType: 'SPEND_CATEGORY_DEACTIVATED',
+      write: (tx) => this.repo.setStatus(tx, id, 'INACTIVE'),
+    });
+  }
+
+  async reactivate(identity: RequestIdentity, id: string) {
+    const prisma = this.tenancy.getClient();
+    const cat = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+    if (!cat) throw new NotFoundException(`Spend category ${id} not found`);
+    return changeCatalogueStatus(prisma, this.auditOutbox, identity, {
+      resourceType: 'SpendCategory',
+      resourceId: id,
+      label: `Spend category ${cat.code}`,
+      from: cat.status,
+      to: 'ACTIVE',
+      allowedFrom: ['INACTIVE'],
+      sourceCommand: 'spend-category.reactivate',
+      eventType: 'SPEND_CATEGORY_REACTIVATED',
+      write: (tx) => this.repo.setStatus(tx, id, 'ACTIVE'),
+    });
   }
 }

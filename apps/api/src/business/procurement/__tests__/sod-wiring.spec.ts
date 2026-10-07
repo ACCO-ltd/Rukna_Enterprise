@@ -21,7 +21,9 @@ describe('Procurement SoD wiring (ADR-022)', () => {
   it('purchase order: the vendor maintainer creating a PO is checked as CREATE_PURCHASE_ORDER', async () => {
     const sod = denyingSod();
     const prisma = {
-      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice' }) },
+      supplier: {
+        findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice', status: 'ACTIVE', name: 'Bakaal Steel' }),
+      },
     };
     const svc = new PurchaseOrderService(
       { getClient: () => prisma } as never,
@@ -125,6 +127,7 @@ describe('Procurement SoD wiring (ADR-022)', () => {
       { assertMember: jest.fn() } as never,
       { record: jest.fn() } as never,
       sod as never,
+      {} as never, // commandGovernance
     );
 
     await expect(svc.approve(identity('alice'), 'mr1')).rejects.toBeInstanceOf(ForbiddenException);
@@ -141,8 +144,8 @@ describe('Procurement SoD wiring (ADR-022)', () => {
   it('material request: a non-approve transition (submit) does not invoke SoD', async () => {
     const sod = denyingSod();
     const mrRepo = {
-      findById: jest.fn().mockResolvedValue({ id: 'mr1', status: 'DRAFT', requestedBy: 'alice', projectId: null }),
-      updateStatus: jest.fn().mockResolvedValue({ id: 'mr1', status: 'SUBMITTED' }),
+      findById: jest.fn().mockResolvedValue({ id: 'mr1', status: 'DRAFT', requestedBy: 'alice', projectId: null, lines: [] }),
+      updateStatus: jest.fn().mockResolvedValue({ id: 'mr1', status: 'SUBMITTED', updatedAt: new Date() }),
     };
     const prisma = { $transaction: async (fn: (tx: unknown) => unknown) => fn(mrRepo) };
     const svc = new MaterialRequestService(
@@ -153,6 +156,7 @@ describe('Procurement SoD wiring (ADR-022)', () => {
       { assertMember: jest.fn() } as never,
       { record: jest.fn() } as never,
       sod as never,
+      { evaluateStateTransition: async () => ({ gate: null, consumedApproval: null }) } as never,
     );
 
     await svc.submit(identity('alice'), 'mr1');

@@ -1,60 +1,49 @@
 'use client';
 
 /**
- * Material categories and spend categories (§12.4).
- *
- * One component for both. They are structurally identical — a two-level tree, the same
- * create body, the same deactivate action — and the API returns them in the same shape.
- *
- * They are *not* the same thing, and the UI must never suggest they are: a material
- * category is the operational hierarchy of the catalogue (Steel → Rebar), while a spend
- * category drives approval routing, tolerance policy and commitment attribution. §12.4 is
- * explicit that the label is always "Spend Category" — never "Cost Category", never
- * "Material Category". That is why the copy is passed in per screen rather than derived
- * from a shared string.
+ * Material and spend categories — a two-level tree on the shared setup list. Rows stay in
+ * parent → child order with the child indented, so the grid does not sort. Status filter
+ * (Active by default), New category, and Deactivate… / Reactivate per row.
  */
 
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useMemo, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  FormField,
-  Input,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { FormField, Input, Select, type FilterValues } from '@erp/ui';
 
-import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { type GridColumn } from '@/components/platform-data-grid';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import type { CreateCategoryPayload, MaterialCategory, SpendCategory } from '../types';
+import { CatalogueListScreen, useStatusFilterField, type StatusCommand } from './catalogue-list';
 import { ProcurementStatusBadge } from './procurement-badges';
-import { CreateForm, SetupScreen } from './setup-shell';
+import { CreateForm } from './setup-shell';
 
-/** Both category types share this shape; the tree does not care which it is showing. */
 type Category = MaterialCategory | SpendCategory;
+type CategoryRow = Category & { depth: number };
 
 interface CategoryTreeProps {
-  /** `procurement.materialCategory` or `procurement.spendCategory`. */
   namespace: 'materialCategory' | 'spendCategory';
   data: Category[] | undefined;
   isPending: boolean;
   isError: boolean;
-  onCreate: (
-    payload: CreateCategoryPayload,
-    options: { onSuccess: () => void },
-  ) => void;
+  onRetry: () => void;
+  filterValues: FilterValues;
+  onFilterValuesChange: (next: FilterValues) => void;
+  /** Active roots — the parents a new category can sit under. */
+  parentOptions: Category[];
+  onCreate: (payload: CreateCategoryPayload, options: { onSuccess: () => void }) => void;
   isCreating: boolean;
   createError: unknown;
-  onDeactivate: (id: string, options: { onSuccess: () => void }) => void;
-  isDeactivating: boolean;
-  deactivateError: boolean;
+  deactivate: StatusCommand;
+  reactivate: StatusCommand;
+}
+
+/** Roots and their children in tree order, each with its depth. */
+export function flattenCategoryTree(roots: readonly Category[]): CategoryRow[] {
+  return roots.flatMap((root) => [
+    { ...root, depth: 0 },
+    ...(root.children ?? []).map((child) => ({ ...child, depth: 1 })),
+  ]);
 }
 
 export function CategoryTree({
@@ -62,151 +51,97 @@ export function CategoryTree({
   data,
   isPending,
   isError,
+  onRetry,
+  filterValues,
+  onFilterValuesChange,
+  parentOptions,
   onCreate,
   isCreating,
   createError,
-  onDeactivate,
-  isDeactivating,
-  deactivateError,
+  deactivate,
+  reactivate,
 }: CategoryTreeProps) {
   const t = useTranslations(`procurement.${namespace}`);
+  const tSetup = useTranslations('procurement.setup');
   const tc = useTranslations('procurement.common');
   const { can } = usePermissions();
-
-  const [pending, setPending] = useState<Category | null>(null);
   const canManage = can(PROCUREMENT_PERMISSIONS.manageConfig);
+  const statusField = useStatusFilterField();
 
-  const roots = data ?? [];
+  const rows = useMemo(() => flattenCategoryTree(data ?? []), [data]);
 
-  return (
-    <>
-      <SetupScreen
-        // Spend categories are easily mistaken for material categories; say which this is.
-        guidance={namespace === 'spendCategory' ? t('subtitle') : undefined}
-        createLabel={t('new')}
-        createTitle={t('createTitle')}
-        canCreate={canManage}
-        createForm={(close) => (
-          <CategoryCreateForm
-            namespace={namespace}
-            roots={roots}
-            onCreate={onCreate}
-            isCreating={isCreating}
-            createError={createError}
-            onDone={close}
-          />
-        )}
-        isPending={isPending}
-        isError={isError}
-      >
-        <TableScroll aria-label={t('title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{tc('code')}</TableHead>
-                <TableHead>{tc('name')}</TableHead>
-                <TableHead>{tc('status')}</TableHead>
-                <TableHead>
-                  <span className="sr-only">{tc('actions')}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {roots.length === 0 ? (
-                <TableEmpty colSpan={4}>{t('empty')}</TableEmpty>
-              ) : (
-                roots.flatMap((root) => [
-                  <CategoryRow
-                    key={root.id}
-                    category={root}
-                    depth={0}
-                    canManage={canManage}
-                    onDeactivate={setPending}
-                  />,
-                  ...(root.children ?? []).map((child) => (
-                    <CategoryRow
-                      key={child.id}
-                      category={child}
-                      depth={1}
-                      canManage={canManage}
-                      onDeactivate={setPending}
-                    />
-                  )),
-                ])
-              )}
-            </TableBody>
-          </Table>
-        </TableScroll>
-      </SetupScreen>
-
-      {pending ? (
-        <ConfirmActionDialog
-          title={t('deactivateTitle', { code: pending.code })}
-          description={t('deactivateBody')}
-          confirmLabel={tc('confirm')}
-          isPending={isDeactivating}
-          errorMessage={deactivateError ? tc('loadFailed') : undefined}
-          onConfirm={() => onDeactivate(pending.id, { onSuccess: () => setPending(null) })}
-          onDismiss={() => setPending(null)}
-        />
-      ) : null}
-    </>
-  );
-}
-
-/**
- * Depth is rendered as indentation on the code cell rather than as a nested table.
- *
- * A real tree table would need its own expand/collapse state for two levels, and the API
- * only ever returns two. Indentation reads the same and stays a flat, sortable table.
- */
-function CategoryRow({
-  category,
-  depth,
-  canManage,
-  onDeactivate,
-}: {
-  category: Category;
-  depth: number;
-  canManage: boolean;
-  onDeactivate: (c: Category) => void;
-}) {
-  const tc = useTranslations('procurement.common');
-
-  return (
-    <TableRow>
-      <TableCell>
-        <span
-          className="font-mono text-xs"
-          style={{ paddingInlineStart: `${depth * 1.25}rem` }}
-        >
-          {depth > 0 ? (
+  const columns: GridColumn<CategoryRow>[] = [
+    {
+      key: 'code',
+      card: 'subtitle',
+      header: tc('code'),
+      sticky: true,
+      plainValue: (category) => category.code,
+      render: (category) => (
+        <span className="font-mono text-caption" style={{ paddingInlineStart: `${category.depth * 1.25}rem` }}>
+          {category.depth > 0 ? (
             <span aria-hidden="true" className="me-1 text-muted-foreground">
               ↳
             </span>
           ) : null}
           {category.code}
         </span>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-foreground">{category.name}</span>
-      </TableCell>
-      <TableCell>
-        <ProcurementStatusBadge vocabulary="masterData" status={category.status} />
-      </TableCell>
-      <TableCell>
-        {canManage && category.status === 'ACTIVE' ? (
-          <button
-            type="button"
-            onClick={() => onDeactivate(category)}
-            className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline"
-          >
-            {tc('deactivate')}
-            <span className="sr-only"> — {category.code}</span>
-          </button>
-        ) : null}
-      </TableCell>
-    </TableRow>
+      ),
+    },
+    { key: 'name', card: 'title', header: tc('name'), plainValue: (category) => category.name, render: (category) => category.name },
+    {
+      key: 'status',
+      card: 'status',
+      header: tc('status'),
+      render: (category) => <ProcurementStatusBadge vocabulary="masterData" status={category.status} />,
+    },
+  ];
+
+  return (
+    <CatalogueListScreen<CategoryRow>
+      label={t('title')}
+      rows={rows}
+      isPending={isPending}
+      isError={isError}
+      onRetry={onRetry}
+      columns={columns}
+      filterFields={[statusField]}
+      filterValues={filterValues}
+      onFilterValuesChange={onFilterValuesChange}
+      canManage={canManage}
+      createLabel={t('new')}
+      createTitle={t('createTitle')}
+      createForm={(close) => (
+        <CategoryCreateForm
+          namespace={namespace}
+          roots={parentOptions}
+          onCreate={onCreate}
+          isCreating={isCreating}
+          createError={createError}
+          onDone={close}
+        />
+      )}
+      emptyTitle={t('emptyTitle')}
+      emptyHint={t('emptyHint')}
+      searchPlaceholder={tSetup('searchPlaceholder')}
+      countLabel={(count) => tSetup('categoryCount', { count })}
+      tree
+      retire={{
+        label: tSetup('deactivateMenu'),
+        title: (category) => t('deactivateTitle', { code: category.code }),
+        body: t('deactivateBody'),
+        confirmLabel: tSetup('deactivate'),
+        destructive: true,
+        command: deactivate,
+      }}
+      reactivate={{
+        label: tSetup('reactivate'),
+        title: (category) => tSetup('reactivateTitle', { code: category.code }),
+        body: tSetup('reactivateBody'),
+        confirmLabel: tSetup('reactivate'),
+        command: reactivate,
+      }}
+    />
   );
 }
 

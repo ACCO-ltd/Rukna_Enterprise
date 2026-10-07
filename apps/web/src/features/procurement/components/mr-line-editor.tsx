@@ -1,58 +1,56 @@
 'use client';
 
 /**
- * The material request line editor (§12.5, step 2).
+ * The items on a new material request — one `LineItemsEditor` row per item.
  *
- * Two rules drive the whole component, and both come from `material-request.service.ts`
- * rather than from the design:
+ * An item is either picked from the materials catalogue or added as a one-off by typing its
+ * name. The two are deliberately different shapes:
  *
- *  1. **A MATERIAL line must name a material** (rule CAT-001). Free text is for SERVICE
- *     and OTHER.
- *  2. **A MATERIAL line's unit is the material's own** (rule UOM-001). The server reads
- *     `material.baseUnitOfMeasureId` and ignores whatever `uomCode` was sent — but the
- *     field is still required by the DTO (P7), so the editor sends the material's base
- *     code. Locking the control is not cosmetic: it is the only honest representation of
- *     a value the user cannot influence.
+ *  - **Catalogue item** — `lineType` MATERIAL. Unit and spend category are the material's own
+ *    (rules CAT-001 / UOM-001: the server reads the material's base unit and ignores any other),
+ *    so they are read-only here. A price the material carries prefills the estimate.
+ *  - **One-off item** — free text, SERVICE or OTHER (default OTHER). The requester chooses the
+ *    unit and, optionally, the spend category.
  *
- * Quantities are held as **strings**, exactly as typed, and parsed to minor units for
- * validation. Holding a number would mean parsing on every keystroke, and `parseMinorUnits`
- * returns `null` for a half-typed "1." — the user would watch their own input be rejected
- * as they wrote it.
+ * Quantities and prices are held as typed strings and parsed to minor units for validation, so a
+ * half-typed "1." is never rejected while it is being written.
  */
 
-import { useId } from 'react';
+import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Input, Select } from '@erp/ui';
+import { LineItemsEditor, MoneyInput, QuantityInput, Select, comboboxColumn, type LineColumn } from '@erp/ui';
 
-import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
+import { formatMoney } from '@/lib/format';
+import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 
-import type { Material, ProcurementLineType, SpendCategory } from '../types';
-import { validateMrLine, type MrLineError } from '../quantities';
-import { MaterialPicker, UomDisplay } from './material-picker';
+import { quantityToApi } from '../quantities';
+import type { CreateMrLinePayload, Material, ProcurementLineType, SpendCategory, UnitOfMeasure } from '../types';
 
-export interface MrLineDraft {
-  /** Stable across re-renders so React keys survive a row being deleted. */
+export interface MrItemDraft {
+  /** Stable across re-renders so React keys survive a row being removed. */
   key: string;
-  lineType: ProcurementLineType;
+  /** The picked catalogue material, or null for a one-off (or a row nothing is chosen on yet). */
   material: Material | null;
+  /** The one-off item's typed name. For a catalogue item, the material's name. */
   description: string;
+  lineType: ProcurementLineType;
+  /** The one-off item's unit. A catalogue item's unit is the material's base unit. */
   uomCode: string;
   quantity: string;
-  /**
-   * The requester's estimate of unit cost, as typed. ADR-022 routes approval by monetary
-   * threshold, so a requirement with no value cannot be routed at all — but blank stays blank:
-   * defaulting it to zero would route a real requirement as though it were free.
-   */
+  /** The requester's estimate, as typed. Blank stays blank — never a $0 estimate. */
   estimatedUnitPrice: string;
   spendCategoryId: string;
 }
 
-export function emptyMrLine(key: string): MrLineDraft {
+export type MrItemErrorKey = 'item' | 'unit' | 'quantity';
+export type MrItemErrors = Partial<Record<MrItemErrorKey, MrItemErrorKey>>;
+
+export function emptyMrItem(key: string): MrItemDraft {
   return {
     key,
-    lineType: 'MATERIAL',
     material: null,
     description: '',
+    lineType: 'OTHER',
     uomCode: '',
     quantity: '',
     estimatedUnitPrice: '',
@@ -60,283 +58,333 @@ export function emptyMrLine(key: string): MrLineDraft {
   };
 }
 
+export function isOneOff(item: MrItemDraft): boolean {
+  return item.material === null && item.description.trim() !== '';
+}
+
+/** A price the catalogue offers for a material — its own estimate, else the last price paid. */
+export function materialReferencePrice(material: Material): string | null {
+  return material.estimatedUnitPrice ?? material.lastPurchasePrice ?? null;
+}
+
+/** Picking a catalogue material: unit, spend category and (when offered) price come with it. */
+export function pickMaterial(item: MrItemDraft, material: Material): MrItemDraft {
+  const price = materialReferencePrice(material);
+  return {
+    ...item,
+    material,
+    description: material.name,
+    lineType: 'MATERIAL',
+    uomCode: material.baseUom?.code ?? '',
+    spendCategoryId: material.defaultSpendCategoryId ?? '',
+    estimatedUnitPrice: price ?? item.estimatedUnitPrice,
+  };
+}
+
+/** A one-off item named by what was typed. Keeps its type if it was already a one-off. */
+export function oneOffItem(item: MrItemDraft, text: string): MrItemDraft {
+  const wasOneOff = item.material === null;
+  return {
+    ...item,
+    material: null,
+    description: text.trim(),
+    lineType: wasOneOff && item.lineType !== 'MATERIAL' ? item.lineType : 'OTHER',
+    uomCode: wasOneOff ? item.uomCode : '',
+    spendCategoryId: wasOneOff ? item.spendCategoryId : '',
+  };
+}
+
+export function mrItemErrors(item: MrItemDraft): MrItemErrors {
+  const errors: MrItemErrors = {};
+  if (!item.material && item.description.trim() === '') errors.item = 'item';
+  if (!item.material && !item.uomCode) errors.unit = 'unit';
+  const quantity = parseMinorUnits(item.quantity, QUANTITY_SCALE);
+  if (quantity === null || quantity <= 0) errors.quantity = 'quantity';
+  return errors;
+}
+
+/** Quantity × estimated price in cents, or null when either is missing. */
+function amountMinor(item: MrItemDraft): number | null {
+  const quantity = parseMinorUnits(item.quantity, QUANTITY_SCALE);
+  const price = parseMinorUnits(item.estimatedUnitPrice, MONEY_SCALE);
+  if (quantity === null || price === null || item.estimatedUnitPrice.trim() === '') return null;
+  return Math.round((quantity * price) / 10 ** QUANTITY_SCALE);
+}
+
+export function mrItemAmount(item: MrItemDraft): string | null {
+  const minor = amountMinor(item);
+  return minor === null ? null : fromMinorUnits(minor, MONEY_SCALE);
+}
+
+/** Σ of the estimated items, or null when none is estimated — an unestimated request is not $0. */
+export function mrItemsTotal(items: readonly MrItemDraft[]): string | null {
+  let total = 0;
+  let any = false;
+  for (const item of items) {
+    const minor = amountMinor(item);
+    if (minor === null) continue;
+    any = true;
+    total += minor;
+  }
+  return any ? fromMinorUnits(total, MONEY_SCALE) : null;
+}
+
+export function toMrLinePayload(item: MrItemDraft): CreateMrLinePayload {
+  const quantity = parseMinorUnits(item.quantity, QUANTITY_SCALE) ?? 0;
+  const price = item.estimatedUnitPrice.trim();
+  return {
+    lineType: item.material ? 'MATERIAL' : item.lineType,
+    description: item.description.trim(),
+    // Required by the DTO even on a MATERIAL line, where the server uses the material's base
+    // unit (P7) — sending that same code is the honest value.
+    uomCode: item.material?.baseUom?.code ?? item.uomCode,
+    requestedQuantity: quantityToApi(quantity),
+    ...(item.material ? { materialCode: item.material.code } : {}),
+    // Blank stays absent: a zero estimate would route a real requirement as though it were
+    // free (ADR-022 CONST-DOA-001).
+    ...(price && Number.isFinite(Number(price)) ? { estimatedUnitPrice: Number(price) } : {}),
+    ...(item.spendCategoryId ? { spendCategoryId: item.spendCategoryId } : {}),
+  };
+}
+
+/** Roots and their children, in order, for a flat select. */
+export function flattenSpendCategories(roots: readonly SpendCategory[]): SpendCategory[] {
+  return roots.flatMap((root) => [root, ...(root.children ?? [])]);
+}
+
+export const mrItemControlId = (column: string, index: number) => `mr-item-${index}-${column}`;
+
 /**
- * Quantity x estimated unit price, or null when either is missing.
- *
- * Null rather than 0: a requirement whose cost nobody has estimated is a real and common state,
- * and showing "$0.00" would tell an approver it is free. Formatted with two decimals only —
- * this is an estimate, and more precision than that is false confidence.
+ * Moves focus to a control once the row it belongs to has rendered: the new row's item after
+ * "Add an item", the row's type after "Add … as a one-off item" (the list closes without
+ * returning focus, which would otherwise drop to the page).
  */
-export function estimatedLineValue(line: MrLineDraft): string | null {
-  const quantity = Number(line.quantity);
-  const price = Number(line.estimatedUnitPrice);
-  if (line.quantity.trim() === '' || line.estimatedUnitPrice.trim() === '') return null;
-  if (!Number.isFinite(quantity) || !Number.isFinite(price)) return null;
-  return (quantity * price).toFixed(2);
+function focusAfterRender(id: string) {
+  requestAnimationFrame(() => document.getElementById(id)?.focus());
 }
 
-/** The error for a line, or null. Exported so the parent can block submit on any. */
-export function mrLineError(line: MrLineDraft): MrLineError | null {
-  return validateMrLine({
-    lineType: line.lineType,
-    materialCode: line.material?.code ?? null,
-    description: line.description,
-    quantityMinor: parseMinorUnits(line.quantity, QUANTITY_SCALE),
-  });
-}
-
-interface MrLineEditorProps {
-  lines: MrLineDraft[];
-  onChange: (lines: MrLineDraft[]) => void;
-  spendCategories: SpendCategory[];
-  /** Errors are only surfaced once the user has tried to submit. */
+interface MrItemsEditorProps {
+  items: MrItemDraft[];
+  onChange: (items: MrItemDraft[]) => void;
+  materials: readonly Material[];
+  uoms: readonly UnitOfMeasure[];
+  spendCategories: readonly SpendCategory[];
+  /** Errors appear once the requester has tried to save. */
   showErrors: boolean;
+  /** Money-blind roles: no price, amount or total columns. */
+  moneyVisible: boolean;
+  onAdd: () => void;
 }
 
-export function MrLineEditor({
-  lines,
+export function MrItemsEditor({
+  items,
   onChange,
+  materials,
+  uoms,
   spendCategories,
   showErrors,
-}: MrLineEditorProps) {
-  const t = useTranslations('procurement.mr');
+  moneyVisible,
+  onAdd,
+}: MrItemsEditorProps) {
+  const t = useTranslations('procurement.mr.create');
+  const tCol = useTranslations('procurement.mr.create.columns');
+  const tErr = useTranslations('procurement.mr.create.errors');
   const tc = useTranslations('procurement.common');
 
-  const update = (key: string, patch: Partial<MrLineDraft>) => {
-    onChange(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const activeMaterials = useMemo(() => materials.filter((m) => m.status === 'ACTIVE'), [materials]);
+  const spendOptions = useMemo(() => flattenSpendCategories(spendCategories), [spendCategories]);
+  const spendName = (id: string) => {
+    const found = spendOptions.find((s) => s.id === id);
+    return found ? found.name : null;
   };
 
-  /**
-   * Choosing a material rewrites three fields at once. Description is filled from the
-   * material name only when the user has not written their own — overwriting a typed
-   * description because a material was picked afterwards would destroy their work.
-   */
-  const selectMaterial = (line: MrLineDraft, material: Material | null) => {
-    update(line.key, {
-      material,
-      uomCode: material?.baseUom?.code ?? '',
-      description:
-        line.description.trim().length === 0 && material ? material.name : line.description,
-      ...(material?.defaultSpendCategoryId && !line.spendCategoryId
-        ? { spendCategoryId: material.defaultSpendCategoryId }
-        : {}),
-    });
-  };
+  const patch = (index: number, next: MrItemDraft) =>
+    onChange(items.map((item, i) => (i === index ? next : item)));
+  const update = (index: number, fields: Partial<MrItemDraft>) => patch(index, { ...items[index]!, ...fields });
 
-  /**
-   * Switching away from MATERIAL clears the material and unlocks the unit; switching to
-   * it clears a unit that was chosen freely, because it is about to be dictated.
-   */
-  const changeType = (line: MrLineDraft, lineType: ProcurementLineType) => {
-    update(line.key, {
-      lineType,
-      material: null,
-      uomCode: lineType === 'MATERIAL' ? '' : line.uomCode,
-    });
-  };
+  const muted = (text: string) => <span className="block pt-2 text-body-sm text-muted-foreground">{text}</span>;
 
-  return (
-    <div className="space-y-3">
-      {lines.map((line, index) => (
-        <MrLineRow
-          key={line.key}
-          line={line}
-          index={index}
-          spendCategories={spendCategories}
-          error={showErrors ? mrLineError(line) : null}
-          canRemove={lines.length > 1}
-          onChangeType={(type) => changeType(line, type)}
-          onSelectMaterial={(m) => selectMaterial(line, m)}
-          onPatch={(patch) => update(line.key, patch)}
-          onRemove={() => onChange(lines.filter((l) => l.key !== line.key))}
-        />
-      ))}
-
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() =>
-          onChange([...lines, emptyMrLine(`line-${Date.now()}-${lines.length}`)])
-        }
-      >
-        {tc('addLine')}
-      </Button>
-
-      <p className="sr-only" aria-live="polite">
-        {t('linesTitle')}: {lines.length}
-      </p>
-    </div>
-  );
-}
-
-function MrLineRow({
-  line,
-  index,
-  spendCategories,
-  error,
-  canRemove,
-  onChangeType,
-  onSelectMaterial,
-  onPatch,
-  onRemove,
-}: {
-  line: MrLineDraft;
-  index: number;
-  spendCategories: SpendCategory[];
-  error: MrLineError | null;
-  canRemove: boolean;
-  onChangeType: (t: ProcurementLineType) => void;
-  onSelectMaterial: (m: Material | null) => void;
-  onPatch: (patch: Partial<MrLineDraft>) => void;
-  onRemove: () => void;
-}) {
-  const t = useTranslations('procurement.mr');
-  const tc = useTranslations('procurement.common');
-  const tType = useTranslations('procurement.lineType');
-  const ids = {
-    type: useId(),
-    description: useId(),
-    quantity: useId(),
-    estimate: useId(),
-    spend: useId(),
-  };
-
-  const isMaterial = line.lineType === 'MATERIAL';
-
-  return (
-    <fieldset className="rounded-panel border border-border p-4">
-      <legend className="px-1 text-xs font-semibold text-muted-foreground">
-        {tc('lineNumber')}
-        {index + 1}
-      </legend>
-
-      {/* Stacks on narrow viewports; a nine-column grid is unusable at 375px. */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label htmlFor={ids.type} className="mb-1 block text-xs font-medium">
-            {tc('type')}
-          </label>
+  const columns: LineColumn<MrItemDraft>[] = [
+    comboboxColumn<MrItemDraft, Material>({
+      type: 'combobox',
+      key: 'item',
+      header: tCol('item'),
+      required: true,
+      // Wide enough that the trigger reads "Search materials" in full, not "Search mater…";
+      // the list itself opens wider than the column so names and codes are not cut.
+      width: 'minmax(11rem,2.4fr)',
+      panelClassName: 'min-w-72',
+      controlId: (i) => mrItemControlId('item', i),
+      options: activeMaterials,
+      getOptionValue: (m) => m.id,
+      getOptionLabel: (m) => m.name,
+      getOptionHint: (m) => m.code,
+      getOptionCaption: (m) => m.baseUom?.symbol ?? m.baseUom?.code,
+      value: (item) => item.material?.id ?? '',
+      valueLabel: (item) => (item.material ? undefined : item.description || undefined),
+      onPick: (item, i, material) => patch(i, pickMaterial(item, material)),
+      onCreate: (item, i, text) => {
+        patch(i, oneOffItem(item, text));
+        focusAfterRender(mrItemControlId('type', i));
+      },
+      createLabel: (text) => (text ? t('addOneOff', { text }) : t('addOneOffEmpty')),
+      placeholder: t('itemPlaceholder'),
+      searchPlaceholder: t('itemSearch'),
+      emptyLabel: t('itemEmpty'),
+    }),
+    {
+      key: 'type',
+      header: tCol('type'),
+      width: '7.5rem',
+      controlId: (i) => mrItemControlId('type', i),
+      cell: (item, i) =>
+        item.material ? (
+          muted(t('typeMaterial'))
+        ) : isOneOff(item) ? (
           <Select
-            id={ids.type}
-            value={line.lineType}
-            onChange={(value) => onChangeType(value as ProcurementLineType)}
+            id={mrItemControlId('type', i)}
+            value={item.lineType === 'SERVICE' ? 'SERVICE' : 'OTHER'}
+            onChange={(value) => update(i, { lineType: value as ProcurementLineType })}
           >
-            {(['MATERIAL', 'SERVICE', 'OTHER'] as const).map((type) => (
-              <option key={type} value={type}>
-                {tType(type)}
+            <option value="SERVICE">{t('typeService')}</option>
+            <option value="OTHER">{t('typeOther')}</option>
+          </Select>
+        ) : (
+          muted(tc('notAvailable'))
+        ),
+    },
+    {
+      key: 'unit',
+      header: tCol('unit'),
+      width: '6.5rem',
+      controlId: (i) => mrItemControlId('unit', i),
+      cell: (item, i) =>
+        item.material ? (
+          muted(item.material.baseUom?.symbol ?? item.material.baseUom?.code ?? tc('notAvailable'))
+        ) : isOneOff(item) ? (
+          <Select
+            id={mrItemControlId('unit', i)}
+            value={item.uomCode}
+            onChange={(value) => update(i, { uomCode: value })}
+          >
+            <option value="">{t('chooseUnit')}</option>
+            {uoms
+              .filter((u) => u.status === 'ACTIVE')
+              .map((u) => (
+                <option key={u.id} value={u.code}>
+                  {u.symbol || u.code}
+                </option>
+              ))}
+          </Select>
+        ) : (
+          muted(tc('notAvailable'))
+        ),
+    },
+    {
+      key: 'quantity',
+      header: tCol('quantity'),
+      required: true,
+      width: '7.5rem',
+      align: 'end',
+      controlId: (i) => mrItemControlId('quantity', i),
+      cell: (item, i) => (
+        <QuantityInput
+          id={mrItemControlId('quantity', i)}
+          value={item.quantity}
+          onValueChange={(value) => update(i, { quantity: value })}
+        />
+      ),
+    },
+  ];
+
+  if (moneyVisible) {
+    columns.push(
+      {
+        key: 'price',
+        header: tCol('price'),
+        width: '8.5rem',
+        align: 'end',
+        controlId: (i) => mrItemControlId('price', i),
+        cell: (item, i) => (
+          <MoneyInput
+            id={mrItemControlId('price', i)}
+            value={item.estimatedUnitPrice}
+            onValueChange={(value) => update(i, { estimatedUnitPrice: value })}
+          />
+        ),
+      },
+      {
+        key: 'amount',
+        header: tCol('amount'),
+        width: '7.5rem',
+        align: 'end',
+        cell: (item) => {
+          const amount = mrItemAmount(item);
+          return (
+            <span className="block pt-2 text-body-sm tabular-nums text-foreground">
+              {amount === null ? <span className="text-muted-foreground">{tc('notAvailable')}</span> : formatMoney(amount, 'USD')}
+            </span>
+          );
+        },
+      },
+    );
+  }
+
+  columns.push({
+    key: 'spend',
+    header: tCol('spend'),
+    width: 'minmax(0,1.2fr)',
+    controlId: (i) => mrItemControlId('spend', i),
+    cell: (item, i) =>
+      item.material ? (
+        muted(spendName(item.spendCategoryId) ?? item.material.defaultSpendCategory?.name ?? tc('notAvailable'))
+      ) : isOneOff(item) ? (
+        <Select
+          id={mrItemControlId('spend', i)}
+          value={item.spendCategoryId}
+          onChange={(value) => update(i, { spendCategoryId: value })}
+        >
+          <option value="">{t('chooseSpend')}</option>
+          {spendOptions
+            .filter((s) => s.status === 'ACTIVE')
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.parentId ? `  ${s.name}` : s.name}
               </option>
             ))}
-          </Select>
-        </div>
+        </Select>
+      ) : (
+        muted(tc('notAvailable'))
+      ),
+  });
 
-        {isMaterial ? (
-          <div className="sm:col-span-1">
-            <span className="mb-1 block text-xs font-medium">{tc('material')}</span>
-            <MaterialPicker value={line.material} onSelect={onSelectMaterial} />
-          </div>
-        ) : null}
-
-        <div className={isMaterial ? 'sm:col-span-2 lg:col-span-1' : 'sm:col-span-1'}>
-          <label htmlFor={ids.description} className="mb-1 block text-xs font-medium">
-            {tc('description')}
-          </label>
-          <Input
-            id={ids.description}
-            value={line.description}
-            onChange={(e) => onPatch({ description: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <span className="mb-1 block text-xs font-medium">{tc('uom')}</span>
-          <div className="flex min-h-11 items-center">
-            <UomDisplay
-              uom={line.material?.baseUom ?? null}
-              locked={isMaterial}
-              value={line.uomCode}
-              onChange={(uomCode) => onPatch({ uomCode })}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor={ids.quantity} className="mb-1 block text-xs font-medium">
-            {tc('quantity')}
-          </label>
-          <Input
-            id={ids.quantity}
-            inputMode="decimal"
-            value={line.quantity}
-            onChange={(e) => onPatch({ quantity: e.target.value })}
-            className="text-end tabular-nums"
-          />
-        </div>
-
-        <div>
-          <label htmlFor={ids.estimate} className="mb-1 block text-xs font-medium">
-            {t('estimatedUnitPrice')} ({tc('optional')})
-          </label>
-          <Input
-            id={ids.estimate}
-            inputMode="decimal"
-            value={line.estimatedUnitPrice}
-            onChange={(e) => onPatch({ estimatedUnitPrice: e.target.value })}
-            className="text-end tabular-nums"
-          />
-          {/* The figure approval routes on, shown as it is typed. Called an estimate wherever it
-              appears — the buyer's purchase order price supersedes it, and the difference between
-              them is not a saving. */}
-          <p className="mt-1 text-xs text-muted-foreground">
-            {estimatedLineValue(line) === null
-              ? t('estimatedValueHint')
-              : t('estimatedValueIs', { value: estimatedLineValue(line)! })}
-          </p>
-        </div>
-
-        <div className="sm:col-span-2">
-          <label htmlFor={ids.spend} className="mb-1 block text-xs font-medium">
-            {tc('spendCategory')} ({tc('optional')})
-          </label>
-          <Select
-            id={ids.spend}
-            value={line.spendCategoryId}
-            onChange={(value) => onPatch({ spendCategoryId: value })}
-          >
-            <option value="">—</option>
-            {spendCategories.flatMap((root) => [
-              <option key={root.id} value={root.id}>
-                {root.code} · {root.name}
-              </option>,
-              ...(root.children ?? []).map((child) => (
-                <option key={child.id} value={child.id}>
-                  {'  ↳ '}
-                  {child.code} · {child.name}
-                </option>
-              )),
-            ])}
-          </Select>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-3">
-        {error ? (
-          <p className="text-xs font-medium text-danger" role="alert">
-            {t(`lineError.${error}`)}
-          </p>
-        ) : (
-          <span />
-        )}
-
-        {canRemove ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="min-h-11 shrink-0 text-xs font-medium text-danger underline-offset-2 hover:underline"
-          >
-            {tc('removeLine')}
-          </button>
-        ) : null}
-      </div>
-    </fieldset>
+  return (
+    <LineItemsEditor<MrItemDraft>
+      label={t('linesLabel')}
+      rows={items}
+      rowKey={(item) => item.key}
+      columns={columns}
+      errors={(i) => {
+        if (!showErrors) return undefined;
+        const errors = mrItemErrors(items[i]!);
+        // A row with nothing chosen yet shows one error, on the item, not a unit error too.
+        const unitShown = errors.unit && !errors.item;
+        return {
+          item: errors.item ? tErr('item') : undefined,
+          unit: unitShown ? tErr('unit') : undefined,
+          quantity: errors.quantity ? tErr('quantity') : undefined,
+        };
+      }}
+      cardTitle={(item, i) =>
+        item.description ? t('lineTitleNamed', { n: i + 1, name: item.description }) : t('lineTitle', { n: i + 1 })
+      }
+      onAdd={() => {
+        onAdd();
+        focusAfterRender(mrItemControlId('item', items.length));
+      }}
+      addLabel={t('addLine')}
+      onRemove={items.length > 1 ? (index) => onChange(items.filter((_, i) => i !== index)) : undefined}
+      removeLabel={(i) => t('removeLine', { n: i + 1 })}
+    />
   );
 }

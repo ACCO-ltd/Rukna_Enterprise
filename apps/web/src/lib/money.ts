@@ -47,12 +47,16 @@ export const QUANTITY_SCALE = 3;
  * a value that exceeds its column scale.
  */
 export function parseMinorUnits(
-  value: string | null | undefined,
+  value: string | number | null | undefined,
   scale: number,
 ): number | null {
   if (value === null || value === undefined) return null;
 
-  const trimmed = value.trim();
+  // Decimals arrive as strings, but a server that slips a bare JSON number through (an
+  // empty aggregate answering `0`) must not crash the screen. Non-finite numbers and
+  // exponent forms fall out at the regex below.
+  if (typeof value === 'number' && !Number.isFinite(value)) return null;
+  const trimmed = String(value).trim();
   // Anchored so that "12abc", "1.2.3" and "" are rejected rather than partly parsed.
   if (!/^-?\d+(\.\d*)?$|^-?\.\d+$/.test(trimmed)) return null;
 
@@ -73,7 +77,7 @@ export function parseMinorUnits(
  * Use where a missing value genuinely means nothing — summing an optional amount off a
  * response. Do NOT use to validate user input: see the note at the top of this file.
  */
-export function toMinorUnits(value: string | null | undefined, scale: number): number {
+export function toMinorUnits(value: string | number | null | undefined, scale: number): number {
   return parseMinorUnits(value, scale) ?? 0;
 }
 
@@ -91,7 +95,7 @@ export function fromMinorUnits(minor: number, scale: number): string {
 
 /** Sums decimal strings exactly, in minor units. Unparseable entries contribute nothing. */
 export function sumMinorUnits(
-  values: readonly (string | null | undefined)[],
+  values: readonly (string | number | null | undefined)[],
   scale: number,
 ): number {
   return values.reduce<number>((sum, v) => sum + toMinorUnits(v, scale), 0);

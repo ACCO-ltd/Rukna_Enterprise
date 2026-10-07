@@ -79,6 +79,23 @@ export class BuyerAdvanceRepository {
     });
   }
 
+  /**
+   * Advances with their PO number and supplier name. With `purchaseOrderId`, that PO's advances
+   * (oldest first, as before); without, org-wide newest first, capped at `limit`.
+   */
+  findForList(prisma: TenantPrisma, organizationId: string, opts: { purchaseOrderId?: string; limit: number }) {
+    return prisma.buyerAdvance.findMany({
+      where: { organizationId, ...(opts.purchaseOrderId ? { purchaseOrderId: opts.purchaseOrderId } : {}) },
+      include: {
+        returns: { orderBy: { receivedAt: 'asc' } },
+        evidenceAllocations: { orderBy: { createdAt: 'asc' } },
+        purchaseOrder: { select: { id: true, poNumber: true, supplier: { select: { id: true, name: true } } } },
+      },
+      orderBy: opts.purchaseOrderId ? { advancedAt: 'asc' } : [{ advancedAt: 'desc' }, { createdAt: 'desc' }],
+      ...(opts.purchaseOrderId ? {} : { take: opts.limit }),
+    });
+  }
+
   findByPurchaseOrder(
     prisma: TenantPrisma,
     organizationId: string,

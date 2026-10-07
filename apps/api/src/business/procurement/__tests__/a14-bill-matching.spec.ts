@@ -101,6 +101,7 @@ async function postGrn(poId: string, poLineId: string, received: number, accepte
         receivedQuantity: received,
         acceptedQuantity: accepted,
         rejectedQuantity: received - accepted,
+        rejectionReason: received - accepted > 0 ? 'Damaged on delivery' : undefined,
         qualityStatus: received - accepted > 0 ? 'PARTIALLY_ACCEPTED' : 'ACCEPTED',
       },
     ],

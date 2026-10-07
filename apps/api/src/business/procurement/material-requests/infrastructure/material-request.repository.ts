@@ -62,26 +62,70 @@ export class MaterialRequestRepository {
   findAll(
     prisma: TenantPrisma,
     organizationId: string,
-    filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope },
+    filters?: {
+      status?: MaterialRequestStatus;
+      projectId?: string;
+      scope?: MaterialRequestScope;
+      /** Free-text: MR number or title, or a project in `searchProjectIds`. */
+      search?: string;
+      searchProjectIds?: string[];
+    },
     accessibleProjectIds?: string[],
   ) {
+    const search = filters?.search?.trim();
     return prisma.materialRequest.findMany({
       where: {
         organizationId,
         ...(filters?.status ? { status: filters.status } : {}),
         ...(filters?.projectId ? { projectId: filters.projectId } : {}),
         ...(filters?.scope ? { requestScope: filters.scope } : {}),
-        ...(accessibleProjectIds
-          ? {
-              OR: [
-                { requestScope: 'ORGANIZATION' },
-                { projectId: { in: accessibleProjectIds } },
-              ],
-            }
-          : {}),
+        AND: [
+          accessibleProjectIds
+            ? {
+                OR: [
+                  { requestScope: 'ORGANIZATION' },
+                  { projectId: { in: accessibleProjectIds } },
+                ],
+              }
+            : {},
+          search
+            ? {
+                OR: [
+                  { mrNumber: { contains: search, mode: 'insensitive' } },
+                  { title: { contains: search, mode: 'insensitive' } },
+                  ...(filters?.searchProjectIds?.length
+                    ? [{ projectId: { in: filters.searchProjectIds } }]
+                    : []),
+                ],
+              }
+            : {},
+        ],
       },
       include: MR_INCLUDE,
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Projects in the org whose code or name contains `search` (MR list free-text search). */
+  async findProjectIdsMatching(prisma: TenantPrisma, organizationId: string, search: string) {
+    const rows = await prisma.project.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { code: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  findProjectLabels(prisma: TenantPrisma, organizationId: string, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return prisma.project.findMany({
+      where: { organizationId, id: { in: ids } },
+      select: { id: true, code: true, name: true },
     });
   }
 
@@ -99,7 +143,8 @@ export class MaterialRequestRepository {
   /**
    * Move a request from `from` to `to` only if it is still in `from` — a compare-and-set, so two
    * people acting at once (a requester cancelling while finance approves) cannot overwrite each
-   * other. Null when the request changed since it was read.
+   * other. Null when the request changed since it was read. `extra` records the approval that
+   * cleared a governed transition (ADR-011).
    */
   async updateStatus(
     prisma: TenantPrisma,
@@ -107,13 +152,27 @@ export class MaterialRequestRepository {
     id: string,
     from: MaterialRequestStatus,
     to: MaterialRequestStatus,
+    extra?: { approvalInstanceId?: string },
   ) {
     const { count } = await prisma.materialRequest.updateMany({
       where: { id, organizationId, status: from },
-      data: { status: to },
+      data: { status: to, ...(extra ?? {}) },
     });
     if (count === 0) return null;
     return prisma.materialRequest.findFirst({ where: { id, organizationId }, include: MR_INCLUDE });
+  }
+
+  /**
+   * On approval each line is approved for what was requested, unless a quantity was already
+   * set. Returns the request re-read with its lines. Runs inside the approve transaction.
+   */
+  async approveRequestedQuantities(prisma: TenantPrisma, id: string) {
+    await prisma.$executeRaw`
+      UPDATE material_request_lines
+         SET approved_quantity = requested_quantity
+       WHERE material_request_id = ${id}
+         AND approved_quantity IS NULL`;
+    return prisma.materialRequest.findUniqueOrThrow({ where: { id }, include: MR_INCLUDE });
   }
 
   nextMrNumber(prisma: TenantPrisma, organizationId: string): Promise<number> {

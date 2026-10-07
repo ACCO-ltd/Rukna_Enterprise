@@ -21,6 +21,7 @@ function build() {
   const repo = {
     findLatestInstanceForTransaction: jest.fn(),
     markInstanceConsumed: jest.fn().mockResolvedValue({}),
+    findFinalApproverId: jest.fn().mockResolvedValue('approver-1'),
     createInstance: jest.fn().mockResolvedValue({ id: 'new-inst' }),
   };
   const svc = new CommandGovernanceService(triggerResolver as never, repo as never);
@@ -201,5 +202,42 @@ describe('CommandGovernanceService — BOQ commit four-eyes (ADR-029 A-3)', () =
 
     expect(gate).toBeNull();
     expect(repo.markInstanceConsumed).toHaveBeenCalledWith('appr-boq');
+  });
+});
+
+describe('CommandGovernanceService.evaluateStateTransition — consumed approval', () => {
+  it('reports the consumed instance and its final approver on re-drive', async () => {
+    const { svc, triggerResolver, repo } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue(binding);
+    repo.findLatestInstanceForTransaction.mockResolvedValue({ id: 'appr-1', status: 'APPROVED' });
+
+    const r = await svc.evaluateStateTransition(identity, 'PurchaseOrder', 'DRAFT', 'SUBMITTED', 'po1');
+    expect(r).toEqual({ gate: null, consumedApproval: { instanceId: 'appr-1', finalApproverId: 'approver-1' } });
+    expect(repo.markInstanceConsumed).toHaveBeenCalledWith('appr-1');
+  });
+
+  it('reports no consumed approval when no binding applies', async () => {
+    const { svc, triggerResolver } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue(null);
+    expect(await svc.evaluateStateTransition(identity, 'PurchaseOrder', 'DRAFT', 'SUBMITTED', 'po1')).toEqual({
+      gate: null,
+      consumedApproval: null,
+    });
+  });
+});
+
+describe('CommandGovernanceService.voidOpenApproval', () => {
+  it.each(['PENDING', 'APPROVED'])('closes a %s approval', async (status) => {
+    const { svc, repo } = build();
+    repo.findLatestInstanceForTransaction.mockResolvedValue({ id: 'i1', status });
+    await svc.voidOpenApproval('PURCHASE_ORDER' as never, 'po1');
+    expect(repo.markInstanceConsumed).toHaveBeenCalledWith('i1');
+  });
+
+  it.each(['REJECTED', 'CANCELLED'])('leaves a %s approval alone', async (status) => {
+    const { svc, repo } = build();
+    repo.findLatestInstanceForTransaction.mockResolvedValue({ id: 'i1', status });
+    await svc.voidOpenApproval('PURCHASE_ORDER' as never, 'po1');
+    expect(repo.markInstanceConsumed).not.toHaveBeenCalled();
   });
 });

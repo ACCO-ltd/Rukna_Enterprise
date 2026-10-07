@@ -1,8 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PurchaseOrderService } from './purchase-order.service.js';
 
-// PO no longer has a governance gate — confirm() is a single-actor direct action.
-// These unit tests verify the guard clauses on confirm().
+// confirm() runs the governance gate (ADR-011) after its guard clauses; these unit tests
+// verify the guard clauses short-circuit before the gate. The gate itself: po-governance.spec.
 const identity = {
   userId: 'u1',
   activeOrganizationId: 'o1',

@@ -142,15 +142,22 @@ describe('NAV_DOMAINS', () => {
       }
     });
 
-    it('leads the operational spine with Purchase orders, then Material requests (A4)', () => {
-      const operationalHrefs = procurement()
-        .items.filter((i) => !i.groupKey)
-        .map((i) => i.href);
-      // Purchase orders is the primary entry — first, and ahead of Material requests.
-      expect(operationalHrefs[0]).toBe('/procurement/orders');
-      expect(operationalHrefs.indexOf('/procurement/orders')).toBeLessThan(
-        operationalHrefs.indexOf('/procurement/requests'),
-      );
+    it('orders the tabs along the purchasing flow, then commitments, suppliers and setup', () => {
+      expect(procurement().items.filter((i) => !i.groupKey).map((i) => i.labelKey)).toEqual([
+        'materialRequests',
+        'purchaseOrders',
+        'goodsReceipts',
+        'supplierBills',
+        'buyerAdvances',
+        'commitments',
+        'suppliers',
+      ]);
+      expect(procurement().items.filter((i) => i.groupKey === 'setup').map((i) => i.labelKey)).toEqual([
+        'materials',
+        'materialCategories',
+        'unitsOfMeasure',
+        'spendCategories',
+      ]);
     });
 
     it('cross-links Supplier bills to the canonical Accounting route, not a duplicate', () => {

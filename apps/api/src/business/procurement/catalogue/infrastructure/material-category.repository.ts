@@ -25,10 +25,33 @@ export class MaterialCategoryRepository {
     });
   }
 
-  findAll(prisma: TenantPrisma, organizationId: string, status?: MasterDataStatus) {
+  /**
+   * Root categories with their children. ACTIVE (default): active roots, active children — the
+   * picker view, unchanged. INACTIVE: roots that are inactive or have an inactive child, with
+   * their inactive children. ALL: every root with every child. Each row carries its own status.
+   */
+  findAll(prisma: TenantPrisma, organizationId: string, filter: 'ACTIVE' | 'INACTIVE' | 'ALL' = 'ACTIVE') {
+    const where =
+      filter === 'ALL'
+        ? { organizationId, parentId: null }
+        : filter === 'ACTIVE'
+          ? { organizationId, parentId: null, status: 'ACTIVE' as MasterDataStatus }
+          : {
+              organizationId,
+              parentId: null,
+              OR: [
+                { status: 'INACTIVE' as MasterDataStatus },
+                { children: { some: { status: 'INACTIVE' as MasterDataStatus } } },
+              ],
+            };
     return prisma.materialCategory.findMany({
-      where: { organizationId, ...(status ? { status } : {}), parentId: null },
-      include: { children: { where: { status: 'ACTIVE' }, orderBy: { code: 'asc' } } },
+      where,
+      include: {
+        children: {
+          ...(filter === 'ALL' ? {} : { where: { status: filter as MasterDataStatus } }),
+          orderBy: { code: 'asc' },
+        },
+      },
       orderBy: { code: 'asc' },
     });
   }

@@ -38,6 +38,7 @@ import { useId, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { flattenTree } from '@/features/boq/boq-rows';
 import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { useSpendCategories } from '../hooks/use-procurement';
 import { CheckboxField, Select } from '@erp/ui';
@@ -213,27 +214,36 @@ interface BoqNodeSelectProps {
  * Shared by this picker and the supplier bill's cost-line select, so both offer the same set.
  */
 export function useProjectCostNodes(projectId: string | null) {
-  const workspace = useBoqWorkspace(projectId ?? '');
+  // The BOQ reads are guarded by view:boq. Without it there is nothing to offer, and asking
+  // anyway only produces a 403 that would read as "this project has no BOQ".
+  // Until the session is known, assume access rather than flash a "no access" note.
+  const { ready, can } = usePermissions();
+  const canViewBoq = !ready || can('view:boq');
+
+  const workspace = useBoqWorkspace(projectId ?? '', { enabled: canViewBoq });
   const baselineVersionId =
     workspace.data?.contractBaseline?.id ?? workspace.data?.approved?.id ?? null;
 
-  const tree = useBoqTree(projectId ?? '', projectId ? baselineVersionId : null);
+  const tree = useBoqTree(projectId ?? '', projectId && canViewBoq ? baselineVersionId : null);
 
   const leafNodes = useMemo(() => {
     if (!tree.data) return [];
     return flattenTree(tree.data).filter((node) => node.isLeaf && node.isActive);
   }, [tree.data]);
 
-  const loading = Boolean(projectId) && (workspace.isLoading || tree.isLoading);
-  const noBaseline = Boolean(projectId) && !workspace.isLoading && baselineVersionId === null;
-  return { leafNodes, loading, noBaseline, isError: tree.isError };
+  const noAccess = Boolean(projectId) && !canViewBoq;
+  const loading = Boolean(projectId) && canViewBoq && (workspace.isLoading || tree.isLoading);
+  const noBaseline =
+    Boolean(projectId) && canViewBoq && !workspace.isLoading && !workspace.isError && baselineVersionId === null;
+  return { leafNodes, loading, noBaseline, noAccess, isError: workspace.isError || tree.isError };
 }
 
 function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSelectProps) {
   const t = useTranslations('procurement.costTarget');
 
-  const { leafNodes, loading, noBaseline, isError } = useProjectCostNodes(projectId);
-  const empty = Boolean(projectId) && !loading && !noBaseline && leafNodes.length === 0;
+  const { leafNodes, loading, noBaseline, noAccess, isError } = useProjectCostNodes(projectId);
+  const empty =
+    Boolean(projectId) && !loading && !noBaseline && !noAccess && !isError && leafNodes.length === 0;
 
   return (
     <div>
@@ -243,7 +253,7 @@ function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSele
       <Select
         id={id}
         value={value ?? ''}
-        disabled={disabled || !projectId || loading || noBaseline || empty}
+        disabled={disabled || !projectId || loading || noBaseline || noAccess || empty}
         onChange={(value) => onChange(value || null)}
       >
         <option value="">
@@ -260,6 +270,7 @@ function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSele
         ))}
       </Select>
 
+      {noAccess ? <p className="mt-1 text-xs text-muted-foreground">{t('noBoqAccess')}</p> : null}
       {noBaseline ? <p className="mt-1 text-xs text-muted-foreground">{t('noBaseline')}</p> : null}
       {empty ? <p className="mt-1 text-xs text-muted-foreground">{t('noLeafNodes')}</p> : null}
       {isError ? <p className="mt-1 text-xs text-danger">{t('nodesLoadFailed')}</p> : null}

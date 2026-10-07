@@ -18,6 +18,7 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { MaterialRequestService } from '../application/material-request.service.js';
 import { CreateMaterialRequestDto } from './dto/create-material-request.dto.js';
+import { RejectMaterialRequestDto } from './dto/reject-material-request.dto.js';
 
 @ApiTags('Procurement — Material Requests')
 @ApiBearerAuth('access-token')
@@ -32,6 +33,8 @@ export class MaterialRequestController {
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'projectId', required: false })
   @ApiQuery({ name: 'scope', required: false, enum: ['PROJECT', 'ORGANIZATION'] })
+  @ApiQuery({ name: 'requestedFor', required: false, description: "A project id, or 'overhead'" })
+  @ApiQuery({ name: 'search', required: false, description: 'MR number, title, or project code/name' })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('status', new ParseEnumPipe(MaterialRequestStatus, { optional: true }))
@@ -39,11 +42,15 @@ export class MaterialRequestController {
     @Query('projectId') projectId?: string,
     @Query('scope', new ParseEnumPipe(MaterialRequestScope, { optional: true }))
     scope?: MaterialRequestScope,
+    @Query('requestedFor') requestedFor?: string,
+    @Query('search') search?: string,
   ) {
     return this.service.findAll(identity, {
       status,
       projectId,
       scope,
+      requestedFor,
+      search,
     });
   }
 
@@ -75,10 +82,23 @@ export class MaterialRequestController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({
-    summary: 'Approve a submitted MR: SUBMITTED → APPROVED (the requester cannot approve their own)',
+    summary: 'Approve a submitted MR: SUBMITTED → APPROVED. The requester cannot approve their own (ADR-022).',
   })
   approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.service.approve(identity, id);
+  }
+
+  @Post(':id/reject')
+  @RequirePermissions(PERMISSIONS.materialRequestsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Send a submitted MR back to the requester with a reason: SUBMITTED → DRAFT' })
+  reject(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: RejectMaterialRequestDto,
+  ) {
+    return this.service.reject(identity, id, dto.reason);
   }
 
   @Post(':id/cancel')

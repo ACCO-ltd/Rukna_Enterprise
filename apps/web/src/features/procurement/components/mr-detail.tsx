@@ -25,6 +25,8 @@ import {
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ApiError } from '@/lib/api-client';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { formatDate, formatNumber } from '@/lib/format';
 import { useProjects } from '@/features/projects/hooks/use-projects';
@@ -34,20 +36,27 @@ import { useApprovalStep } from '@/features/workflows/hooks/use-approval';
 import { useWorkflowDefinition } from '@/features/workflows/hooks/use-workflow-definition';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
-import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
-import { ApiError } from '@/lib/api-client';
 
 import {
   useApproveMaterialRequest,
   useCancelMaterialRequest,
   useMaterialRequest,
+  useRejectMaterialRequest,
   useSubmitMaterialRequest,
 } from '../hooks/use-procurement';
 import type { MaterialRequest, MaterialRequestStatus } from '../types';
+import { MrRejectDialog } from './mr-reject-dialog';
 import { ProcurementStatusBadge } from './procurement-badges';
 
-type PendingAction = 'submit' | 'approve' | 'cancel';
+type PendingAction = 'submit' | 'cancel' | 'approve';
+
+/** A 409 carrying an approvalInstanceId is the DoA gate, not a failure (ADR-015). */
+function gateInstanceId(error: unknown): string | null {
+  return error instanceof ApiError && error.status === 409
+    ? ((error.details?.approvalInstanceId as string | undefined) ?? null)
+    : null;
+}
 
 export function MrDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.mr');
@@ -60,11 +69,16 @@ export function MrDetail({ id }: { id: string }) {
   useModuleTrail(mr.data?.mrNumber);
   const projects = useProjects();
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  // Set when submit was routed for approval (409): the panel shows and "Complete submission"
+  // calls submit again once approvers have acted.
+  const [gatedInstanceId, setGatedInstanceId] = useState<string | null>(null);
+  const { can } = usePermissions();
 
   const submit = useSubmitMaterialRequest();
   const approve = useApproveMaterialRequest();
   const cancel = useCancelMaterialRequest();
-  const { can } = usePermissions();
+  const reject = useRejectMaterialRequest();
   const session = useSession();
 
   if (mr.isPending) {
@@ -81,7 +95,7 @@ export function MrDetail({ id }: { id: string }) {
       <div className="space-y-4">
         <Alert variant="error" messages={[tc('loadFailed')]} />
         <Button variant="outline" asChild>
-          <Link href="/procurement/material-requests">{t('backToList')}</Link>
+          <Link href="/procurement/requests">{t('backToList')}</Link>
         </Button>
       </div>
     );
@@ -91,17 +105,39 @@ export function MrDetail({ id }: { id: string }) {
   const projectName = projects.data?.find((p) => p.id === request.projectId)?.name ?? null;
   const isTerminal = request.status === 'CANCELLED' || request.status === 'CLOSED';
   const mutation = pending === 'submit' ? submit : pending === 'approve' ? approve : cancel;
-  // Approve: a submitted request, for someone who holds the permission — never the requester,
-  // whom the server refuses (the requester-cannot-approve rule).
-  // Only for a request outside a workflow: one with an approval instance is approved on its steps.
-  const canApprove =
+  // Approve/reject: a submitted request, for a holder of the permission who is not the requester
+  // (the server refuses the requester anyway: REQUESTER_CANNOT_APPROVE_OWN_REQUEST). An
+  // approvalInstanceId does not hide them: the DoA chain clears DRAFT → SUBMITTED and is consumed
+  // on submit, so SUBMITTED → APPROVED is still this explicit step.
+  const mayApprove =
     request.status === 'SUBMITTED' &&
-    request.approvalInstanceId === null &&
     can(PROCUREMENT_PERMISSIONS.approveRequest) &&
     request.requestedBy !== session.user?.id;
 
   const run = () => {
-    mutation.mutate(id, { onSuccess: () => setPending(null) });
+    mutation.mutate(id, {
+      onSuccess: () => {
+        setPending(null);
+        setGatedInstanceId(null);
+      },
+      onError: (error) => {
+        const instanceId = pending === 'submit' ? gateInstanceId(error) : null;
+        if (instanceId) {
+          setGatedInstanceId(instanceId);
+          setPending(null);
+          mutation.reset();
+        }
+      },
+    });
+  };
+
+  /** The server's refusal in words — the own-request rule gets its own sentence. */
+  const errorFor = (error: unknown): string | undefined => {
+    if (!error) return undefined;
+    if (error instanceof ApiError && error.details?.code === 'REQUESTER_CANNOT_APPROVE_OWN_REQUEST') {
+      return t('approveOwnRequest');
+    }
+    return error instanceof ApiError && error.message ? error.message : tc('loadFailed');
   };
 
   return (
@@ -109,7 +145,7 @@ export function MrDetail({ id }: { id: string }) {
       {/* ── Back link ─────────────────────────────────────────────────────── */}
       <div>
         <Link
-          href="/procurement/material-requests"
+          href="/procurement/requests"
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
         >
           <ChevronStartIcon />
@@ -131,14 +167,20 @@ export function MrDetail({ id }: { id: string }) {
             </Badge>
           </div>
 
-          {/* Primary heading */}
+          {/* Primary heading: the request's short title — what the list shows — then the
+              longer description for older requests raised before titles existed. */}
           <h2 className="mt-2 text-h1 font-bold text-foreground">
-            {request.description ?? t('detailTitle', { number: request.mrNumber })}
+            {request.title?.trim() || request.description || t('detailTitle', { number: request.mrNumber })}
           </h2>
 
           {/* Subtitle: project name */}
           {projectName ? (
             <p className="mt-1 text-sm text-muted-foreground">{projectName}</p>
+          ) : null}
+
+          {/* The justification, when the heading is the title rather than the description. */}
+          {request.title?.trim() && request.description ? (
+            <p className="mt-2 max-w-prose text-sm text-foreground">{request.description}</p>
           ) : null}
         </CardContent>
 
@@ -150,10 +192,15 @@ export function MrDetail({ id }: { id: string }) {
                 {t('submit')}
               </Button>
             ) : null}
-            {canApprove ? (
-              <Button type="button" size="sm" onClick={() => setPending('approve')}>
-                {t('approve')}
-              </Button>
+            {mayApprove ? (
+              <>
+                <Button type="button" size="sm" onClick={() => setPending('approve')}>
+                  {t('approve')}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setRejecting(true)}>
+                  {t('reject.action')}
+                </Button>
+              </>
             ) : null}
             {['DRAFT', 'SUBMITTED', 'APPROVED'].includes(request.status) ? (
               <Button
@@ -168,6 +215,21 @@ export function MrDetail({ id }: { id: string }) {
           </CardFooter>
         ) : null}
       </Card>
+
+      {/* ── Submit routed for approval (409 gate) ──────────────────────────── */}
+      {gatedInstanceId && request.status === 'DRAFT' ? (
+        <Card>
+          <CardContent className="space-y-3">
+            <Alert variant="info" messages={[t('submitAwaitingApproval')]} />
+            <ApprovalPanel instanceId={gatedInstanceId} transactionType={WorkflowTransactionType.MATERIAL_REQUEST} />
+            <div className="border-t border-border pt-3">
+              <Button type="button" loading={submit.isPending} onClick={() => setPending('submit')}>
+                {t('completeSubmit')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* ── Approval workflow chain ────────────────────────────────────────── */}
       <WorkflowChain instanceId={request.approvalInstanceId} status={request.status} />
@@ -282,15 +344,25 @@ export function MrDetail({ id }: { id: string }) {
           description={t(`${pending}Body`)}
           confirmLabel={t(pending === 'cancel' ? 'cancelRequest' : pending)}
           isPending={mutation.isPending}
-          errorMessage={
-            mutation.isError
-              ? mutation.error instanceof ApiError
-                ? mutation.error.message
-                : tc('loadFailed')
-              : undefined
-          }
+          errorMessage={errorFor(mutation.error)}
           onConfirm={run}
-          onDismiss={() => setPending(null)}
+          onDismiss={() => {
+            mutation.reset();
+            setPending(null);
+          }}
+        />
+      ) : null}
+
+      {rejecting ? (
+        <MrRejectDialog
+          number={request.mrNumber}
+          busy={reject.isPending}
+          error={reject.error ? (errorFor(reject.error) ?? null) : null}
+          onReject={(reason) => reject.mutate({ id, reason }, { onSuccess: () => setRejecting(false) })}
+          onClose={() => {
+            reject.reset();
+            setRejecting(false);
+          }}
         />
       ) : null}
     </div>
@@ -312,13 +384,17 @@ function WorkflowChain({
   const tCommon = useTranslations('common');
 
   const stepQuery = useApprovalStep(instanceId);
-  const definition = useWorkflowDefinition(WorkflowTransactionType.MATERIAL_REQUEST);
+  // A request with no approval instance went through no workflow — the governance binding
+  // gates submit and records the instance. Without one there is no chain to draw, and the
+  // definition read would only 404 for an organization that has none configured.
+  const hasWorkflow = instanceId !== null;
+  const definition = useWorkflowDefinition(WorkflowTransactionType.MATERIAL_REQUEST, {
+    enabled: hasWorkflow,
+  });
 
-  const isLoading = definition.isPending || (instanceId !== null && stepQuery.isPending);
+  if (!hasWorkflow) return null;
 
-  // No workflow instance: this request is not being approved through the configured chain (it is
-  // approved directly), so drawing the chain would claim steps that never ran.
-  if (instanceId === null) return null;
+  const isLoading = definition.isPending || stepQuery.isPending;
 
   if (isLoading) {
     return (

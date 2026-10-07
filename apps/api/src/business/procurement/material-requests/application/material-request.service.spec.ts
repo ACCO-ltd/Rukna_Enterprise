@@ -8,6 +8,8 @@ import { MaterialRequestService } from './material-request.service.js';
  * MaterialRequestService.approve — SUBMITTED → APPROVED, with the real SoD evaluator reading an
  * active REQUESTER_CANNOT_APPROVE_OWN_REQUEST rule (ACCO's seeded policy).
  */
+const UPDATED_AT = new Date('2026-10-07T09:00:00Z');
+
 const identity = (userId: string) =>
   ({ userId, activeOrganizationId: 'o1', roles: [], permissions: [] }) as never;
 
@@ -16,7 +18,13 @@ function build(status: MaterialRequestStatus, requestedBy = 'alice') {
     findById: jest
       .fn()
       .mockResolvedValue({ id: 'mr1', mrNumber: 'MR-1', status, requestedBy, projectId: 'p1' }),
-    updateStatus: jest.fn().mockImplementation(async (_tx, _org, id, _from, to) => ({ id, status: to })),
+    updateStatus: jest
+      .fn()
+      .mockImplementation(async (_tx, _org, id, _from, to) => ({ id, status: to, updatedAt: UPDATED_AT })),
+    // Approval sets each line's approved quantity in the same transaction and re-reads the request.
+    approveRequestedQuantities: jest
+      .fn()
+      .mockImplementation(async (_tx, id) => ({ id, status: 'APPROVED', updatedAt: UPDATED_AT })),
   };
   const audit = { record: jest.fn() };
   const projectAccess = { assertMember: jest.fn() };
@@ -36,6 +44,7 @@ function build(status: MaterialRequestStatus, requestedBy = 'alice') {
     projectAccess as never,
     audit as never,
     sod,
+    {} as never,
   );
   return { svc, repo, audit, projectAccess };
 }
@@ -47,10 +56,19 @@ describe('MaterialRequestService.approve', () => {
     await expect(svc.approve(identity('bob'), 'mr1')).resolves.toEqual({
       id: 'mr1',
       status: 'APPROVED',
+      updatedAt: UPDATED_AT,
     });
 
     expect(projectAccess.assertMember).toHaveBeenCalledWith(identity('bob'), 'p1');
-    expect(repo.updateStatus).toHaveBeenCalledWith(expect.anything(), 'o1', 'mr1', 'SUBMITTED', 'APPROVED');
+    expect(repo.updateStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'o1',
+      'mr1',
+      'SUBMITTED',
+      'APPROVED',
+      undefined,
+    );
+    expect(repo.approveRequestedQuantities).toHaveBeenCalledWith(expect.anything(), 'mr1');
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { IsString, IsOptional, IsInt, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -85,5 +85,21 @@ export class SupplierController {
     @Body() dto: UpdateSupplierDto,
   ) {
     return this.supplierService.update(identity, id, dto);
+  }
+
+  @Post(':id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Deactivate a supplier (ACTIVE → INACTIVE). Audited; 409 unless ACTIVE.' })
+  deactivate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.supplierService.deactivate(identity, id);
+  }
+
+  @Post(':id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Reactivate a supplier (INACTIVE → ACTIVE). Audited; 409 unless INACTIVE.' })
+  reactivate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.supplierService.reactivate(identity, id);
   }
 }

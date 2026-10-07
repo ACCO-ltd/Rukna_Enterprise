@@ -9,6 +9,12 @@ export interface GovernanceGate {
   approvalInstanceId: string;
 }
 
+/** What the gate decided, plus the approval it consumed when a re-drive proceeds. */
+export interface GovernanceOutcome {
+  gate: GovernanceGate | null;
+  consumedApproval: { instanceId: string; finalApproverId: string | null } | null;
+}
+
 /**
  * Single seam for command-level governance checks on state transitions.
  *
@@ -37,6 +43,30 @@ export class CommandGovernanceService {
     // chain. Omitted by amount-less commands, which then only ever match catch-all bindings.
     amount: Decimal | null = null,
   ): Promise<null | GovernanceGate> {
+    const outcome = await this.evaluateStateTransition(
+      identity,
+      entityType,
+      fromState,
+      toState,
+      resourceId,
+      amount,
+    );
+    return outcome.gate;
+  }
+
+  /**
+   * Same gate as {@link gateStateTransition}, but also reports the approval it consumed (if any),
+   * so a command that records "who approved" on its document can name the real final approver
+   * rather than the user who re-drove the transition (ADR-015 re-drive).
+   */
+  async evaluateStateTransition(
+    identity: RequestIdentity,
+    entityType: GovernedEntity,
+    fromState: string,
+    toState: string,
+    resourceId: string,
+    amount: Decimal | null = null,
+  ): Promise<GovernanceOutcome> {
     const binding = await this.triggerResolver.resolveForStateTransition(
       identity.activeOrganizationId,
       entityType,
@@ -45,7 +75,7 @@ export class CommandGovernanceService {
       amount,
     );
 
-    if (!binding) return null;
+    if (!binding) return { gate: null, consumedApproval: null };
 
     const transactionType = (binding.definition.transactionType as WorkflowTransactionType) ?? null;
 
@@ -56,12 +86,13 @@ export class CommandGovernanceService {
     if (existing?.status === 'APPROVED') {
       // Approval is complete. Consume it (single-use) and let the transition proceed.
       await this.repo.markInstanceConsumed(existing.id);
-      return null;
+      const finalApproverId = await this.repo.findFinalApproverId(existing.id);
+      return { gate: null, consumedApproval: { instanceId: existing.id, finalApproverId } };
     }
 
     if (existing?.status === 'PENDING') {
       // Already awaiting approval — return the same instance rather than a duplicate.
-      return { gated: true, approvalInstanceId: existing.id };
+      return { gate: { gated: true, approvalInstanceId: existing.id }, consumedApproval: null };
     }
 
     // No prior instance, or a terminal (REJECTED/CANCELLED/consumed) one — open a fresh approval.
@@ -88,7 +119,7 @@ export class CommandGovernanceService {
       },
     });
 
-    return { gated: true, approvalInstanceId: instance.id };
+    return { gate: { gated: true, approvalInstanceId: instance.id }, consumedApproval: null };
   }
 
   /**
@@ -113,6 +144,18 @@ export class CommandGovernanceService {
   async voidUnconsumedApproval(transactionType: WorkflowTransactionType, resourceId: string): Promise<void> {
     const latest = await this.repo.findLatestInstanceForTransaction(transactionType, resourceId);
     if (latest?.status === 'APPROVED') await this.repo.markInstanceConsumed(latest.id);
+  }
+
+  /**
+   * Closes whatever approval is still open for a document that will never transition — PENDING
+   * (approvers would otherwise decide on a dead document) or APPROVED-but-unused. Used when the
+   * document itself is cancelled. Same terminal state as a consumed approval (CANCELLED).
+   */
+  async voidOpenApproval(transactionType: WorkflowTransactionType, resourceId: string): Promise<void> {
+    const latest = await this.repo.findLatestInstanceForTransaction(transactionType, resourceId);
+    if (latest?.status === 'PENDING' || latest?.status === 'APPROVED') {
+      await this.repo.markInstanceConsumed(latest.id);
+    }
   }
 }
 

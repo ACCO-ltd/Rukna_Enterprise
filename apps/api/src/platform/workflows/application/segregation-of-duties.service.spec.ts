@@ -123,3 +123,40 @@ describe('SegregationOfDutiesService', () => {
     });
   });
 });
+
+describe('SegregationOfDutiesService — machine-readable denial', () => {
+  it('a denial keeps its message and carries the rule code in details.code', async () => {
+    const prisma = {
+      segregationOfDutiesRule: {
+        findMany: jest.fn().mockResolvedValue([{ code: 'PO_CREATOR_CANNOT_RECEIVE_GOODS' }]),
+      },
+    };
+    const svc = new SegregationOfDutiesService({ getClient: () => prisma } as never);
+    const error = await svc
+      .assertAllowed({
+        organizationId: 'o1',
+        action: 'RECEIVE_GOODS',
+        actorUserId: 'alice',
+        purchaseOrderCreatorUserId: 'alice',
+      })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect((error as ForbiddenException).message).toBe(
+      "Segregation-of-duties rule 'PO_CREATOR_CANNOT_RECEIVE_GOODS' prohibits this action.",
+    );
+    expect((error as ForbiddenException).getResponse()).toEqual(
+      expect.objectContaining({ details: { code: 'PO_CREATOR_CANNOT_RECEIVE_GOODS' } }),
+    );
+  });
+
+  it('violation() answers without throwing', () => {
+    const svc = new SegregationOfDutiesService({} as never);
+    const codes = new Set(['PO_CREATOR_CANNOT_RECEIVE_GOODS']);
+    const ctx = { organizationId: 'o1', action: 'RECEIVE_GOODS' as const, actorUserId: 'alice' };
+    expect(svc.violation(codes, { ...ctx, purchaseOrderCreatorUserId: 'alice' })).toBe(
+      'PO_CREATOR_CANNOT_RECEIVE_GOODS',
+    );
+    expect(svc.violation(codes, { ...ctx, purchaseOrderCreatorUserId: 'bob' })).toBeNull();
+    expect(svc.violation(new Set(), { ...ctx, purchaseOrderCreatorUserId: 'alice' })).toBeNull();
+  });
+});

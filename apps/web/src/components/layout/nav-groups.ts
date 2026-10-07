@@ -158,16 +158,17 @@ export const NAV_DOMAINS: NavDomain[] = [
     href: '/procurement',
     moduleKey: 'procurement',
     iconKey: 'shopping-cart',
-    // Round-2 spine (decision A4): the purchase order is the primary entry, with material
-    // requests demoted below it to an optional "needs list". Supplier bills is a cross-link
-    // into Procurement — the route stays canonical under Accounting. Payments are NOT here;
-    // treasury stays in Accounting. Master data groups under "Setup".
+    // Tab order follows the purchasing flow: request → order → receive → bill → advance, then
+    // the cost view, the supplier register and setup. Supplier bills is a cross-link into
+    // Procurement — the route stays canonical under Accounting (its list, detail and create
+    // pages and every link between them live there). Payments are NOT here; treasury stays in
+    // Accounting. Master data groups under "Setup".
     items: [
-      { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
       { href: '/procurement/requests', labelKey: 'materialRequests', iconKey: 'clipboard' },
+      { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
-      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet' },
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },
+      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet' },
       { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
       // Suppliers: ungated master data — buyers add suppliers as purchasing widens, so this
       // must not require manage:procurement-config (a buyer needs to add the supplier their
