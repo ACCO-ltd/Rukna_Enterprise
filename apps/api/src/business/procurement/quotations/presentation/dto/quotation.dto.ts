@@ -81,6 +81,35 @@ export class SendQuotationDto {
   exceptionReason?: (typeof QUOTE_COUNT_EXCEPTION_REASONS)[number];
 }
 
+export const QUOTE_REJECT_REASONS = ['ILLEGIBLE', 'WRONG_ITEMS', 'INCOMPLETE', 'OTHER'] as const;
+
+export class EnterQuoteTotalDto {
+  @ApiProperty({ example: '1234.50', description: 'Positive, at most 2 decimals, ≤ 999,999,999.99' })
+  @IsString()
+  @IsNotEmpty()
+  total: string;
+}
+
+export class RejectQuoteDto {
+  @ApiProperty({ enum: QUOTE_REJECT_REASONS })
+  @IsIn(QUOTE_REJECT_REASONS)
+  reason: (typeof QUOTE_REJECT_REASONS)[number];
+
+  @ApiPropertyOptional({ maxLength: 1000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class AskAnotherQuoteDto {
+  @ApiProperty({ maxLength: 1000, example: 'Check Xamar Steel too' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  note: string;
+}
+
 export class QuotationReasonDto {
   @ApiProperty({ maxLength: 1000 })
   @IsString()

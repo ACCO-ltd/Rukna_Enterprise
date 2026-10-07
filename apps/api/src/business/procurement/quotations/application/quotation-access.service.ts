@@ -62,10 +62,14 @@ export class QuotationAccessService {
     requesterUserId: string,
     activeCodes?: Set<string>,
   ): Promise<string | null> {
-    // Q3: the SELECT_QUOTATION rules land with the selector commands (Q4).
-    void this.sod;
-    void [organizationId, actorUserId, request, requesterUserId, activeCodes];
-    return null;
+    const codes = activeCodes ?? (await this.sod.activeRuleCodes(organizationId));
+    return this.sod.violation(codes, {
+      organizationId,
+      action: 'SELECT_QUOTATION',
+      actorUserId,
+      requesterUserId,
+      quoteUploaderUserIds: this.evidenceTouchers(request),
+    });
   }
 
   async callerFacts(

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -11,8 +11,12 @@ import {
 } from '../../../../common/decorators/require-permissions.decorator.js';
 import { QuotationCollectService } from '../application/quotation-collect.service.js';
 import { QuotationQueryService } from '../application/quotation-query.service.js';
+import { QuotationSelectionService } from '../application/quotation-selection.service.js';
 import {
   AddQuoteDto,
+  AskAnotherQuoteDto,
+  EnterQuoteTotalDto,
+  RejectQuoteDto,
   OpenQuotationRequestDto,
   QuotationReasonDto,
   QuotePhotoDto,
@@ -35,6 +39,7 @@ export class QuotationRequestController {
   constructor(
     private readonly collect: QuotationCollectService,
     private readonly query: QuotationQueryService,
+    private readonly selection: QuotationSelectionService,
   ) {}
 
   @Post()
@@ -105,6 +110,39 @@ export class QuotationRequestController {
   @ApiOperation({ summary: 'Reopen a sent request to change evidence: AWAITING_DECISION → COLLECTING' })
   reopen(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: QuotationReasonDto) {
     return this.collect.reopen(identity, id, dto.reason);
+  }
+
+  @Put(':id/quotes/:quoteId/total')
+  @RequirePermissions(P.procurementView, P.quotationsAward)
+  @ApiOperation({ summary: "Finance types a quote's total from its photo (overwritable until award)" })
+  enterTotal(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('quoteId') quoteId: string,
+    @Body() dto: EnterQuoteTotalDto,
+  ) {
+    return this.selection.enterTotal(identity, id, quoteId, dto.total);
+  }
+
+  @Post(':id/quotes/:quoteId/reject')
+  @RequirePermissions(P.procurementView, P.quotationsAward)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject a quote (illegible, wrong items, …); it leaves the comparison' })
+  rejectQuote(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('quoteId') quoteId: string,
+    @Body() dto: RejectQuoteDto,
+  ) {
+    return this.selection.rejectQuote(identity, id, quoteId, dto.reason, dto.note);
+  }
+
+  @Post(':id/ask-another')
+  @RequirePermissions(P.procurementView, P.quotationsAward)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ask the collector for another quote: AWAITING_DECISION → RETURNED' })
+  askAnother(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: AskAnotherQuoteDto) {
+    return this.selection.askAnother(identity, id, dto.note);
   }
 
   @Post(':id/cancel')

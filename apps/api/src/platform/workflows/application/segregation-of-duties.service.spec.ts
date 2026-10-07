@@ -28,6 +28,7 @@ describe('SegregationOfDutiesService', () => {
       'BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT',
     ],
     ['APPROVE_MANUAL_JOURNAL', 'journalPreparerUserId', 'JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL'],
+    ['SELECT_QUOTATION', 'requesterUserId', 'REQUESTER_CANNOT_SELECT'],
   ];
 
   describe.each(rules)('%s (%s)', (action, field, code) => {
@@ -147,6 +148,52 @@ describe('SegregationOfDutiesService — machine-readable denial', () => {
     expect((error as ForbiddenException).getResponse()).toEqual(
       expect.objectContaining({ details: { code: 'PO_CREATOR_CANNOT_RECEIVE_GOODS' } }),
     );
+  });
+
+  describe('ADR-044 §6 — SELECT_QUOTATION', () => {
+    const svc = new SegregationOfDutiesService({} as never);
+    const all = new Set([
+      'QUOTE_UPLOADER_CANNOT_SELECT',
+      'REQUESTER_CANNOT_SELECT',
+      'REQUESTER_CANNOT_APPROVE_OWN_REQUEST',
+    ]);
+    const ctx = { organizationId: 'o1', action: 'SELECT_QUOTATION' as const, actorUserId: 'alice' };
+
+    it('QUOTE_UPLOADER_CANNOT_SELECT fires when the actor is among the evidence uploaders', () => {
+      expect(svc.violation(all, { ...ctx, quoteUploaderUserIds: ['bob', 'alice'] })).toBe(
+        'QUOTE_UPLOADER_CANNOT_SELECT',
+      );
+      expect(svc.violation(all, { ...ctx, quoteUploaderUserIds: ['bob'] })).toBeNull();
+      expect(svc.violation(all, { ...ctx })).toBeNull();
+    });
+
+    it('REQUESTER_CANNOT_SELECT fires for the MR requester (uploader rule wins when both apply)', () => {
+      expect(svc.violation(all, { ...ctx, requesterUserId: 'alice' })).toBe('REQUESTER_CANNOT_SELECT');
+      expect(
+        svc.violation(all, { ...ctx, requesterUserId: 'alice', quoteUploaderUserIds: ['alice'] }),
+      ).toBe('QUOTE_UPLOADER_CANNOT_SELECT');
+    });
+
+    it('each rule fires only under its own code', () => {
+      const uploaderOnly = new Set(['QUOTE_UPLOADER_CANNOT_SELECT']);
+      const requesterOnly = new Set(['REQUESTER_CANNOT_SELECT']);
+      expect(svc.violation(uploaderOnly, { ...ctx, requesterUserId: 'alice' })).toBeNull();
+      expect(svc.violation(requesterOnly, { ...ctx, quoteUploaderUserIds: ['alice'] })).toBeNull();
+      // The MR approval rule does not leak into selection, nor selection into other actions.
+      expect(
+        svc.violation(new Set(['REQUESTER_CANNOT_APPROVE_OWN_REQUEST']), { ...ctx, requesterUserId: 'alice' }),
+      ).toBeNull();
+      for (const action of ['APPROVE_MATERIAL_REQUEST', 'CREATE_PURCHASE_ORDER', 'APPROVE_BUSINESS_TRANSACTION'] as const) {
+        expect(
+          svc.violation(new Set(['QUOTE_UPLOADER_CANNOT_SELECT', 'REQUESTER_CANNOT_SELECT']), {
+            ...ctx,
+            action,
+            requesterUserId: 'alice',
+            quoteUploaderUserIds: ['alice'],
+          }),
+        ).toBeNull();
+      }
+    });
   });
 
   it('violation() answers without throwing', () => {

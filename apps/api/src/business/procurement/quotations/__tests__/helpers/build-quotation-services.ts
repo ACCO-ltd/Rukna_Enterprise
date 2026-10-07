@@ -23,6 +23,7 @@ import { QuotationCommandRunner } from '../../application/quotation-command-runn
 import { QuotationQueryService } from '../../application/quotation-query.service.js';
 import { QuotationCollectService } from '../../application/quotation-collect.service.js';
 import { QuotationMaterialRequestLink } from '../../application/quotation-material-request-link.service.js';
+import { QuotationSelectionService } from '../../application/quotation-selection.service.js';
 
 export function buildQuotationServices(prisma: PrismaClient) {
   const tenancy = { getClient: () => prisma } as unknown as TenancyService;
@@ -39,6 +40,7 @@ export function buildQuotationServices(prisma: PrismaClient) {
   const query = new QuotationQueryService(tenancy, repo, access);
   const collect = new QuotationCollectService(tenancy, repo, poRepo, access, runner, query, audit, commandGovernance);
   const link = new QuotationMaterialRequestLink(repo, runner, collect);
+  const selection = new QuotationSelectionService(runner, query);
 
   const mrService = new MaterialRequestService(
     tenancy,
@@ -66,6 +68,7 @@ export function buildQuotationServices(prisma: PrismaClient) {
     runner,
     query,
     collect,
+    selection,
     link,
     mrService,
     fileAuth,
