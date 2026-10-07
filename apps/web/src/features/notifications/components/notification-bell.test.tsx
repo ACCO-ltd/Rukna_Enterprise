@@ -214,3 +214,54 @@ describe('NotificationBell — mark all read', () => {
     await waitFor(() => expect(markAllReadMutate).toHaveBeenCalledTimes(1));
   });
 });
+
+describe('NotificationBell — quotation notifications (ADR-044)', () => {
+  it.each([
+    {
+      kind: 'QUOTES_READY',
+      title: 'Quotes ready to choose: MR-00123',
+      impact: 'QR-00041 · 3 quotes · HQ Mogadishu',
+      url: '/finance/quotes/qr1',
+    },
+    {
+      kind: 'QUOTATION_AWARDED',
+      title: 'Quote chosen: MR-00123',
+      impact: 'QR-00041 · raise the order · HQ Mogadishu',
+      url: '/procurement/quotes/qr1',
+    },
+    {
+      kind: 'ANOTHER_QUOTE_REQUESTED',
+      title: 'Finance asked for another quote: MR-00123',
+      impact: 'QR-00041 · “Check Xamar Steel”',
+      url: '/procurement/quotes/qr1',
+    },
+  ])('$kind reads without money and opens its screen', async ({ kind, title, impact, url }) => {
+    const user = userEvent.setup();
+    stubHooks({
+      count: 1,
+      list: listResponse({
+        items: [
+          item({
+            kind: kind as NotificationItem['kind'],
+            severity: 'INFO',
+            resourceType: 'QuotationRequest',
+            resourceId: 'qr1',
+            contextData: {
+              number: 'QR-00041',
+              mrNumber: 'MR-00123',
+              quoteCount: 3,
+              ...(kind === 'ANOTHER_QUOTE_REQUESTED' ? { note: 'Check Xamar Steel' } : { projectName: 'HQ Mogadishu' }),
+            },
+            actionUrl: url,
+          }),
+        ],
+      }),
+    });
+    renderWithProviders(<NotificationBell />, { withToast: true });
+
+    await user.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText(impact)).toBeInTheDocument();
+    await user.click(screen.getByText(title));
+    expect(push).toHaveBeenCalledWith(url);
+  });
+});

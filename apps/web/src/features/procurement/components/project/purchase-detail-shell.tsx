@@ -66,6 +66,7 @@ import { PoAmendDialog } from '../po-amend-dialog';
 import { ProcurementStatusBadge } from '../procurement-badges';
 import { SectionPanel } from './section-panel';
 import { PoBillPaymentsSection } from '../po-bill-payments';
+import { AwardEvidence } from '../quotes/award-evidence';
 
 type Tab = 'items' | 'funding' | 'receiving' | 'settlement';
 
@@ -178,6 +179,9 @@ export function PurchaseDetailShell({
           </CardFooter>
         )}
       </Card>
+
+      {/* ADR-044: raised from a quotation award — the award is its approval */}
+      <AwardEvidence order={order} revision={current} />
 
       {/* Tab nav */}
       <nav aria-label={t('tabsLabel')}>

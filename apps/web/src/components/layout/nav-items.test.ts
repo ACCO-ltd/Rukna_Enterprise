@@ -145,6 +145,7 @@ describe('NAV_DOMAINS', () => {
     it('orders the tabs along the purchasing flow, then commitments, suppliers and setup', () => {
       expect(procurement().items.filter((i) => !i.groupKey).map((i) => i.labelKey)).toEqual([
         'materialRequests',
+        'quotes',
         'purchaseOrders',
         'goodsReceipts',
         'supplierBills',
@@ -189,8 +190,15 @@ describe('NAV_DOMAINS', () => {
       expect(setupHrefs).not.toContain('/procurement/suppliers');
     });
 
+    it('gates Quotes behind collect:quotation (ADR-044), right after Requests', () => {
+      const quotes = procurement().items.find((i) => i.href === '/procurement/quotes');
+      expect(quotes?.permissionKey).toBe('collect:quotation');
+      const hrefs = procurement().items.map((i) => i.href);
+      expect(hrefs.indexOf('/procurement/quotes')).toBe(hrefs.indexOf('/procurement/requests') + 1);
+    });
+
     it('gates the four catalog setup items behind manage:procurement-config', () => {
-      const configItems = procurement().items.filter((i) => i.permissionKey);
+      const configItems = procurement().items.filter((i) => i.groupKey === 'setup');
       expect(configItems.every((i) => i.permissionKey === 'manage:procurement-config')).toBe(true);
       const configHrefs = configItems.map((i) => i.href);
       expect(configHrefs).toContain('/procurement/setup/materials');

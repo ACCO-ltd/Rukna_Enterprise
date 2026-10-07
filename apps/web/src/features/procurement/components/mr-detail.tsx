@@ -47,6 +47,7 @@ import {
 } from '../hooks/use-procurement';
 import type { MaterialRequest, MaterialRequestStatus } from '../types';
 import { MrRejectDialog } from './mr-reject-dialog';
+import { GetQuotesEntry } from './quotes/get-quotes-entry';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 type PendingAction = 'submit' | 'cancel' | 'approve';
@@ -187,6 +188,8 @@ export function MrDetail({ id }: { id: string }) {
         {/* Footer: lifecycle actions */}
         {!isTerminal ? (
           <CardFooter className="flex-row flex-wrap justify-start border-t border-border pt-4 sm:flex-row sm:justify-start">
+            {/* ADR-044: an approved request gets competitive quotes before its order. */}
+            <GetQuotesEntry request={request} />
             {request.status === 'DRAFT' ? (
               <Button type="button" size="sm" onClick={() => setPending('submit')}>
                 {t('submit')}

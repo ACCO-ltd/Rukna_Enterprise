@@ -1,4 +1,6 @@
-﻿/**
+﻿import type { MaterialRequestQuotationSummary } from './quotations/types';
+
+/**
  * ─── Procurement API types ──────────────────────────────────────────────────────
  *
  * Hand-written against the controllers and DTOs in
@@ -233,6 +235,11 @@ export interface MaterialRequest {
   project?: ProcurementProjectRef | null;
   /** The server's verdict on whether this viewer may see the estimate. */
   moneyVisible?: boolean;
+  /**
+   * The live competitive-quotation request on this MR (ADR-044 Q8), or null. Absent on servers
+   * that predate quotations — read it as "none".
+   */
+  quotation?: MaterialRequestQuotationSummary | null;
 }
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────────

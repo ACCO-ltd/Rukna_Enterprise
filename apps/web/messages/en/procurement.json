@@ -1803,5 +1803,388 @@
     "searchPlaceholder": "Search by code or name",
     "noMatches": "Nothing matches these filters.",
     "categoryCount": "{count, plural, one {# category} other {# categories}}"
+  },
+  "quotes": {
+    "title": "Quotes",
+    "loadFailed": "This could not be loaded. Check your signal and try again.",
+    "retry": "Try again",
+    "status": {
+      "COLLECTING": "Collecting",
+      "AWAITING_DECISION": "Waiting for finance",
+      "RETURNED": "Returned to you",
+      "AWARD_PENDING_APPROVAL": "Waiting for approval",
+      "AWARDED": "Chosen",
+      "CANCELLED": "Cancelled"
+    },
+    "exceptionReason": {
+      "ONLY_ONE_SUPPLIER": "No other store has it",
+      "URGENT": "Urgent",
+      "FRAMEWORK_SUPPLIER": "Framework supplier"
+    },
+    "nonLowestReason": {
+      "FASTER_DELIVERY": "Faster delivery",
+      "BETTER_QUALITY": "Better quality",
+      "HAS_STOCK": "Has stock now",
+      "OTHER": "Other"
+    },
+    "rejectReason": {
+      "ILLEGIBLE": "Can't read it",
+      "WRONG_ITEMS": "Wrong items",
+      "INCOMPLETE": "Missing items",
+      "OTHER": "Other"
+    },
+    "paymentPath": {
+      "BUYER_CASH": "Buyer pays cash",
+      "BUYER_CASH_HINT": "The buyer pays the store in cash.",
+      "FINANCE_PAYS_SUPPLIER": "Finance pays supplier",
+      "FINANCE_PAYS_SUPPLIER_HINT": "Finance pays the store against its bill."
+    },
+    "source": {
+      "CAMERA": "camera",
+      "GALLERY": "gallery",
+      "UNKNOWN": "source unknown"
+    },
+    "count": {
+      "stores": "{count} of {required} stores",
+      "label": "{count} of {required}",
+      "short": "Quotes {count} of {required}"
+    },
+    "waiting": {
+      "duration": "{hours, plural, =0 {} other {# h }}{minutes} m",
+      "sentAt": "Sent {time}",
+      "waitingFor": "waiting {duration}",
+      "tone": {
+        "amber": "Over 2 h",
+        "red": "Over 4 h"
+      },
+      "notSent": "Not sent"
+    },
+    "refusal": {
+      "QUOTE_UPLOADER_CANNOT_SELECT": "You added photos to this request, so someone else in finance must choose.",
+      "REQUESTER_CANNOT_SELECT": "You raised this material request, so someone else in finance must choose.",
+      "QUOTATION_FROZEN": "These quotes were already sent to finance. Reopen to change a photo.",
+      "QUOTATION_NOT_COLLECTING": "This request is not collecting quotes any more.",
+      "QUOTE_PHOTO_DUPLICATE": "This photo is already on another quote in this request.",
+      "QUOTE_COUNT_EXCEPTION_REQUIRED": "There are fewer stores than needed. Pick a reason.",
+      "QUOTE_TOTALS_MISSING": "Every quote needs a total before you can choose.",
+      "NON_LOWEST_REASON_REQUIRED": "This is not the lowest quote. Pick a reason.",
+      "PO_EXCEEDS_AWARD": "The order is more than the chosen quote.",
+      "AWARD_PENDING_DIFFERENT_CHOICE": "Another quote is already waiting for approval. Withdraw it first.",
+      "SUPPLIER_REGISTRATION_REQUIRES_PAYABLES": "This store is not a registered supplier. A finance officer who can add suppliers must choose it, or pick a matching supplier.",
+      "MATERIAL_REQUEST_NOT_APPROVED": "Only an approved material request can get quotes.",
+      "forbidden": "You don't have permission to do this.",
+      "conflict": "Someone else changed this request. It has been refreshed.",
+      "offline": "No connection. Try again when you have signal.",
+      "generic": "That did not work. Try again."
+    },
+    "feedback": {
+      "sent": "Sent to finance",
+      "quoteRemoved": "Quote removed",
+      "quoteRejected": "Quote rejected",
+      "askedAnother": "Asked for another quote",
+      "awarded": "Quote chosen",
+      "sentBack": "Sent back to finance",
+      "orderRaised": "Draft order created"
+    },
+    "entry": {
+      "getQuotes": "Get quotes",
+      "getQuotesHint": "Opens the camera. Photograph each store's paper quote.",
+      "opening": "Opening…",
+      "openQuotes": "Quotes {count} of {required}",
+      "openRequest": "Open quotes",
+      "chosen": "Quote chosen",
+      "cameraFailed": "Could not open quotes for this request."
+    },
+    "list": {
+      "title": "Quotes",
+      "subtitle": "Photograph store quotes for approved requests. Finance types the totals and chooses.",
+      "queue": {
+        "collect": "To collect",
+        "returned": "Returned to you",
+        "waiting": "Waiting for finance",
+        "awarded": "Chosen — raise order"
+      },
+      "queueLabel": "Show",
+      "columns": {
+        "request": "Request",
+        "project": "Project",
+        "quotes": "Quotes",
+        "waiting": "Waiting",
+        "estimate": "Estimate",
+        "status": "Status",
+        "awarded": "Chosen total"
+      },
+      "empty": {
+        "collect": "Nothing to collect",
+        "collectHint": "Open an approved material request and tap Get quotes.",
+        "returned": "Nothing returned",
+        "returnedHint": "When finance asks for another quote, the request shows here.",
+        "waiting": "Nothing waiting",
+        "waitingHint": "Requests you send to finance show here until they choose.",
+        "awarded": "No orders to raise",
+        "awardedHint": "When finance chooses a quote, raise the order from here."
+      },
+      "countLabel": "{count, plural, one {# request} other {# requests}}",
+      "searchLabel": "Search quotes",
+      "searchPlaceholder": "Search by request or project",
+      "noMatches": "Nothing matches.",
+      "openRequests": "Material requests",
+      "overhead": "ACCO overhead"
+    },
+    "capture": {
+      "back": "Quotes",
+      "header": "{number} · {mrNumber}",
+      "counterLabel": "{count} of {required} stores",
+      "counterDone": "Enough stores",
+      "snap": "Snap quote",
+      "snapHint": "Opens the camera",
+      "fromGallery": "or choose from gallery",
+      "addPage": "Add another page",
+      "send": "Send to finance",
+      "sending": "Sending…",
+      "remove": "Remove",
+      "removeTitle": "Remove {store}?",
+      "removeBody": "The photo stays on record, but this quote no longer counts.",
+      "pages": "{count, plural, one {# page} other {# pages}}",
+      "newStore": "new",
+      "chooseStore": "Choose store",
+      "noQuotes": "No quotes yet. Tap Snap quote and photograph the store's paper quote.",
+      "noPrices": "No prices needed — finance reads them from the photos.",
+      "photoAlt": "Quote from {store}, page {page}",
+      "photoAltUnnamed": "Quote photo, page {page}",
+      "upload": {
+        "queued": "Waiting to upload",
+        "uploading": "Uploading {percent}%",
+        "uploadingNoPercent": "Uploading…",
+        "retrying": "Weak signal — retrying",
+        "offline": "No signal — will upload when back",
+        "binding": "Saving…",
+        "saved": "Saved",
+        "failed": "Failed — tap to retry",
+        "needsStore": "Choose a store",
+        "retry": "Retry upload of {store}",
+        "discard": "Discard photo"
+      },
+      "blocked": {
+        "uploading": "{count, plural, one {# photo still uploading} other {# photos still uploading}}",
+        "needsStore": "{count, plural, one {Choose a store for # photo} other {Choose a store for # photos}}",
+        "failed": "{count, plural, one {# photo failed — retry or discard} other {# photos failed — retry or discard}}",
+        "empty": "Add at least one quote",
+        "reason": "Pick why there are fewer stores"
+      },
+      "short": {
+        "title": "Only {count, plural, one {# store} other {# stores}}. Why?",
+        "hint": "Finance needs {required} stores, or a reason."
+      },
+      "store": {
+        "title": "Which store?",
+        "subtitle": "Tap a store. You can add more pages first.",
+        "recent": "Recent stores",
+        "suppliers": "Registered suppliers",
+        "searchLabel": "Store name",
+        "searchPlaceholder": "Type a store name",
+        "newStore": "New store: {name}",
+        "alreadyAdded": "already added",
+        "pagesTaken": "{count, plural, one {# page} other {# pages}} taken",
+        "done": "Done",
+        "later": "Choose later",
+        "loadingSuppliers": "Loading suppliers…"
+      },
+      "waiting": {
+        "title": "Waiting for finance",
+        "sent": "Sent {time} · waiting {duration}",
+        "sentJustNow": "Sent {time}",
+        "readOnly": "These photos are locked. Finance is choosing.",
+        "reopen": "Reopen to change a photo",
+        "reopenTitle": "Reopen {number}?",
+        "reopenBody": "Finance stops seeing it until you send again.",
+        "reopenReason": "Why?",
+        "reopenConfirm": "Reopen"
+      },
+      "pending": {
+        "title": "Finance chose {store}",
+        "body": "Waiting for approval before the order can be raised."
+      },
+      "returned": {
+        "title": "Finance asked for another quote",
+        "note": "“{note}”"
+      },
+      "cancelled": "This request was cancelled.",
+      "cancel": "Cancel quotes",
+      "cancelTitle": "Cancel {number}?",
+      "cancelBody": "The photos stay on record. The material request can get quotes again.",
+      "cancelReason": "Reason",
+      "cancelConfirm": "Cancel quotes",
+      "keepRequest": "Keep",
+      "mrLink": "Material request {number}"
+    },
+    "inbox": {
+      "title": "Quotes to choose",
+      "subtitle": "Oldest first. Type each total from the photo, then choose.",
+      "empty": "Nothing to choose",
+      "emptyHint": "When procurement sends quotes, they show here.",
+      "searchLabel": "Search quotes to choose",
+      "searchPlaceholder": "Search by request or project",
+      "countLabel": "{count, plural, one {# request} other {# requests}}",
+      "noMatches": "Nothing matches.",
+      "moneyHidden": "Estimates are hidden for your role.",
+      "pendingApproval": "Waiting for approval"
+    },
+    "decision": {
+      "back": "Quotes to choose",
+      "header": "{number} · {mrNumber}",
+      "context": {
+        "project": "Project",
+        "items": "Items",
+        "itemsSummary": "{count, plural, one {# item} other {# items}}",
+        "estimate": "Estimate",
+        "boqRemaining": "BOQ remaining",
+        "neededBy": "Needed by",
+        "waiting": "Waiting",
+        "noDate": "No date",
+        "notEstimated": "Not estimated",
+        "urgent": "Urgent"
+      },
+      "quotesLabel": "Quotes",
+      "quoteOf": "Quote {index} of {count}",
+      "previous": "Previous quote",
+      "next": "Next quote",
+      "pageDots": "Show quote {index}",
+      "total": "Total",
+      "totalFor": "Total for {store}",
+      "totalHint": "As written on the quote",
+      "totalInvalid": "Enter an amount above 0",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "saveFailed": "Not saved",
+      "lowest": "Lowest",
+      "choose": "Choose",
+      "chooseStore": "Choose {store}",
+      "chooseBlocked": "Type every total to choose",
+      "reject": "Reject",
+      "rejectTitle": "Reject quote from {store}?",
+      "rejectSubtitle": "It no longer counts. Procurement sees the reason.",
+      "rejectReasonLabel": "Why?",
+      "rejectNote": "Note",
+      "rejectConfirm": "Reject quote",
+      "askAnother": "Ask for another quote",
+      "askTitle": "Ask for another quote",
+      "askSubtitle": "Procurement gets your note and adds a quote.",
+      "askNote": "Note to procurement",
+      "askNoteRequired": "Write a short note",
+      "askSuggestions": "Quick notes",
+      "askSuggestion": {
+        "oneMore": "Get one more store",
+        "unreadable": "Photo is not readable — retake it",
+        "wrongItems": "Quote does not match the items"
+      },
+      "askConfirm": "Send note",
+      "rejected": "Rejected: {reason}",
+      "zoom": "Open photo full screen",
+      "zoomTitle": "{store} · page {page} of {pages}",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomReset": "Fit to screen",
+      "zoomHint": "Pinch, double-tap, or use + and −",
+      "pagePrevious": "Previous page",
+      "pageNext": "Next page",
+      "reused": "Same photo used on {numbers}",
+      "capturedAt": "{source} · {time}",
+      "photoLoading": "Loading photo",
+      "photoFailed": "Photo could not be loaded",
+      "barredTitle": "You can't choose on this request",
+      "readOnly": "Read only",
+      "exceptionShort": "{count} of {required} stores · {reason}",
+      "chooseDialog": {
+        "title": "Choose {store} — {total}",
+        "notLowest": "Not the lowest ({lowest}). Why?",
+        "otherNote": "Say why",
+        "otherNoteRequired": "Say why you chose it",
+        "exception": "Fewer stores than needed",
+        "exceptionAccept": "Accept {count} of {required} stores: {reason}",
+        "exceptionRequired": "Accept the reason to continue",
+        "payBy": "Pay by",
+        "payByRequired": "Choose how it is paid",
+        "supplier": "Supplier",
+        "supplierNew": "Register \"{name}\" as a new supplier",
+        "supplierNewHint": "Adds it to the supplier list",
+        "supplierExisting": "{name}",
+        "supplierExistingHint": "Registered supplier {code}",
+        "confirm": "Choose",
+        "routed": "Your choice needs approval. It is waiting for the next approver."
+      },
+      "pending": {
+        "title": "Waiting for approval",
+        "body": "{store} was chosen at {total}. Approvers act on it in the approval chain.",
+        "redrive": "Complete the choice",
+        "withdraw": "Withdraw choice",
+        "withdrawTitle": "Withdraw the choice?",
+        "withdrawBody": "The approval stops and the quotes are open to choose again."
+      },
+      "awarded": {
+        "title": "Chosen: {store}",
+        "body": "{total} · {payBy}",
+        "bodyNoMoney": "{payBy}",
+        "order": "Order raised"
+      },
+      "notReady": {
+        "COLLECTING": "Procurement is still collecting quotes.",
+        "RETURNED": "You asked for another quote. Waiting for procurement.",
+        "CANCELLED": "This request was cancelled."
+      }
+    },
+    "order": {
+      "card": {
+        "title": "Chosen: {store}",
+        "total": "{total}",
+        "payBy": "Pay by: {payBy}",
+        "raise": "Raise the order",
+        "adjust": "Adjust lines first",
+        "openOrder": "Open order",
+        "noPermission": "Someone who can create orders raises it."
+      },
+      "confirm": {
+        "title": "Raise the order",
+        "subtitle": "A draft order for {store}, from the chosen quote.",
+        "supplier": "Supplier",
+        "evidence": "Chosen quote",
+        "total": "Order total",
+        "ofAward": "of {award} chosen",
+        "create": "Create draft order",
+        "loading": "Preparing the order…"
+      },
+      "adjust": {
+        "title": "Adjust lines",
+        "subtitle": "Change quantities or amounts. The total cannot be more than the chosen quote.",
+        "back": "Back to quotes",
+        "quantity": "Quantity for {item}",
+        "amount": "Amount for {item}",
+        "max": "Up to {max}",
+        "drop": "Leave out",
+        "include": "Include",
+        "meter": "{total} of {award}",
+        "overCap": "Over the chosen total by {over}",
+        "quantityOver": "More than requested",
+        "manual": "The request's lines are not priced, so split the chosen total across them.",
+        "create": "Create draft order",
+        "noLines": "Include at least one line"
+      },
+      "exceeds": {
+        "title": "The order is more than the chosen quote",
+        "body": "Lower the amounts, or send it back to finance to choose again.",
+        "sendBack": "Send back to finance",
+        "sendBackTitle": "Send back to finance?",
+        "sendBackBody": "Finance chooses again. The chosen quote is cleared.",
+        "sendBackReason": "Reason"
+      },
+      "evidence": {
+        "title": "Approved by quotation award {ref}",
+        "chosenBy": "Chosen by {name}",
+        "body": "Finance chose this supplier from competing quotes. Issuing the order needs no further approval.",
+        "photos": "Quote photos",
+        "open": "Open",
+        "download": "Download"
+      }
+    }
   }
 }
