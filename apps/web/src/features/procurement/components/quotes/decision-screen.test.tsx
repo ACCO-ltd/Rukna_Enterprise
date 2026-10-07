@@ -1,0 +1,245 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { ApiError } from '@/lib/api-client';
+import { renderWithProviders } from '@/test/render';
+
+import { detailFixture, quoteFixture } from '../../quotations/test-fixtures';
+import type { QuotationRequestDetail } from '../../quotations/types';
+
+/**
+ * Finance's decision screen (spec Q12): totals auto-advance and autosave, the lowest is
+ * recomputed live (ties included), Choose appears only once every total is typed, a non-lowest
+ * choice needs a reason, the exception acceptance only shows when short, pay-by is required, and
+ * segregation of duties is rendered from the server — never decided here.
+ */
+
+vi.mock('@/features/workflows/components/approval-panel', () => ({
+  ApprovalPanel: ({ instanceId }: { instanceId: string | null }) =>
+    instanceId ? <div>Approval chain {instanceId}</div> : null,
+}));
+vi.mock('@/features/files/api/files-api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getFileDownloadUrl: async (id: string) => ({ url: `https://files.test/${id}`, originalName: id, mimeType: 'image/jpeg' }),
+}));
+
+const api = vi.hoisted(() => ({
+  detail: null as unknown,
+  get: vi.fn(),
+  total: vi.fn(),
+  award: vi.fn(),
+  ask: vi.fn(),
+  reject: vi.fn(),
+}));
+vi.mock('../../api/quotations-api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getQuotationRequest: (...args: unknown[]) => api.get(...args),
+  enterQuoteTotal: (...args: unknown[]) => api.total(...args),
+  awardQuotation: (...args: unknown[]) => api.award(...args),
+  askForAnotherQuote: (...args: unknown[]) => api.ask(...args),
+  rejectQuote: (...args: unknown[]) => api.reject(...args),
+}));
+
+import { QuoteDecisionScreen } from './decision-screen';
+
+const SELECTOR = ['view:procurement', 'award:quotation'];
+
+const three = () => [
+  quoteFixture({ id: 'k1', name: 'Hodan' }),
+  quoteFixture({ id: 'k2', name: 'Bakaara' }),
+  quoteFixture({ id: 'k3', name: 'Xamar' }),
+];
+
+function render(detail: Partial<QuotationRequestDetail>) {
+  api.detail = detailFixture({
+    status: 'AWAITING_DECISION',
+    sentAt: '2026-10-07T07:00:00.000Z',
+    waitingWorkingMinutes: 250,
+    slaTone: 'red',
+    distinctSupplierCount: 3,
+    ...detail,
+  });
+  api.get.mockImplementation(async () => api.detail);
+  return renderWithProviders(<QuoteDecisionScreen id="qr1" />, { permissions: SELECTOR, withToast: true });
+}
+
+/** The server echoes the typed total back on the detail. */
+function echoTotals() {
+  api.total.mockImplementation(async (_id: string, quoteId: string, total: string) => {
+    const current = api.detail as QuotationRequestDetail;
+    api.detail = {
+      ...current,
+      quotes: current.quotes.map((q) => (q.id === quoteId ? { ...q, enteredTotal: total } : q)),
+    };
+    return api.detail;
+  });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  echoTotals();
+});
+
+describe('QuoteDecisionScreen', () => {
+  it('moves to the next total on Enter and autosaves each on blur', async () => {
+    const user = userEvent.setup();
+    render({ quotes: three() });
+    const first = await screen.findByLabelText('Total for Hodan');
+    await user.type(first, '2350{Enter}');
+    expect(screen.getByLabelText('Total for Bakaara')).toHaveFocus();
+    await waitFor(() => expect(api.total).toHaveBeenCalledWith('qr1', 'k1', '2350'));
+  });
+
+  it('highlights the lowest live, including ties, and hides Choose until every total is in', async () => {
+    const user = userEvent.setup();
+    render({ quotes: three() });
+    await user.type(await screen.findByLabelText('Total for Hodan'), '2350{Enter}');
+    expect(screen.getAllByText('Type every total to choose').length).toBe(3);
+    expect(screen.queryByRole('button', { name: /^Choose / })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Total for Bakaara'), '2410{Enter}');
+    await user.type(screen.getByLabelText('Total for Xamar'), '2295{Enter}');
+
+    const cards = screen.getAllByRole('article');
+    expect(within(cards[2]!).getByText('Lowest')).toBeInTheDocument();
+    expect(within(cards[0]!).queryByText('Lowest')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Choose / })).toHaveLength(3);
+
+    // A tie: both are lowest.
+    await user.clear(screen.getByLabelText('Total for Hodan'));
+    await user.type(screen.getByLabelText('Total for Hodan'), '2295');
+    expect(within(cards[0]!).getByText('Lowest')).toBeInTheDocument();
+    expect(within(cards[2]!).getByText('Lowest')).toBeInTheDocument();
+  });
+
+  it('chooses the lowest with pay-by only (one question)', async () => {
+    const user = userEvent.setup();
+    api.award.mockResolvedValue(detailFixture({ status: 'AWARDED' }));
+    render({
+      quotes: [
+        quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '2350.00' }),
+        quoteFixture({ id: 'k2', name: 'Xamar', enteredTotal: '2295.00' }),
+      ],
+      distinctSupplierCount: 3,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Choose Xamar' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Choose Xamar — $2,295.00' });
+    expect(within(dialog).queryByText(/Not the lowest/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Fewer stores than needed')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    expect(await within(dialog).findByText('Choose how it is paid')).toBeInTheDocument();
+    expect(api.award).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('radio', { name: 'Finance pays supplier' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    await waitFor(() =>
+      expect(api.award).toHaveBeenCalledWith('qr1', { quoteId: 'k2', paymentPath: 'FINANCE_PAYS_SUPPLIER' }),
+    );
+  });
+
+  it('requires a reason chip for a non-lowest choice, and words for Other', async () => {
+    const user = userEvent.setup();
+    api.award.mockResolvedValue(detailFixture({ status: 'AWARDED' }));
+    render({
+      quotes: [
+        quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '2350.00' }),
+        quoteFixture({ id: 'k2', name: 'Xamar', enteredTotal: '2295.00' }),
+      ],
+    });
+    await user.click(await screen.findByRole('button', { name: 'Choose Hodan' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Choose Hodan — $2,350.00' });
+    const reasons = within(dialog).getByRole('radiogroup', { name: 'Not the lowest ($2,295.00). Why?' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Buyer pays cash' }));
+    await user.click(within(reasons).getByRole('radio', { name: 'Other' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    expect(await within(dialog).findByText('Say why you chose it')).toBeInTheDocument();
+    expect(api.award).not.toHaveBeenCalled();
+
+    await user.click(within(reasons).getByRole('radio', { name: 'Has stock now' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    await waitFor(() =>
+      expect(api.award).toHaveBeenCalledWith('qr1', {
+        quoteId: 'k1',
+        paymentPath: 'BUYER_CASH',
+        nonLowestReason: 'HAS_STOCK',
+      }),
+    );
+  });
+
+  it('asks to accept the exception only when the request is short', async () => {
+    const user = userEvent.setup();
+    api.award.mockResolvedValue(detailFixture({ status: 'AWARDED' }));
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '180.00' })],
+      distinctSupplierCount: 1,
+      exceptionReason: 'URGENT',
+    });
+    expect(await screen.findByText('1 of 3 stores · Urgent')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Choose Hodan' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('radio', { name: 'Buyer pays cash' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    expect(await within(dialog).findByText('Accept the reason to continue')).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText('Accept 1 of 3 stores: Urgent'));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    await waitFor(() =>
+      expect(api.award).toHaveBeenCalledWith('qr1', {
+        quoteId: 'k1',
+        paymentPath: 'BUYER_CASH',
+        acceptException: true,
+      }),
+    );
+  });
+
+  it('says a server SoD refusal in plain words', async () => {
+    const user = userEvent.setup();
+    api.award.mockRejectedValue(
+      new ApiError(403, 'Forbidden', 'FORBIDDEN', [], { code: 'REQUESTER_CANNOT_SELECT' }),
+    );
+    render({ quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '90.00' })], requiredQuoteCount: 1, distinctSupplierCount: 1 });
+    await user.click(await screen.findByRole('button', { name: 'Choose Hodan' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('radio', { name: 'Buyer pays cash' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+    expect(
+      await within(dialog).findByText('You raised this material request, so someone else in finance must choose.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a barred selector the photos read-only with the server reason', async () => {
+    render({
+      quotes: [quoteFixture({ id: 'k1', name: 'Hodan', enteredTotal: '90.00' })],
+      allowedActions: [
+        { action: 'ENTER_TOTAL', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT', blockKind: 'SOD' },
+        { action: 'AWARD', enabled: false, reasonCode: 'QUOTE_UPLOADER_CANNOT_SELECT', blockKind: 'SOD' },
+      ],
+    });
+    expect(await screen.findByText("You can't choose on this request")).toBeInTheDocument();
+    expect(
+      screen.getByText('You added photos to this request, so someone else in finance must choose.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Total for Hodan')).toHaveAttribute('readonly');
+    expect(screen.queryByRole('button', { name: /^Choose/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ask for another quote' })).not.toBeInTheDocument();
+  });
+
+  it('asks for another quote with a quick note', async () => {
+    const user = userEvent.setup();
+    api.ask.mockResolvedValue(detailFixture({ status: 'RETURNED' }));
+    render({ quotes: three() });
+    await user.click(await screen.findByRole('button', { name: 'Ask for another quote' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ask for another quote' });
+    await user.click(within(dialog).getByRole('button', { name: 'Get one more store' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Send note' }));
+    await waitFor(() => expect(api.ask).toHaveBeenCalledWith('qr1', 'Get one more store'));
+  });
+
+  it('shows the waiting time with its tone in words', async () => {
+    render({ quotes: three() });
+    const waiting = await screen.findByText('Over 4 h');
+    expect(waiting.closest('[data-sla]')).toHaveAttribute('data-sla', 'red');
+    expect(screen.getByText('4 h 10 m')).toBeInTheDocument();
+  });
+});

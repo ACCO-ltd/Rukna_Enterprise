@@ -103,26 +103,49 @@ export interface QuotationLine {
   id: string;
   lineNumber?: number;
   description: string;
+  /** Approved quantity, else requested. */
   quantity: Quantity;
-  /** Unit symbol or code. */
-  uom: string | null;
+  uom: { code: string; name?: string | null; symbol?: string | null } | string | null;
   estimatedUnitPrice?: Money | null;
   /** quantity × estimatedUnitPrice, when priced and visible. */
-  estimateAmount?: Money | null;
+  estimatedAmount?: Money | null;
 }
 
-/** A registered supplier whose normalised name matches a new store's (ADR-044 §8). */
+/** Registered suppliers whose normalised name matches a new store's (ADR-044 §8). */
 export interface SupplierMatch {
   quoteId: string;
-  supplierId: string;
-  name: string;
-  code?: string | null;
+  suppliers: Array<{ id: string; code?: string | null; name: string }>;
 }
 
 export interface QuotationApprovalSummary {
   instanceId: string;
   status: string;
   currentStep?: { roleRequired: string; stepOrder?: number } | null;
+}
+
+/** The choice awaiting DoA approval (AWARD_PENDING_APPROVAL). */
+export interface QuotationProposal {
+  quoteId: string;
+  proposedBy?: PersonRef;
+  proposedAt?: ApiDate | null;
+  paymentPath: QuotationPaymentPath | null;
+  nonLowestReason?: NonLowestReason | null;
+  nonLowestNote?: string | null;
+  supplierId?: string | null;
+  acceptException?: boolean | null;
+}
+
+export interface QuotationAward {
+  quoteId: string;
+  total: Money | null;
+  supplier: { id: string; code?: string | null; name: string } | null;
+  awardedBy?: PersonRef;
+  awardedAt?: ApiDate | null;
+  approvalInstanceId?: string | null;
+  finalApprover?: PersonRef;
+  paymentPath: QuotationPaymentPath | null;
+  nonLowestReason?: NonLowestReason | null;
+  nonLowestNote?: string | null;
 }
 
 /**
@@ -135,6 +158,8 @@ export interface QuotationAllowedAction {
   action: string;
   enabled: boolean;
   reasonCode?: string | null;
+  /** `SOD` when a segregation-of-duties rule blocks (reasonCode is then the rule code). */
+  blockKind?: 'PERMISSION' | 'STATE' | 'SOD' | 'PRECONDITION' | null;
 }
 
 export interface QuotationRequestDetail {
@@ -147,14 +172,18 @@ export interface QuotationRequestDetail {
     id: string;
     number: string;
     title: string | null;
-    requiredByDate?: ApiDate | null;
+    priority?: string | null;
+    status?: string;
     requestedBy?: PersonRef;
+    /** Not on the server's read model yet; shown when present. */
+    requiredByDate?: ApiDate | null;
   };
   project: ProcurementProjectRef | null;
   estimateAmount: Money | null;
   /** BOQ budget remaining on the MR's cost targets, when the server can say. Optional. */
   boqRemainingAmount?: Money | null;
   requiredQuoteCount: number;
+  quoteCount?: number;
   distinctSupplierCount: number;
   exceptionReason: QuoteCountExceptionReason | null;
   returnNote: string | null;
@@ -166,17 +195,10 @@ export interface QuotationRequestDetail {
   decidedAt?: ApiDate | null;
   waitingWorkingMinutes: number | null;
   slaTone: SlaTone;
-  proposedQuoteId?: string | null;
-  proposedPaymentPath?: QuotationPaymentPath | null;
-  awardedQuoteId: string | null;
-  awardedTotal: Money | null;
-  awardedSupplierId?: string | null;
-  awardedBy?: PersonRef;
-  awardedAt?: ApiDate | null;
-  paymentPath: QuotationPaymentPath | null;
-  nonLowestReason?: NonLowestReason | null;
-  nonLowestNote?: string | null;
-  purchaseOrderId: string | null;
+  lowestTotal?: Money | null;
+  proposal: QuotationProposal | null;
+  award: QuotationAward | null;
+  purchaseOrder: { id: string; poNumber: string; status: string } | null;
   createdBy?: PersonRef;
   createdAt?: ApiDate;
   lines: QuotationLine[];

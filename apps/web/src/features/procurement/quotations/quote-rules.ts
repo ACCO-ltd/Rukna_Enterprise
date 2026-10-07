@@ -10,6 +10,7 @@
 import { MONEY_SCALE, parseMinorUnits } from '@/lib/money';
 
 import type {
+  PersonRef,
   Quote,
   QuotationAllowedAction,
   QuotationRequestDetail,
@@ -56,7 +57,12 @@ export const SOD_CODES = new Set(['QUOTE_UPLOADER_CANNOT_SELECT', 'REQUESTER_CAN
 export function selectionBarCode(detail: Pick<QuotationRequestDetail, 'allowedActions'>): string | null {
   for (const name of ['award', 'enterTotal']) {
     const verdict = findAction(detail.allowedActions, name);
-    if (verdict && !verdict.enabled && verdict.reasonCode && SOD_CODES.has(verdict.reasonCode)) {
+    if (
+      verdict &&
+      !verdict.enabled &&
+      verdict.reasonCode &&
+      (verdict.blockKind === 'SOD' || SOD_CODES.has(verdict.reasonCode))
+    ) {
       return verdict.reasonCode;
     }
   }
@@ -174,4 +180,20 @@ export function byWaitingDesc<T extends { waitingWorkingMinutes: number | null; 
     if (wa !== wb) return wb - wa;
     return (a.sentAt ?? '').localeCompare(b.sentAt ?? '');
   });
+}
+
+/** A line's unit as text: the server sends `{ code, name }`; older shapes send a string. */
+export function uomLabel(uom: QuotationLineUom): string {
+  if (!uom) return '';
+  if (typeof uom === 'string') return uom;
+  return uom.symbol ?? uom.code ?? uom.name ?? '';
+}
+
+type QuotationLineUom = QuotationRequestDetail['lines'][number]['uom'];
+
+/** A person reference as a name. */
+export function personName(person: PersonRef | undefined): string | null {
+  if (!person) return null;
+  if (typeof person === 'string') return null;
+  return person.name ?? null;
 }

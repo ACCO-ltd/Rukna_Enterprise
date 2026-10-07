@@ -198,7 +198,7 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
   const mayCancel =
     mayCollect &&
     detail.status !== 'CANCELLED' &&
-    actionEnabled(detail.allowedActions, 'cancel', detail.status !== 'AWARDED' || !detail.purchaseOrderId);
+    actionEnabled(detail.allowedActions, 'cancel', detail.status !== 'AWARDED' || !detail.purchaseOrder);
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-4 pb-8">
@@ -447,7 +447,7 @@ function StatusNotice({ detail }: { detail: QuotationRequestDetail }) {
     );
   }
   if (detail.status === 'AWARD_PENDING_APPROVAL') {
-    const chosen = detail.quotes.find((q) => q.id === detail.proposedQuoteId);
+    const chosen = detail.quotes.find((q) => q.id === detail.proposal?.quoteId);
     return (
       <Notice tone="info" title={t('pending.title', { store: chosen?.store.name ?? '—' })}>
         <p className="mt-1">{t('pending.body')}</p>
