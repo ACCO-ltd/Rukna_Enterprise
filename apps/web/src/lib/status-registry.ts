@@ -125,6 +125,21 @@ export const STATUS_REGISTRY = {
     CANCELLED: 'historical',
     CLOSED: 'historical',
   },
+  /** A competitive-quotation request (ADR-044 §3). RETURNED = finance asked for another quote. */
+  quotationRequest: {
+    COLLECTING: 'neutral',
+    AWAITING_DECISION: 'progress',
+    RETURNED: 'attention',
+    AWARD_PENDING_APPROVAL: 'progress',
+    AWARDED: 'success',
+    CANCELLED: 'historical',
+  },
+  /** One store's quote inside a request. */
+  quote: {
+    ACTIVE: 'neutral',
+    WITHDRAWN: 'historical',
+    REJECTED: 'danger',
+  },
   purchaseOrder: {
     DRAFT: 'neutral',
     OPEN: 'progress',

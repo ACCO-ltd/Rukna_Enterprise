@@ -32,6 +32,17 @@ describe('statusTone', () => {
     expect(statusTone(undefined, 'project')).toBe('neutral');
   });
 
+  it('tones a quotation request: returned needs attention, awarded succeeds (ADR-044)', () => {
+    expect(statusTone('COLLECTING', 'quotationRequest')).toBe('neutral');
+    expect(statusTone('AWAITING_DECISION', 'quotationRequest')).toBe('progress');
+    expect(statusTone('AWARD_PENDING_APPROVAL', 'quotationRequest')).toBe('progress');
+    expect(statusTone('RETURNED', 'quotationRequest')).toBe('attention');
+    expect(statusTone('AWARDED', 'quotationRequest')).toBe('success');
+    expect(statusTone('CANCELLED', 'quotationRequest')).toBe('historical');
+    expect(statusTone('REJECTED', 'quote')).toBe('danger');
+    expect(statusTone('WITHDRAWN', 'quote')).toBe('historical');
+  });
+
   it('only ever uses the six canonical tones', () => {
     const tones = new Set(['neutral', 'progress', 'attention', 'success', 'danger', 'historical']);
     for (const table of Object.values(STATUS_REGISTRY)) {

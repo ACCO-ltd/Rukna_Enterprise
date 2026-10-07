@@ -13,7 +13,13 @@
  * Pure functions, no React, so both can be asserted without a DOM.
  */
 
-import { isActiveNavItem, NAV_DOMAINS, type NavDomain, type NavItem } from './nav-groups';
+import {
+  isActiveNavItem,
+  NAV_DOMAINS,
+  type NavBadgeKey,
+  type NavDomain,
+  type NavItem,
+} from './nav-groups';
 
 export interface ModuleTabLink {
   kind: 'link';
@@ -21,6 +27,7 @@ export interface ModuleTabLink {
   labelKey: string;
   href: string;
   active: boolean;
+  badge?: NavBadgeKey;
 }
 
 export interface ModuleTabMenu {
@@ -28,7 +35,7 @@ export interface ModuleTabMenu {
   key: string;
   /** `nav.group.<groupKey>` */
   labelKey: string;
-  items: Array<{ href: string; labelKey: string; active: boolean }>;
+  items: Array<{ href: string; labelKey: string; active: boolean; badge?: NavBadgeKey }>;
   active: boolean;
 }
 
@@ -112,6 +119,7 @@ export function moduleTabs(domain: NavDomain, pathname: string, can: Can): Modul
         labelKey: item.labelKey,
         href: item.href,
         active: isActive(item),
+        ...(item.badge ? { badge: item.badge } : {}),
       });
       continue;
     }
@@ -123,7 +131,12 @@ export function moduleTabs(domain: NavDomain, pathname: string, can: Can): Modul
       tabs.push(menu);
     }
     const active = isActive(item);
-    menu.items.push({ href: item.href, labelKey: item.labelKey, active });
+    menu.items.push({
+      href: item.href,
+      labelKey: item.labelKey,
+      active,
+      ...(item.badge ? { badge: item.badge } : {}),
+    });
     if (active) menu.active = true;
   }
   return tabs;
