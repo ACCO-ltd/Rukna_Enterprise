@@ -12,8 +12,10 @@ import {
 import { QuotationCollectService } from '../application/quotation-collect.service.js';
 import { QuotationQueryService } from '../application/quotation-query.service.js';
 import { QuotationSelectionService } from '../application/quotation-selection.service.js';
+import { QuotationAwardService } from '../application/quotation-award.service.js';
 import {
   AddQuoteDto,
+  AwardQuotationDto,
   AskAnotherQuoteDto,
   EnterQuoteTotalDto,
   RejectQuoteDto,
@@ -40,6 +42,7 @@ export class QuotationRequestController {
     private readonly collect: QuotationCollectService,
     private readonly query: QuotationQueryService,
     private readonly selection: QuotationSelectionService,
+    private readonly awards: QuotationAwardService,
   ) {}
 
   @Post()
@@ -143,6 +146,25 @@ export class QuotationRequestController {
   @ApiOperation({ summary: 'Ask the collector for another quote: AWAITING_DECISION → RETURNED' })
   askAnother(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: AskAnotherQuoteDto) {
     return this.selection.askAnother(identity, id, dto.note);
+  }
+
+  @Post(':id/award')
+  @RequirePermissions(P.procurementView, P.quotationsAward)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Award (= the PO approval). 200 AWARDED, or 409 { details.approvalInstanceId } when the DoA band gates; re-drive with the same body or {}',
+  })
+  award(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: AwardQuotationDto) {
+    return this.awards.award(identity, id, dto);
+  }
+
+  @Post(':id/withdraw-award')
+  @RequirePermissions(P.procurementView, P.quotationsAward)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Withdraw a pending award: AWARD_PENDING_APPROVAL → AWAITING_DECISION (instance voided)' })
+  withdrawAward(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.awards.withdrawAward(identity, id);
   }
 
   @Post(':id/cancel')

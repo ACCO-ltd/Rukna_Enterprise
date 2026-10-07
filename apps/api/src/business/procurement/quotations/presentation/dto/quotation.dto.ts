@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsNotEmpty,
@@ -108,6 +109,43 @@ export class AskAnotherQuoteDto {
   @IsNotEmpty()
   @MaxLength(1000)
   note: string;
+}
+
+export const QUOTATION_PAYMENT_PATHS = ['BUYER_CASH', 'FINANCE_PAYS_SUPPLIER'] as const;
+export const NON_LOWEST_REASONS = ['FASTER_DELIVERY', 'BETTER_QUALITY', 'HAS_STOCK', 'OTHER'] as const;
+
+/** Propose with the full body; re-drive a pending award with the same body or `{}`. */
+export class AwardQuotationDto {
+  @ApiPropertyOptional({ description: 'Required to propose; on re-drive must match the pending choice' })
+  @IsOptional()
+  @IsString()
+  quoteId?: string;
+
+  @ApiPropertyOptional({ enum: QUOTATION_PAYMENT_PATHS, description: 'Required to propose (recorded only in Phase 1)' })
+  @IsOptional()
+  @IsIn(QUOTATION_PAYMENT_PATHS)
+  paymentPath?: (typeof QUOTATION_PAYMENT_PATHS)[number];
+
+  @ApiPropertyOptional({ enum: NON_LOWEST_REASONS, description: 'Required when the chosen quote is not lowest' })
+  @IsOptional()
+  @IsIn(NON_LOWEST_REASONS)
+  nonLowestReason?: (typeof NON_LOWEST_REASONS)[number];
+
+  @ApiPropertyOptional({ maxLength: 1000, description: 'Required with nonLowestReason OTHER' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  nonLowestNote?: string;
+
+  @ApiPropertyOptional({ description: "Accept the collector's exception when fewer stores than required" })
+  @IsOptional()
+  @IsBoolean()
+  acceptException?: boolean;
+
+  @ApiPropertyOptional({ description: 'For a new-store quote: award to this existing registered supplier' })
+  @IsOptional()
+  @IsString()
+  awardSupplierId?: string;
 }
 
 export class QuotationReasonDto {

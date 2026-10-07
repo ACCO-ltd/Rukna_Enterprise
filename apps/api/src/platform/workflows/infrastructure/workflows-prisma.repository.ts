@@ -260,6 +260,23 @@ export class WorkflowsPrismaRepository {
   }
 
   /**
+   * The most recent instance for a transaction with its chain (steps) and every recorded action —
+   * for commands that must vet the approvers before consuming (ADR-044 §6) and for read models
+   * that show the chain's progress.
+   */
+  async findLatestInstanceWithChain(transactionType: WorkflowTransactionType, transactionId: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findFirst({
+      where: { transactionId, transactionType },
+      orderBy: { initiatedAt: 'desc' },
+      include: {
+        definition: { select: { steps: { orderBy: { stepOrder: 'asc' }, select: { stepOrder: true, roleRequired: true } } } },
+        actions: { orderBy: { actedAt: 'asc' }, select: { stepOrder: true, action: true, actorId: true, actedAt: true } },
+      },
+    });
+  }
+
+  /**
    * Marks an approval instance as consumed once its entity transition has been driven
    * through (ADR-015). There is no dedicated CONSUMED enum value yet — that needs a
    * Prisma client regen — so CANCELLED is the terminal "closed" state. The approver audit

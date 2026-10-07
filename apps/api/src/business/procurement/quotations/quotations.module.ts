@@ -10,6 +10,7 @@ import { QuotationCommandRunner } from './application/quotation-command-runner.s
 import { QuotationQueryService } from './application/quotation-query.service.js';
 import { QuotationCollectService } from './application/quotation-collect.service.js';
 import { QuotationSelectionService } from './application/quotation-selection.service.js';
+import { QuotationAwardService } from './application/quotation-award.service.js';
 import { QuotationMaterialRequestLink } from './application/quotation-material-request-link.service.js';
 import { QuotationRequestController } from './presentation/quotation-request.controller.js';
 
@@ -28,6 +29,7 @@ import { QuotationRequestController } from './presentation/quotation-request.con
     QuotationQueryService,
     QuotationCollectService,
     QuotationSelectionService,
+    QuotationAwardService,
     QuotationMaterialRequestLink,
   ],
   exports: [QuotationMaterialRequestLink],

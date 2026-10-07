@@ -137,6 +137,24 @@ export class CommandGovernanceService {
   }
 
   /**
+   * The latest approval for a document with its chain and recorded actions (null when none) —
+   * read-only. ADR-044 §6: the award command vets every approver before the instance is consumed.
+   */
+  async latestApproval(transactionType: WorkflowTransactionType, resourceId: string) {
+    const instance = await this.repo.findLatestInstanceWithChain(transactionType, resourceId);
+    if (!instance) return null;
+    const steps = instance.definition.steps;
+    return {
+      id: instance.id,
+      status: instance.status,
+      currentStepOrder: instance.currentStepOrder,
+      currentStepRole: steps.find((s) => s.stepOrder === instance.currentStepOrder)?.roleRequired ?? null,
+      steps,
+      actions: instance.actions,
+    };
+  }
+
+  /**
    * Voids a granted-but-unused approval, so a document edited after approval must be approved
    * again: an approval covers the content the approvers saw, not whatever the document later
    * becomes. Marks it consumed (CANCELLED), exactly as the gate does when it uses one.

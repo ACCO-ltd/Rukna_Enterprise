@@ -220,3 +220,27 @@ export async function cleanupQuotationEnv(prisma: PrismaClient, env: QuotationTe
   await ProcurementFixtureFactory.cleanup(prisma, orgId);
   await prisma.$executeRaw`DELETE FROM platform_files WHERE organization_id = ${orgId}`;
 }
+
+/**
+ * Seeds the ACCO quotation award bands for the test org (inactive, as the seed does) and switches
+ * them on or off — the per-org activation step.
+ */
+export async function setAwardBandsActive(prisma: PrismaClient, env: QuotationTestEnv, isActive: boolean) {
+  const { seedQuotationAwardBands } = await import('../../../../../platform/workflows/seeders/acco-workflows.seed.js');
+  const log = console.log;
+  console.log = () => undefined;
+  try {
+    await seedQuotationAwardBands(prisma, env.orgId);
+  } finally {
+    console.log = log;
+  }
+  const bindings = await prisma.workflowTriggerBinding.findMany({
+    where: { organizationId: env.orgId, entityType: 'QuotationRequest' },
+    select: { id: true, workflowDefinitionId: true },
+  });
+  await prisma.workflowTriggerBinding.updateMany({ where: { id: { in: bindings.map((b) => b.id) } }, data: { isActive } });
+  await prisma.workflowDefinition.updateMany({
+    where: { id: { in: bindings.map((b) => b.workflowDefinitionId) } },
+    data: { isActive },
+  });
+}

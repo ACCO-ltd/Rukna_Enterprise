@@ -9,6 +9,8 @@ const approvedTransitions: Partial<Record<WorkflowTransactionType, readonly stri
   // successor of baseline; it reuses the BOQ_BASELINE transaction type (no new enum → no
   // migration). `DRAFT:BASELINED` is kept so any legacy in-flight approval stays routable.
   BOQ_BASELINE: ['DRAFT:COMMITTED', 'DRAFT:BASELINED'],
+  // ADR-044 §7 — the quotation award is the PO's DoA approval, banded with the PO bands.
+  QUOTATION_AWARD: ['AWAITING_DECISION:AWARDED'],
 };
 
 export function isSupportedPolicyTransition(type: WorkflowTransactionType, from?: string, to?: string) {

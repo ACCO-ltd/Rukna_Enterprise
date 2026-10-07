@@ -24,6 +24,9 @@ import { QuotationQueryService } from '../../application/quotation-query.service
 import { QuotationCollectService } from '../../application/quotation-collect.service.js';
 import { QuotationMaterialRequestLink } from '../../application/quotation-material-request-link.service.js';
 import { QuotationSelectionService } from '../../application/quotation-selection.service.js';
+import { QuotationAwardService } from '../../application/quotation-award.service.js';
+import { ApprovalService } from '../../../../../platform/workflows/application/approval.service.js';
+import type { WorkflowsService } from '../../../../../platform/workflows/application/workflows.service.js';
 
 export function buildQuotationServices(prisma: PrismaClient) {
   const tenancy = { getClient: () => prisma } as unknown as TenancyService;
@@ -37,10 +40,13 @@ export function buildQuotationServices(prisma: PrismaClient) {
   const poRepo = new PurchaseOrderRepository();
   const access = new QuotationAccessService(sod, projectAccess);
   const runner = new QuotationCommandRunner(tenancy, repo, access, audit);
-  const query = new QuotationQueryService(tenancy, repo, access);
+  const query = new QuotationQueryService(tenancy, repo, access, commandGovernance);
+  // approve() never touches WorkflowsService (only initiate() does).
+  const approvals = new ApprovalService(workflowsRepo, {} as WorkflowsService, sod);
   const collect = new QuotationCollectService(tenancy, repo, poRepo, access, runner, query, audit, commandGovernance);
   const link = new QuotationMaterialRequestLink(repo, runner, collect);
   const selection = new QuotationSelectionService(runner, query);
+  const awards = new QuotationAwardService(tenancy, repo, access, runner, query, audit, commandGovernance, approvals, sod);
 
   const mrService = new MaterialRequestService(
     tenancy,
@@ -69,6 +75,8 @@ export function buildQuotationServices(prisma: PrismaClient) {
     query,
     collect,
     selection,
+    awards,
+    approvals,
     link,
     mrService,
     fileAuth,

@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
 import { moneyOrNull } from '../../shared/procurement-money.js';
 import { distinctCount, normaliseStoreName } from '../domain/quote-count.policy.js';
@@ -48,7 +49,39 @@ export class QuotationQueryService {
     private readonly tenancy: TenancyService,
     private readonly repo: QuotationRequestRepository,
     private readonly access: QuotationAccessService,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
+
+  /**
+   * The award's approval chain (ADR-044 §7): the pending instance while AWARD_PENDING_APPROVAL, or
+   * the instance the award consumed. Null when no approval was involved.
+   */
+  private async approvalSummary(db: Db, request: QuotationRequestAggregate) {
+    if (request.status !== 'AWARD_PENDING_APPROVAL' && !request.awardApprovalInstanceId) return null;
+    const approval = await this.commandGovernance.latestApproval(WorkflowTransactionType.QUOTATION_AWARD, request.id);
+    if (!approval) return null;
+    const consumedByAward = approval.id === request.awardApprovalInstanceId;
+    if (request.status !== 'AWARD_PENDING_APPROVAL' && !consumedByAward) return null;
+    const name = await loadActorNames(db, approval.actions.map((a) => a.actorId));
+    return {
+      instanceId: approval.id,
+      // A consumed instance is stored CANCELLED (ADR-015); the award it approved reads APPROVED.
+      status: consumedByAward ? 'APPROVED' : approval.status,
+      currentStepOrder: approval.currentStepOrder,
+      currentStepRole: approval.currentStepRole,
+      steps: approval.steps.map((step) => {
+        const action = [...approval.actions]
+          .reverse()
+          .find((a) => a.stepOrder === step.stepOrder && a.action === 'APPROVE');
+        return {
+          stepOrder: step.stepOrder,
+          roleRequired: step.roleRequired,
+          approvedBy: action ? { id: action.actorId, name: name(action.actorId) } : null,
+          approvedAt: action?.actedAt ?? null,
+        };
+      }),
+    };
+  }
 
   async detail(identity: RequestIdentity, id: string) {
     const prisma = this.tenancy.getClient();
@@ -237,7 +270,7 @@ export class QuotationQueryService {
             .map((m) => ({ id: m.id, code: m.code, name: m.name })),
         }))
         .filter((m) => m.suppliers.length > 0),
-      approval: null,
+      approval: await this.approvalSummary(db, request),
       allowedActions: allowedActions(facts, caller).map(({ action, enabled, reasonCode }) => ({
         action,
         enabled,
