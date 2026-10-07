@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col transition-[padding] duration-300 ease-out md:ps-16 lg:ps-[var(--sidebar-width)]">
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
-        <main id="main-content" className="flex-1 px-4 py-7 sm:px-6 lg:px-8 lg:py-8">
+        <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-7 sm:px-6 lg:px-8 lg:py-8 focus:outline-none">
           <div className="mx-auto w-full max-w-[1440px]">
             <ModuleTrailProvider>
               {/* Module header + tabs for whichever module owns this route (ADR-035). */}

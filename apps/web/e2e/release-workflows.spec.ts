@@ -12,9 +12,12 @@ test.describe('release-critical creation workflows', () => {
     await app.goto('/clients/new');
     await app.getByLabel('Name').fill(clientName);
     await app.getByLabel('Contact person').fill('Release QA');
-    await app.getByLabel('Email').fill(`release.${run.toLowerCase()}@example.test`);
-    await app.getByLabel('Default currency').selectOption('USD');
-    await app.getByRole('button', { name: 'Create client' }).click();
+    // Client redesign (#256): a primary contact (name + E.164 phone) is required inline, there is
+    // no currency control (USD is fixed, ADR-024), and the submit label is "Save client".
+    // "Email" alone is a substring of "Invoice email" — scope exactly to the contact email.
+    await app.getByLabel('Email', { exact: true }).fill(`release.${run.toLowerCase()}@example.test`);
+    await app.getByLabel('Phone', { exact: true }).fill('+252612345678');
+    await app.getByRole('button', { name: 'Save client' }).click();
 
     await app.waitForURL(/\/clients\/[^/]+$/);
     await expect(app.getByRole('heading', { level: 1 })).toContainText(clientName);
@@ -36,14 +39,16 @@ test.describe('release-critical creation workflows', () => {
   });
 
   test('creates a payment application from the project workspace', async ({ app }) => {
-    await app.goto(`/projects/${scenario.projectId}/ipc`);
-    await app.getByRole('link', { name: 'New Application' }).click();
+    // The /ipc route and its "New Application" link were retired (ADR-043); the create form lives
+    // under the commercial workspace now. Navigate straight to it.
+    await app.goto(`/projects/${scenario.projectId}/commercial/applications/new`);
     await app.getByLabel('Period from').fill('2026-07-01');
     await app.getByLabel('Period to').fill('2026-07-31');
     await app.getByLabel('Notes').fill('Created by the Phase 6 release workflow');
     await app.getByRole('button', { name: 'Create application' }).click();
 
-    await app.waitForURL(/\/contracts\/[^/]+\/applications\/[^/]+$/);
+    // The post-create redirect now lands under the commercial workspace; match either base.
+    await app.waitForURL(/\/applications\/[^/]+$/);
     await expect(app.getByText('Draft', { exact: true }).first()).toBeVisible();
     await expect(app.getByText('Created by the Phase 6 release workflow')).toBeVisible();
   });
@@ -54,11 +59,13 @@ test.describe('release-critical creation workflows', () => {
 
     const issueCertificate = async () => {
       await app.goto(`${applicationPath}/certificates/new`);
-      await app.getByLabel('Certificate Outcome').selectOption('CERTIFIED');
+      // The @erp/ui Select is a Radix combobox now, not a native <select>: open it and pick.
+      await app.getByLabel('Certificate Outcome').click();
+      await app.getByRole('option', { name: 'Certified' }).click();
       await app.getByRole('button', { name: 'Continue to Items' }).click();
       await app.getByRole('button', { name: 'Continue to Review' }).click();
       await app.getByRole('button', { name: 'Issue Certificate' }).click();
-      await app.waitForURL(new RegExp(`${applicationPath}$`));
+      await app.waitForURL(/\/applications\/[^/]+$/);
     };
 
     await issueCertificate();
