@@ -159,11 +159,22 @@ describe('quotation WhatsApp policy (ADR-044 phase 2)', () => {
       expect(alertStillWanted('QUOTE_READY', key('QUOTE_READY'), null)).toMatch(/no longer exists/);
     });
 
-    it('collector alerts only while the outcome still stands', () => {
-      expect(alertStillWanted('QUOTE_CHOSEN', key('QUOTE_CHOSEN', '1'), { ...req, status: 'AWARDED' })).toBeNull();
-      expect(alertStillWanted('QUOTE_CHOSEN', key('QUOTE_CHOSEN', '1'), req)).toMatch(/withdrawn/);
+    it('collector alerts only while the outcome still stands, in the same round (review M2)', () => {
+      const awardedAt = at('2026-10-10T08:00:00Z');
+      const awarded = { ...req, status: 'AWARDED', awardedAt };
+      const chosenKey = key('QUOTE_CHOSEN', String(awardedAt.getTime()));
+      expect(alertStillWanted('QUOTE_CHOSEN', chosenKey, awarded)).toBeNull();
+      expect(alertStillWanted('QUOTE_CHOSEN', chosenKey, req)).toMatch(/withdrawn/);
+      // Re-decided and awarded again (maybe to another store): the earlier "chosen" is stale.
+      expect(alertStillWanted('QUOTE_CHOSEN', chosenKey, { ...awarded, awardedAt: at('2026-10-10T09:00:00Z') })).toMatch(
+        /chosen again/,
+      );
       expect(alertStillWanted('QUOTE_ANOTHER', key('QUOTE_ANOTHER', '1'), { ...req, status: 'RETURNED' })).toBeNull();
       expect(alertStillWanted('QUOTE_ANOTHER', key('QUOTE_ANOTHER', '1'), req)).toMatch(/sent again/);
+      // Returned again in a later round: the round-1 "another" is stale.
+      expect(alertStillWanted('QUOTE_ANOTHER', key('QUOTE_ANOTHER', '1'), { ...req, status: 'RETURNED', sendCount: 2 })).toMatch(
+        /asked again/,
+      );
     });
   });
 });

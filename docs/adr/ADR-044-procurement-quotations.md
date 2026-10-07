@@ -515,9 +515,14 @@ Locked by the product owner 2026-10-07. Spec addendum: `docs/specs/procurement-q
    5-minute lease (`attemptCount + 1`) — longer than one send can take (20 s client timeout), so a
    second replica can never claim a row that is still being sent. Then: a row past its attempt cap
    (a process kept dying mid-send) → FAILED with its last error, not sent again; older than 12 h → FAILED `EXPIRED`;
-   the owning feature's **dispatch guard** says it is no longer wanted → FAILED `NOT_NEEDED`
-   (quotation: selector alerts need AWAITING_DECISION in the same round, chosen needs AWARDED,
-   another needs RETURNED, nothing for a cancelled request or when the kill switch is off) → send.
+   the owning feature's **dispatch guard** (`QuotationAlertGuard`) says it is no longer wanted →
+   FAILED `NOT_NEEDED`. It re-reads everything: kill switch; the request still in the alert's round
+   (selector alerts: AWAITING_DECISION with the same send; chosen: AWARDED with the same award
+   instant — a re-award, possibly to another store, makes it stale; another: RETURNED in the same
+   send count; nothing for a cancelled request); the recipient still ACTIVE with an ACTIVE membership,
+   opted in and with a valid number (a changed number is used, a removed one drops the alert); and
+   still in the audience (selector not SoD-barred with project access / CFO-CEO with project access /
+   a collector of the request) → send.
    `RATE_LIMITED` / `NETWORK` / `PROVIDER_ERROR` retry after 1, 2, 5, 15 min, FAILED after 5
    attempts; other refusals fail at once; an unanswered send is UNKNOWN and never retried (ADR-042
    item 4). Sent rows follow ADR-042's provider-id → route → SENT order, so the existing webhook moves

@@ -141,15 +141,21 @@ export function slaAlertsDue(
   };
 }
 
+/** The round of a QUOTE_CHOSEN alert: the award instant (a re-award is a new round). */
+export function awardRound(request: { awardedAt: Date | null; sendCount: number }): string {
+  return String(request.awardedAt?.getTime() ?? request.sendCount);
+}
+
 /**
  * The dispatcher's last check before an alert goes out (DispatchGuard): null = still wanted, else
- * plain words for the delivery log. Selector alerts need the request still AWAITING_DECISION in the
- * same round; "chosen" needs it still AWARDED; "another" still RETURNED.
+ * plain words for the delivery log. Every alert must still be in its own round: selector alerts
+ * need AWAITING_DECISION with the same send; "chosen" the same award (a re-award, possibly to
+ * another store, makes it stale); "another" the same return.
  */
 export function alertStillWanted(
   purpose: QuotationAlertPurpose,
   key: string,
-  request: { status: string; sendCount: number; sentAt: Date | null } | null,
+  request: { status: string; sendCount: number; sentAt: Date | null; awardedAt?: Date | null } | null,
 ): string | null {
   if (!request) return 'Not sent: the quotation request no longer exists.';
   if (request.status === 'CANCELLED') return 'Not sent: the quotation request was cancelled.';
@@ -158,7 +164,16 @@ export function alertStillWanted(
     if (roundOfKey(key) !== decisionRound(request)) return 'Not sent: the quotes were sent again since.';
     return null;
   }
-  if (purpose === 'QUOTE_CHOSEN' && request.status !== 'AWARDED') return 'Not sent: the choice was withdrawn.';
-  if (purpose === 'QUOTE_ANOTHER' && request.status !== 'RETURNED') return 'Not sent: the quotes were sent again since.';
+  if (purpose === 'QUOTE_CHOSEN') {
+    if (request.status !== 'AWARDED') return 'Not sent: the choice was withdrawn.';
+    if (roundOfKey(key) !== awardRound({ awardedAt: request.awardedAt ?? null, sendCount: request.sendCount })) {
+      return 'Not sent: a store was chosen again since.';
+    }
+    return null;
+  }
+  if (purpose === 'QUOTE_ANOTHER') {
+    if (request.status !== 'RETURNED') return 'Not sent: the quotes were sent again since.';
+    if (roundOfKey(key) !== String(request.sendCount)) return 'Not sent: finance asked again since.';
+  }
   return null;
 }

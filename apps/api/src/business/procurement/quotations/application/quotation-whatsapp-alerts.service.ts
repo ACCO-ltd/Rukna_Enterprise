@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
 import type { StaffAlertLogEntry } from '@erp/types';
@@ -17,7 +17,6 @@ import {
   QUOTATION_MESSAGE_RESOURCE,
   alertBodyParams,
   alertIdempotencyKey,
-  alertStillWanted,
   type QuotationAlertFacts,
   type QuotationAlertPurpose,
 } from '../domain/quotation-whatsapp.policy.js';
@@ -52,7 +51,7 @@ export interface QueueAlertInput {
  * configured on the server (logged once).
  */
 @Injectable()
-export class QuotationWhatsAppAlerts implements OnModuleInit {
+export class QuotationWhatsAppAlerts {
   private readonly logger = new Logger(QuotationWhatsAppAlerts.name);
   private warnedUnconfigured = false;
 
@@ -62,23 +61,14 @@ export class QuotationWhatsAppAlerts implements OnModuleInit {
     private readonly messages: OutboundMessageRepository,
   ) {}
 
-  onModuleInit(): void {
-    // Last check before the dispatcher sends: the request may have moved on since the alert queued.
-    this.communication.registerDispatchGuard(QUOTATION_MESSAGE_RESOURCE, async (db, message) => {
-      if (this.config.get<string>(QUOTATION_WHATSAPP_ENABLED) !== 'true') {
-        return 'Not sent: quotation WhatsApp alerts were switched off.';
-      }
-      const request = await db.quotationRequest.findFirst({
-        where: { id: message.resourceId, organizationId: message.organizationId },
-        select: { status: true, sendCount: true, sentAt: true },
-      });
-      return alertStillWanted(message.purpose as QuotationAlertPurpose, message.idempotencyKey, request);
-    });
+  /** The kill switch alone (QUOTATION_WHATSAPP_ENABLED === 'true'). */
+  switchedOn(): boolean {
+    return this.config.get<string>(QUOTATION_WHATSAPP_ENABLED) === 'true';
   }
 
   /** Whether alerts are queued at all right now (kill switch on and WhatsApp configured). */
   enabled(): boolean {
-    if (this.config.get<string>(QUOTATION_WHATSAPP_ENABLED) !== 'true') return false;
+    if (!this.switchedOn()) return false;
     if (!this.communication.isWhatsAppConfigured()) {
       if (!this.warnedUnconfigured) {
         this.warnedUnconfigured = true;
@@ -136,7 +126,8 @@ export class QuotationWhatsAppAlerts implements OnModuleInit {
     const users = await tx.user.findMany({
       where: {
         id: { in: [...new Set(input.recipientUserIds)] },
-        organizationId: input.organizationId,
+        // Review L4: an ACTIVE membership of this organisation, not just the user's home org.
+        memberships: { some: { organizationId: input.organizationId, status: 'ACTIVE', removedAt: null } },
         status: 'ACTIVE',
         whatsappAlertsEnabled: true,
         whatsappPhone: { not: null },

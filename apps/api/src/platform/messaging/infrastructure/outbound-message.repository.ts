@@ -306,6 +306,11 @@ export class OutboundMessageRepository {
     });
   }
 
+  /** Review M2 — a still-QUEUED background row goes to the recipient's current number. */
+  async updateRecipient(db: Db, id: string, recipient: string): Promise<void> {
+    await db.outboundMessage.updateMany({ where: { id, status: 'QUEUED' }, data: { recipient } });
+  }
+
   /**
    * Review L2 — Meta accepted the send but recording it failed: whatever state the row is in short
    * of a recorded outcome, it becomes UNKNOWN and leaves the schedule, so it is never re-sent.

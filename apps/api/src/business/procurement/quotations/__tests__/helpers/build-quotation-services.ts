@@ -40,6 +40,7 @@ import { CommunicationService } from '../../../../../platform/messaging/communic
 import { OutboundMessageRepository } from '../../../../../platform/messaging/infrastructure/outbound-message.repository.js';
 import { QuotationWhatsAppAlerts } from '../../application/quotation-whatsapp-alerts.service.js';
 import { QuotationSlaAlertJob } from '../../application/quotation-sla-alert.job.js';
+import { QuotationAlertGuard } from '../../application/quotation-alert-guard.service.js';
 
 export interface QuotationServiceOptions {
   /** Server environment seen by the WhatsApp alerts (e.g. QUOTATION_WHATSAPP_ENABLED). */
@@ -79,7 +80,6 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
     audit,
   );
   const alerts = new QuotationWhatsAppAlerts(config, communication, messages);
-  alerts.onModuleInit();
   const runner = new QuotationCommandRunner(tenancy, repo, access, audit);
   const query = new QuotationQueryService(tenancy, repo, access, commandGovernance, alerts);
   // approve() never touches WorkflowsService (only initiate() does).
@@ -117,6 +117,7 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
     link,
   );
   const fileAuth = new FileAuthorizationService(tenancy, projectAccess);
+  new QuotationAlertGuard(communication, alerts, repo, notifier).onModuleInit();
   const slaJob = new QuotationSlaAlertJob({} as never, tenancy, repo, notifier, alerts);
 
   return {

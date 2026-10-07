@@ -8,7 +8,7 @@ import { ProjectAccessService } from '../../../../platform/project-access/projec
 import { QuotationAccessService } from './quotation-access.service.js';
 import type { CommandContext } from './quotation-command-runner.service.js';
 import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js';
-import { decisionRound, type QuotationAlertFacts } from '../domain/quotation-whatsapp.policy.js';
+import { awardRound, decisionRound, type QuotationAlertFacts } from '../domain/quotation-whatsapp.policy.js';
 import type { Db, QuotationRequestAggregate } from '../infrastructure/quotation-request.repository.js';
 
 const RESOURCE_TYPE = 'QuotationRequest';
@@ -101,7 +101,7 @@ export class QuotationNotifier {
       requestId: ctx.request.id,
       purpose: 'QUOTE_CHOSEN',
       // A re-decision can award again in the same send round: the award instant is the round.
-      round: String(award.awardedAt?.getTime() ?? ctx.request.sendCount),
+      round: awardRound({ awardedAt: award.awardedAt, sendCount: ctx.request.sendCount }),
       recipientUserIds: this.collectorIds(ctx),
       facts: {
         ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)),
@@ -184,7 +184,11 @@ export class QuotationNotifier {
 
   /** The request's creator and every quote/photo uploader. */
   collectorIds(ctx: CommandContext): string[] {
-    return this.access.evidenceTouchers(ctx.request);
+    return this.collectorIdsFor(ctx.request);
+  }
+
+  collectorIdsFor(request: QuotationRequestAggregate): string[] {
+    return this.access.evidenceTouchers(request);
   }
 
   /**

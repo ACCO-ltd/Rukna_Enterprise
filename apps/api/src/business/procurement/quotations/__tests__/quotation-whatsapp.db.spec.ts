@@ -283,4 +283,72 @@ describe('ADR-044 phase 2 — quotation WhatsApp alerts', () => {
     // No full number anywhere in the read model.
     expect(JSON.stringify(detail.messages)).not.toContain('612000001');
   });
+
+  describe('review M2 / L4 — the pre-send check re-reads the round and the recipient', () => {
+    const onlyDue = (requestId: string) =>
+      prisma.outboundMessage.updateMany({
+        where: { status: 'QUEUED', nextAttemptAt: { not: null }, NOT: { resourceId: requestId } },
+        data: { nextAttemptAt: new Date('2999-01-01') },
+      });
+    const setMembership = (persona: Persona, status: 'ACTIVE' | 'SUSPENDED') =>
+      prisma.organizationMembership.updateMany({ where: { organizationId: env.orgId, userId: env.userIds[persona] }, data: { status } });
+
+    it('a "store chosen" from an award that was re-decided and awarded again is withdrawn; the new one goes', async () => {
+      const mr = await createApprovedMr(prisma, env, { lines: [{ quantity: 1, estimate: 90 }] });
+      const request = await s.collected(mr.id, ['Hodan']);
+      await svc.collect.send(env.as('collector'), request.id);
+      await svc.selection.enterTotal(env.as('selector'), request.id, request.quotes[0].id, '90');
+      const award = { quoteId: request.quotes[0].id, paymentPath: 'BUYER_CASH' as const, awardSupplierId: env.supplierId };
+      await svc.awards.award(env.as('selector'), request.id, award);
+      await svc.orders.requestRedecision(env.as('collector'), request.id, 'Re-check');
+      await svc.awards.award(env.as('selector'), request.id, { ...award, paymentPath: 'FINANCE_PAYS_SUPPLIER' });
+
+      await onlyDue(request.id);
+      await svc.communication.dispatchDue(new Date());
+      const chosen = await alerts(request.id, 'QUOTE_CHOSEN');
+      expect(chosen.map((m) => m.status)).toEqual(['FAILED', 'SENT']);
+      expect(chosen[0]).toMatchObject({ errorCode: 'NOT_NEEDED', errorMessage: 'Not sent: a store was chosen again since.' });
+    });
+
+    it('re-reads the recipient: alerts turned off → withdrawn; number changed → sent to the new number', async () => {
+      const mr = await createApprovedMr(prisma, env);
+      const request = await s.collected(mr.id);
+      await svc.collect.send(env.as('collector'), request.id);
+      await prisma.user.update({ where: { id: env.userIds.selector }, data: { whatsappAlertsEnabled: false } });
+      await prisma.user.update({ where: { id: env.userIds.selector2 }, data: { whatsappPhone: '+252612000099' } });
+      try {
+        await onlyDue(request.id);
+        await svc.communication.dispatchDue(new Date());
+      } finally {
+        await prisma.user.update({ where: { id: env.userIds.selector }, data: { whatsappAlertsEnabled: true } });
+        await prisma.user.update({ where: { id: env.userIds.selector2 }, data: { whatsappPhone: PHONES.selector2!.phone } });
+      }
+      const ready = await alerts(request.id, 'QUOTE_READY');
+      const bySelector = ready.find((m) => m.recipientUserId === env.userIds.selector)!;
+      const bySelector2 = ready.find((m) => m.recipientUserId === env.userIds.selector2)!;
+      expect(bySelector).toMatchObject({ status: 'FAILED', errorCode: 'NOT_NEEDED' });
+      expect(bySelector2).toMatchObject({ status: 'SENT', recipient: '+252612000099' });
+    });
+
+    it('a recipient whose membership was suspended is neither queued nor sent to', async () => {
+      const mr = await createApprovedMr(prisma, env);
+      const request = await s.collected(mr.id);
+      await svc.collect.send(env.as('collector'), request.id);
+      await setMembership('selector2', 'SUSPENDED');
+      await setMembership('collector', 'SUSPENDED');
+      try {
+        await onlyDue(request.id);
+        await svc.communication.dispatchDue(new Date());
+        // Ask-another while the collector is suspended: not queued for them (L4).
+        await svc.selection.askAnother(env.as('selector'), request.id, 'one more');
+      } finally {
+        await setMembership('selector2', 'ACTIVE');
+        await setMembership('collector', 'ACTIVE');
+      }
+      const ready = await alerts(request.id, 'QUOTE_READY');
+      expect(ready.find((m) => m.recipientUserId === env.userIds.selector2)).toMatchObject({ status: 'FAILED', errorCode: 'NOT_NEEDED' });
+      expect(ready.find((m) => m.recipientUserId === env.userIds.selector)).toMatchObject({ status: 'SENT' });
+      expect(await alerts(request.id, 'QUOTE_ANOTHER')).toHaveLength(0);
+    });
+  });
 });

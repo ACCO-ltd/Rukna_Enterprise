@@ -115,11 +115,13 @@ export interface MessageStatusHooks {
 const REACHED: ReadonlySet<string> = new Set(['SENT', 'DELIVERED', 'READ']);
 
 /**
- * ADR-044 phase 2 — asked just before a background message is sent: null = send it, or plain words
- * saying why it is no longer needed (e.g. the quotation was decided meanwhile). Registered by the
+ * ADR-044 phase 2 — asked just before a background message is sent: null = send it as queued;
+ * `{ recipient }` = send it, to this (current) number instead; or plain words saying why it is no
+ * longer needed (e.g. the quotation was decided meanwhile, the person opted out). Registered by the
  * feature that owns the resourceType; the platform never imports it.
  */
-export type DispatchGuard = (db: Db, message: OutboundMessage) => Promise<string | null>;
+export type DispatchDecision = string | null | { recipient: string };
+export type DispatchGuard = (db: Db, message: OutboundMessage) => Promise<DispatchDecision>;
 
 /** errorCode of a background row its feature withdrew before sending (DispatchGuard). */
 export const NOT_NEEDED = 'NOT_NEEDED';
@@ -581,10 +583,15 @@ export class CommunicationService {
       return 'failed';
     }
     const guard = this.dispatchGuards.get(row.resourceType);
-    const notNeeded = guard ? await guard(db, row) : null;
-    if (notNeeded) {
-      await fail(NOT_NEEDED, notNeeded);
+    const decision = guard ? await guard(db, row) : null;
+    if (typeof decision === 'string') {
+      await fail(NOT_NEEDED, decision);
       return 'cancelled';
+    }
+    if (decision && decision.recipient !== row.recipient) {
+      // The person changed their number since the alert was queued: send to the current one.
+      await this.messages.updateRecipient(db, row.id, decision.recipient);
+      row = { ...row, recipient: decision.recipient };
     }
     if (!row.templateName || !row.templateLanguage) {
       await fail('TEMPLATE_NOT_APPROVED', describeWhatsAppError('TEMPLATE_NOT_APPROVED'));

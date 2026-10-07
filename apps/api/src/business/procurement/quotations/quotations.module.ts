@@ -8,6 +8,7 @@ import { NotificationsModule } from '../../../platform/notifications/notificatio
 import { CommunicationModule } from '../../../platform/messaging/communication.module.js';
 import { QuotationWhatsAppAlerts } from './application/quotation-whatsapp-alerts.service.js';
 import { QuotationSlaAlertJob } from './application/quotation-sla-alert.job.js';
+import { QuotationAlertGuard } from './application/quotation-alert-guard.service.js';
 import { QuotationNotifier } from './application/quotation-notifier.service.js';
 import { QuotationRequestRepository } from './infrastructure/quotation-request.repository.js';
 import { QuotationAccessService } from './application/quotation-access.service.js';
@@ -44,6 +45,7 @@ import { QuotationRequestController } from './presentation/quotation-request.con
     // ADR-044 phase 2 — WhatsApp alerts to staff (queued) + the 2 h / 4 h SLA chaser (cron).
     QuotationWhatsAppAlerts,
     QuotationSlaAlertJob,
+    QuotationAlertGuard,
   ],
   exports: [QuotationMaterialRequestLink],
 })
