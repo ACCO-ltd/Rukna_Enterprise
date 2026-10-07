@@ -70,6 +70,17 @@ export class MaterialRequestController {
     return this.service.submit(identity, id);
   }
 
+  @Post(':id/approve')
+  @RequirePermissions(PERMISSIONS.materialRequestsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Approve a submitted MR: SUBMITTED → APPROVED (the requester cannot approve their own)',
+  })
+  approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.approve(identity, id);
+  }
+
   @Post(':id/cancel')
   @RequirePermissions(PERMISSIONS.materialRequestsCreate)
   @HttpCode(HttpStatus.OK)

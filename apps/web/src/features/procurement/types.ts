@@ -189,6 +189,8 @@ export interface MaterialRequest {
    * document instead.
    */
   approvalInstanceId: string | null;
+  /** The requester's user id — they cannot approve their own request. */
+  requestedBy: string;
   requestedDate: ApiDate;
   requiredByDate: ApiDate | null;
   description: string | null;

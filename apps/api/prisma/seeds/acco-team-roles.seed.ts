@@ -179,6 +179,8 @@ const ROLES: TeamRoleSpec[] = [
       P.projectsView,
       P.commitmentsView,
       P.procurementView,
+      // Owner decision 2026-10-06 — the finance team approves material requests.
+      P.materialRequestsApprove,
       // ADR-029 §8 A-2 — commercial sees the BOQ margin tier (contract value, contingency, margin).
       P.boqView,
       P.boqViewMargin,
