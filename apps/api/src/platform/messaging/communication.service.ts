@@ -115,6 +115,38 @@ export interface MessageStatusHooks {
 const REACHED: ReadonlySet<string> = new Set(['SENT', 'DELIVERED', 'READ']);
 
 /**
+ * ADR-044 phase 2 — asked just before a background message is sent: null = send it, or plain words
+ * saying why it is no longer needed (e.g. the quotation was decided meanwhile). Registered by the
+ * feature that owns the resourceType; the platform never imports it.
+ */
+export type DispatchGuard = (db: Db, message: OutboundMessage) => Promise<string | null>;
+
+/** errorCode of a background row its feature withdrew before sending (DispatchGuard). */
+export const NOT_NEEDED = 'NOT_NEEDED';
+/** errorCode of a background row that could not be sent while it was still timely. */
+export const EXPIRED = 'EXPIRED';
+const EXPIRED_MESSAGE = 'Not sent: WhatsApp could not be reached while this alert was still useful.';
+
+/** Background send policy (ADR-044 phase 2). */
+export const BACKGROUND_MAX_ATTEMPTS = 5;
+/** Wait after attempt n (1-based) before attempt n + 1. */
+export const BACKGROUND_RETRY_DELAYS_MS = [60_000, 2 * 60_000, 5 * 60_000, 15 * 60_000];
+/** A claimed row is invisible to other dispatchers this long (a crash mid-send retries after it). */
+export const BACKGROUND_LEASE_MS = 5 * 60_000;
+/** An alert still unsent this long after it was queued is dropped (EXPIRED), not sent late. */
+export const BACKGROUND_MAX_AGE_MS = 12 * 60 * 60_000;
+/** Transient refusals worth another attempt; anything else definite fails at once. */
+const RETRYABLE: ReadonlySet<string> = new Set(['RATE_LIMITED', 'NETWORK', 'PROVIDER_ERROR', 'NOT_CONFIGURED']);
+
+export interface DispatchSummary {
+  sent: number;
+  retrying: number;
+  failed: number;
+  unknown: number;
+  cancelled: number;
+}
+
+/**
  * ADR-042 phase 2 — the channel-agnostic communication core. Callers (send invoice / receipt /
  * reminders) ask for a message; this records it (OutboundMessage), sends it through the channel
  * client, and keeps its status from the provider's webhooks.
@@ -137,6 +169,7 @@ const REACHED: ReadonlySet<string> = new Set(['SENT', 'DELIVERED', 'READ']);
 export class CommunicationService {
   private readonly logger = new Logger(CommunicationService.name);
   private readonly statusHooks = new Map<string, MessageStatusHooks>();
+  private readonly dispatchGuards = new Map<string, DispatchGuard>();
 
   constructor(
     private readonly tenancy: TenancyService,
@@ -257,6 +290,49 @@ export class CommunicationService {
       throw new Error(`Message status hooks for '${resourceType}' are already registered`);
     }
     this.statusHooks.set(resourceType, hooks);
+  }
+
+  /** Registers the pre-send guard for one resourceType's background messages. */
+  registerDispatchGuard(resourceType: string, guard: DispatchGuard): void {
+    if (this.dispatchGuards.has(resourceType)) {
+      throw new Error(`Dispatch guard for '${resourceType}' is already registered`);
+    }
+    this.dispatchGuards.set(resourceType, guard);
+  }
+
+  /** Whether WhatsApp sending is configured on this server (token + phone number id). */
+  isWhatsAppConfigured(): boolean {
+    return this.whatsapp.isConfigured();
+  }
+
+  /**
+   * ADR-044 phase 2 — sends the background messages that are due, in the CURRENT tenant's context
+   * (the dispatcher runs it per tenant inside `tenancyStorage.run`). Never inside a business
+   * transaction, never on a request path.
+   *
+   *   claim (lease + attempt) → too old? EXPIRED → guard says not needed? NOT_NEEDED (FAILED) →
+   *   send → SENT (provider id, route, then status — same order as a synchronous send).
+   *   Definite transient refusal → stays QUEUED, retried after a back-off, FAILED after
+   *   BACKGROUND_MAX_ATTEMPTS · definite permanent refusal → FAILED · no answer → UNKNOWN (never
+   *   retried: it may have arrived).
+   *
+   * Not audited: there is no acting user (like webhook status changes); the row is the record.
+   */
+  async dispatchDue(now: Date = new Date(), limit = 50): Promise<DispatchSummary> {
+    const summary: DispatchSummary = { sent: 0, retrying: 0, failed: 0, unknown: 0, cancelled: 0 };
+    const db = this.tenancy.getClient();
+    const rows = await this.messages.claimDue(db, now, new Date(now.getTime() + BACKGROUND_LEASE_MS), limit);
+    for (const row of rows) {
+      try {
+        summary[await this.dispatchOne(db, row, now)] += 1;
+      } catch (error) {
+        // A bug or a database error on one row must not stop the others; the lease retries it.
+        this.logger.error(
+          `Background ${row.purpose} message ${row.id} not dispatched: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    return summary;
   }
 
   /**
@@ -459,6 +535,89 @@ export class CommunicationService {
       return updated;
     });
     return toView(sent);
+  }
+
+  private async dispatchOne(
+    db: ReturnType<TenancyService['getClient']>,
+    row: OutboundMessage,
+    now: Date,
+  ): Promise<keyof DispatchSummary> {
+    const fail = async (code: string, message: string) => {
+      await db.$transaction(async (tx) => {
+        await this.messages.markFailed(tx, row.id, code, message, now);
+        await this.messages.clearSchedule(tx, row.id);
+      });
+    };
+
+    if (now.getTime() - row.queuedAt.getTime() > BACKGROUND_MAX_AGE_MS) {
+      await fail(EXPIRED, EXPIRED_MESSAGE);
+      return 'failed';
+    }
+    const guard = this.dispatchGuards.get(row.resourceType);
+    const notNeeded = guard ? await guard(db, row) : null;
+    if (notNeeded) {
+      await fail(NOT_NEEDED, notNeeded);
+      return 'cancelled';
+    }
+    if (!row.templateName || !row.templateLanguage) {
+      await fail('TEMPLATE_NOT_APPROVED', describeWhatsAppError('TEMPLATE_NOT_APPROVED'));
+      return 'failed';
+    }
+    const params = row.templateParams as { body?: unknown; buttonUrlSuffix?: unknown } | null;
+    const body = Array.isArray(params?.body)
+      ? params.body.filter((p): p is string => typeof p === 'string')
+      : [];
+    const buttonUrlSuffix =
+      typeof params?.buttonUrlSuffix === 'string' && params.buttonUrlSuffix ? params.buttonUrlSuffix : undefined;
+
+    let providerMessageId: string;
+    try {
+      ({ providerMessageId } = await this.whatsapp.sendTemplate({
+        to: row.recipient,
+        templateName: row.templateName,
+        language: row.templateLanguage,
+        bodyParams: body,
+        ...(buttonUrlSuffix ? { buttonUrlSuffix } : {}),
+      }));
+    } catch (error) {
+      const failure =
+        error instanceof WhatsAppSendError
+          ? error
+          : new WhatsAppSendError('PROVIDER_ERROR', describeWhatsAppError('PROVIDER_ERROR'));
+      const where = `Background ${row.purpose} message ${row.id} to ${maskPhone(row.recipient)}`;
+      if (failure.outcomeUnknown) {
+        await db.$transaction(async (tx) => {
+          await this.messages.markUnknown(tx, row.id, OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_MESSAGE);
+          await this.messages.clearSchedule(tx, row.id);
+        });
+        this.logger.warn(`${where} unknown: ${failure.code}`);
+        return 'unknown';
+      }
+      if (
+        error instanceof WhatsAppSendError &&
+        RETRYABLE.has(failure.code) &&
+        row.attemptCount < BACKGROUND_MAX_ATTEMPTS
+      ) {
+        const delay =
+          BACKGROUND_RETRY_DELAYS_MS[Math.min(row.attemptCount, BACKGROUND_RETRY_DELAYS_MS.length) - 1];
+        await this.messages.scheduleRetry(db, row.id, new Date(now.getTime() + delay), failure.code, failure.message);
+        this.logger.warn(`${where} attempt ${row.attemptCount} refused (${failure.code}); retrying`);
+        return 'retrying';
+      }
+      await fail(failure.code, failure.message);
+      this.logger.warn(`${where} failed after ${row.attemptCount} attempt(s): ${failure.code}`);
+      if (!(error instanceof WhatsAppSendError)) throw error;
+      return 'failed';
+    }
+
+    // Same order as a synchronous send (see deliver): provider id → route → SENT.
+    await this.messages.attachProviderId(db, row.id, providerMessageId);
+    await this.recordRoute(providerMessageId);
+    await db.$transaction(async (tx) => {
+      await this.messages.markSent(tx, row.id, providerMessageId, new Date());
+      await this.messages.clearSchedule(tx, row.id);
+    });
+    return 'sent';
   }
 
   private async runHook(

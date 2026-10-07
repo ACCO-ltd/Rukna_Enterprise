@@ -25,6 +25,27 @@ export interface NewOutboundMessage {
   createdBy: string;
 }
 
+/** What a background (dispatcher-sent) template message carries besides the row's own fields. */
+export interface BackgroundTemplateParams {
+  body: string[];
+  buttonUrlSuffix?: string;
+}
+
+/** ADR-044 phase 2 — a staff alert queued for the background dispatcher. */
+export interface NewBackgroundMessage {
+  organizationId: string;
+  purpose: MessagePurpose;
+  recipient: string;
+  recipientUserId: string;
+  resourceType: string;
+  resourceId: string;
+  templateName: string;
+  templateLanguage: string;
+  templateParams: BackgroundTemplateParams;
+  idempotencyKey: string;
+  createdBy: string;
+}
+
 /** Tenant DB access for OutboundMessage (ADR-042 phase 2). */
 @Injectable()
 export class OutboundMessageRepository {
@@ -211,6 +232,90 @@ export class OutboundMessageRepository {
     return db.outboundMessage.findMany({
       where: { organizationId, resourceType, resourceId },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
+
+  // ─── Background sends (ADR-044 phase 2) ──────────────────────────────────────
+
+  /**
+   * Queues background messages: QUEUED with `nextAttemptAt = now`. ON CONFLICT DO NOTHING on
+   * (organization, idempotencyKey), so a repeat (same event, round and recipient) queues nothing
+   * and — unlike a P2002 — never aborts the caller's transaction. Returns how many were new.
+   */
+  async enqueueMany(db: Db, rows: NewBackgroundMessage[], now: Date): Promise<number> {
+    if (rows.length === 0) return 0;
+    const { count } = await db.outboundMessage.createMany({
+      data: rows.map((row) => ({
+        ...row,
+        templateParams: row.templateParams as unknown as Prisma.InputJsonValue,
+        channel: 'WHATSAPP' as const,
+        clientId: null,
+        status: 'QUEUED' as const,
+        queuedAt: now,
+        nextAttemptAt: now,
+      })),
+      skipDuplicates: true,
+    });
+    return count;
+  }
+
+  /**
+   * Claims up to `limit` QUEUED background rows due by `now`, oldest first: each claim is a
+   * conditional update that bumps `attemptCount` and pushes `nextAttemptAt` to `leaseUntil`, so a
+   * concurrent dispatcher cannot claim the same row, and a process that dies mid-send leaves a row
+   * that is retried once the lease runs out.
+   */
+  async claimDue(db: Db, now: Date, leaseUntil: Date, limit: number): Promise<OutboundMessage[]> {
+    const due = await db.outboundMessage.findMany({
+      where: { status: 'QUEUED', nextAttemptAt: { lte: now } },
+      orderBy: [{ nextAttemptAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: { id: true },
+    });
+    const claimed: OutboundMessage[] = [];
+    for (const { id } of due) {
+      const { count } = await db.outboundMessage.updateMany({
+        where: { id, status: 'QUEUED', nextAttemptAt: { lte: now } },
+        data: { nextAttemptAt: leaseUntil, attemptCount: { increment: 1 } },
+      });
+      if (count === 1) {
+        const row = await db.outboundMessage.findUnique({ where: { id } });
+        if (row) claimed.push(row);
+      }
+    }
+    return claimed;
+  }
+
+  /** A transient failure: stays QUEUED, retried at `at`; the last error is kept for the log. */
+  async scheduleRetry(db: Db, id: string, at: Date, errorCode: string, errorMessage: string): Promise<void> {
+    await db.outboundMessage.updateMany({
+      where: { id, status: 'QUEUED' },
+      data: { nextAttemptAt: at, errorCode, errorMessage },
+    });
+  }
+
+  /**
+   * The row is settled (sent, failed, unknown, cancelled): the dispatcher never picks it again. A
+   * row that got through also drops the error a failed earlier attempt left on it.
+   */
+  async clearSchedule(db: Db, id: string): Promise<void> {
+    await db.outboundMessage.updateMany({ where: { id }, data: { nextAttemptAt: null } });
+    await db.outboundMessage.updateMany({
+      where: { id, status: { in: ['SENT', 'DELIVERED', 'READ'] } },
+      data: { errorCode: null, errorMessage: null },
+    });
+  }
+
+  /** Background rows for a record (the quotation delivery log), oldest first. */
+  listBackgroundForResource(
+    db: Db,
+    organizationId: string,
+    resourceType: string,
+    resourceId: string,
+  ): Promise<OutboundMessage[]> {
+    return db.outboundMessage.findMany({
+      where: { organizationId, resourceType, resourceId, recipientUserId: { not: null } },
+      orderBy: [{ queuedAt: 'asc' }, { id: 'asc' }],
     });
   }
 }

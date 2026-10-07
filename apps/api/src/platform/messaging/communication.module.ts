@@ -7,6 +7,7 @@ import { WhatsAppWebhookController } from './whatsapp/whatsapp-webhook.controlle
 import { WhatsAppWebhookService } from './whatsapp/whatsapp-webhook.service.js';
 import { CommunicationService } from './communication.service.js';
 import { CommunicationsController } from './presentation/communications.controller.js';
+import { OutboundMessageDispatcher } from './outbound-message-dispatcher.service.js';
 import { OutboundMessageRepository } from './infrastructure/outbound-message.repository.js';
 import { OutboundMessageRouteRepository } from './infrastructure/outbound-message-route.repository.js';
 
@@ -18,7 +19,14 @@ import { OutboundMessageRouteRepository } from './infrastructure/outbound-messag
 @Module({
   imports: [TenancyModule, AuditLogsModule, WhatsAppModule],
   controllers: [WhatsAppWebhookController, CommunicationsController],
-  providers: [CommunicationService, WhatsAppWebhookService, OutboundMessageRepository, OutboundMessageRouteRepository],
-  exports: [CommunicationService, WhatsAppModule],
+  providers: [
+    CommunicationService,
+    WhatsAppWebhookService,
+    OutboundMessageRepository,
+    OutboundMessageRouteRepository,
+    // ADR-044 phase 2 — background sender (cron, every minute, all tenants).
+    OutboundMessageDispatcher,
+  ],
+  exports: [CommunicationService, OutboundMessageRepository, WhatsAppModule],
 })
 export class CommunicationModule {}
