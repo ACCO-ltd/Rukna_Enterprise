@@ -96,11 +96,14 @@ export function QuotePhotoImage({
   alt,
   className,
   fit = 'cover',
+  compact = false,
 }: {
   fileId: string;
   alt: string;
   className?: string;
   fit?: 'cover' | 'contain';
+  /** Thumbnail: a neutral icon-only placeholder when the photo cannot load (e.g. offline). */
+  compact?: boolean;
 }) {
   const t = useTranslations('procurement.quotes.decision');
   const url = useQuotePhotoUrl(fileId);
@@ -124,7 +127,7 @@ export function QuotePhotoImage({
         )}
       >
         <ImageOff className="size-5" aria-hidden="true" />
-        {t('photoFailed')}
+        <span className={compact ? 'sr-only' : undefined}>{t('photoFailed')}</span>
       </div>
     );
   }
@@ -134,7 +137,8 @@ export function QuotePhotoImage({
     <img
       src={url.data.url}
       alt={alt}
-      className={cn(fit === 'cover' ? 'object-cover' : 'object-contain', className)}
+      // text-transparent: a broken image never paints its alt text over the layout.
+      className={cn(fit === 'cover' ? 'object-cover' : 'object-contain', 'bg-muted text-transparent', className)}
       onError={() => {
         if (!failedOnce) {
           setFailedOnce(true);

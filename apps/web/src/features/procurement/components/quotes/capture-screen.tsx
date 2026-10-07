@@ -23,6 +23,7 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
+import { ApiError } from '@/lib/api-client';
 
 import { useObjectUrl, useQuoteUploads, useUploadQueue } from '../../hooks/use-quote-uploads';
 import {
@@ -91,7 +92,14 @@ export function QuoteCaptureScreen({ id }: { id: string }) {
   if (detail.isError || !detail.data) {
     return (
       <div className="mx-auto w-full max-w-xl space-y-4">
-        <Alert variant="error" messages={[tq('loadFailed')]} />
+        <Alert
+          variant="error"
+          messages={[
+            detail.error instanceof ApiError && (detail.error.status === 403 || detail.error.status === 404)
+              ? tq('noAccess')
+              : tq('loadFailed'),
+          ]}
+        />
         <Button variant="outline" className="min-h-11" onClick={() => void detail.refetch()}>
           {tq('retry')}
         </Button>
@@ -513,6 +521,7 @@ function SavedQuoteCard({
             fileId={first.fileId}
             alt={t('photoAlt', { store: quote.store.name, page: 1 })}
             className="size-20"
+            compact
           />
         ) : (
           <PhotosHidden count={photoCountOf(quote)} compact className="size-20" />

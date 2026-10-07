@@ -49,6 +49,8 @@ import type {
   QuoteRejectReason,
   RaiseOrderPayload,
 } from '../quotations/types';
+import { notificationKeys } from '@/features/notifications/hooks/use-notifications';
+
 import { procurementKeys } from './use-procurement';
 
 /** Lists and the inbox badge refresh this often; finance's waiting time is minutes-grained. */
@@ -143,6 +145,8 @@ export function applyQuotationDetail(qc: QueryClient, detail: QuotationRequestDe
   if (detail?.id) qc.setQueryData(quotationKeys.detail(detail.id), detail);
   void qc.invalidateQueries({ queryKey: quotationKeys.lists() });
   if (detail?.id) void qc.invalidateQueries({ queryKey: quotationKeys.orderDraft(detail.id) });
+  // Send, award, ask-another, reopen… write or resolve notifications in the same transaction.
+  void qc.invalidateQueries({ queryKey: notificationKeys.all });
   const mrId = detail?.materialRequest?.id;
   if (mrId) void qc.invalidateQueries({ queryKey: procurementKeys.materialRequest(mrId) });
 }

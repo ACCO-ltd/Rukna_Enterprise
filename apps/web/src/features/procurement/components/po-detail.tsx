@@ -36,7 +36,7 @@ import { Alert, Button, Card, CardContent, CardFooter, CardHeader, CardTitle } f
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatMoney, formatNumber } from '@/lib/format';
+import { formatDate, formatMoney, formatNumber, formatUnitPrice } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
@@ -390,7 +390,7 @@ function RevisionPanel({
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                     {formatNumber(line.orderedQuantity, locale)} {line.uom?.symbol ?? line.uom?.code ?? ''}
                     {' × '}
-                    {formatMoney(line.unitPrice, revision.currencyCode, locale)}
+                    {formatUnitPrice(line.unitPrice, revision.currencyCode, locale)}
                   </p>
                   {/* Read-only classification chips (D7). Spend category shows the value
                       when the line carries one, or "Derived on issue" until then. The

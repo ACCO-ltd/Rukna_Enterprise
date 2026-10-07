@@ -27,7 +27,7 @@ import {
   cn,
 } from '@erp/ui';
 
-import { formatDate, formatMoney, formatNumber } from '@/lib/format';
+import { formatDate, formatMoney, formatNumber, formatUnitPrice } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 import { statusTone } from '@/lib/status-registry';
 import { useFileUpload } from '@/features/files/hooks/use-file-upload';
@@ -342,7 +342,7 @@ function ItemsTab({
                       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                         {formatNumber(line.orderedQuantity, locale)}{' '}
                         {line.uom?.symbol ?? line.uom?.code ?? ''} ×{' '}
-                        {formatMoney(line.unitPrice, current.currencyCode, locale)}
+                        {formatUnitPrice(line.unitPrice, current.currencyCode, locale)}
                       </p>
                       <ClassificationChips
                         className="mt-2 flex flex-wrap items-center gap-1.5"

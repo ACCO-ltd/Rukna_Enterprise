@@ -130,7 +130,7 @@ export function ChooseDialog({
             />
             {tried && missing.reason ? (
               <p role="alert" className="text-caption text-danger">
-                {t('notLowest', { lowest: lowestText ?? '' })}
+                {t('pickReason')}
               </p>
             ) : null}
             {reason === 'OTHER' ? (

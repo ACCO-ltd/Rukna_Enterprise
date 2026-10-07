@@ -1857,7 +1857,13 @@
         "amber": "Over 2 h",
         "red": "Over 4 h"
       },
-      "notSent": "Not sent"
+      "notSent": "Not sent",
+      "state": {
+        "COLLECTING": "Not sent yet",
+        "RETURNED": "With procurement",
+        "AWARDED": "Decided",
+        "CANCELLED": "Cancelled"
+      }
     },
     "refusal": {
       "QUOTE_UPLOADER_CANNOT_SELECT": "You added photos to this request, so someone else in finance must choose.",
@@ -2135,7 +2141,8 @@
         "confirm": "Choose",
         "routed": "Your choice needs approval. It is waiting for the next approver.",
         "registersNew": "Choosing this store registers it as a new supplier: {name}",
-        "registerNeedsPayables": "A Finance Officer must register this store first."
+        "registerNeedsPayables": "A Finance Officer must register this store first.",
+        "pickReason": "Pick a reason"
       },
       "pending": {
         "title": "Waiting for approval",
@@ -2161,7 +2168,8 @@
         "COLLECTING": "Procurement is still collecting quotes.",
         "RETURNED": "You asked for another quote. Waiting for procurement.",
         "CANCELLED": "This request was cancelled."
-      }
+      },
+      "readOnlyCollector": "Finance chooses here. You can see the quotes but not choose."
     },
     "order": {
       "card": {
@@ -2201,12 +2209,14 @@
       },
       "exceeds": {
         "title": "The order is more than the chosen quote",
-        "body": "Lower the amounts, or send it back to finance to choose again.",
+        "body": "Adjust the lines so the order fits the chosen quote, or send it back to finance to choose again.",
         "sendBack": "Send back to finance",
         "sendBackTitle": "Send back to finance?",
         "sendBackBody": "Finance chooses again. The chosen quote is cleared.",
         "sendBackReason": "Reason",
-        "sendBackBodyCancelsDraft": "The draft order is cancelled and finance chooses again. The chosen quote is cleared."
+        "sendBackBodyCancelsDraft": "The draft order is cancelled and finance chooses again. The chosen quote is cleared.",
+        "bodyDraft": "Send it back to finance to choose again — this cancels the draft order.",
+        "adjust": "Adjust lines"
       },
       "evidence": {
         "title": "Approved by quotation award {ref}",
@@ -2214,7 +2224,8 @@
         "body": "Finance chose this supplier from competing quotes. Issuing the order needs no further approval.",
         "photos": "Quote photos",
         "open": "Open",
-        "download": "Download"
+        "download": "Download",
+        "photosHidden": "Quote photos are hidden for your role."
       }
     },
     "photosHidden": {
@@ -2224,6 +2235,7 @@
     "inProgress": {
       "body": "This request is being quoted ({quotationNumber}). Order it from the quotation.",
       "link": "Open {quotationNumber}"
-    }
+    },
+    "noAccess": "You don't have access to this quotation."
   }
 }

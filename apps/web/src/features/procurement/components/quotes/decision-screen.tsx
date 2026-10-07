@@ -13,7 +13,7 @@
  * read-only with the server's reason, and any refusal is said in plain words.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
@@ -103,7 +103,14 @@ export function QuoteDecisionScreen({ id }: { id: string }) {
   if (detail.isError || !detail.data) {
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[tq('loadFailed')]} />
+        <Alert
+          variant="error"
+          messages={[
+            detail.error instanceof ApiError && (detail.error.status === 403 || detail.error.status === 404)
+              ? tq('noAccess')
+              : tq('loadFailed'),
+          ]}
+        />
         <Button variant="outline" className="min-h-11" onClick={() => void detail.refetch()}>
           {tq('retry')}
         </Button>
@@ -173,6 +180,8 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const stripRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLElement | null)[]>([]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const chooseRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusChoosePending = useRef(false);
   const [current, setCurrent] = useState(0);
   const showCard = (index: number) => {
     const card = cardRefs.current[index];
@@ -229,6 +238,31 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const proposedQuote = detail.proposal ? detail.quotes.find((q) => q.id === detail.proposal?.quoteId) : null;
   const pendingInstance = detail.approval?.instanceId ?? detail.award?.approvalInstanceId ?? gatedInstance;
   const short = detail.distinctSupplierCount < detail.requiredQuoteCount;
+  // After the last total's Enter, focus moves to the lowest quote's Choose as soon as it renders.
+  const focusLowestChoose = () => {
+    if (!focusChoosePending.current) return;
+    const index = quotes.findIndex((quote) => lowest.has(quote.id));
+    const button = index >= 0 ? chooseRefs.current[index] : null;
+    // Kept pending (not cleared on success): the totals' save re-renders the cards, and focus is
+    // put back if a re-render took it. Cleared when the user moves on (a total, a dialog).
+    if (button && document.activeElement !== button) {
+      button.focus();
+      showCard(index);
+    }
+  };
+  useEffect(focusLowestChoose);
+  // Any key or pointer press after that is the user moving on: stop putting focus back.
+  useEffect(() => {
+    const stop = () => {
+      focusChoosePending.current = false;
+    };
+    window.addEventListener('pointerdown', stop);
+    window.addEventListener('keydown', stop);
+    return () => {
+      window.removeEventListener('pointerdown', stop);
+      window.removeEventListener('keydown', stop);
+    };
+  }, []);
   // An unregistered store with no matching supplier can only be awarded by someone who may
   // register it (manage:payable); say so on the card, before Choose. The server still decides.
   const mayRegister = can('manage:payable');
@@ -273,6 +307,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
       </header>
 
       {/* ── State notices ─────────────────────────────────────────────────── */}
+      {!mayAward ? <Notice tone="info">{t('readOnlyCollector')}</Notice> : null}
       {barCode && deciding ? (
         <Notice tone="attention" title={t('barredTitle')}>
           <p className="mt-1">{tRefusal.has(barCode) ? tRefusal(barCode) : barCode}</p>
@@ -448,7 +483,10 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
                           setDrafts((d) => ({ ...d, [quote.id]: raw }));
                           setSaveState((st) => without(st, quote.id));
                         }}
-                        onFocus={() => setCurrent(index)}
+                        onFocus={() => {
+                          focusChoosePending.current = false;
+                          setCurrent(index);
+                        }}
                         onBlur={() => {
                           void save(quote.id).catch(() => undefined);
                         }}
@@ -460,7 +498,14 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
                             next.focus();
                             showCard(index + 1);
                           } else {
+                            // Last total: hand focus to the lowest quote's Choose once it shows.
+                            // Blur first — focusing during the blur would be undone by it.
                             event.currentTarget.blur();
+                            // After this Enter has finished bubbling (it would count as "moving on").
+                            setTimeout(() => {
+                              focusChoosePending.current = true;
+                              focusLowestChoose();
+                            }, 0);
                           }
                         }}
                       />
@@ -477,11 +522,17 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
                       </p>
                     ) : chooseEnabled ? (
                       <Button
+                        ref={(el) => {
+                          chooseRefs.current[index] = el;
+                        }}
                         type="button"
                         size="lg"
                         className="w-full"
                         variant={isLowest ? 'default' : 'outline'}
-                        onClick={() => setChoosing(quote)}
+                        onClick={() => {
+                          focusChoosePending.current = false;
+                          setChoosing(quote);
+                        }}
                       >
                         {t('chooseStore', { store: quote.store.name })}
                       </Button>
@@ -630,6 +681,7 @@ function ContextStrip({
   money: (value: string | null | undefined) => string;
 }) {
   const t = useTranslations('procurement.quotes.decision.context');
+  const tWaiting = useTranslations('procurement.quotes.waiting');
   const items = detail.lines.map((line) => line.description).join(', ');
   return (
     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-body-sm sm:grid-cols-3 lg:grid-cols-6">
@@ -667,7 +719,11 @@ function ContextStrip({
       <div className="min-w-0">
         <dt className="text-caption text-muted-foreground">{t('waiting')}</dt>
         <dd>
-          <WaitingTime minutes={detail.waitingWorkingMinutes} tone={detail.slaTone} />
+          {WAITING_STATUSES.has(detail.status) ? (
+            <WaitingTime minutes={detail.waitingWorkingMinutes} tone={detail.slaTone} />
+          ) : (
+            <span className="font-medium text-foreground">{tWaiting(`state.${detail.status}`)}</span>
+          )}
         </dd>
       </div>
     </dl>
@@ -713,7 +769,7 @@ function QuotePhotos({ quote, onOpen }: { quote: Quote; onOpen: (page: number) =
               )}
               onClick={() => setPage(index)}
             >
-              <QuotePhotoImage fileId={p.fileId} alt="" className="size-full" />
+              <QuotePhotoImage fileId={p.fileId} alt="" className="size-full" compact />
             </button>
           ))}
         </div>

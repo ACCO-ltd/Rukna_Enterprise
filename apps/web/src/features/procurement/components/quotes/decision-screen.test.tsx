@@ -403,6 +403,36 @@ describe('QuoteDecisionScreen', () => {
     expect(screen.queryByRole('button', { name: 'Choose Bakaara Market' })).not.toBeInTheDocument();
   });
 
+  it('moves focus to the lowest quote\'s Choose after the last total', async () => {
+    const user = userEvent.setup();
+    render({ quotes: three(), allowedActions: [] });
+    await user.type(await screen.findByLabelText('Total for Hodan'), '2350{Enter}');
+    await user.type(screen.getByLabelText('Total for Bakaara'), '2410{Enter}');
+    await user.type(screen.getByLabelText('Total for Xamar'), '2295{Enter}');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Choose Xamar' })).toHaveFocus());
+  });
+
+  it('says what state the request is in instead of a waiting time once decided', async () => {
+    render({ status: 'RETURNED', quotes: three(), waitingWorkingMinutes: null, slaTone: 'none' });
+    expect(await screen.findByText('With procurement')).toBeInTheDocument();
+    expect(screen.queryByText('Not sent')).not.toBeInTheDocument();
+  });
+
+  it('explains the read-only view to a collect-only user', async () => {
+    api.detail = detailFixture({ status: 'AWAITING_DECISION', quotes: three() });
+    api.get.mockImplementation(async () => api.detail);
+    renderWithProviders(<QuoteDecisionScreen id="qr1" />, { permissions: ['view:procurement', 'collect:quotation'] });
+    expect(
+      await screen.findByText('Finance chooses here. You can see the quotes but not choose.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says plainly when the user has no access to the quotation', async () => {
+    api.get.mockRejectedValue(new ApiError(403, 'Forbidden', 'FORBIDDEN', [], { code: 'MISSING_PERMISSION' }));
+    renderWithProviders(<QuoteDecisionScreen id="qr1" />, { permissions: SELECTOR });
+    expect(await screen.findByText("You don't have access to this quotation.")).toBeInTheDocument();
+  });
+
   it('asks for another quote with a quick note', async () => {
     const user = userEvent.setup();
     api.ask.mockResolvedValue(detailFixture({ status: 'RETURNED' }));

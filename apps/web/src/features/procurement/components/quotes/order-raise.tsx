@@ -139,7 +139,7 @@ function RaiseOrderDialog({ detail, onClose }: { detail: QuotationRequestDetail;
     >
       <FormDialogBody className="space-y-4">
         {raise.error && !exceeds ? <Alert variant="error" messages={[refusal(raise.error) ?? '']} /> : null}
-        {exceeds ? <ExceedsAward requestId={detail.id} /> : null}
+        {exceeds ? <ExceedsAward requestId={detail.id} adjustHref={`/procurement/quotes/${detail.id}/order`} /> : null}
         {draft.isPending ? (
           <div role="status" className="space-y-2">
             <span className="sr-only">{t('loading')}</span>
@@ -222,8 +222,11 @@ function RaiseOrderDialog({ detail, onClose }: { detail: QuotationRequestDetail;
 export function ExceedsAward({
   requestId,
   draftPurchaseOrderId,
+  adjustHref,
 }: {
   requestId: string;
+  /** Where to adjust the lines (the raise dialog); omitted on the line editor itself. */
+  adjustHref?: string;
   /** The live draft PO raised from this award, when the refusal came from confirming it. */
   draftPurchaseOrderId?: string | null;
 }) {
@@ -255,12 +258,19 @@ export function ExceedsAward({
       tone="danger"
       title={t('title')}
       action={
-        <Button type="button" variant="outline" className="min-h-11" onClick={() => setOpen(true)}>
-          {t('sendBack')}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {adjustHref ? (
+            <Button type="button" className="min-h-11" onClick={() => router.push(adjustHref)}>
+              {t('adjust')}
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" className="min-h-11" onClick={() => setOpen(true)}>
+            {t('sendBack')}
+          </Button>
+        </div>
       }
     >
-      <p className="mt-1">{t('body')}</p>
+      <p className="mt-1">{draftPurchaseOrderId ? t('bodyDraft') : t('body')}</p>
       {open ? (
         <ConfirmActionDialog
           title={t('sendBackTitle')}

@@ -11,6 +11,7 @@ import { useTranslations } from 'next-intl';
 import { Button, Notice } from '@erp/ui';
 import { Download, ExternalLink } from 'lucide-react';
 
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 
 import { usePoRevisionAttachments } from '../../hooks/use-procurement';
@@ -30,6 +31,7 @@ export function AwardEvidence({
   revision: PurchaseOrderRevision | null;
 }) {
   const t = useTranslations('procurement.quotes.order.evidence');
+  const { can } = usePermissions();
   const fromAward = isAwardReference(revision?.quotationRef);
   const attachments = usePoRevisionAttachments(fromAward ? order.id : '');
   if (!fromAward || !revision) return null;
@@ -57,6 +59,9 @@ export function AwardEvidence({
   return (
     <Notice tone="success" title={t('title', { ref: revision.quotationRef!.trim() })}>
       <p className="mt-1">{t('body')}</p>
+      {photos.length === 0 && !can(PROCUREMENT_PERMISSIONS.viewCommitments) ? (
+        <p className="mt-1 text-muted-foreground">{t('photosHidden')}</p>
+      ) : null}
       {photos.length > 0 ? (
         <div className="mt-3">
           <p className="text-caption font-semibold text-muted-foreground">{t('photos')}</p>
