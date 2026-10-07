@@ -161,6 +161,34 @@ export class PurchaseOrderRepository {
   }
 
   /**
+   * Quantity of each MR line already on a LIVE order: allocations on lines of a revision that is
+   * still in play (not CANCELLED, not SUPERSEDED — a superseded revision's quantity lives on in its
+   * successor's own allocations) of a purchase order that is not CANCELLED. A cancelled order frees
+   * its quantity, so an MR line can be ordered again (ADR-044 §8 re-raise after a cancelled draft).
+   */
+  async liveAllocatedQuantities(prisma: TenantPrisma, mrLineIds: string[]): Promise<Map<string, Decimal>> {
+    if (mrLineIds.length === 0) return new Map();
+    const rows = await prisma.purchaseOrderLineRequestAllocation.groupBy({
+      by: ['materialRequestLineId'],
+      where: {
+        materialRequestLineId: { in: mrLineIds },
+        purchaseOrderLine: {
+          revision: {
+            status: { notIn: ['CANCELLED', 'SUPERSEDED'] },
+            purchaseOrder: { status: { not: 'CANCELLED' } },
+          },
+        },
+      },
+      _sum: { allocatedQuantity: true },
+    });
+    return new Map(
+      rows
+        .filter((r) => r._sum.allocatedQuantity !== null)
+        .map((r) => [r.materialRequestLineId, r._sum.allocatedQuantity as Decimal] as const),
+    );
+  }
+
+  /**
    * Resolves a BOQ node (org-scoped) into the facts a cost-target check needs: which project's
    * BOQ owns it, whether it is a billable leaf item, and whether it is still active. Returns null
    * when the id resolves to no node in this org — the service treats that as BOQ_NODE_NOT_FOUND.

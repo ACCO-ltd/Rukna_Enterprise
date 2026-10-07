@@ -48,7 +48,12 @@ export type FileOwner =
   // Procurement attachments: quotation evidence on a PO revision, delivery note on a GRN.
   // Neither lives inside a project — they are org-level records. Reachable by procurementView.
   | { kind: 'PO_REVISION_ATTACHMENT'; attachmentId: string; revisionId: string; organizationId: string }
-  | { kind: 'GRN_ATTACHMENT'; attachmentId: string; grnId: string; organizationId: string };
+  | { kind: 'GRN_ATTACHMENT'; attachmentId: string; grnId: string; organizationId: string }
+  // ADR-044 — a page of a store's paper quotation. Money evidence (it shows prices), so it is NOT
+  // readable on view:procurement alone: only quotation collectors/selectors and cost-visibility
+  // holders. (Once a winning photo is also attached to the PO it raised, PO_REVISION_ATTACHMENT's
+  // rule applies to it too — one owner granting access is enough.)
+  | { kind: 'QUOTATION_PHOTO'; photoId: string; quoteId: string; quotationRequestId: string };
 
 export interface FileOwnership {
   fileId: string;
@@ -144,6 +149,9 @@ export class FileAuthorizationService {
             organizationId: true,
           },
         },
+        quotePhoto: {
+          select: { id: true, quoteId: true, quote: { select: { quotationRequestId: true } } },
+        },
       },
     });
     if (!file) throw new NotFoundException(`File ${fileId} not found`);
@@ -211,6 +219,16 @@ export class FileAuthorizationService {
         grnId: a.goodsReceiptNoteId,
         organizationId: a.organizationId,
       })),
+      ...(file.quotePhoto
+        ? [
+            {
+              kind: 'QUOTATION_PHOTO' as const,
+              photoId: file.quotePhoto.id,
+              quoteId: file.quotePhoto.quoteId,
+              quotationRequestId: file.quotePhoto.quote.quotationRequestId,
+            },
+          ]
+        : []),
     ];
 
     return {
@@ -334,6 +352,12 @@ export class FileAuthorizationService {
       case 'PO_REVISION_ATTACHMENT':
       case 'GRN_ATTACHMENT':
         return identity.permissions.includes(PERMISSIONS.procurementView);
+      // ADR-044 §5 — photos are money: collectors, selectors, or cost visibility. Never
+      // view:procurement alone (a money-blind Project Manager holds that).
+      case 'QUOTATION_PHOTO':
+        return [PERMISSIONS.quotationsCollect, PERMISSIONS.quotationsAward, PERMISSIONS.commitmentsView].some((p) =>
+          identity.permissions.includes(p),
+        );
     }
   }
 

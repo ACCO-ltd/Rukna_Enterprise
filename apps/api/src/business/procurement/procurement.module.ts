@@ -7,6 +7,7 @@ import { BillMatchingModule } from './bill-matching/bill-matching.module.js';
 import { CommitmentLedgerModule } from './commitment-ledger/commitment-ledger.module.js';
 import { ProjectProcurementModule } from './project-procurement/project-procurement.module.js';
 import { SupplierDirectoryModule } from './supplier-directory/supplier-directory.module.js';
+import { QuotationsModule } from './quotations/quotations.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SupplierDirectoryModule } from './supplier-directory/supplier-directory
     BillMatchingModule,
     ProjectProcurementModule,
     SupplierDirectoryModule,
+    QuotationsModule,
   ],
   exports: [
     CatalogueModule,

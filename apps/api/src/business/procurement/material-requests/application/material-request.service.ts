@@ -3,10 +3,16 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { MaterialRequestStatus, MaterialRequestScope, ProcurementLineType } from '@prisma/client';
+import type {
+  MaterialRequestStatus,
+  MaterialRequestScope,
+  Prisma,
+  ProcurementLineType,
+} from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
 import { canSeeProcurementMoney, moneyOrNull } from '../../shared/procurement-money.js';
@@ -20,6 +26,7 @@ import {
   CommandGovernanceService,
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
+import { QuotationMaterialRequestLink } from '../../quotations/application/quotation-material-request-link.service.js';
 
 export interface CreateMrLineDto {
   lineType: ProcurementLineType;
@@ -70,6 +77,8 @@ export class MaterialRequestService {
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly sod: SegregationOfDutiesService,
     private readonly commandGovernance: CommandGovernanceService,
+    // ADR-044 — optional so the service still constructs where quotations are not wired (tests).
+    @Optional() private readonly quotations?: QuotationMaterialRequestLink,
   ) {}
 
   /**
@@ -140,7 +149,11 @@ export class MaterialRequestService {
     const mr = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!mr) throw new NotFoundException(`Material request ${id} not found`);
     if (mr.projectId) await this.projectAccess.assertMember(identity, mr.projectId);
-    return mr;
+    // ADR-044 Q8 — the live quotation request's progress ("Quotes 2 of 3"), or null.
+    const quotation = this.quotations
+      ? await this.quotations.summaryForMaterialRequest(prisma, identity.activeOrganizationId, mr.id)
+      : null;
+    return { ...mr, quotation };
   }
 
   async create(identity: RequestIdentity, dto: CreateMaterialRequestDto) {
@@ -303,9 +316,19 @@ export class MaterialRequestService {
   }
 
   async cancel(identity: RequestIdentity, id: string) {
-    const updated = await this.transition(identity, id, 'CANCELLED', 'mr.cancel');
+    // ADR-044 Q3 — the MR's live quotation request is cancelled in the same transaction; an MR whose
+    // award already has a live purchase order is refused (409).
+    let voidAwardApprovalFor: string | null = null;
+    const mr = await this.loadForTransition(identity, id, 'CANCELLED');
+    const updated = await this.writeTransition(identity, mr, 'CANCELLED', 'mr.cancel', {}, async (tx) => {
+      if (!this.quotations) return;
+      ({ voidAwardApprovalFor } = await this.quotations.cancelForMaterialRequest(tx, identity, id));
+    });
     // A cancelled request will never be submitted: close any approval still open for it.
     await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.MATERIAL_REQUEST, id);
+    if (voidAwardApprovalFor) {
+      await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.QUOTATION_AWARD, voidAwardApprovalFor);
+    }
     return updated;
   }
 
@@ -349,6 +372,7 @@ export class MaterialRequestService {
     to: MaterialRequestStatus,
     sourceCommand: string,
     extra: { approvalInstanceId?: string; reason?: string } = {},
+    alsoInTransaction?: (tx: Prisma.TransactionClient) => Promise<void>,
   ) {
     const prisma = this.tenancy.getClient();
     const id = mr.id;
@@ -373,6 +397,7 @@ export class MaterialRequestService {
       // Approval approves each line for what was requested, in the same transaction, so an
       // APPROVED request never carries a null approved quantity.
       const result = to === 'APPROVED' ? await this.repo.approveRequestedQuantities(tx, id) : updated;
+      if (alsoInTransaction) await alsoInTransaction(tx);
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,

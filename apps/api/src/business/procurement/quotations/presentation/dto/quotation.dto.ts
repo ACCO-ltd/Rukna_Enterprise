@@ -1,0 +1,90 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsDateString,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+
+/** ADR-044 §12 request bodies. No collector body accepts a money field. */
+
+export const QUOTE_PHOTO_SOURCES = ['CAMERA', 'GALLERY', 'UNKNOWN'] as const;
+export const QUOTE_COUNT_EXCEPTION_REASONS = ['ONLY_ONE_SUPPLIER', 'URGENT', 'FRAMEWORK_SUPPLIER'] as const;
+
+export class OpenQuotationRequestDto {
+  @ApiProperty({ description: 'An APPROVED material request with nothing ordered yet' })
+  @IsString()
+  @IsNotEmpty()
+  materialRequestId: string;
+}
+
+export class QuotePhotoDto {
+  @ApiProperty({ description: 'A READY, TEMPORARY image the caller uploaded through POST /files' })
+  @IsString()
+  @IsNotEmpty()
+  platformFileId: string;
+
+  @ApiProperty({ example: '2026-10-07T10:31:00.000Z', description: 'Device time at capture (not proof)' })
+  @IsDateString()
+  capturedAt: string;
+
+  @ApiProperty({ enum: QUOTE_PHOTO_SOURCES, description: 'Best-effort provenance hint (ADR-044 §9)' })
+  @IsIn(QUOTE_PHOTO_SOURCES)
+  source: (typeof QUOTE_PHOTO_SOURCES)[number];
+}
+
+export class AddQuoteDto {
+  @ApiProperty({ description: "Idempotency key from the phone's upload queue (uuid)" })
+  @IsUUID()
+  clientRef: string;
+
+  @ApiPropertyOptional({ description: 'A registered supplier — XOR storeName' })
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ description: 'A new store — XOR supplierId', maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  storeName?: string;
+
+  @ApiPropertyOptional({ description: 'Replace this ACTIVE quote (it becomes WITHDRAWN)' })
+  @IsOptional()
+  @IsString()
+  replacesQuoteId?: string;
+
+  @ApiProperty({ type: [QuotePhotoDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => QuotePhotoDto)
+  photos: QuotePhotoDto[];
+}
+
+export class SendQuotationDto {
+  @ApiPropertyOptional({
+    enum: QUOTE_COUNT_EXCEPTION_REASONS,
+    description: 'Required when fewer distinct stores than requiredQuoteCount',
+  })
+  @IsOptional()
+  @IsIn(QUOTE_COUNT_EXCEPTION_REASONS)
+  exceptionReason?: (typeof QUOTE_COUNT_EXCEPTION_REASONS)[number];
+}
+
+export class QuotationReasonDto {
+  @ApiProperty({ maxLength: 1000 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason: string;
+}
