@@ -236,19 +236,21 @@ export class PurchaseOrderRepository {
     });
   }
 
-  /** ADR-044 — the MR's live (non-cancelled) quotation request, as the bypass guard needs it. */
-  async findLiveQuotationForMaterialRequest(prisma: TenantPrisma, organizationId: string, materialRequestId: string) {
-    const request = await prisma.quotationRequest.findFirst({
+  /** ADR-044 — the MR's non-cancelled quotation rounds (newest first), for the manual-order guard. */
+  findQuotationRoundsForMaterialRequest(prisma: TenantPrisma, organizationId: string, materialRequestId: string) {
+    return prisma.quotationRequest.findMany({
       where: { organizationId, materialRequestId, status: { not: 'CANCELLED' } },
-      select: { id: true, number: true, status: true, purchaseOrder: { select: { status: true } } },
+      select: { id: true, number: true, closedAt: true },
+      orderBy: { createdAt: 'desc' },
     });
-    if (!request) return null;
-    return {
-      id: request.id,
-      number: request.number,
-      status: request.status,
-      purchaseOrderStatus: request.purchaseOrder?.status ?? null,
-    };
+  }
+
+  /** Review M1 — the award's order is confirmed: its quotation round is closed (idempotent). */
+  closeAwardRound(prisma: TenantPrisma, purchaseOrderId: string) {
+    return prisma.quotationRequest.updateMany({
+      where: { purchaseOrderId, status: 'AWARDED', closedAt: null },
+      data: { closedAt: new Date() },
+    });
   }
 
   /** Takes the award's row lock and confirms it still covers `purchaseOrderId`. */

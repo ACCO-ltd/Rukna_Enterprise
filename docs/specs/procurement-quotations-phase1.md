@@ -86,11 +86,18 @@ view:commitment-ledger — as a QUOTATION_PHOTO and also as the PO's quotation e
 `GET /procurement/purchase-orders/:id/revision-attachments` rows gain `quotationEvidence: boolean`
 and omit quotation-evidence rows for callers who may not download them.
 
-Manual PO bypass guard: `POST /procurement/purchase-orders` and `POST …/:id/revise` answer 409
-`QUOTATION_IN_PROGRESS` (`details: { code, quotationRequestId, quotationNumber, materialRequestId }`)
-when a line allocates to an MR whose quotation request is COLLECTING, AWAITING_DECISION, RETURNED,
-AWARD_PENDING_APPROVAL, or AWARDED with no order raised (none linked or the linked one cancelled).
-The request's own raise-order is exempt. Show "Order it from QR-… (Raise the order)" with a link.
+Manual PO guard (review M1): `POST /procurement/purchase-orders` and `POST …/:id/revise` refuse a
+line that allocates to an MR covered by any non-cancelled quotation round —
+409 `QUOTATION_IN_PROGRESS` while a round is live (collecting → awarded with its order not yet
+confirmed): "Order it from QR-… (Raise the order)"; 409 `QUOTATION_ROUND_REQUIRED` once every round
+is closed: "Quantity left must go through a new quotation round (Get quotes)". Both carry
+`details: { code, quotationRequestId, quotationNumber, materialRequestId }`. Raise-order is exempt.
+
+Rounds: a round is **closed** (`closedAt`) when the PO raised from its award is confirmed. One live
+(not cancelled, not closed) round per MR. `POST /` opens a new round on an MR with a closed round
+when some quantity is still unordered (its estimate covers only what is left); an MR with nothing
+left, or with manual orders and no closed round, answers 409 `MATERIAL_REQUEST_ALREADY_ORDERED`.
+The MR detail's `quotation` summary shows the live round only (null after a round closes).
 
 PO confirm (`POST /procurement/purchase-orders/:id/confirm`) adds 409 `PO_EXCEEDS_AWARD`
 (`details.quotationRequestId`) and 409 `AWARD_CHANGED`.

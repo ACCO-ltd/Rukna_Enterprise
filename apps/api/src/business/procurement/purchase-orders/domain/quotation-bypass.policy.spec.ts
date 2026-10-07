@@ -1,23 +1,23 @@
-import { quotationBlocksManualOrder } from './quotation-bypass.policy.js';
+import { manualOrderBlock } from './quotation-bypass.policy.js';
 
-describe('quotation bypass policy (no manual PO while a quotation round is live)', () => {
-  const req = (status: string, purchaseOrderStatus: string | null = null) => ({ id: 'qr-1', status, purchaseOrderStatus });
+describe('manual order block (no manual PO for an MR under quotation rounds)', () => {
+  const live = { id: 'qr-2', number: 'QR-00002', closedAt: null };
+  const closed = { id: 'qr-1', number: 'QR-00001', closedAt: new Date('2026-10-07') };
 
-  it.each(['COLLECTING', 'AWAITING_DECISION', 'RETURNED', 'AWARD_PENDING_APPROVAL'])('%s blocks', (status) => {
-    expect(quotationBlocksManualOrder(req(status))).toBe(true);
+  it('no round → no block', () => {
+    expect(manualOrderBlock([])).toBeNull();
   });
 
-  it('AWARDED blocks until its order is raised (none linked or the linked one cancelled)', () => {
-    expect(quotationBlocksManualOrder(req('AWARDED'))).toBe(true);
-    expect(quotationBlocksManualOrder(req('AWARDED', 'CANCELLED'))).toBe(true);
-    expect(quotationBlocksManualOrder(req('AWARDED', 'DRAFT'))).toBe(false);
-    expect(quotationBlocksManualOrder(req('AWARDED', 'OPEN'))).toBe(false);
+  it('a live round (any non-closed state, incl. awarded with a draft order) → QUOTATION_IN_PROGRESS', () => {
+    expect(manualOrderBlock([live])).toEqual({ code: 'QUOTATION_IN_PROGRESS', round: live });
+    expect(manualOrderBlock([live, closed])).toEqual({ code: 'QUOTATION_IN_PROGRESS', round: live });
   });
 
-  it('no request, a cancelled one, or the raising request itself does not block', () => {
-    expect(quotationBlocksManualOrder(null)).toBe(false);
-    expect(quotationBlocksManualOrder(req('CANCELLED'))).toBe(false);
-    expect(quotationBlocksManualOrder(req('AWARDED'), 'qr-1')).toBe(false);
-    expect(quotationBlocksManualOrder(req('COLLECTING'), 'qr-other')).toBe(true);
+  it('only closed rounds → QUOTATION_ROUND_REQUIRED (remaining quantity needs a new round)', () => {
+    expect(manualOrderBlock([closed])).toEqual({ code: 'QUOTATION_ROUND_REQUIRED', round: closed });
+  });
+
+  it("the raising round's own order is exempt", () => {
+    expect(manualOrderBlock([live, closed], 'qr-2')).toBeNull();
   });
 });

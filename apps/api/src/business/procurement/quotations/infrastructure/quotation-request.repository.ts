@@ -49,10 +49,19 @@ export class QuotationRequestRepository {
     return this.findById(tx, organizationId, id);
   }
 
+  /** The MR's live round: not cancelled and not closed (review M1). At most one (partial index). */
   findLiveForMaterialRequest(db: Db, organizationId: string, materialRequestId: string) {
     return db.quotationRequest.findFirst({
-      where: { organizationId, materialRequestId, status: { not: 'CANCELLED' } },
+      where: { organizationId, materialRequestId, status: { not: 'CANCELLED' }, closedAt: null },
       include: REQUEST_INCLUDE,
+    });
+  }
+
+  /** Closed rounds of the MR (their award's order was confirmed), with that order's status. */
+  findClosedRoundsForMaterialRequest(db: Db, organizationId: string, materialRequestId: string) {
+    return db.quotationRequest.findMany({
+      where: { organizationId, materialRequestId, status: { not: 'CANCELLED' }, closedAt: { not: null } },
+      select: { id: true, number: true, purchaseOrder: { select: { status: true } } },
     });
   }
 

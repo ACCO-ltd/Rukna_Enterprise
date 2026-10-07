@@ -30,6 +30,15 @@ export class QuotationMaterialRequestLink {
     identity: RequestIdentity,
     materialRequestId: string,
   ): Promise<{ voidAwardApprovalFor: string | null }> {
+    // A closed round whose order is still live keeps the MR alive too (cancel the order first).
+    const closed = await this.repo.findClosedRoundsForMaterialRequest(tx, identity.activeOrganizationId, materialRequestId);
+    const ordered = closed.find((r) => r.purchaseOrder && r.purchaseOrder.status !== 'CANCELLED');
+    if (ordered) {
+      throw quotationConflict(
+        'PURCHASE_ORDER_LIVE',
+        `A purchase order was raised from quotation ${ordered.number}. Cancel that order before cancelling the material request.`,
+      );
+    }
     const live = await this.repo.findLiveForMaterialRequest(tx, identity.activeOrganizationId, materialRequestId);
     if (!live) return { voidAwardApprovalFor: null };
     const ctx = await this.runner.context(tx, identity, live.id);

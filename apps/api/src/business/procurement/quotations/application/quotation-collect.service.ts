@@ -86,11 +86,23 @@ export class QuotationCollectService {
         const current = await this.repo.findMaterialRequest(tx, orgId, mr.id);
         if (!current || current.status !== 'APPROVED') throw quotationConflict('MATERIAL_REQUEST_NOT_APPROVED');
         const ordered = await this.poRepo.liveAllocatedQuantities(tx, current.lines.map((l) => l.id));
-        if ([...ordered.values()].some((q) => q.greaterThan(0))) {
+        // What is left to order on each line.
+        const remaining = current.lines.map((l) => ({
+          ...l,
+          approvedQuantity: new Decimal((l.approvedQuantity ?? l.requestedQuantity).toString()).sub(
+            ordered.get(l.id) ?? new Decimal(0),
+          ),
+        }));
+        const anyOrdered = [...ordered.values()].some((q) => q.greaterThan(0));
+        const open = remaining.filter((l) => l.approvedQuantity.greaterThan(0));
+        // A first round needs an MR with nothing ordered (ADR-044 §1). After a closed round (its
+        // order confirmed), a new round may cover what is left (review M1).
+        const closedRounds = anyOrdered ? await this.repo.findClosedRoundsForMaterialRequest(tx, orgId, current.id) : [];
+        if (open.length === 0 || (anyOrdered && closedRounds.length === 0)) {
           throw quotationConflict('MATERIAL_REQUEST_ALREADY_ORDERED');
         }
 
-        const estimate = estimateOf(current.lines);
+        const estimate = estimateOf(open);
         const number = await this.repo.nextNumber(tx, orgId);
         const request = await tx.quotationRequest.create({
           data: {

@@ -4852,7 +4852,8 @@ enum QuotePhotoSource {
 
 /// ADR-044 — one round of competitive quotations for an APPROVED material request. The collector
 /// (procurement) photographs paper quotes; the selector (finance) types each total and awards; the
-/// award is the PO's DoA approval. One live request per MR (partial unique index, migration SQL).
+/// award is the PO's DoA approval. One live (not cancelled, not closed) request per MR (partial
+/// unique index, migration SQL).
 model QuotationRequest {
   id                      String                     @id @default(cuid())
   organizationId          String                     @map("organization_id")
@@ -4907,6 +4908,9 @@ model QuotationRequest {
   paymentPath             QuotationPaymentPath?      @map("payment_path")
   /// The PO raised from the award.
   purchaseOrderId         String?                    @unique @map("purchase_order_id")
+  /// Review M1: set when the award's order is confirmed — the round is closed (spent). A closed
+  /// round no longer counts as the MR's live round, so remaining quantity can get a new round.
+  closedAt                DateTime?                  @map("closed_at")
   cancelledBy             String?                    @map("cancelled_by")
   cancelledAt             DateTime?                  @map("cancelled_at")
   cancelReason            String?                    @map("cancel_reason")

@@ -1,32 +1,39 @@
 /**
- * ADR-044 — no manual bypass of a quotation round. While an MR's quotation request is live and its
- * award has not been ordered, the only way to put that MR on a purchase order is the request's own
- * "Raise the order" (which the award approves). A manual PO would set the price the round exists
- * to set, and skip both finance's choice and the award's approval.
+ * ADR-044 — no manual bypass of quotation rounds (review M1).
  *
- * Pure. Blocking states: COLLECTING, AWAITING_DECISION, RETURNED, AWARD_PENDING_APPROVAL, and
- * AWARDED with no order raised (none linked, or the linked one cancelled). A CANCELLED request,
- * or an AWARDED one whose order is live, does not block (the latter's remaining quantity, if any,
- * may be ordered normally).
+ * An MR covered by a non-cancelled quotation round never takes manual PO allocations:
+ *  - while its round is LIVE (not closed: collecting, deciding, awarded but the award's order not
+ *    yet confirmed), the round's own "Raise the order" is the only way to order it
+ *    → `QUOTATION_IN_PROGRESS`;
+ *  - once every round is CLOSED (the award's order confirmed), whatever quantity that order left
+ *    out is ordered only through a NEW round → `QUOTATION_ROUND_REQUIRED`.
+ * A manual PO would set the price the round exists to set and skip finance's choice and the
+ * award's approval. The raise-order path itself (`raisingQuotationRequestId`) is exempt.
+ *
+ * Pure.
  */
 
-export interface LiveQuotationFacts {
+export interface QuotationRoundFacts {
   id: string;
-  status: string;
-  /** Status of the PO linked to the award, or null when none is linked. */
-  purchaseOrderStatus: string | null;
+  number: string;
+  /** Null while the round is live. */
+  closedAt: Date | null;
 }
 
-const IN_PROGRESS = new Set(['COLLECTING', 'AWAITING_DECISION', 'RETURNED', 'AWARD_PENDING_APPROVAL']);
+export type ManualOrderBlock =
+  | { code: 'QUOTATION_IN_PROGRESS'; round: QuotationRoundFacts }
+  | { code: 'QUOTATION_ROUND_REQUIRED'; round: QuotationRoundFacts };
 
-export function quotationBlocksManualOrder(
-  request: LiveQuotationFacts | null,
+/**
+ * @param rounds the MR's non-cancelled quotation requests, newest first.
+ */
+export function manualOrderBlock(
+  rounds: ReadonlyArray<QuotationRoundFacts>,
   raisingQuotationRequestId?: string,
-): boolean {
-  if (!request || request.id === raisingQuotationRequestId) return false;
-  if (IN_PROGRESS.has(request.status)) return true;
-  if (request.status === 'AWARDED') {
-    return request.purchaseOrderStatus === null || request.purchaseOrderStatus === 'CANCELLED';
-  }
-  return false;
+): ManualOrderBlock | null {
+  if (raisingQuotationRequestId) return null;
+  const live = rounds.find((r) => r.closedAt === null);
+  if (live) return { code: 'QUOTATION_IN_PROGRESS', round: live };
+  if (rounds.length > 0) return { code: 'QUOTATION_ROUND_REQUIRED', round: rounds[0] };
+  return null;
 }

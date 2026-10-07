@@ -124,7 +124,7 @@ export class QuotationListService {
         and.push({ status: { in: ['AWAITING_DECISION', 'AWARD_PENDING_APPROVAL'] } });
         break;
       case 'awarded':
-        and.push({ status: 'AWARDED' });
+        and.push({ status: 'AWARDED', closedAt: null });
         and.push({ OR: [{ purchaseOrderId: null }, { purchaseOrder: { status: 'CANCELLED' } }] });
         break;
       case 'all':

@@ -31,7 +31,7 @@ import {
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { validateCostTarget, costTargetViolationMessage } from '../domain/cost-target.policy.js';
 import { awardCoverage, type CoverageResult } from '../domain/award-coverage.policy.js';
-import { quotationBlocksManualOrder } from '../domain/quotation-bypass.policy.js';
+import { manualOrderBlock } from '../domain/quotation-bypass.policy.js';
 import { SettlementQueryService } from './settlement-query.service.js';
 import { canSeeQuotationPhotos } from '../../../../platform/files/application/file-authorization.service.js';
 
@@ -364,6 +364,9 @@ export class PurchaseOrderService {
 
     await prisma.$transaction(async (tx) => {
       // The award must still stand when the PO it covers is confirmed (under the request's lock).
+      // Review M1: confirming the order raised from an award closes that quotation round, so the
+      // MR's remaining quantity (if any) can go to a new round.
+      await this.repo.closeAwardRound(tx, po.id);
       if (covered && !(await this.repo.lockAwardFor(tx, covered.id, po.id))) {
         throw new ConflictException({
           errorCode: 'AWARD_CHANGED',
@@ -781,21 +784,27 @@ export class PurchaseOrderService {
           );
         }
 
-        // ADR-044 — no manual bypass of a live quotation round: only its own raise-order may order
-        // the MR until the award has been ordered.
+        // ADR-044 (review M1) — an MR under quotation rounds is never ordered manually: a live
+        // round orders it through its own raise-order; after the rounds close, what is left needs a
+        // new round.
         if (!checkedRequests.has(mrLine.request.id)) {
           checkedRequests.add(mrLine.request.id);
-          const quotation = await this.repo.findLiveQuotationForMaterialRequest(prisma, orgId, mrLine.request.id);
-          if (quotationBlocksManualOrder(quotation, raisingQuotationRequestId)) {
+          const rounds = await this.repo.findQuotationRoundsForMaterialRequest(prisma, orgId, mrLine.request.id);
+          const block = manualOrderBlock(rounds, raisingQuotationRequestId);
+          if (block) {
+            const mrNumber = mrLine.request.mrNumber;
             throw new ConflictException({
-              errorCode: 'QUOTATION_IN_PROGRESS',
+              errorCode: block.code,
               message:
-                `${mrLine.request.mrNumber} is being quoted in ${quotation!.number}. Order it from that ` +
-                'quotation (Raise the order) or cancel the quotation request first.',
+                block.code === 'QUOTATION_IN_PROGRESS'
+                  ? `${mrNumber} is being quoted in ${block.round.number}. Order it from that quotation ` +
+                    '(Raise the order) or cancel the quotation request first.'
+                  : `${mrNumber} was ordered through quotation ${block.round.number}. Any quantity left ` +
+                    'must go through a new quotation round (Get quotes) rather than a manual order.',
               details: {
-                code: 'QUOTATION_IN_PROGRESS',
-                quotationRequestId: quotation!.id,
-                quotationNumber: quotation!.number,
+                code: block.code,
+                quotationRequestId: block.round.id,
+                quotationNumber: block.round.number,
                 materialRequestId: mrLine.request.id,
               },
             });
