@@ -1817,7 +1817,7 @@
       "CANCELLED": "Cancelled"
     },
     "exceptionReason": {
-      "ONLY_ONE_SUPPLIER": "Only one store has it",
+      "ONLY_ONE_SUPPLIER": "No other store has it",
       "URGENT": "Urgent",
       "FRAMEWORK_SUPPLIER": "Framework supplier"
     },

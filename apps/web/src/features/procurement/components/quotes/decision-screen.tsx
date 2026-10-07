@@ -374,7 +374,8 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
         >
           {quotes.map((quote, index) => {
             const value = valueOf(quote);
-            const isLowest = lowest.has(quote.id) && lowest.size > 0;
+            // Only once every total is in: a "lowest" among two of three totals would mislead.
+            const isLowest = allEntered && lowest.has(quote.id);
             return (
               <article
                 key={quote.id}

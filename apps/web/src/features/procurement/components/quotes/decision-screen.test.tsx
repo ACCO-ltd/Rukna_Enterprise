@@ -91,6 +91,22 @@ describe('QuoteDecisionScreen', () => {
     await waitFor(() => expect(api.total).toHaveBeenCalledWith('qr1', 'k1', '2350'));
   });
 
+  it('says when a total did not save, in plain words', async () => {
+    const user = userEvent.setup();
+    api.total.mockRejectedValue(new TypeError('Failed to fetch'));
+    render({ quotes: three() });
+    await user.type(await screen.findByLabelText('Total for Hodan'), '2350{Enter}');
+    expect(await screen.findByText('Not saved')).toBeInTheDocument();
+    expect(screen.getByText('No connection. Try again when you have signal.')).toBeInTheDocument();
+  });
+
+  it('marks no quote lowest until every total is in', async () => {
+    const user = userEvent.setup();
+    render({ quotes: three() });
+    await user.type(await screen.findByLabelText('Total for Hodan'), '2350{Enter}');
+    expect(screen.queryByText('Lowest')).not.toBeInTheDocument();
+  });
+
   it('highlights the lowest live, including ties, and hides Choose until every total is in', async () => {
     const user = userEvent.setup();
     render({ quotes: three() });

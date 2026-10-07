@@ -222,13 +222,16 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
         {detail.materialRequest.title ? (
           <p className="mt-0.5 truncate text-caption text-muted-foreground">{detail.materialRequest.title}</p>
         ) : null}
-        <div className="mt-2 flex items-center gap-2" aria-live="polite">
-          <StoreDots count={count} target={target} />
-          <span className={cn('text-body-sm font-semibold', count >= target ? 'text-success' : 'text-foreground')}>
-            {t('counterLabel', { count, required: target })}
-          </span>
-          {count >= target ? <CircleCheck className="size-4 text-success" aria-label={t('counterDone')} /> : null}
-        </div>
+        {/* The counter matters while quotes are collected or with finance; after a choice it is noise. */}
+        {COLLECTING_STATUSES.has(detail.status) || detail.status === 'AWAITING_DECISION' ? (
+          <div className="mt-2 flex items-center gap-2" aria-live="polite">
+            <StoreDots count={count} target={target} />
+            <span className={cn('text-body-sm font-semibold', count >= target ? 'text-success' : 'text-foreground')}>
+              {t('counterLabel', { count, required: target })}
+            </span>
+            {count >= target ? <CircleCheck className="size-4 text-success" aria-label={t('counterDone')} /> : null}
+          </div>
+        ) : null}
       </header>
 
       <StatusNotice detail={detail} />

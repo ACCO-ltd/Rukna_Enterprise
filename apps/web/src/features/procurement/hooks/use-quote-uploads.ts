@@ -65,17 +65,21 @@ export function useResumeQuoteUploads(): void {
   }, [queue, qc]);
 }
 
-/** An object URL for a blob, revoked when the blob changes or the component unmounts. */
+/**
+ * One object URL per photo blob, created on first use and kept for the life of the tab.
+ *
+ * Not revoked on unmount: React's development double-mount (and any remount while the photo is
+ * still queued) would otherwise revoke a URL that the next render still shows. A queued photo is a
+ * few hundred KB after downscaling, so holding its URL until the tab closes is cheap.
+ */
+const objectUrls = new WeakMap<Blob, string>();
+
 export function useObjectUrl(blob: Blob | null | undefined): string | null {
-  const url = useMemo(
-    () => (blob && typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(blob) : null),
-    [blob],
-  );
-  useEffect(
-    () => () => {
-      if (url) URL.revokeObjectURL(url);
-    },
-    [url],
-  );
+  if (!blob || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return null;
+  let url = objectUrls.get(blob);
+  if (!url) {
+    url = URL.createObjectURL(blob);
+    objectUrls.set(blob, url);
+  }
   return url;
 }
