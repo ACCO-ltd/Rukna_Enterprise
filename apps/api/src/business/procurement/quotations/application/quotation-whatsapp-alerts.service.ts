@@ -1,0 +1,164 @@
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Prisma } from '@prisma/client';
+import type { StaffAlertLogEntry } from '@erp/types';
+
+import { CommunicationService } from '../../../../platform/messaging/communication.service.js';
+import {
+  OutboundMessageRepository,
+  type NewBackgroundMessage,
+} from '../../../../platform/messaging/infrastructure/outbound-message.repository.js';
+import { resolveWhatsAppTemplate } from '../../../../platform/messaging/whatsapp/whatsapp-templates.js';
+import { E164_PATTERN } from '../../../../platform/messaging/domain/message-status.js';
+import { loadActorNames } from '../../../../platform/users/application/actor-names.js';
+import { maskStaffPhone } from '../../../../platform/users/domain/staff-whatsapp.policy.js';
+import type { Db } from '../infrastructure/quotation-request.repository.js';
+import {
+  QUOTATION_MESSAGE_RESOURCE,
+  alertBodyParams,
+  alertIdempotencyKey,
+  alertStillWanted,
+  type QuotationAlertFacts,
+  type QuotationAlertPurpose,
+} from '../domain/quotation-whatsapp.policy.js';
+
+/** Env kill switch (default off): when not exactly 'true', nothing is queued. */
+export const QUOTATION_WHATSAPP_ENABLED = 'QUOTATION_WHATSAPP_ENABLED';
+
+export interface QueueAlertInput {
+  organizationId: string;
+  requestId: string;
+  purpose: QuotationAlertPurpose;
+  /** The round segment of the idempotency key (decision round, send count or award instant). */
+  round: string;
+  recipientUserIds: string[];
+  facts: QuotationAlertFacts;
+  /** Who caused it (the acting user); the SLA job passes the request's creator. */
+  actorUserId: string;
+}
+
+/**
+ * ADR-044 phase 2 — WhatsApp alerts to staff about quotation requests. This class only QUEUES them
+ * (OutboundMessage rows, sent by the platform's background dispatcher) and answers the delivery log;
+ * nothing here ever calls Meta, so a quotation command never waits on WhatsApp.
+ *
+ * Who gets one: the recipients the caller resolved (the same people as the in-app notification),
+ * narrowed to ACTIVE users who switched WhatsApp alerts on and have a valid number. Everyone keeps
+ * the in-app notification regardless.
+ *
+ * Queued in the caller's transaction (atomic with the event) under a SAVEPOINT, so even a failed
+ * insert is rolled back alone and logged — an alert can never fail or block the business action.
+ * Nothing is queued while QUOTATION_WHATSAPP_ENABLED is not 'true', or while WhatsApp itself is not
+ * configured on the server (logged once).
+ */
+@Injectable()
+export class QuotationWhatsAppAlerts implements OnModuleInit {
+  private readonly logger = new Logger(QuotationWhatsAppAlerts.name);
+  private warnedUnconfigured = false;
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly communication: CommunicationService,
+    private readonly messages: OutboundMessageRepository,
+  ) {}
+
+  onModuleInit(): void {
+    // Last check before the dispatcher sends: the request may have moved on since the alert queued.
+    this.communication.registerDispatchGuard(QUOTATION_MESSAGE_RESOURCE, async (db, message) => {
+      if (this.config.get<string>(QUOTATION_WHATSAPP_ENABLED) !== 'true') {
+        return 'Not sent: quotation WhatsApp alerts were switched off.';
+      }
+      const request = await db.quotationRequest.findFirst({
+        where: { id: message.resourceId, organizationId: message.organizationId },
+        select: { status: true, sendCount: true, sentAt: true },
+      });
+      return alertStillWanted(message.purpose as QuotationAlertPurpose, message.idempotencyKey, request);
+    });
+  }
+
+  /** Whether alerts are queued at all right now (kill switch on and WhatsApp configured). */
+  enabled(): boolean {
+    if (this.config.get<string>(QUOTATION_WHATSAPP_ENABLED) !== 'true') return false;
+    if (!this.communication.isWhatsAppConfigured()) {
+      if (!this.warnedUnconfigured) {
+        this.warnedUnconfigured = true;
+        this.logger.log('QUOTATION_WHATSAPP_ENABLED is on but WhatsApp is not configured — no alerts queued');
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Queues one alert per opted-in recipient inside `tx` (a business or job transaction). Returns
+   * how many new rows were queued (0 for repeats, when disabled, or when nobody opted in).
+   */
+  async queue(tx: Prisma.TransactionClient, input: QueueAlertInput): Promise<number> {
+    if (!this.enabled() || input.recipientUserIds.length === 0) return 0;
+    await tx.$executeRawUnsafe('SAVEPOINT quotation_whatsapp_alert');
+    try {
+      const queued = await this.insert(tx, input);
+      await tx.$executeRawUnsafe('RELEASE SAVEPOINT quotation_whatsapp_alert');
+      return queued;
+    } catch (error) {
+      await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT quotation_whatsapp_alert');
+      this.logger.error(
+        `Quotation ${input.purpose} WhatsApp alert for ${input.requestId} not queued: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 0;
+    }
+  }
+
+  /** The request's alert log, oldest first — names, masked numbers, status; no text, no amounts. */
+  async deliveryLog(db: Db, organizationId: string, requestId: string): Promise<StaffAlertLogEntry[]> {
+    const rows = await this.messages.listBackgroundForResource(db, organizationId, QUOTATION_MESSAGE_RESOURCE, requestId);
+    if (rows.length === 0) return [];
+    const name = await loadActorNames(db, rows.map((r) => r.recipientUserId ?? ''));
+    const iso = (d: Date | null) => (d ? d.toISOString() : null);
+    return rows.map((row) => ({
+      id: row.id,
+      recipientName: name(row.recipientUserId ?? ''),
+      recipientPhoneMasked: maskStaffPhone(row.recipient),
+      purpose: row.purpose as StaffAlertLogEntry['purpose'],
+      status: row.status,
+      queuedAt: row.queuedAt.toISOString(),
+      sentAt: iso(row.sentAt),
+      deliveredAt: iso(row.deliveredAt),
+      readAt: iso(row.readAt),
+      failedAt: iso(row.failedAt),
+      failureReason: row.status === 'SENT' || row.status === 'DELIVERED' || row.status === 'READ' ? null : row.errorMessage,
+    }));
+  }
+
+  private async insert(tx: Prisma.TransactionClient, input: QueueAlertInput): Promise<number> {
+    const template = resolveWhatsAppTemplate(this.config, input.purpose);
+    if (!template) return 0;
+    const users = await tx.user.findMany({
+      where: {
+        id: { in: [...new Set(input.recipientUserIds)] },
+        organizationId: input.organizationId,
+        status: 'ACTIVE',
+        whatsappAlertsEnabled: true,
+        whatsappPhone: { not: null },
+      },
+      select: { id: true, whatsappPhone: true },
+    });
+    const body = alertBodyParams(input.purpose, input.facts);
+    const rows: NewBackgroundMessage[] = users
+      .filter((u): u is { id: string; whatsappPhone: string } => !!u.whatsappPhone && E164_PATTERN.test(u.whatsappPhone))
+      .map((u) => ({
+        organizationId: input.organizationId,
+        purpose: input.purpose,
+        recipient: u.whatsappPhone,
+        recipientUserId: u.id,
+        resourceType: QUOTATION_MESSAGE_RESOURCE,
+        resourceId: input.requestId,
+        templateName: template.name,
+        templateLanguage: template.language,
+        templateParams: { body, buttonUrlSuffix: input.requestId },
+        idempotencyKey: alertIdempotencyKey(input.requestId, input.purpose, input.round, u.id),
+        createdBy: input.actorUserId,
+      }));
+    return this.messages.enqueueMany(tx, rows, new Date());
+  }
+}

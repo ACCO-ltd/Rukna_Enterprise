@@ -17,6 +17,7 @@ import {
   type QuotationRequestAggregate,
 } from '../infrastructure/quotation-request.repository.js';
 import { QuotationAccessService } from './quotation-access.service.js';
+import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js';
 
 export interface Person {
   id: string;
@@ -51,6 +52,7 @@ export class QuotationQueryService {
     private readonly repo: QuotationRequestRepository,
     private readonly access: QuotationAccessService,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly alerts: QuotationWhatsAppAlerts,
   ) {}
 
   /**
@@ -286,6 +288,11 @@ export class QuotationQueryService {
       moneyVisible,
       /** False → every quote's `photos` is [] (see `photoCount`): "Quote photos are hidden for your role". */
       photosVisible,
+      /**
+       * ADR-044 phase 2 — WhatsApp alerts about this request, oldest first: who, which alert, status.
+       * Numbers masked to the last 3 digits; no message text, no amounts.
+       */
+      messages: await this.alerts.deliveryLog(db, orgId, request.id),
     };
   }
 }
