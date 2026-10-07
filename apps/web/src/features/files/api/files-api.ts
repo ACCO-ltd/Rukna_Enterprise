@@ -107,8 +107,10 @@ export async function sha256Hex(file: Blob): Promise<string> {
  *   is the encoding S3 signs. Storage verifies the body against it and rejects a mismatch, so a
  *   truncated or corrupted upload fails here rather than being confirmed as good.
  */
-export async function uploadFile(file: File): Promise<string> {
+export async function uploadFile(file: File, options: UploadFileOptions = {}): Promise<string> {
   const mimeType = file.type || 'application/octet-stream';
+  // The hash is of exactly the bytes sent — after any client-side downscale — so the stored
+  // checksum is evidence of what storage holds, not of a file the user's phone kept.
   const checksumSha256 = await sha256Hex(file);
 
   const { fileId, uploadUrl } = await initiateUpload({
@@ -117,20 +119,71 @@ export async function uploadFile(file: File): Promise<string> {
     checksumSha256,
   });
 
-  const put = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': mimeType,
-      'x-amz-checksum-sha256': hexToBase64(checksumSha256),
-    },
-    body: file,
-  });
-  if (!put.ok) {
-    throw new Error(`File upload failed (${put.status})`);
+  const headers = {
+    'Content-Type': mimeType,
+    'x-amz-checksum-sha256': hexToBase64(checksumSha256),
+  };
+  if (options.onProgress && typeof XMLHttpRequest !== 'undefined') {
+    await putWithProgress(uploadUrl, file, headers, options.onProgress);
+  } else {
+    let put: Response;
+    try {
+      put = await fetch(uploadUrl, { method: 'PUT', headers, body: file });
+    } catch {
+      throw new StorageUploadError(0);
+    }
+    if (!put.ok) throw new StorageUploadError(put.status);
   }
 
   await confirmUpload(fileId, { checksumSha256 });
   return fileId;
+}
+
+export interface UploadFileOptions {
+  /**
+   * Upload progress, 0–1. When given, the PUT goes through `XMLHttpRequest` — `fetch` cannot
+   * report request-body progress — so a slow upload on a weak signal shows it is moving.
+   */
+  onProgress?: (fraction: number) => void;
+}
+
+/**
+ * The PUT to object storage failed. `status` 0 means the request never completed (offline, a
+ * dropped connection); 403 is usually an expired presigned URL — a fresh `uploadFile` call
+ * presigns again, so both are worth retrying.
+ */
+export class StorageUploadError extends Error {
+  constructor(public readonly status: number) {
+    super(`File upload failed (${status})`);
+    this.name = 'StorageUploadError';
+  }
+}
+
+function putWithProgress(
+  url: string,
+  body: Blob,
+  headers: Record<string, string>,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(1);
+        resolve();
+      } else {
+        reject(new StorageUploadError(xhr.status));
+      }
+    };
+    xhr.onerror = () => reject(new StorageUploadError(0));
+    xhr.ontimeout = () => reject(new StorageUploadError(0));
+    xhr.send(body);
+  });
 }
 
 /** S3 signs the checksum header base64-encoded; the platform stores and sends hex. */
