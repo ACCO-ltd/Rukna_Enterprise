@@ -25,7 +25,10 @@ export function QuotesList() {
   const t = useTranslations('procurement.quotes.list');
   const tq = useTranslations('procurement.quotes');
   const tReason = useTranslations('procurement.quotes.exceptionReason');
-  const [queue, setQueue] = useState<CollectorQueue>('collect');
+  const [chosen, setQueue] = useState<CollectorQueue | null>(null);
+  // Open on "Returned to you" when finance sent something back — that is the buyer's first job.
+  const returned = useQuotationRequests({ queue: 'returned', mine: true, limit: 1 }, { enabled: chosen === null });
+  const queue: CollectorQueue = chosen ?? ((returned.data?.total ?? 0) > 0 ? 'returned' : 'collect');
   useResumeQuoteUploads();
   // The buyer's own requests on their working queues; "Chosen — raise order" shows every award, since
   // any buyer who may create orders can raise it.
@@ -45,7 +48,7 @@ export function QuotesList() {
       card: 'title',
       plainValue: (row) => `${row.mr.number} ${row.mr.title ?? ''} ${row.number}`,
       render: (row) => (
-        <span className="block min-w-0">
+        <span className="block min-h-11 min-w-0">
           <span className="block font-semibold text-brand-primary">{row.mr.number}</span>
           <span className="block max-w-[20rem] truncate text-caption font-normal text-muted-foreground">
             {row.mr.title ?? row.number}

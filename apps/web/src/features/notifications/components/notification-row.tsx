@@ -59,7 +59,7 @@ export function NotificationRow({ item, onActivate, className }: NotificationRow
         <span className="flex items-start justify-between gap-2">
           <span
             className={cn(
-              'truncate text-sm text-foreground',
+              'line-clamp-2 text-sm text-foreground sm:truncate',
               unread ? 'font-semibold' : 'font-medium',
             )}
           >
@@ -71,7 +71,7 @@ export function NotificationRow({ item, onActivate, className }: NotificationRow
             </span>
           ) : null}
         </span>
-        <span className="mt-0.5 block truncate text-caption text-muted-foreground">
+        <span className="mt-0.5 block line-clamp-2 text-caption text-muted-foreground sm:truncate">
           {t(impactKey, values)}
         </span>
       </span>

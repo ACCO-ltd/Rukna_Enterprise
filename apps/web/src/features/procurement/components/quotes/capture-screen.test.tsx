@@ -101,20 +101,23 @@ afterEach(() => {
 });
 
 describe('QuoteCaptureScreen — collecting', () => {
-  it('counts stores and asks for a reason chip only when short; send needs it', async () => {
+  it('counts stores, hints quietly when short, and asks for the reason in a sheet on Send', async () => {
     const user = userEvent.setup();
     api.sendQuotationRequest.mockResolvedValue(detailFixture({ status: 'AWAITING_DECISION' }));
     render(detailFixture({ quotes: [quoteFixture({ id: 'k1', name: 'Hodan Hardware' })], distinctSupplierCount: 1 }));
 
     expect(await screen.findByText('1 of 3 stores')).toBeInTheDocument();
-    const send = screen.getByRole('button', { name: 'Send to finance' });
-    expect(send).toBeDisabled();
-    expect(screen.getByText('Pick why there are fewer stores')).toBeInTheDocument();
+    expect(screen.getByText('Need 3 stores (1 so far)')).toBeInTheDocument();
+    // No chips while the buyer may still add stores.
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
 
-    const chips = screen.getByRole('radiogroup', { name: 'Only 1 store. Why?' });
-    await user.click(within(chips).getByRole('radio', { name: 'Urgent' }));
-    expect(send).toBeEnabled();
-    await user.click(send);
+    await user.click(screen.getByRole('button', { name: 'Send to finance' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Only 1 store. Why?' });
+    expect(api.sendQuotationRequest).not.toHaveBeenCalled();
+    const sendInSheet = within(sheet).getByRole('button', { name: 'Send to finance' });
+    expect(sendInSheet).toBeDisabled();
+    await user.click(within(sheet).getByRole('radio', { name: 'Urgent' }));
+    await user.click(sendInSheet);
     await waitFor(() => expect(api.sendQuotationRequest).toHaveBeenCalledWith('qr1', 'URGENT'));
   });
 

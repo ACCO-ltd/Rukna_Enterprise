@@ -35,7 +35,7 @@ export function QuotesInbox() {
       card: 'title',
       plainValue: (row) => `${row.mr.number} ${row.mr.title ?? ''} ${row.number}`,
       render: (row) => (
-        <span className="block min-w-0">
+        <span className="block min-h-11 min-w-0">
           <span className="block font-semibold text-brand-primary">{row.mr.number}</span>
           <span className="block max-w-[20rem] truncate text-caption font-normal text-muted-foreground">
             {row.mr.title ?? row.number}

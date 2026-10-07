@@ -219,19 +219,19 @@ describe('NotificationBell — quotation notifications (ADR-044)', () => {
   it.each([
     {
       kind: 'QUOTES_READY',
-      title: 'Quotes ready to choose: MR-00123',
+      title: 'MR-00123: quotes ready to choose',
       impact: 'QR-00041 · 3 quotes · HQ Mogadishu',
       url: '/finance/quotes/qr1',
     },
     {
       kind: 'QUOTATION_AWARDED',
-      title: 'Quote chosen: MR-00123',
+      title: 'MR-00123: quote chosen',
       impact: 'QR-00041 · raise the order · HQ Mogadishu',
       url: '/procurement/quotes/qr1',
     },
     {
       kind: 'ANOTHER_QUOTE_REQUESTED',
-      title: 'Finance asked for another quote: MR-00123',
+      title: 'MR-00123: finance asked for another quote',
       impact: 'QR-00041 · “Check Xamar Steel”',
       url: '/procurement/quotes/qr1',
     },

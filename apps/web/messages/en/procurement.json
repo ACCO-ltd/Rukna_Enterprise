@@ -1817,7 +1817,7 @@
       "CANCELLED": "Cancelled"
     },
     "exceptionReason": {
-      "ONLY_ONE_SUPPLIER": "No other store has it",
+      "ONLY_ONE_SUPPLIER": "Not enough stores have it",
       "URGENT": "Urgent",
       "FRAMEWORK_SUPPLIER": "Framework supplier"
     },
@@ -2002,7 +2002,9 @@
       },
       "short": {
         "title": "Only {count, plural, one {# store} other {# stores}}. Why?",
-        "hint": "Finance needs {required} stores, or a reason."
+        "hint": "Finance needs {required} stores, or a reason.",
+        "need": "Need {required} stores ({count} so far)",
+        "send": "Send to finance"
       },
       "store": {
         "title": "Which store?",
@@ -2071,7 +2073,9 @@
         "waiting": "Waiting",
         "noDate": "No date",
         "notEstimated": "Not estimated",
-        "urgent": "Urgent"
+        "urgent": "Urgent",
+        "more": "More details",
+        "less": "Fewer details"
       },
       "quotesLabel": "Quotes",
       "quoteOf": "Quote {index} of {count}",

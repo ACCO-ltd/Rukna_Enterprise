@@ -151,7 +151,7 @@ export function PhotoViewer({
               type="button"
               variant="outline"
               size="icon"
-              className="size-11"
+              className="h-11 min-h-11 w-11 min-w-11"
               aria-label={t('pagePrevious')}
               disabled={page === 0}
               onClick={() => goTo(page - 1)}
@@ -159,16 +159,16 @@ export function PhotoViewer({
               <ChevronLeft className="size-5" aria-hidden="true" />
             </Button>
           ) : null}
-          <Button type="button" variant="outline" size="icon" className="size-11" aria-label={t('zoomOut')} onClick={() => zoom(scale - STEP)}>
+          <Button type="button" variant="outline" size="icon" className="h-11 min-h-11 w-11 min-w-11" aria-label={t('zoomOut')} onClick={() => zoom(scale - STEP)}>
             <ZoomOut className="size-5" aria-hidden="true" />
           </Button>
           <span className="w-14 text-center text-caption tabular-nums text-muted-foreground" aria-live="polite">
             {Math.round(scale * 100)}%
           </span>
-          <Button type="button" variant="outline" size="icon" className="size-11" aria-label={t('zoomIn')} onClick={() => zoom(scale + STEP)}>
+          <Button type="button" variant="outline" size="icon" className="h-11 min-h-11 w-11 min-w-11" aria-label={t('zoomIn')} onClick={() => zoom(scale + STEP)}>
             <ZoomIn className="size-5" aria-hidden="true" />
           </Button>
-          <Button type="button" variant="outline" size="icon" className="size-11" aria-label={t('zoomReset')} onClick={reset}>
+          <Button type="button" variant="outline" size="icon" className="h-11 min-h-11 w-11 min-w-11" aria-label={t('zoomReset')} onClick={reset}>
             <Maximize2 className="size-5" aria-hidden="true" />
           </Button>
           {photos.length > 1 ? (
@@ -176,7 +176,7 @@ export function PhotoViewer({
               type="button"
               variant="outline"
               size="icon"
-              className="size-11"
+              className="h-11 min-h-11 w-11 min-w-11"
               aria-label={t('pageNext')}
               disabled={page === photos.length - 1}
               onClick={() => goTo(page + 1)}

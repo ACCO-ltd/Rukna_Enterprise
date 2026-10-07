@@ -11,7 +11,17 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, MoneyInput, Notice, Progress, QuantityInput, Skeleton, Switch, cn } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  MoneyInput,
+  Notice,
+  Progress,
+  QuantityInput,
+  Skeleton,
+  Switch,
+  cn,
+} from '@erp/ui';
 import { ChevronLeft } from 'lucide-react';
 
 import { useModuleTrail } from '@/components/layout/module-chrome';
@@ -49,7 +59,11 @@ export function OrderAdjustScreen({ id }: { id: string }) {
     return (
       <div className="mx-auto w-full max-w-2xl space-y-4">
         <Alert variant="error" messages={[tq('loadFailed')]} />
-        <Button variant="outline" className="min-h-11" onClick={() => void Promise.all([detail.refetch(), draft.refetch()])}>
+        <Button
+          variant="outline"
+          className="min-h-11"
+          onClick={() => void Promise.all([detail.refetch(), draft.refetch()])}
+        >
           {tq('retry')}
         </Button>
       </div>
@@ -71,7 +85,9 @@ function AdjustBody({ detail, draft }: { detail: QuotationRequestDetail; draft: 
   const exceeds = refusalCode(raise.error) === 'PO_EXCEEDS_AWARD';
 
   const update = (lineId: string, patch: Partial<EditableOrderLine>) =>
-    setLines((all) => all.map((line) => (line.materialRequestLineId === lineId ? { ...line, ...patch } : line)));
+    setLines((all) =>
+      all.map((line) => (line.materialRequestLineId === lineId ? { ...line, ...patch } : line)),
+    );
 
   const submit = () => {
     if (!check.ok) return;
@@ -79,7 +95,11 @@ function AdjustBody({ detail, draft }: { detail: QuotationRequestDetail; draft: 
       {
         lines: lines
           .filter((line) => line.included)
-          .map((line) => ({ materialRequestLineId: line.materialRequestLineId, quantity: line.quantity, amount: line.amount })),
+          .map((line) => ({
+            materialRequestLineId: line.materialRequestLineId,
+            quantity: line.quantity,
+            amount: line.amount,
+          })),
       },
       { onSuccess: (result) => router.push(`/procurement/orders/${result.purchaseOrderId}`) },
     );
@@ -102,7 +122,9 @@ function AdjustBody({ detail, draft }: { detail: QuotationRequestDetail; draft: 
       </div>
       {draft.splitMode === 'MANUAL' ? <Notice tone="info">{t('manual')}</Notice> : null}
       {exceeds ? <ExceedsAward requestId={detail.id} /> : null}
-      {raise.error && !exceeds ? <Alert variant="error" messages={[refusal(raise.error) ?? '']} /> : null}
+      {raise.error && !exceeds ? (
+        <Alert variant="error" messages={[refusal(raise.error) ?? '']} />
+      ) : null}
 
       <ul className="space-y-3">
         {draft.lines.map((source) => {
@@ -119,13 +141,17 @@ function AdjustBody({ detail, draft }: { detail: QuotationRequestDetail; draft: 
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="min-w-0 font-medium text-foreground">{source.description}</p>
-                <Switch
-                  checked={line.included}
-                  onCheckedChange={(included: boolean) => update(source.materialRequestLineId, { included })}
-                  aria-label={`${t('include')}: ${source.description}`}
-                  // A 24px switch with a 48px hit area (doctrine: 44px targets at 375px).
-                  className="mt-1 before:absolute before:-inset-3 before:content-['']"
-                />
+                <span className="-m-2 flex min-h-11 min-w-11 items-center justify-center">
+                  <Switch
+                    checked={line.included}
+                    onCheckedChange={(included: boolean) =>
+                      update(source.materialRequestLineId, { included })
+                    }
+                    aria-label={`${t('include')}: ${source.description}`}
+                    // A 24px switch with a 48px hit area (doctrine: 44px targets at 375px).
+                    className="before:absolute before:-inset-3 before:content-['']"
+                  />
+                </span>
               </div>
               {line.included ? (
                 <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
@@ -136,12 +162,21 @@ function AdjustBody({ detail, draft }: { detail: QuotationRequestDetail; draft: 
                       maxFractionDigits={4}
                       unit={unit}
                       aria-invalid={qtyProblem || undefined}
-                      onValueChange={(quantity) => update(source.materialRequestLineId, { quantity })}
+                      onValueChange={(quantity) =>
+                        update(source.materialRequestLineId, { quantity })
+                      }
                     />
-                    <p className={cn('mt-1 text-caption', qtyProblem ? 'text-danger' : 'text-muted-foreground')}>
+                    <p
+                      className={cn(
+                        'mt-1 text-caption',
+                        qtyProblem ? 'text-danger' : 'text-muted-foreground',
+                      )}
+                    >
                       {qtyProblem
                         ? t('quantityOver')
-                        : t('max', { max: `${formatNumber(trimQuantity(source.maxQuantity))} ${unit}`.trim() })}
+                        : t('max', {
+                            max: `${formatNumber(trimQuantity(source.maxQuantity))} ${unit}`.trim(),
+                          })}
                     </p>
                   </div>
                   <MoneyInput
@@ -167,7 +202,9 @@ function AdjustBody({ detail, draft }: { detail: QuotationRequestDetail; draft: 
             {t('meter', { total: money(minorToMoney(check.totalMinor)), award: money(award) })}
           </span>
           {check.overMinor > 0 ? (
-            <span className="font-semibold text-danger">{t('overCap', { over: money(minorToMoney(check.overMinor)) })}</span>
+            <span className="font-semibold text-danger">
+              {t('overCap', { over: money(minorToMoney(check.overMinor)) })}
+            </span>
           ) : null}
           {check.noLines ? <span className="text-danger">{t('noLines')}</span> : null}
         </p>

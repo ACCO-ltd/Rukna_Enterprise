@@ -27,4 +27,15 @@ describe('QuotesList — the buyer queues', () => {
     await user.click(screen.getByRole('button', { name: 'Chosen — raise order' }));
     expect(api.list).toHaveBeenLastCalledWith({ queue: 'awarded' });
   });
+
+  it('opens on Returned to you when finance sent something back', async () => {
+    api.list.mockImplementation(async (filters: { queue: string }) =>
+      filters.queue === 'returned'
+        ? { items: [], page: 1, limit: 1, total: 2 }
+        : { items: [], page: 1, limit: 25, total: 0 },
+    );
+    renderWithProviders(<QuotesList />, { permissions: ['view:procurement', 'collect:quotation'] });
+    expect(await screen.findByText('Nothing returned')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Returned to you' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });

@@ -70,7 +70,13 @@ import type {
 } from '../../quotations/types';
 import { ChooseDialog } from './choose-dialog';
 import { PhotoViewer } from './photo-viewer';
-import { PhotosHidden, QuotationStatusPill, QuotePhotoImage, WaitingTime, useRefusalText } from './quote-shared';
+import {
+  PhotosHidden,
+  QuotationStatusPill,
+  QuotePhotoImage,
+  WaitingTime,
+  useRefusalText,
+} from './quote-shared';
 
 /** The award's governed transition (ADR-044 §7). */
 const QUOTATION_AWARD = WorkflowTransactionType.QUOTATION_AWARD;
@@ -106,7 +112,8 @@ export function QuoteDecisionScreen({ id }: { id: string }) {
         <Alert
           variant="error"
           messages={[
-            detail.error instanceof ApiError && (detail.error.status === 403 || detail.error.status === 404)
+            detail.error instanceof ApiError &&
+            (detail.error.status === 403 || detail.error.status === 404)
               ? tq('noAccess')
               : tq('loadFailed'),
           ]}
@@ -137,7 +144,8 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const deciding = detail.status === 'AWAITING_DECISION';
   const mayAward = can(QUOTATION_PERMISSIONS.award);
   const barCode = selectionBarCode(detail);
-  const canEnter = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'ENTER_TOTAL', true);
+  const canEnter =
+    deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'ENTER_TOTAL', true);
 
   // ── Totals: local drafts over the server's values; autosave on blur ─────────────
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -204,10 +212,13 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   // The server says QUOTE_TOTALS_MISSING until the typed totals have saved; they are flushed before
   // the award, so locally complete totals are enough to offer Choose.
   const awardVerdict = findAction(detail.allowedActions, 'AWARD');
-  const awardOpen = !awardVerdict || awardVerdict.enabled || awardVerdict.reasonCode === 'QUOTE_TOTALS_MISSING';
+  const awardOpen =
+    !awardVerdict || awardVerdict.enabled || awardVerdict.reasonCode === 'QUOTE_TOTALS_MISSING';
   const chooseEnabled = deciding && mayAward && !barCode && allEntered && awardOpen;
-  const mayAsk = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'ASK_ANOTHER', true);
-  const mayReject = deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'REJECT_QUOTE', true);
+  const mayAsk =
+    deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'ASK_ANOTHER', true);
+  const mayReject =
+    deciding && mayAward && !barCode && actionEnabled(detail.allowedActions, 'REJECT_QUOTE', true);
 
   const runAward = async (payload: AwardPayload) => {
     try {
@@ -234,9 +245,14 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
     });
   };
 
-  const awardedQuote = detail.award ? detail.quotes.find((q) => q.id === detail.award?.quoteId) : null;
-  const proposedQuote = detail.proposal ? detail.quotes.find((q) => q.id === detail.proposal?.quoteId) : null;
-  const pendingInstance = detail.approval?.instanceId ?? detail.award?.approvalInstanceId ?? gatedInstance;
+  const awardedQuote = detail.award
+    ? detail.quotes.find((q) => q.id === detail.award?.quoteId)
+    : null;
+  const proposedQuote = detail.proposal
+    ? detail.quotes.find((q) => q.id === detail.proposal?.quoteId)
+    : null;
+  const pendingInstance =
+    detail.approval?.instanceId ?? detail.award?.approvalInstanceId ?? gatedInstance;
   const short = detail.distinctSupplierCount < detail.requiredQuoteCount;
   // After the last total's Enter, focus moves to the lowest quote's Choose as soon as it renders.
   const focusLowestChoose = () => {
@@ -275,7 +291,9 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
   const roles = session.user?.roles ?? [];
   const currentRole = detail.approval?.currentStepRole ?? null;
   const mayActOnStep =
-    can('manage:workflow') || (currentRole !== null && roles.includes(currentRole)) || (!detail.approval && Boolean(gatedInstance));
+    can('manage:workflow') ||
+    (currentRole !== null && roles.includes(currentRole)) ||
+    (!detail.approval && Boolean(gatedInstance));
 
   return (
     <div className="space-y-4 pb-8">
@@ -322,25 +340,43 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
           })}
         </Notice>
       ) : null}
-      {detail.status === 'COLLECTING' || detail.status === 'RETURNED' || detail.status === 'CANCELLED' ? (
-        <Notice tone={detail.status === 'CANCELLED' ? 'historical' : 'info'}>{t(`notReady.${detail.status}`)}</Notice>
+      {detail.status === 'COLLECTING' ||
+      detail.status === 'RETURNED' ||
+      detail.status === 'CANCELLED' ? (
+        <Notice tone={detail.status === 'CANCELLED' ? 'historical' : 'info'}>
+          {t(`notReady.${detail.status}`)}
+        </Notice>
       ) : null}
       {detail.status === 'AWARDED' && detail.award ? (
-        <Notice tone="success" title={t('awarded.title', { store: awardedQuote?.store.name ?? detail.award.supplier?.name ?? '—' })}>
+        <Notice
+          tone="success"
+          title={t('awarded.title', {
+            store: awardedQuote?.store.name ?? detail.award.supplier?.name ?? '—',
+          })}
+        >
           <p className="mt-1">
             {detail.award.total !== null
               ? t('awarded.body', {
                   total: money(detail.award.total),
                   payBy: detail.award.paymentPath ? tPay(detail.award.paymentPath) : '—',
                 })
-              : t('awarded.bodyNoMoney', { payBy: detail.award.paymentPath ? tPay(detail.award.paymentPath) : '—' })}
+              : t('awarded.bodyNoMoney', {
+                  payBy: detail.award.paymentPath ? tPay(detail.award.paymentPath) : '—',
+                })}
           </p>
-          {detail.purchaseOrder ? <p className="mt-1">{t('awarded.order')}: {detail.purchaseOrder.poNumber}</p> : null}
+          {detail.purchaseOrder ? (
+            <p className="mt-1">
+              {t('awarded.order')}: {detail.purchaseOrder.poNumber}
+            </p>
+          ) : null}
         </Notice>
       ) : null}
       {detail.status === 'AWARD_PENDING_APPROVAL' || gatedInstance ? (
         <section className="space-y-3">
-          <Notice tone={chainApproved ? 'success' : 'info'} title={chainApproved ? t('pending.approvedTitle') : t('pending.title')}>
+          <Notice
+            tone={chainApproved ? 'success' : 'info'}
+            title={chainApproved ? t('pending.approvedTitle') : t('pending.title')}
+          >
             <p className="mt-1">
               {t(chainApproved ? 'pending.approvedBody' : 'pending.body', {
                 store: proposedQuote?.store.name ?? '—',
@@ -365,12 +401,19 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
               >
                 {t('pending.redrive')}
               </Button>
-              <Button type="button" variant="outline" className="min-h-11" onClick={() => setWithdrawing(true)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={() => setWithdrawing(true)}
+              >
                 {t('pending.withdraw')}
               </Button>
             </div>
           ) : null}
-          {award.error && !choosing ? <Alert variant="error" messages={[refusal(award.error) ?? '']} /> : null}
+          {award.error && !choosing ? (
+            <Alert variant="error" messages={[refusal(award.error) ?? '']} />
+          ) : null}
         </section>
       ) : null}
 
@@ -384,7 +427,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
               type="button"
               variant="outline"
               size="icon"
-              className="size-11"
+              className="h-11 min-h-11 w-11 min-w-11"
               aria-label={t('previous')}
               disabled={current === 0}
               onClick={() => showCard(current - 1)}
@@ -414,7 +457,7 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
               type="button"
               variant="outline"
               size="icon"
-              className="size-11"
+              className="h-11 min-h-11 w-11 min-w-11"
               aria-label={t('next')}
               disabled={current >= quotes.length - 1}
               onClick={() => showCard(current + 1)}
@@ -428,7 +471,11 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
           className={cn(
             'flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-2',
             'lg:grid lg:snap-none lg:overflow-visible',
-            quotes.length >= 3 ? 'lg:grid-cols-3' : quotes.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-1',
+            quotes.length >= 3
+              ? 'lg:grid-cols-3'
+              : quotes.length === 2
+                ? 'lg:grid-cols-2'
+                : 'lg:grid-cols-1',
           )}
           onScroll={(event) => {
             const el = event.currentTarget;
@@ -448,7 +495,9 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
                 aria-label={t('quoteOf', { index: index + 1, count: quotes.length })}
                 className={cn(
                   'w-full shrink-0 snap-center rounded-panel border bg-surface p-3 shadow-e1 lg:w-auto',
-                  isLowest && detail.moneyVisible ? 'border-success ring-1 ring-success/40' : 'border-border',
+                  isLowest && detail.moneyVisible
+                    ? 'border-success ring-1 ring-success/40'
+                    : 'border-border',
                   detail.award?.quoteId === quote.id && 'border-success',
                 )}
               >
@@ -462,13 +511,19 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
                       </span>
                     ) : null}
                   </p>
-                  {isLowest && detail.moneyVisible ? <Badge tone="success">{t('lowest')}</Badge> : null}
+                  {isLowest && detail.moneyVisible ? (
+                    <Badge tone="success">{t('lowest')}</Badge>
+                  ) : null}
                 </div>
                 <PhotoMeta quote={quote} />
 
                 {detail.moneyVisible ? (
                   <div className="mt-3">
-                    <FormField htmlFor={`quote-total-${quote.id}`} label={t('total')} hint={t('totalHint')}>
+                    <FormField
+                      htmlFor={`quote-total-${quote.id}`}
+                      label={t('total')}
+                      hint={t('totalHint')}
+                    >
                       <MoneyInput
                         id={`quote-total-${quote.id}`}
                         ref={(el) => {
@@ -562,7 +617,12 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
       {rejected.length > 0 ? <RejectedList quotes={rejected} /> : null}
 
       {mayAsk ? (
-        <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setAsking(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 w-full sm:w-auto"
+          onClick={() => setAsking(true)}
+        >
           {t('askAnother')}
         </Button>
       ) : null}
@@ -591,7 +651,10 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
           busy={reject.isPending}
           error={reject.error ? (refusal(reject.error) ?? null) : null}
           onReject={(reason, note) =>
-            reject.mutate({ quoteId: rejecting.id, reason, note }, { onSuccess: () => setRejecting(null) })
+            reject.mutate(
+              { quoteId: rejecting.id, reason, note },
+              { onSuccess: () => setRejecting(null) },
+            )
           }
           onClose={() => {
             reject.reset();
@@ -646,20 +709,34 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
 // ─── Pieces ─────────────────────────────────────────────────────────────────────
 
 /** The award's chain from the read model: each step, who approved it, which one is current. */
-function ApprovalSteps({ approval }: { approval: NonNullable<QuotationRequestDetail['approval']> }) {
+function ApprovalSteps({
+  approval,
+}: {
+  approval: NonNullable<QuotationRequestDetail['approval']>;
+}) {
   const t = useTranslations('procurement.quotes.decision.pending');
   return (
-    <ol className="space-y-1 rounded-panel border border-border bg-surface p-3 text-body-sm" aria-label={t('chain')}>
+    <ol
+      className="space-y-1 rounded-panel border border-border bg-surface p-3 text-body-sm"
+      aria-label={t('chain')}
+    >
       {[...approval.steps]
         .sort((a, b) => a.stepOrder - b.stepOrder)
         .map((step) => {
           const current = step.stepOrder === approval.currentStepOrder && !step.approvedBy;
           return (
             <li key={step.stepOrder} className="flex flex-wrap items-center justify-between gap-2">
-              <span className={cn('font-medium', current ? 'text-foreground' : 'text-muted-foreground')}>
+              <span
+                className={cn('font-medium', current ? 'text-foreground' : 'text-muted-foreground')}
+              >
                 {step.stepOrder}. {step.roleRequired}
               </span>
-              <span className={cn('text-caption', step.approvedBy ? 'text-success' : 'text-muted-foreground')}>
+              <span
+                className={cn(
+                  'text-caption',
+                  step.approvedBy ? 'text-success' : 'text-muted-foreground',
+                )}
+              >
                 {step.approvedBy
                   ? t('stepApproved', { name: step.approvedBy.name })
                   : current
@@ -681,52 +758,72 @@ function ContextStrip({
   money: (value: string | null | undefined) => string;
 }) {
   const t = useTranslations('procurement.quotes.decision.context');
+  // On a phone only project and waiting show until asked, so the photos and totals come first.
+  const [more, setMore] = useState(false);
+  const extra = more ? '' : 'hidden sm:block';
   const tWaiting = useTranslations('procurement.quotes.waiting');
   const items = detail.lines.map((line) => line.description).join(', ');
   return (
-    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-body-sm sm:grid-cols-3 lg:grid-cols-6">
-      <div className="min-w-0">
-        <dt className="text-caption text-muted-foreground">{t('project')}</dt>
-        <dd className="truncate font-medium text-foreground">{detail.project?.name ?? '—'}</dd>
-      </div>
-      <div className="col-span-2 min-w-0 sm:col-span-1 lg:col-span-2">
-        <dt className="text-caption text-muted-foreground">{t('items')}</dt>
-        <dd className="font-medium text-foreground">
-          {t('itemsSummary', { count: detail.lines.length })}
-          {items ? <span className="block truncate font-normal text-muted-foreground">{items}</span> : null}
-        </dd>
-      </div>
-      {detail.moneyVisible ? (
+    <>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-body-sm sm:grid-cols-3 lg:grid-cols-6">
         <div className="min-w-0">
-          <dt className="text-caption text-muted-foreground">{t('estimate')}</dt>
-          <dd className="font-medium tabular-nums text-foreground">
-            {detail.estimateAmount ? money(detail.estimateAmount) : t('notEstimated')}
+          <dt className="text-caption text-muted-foreground">{t('project')}</dt>
+          <dd className="truncate font-medium text-foreground">{detail.project?.name ?? '—'}</dd>
+        </div>
+        <div className={cn('col-span-2 min-w-0 sm:col-span-1 lg:col-span-2', extra)}>
+          <dt className="text-caption text-muted-foreground">{t('items')}</dt>
+          <dd className="font-medium text-foreground">
+            {t('itemsSummary', { count: detail.lines.length })}
+            {items ? (
+              <span className="block truncate font-normal text-muted-foreground">{items}</span>
+            ) : null}
           </dd>
         </div>
-      ) : null}
-      {detail.moneyVisible && detail.boqRemainingAmount ? (
-        <div className="min-w-0">
-          <dt className="text-caption text-muted-foreground">{t('boqRemaining')}</dt>
-          <dd className="font-medium tabular-nums text-foreground">{money(detail.boqRemainingAmount)}</dd>
+        {detail.moneyVisible ? (
+          <div className={cn('min-w-0', extra)}>
+            <dt className="text-caption text-muted-foreground">{t('estimate')}</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {detail.estimateAmount ? money(detail.estimateAmount) : t('notEstimated')}
+            </dd>
+          </div>
+        ) : null}
+        {detail.moneyVisible && detail.boqRemainingAmount ? (
+          <div className={cn('min-w-0', extra)}>
+            <dt className="text-caption text-muted-foreground">{t('boqRemaining')}</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {money(detail.boqRemainingAmount)}
+            </dd>
+          </div>
+        ) : null}
+        <div className={cn('min-w-0', extra)}>
+          <dt className="text-caption text-muted-foreground">{t('neededBy')}</dt>
+          <dd className="font-medium text-foreground">
+            {formatDate(detail.materialRequest.requiredByDate ?? null) ?? t('noDate')}
+          </dd>
         </div>
-      ) : null}
-      <div className="min-w-0">
-        <dt className="text-caption text-muted-foreground">{t('neededBy')}</dt>
-        <dd className="font-medium text-foreground">
-          {formatDate(detail.materialRequest.requiredByDate ?? null) ?? t('noDate')}
-        </dd>
-      </div>
-      <div className="min-w-0">
-        <dt className="text-caption text-muted-foreground">{t('waiting')}</dt>
-        <dd>
-          {WAITING_STATUSES.has(detail.status) ? (
-            <WaitingTime minutes={detail.waitingWorkingMinutes} tone={detail.slaTone} />
-          ) : (
-            <span className="font-medium text-foreground">{tWaiting(`state.${detail.status}`)}</span>
-          )}
-        </dd>
-      </div>
-    </dl>
+        <div className="min-w-0">
+          <dt className="text-caption text-muted-foreground">{t('waiting')}</dt>
+          <dd>
+            {WAITING_STATUSES.has(detail.status) ? (
+              <WaitingTime minutes={detail.waitingWorkingMinutes} tone={detail.slaTone} />
+            ) : (
+              <span className="font-medium text-foreground">
+                {tWaiting(`state.${detail.status}`)}
+              </span>
+            )}
+          </dd>
+        </div>
+      </dl>
+      <Button
+        type="button"
+        variant="link"
+        className="mt-1 h-auto min-h-11 px-0 sm:hidden"
+        aria-expanded={more}
+        onClick={() => setMore((v) => !v)}
+      >
+        {more ? t('less') : t('more')}
+      </Button>
+    </>
   );
 }
 
@@ -748,10 +845,13 @@ function QuotePhotos({ quote, onOpen }: { quote: Quote; onOpen: (page: number) =
         <QuotePhotoImage
           fileId={photo.fileId}
           alt={tCapture('photoAlt', { store: quote.store.name, page: page + 1 })}
-          className="aspect-[3/4] w-full"
+          className="aspect-[4/5] max-h-[55dvh] w-full lg:aspect-[3/4] lg:max-h-none"
           fit="contain"
         />
-        <span className="absolute end-2 top-2 rounded-full bg-black/60 p-2 text-white" aria-hidden="true">
+        <span
+          className="absolute end-2 top-2 rounded-full bg-black/60 p-2 text-white"
+          aria-hidden="true"
+        >
           <Expand className="size-4" />
         </span>
       </button>
@@ -785,13 +885,18 @@ function PhotoMeta({ quote }: { quote: Quote }) {
   if (!first) return null;
   const reused = [...new Set(quote.photos.flatMap((p) => p.reusedOn ?? []))];
   const time = first.capturedAt
-    ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(
-        new Date(first.capturedAt),
-      )
+    ? new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: 'numeric',
+        month: 'short',
+      }).format(new Date(first.capturedAt))
     : '—';
   return (
     <div className="mt-1 space-y-1">
-      <p className="text-caption text-muted-foreground">{t('capturedAt', { source: tSource(first.source), time })}</p>
+      <p className="text-caption text-muted-foreground">
+        {t('capturedAt', { source: tSource(first.source), time })}
+      </p>
       {reused.length > 0 ? (
         <p className="flex items-start gap-1 text-caption font-medium text-warning">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
@@ -888,7 +993,12 @@ function RejectDialog({
             required={reason === 'OTHER'}
             error={tried && noteMissing ? t('askNoteRequired') : undefined}
           >
-            <Textarea id="reject-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            <Textarea
+              id="reject-note"
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
           </FormField>
         ) : null}
         {tried && !reason ? (
@@ -947,7 +1057,9 @@ function AskAnotherDialog({
       <FormDialogBody className="space-y-4">
         {error ? <Alert variant="error" messages={[error]} /> : null}
         <div>
-          <p className="mb-2 text-caption font-semibold text-muted-foreground">{t('askSuggestions')}</p>
+          <p className="mb-2 text-caption font-semibold text-muted-foreground">
+            {t('askSuggestions')}
+          </p>
           <div className="flex flex-wrap gap-2">
             {suggestions.map((key) => (
               <Button
@@ -968,7 +1080,12 @@ function AskAnotherDialog({
           required
           error={tried && !note.trim() ? t('askNoteRequired') : undefined}
         >
-          <Textarea id="ask-another-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea
+            id="ask-another-note"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
         </FormField>
       </FormDialogBody>
       <FormDialogFooter>

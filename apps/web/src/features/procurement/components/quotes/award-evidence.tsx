@@ -80,7 +80,7 @@ export function AwardEvidence({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-11"
+                    className="h-11 min-h-11 w-11 min-w-11"
                     aria-label={`${t('open')}: ${photo.file?.originalName ?? ''}`.trim()}
                     onClick={() => void open(photo.platformFileId, false)}
                   >
@@ -90,7 +90,7 @@ export function AwardEvidence({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-11"
+                    className="h-11 min-h-11 w-11 min-w-11"
                     aria-label={`${t('download')}: ${photo.file?.originalName ?? ''}`.trim()}
                     onClick={() => void open(photo.platformFileId, true)}
                   >

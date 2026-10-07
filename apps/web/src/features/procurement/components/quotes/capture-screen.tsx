@@ -16,7 +16,19 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, ChoiceCards, Notice, Progress, Skeleton, cn } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  ChoiceCards,
+  FormDialog,
+  FormDialogBody,
+  FormDialogClose,
+  FormDialogFooter,
+  Notice,
+  Progress,
+  Skeleton,
+  cn,
+} from '@erp/ui';
 import { Camera, ChevronLeft, CircleCheck, RotateCw, Trash2 } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -112,6 +124,7 @@ export function QuoteCaptureScreen({ id }: { id: string }) {
 function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
   const t = useTranslations('procurement.quotes.capture');
   const tq = useTranslations('procurement.quotes');
+  const tCommon = useTranslations('common');
   const tReason = useTranslations('procurement.quotes.exceptionReason');
   const refusal = useRefusalText();
   const { can } = usePermissions();
@@ -137,6 +150,7 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
   const [withdrawing, setWithdrawing] = useState<Quote | null>(null);
   const [reopening, setReopening] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [askingReason, setAskingReason] = useState(false);
   const [preparing, setPreparing] = useState(0);
 
   const send = useSendQuotationRequest(detail.id);
@@ -165,7 +179,8 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
     savedDistinct: detail.distinctSupplierCount ?? count,
     savedCount: saved.length,
     target,
-    exceptionReason: reason || null,
+    // A short request is not blocked here: Send asks for the reason in a sheet.
+    exceptionReason: reason || (short ? 'ASK_ON_SEND' : null),
   });
   const preparingBlock = preparing > 0 ? { kind: 'uploading' as const, count: preparing } : null;
   const effectiveBlock = preparingBlock ?? block;
@@ -314,15 +329,11 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
             {picker.inputs}
           </div>
 
-          {/* ── Fewer stores than needed: a reason chip, no typing ───────── */}
+          {/* Fewer stores than needed: a quiet count here; the reason chips come with Send. */}
           {short && saved.length + newPending.length > 0 ? (
-            <ChoiceCards
-              label={t('short.title', { count })}
-              value={reason}
-              onChange={setReason}
-              columns={1}
-              options={EXCEPTION_REASONS.map((value) => ({ value, label: tReason(value) }))}
-            />
+            <p className="text-center text-body-sm text-muted-foreground" aria-live="polite">
+              {t('short.need', { required: target, count })}
+            </p>
           ) : null}
 
           {/* ── Send ─────────────────────────────────────────────────────── */}
@@ -336,7 +347,10 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
               loading={send.isPending}
               loadingText={t('sending')}
               aria-describedby="quote-send-hint"
-              onClick={() => send.mutate(short && reason ? reason : undefined)}
+              onClick={() => {
+                if (short && !reason) setAskingReason(true);
+                else send.mutate(short && reason ? reason : undefined);
+              }}
             >
               {t('send')}
             </Button>
@@ -383,6 +397,46 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
         }}
         onClose={() => setSheetFor(null)}
       />
+
+      {askingReason ? (
+        <FormDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setAskingReason(false);
+          }}
+          title={t('short.title', { count })}
+          subtitle={t('short.hint', { required: target })}
+          busy={send.isPending}
+          closeLabel={tCommon('close')}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!reason) return;
+            send.mutate(reason, { onSuccess: () => setAskingReason(false) });
+          }}
+        >
+          <FormDialogBody className="space-y-4">
+            {send.error ? <Alert variant="error" messages={[refusal(send.error) ?? '']} /> : null}
+            <ChoiceCards
+              label={t('short.title', { count })}
+              hideLabel
+              value={reason}
+              onChange={setReason}
+              columns={1}
+              options={EXCEPTION_REASONS.map((value) => ({ value, label: tReason(value) }))}
+            />
+          </FormDialogBody>
+          <FormDialogFooter>
+            <FormDialogClose asChild>
+              <Button type="button" variant="ghost" className="min-h-11">
+                {tCommon('cancel')}
+              </Button>
+            </FormDialogClose>
+            <Button type="submit" className="min-h-11" disabled={!reason} loading={send.isPending}>
+              {t('short.send')}
+            </Button>
+          </FormDialogFooter>
+        </FormDialog>
+      ) : null}
 
       {withdrawing ? (
         <ConfirmActionDialog

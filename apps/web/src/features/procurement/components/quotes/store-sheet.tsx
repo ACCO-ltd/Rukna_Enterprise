@@ -162,16 +162,16 @@ export function StoreSheet({
           </section>
         ) : null}
 
-        <section aria-labelledby="quote-store-suppliers">
-          <h3 id="quote-store-suppliers" className="mb-2 text-caption font-semibold text-muted-foreground">
-            {t('suppliers')}
-          </h3>
-          {suppliers.isPending ? (
-            <p className="text-caption text-muted-foreground">{t('loadingSuppliers')}</p>
-          ) : (
+        {suppliers.isPending ? (
+          <p className="text-caption text-muted-foreground">{t('loadingSuppliers')}</p>
+        ) : supplierChoices.length > 0 ? (
+          <section aria-labelledby="quote-store-suppliers">
+            <h3 id="quote-store-suppliers" className="mb-2 text-caption font-semibold text-muted-foreground">
+              {t('suppliers')}
+            </h3>
             <div className="flex flex-wrap gap-2">{supplierChoices.map(chip)}</div>
-          )}
-        </section>
+          </section>
+        ) : null}
       </FormDialogBody>
       <FormDialogFooter>
         <FormDialogClose asChild>
