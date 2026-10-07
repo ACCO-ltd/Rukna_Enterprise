@@ -96,12 +96,24 @@ export class MaterialRequestRepository {
     });
   }
 
-  updateStatus(prisma: TenantPrisma, id: string, status: MaterialRequestStatus, extra?: { approvalInstanceId?: string }) {
-    return prisma.materialRequest.update({
-      where: { id },
-      data: { status, ...extra },
-      include: MR_INCLUDE,
+  /**
+   * Move a request from `from` to `to` only if it is still in `from` — a compare-and-set, so two
+   * people acting at once (a requester cancelling while finance approves) cannot overwrite each
+   * other. Null when the request changed since it was read.
+   */
+  async updateStatus(
+    prisma: TenantPrisma,
+    organizationId: string,
+    id: string,
+    from: MaterialRequestStatus,
+    to: MaterialRequestStatus,
+  ) {
+    const { count } = await prisma.materialRequest.updateMany({
+      where: { id, organizationId, status: from },
+      data: { status: to },
     });
+    if (count === 0) return null;
+    return prisma.materialRequest.findFirst({ where: { id, organizationId }, include: MR_INCLUDE });
   }
 
   nextMrNumber(prisma: TenantPrisma, organizationId: string): Promise<number> {

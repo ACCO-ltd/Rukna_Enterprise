@@ -59,6 +59,13 @@ describe('MrDetail — approve', () => {
     await waitFor(() => expect(approveMaterialRequest).toHaveBeenCalledWith('mr-1'));
   });
 
+  it('leaves approval to the workflow when the request has an approval instance', async () => {
+    vi.mocked(getMaterialRequest).mockResolvedValue({ ...SUBMITTED, approvalInstanceId: 'wf-1' });
+    renderWithProviders(<MrDetail id="mr-1" />, { permissions: APPROVER });
+    expect(await screen.findByText('MR-2026-0048')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+  });
+
   it('does not offer Approve to the requester', async () => {
     vi.mocked(getMaterialRequest).mockResolvedValue({ ...SUBMITTED, requestedBy: 'test-user' });
     renderWithProviders(<MrDetail id="mr-1" />, { permissions: APPROVER });

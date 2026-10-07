@@ -13,8 +13,10 @@ const identity = (userId: string) =>
 
 function build(status: MaterialRequestStatus, requestedBy = 'alice') {
   const repo = {
-    findById: jest.fn().mockResolvedValue({ id: 'mr1', status, requestedBy, projectId: 'p1' }),
-    updateStatus: jest.fn().mockImplementation(async (_tx, id, to) => ({ id, status: to })),
+    findById: jest
+      .fn()
+      .mockResolvedValue({ id: 'mr1', mrNumber: 'MR-1', status, requestedBy, projectId: 'p1' }),
+    updateStatus: jest.fn().mockImplementation(async (_tx, _org, id, _from, to) => ({ id, status: to })),
   };
   const audit = { record: jest.fn() };
   const projectAccess = { assertMember: jest.fn() };
@@ -48,7 +50,7 @@ describe('MaterialRequestService.approve', () => {
     });
 
     expect(projectAccess.assertMember).toHaveBeenCalledWith(identity('bob'), 'p1');
-    expect(repo.updateStatus).toHaveBeenCalledWith(expect.anything(), 'mr1', 'APPROVED');
+    expect(repo.updateStatus).toHaveBeenCalledWith(expect.anything(), 'o1', 'mr1', 'SUBMITTED', 'APPROVED');
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -59,6 +61,14 @@ describe('MaterialRequestService.approve', () => {
         after: { status: 'APPROVED' },
       }),
     );
+  });
+
+  it('refuses with 409 and writes no audit when the request changed meanwhile (cancelled first)', async () => {
+    const { svc, repo, audit } = build('SUBMITTED');
+    repo.updateStatus.mockResolvedValueOnce(null);
+
+    await expect(svc.approve(identity('bob'), 'mr1')).rejects.toBeInstanceOf(ConflictException);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('refuses the requester approving their own request', async () => {

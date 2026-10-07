@@ -93,8 +93,10 @@ export function MrDetail({ id }: { id: string }) {
   const mutation = pending === 'submit' ? submit : pending === 'approve' ? approve : cancel;
   // Approve: a submitted request, for someone who holds the permission — never the requester,
   // whom the server refuses (the requester-cannot-approve rule).
+  // Only for a request outside a workflow: one with an approval instance is approved on its steps.
   const canApprove =
     request.status === 'SUBMITTED' &&
+    request.approvalInstanceId === null &&
     can(PROCUREMENT_PERMISSIONS.approveRequest) &&
     request.requestedBy !== session.user?.id;
 
@@ -313,6 +315,10 @@ function WorkflowChain({
   const definition = useWorkflowDefinition(WorkflowTransactionType.MATERIAL_REQUEST);
 
   const isLoading = definition.isPending || (instanceId !== null && stepQuery.isPending);
+
+  // No workflow instance: this request is not being approved through the configured chain (it is
+  // approved directly), so drawing the chain would claim steps that never ran.
+  if (instanceId === null) return null;
 
   if (isLoading) {
     return (

@@ -239,7 +239,13 @@ export class MaterialRequestService {
     const fromStatus = mr.status;
 
     return prisma.$transaction(async (tx) => {
-      const updated = await this.repo.updateStatus(tx, id, to);
+      const updated = await this.repo.updateStatus(tx, identity.activeOrganizationId, id, fromStatus, to);
+      // Someone else moved the request since it was read (e.g. cancelled while being approved).
+      if (!updated) {
+        throw new ConflictException(
+          `Material request ${mr.mrNumber} has changed since you opened it — reload and try again.`,
+        );
+      }
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
