@@ -298,6 +298,21 @@ describe('QuoteDecisionScreen', () => {
     expect(screen.getByRole('button', { name: 'Choose Hodan' })).toBeInTheDocument();
   });
 
+  it('says photos are hidden for the role, with the count, instead of image boxes', async () => {
+    render({
+      photosVisible: false,
+      quotes: [
+        quoteFixture({ id: 'k1', name: 'Hodan', photos: [], photoCount: 2 }),
+        quoteFixture({ id: 'k2', name: 'Xamar', photos: [], photoCount: 1 }),
+      ],
+    });
+    expect(await screen.findAllByText('Quote photos are hidden for your role')).toHaveLength(2);
+    expect(screen.getByText('2 photos')).toBeInTheDocument();
+    expect(screen.getByText('1 photo')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open photo full screen/ })).not.toBeInTheDocument();
+  });
+
   it('asks for another quote with a quick note', async () => {
     const user = userEvent.setup();
     api.ask.mockResolvedValue(detailFixture({ status: 'RETURNED' }));

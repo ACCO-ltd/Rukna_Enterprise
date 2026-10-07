@@ -36,6 +36,7 @@ import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/
 import { formatMoney } from '@/lib/format';
 
 import { useRevisePurchaseOrder } from '../hooks/use-procurement';
+import { QuotationInProgressNotice, quotationInProgress } from './quotes/quotation-in-progress';
 import { moneyToApi, quantityToApi } from '../quantities';
 import type {
   CreatePoLinePayload,
@@ -174,8 +175,13 @@ export function PoAmendDialog({
     reason !== '' ||
     lines !== initial.lines;
 
-  const serverError =
-    revise.error instanceof ApiError ? revise.error.message : revise.error ? tc('loadFailed') : null;
+  const serverError = quotationInProgress(revise.error)
+    ? null
+    : revise.error instanceof ApiError
+      ? revise.error.message
+      : revise.error
+        ? tc('loadFailed')
+        : null;
 
   return (
     <FormDialog
@@ -243,6 +249,7 @@ export function PoAmendDialog({
         </FormDialogSection>
 
         {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
+        <QuotationInProgressNotice error={revise.error} />
       </FormDialogBody>
 
       <FormDialogFooter

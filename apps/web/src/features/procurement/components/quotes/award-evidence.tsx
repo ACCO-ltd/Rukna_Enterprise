@@ -33,8 +33,12 @@ export function AwardEvidence({
   const fromAward = isAwardReference(revision?.quotationRef);
   const attachments = usePoRevisionAttachments(fromAward ? order.id : '');
   if (!fromAward || !revision) return null;
-  const photos = (attachments.data ?? []).filter(
-    (a) => a.purpose === 'QUOTATION' && a.purchaseOrderRevisionId === revision.id,
+  // The server omits quote-photo evidence for a caller who may not read it (and a failed read is
+  // treated the same): the approval line still shows, the photo block simply does not.
+  const rows = attachments.isError ? [] : (attachments.data ?? []);
+  const photos = rows.filter(
+    (a) =>
+      (a.quotationEvidence ?? a.purpose === 'QUOTATION') && a.purchaseOrderRevisionId === revision.id,
   );
 
   const open = async (fileId: string, download: boolean) => {

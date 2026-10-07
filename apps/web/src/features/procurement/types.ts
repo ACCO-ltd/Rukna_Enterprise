@@ -1035,6 +1035,8 @@ export interface PoRevisionAttachment {
   purchaseOrderRevisionId: string;
   platformFileId: string;
   purpose: 'QUOTATION' | 'OTHER';
+  /** The file is a quote photo raised from a quotation award (ADR-044); omitted for callers who may not read it. */
+  quotationEvidence?: boolean;
   supplierRef: string | null;
   attachedBy: string;
   createdAt: ApiDate;

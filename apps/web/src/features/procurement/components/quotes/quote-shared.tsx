@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Skeleton, StatusPill, StatusText, cn } from '@erp/ui';
-import { ImageOff } from 'lucide-react';
+import { EyeOff, ImageOff } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { statusTone } from '@/lib/status-registry';
@@ -144,6 +144,36 @@ export function QuotePhotoImage({
         }
       }}
     />
+  );
+}
+
+/**
+ * In place of a quote photo when the server withholds photos for this role (`photosVisible: false`):
+ * says so, with how many pages there are — never an empty or broken image box.
+ */
+export function PhotosHidden({
+  count,
+  className,
+  compact = false,
+}: {
+  count: number;
+  className?: string;
+  /** Thumbnail size: the icon and count only; the sentence stays for screen readers. */
+  compact?: boolean;
+}) {
+  const t = useTranslations('procurement.quotes.photosHidden');
+  return (
+    <div
+      role="note"
+      className={cn(
+        'flex flex-col items-center justify-center gap-1 rounded-control border border-dashed border-border-strong bg-surface-subtle p-2 text-center text-caption text-muted-foreground',
+        className,
+      )}
+    >
+      <EyeOff className="size-5" aria-hidden="true" />
+      <span className={compact ? 'sr-only' : 'font-medium text-foreground'}>{t('title')}</span>
+      <span>{t('count', { count })}</span>
+    </div>
   );
 }
 

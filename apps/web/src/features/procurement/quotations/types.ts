@@ -84,6 +84,8 @@ export interface Quote {
   id: string;
   store: { supplierId: string | null; name: string; registered: boolean };
   status: QuoteStatus;
+  /** Pages on the quote — present even when `photos` is withheld (`photosVisible: false`). */
+  photoCount?: number;
   rejectReason?: QuoteRejectReason | null;
   rejectNote?: string | null;
   photos: QuotePhoto[];
@@ -230,6 +232,11 @@ export interface QuotationRequestDetail {
   approval: QuotationApprovalSummary | null;
   allowedActions: QuotationAllowedAction[];
   moneyVisible: boolean;
+  /**
+   * Quote photos show supplier prices: readable only with view:commitment-ledger (and view:procurement).
+   * False → every quote's `photos` is [] and only `photoCount` remains. Independent of moneyVisible.
+   */
+  photosVisible?: boolean;
 }
 
 /** The MR detail's quotation summary (Q8). Absent on servers that predate it. */

@@ -217,6 +217,35 @@ describe('QuoteCaptureScreen — collecting', () => {
   });
 });
 
+describe('QuoteCaptureScreen — photos hidden for the role', () => {
+  it('shows the page count and the reason, never a broken image', async () => {
+    render(
+      detailFixture({
+        photosVisible: false,
+        quotes: [quoteFixture({ id: 'k1', name: 'Hodan', photos: [], photoCount: 2 })],
+        distinctSupplierCount: 1,
+      }),
+    );
+    expect(await screen.findByText('2 pages · Saved')).toBeInTheDocument();
+    expect(screen.getByText('Quote photos are hidden for your role')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('does the same on the waiting view', async () => {
+    render(
+      detailFixture({
+        status: 'AWAITING_DECISION',
+        sentAt: '2026-10-07T07:42:00.000Z',
+        waitingWorkingMinutes: 5,
+        photosVisible: false,
+        quotes: [quoteFixture({ id: 'k1', name: 'Hodan', photos: [], photoCount: 3 })],
+      }),
+    );
+    expect(await screen.findByText('Quote photos are hidden for your role')).toBeInTheDocument();
+    expect(screen.getByText('3 photos')).toBeInTheDocument();
+  });
+});
+
 describe('QuoteCaptureScreen — after send', () => {
   it('freezes the photos, shows the waiting time and offers reopen behind a confirm', async () => {
     const user = userEvent.setup();

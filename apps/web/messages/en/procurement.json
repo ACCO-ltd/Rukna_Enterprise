@@ -2212,6 +2212,14 @@
         "open": "Open",
         "download": "Download"
       }
+    },
+    "photosHidden": {
+      "title": "Quote photos are hidden for your role",
+      "count": "{count, plural, =0 {No photos} one {# photo} other {# photos}}"
+    },
+    "inProgress": {
+      "body": "This request is being quoted ({quotationNumber}). Order it from the quotation.",
+      "link": "Open {quotationNumber}"
     }
   }
 }

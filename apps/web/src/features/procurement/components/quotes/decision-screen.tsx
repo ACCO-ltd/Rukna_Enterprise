@@ -57,6 +57,7 @@ import {
   allTotalsEntered,
   findAction,
   lowestQuoteIds,
+  photoCountOf,
   selectionBarCode,
   totalMinor,
 } from '../../quotations/quote-rules';
@@ -68,7 +69,7 @@ import type {
 } from '../../quotations/types';
 import { ChooseDialog } from './choose-dialog';
 import { PhotoViewer } from './photo-viewer';
-import { QuotationStatusPill, QuotePhotoImage, WaitingTime, useRefusalText } from './quote-shared';
+import { PhotosHidden, QuotationStatusPill, QuotePhotoImage, WaitingTime, useRefusalText } from './quote-shared';
 
 /** The award's governed transition (ADR-044 §7). */
 const QUOTATION_AWARD = WorkflowTransactionType.QUOTATION_AWARD;
@@ -653,7 +654,8 @@ function QuotePhotos({ quote, onOpen }: { quote: Quote; onOpen: (page: number) =
   const tCapture = useTranslations('procurement.quotes.capture');
   const [page, setPage] = useState(0);
   const photo = quote.photos[page] ?? quote.photos[0];
-  if (!photo) return <div className="aspect-[3/4] w-full rounded-control bg-muted" />;
+  // Withheld for this role (photosVisible: false): say so, with the page count — no empty box.
+  if (!photo) return <PhotosHidden count={photoCountOf(quote)} className="aspect-[3/4] w-full" />;
   return (
     <div>
       <button

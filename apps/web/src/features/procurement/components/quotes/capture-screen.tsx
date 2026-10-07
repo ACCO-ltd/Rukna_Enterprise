@@ -41,6 +41,7 @@ import {
   actionEnabled,
   activeQuotes,
   collectTarget,
+  photoCountOf,
   sendBlock,
   storeKey,
 } from '../../quotations/quote-rules';
@@ -54,6 +55,7 @@ import { OrderCard } from './order-raise';
 import { usePhotoPicker } from './photo-picker';
 import {
   LocalPhoto,
+  PhotosHidden,
   QuotationStatusPill,
   QuotePhotoImage,
   StoreDots,
@@ -512,7 +514,9 @@ function SavedQuoteCard({
             alt={t('photoAlt', { store: quote.store.name, page: 1 })}
             className="size-20"
           />
-        ) : null}
+        ) : (
+          <PhotosHidden count={photoCountOf(quote)} compact className="size-20" />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold text-foreground">
@@ -523,7 +527,7 @@ function SavedQuoteCard({
         </p>
         <p className="mt-0.5 flex items-center gap-1 text-caption text-success">
           <CircleCheck className="size-3.5" aria-hidden="true" />
-          {t('pages', { count: quote.photos.length })} · {t('upload.saved')}
+          {t('pages', { count: photoCountOf(quote) })} · {t('upload.saved')}
         </p>
         {extraPages.map((item) => (
           <UploadState
@@ -684,7 +688,7 @@ function ReadOnlyQuotes({ quotes }: { quotes: Quote[] }) {
               className="aspect-[3/4] w-full"
             />
           ) : (
-            <div className="aspect-[3/4] w-full bg-muted" />
+            <PhotosHidden count={photoCountOf(quote)} className="aspect-[3/4] w-full rounded-none border-0" />
           )}
           <p className="truncate px-2 py-1.5 text-caption font-medium text-foreground">{quote.store.name}</p>
         </li>

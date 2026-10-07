@@ -67,6 +67,16 @@ export function storeKey(choice: { supplierId?: string | null; storeName?: strin
   return `name:${name}`;
 }
 
+/** Pages on a quote, whether or not the photos themselves were sent to this viewer. */
+export function photoCountOf(quote: Pick<Quote, 'photos' | 'photoCount'>): number {
+  return quote.photoCount ?? quote.photos.length;
+}
+
+/** Photos withheld for this viewer's role (`photosVisible: false`), as opposed to a quote with none. */
+export function photosHidden(detail: { photosVisible?: boolean }): boolean {
+  return detail.photosVisible === false;
+}
+
 export function activeQuotes(quotes: Quote[] | null | undefined): Quote[] {
   return (quotes ?? []).filter((quote) => quote.status === 'ACTIVE');
 }
