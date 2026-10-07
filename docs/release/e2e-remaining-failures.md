@@ -1,6 +1,7 @@
 # E2E suite — remaining failures (tracking)
 
 Status: IN PROGRESS — suite wired into CI (`.github/workflows/e2e.yml`), not yet fully green.
+Current: **18 failed / 49 passed** (was 39 failed / 28 passed on the first CI run). HEAD `a8ed3fb6`.
 Date: 2026-10-07
 Related: [Construction v1 release gate](construction-v1-release-gate.md) item B1.
 
@@ -37,13 +38,13 @@ Legend: 🔎 needs live DOM · ⚖️ needs a product decision · ✍️ test re
 - **`:128` certificate row full-height** and **`:134` controls on the certificate detail** — offenders are **breadcrumb/trail links at 16–20px** ("Projects", project name, client name, "Open application"). The `fixtures.ts` exemption (`nav[aria-label="Breadcrumb"], thead`) does **not** match the actual trail markup. **Fix:** find the real breadcrumb/ModuleTrail container selector and exempt it (these are wayfinding, not thumb targets). 🔎
 
 ### admin-workspace-qa.spec.ts
-- **`:106` leaves one Administration row in the sidebar** — `aside a[href^="/admin"], nav a[href^="/admin"]` returns `[]` even at 1440. The docked sidebar's `/admin` link isn't matched by that locator. 🔎 Needs `global-sidebar.tsx` DOM inspection to fix the locator.
-- **`:143` holds together at 1440 (light/dark)** — now fails on `GET /workflows/definition/IPC → 404` collected by `watchForFailures`. Product call #3 (real bug vs seed gap). 🐛/⚖️
+- **`:147` holds together at 1440 (light/dark)** — fails on `GET /workflows/definition/IPC → 404` collected by `watchForFailures`. Product call #3 (real bug vs seed gap). 🐛/⚖️
+- (Fixed: the sidebar-row test and the tab-row/lit-tab tests — pinning a desktop viewport resolved them.)
 
 ### release-workflows.spec.ts (🔎 ✍️)
 - **`:6` creates a client** — `getByLabel('Phone', { exact: true })` times out; the contact phone is a custom `PhoneInput`. **Fix:** target its input id (likely `#client-contact-phone`) or the component's actual input; confirm structure in `client-form.tsx`.
 - **`:41` creates a payment application** — `getByLabel('Period from')` resolves to a **DatePicker `<button id="ipa-from">`**, not an input, so `.fill()` throws. **Fix:** interact with the DatePicker (click → pick a day), or add a typeable input affordance.
-- **`:56` issues/supersedes certificates** — combobox `option` 'Certified' now matched exactly (fixed in `9f18eb5c`); re-verify the rest of the wizard flow (supersession controls, waitForURL now permissive).
+- (Fixed: `:56` issues/supersedes certificates — the combobox `option` 'Certified' exact-match fix in `9f18eb5c` cleared it; confirmed passing.)
 
 ## Already fixed (for reference)
 
