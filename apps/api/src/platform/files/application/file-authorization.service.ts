@@ -73,6 +73,13 @@ export type FileOwner =
       quotationRequestId: string;
       /** The quotation's project — reachable only by its members or the bypass roles (review M2). */
       projectId: string | null;
+    }
+  // ADR-045 — a page of a store's receipt / invoice (it shows what was paid): the QUOTATION_PHOTO rule.
+  | {
+      kind: 'STORE_DOCUMENT_PHOTO';
+      photoId: string;
+      storeDocumentId: string;
+      projectId: string | null;
     };
 
 /**
@@ -187,6 +194,13 @@ export class FileAuthorizationService {
             quote: { select: { quotationRequestId: true, quotationRequest: { select: { projectId: true } } } },
           },
         },
+        storeDocumentPhoto: {
+          select: {
+            id: true,
+            storeDocumentId: true,
+            storeDocument: { select: { quotationRequest: { select: { projectId: true } } } },
+          },
+        },
       },
     });
     if (!file) throw new NotFoundException(`File ${fileId} not found`);
@@ -265,6 +279,16 @@ export class FileAuthorizationService {
               quoteId: file.quotePhoto.quoteId,
               quotationRequestId: file.quotePhoto.quote.quotationRequestId,
               projectId: file.quotePhoto.quote.quotationRequest?.projectId ?? null,
+            },
+          ]
+        : []),
+      ...(file.storeDocumentPhoto
+        ? [
+            {
+              kind: 'STORE_DOCUMENT_PHOTO' as const,
+              photoId: file.storeDocumentPhoto.id,
+              storeDocumentId: file.storeDocumentPhoto.storeDocumentId,
+              projectId: file.storeDocumentPhoto.storeDocument.quotationRequest?.projectId ?? null,
             },
           ]
         : []),
@@ -397,6 +421,7 @@ export class FileAuthorizationService {
       // ADR-044 §5 — photos are money: never view:procurement alone (a money-blind Project Manager
       // or Site Engineer holds that).
       case 'QUOTATION_PHOTO':
+      case 'STORE_DOCUMENT_PHOTO':
         return this.canReachQuotationPhoto(identity, owner.projectId);
     }
   }

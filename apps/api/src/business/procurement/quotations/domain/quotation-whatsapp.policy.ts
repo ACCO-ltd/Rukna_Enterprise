@@ -10,6 +10,9 @@ import { SLA_AMBER_MINUTES, SLA_RED_MINUTES, isWithinWorkingHours, waitingMinute
  *   QUOTE_ESCALATION  {{1}} QR no · {{2}} MR no · {{3}} project · {{4}} waiting        → /finance/quotes/{id}
  *   QUOTE_CHOSEN      {{1}} store · {{2}} MR no · {{3}} who pays                       → /procurement/quotes/{id}
  *   QUOTE_ANOTHER     {{1}} MR no · {{2}} finance's note                                → /procurement/quotes/{id}
+ *   QUOTE_PAY_NEEDED  {{1}} PO no · {{2}} store · {{3}} project · {{4}} who pays       → /finance/quotes/{id}
+ *   QUOTE_CASH_RELEASED {{1}} PO no · {{2}} store (the amount only behind login, Q2)   → /procurement/quotes/{id}
+ *   QUOTE_SUPPLIER_PAID {{1}} store · {{2}} PO no                                      → /procurement/quotes/{id}
  *
  * The button is a dynamic URL whose suffix is the request id. Never a price or a total.
  */
@@ -19,7 +22,18 @@ export type QuotationAlertPurpose =
   | 'QUOTE_REMINDER'
   | 'QUOTE_ESCALATION'
   | 'QUOTE_CHOSEN'
-  | 'QUOTE_ANOTHER';
+  | 'QUOTE_ANOTHER'
+  // ADR-045 §5 — paying from the award.
+  | 'QUOTE_PAY_NEEDED'
+  | 'QUOTE_CASH_RELEASED'
+  | 'QUOTE_SUPPLIER_PAID';
+
+/** ADR-045 — the payment alerts (their guard reads the payment documents, not the request round). */
+export const PAYMENT_ALERT_PURPOSES: ReadonlySet<QuotationAlertPurpose> = new Set([
+  'QUOTE_PAY_NEEDED',
+  'QUOTE_CASH_RELEASED',
+  'QUOTE_SUPPLIER_PAID',
+]);
 
 /** The `resourceType` of quotation alerts on OutboundMessage. */
 export const QUOTATION_MESSAGE_RESOURCE = 'quotation_request';
@@ -70,6 +84,8 @@ export interface QuotationAlertFacts {
   storeName?: string | null;
   paymentPath?: 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER' | null;
   note?: string | null;
+  /** ADR-045 — the purchase order number. */
+  poNumber?: string | null;
 }
 
 /** The template body parameters for a purpose, in order, each sanitised. */
@@ -86,12 +102,24 @@ export function alertBodyParams(purpose: QuotationAlertPurpose, f: QuotationAler
       return [p(f.storeName), p(f.mrNumber), p(paymentPathTextSo(f.paymentPath))];
     case 'QUOTE_ANOTHER':
       return [p(f.mrNumber), sanitiseTemplateParam(f.note, NOTE_MAX_LENGTH)];
+    // ADR-045 — never an amount (product owner Q2: the amount stays behind login).
+    case 'QUOTE_PAY_NEEDED':
+      return [p(f.poNumber), p(f.storeName), p(f.projectName), p(paymentPathTextSo(f.paymentPath))];
+    case 'QUOTE_CASH_RELEASED':
+      return [p(f.poNumber), p(f.storeName)];
+    case 'QUOTE_SUPPLIER_PAID':
+      return [p(f.storeName), p(f.poNumber)];
   }
 }
 
 /** Selector alerts open the finance decision screen; collector alerts the procurement screen. */
 export function isSelectorAlert(purpose: QuotationAlertPurpose): boolean {
-  return purpose === 'QUOTE_READY' || purpose === 'QUOTE_REMINDER' || purpose === 'QUOTE_ESCALATION';
+  return (
+    purpose === 'QUOTE_READY' ||
+    purpose === 'QUOTE_REMINDER' ||
+    purpose === 'QUOTE_ESCALATION' ||
+    purpose === 'QUOTE_PAY_NEEDED'
+  );
 }
 
 /**
@@ -172,6 +200,10 @@ export function alertStillWanted(
 ): string | null {
   if (!request) return 'Not sent: the quotation request no longer exists.';
   if (request.status === 'CANCELLED') return 'Not sent: the quotation request was cancelled.';
+  if (PAYMENT_ALERT_PURPOSES.has(purpose)) {
+    // ADR-045 — the payment documents decide (QuotationAlertGuard reads them); the award must stand.
+    return request.status === 'AWARDED' ? null : 'Not sent: the award no longer stands.';
+  }
   if (isSelectorAlert(purpose)) {
     if (request.status !== 'AWAITING_DECISION') return 'Not sent: finance already decided.';
     if (roundOfKey(key) !== decisionRound(request)) return 'Not sent: the quotes were sent again since.';

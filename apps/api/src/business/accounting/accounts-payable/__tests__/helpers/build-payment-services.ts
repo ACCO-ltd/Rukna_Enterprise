@@ -37,6 +37,10 @@ import { ProjectAccessService } from '../../../../../platform/project-access/pro
 import { BuyerAdvanceService } from '../../application/buyer-advance.service.js';
 import { BuyerAdvanceRepository } from '../../infrastructure/buyer-advance.repository.js';
 import { AwardPaymentRepository } from '../../infrastructure/award-payment.repository.js';
+import { QuotationPaymentNotifier } from '../../../../procurement/quotations/application/quotation-payment-notifier.service.js';
+import { NotificationWriter } from '../../../../../platform/notifications/application/notification-writer.service.js';
+import { StoreDocumentService } from '../../../../procurement/store-documents/application/store-document.service.js';
+import { StoreDocumentRepository } from '../../../../procurement/store-documents/infrastructure/store-document.repository.js';
 
 export function buildPaymentServices(prisma: PrismaClient, options: QuotationServiceOptions = {}) {
   const q = buildQuotationServices(prisma, options);
@@ -101,6 +105,9 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     poService,
   );
 
+  // ADR-045 §5 — the real notifier on THIS PO service (PAYMENT_NEEDED on covered confirm) + AP events.
+  const paymentNotifier = new QuotationPaymentNotifier(new NotificationWriter(), q.access, projectAccess, q.alerts, q.repo, poService);
+  paymentNotifier.onModuleInit();
   const awardRepo = new AwardPaymentRepository();
   const advances = new BuyerAdvanceService(
     tenancy,
@@ -113,10 +120,17 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     q.approvals,
     sod,
     audit,
+    paymentNotifier,
   );
+
+  const storeDocumentRepo = new StoreDocumentRepository();
+  const storeDocuments = new StoreDocumentService(tenancy, storeDocumentRepo, q.access, projectAccess, audit, paymentNotifier);
 
   return {
     ...q,
+    paymentNotifier,
+    storeDocuments,
+    storeDocumentRepo,
     awardRepo,
     advances,
     poService,

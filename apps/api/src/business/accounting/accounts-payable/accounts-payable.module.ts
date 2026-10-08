@@ -6,6 +6,7 @@ import { BillMatchingModule } from '../../procurement/bill-matching/bill-matchin
 import { WorkflowsModule } from '../../../platform/workflows/workflows.module.js';
 import { PurchaseOrdersModule } from '../../procurement/purchase-orders/purchase-orders.module.js';
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
+import { QuotationsModule } from '../../procurement/quotations/quotations.module.js';
 import { SupplierBillRepository } from './infrastructure/supplier-bill.repository.js';
 import { SupplierPaymentRepository } from './infrastructure/supplier-payment.repository.js';
 import { SupplierRepository } from './infrastructure/supplier.repository.js';
@@ -34,6 +35,8 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     WorkflowsModule,
     AuditLogsModule,
     PurchaseOrdersModule,
+    // ADR-045 — the award-payment events (notifications) and read model are provided by quotations.
+    QuotationsModule,
   ],
   controllers: [SupplierBillController, SupplierPaymentController, SupplierController, PostingProfileController, BuyerAdvanceController],
   providers: [

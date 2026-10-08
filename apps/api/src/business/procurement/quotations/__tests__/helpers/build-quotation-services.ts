@@ -41,6 +41,7 @@ import { OutboundMessageRepository } from '../../../../../platform/messaging/inf
 import { QuotationWhatsAppAlerts } from '../../application/quotation-whatsapp-alerts.service.js';
 import { QuotationSlaAlertJob } from '../../application/quotation-sla-alert.job.js';
 import { QuotationAlertGuard } from '../../application/quotation-alert-guard.service.js';
+import { QuotationPaymentNotifier } from '../../application/quotation-payment-notifier.service.js';
 
 export interface QuotationServiceOptions {
   /** Server environment seen by the WhatsApp alerts (e.g. QUOTATION_WHATSAPP_ENABLED). */
@@ -117,7 +118,10 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
     link,
   );
   const fileAuth = new FileAuthorizationService(tenancy, projectAccess);
-  new QuotationAlertGuard(communication, alerts, repo, notifier).onModuleInit();
+  // ADR-045 — payment notifications; registers PAYMENT_NEEDED on this PO service's covered confirm.
+  const paymentNotifier = new QuotationPaymentNotifier(new NotificationWriter(), access, projectAccess, alerts, repo, poService);
+  paymentNotifier.onModuleInit();
+  new QuotationAlertGuard(communication, alerts, repo, notifier, paymentNotifier).onModuleInit();
   const slaJob = new QuotationSlaAlertJob({} as never, tenancy, repo, notifier, alerts);
 
   return {
@@ -147,6 +151,7 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
     alerts,
     slaJob,
     whatsappClient,
+    paymentNotifier,
   };
 }
 

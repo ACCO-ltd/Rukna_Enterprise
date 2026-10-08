@@ -7,10 +7,12 @@ import { QuotationRequestRepository, type Db } from '../infrastructure/quotation
 import {
   QUOTATION_MESSAGE_RESOURCE,
   alertStillWanted,
+  roundOfKey,
   type QuotationAlertPurpose,
 } from '../domain/quotation-whatsapp.policy.js';
 import { QuotationNotifier } from './quotation-notifier.service.js';
 import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js';
+import { QuotationPaymentNotifier } from './quotation-payment-notifier.service.js';
 
 /**
  * ADR-044 phase 2, review M2 — the last check before the dispatcher sends a quotation alert
@@ -24,6 +26,11 @@ import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js'
  *   4. the recipient is still in the alert's audience: a selector (award holder who can reach the
  *      project and is not SoD-barred) for ready / reminder, a CFO / CEO with project access for the
  *      escalation, a collector of the request for chosen / another.
+ *
+ * ADR-045 payment alerts re-read the payment documents (round = PO.path / advance id / payment id):
+ * pay-needed only while the order is still unfunded on the same path (payers); cash-released only
+ * while the advance is still POSTED (its recipient); supplier-paid only while the payment is still
+ * POSTED (the collectors).
  */
 @Injectable()
 export class QuotationAlertGuard implements OnModuleInit {
@@ -32,11 +39,15 @@ export class QuotationAlertGuard implements OnModuleInit {
     private readonly alerts: QuotationWhatsAppAlerts,
     private readonly repo: QuotationRequestRepository,
     private readonly notifier: QuotationNotifier,
+    private readonly payments: QuotationPaymentNotifier,
   ) {}
 
   onModuleInit(): void {
     this.communication.registerDispatchGuard(QUOTATION_MESSAGE_RESOURCE, (db, message) => this.check(db, message));
   }
+
+  /** The key of the message being checked (the cash-released audience is in its round). */
+  private currentKey = '';
 
   async check(db: Db, message: OutboundMessage): Promise<DispatchDecision> {
     if (!this.alerts.switchedOn()) return 'Not sent: quotation WhatsApp alerts were switched off.';
@@ -45,6 +56,8 @@ export class QuotationAlertGuard implements OnModuleInit {
     const stale = alertStillWanted(purpose, message.idempotencyKey, request);
     if (stale) return stale;
     if (!request || !message.recipientUserId) return 'Not sent: the recipient is unknown.';
+    const paymentStale = await this.paymentStillWanted(db, purpose, message.idempotencyKey, request);
+    if (paymentStale) return paymentStale;
 
     const user = await db.user.findFirst({
       where: {
@@ -60,6 +73,7 @@ export class QuotationAlertGuard implements OnModuleInit {
       return 'Not sent: the recipient no longer has a WhatsApp number.';
     }
 
+    this.currentKey = message.idempotencyKey;
     const audience = await this.audience(db, purpose, request);
     if (!audience.includes(message.recipientUserId)) return 'Not sent: the recipient can no longer act on this request.';
     return user.whatsappPhone === message.recipient ? null : { recipient: user.whatsappPhone };
@@ -70,11 +84,52 @@ export class QuotationAlertGuard implements OnModuleInit {
     purpose: QuotationAlertPurpose,
     request: NonNullable<Awaited<ReturnType<QuotationRequestRepository['findById']>>>,
   ): Promise<string[]> {
+    if (purpose === 'QUOTE_PAY_NEEDED') return this.payments.payerIdsFor(db, request);
+    if (purpose === 'QUOTE_CASH_RELEASED') {
+      const advance = await db.buyerAdvance.findUnique({
+        where: { id: roundOfKey(this.currentKey) ?? '' },
+        select: { recipientUserId: true },
+      });
+      return advance ? [advance.recipientUserId] : [];
+    }
     if (purpose === 'QUOTE_ESCALATION') return this.notifier.escalationIdsFor(db, request);
     if (purpose === 'QUOTE_READY' || purpose === 'QUOTE_REMINDER') {
       const mr = await this.repo.findMaterialRequest(db, request.organizationId, request.materialRequestId);
       return mr ? this.notifier.selectorIdsFor(db, request, mr.requestedBy) : [];
     }
     return this.notifier.collectorIdsFor(request);
+  }
+
+  /** ADR-045 — the payment documents behind a payment alert must still be as announced. */
+  private async paymentStillWanted(
+    db: Db,
+    purpose: QuotationAlertPurpose,
+    key: string,
+    request: NonNullable<Awaited<ReturnType<QuotationRequestRepository['findById']>>>,
+  ): Promise<string | null> {
+    const round = roundOfKey(key) ?? '';
+    if (purpose === 'QUOTE_PAY_NEEDED') {
+      const [poId, path] = round.split('.');
+      if (request.purchaseOrderId !== poId || request.paymentPath !== path) {
+        return 'Not sent: the payment path or the order changed since.';
+      }
+      const [advances, payments] = await Promise.all([
+        db.buyerAdvance.count({ where: { purchaseOrderId: poId, postingStatus: 'POSTED' } }),
+        db.supplierPaymentPurchaseAllocation.count({ where: { purchaseOrderId: poId, supplierPayment: { postingStatus: 'POSTED' } } }),
+      ]);
+      const billPayments = await db.supplierPaymentAllocation.count({
+        where: { bill: { purchaseOrderId: poId }, payment: { postingStatus: 'POSTED' } },
+      });
+      return advances + payments + billPayments > 0 ? 'Not sent: the order is already being paid.' : null;
+    }
+    if (purpose === 'QUOTE_CASH_RELEASED') {
+      const advance = await db.buyerAdvance.findUnique({ where: { id: round }, select: { postingStatus: true } });
+      return advance?.postingStatus === 'POSTED' ? null : 'Not sent: the cash release was reversed.';
+    }
+    if (purpose === 'QUOTE_SUPPLIER_PAID') {
+      const payment = await db.supplierPayment.findUnique({ where: { id: round }, select: { postingStatus: true } });
+      return payment?.postingStatus === 'POSTED' ? null : 'Not sent: the payment was reversed.';
+    }
+    return null;
   }
 }
