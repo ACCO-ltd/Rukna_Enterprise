@@ -2263,6 +2263,257 @@
     "roundRequired": {
       "body": "Any quantity left needs a new quotation round.",
       "link": "Get quotes on the material request"
+    },
+    "payment": {
+      "title": "Payment",
+      "path": {
+        "BUYER_CASH": "Buyer pays cash",
+        "FINANCE_PAYS_SUPPLIER": "Finance pays supplier"
+      },
+      "state": {
+        "AWAITING_ORDER": "Waiting for the order",
+        "READY_TO_PAY": "Ready to pay",
+        "AWAITING_APPROVAL": "Waiting for approval",
+        "AWAITING_SIGNATURES": "Waiting for signatures",
+        "CASH_WITH_BUYER": "Cash with buyer",
+        "WAITING_FOR_GOODS": "Waiting for goods",
+        "RECEIPT_TO_RECORD": "Receipt to record",
+        "SETTLING": "Settling",
+        "SETTLED": "Settled"
+      },
+      "stateHint": {
+        "AWAITING_ORDER": "Payment starts once the order is raised and issued.",
+        "READY_TO_PAY": "Nothing has been paid yet.",
+        "AWAITING_APPROVAL": "The payment is waiting for an approver.",
+        "AWAITING_SIGNATURES": "The bank payment needs its signatories before it goes out.",
+        "CASH_WITH_BUYER": "The buyer has the cash and is buying.",
+        "WAITING_FOR_GOODS": "Paid. Waiting for the site to receive the goods.",
+        "RECEIPT_TO_RECORD": "The store's receipt is in and the goods are received.",
+        "SETTLING": "Recorded. Finish with change returned or a top-up.",
+        "SETTLED": "Everything is paid and accounted for."
+      },
+      "facts": {
+        "ordered": "Ordered",
+        "released": "Released",
+        "paid": "Paid",
+        "remaining": "Still to pay",
+        "withBuyer": "With {name}",
+        "withBuyerNoName": "With the buyer",
+        "receipt": "Receipt",
+        "goods": "Goods",
+        "order": "Order"
+      },
+      "receiving": {
+        "NOT_RECEIVED": "Not received yet",
+        "PARTIALLY_RECEIVED": "Partly received",
+        "RECEIVED": "Received"
+      },
+      "receiptLine": {
+        "none": "Not sent yet",
+        "SUBMITTED": "Sent by {name} {when}",
+        "RECORDED": "Recorded",
+        "REJECTED": "Sent back"
+      },
+      "moneyHidden": "Amounts are hidden for your role.",
+      "noOrder": "The order has not been raised yet. Payment starts once the order is issued.",
+      "actions": {
+        "RELEASE_CASH": "Release cash",
+        "releaseTo": "Release cash to {name}",
+        "PAY_SUPPLIER": "Pay supplier",
+        "payTo": "Pay {name}",
+        "RECORD_RECEIPT": "Record receipt",
+        "FINISH_PAYMENT": "Finish payment",
+        "TOP_UP": "Top up",
+        "RECORD_RETURN": "Change returned",
+        "CHANGE_PATH": "Change how it's paid",
+        "reverse": "Reverse",
+        "complete": "Complete the payment",
+        "completeRelease": "Release now",
+        "viewApproval": "View approval",
+        "openPayment": "Open payment {number}"
+      },
+      "changePathHint": {
+        "BUYER_CASH": "Store won't take cash?",
+        "FINANCE_PAYS_SUPPLIER": "Store only takes cash?"
+      },
+      "approval": {
+        "gatedTitle": "Sent for approval",
+        "gatedBody": "We'll release it when it is approved. Then tap Release now.",
+        "gatedBodyPay": "We'll pay when it is approved. Then tap Complete the payment.",
+        "waitingFor": "Waiting for {role}.",
+        "approvedTitle": "Approved",
+        "approvedBody": "Every approver has signed off. Finish it now.",
+        "noBody": "Open the prefilled dialog again to finish — the same amount and account are kept."
+      },
+      "signatures": {
+        "title": "Waiting for bank signatures",
+        "body": "This account needs two signatories. They release the payment from the payment record; then tap Finish payment."
+      },
+      "documents": {
+        "title": "Store receipts",
+        "kind": {
+          "RECEIPT": "Receipt",
+          "INVOICE": "Invoice"
+        },
+        "status": {
+          "SUBMITTED": "Waiting for finance",
+          "RECORDED": "Recorded",
+          "REJECTED": "Sent back"
+        },
+        "record": "Record",
+        "reject": "Send back",
+        "pages": "{count, plural, one {# page} other {# pages}}",
+        "rejectTitle": "Send back {number}?",
+        "rejectBody": "The buyer is told why and can photograph it again.",
+        "rejectReasonLabel": "Why",
+        "rejectNoteLabel": "Note for the buyer",
+        "rejectConfirm": "Send back",
+        "rejectReason": {
+          "ILLEGIBLE": "Can't read it",
+          "WRONG_PO": "Wrong order",
+          "DUPLICATE": "Already sent",
+          "OTHER": "Something else"
+        }
+      },
+      "history": {
+        "title": "Cash and payments",
+        "advance": "Cash to {name}",
+        "advanceMeta": "{date} · {outstanding} still out",
+        "advanceSettled": "{date} · settled",
+        "legacy": "Recorded before GL posting",
+        "payment": "Payment {number}",
+        "shape": {
+          "PREPAY": "Paid before goods",
+          "PAY_BILL": "Paid the invoice"
+        }
+      },
+      "release": {
+        "title": "Release cash",
+        "topUpTitle": "Top up cash",
+        "subtitle": "{po} · {store}",
+        "to": "To",
+        "requestCreator": "{name} (buyer)",
+        "amount": "Amount",
+        "amountHint": "At most {cap} — what the order still needs.",
+        "topUpHint": "At most {cap} — the receipt is above the cash released; this is the difference, never more than the order.",
+        "from": "From",
+        "fromHint": "Only cash accounts without signatories can hand out buyer cash.",
+        "method": "Method",
+        "date": "Date",
+        "approval": "Approval: {band}",
+        "approvalSteps": "{steps}",
+        "noApproval": "No approval needed — you release it.",
+        "submit": "Release {amount}",
+        "submitNoAmount": "Release cash",
+        "amountEmpty": "Enter the amount.",
+        "amountZero": "Enter an amount above 0.",
+        "amountOver": "That is more than {cap}.",
+        "loadFailed": "Could not load the payment details. Try again.",
+        "noAccounts": "No cash account can hand out buyer cash yet.",
+        "noRecipients": "Nobody on this request can receive cash."
+      },
+      "method": {
+        "CASH": "Cash",
+        "MOBILE_MONEY": "EVC / mobile money",
+        "BANK": "Bank"
+      },
+      "pay": {
+        "title": "Pay {name}",
+        "what": "What to pay",
+        "payBill": "Pay the invoice {number}",
+        "payBillAmount": "Pay the invoice {number} · {amount}",
+        "prepay": "Pay now, before goods",
+        "prepayHint": "The store gets the money first; the invoice is recorded when the goods arrive.",
+        "amount": "Amount",
+        "amountHint": "At most {cap}.",
+        "from": "From",
+        "dualControl": "{name} — needs 2 signatures",
+        "method": "Method",
+        "date": "Date",
+        "signaturesNote": "This account needs two bank signatures before the money goes out.",
+        "submit": "Pay {amount}",
+        "submitNoAmount": "Pay",
+        "maintainer": "You registered this store, so another finance user must pay it.",
+        "maintainerNamed": "{name} registered this store, so someone else in finance must pay it."
+      },
+      "changePath": {
+        "title": "Change how it's paid?",
+        "toSupplier": "Finance pays {store} directly instead of the buyer paying cash. Possible only while nothing has been paid.",
+        "toCash": "The buyer pays {store} in cash instead of finance paying the store. Possible only while nothing has been paid.",
+        "reason": "Why",
+        "confirmToSupplier": "Finance pays supplier",
+        "confirmToCash": "Buyer pays cash"
+      },
+      "blockers": {
+        "title": "Can't pay yet",
+        "setUpCash": "Add a cash box or EVC float",
+        "setUpProfile": "Set up staff advances",
+        "setUpPeriods": "Open the period"
+      },
+      "refusal": {
+        "PAYMENT_PO_NOT_OPEN": "The order is not issued yet, or it is closed. Payment starts once the order is issued.",
+        "PAYMENT_PATH_MISMATCH": "This request is paid the other way now. It has been refreshed.",
+        "FUNDING_EXCEEDS_ORDER": "That would pay more than the order total. Lower the amount.",
+        "FULLY_FUNDED": "The order is already fully paid.",
+        "ADVANCE_RECIPIENT_CANNOT_RELEASE": "You can't release cash to yourself. Another finance user must release it.",
+        "ADVANCE_RECIPIENT_INVALID": "This person can't receive cash for this request. Pick one of the request's buyers.",
+        "ACCOUNT_REQUIRES_DUAL_CONTROL": "This account needs two signatories, so it can't hand out buyer cash. Choose the cash box or the EVC float.",
+        "ACCOUNT_NOT_USABLE": "This account can't make payments. Choose another.",
+        "CURRENCY_MISMATCH": "This account is in a different currency from the order.",
+        "POSTING_ACCOUNT_NOT_CONFIGURED:STAFF_ADVANCE": "Staff advances are not set up in accounting yet, so cash can't be released. Set up the Staff advances posting profile first.",
+        "STAFF_ADVANCE_NOT_CONFIGURED": "Staff advances are not set up in accounting yet, so cash can't be released. Set up the Staff advances posting profile first.",
+        "NO_ELIGIBLE_CASH_ACCOUNT": "No account can hand out buyer cash yet. Buyer cash comes only from a cash box or an EVC float that has no signatories.",
+        "NO_CASH_ACCOUNT": "No account can hand out buyer cash yet. Buyer cash comes only from a cash box or an EVC float that has no signatories.",
+        "PERIOD_CLOSED": "That date is in a closed accounting period. Pick a date in an open period.",
+        "PERIOD_LOCKED": "That date is in a locked accounting period. Pick a date in an open period.",
+        "GOODS_NOT_RECEIVED": "Waiting for the site to receive the goods.",
+        "RETURN_EXCEEDS_OUTSTANDING": "That is more than the buyer still holds.",
+        "APPLICATION_EXCEEDS_OUTSTANDING": "That is more than is still owed or still held.",
+        "APPLICATION_MISMATCH": "That bill belongs to another order, supplier or currency.",
+        "STORE_DOCUMENT_PHOTO_DUPLICATE": "This photo is already on another receipt. A receipt can't be claimed twice.",
+        "VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT": "You registered this store, so another finance user must pay it.",
+        "BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT": "You approved this store's bill, so another finance user must approve the payment.",
+        "GOODS_RECEIVER_CANNOT_APPROVE_BILL": "You received these goods, so another finance user must record the receipt.",
+        "PAYMENT_PATH_LOCKED": "Money has already gone out for this request, so how it's paid can't change.",
+        "ADVANCE_HAS_SETTLEMENTS": "Part of this cash is already settled or returned, so it can't be reversed.",
+        "BANK_GL_MISMATCH": "The bank account and its ledger account don't match. Ask an accountant to check the bank account set-up.",
+        "NOTHING_TO_RECORD": "There is no receipt waiting to be recorded.",
+        "STORE_DOCUMENT_NOT_SUBMITTED": "This receipt was already recorded or sent back.",
+        "PAYMENT_ALREADY_FINISHED": "This payment is already finished."
+      },
+      "feedback": {
+        "released": "Cash released",
+        "paid": "Payment sent",
+        "changeRecorded": "Change recorded",
+        "reversed": "Cash release reversed",
+        "pathChanged": "Payment path changed",
+        "receiptRejected": "Receipt sent back"
+      }
+    },
+    "paymentsQueue": {
+      "title": "Payments needed",
+      "subtitle": "Orders from chosen quotes waiting for money, and store receipts waiting to be recorded. Longest wait first — a buyer may be standing at the store.",
+      "tabs": {
+        "pay": "To pay",
+        "settle": "To settle"
+      },
+      "columns": {
+        "state": "Payment",
+        "amount": "Still to pay"
+      },
+      "searchLabel": "Search payments",
+      "searchPlaceholder": "Search by store, MR or order",
+      "countLabel": "{count, plural, one {# request} other {# requests}}",
+      "noMatches": "Nothing matches your search.",
+      "empty": {
+        "pay": "Nothing to pay",
+        "settle": "Nothing to settle"
+      },
+      "emptyHint": {
+        "pay": "When an order from a chosen quote is issued, it shows here until it is paid.",
+        "settle": "When a buyer sends a store receipt, or cash is still with a buyer, it shows here."
+      },
+      "moneyHidden": "Amounts are hidden for your role."
     }
   }
 }
