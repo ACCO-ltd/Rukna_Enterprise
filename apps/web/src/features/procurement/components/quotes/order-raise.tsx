@@ -70,7 +70,8 @@ export function OrderCard({ detail }: { detail: QuotationRequestDetail }) {
         ) : null}
       </div>
       {liveOrder ? (
-        <Button asChild size="lg" className="w-full">
+        // Once paying from the award is under way, its card holds the one primary action.
+        <Button asChild size="lg" variant={detail.payment ? 'outline' : 'default'} className="w-full">
           <Link href={`/procurement/orders/${liveOrder.id}`}>
             {t('openOrder')} · {liveOrder.poNumber}
             <ArrowRight className="size-4" aria-hidden="true" />

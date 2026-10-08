@@ -192,7 +192,8 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
             value={
               <Link
                 href={`/procurement/orders/${payment.purchaseOrder.id}`}
-                className="font-medium text-brand-primary underline-offset-4 hover:underline"
+                // A 44 px hit area without stretching the row: the negative margin gives it back.
+                className="-my-3 inline-flex min-h-11 items-center font-medium text-brand-primary underline-offset-4 hover:underline"
               >
                 {payment.purchaseOrder.poNumber}
               </Link>
