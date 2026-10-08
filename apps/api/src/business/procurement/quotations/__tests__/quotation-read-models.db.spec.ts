@@ -239,6 +239,9 @@ describe('ADR-044 Q8 — quotation read models', () => {
       await svc.lists.list(env.as('selector'), { queue: 'all', limit });
       return queries;
     };
+    // Warm-up first: the first list call can pay one-off lookups (cached afterwards), which made
+    // the 1-row page count one more query than the 50-row page and failed CI intermittently.
+    await count(1);
     const small = await count(1);
     const large = await count(50);
     expect(large).toBe(small);
