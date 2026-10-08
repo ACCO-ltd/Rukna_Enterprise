@@ -363,4 +363,7 @@ export type GovernedEntity =
   | 'VariationOrder'
   // ADR-044 §7 — the award (AWAITING_DECISION → AWARDED), banded on the chosen quote's total with
   // the PO bands; the PO raised from it is covered and does not ask for a second approval.
-  | 'QuotationRequest';
+  | 'QuotationRequest'
+  // ADR-045 §2 — releasing a buyer (staff) cash advance (DRAFT → APPROVED), banded with the supplier
+  // payment bands (transaction type SUPPLIER_PAYMENT) and switched on/off together with them.
+  | 'BuyerAdvance';

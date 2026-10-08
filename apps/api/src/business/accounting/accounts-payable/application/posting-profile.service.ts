@@ -3,6 +3,7 @@ import type { PostingProfileVersion } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { STAFF_ADVANCE_PROFILE_CODE } from '../domain/staff-advance-profile.js';
 import {
   PostingProfileRepository,
   type PostingProfileWithVersions,
@@ -11,6 +12,9 @@ import {
 /** Account classes a posting profile may point at (bill expense lines, revenue). */
 export const PROFILE_TARGET_CLASSES: readonly string[] = ['INCOME', 'COST_OF_SALES', 'EXPENSE'];
 export const PROFILE_CODE_PATTERN = /^[A-Z0-9_]{1,50}$/;
+// ADR-045 — STAFF_ADVANCE is the one asset profile (buyer cash advances, 13100 Staff advances): it
+// may point only at an ASSET account, and no other profile may (bill lines debit their profile).
+export { STAFF_ADVANCE_PROFILE_CODE };
 
 export interface PostingProfileVersionView extends PostingProfileVersion {
   accountCode: string | null;
@@ -94,7 +98,7 @@ export class PostingProfileService {
     if (!name) throw new BadRequestException({ errorCode: 'POSTING_PROFILE_NAME_REQUIRED', message: 'Name is required' });
 
     if (await this.repo.findByCode(prisma, orgId, code)) throw this.codeTaken(code);
-    const account = await this.validTarget(orgId, input.accountCode);
+    const account = await this.validTarget(orgId, input.accountCode, code);
     const effectiveFrom = input.effectiveFrom ? toDateOnly(input.effectiveFrom) : todayUtc();
 
     let id: string;
@@ -124,7 +128,7 @@ export class PostingProfileService {
     const latest = latestVersion(profile);
     if (!latest) throw versionInvalid(`Posting profile ${profile.code} has no version to supersede`);
 
-    const account = await this.validTarget(orgId, input.accountCode);
+    const account = await this.validTarget(orgId, input.accountCode, profile.code);
     const effectiveFrom = toDateOnly(input.effectiveFrom);
     if (effectiveFrom.getTime() <= latest.effectiveFrom.getTime()) {
       throw versionInvalid(
@@ -211,12 +215,18 @@ export class PostingProfileService {
     return new ConflictException({ errorCode: 'POSTING_PROFILE_CODE_TAKEN', message: `Posting profile code ${code} is already used` });
   }
 
-  private async validTarget(orgId: string, accountCode: string) {
+  private async validTarget(orgId: string, accountCode: string, profileCode: string) {
     const prisma = this.tenancy.getClient();
     const account = await this.repo.findAccountByCode(prisma, orgId, accountCode);
     if (!account) throw accountInvalid(`Account ${accountCode} does not exist`);
     if (account.status !== 'ACTIVE') throw accountInvalid(`Account ${accountCode} is not active`);
     if (!account.isPostingAllowed) throw accountInvalid(`Account ${accountCode} does not accept postings (heading or control account)`);
+    if (profileCode === STAFF_ADVANCE_PROFILE_CODE) {
+      if (account.accountClass !== 'ASSET') {
+        throw accountInvalid(`Account ${accountCode} is ${account.accountClass}; ${STAFF_ADVANCE_PROFILE_CODE} must point at an asset account (Staff advances)`);
+      }
+      return account;
+    }
     if (!PROFILE_TARGET_CLASSES.includes(account.accountClass)) {
       throw accountInvalid(`Account ${accountCode} is ${account.accountClass}; a profile must point at an income, cost-of-sales or expense account`);
     }
@@ -260,7 +270,8 @@ export class PostingProfileService {
   }
 }
 
-function classFamily(accountClass: string): 'REVENUE' | 'COST' {
+function classFamily(accountClass: string): 'REVENUE' | 'COST' | 'ASSET' {
+  if (accountClass === 'ASSET') return 'ASSET';
   return accountClass === 'INCOME' ? 'REVENUE' : 'COST';
 }
 

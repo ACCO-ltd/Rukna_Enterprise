@@ -33,6 +33,13 @@ export const WHATSAPP_TEMPLATE_BODIES: Record<MessagePurpose, string> = {
   QUOTE_CHOSEN: 'Dukaanka {{1}} ayaa loo doortay {{2}}. Lacag bixinta: {{3}}. Fadlan samee dalabka iibka.',
   QUOTE_ANOTHER:
     'Maaliyaddu waxay u baahan tahay quotation kale oo loogu talagalay {{1}}. Qoraalka maaliyadda: {{2}}. Mahadsanid.',
+  // ADR-045 §5 — paying from the award. Never an amount (Phase 2 rule kept, product owner Q2).
+  QUOTE_PAY_NEEDED:
+    'Dalabka {{1}} ee dukaanka {{2}} (mashruuca {{3}}) waa la ansixiyay. Lacag bixinta: {{4}}. Fadlan bixi.',
+  QUOTE_CASH_RELEASED:
+    'Lacag caddaan ah ayaa laguu sii daayay dalabka {{1}} ee dukaanka {{2}}. Fur si aad u aragto qadarka, kadibna sawir rasiidka marka aad iibsato.',
+  QUOTE_SUPPLIER_PAID:
+    'Maaliyaddu waxay lacagta u bixisay dukaanka {{1}} dalabka {{2}}. Alaabta qaado oo sawir rasiidka/invoice-ka.',
 };
 
 /** The message text with {{1}}…{{n}} filled from `params` (positional, 1-based). */

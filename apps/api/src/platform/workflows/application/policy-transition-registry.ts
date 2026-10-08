@@ -4,7 +4,9 @@ import { WorkflowTransactionType } from '@erp/types';
 const approvedTransitions: Partial<Record<WorkflowTransactionType, readonly string[]>> = {
   MATERIAL_REQUEST: ['DRAFT:SUBMITTED'],
   PURCHASE_ORDER: ['DRAFT:SUBMITTED'],
-  SUPPLIER_PAYMENT: ['DRAFT:SUBMITTED'],
+  // ADR-045 — the service evaluates (and the bands are seeded on) DRAFT → APPROVED; DRAFT:SUBMITTED
+  // is kept so a policy authored against it stays readable. Buyer advances share these bands.
+  SUPPLIER_PAYMENT: ['DRAFT:APPROVED', 'DRAFT:SUBMITTED'],
   // ADR-029 §8 A-3 / CONST-BOQ-034 — commit-to-contract (`DRAFT:COMMITTED`) is the governed
   // successor of baseline; it reuses the BOQ_BASELINE transaction type (no new enum → no
   // migration). `DRAFT:BASELINED` is kept so any legacy in-flight approval stays routable.

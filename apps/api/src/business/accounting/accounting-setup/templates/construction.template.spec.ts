@@ -97,7 +97,9 @@ describe.each(CHOICES)('construction template (banks=$bankNames.length)', (choic
 
   it('one posting profile per posting INCOME / COST_OF_SALES / EXPENSE account; PROJECT_REVENUE → 40000', () => {
     const posting = accounts.filter((a) => !a.isHeading && ['INCOME', 'COST_OF_SALES', 'EXPENSE'].includes(a.accountClass));
-    expect(postingProfiles.map((p) => p.accountCode).sort()).toEqual(posting.map((a) => a.code).sort());
+    // ADR-045 — plus the one asset profile, STAFF_ADVANCE → 13100 Staff advances.
+    expect(postingProfiles.map((p) => p.accountCode).sort()).toEqual([...posting.map((a) => a.code), '13100'].sort());
+    expect(postingProfiles.find((p) => p.code === 'STAFF_ADVANCE')).toEqual({ code: 'STAFF_ADVANCE', name: 'Staff advances', accountCode: '13100' });
     expect(postingProfiles.find((p) => p.code === 'PROJECT_REVENUE')?.accountCode).toBe('40000');
     expect(postingProfiles.find((p) => p.accountCode === '51100')).toEqual({ code: 'COST_51100', name: 'Cement and concrete', accountCode: '51100' });
     expect(postingProfiles.find((p) => p.accountCode === '61100')?.code).toBe('EXP_61100');

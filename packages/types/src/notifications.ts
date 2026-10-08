@@ -14,7 +14,13 @@ export type NotificationKind =
   // ADR-044 §10 — event-driven quotation notifications (written in the command's transaction).
   | 'QUOTES_READY'
   | 'QUOTATION_AWARDED'
-  | 'ANOTHER_QUOTE_REQUESTED';
+  | 'ANOTHER_QUOTE_REQUESTED'
+  // ADR-045 §5 — paying from the award (same context shape, never an amount).
+  | 'PAYMENT_NEEDED'
+  | 'CASH_RELEASED'
+  | 'SUPPLIER_PAID'
+  | 'RECEIPT_TO_RECORD'
+  | 'RECEIPT_REJECTED';
 
 /**
  * ADR-044 §10 — `contextData` of the three quotation kinds. Interpolation values only, and never an
@@ -30,6 +36,16 @@ export interface QuotationNotificationContext {
   quoteCount: number;
   /** Finance's note on ANOTHER_QUOTE_REQUESTED. */
   note?: string;
+  /** ADR-045 — the purchase order number (PAYMENT_NEEDED, CASH_RELEASED, SUPPLIER_PAID). */
+  poNumber?: string;
+  /** ADR-045 — the store (supplier) name. */
+  storeName?: string;
+  /** ADR-045 — BUYER_CASH | FINANCE_PAYS_SUPPLIER (PAYMENT_NEEDED). */
+  paymentPath?: string;
+  /** ADR-045 — SD-00001 (RECEIPT_TO_RECORD, RECEIPT_REJECTED). */
+  storeDocumentNumber?: string;
+  /** ADR-045 — ILLEGIBLE | WRONG_PO | DUPLICATE | OTHER (RECEIPT_REJECTED). */
+  rejectReason?: string;
 }
 
 export type NotificationSeverity = 'INFO' | 'WARNING' | 'URGENT';
