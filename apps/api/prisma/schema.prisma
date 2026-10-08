@@ -3443,6 +3443,8 @@ model AdvanceReturn {
   note                     String?
   /// ADR-045 — the EVT-AP-009 journal (null for legacy returns).
   journalEntryId           String?             @map("journal_entry_id")
+  /// ADR-045 — client key (partial unique per org): a double tap records one return.
+  idempotencyKey           String?             @map("idempotency_key") @db.VarChar(100)
   createdAt                DateTime            @default(now()) @map("created_at")
 
   organization       Organization @relation(fields: [organizationId], references: [id])
@@ -3472,6 +3474,8 @@ model BuyerAdvanceEvidenceAllocation {
   reversedAt             DateTime?     @map("reversed_at")
   reversedBy             String?       @map("reversed_by")
   reversalReason         String?       @map("reversal_reason")
+  /// ADR-045 — client key (partial unique per org): a double tap records one application.
+  idempotencyKey         String?       @map("idempotency_key") @db.VarChar(100)
   createdBy              String        @map("created_by")
   createdAt              DateTime      @default(now()) @map("created_at")
 
@@ -5104,6 +5108,9 @@ model StoreDocumentPhoto {
   receivedAt      DateTime         @default(now()) @map("received_at")
   source          QuotePhotoSource
   uploadedBy      String           @map("uploaded_by")
+  /// False once its document is REJECTED or WITHDRAWN. A partial unique index on
+  /// (organization_id, sha256) WHERE is_live enforces "a receipt cannot be claimed twice".
+  isLive          Boolean          @default(true) @map("is_live")
 
   organization  Organization  @relation(fields: [organizationId], references: [id])
   storeDocument StoreDocument @relation(fields: [storeDocumentId], references: [id])

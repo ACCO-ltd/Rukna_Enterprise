@@ -112,6 +112,7 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     poService,
     audit,
     paymentNotifier,
+    q.approvals,
   );
   const awardRepo = new AwardPaymentRepository();
   const advances = new BuyerAdvanceService(
@@ -141,6 +142,7 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     sod,
     audit,
     poService,
+    projectAccess,
     q.paymentReadModel,
   );
   const settlementSvc = new StoreDocumentSettlementService(

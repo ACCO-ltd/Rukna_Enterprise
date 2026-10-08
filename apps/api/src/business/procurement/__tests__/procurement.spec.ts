@@ -1122,6 +1122,32 @@ async function createConfirmedServicePo(amount: number) {
 }
 
 /**
+ * ADR-045 review M6 — a PO settles only when every accepted quantity is billed by a POSTED bill:
+ * post the bill and record its match line for the PO line (what bill submit + match would write).
+ */
+async function billFully(billId: string, poLineId: string, quantity: number) {
+  await prisma.supplierBill.update({ where: { id: billId }, data: { postingStatus: 'POSTED' } });
+  const match = await prisma.supplierBillMatch.create({
+    data: { supplierBillId: billId, matchType: 'THREE_WAY', status: 'MATCHED' },
+  });
+  await prisma.supplierBillMatchLine.create({
+    data: {
+      supplierBillMatchId: match.id,
+      supplierBillLineId: `${billId}-l1`,
+      purchaseOrderLineId: poLineId,
+      poQuantity: new Decimal(quantity),
+      billedQuantity: new Decimal(quantity),
+      poUnitPrice: new Decimal(0),
+      billedUnitPrice: new Decimal(0),
+      quantityVariance: new Decimal(0),
+      priceVariance: new Decimal(0),
+      amountVariance: new Decimal(0),
+      withinTolerance: true,
+    },
+  });
+}
+
+/**
  * Create a SupplierBill directly in the DB, linked to the given PO.
  * Sets postingStatus so the evidence gate sees it as present.
  */
@@ -1343,7 +1369,8 @@ test('T27 — Paid + received + no invoice = ACTION_REQUIRED; adding a bill remo
   expect(beforeBill.settlementStatus).toBe('ACTION_REQUIRED');
 
   // Now add a supplier bill
-  await createLinkedBill(mPo.id, 3000);
+  const mBill = await createLinkedBill(mPo.id, 3000);
+  await billFully(mBill.id, mPoLineId, 1);
   const afterBill = await settlementSvc.getSettlement(identity(env), mPo.id);
   expect(afterBill.evidence.bills).toHaveLength(1);
   expect(afterBill.exceptions.some((e) => e.type === 'EVIDENCE_MISSING')).toBe(false);
@@ -1372,6 +1399,7 @@ test('T28 — Advance $5000, bill $4750, return $250 → outstanding=$0 → sett
   await createAndPostGrn(po.id, poLineId, 1, 1);
   // Link a $4750 bill as evidence
   const bill = await createLinkedBill(po.id, 4750);
+  await billFully(bill.id, poLineId, 1);
   await prisma.buyerAdvanceEvidenceAllocation.create({
     data: {
       organizationId: env.orgId,
@@ -1576,7 +1604,8 @@ test('T37 — All settlement conditions met causes PO status to become CLOSED', 
   // Fund it
   await seedPaymentPurchaseAllocation(po.id, 1000, 'POSTED');
   // Add supplier bill (evidence)
-  await createLinkedBill(po.id, 1000);
+  const t37Bill = await createLinkedBill(po.id, 1000);
+  await billFully(t37Bill.id, poLineId, 1);
 
   // Trigger autoCloseIfSettled via PurchaseOrderService wired with the real settlement service.
   // Using static imports (already imported above in the T26-T38 block).
@@ -1603,6 +1632,42 @@ test('T37 — All settlement conditions met causes PO status to become CLOSED', 
   const updated = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: po.id } });
   expect(updated.status).toBe('CLOSED');
   expect(updated.closedAt).not.toBeNull();
+});
+
+// ── T37b (ADR-045 review M6): an ordinary PO received but only partly billed does not close ──
+test('T37b — received in full, billed in part → UNBILLED_RECEIPT, PO stays OPEN; billed in full → CLOSED', async () => {
+  const p = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [{ lineType: 'MATERIAL', materialCode: 'REBAR-12', description: 'Steel T37b', uomCode: 'TON', orderedQuantity: 2, unitPrice: 500, spendCategoryId: env.spendCategoryId }],
+  });
+  await svc.poService.confirm(identity(env), p!.id);
+  const confirmed = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: p!.id }, include: { revisions: { include: { lines: true } } } });
+  const poLineId = confirmed.revisions.find((r) => r.status === 'ACTIVE')!.lines[0].id;
+  await createAndPostGrn(p!.id, poLineId, 2, 2);
+  await seedPaymentPurchaseAllocation(p!.id, 1000, 'POSTED');
+  const half = await createLinkedBill(p!.id, 500);
+  await billFully(half.id, poLineId, 1);
+
+  const tenancy = { getClient: () => prisma } as unknown as TenancyService;
+  const settlement = new SettlementQueryService(tenancy, new SettlementQueryRepository(), { assertMember: async () => undefined } as never);
+  const poSvc = new PurchaseOrderService(
+    tenancy, svc.poRepo, new PurchaseOrderAttachmentRepository(), svc.materialRepo, svc.uomRepo, svc.commitmentWriter,
+    { record: async () => {} } as never,
+    new CommandGovernanceService(new WorkflowTriggerResolverService(tenancy), new WorkflowsPrismaRepository(tenancy)),
+    { assertAllowed: async () => undefined } as never,
+    settlement,
+  );
+  const s1 = await settlement.getSettlement(identity(env), p!.id);
+  expect(s1.exceptions.map((e) => e.type)).toContain('UNBILLED_RECEIPT');
+  await poSvc.autoCloseIfSettled(identity(env), p!.id);
+  expect((await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: p!.id } })).status).toBe('OPEN');
+
+  const rest = await createLinkedBill(p!.id, 500);
+  await billFully(rest.id, poLineId, 1);
+  await poSvc.autoCloseIfSettled(identity(env), p!.id);
+  expect((await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: p!.id } })).status).toBe('CLOSED');
 });
 
 // ── T38: projectId isolation ───────────────────────────────────────────────────

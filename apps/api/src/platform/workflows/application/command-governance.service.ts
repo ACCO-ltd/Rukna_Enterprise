@@ -67,6 +67,10 @@ export class CommandGovernanceService {
     toState: string,
     resourceId: string,
     amount: Decimal | null = null,
+    // ADR-045 review M2 — `deferConsume`: a granted approval is returned but NOT consumed here; the
+    // caller consumes it with `consumeApprovalIn` inside the transaction that performs the
+    // transition, so a failed transition never burns the approval.
+    opts: { deferConsume?: boolean } = {},
   ): Promise<GovernanceOutcome> {
     const binding = await this.triggerResolver.resolveForStateTransition(
       identity.activeOrganizationId,
@@ -86,7 +90,7 @@ export class CommandGovernanceService {
 
     if (existing?.status === 'APPROVED') {
       // Approval is complete. Consume it (single-use) and let the transition proceed.
-      await this.repo.markInstanceConsumed(existing.id);
+      if (!opts.deferConsume) await this.repo.markInstanceConsumed(existing.id);
       const finalApproverId = await this.repo.findFinalApproverId(existing.id);
       return { gate: null, consumedApproval: { instanceId: existing.id, finalApproverId } };
     }
@@ -177,6 +181,24 @@ export class CommandGovernanceService {
    */
   voidOpenApprovalIn(tx: Prisma.TransactionClient, transactionType: WorkflowTransactionType, resourceId: string) {
     return this.repo.voidOpenInstancesIn(tx, transactionType, resourceId);
+  }
+
+  /**
+   * ADR-045 review M2 — consume a granted approval inside the caller's transaction (APPROVED →
+   * CANCELLED as a compare-and-set). 409 when it was already used (a concurrent re-drive won).
+   */
+  async consumeApprovalIn(tx: Prisma.TransactionClient, instanceId: string): Promise<void> {
+    const { count } = await tx.approvalInstance.updateMany({
+      where: { id: instanceId, status: 'APPROVED' },
+      data: { status: 'CANCELLED' },
+    });
+    if (count !== 1) {
+      throw new ConflictException({
+        errorCode: 'APPROVAL_ALREADY_USED',
+        message: 'This approval was already used by another request — reload.',
+        details: { code: 'APPROVAL_ALREADY_USED', approvalInstanceId: instanceId },
+      });
+    }
   }
 
   /** What an instance was opened for: document, evaluated amount, opening time. */

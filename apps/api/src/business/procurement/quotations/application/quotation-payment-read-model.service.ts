@@ -24,7 +24,9 @@ export type PaymentAction =
   | 'FINISH_PAYMENT'
   | 'PHOTOGRAPH_RECEIPT'
   | 'RECORD_RECEIPT'
-  | 'CHANGE_PATH';
+  | 'CHANGE_PATH'
+  // Review H1 — a posted prepayment not yet applied to the posted bill: apply it, don't pay again.
+  | 'APPLY_PREPAYMENT';
 
 const ZERO = new Decimal(0);
 const dec = (v: { toString(): string } | null | undefined) => new Decimal(v ? v.toString() : 0);
@@ -168,13 +170,24 @@ export class QuotationPaymentReadModel implements AwardPaymentReadModel {
       const returnBlock = first(gate(canPay, 'MISSING_PERMISSION'), gate(withBuyer.greaterThan(0), 'NOTHING_WITH_BUYER'));
       allowedActions.push(act('RECORD_RETURN', returnBlock === null, returnBlock ?? undefined));
     } else {
+      const unappliedPrepayment = payments.some(
+        (p) => p.postingStatus === 'POSTED' && dec(p.unallocatedAmount).greaterThan(0) && po !== null && p.purchaseAllocations.some((x) => x.purchaseOrderId === po.id),
+      );
+      const billWaiting = dec(postedBillOutstanding).greaterThan(0);
       const payBlock = first(
         gate(canPay, 'MISSING_PERMISSION'),
+        gate(!(unappliedPrepayment && billWaiting), 'PREPAYMENT_NOT_APPLIED'),
         gate(poOpen, 'PAYMENT_PO_NOT_OPEN'),
-        gate(position.remaining.greaterThan(0) || dec(postedBillOutstanding).greaterThan(0), 'NOTHING_TO_FUND'),
+        gate(position.remaining.greaterThan(0), 'NOTHING_TO_FUND'),
         gate(!isMaintainer, 'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT'),
       );
       allowedActions.push(act('PAY_SUPPLIER', payBlock === null, payBlock ?? undefined));
+      const applyBlock = first(
+        gate(canPay, 'MISSING_PERMISSION'),
+        gate(unappliedPrepayment, 'NO_UNAPPLIED_PREPAYMENT'),
+        gate(billWaiting, 'NO_POSTED_BILL'),
+      );
+      allowedActions.push(act('APPLY_PREPAYMENT', applyBlock === null, applyBlock ?? undefined));
       const finishBlock = first(gate(canPay, 'MISSING_PERMISSION'), gate(unposted.length > 0, 'NOTHING_TO_FINISH'));
       allowedActions.push(act('FINISH_PAYMENT', finishBlock === null, finishBlock ?? undefined));
     }

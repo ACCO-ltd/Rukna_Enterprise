@@ -34,6 +34,10 @@ export type GovernedTransitionOutcome =
   | { gated: true; approvalInstanceId: string };
 
 /**
+ * The granted approval is NOT consumed here (ADR-045 review M2): the caller passes
+ * `consumed.instanceId` to `CommandGovernanceService.consumeApprovalIn(tx, …)` inside the
+ * transaction that performs the transition.
+ *
  * ADR-045 §2 / §3 — the ADR-044 §7 "acting counts as your approval" pattern, extracted so money
  * commands can share it: evaluate the governed transition; while the open instance's current step
  * requires a role the caller holds, the caller's command is recorded as their approval of that
@@ -70,6 +74,7 @@ export async function driveGovernedTransition(
       args.toState,
       args.resourceId,
       args.amount,
+      { deferConsume: true },
     );
     if (!outcome.gate) return { gated: false, consumed: outcome.consumedApproval };
     // A freshly opened instance may start with the caller's own step: look once more.

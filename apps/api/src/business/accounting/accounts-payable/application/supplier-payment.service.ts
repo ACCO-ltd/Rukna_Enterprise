@@ -25,6 +25,9 @@ import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.re
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { PurchaseAllocationRepository } from '../infrastructure/purchase-allocation.repository.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import { ApprovalService } from '../../../../platform/workflows/application/approval.service.js';
+import { driveGovernedTransition } from '../../../../platform/workflows/application/governed-transition.driver.js';
+import { WorkflowTransactionType } from '@erp/types';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
@@ -110,6 +113,8 @@ export class SupplierPaymentService {
     // post transaction). Optional: absent in unit wiring.
     @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
     @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
+    // ADR-045 — the "acting counts as your step" approval used from the award (optional wiring).
+    @Optional() private readonly approvals?: ApprovalService,
   ) {}
 
   /** Stateless role resolver over the same account repository (ADR-024 ACC-POST-001). */
@@ -256,7 +261,19 @@ export class SupplierPaymentService {
     });
   }
 
-  async approve(identity: RequestIdentity, paymentId: string) {
+  /**
+   * DRAFT → APPROVED. SoD (bill approver), then the DoA gate. ADR-045 (review M2/M5/M7):
+   *  - a granted approval is consumed in the same transaction as the APPROVED write (a failed
+   *    write never burns it), and the approval is audited when the outbox is wired;
+   *  - `selfApprove` (pay from the award): the caller's command counts as their own current step;
+   *  - `bandAmount`: the value that selects the band (default the payment total; from the award, the
+   *    cumulative funding of the order, so splitting a payment cannot stay in a lower band).
+   */
+  async approve(
+    identity: RequestIdentity,
+    paymentId: string,
+    opts: { selfApprove?: boolean; bandAmount?: Decimal; note?: string } = {},
+  ) {
     const prisma = this.tenancyService.getClient();
     const payment = await this.paymentRepo.findById(prisma, identity.activeOrganizationId, paymentId);
     if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
@@ -279,20 +296,87 @@ export class SupplierPaymentService {
     });
 
     // Governance seam (ADR-011) — the payment has no separate submit, so approval is the
-    // request transition. Backward-compatible: null when no binding is configured.
-    throwIfGated(
-      await this.commandGovernance.gateStateTransition(
-        identity,
-        'SupplierPayment',
-        'DRAFT',
-        'APPROVED',
-        paymentId,
-        // ADR-022 CONST-DOA-005: the payment value selects the approval band.
-        payment.totalAmount as Decimal,
-      ),
-      'Supplier payment approval requires workflow approval.',
-    );
-    return this.paymentRepo.approve(prisma, paymentId, identity.userId);
+    // request transition. Backward-compatible: no binding → proceeds.
+    // ADR-022 CONST-DOA-005: the payment value (or the caller's band amount) selects the band.
+    const bandAmount = opts.bandAmount ?? (payment.totalAmount as Decimal);
+    let gateId: string | null = null;
+    let consumed: { instanceId: string; finalApproverId: string | null } | null = null;
+    if (opts.selfApprove && this.approvals) {
+      const outcome = await driveGovernedTransition(
+        { governance: this.commandGovernance, approvals: this.approvals },
+        {
+          identity,
+          entityType: 'SupplierPayment',
+          fromState: 'DRAFT',
+          toState: 'APPROVED',
+          transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
+          resourceId: paymentId,
+          amount: bandAmount,
+          selfApprovalNote: opts.note ?? 'Approved by paying',
+          vetApprovers: async (approval) => {
+            const codes = await this.sod.activeRuleCodes(identity.activeOrganizationId);
+            for (const a of approval.actions.filter((x) => x.action === 'APPROVE')) {
+              const barred = this.sod.violation(codes, {
+                organizationId: identity.activeOrganizationId,
+                action: 'APPROVE_OR_RELEASE_SUPPLIER_PAYMENT',
+                actorUserId: a.actorId,
+                supplierBillApproverUserId: allocations.some((x) => x.bill.approvedBy === a.actorId) ? a.actorId : undefined,
+              });
+              if (barred) {
+                await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.SUPPLIER_PAYMENT, paymentId);
+                throw new ForbiddenException({
+                  errorCode: 'FORBIDDEN',
+                  message: `Segregation-of-duties rule '${barred}' prohibits an approver of this payment; the approval was voided.`,
+                  details: { code: barred },
+                });
+              }
+            }
+          },
+        },
+      );
+      if (outcome.gated) gateId = outcome.approvalInstanceId;
+      else consumed = outcome.consumed;
+    } else {
+      const outcome = await this.commandGovernance.evaluateStateTransition(
+        identity, 'SupplierPayment', 'DRAFT', 'APPROVED', paymentId, bandAmount, { deferConsume: true },
+      );
+      if (outcome.gate) gateId = outcome.gate.approvalInstanceId;
+      else consumed = outcome.consumedApproval;
+    }
+    if (gateId) {
+      throw new ConflictException({
+        errorCode: 'APPROVAL_REQUIRED',
+        message: 'Supplier payment approval requires workflow approval.',
+        details: { code: 'APPROVAL_REQUIRED', approvalInstanceId: gateId, paymentId },
+      });
+    }
+
+    const approvedBy = opts.selfApprove ? (consumed?.finalApproverId ?? identity.userId) : identity.userId;
+    return prisma.$transaction(async (tx) => {
+      if (consumed) await this.commandGovernance.consumeApprovalIn(tx, consumed.instanceId);
+      const { count } = await tx.supplierPayment.updateMany({
+        where: { id: paymentId, documentStatus: 'DRAFT' },
+        data: { documentStatus: 'APPROVED', approvedBy, approvedAt: new Date() },
+      });
+      if (count !== 1) throw new ConflictException(`Payment ${paymentId} was approved by someone else — reload.`);
+      const after = await tx.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
+      if (this.auditOutbox) {
+        await this.auditOutbox.record(tx, {
+          organizationId: identity.activeOrganizationId,
+          actorUserId: identity.userId,
+          action: 'APPROVE',
+          resourceType: 'SupplierPayment',
+          resourceId: paymentId,
+          sourceCommand: 'supplier-payment.approve',
+          eventType: 'SUPPLIER_PAYMENT_APPROVED',
+          idempotencyKey: `supplier-payment-${paymentId}-APPROVED-${after.updatedAt.getTime()}`,
+          before: { documentStatus: 'DRAFT' },
+          after: { documentStatus: 'APPROVED', approvedBy, bandAmount: bandAmount.toString() },
+          approvalInstanceId: consumed?.instanceId,
+        });
+      }
+      return after;
+    });
   }
 
   /**

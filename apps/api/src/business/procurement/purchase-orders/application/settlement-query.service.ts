@@ -13,7 +13,13 @@ type FundingStatus = 'NOT_FUNDED' | 'PARTIALLY_FUNDED' | 'FUNDED';
 type ReceivingStatus = 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED';
 type LineReceivingStatus = 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED';
 type SettlementStatus = 'OPEN' | 'ACTION_REQUIRED' | 'SETTLED';
-type ExceptionType = 'QUANTITY_EXCEEDS_PO' | 'OUTSTANDING_ADVANCE' | 'FUNDING_GAP' | 'EVIDENCE_MISSING';
+type ExceptionType =
+  | 'QUANTITY_EXCEEDS_PO'
+  | 'OUTSTANDING_ADVANCE'
+  | 'FUNDING_GAP'
+  | 'EVIDENCE_MISSING'
+  // ADR-045 review M6 — settled means received AND billed: no accepted quantity without a bill.
+  | 'UNBILLED_RECEIPT';
 
 @Injectable()
 export class SettlementQueryService {
@@ -313,6 +319,16 @@ export class SettlementQueryService {
         type: 'EVIDENCE_MISSING',
         detail: 'Invoice or receipt required before settlement — no supplier bill is linked to this PO.',
       });
+    }
+
+    // ADR-045 review M6 — every accepted quantity billed by a posted bill. Only then can a PO settle
+    // (and auto-close): fully received AND fully billed AND funded, no other exception.
+    if (bills.length > 0) {
+      const billedByLine = await this.repo.billedByPoLine(prisma, orgId, purchaseOrderId);
+      const unbilled = receivingLines.some((l) => (l.acceptedQuantity as Decimal).greaterThan(billedByLine.get(l.poLineId) ?? new Decimal(0)));
+      if (unbilled) {
+        exceptions.push({ type: 'UNBILLED_RECEIPT', detail: 'Goods were received that no posted supplier bill covers yet.' });
+      }
     }
 
     // ── Settlement status ───────────────────────────────────────────────────────

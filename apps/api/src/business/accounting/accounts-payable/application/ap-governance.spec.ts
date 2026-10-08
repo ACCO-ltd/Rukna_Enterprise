@@ -64,15 +64,24 @@ describe('AP governance seam (ADR-011)', () => {
   describe('SupplierPaymentService.approve', () => {
     function build(gate: unknown) {
       // approve() walks the payment's bill allocations for the SoD check (ADR-022) before the gate.
-      const prisma = {
+      // ADR-045 review M2: the APPROVED write (and the approval's consumption) run in one transaction.
+      const prisma: Record<string, unknown> = {
         supplierPaymentAllocation: { findMany: jest.fn().mockResolvedValue([]) },
+        supplierPayment: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'APPROVED', updatedAt: new Date() }),
+        },
       };
+      prisma.$transaction = async (cb: (tx: unknown) => unknown) => cb(prisma);
       const tenancy = { getClient: () => prisma } as never;
       const paymentRepo = {
         findById: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'DRAFT', totalAmount: 500 }),
         approve: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'APPROVED' }),
       };
-      const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(gate) };
+      const commandGovernance = {
+        evaluateStateTransition: jest.fn().mockResolvedValue({ gate, consumedApproval: null }),
+        consumeApprovalIn: jest.fn(),
+      };
       const sod = { assertAllowed: jest.fn() };
       const svc = new SupplierPaymentService(
         tenancy,
@@ -87,13 +96,13 @@ describe('AP governance seam (ADR-011)', () => {
         {} as never,                              // signatoryService
         {} as never,                              // purchaseOrderService
       );
-      return { svc, paymentRepo, commandGovernance };
+      return { svc, paymentRepo, commandGovernance, prisma };
     }
 
     it('gates with 409 when a binding resolves, without changing state', async () => {
-      const { svc, paymentRepo, commandGovernance } = build({ gated: true, approvalInstanceId: 'ai-2' });
+      const { svc, commandGovernance, prisma } = build({ gated: true, approvalInstanceId: 'ai-2' });
       await expect(svc.approve(identity, 'p1')).rejects.toBeInstanceOf(ConflictException);
-      expect(commandGovernance.gateStateTransition).toHaveBeenCalledWith(
+      expect(commandGovernance.evaluateStateTransition).toHaveBeenCalledWith(
         identity,
         'SupplierPayment',
         'DRAFT',
@@ -101,14 +110,15 @@ describe('AP governance seam (ADR-011)', () => {
         'p1',
         // ADR-022 CONST-DOA-005: the payment value is passed for band routing.
         expect.anything(),
+        { deferConsume: true },
       );
-      expect(paymentRepo.approve).not.toHaveBeenCalled();
+      expect((prisma.supplierPayment as { updateMany: jest.Mock }).updateMany).not.toHaveBeenCalled();
     });
 
     it('proceeds when no binding is configured (gate returns null)', async () => {
-      const { svc, paymentRepo } = build(null);
+      const { svc, prisma } = build(null);
       await svc.approve(identity, 'p1');
-      expect(paymentRepo.approve).toHaveBeenCalled();
+      expect((prisma.supplierPayment as { updateMany: jest.Mock }).updateMany).toHaveBeenCalled();
     });
   });
 });

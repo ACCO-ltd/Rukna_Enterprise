@@ -44,10 +44,12 @@ ALTER TYPE "NotificationKind" ADD VALUE 'RECEIPT_REJECTED';
 ALTER TYPE "SourceDocType" ADD VALUE 'BUYER_ADVANCE';
 
 -- AlterTable
-ALTER TABLE "advance_returns" ADD COLUMN     "journal_entry_id" TEXT;
+ALTER TABLE "advance_returns" ADD COLUMN     "journal_entry_id" TEXT,
+ADD COLUMN     "idempotency_key" VARCHAR(100);
 
 -- AlterTable
 ALTER TABLE "buyer_advance_evidence_allocations" ADD COLUMN     "allocation_date" DATE,
+ADD COLUMN     "idempotency_key" VARCHAR(100),
 ADD COLUMN     "journal_entry_id" TEXT,
 ADD COLUMN     "posting_status" "PostingStatus" NOT NULL DEFAULT 'NOT_POSTED',
 ADD COLUMN     "reversal_journal_entry_id" TEXT,
@@ -109,6 +111,7 @@ CREATE TABLE "store_document_photos" (
     "received_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "source" "QuotePhotoSource" NOT NULL,
     "uploaded_by" TEXT NOT NULL,
+    "is_live" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "store_document_photos_pkey" PRIMARY KEY ("id")
 );
@@ -172,3 +175,13 @@ CREATE INDEX "supplier_payments_quotation_request_id_idx" ON "supplier_payments"
 -- The total finance types from a store receipt is a positive amount.
 ALTER TABLE "store_documents" ADD CONSTRAINT "store_documents_entered_total_positive"
   CHECK ("entered_total" IS NULL OR "entered_total" > 0);
+
+-- One live return / application per client key (a double tap records one).
+CREATE UNIQUE INDEX "advance_returns_org_idempotency_key_key"
+  ON "advance_returns"("organization_id", "idempotency_key") WHERE "idempotency_key" IS NOT NULL;
+CREATE UNIQUE INDEX "buyer_advance_evidence_allocations_org_idempotency_key_key"
+  ON "buyer_advance_evidence_allocations"("organization_id", "idempotency_key") WHERE "idempotency_key" IS NOT NULL;
+
+-- R12: a receipt photo is claimed once per organisation among live store documents.
+CREATE UNIQUE INDEX "store_document_photos_org_sha256_live_key"
+  ON "store_document_photos"("organization_id", "sha256") WHERE "is_live";

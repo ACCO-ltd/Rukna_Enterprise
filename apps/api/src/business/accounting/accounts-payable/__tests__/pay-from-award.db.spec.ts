@@ -83,7 +83,11 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
     expect(paid.map((n) => n.recipientUserId)).toContain(env.userIds.collector);
     expect(await prisma.notification.count({ where: { resourceId: requestId, kind: 'PAYMENT_NEEDED', resolvedAt: null } })).toBe(0);
     const events = await prisma.auditOutboxEvent.findMany({ where: { aggregateId: result.payment.id }, select: { eventType: true } });
-    expect(events.map((e) => e.eventType).sort()).toEqual(['SUPPLIER_PAID_FROM_AWARD', 'SUPPLIER_PAYMENT_CREATED_FROM_AWARD']);
+    expect(events.map((e) => e.eventType).sort()).toEqual([
+      'SUPPLIER_PAID_FROM_AWARD',
+      'SUPPLIER_PAYMENT_APPROVED',
+      'SUPPLIER_PAYMENT_CREATED_FROM_AWARD',
+    ]);
 
     // R3 — nothing more than the order.
     expect(await refusal(pay(requestId, { amount: '0.01' }))).toEqual({ status: 409, code: 'FUNDING_EXCEEDS_ORDER' });
@@ -169,6 +173,65 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
     }
   });
 
+  it('review H1: a posted bill with an unapplied prepayment is applied, never paid again; PAY_BILL is capped too', async () => {
+    const { requestId, poId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const doc = await invoice(poId);
+    await a.receive(poId);
+    const recorded = await svc.recordReceipt.record(env.payer2, {
+      storeDocumentId: doc.id,
+      total: '1000.00',
+      documentDate: '2026-10-08',
+      expenseProfileCode: env.postingProfileCode,
+    });
+    const prepay = await pay(requestId, { amount: '1000.00' });
+    const draft = await svc.awardPayments.awardDraft(env.as('selector'), requestId);
+    expect(draft.blockers).toContain('PREPAYMENT_NOT_APPLIED');
+    expect(draft.unappliedPrepayments).toEqual([{ paymentId: prepay.payment.id, unallocated: '1000.00' }]);
+    const p = (await svc.query.detail(env.as('selector'), requestId)).payment!;
+    expect(p.allowedActions.find((x) => x.action === 'PAY_SUPPLIER')).toMatchObject({ enabled: false, reason: 'PREPAYMENT_NOT_APPLIED' });
+    expect(p.allowedActions.find((x) => x.action === 'APPLY_PREPAYMENT')?.enabled).toBe(true);
+    // The $2,000-out scenario is refused before anything is written.
+    expect(await refusal(pay(requestId, { shape: 'PAY_BILL', supplierBillId: recorded.bill!.id }))).toEqual({
+      status: 409,
+      code: 'PREPAYMENT_NOT_APPLIED',
+    });
+    expect(await prisma.supplierPayment.count({ where: { quotationRequestId: requestId } })).toBe(1);
+    await svc.payments.allocateAdvance(env.as('selector'), { paymentId: prepay.payment.id, supplierBillId: recorded.bill!.id, amount: 1000 });
+    expect((await prisma.supplierBill.findUniqueOrThrow({ where: { id: recorded.bill!.id } })).outstandingAmount.toString()).toBe('0');
+  });
+
+  it('review H1: PAY_BILL may not fund past the order', async () => {
+    const { requestId, poId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const doc = await invoice(poId);
+    await a.receive(poId);
+    const recorded = await svc.recordReceipt.record(env.payer2, {
+      storeDocumentId: doc.id, total: '1000.00', documentDate: '2026-10-08', expenseProfileCode: env.postingProfileCode,
+    });
+    await pay(requestId, { shape: 'PAY_BILL', supplierBillId: recorded.bill!.id, amount: '600.00' });
+    // Another 600 on the bill's remaining 400 is refused by the bill; a second order-level payment by the cap.
+    expect(await refusal(pay(requestId, { amount: '400.01' }))).toEqual({ status: 409, code: 'FUNDING_EXCEEDS_ORDER' });
+  });
+
+  it('review LOW: a replay with another shape or method is IDEMPOTENCY_KEY_REUSED; continue needs no body', async () => {
+    const { requestId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const key = randomUUID();
+    const first = await pay(requestId, { key, amount: '200.00', bankAccountId: env.bank.mainBankId });
+    expect(first.awaiting).toBe('RELEASE_SIGNATURES');
+    expect(
+      await refusal(
+        svc.awardPayments.payFromAward(env.as('selector'), {
+          idempotencyKey: key, quotationRequestId: requestId, bankAccountId: env.bank.mainBankId,
+          paymentMethod: 'BANK', paymentDate: '2026-10-08', amount: '200.00', shape: 'PREPAY',
+        }),
+      ),
+    ).toEqual({ status: 409, code: 'IDEMPOTENCY_KEY_REUSED' });
+    await svc.payments.signRelease(env.as('cfo'), first.payment.id);
+    await svc.payments.signRelease(env.as('director'), first.payment.id);
+    // Another device finishes it with no body.
+    const done = await svc.awardPayments.continuePayment(env.payer2, first.payment.id);
+    expect(done.payment.postingStatus).toBe('POSTED');
+  });
+
   describe('bands active', () => {
     beforeAll(() => a.setPaymentBandsActive(true));
     afterAll(() => a.setPaymentBandsActive(false));
@@ -182,6 +245,36 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
       await svc.approvals.approve(approvalInstanceId, env.userIds.cfo, ['CFO'], env.orgId);
       const done = await pay(requestId, { key, amount: '4000.00' });
       expect(done.payment).toMatchObject({ postingStatus: 'POSTED', approvedBy: env.userIds.cfo });
+    });
+
+    it('review M7: the band is chosen on the order’s cumulative funding (2 × $900 cannot stay in the FO band)', async () => {
+      const { requestId } = await a.awardedOrder({ total: '2000.00', path: 'FINANCE_PAYS_SUPPLIER' });
+      await expect(pay(requestId, { amount: '900.00' })).resolves.toBeTruthy(); // ≤ $1k: FO tap
+      const second = await pay(requestId, { amount: '900.00' }).catch((e) => e);
+      expect(second.getStatus()).toBe(409);
+      expect(second.getResponse().details.code).toBe('APPROVAL_REQUIRED');
+      const inst = await prisma.approvalInstance.findUniqueOrThrow({ where: { id: second.getResponse().details.approvalInstanceId } });
+      expect(inst.evaluatedAmount?.toString()).toBe('1800');
+    });
+
+    it('review M5: a re-drive re-checks the vendor maintainer', async () => {
+      const { requestId } = await a.awardedOrder({ total: '4000.00', path: 'FINANCE_PAYS_SUPPLIER' });
+      const gated = await pay(requestId, { amount: '4000.00' }).catch((e) => e);
+      const { approvalInstanceId, paymentId } = gated.getResponse().details;
+      await svc.approvals.approve(approvalInstanceId, env.userIds.cfo, ['CFO'], env.orgId);
+      await prisma.supplier.update({ where: { id: env.supplierId }, data: { createdBy: env.payer2.userId } });
+      try {
+        expect(await refusal(svc.awardPayments.continuePayment(env.payer2, paymentId))).toEqual({
+          status: 403,
+          code: 'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT',
+        });
+        // The approval was not burnt by the refused re-drive.
+        expect((await prisma.approvalInstance.findUniqueOrThrow({ where: { id: approvalInstanceId } })).status).toBe('APPROVED');
+      } finally {
+        await prisma.supplier.update({ where: { id: env.supplierId }, data: { createdBy: null } });
+      }
+      const done = await svc.awardPayments.continuePayment(env.as('selector'), paymentId);
+      expect(done.payment.postingStatus).toBe('POSTED');
     });
   });
 });

@@ -27,6 +27,7 @@ import {
 import { AWARD_PAYMENT_READ_MODEL, type AwardPaymentReadModel } from '../domain/award-payment-events.port.js';
 import { SupplierPaymentService } from './supplier-payment.service.js';
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 
 export type PayShape = 'PREPAY' | 'PAY_BILL';
 
@@ -74,6 +75,7 @@ export class AwardSupplierPaymentService {
     private readonly sod: SegregationOfDutiesService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly purchaseOrders: PurchaseOrderService,
+    private readonly projectAccess: ProjectAccessService,
     @Optional() @Inject(AWARD_PAYMENT_READ_MODEL) private readonly readModel?: AwardPaymentReadModel,
   ) {}
 
@@ -106,6 +108,7 @@ export class AwardSupplierPaymentService {
           select: { id: true, billNumber: true, supplierInvoiceNumber: true, outstandingAmount: true },
         })
       : [];
+    const unapplied = po ? await this.unappliedPrepayments(prisma, orgId, po.id) : [];
     const lastUsed = await this.awardRepo.lastPaymentAccountId(prisma, orgId, identity.userId);
     const accounts = (await this.awardRepo.paymentAccounts(prisma, orgId, currencyCode))
       .filter((a) => a.status === 'ACTIVE' && a.allowsPayments)
@@ -126,6 +129,8 @@ export class AwardSupplierPaymentService {
           }
         : null,
       shape: (bills.length > 0 ? 'PAY_BILL' : 'PREPAY') as PayShape,
+      // Review H1 — a posted prepayment not yet applied to the bill must be applied, not paid again.
+      unappliedPrepayments: unapplied.map((u) => ({ paymentId: u.id, unallocated: u.unallocated.toFixed(2) })),
       bills: bills.map((b) => ({ id: b.id, number: b.billNumber ?? b.supplierInvoiceNumber, outstanding: dec(b.outstandingAmount).toFixed(2) })),
       remainingToFund: position.remaining.toFixed(2),
       currencyCode,
@@ -137,10 +142,10 @@ export class AwardSupplierPaymentService {
         requestAwarded: request.status === 'AWARDED',
         poOpen: po?.status === 'OPEN',
         pathMatches: request.paymentPath === 'FINANCE_PAYS_SUPPLIER',
-        remainingToFund: bills.length > 0 ? bills.reduce((s, b) => s.add(dec(b.outstandingAmount)), ZERO) : position.remaining,
+        remainingToFund: position.remaining,
         usableAccounts: accounts.length,
         callerIsVendorMaintainer: isVendorMaintainer,
-      }),
+      }).concat(unapplied.length > 0 && bills.length > 0 ? (['PREPAYMENT_NOT_APPLIED'] as never[]) : []),
     };
   }
 
@@ -157,18 +162,37 @@ export class AwardSupplierPaymentService {
 
     const existing = await prisma.supplierPayment.findFirst({ where: { organizationId: orgId, idempotencyKey: cmd.idempotencyKey } });
     if (existing) {
+      // Review LOW: a replay must be the same command in every field.
+      const [purchaseAllocs, billAllocs] = await Promise.all([
+        prisma.supplierPaymentPurchaseAllocation.count({ where: { supplierPaymentId: existing.id } }),
+        prisma.supplierPaymentAllocation.findMany({ where: { supplierPaymentId: existing.id }, select: { supplierBillId: true } }),
+      ]);
+      const existingShape: PayShape = purchaseAllocs > 0 ? 'PREPAY' : 'PAY_BILL';
       const same =
         existing.quotationRequestId === cmd.quotationRequestId &&
         dec(existing.totalAmount).equals(amount) &&
         existing.bankAccountId === cmd.bankAccountId &&
-        existing.paymentDate.getTime() === paymentDate.getTime();
+        existing.paymentMethod === cmd.paymentMethod &&
+        existing.paymentDate.getTime() === paymentDate.getTime() &&
+        existingShape === cmd.shape &&
+        (cmd.shape === 'PREPAY' || billAllocs.some((a) => a.supplierBillId === cmd.supplierBillId));
       if (!same) throw paymentConflict('IDEMPOTENCY_KEY_REUSED');
       return this.continueFrom(identity, existing.id);
     }
 
     const request = await this.awardRepo.findRequest(prisma, orgId, cmd.quotationRequestId);
     if (!request) throw new NotFoundException(`Quotation request ${cmd.quotationRequestId} not found`);
+    if (request.projectId) await this.projectAccess.assertMember(identity, request.projectId);
     const po = request.purchaseOrderId ? await this.awardRepo.findPurchaseOrder(prisma, orgId, request.purchaseOrderId) : null;
+    // Review H1 — paying a bill while a posted prepayment on the order is unapplied would pay twice.
+    if (cmd.shape === 'PAY_BILL' && po) {
+      const unapplied = await this.unappliedPrepayments(prisma, orgId, po.id);
+      if (unapplied.length > 0) {
+        throw paymentConflict('PREPAYMENT_NOT_APPLIED', {
+          unappliedPrepayments: unapplied.map((u) => ({ paymentId: u.id, unallocated: u.unallocated.toFixed(2) })),
+        });
+      }
+    }
     if (request.status !== 'AWARDED' || !po || po.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
     if (request.paymentPath !== 'FINANCE_PAYS_SUPPLIER') throw paymentConflict('PAYMENT_PATH_MISMATCH');
     const revision = await this.awardRepo.activeRevision(prisma, po.id);
@@ -209,9 +233,18 @@ export class AwardSupplierPaymentService {
         const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, po.id);
         if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
         const position = fundingPosition(await this.awardRepo.fundingInputs(tx, orgId, po.id, revision?.ordered ?? ZERO));
-        // A PAY_BILL payment funds the PO only when the bill is not already funded by a prepayment;
-        // the bill's outstanding is the binding limit there (checked below).
-        if (cmd.shape === 'PREPAY' && !fundingAllows(position, amount)) {
+        // ADR-045 review H1 — both shapes are capped (a bill payment funds the order too), and a
+        // bill cannot be paid again while a posted prepayment on the order is still unapplied:
+        // apply the prepayment first (POST /payments/:id/allocations).
+        if (cmd.shape === 'PAY_BILL') {
+          const unapplied = await this.unappliedPrepayments(tx, orgId, po.id);
+          if (unapplied.length > 0) {
+            throw paymentConflict('PREPAYMENT_NOT_APPLIED', {
+              unappliedPrepayments: unapplied.map((u) => ({ paymentId: u.id, unallocated: u.unallocated.toFixed(2) })),
+            });
+          }
+        }
+        if (!fundingAllows(position, amount)) {
           throw paymentConflict('FUNDING_EXCEEDS_ORDER', {
             orderedAmount: position.cap.toFixed(2),
             funded: position.funded.toFixed(2),
@@ -299,6 +332,20 @@ export class AwardSupplierPaymentService {
     return this.continueFrom(identity, paymentId);
   }
 
+  /**
+   * `POST /supplier-payments/:id/continue` — re-drive a payment made from an award from whatever
+   * state it is in, with no client-held body (another device can finish it).
+   */
+  async continuePayment(identity: RequestIdentity, paymentId: string) {
+    const prisma = this.tenancy.getClient();
+    const payment = await prisma.supplierPayment.findFirst({ where: { id: paymentId, organizationId: identity.activeOrganizationId } });
+    if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
+    if (!payment.quotationRequestId) throw paymentConflict('PAYMENT_PO_NOT_OPEN', {}, 'This payment was not made from a quotation award.');
+    const request = await this.awardRepo.findRequest(prisma, identity.activeOrganizationId, payment.quotationRequestId);
+    if (request?.projectId) await this.projectAccess.assertMember(identity, request.projectId);
+    return this.continueFrom(identity, paymentId);
+  }
+
   /** Approve (bands, self step) → release (dual control: stop) → post — from whatever state it is in. */
   private async continueFrom(identity: RequestIdentity, paymentId: string) {
     const prisma = this.tenancy.getClient();
@@ -306,6 +353,14 @@ export class AwardSupplierPaymentService {
     let payment = await prisma.supplierPayment.findFirstOrThrow({ where: { id: paymentId, organizationId: orgId } });
 
     if (payment.documentStatus === 'DRAFT') {
+      // Review M5 — the vendor-maintainer rule again on a re-drive (another person may be driving).
+      const supplier = await prisma.supplier.findFirst({ where: { id: payment.supplierId, organizationId: orgId }, select: { createdBy: true } });
+      await this.sod.assertAllowed({
+        organizationId: orgId,
+        action: 'PROCESS_SUPPLIER_PAYMENT',
+        actorUserId: identity.userId,
+        vendorMaintainerUserId: supplier?.createdBy ?? undefined,
+      });
       // ADR-022 CONST-DOA-003 (existing rule): an approver of a bill this payment settles cannot approve it.
       const allocations = await prisma.supplierPaymentAllocation.findMany({
         where: { supplierPaymentId: paymentId },
@@ -318,50 +373,20 @@ export class AwardSupplierPaymentService {
         actorUserId: identity.userId,
         supplierBillApproverUserId: approvedASettledBill ? identity.userId : undefined,
       });
-      const outcome = await driveGovernedTransition(
-        { governance: this.commandGovernance, approvals: this.approvals },
-        {
-          identity,
-          entityType: 'SupplierPayment',
-          fromState: 'DRAFT',
-          toState: 'APPROVED',
-          transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
-          resourceId: paymentId,
-          amount: dec(payment.totalAmount),
-          selfApprovalNote: 'Paid from the quotation award',
-          vetApprovers: async (approval) => {
-            // The existing rule, over every approver on the instance.
-            const codes = await this.sod.activeRuleCodes(orgId);
-            for (const a of approval.actions.filter((x) => x.action === 'APPROVE')) {
-              const barred = this.sod.violation(codes, {
-                organizationId: orgId,
-                action: 'APPROVE_OR_RELEASE_SUPPLIER_PAYMENT',
-                actorUserId: a.actorId,
-                supplierBillApproverUserId: allocations.some((x) => x.bill.approvedBy === a.actorId) ? a.actorId : undefined,
-              });
-              if (barred) {
-                await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.SUPPLIER_PAYMENT, paymentId);
-                throw paymentConflict(barred);
-              }
-            }
-          },
-        },
-      );
-      if (outcome.gated) {
-        throw new ConflictException({
-          errorCode: 'APPROVAL_REQUIRED',
-          message: 'This payment needs workflow approval first; finish it when the approvers have approved.',
-          details: { code: 'APPROVAL_REQUIRED', approvalInstanceId: outcome.approvalInstanceId, paymentId },
+      // ADR-045 review M5/M7 — the existing approve command (SoD, DoA, audit, consumption in its
+      // transaction), with the payer's tap as their own step and the band chosen on the order's
+      // cumulative funding (this payment included), so splitting cannot stay in a lower band.
+      try {
+        await this.payments.approve(identity, paymentId, {
+          selfApprove: true,
+          bandAmount: await this.cumulativeFunding(paymentId, dec(payment.totalAmount)),
+          note: 'Paid from the quotation award',
         });
+      } catch (error) {
+        // A double tap approved it a moment ago: carry on from the approved document.
+        const now = await prisma.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
+        if (now.documentStatus === 'DRAFT') throw error;
       }
-      await prisma.supplierPayment.updateMany({
-        where: { id: paymentId, documentStatus: 'DRAFT' },
-        data: {
-          documentStatus: 'APPROVED',
-          approvedBy: outcome.consumed?.finalApproverId ?? identity.userId,
-          approvedAt: new Date(),
-        },
-      });
       payment = await prisma.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
     }
 
@@ -380,6 +405,32 @@ export class AwardSupplierPaymentService {
       if (request?.purchaseOrderId) await this.purchaseOrders.autoCloseIfSettled(identity, request.purchaseOrderId);
     }
     return this.result(identity, paymentId);
+  }
+
+  /** Review M7 — Σ live funding of the order this award payment funds (this payment included). */
+  private async cumulativeFunding(paymentId: string, fallback: Decimal): Promise<Decimal> {
+    const prisma = this.tenancy.getClient();
+    const payment = await prisma.supplierPayment.findUniqueOrThrow({ where: { id: paymentId }, select: { organizationId: true, quotationRequestId: true } });
+    const request = payment.quotationRequestId ? await this.awardRepo.findRequest(prisma, payment.organizationId, payment.quotationRequestId) : null;
+    if (!request?.purchaseOrderId) return fallback;
+    const revision = await this.awardRepo.activeRevision(prisma, request.purchaseOrderId);
+    const position = fundingPosition(await this.awardRepo.fundingInputs(prisma, payment.organizationId, request.purchaseOrderId, revision?.ordered ?? ZERO));
+    return position.funded.greaterThan(fallback) ? position.funded : fallback;
+  }
+
+  /** Posted prepayments (purchase allocation to this order) with an unapplied balance. */
+  async unappliedPrepayments(db: Prisma.TransactionClient | ReturnType<TenancyService['getClient']>, orgId: string, purchaseOrderId: string) {
+    const rows = await db.supplierPayment.findMany({
+      where: {
+        organizationId: orgId,
+        postingStatus: 'POSTED',
+        unallocatedAmount: { gt: 0 },
+        purchaseAllocations: { some: { purchaseOrderId } },
+      },
+      select: { id: true, unallocatedAmount: true },
+      orderBy: { paymentDate: 'asc' },
+    });
+    return rows.map((r) => ({ id: r.id, unallocated: dec(r.unallocatedAmount) }));
   }
 
   private async result(identity: RequestIdentity, paymentId: string, awaiting?: 'RELEASE_SIGNATURES') {

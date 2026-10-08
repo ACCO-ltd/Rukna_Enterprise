@@ -30,6 +30,8 @@ const MESSAGES: Record<string, string> = {
   AMOUNT_INVALID: 'The amount must be positive with at most 2 decimals.',
   DATE_INVALID: 'The date is not a valid calendar date.',
   BANK_GL_MISMATCH: 'The bank GL does not match the account the money left.',
+  PREPAYMENT_NOT_APPLIED:
+    'A prepayment to this store is not applied to its bill yet. Apply the prepayment instead of paying again.',
   PAYMENT_SHAPE_INVALID: 'Pay the invoice needs a posted bill on this order with enough outstanding.',
   STORE_DOCUMENT_NOT_SUBMITTED: 'This receipt is no longer waiting to be recorded.',
   STORE_DOCUMENT_PHOTO_DUPLICATE: 'This receipt photo was already sent on another receipt.',
