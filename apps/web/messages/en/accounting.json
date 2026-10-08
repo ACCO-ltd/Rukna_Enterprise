@@ -335,6 +335,19 @@
       "add": "Add",
       "addFailed": "Could not add signatory.",
       "dualControlNote": "Once a signatory is added, every payment from this account requires two distinct signatories to authorise it."
+    },
+    "cashPreset": {
+      "addCashBox": "Add cash box",
+      "addEvc": "Add EVC float",
+      "title": {
+        "cash-box": "Add cash box",
+        "evc-float": "Add EVC float"
+      },
+      "cashBoxName": "Cash box",
+      "evcName": "EVC float",
+      "evcProvider": "EVC Plus",
+      "explain": "Buyer cash for purchases is handed out only from an account with no signatories — a cash box or an EVC float. Accounts with signatories stay for supplier payments.",
+      "formHint": "Keep this account without signatories, so finance can hand out buyer cash at once. Check the ledger account and the number, then save."
     }
   },
   "reconciliation": {
