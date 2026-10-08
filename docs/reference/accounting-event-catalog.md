@@ -792,6 +792,28 @@ SUBLEDGER AFTER REVERSAL
 
 ---
 
+### EVT-AP-007 … EVT-AP-011 — Buyer (staff) cash advances (ADR-045)
+
+All five use `sourceDocumentType = BUYER_ADVANCE` and resolve the Staff advances account through
+the effective-dated posting profile `STAFF_ADVANCE` (13100) on the event's accounting date
+(missing → 409 `POSTING_ACCOUNT_NOT_CONFIGURED:STAFF_ADVANCE`, nothing written). Every line
+carries the award's `projectId`. Accounting dates are source-document dates, never the clock.
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-AP-007 `BUYER_ADVANCE_DISBURSED` | advance released (DoA + SoD passed) | Dr Staff advances / Cr the disbursing account's GL (`BankAccount.glAccountId`, BANK subledger) | `advancedAt` | advance id | CASH_AND_BANK / SYSTEM_CASH |
+| EVT-AP-008 `BUYER_ADVANCE_APPLIED` | advance applied to a POSTED bill of its PO | Dr AP (the account the bill credited; supplier subledger) / Cr Staff advances; bill `outstandingAmount` reduced | max(`billDate`, `advancedAt`) | application id | ACCOUNTS_PAYABLE / SYSTEM_AP |
+| EVT-AP-009 `BUYER_ADVANCE_RETURNED` | change returned by the buyer | Dr the receiving account's GL / Cr Staff advances | `receivedAt` | return id | CASH_AND_BANK / SYSTEM_CASH |
+| EVT-AP-010 (reversal of 007) | advance reversed (nothing applied / returned) | exact mirror of EVT-AP-007 | `reversalDate` (≥ `advancedAt`) | `reversal-<advance id>` | CASH_AND_BANK / SYSTEM_CASH, REVERSAL |
+| EVT-AP-011 (reversal of 008) | application reversed | exact mirror of EVT-AP-008; bill outstanding restored | the application's date | `reversal-<application id>` | ACCOUNTS_PAYABLE / SYSTEM_AP, REVERSAL |
+
+Legacy advances (POSTED before ADR-045, no journal) are never re-posted: their returns and evidence
+links are recorded without a journal, and finance clears their balance by manual journal if needed.
+
+Fixture (S2 → S6, PO 1,000.00): EVT-AP-007 Dr 13100 1,000 / Cr 10900 1,000 (08 Oct) → bill
+EVT-AP-001 Dr expense 980 / Cr AP 980 (08 Oct) → EVT-AP-008 Dr AP 980 / Cr 13100 980 (08 Oct) →
+EVT-AP-009 Dr 10900 20 / Cr 13100 20 (09 Oct). Net: 13100 = 0, AP = 0, cash −980, expense +980.
+
 ### EVT-JNL-001 — Manual Journal Posted
 
 ```

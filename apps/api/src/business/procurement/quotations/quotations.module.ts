@@ -22,7 +22,12 @@ import { QuotationListService } from './application/quotation-list.service.js';
 import { QuotationMaterialRequestLink } from './application/quotation-material-request-link.service.js';
 import { QuotationRequestController } from './presentation/quotation-request.controller.js';
 import { QuotationPaymentNotifier } from './application/quotation-payment-notifier.service.js';
-import { AWARD_PAYMENT_EVENTS } from '../../accounting/accounts-payable/domain/award-payment-events.port.js';
+import { QuotationPaymentReadModel } from './application/quotation-payment-read-model.service.js';
+import { QuotationPaymentPathService } from './application/quotation-payment-path.service.js';
+import {
+  AWARD_PAYMENT_EVENTS,
+  AWARD_PAYMENT_READ_MODEL,
+} from '../../accounting/accounts-payable/domain/award-payment-events.port.js';
 
 /**
  * ADR-044 — competitive quotations between an approved material request and its purchase order.
@@ -51,7 +56,17 @@ import { AWARD_PAYMENT_EVENTS } from '../../accounting/accounts-payable/domain/a
     // ADR-045 — paying from the award: notifications + the AP events port.
     QuotationPaymentNotifier,
     { provide: AWARD_PAYMENT_EVENTS, useExisting: QuotationPaymentNotifier },
+    QuotationPaymentReadModel,
+    { provide: AWARD_PAYMENT_READ_MODEL, useExisting: QuotationPaymentReadModel },
+    QuotationPaymentPathService,
   ],
-  exports: [QuotationMaterialRequestLink, QuotationPaymentNotifier, AWARD_PAYMENT_EVENTS, QuotationRequestRepository, QuotationAccessService],
+  exports: [
+    QuotationMaterialRequestLink,
+    QuotationPaymentNotifier,
+    AWARD_PAYMENT_EVENTS,
+    AWARD_PAYMENT_READ_MODEL,
+    QuotationRequestRepository,
+    QuotationAccessService,
+  ],
 })
 export class QuotationsModule {}

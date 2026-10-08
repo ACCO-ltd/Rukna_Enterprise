@@ -14,10 +14,13 @@ const P = PERMISSIONS;
 const collect = [P.procurementView, P.quotationsCollect];
 const award = [P.procurementView, P.quotationsAward];
 const either = { all: [P.procurementView], any: [P.quotationsCollect, P.quotationsAward] };
+// ADR-045 — the queues and the detail are also open to finance holding only manage:payable.
+const readers = { all: [P.procurementView], any: [P.quotationsCollect, P.quotationsAward, P.payablesManage] };
 
 const EXPECTED: Record<string, { all: string[]; any?: string[] }> = {
-  list: either,
-  detail: either,
+  list: readers,
+  detail: readers,
+  changePaymentPath: { all: [...award, P.payablesManage] },
   open: { all: collect },
   addQuote: { all: collect },
   addPage: { all: collect },
