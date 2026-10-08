@@ -1,14 +1,13 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
+import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { ApprovalService } from '../../../../platform/workflows/application/approval.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
-import { driveGovernedTransition } from '../../../../platform/workflows/application/governed-transition.driver.js';
 import { PeriodValidator } from '../../accounting-core/application/validators/period.validator.js';
 import { periodPostingBlock } from '../../accounting-core/domain/period-posting.policy.js';
 import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';

@@ -126,6 +126,7 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     q.approvals,
     sod,
     audit,
+    projectAccess,
     paymentNotifier,
     q.paymentReadModel,
   );

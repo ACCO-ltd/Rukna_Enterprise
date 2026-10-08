@@ -24,7 +24,7 @@ import { DocumentSequenceRepository } from '../../accounting-core/infrastructure
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { PurchaseAllocationRepository } from '../infrastructure/purchase-allocation.repository.js';
-import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { ApprovalService } from '../../../../platform/workflows/application/approval.service.js';
 import { driveGovernedTransition } from '../../../../platform/workflows/application/governed-transition.driver.js';
 import { WorkflowTransactionType } from '@erp/types';

@@ -27,6 +27,7 @@ import { periodPostingBlock } from '../../accounting-core/domain/period-posting.
 import { BuyerAdvanceRepository } from '../infrastructure/buyer-advance.repository.js';
 import { AwardPaymentRepository, type AwardRequestFacts } from '../infrastructure/award-payment.repository.js';
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import {
   advanceOutstanding,
   applicationAmount,
@@ -84,6 +85,8 @@ export interface ReleaseCashCommand {
 }
 
 export interface CreateAdvanceReturnCommand {
+  /** Review M1 — client key: a double tap records one return. */
+  idempotencyKey?: string;
   amount: number | string;
   returnMethod: string;
   destinationBankAccountId?: string;
@@ -94,6 +97,8 @@ export interface CreateAdvanceReturnCommand {
 }
 
 export interface CreateApplicationCommand {
+  /** Review M1 — client key: a double tap records one application. */
+  idempotencyKey?: string;
   supplierBillId: string;
   /** Omitted → min(bill outstanding, advance outstanding). */
   amount?: number | string;
@@ -139,6 +144,7 @@ export class BuyerAdvanceService {
     private readonly approvals: ApprovalService,
     private readonly sod: SegregationOfDutiesService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly projectAccess: ProjectAccessService,
     @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
     @Optional() @Inject(AWARD_PAYMENT_READ_MODEL) private readonly readModel?: AwardPaymentReadModel,
   ) {}
@@ -174,6 +180,7 @@ export class BuyerAdvanceService {
     const orgId = identity.activeOrganizationId;
     const request = await this.awardRepo.findRequest(prisma, orgId, quotationRequestId);
     if (!request) throw new NotFoundException(`Quotation request ${quotationRequestId} not found`);
+    if (request.projectId) await this.projectAccess.assertMember(identity, request.projectId);
     const po = request.purchaseOrderId ? await this.awardRepo.findPurchaseOrder(prisma, orgId, request.purchaseOrderId) : null;
     const revision = po ? await this.awardRepo.activeRevision(prisma, po.id) : null;
     const ordered = revision?.ordered ?? ZERO;
@@ -247,6 +254,10 @@ export class BuyerAdvanceService {
     const existing = await prisma.buyerAdvance.findFirst({ where: { organizationId: orgId, idempotencyKey: cmd.idempotencyKey } });
     if (existing) {
       this.assertSameRelease(existing, cmd, amount, advancedAt);
+      if (existing.quotationRequestId) {
+        const req = await this.awardRepo.findRequest(prisma, orgId, existing.quotationRequestId);
+        if (req?.projectId) await this.projectAccess.assertMember(identity, req.projectId);
+      }
       if (existing.documentStatus === 'DRAFT' && existing.postingStatus === 'NOT_POSTED') {
         await this.approveAndPost(identity, existing.id, { applyToBillId: cmd.applyToBillId });
       }
@@ -254,6 +265,7 @@ export class BuyerAdvanceService {
     }
 
     const { po, request } = await this.resolveTarget(identity, cmd);
+    if (request?.projectId) await this.projectAccess.assertMember(identity, request.projectId);
     await this.assertReleasable(identity, { po, request, recipientUserId: cmd.recipientUserId, bankAccountId: cmd.bankAccountId, advancedAt });
 
     let advanceId: string;
@@ -261,6 +273,8 @@ export class BuyerAdvanceService {
       advanceId = await prisma.$transaction(async (tx) => {
         const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, po.id);
         if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+        // Review M4 — the path is re-read under the PO lock (a concurrent path change serialises here).
+        if (request) await this.assertAwardStillBuyerCash(tx, orgId, request.id);
         if (request) await this.assertFundingRoom(tx, orgId, po.id, amount, cmd.applyToBillId);
         const advance = await tx.buyerAdvance.create({
           data: {
@@ -278,6 +292,7 @@ export class BuyerAdvanceService {
             documentStatus: 'DRAFT',
             postingStatus: 'NOT_POSTED',
             idempotencyKey: cmd.idempotencyKey,
+            applyToBillId: cmd.applyToBillId ?? null,
             createdBy: identity.userId,
           },
         });
@@ -305,6 +320,13 @@ export class BuyerAdvanceService {
     return this.releaseResult(identity, advanceId);
   }
 
+  /** Review M4 — the award must still be AWARDED on the BUYER_CASH path (read under the PO lock). */
+  private async assertAwardStillBuyerCash(tx: Tx, orgId: string, requestId: string) {
+    const fresh = await this.awardRepo.findRequest(tx, orgId, requestId);
+    if (!fresh || fresh.status !== 'AWARDED') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+    if (fresh.paymentPath !== 'BUYER_CASH') throw paymentConflict('PAYMENT_PATH_MISMATCH');
+  }
+
   // ── Existing endpoints, hardened ──────────────────────────────────────────────────────────────
 
   /** `POST /buyer-advances` — a DRAFT advance (posted later by `post`), with the release checks. */
@@ -330,6 +352,7 @@ export class BuyerAdvanceService {
     return prisma.$transaction(async (tx) => {
       const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, po.id);
       if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+      if (request) await this.assertAwardStillBuyerCash(tx, orgId, request.id);
       if (request) await this.assertFundingRoom(tx, orgId, po.id, amount);
       const advance = await this.advanceRepo.create(tx as never, {
         organizationId: orgId,
@@ -367,7 +390,12 @@ export class BuyerAdvanceService {
     if (advance.postingStatus === 'REVERSED' || advance.documentStatus === 'CANCELLED') {
       throw new BadRequestException(`BuyerAdvance ${advanceId} has been reversed and cannot be posted`);
     }
-    await this.approveAndPost(identity, advanceId, {});
+    if (advance.quotationRequestId) {
+      const req = await this.awardRepo.findRequest(prisma, identity.activeOrganizationId, advance.quotationRequestId);
+      if (req?.projectId) await this.projectAccess.assertMember(identity, req.projectId);
+    }
+    // The stored top-up target is honoured on a body-less re-drive from another device.
+    await this.approveAndPost(identity, advanceId, { applyToBillId: advance.applyToBillId ?? undefined });
     return prisma.buyerAdvance.findUniqueOrThrow({ where: { id: advanceId } });
   }
 
@@ -404,7 +432,9 @@ export class BuyerAdvanceService {
         toState: 'APPROVED',
         transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
         resourceId: advance.id,
-        amount: dec(advance.amount),
+        // Review M7 — the band is chosen on the order's cumulative funding (this advance included),
+        // so ten releases of $999 cannot all stay in the Finance Officer band.
+        amount: request ? await this.cumulativeFunding(prisma, orgId, advance.purchaseOrderId, dec(advance.amount)) : dec(advance.amount),
         selfApprovalNote: request ? `Cash released from ${request.number}` : 'Buyer cash released',
         vetApprovers: async (approval) => {
           // R18: an approver on the advance's instance may not be its recipient.
@@ -429,6 +459,13 @@ export class BuyerAdvanceService {
       },
     );
     if (outcome.gated) {
+      // Review M2 — a concurrent re-drive may have posted it meanwhile: then the new instance the
+      // gate opened is void and the posted advance is the answer.
+      const now = await prisma.buyerAdvance.findUniqueOrThrow({ where: { id: advance.id } });
+      if (now.postingStatus === 'POSTED') {
+        await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.SUPPLIER_PAYMENT, advance.id);
+        return;
+      }
       await prisma.buyerAdvance.updateMany({
         where: { id: advance.id, documentStatus: 'DRAFT' },
         data: { approvalInstanceId: outcome.approvalInstanceId },
@@ -448,6 +485,10 @@ export class BuyerAdvanceService {
       const current = await tx.buyerAdvance.findUniqueOrThrow({ where: { id: advance.id } });
       if (current.postingStatus === 'POSTED') return;
       if (current.documentStatus !== 'DRAFT') throw paymentConflict('ADVANCE_NOT_RELEASED');
+      // Review H3 — the release checks again, under the PO lock: a DRAFT may have waited for days.
+      await this.assertStillReleasable(tx, identity, current, locked.status);
+      // Review M2 — the approval is used in the same transaction as the posting.
+      if (outcome.consumed) await this.commandGovernance.consumeApprovalIn(tx, outcome.consumed.instanceId);
       const staff = await this.awardRepo.staffAdvanceAccount(tx, orgId, current.advancedAt);
       if (!staff) throw paymentConflict('POSTING_ACCOUNT_NOT_CONFIGURED:STAFF_ADVANCE');
       const account = await tx.bankAccount.findUniqueOrThrow({
@@ -555,11 +596,22 @@ export class BuyerAdvanceService {
     const advance = await this.advanceRepo.findById(prisma, orgId, advanceId);
     if (!advance) throw new NotFoundException(`BuyerAdvance ${advanceId} not found`);
 
-    const result = await prisma.$transaction(async (tx) => {
-      await this.awardRepo.lockPurchaseOrder(tx, orgId, advance.purchaseOrderId);
-      await this.awardRepo.lockBuyerAdvance(tx, advance.id);
-      return this.applyInTx(tx, identity, advance.id, cmd.supplierBillId, requested, 'buyer-advance.apply');
-    });
+    const replay = await this.applicationReplay(prisma, orgId, cmd.idempotencyKey, advance.id, cmd.supplierBillId, requested);
+    if (replay) return replay;
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        await this.awardRepo.lockPurchaseOrder(tx, orgId, advance.purchaseOrderId);
+        await this.awardRepo.lockBuyerAdvance(tx, advance.id);
+        return this.applyInTx(tx, identity, advance.id, cmd.supplierBillId, requested, 'buyer-advance.apply', cmd.idempotencyKey);
+      });
+    } catch (error) {
+      if (cmd.idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const again = await this.applicationReplay(prisma, orgId, cmd.idempotencyKey, advance.id, cmd.supplierBillId, requested);
+        if (again) return again;
+      }
+      throw error;
+    }
     await this.purchaseOrderService.autoCloseIfSettled(identity, advance.purchaseOrderId);
     return result;
   }
@@ -582,6 +634,7 @@ export class BuyerAdvanceService {
     billId: string,
     requested: Decimal | undefined,
     sourceCommand: string,
+    idempotencyKey?: string,
   ) {
     const orgId = identity.activeOrganizationId;
     const advance = await tx.buyerAdvance.findUniqueOrThrow({
@@ -628,6 +681,7 @@ export class BuyerAdvanceService {
         supplierBillId: bill.id,
         allocatedAmount: amount,
         allocationDate: legacy ? null : applicationDate(bill.billDate, advance.advancedAt),
+        idempotencyKey: idempotencyKey ?? null,
         createdBy: identity.userId,
       },
     });
@@ -816,6 +870,22 @@ export class BuyerAdvanceService {
     const legacy = isLegacyAdvance(advance);
     if (!legacy) await this.assertPeriodOpen(orgId, receivedAt, 'CASH_AND_BANK');
 
+    const returnReplay = async () => {
+      if (!cmd.idempotencyKey) return null;
+      const prior = await prisma.advanceReturn.findFirst({ where: { organizationId: orgId, idempotencyKey: cmd.idempotencyKey } });
+      if (!prior) return null;
+      const same =
+        prior.buyerAdvanceId === advance.id &&
+        dec(prior.amount).equals(amount) &&
+        prior.destinationBankAccountId === destination.id &&
+        prior.receivedAt.getTime() === receivedAt.getTime() &&
+        prior.returnMethod === cmd.returnMethod;
+      if (!same) throw paymentConflict('IDEMPOTENCY_KEY_REUSED');
+      return prior;
+    };
+    const prior = await returnReplay();
+    if (prior) return prior;
+
     const result = await prisma.$transaction(async (tx) => {
       await this.awardRepo.lockPurchaseOrder(tx, orgId, advance.purchaseOrderId);
       await this.awardRepo.lockBuyerAdvance(tx, advance.id);
@@ -843,6 +913,7 @@ export class BuyerAdvanceService {
         reference: cmd.reference,
         note: cmd.note,
       });
+      if (cmd.idempotencyKey) await tx.advanceReturn.update({ where: { id: row.id }, data: { idempotencyKey: cmd.idempotencyKey } });
       let journalEntryId: string | null = null;
       if (!legacy) {
         const staff = await this.awardRepo.staffAdvanceAccount(tx, orgId, receivedAt);
@@ -1106,7 +1177,16 @@ export class BuyerAdvanceService {
 
   /** A replay of a key must be the same release (PO, recipient, amount, account, date). */
   private assertSameRelease(
-    existing: { purchaseOrderId: string; quotationRequestId: string | null; recipientUserId: string; amount: unknown; disbursementBankAccountId: string; advancedAt: Date },
+    existing: {
+      purchaseOrderId: string;
+      quotationRequestId: string | null;
+      recipientUserId: string;
+      amount: unknown;
+      disbursementBankAccountId: string;
+      advancedAt: Date;
+      paymentMethod: string;
+      applyToBillId: string | null;
+    },
     cmd: ReleaseCashCommand,
     amount: Decimal,
     advancedAt: Date,
@@ -1117,6 +1197,8 @@ export class BuyerAdvanceService {
       cmd.recipientUserId === existing.recipientUserId &&
       dec(existing.amount as Decimal).equals(amount) &&
       cmd.bankAccountId === existing.disbursementBankAccountId &&
+      cmd.paymentMethod === existing.paymentMethod &&
+      (cmd.applyToBillId ?? null) === (existing.applyToBillId ?? null) &&
       existing.advancedAt.getTime() === advancedAt.getTime();
     if (!same) throw paymentConflict('IDEMPOTENCY_KEY_REUSED');
   }
@@ -1203,6 +1285,69 @@ export class BuyerAdvanceService {
         throw paymentUnprocessable('APPLICATION_EXCEEDS_OUTSTANDING', { billOutstanding: dec(bill.outstandingAmount).toFixed(2) });
       }
     }
+  }
+
+  /**
+   * Review H3 — inside the posting transaction, under the PO lock: the order still OPEN; the award
+   * still on BUYER_CASH; the account still usable without dual control; the recipient still an
+   * active collector; and the order still within its cap (this DRAFT already counts).
+   */
+  private async assertStillReleasable(
+    tx: Tx,
+    identity: RequestIdentity,
+    advance: { id: string; purchaseOrderId: string; quotationRequestId: string | null; recipientUserId: string; disbursementBankAccountId: string; currencyCode: string },
+    poStatus: string,
+  ) {
+    const orgId = identity.activeOrganizationId;
+    if (poStatus !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+    const request = advance.quotationRequestId ? await this.awardRepo.findRequest(tx, orgId, advance.quotationRequestId) : null;
+    if (advance.quotationRequestId) await this.assertAwardStillBuyerCash(tx, orgId, advance.quotationRequestId);
+    const account = await this.awardRepo.findPaymentAccount(tx, orgId, advance.disbursementBankAccountId);
+    if (!account) throw paymentUnprocessable('ACCOUNT_NOT_USABLE');
+    const block = cashAccountBlock(account, account.activeSignatories, advance.currencyCode);
+    if (block === 'ACCOUNT_REQUIRES_DUAL_CONTROL') throw paymentConflict(block);
+    if (block) throw paymentUnprocessable(block);
+    const member = await this.awardRepo.activeMember(tx, orgId, advance.recipientUserId);
+    const eligible = request
+      ? request.collectorIds.includes(advance.recipientUserId)
+      : Boolean(member?.permissions.has(PERMISSIONS.procurementView));
+    if (!member || !eligible) throw paymentUnprocessable('ADVANCE_RECIPIENT_INVALID');
+    if (request) {
+      const revision = await this.awardRepo.activeRevision(tx, advance.purchaseOrderId);
+      const position = fundingPosition(await this.awardRepo.fundingInputs(tx, orgId, advance.purchaseOrderId, revision?.ordered ?? ZERO));
+      if (position.funded.greaterThan(position.cap)) {
+        throw paymentConflict('FUNDING_EXCEEDS_ORDER', {
+          orderedAmount: position.cap.toFixed(2),
+          funded: position.funded.toFixed(2),
+          requested: '0.00',
+        });
+      }
+    }
+  }
+
+  /** Review M7 — Σ live funding of the order (this document included), the DoA band's value. */
+  private async cumulativeFunding(db: Tx | ReturnType<TenancyService['getClient']>, orgId: string, poId: string, fallback: Decimal) {
+    const revision = await this.awardRepo.activeRevision(db, poId);
+    const position = fundingPosition(await this.awardRepo.fundingInputs(db, orgId, poId, revision?.ordered ?? ZERO));
+    return position.funded.greaterThan(fallback) ? position.funded : fallback;
+  }
+
+  /** Review M1 — a replayed application key answers the first application (or 409 if it differs). */
+  private async applicationReplay(
+    db: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    key: string | undefined,
+    advanceId: string,
+    billId: string,
+    requested: Decimal | undefined,
+  ) {
+    if (!key) return null;
+    const prior = await db.buyerAdvanceEvidenceAllocation.findFirst({ where: { organizationId: orgId, idempotencyKey: key } });
+    if (!prior) return null;
+    if (prior.buyerAdvanceId !== advanceId || prior.supplierBillId !== billId || (requested && !dec(prior.allocatedAmount).equals(requested))) {
+      throw paymentConflict('IDEMPOTENCY_KEY_REUSED');
+    }
+    return { application: prior, journalEntryId: prior.journalEntryId };
   }
 
   private async assertNotSelfRelease(orgId: string, actorUserId: string, recipientUserId: string) {

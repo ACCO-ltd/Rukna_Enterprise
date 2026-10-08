@@ -337,7 +337,7 @@ describe('Buyer advances — org-wide list', () => {
     const advances = new BuyerAdvanceService(
       tenancy,
       new BuyerAdvanceRepository(),
-      {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
+      {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
     );
     const all = await advances.list(env.identity, {});
     expect(all).toHaveLength(1);

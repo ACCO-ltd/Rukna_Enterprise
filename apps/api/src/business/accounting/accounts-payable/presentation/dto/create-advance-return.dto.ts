@@ -11,6 +11,10 @@ export enum AdvanceReturnMethodDto {
 }
 
 export class CreateAdvanceReturnDto {
+  @ApiPropertyOptional({ description: 'ADR-045 — client key (once per dialog open); a double tap records one return' })
+  @IsString() @IsOptional() @MaxLength(100)
+  idempotencyKey?: string;
+
   @ApiProperty({ example: 500, description: 'Amount being returned' })
   // ADR-045: a number or a 2-dp string ("20.00"); validated (positive, ≤ 2 dp) by the service.
   @IsNotEmpty()

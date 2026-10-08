@@ -3411,6 +3411,8 @@ model BuyerAdvance {
   reversalJournalEntryId    String?                   @map("reversal_journal_entry_id")
   /// ADR-045 — the quotation request the cash was released from (CASH_RELEASED notification).
   quotationRequestId        String?                   @map("quotation_request_id")
+  /// ADR-045 — a top-up's target bill (applied when released; kept so a re-drive needs no body).
+  applyToBillId             String?                   @map("apply_to_bill_id")
   createdBy                 String                    @map("created_by")
   createdAt                 DateTime                  @default(now()) @map("created_at")
   updatedAt                 DateTime                  @updatedAt @map("updated_at")

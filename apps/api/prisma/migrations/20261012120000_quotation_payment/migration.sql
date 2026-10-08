@@ -58,7 +58,8 @@ ADD COLUMN     "reversed_at" TIMESTAMP(3),
 ADD COLUMN     "reversed_by" TEXT;
 
 -- AlterTable
-ALTER TABLE "buyer_advances" ADD COLUMN     "approval_instance_id" TEXT,
+ALTER TABLE "buyer_advances" ADD COLUMN     "apply_to_bill_id" TEXT,
+ADD COLUMN     "approval_instance_id" TEXT,
 ADD COLUMN     "approved_at" TIMESTAMP(3),
 ADD COLUMN     "approved_by" TEXT,
 ADD COLUMN     "idempotency_key" VARCHAR(100),

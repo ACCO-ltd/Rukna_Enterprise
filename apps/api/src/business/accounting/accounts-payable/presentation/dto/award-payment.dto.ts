@@ -72,6 +72,10 @@ export class ReverseBuyerAdvanceDto {
 }
 
 export class CreateAdvanceApplicationDto {
+  @ApiPropertyOptional({ description: 'Client key (once per dialog open); a double tap records one application' })
+  @IsOptional() @IsString() @MaxLength(100)
+  idempotencyKey?: string;
+
   @ApiProperty()
   @IsString() @IsNotEmpty()
   supplierBillId!: string;

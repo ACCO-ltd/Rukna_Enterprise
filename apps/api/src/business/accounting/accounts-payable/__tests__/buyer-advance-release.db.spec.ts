@@ -197,6 +197,84 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
     });
   });
 
+  describe('review fixes', () => {
+    it('H3: a DRAFT waiting for approval is re-checked when re-driven (dual control, closed order, path) — the approval is not burnt', async () => {
+      await a.setPaymentBandsActive(true);
+      try {
+        const { requestId, poId } = await a.awardedOrder({ total: '4000.00' });
+        const gated = await a.release(requestId, { amount: '4000.00' }).catch((e) => e);
+        const { approvalInstanceId, advanceId } = gated.getResponse().details;
+        await svc.approvals.approve(approvalInstanceId, env.userIds.cfo, ['CFO'], env.orgId);
+        // The cash box came under dual control meanwhile.
+        const sig = await prisma.bankAccountSignatory.create({
+          data: { organizationId: env.orgId, bankAccountId: env.bank.cashBoxId, userId: env.userIds.cfo, addedBy: env.identity.userId },
+        });
+        try {
+          expect(await refusal(svc.advances.post(env.payer2, advanceId))).toEqual({ status: 409, code: 'ACCOUNT_REQUIRES_DUAL_CONTROL' });
+        } finally {
+          await prisma.bankAccountSignatory.delete({ where: { id: sig.id } });
+        }
+        expect((await prisma.approvalInstance.findUniqueOrThrow({ where: { id: approvalInstanceId } })).status).toBe('APPROVED');
+        await prisma.quotationRequest.update({ where: { id: requestId }, data: { paymentPath: 'FINANCE_PAYS_SUPPLIER' } });
+        expect(await refusal(svc.advances.post(env.payer2, advanceId))).toEqual({ status: 409, code: 'PAYMENT_PATH_MISMATCH' });
+        await prisma.quotationRequest.update({ where: { id: requestId }, data: { paymentPath: 'BUYER_CASH' } });
+        await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'CLOSED' } });
+        expect(await refusal(svc.advances.post(env.payer2, advanceId))).toEqual({ status: 409, code: 'PAYMENT_PO_NOT_OPEN' });
+        await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'OPEN' } });
+        expect(await journalsOf(advanceId)).toHaveLength(0);
+        // Body-less re-drive (another device) completes it once.
+        const posted = await svc.advances.post(env.payer2, advanceId);
+        expect(posted.postingStatus).toBe('POSTED');
+        expect((await prisma.approvalInstance.findUniqueOrThrow({ where: { id: approvalInstanceId } })).status).toBe('CANCELLED');
+      } finally {
+        await a.setPaymentBandsActive(false);
+      }
+    });
+
+    it('M7: releases are banded on the cumulative funding of the order (2 × $900 → the CFO band)', async () => {
+      await a.setPaymentBandsActive(true);
+      try {
+        const { requestId } = await a.awardedOrder({ total: '2000.00' });
+        await expect(a.release(requestId, { amount: '900.00' })).resolves.toBeTruthy();
+        const second = await a.release(requestId, { amount: '900.00' }).catch((e) => e);
+        expect(second.getResponse().details.code).toBe('APPROVAL_REQUIRED');
+        const inst = await prisma.approvalInstance.findUniqueOrThrow({ where: { id: second.getResponse().details.approvalInstanceId } });
+        expect(inst.evaluatedAmount?.toString()).toBe('1800');
+      } finally {
+        await a.setPaymentBandsActive(false);
+      }
+    });
+
+    it('M1 / LOW: returns and applications are idempotent on their key; a release replay must match every field', async () => {
+      const { requestId } = await a.awardedOrder();
+      const key = randomUUID();
+      const { advance } = await a.release(requestId, { amount: '100.00', key });
+      expect(await refusal(a.release(requestId, { amount: '100.00', key, method: 'MOBILE_MONEY' }))).toEqual({
+        status: 409,
+        code: 'IDEMPOTENCY_KEY_REUSED',
+      });
+      const retKey = randomUUID();
+      const body = {
+        idempotencyKey: retKey,
+        amount: '10.00',
+        returnMethod: 'CASH',
+        destinationBankAccountId: env.bank.cashBoxId,
+        receivedBy: env.userIds.selector,
+        receivedAt: '2026-10-09',
+      };
+      const [r1, r2] = await Promise.all([
+        svc.advances.createReturn(env.as('selector'), advance.id, body),
+        svc.advances.createReturn(env.as('selector'), advance.id, body).catch(() => svc.advances.createReturn(env.as('selector'), advance.id, body)),
+      ]);
+      expect(r2.id).toBe(r1.id);
+      expect(await prisma.advanceReturn.count({ where: { buyerAdvanceId: advance.id } })).toBe(1);
+      expect(await refusal(svc.advances.createReturn(env.as('selector'), advance.id, { ...body, amount: '11.00' }))).toEqual({
+        status: 409,
+        code: 'IDEMPOTENCY_KEY_REUSED',
+      });
+    });
+  });
+
   describe('change returned and reverse', () => {
     it('S6 (return part): change returned posts EVT-AP-009 on receivedAt; over-return is refused (R11)', async () => {
       const { requestId } = await a.awardedOrder();

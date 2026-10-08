@@ -135,6 +135,7 @@ export class BuyerAdvanceController {
     @Body() dto: CreateAdvanceReturnDto,
   ) {
     return this.buyerAdvanceService.createReturn(identity, id, {
+      idempotencyKey: dto.idempotencyKey,
       amount: dto.amount,
       returnMethod: dto.returnMethod,
       destinationBankAccountId: dto.destinationBankAccountId,
@@ -154,7 +155,11 @@ export class BuyerAdvanceController {
     @Param('id') id: string,
     @Body() dto: CreateAdvanceApplicationDto,
   ) {
-    return this.buyerAdvanceService.createApplication(identity, id, { supplierBillId: dto.supplierBillId, amount: dto.amount });
+    return this.buyerAdvanceService.createApplication(identity, id, {
+      idempotencyKey: dto.idempotencyKey,
+      supplierBillId: dto.supplierBillId,
+      amount: dto.amount,
+    });
   }
 
   @Post(':id/applications/:appId/reverse')
