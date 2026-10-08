@@ -155,9 +155,9 @@ export interface PurchaseOrderBillPaymentRow {
   lastPaymentDate: string | null;
   paymentStatus: SupplierBillPaymentState;
   /** ADR-045 — Σ POSTED buyer-cash applications (included in paidAmount). */
-  paidByBuyerCashAmount: string;
+  paidByBuyerCashAmount?: string;
   /** ADR-045 — the buyer-cash applications to the bill. */
-  advanceApplications: Array<{ advanceId: string; amount: string; allocationDate: string | null; postingStatus: string }>;
+  advanceApplications?: Array<{ advanceId: string; amount: string; allocationDate: string | null; postingStatus: string }>;
 }
 
 /**
