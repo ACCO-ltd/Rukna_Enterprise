@@ -92,6 +92,26 @@ describe('ADR-045 P5 — store documents', () => {
     ).toEqual({ status: 409, code: 'STORE_DOCUMENT_PHOTO_DUPLICATE' });
   });
 
+  it('review LOW: a rejected receipt frees its photo; the database refuses a second live copy of a photo hash', async () => {
+    const { poId } = await a.awardedOrder();
+    const content = `receipt-${randomUUID()}`;
+    const first = await svc.storeDocuments.create(env.as('collector'), {
+      clientRef: randomUUID(), purchaseOrderId: poId, kind: 'RECEIPT', photos: [await photo('collector', content)],
+    });
+    await svc.storeDocuments.reject(env.as('selector'), first.id, 'ILLEGIBLE');
+    const again = await svc.storeDocuments.create(env.as('collector'), {
+      clientRef: randomUUID(), purchaseOrderId: poId, kind: 'RECEIPT', photos: [await photo('collector', content)],
+    });
+    expect(again.status).toBe('SUBMITTED');
+    const live = await prisma.storeDocumentPhoto.findFirstOrThrow({ where: { storeDocumentId: again.id } });
+    const file = await createUploadedPhoto(prisma, env, 'collector');
+    await expect(
+      prisma.storeDocumentPhoto.create({
+        data: { ...live, id: undefined, platformFileId: file.id, pageNumber: 2, receivedAt: undefined },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
+  });
+
   it('only a collector of the award can send its receipt; only for an issued award order', async () => {
     const { poId } = await a.awardedOrder();
     expect(

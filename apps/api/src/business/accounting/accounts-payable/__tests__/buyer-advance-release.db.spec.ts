@@ -172,6 +172,10 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
       const [draft] = await advancesOf(poId);
       expect(draft).toMatchObject({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', approvalInstanceId });
       expect(await journalsOf(draft.id)).toHaveLength(0);
+      const pending = (await svc.query.detail(env.as('selector'), requestId)).payment!.pending;
+      expect(pending).toEqual([
+        expect.objectContaining({ kind: 'BUYER_ADVANCE', id: draft.id, idempotencyKey: key, awaiting: 'APPROVAL', approvalInstanceId, continue: { method: 'POST', path: `/buyer-advances/${draft.id}/post` } }),
+      ]);
       const actions = await prisma.approvalAction.findMany({ where: { instanceId: approvalInstanceId } });
       expect(actions.map((x) => [x.stepOrder, x.actorId])).toEqual([[1, env.userIds.selector]]);
 

@@ -46,9 +46,6 @@ export class QuotationAlertGuard implements OnModuleInit {
     this.communication.registerDispatchGuard(QUOTATION_MESSAGE_RESOURCE, (db, message) => this.check(db, message));
   }
 
-  /** The key of the message being checked (the cash-released audience is in its round). */
-  private currentKey = '';
-
   async check(db: Db, message: OutboundMessage): Promise<DispatchDecision> {
     if (!this.alerts.switchedOn()) return 'Not sent: quotation WhatsApp alerts were switched off.';
     const purpose = message.purpose as QuotationAlertPurpose;
@@ -73,8 +70,7 @@ export class QuotationAlertGuard implements OnModuleInit {
       return 'Not sent: the recipient no longer has a WhatsApp number.';
     }
 
-    this.currentKey = message.idempotencyKey;
-    const audience = await this.audience(db, purpose, request);
+    const audience = await this.audience(db, purpose, request, message.idempotencyKey);
     if (!audience.includes(message.recipientUserId)) return 'Not sent: the recipient can no longer act on this request.';
     return user.whatsappPhone === message.recipient ? null : { recipient: user.whatsappPhone };
   }
@@ -83,11 +79,13 @@ export class QuotationAlertGuard implements OnModuleInit {
     db: Db,
     purpose: QuotationAlertPurpose,
     request: NonNullable<Awaited<ReturnType<QuotationRequestRepository['findById']>>>,
+    /** The alert key (the cash-released audience is the advance named in its round). */
+    key = '',
   ): Promise<string[]> {
     if (purpose === 'QUOTE_PAY_NEEDED') return this.payments.payerIdsFor(db, request);
     if (purpose === 'QUOTE_CASH_RELEASED') {
       const advance = await db.buyerAdvance.findUnique({
-        where: { id: roundOfKey(this.currentKey) ?? '' },
+        where: { id: roundOfKey(key) ?? '' },
         select: { recipientUserId: true },
       });
       return advance ? [advance.recipientUserId] : [];

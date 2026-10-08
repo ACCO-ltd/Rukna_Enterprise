@@ -106,14 +106,21 @@ procurement only uploads photos and receives goods. Preconditions for any paymen
 `AWARDED`, its `purchaseOrderId` PO is `OPEN` (confirmed — covered by the award, ADR-044 §7), same
 currency as the award.
 
-**Funding cap (new invariant).** For a PO raised from an award, `funded ≤ PO ordered amount`
-(which is ≤ the award, ADR-044 §8), where `funded` = Σ live buyer advances (amount − returns) +
+**Funding cap (new invariant).** For a PO raised from an award, `funded ≤ cap`, where
+`cap = max(PO ordered amount, Σ POSTED bills on the PO)` — the ordered amount is ≤ the award
+(ADR-044 §8), and a bill above the order can only post after its price exception is approved
+(product owner Q3), after which the buyer can be reimbursed up to it. `funded` is `funded` = Σ live buyer advances (amount − returns) +
 Σ live supplier-payment purchase allocations to the PO + Σ live payment allocations to the PO's
 bills made by payments that have no purchase allocation to this PO (so a prepayment later applied to
 the bill is counted once). Live = the document is not REVERSED/CANCELLED. Evaluated under the PO's
 row lock (`SELECT … FOR UPDATE` on `purchase_orders`), which every payment command from the award
-takes first. 409 `FUNDING_EXCEEDS_ORDER` with `{ orderedAmount, funded, requested }`. Not applied to non-award POs in Phase 3 (no
-regression for existing data); recorded as a candidate general rule.
+takes first, and every money command re-checks when it posts (a DRAFT that waited for approval is
+re-checked under the lock). Both supplier-payment shapes (prepay and pay-the-bill) and every
+buyer advance count. 409 `FUNDING_EXCEEDS_ORDER` with `{ orderedAmount, funded, requested }`
+(`orderedAmount` = the cap). Not applied to non-award POs in Phase 3 (no regression for existing
+data); recorded as a candidate general rule. The DoA band of a buyer advance or an award payment is
+chosen on the order's cumulative funding including the document, so splitting cannot stay in a
+lower band (review M7).
 
 ### 2. BUYER_CASH — the buyer advance becomes a posted cash document
 
@@ -285,8 +292,17 @@ posted_journal_entry_id IS NULL` are legacy: never re-posted automatically (that
 today or double-count a manual journal). The read model labels them; finance clears them by manual
 journal if needed. `POST /buyer-advances/:id/post` on a NOT_POSTED advance now posts EVT-AP-007
 (through the same gate and SoD), so no new legacy rows can appear. `POST /buyer-advances` (create
-without the award) keeps working for non-award POs with the hardened checks (recipient ACTIVE member,
-cap, account rules).
+without the award) keeps working for non-award POs with the hardened checks (recipient ACTIVE member
+holding `view:procurement`, account rules); the funding cap of §1 applies only when the PO was
+raised from an award (as §1 says).
+
+**Settlement and auto-close (review M6, affects every PO).** The PO settlement read model now
+counts bills paid directly as funding, buyer-cash applications as bill settlement, and requires a
+posted bill above the order to be funded in full. A PO settles — and `autoCloseIfSettled` closes it
+— only when it is fully received, every accepted quantity is billed by a POSTED bill
+(`UNBILLED_RECEIPT` otherwise), it is funded, and no other exception remains. More ordinary POs
+that are paid and received may now close; a PO whose receipt is not fully billed stays open.
+Reversing a buyer-cash application reopens a PO that was auto-closed as settled.
 
 ## Consequences
 

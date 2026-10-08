@@ -140,6 +140,17 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
     const first = await pay(requestId, { key, bankAccountId: env.bank.mainBankId });
     expect(first.awaiting).toBe('RELEASE_SIGNATURES');
     expect(first.payment).toMatchObject({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' });
+    // The pending attempt is on the payment block, finishable from any device with no body.
+    const pending = (await svc.query.detail(env.as('selector'), requestId)).payment!.pending;
+    expect(pending).toEqual([
+      expect.objectContaining({
+        kind: 'SUPPLIER_PAYMENT',
+        id: first.payment.id,
+        idempotencyKey: key,
+        awaiting: 'RELEASE_SIGNATURES',
+        continue: { method: 'POST', path: `/supplier-payments/${first.payment.id}/continue` },
+      }),
+    ]);
     await svc.payments.signRelease(env.as('cfo'), first.payment.id);
     await svc.payments.signRelease(env.as('director'), first.payment.id);
     const done = await pay(requestId, { key, bankAccountId: env.bank.mainBankId });

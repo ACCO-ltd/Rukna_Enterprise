@@ -497,30 +497,57 @@ async function seedProcurementValueBands(
  * binding on them together). Transaction type SUPPLIER_PAYMENT (no enum migration). Seeded INACTIVE.
  */
 export async function seedBuyerAdvanceBands(prisma: PrismaClient, organizationId: string): Promise<void> {
-  await seedBandSet(prisma, organizationId, BUYER_ADVANCE_BAND_SET);
-  // One control: each buyer-advance binding takes the state of the supplier-payment binding on the
-  // same band definition, so a tenant whose payment bands are already live gets live advance bands.
-  const paymentBindings = await prisma.workflowTriggerBinding.findMany({
-    where: {
-      organizationId,
-      triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
-      entityType: 'SupplierPayment',
-      fromState: 'DRAFT',
-      toState: 'APPROVED',
-    },
-    select: { workflowDefinitionId: true, isActive: true },
-  });
-  for (const binding of paymentBindings) {
-    await prisma.workflowTriggerBinding.updateMany({
+  // Review LOW — keyed by the band DEFINITION (found by name), never by the seeded amounts: a
+  // tenant may have re-tuned a payment band's range, and the advance binding must follow the
+  // payment binding on the same definition (its range and its on/off state).
+  for (const band of BUYER_ADVANCE_BAND_SET.bands) {
+    const definition = await prisma.workflowDefinition.findFirst({ where: { organizationId, name: band.name } });
+    if (!definition) {
+      await seedBandSet(prisma, organizationId, { ...BUYER_ADVANCE_BAND_SET, bands: [band] });
+      continue;
+    }
+    const payment = await prisma.workflowTriggerBinding.findFirst({
       where: {
         organizationId,
+        triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+        entityType: 'SupplierPayment',
+        fromState: 'DRAFT',
+        toState: 'APPROVED',
+        workflowDefinitionId: definition.id,
+      },
+    });
+    const advance = await prisma.workflowTriggerBinding.findFirst({
+      where: {
+        organizationId,
+        triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
         entityType: BUYER_ADVANCE_BAND_SET.entityType,
         fromState: BUYER_ADVANCE_BAND_SET.fromState,
         toState: BUYER_ADVANCE_BAND_SET.toState,
-        workflowDefinitionId: binding.workflowDefinitionId,
+        workflowDefinitionId: definition.id,
       },
-      data: { isActive: binding.isActive },
     });
+    const range = {
+      minAmount: payment ? payment.minAmount : band.minAmount,
+      maxAmount: payment ? payment.maxAmount : band.maxAmount,
+      isActive: payment ? payment.isActive : false,
+    };
+    if (advance) {
+      await prisma.workflowTriggerBinding.update({ where: { id: advance.id }, data: range });
+    } else {
+      await prisma.workflowTriggerBinding.create({
+        data: {
+          organizationId,
+          triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+          entityType: BUYER_ADVANCE_BAND_SET.entityType,
+          transactionType: BUYER_ADVANCE_BAND_SET.transactionType,
+          fromState: BUYER_ADVANCE_BAND_SET.fromState,
+          toState: BUYER_ADVANCE_BAND_SET.toState,
+          workflowDefinitionId: definition.id,
+          priority: 50,
+          ...range,
+        },
+      });
+    }
   }
 }
 

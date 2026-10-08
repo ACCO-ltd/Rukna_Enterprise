@@ -203,8 +203,50 @@ export class QuotationPaymentReadModel implements AwardPaymentReadModel {
     const pathBlock = first(gate(canPay && has(PERMISSIONS.quotationsAward), 'MISSING_PERMISSION'), gate(!liveFunding, 'PAYMENT_PATH_LOCKED'));
     allowedActions.push(act('CHANGE_PATH', pathBlock === null, pathBlock ?? undefined));
 
+    // Review (coordinator) — the attempts that wait to be finished, so "Complete the release /
+    // payment" works from any device without a client-held body or a second attempt: re-drive with
+    // `continue` (no body). A DRAFT waits for approval; an APPROVED / RELEASED payment for its
+    // signatures or the post.
+    const pending: Array<{
+      kind: 'BUYER_ADVANCE' | 'SUPPLIER_PAYMENT';
+      id: string;
+      idempotencyKey: string | null;
+      amount: string | null;
+      awaiting: 'APPROVAL' | 'RELEASE_SIGNATURES' | 'POSTING';
+      approvalInstanceId: string | null;
+      continue: { method: 'POST'; path: string };
+    }> = [];
+    for (const a of advances.filter((x) => x.documentStatus === 'DRAFT' && x.postingStatus === 'NOT_POSTED')) {
+      const latest = await this.commandGovernance.latestApproval(WorkflowTransactionType.SUPPLIER_PAYMENT, a.id);
+      const open = latest && (latest.status === 'PENDING' || latest.status === 'APPROVED') ? latest : null;
+      pending.push({
+        kind: 'BUYER_ADVANCE',
+        id: a.id,
+        idempotencyKey: a.idempotencyKey,
+        amount: money(dec(a.amount)),
+        awaiting: open ? 'APPROVAL' : 'POSTING',
+        approvalInstanceId: open?.id ?? a.approvalInstanceId ?? null,
+        continue: { method: 'POST', path: `/buyer-advances/${a.id}/post` },
+      });
+    }
+    for (const p of payments.filter((x) => x.quotationRequestId === request.id && x.postingStatus !== 'POSTED' && x.postingStatus !== 'REVERSED' && x.documentStatus !== 'CANCELLED' && x.documentStatus !== 'REJECTED')) {
+      const latest = p.documentStatus === 'DRAFT' ? await this.commandGovernance.latestApproval(WorkflowTransactionType.SUPPLIER_PAYMENT, p.id) : null;
+      const open = latest && (latest.status === 'PENDING' || latest.status === 'APPROVED') ? latest : null;
+      const signatories = p.documentStatus === 'APPROVED' ? await db.bankAccountSignatory.count({ where: { bankAccountId: p.bankAccountId, isActive: true } }) : 0;
+      pending.push({
+        kind: 'SUPPLIER_PAYMENT',
+        id: p.id,
+        idempotencyKey: p.idempotencyKey,
+        amount: money(dec(p.totalAmount)),
+        awaiting: p.documentStatus === 'DRAFT' ? (open ? 'APPROVAL' : 'POSTING') : signatories > 0 && p.documentStatus === 'APPROVED' ? 'RELEASE_SIGNATURES' : 'POSTING',
+        approvalInstanceId: open?.id ?? null,
+        continue: { method: 'POST', path: `/supplier-payments/${p.id}/continue` },
+      });
+    }
+
     const photosVisible = canSeeQuotationPhotos(identity);
     return {
+      pending,
       path: request.paymentPath,
       state,
       purchaseOrder: po ? { id: po.id, poNumber: po.poNumber, status: po.status } : null,

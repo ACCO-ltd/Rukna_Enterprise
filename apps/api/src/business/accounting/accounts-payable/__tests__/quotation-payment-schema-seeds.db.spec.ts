@@ -238,6 +238,23 @@ describe('ADR-045 P1 — schema constraints and seeds', () => {
       }
       expect(await prisma.workflowTriggerBinding.count({ where: { organizationId: env.orgId, entityType: 'BuyerAdvance' } })).toBe(3);
       expect(await prisma.workflowDefinition.count({ where: { organizationId: env.orgId } })).toBe(3);
+      // Review LOW — keyed by definition: a re-tuned payment band is followed, nothing duplicated.
+      const fo = await prisma.workflowTriggerBinding.findFirstOrThrow({
+        where: { organizationId: env.orgId, entityType: 'SupplierPayment', minAmount: null },
+      });
+      await prisma.workflowTriggerBinding.update({ where: { id: fo.id }, data: { maxAmount: '500.01' } });
+      const log2 = console.log;
+      console.log = () => undefined;
+      try {
+        await seedBuyerAdvanceBands(prisma, env.orgId);
+      } finally {
+        console.log = log2;
+      }
+      expect(await prisma.workflowTriggerBinding.count({ where: { organizationId: env.orgId, entityType: 'BuyerAdvance' } })).toBe(3);
+      const adv = await prisma.workflowTriggerBinding.findFirstOrThrow({
+        where: { organizationId: env.orgId, entityType: 'BuyerAdvance', workflowDefinitionId: fo.workflowDefinitionId },
+      });
+      expect(adv.maxAmount?.toString()).toBe('500.01');
     });
 
     it('SEED-03: an org without the policy is reported and nothing is written', async () => {

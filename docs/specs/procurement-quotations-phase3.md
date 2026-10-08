@@ -557,6 +557,30 @@ staffAdvanceProfile, cashAccountsWithoutSignatories, cashAccounts: [{ bankAccoun
 currencyCode }] }` — the buyer-cash setup items, kept out of `/accounting/readiness` because they
 do not block the ledger.
 
+**Review fixes (2026-10-09).**
+- `payment.pending[]` on the request detail: `{ kind: 'BUYER_ADVANCE'|'SUPPLIER_PAYMENT', id,
+  idempotencyKey, amount (money-gated), awaiting: 'APPROVAL'|'RELEASE_SIGNATURES'|'POSTING',
+  approvalInstanceId, continue: { method: 'POST', path } }` — finish from any device with **no
+  body**: `POST /buyer-advances/:id/post` (re-drives a DRAFT advance; the stored top-up target is
+  honoured) or new `POST /supplier-payments/:id/continue` (same response as `from-award`).
+- Pay supplier: both shapes are capped; PAY_BILL is refused with 409 `PREPAYMENT_NOT_APPLIED
+  { unappliedPrepayments }` while a posted prepayment on the order is unapplied. `award-draft`
+  adds `unappliedPrepayments[]` and the blocker; the payment block adds action `APPLY_PREPAYMENT`
+  (apply with the existing `POST /payments/:id/allocations { supplierBillId, amount }`) and
+  PAY_SUPPLIER's reason `PREPAYMENT_NOT_APPLIED`.
+- `POST /buyer-advances/:id/returns` and `/applications` accept an optional `idempotencyKey`
+  (replay → the first row; different body → 409 `IDEMPOTENCY_KEY_REUSED`). Release / pay replays
+  compare every field (paymentMethod, applyToBillId, shape, supplierBillId).
+- Posting a waiting DRAFT re-runs the release checks (order OPEN, path, account, recipient, cap);
+  approvals are consumed in the posting / approving transaction (409 `APPROVAL_ALREADY_USED` if a
+  concurrent re-drive used it). DoA bands use the order's cumulative funding.
+- EVT-AP-005 (prepayment applied) is dated max(bill date, payment date) for every caller; its
+  reversal EVT-AP-006 on the allocation's date.
+- Record receipt requires the order OPEN; the bill detail returns `evidence { storeDocumentId,
+  number, kind, photos[{ fileId, pageNumber }] }`.
+- Settlement: `UNBILLED_RECEIPT` exception (a PO auto-closes only when fully billed).
+- `SUPPLIER_PAYMENT_APPROVED` audit on every supplier-payment approval.
+
 **Fixes found while building.** A failed posting attempt no longer flips an already POSTED
 supplier payment / bill to FAILED (two concurrent posts — the loser used to overwrite the
 winner). Bill reverse is refused while buyer cash is applied to it.

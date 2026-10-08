@@ -49,7 +49,7 @@ export class StoreDocumentRepository {
   /** R12 — is this photo hash already on a live (SUBMITTED / RECORDED) store document of the org? */
   async liveHashExists(db: Db, organizationId: string, sha256: string): Promise<boolean> {
     const hit = await db.storeDocumentPhoto.findFirst({
-      where: { organizationId, sha256, storeDocument: { status: { in: ['SUBMITTED', 'RECORDED'] } } },
+      where: { organizationId, sha256, isLive: true },
       select: { id: true },
     });
     return hit !== null;

@@ -106,6 +106,10 @@ export class StoreDocumentService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const existing = await this.repo.findByClientRef(prisma, orgId, input.clientRef);
         if (existing) return this.replayOf(identity, existing, input);
+        // R12 at the database: the partial unique (org, sha256) over live photos.
+        if (/sha256/.test(String((error.meta as { target?: unknown } | undefined)?.target ?? '')) || /sha256/.test(error.message)) {
+          throw conflict('STORE_DOCUMENT_PHOTO_DUPLICATE');
+        }
       }
       throw error;
     }
@@ -136,6 +140,8 @@ export class StoreDocumentService {
     await prisma.$transaction(async (tx) => {
       const doc = await this.lockOwn(tx, identity, id);
       await tx.storeDocument.update({ where: { id: doc.id }, data: { status: 'WITHDRAWN', withdrawnAt: new Date() } });
+      // Its photos no longer hold the receipt: the same photo may be sent again on a new document.
+      await tx.storeDocumentPhoto.updateMany({ where: { storeDocumentId: doc.id }, data: { isLive: false } });
       await this.audit(tx, identity, doc, 'STORE_DOCUMENT_WITHDRAWN', 'store-document.withdraw', {
         before: { status: 'SUBMITTED' },
         after: { status: 'WITHDRAWN' },
@@ -158,6 +164,7 @@ export class StoreDocumentService {
         where: { id: doc.id },
         data: { status: 'REJECTED', rejectReason: reason, rejectNote: text, rejectedBy: identity.userId, rejectedAt: new Date() },
       });
+      await tx.storeDocumentPhoto.updateMany({ where: { storeDocumentId: doc.id }, data: { isLive: false } });
       await this.audit(tx, identity, doc, 'STORE_DOCUMENT_REJECTED', 'store-document.reject', {
         before: { status: 'SUBMITTED' },
         after: { status: 'REJECTED', reason },
@@ -182,6 +189,11 @@ export class StoreDocumentService {
     const prisma = this.tenancy.getClient();
     const doc = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!doc) throw new NotFoundException(`Store document ${id} not found`);
+    // Review LOW — the document is read under its award's project access.
+    if (doc.quotationRequestId) {
+      const request = await prisma.quotationRequest.findUnique({ where: { id: doc.quotationRequestId }, select: { projectId: true } });
+      if (request?.projectId) await this.projectAccess.assertMember(identity, request.projectId);
+    }
     const [row] = await this.present(identity, [doc]);
     return row;
   }
