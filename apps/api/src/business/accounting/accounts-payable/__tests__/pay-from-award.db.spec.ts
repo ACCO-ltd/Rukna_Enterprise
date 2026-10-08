@@ -267,8 +267,44 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
       const bill = await svc.bills.findById(env.payer2, recorded.bill!.id);
       expect(bill.evidence).toMatchObject({ storeDocumentId: doc.id, kind: 'INVOICE' });
       expect(bill.evidence!.photos).toHaveLength(1);
+      // Item 5 - the EVT-AP-006 reversal lands on the allocation date (2026-10-08), not the
+      // payment date (2026-09-20, a closed month).
+      const rev = await svc.payments.reverseAdvanceAllocation(env.payer2, alloc.id, {});
+      const revJe = await prisma.journalEntry.findUniqueOrThrow({ where: { id: rev.journalEntryId } });
+      expect(revJe.accountingDate.toISOString().slice(0, 10)).toBe('2026-10-08');
     } finally {
       await prisma.accountingPeriod.update({ where: { id: sept.id }, data: { status: 'OPEN' } });
+    }
+  });
+
+  it('item 1 (H1b): a prepayment still waiting for signatures counts - PAY_BILL on the posted bill is refused by the cap', async () => {
+    const { requestId, poId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const waiting = await pay(requestId, { amount: '1000.00', bankAccountId: env.bank.mainBankId });
+    expect(waiting.awaiting).toBe('RELEASE_SIGNATURES');
+    const doc = await invoice(poId);
+    await a.receive(poId);
+    const recorded = await svc.recordReceipt.record(env.payer2, {
+      storeDocumentId: doc.id, total: '1000.00', documentDate: '2026-10-08', expenseProfileCode: env.postingProfileCode,
+    });
+    expect(recorded.bill!.postingStatus).toBe('POSTED');
+    expect(await refusal(pay(requestId, { shape: 'PAY_BILL', supplierBillId: recorded.bill!.id, amount: '1000.00' }))).toEqual({
+      status: 409,
+      code: 'FUNDING_EXCEEDS_ORDER',
+    });
+  });
+
+  it('item 2 (M4): a path change committed while pay-from-award waits for the PO lock is refused', async () => {
+    const { requestId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const original = svc.awardRepo.lockPurchaseOrder.bind(svc.awardRepo);
+    const spy = jest.spyOn(svc.awardRepo, 'lockPurchaseOrder').mockImplementationOnce(async (tx, orgId, poId) => {
+      await prisma.quotationRequest.update({ where: { id: requestId }, data: { paymentPath: 'BUYER_CASH' } });
+      return original(tx, orgId, poId);
+    });
+    try {
+      expect(await refusal(pay(requestId, { amount: '100.00' }))).toEqual({ status: 409, code: 'PAYMENT_PATH_MISMATCH' });
+      expect(await prisma.supplierPayment.count({ where: { quotationRequestId: requestId } })).toBe(0);
+    } finally {
+      spy.mockRestore();
     }
   });
 
@@ -295,6 +331,41 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
       expect(second.getResponse().details.code).toBe('APPROVAL_REQUIRED');
       const inst = await prisma.approvalInstance.findUniqueOrThrow({ where: { id: second.getResponse().details.approvalInstanceId } });
       expect(inst.evaluatedAmount?.toString()).toBe('1800');
+    });
+
+    it('item 4: a waiting award payment is re-checked on re-drive (order cancelled / path changed) - the approval stays granted', async () => {
+      const { requestId, poId } = await a.awardedOrder({ total: '4000.00', path: 'FINANCE_PAYS_SUPPLIER' });
+      const gated = await pay(requestId, { amount: '4000.00' }).catch((e) => e);
+      const { approvalInstanceId, paymentId } = gated.getResponse().details;
+      await svc.approvals.approve(approvalInstanceId, env.userIds.cfo, ['CFO'], env.orgId);
+
+      await prisma.quotationRequest.update({ where: { id: requestId }, data: { paymentPath: 'BUYER_CASH' } });
+      expect(await refusal(svc.awardPayments.continuePayment(env.as('selector'), paymentId))).toEqual({ status: 409, code: 'PAYMENT_PATH_MISMATCH' });
+      await prisma.quotationRequest.update({ where: { id: requestId }, data: { paymentPath: 'FINANCE_PAYS_SUPPLIER' } });
+      await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'CANCELLED' } });
+      expect(await refusal(svc.awardPayments.continuePayment(env.as('selector'), paymentId))).toEqual({ status: 409, code: 'PAYMENT_PO_NOT_OPEN' });
+      expect((await prisma.approvalInstance.findUniqueOrThrow({ where: { id: approvalInstanceId } })).status).toBe('APPROVED');
+      expect((await prisma.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } })).documentStatus).toBe('DRAFT');
+      await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'OPEN' } });
+      const done = await svc.awardPayments.continuePayment(env.as('selector'), paymentId);
+      expect(done.payment.postingStatus).toBe('POSTED');
+    });
+
+    it('item 4: an APPROVED payment waiting for signatures is re-checked before it posts', async () => {
+      const { requestId, poId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+      const first = await pay(requestId, { amount: '500.00', bankAccountId: env.bank.mainBankId });
+      await svc.payments.signRelease(env.as('cfo'), first.payment.id);
+      await svc.payments.signRelease(env.as('director'), first.payment.id);
+      await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'CANCELLED' } });
+      try {
+        expect(await refusal(svc.awardPayments.continuePayment(env.as('selector'), first.payment.id))).toEqual({
+          status: 409,
+          code: 'PAYMENT_PO_NOT_OPEN',
+        });
+        expect((await prisma.supplierPayment.findUniqueOrThrow({ where: { id: first.payment.id } })).postingStatus).not.toBe('POSTED');
+      } finally {
+        await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'OPEN' } });
+      }
     });
 
     it('review M5: a re-drive re-checks the vendor maintainer', async () => {

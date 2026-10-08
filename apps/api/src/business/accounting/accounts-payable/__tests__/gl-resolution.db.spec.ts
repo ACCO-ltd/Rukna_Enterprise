@@ -156,4 +156,32 @@ describe('ADR-045 P3 — server-side GL resolution for AP posting', () => {
       await prisma.account.update({ where: { id: second.id }, data: { status: 'INACTIVE' } });
     }
   });
+
+  it('item 3: a bill with a pending (not yet posted) payment against it cannot be reversed', async () => {
+    const bill = await approvedBill(55);
+    await svc.bills.post(env.identity, { billId: bill.id });
+    await svc.payments.create(env.identity, {
+      supplierId: env.supplierId,
+      bankAccountId: env.bank.cashBoxId,
+      paymentDate: '2026-10-06',
+      currencyCode: 'USD',
+      totalAmount: 55,
+      paymentMethod: 'CASH',
+      allocations: [{ supplierBillId: bill.id, amount: 55 }],
+    });
+    await expect(svc.bills.reverse(env.identity, bill.id, { reversalDate: '2026-10-07', reason: 'wrong' })).rejects.toMatchObject({ status: 400 });
+    expect((await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } })).postingStatus).toBe('POSTED');
+  });
+
+  it('item 3: posting a payment allocated to a bill that is no longer POSTED is refused', async () => {
+    const bill = await approvedBill(65);
+    await svc.bills.post(env.identity, { billId: bill.id });
+    const payment = await approvedPayment(bill.id, 65);
+    await prisma.supplierBill.update({ where: { id: bill.id }, data: { postingStatus: 'REVERSED' } });
+    await expect(svc.payments.post(env.identity, { paymentId: payment.id })).rejects.toMatchObject({
+      status: 409,
+      response: { details: { code: 'BILL_NOT_PAYABLE' } },
+    });
+    expect(await prisma.journalEntry.count({ where: { sourceDocumentId: payment.id } })).toBe(0);
+  });
 });

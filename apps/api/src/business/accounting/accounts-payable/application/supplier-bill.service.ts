@@ -686,8 +686,11 @@ export class SupplierBillService {
     }
 
     // (Pre-checked here for a clear message; re-checked under the bill lock in the transaction.)
+    // Item 3 (review) — a payment still pending against the bill (allocated, not yet posted, and
+    // neither cancelled nor rejected) blocks the reversal too: posting it would debit AP for a bill
+    // that no longer exists.
     const activeAllocs = await prisma.supplierPaymentAllocation.count({
-      where: { supplierBillId: billId, postingStatus: 'POSTED' },
+      where: { supplierBillId: billId, postingStatus: { in: ['POSTED', 'NOT_POSTED'] }, payment: { documentStatus: { notIn: ['CANCELLED', 'REJECTED'] }, postingStatus: { not: 'REVERSED' } } },
     });
     if (activeAllocs > 0) {
       throw new BadRequestException(
@@ -722,7 +725,7 @@ export class SupplierBillService {
       const locked = await tx.supplierBill.findUniqueOrThrow({ where: { id: billId }, select: { postingStatus: true } });
       if (locked.postingStatus !== 'POSTED') throw new ConflictException(`Bill ${billId} is already reversed`);
       const [paid, applied] = await Promise.all([
-        tx.supplierPaymentAllocation.count({ where: { supplierBillId: billId, postingStatus: 'POSTED' } }),
+        tx.supplierPaymentAllocation.count({ where: { supplierBillId: billId, postingStatus: { in: ['POSTED', 'NOT_POSTED'] }, payment: { documentStatus: { notIn: ['CANCELLED', 'REJECTED'] }, postingStatus: { not: 'REVERSED' } } } }),
         tx.buyerAdvanceEvidenceAllocation.count({ where: { supplierBillId: billId, postingStatus: 'POSTED' } }),
       ]);
       if (paid > 0 || applied > 0) {

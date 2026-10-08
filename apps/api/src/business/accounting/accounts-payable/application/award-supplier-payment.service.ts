@@ -231,6 +231,8 @@ export class AwardSupplierPaymentService {
       paymentId = await prisma.$transaction(async (tx) => {
         const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, po.id);
         if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+        // Item 2 (review M4) — the award is re-read under the PO lock (a path change serialises here).
+        await this.assertAwardStillPaysSupplier(tx, orgId, request.id);
         const position = fundingPosition(await this.awardRepo.fundingInputs(tx, orgId, po.id, revision?.ordered ?? ZERO));
         // ADR-045 review H1 — both shapes are capped (a bill payment funds the order too), and a
         // bill cannot be paid again while a posted prepayment on the order is still unapplied:
@@ -380,6 +382,7 @@ export class AwardSupplierPaymentService {
           selfApprove: true,
           bandAmount: await this.cumulativeFunding(paymentId, dec(payment.totalAmount)),
           note: 'Paid from the quotation award',
+          guard: (tx) => this.assertStillPayable(tx, orgId, paymentId),
         });
       } catch (error) {
         // A double tap approved it a moment ago: carry on from the approved document.
@@ -393,7 +396,7 @@ export class AwardSupplierPaymentService {
       const dual = await this.signatories.requiresDualControl(prisma, payment.bankAccountId);
       if (dual && payment.documentStatus === 'APPROVED') return this.result(identity, paymentId, 'RELEASE_SIGNATURES');
       try {
-        await this.payments.post(identity, { paymentId });
+        await this.payments.post(identity, { paymentId }, { guard: (tx) => this.assertStillPayable(tx, orgId, paymentId) });
       } catch (error) {
         // A double tap posted it a moment ago: answer with the posted payment.
         const now = await prisma.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
@@ -404,6 +407,43 @@ export class AwardSupplierPaymentService {
       if (request?.purchaseOrderId) await this.purchaseOrders.autoCloseIfSettled(identity, request.purchaseOrderId);
     }
     return this.result(identity, paymentId);
+  }
+
+  /** Item 2 (review M4) — the award must still be AWARDED on FINANCE_PAYS_SUPPLIER. */
+  private async assertAwardStillPaysSupplier(tx: Prisma.TransactionClient, orgId: string, requestId: string) {
+    const fresh = await this.awardRepo.findRequest(tx, orgId, requestId);
+    if (!fresh || fresh.status !== 'AWARDED') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+    if (fresh.paymentPath !== 'FINANCE_PAYS_SUPPLIER') throw paymentConflict('PAYMENT_PATH_MISMATCH');
+  }
+
+  /**
+   * Item 4 (review, the H3 analog) — inside the approving / posting transaction, under the PO lock:
+   * the order still OPEN, the award still AWARDED on FINANCE_PAYS_SUPPLIER, the account still usable
+   * in the order's currency, and the order still within its cap (this payment already counts).
+   */
+  private async assertStillPayable(tx: Prisma.TransactionClient, orgId: string, paymentId: string) {
+    const payment = await tx.supplierPayment.findUniqueOrThrow({
+      where: { id: paymentId },
+      select: { quotationRequestId: true, bankAccountId: true, currencyCode: true },
+    });
+    if (!payment.quotationRequestId) return;
+    const request = await this.awardRepo.findRequest(tx, orgId, payment.quotationRequestId);
+    if (!request?.purchaseOrderId) throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+    const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, request.purchaseOrderId);
+    if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
+    await this.assertAwardStillPaysSupplier(tx, orgId, request.id);
+    const account = await this.awardRepo.findPaymentAccount(tx, orgId, payment.bankAccountId);
+    if (!account || account.status !== 'ACTIVE' || !account.allowsPayments) throw paymentUnprocessable('ACCOUNT_NOT_USABLE');
+    if (account.currencyCode !== payment.currencyCode) throw paymentUnprocessable('CURRENCY_MISMATCH');
+    const revision = await this.awardRepo.activeRevision(tx, request.purchaseOrderId);
+    const position = fundingPosition(await this.awardRepo.fundingInputs(tx, orgId, request.purchaseOrderId, revision?.ordered ?? ZERO));
+    if (position.funded.greaterThan(position.cap)) {
+      throw paymentConflict('FUNDING_EXCEEDS_ORDER', {
+        orderedAmount: position.cap.toFixed(2),
+        funded: position.funded.toFixed(2),
+        requested: '0.00',
+      });
+    }
   }
 
   /** Review M7 — Σ live funding of the order this award payment funds (this payment included). */

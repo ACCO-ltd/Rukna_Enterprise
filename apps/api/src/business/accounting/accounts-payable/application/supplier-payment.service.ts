@@ -272,7 +272,13 @@ export class SupplierPaymentService {
   async approve(
     identity: RequestIdentity,
     paymentId: string,
-    opts: { selfApprove?: boolean; bandAmount?: Decimal; note?: string } = {},
+    opts: {
+      selfApprove?: boolean;
+      bandAmount?: Decimal;
+      note?: string;
+      /** Runs first inside the approving transaction (refusing rolls back; the approval stays granted). */
+      guard?: (tx: Prisma.TransactionClient) => Promise<void>;
+    } = {},
   ) {
     const prisma = this.tenancyService.getClient();
     const payment = await this.paymentRepo.findById(prisma, identity.activeOrganizationId, paymentId);
@@ -353,6 +359,7 @@ export class SupplierPaymentService {
 
     const approvedBy = opts.selfApprove ? (consumed?.finalApproverId ?? identity.userId) : identity.userId;
     return prisma.$transaction(async (tx) => {
+      if (opts.guard) await opts.guard(tx);
       if (consumed) await this.commandGovernance.consumeApprovalIn(tx, consumed.instanceId);
       const { count } = await tx.supplierPayment.updateMany({
         where: { id: paymentId, documentStatus: 'DRAFT' },
@@ -440,7 +447,12 @@ export class SupplierPaymentService {
    * EVT-AP-003 Branch A (allocated): Dr AP / Cr Bank
    * EVT-AP-003 Branch B (advance): Dr AP / Dr Supplier Advance / Cr Bank
    */
-  async post(identity: RequestIdentity, dto: PostSupplierPaymentDto) {
+  async post(
+    identity: RequestIdentity,
+    dto: PostSupplierPaymentDto,
+    // Runs first inside the posting transaction (e.g. the award re-checks under the PO lock).
+    opts: { guard?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
+  ) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
@@ -486,6 +498,22 @@ export class SupplierPaymentService {
       return await prisma.$transaction(async (tx) => {
         // A payment settling an opening-balance bill debits `apGl`: the carried-over payables must be
         // on exactly that account, or the debit would drain AP control while the balance sits elsewhere.
+        if (opts.guard) await opts.guard(tx);
+        // Item 3 (review) — defence in depth: every bill this payment settles must still be payable.
+        const unpayable = await tx.supplierPaymentAllocation.count({
+          where: {
+            supplierPaymentId: payment.id,
+            postingStatus: 'NOT_POSTED',
+            bill: { postingStatus: { notIn: ['POSTED', 'OPENING_BALANCE'] } },
+          },
+        });
+        if (unpayable > 0) {
+          throw new ConflictException({
+            errorCode: 'BILL_NOT_PAYABLE',
+            message: 'A bill this payment settles is no longer posted (reversed?). Re-create the payment.',
+            details: { code: 'BILL_NOT_PAYABLE' },
+          });
+        }
         const settlesOpeningBalance = await tx.supplierPaymentAllocation.count({
           where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED', bill: { postingStatus: 'OPENING_BALANCE' } },
         });
