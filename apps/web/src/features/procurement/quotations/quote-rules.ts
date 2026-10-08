@@ -102,7 +102,7 @@ export type SendBlock =
 
 /** Pending-queue phases as the send rule sees them. */
 export interface PendingUploadLike {
-  phase: 'queued' | 'uploading' | 'binding' | 'needsStore' | 'retrying' | 'offline' | 'failed';
+  phase: 'queued' | 'uploading' | 'binding' | 'needsStore' | 'ready' | 'retrying' | 'offline' | 'failed';
 }
 
 /**

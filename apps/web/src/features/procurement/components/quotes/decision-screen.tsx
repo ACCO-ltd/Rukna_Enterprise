@@ -78,6 +78,7 @@ import {
   refusalCode,
   useRefusalText,
 } from './quote-shared';
+import { PaymentSection } from './payment-section';
 import { WhatsAppLog } from './whatsapp-log';
 
 /** The award's governed transition (ADR-044 §7). */
@@ -85,6 +86,10 @@ const QUOTATION_AWARD = WorkflowTransactionType.QUOTATION_AWARD;
 const REJECT_REASONS: QuoteRejectReason[] = ['ILLEGIBLE', 'WRONG_ITEMS', 'INCOMPLETE', 'OTHER'];
 
 type SaveState = 'saving' | 'saved' | 'failed';
+
+function paymentInFlight(detail: QuotationRequestDetail): boolean {
+  return detail.status === 'AWARDED' && Boolean(detail.payment) && detail.payment?.state !== 'SETTLED';
+}
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
   const next = { ...record };
@@ -95,7 +100,9 @@ function without<T>(record: Record<string, T>, key: string): Record<string, T> {
 export function QuoteDecisionScreen({ id }: { id: string }) {
   const tq = useTranslations('procurement.quotes');
   const detail = useQuotationRequest(id, {
-    poll: (data) => (data ? WAITING_STATUSES.has(data.status) : true),
+    // Phase 3: an awarded request keeps refreshing until it is settled — the buyer's receipt and
+    // the site's goods receipt arrive while finance has the screen open.
+    poll: (data) => (data ? WAITING_STATUSES.has(data.status) || paymentInFlight(data) : true),
   });
   useModuleTrail(detail.data?.number);
 
@@ -392,6 +399,8 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
           ) : null}
         </Notice>
       ) : null}
+      {/* ADR-045: pay from the award — right under the award, before the quotes. */}
+      {detail.status === 'AWARDED' ? <PaymentSection detail={detail} /> : null}
       {detail.status === 'AWARD_PENDING_APPROVAL' || gatedInstance ? (
         <section className="space-y-3">
           <Notice

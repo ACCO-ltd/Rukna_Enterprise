@@ -444,7 +444,8 @@ export function planBillPost(
       // is itself inconsistent. Surfaced rather than assumed: posting a journal the engine
       // will reject is worse than refusing here.
       balanced: debitMinor === creditMinor,
-      payload: { apAccountCode: ap.account.code },
+      // ADR-045 P3: the AP account is resolved server-side by role; the preview shows it.
+      payload: {},
     },
   };
 }

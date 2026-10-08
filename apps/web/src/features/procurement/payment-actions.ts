@@ -189,8 +189,9 @@ export type PaymentPostPlanResult =
  * `posting-accounts.ts` would instead return every CASH_AND_BANK account in the chart and
  * could not tell which one this payment was drawn on.
  *
- * All three codes go in the payload even when a branch contributes no line — the DTO marks
- * each `@IsNotEmpty()` and the server resolves all three before it looks at the amounts.
+ * The three accounts are resolved here only to preview the journal. Since ADR-045 (P3) the
+ * server resolves them itself (bank GL from the payment's bank account, AP and Supplier advance
+ * by role), so the payload is empty — a client can no longer name the account money left from.
  */
 export function planPaymentPost(
   payment: SupplierPayment,
@@ -254,11 +255,9 @@ export function planPaymentPost(
       // allocation. If it is ever false the payment row is inconsistent and the double-entry
       // validator would reject the journal anyway — better to refuse here and say why.
       balanced: allocatedMinor + unallocatedMinor === totalMinor,
-      payload: {
-        apAccountCode: ap.code,
-        bankGlCode: bankGl.code,
-        supplierAdvanceCode: advance.code,
-      },
+      // ADR-045 P3: the server resolves the accounts (the bank GL from the payment's bank
+      // account). The lines above are the preview of what it will post, not a request.
+      payload: {},
     },
   };
 }

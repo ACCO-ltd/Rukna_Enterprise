@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  Badge,
   Button,
   EmptyState,
+  Notice,
   SectionHeader,
   type FilterValues,
   type ListFilterField,
@@ -27,8 +29,25 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useAllBuyerAdvances, useGetBuyerAdvance, usePostBuyerAdvance } from '../hooks/use-procurement';
+import { useCanPay, useReverseBuyerAdvance } from '../hooks/use-quotation-payment';
+import { todayInMogadishu } from '../quotations/payment-rules';
 import type { BuyerAdvance, BillPostingStatus } from '../types';
 import { PostingStatusBadge } from './procurement-badges';
+import { usePaymentRefusalText } from './quotes/payment-shared';
+
+/**
+ * ADR-045 §7: an advance POSTED before buyer cash reached the ledger has no journal. It is never
+ * re-posted (that would date it today or double-count a manual journal) — only labelled.
+ */
+export function isLegacyAdvance(advance: Pick<BuyerAdvance, 'legacy' | 'postingStatus' | 'postedJournalEntryId'>): boolean {
+  if (typeof advance.legacy === 'boolean') return advance.legacy;
+  return advance.postingStatus === 'POSTED' && !advance.postedJournalEntryId;
+}
+
+function LegacyBadge() {
+  const t = useTranslations('procurement.advances');
+  return <Badge tone="neutral">{t('legacy')}</Badge>;
+}
 
 const POSTING_STATUSES: BillPostingStatus[] = ['NOT_POSTED', 'POSTED', 'REVERSED', 'FAILED'];
 
@@ -117,7 +136,12 @@ export function BuyerAdvancesList() {
       key: 'posting',
       header: t('colPosting'),
       card: 'status',
-      render: (adv) => <PostingStatusBadge status={adv.postingStatus} />,
+      render: (adv) => (
+        <span className="flex flex-wrap items-center gap-1">
+          <PostingStatusBadge status={adv.postingStatus} />
+          {isLegacyAdvance(adv) ? <LegacyBadge /> : null}
+        </span>
+      ),
     },
   ];
 
@@ -169,11 +193,15 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   // A buyer advance carries no document number of its own; the breadcrumb names the kind.
   useModuleTrail(query.data ? t('detailTitle') : undefined);
   const [showPostConfirm, setShowPostConfirm] = useState(false);
+  const [reversing, setReversing] = useState(false);
+  const canPay = useCanPay();
+  const { fromError } = usePaymentRefusalText();
 
   // poId is needed to invalidate settlement query; read from advance once loaded
   const advance = query.data;
   const poId = advance?.purchaseOrderId ?? '';
   const post = usePostBuyerAdvance(id, poId);
+  const reverse = useReverseBuyerAdvance(advance?.quotationRequestId ?? null);
 
   if (query.isPending) {
     return (
@@ -188,6 +216,9 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   }
 
   const canPost = advance.postingStatus === 'NOT_POSTED';
+  const legacy = isLegacyAdvance(advance);
+  // The server decides (R15: nothing applied or returned); offered only on a ledger-posted advance.
+  const mayReverse = canPay && advance.postingStatus === 'POSTED' && !legacy && !advance.reversedAt;
 
   return (
     <div className="space-y-6">
@@ -203,12 +234,52 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           </span>
           <Link
             href={`/procurement/orders/${advance.purchaseOrderId}`}
-            className="font-mono text-xs text-muted-foreground hover:underline"
+            className="text-xs text-muted-foreground hover:underline"
           >
-            PO {advance.purchaseOrderId.slice(0, 8)}…
+            {advance.purchaseOrder?.poNumber ?? `PO ${advance.purchaseOrderId.slice(0, 8)}…`}
           </Link>
+          {legacy ? <LegacyBadge /> : null}
+          {advance.postedJournalEntryId ? (
+            <Link
+              href={`/finance/accounting/journals/${advance.postedJournalEntryId}`}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-brand-primary underline-offset-4 hover:underline"
+            >
+              {t('journalLink')}
+            </Link>
+          ) : null}
+          {advance.quotationRequestId ? (
+            <Link
+              href={`/finance/quotes/${advance.quotationRequestId}`}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-brand-primary underline-offset-4 hover:underline"
+            >
+              {t('requestLink')}
+            </Link>
+          ) : null}
         </div>
       </div>
+
+      {legacy ? <Notice tone="historical">{t('legacyBody')}</Notice> : null}
+      {advance.reversedAt ? (
+        <Notice tone="historical" title={t('reversedTitle', { date: formatDate(advance.reversedAt, locale) ?? '' })}>
+          {advance.reversalReason ? <p className="mt-1">{advance.reversalReason}</p> : null}
+          {advance.reversalJournalEntryId ? (
+            <Link
+              href={`/finance/accounting/journals/${advance.reversalJournalEntryId}`}
+              className="mt-1 inline-flex min-h-11 items-center font-medium text-brand-primary underline underline-offset-4"
+            >
+              {t('reversalJournalLink')}
+            </Link>
+          ) : null}
+        </Notice>
+      ) : null}
+
+      {mayReverse ? (
+        <div>
+          <Button type="button" variant="outline" className="min-h-11" onClick={() => setReversing(true)}>
+            {t('reverseAction')}
+          </Button>
+        </div>
+      ) : null}
 
       {/* Post action */}
       {canPost && (
@@ -223,7 +294,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           )}
         </div>
       )}
-      {!canPost && advance.postingStatus !== 'NOT_POSTED' && (
+      {!canPost && advance.postingStatus !== 'NOT_POSTED' && !legacy && (
         <p className="text-sm text-muted-foreground">{t('alreadyPosted')}</p>
       )}
 
@@ -281,6 +352,8 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('colBill')}</TableHead>
+                  <TableHead>{t('colApplied')}</TableHead>
+                  <TableHead>{t('colPosting')}</TableHead>
                   <TableHead className="text-end">{t('colAllocated')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -290,10 +363,28 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
                     <TableCell>
                       <Link
                         href={`/finance/accounting/bills/${ea.supplierBillId}`}
-                        className="font-mono text-xs hover:underline"
+                        className="text-sm font-medium text-brand-primary hover:underline"
                       >
-                        {ea.supplierBillId.slice(0, 8)}…
+                        {ea.billNumber ?? `${ea.supplierBillId.slice(0, 8)}…`}
                       </Link>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(ea.allocationDate ?? ea.createdAt, locale)}
+                    </TableCell>
+                    <TableCell>
+                      {ea.reversedAt ? (
+                        <Badge tone="neutral">{t('applicationReversed')}</Badge>
+                      ) : ea.postingStatus ? (
+                        ea.journalEntryId ? (
+                          <Link href={`/finance/accounting/journals/${ea.journalEntryId}`} className="hover:underline">
+                            <PostingStatusBadge status={ea.postingStatus} />
+                          </Link>
+                        ) : (
+                          <PostingStatusBadge status={ea.postingStatus} />
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{t('evidenceOnly')}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-end tabular-nums font-medium">
                       {formatMoney(ea.allocatedAmount, advance.currencyCode, locale)}
@@ -305,6 +396,28 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           </TableScroll>
         )}
       </section>
+
+      {reversing ? (
+        <ConfirmActionDialog
+          title={t('reverseTitle')}
+          description={t('reverseBody', { date: formatDate(todayInMogadishu(), locale) ?? '' })}
+          confirmLabel={t('reverseAction')}
+          reason={{ label: t('reverseReason'), required: true }}
+          destructive
+          isPending={reverse.isPending}
+          errorMessage={reverse.error ? fromError(reverse.error) : undefined}
+          onConfirm={(reason) =>
+            reverse.mutate(
+              { advanceId: advance.id, payload: { reason, reversalDate: todayInMogadishu() } },
+              { onSuccess: () => setReversing(false) },
+            )
+          }
+          onDismiss={() => {
+            reverse.reset();
+            setReversing(false);
+          }}
+        />
+      ) : null}
 
       {/* Post confirm dialog */}
       {showPostConfirm ? (

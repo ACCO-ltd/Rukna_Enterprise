@@ -73,7 +73,7 @@ export interface NavItem {
 }
 
 /** Live counts a nav item can carry. */
-export type NavBadgeKey = 'quotesToChoose';
+export type NavBadgeKey = 'quotesToChoose' | 'paymentsNeeded';
 
 export interface NavDomain {
   /** Translation key — also used as the collapse-store key. */
@@ -141,6 +141,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
       // ADR-044 — finance's inbox of quotation requests waiting for a choice; counts the decide queue.
       { href: '/finance/quotes', labelKey: 'quotesToChoose', iconKey: 'check-circle', groupKey: 'payables', permissionKey: 'award:quotation', badge: 'quotesToChoose' },
+      // ADR-045 — award orders to pay and store receipts to record; counts the pay queue.
+      { href: '/finance/payments-needed', labelKey: 'paymentsNeeded', iconKey: 'wallet', groupKey: 'payables', permissionKey: 'manage:payable', badge: 'paymentsNeeded' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
       { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'banking' },

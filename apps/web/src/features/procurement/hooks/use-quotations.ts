@@ -113,6 +113,18 @@ export function useQuotesToChooseCount(options?: { enabled?: boolean }): number 
   return query.data.total;
 }
 
+/**
+ * The count behind Finance's "Payments needed" badge (ADR-045): award orders still to pay. Only
+ * runs for a payer — anyone else would 403.
+ */
+export function usePaymentsNeededCount(options?: { enabled?: boolean }): number | null {
+  const { can } = usePermissions();
+  const allowed = can('manage:payable') && (options?.enabled ?? true);
+  const query = useQuotationRequests({ queue: 'pay' }, { enabled: allowed, poll: true });
+  if (!allowed || !query.data) return null;
+  return query.data.total;
+}
+
 export function useQuotationRequest(
   id: string | null,
   options?: { poll?: boolean | ((detail: QuotationRequestDetail | undefined) => boolean) },

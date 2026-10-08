@@ -147,3 +147,45 @@ export function toConfigureBankAccountBody(
     allowsPayments: draft.allowsPayments,
   };
 }
+
+/**
+ * ─── Cash box / EVC float presets (ADR-045 P14) ───────────────────────────────────────
+ *
+ * Buyer cash (paying from the award) is handed out only from an account that has no signatories
+ * — a buyer at the store cannot wait for two signatures. ACCO keeps its cash box (GL 10900 Petty
+ * cash) and its EVC/Zaad float as ordinary bank-account rows. These presets fill the create form
+ * so finance only checks and saves; the GL account is matched from the chart when one fits.
+ */
+export type CashAccountPreset = 'cash-box' | 'evc-float';
+
+export function cashAccountPreset(
+  preset: CashAccountPreset,
+  names: { cashBoxName: string; evcName: string; evcProvider: string },
+  accounts: readonly Account[],
+  bankAccounts: readonly BankAccount[],
+): BankAccountDraft {
+  const candidates = mappableGlAccounts(accounts, bankAccounts);
+  const named = (pattern: RegExp) =>
+    candidates.find((account) => pattern.test(currentVersion(account)?.name ?? ''))?.code ?? '';
+  if (preset === 'cash-box') {
+    const gl = candidates.find((account) => account.code === '10900')?.code || named(/petty|cash box|cash on hand/i);
+    return {
+      ...emptyBankAccountDraft(),
+      accountName: names.cashBoxName,
+      bankName: names.cashBoxName,
+      accountNumber: 'CASH-BOX',
+      glAccountCode: gl,
+    };
+  }
+  return {
+    ...emptyBankAccountDraft(),
+    accountName: names.evcName,
+    bankName: names.evcProvider,
+    accountNumber: '',
+    glAccountCode: named(/evc|zaad|mobile money|float/i),
+  };
+}
+
+export function isCashAccountPreset(value: string | null | undefined): value is CashAccountPreset {
+  return value === 'cash-box' || value === 'evc-float';
+}

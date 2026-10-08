@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
 
-import { useQuotesToChooseCount } from '@/features/procurement/hooks/use-quotations';
+import { usePaymentsNeededCount, useQuotesToChooseCount } from '@/features/procurement/hooks/use-quotations';
 
 import type { ModuleTab } from './module-nav';
 import type { NavBadgeKey } from './nav-groups';
@@ -26,7 +26,8 @@ export function badgeKeysIn(tabs: ModuleTab[]): NavBadgeKey[] {
  */
 export function useNavBadgeCounts(keys: NavBadgeKey[]): NavBadgeCounts {
   const quotes = useQuotesToChooseCount({ enabled: keys.includes('quotesToChoose') });
-  return { quotesToChoose: quotes };
+  const payments = usePaymentsNeededCount({ enabled: keys.includes('paymentsNeeded') });
+  return { quotesToChoose: quotes, paymentsNeeded: payments };
 }
 
 /** A small count pill. Nothing renders for zero or unknown — an empty badge is noise. */

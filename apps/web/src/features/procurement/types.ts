@@ -696,9 +696,12 @@ export interface CreateSupplierBillPayload {
   lines: CreateSupplierBillLinePayload[];
 }
 
-/** Body of `POST /bills/:id/post`. The expense accounts come from each line's profile. */
+/**
+ * Body of `POST /bills/:id/post`. The expense accounts come from each line's profile; since
+ * ADR-045 (P3) the AP account is resolved by the server too, so the web sends nothing.
+ */
 export interface PostSupplierBillPayload {
-  apAccountCode: string;
+  apAccountCode?: string;
 }
 
 /** Body of `POST /bills/:id/reverse`. */
@@ -986,11 +989,16 @@ export interface CreateSupplierPaymentPayload {
   allocations?: PaymentAllocationPayload[];
 }
 
-/** Body of `POST /payments/:id/post`. All three are required even when a branch is unused. */
+/**
+ * Body of `POST /payments/:id/post`. Since ADR-045 (P3) the server resolves every account: the
+ * bank GL from the payment's bank account (a different `bankGlCode` is refused,
+ * `BANK_GL_MISMATCH`), AP and Supplier advance by role. The web sends nothing; the fields stay
+ * optional for the API's sake only.
+ */
 export interface PostSupplierPaymentPayload {
-  apAccountCode: string;
-  bankGlCode: string;
-  supplierAdvanceCode: string;
+  apAccountCode?: string;
+  bankGlCode?: string;
+  supplierAdvanceCode?: string;
 }
 
 /** Body of `POST /payments/:id/reverse`. */
@@ -1227,6 +1235,17 @@ export interface BuyerAdvanceEvidenceAllocation {
   allocatedAmount: Money;
   createdBy: string;
   createdAt: ApiDate;
+  /**
+   * ADR-045: an evidence allocation becomes a posted application (EVT-AP-008). Absent on older
+   * servers and on legacy rows.
+   */
+  allocationDate?: ApiDate | null;
+  postingStatus?: BillPostingStatus | null;
+  journalEntryId?: string | null;
+  reversalJournalEntryId?: string | null;
+  reversedAt?: ApiDate | null;
+  /** Read when the server joins it. */
+  billNumber?: string | null;
 }
 
 export interface BuyerAdvance {
@@ -1255,6 +1274,16 @@ export interface BuyerAdvance {
   returns: AdvanceReturn[];
   evidenceAllocations: BuyerAdvanceEvidenceAllocation[];
   outstanding: Money;
+  // ── ADR-045 (P1 columns; absent on older servers) ──────────────────────────
+  /** Posted before ADR-045 without a journal — "Recorded before GL posting". Derived when absent. */
+  legacy?: boolean;
+  recipientName?: string | null;
+  quotationRequestId?: string | null;
+  approvalInstanceId?: string | null;
+  approvedAt?: ApiDate | null;
+  reversedAt?: ApiDate | null;
+  reversalReason?: string | null;
+  reversalJournalEntryId?: string | null;
 }
 
 

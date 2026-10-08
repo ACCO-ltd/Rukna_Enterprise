@@ -55,6 +55,41 @@ describe('BuyerAdvancesList', () => {
     expect(grid.getByText('Cash to Omar')).toBeInTheDocument();
   });
 
+  it('labels an advance posted before buyer cash reached the ledger (ADR-045 legacy)', async () => {
+    hooks.all.mockReturnValue({
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+      data: [
+        {
+          id: 'adv-old',
+          purchaseOrderId: 'po1',
+          purchaseOrder: { id: 'po1', poNumber: 'PO-2026-0001' },
+          amount: '300.00',
+          outstanding: '300.00',
+          currencyCode: 'USD',
+          advancedAt: '2026-09-01',
+          postingStatus: 'POSTED',
+          postedJournalEntryId: null,
+        },
+        {
+          id: 'adv-new',
+          purchaseOrderId: 'po2',
+          purchaseOrder: { id: 'po2', poNumber: 'PO-2026-0002' },
+          amount: '400.00',
+          outstanding: '0.00',
+          currencyCode: 'USD',
+          advancedAt: '2026-10-08',
+          postingStatus: 'POSTED',
+          postedJournalEntryId: 'je-1',
+        },
+      ],
+    });
+    renderWithProviders(<BuyerAdvancesList />);
+    const grid = within(await screen.findByRole('table'));
+    expect(grid.getAllByText('Recorded before GL posting')).toHaveLength(1);
+  });
+
   it('shows the empty state when the organisation has none', async () => {
     hooks.all.mockReturnValue({ isPending: false, isError: false, refetch: vi.fn(), data: [] });
     renderWithProviders(<BuyerAdvancesList />);

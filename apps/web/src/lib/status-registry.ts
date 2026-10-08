@@ -140,6 +140,24 @@ export const STATUS_REGISTRY = {
     WITHDRAWN: 'historical',
     REJECTED: 'danger',
   },
+  /** Paying from the award (ADR-045): the request's payment state. */
+  quotationPayment: {
+    AWAITING_ORDER: 'neutral',
+    READY_TO_PAY: 'attention',
+    AWAITING_APPROVAL: 'progress',
+    AWAITING_SIGNATURES: 'progress',
+    CASH_WITH_BUYER: 'progress',
+    WAITING_FOR_GOODS: 'progress',
+    RECEIPT_TO_RECORD: 'attention',
+    SETTLING: 'progress',
+    SETTLED: 'success',
+  },
+  /** A store receipt / invoice photographed by the buyer (ADR-045). */
+  storeDocument: {
+    SUBMITTED: 'attention',
+    RECORDED: 'success',
+    REJECTED: 'danger',
+  },
   purchaseOrder: {
     DRAFT: 'neutral',
     OPEN: 'progress',

@@ -64,6 +64,7 @@ import type {
   QuotationRequestDetail,
   QuoteCountExceptionReason,
 } from '../../quotations/types';
+import { BuyerPaymentCard } from './buyer-payment-card';
 import { OrderCard } from './order-raise';
 import { usePhotoPicker } from './photo-picker';
 import {
@@ -88,7 +89,12 @@ export function QuoteCaptureScreen({ id }: { id: string }) {
   const t = useTranslations('procurement.quotes.capture');
   const tq = useTranslations('procurement.quotes');
   const detail = useQuotationRequest(id, {
-    poll: (data) => (data ? WAITING_STATUSES.has(data.status) : false),
+    // An awarded request keeps refreshing until settled: the buyer is waiting for cash (ADR-045).
+    poll: (data) =>
+      data
+        ? WAITING_STATUSES.has(data.status) ||
+          (data.status === 'AWARDED' && Boolean(data.payment) && data.payment?.state !== 'SETTLED')
+        : false,
   });
   useModuleTrail(detail.data?.number);
 
@@ -264,6 +270,8 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
       </header>
 
       <StatusNotice detail={detail} />
+      {/* ADR-045: once the order is issued, the money comes first — cash released, go pay. */}
+      {detail.status === 'AWARDED' ? <BuyerPaymentCard detail={detail} /> : null}
       {detail.status === 'AWARDED' ? <OrderCard detail={detail} /> : null}
 
       {/* ── Quotes ─────────────────────────────────────────────────────────── */}
