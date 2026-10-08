@@ -232,6 +232,35 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
     expect(done.payment.postingStatus).toBe('POSTED');
   });
 
+  it('review H2: a prepayment from a now-closed month is applied to the later bill on the bill date', async () => {
+    const { requestId, poId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const prepay = await svc.awardPayments.payFromAward(env.as('selector'), {
+      idempotencyKey: randomUUID(), quotationRequestId: requestId, bankAccountId: env.bank.evcId,
+      paymentMethod: 'MOBILE_MONEY', paymentDate: '2026-09-20', amount: '1000.00', shape: 'PREPAY',
+    });
+    const sept = await prisma.accountingPeriod.findFirstOrThrow({ where: { organizationId: env.orgId, startDate: new Date('2026-09-01') } });
+    await prisma.accountingPeriod.update({ where: { id: sept.id }, data: { status: 'CLOSED' } });
+    try {
+      const doc = await invoice(poId);
+      await a.receive(poId);
+      const recorded = await svc.recordReceipt.record(env.payer2, {
+        storeDocumentId: doc.id, total: '1000.00', documentDate: '2026-10-08', expenseProfileCode: env.postingProfileCode,
+      });
+      expect(recorded.step).toBe('DONE');
+      expect(recorded.applied).toEqual([{ kind: 'SUPPLIER_PAYMENT', id: prepay.payment.id, amount: '1000.00' }]);
+      const alloc = await prisma.supplierPaymentAllocation.findFirstOrThrow({ where: { supplierPaymentId: prepay.payment.id } });
+      expect(alloc.allocationDate.toISOString().slice(0, 10)).toBe('2026-10-08');
+      const je = await prisma.journalEntry.findUniqueOrThrow({ where: { id: alloc.journalEntryId! } });
+      expect(je.accountingDate.toISOString().slice(0, 10)).toBe('2026-10-08');
+      // The bill keeps its evidence: the photographed invoice.
+      const bill = await svc.bills.findById(env.payer2, recorded.bill!.id);
+      expect(bill.evidence).toMatchObject({ storeDocumentId: doc.id, kind: 'INVOICE' });
+      expect(bill.evidence!.photos).toHaveLength(1);
+    } finally {
+      await prisma.accountingPeriod.update({ where: { id: sept.id }, data: { status: 'OPEN' } });
+    }
+  });
+
   describe('bands active', () => {
     beforeAll(() => a.setPaymentBandsActive(true));
     afterAll(() => a.setPaymentBandsActive(false));

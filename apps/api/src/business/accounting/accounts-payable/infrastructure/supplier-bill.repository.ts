@@ -89,6 +89,15 @@ export class SupplierBillRepository {
       include: {
         lines: { orderBy: { lineNumber: 'asc' } },
         supplier: { select: { id: true, code: true, name: true } },
+        // ADR-045 — the store receipt / invoice the bill was recorded from (its evidence).
+        storeDocument: {
+          select: {
+            id: true,
+            number: true,
+            kind: true,
+            photos: { select: { platformFileId: true, pageNumber: true }, orderBy: { pageNumber: 'asc' } },
+          },
+        },
       },
     });
   }

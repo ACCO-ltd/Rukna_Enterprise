@@ -106,6 +106,23 @@ describe('ADR-045 P6 — record receipt → bill → settle', () => {
     expect(delta('10900')).toBe('-980.00');
     expect(delta('AP-PROC')).toBe('0.00');
     expect(delta('EXP-PROC')).toBe('980.00');
+
+    // Review LOW — reversing the application reopens the order auto-closed as settled.
+    await svc.advances.reverseApplication(env.payer2, advance.id, app.id, 'wrong receipt amount');
+    expect((await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: poId } })).status).toBe('OPEN');
+  });
+
+  it('review LOW: a receipt cannot be recorded against an order that is not OPEN', async () => {
+    const { requestId, poId } = await a.awardedOrder();
+    await a.release(requestId);
+    const doc = await receipt(poId);
+    await a.receive(poId);
+    await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'CANCELLED' } });
+    try {
+      expect(await refusal(record(doc.id, '1000.00'))).toEqual({ status: 409, code: 'PAYMENT_PO_NOT_OPEN' });
+    } finally {
+      await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'OPEN' } });
+    }
   });
 
   it('S7: shortfall — 1,030 receipt on 1,030 order with 1,000 released; top-up 30 applies to the bill', async () => {

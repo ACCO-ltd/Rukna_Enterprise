@@ -685,6 +685,7 @@ export class SupplierBillService {
       throw new ConflictException(`Bill ${billId} is already reversed`);
     }
 
+    // (Pre-checked here for a clear message; re-checked under the bill lock in the transaction.)
     const activeAllocs = await prisma.supplierPaymentAllocation.count({
       where: { supplierBillId: billId, postingStatus: 'POSTED' },
     });
@@ -715,6 +716,20 @@ export class SupplierBillService {
     const reversalDate = new Date(opts.reversalDate);
 
     return prisma.$transaction(async (tx) => {
+      // ADR-045 review M3 — under the bill's row lock, nothing may settle it any more: a payment
+      // allocation or buyer-cash application committed after the pre-check must block the reversal.
+      await tx.$queryRaw`SELECT id FROM supplier_bills WHERE id = ${billId} FOR UPDATE`;
+      const locked = await tx.supplierBill.findUniqueOrThrow({ where: { id: billId }, select: { postingStatus: true } });
+      if (locked.postingStatus !== 'POSTED') throw new ConflictException(`Bill ${billId} is already reversed`);
+      const [paid, applied] = await Promise.all([
+        tx.supplierPaymentAllocation.count({ where: { supplierBillId: billId, postingStatus: 'POSTED' } }),
+        tx.buyerAdvanceEvidenceAllocation.count({ where: { supplierBillId: billId, postingStatus: 'POSTED' } }),
+      ]);
+      if (paid > 0 || applied > 0) {
+        throw new BadRequestException(
+          `Cannot reverse bill ${billId} — it is settled by ${paid} payment allocation(s) and ${applied} buyer-cash application(s). Reverse those first.`,
+        );
+      }
       const reversalResult = await this.postingPort.post(
         {
           organizationId: orgId,
@@ -823,10 +838,22 @@ export class SupplierBillService {
     const numberOf = (journalId: string | null) =>
       journalId ? (journals.find((j) => j.id === journalId)?.journalNumber ?? null) : null;
 
+    // ADR-045 — the store receipt / invoice the bill was recorded from is its evidence (photo file
+    // ids are readable under the STORE_DOCUMENT_PHOTO rule).
+    const storeDocument = bill.storeDocument ?? null;
+
     return {
       ...bill,
       postedJournalNumber: numberOf(bill.postedJournalEntryId),
       reversalJournalNumber: numberOf(bill.reversalJournalEntryId),
+      evidence: storeDocument
+        ? {
+            storeDocumentId: storeDocument.id,
+            number: storeDocument.number,
+            kind: storeDocument.kind,
+            photos: storeDocument.photos.map((p) => ({ fileId: p.platformFileId, pageNumber: p.pageNumber })),
+          }
+        : null,
     };
   }
 

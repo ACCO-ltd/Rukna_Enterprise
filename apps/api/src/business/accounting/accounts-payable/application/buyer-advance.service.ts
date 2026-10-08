@@ -823,6 +823,26 @@ export class BuyerAdvanceService {
       });
       if (flipped.count !== 1) throw new ConflictException(`Application ${applicationId} was already reversed`);
       await tx.supplierBill.update({ where: { id: app.supplierBillId }, data: { outstandingAmount: { increment: app.allocatedAmount } } });
+      // Review LOW — the bill is open again, so an order auto-closed as settled is reopened.
+      const reopened = await tx.purchaseOrder.updateMany({
+        where: { id: advance.purchaseOrderId, organizationId: orgId, status: 'CLOSED' },
+        data: { status: 'OPEN', closedAt: null },
+      });
+      if (reopened.count > 0) {
+        await this.auditOutbox.record(tx, {
+          organizationId: orgId,
+          actorUserId: identity.userId,
+          action: 'TRANSITION',
+          resourceType: 'PurchaseOrder',
+          resourceId: advance.purchaseOrderId,
+          sourceCommand: 'buyer-advance.reverse-application',
+          eventType: 'PO_REOPENED',
+          idempotencyKey: `po-reopened-${advance.purchaseOrderId}-${app.id}`,
+          before: { status: 'CLOSED' },
+          after: { status: 'OPEN' },
+          reason: `Buyer cash application reversed: ${text}`,
+        });
+      }
       await this.audit(tx, identity, advance.id, 'BUYER_ADVANCE_APPLICATION_REVERSED', 'buyer-advance.reverse-application', advance.updatedAt, {
         before: { applicationId: app.id, postingStatus: 'POSTED' },
         after: { postingStatus: 'REVERSED', journalEntryId: journal.journalEntryId },

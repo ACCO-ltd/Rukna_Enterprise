@@ -635,11 +635,16 @@ export class SupplierPaymentService {
         }
       }
 
+      // ADR-045 review H2 — the application happens when both source documents exist: the later of
+      // the bill date and the payment's accounting date (never the clock). Dating it on the payment
+      // alone put an application of a bill posted months later into the (possibly closed) payment
+      // month, so it could never post. Applies to every caller of allocateAdvance.
+      const applicationDay = bill.billDate.getTime() > payment.accountingDate.getTime() ? bill.billDate : payment.accountingDate;
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: payment.accountingDate,
-          documentDate: payment.paymentDate,
+          accountingDate: applicationDay,
+          documentDate: applicationDay,
           description: `Advance Applied — Payment ${payment.id} → Bill ${bill.id}`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-005',
@@ -673,9 +678,9 @@ export class SupplierPaymentService {
         supplierPaymentId: payment.id,
         supplierBillId: bill.id,
         allocatedAmount: amount,
-        // Dated on the source payment's accounting date (matches the EVT-AP-005 journal above),
-        // never `new Date()` — feedback-accounting-date-rule.
-        allocationDate: payment.accountingDate,
+        // Dated as the EVT-AP-005 journal above (later of bill date and payment date), never
+        // `new Date()` — feedback-accounting-date-rule.
+        allocationDate: applicationDay,
         journalEntryId: postResult.journalEntryId,
         postingStatus: 'POSTED',
         createdBy: userId,
@@ -695,8 +700,9 @@ export class SupplierPaymentService {
         );
       }
 
+      // Review M3 — also guarded on the bill still being payable (a reversal committed meanwhile).
       const billUpd = await tx.supplierBill.updateMany({
-        where: { id: bill.id, outstandingAmount: { gte: amount } },
+        where: { id: bill.id, outstandingAmount: { gte: amount }, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
         data: { outstandingAmount: { decrement: amount } },
       });
       if (billUpd.count === 0) {
@@ -840,11 +846,10 @@ export class SupplierPaymentService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          // Reversal mirrors the source allocation's period (payment.accountingDate), never today —
-          // a `new Date()` here mis-periods AP and is rejected outright if the current period is
-          // closed, stranding the reversal. Enforces feedback-accounting-date-rule.
-          accountingDate: payment.accountingDate,
-          documentDate: payment.paymentDate,
+          // Reversal mirrors the source allocation's own date (its EVT-AP-005), never today — a
+          // `new Date()` mis-periods AP. Enforces feedback-accounting-date-rule (ADR-045 H2).
+          accountingDate: alloc.allocationDate,
+          documentDate: alloc.allocationDate,
           description: `Advance Allocation Reversal — Allocation ${allocationId}`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-006',

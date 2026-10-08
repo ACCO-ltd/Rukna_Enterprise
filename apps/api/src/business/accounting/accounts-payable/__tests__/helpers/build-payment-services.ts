@@ -155,6 +155,7 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     advances,
     poService,
     audit,
+    projectAccess,
     paymentNotifier,
   );
   const storeDocumentRepo = new StoreDocumentRepository();

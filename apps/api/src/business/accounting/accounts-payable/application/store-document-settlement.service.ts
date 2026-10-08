@@ -7,7 +7,8 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
 import { AwardPaymentRepository } from '../infrastructure/award-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
-import { splitReceiptTotal } from '../domain/award-payment.policy.js';
+import { advanceOutstanding, splitReceiptTotal } from '../domain/award-payment.policy.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { parseDateOnly, parseMoney, paymentConflict, paymentUnprocessable } from '../domain/payment-errors.js';
 import { AWARD_PAYMENT_EVENTS, type AwardPaymentEvents } from '../domain/award-payment-events.port.js';
 import { SupplierBillService } from './supplier-bill.service.js';
@@ -59,6 +60,7 @@ export class StoreDocumentSettlementService {
     private readonly advances: BuyerAdvanceService,
     private readonly purchaseOrders: PurchaseOrderService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly projectAccess: ProjectAccessService,
     @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
   ) {}
 
@@ -67,8 +69,15 @@ export class StoreDocumentSettlementService {
     const orgId = identity.activeOrganizationId;
     let doc = await prisma.storeDocument.findFirst({ where: { id: cmd.storeDocumentId, organizationId: orgId } });
     if (!doc) throw new NotFoundException(`Store document ${cmd.storeDocumentId} not found`);
+    if (doc.quotationRequestId) {
+      const request = await this.awardRepo.findRequest(prisma, orgId, doc.quotationRequestId);
+      if (request?.projectId) await this.projectAccess.assertMember(identity, request.projectId);
+    }
     if (doc.status === 'RECORDED') return this.result(identity, doc.id, 'DONE', []);
     if (doc.status !== 'SUBMITTED') throw paymentConflict('STORE_DOCUMENT_NOT_SUBMITTED');
+    // Review LOW — a receipt is recorded only against an issued (OPEN) order.
+    const po = await this.awardRepo.findPurchaseOrder(prisma, orgId, doc.purchaseOrderId);
+    if (!po || po.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
 
     // Step 1 — the bill (once).
     if (!doc.supplierBillId) {
@@ -272,15 +281,22 @@ export class StoreDocumentSettlementService {
       const result = await prisma.$transaction(async (tx) => {
         await this.awardRepo.lockPurchaseOrder(tx, orgId, purchaseOrderId);
         await this.awardRepo.lockBuyerAdvance(tx, id);
+        // Review LOW — decide BEFORE writing (no error is swallowed inside the transaction): an
+        // application already made by an earlier run of this step, or nothing left on either side,
+        // is skipped; any refusal rolls the whole application back.
+        const key = `store-document:${billId}:${id}`;
+        const done = await tx.buyerAdvanceEvidenceAllocation.findFirst({ where: { organizationId: orgId, idempotencyKey: key } });
+        if (done) return done.postingStatus === 'POSTED' ? { application: done } : null;
         const bill = await tx.supplierBill.findUniqueOrThrow({ where: { id: billId }, select: { outstandingAmount: true } });
         if (!dec(bill.outstandingAmount).greaterThan(0)) return null;
-        try {
-          return await this.advances.applyInTx(tx, identity, id, billId, undefined, 'store-document.record');
-        } catch (error) {
-          // Nothing left on this advance — try the next one.
-          if (isCode(error, 'APPLICATION_EXCEEDS_OUTSTANDING')) return null;
-          throw error;
-        }
+        const advance = await tx.buyerAdvance.findUniqueOrThrow({ where: { id }, include: { returns: true, evidenceAllocations: true } });
+        const left = advanceOutstanding(
+          { amount: dec(advance.amount), legacy: false },
+          advance.evidenceAllocations.map((x) => ({ amount: dec(x.allocatedAmount), postingStatus: x.postingStatus })),
+          advance.returns.map((r) => ({ amount: dec(r.amount) })),
+        );
+        if (!left.greaterThan(0)) return null;
+        return this.advances.applyInTx(tx, identity, id, billId, undefined, 'store-document.record', key);
       });
       if (result) applied.push({ kind: 'BUYER_ADVANCE', id, amount: dec(result.application.allocatedAmount).toFixed(2) });
     }
@@ -366,9 +382,4 @@ export class StoreDocumentSettlementService {
 function approvalGate(error: unknown): string | null {
   const response = (error as { getResponse?: () => unknown }).getResponse?.() as { details?: { approvalInstanceId?: string } } | undefined;
   return response?.details?.approvalInstanceId ?? null;
-}
-
-function isCode(error: unknown, code: string): boolean {
-  const response = (error as { getResponse?: () => unknown }).getResponse?.() as { details?: { code?: string } } | undefined;
-  return response?.details?.code === code;
 }
