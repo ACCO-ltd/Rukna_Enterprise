@@ -1196,9 +1196,11 @@ export interface CreateBuyerAdvancePayload {
 export interface CreateAdvanceReturnPayload {
   amount: number;
   returnMethod: BuyerAdvanceReturnMethod;
-  /** Required when returnMethod is BANK or MOBILE_MONEY. */
-  destinationBankAccountId?: string;
-  receivedBy: string;
+  /**
+   * Required for every method since ADR-045 (cash goes back into the cash box; 400
+   * DESTINATION_REQUIRED). The receiver is the caller — the DTO refuses a `receivedBy`.
+   */
+  destinationBankAccountId: string;
   receivedAt: string;
   reference?: string;
   note?: string;

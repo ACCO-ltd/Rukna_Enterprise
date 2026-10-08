@@ -219,6 +219,8 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   const legacy = isLegacyAdvance(advance);
   // The server decides (R15: nothing applied or returned); offered only on a ledger-posted advance.
   const mayReverse = canPay && advance.postingStatus === 'POSTED' && !legacy && !advance.reversedAt;
+  // A DRAFT advance (waiting for approval) is cancelled by the same endpoint, without a date.
+  const mayCancel = canPay && advance.documentStatus === 'DRAFT' && advance.postingStatus === 'NOT_POSTED';
 
   return (
     <div className="space-y-6">
@@ -273,10 +275,10 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
         </Notice>
       ) : null}
 
-      {mayReverse ? (
+      {mayReverse || mayCancel ? (
         <div>
           <Button type="button" variant="outline" className="min-h-11" onClick={() => setReversing(true)}>
-            {t('reverseAction')}
+            {mayCancel ? t('cancelAction') : t('reverseAction')}
           </Button>
         </div>
       ) : null}
@@ -399,16 +401,21 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
 
       {reversing ? (
         <ConfirmActionDialog
-          title={t('reverseTitle')}
-          description={t('reverseBody', { date: formatDate(todayInMogadishu(), locale) ?? '' })}
-          confirmLabel={t('reverseAction')}
+          title={mayCancel ? t('cancelTitle') : t('reverseTitle')}
+          description={
+            mayCancel ? t('cancelBody') : t('reverseBody', { date: formatDate(todayInMogadishu(), locale) ?? '' })
+          }
+          confirmLabel={mayCancel ? t('cancelAction') : t('reverseAction')}
           reason={{ label: t('reverseReason'), required: true }}
           destructive
           isPending={reverse.isPending}
           errorMessage={reverse.error ? fromError(reverse.error) : undefined}
           onConfirm={(reason) =>
             reverse.mutate(
-              { advanceId: advance.id, payload: { reason, reversalDate: todayInMogadishu() } },
+              {
+                advanceId: advance.id,
+                payload: mayCancel ? { reason } : { reason, reversalDate: todayInMogadishu() },
+              },
               { onSuccess: () => setReversing(false) },
             )
           }

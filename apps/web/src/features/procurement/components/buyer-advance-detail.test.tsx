@@ -120,6 +120,19 @@ describe('BuyerAdvanceDetail — ADR-045', () => {
     ).toBeInTheDocument();
   });
 
+  it('cancels a DRAFT advance stuck in approval with a reason and no date', async () => {
+    const user = userEvent.setup();
+    hooks.advance = advance({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', postedJournalEntryId: null });
+    hooks.reverse.mockResolvedValueOnce({});
+    renderWithProviders(<BuyerAdvanceDetail id="adv1" />, { permissions: PAYER });
+    await user.click(screen.getByRole('button', { name: 'Cancel release' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), 'Store wants a bank transfer');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel release' }));
+    await waitFor(() => expect(hooks.reverse).toHaveBeenCalledTimes(1));
+    expect(hooks.reverse.mock.calls[0]![1]).toEqual({ reason: 'Store wants a bank transfer' });
+  });
+
   it('offers no reverse without manage:payable', () => {
     renderWithProviders(<BuyerAdvanceDetail id="adv1" />, { permissions: ['view:procurement'] });
     expect(screen.queryByRole('button', { name: 'Reverse' })).not.toBeInTheDocument();

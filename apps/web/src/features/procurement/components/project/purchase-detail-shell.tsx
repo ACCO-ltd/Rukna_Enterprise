@@ -459,7 +459,6 @@ function AdvanceCard({
   isOpen,
   locale,
   banks,
-  users,
   bills,
 }: {
   adv: AdvanceSummary;
@@ -467,7 +466,6 @@ function AdvanceCard({
   isOpen: boolean;
   locale: 'en';
   banks: { id: string; bankName: string; accountName: string; status: string }[];
-  users: { id: string; firstName: string; lastName: string }[];
   bills: BillOption[];
 }) {
   const t = useTranslations('procurement.project.purchase.funding');
@@ -484,7 +482,6 @@ function AdvanceCard({
   const [retAmount, setRetAmount] = useState('');
   const [retMethod, setRetMethod] = useState<BuyerAdvanceReturnMethod>('CASH');
   const [retBankId, setRetBankId] = useState('');
-  const [retReceivedBy, setRetReceivedBy] = useState('');
   const [retDate, setRetDate] = useState('');
   const [retRef, setRetRef] = useState('');
   const [retError, setRetError] = useState<string | null>(null);
@@ -503,21 +500,21 @@ function AdvanceCard({
   async function handleReturnSubmit() {
     setRetShowErrors(true);
     const amountMinor = parseMinorUnits(retAmount, MONEY_SCALE);
-    const needsAccount = retMethod === 'BANK' || retMethod === 'MOBILE_MONEY';
-    if (amountMinor === null || amountMinor <= 0 || !retReceivedBy || !retDate || (needsAccount && !retBankId)) return;
+    // ADR-045: the destination is required for every method (cash lands in the cash box), and the
+    // receiver is whoever records it — the API refuses a client-supplied receivedBy.
+    if (amountMinor === null || amountMinor <= 0 || !retDate || !retBankId) return;
     setRetError(null);
     try {
       await createReturn.mutateAsync({
         amount: moneyToApi(amountMinor),
         returnMethod: retMethod,
-        destinationBankAccountId: needsAccount ? retBankId : undefined,
-        receivedBy: retReceivedBy,
+        destinationBankAccountId: retBankId,
         receivedAt: retDate,
         reference: retRef || undefined,
       });
       setShowReturnForm(false);
       setRetAmount(''); setRetMethod('CASH'); setRetBankId('');
-      setRetReceivedBy(''); setRetDate(''); setRetRef('');
+      setRetDate(''); setRetRef('');
       setRetShowErrors(false);
     } catch {
       setRetError(tRet('submitFailed'));
@@ -648,7 +645,7 @@ function AdvanceCard({
                 <option value="MOBILE_MONEY">{tRet('method_MOBILE_MONEY')}</option>
               </Select>
             </FormField>
-            {(retMethod === 'BANK' || retMethod === 'MOBILE_MONEY') && (
+            {(
               <FormField
                 htmlFor={`ret-bank-${id}`}
                 label={tRet('bankAccount')}
@@ -662,18 +659,6 @@ function AdvanceCard({
                 </Select>
               </FormField>
             )}
-            <FormField
-              htmlFor={`ret-by-${id}`}
-              label={tRet('receivedBy')}
-              error={retShowErrors && !retReceivedBy ? tRet('receivedByRequired') : undefined}
-            >
-              <Select id={`ret-by-${id}`} value={retReceivedBy} onChange={(v) => setRetReceivedBy(v)}>
-                <option value="">{tRet('selectUser')}</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-                ))}
-              </Select>
-            </FormField>
             <FormField
               htmlFor={`ret-date-${id}`}
               label={tRet('date')}
@@ -1007,7 +992,6 @@ function FundingTab({ poId, locale, isOpen }: { poId: string; locale: 'en'; isOp
                 isOpen={isOpen}
                 locale={locale}
                 banks={banks.data ?? []}
-                users={users.data ?? []}
                 bills={s.evidence.bills}
               />
             ))}
