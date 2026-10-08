@@ -3304,6 +3304,7 @@ model SupplierPayment {
 
   @@index([organizationId, postingStatus])
   @@index([supplierId])
+  @@index([quotationRequestId])
   @@map("supplier_payments")
 }
 
@@ -3425,6 +3426,7 @@ model BuyerAdvance {
 
   @@index([organizationId, purchaseOrderId])
   @@index([recipientUserId])
+  @@index([quotationRequestId])
   @@map("buyer_advances")
 }
 

@@ -211,4 +211,22 @@ describe('ADR-045 P6 — record receipt → bill → settle', () => {
     await svc.advances.createApplication(env.payer2, app.buyerAdvanceId, { supplierBillId: rec.bill!.id });
     expect((await prisma.supplierBill.findUniqueOrThrow({ where: { id: rec.bill!.id } })).outstandingAmount.toString()).toBe('0');
   });
+
+  it('item 5: an application replay with its key returns the first application; a different body is refused', async () => {
+    const { requestId, poId } = await a.awardedOrder();
+    const { advance } = await a.release(requestId, { amount: '1000.00' });
+    const doc = await receipt(poId);
+    await a.receive(poId);
+    const rec = await record(doc.id, '1000.00');
+    const app = await prisma.buyerAdvanceEvidenceAllocation.findFirstOrThrow({ where: { supplierBillId: rec.bill!.id } });
+    await svc.advances.reverseApplication(env.payer2, advance.id, app.id, 'redo with a key');
+    const key = 'app-key-' + doc.id;
+    const first = await svc.advances.createApplication(env.payer2, advance.id, { idempotencyKey: key, supplierBillId: rec.bill!.id, amount: '400.00' });
+    const again = await svc.advances.createApplication(env.payer2, advance.id, { idempotencyKey: key, supplierBillId: rec.bill!.id, amount: '400.00' });
+    expect(again.application.id).toBe(first.application.id);
+    expect(await prisma.buyerAdvanceEvidenceAllocation.count({ where: { supplierBillId: rec.bill!.id, postingStatus: 'POSTED' } })).toBe(1);
+    expect(
+      await refusal(svc.advances.createApplication(env.payer2, advance.id, { idempotencyKey: key, supplierBillId: rec.bill!.id, amount: '401.00' })),
+    ).toEqual({ status: 409, code: 'IDEMPOTENCY_KEY_REUSED' });
+  });
 });
