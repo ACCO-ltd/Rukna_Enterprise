@@ -125,6 +125,12 @@ describe('ADR-045 P8 — payment read model, path change, queues', () => {
     ).toEqual({ status: 409, code: 'PAYMENT_PATH_LOCKED' });
   });
 
+  it('buyer-cash readiness: STAFF_ADVANCE in force + the accounts without signatories', async () => {
+    const r = await svc.advances.readiness(env.as('selector'));
+    expect(r).toMatchObject({ ready: true, staffAdvanceProfile: true, cashAccountsWithoutSignatories: 2 });
+    expect(r.cashAccounts.map((x) => x.bankAccountId).sort()).toEqual([env.bank.cashBoxId, env.bank.evcId].sort());
+  });
+
   it('a legacy advance is labelled in the settlement and keeps its arithmetic', async () => {
     const { poId } = await a.awardedOrder();
     await prisma.buyerAdvance.create({

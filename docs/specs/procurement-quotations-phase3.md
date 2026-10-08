@@ -552,6 +552,11 @@ and `POST /bills/:id/post` (now with optional GL codes).
   validate it); bill lines still refuse it (expense profiles only) — the bill expense-profile
   picker should hide it.
 
+**Added for P14.** `GET /buyer-advances/readiness` (`manage:payable`) → `{ ready,
+staffAdvanceProfile, cashAccountsWithoutSignatories, cashAccounts: [{ bankAccountId, name, glCode,
+currencyCode }] }` — the buyer-cash setup items, kept out of `/accounting/readiness` because they
+do not block the ledger.
+
 **Fixes found while building.** A failed posting attempt no longer flips an already POSTED
 supplier payment / bill to FAILED (two concurrent posts — the loser used to overwrite the
 winner). Bill reverse is refused while buyer cash is applied to it.

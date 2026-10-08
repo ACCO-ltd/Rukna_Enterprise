@@ -34,6 +34,12 @@ import {
 export class BuyerAdvanceController {
   constructor(private readonly buyerAdvanceService: BuyerAdvanceService) {}
 
+  @Get('readiness')
+  @ApiOperation({ summary: 'ADR-045 — buyer-cash setup: STAFF_ADVANCE profile + cash accounts without signatories' })
+  readiness(@CurrentUser() identity: RequestIdentity) {
+    return this.buyerAdvanceService.readiness(identity);
+  }
+
   @Get('release-draft')
   @ApiQuery({ name: 'quotationRequestId', required: true })
   @ApiOperation({ summary: 'ADR-045 — prefill for "Release cash" from an award: order, recipients, cash accounts, blockers' })

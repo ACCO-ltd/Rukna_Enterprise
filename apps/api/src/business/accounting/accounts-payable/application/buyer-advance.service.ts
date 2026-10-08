@@ -143,6 +143,29 @@ export class BuyerAdvanceService {
     @Optional() @Inject(AWARD_PAYMENT_READ_MODEL) private readonly readModel?: AwardPaymentReadModel,
   ) {}
 
+  // ── Setup readiness ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * `GET /buyer-advances/readiness` — what releasing buyer cash needs (ADR-045 P14): the
+   * STAFF_ADVANCE profile in force today and at least one ACTIVE paying account without
+   * signatories (a cash box / mobile-money float). Informational; not a ledger blocker.
+   */
+  async readiness(identity: RequestIdentity) {
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const today = parseDateOnly(todayInMogadishu())!;
+    const staff = await this.awardRepo.staffAdvanceAccount(prisma, orgId, today);
+    const accounts = (await this.awardRepo.paymentAccounts(prisma, orgId)).filter(
+      (a) => a.status === 'ACTIVE' && a.allowsPayments && a.activeSignatories === 0,
+    );
+    return {
+      ready: staff !== null && accounts.length > 0,
+      staffAdvanceProfile: staff !== null,
+      cashAccountsWithoutSignatories: accounts.length,
+      cashAccounts: accounts.map((a) => ({ bankAccountId: a.id, name: a.bankName, glCode: a.glCode, currencyCode: a.currencyCode })),
+    };
+  }
+
   // ── Release (one tap) ─────────────────────────────────────────────────────────────────────────
 
   /** `GET /buyer-advances/release-draft?quotationRequestId=` — the dialog's prefill and blockers. */
