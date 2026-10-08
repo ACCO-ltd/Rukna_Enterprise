@@ -21,6 +21,8 @@ const api = vi.hoisted(() => ({
   release: vi.fn(),
   payDraft: vi.fn(),
   pay: vi.fn(),
+  cont: vi.fn(),
+  apply: vi.fn(),
 }));
 vi.mock('../../api/quotations-api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -32,6 +34,8 @@ vi.mock('../../api/quotation-payment-api', async (importOriginal) => ({
   releaseCash: (...args: unknown[]) => api.release(...args),
   getPayDraft: (...args: unknown[]) => api.payDraft(...args),
   payFromAward: (...args: unknown[]) => api.pay(...args),
+  continuePendingPayment: (...args: unknown[]) => api.cont(...args),
+  applyPrepayment: (...args: unknown[]) => api.apply(...args),
 }));
 vi.mock('@/features/workflows/components/approval-panel', () => ({
   ApprovalPanel: ({ instanceId }: { instanceId: string | null }) => <div data-testid="approval-panel">{instanceId}</div>,
@@ -151,6 +155,53 @@ describe('PaymentSection — buyer cash', () => {
     expect(api.release.mock.calls[1]![0]).toEqual(firstBody);
   });
 
+  it('finishes the server-pending attempt from any device: continue path, no body, chain from its instance', async () => {
+    const user = userEvent.setup();
+    api.detail = awarded({
+      state: 'AWAITING_APPROVAL',
+      approval: { instanceId: 'wf-3', status: 'APPROVED', currentStepRole: null },
+      pending: [
+        {
+          kind: 'BUYER_ADVANCE',
+          id: 'adv-d',
+          idempotencyKey: 'k-from-another-phone',
+          amount: '4000.00',
+          awaiting: 'APPROVAL',
+          approvalInstanceId: 'wf-3',
+          continue: { method: 'POST', path: '/buyer-advances/adv-d/post' },
+        },
+      ],
+      allowedActions: [{ action: 'TOP_UP', enabled: false, reason: 'NOTHING_TO_FUND' }],
+    });
+    api.cont.mockResolvedValueOnce({ id: 'adv-d' });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+
+    expect(await screen.findByText('Approved')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Release now' }));
+    await waitFor(() => expect(api.cont).toHaveBeenCalledWith('/buyer-advances/adv-d/post'));
+    expect(api.release).not.toHaveBeenCalled();
+  });
+
+  it('shows the approval chain from the pending attempt while it waits', async () => {
+    api.detail = awarded({
+      state: 'AWAITING_APPROVAL',
+      pending: [
+        {
+          kind: 'BUYER_ADVANCE',
+          id: 'adv-d',
+          idempotencyKey: null,
+          amount: '4000.00',
+          awaiting: 'APPROVAL',
+          approvalInstanceId: 'wf-5',
+          continue: { method: 'POST', path: '/buyer-advances/adv-d/post' },
+        },
+      ],
+      allowedActions: [],
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    expect(await screen.findByTestId('approval-panel')).toHaveTextContent('wf-5');
+  });
+
   it('renders a disabled action with the server reason in words (dual-control account)', async () => {
     api.detail = awarded({
       allowedActions: [{ action: 'RELEASE_CASH', enabled: false, reason: 'ACCOUNT_REQUIRES_DUAL_CONTROL' }],
@@ -264,6 +315,52 @@ describe('PaymentSection — finance pays supplier', () => {
     expect(await screen.findByRole('button', { name: 'Pay Bakaara Steel' })).toBeDisabled();
     expect(screen.getByText('The order is already fully paid.')).toBeInTheDocument();
     expect(screen.queryByText('There is no payment waiting to be finished.')).not.toBeInTheDocument();
+  });
+
+  it('applies a posted prepayment to the bill instead of paying again (APPLY_PREPAYMENT is primary)', async () => {
+    const user = userEvent.setup();
+    api.detail = awarded({
+      path: 'FINANCE_PAYS_SUPPLIER',
+      state: 'SETTLING',
+      payments: [{ id: 'sp-1', number: 'PAY-0042', amount: '1000.00', shape: 'PREPAY', documentStatus: 'APPROVED', postingStatus: 'POSTED' }],
+      allowedActions: [
+        { action: 'PAY_SUPPLIER', enabled: false, reason: 'PREPAYMENT_NOT_APPLIED' },
+        { action: 'APPLY_PREPAYMENT', enabled: true },
+        { action: 'FINISH_PAYMENT', enabled: false, reason: 'NOTHING_TO_FINISH' },
+      ],
+    });
+    api.payDraft.mockResolvedValue(
+      payDraftFixture({
+        shape: 'PAY_BILL',
+        bills: [{ id: 'b-91', number: 'BILL-0091', outstanding: '980.00' }],
+        unappliedPrepayments: [{ paymentId: 'sp-1', unallocated: '1000.00' }],
+        blockers: ['PREPAYMENT_NOT_APPLIED'],
+      }),
+    );
+    api.apply.mockResolvedValueOnce({});
+    renderWithProviders(<Harness />, { permissions: PAYER });
+
+    await user.click(await screen.findByRole('button', { name: 'Apply the prepayment' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Apply the prepayment' });
+    expect(within(dialog).getByText('Apply $980.00 from PAY-0042 to BILL-0091.')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Apply $980.00' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalledWith('sp-1', 'b-91', 980));
+  });
+
+  it('says to apply the prepayment first when paying is refused with PREPAYMENT_NOT_APPLIED', async () => {
+    const user = userEvent.setup();
+    api.detail = awarded({ path: 'FINANCE_PAYS_SUPPLIER', allowedActions: [{ action: 'PAY_SUPPLIER', enabled: true }] });
+    api.pay.mockRejectedValueOnce(
+      new ApiError(409, 'Prepayment not applied', 'CONFLICT', [], {
+        code: 'PREPAYMENT_NOT_APPLIED',
+        unappliedPrepayments: [{ paymentId: 'sp-1', unallocated: '1000.00' }],
+      }),
+    );
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    await user.click(await screen.findByRole('button', { name: 'Pay Bakaara Steel' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
+    await user.click(within(dialog).getByRole('button', { name: 'Pay $1,000.00' }));
+    expect(await within(dialog).findByText('Apply the prepayment to this bill first.')).toBeInTheDocument();
   });
 
   it('pre-empts the vendor-maintainer rule: the store was registered by this user', async () => {

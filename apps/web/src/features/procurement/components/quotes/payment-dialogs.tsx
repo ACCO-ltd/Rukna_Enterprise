@@ -7,11 +7,12 @@
 
 import type { QuotationPayment } from '../../quotations/payment-types';
 import type { QuotationRequestDetail } from '../../quotations/types';
+import { ApplyPrepaymentDialog } from './apply-prepayment-dialog';
 import { ChangeReturnedDialog } from './change-returned-dialog';
 import { PaySupplierDialog } from './pay-supplier-dialog';
 import { ReleaseCashDialog } from './release-cash-dialog';
 
-export type PaymentDialog = 'release' | 'topUp' | 'pay' | 'path' | 'return' | null;
+export type PaymentDialog = 'release' | 'topUp' | 'pay' | 'path' | 'return' | 'apply' | null;
 
 export function PayDialogs({
   open,
@@ -55,6 +56,16 @@ export function PayDialogs({
           if (awaiting === 'APPROVAL') onGated(instance, 'pay');
           else onAwaitingSignatures();
         }}
+      />
+    );
+  }
+  if (open === 'apply') {
+    return (
+      <ApplyPrepaymentDialog
+        requestId={detail.id}
+        payment={payment}
+        currencyCode={detail.currencyCode ?? 'USD'}
+        onClose={onClose}
       />
     );
   }

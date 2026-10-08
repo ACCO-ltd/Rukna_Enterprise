@@ -34,7 +34,9 @@ export type PaymentActionName =
   | 'FINISH_PAYMENT'
   | 'PHOTOGRAPH_RECEIPT'
   | 'RECORD_RECEIPT'
-  | 'CHANGE_PATH';
+  | 'CHANGE_PATH'
+  /** A posted prepayment not yet applied to the posted bill: apply it, never pay again. */
+  | 'APPLY_PREPAYMENT';
 
 /** One per payment command; `reason` is the machine code saying why it is disabled. */
 export interface PaymentAllowedAction {
@@ -112,7 +114,24 @@ export interface PaymentApprovalSummary {
   currentStepRole: string | null;
 }
 
+/**
+ * An attempt that waits to be finished (review fix): the DoA approval, the bank signatures or the
+ * post. *Release now* / *Complete the payment* call `continue.path` with no body, so any device
+ * can finish it — no client-held body, no second attempt.
+ */
+export interface PaymentPending {
+  kind: 'BUYER_ADVANCE' | 'SUPPLIER_PAYMENT';
+  id: string;
+  idempotencyKey: string | null;
+  amount: Money | null;
+  awaiting: 'APPROVAL' | 'RELEASE_SIGNATURES' | 'POSTING';
+  approvalInstanceId: string | null;
+  continue: { method: 'POST'; path: string };
+}
+
 export interface QuotationPayment {
+  /** Absent on servers before the review fix. */
+  pending?: PaymentPending[];
   path: QuotationPaymentPath;
   state: PaymentState;
   purchaseOrder: { id: string; poNumber: string; status: string } | null;
@@ -201,6 +220,8 @@ export interface BuyerCashReadiness {
 }
 
 export interface AdvanceReturnPayload {
+  /** One per dialog open: a double tap records one return. */
+  idempotencyKey?: string;
   amount: string;
   returnMethod: CashPaymentMethod;
   destinationBankAccountId: string;
@@ -225,6 +246,8 @@ export interface PayDraft {
   bandHint?: BandHint | null;
   blockers: DraftBlocker[];
   currencyCode: string;
+  /** Posted prepayments on the order not yet applied to a bill (APPLY_PREPAYMENT). */
+  unappliedPrepayments?: Array<{ paymentId: string; unallocated: Money }>;
 }
 
 export interface PayFromAwardPayload {

@@ -46,6 +46,7 @@ import {
   usePurchaseOrderReceiving,
   usePurchaseOrderSettlement,
 } from '../../hooks/use-procurement';
+import { useIdempotencyKey } from '../../hooks/use-quotation-payment';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { moneyToApi } from '../../quantities';
 import { activeRevision, revisionTotalMinor } from '../../quantities';
@@ -488,6 +489,9 @@ function AdvanceCard({
   const [retShowErrors, setRetShowErrors] = useState(false);
 
   const [showEvidenceForm, setShowEvidenceForm] = useState(false);
+  // One key per form open (ADR-045 review): a double tap records one return / one application.
+  const returnKey = useIdempotencyKey(showReturnForm);
+  const evidenceKey = useIdempotencyKey(showEvidenceForm);
   const [evBillId, setEvBillId] = useState('');
   const [evAmount, setEvAmount] = useState('');
   const [evError, setEvError] = useState<string | null>(null);
@@ -506,6 +510,7 @@ function AdvanceCard({
     setRetError(null);
     try {
       await createReturn.mutateAsync({
+        idempotencyKey: returnKey,
         amount: moneyToApi(amountMinor),
         returnMethod: retMethod,
         destinationBankAccountId: retBankId,
@@ -528,8 +533,9 @@ function AdvanceCard({
     setEvError(null);
     try {
       await createEvidence.mutateAsync({
+        idempotencyKey: evidenceKey,
         supplierBillId: evBillId,
-        allocatedAmount: moneyToApi(amountMinor),
+        amount: fromMinorUnits(amountMinor, MONEY_SCALE),
       });
       setShowEvidenceForm(false);
       setEvBillId(''); setEvAmount('');

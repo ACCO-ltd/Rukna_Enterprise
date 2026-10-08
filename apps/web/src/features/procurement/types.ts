@@ -1202,13 +1202,19 @@ export interface CreateAdvanceReturnPayload {
    */
   destinationBankAccountId: string;
   receivedAt: string;
+  /** One per form open: a double tap records one return. */
+  idempotencyKey?: string;
   reference?: string;
   note?: string;
 }
 
+/** Body of `POST /buyer-advances/:id/applications` (EVT-AP-008). */
 export interface CreateEvidenceAllocationPayload {
+  /** One per form open: a double tap records one application. */
+  idempotencyKey?: string;
   supplierBillId: string;
-  allocatedAmount: number;
+  /** 2-dp string. */
+  amount: string;
 }
 
 // ─── Buyer advance response types ────────────────────────────────────────────────

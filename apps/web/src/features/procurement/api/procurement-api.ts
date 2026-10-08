@@ -1009,9 +1009,12 @@ export function createAdvanceReturn(advanceId: string, payload: CreateAdvanceRet
   });
 }
 
-/** `POST /buyer-advances/:id/evidence-allocations` — link a supplier bill as evidence. */
+/**
+ * `POST /buyer-advances/:id/applications` — settle a supplier bill from the advance (EVT-AP-008).
+ * Replaces the legacy `evidence-allocations` alias, which takes no idempotency key.
+ */
 export function createEvidenceAllocation(advanceId: string, payload: CreateEvidenceAllocationPayload): Promise<BuyerAdvanceEvidenceAllocation> {
-  return apiClient<BuyerAdvanceEvidenceAllocation>(`/buyer-advances/${advanceId}/evidence-allocations`, {
+  return apiClient<BuyerAdvanceEvidenceAllocation>(`/buyer-advances/${advanceId}/applications`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

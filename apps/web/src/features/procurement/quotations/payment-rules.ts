@@ -13,6 +13,7 @@ import type {
   PaymentActionName,
   PaymentAdvanceSummary,
   PaymentAllowedAction,
+  PaymentPending,
   QuotationPayment,
   StoreDocumentCommandResult,
   StoreDocumentPhoto,
@@ -41,6 +42,7 @@ export function paymentActionEnabled(payment: QuotationPayment | null | undefine
  * button shows with its reason, so finance sees what is in the way rather than nothing.
  */
 const PRIMARY_ORDER: PaymentActionName[] = [
+  'APPLY_PREPAYMENT',
   'FINISH_PAYMENT',
   'RECORD_RECEIPT',
   'RELEASE_CASH',
@@ -65,6 +67,25 @@ export function primaryFinanceAction(payment: QuotationPayment | null | undefine
 }
 
 /** A blocker's machine code, whatever form the server sent it in. */
+/**
+ * The pending attempt to finish first: one whose approval is granted or that waits only for the
+ * post, then signatures, then one still in approval.
+ */
+export function nextPending(payment: QuotationPayment | null | undefined): PaymentPending | null {
+  const pending = payment?.pending ?? [];
+  const rank = (p: PaymentPending) => (p.awaiting === 'POSTING' ? 0 : p.awaiting === 'RELEASE_SIGNATURES' ? 1 : 2);
+  return [...pending].sort((a, b) => rank(a) - rank(b))[0] ?? null;
+}
+
+/** min(unapplied prepayment, bill outstanding) as a 2-dp string; null when either is missing. */
+export function prepaymentApplyAmount(unallocated: string | null | undefined, billOutstanding: string | null | undefined): string | null {
+  const a = parseMinorUnits(unallocated ?? null, MONEY_SCALE);
+  const b = parseMinorUnits(billOutstanding ?? null, MONEY_SCALE);
+  if (a === null || b === null) return null;
+  const m = Math.min(a, b);
+  return m > 0 ? fromMinorUnits(m, MONEY_SCALE) : null;
+}
+
 export function blockerCode(blocker: DraftBlocker): string {
   return typeof blocker === 'string' ? blocker : blocker.code;
 }

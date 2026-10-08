@@ -28,7 +28,7 @@ import {
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useRecordAdvanceReturn } from '../../hooks/use-quotation-payment';
+import { useIdempotencyKey, useRecordAdvanceReturn } from '../../hooks/use-quotation-payment';
 import { amountProblem, outstandingAdvances, todayInMogadishu, toMoneyString } from '../../quotations/payment-rules';
 import type { CashPaymentMethod, QuotationPayment } from '../../quotations/payment-types';
 import { usePaymentRefusalText } from './payment-shared';
@@ -54,6 +54,8 @@ export function ChangeReturnedDialog({
   const { fromError } = usePaymentRefusalText();
   const record = useRecordAdvanceReturn(requestId);
   const banks = useBankAccounts();
+  // One key for this open: a double tap or a retry records one return.
+  const idempotencyKey = useIdempotencyKey(true);
 
   const open = outstandingAdvances(payment);
   const [advanceId, setAdvanceId] = useState(open[0]?.id ?? '');
@@ -89,7 +91,7 @@ export function ChangeReturnedDialog({
         record.mutate(
           {
             advanceId: advance.id,
-            payload: { amount: amountText, returnMethod: method, destinationBankAccountId: destinationId, receivedAt },
+            payload: { idempotencyKey, amount: amountText, returnMethod: method, destinationBankAccountId: destinationId, receivedAt },
           },
           { onSuccess: onClose },
         );

@@ -59,6 +59,19 @@ export function recordAdvanceReturn(id: string, payload: AdvanceReturnPayload): 
   return post(`/buyer-advances/${id}/returns`, payload);
 }
 
+/**
+ * Finish a pending attempt from any device: `pending[].continue.path` as the server gave it
+ * (`/buyer-advances/:id/post`, `/supplier-payments/:id/continue`). No body.
+ */
+export function continuePendingPayment(path: string): Promise<PayFromAwardResult | Record<string, unknown>> {
+  return post(path);
+}
+
+/** `POST /payments/:id/allocations` — apply a posted prepayment to a posted bill (EVT-AP-005). */
+export function applyPrepayment(paymentId: string, supplierBillId: string, amount: number): Promise<unknown> {
+  return post(`/payments/${paymentId}/allocations`, { supplierBillId, amount });
+}
+
 // ─── Supplier payment from the award (§1.2) ───────────────────────────────────────
 
 export function getPayDraft(quotationRequestId: string): Promise<PayDraft> {

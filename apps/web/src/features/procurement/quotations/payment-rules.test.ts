@@ -5,6 +5,8 @@ import { ApiError } from '@/lib/api-client';
 import {
   amountProblem,
   appliedTotal,
+  nextPending,
+  prepaymentApplyAmount,
   bandSteps,
   blockerCodes,
   buyerStage,
@@ -48,6 +50,23 @@ describe('payment rules', () => {
         paymentFixture({ state: 'SETTLED', allowedActions: [{ action: 'RECORD_RECEIPT', enabled: false, reason: 'NO_RECEIPT_TO_RECORD' }] }),
       ),
     ).toBeNull();
+  });
+
+  it('finishes a pending post before signatures before an approval, and caps a prepayment apply', () => {
+    const p = (id: string, awaiting: 'APPROVAL' | 'RELEASE_SIGNATURES' | 'POSTING') => ({
+      kind: 'SUPPLIER_PAYMENT' as const,
+      id,
+      idempotencyKey: null,
+      amount: null,
+      awaiting,
+      approvalInstanceId: null,
+      continue: { method: 'POST' as const, path: `/supplier-payments/${id}/continue` },
+    });
+    expect(nextPending(paymentFixture({ pending: [p('a', 'APPROVAL'), p('b', 'POSTING'), p('c', 'RELEASE_SIGNATURES')] }))?.id).toBe('b');
+    expect(nextPending(paymentFixture({}))).toBeNull();
+    expect(prepaymentApplyAmount('1000.00', '980.00')).toBe('980.00');
+    expect(prepaymentApplyAmount('300.00', '980.00')).toBe('300.00');
+    expect(prepaymentApplyAmount('0.00', '980.00')).toBeNull();
   });
 
   it('sums what a record applied', () => {

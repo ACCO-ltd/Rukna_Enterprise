@@ -243,7 +243,13 @@ describe('RecordReceiptScreen', () => {
     await waitFor(() => expect(api.ret).toHaveBeenCalledTimes(1));
     expect(api.ret.mock.calls[0]).toEqual([
       'adv1',
-      { amount: '20.00', returnMethod: 'CASH', destinationBankAccountId: 'ba-cash', receivedAt: expect.any(String) },
+      {
+        idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        amount: '20.00',
+        returnMethod: 'CASH',
+        destinationBankAccountId: 'ba-cash',
+        receivedAt: expect.any(String),
+      },
     ]);
   });
 

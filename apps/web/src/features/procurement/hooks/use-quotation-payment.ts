@@ -26,7 +26,9 @@ import { PAYMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions
 import { notificationKeys } from '@/features/notifications/hooks/use-notifications';
 
 import {
+  applyPrepayment,
   changePaymentPath,
+  continuePendingPayment,
   getBuyerCashReadiness,
   listStoreDocuments,
   getPayDraft,
@@ -45,6 +47,7 @@ import type {
   ChangePaymentPathPayload,
   PayDraft,
   PayFromAwardPayload,
+  PaymentPending,
   QuotationPayment,
   RecordStoreDocumentPayload,
   ReleaseCashPayload,
@@ -233,6 +236,36 @@ export function usePayFromAward(requestId: string) {
       if (gatedInstanceOf(error)) pendingPaymentStore.set(requestId, { kind: 'pay', body: payload });
       refreshAfterRefusal(qc, requestId);
     },
+  });
+}
+
+/**
+ * Finish a pending attempt (`payment.pending[]`) by its server-given `continue` path — from any
+ * device. A 409 APPROVAL_REQUIRED still means "waiting for the approver"; APPROVAL_ALREADY_USED
+ * means someone else just finished it (the detail is refetched either way).
+ */
+export function useContinuePayment(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pending: PaymentPending) => continuePendingPayment(pending.continue.path),
+    meta: { flashRow: false },
+    onSuccess: (result) => {
+      pendingPaymentStore.clear(requestId);
+      applyPaymentResult(qc, requestId, (result as { paymentSummary?: unknown } | null)?.paymentSummary ?? null);
+    },
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+/** Apply a posted prepayment to the posted bill (APPLY_PREPAYMENT) — never pay the store twice. */
+export function useApplyPrepayment(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentId, supplierBillId, amount }: { paymentId: string; supplierBillId: string; amount: number }) =>
+      applyPrepayment(paymentId, supplierBillId, amount),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.prepaymentApplied' },
+    onSuccess: () => applyPaymentResult(qc, requestId, null),
+    onError: () => refreshAfterRefusal(qc, requestId),
   });
 }
 

@@ -11,10 +11,11 @@
  * A disabled action still shows, with the server's reason in words (dual-control account, the
  * vendor maintainer, missing Staff advances set-up…). The frontend decides none of these rules.
  *
- * DoA: a release or payment above the finance officer's band answers 409 `approvalInstanceId`
- * (or `awaiting: 'APPROVAL'`). The section then shows "Sent for approval" with the approval panel
- * for whoever holds the current step, and — once approved — "Release now" re-drives the exact
- * same body (kept by the hook), as the award flow does.
+ * DoA: a release or payment above the finance officer's band answers 409 APPROVAL_REQUIRED with
+ * `approvalInstanceId`. The section then shows "Sent for approval" with the approval chain, and —
+ * once approved — "Release now" / "Complete the payment" calls the server's
+ * `payment.pending[].continue` path: no client-held body, so any device can finish it. A body kept
+ * in this browser is only the fallback for a server without `pending`.
  */
 
 import { useState } from 'react';
@@ -34,6 +35,7 @@ import { MONEY_SCALE, parseMinorUnits } from '@/lib/money';
 import {
   pendingPaymentStore,
   useCanPay,
+  useContinuePayment,
   useChangePaymentPath,
   usePayDraft,
   usePayFromAward,
@@ -47,6 +49,7 @@ import {
   findPaymentAction,
   gatedInstanceOf,
   latestStoreDocument,
+  nextPending,
   offersAction,
   paymentActionEnabled,
   primaryFinanceAction,
@@ -91,12 +94,25 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
   const releaseOffered = canPay && (offersAction(payment, 'RELEASE_CASH') || offersAction(payment, 'TOP_UP'));
   const payOffered = canPay && (offersAction(payment, 'PAY_SUPPLIER') || offersAction(payment, 'FINISH_PAYMENT'));
   const releaseDraft = useReleaseDraft(detail.id, { enabled: releaseOffered });
-  usePayDraft(detail.id, { enabled: payOffered && offersAction(payment, 'PAY_SUPPLIER') });
+  usePayDraft(detail.id, { enabled: payOffered && (offersAction(payment, 'PAY_SUPPLIER') || paymentActionEnabled(payment, 'APPLY_PREPAYMENT')) });
 
-  // Re-drive (ADR-015): the same body the gate answered, from this browser.
+  // Re-drive (ADR-015): the server's pending attempt wins; a body kept in this browser is only the
+  // fallback for an older server.
   const release = useReleaseCash(detail.id);
   const pay = usePayFromAward(detail.id);
+  const finish = useContinuePayment(detail.id);
+  const serverPending = nextPending(payment);
   const redrive = () => {
+    if (serverPending) {
+      finish.mutate(serverPending, {
+        onSuccess: (result) => {
+          setGated(null);
+          setAwaitingSignatures((result as { awaiting?: string } | null)?.awaiting === 'RELEASE_SIGNATURES');
+        },
+        onError: () => undefined,
+      });
+      return;
+    }
     const pending = pendingPaymentStore.get(detail.id);
     if (pending?.kind === 'release') {
       release.mutate(pending.body, { onSuccess: () => setGated(null), onError: () => undefined });
@@ -112,11 +128,15 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
       setDialog(buyerCash ? 'release' : 'pay');
     }
   };
-  const redriveError = [release.error, pay.error].find((e) => e && !gatedInstanceOf(e));
+  const redriveError = [release.error, pay.error, finish.error].find((e) => e && !gatedInstanceOf(e));
 
   const creator = releaseDraft.data?.recipients.find((r) => r.isRequestCreator) ?? releaseDraft.data?.recipients[0];
   const primary = canPay ? primaryFinanceAction(payment) : null;
-  const instanceId = payment.approval?.instanceId ?? gated?.instanceId ?? null;
+  const instanceId =
+    payment.approval?.instanceId ??
+    (payment.pending ?? []).find((p) => p.awaiting === 'APPROVAL' && p.approvalInstanceId)?.approvalInstanceId ??
+    gated?.instanceId ??
+    null;
   const approvalPending = payment.state === 'AWAITING_APPROVAL' || gated !== null;
   const chainApproved = payment.approval?.status === 'APPROVED';
   const roles = session.user?.roles ?? [];
@@ -144,6 +164,7 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
   const runPrimary = (action: PaymentAllowedAction) => {
     if (action.action === 'RELEASE_CASH') setDialog('release');
     else if (action.action === 'PAY_SUPPLIER') setDialog('pay');
+    else if (action.action === 'APPLY_PREPAYMENT') setDialog('apply');
     else if (action.action === 'FINISH_PAYMENT') redrive();
   };
 
@@ -238,7 +259,7 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
                   : t(gated?.kind === 'pay' || !buyerCash ? 'approval.gatedBodyPay' : 'approval.gatedBody')}
             </p>
           </Notice>
-          {!chainApproved && mayActOnStep && instanceId ? (
+          {!chainApproved && (canPay || mayActOnStep) && instanceId ? (
             <ApprovalPanel instanceId={instanceId} transactionType={PAYMENT_APPROVAL} />
           ) : null}
           {canPay ? (
@@ -246,7 +267,7 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
               type="button"
               variant={chainApproved ? 'default' : 'outline'}
               className="min-h-11 w-full sm:w-auto"
-              loading={release.isPending || pay.isPending}
+              loading={release.isPending || pay.isPending || finish.isPending}
               onClick={redrive}
             >
               {buyerCash ? tActions('completeRelease') : tActions('complete')}
@@ -296,7 +317,7 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
               className="h-14 w-full text-base"
               disabled={!primary.enabled || (primary.action === 'RECORD_RECEIPT' && !submittedDoc)}
               aria-describedby={!primary.enabled && primary.reason ? 'payment-primary-reason' : undefined}
-              loading={primary.action === 'FINISH_PAYMENT' && (release.isPending || pay.isPending)}
+              loading={primary.action === 'FINISH_PAYMENT' && (release.isPending || pay.isPending || finish.isPending)}
               onClick={() => runPrimary(primary)}
             >
               <Banknote className="size-5" aria-hidden="true" />
