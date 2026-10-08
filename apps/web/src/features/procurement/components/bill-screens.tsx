@@ -51,6 +51,7 @@ import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
 import { BillEligibilityPanel } from './bill-eligibility-panel';
+import { BillEvidence } from './bill-evidence';
 import {
   BillActivityTab,
   BillApprovalsTab,
@@ -379,6 +380,17 @@ function SupplierBillDocument({ bill, back }: { bill: SupplierBill; back?: { hre
               </div>
             ),
           },
+          // ADR-045: a bill recorded from a store receipt shows the buyer's photos as its evidence.
+          ...(bill.evidence
+            ? [
+                {
+                  key: 'evidence',
+                  label: t('tabEvidence'),
+                  count: bill.evidence.photos?.length ?? 0,
+                  content: <BillEvidence evidence={bill.evidence} />,
+                },
+              ]
+            : []),
           { key: 'journal', label: t('tabJournal'), content: <BillJournalTab bill={bill} /> },
           {
             key: 'approvals',

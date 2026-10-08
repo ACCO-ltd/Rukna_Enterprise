@@ -584,7 +584,17 @@ export type BillPostingStatus =
   | 'REVERSED'
   | 'OPENING_BALANCE';
 
+/** ADR-045 — the store receipt / invoice a bill was recorded from (bill detail only). */
+export interface SupplierBillEvidence {
+  storeDocumentId: string;
+  number: string;
+  kind: 'RECEIPT' | 'INVOICE';
+  photos: Array<{ fileId: string; pageNumber: number | null }>;
+}
+
 export interface SupplierBill {
+  /** Bill detail: the store document it was recorded from. Absent on lists and older servers. */
+  evidence?: SupplierBillEvidence | null;
   id: string;
   billNumber: string | null;
   supplierId: string;

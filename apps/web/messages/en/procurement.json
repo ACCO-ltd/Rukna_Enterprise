@@ -925,6 +925,13 @@
       },
       "other": "recorded {code}",
       "reason": "— “{reason}”"
+    },
+    "tabEvidence": "Evidence",
+    "evidence": {
+      "intro": "Recorded from the store's {kind} {number}, photographed by the buyer.",
+      "photosLabel": "Photos of {number}",
+      "zoom": "Zoom {kind} page {page}",
+      "photoAlt": "{kind}, page {page}"
     }
   },
   "payments": {
