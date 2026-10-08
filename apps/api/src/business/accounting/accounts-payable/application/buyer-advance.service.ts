@@ -906,9 +906,20 @@ export class BuyerAdvanceService {
     const prior = await returnReplay();
     if (prior) return prior;
 
-    const result = await prisma.$transaction(async (tx) => {
+    let raced = false;
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
       await this.awardRepo.lockPurchaseOrder(tx, orgId, advance.purchaseOrderId);
       await this.awardRepo.lockBuyerAdvance(tx, advance.id);
+      // A concurrent tap with the same key may have committed while we waited for the lock.
+      if (cmd.idempotencyKey) {
+        const first = await tx.advanceReturn.findFirst({ where: { organizationId: orgId, idempotencyKey: cmd.idempotencyKey } });
+        if (first) {
+          raced = true;
+          return { ...first, journalEntryId: first.journalEntryId };
+        }
+      }
       const current = await tx.buyerAdvance.findUniqueOrThrow({
         where: { id: advance.id },
         include: { returns: true, evidenceAllocations: true },
@@ -992,6 +1003,15 @@ export class BuyerAdvanceService {
       });
       return { ...row, journalEntryId };
     });
+    } catch (error) {
+      if (cmd.idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const again = await returnReplay();
+        if (again) return again;
+      }
+      throw error;
+    }
+    if (raced) return (await returnReplay()) ?? result;
+
     await this.purchaseOrderService.autoCloseIfSettled(identity, advance.purchaseOrderId);
     return result;
   }
