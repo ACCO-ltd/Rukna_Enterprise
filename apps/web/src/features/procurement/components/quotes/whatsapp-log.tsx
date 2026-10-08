@@ -62,8 +62,12 @@ export function WhatsAppLog({ messages }: { messages: StaffAlertLogEntry[] | und
                 {formatDateTime(shownAt(m))}
               </time>
               <StatusText tone={TONE[m.status]} className="inline-flex items-center gap-1 text-caption font-medium">
-                <StatusIcon status={m.status} />
-                {t(`status.${m.status}`)}
+                {/* StatusText wraps children in a plain inline span, where a block-level svg
+                    would stack above the label — keep icon and label on one line. */}
+                <span className="inline-flex items-center gap-1">
+                  <StatusIcon status={m.status} />
+                  {t(`status.${m.status}`)}
+                </span>
               </StatusText>
             </span>
             {m.failureReason && (m.status === 'FAILED' || m.status === 'UNKNOWN' || m.status === 'QUEUED') ? (
