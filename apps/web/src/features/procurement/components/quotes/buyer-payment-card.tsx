@@ -20,17 +20,19 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Button, Notice, cn } from '@erp/ui';
 import { Camera, CircleCheck, Plus, RotateCw, X } from 'lucide-react';
 
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits, sumMinorUnits } from '@/lib/money';
 
 import { useObjectUrl, useStoreDocumentUploads, useUploadQueue } from '../../hooks/use-quote-uploads';
+import { useStoreDocuments, useWithdrawStoreDocument } from '../../hooks/use-quotation-payment';
 import { preparePhoto } from '../../quotations/capture/prepare';
 import type { CaptureVia } from '../../quotations/capture/photo-source';
 import type { QueueItemView, QueuedPage } from '../../quotations/capture/upload-queue';
 import { buyerStage, findPaymentAction, type BuyerStage } from '../../quotations/payment-rules';
-import type { QuotationPayment, StoreDocumentKind } from '../../quotations/payment-types';
+import type { QuotationPayment, StoreDocumentKind, StoreDocumentSummary } from '../../quotations/payment-types';
 import type { QuotationRequestDetail } from '../../quotations/types';
 import { StoreDocumentStatusPill, usePaymentRefusalText } from './payment-shared';
 import { usePhotoPicker } from './photo-picker';
@@ -62,6 +64,13 @@ function CardBody({
   const queue = useUploadQueue();
   const uploads = useStoreDocumentUploads(detail.id);
   const [preparing, setPreparing] = useState(0);
+  const [withdrawing, setWithdrawing] = useState<StoreDocumentSummary | null>(null);
+  const { fromError } = usePaymentRefusalText();
+  const withdraw = useWithdrawStoreDocument(detail.id);
+  // The payment block has no reject reason / uploader id: the store-document list does.
+  const needsRows = payment.storeDocuments.some((d) => d.status === 'REJECTED' || d.status === 'SUBMITTED');
+  const rows = useStoreDocuments(purchaseOrderId, { enabled: needsRows });
+  const fullRow = (id: string) => rows.data?.find((r) => r.id === id) ?? null;
 
   const cash = payment.path === 'BUYER_CASH';
   const path = cash ? 'cash' : 'supplier';
@@ -161,7 +170,11 @@ function CardBody({
         <div>
           <p className="flex items-center gap-2 text-body font-semibold text-foreground">
             <CircleCheck className="size-5 shrink-0 text-success" aria-hidden="true" />
-            {toMe || !recipientName ? t('released.toYou') : t('released.toName', { name: recipientName })}
+            {payment.advances === null
+              ? t('released.generic')
+              : toMe || !recipientName
+                ? t('released.toYou')
+                : t('released.toName', { name: recipientName })}
           </p>
           {amount ? (
             <p className="mt-1 text-h2 font-semibold tabular-nums text-foreground">{amount}</p>
@@ -279,7 +292,10 @@ function CardBody({
       ))}
       {payment.storeDocuments.length > 0 ? (
         <ul className="space-y-2" aria-label={tDocs('title')}>
-          {payment.storeDocuments.map((doc) => (
+          {payment.storeDocuments.filter((d) => d.status !== 'WITHDRAWN').map((summary) => {
+            const doc = { ...summary, ...(fullRow(summary.id) ?? {}) };
+            const mine = Boolean(me) && doc.uploadedBy?.id === me;
+            return (
             <li key={doc.id} className="rounded-control border border-border bg-surface px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-body-sm font-medium text-foreground">
@@ -297,9 +313,36 @@ function CardBody({
                   <span className="block text-muted-foreground">{t('rejectedAgain')}</span>
                 </p>
               ) : null}
+              {doc.status === 'SUBMITTED' && mine ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 min-h-11 px-0 text-muted-foreground"
+                  onClick={() => setWithdrawing(doc)}
+                >
+                  {t('withdraw.action')}
+                </Button>
+              ) : null}
             </li>
-          ))}
+            );
+          })}
         </ul>
+      ) : null}
+      {withdrawing ? (
+        <ConfirmActionDialog
+          title={t('withdraw.title', { number: withdrawing.number })}
+          description={t('withdraw.body')}
+          confirmLabel={t('withdraw.confirm')}
+          destructive
+          isPending={withdraw.isPending}
+          errorMessage={withdraw.error ? fromError(withdraw.error) : undefined}
+          onConfirm={() => withdraw.mutate(withdrawing.id, { onSuccess: () => setWithdrawing(null) })}
+          onDismiss={() => {
+            withdraw.reset();
+            setWithdrawing(null);
+          }}
+        />
       ) : null}
     </section>
   );

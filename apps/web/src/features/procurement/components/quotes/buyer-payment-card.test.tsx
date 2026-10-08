@@ -23,7 +23,12 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/procurement/quotes/qr1',
   useSearchParams: () => new URLSearchParams(),
 }));
-const api = vi.hoisted(() => ({ detail: null as unknown }));
+const api = vi.hoisted(() => ({ detail: null as unknown, docs: [] as unknown[], withdraw: vi.fn() }));
+vi.mock('../../api/quotation-payment-api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listStoreDocuments: async () => api.docs,
+  withdrawStoreDocument: (...args: unknown[]) => api.withdraw(...args),
+}));
 vi.mock('../../api/quotations-api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getQuotationRequest: async () => api.detail,
@@ -101,6 +106,8 @@ const photo = () => new File([new Uint8Array(10)], 'IMG_9.jpg', { type: 'image/j
 
 beforeEach(() => {
   online = true;
+  api.docs = [];
+  api.withdraw.mockReset();
   makeQueue();
 });
 afterEach(() => setUploadQueueForTests(null));
@@ -122,16 +129,11 @@ describe('BuyerPaymentCard', () => {
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
   });
 
-  it('does not show the amount when the role may not see it', async () => {
-    api.detail = cashReleased({
-      moneyVisible: false,
-      withBuyer: null,
-      advances: [
-        { id: 'adv1', recipientUserId: 'test-user', recipientName: 'Ahmed Ali', amount: null, advancedAt: '2026-10-08', applied: null, returned: null, outstanding: null, legacy: false },
-      ],
-    });
+  it('does not show the amount when the role may not see it (advances are null for a money-blind viewer)', async () => {
+    api.detail = cashReleased({ moneyVisible: false, withBuyer: null, advances: null });
     renderWithProviders(<QuoteCaptureScreen id="qr1" />, { permissions: ['view:procurement', 'collect:quotation'] });
     expect(await screen.findByText('Finance has the amount — ask them if you need it.')).toBeInTheDocument();
+    expect(screen.getByText('Cash released for this order')).toBeInTheDocument();
     const card = screen.getByRole('region', { name: 'Payment for this order' });
     expect(within(card).queryByText(/\$/)).not.toBeInTheDocument();
   });
@@ -180,15 +182,41 @@ describe('BuyerPaymentCard', () => {
     expect(screen.queryByRole('button', { name: 'Photograph the receipt' })).not.toBeInTheDocument();
   });
 
+  it('lets the buyer withdraw their own receipt while finance has not recorded it', async () => {
+    const user = userEvent.setup();
+    const sent = { id: 'sd-1', number: 'SD-00019', kind: 'RECEIPT' as const, status: 'SUBMITTED' as const, uploadedByName: 'Ahmed Ali', createdAt: '2026-10-08T07:42:00Z' };
+    api.docs = [{ ...sent, uploadedBy: { id: 'test-user', name: 'Ahmed Ali' } }];
+    api.withdraw.mockResolvedValueOnce({});
+    api.detail = cashReleased({ storeDocuments: [sent] });
+    renderWithProviders(<QuoteCaptureScreen id="qr1" />, { permissions: BUYER });
+    await user.click(await screen.findByRole('button', { name: 'Withdraw' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Withdraw' }));
+    await waitFor(() => expect(api.withdraw).toHaveBeenCalledWith('sd-1'));
+  });
+
+  it("does not offer withdraw on someone else's receipt", async () => {
+    const sent = { id: 'sd-1', number: 'SD-00019', kind: 'RECEIPT' as const, status: 'SUBMITTED' as const, uploadedByName: 'Hodan', createdAt: '2026-10-08T07:42:00Z' };
+    api.docs = [{ ...sent, uploadedBy: { id: 'someone-else', name: 'Hodan' } }];
+    api.detail = cashReleased({ storeDocuments: [sent] });
+    renderWithProviders(<QuoteCaptureScreen id="qr1" />, { permissions: BUYER });
+    expect(await screen.findByText('Waiting for finance')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+  });
+
   it('shows a sent-back receipt with the reason and the status written out', async () => {
+    api.docs = [
+      { id: 'sd-1', number: 'SD-00019', kind: 'RECEIPT', status: 'REJECTED', uploadedByName: 'Ahmed Ali', createdAt: '2026-10-08T07:42:00Z', rejectReason: 'ILLEGIBLE', uploadedBy: { id: 'test-user', name: 'Ahmed Ali' } },
+    ];
     api.detail = cashReleased({
       storeDocuments: [
-        { id: 'sd-1', number: 'SD-00019', kind: 'RECEIPT', status: 'REJECTED', uploadedByName: 'Ahmed Ali', createdAt: '2026-10-08T07:42:00Z', rejectReason: 'ILLEGIBLE' },
+        // The payment block carries no reason — the store-document list does.
+        { id: 'sd-1', number: 'SD-00019', kind: 'RECEIPT', status: 'REJECTED', uploadedByName: 'Ahmed Ali', createdAt: '2026-10-08T07:42:00Z' },
       ],
     });
     renderWithProviders(<QuoteCaptureScreen id="qr1" />, { permissions: BUYER });
     expect(await screen.findByText('Sent back')).toBeInTheDocument();
-    expect(screen.getByText(/Can't read it/)).toBeInTheDocument();
+    expect(await screen.findByText(/Can't read it/)).toBeInTheDocument();
     expect(screen.getByText('Photograph it again and send it.')).toBeInTheDocument();
   });
 });
