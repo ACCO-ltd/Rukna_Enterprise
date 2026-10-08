@@ -1744,7 +1744,10 @@
     "reverseBody": "The ledger entry is reversed, dated {date}. Possible only while none of this cash is settled or returned.",
     "reverseReason": "Why",
     "reversedTitle": "Reversed {date}",
-    "reversalJournalLink": "Open reversal journal"
+    "reversalJournalLink": "Open reversal journal",
+    "cancelAction": "Cancel release",
+    "cancelTitle": "Cancel this cash release?",
+    "cancelBody": "It was never released: it is waiting for approval. Cancelling frees the order to be paid again."
   },
   "feedback": {
     "supplierCreated": "Supplier {name} created",
@@ -2326,7 +2329,8 @@
         "none": "Not sent yet",
         "SUBMITTED": "Sent by {name} {when}",
         "RECORDED": "Recorded",
-        "REJECTED": "Sent back"
+        "REJECTED": "Sent back",
+        "WITHDRAWN": "Withdrawn"
       },
       "moneyHidden": "Amounts are hidden for your role.",
       "noOrder": "The order has not been raised yet. Payment starts once the order is issued.",
@@ -2372,7 +2376,8 @@
         "status": {
           "SUBMITTED": "Waiting for finance",
           "RECORDED": "Recorded",
-          "REJECTED": "Sent back"
+          "REJECTED": "Sent back",
+          "WITHDRAWN": "Withdrawn"
         },
         "record": "Record",
         "reject": "Send back",
@@ -2387,7 +2392,8 @@
           "WRONG_PO": "Wrong order",
           "DUPLICATE": "Already sent",
           "OTHER": "Something else"
-        }
+        },
+        "rejectNoteRequired": "Say what is wrong with the receipt."
       },
       "history": {
         "title": "Cash and payments",
@@ -2493,7 +2499,21 @@
         "BANK_GL_MISMATCH": "The bank account and its ledger account don't match. Ask an accountant to check the bank account set-up.",
         "NOTHING_TO_RECORD": "There is no receipt waiting to be recorded.",
         "STORE_DOCUMENT_NOT_SUBMITTED": "This receipt was already recorded or sent back.",
-        "PAYMENT_ALREADY_FINISHED": "This payment is already finished."
+        "PAYMENT_ALREADY_FINISHED": "This payment is already finished.",
+        "NOTHING_TO_FUND": "The order is already fully paid.",
+        "NOTHING_WITH_BUYER": "The buyer holds no cash for this order.",
+        "NOTHING_TO_FINISH": "There is no payment waiting to be finished.",
+        "NO_RECEIPT_TO_RECORD": "No receipt yet — waiting for the buyer's photo.",
+        "MISSING_PERMISSION": "You don't have permission to do this.",
+        "NO_PERIOD": "There is no accounting period for that date. Open one, or pick another date.",
+        "IDEMPOTENCY_KEY_REUSED": "This was already started with different details. Close the dialog and open it again.",
+        "AMOUNT_INVALID": "Enter an amount above 0 with at most 2 decimals.",
+        "DATE_INVALID": "Enter a valid date.",
+        "DESTINATION_REQUIRED": "Choose the account the money went into.",
+        "ADVANCE_LEGACY": "This advance was recorded before GL posting, so it cannot be reversed here. Clear it with a manual journal.",
+        "NOTE_REQUIRED": "Say what is wrong with the receipt.",
+        "POSTING_PROFILE_NOT_EXPENSE": "That expense account cannot be used on a bill. Pick another.",
+        "APPROVAL_REQUIRED": "Sent for approval. It will go through once approved."
       },
       "feedback": {
         "released": "Cash released",
@@ -2536,7 +2556,8 @@
           "toYou": "Cash released to you",
           "toName": "Cash released to {name}",
           "amountHidden": "Finance has the amount — ask them if you need it.",
-          "next": "Pay {store}, then photograph the receipt."
+          "next": "Pay {store}, then photograph the receipt.",
+          "generic": "Cash released for this order"
         },
         "paid": {
           "title": "Finance paid {store}",
@@ -2580,6 +2601,12 @@
             "sendingOffline": "No signal — it will send when you're back online.",
             "failed": "This did not send."
           }
+        },
+        "withdraw": {
+          "action": "Withdraw",
+          "title": "Withdraw {number}?",
+          "body": "Finance will not record it. You can photograph the receipt again.",
+          "confirm": "Withdraw"
         }
       },
       "record": {
@@ -2657,11 +2684,14 @@
         "settle": "To settle"
       },
       "columns": {
-        "state": "Payment",
-        "amount": "Still to pay"
+        "waiting": {
+          "pay": "Waiting for payment",
+          "settle": "Waiting to settle"
+        },
+        "awarded": "Awarded"
       },
       "searchLabel": "Search payments",
-      "searchPlaceholder": "Search by store, MR or order",
+      "searchPlaceholder": "Search by MR or request",
       "countLabel": "{count, plural, one {# request} other {# requests}}",
       "noMatches": "Nothing matches your search.",
       "empty": {
@@ -2672,7 +2702,17 @@
         "pay": "When an order from a chosen quote is issued, it shows here until it is paid.",
         "settle": "When a buyer sends a store receipt, or cash is still with a buyer, it shows here."
       },
-      "moneyHidden": "Amounts are hidden for your role."
+      "moneyHidden": "Amounts are hidden for your role.",
+      "readiness": {
+        "title": "Buyer cash is not set up yet",
+        "body": "Cash can be released to buyers only once both of these are in place.",
+        "profile": "Staff advances posting profile",
+        "profileAction": "Set up staff advances",
+        "cashAccount": "A cash box or EVC float with no signatories",
+        "cashAccountAction": "Add a cash box or EVC float",
+        "done": "done",
+        "missing": "missing"
+      }
     }
   }
 }

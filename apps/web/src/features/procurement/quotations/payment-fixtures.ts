@@ -56,6 +56,7 @@ export function payDraftFixture(patch: Partial<PayDraft> = {}): PayDraft {
     defaultPaymentDate: '2026-10-08',
     bandHint: null,
     blockers: [],
+    currencyCode: 'USD',
     ...patch,
   };
 }

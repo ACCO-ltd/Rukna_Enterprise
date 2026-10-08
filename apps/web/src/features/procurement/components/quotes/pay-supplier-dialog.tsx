@@ -43,7 +43,7 @@ import {
   toMoneyString,
   wireDay,
 } from '../../quotations/payment-rules';
-import type { CashPaymentMethod, PayDraft, PayFromAwardResult } from '../../quotations/payment-types';
+import type { PayDraft, PayFromAwardResult, SupplierPaymentMethod } from '../../quotations/payment-types';
 import { PaymentBlockers, usePaymentRefusalText } from './payment-shared';
 
 export interface PaySupplierDialogProps {
@@ -62,7 +62,7 @@ export function PaySupplierDialog(props: PaySupplierDialogProps) {
   const tq = useTranslations('procurement.quotes');
   const draft = usePayDraft(props.requestId);
   const pay = usePayFromAward(props.requestId);
-  const name = draft.data?.supplier.name ?? props.storeName;
+  const name = draft.data?.supplier?.name ?? props.storeName;
 
   return (
     <FormDialog
@@ -132,7 +132,7 @@ function PayForm({
     next === PREPAY ? draft.remainingToFund : (billsWithOutstanding.find((b) => b.id === next)?.outstanding ?? null);
   const [amount, setAmount] = useState(capFor(defaultTarget) ?? '');
   const [bankAccountId, setAccount] = useState(lastUsed?.bankAccountId ?? '');
-  const [method, setMethod] = useState<CashPaymentMethod | ''>(draft.methods[0] ?? '');
+  const [method, setMethod] = useState<SupplierPaymentMethod | ''>(draft.methods[0] ?? '');
   const [paymentDate, setDate] = useState(wireDay(draft.defaultPaymentDate) || todayInMogadishu());
   const [touched, setTouched] = useState(false);
 
@@ -143,7 +143,7 @@ function PayForm({
     // Said once, in its own words, below — not twice.
     (code) => code !== 'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT',
   );
-  const maintainer = draft.supplier.isVendorMaintainer;
+  const maintainer = draft.supplier?.isVendorMaintainer === true;
   const steps = bandSteps(draft.bandHint);
   const amountText = toMoneyString(amount);
   const ready = !maintainer && blockers.length === 0 && problem === null && account !== null && method !== '';
@@ -157,8 +157,10 @@ function PayForm({
     { value: PREPAY, label: t('prepay'), description: t('prepayHint') },
   ];
 
+  // 200 may still stop short of posting: the account needs its bank signatures (S11). The DoA gate
+  // is a 409 APPROVAL_REQUIRED, handled in onError.
   const finish = (result: PayFromAwardResult | undefined) => {
-    if (result?.awaiting) onAwaiting(result.awaiting, result.approvalInstanceId ?? null);
+    if (result?.awaiting === 'RELEASE_SIGNATURES') onAwaiting('RELEASE_SIGNATURES', null);
     onClose();
   };
 
@@ -196,7 +198,7 @@ function PayForm({
       <FormDialogBody className="space-y-4">
         {maintainer ? (
           <Notice tone="attention">
-            {draft.supplier.maintainerName ? t('maintainerNamed', { name: draft.supplier.maintainerName }) : t('maintainer')}
+            {draft.supplier?.maintainerName ? t('maintainerNamed', { name: draft.supplier.maintainerName }) : t('maintainer')}
           </Notice>
         ) : null}
         <PaymentBlockers codes={blockers} />

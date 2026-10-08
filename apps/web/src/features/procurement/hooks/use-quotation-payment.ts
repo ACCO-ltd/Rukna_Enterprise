@@ -27,6 +27,8 @@ import { notificationKeys } from '@/features/notifications/hooks/use-notificatio
 
 import {
   changePaymentPath,
+  getBuyerCashReadiness,
+  listStoreDocuments,
   getPayDraft,
   getReleaseDraft,
   payFromAward,
@@ -58,6 +60,8 @@ export const paymentKeys = {
   all: [...quotationKeys.all, 'payment'] as const,
   releaseDraft: (requestId: string) => [...paymentKeys.all, 'release-draft', requestId] as const,
   payDraft: (requestId: string) => [...paymentKeys.all, 'pay-draft', requestId] as const,
+  readiness: () => [...paymentKeys.all, 'readiness'] as const,
+  storeDocuments: (purchaseOrderId: string) => [...paymentKeys.all, 'store-documents', purchaseOrderId] as const,
 };
 
 /** `manage:payable` — every money command (ADR-045 §1). The server still decides SoD and DoA. */
@@ -137,6 +141,29 @@ export function usePayDraft(requestId: string, options?: { enabled?: boolean }):
   });
 }
 
+/** Buyer-cash set-up (P14). Only for payers — anyone else would 403. */
+export function useBuyerCashReadiness() {
+  const canPay = useCanPay();
+  return useQuery({
+    queryKey: paymentKeys.readiness(),
+    queryFn: getBuyerCashReadiness,
+    enabled: canPay,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * `GET /procurement/store-documents?purchaseOrderId=` — the full rows (reject reason and note,
+ * uploader id) that the request's payment block does not carry.
+ */
+export function useStoreDocuments(purchaseOrderId: string | null, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: paymentKeys.storeDocuments(purchaseOrderId ?? ''),
+    queryFn: () => listStoreDocuments(purchaseOrderId!),
+    enabled: Boolean(purchaseOrderId) && (options?.enabled ?? true),
+  });
+}
+
 // ─── Cache wiring ────────────────────────────────────────────────────────────────
 
 /**
@@ -185,8 +212,9 @@ export function useReleaseCash(requestId: string) {
 }
 
 /**
- * Pay the supplier from the award. 200 may still be unfinished: `awaiting: 'APPROVAL'` (bands)
- * or `'RELEASE_SIGNATURES'` (dual control) — the body is kept so *Finish* re-drives it.
+ * Pay the supplier from the award. The DoA gate is a 409 `APPROVAL_REQUIRED` (body kept for the
+ * re-drive); a 200 with `awaiting: 'RELEASE_SIGNATURES'` waits for the signatories — the body is
+ * kept so *Finish* re-drives it with the same key. `paymentSummary` is the request's block.
  */
 export function usePayFromAward(requestId: string) {
   const qc = useQueryClient();
@@ -199,7 +227,7 @@ export function usePayFromAward(requestId: string) {
     onSuccess: (result, payload) => {
       if (result?.awaiting) pendingPaymentStore.set(requestId, { kind: 'pay', body: payload });
       else pendingPaymentStore.clear(requestId);
-      applyPaymentResult(qc, requestId, result?.payment);
+      applyPaymentResult(qc, requestId, result?.paymentSummary);
     },
     onError: (error, payload) => {
       if (gatedInstanceOf(error)) pendingPaymentStore.set(requestId, { kind: 'pay', body: payload });

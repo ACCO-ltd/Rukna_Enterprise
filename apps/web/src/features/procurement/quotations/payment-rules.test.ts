@@ -4,6 +4,7 @@ import { ApiError } from '@/lib/api-client';
 
 import {
   amountProblem,
+  appliedTotal,
   bandSteps,
   blockerCodes,
   buyerStage,
@@ -39,6 +40,19 @@ describe('payment rules', () => {
       reason: 'ACCOUNT_REQUIRES_DUAL_CONTROL',
     });
     expect(primaryFinanceAction(paymentFixture({ allowedActions: [] }))).toBeNull();
+  });
+
+  it('offers no primary action once settled', () => {
+    expect(
+      primaryFinanceAction(
+        paymentFixture({ state: 'SETTLED', allowedActions: [{ action: 'RECORD_RECEIPT', enabled: false, reason: 'NO_RECEIPT_TO_RECORD' }] }),
+      ),
+    ).toBeNull();
+  });
+
+  it('sums what a record applied', () => {
+    expect(appliedTotal([{ amount: '980.00' }, { amount: '20.50' }])).toBe('1000.50');
+    expect(appliedTotal([])).toBeNull();
   });
 
   it('reads the DoA gate only from a 409 carrying approvalInstanceId', () => {
@@ -78,9 +92,9 @@ describe('payment rules', () => {
   it('lists advances with money still out, largest first', () => {
     const payment = paymentFixture({
       advances: [
-        { id: 'a1', recipientName: 'Ahmed', amount: '1000.00', advancedAt: '2026-10-08', applied: '980.00', returned: '0.00', outstanding: '20.00', legacy: false },
-        { id: 'a2', recipientName: 'Ahmed', amount: '30.00', advancedAt: '2026-10-08', applied: '30.00', returned: '0.00', outstanding: '0.00', legacy: false },
-        { id: 'a3', recipientName: 'Ahmed', amount: '50.00', advancedAt: '2026-10-08', applied: '0.00', returned: '0.00', outstanding: '50.00', legacy: false },
+        { id: 'a1', recipientUserId: 'u-ahmed', recipientName: 'Ahmed', amount: '1000.00', advancedAt: '2026-10-08', applied: '980.00', returned: '0.00', outstanding: '20.00', legacy: false },
+        { id: 'a2', recipientUserId: 'u-ahmed', recipientName: 'Ahmed', amount: '30.00', advancedAt: '2026-10-08', applied: '30.00', returned: '0.00', outstanding: '0.00', legacy: false },
+        { id: 'a3', recipientUserId: 'u-ahmed', recipientName: 'Ahmed', amount: '50.00', advancedAt: '2026-10-08', applied: '0.00', returned: '0.00', outstanding: '50.00', legacy: false },
       ],
     });
     expect(outstandingAdvances(payment).map((a) => a.id)).toEqual(['a3', 'a1']);

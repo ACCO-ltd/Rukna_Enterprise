@@ -49,6 +49,7 @@ import { useCanPay, useRecordStoreDocument, useRejectStoreDocument } from '../..
 import { useQuotationRequest } from '../../hooks/use-quotations';
 import {
   amountProblem,
+  appliedTotal,
   cashHolderName,
   findPaymentAction,
   paymentActionEnabled,
@@ -185,7 +186,9 @@ function RecordBody({
   const [topUpGated, setTopUpGated] = useState(false);
 
   const action = findPaymentAction(payment, 'RECORD_RECEIPT');
-  const goodsIn = payment.receivingStatus === 'RECEIVED';
+  // Partial deliveries can be recorded (unique materials); the server's RECORD_RECEIPT says when.
+  const goodsIn = payment.receivingStatus !== 'NOT_RECEIVED';
+  const receivedAll = payment.receivingStatus === 'RECEIVED';
   // Started before (a bill exists) but not finished: only Resume makes sense.
   const inProgress = doc.status === 'SUBMITTED' && Boolean(doc.supplierBillId);
   const problem = amountProblem(total, null);
@@ -212,7 +215,8 @@ function RecordBody({
 
   const photos = doc.photos ?? [];
   const billId = result?.bill?.id ?? doc.supplierBillId ?? null;
-  const billNumber = result?.bill?.billNumber ?? result?.bill?.number ?? doc.billNumber ?? null;
+  const billNumber = result?.bill?.billNumber ?? result?.bill?.supplierInvoiceNumber ?? doc.billNumber ?? null;
+  const applied = appliedTotal(result?.applied);
 
   return (
     <div className="space-y-4 pb-8">
@@ -235,10 +239,10 @@ function RecordBody({
           {done ? (
             <Notice tone="success" title={t('done.title')}>
               <p className="mt-1">
-                {cash && result?.applied
-                  ? t('done.cash', { amount: money(result.applied), name: holderFirst ?? t('done.theBuyer') })
-                  : result?.applied
-                    ? t('done.supplier', { amount: money(result.applied) })
+                {cash && applied
+                  ? t('done.cash', { amount: money(applied), name: holderFirst ?? t('done.theBuyer') })
+                  : applied
+                    ? t('done.supplier', { amount: money(applied) })
                     : t('done.recorded')}
                 {cash && (parseMinorUnits(payment.withBuyer, MONEY_SCALE) ?? 0) > 0
                   ? ` · ${t('done.stillWith', { amount: money(payment.withBuyer), name: holderFirst ?? t('done.theBuyer') })}`
@@ -288,7 +292,7 @@ function RecordBody({
               </li>
             ) : null}
             <li className="flex items-center gap-2">
-              {goodsIn ? (
+              {receivedAll ? (
                 <CircleCheck className="size-4 text-success" aria-hidden="true" />
               ) : (
                 <CircleDashed className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -480,6 +484,7 @@ function RejectDialog({ requestId, doc, onClose }: { requestId: string; doc: Sto
   const reject = useRejectStoreDocument(requestId);
   const [reason, setReason] = useState<StoreDocumentRejectReason>('ILLEGIBLE');
   const [note, setNote] = useState('');
+  const [touched, setTouched] = useState(false);
   return (
     <FormDialog
       open
@@ -490,9 +495,11 @@ function RejectDialog({ requestId, doc, onClose }: { requestId: string; doc: Sto
       subtitle={t('rejectBody')}
       closeLabel={tCommon('close')}
       busy={reject.isPending}
-      onSubmit={() =>
-        reject.mutate({ id: doc.id, reason, ...(note.trim() ? { note: note.trim() } : {}) }, { onSuccess: onClose })
-      }
+      onSubmit={() => {
+        setTouched(true);
+        if (reason === 'OTHER' && !note.trim()) return;
+        reject.mutate({ id: doc.id, reason, ...(note.trim() ? { note: note.trim() } : {}) }, { onSuccess: onClose });
+      }}
     >
       <FormDialogBody className="space-y-4">
         <RadioGroup
@@ -503,7 +510,11 @@ function RejectDialog({ requestId, doc, onClose }: { requestId: string; doc: Sto
           onChange={setReason}
           options={REJECT_REASONS.map((value) => ({ value, label: t(`rejectReason.${value}`) }))}
         />
-        <FormField htmlFor="reject-note" label={t('rejectNoteLabel')}>
+        <FormField
+          htmlFor="reject-note"
+          label={t('rejectNoteLabel')}
+          error={touched && reason === 'OTHER' && !note.trim() ? t('rejectNoteRequired') : undefined}
+        >
           <Textarea id="reject-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
         </FormField>
         {reject.error ? <Alert variant="error" messages={[fromError(reject.error) ?? '']} /> : null}

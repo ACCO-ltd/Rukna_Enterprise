@@ -97,7 +97,7 @@ describe('PaymentSection — buyer cash', () => {
       remainingToFund: '0.00',
       withBuyer: '1000.00',
       advances: [
-        { id: 'adv1', recipientName: 'Ahmed Ali', amount: '1000.00', advancedAt: '2026-10-08', applied: '0.00', returned: '0.00', outstanding: '1000.00', legacy: false },
+        { id: 'adv1', recipientUserId: 'u-ahmed', recipientName: 'Ahmed Ali', amount: '1000.00', advancedAt: '2026-10-08', applied: '0.00', returned: '0.00', outstanding: '1000.00', legacy: false },
       ],
       allowedActions: [{ action: 'RECORD_RECEIPT', enabled: false, reason: 'GOODS_NOT_RECEIVED' }],
     });
@@ -133,7 +133,7 @@ describe('PaymentSection — buyer cash', () => {
   it('a gated release is not a failure: it says "Sent for approval" and keeps the body for "Release now"', async () => {
     const user = userEvent.setup();
     api.release.mockRejectedValueOnce(
-      new ApiError(409, 'Approval required', 'CONFLICT', [], { approvalInstanceId: 'wf-7' }),
+      new ApiError(409, 'Approval required', 'CONFLICT', [], { code: 'APPROVAL_REQUIRED', approvalInstanceId: 'wf-7', advanceId: 'adv-d' }),
     );
     renderWithProviders(<Harness />, { permissions: PAYER });
 
@@ -228,6 +228,42 @@ describe('PaymentSection — finance pays supplier', () => {
       shape: 'PREPAY',
     });
     expect(screen.getByText('Waiting for bank signatures')).toBeInTheDocument();
+  });
+
+  it('a gated payment (409 APPROVAL_REQUIRED) shows the approval and re-drives with the same body and key', async () => {
+    const user = userEvent.setup();
+    api.detail = awarded({ path: 'FINANCE_PAYS_SUPPLIER', allowedActions: [{ action: 'PAY_SUPPLIER', enabled: true }] });
+    api.pay.mockRejectedValueOnce(
+      new ApiError(409, 'Approval required', 'CONFLICT', [], { code: 'APPROVAL_REQUIRED', approvalInstanceId: 'wf-9', paymentId: 'sp-1' }),
+    );
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    await user.click(await screen.findByRole('button', { name: 'Pay Bakaara Steel' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
+    await user.click(within(dialog).getByRole('button', { name: 'Pay $1,000.00' }));
+
+    expect(await screen.findByText('Sent for approval')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-panel')).toHaveTextContent('wf-9');
+    api.pay.mockResolvedValueOnce({ payment: { id: 'sp-1' }, paymentSummary: null });
+    await user.click(screen.getByRole('button', { name: 'Complete the payment' }));
+    await waitFor(() => expect(api.pay).toHaveBeenCalledTimes(2));
+    expect(api.pay.mock.calls[1]![0]).toEqual(api.pay.mock.calls[0]![0]);
+  });
+
+  it('when the order is paid, shows the next step blocked in words — not "nothing to finish"', async () => {
+    api.detail = awarded({
+      path: 'FINANCE_PAYS_SUPPLIER',
+      state: 'WAITING_FOR_GOODS',
+      allowedActions: [
+        { action: 'PAY_SUPPLIER', enabled: false, reason: 'NOTHING_TO_FUND' },
+        { action: 'FINISH_PAYMENT', enabled: false, reason: 'NOTHING_TO_FINISH' },
+        { action: 'PHOTOGRAPH_RECEIPT', enabled: false, reason: 'MISSING_PERMISSION' },
+        { action: 'RECORD_RECEIPT', enabled: false, reason: 'NO_RECEIPT_TO_RECORD' },
+      ],
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    expect(await screen.findByRole('button', { name: 'Pay Bakaara Steel' })).toBeDisabled();
+    expect(screen.getByText('The order is already fully paid.')).toBeInTheDocument();
+    expect(screen.queryByText('There is no payment waiting to be finished.')).not.toBeInTheDocument();
   });
 
   it('pre-empts the vendor-maintainer rule: the store was registered by this user', async () => {

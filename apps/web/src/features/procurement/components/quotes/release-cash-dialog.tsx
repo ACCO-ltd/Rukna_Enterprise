@@ -75,7 +75,9 @@ export function ReleaseCashDialog(props: ReleaseCashDialogProps) {
       }}
       title={props.mode === 'topUp' ? t('topUpTitle') : t('title')}
       subtitle={
-        draft.data ? t('subtitle', { po: draft.data.purchaseOrder.poNumber, store: props.storeName }) : props.storeName
+        draft.data?.purchaseOrder
+          ? t('subtitle', { po: draft.data.purchaseOrder.poNumber, store: props.storeName })
+          : props.storeName
       }
       closeLabel={tCommon('close')}
       busy={release.isPending}

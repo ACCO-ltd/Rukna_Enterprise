@@ -1,10 +1,9 @@
 /**
  * Wire types for paying from the award (ADR-045, spec `procurement-quotations-phase3.md` §1).
  *
- * Hand-written against the spec's endpoint tables while the backend (P1–P9) is built
- * concurrently — the Phase 1 practice (`./types.ts`). Where the spec names a field without fixing
- * its shape, the choice made here is noted on the field so a later diff against the controller is
- * quick.
+ * Reconciled with the built backend (spec §8): `quotation-payment-read-model.service.ts`,
+ * `buyer-advance.service.ts`, `award-supplier-payment.service.ts`,
+ * `store-document-settlement.service.ts` and `store-documents/`.
  *
  * Money is the decimal string the API sends (`"980.00"`), `null` whenever the server withholds it
  * (`moneyVisible: false`) — never `"0"`. Money in request bodies is a 2-dp string, as the quotation
@@ -50,11 +49,12 @@ export type PaymentShape = 'PREPAY' | 'PAY_BILL';
 
 export interface PaymentAdvanceSummary {
   id: string;
-  /** Not in the spec's list — accepted when present, so the buyer's card can say "to you". */
-  recipientUserId?: string | null;
+  recipientUserId: string | null;
   recipientName: string | null;
   amount: Money | null;
-  advancedAt: ApiDate;
+  advancedAt: ApiDate | null;
+  documentStatus?: string;
+  postingStatus?: string;
   applied: Money | null;
   returned: Money | null;
   outstanding: Money | null;
@@ -72,14 +72,12 @@ export interface PaymentSupplierPaymentSummary {
 }
 
 export type StoreDocumentKind = 'RECEIPT' | 'INVOICE';
-export type StoreDocumentStatus = 'SUBMITTED' | 'RECORDED' | 'REJECTED';
+export type StoreDocumentStatus = 'SUBMITTED' | 'RECORDED' | 'REJECTED' | 'WITHDRAWN';
 export type StoreDocumentRejectReason = 'ILLEGIBLE' | 'WRONG_PO' | 'DUPLICATE' | 'OTHER';
 
-/**
- * A store document photo. The spec says `photos?` without a shape; the quote photo's
- * `{ fileId, pageNumber }` is assumed, and `platformFileId` is accepted as the id too.
- */
+/** A store document photo: `{ id, fileId, pageNumber }` (+ `capturedAt` on the list endpoint). */
 export interface StoreDocumentPhoto {
+  id?: string;
   fileId?: string;
   platformFileId?: string;
   pageNumber?: number;
@@ -92,19 +90,20 @@ export interface StoreDocumentSummary {
   kind: StoreDocumentKind;
   status: StoreDocumentStatus;
   uploadedByName: string | null;
-  /** Not in the spec's list — accepted when present (whose document it is). */
-  uploadedById?: string | null;
+  /** `GET /procurement/store-documents` only (the payment block has the name alone). */
+  uploadedBy?: { id: string; name: string | null };
   createdAt: ApiDate;
   /** Withheld (absent) unless the caller passes the photo rule (procurement + cost visibility). */
   photos?: StoreDocumentPhoto[];
-  /** Pages on the document even when `photos` is withheld. Not in the spec; shown when present. */
+  /** Pages on the document even when `photos` is withheld. */
   photoCount?: number;
+  /** `GET /procurement/store-documents` only — the payment block does not carry them. */
   rejectReason?: StoreDocumentRejectReason | null;
   rejectNote?: string | null;
-  /** Set once recorded into a bill (P6). Not in the §1.4 list — read when present. */
+  /** Set once recorded into a bill (P6). */
   supplierBillId?: string | null;
+  /** Not sent by the server today; shown when present. */
   billNumber?: string | null;
-  enteredTotal?: Money | null;
 }
 
 export interface PaymentApprovalSummary {
@@ -129,8 +128,6 @@ export interface QuotationPayment {
   approval?: PaymentApprovalSummary | null;
   allowedActions: PaymentAllowedAction[];
   moneyVisible: boolean;
-  /** Working minutes since payment became needed — the queue's age. Not in §1.4; shown when present. */
-  waitingWorkingMinutes?: number | null;
 }
 
 // ─── Buyer cash (§1.1) ─────────────────────────────────────────────────────────────
@@ -150,7 +147,8 @@ export interface BandHint {
 }
 
 export interface ReleaseDraft {
-  purchaseOrder: { id: string; poNumber: string; orderedAmount: Money | null };
+  /** Null before the award's order exists. */
+  purchaseOrder: { id: string; poNumber: string; orderedAmount: Money | null } | null;
   currencyCode: string;
   remainingToFund: Money | null;
   recipients: Array<{ userId: string; name: string; isRequestCreator: boolean }>;
@@ -188,9 +186,18 @@ export interface ReleaseCashResult {
   payment?: QuotationPayment;
 }
 
+/** A DRAFT advance (e.g. stuck in approval) is cancelled — `reversalDate` only for a posted one. */
 export interface ReverseAdvancePayload {
   reason: string;
-  reversalDate: string;
+  reversalDate?: string;
+}
+
+/** `GET /buyer-advances/readiness` — the buyer-cash set-up checklist (P14). */
+export interface BuyerCashReadiness {
+  ready: boolean;
+  staffAdvanceProfile: boolean;
+  cashAccountsWithoutSignatories: number;
+  cashAccounts: Array<{ bankAccountId: string; name: string; glCode: string; currencyCode: string }>;
 }
 
 export interface AdvanceReturnPayload {
@@ -204,25 +211,27 @@ export interface AdvanceReturnPayload {
 
 // ─── Supplier payment from the award (§1.2) ───────────────────────────────────────
 
+export type SupplierPaymentMethod = 'BANK' | 'MOBILE_MONEY';
+
 export interface PayDraft {
-  supplier: { id: string; name: string; isVendorMaintainer: boolean; maintainerName: string | null };
+  /** Null before the award's order exists. */
+  supplier: { id: string; name: string; isVendorMaintainer: boolean; maintainerName: string | null } | null;
   shape: PaymentShape;
   bills: Array<{ id: string; number: string; outstanding: Money | null }>;
   remainingToFund: Money | null;
-  accounts: Array<{ bankAccountId: string; name: string; underDualControl: boolean; lastUsed: boolean }>;
-  methods: CashPaymentMethod[];
+  accounts: Array<{ bankAccountId: string; name: string; glCode?: string; underDualControl: boolean; lastUsed: boolean }>;
+  methods: SupplierPaymentMethod[];
   defaultPaymentDate: ApiDate;
   bandHint?: BandHint | null;
   blockers: DraftBlocker[];
-  /** Not in the spec's list — assumed to come with the draft as the release draft's does. */
-  currencyCode?: string;
+  currencyCode: string;
 }
 
 export interface PayFromAwardPayload {
   idempotencyKey: string;
   quotationRequestId: string;
   bankAccountId: string;
-  paymentMethod: CashPaymentMethod;
+  paymentMethod: SupplierPaymentMethod;
   paymentDate: string;
   amount: string;
   shape: PaymentShape;
@@ -231,11 +240,15 @@ export interface PayFromAwardPayload {
   note?: string;
 }
 
+/**
+ * 200 → `{ payment, awaiting?, paymentSummary }`: `payment` is the supplier payment document,
+ * `paymentSummary` the request's payment block. `awaiting: 'RELEASE_SIGNATURES'` when the account
+ * is under dual control. The DoA gate is a 409 `APPROVAL_REQUIRED` with `approvalInstanceId`.
+ */
 export interface PayFromAwardResult {
-  /** The supplier payment (or, on some servers, the payment read model — both are handled). */
-  payment?: Record<string, unknown>;
-  awaiting?: 'APPROVAL' | 'RELEASE_SIGNATURES';
-  approvalInstanceId?: string;
+  payment?: { id: string } & Record<string, unknown>;
+  awaiting?: 'RELEASE_SIGNATURES';
+  paymentSummary?: QuotationPayment | null;
 }
 
 // ─── Store documents (§1.3) ────────────────────────────────────────────────────────
@@ -267,11 +280,20 @@ export interface RecordStoreDocumentPayload {
 export type RecordStep = 'DONE' | 'MATCH_EXCEPTION' | 'WAITING_APPROVAL';
 
 export interface RecordStoreDocumentResult {
-  storeDocument: StoreDocumentSummary;
-  bill: { id: string; billNumber?: string | null; number?: string | null; outstandingAmount?: Money | null } | null;
+  storeDocument: { id: string; number: string; status: StoreDocumentStatus; supplierBillId: string | null };
+  bill: {
+    id: string;
+    billNumber: string | null;
+    supplierInvoiceNumber?: string | null;
+    totalAmount?: Money;
+    outstandingAmount?: Money;
+    matchStatus?: string;
+  } | null;
   step: RecordStep;
-  /** Amount applied from the buyer's cash (or the supplier advance). */
-  applied?: Money | null;
+  /** What settled the bill: buyer cash (EVT-AP-008) or the prepayment (EVT-AP-005). */
+  applied: Array<{ kind: 'BUYER_ADVANCE' | 'SUPPLIER_PAYMENT'; id: string; amount: Money }>;
+  /** WAITING_APPROVAL: the bill's approval chain. */
+  approvalInstanceId?: string;
 }
 
 export interface ChangePaymentPathPayload {

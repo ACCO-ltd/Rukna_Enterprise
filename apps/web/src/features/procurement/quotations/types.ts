@@ -13,7 +13,7 @@
 import type { StaffAlertLogEntry } from '@erp/types';
 
 import type { ApiDate, Money, ProcurementProjectRef, Quantity } from '../types';
-import type { PaymentState, QuotationPayment } from './payment-types';
+import type { QuotationPayment } from './payment-types';
 
 export type QuotationRequestStatus =
   | 'COLLECTING'
@@ -62,14 +62,11 @@ export interface QuotationRequestRow {
   awardedTotal: Money | null;
   moneyVisible: boolean;
   /**
-   * Phase 3 queues (`pay` / `settle`). The spec gives these queues no row shape of their own; the
-   * fields are read when present. `waitingWorkingMinutes` / `slaTone` carry the payment's age.
+   * ADR-045 `pay` / `settle` queues only: working minutes since payment became needed (pay: the
+   * award order was issued; settle: the receipt came in / cash went out). The row carries no
+   * payment state, store or remaining amount — the queue itself says what is waiting.
    */
-  paymentPath?: QuotationPaymentPath | null;
-  paymentState?: PaymentState | null;
-  purchaseOrder?: { id: string; poNumber: string } | null;
-  remainingToFund?: Money | null;
-  supplierName?: string | null;
+  paymentWaitingWorkingMinutes?: number;
 }
 
 /** `GET /procurement/quotation-requests` envelope (spec §0a). */

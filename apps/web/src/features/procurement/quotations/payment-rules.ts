@@ -47,11 +47,21 @@ const PRIMARY_ORDER: PaymentActionName[] = [
   'PAY_SUPPLIER',
 ];
 
+/**
+ * When nothing is enabled, the disabled action worth showing with its reason — the one that is
+ * next in the work, not FINISH_PAYMENT ("nothing to finish"), which the server always lists.
+ */
+const BLOCKED_ORDER: PaymentActionName[] = ['RELEASE_CASH', 'PAY_SUPPLIER', 'RECORD_RECEIPT'];
+
 export function primaryFinanceAction(payment: QuotationPayment | null | undefined): PaymentAllowedAction | null {
-  if (!payment) return null;
+  if (!payment || payment.state === 'SETTLED') return null;
   const enabled = PRIMARY_ORDER.map((name) => findPaymentAction(payment, name)).find((a) => a?.enabled);
   if (enabled) return enabled;
-  return PRIMARY_ORDER.map((name) => findPaymentAction(payment, name)).find((a) => a !== null) ?? null;
+  return (
+    BLOCKED_ORDER.map((name) => findPaymentAction(payment, name)).find(
+      (a) => a !== null && a.reason !== 'MISSING_PERMISSION',
+    ) ?? null
+  );
 }
 
 /** A blocker's machine code, whatever form the server sent it in. */
@@ -150,7 +160,9 @@ export function latestStoreDocument(
   payment: QuotationPayment | null | undefined,
   status?: StoreDocumentSummary['status'],
 ): StoreDocumentSummary | null {
-  const docs = (payment?.storeDocuments ?? []).filter((doc) => (status ? doc.status === status : true));
+  const docs = (payment?.storeDocuments ?? []).filter((doc) =>
+    status ? doc.status === status : doc.status !== 'WITHDRAWN',
+  );
   if (docs.length === 0) return null;
   return [...docs].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')).at(-1) ?? null;
 }
@@ -159,6 +171,13 @@ export function latestStoreDocument(
 export function topUpBillId(payment: QuotationPayment | null | undefined): string | null {
   const recorded = (payment?.storeDocuments ?? []).filter((doc) => doc.status === 'RECORDED' && doc.supplierBillId);
   return recorded.at(-1)?.supplierBillId ?? null;
+}
+
+/** The total a record applied from buyer cash or the prepayment, as a 2-dp string (null when none). */
+export function appliedTotal(applied: ReadonlyArray<{ amount: string }> | null | undefined): string | null {
+  if (!applied || applied.length === 0) return null;
+  const minor = applied.reduce((sum, a) => sum + (parseMinorUnits(a.amount, MONEY_SCALE) ?? 0), 0);
+  return fromMinorUnits(minor, MONEY_SCALE);
 }
 
 export function photoIdOf(photo: StoreDocumentPhoto): string | null {

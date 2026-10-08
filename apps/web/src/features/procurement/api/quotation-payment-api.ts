@@ -8,6 +8,7 @@ import { apiClient } from '@/lib/api-client';
 
 import type {
   AdvanceReturnPayload,
+  BuyerCashReadiness,
   ChangePaymentPathPayload,
   CreateStoreDocumentPayload,
   PayDraft,
@@ -34,6 +35,11 @@ function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 // ─── Buyer cash (§1.1) ─────────────────────────────────────────────────────────────
+
+/** `GET /buyer-advances/readiness` — Staff advances profile + a cash account without signatories. */
+export function getBuyerCashReadiness(): Promise<BuyerCashReadiness> {
+  return apiClient<BuyerCashReadiness>('/buyer-advances/readiness');
+}
 
 export function getReleaseDraft(quotationRequestId: string): Promise<ReleaseDraft> {
   return apiClient<ReleaseDraft>('/buyer-advances/release-draft', { params: { quotationRequestId } });

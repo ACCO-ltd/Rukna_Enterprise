@@ -105,6 +105,7 @@ const submitted: StoreDocumentSummary = {
 
 const advance = (outstanding: string) => ({
   id: 'adv1',
+  recipientUserId: 'u-ahmed',
   recipientName: 'Ahmed Ali',
   amount: '1000.00',
   advancedAt: '2026-10-08',
@@ -152,14 +153,14 @@ describe('RecordReceiptScreen', () => {
         storeDocuments: [{ ...submitted, status: 'RECORDED', supplierBillId: 'b-91', billNumber: 'BILL-0091' }],
         allowedActions: [
           { action: 'RECORD_RETURN', enabled: true },
-          { action: 'TOP_UP', enabled: false, reason: 'FULLY_FUNDED' },
+          { action: 'TOP_UP', enabled: false, reason: 'NOTHING_TO_FUND' },
         ],
       });
       return {
         storeDocument: { ...submitted, status: 'RECORDED' },
         bill: { id: 'b-91', billNumber: 'BILL-0091' },
         step: 'DONE',
-        applied: '980.00',
+        applied: [{ kind: 'BUYER_ADVANCE', id: 'adv1', amount: '980.00' }],
       };
     });
     renderWithProviders(<RecordReceiptScreen requestId="qr1" documentId="sd-1" />, { permissions: PAYER });
@@ -197,7 +198,7 @@ describe('RecordReceiptScreen', () => {
     expect(await screen.findByText('Receipt is above the order')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open BILL-0091' })).toHaveAttribute('href', '/finance/accounting/bills/b-91');
 
-    api.record.mockResolvedValueOnce({ storeDocument: submitted, bill: { id: 'b-91' }, step: 'DONE', applied: '1000.00' });
+    api.record.mockResolvedValueOnce({ storeDocument: submitted, bill: { id: 'b-91' }, step: 'DONE', applied: [{ kind: 'BUYER_ADVANCE', id: 'adv1', amount: '1000.00' }] });
     await user.click(screen.getByRole('button', { name: 'Resume' }));
     await waitFor(() => expect(api.record).toHaveBeenCalledTimes(2));
     expect(api.record.mock.calls[1]![0]).toEqual({ storeDocumentId: 'sd-1' });
