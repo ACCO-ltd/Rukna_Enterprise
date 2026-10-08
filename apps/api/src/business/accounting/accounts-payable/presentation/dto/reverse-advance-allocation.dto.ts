@@ -1,12 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, IsNotEmpty, MaxLength } from 'class-validator';
 
 export class ReverseAdvanceAllocationDto {
-  @ApiProperty({ example: 'AP-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  apAccountCode!: string;
+  @ApiPropertyOptional({ example: 'AP-001' })
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(30)
+  apAccountCode?: string;
 
-  @ApiProperty({ example: 'ADV-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  supplierAdvanceCode!: string;
+  @ApiPropertyOptional({ example: 'ADV-001' })
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(30)
+  supplierAdvanceCode?: string;
 }

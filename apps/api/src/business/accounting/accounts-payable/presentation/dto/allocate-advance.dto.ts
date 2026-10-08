@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsNumber, Min, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, IsNotEmpty, IsNumber, Min, MaxLength } from 'class-validator';
 
 export class AllocateAdvanceDto {
   @ApiProperty({ description: 'Supplier bill ID to apply the advance against' })
@@ -10,11 +10,11 @@ export class AllocateAdvanceDto {
   @IsNumber() @Min(0.01)
   amount!: number;
 
-  @ApiProperty({ example: 'AP-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  apAccountCode!: string;
+  @ApiPropertyOptional({ example: 'AP-001' })
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(30)
+  apAccountCode?: string;
 
-  @ApiProperty({ example: 'ADV-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  supplierAdvanceCode!: string;
+  @ApiPropertyOptional({ example: 'ADV-001' })
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(30)
+  supplierAdvanceCode?: string;
 }

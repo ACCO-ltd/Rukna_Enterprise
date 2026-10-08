@@ -15,6 +15,7 @@ import {
   type IAccountingPostingPort,
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
+import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import {
   normalizeSupplierInvoiceNumber,
@@ -103,7 +104,8 @@ function requireReason(reason: string | undefined): string {
 
 export interface PostSupplierBillDto {
   billId: string;
-  apAccountCode: string;
+  /** ADR-045 P3: optional, resolved by role (the single ACTIVE ACCOUNTS_PAYABLE account) when omitted. */
+  apAccountCode?: string;
 }
 
 @Injectable()
@@ -496,8 +498,14 @@ export class SupplierBillService {
       );
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL account ${dto.apAccountCode} not found`);
+    let apGl: { id: string; code: string };
+    if (dto.apAccountCode) {
+      const found = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
+      if (!found) throw new NotFoundException(`AP GL account ${dto.apAccountCode} not found`);
+      apGl = found;
+    } else {
+      apGl = await new PostingAccountResolver(this.accountRepo).resolve(prisma, orgId, 'ACCOUNTS_PAYABLE');
+    }
 
     await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'SUPPLIER_BILL', 'BILL-');
 

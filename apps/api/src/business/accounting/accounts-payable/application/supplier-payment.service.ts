@@ -15,6 +15,8 @@ import {
   type IAccountingPostingPort,
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
+import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
+import type { AccountSubtype } from '@prisma/client';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
@@ -58,19 +60,25 @@ export interface CreateSupplierPaymentDto {
   allocations?: { supplierBillId: string; amount: number }[];
 }
 
+/**
+ * ADR-045 §3 (P3) — the GL codes are optional: the server resolves them (bank GL = the payment's
+ * bank account GL; AP / Supplier advance by role, ADR-024). A supplied code is still honoured for
+ * AP / Supplier advance (back-compat); a supplied bank GL that is not the account's is refused
+ * (409 BANK_GL_MISMATCH) — a payment must credit the account the money left.
+ */
 export interface PostSupplierPaymentDto {
   paymentId: string;
-  apAccountCode: string;
-  bankGlCode: string;
-  supplierAdvanceCode: string;
+  apAccountCode?: string;
+  bankGlCode?: string;
+  supplierAdvanceCode?: string;
 }
 
 export interface AllocateAdvanceDto {
   paymentId: string;
   supplierBillId: string;
   amount: number;
-  apAccountCode: string;
-  supplierAdvanceCode: string;
+  apAccountCode?: string;
+  supplierAdvanceCode?: string;
 }
 
 export interface CreatePurchaseAllocationDto {
@@ -96,6 +104,55 @@ export class SupplierPaymentService {
     private readonly signatoryService: BankAccountSignatoryService,
     private readonly purchaseOrderService: PurchaseOrderService,
   ) {}
+
+  /** Stateless role resolver over the same account repository (ADR-024 ACC-POST-001). */
+  private get accounts(): PostingAccountResolver {
+    return new PostingAccountResolver(this.accountRepo);
+  }
+
+  /**
+   * A posting account: the supplied code (404 when unknown, unchanged for existing callers), or the
+   * single ACTIVE account carrying `subtype` (400 POSTING_ACCOUNT_NOT_CONFIGURED / _AMBIGUOUS).
+   */
+  async glByCodeOrRole(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    code: string | undefined,
+    subtype: AccountSubtype,
+    label: string,
+  ): Promise<{ id: string; code: string }> {
+    if (code) {
+      const account = await this.accountRepo.findByCode(prisma, orgId, code);
+      if (!account) throw new NotFoundException(`${label} GL ${code} not found`);
+      return { id: account.id, code: account.code };
+    }
+    return this.accounts.resolve(prisma, orgId, subtype);
+  }
+
+  /**
+   * The GL the payment's bank account posts to. A supplied `bankGlCode` must be that account's GL
+   * (409 BANK_GL_MISMATCH otherwise): never silently credit a different ledger account.
+   */
+  private async bankGlFor(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    bankAccountId: string,
+    suppliedCode: string | undefined,
+  ): Promise<{ id: string; code: string }> {
+    const bank = await prisma.bankAccount.findFirst({
+      where: { id: bankAccountId, organizationId: orgId },
+      select: { glAccount: { select: { id: true, code: true } } },
+    });
+    if (!bank) throw new NotFoundException(`BankAccount ${bankAccountId} not found`);
+    if (suppliedCode && suppliedCode !== bank.glAccount.code) {
+      throw new ConflictException({
+        errorCode: 'BANK_GL_MISMATCH',
+        message: `The payment is drawn on the bank account whose GL is ${bank.glAccount.code}, not ${suppliedCode}.`,
+        details: { code: 'BANK_GL_MISMATCH', bankGlCode: bank.glAccount.code },
+      });
+    }
+    return bank.glAccount;
+  }
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
     const prisma = this.tenancyService.getClient();
@@ -315,20 +372,24 @@ export class SupplierPaymentService {
       throw new BadRequestException(`Payment must be APPROVED before posting`);
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL ${dto.apAccountCode} not found`);
-
-    const bankGl = await this.accountRepo.findByCode(prisma, orgId, dto.bankGlCode);
-    if (!bankGl) throw new NotFoundException(`Bank GL ${dto.bankGlCode} not found`);
-
-    const advanceGl = await this.accountRepo.findByCode(prisma, orgId, dto.supplierAdvanceCode);
-    if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${dto.supplierAdvanceCode} not found`);
-
-    await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'SUPPLIER_PAYMENT', 'PMT-');
-
     const totalAmount = new Decimal(payment.totalAmount.toString());
     const allocatedAmount = new Decimal(payment.allocatedAmount.toString());
     const unallocatedAmount = new Decimal(payment.unallocatedAmount.toString());
+
+    // P3: resolved server-side. AP is needed for the allocated part (and the opening-balance
+    // tie-out), the supplier advance only for an unallocated remainder; a supplied code is always
+    // validated, as before.
+    const bankGl = await this.bankGlFor(prisma, orgId, payment.bankAccountId, dto.bankGlCode);
+    const apGl =
+      allocatedAmount.gt(0) || dto.apAccountCode
+        ? await this.glByCodeOrRole(prisma, orgId, dto.apAccountCode, 'ACCOUNTS_PAYABLE', 'AP')
+        : null;
+    const advanceGl =
+      unallocatedAmount.gt(0) || dto.supplierAdvanceCode
+        ? await this.glByCodeOrRole(prisma, orgId, dto.supplierAdvanceCode, 'SUPPLIER_ADVANCE', 'Supplier Advance')
+        : null;
+
+    await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'SUPPLIER_PAYMENT', 'PMT-');
 
     try {
       return await prisma.$transaction(async (tx) => {
@@ -338,7 +399,7 @@ export class SupplierPaymentService {
           where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED', bill: { postingStatus: 'OPENING_BALANCE' } },
         });
         if (settlesOpeningBalance > 0) {
-          const tieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, { id: apGl.id, code: apGl.code });
+          const tieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, { id: apGl!.id, code: apGl!.code });
           if (openingBalanceApTieOutProblem(tieOut) !== null) throw openingBalanceNotReconciled(tieOut);
         }
 
@@ -346,7 +407,7 @@ export class SupplierPaymentService {
 
         if (allocatedAmount.gt(0)) {
           lines.push({
-            accountId: apGl.id,
+            accountId: apGl!.id,
             debitAmount: allocatedAmount,
             creditAmount: new Decimal(0),
             sourceSubledgerType: 'ACCOUNTS_PAYABLE' as const,
@@ -356,7 +417,7 @@ export class SupplierPaymentService {
 
         if (unallocatedAmount.gt(0)) {
           lines.push({
-            accountId: advanceGl.id,
+            accountId: advanceGl!.id,
             debitAmount: unallocatedAmount,
             creditAmount: new Decimal(0),
             supplierId: payment.supplierId,
@@ -441,11 +502,8 @@ export class SupplierPaymentService {
       throw new BadRequestException(`Bill currency does not match payment currency`);
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL ${dto.apAccountCode} not found`);
-
-    const advanceGl = await this.accountRepo.findByCode(prisma, orgId, dto.supplierAdvanceCode);
-    if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${dto.supplierAdvanceCode} not found`);
+    const apGl = await this.glByCodeOrRole(prisma, orgId, dto.apAccountCode, 'ACCOUNTS_PAYABLE', 'AP');
+    const advanceGl = await this.glByCodeOrRole(prisma, orgId, dto.supplierAdvanceCode, 'SUPPLIER_ADVANCE', 'Supplier Advance');
 
     return prisma.$transaction(async (tx) => {
       // Opening-balance bill: its payables must tie to the AP account this allocation debits.
@@ -633,7 +691,7 @@ export class SupplierPaymentService {
   async reverseAdvanceAllocation(
     identity: RequestIdentity,
     allocationId: string,
-    opts: { apAccountCode: string; supplierAdvanceCode: string },
+    opts: { apAccountCode?: string; supplierAdvanceCode?: string },
   ) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
@@ -652,10 +710,8 @@ export class SupplierPaymentService {
       );
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, opts.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL ${opts.apAccountCode} not found`);
-    const advanceGl = await this.accountRepo.findByCode(prisma, orgId, opts.supplierAdvanceCode);
-    if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${opts.supplierAdvanceCode} not found`);
+    const apGl = await this.glByCodeOrRole(prisma, orgId, opts.apAccountCode, 'ACCOUNTS_PAYABLE', 'AP');
+    const advanceGl = await this.glByCodeOrRole(prisma, orgId, opts.supplierAdvanceCode, 'SUPPLIER_ADVANCE', 'Supplier Advance');
 
     const amount = new Decimal(alloc.allocatedAmount.toString());
 
