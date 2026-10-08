@@ -2483,6 +2483,7 @@
         "PAYMENT_PATH_MISMATCH": "This request is paid the other way now. It has been refreshed.",
         "FUNDING_EXCEEDS_ORDER": "That would pay more than the order total. Lower the amount.",
         "FULLY_FUNDED": "The order is already fully paid.",
+        "BILL_NOT_PAYABLE": "The bill this payment settles was reversed or isn't posted any more, so the payment can't post. Cancel this payment and pay the current bill.",
         "ADVANCE_RECIPIENT_CANNOT_RELEASE": "You can't release cash to yourself. Another finance user must release it.",
         "ADVANCE_RECIPIENT_INVALID": "This person can't receive cash for this request. Pick one of the request's buyers.",
         "ACCOUNT_REQUIRES_DUAL_CONTROL": "This account needs two signatories, so it can't hand out buyer cash. Choose the cash box or the EVC float.",
