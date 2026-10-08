@@ -99,6 +99,16 @@ export class SettlementQueryService {
             paymentDate: a.payment.paymentDate,
           })),
         );
+        // ADR-045 — buyer cash applied to the bill counts as paid (dated the application date).
+        const applications = bill.advanceEvidenceAllocations ?? [];
+        const byCash = applications
+          .filter((x) => x.postingStatus === 'POSTED')
+          .reduce((s, x) => s.add(x.allocatedAmount as Decimal), new Decimal(0));
+        summary.paid = summary.paid.add(byCash);
+        for (const x of applications) {
+          const day = x.postingStatus === 'POSTED' && x.allocationDate ? x.allocationDate.toISOString().slice(0, 10) : null;
+          if (day && (!summary.lastPaymentDate || day > summary.lastPaymentDate)) summary.lastPaymentDate = day;
+        }
         return {
           billId: bill.id,
           billNumber: bill.billNumber ?? null,
@@ -113,7 +123,14 @@ export class SettlementQueryService {
           pendingAmount: summary.pending.toFixed(2),
           outstandingAmount: new Decimal(bill.outstandingAmount.toString()).toFixed(2),
           lastPaymentDate: summary.lastPaymentDate,
-          paymentStatus: billPaymentState(bill, summary),
+          paymentStatus: billPaymentState(bill, { ...summary, paidByBuyerCash: byCash }),
+          paidByBuyerCashAmount: byCash.toFixed(2),
+          advanceApplications: applications.map((x) => ({
+            advanceId: x.buyerAdvanceId,
+            amount: new Decimal(x.allocatedAmount.toString()).toFixed(2),
+            allocationDate: x.allocationDate ? x.allocationDate.toISOString().slice(0, 10) : null,
+            postingStatus: x.postingStatus,
+          })),
         };
       }),
     };
@@ -160,10 +177,15 @@ export class SettlementQueryService {
     );
 
     const billRows = bills.map((b) => {
-      const settled = b.allocations.reduce(
-        (sum, a) => sum.add(a.allocatedAmount as Decimal),
-        new Decimal(0),
-      );
+      // ADR-045 — settled = payment allocations (not reversed) + POSTED buyer-cash applications.
+      const settled = b.allocations
+        .filter((a) => a.postingStatus !== 'REVERSED')
+        .reduce((sum, a) => sum.add(a.allocatedAmount as Decimal), new Decimal(0))
+        .add(
+          b.advanceEvidenceAllocations
+            .filter((a) => a.postingStatus === 'POSTED')
+            .reduce((sum, a) => sum.add(a.allocatedAmount as Decimal), new Decimal(0)),
+        );
       return {
         billId: b.id,
         billNumber: b.billNumber ?? null,
@@ -176,10 +198,12 @@ export class SettlementQueryService {
 
     // ── Advance funding ─────────────────────────────────────────────────────────
     const advanceRows = advances.map((a) => {
-      const evidenceAllocated = a.evidenceAllocations.reduce(
-        (sum, e) => sum.add(e.allocatedAmount as Decimal),
-        new Decimal(0),
-      );
+      // ADR-045 — a posted advance is accounted for by its POSTED applications; a legacy advance
+      // (posted before GL posting, no journal) keeps the evidence arithmetic and is labelled.
+      const legacy = a.postedJournalEntryId === null;
+      const evidenceAllocated = a.evidenceAllocations
+        .filter((e) => legacy || e.postingStatus === 'POSTED')
+        .reduce((sum, e) => sum.add(e.allocatedAmount as Decimal), new Decimal(0));
       const returned = a.returns.reduce(
         (sum, r) => sum.add(r.amount as Decimal),
         new Decimal(0),
@@ -188,6 +212,8 @@ export class SettlementQueryService {
 
       return {
         advanceId: a.id,
+        legacy,
+        label: legacy ? 'Recorded before GL posting' : null,
         recipientName: userMap.get(a.recipientUserId) ?? a.recipientUserId,
         amount: a.amount as Decimal,
         advancedAt: a.advancedAt,
@@ -209,11 +235,27 @@ export class SettlementQueryService {
 
     const totalAdvanced = advanceRows.reduce((sum, a) => sum.add(a.amount), new Decimal(0));
     const totalOutstanding = advanceRows.reduce((sum, a) => sum.add(a.outstanding), new Decimal(0));
-    const totalFunded = totalDirectAllocated.add(totalAdvanced);
+    // ADR-045 — a bill paid directly by a payment that does not also fund the PO is funding too
+    // (FINANCE_PAYS_SUPPLIER "pay the invoice"); a prepayment applied to the bill is counted once.
+    const paidViaBills = bills.reduce(
+      (sum, b) =>
+        sum.add(
+          b.allocations
+            .filter((x) => x.postingStatus === 'POSTED' && x.payment.postingStatus === 'POSTED' && x.payment.purchaseAllocations.length === 0)
+            .reduce((s, x) => s.add(x.allocatedAmount as Decimal), new Decimal(0)),
+        ),
+      new Decimal(0),
+    );
+    const totalFunded = totalDirectAllocated.add(totalAdvanced).add(paidViaBills);
+    // ADR-045 Q3 — a posted bill above the order (approved price exception) must be funded in full.
+    const postedBillsTotal = bills
+      .filter((b) => b.postingStatus === 'POSTED')
+      .reduce((sum, b) => sum.add(b.totalAmount as Decimal), new Decimal(0));
+    const fundingTarget = postedBillsTotal.greaterThan(orderedAmount) ? postedBillsTotal : orderedAmount;
 
     // ── Funding status ──────────────────────────────────────────────────────────
     const fundingStatus: FundingStatus =
-      orderedAmount.greaterThan(0) && totalFunded.greaterThanOrEqualTo(orderedAmount)
+      fundingTarget.greaterThan(0) && totalFunded.greaterThanOrEqualTo(fundingTarget)
         ? 'FUNDED'
         : totalFunded.greaterThan(0)
           ? 'PARTIALLY_FUNDED'
@@ -256,10 +298,10 @@ export class SettlementQueryService {
       }
     }
 
-    if (orderedAmount.greaterThan(0) && totalFunded.lessThan(orderedAmount)) {
+    if (fundingTarget.greaterThan(0) && totalFunded.lessThan(fundingTarget)) {
       exceptions.push({
         type: 'FUNDING_GAP',
-        detail: `Ordered ${orderedAmount.toFixed(2)} but only ${totalFunded.toFixed(2)} funded. Attach a payment or advance to close the gap.`,
+        detail: `Ordered ${fundingTarget.toFixed(2)} but only ${totalFunded.toFixed(2)} funded. Attach a payment or advance to close the gap.`,
       });
     }
 

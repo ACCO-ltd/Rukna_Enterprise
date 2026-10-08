@@ -37,6 +37,8 @@ import { ProjectAccessService } from '../../../../../platform/project-access/pro
 import { BuyerAdvanceService } from '../../application/buyer-advance.service.js';
 import { BuyerAdvanceRepository } from '../../infrastructure/buyer-advance.repository.js';
 import { AwardPaymentRepository } from '../../infrastructure/award-payment.repository.js';
+import { AwardSupplierPaymentService } from '../../application/award-supplier-payment.service.js';
+import { StoreDocumentSettlementService } from '../../application/store-document-settlement.service.js';
 import { QuotationPaymentNotifier } from '../../../../procurement/quotations/application/quotation-payment-notifier.service.js';
 import { NotificationWriter } from '../../../../../platform/notifications/application/notification-writer.service.js';
 import { StoreDocumentService } from '../../../../procurement/store-documents/application/store-document.service.js';
@@ -91,11 +93,16 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     sod,
   );
   const signatories = new BankAccountSignatoryService(tenancy, new BankAccountSignatoryRepository(), new BankAccountRepository());
+  // ADR-045 §5 — the real notifier on THIS PO service (PAYMENT_NEEDED on covered confirm) + AP events.
+  const paymentNotifier = new QuotationPaymentNotifier(new NotificationWriter(), q.access, projectAccess, q.alerts, q.repo, poService);
+  paymentNotifier.onModuleInit();
+  const paymentRepo = new SupplierPaymentRepository();
+  const purchaseAllocationRepo = new PurchaseAllocationRepository();
   const payments = new SupplierPaymentService(
     tenancy,
-    new SupplierPaymentRepository(),
+    paymentRepo,
     billRepo,
-    new PurchaseAllocationRepository(),
+    purchaseAllocationRepo,
     accountRepo,
     sequenceRepo,
     postingPort,
@@ -103,11 +110,9 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     sod,
     signatories,
     poService,
+    audit,
+    paymentNotifier,
   );
-
-  // ADR-045 §5 — the real notifier on THIS PO service (PAYMENT_NEEDED on covered confirm) + AP events.
-  const paymentNotifier = new QuotationPaymentNotifier(new NotificationWriter(), q.access, projectAccess, q.alerts, q.repo, poService);
-  paymentNotifier.onModuleInit();
   const awardRepo = new AwardPaymentRepository();
   const advances = new BuyerAdvanceService(
     tenancy,
@@ -123,12 +128,38 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     paymentNotifier,
   );
 
+  const awardPayments = new AwardSupplierPaymentService(
+    tenancy,
+    awardRepo,
+    paymentRepo,
+    purchaseAllocationRepo,
+    payments,
+    signatories,
+    commandGovernance,
+    q.approvals,
+    sod,
+    audit,
+    poService,
+  );
+  const settlementSvc = new StoreDocumentSettlementService(
+    tenancy,
+    awardRepo,
+    billRepo,
+    bills,
+    payments,
+    advances,
+    poService,
+    audit,
+    paymentNotifier,
+  );
   const storeDocumentRepo = new StoreDocumentRepository();
   const storeDocuments = new StoreDocumentService(tenancy, storeDocumentRepo, q.access, projectAccess, audit, paymentNotifier);
 
   return {
     ...q,
     paymentNotifier,
+    awardPayments,
+    recordReceipt: settlementSvc,
     storeDocuments,
     storeDocumentRepo,
     awardRepo,

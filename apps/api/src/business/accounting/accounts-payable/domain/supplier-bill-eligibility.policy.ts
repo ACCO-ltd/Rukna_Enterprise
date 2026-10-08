@@ -240,12 +240,16 @@ export function summarizeBillPayments(allocations: readonly BillAllocationFacts[
 /** The bill's payment state in one word, for procurement and lists. */
 export function billPaymentState(
   bill: { postingStatus: string; totalAmount: Decimal | string | number },
-  summary: Pick<BillPaymentSummary, 'paid' | 'pending'>,
+  summary: Pick<BillPaymentSummary, 'paid' | 'pending'> & { paidByBuyerCash?: Decimal },
 ): SupplierBillPaymentState {
   if (bill.postingStatus === 'REVERSED') return 'REVERSED';
   if (bill.postingStatus !== 'POSTED' && bill.postingStatus !== 'OPENING_BALANCE') return 'NOT_POSTED';
   const total = new Decimal(bill.totalAmount.toString());
-  if (summary.paid.gte(total) && total.gt(0)) return 'PAID';
+  if (summary.paid.gte(total) && total.gt(0)) {
+    // ADR-045 — paid in full, wholly from the buyer's cash: say so (procurement sees who paid).
+    const byCash = summary.paidByBuyerCash ?? new Decimal(0);
+    return byCash.gte(total) ? 'PAID_BY_BUYER_CASH' : 'PAID';
+  }
   if (summary.paid.gt(0)) return 'PARTIALLY_PAID';
   if (summary.pending.gt(0)) return 'PAYMENT_IN_PROGRESS';
   return 'UNPAID';

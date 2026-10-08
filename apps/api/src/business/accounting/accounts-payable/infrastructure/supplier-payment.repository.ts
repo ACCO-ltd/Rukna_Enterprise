@@ -115,9 +115,14 @@ export class SupplierPaymentRepository {
     });
   }
 
+  /**
+   * Records a failed posting attempt. Never over a POSTED document: when two posts race, the loser
+   * fails on the journal's unique key AFTER the winner committed — it must not flip the posted
+   * document to FAILED (ADR-045 double-tap finding).
+   */
   markPostingFailed(prisma: TenantPrisma, id: string, errorCode: string) {
-    return prisma.supplierPayment.update({
-      where: { id },
+    return prisma.supplierPayment.updateMany({
+      where: { id, postingStatus: { not: 'POSTED' } },
       data: { postingStatus: 'FAILED', lastPostingAttemptAt: new Date(), lastPostingErrorCode: errorCode },
     });
   }

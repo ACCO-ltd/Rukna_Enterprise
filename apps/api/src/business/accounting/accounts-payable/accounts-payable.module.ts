@@ -13,6 +13,9 @@ import { SupplierRepository } from './infrastructure/supplier.repository.js';
 import { PurchaseAllocationRepository } from './infrastructure/purchase-allocation.repository.js';
 import { BuyerAdvanceRepository } from './infrastructure/buyer-advance.repository.js';
 import { AwardPaymentRepository } from './infrastructure/award-payment.repository.js';
+import { AwardSupplierPaymentService } from './application/award-supplier-payment.service.js';
+import { StoreDocumentSettlementService } from './application/store-document-settlement.service.js';
+import { AwardPaymentController } from './presentation/award-payment.controller.js';
 import { BuyerAdvanceService } from './application/buyer-advance.service.js';
 import { BuyerAdvanceController } from './presentation/buyer-advance.controller.js';
 import { SupplierBillService } from './application/supplier-bill.service.js';
@@ -38,7 +41,14 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     // ADR-045 — the award-payment events (notifications) and read model are provided by quotations.
     QuotationsModule,
   ],
-  controllers: [SupplierBillController, SupplierPaymentController, SupplierController, PostingProfileController, BuyerAdvanceController],
+  controllers: [
+    SupplierBillController,
+    SupplierPaymentController,
+    SupplierController,
+    PostingProfileController,
+    BuyerAdvanceController,
+    AwardPaymentController,
+  ],
   providers: [
     SupplierBillRepository,
     SupplierPaymentRepository,
@@ -53,6 +63,8 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     SupplierPaymentService,
     SupplierService,
     BuyerAdvanceService,
+    AwardSupplierPaymentService,
+    StoreDocumentSettlementService,
   ],
   exports: [SupplierBillService, SupplierPaymentService, SupplierService, BuyerAdvanceService],
 })

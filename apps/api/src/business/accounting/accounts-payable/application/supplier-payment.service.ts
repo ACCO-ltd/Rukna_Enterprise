@@ -5,7 +5,10 @@ import {
   ConflictException,
   ForbiddenException,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { AWARD_PAYMENT_EVENTS, type AwardPaymentEvents } from '../domain/award-payment-events.port.js';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
@@ -103,6 +106,10 @@ export class SupplierPaymentService {
     private readonly sod: SegregationOfDutiesService,
     private readonly signatoryService: BankAccountSignatoryService,
     private readonly purchaseOrderService: PurchaseOrderService,
+    // ADR-045 §3/§5 — a payment made from a quotation award announces itself when posted (in the
+    // post transaction). Optional: absent in unit wiring.
+    @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
+    @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
   ) {}
 
   /** Stateless role resolver over the same account repository (ADR-024 ACC-POST-001). */
@@ -459,6 +466,36 @@ export class SupplierPaymentService {
           where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED' },
           data: { postingStatus: 'POSTED', journalEntryId: postResult.journalEntryId },
         });
+
+        // ADR-045 — paid from a quotation award: audit + SUPPLIER_PAID (collectors), atomically.
+        if (payment.quotationRequestId) {
+          if (this.auditOutbox) {
+            await this.auditOutbox.record(tx, {
+              organizationId: orgId,
+              actorUserId: userId,
+              action: 'TRANSITION',
+              resourceType: 'SupplierPayment',
+              resourceId: payment.id,
+              sourceCommand: 'supplier-payment.post',
+              eventType: 'SUPPLIER_PAID_FROM_AWARD',
+              idempotencyKey: `supplier-payment-${payment.id}-SUPPLIER_PAID_FROM_AWARD`,
+              after: {
+                quotationRequestId: payment.quotationRequestId,
+                paymentNumber: pmtNum.formattedNumber,
+                journalEntryId: postResult.journalEntryId,
+                accountingDate: payment.accountingDate.toISOString().slice(0, 10),
+              },
+            });
+          }
+          if (this.events) {
+            await this.events.supplierPaid(tx, {
+              organizationId: orgId,
+              quotationRequestId: payment.quotationRequestId,
+              paymentId: payment.id,
+              actorUserId: userId,
+            });
+          }
+        }
 
         return { ...postResult, paymentNumber: pmtNum.formattedNumber };
       });

@@ -69,7 +69,17 @@ export class SettlementQueryRepository {
   findBillsForPo(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
     return prisma.supplierBill.findMany({
       where: { organizationId, purchaseOrderId },
-      include: { allocations: { select: { allocatedAmount: true } } },
+      include: {
+        allocations: {
+          select: {
+            allocatedAmount: true,
+            postingStatus: true,
+            payment: { select: { postingStatus: true, purchaseAllocations: { where: { purchaseOrderId }, select: { id: true } } } },
+          },
+        },
+        // ADR-045 — buyer cash applied to the bill (EVT-AP-008).
+        advanceEvidenceAllocations: { select: { allocatedAmount: true, postingStatus: true } },
+      },
       orderBy: { billDate: 'asc' },
     });
   }
@@ -117,6 +127,9 @@ export class SettlementQueryRepository {
             supplierPaymentId: true,
             payment: { select: { paymentDate: true } },
           },
+        },
+        advanceEvidenceAllocations: {
+          select: { buyerAdvanceId: true, allocatedAmount: true, allocationDate: true, postingStatus: true },
         },
       },
       orderBy: { billDate: 'asc' },
