@@ -409,4 +409,48 @@ describe('ADR-044 phase 2 — quotation WhatsApp alerts', () => {
       expect(await alerts(request.id, 'QUOTE_REMINDER')).toHaveLength(0);
     });
   });
+
+  describe('review L1 / L9 — nothing outside the savepoint, no work when off, no raw errors in logs', () => {
+    it('kill switch off: the alert facts are never even read during send, ask-another and award', async () => {
+      const off = buildQuotationServices(prisma, { env: {} });
+      const spy = jest.spyOn(off.notifier, 'alertFacts');
+      const mr = await createApprovedMr(prisma, env, { lines: [{ quantity: 1, estimate: 90 }] });
+      const st = steps(prisma, env, off);
+      const request = await st.collected(mr.id, ['Hodan']);
+      await off.collect.send(env.as('collector'), request.id);
+      await off.selection.askAnother(env.as('selector'), request.id, 'again');
+      await off.collect.send(env.as('collector'), request.id, 'URGENT');
+      await off.selection.enterTotal(env.as('selector'), request.id, request.quotes[0].id, '90');
+      await off.awards.award(env.as('selector'), request.id, {
+        quoteId: request.quotes[0].id,
+        paymentPath: 'BUYER_CASH',
+        awardSupplierId: env.supplierId,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a database error while gathering the facts stays inside the savepoint; logs carry codes, not text', async () => {
+      const mr = await createApprovedMr(prisma, env);
+      const request = await s.collected(mr.id);
+      const errors: string[] = [];
+      const logSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation((m: unknown) => {
+        errors.push(String(m));
+      });
+      const factsSpy = jest.spyOn(svc.notifier, 'alertFacts').mockImplementation(async (tx) => {
+        await (tx as PrismaClient).$executeRawUnsafe(`SELECT '+252612000001'::int`); // fails, echoes the value
+        throw new Error('unreachable');
+      });
+      try {
+        const detail = await svc.collect.send(env.as('collector'), request.id);
+        expect(detail.status).toBe('AWAITING_DECISION');
+      } finally {
+        factsSpy.mockRestore();
+        logSpy.mockRestore();
+        jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      }
+      expect(await alerts(request.id)).toHaveLength(0);
+      expect(errors.some((e) => e.includes('QUOTE_READY'))).toBe(true);
+      expect(errors.join(' | ')).not.toContain('612000001');
+    });
+  });
 });

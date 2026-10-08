@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
 import type { StaffAlertLogEntry } from '@erp/types';
 
-import { CommunicationService } from '../../../../platform/messaging/communication.service.js';
+import { CommunicationService, errorCode } from '../../../../platform/messaging/communication.service.js';
 import {
   OutboundMessageRepository,
   type NewBackgroundMessage,
@@ -26,14 +26,23 @@ export const QUOTATION_WHATSAPP_ENABLED = 'QUOTATION_WHATSAPP_ENABLED';
 /** Optional ISO instant: the SLA chaser ignores rounds sent before it (review M3). */
 export const QUOTATION_WHATSAPP_SINCE = 'QUOTATION_WHATSAPP_SINCE';
 
+/**
+ * A value, or how to read it. Readers run INSIDE the savepoint and only when alerts are on
+ * (review L1): with the switch off a business transaction does no extra work, and a failed read
+ * is rolled back with the alert, never aborting the command.
+ */
+export type Lazy<T> = T | (() => Promise<T>);
+const resolve = <T>(value: Lazy<T>): Promise<T> =>
+  typeof value === 'function' ? (value as () => Promise<T>)() : Promise.resolve(value);
+
 export interface QueueAlertInput {
   organizationId: string;
   requestId: string;
   purpose: QuotationAlertPurpose;
   /** The round segment of the idempotency key (decision round, send count or award instant). */
-  round: string;
+  round: Lazy<string>;
   recipientUserIds: string[];
-  facts: QuotationAlertFacts;
+  facts: Lazy<QuotationAlertFacts>;
   /** Who caused it (the acting user); the SLA job passes the request's creator. */
   actorUserId: string;
 }
@@ -110,9 +119,8 @@ export class QuotationWhatsAppAlerts {
       return queued;
     } catch (error) {
       await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT quotation_whatsapp_alert');
-      this.logger.error(
-        `Quotation ${input.purpose} WhatsApp alert for ${input.requestId} not queued: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      // Review L9: the error code only — a database message can echo values such as phone numbers.
+      this.logger.error(`Quotation ${input.purpose} WhatsApp alert for ${input.requestId} not queued: ${errorCode(error)}`);
       return 0;
     }
   }
@@ -152,7 +160,9 @@ export class QuotationWhatsAppAlerts {
       },
       select: { id: true, whatsappPhone: true },
     });
-    const body = alertBodyParams(input.purpose, input.facts);
+    if (users.length === 0) return 0;
+    const body = alertBodyParams(input.purpose, await resolve(input.facts));
+    const round = await resolve(input.round);
     const rows: NewBackgroundMessage[] = users
       .filter((u): u is { id: string; whatsappPhone: string } => !!u.whatsappPhone && E164_PATTERN.test(u.whatsappPhone))
       .map((u) => ({
@@ -165,7 +175,7 @@ export class QuotationWhatsAppAlerts {
         templateName: template.name,
         templateLanguage: template.language,
         templateParams: { body, buttonUrlSuffix: input.requestId },
-        idempotencyKey: alertIdempotencyKey(input.requestId, input.purpose, input.round, u.id),
+        idempotencyKey: alertIdempotencyKey(input.requestId, input.purpose, round, u.id),
         createdBy: input.actorUserId,
       }));
     return this.messages.enqueueMany(tx, rows, new Date());

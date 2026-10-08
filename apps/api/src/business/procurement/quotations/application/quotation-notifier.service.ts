@@ -70,7 +70,7 @@ export class QuotationNotifier {
       purpose: 'QUOTE_ANOTHER',
       round: String(after.sendCount),
       recipientUserIds: this.collectorIds(ctx),
-      facts: { ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)), note },
+      facts: async () => ({ ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)), note }),
       actorUserId: ctx.identity.userId,
     });
   }
@@ -90,23 +90,34 @@ export class QuotationNotifier {
   async awarded(ctx: CommandContext) {
     await this.resolve(ctx, ['QUOTES_READY']);
     await this.toCollectors(ctx, 'QUOTATION_AWARDED', `quotation:${ctx.request.id}:QUOTATION_AWARDED:${ctx.request.sendCount}`);
-    // The award was just written in this transaction: read the chosen store and payment path back.
-    const award = await ctx.tx.quotationRequest.findUniqueOrThrow({
-      where: { id: ctx.request.id },
-      select: { awardedAt: true, awardedQuoteId: true, paymentPath: true, awardedSupplier: { select: { name: true } } },
-    });
-    const quote = ctx.request.quotes.find((q) => q.id === award.awardedQuoteId);
+    // The award was just written in this transaction: read the chosen store and payment path back —
+    // lazily, inside the alert's savepoint and only when alerts are on (review L1).
+    let read: Promise<{
+      awardedAt: Date | null;
+      awardedQuoteId: string | null;
+      paymentPath: 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER' | null;
+      awardedSupplier: { name: string } | null;
+    }> | null = null;
+    const award = () =>
+      (read ??= ctx.tx.quotationRequest.findUniqueOrThrow({
+        where: { id: ctx.request.id },
+        select: { awardedAt: true, awardedQuoteId: true, paymentPath: true, awardedSupplier: { select: { name: true } } },
+      }));
     await this.whatsapp.queue(ctx.tx, {
       organizationId: ctx.request.organizationId,
       requestId: ctx.request.id,
       purpose: 'QUOTE_CHOSEN',
       // A re-decision can award again in the same send round: the award instant is the round.
-      round: awardRound({ awardedAt: award.awardedAt, sendCount: ctx.request.sendCount }),
+      round: async () => awardRound({ awardedAt: (await award()).awardedAt, sendCount: ctx.request.sendCount }),
       recipientUserIds: this.collectorIds(ctx),
-      facts: {
-        ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)),
-        storeName: award.awardedSupplier?.name ?? quote?.supplier?.name ?? quote?.storeName ?? null,
-        paymentPath: award.paymentPath,
+      facts: async () => {
+        const chosen = await award();
+        const quote = ctx.request.quotes.find((q) => q.id === chosen.awardedQuoteId);
+        return {
+          ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)),
+          storeName: chosen.awardedSupplier?.name ?? quote?.supplier?.name ?? quote?.storeName ?? null,
+          paymentPath: chosen.paymentPath,
+        };
       },
       actorUserId: ctx.identity.userId,
     });
@@ -228,7 +239,7 @@ export class QuotationNotifier {
       purpose: 'QUOTE_READY',
       round,
       recipientUserIds: recipients,
-      facts: await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber),
+      facts: () => this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber),
       actorUserId: ctx.identity.userId,
     });
   }
