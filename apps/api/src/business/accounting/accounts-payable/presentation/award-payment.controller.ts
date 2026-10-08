@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsDateString, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
@@ -65,6 +65,18 @@ export class AwardPaymentController {
   })
   payFromAward(@CurrentUser() identity: RequestIdentity, @Body() dto: PayFromAwardDto) {
     return this.awardPayments.payFromAward(identity, dto);
+  }
+
+  @Post('supplier-payments/:id/continue')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary:
+      'Finish a payment made from an award from whatever state it is in (approve → release → post), with no client-held ' +
+      'body — the target of payment.pending[].continue for SUPPLIER_PAYMENT. Same response shape as from-award.',
+  })
+  continuePayment(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.awardPayments.continuePayment(identity, id);
   }
 
   @Post('supplier-bills/from-store-document')
