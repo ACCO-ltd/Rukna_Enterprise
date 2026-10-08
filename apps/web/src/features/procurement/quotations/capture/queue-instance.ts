@@ -8,6 +8,7 @@
 import { sessionStore } from '@/features/auth/session/session-store';
 import { deleteFile, uploadFile } from '@/features/files/api/files-api';
 
+import { addStoreDocumentPhoto, createStoreDocument } from '../../api/quotation-payment-api';
 import { addQuote, addQuotePhoto } from '../../api/quotations-api';
 import { IdbQueueStore } from './idb-store';
 import { MemoryQueueStore, UploadQueue, type QueueStore } from './upload-queue';
@@ -54,6 +55,8 @@ export function getUploadQueue(): UploadQueue {
       }),
     addQuote,
     addPhoto: addQuotePhoto,
+    addStoreDocument: createStoreDocument,
+    addStoreDocumentPhoto,
     discardFile: (fileId) => deleteFile(fileId),
     owner: () => {
       const user = sessionStore.getState().user;

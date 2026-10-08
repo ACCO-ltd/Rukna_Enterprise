@@ -11,7 +11,19 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { getUploadQueue } from '../quotations/capture/queue-instance';
 import type { QueueItemView, UploadQueue } from '../quotations/capture/upload-queue';
-import { applyQuotationDetail } from './use-quotations';
+import { applyQuotationDetail, quotationKeys } from './use-quotations';
+import type { QuotationRequestDetail } from '../quotations/types';
+import type { QueryClient } from '@tanstack/react-query';
+
+/** A bound quote returns the detail; a bound store document does not — refetch the request then. */
+function applyBound(qc: QueryClient, requestId: string, detail: QuotationRequestDetail | null) {
+  if (detail) {
+    applyQuotationDetail(qc, detail);
+    return;
+  }
+  void qc.invalidateQueries({ queryKey: quotationKeys.detail(requestId) });
+  void qc.invalidateQueries({ queryKey: quotationKeys.lists() });
+}
 
 const EMPTY: QueueItemView[] = [];
 
@@ -44,11 +56,37 @@ export function useQuoteUploads(requestId: string): QueueItemView[] {
   useEffect(() => {
     if (!queue) return;
     return queue.onBound((boundRequestId, detail) => {
-      if (boundRequestId === requestId) applyQuotationDetail(qc, detail);
+      if (boundRequestId === requestId) applyBound(qc, boundRequestId, detail);
     });
   }, [queue, qc, requestId]);
 
-  return useMemo(() => items.filter((item) => item.requestId === requestId), [items, requestId]);
+  // Quotes only: store receipts for the same request belong to the payment card (ADR-045).
+  return useMemo(
+    () => items.filter((item) => item.requestId === requestId && !item.target),
+    [items, requestId],
+  );
+}
+
+/**
+ * Store receipts / invoices still on the phone for one request (ADR-045, P12), with the same
+ * cache wiring: when one binds, the request is refetched so its payment block shows it.
+ */
+export function useStoreDocumentUploads(requestId: string): QueueItemView[] {
+  const queue = useUploadQueue();
+  const qc = useQueryClient();
+  const items = useQueueItems();
+
+  useEffect(() => {
+    if (!queue) return;
+    return queue.onBound((boundRequestId, detail) => {
+      if (boundRequestId === requestId) applyBound(qc, boundRequestId, detail);
+    });
+  }, [queue, qc, requestId]);
+
+  return useMemo(
+    () => items.filter((item) => item.requestId === requestId && item.target?.type === 'storeDocument'),
+    [items, requestId],
+  );
 }
 
 /**
@@ -61,7 +99,7 @@ export function useResumeQuoteUploads(): void {
   useEffect(() => {
     if (!queue) return;
     void queue.start();
-    return queue.onBound((_requestId, detail) => applyQuotationDetail(qc, detail));
+    return queue.onBound((boundRequestId, detail) => applyBound(qc, boundRequestId, detail));
   }, [queue, qc]);
 }
 

@@ -20,10 +20,18 @@
  * phone must never upload — and so become the uploader of — someone else's photos (that would
  * corrupt the segregation-of-duties record). Their items are left untouched.
  *
+ * ADR-045 phase 3 reuses the queue for store receipts and invoices: an item with a
+ * `target.type = 'storeDocument'` uploads its pages the moment they are taken, like a quote, but
+ * binds only once the buyer taps *Send receipt* (`sendStoreDocument`) — `POST
+ * /procurement/store-documents` (idempotent on the same `clientRef`), then `POST …/photos` for any
+ * page added after. The buyer never types an amount; there is no store to choose.
+ *
  * The engine is plain TypeScript with its I/O injected, so the state machine is testable with
  * fake timers and an in-memory store. `queue-instance.ts` wires the browser.
  */
 
+import type { CreateStoreDocumentPayload, StoreDocumentCommandResult, StoreDocumentKind } from '../payment-types';
+import { storeDocumentIdOf } from '../payment-rules';
 import type {
   AddQuotePayload,
   QuotationRequestDetail,
@@ -51,12 +59,26 @@ export interface QueuedPage {
   bound: boolean;
 }
 
+/** A store receipt / invoice for an award PO (ADR-045) instead of a quote. */
+export interface StoreDocumentTarget {
+  type: 'storeDocument';
+  purchaseOrderId: string;
+  kind: StoreDocumentKind;
+  /** Set by *Send receipt*: until then the pages upload but nothing is bound. */
+  sent: boolean;
+}
+
 export interface QueuedQuote {
   clientRef: string;
+  /** Absent: a quote (Phase 1). */
+  target?: StoreDocumentTarget;
   /** `orgId:userId` of the person who took the photos. */
   owner: string;
   requestId: string;
-  /** The server quote — preset for extra pages, set after the first bind for a new quote. */
+  /**
+   * The server quote — preset for extra pages, set after the first bind for a new quote. For a
+   * store document item, the store document's id once created.
+   */
   quoteId: string | null;
   store: StoreChoice | null;
   pages: QueuedPage[];
@@ -71,6 +93,8 @@ export type QueuePhase =
   | 'uploading'
   | 'binding'
   | 'needsStore'
+  /** A store document whose pages are all uploaded, waiting for *Send receipt*. */
+  | 'ready'
   | 'retrying'
   | 'offline'
   | 'failed';
@@ -78,6 +102,7 @@ export type QueuePhase =
 /** What the screen renders for one item. */
 export interface QueueItemView {
   clientRef: string;
+  target?: StoreDocumentTarget;
   requestId: string;
   quoteId: string | null;
   store: StoreChoice | null;
@@ -105,6 +130,10 @@ export interface QueueDeps {
     quoteId: string,
     payload: QuotePhotoPayload,
   ) => Promise<QuotationRequestDetail>;
+  /** ADR-045: create a store document (idempotent on `clientRef`). */
+  addStoreDocument?: (payload: CreateStoreDocumentPayload) => Promise<StoreDocumentCommandResult>;
+  /** ADR-045: an extra page on a store document still SUBMITTED. */
+  addStoreDocumentPhoto?: (id: string, payload: QuotePhotoPayload) => Promise<StoreDocumentCommandResult>;
   /** Best-effort clean-up of an uploaded file that will never be bound. */
   discardFile?: (fileId: string) => Promise<void>;
   /** `orgId:userId`, or null when nobody is signed in (the queue then idles). */
@@ -116,7 +145,8 @@ export interface QueueDeps {
   uuid: () => string;
 }
 
-export type BoundListener = (requestId: string, detail: QuotationRequestDetail) => void;
+/** `detail` is null when a store document bound (its response is not the request's detail). */
+export type BoundListener = (requestId: string, detail: QuotationRequestDetail | null) => void;
 
 // ─── Error classification ────────────────────────────────────────────────────────
 
@@ -252,6 +282,43 @@ export class UploadQueue {
     return clientRef;
   }
 
+  /**
+   * ADR-045: the first page of a store receipt / invoice for an award PO. Uploads at once; binds
+   * when `sendStoreDocument` is called.
+   */
+  async captureStoreDocument(
+    requestId: string,
+    target: { purchaseOrderId: string; kind: StoreDocumentKind },
+    page: { file: Blob; name: string; capturedAt: string; source: QuotePhotoSource },
+  ): Promise<string | null> {
+    const owner = this.deps.owner();
+    if (!owner) return null;
+    const clientRef = this.deps.uuid();
+    await this.save({
+      clientRef,
+      owner,
+      requestId,
+      target: { type: 'storeDocument', ...target, sent: false },
+      quoteId: null,
+      store: null,
+      pages: [this.page(page)],
+      attempts: 0,
+      nextAttemptAt: 0,
+      failure: null,
+      createdAt: this.deps.now(),
+    });
+    this.pump();
+    return clientRef;
+  }
+
+  /** *Send receipt*: the store document may now be created with the pages taken. */
+  async sendStoreDocument(clientRef: string): Promise<void> {
+    await this.update(clientRef, (item) =>
+      item.target ? { ...item, target: { ...item.target, sent: true }, attempts: 0, nextAttemptAt: 0 } : item,
+    );
+    this.pump();
+  }
+
   /** Another page for a quote still in the queue. */
   async addPage(
     clientRef: string,
@@ -326,7 +393,9 @@ export class UploadQueue {
     const pagesLeft = item.pages.some((p) => !p.bound);
     if (!pagesLeft) return true; // finished but not yet removed
     const needsUpload = item.pages.some((p) => !p.fileId);
-    const canBind = item.quoteId !== null || item.store !== null;
+    const canBind = item.target
+      ? item.quoteId !== null || item.target.sent
+      : item.quoteId !== null || item.store !== null;
     return needsUpload || canBind;
   }
 
@@ -444,6 +513,10 @@ export class UploadQueue {
   private async bind(clientRef: string): Promise<void> {
     let item = this.items.get(clientRef);
     if (!item || item.pages.every((p) => p.bound)) return;
+    if (item.target) {
+      await this.bindStoreDocument(clientRef);
+      return;
+    }
 
     if (item.quoteId === null) {
       if (!item.store) return; // waits for the buyer to choose a store
@@ -488,7 +561,49 @@ export class UploadQueue {
     }
   }
 
-  private notifyBound(requestId: string, detail: QuotationRequestDetail) {
+  private async bindStoreDocument(clientRef: string): Promise<void> {
+    let item = this.items.get(clientRef);
+    if (!item?.target) return;
+    if (item.quoteId === null) {
+      // Not sent yet, or a page is still uploading: the document is created with every page.
+      if (!item.target.sent || item.pages.some((p) => !p.fileId)) return;
+      if (!this.deps.addStoreDocument) throw new Error('Store documents are not wired');
+      const pages = item.pages.filter((p) => !p.bound);
+      const result = await this.deps.addStoreDocument({
+        clientRef: item.clientRef,
+        purchaseOrderId: item.target.purchaseOrderId,
+        kind: item.target.kind,
+        photos: pages.map((p) => photoPayload(p)),
+      });
+      const ids = new Set(pages.map((p) => p.id));
+      item = this.items.get(clientRef) ?? item;
+      await this.save({
+        ...item,
+        quoteId: storeDocumentIdOf(result) ?? 'bound',
+        pages: item.pages.map((p) => (ids.has(p.id) ? { ...p, bound: true } : p)),
+        failure: null,
+        attempts: 0,
+      });
+      this.notifyBound(item.requestId, null);
+      return;
+    }
+    for (const page of item.pages) {
+      if (page.bound || !page.fileId) continue;
+      if (!this.deps.addStoreDocumentPhoto) throw new Error('Store documents are not wired');
+      await this.deps.addStoreDocumentPhoto(item.quoteId, photoPayload(page));
+      const latest = this.items.get(clientRef);
+      if (!latest) return;
+      await this.save({
+        ...latest,
+        pages: latest.pages.map((p) => (p.id === page.id ? { ...p, bound: true } : p)),
+        failure: null,
+        attempts: 0,
+      });
+      this.notifyBound(item.requestId, null);
+    }
+  }
+
+  private notifyBound(requestId: string, detail: QuotationRequestDetail | null) {
     for (const listener of this.boundListeners) listener(requestId, detail);
   }
 
@@ -498,7 +613,9 @@ export class UploadQueue {
     }
     if (item.failure && !item.failure.retryable) return 'failed';
     const uploaded = item.pages.every((p) => p.fileId);
-    if (uploaded && item.quoteId === null && !item.store) return 'needsStore';
+    // A store document waits for *Send receipt*, not for a store.
+    if (item.target && uploaded && item.quoteId === null && !item.target.sent) return 'ready';
+    if (!item.target && uploaded && item.quoteId === null && !item.store) return 'needsStore';
     if (!this.deps.isOnline()) return 'offline';
     if (item.failure?.retryable) return 'retrying';
     return 'queued';
@@ -510,6 +627,7 @@ export class UploadQueue {
       .sort((a, b) => a.createdAt - b.createdAt)
       .map((item) => ({
         clientRef: item.clientRef,
+        ...(item.target ? { target: item.target } : {}),
         requestId: item.requestId,
         quoteId: item.quoteId,
         store: item.store,
@@ -545,6 +663,7 @@ function structuredCloneSafe(item: QueuedQuote): QueuedQuote {
   return {
     ...item,
     store: item.store ? { ...item.store } : null,
+    ...(item.target ? { target: { ...item.target } } : {}),
     failure: item.failure ? { ...item.failure } : null,
     pages: item.pages.map((p) => ({ ...p })),
   };

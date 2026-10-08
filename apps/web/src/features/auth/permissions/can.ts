@@ -155,6 +155,21 @@ export const QUOTATION_PERMISSIONS = {
   award: 'award:quotation',
 } as const satisfies Record<string, PermissionKey>;
 
+/**
+ * Paying from the award (ADR-045). Every money command — release cash, pay the supplier, record a
+ * store receipt, change returned, top up — is Accounts Payable's (`manage:payable`). Procurement
+ * only photographs the receipt (`QUOTATION_PERMISSIONS.collect`). Segregation of duties (nobody
+ * releases cash to themselves; a store's vendor maintainer cannot pay it) and the approval bands
+ * are decided by the server only; the UI renders its refusal.
+ */
+export const PAYMENT_PERMISSIONS = {
+  pay: 'manage:payable',
+  /** Changing the payment path needs this as well as `pay` (ADR-045 §4). */
+  changePath: 'award:quotation',
+  /** Amounts shown to the buyer on the cash card (Procurement Manager holds it). */
+  viewAmounts: 'view:commitment-ledger',
+} as const satisfies Record<string, PermissionKey>;
+
 // ─── Core logic (shared by plain functions and the hook) ──────────────────────
 
 function canWith(user: AuthenticatedUser | null, permission: PermissionKey): boolean {
