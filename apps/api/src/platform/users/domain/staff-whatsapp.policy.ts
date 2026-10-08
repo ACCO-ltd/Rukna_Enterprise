@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import { parsePhoneNumberWithError } from 'libphonenumber-js';
 
+import { E164_PATTERN } from '../../messaging/domain/message-status.js';
+
 /**
  * ADR-044 phase 2 — a staff member's WhatsApp alert settings. Pure (only the 400s are Nest).
  *
@@ -28,7 +30,9 @@ export function normaliseStaffWhatsAppPhone(value: unknown): string | null {
   }
   try {
     const parsed = parsePhoneNumberWithError(text);
-    if (!parsed.isValid()) throw new Error('invalid');
+    // Review L3: also the stored shape (8–15 digits, the DB CHECK), so a valid but short number is
+    // a 400 here rather than a constraint error.
+    if (!parsed.isValid() || !E164_PATTERN.test(parsed.number)) throw new Error('invalid');
     return parsed.number;
   } catch {
     throw invalid('whatsappPhone', 'This is not a valid phone number. Use international form, e.g. +252612345678');

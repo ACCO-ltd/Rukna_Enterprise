@@ -201,6 +201,9 @@ describe('UsersService', () => {
       await expect(service.update(identity, 'u-1', { whatsappPhone: '0612345678' })).rejects.toBeInstanceOf(BadRequestException);
       await expect(service.update(identity, 'u-1', { whatsappPhone: '+2521' })).rejects.toBeInstanceOf(BadRequestException);
       await expect(service.update(identity, 'u-1', { whatsappPhone: '+252abc' })).rejects.toBeInstanceOf(BadRequestException);
+      // Review L3: valid for libphonenumber but shorter than the stored E.164 shape (8–15 digits) —
+      // a 400 here, never the database CHECK's 500.
+      await expect(service.update(identity, 'u-1', { whatsappPhone: '+683 4002' })).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.update).not.toHaveBeenCalled();
     });
 
