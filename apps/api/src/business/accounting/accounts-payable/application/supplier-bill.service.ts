@@ -693,6 +693,15 @@ export class SupplierBillService {
         `Cannot reverse bill ${billId} — it has ${activeAllocs} active payment allocation(s). Reverse the payments first.`,
       );
     }
+    // ADR-045 — buyer cash applied to the bill (EVT-AP-008) settles it like a payment does.
+    const advanceApplications = await prisma.buyerAdvanceEvidenceAllocation.count({
+      where: { supplierBillId: billId, postingStatus: 'POSTED' },
+    });
+    if (advanceApplications > 0) {
+      throw new BadRequestException(
+        `Cannot reverse bill ${billId} — buyer cash was applied to it (${advanceApplications} application(s)). Reverse the applications first.`,
+      );
+    }
 
     if (!bill.postedJournalEntryId) {
       throw new BadRequestException(`Bill ${billId} has no posted journal to reverse`);

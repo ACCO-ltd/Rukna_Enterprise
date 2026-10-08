@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiTags, ApiOperation, ApiBearerAuth,
-  ApiParam, ApiQuery, ApiResponse, ApiNoContentResponse,
+  ApiParam, ApiQuery, ApiResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -15,7 +15,17 @@ import { BuyerAdvanceService } from '../application/buyer-advance.service.js';
 import { CreateBuyerAdvanceDto } from './dto/create-buyer-advance.dto.js';
 import { CreateAdvanceReturnDto } from './dto/create-advance-return.dto.js';
 import { CreateEvidenceAllocationDto } from './dto/create-evidence-allocation.dto.js';
+import {
+  CreateAdvanceApplicationDto,
+  ReleaseBuyerAdvanceDto,
+  ReverseAdvanceApplicationDto,
+  ReverseBuyerAdvanceDto,
+} from './dto/award-payment.dto.js';
 
+/**
+ * Buyer (staff) cash advances — ADR-045 §2. Every route is a Finance money command or read
+ * (`manage:payable`); the buyer never calls these.
+ */
 @ApiTags('Buyer Advances')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
@@ -24,8 +34,26 @@ import { CreateEvidenceAllocationDto } from './dto/create-evidence-allocation.dt
 export class BuyerAdvanceController {
   constructor(private readonly buyerAdvanceService: BuyerAdvanceService) {}
 
+  @Get('release-draft')
+  @ApiQuery({ name: 'quotationRequestId', required: true })
+  @ApiOperation({ summary: 'ADR-045 — prefill for "Release cash" from an award: order, recipients, cash accounts, blockers' })
+  releaseDraft(@CurrentUser() identity: RequestIdentity, @Query('quotationRequestId') quotationRequestId: string) {
+    return this.buyerAdvanceService.releaseDraft(identity, quotationRequestId);
+  }
+
+  @Post('release')
+  @ApiOperation({
+    summary:
+      'ADR-045 — release buyer cash in one tap: create, approve (DoA) and post EVT-AP-007. Idempotent on ' +
+      'idempotencyKey; 409 { approvalInstanceId } while waiting for approval — re-drive with the same body.',
+  })
+  @ApiResponse({ status: 201, description: '{ advance, payment }' })
+  release(@CurrentUser() identity: RequestIdentity, @Body() dto: ReleaseBuyerAdvanceDto) {
+    return this.buyerAdvanceService.release(identity, dto);
+  }
+
   @Post()
-  @ApiOperation({ summary: 'Create a buyer advance in DRAFT status' })
+  @ApiOperation({ summary: 'Create a buyer advance in DRAFT status (posted by POST /:id/post through the same checks)' })
   create(
     @CurrentUser() identity: RequestIdentity,
     @Body() dto: CreateBuyerAdvanceDto,
@@ -45,7 +73,7 @@ export class BuyerAdvanceController {
 
   @Get(':id')
   @ApiParam({ name: 'id' })
-  @ApiOperation({ summary: 'Get a buyer advance with returns, evidence allocations, and computed outstanding balance' })
+  @ApiOperation({ summary: 'A buyer advance with its applications, returns, journals, outstanding and legacy flag' })
   findById(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
@@ -73,14 +101,9 @@ export class BuyerAdvanceController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', description: 'Buyer advance ID' })
   @ApiOperation({
-    summary: 'Mark a buyer advance as posted (financially disbursed). ' +
-      'Only POSTED advances count as funding in the settlement engine. ' +
-      'Records postedAt and postedBy from server-side identity.',
+    summary: 'Release a DRAFT advance: DoA gate + SoD, then EVT-AP-007 (Dr Staff advances / Cr the account) on advancedAt.',
   })
-  @ApiResponse({ status: 200, description: 'Advance posted' })
-  @ApiResponse({ status: 409, description: 'Advance is already posted' })
-  @ApiResponse({ status: 400, description: 'Advance has been reversed' })
-  @ApiNoContentResponse({ description: 'Not applicable' })
+  @ApiResponse({ status: 409, description: 'Already posted, or waiting for approval ({ approvalInstanceId })' })
   post(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
@@ -88,11 +111,18 @@ export class BuyerAdvanceController {
     return this.buyerAdvanceService.post(identity, id);
   }
 
+  @Post(':id/reverse')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Reverse a posted advance (mirror journal on reversalDate) or cancel a DRAFT one — only while nothing is applied or returned' })
+  reverse(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ReverseBuyerAdvanceDto) {
+    return this.buyerAdvanceService.reverse(identity, id, { reason: dto.reason, reversalDate: dto.reversalDate ?? '' });
+  }
+
   @Post(':id/returns')
   @ApiParam({ name: 'id', description: 'Buyer advance ID' })
-  @ApiOperation({ summary: 'Record a return of unused advance funds' })
-  @ApiResponse({ status: 400, description: 'destinationBankAccountId required for BANK/MOBILE_MONEY return method' })
-  @ApiResponse({ status: 404, description: 'Advance or bank account not found' })
+  @ApiOperation({ summary: 'Record change returned by the buyer (capped at outstanding) — posts EVT-AP-009 on receivedAt' })
+  @ApiResponse({ status: 422, description: 'RETURN_EXCEEDS_OUTSTANDING' })
   createReturn(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
@@ -103,7 +133,6 @@ export class BuyerAdvanceController {
       returnMethod: dto.returnMethod,
       destinationBankAccountId: dto.destinationBankAccountId,
       // receivedBy is set server-side from the authenticated identity, not from the client.
-      // The Finance Officer who submits this request is the person recording the return.
       receivedBy: identity.userId,
       receivedAt: dto.receivedAt,
       reference: dto.reference,
@@ -111,10 +140,34 @@ export class BuyerAdvanceController {
     });
   }
 
+  @Post(':id/applications')
+  @ApiParam({ name: 'id', description: 'Buyer advance ID' })
+  @ApiOperation({ summary: 'Apply the advance to a posted bill of its order — EVT-AP-008 Dr AP / Cr Staff advances' })
+  createApplication(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: CreateAdvanceApplicationDto,
+  ) {
+    return this.buyerAdvanceService.createApplication(identity, id, { supplierBillId: dto.supplierBillId, amount: dto.amount });
+  }
+
+  @Post(':id/applications/:appId/reverse')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'appId' })
+  @ApiOperation({ summary: 'Reverse an application — mirror journal on the application date, bill outstanding restored' })
+  reverseApplication(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('appId') appId: string,
+    @Body() dto: ReverseAdvanceApplicationDto,
+  ) {
+    return this.buyerAdvanceService.reverseApplication(identity, id, appId, dto.reason);
+  }
+
   @Post(':id/evidence-allocations')
   @ApiParam({ name: 'id', description: 'Buyer advance ID' })
-  @ApiOperation({ summary: 'Link a supplier bill as evidence of advance spending' })
-  @ApiResponse({ status: 404, description: 'Advance or supplier bill not found in this organization' })
+  @ApiOperation({ summary: 'Alias of POST /:id/applications (legacy body { supplierBillId, allocatedAmount })' })
   createEvidenceAllocation(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,

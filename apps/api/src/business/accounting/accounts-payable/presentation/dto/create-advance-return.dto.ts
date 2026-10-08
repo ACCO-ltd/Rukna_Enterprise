@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsString, IsNumber, Min, IsDateString,
+  IsString, IsNotEmpty, IsDateString,
   IsOptional, MaxLength, IsEnum,
 } from 'class-validator';
 
@@ -12,14 +12,15 @@ export enum AdvanceReturnMethodDto {
 
 export class CreateAdvanceReturnDto {
   @ApiProperty({ example: 500, description: 'Amount being returned' })
-  @IsNumber() @Min(0.01)
-  amount!: number;
+  // ADR-045: a number or a 2-dp string ("20.00"); validated (positive, ≤ 2 dp) by the service.
+  @IsNotEmpty()
+  amount!: number | string;
 
   @ApiProperty({ enum: AdvanceReturnMethodDto, description: 'Return method (CASH, BANK, or MOBILE_MONEY)' })
   @IsEnum(AdvanceReturnMethodDto)
   returnMethod!: AdvanceReturnMethodDto;
 
-  @ApiPropertyOptional({ description: 'Required when returnMethod is BANK or MOBILE_MONEY' })
+  @ApiPropertyOptional({ description: 'ADR-045: required for every method (cash lands in the cash box)' })
   @IsString() @IsOptional()
   destinationBankAccountId?: string;
 

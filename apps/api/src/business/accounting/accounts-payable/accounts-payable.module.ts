@@ -11,6 +11,7 @@ import { SupplierPaymentRepository } from './infrastructure/supplier-payment.rep
 import { SupplierRepository } from './infrastructure/supplier.repository.js';
 import { PurchaseAllocationRepository } from './infrastructure/purchase-allocation.repository.js';
 import { BuyerAdvanceRepository } from './infrastructure/buyer-advance.repository.js';
+import { AwardPaymentRepository } from './infrastructure/award-payment.repository.js';
 import { BuyerAdvanceService } from './application/buyer-advance.service.js';
 import { BuyerAdvanceController } from './presentation/buyer-advance.controller.js';
 import { SupplierBillService } from './application/supplier-bill.service.js';
@@ -41,6 +42,7 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     SupplierRepository,
     PurchaseAllocationRepository,
     BuyerAdvanceRepository,
+    AwardPaymentRepository,
     PostingProfileRepository,
     PostingProfileService,
     SupplierBillService,

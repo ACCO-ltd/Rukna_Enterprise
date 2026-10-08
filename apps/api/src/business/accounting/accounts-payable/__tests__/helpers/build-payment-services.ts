@@ -34,6 +34,9 @@ import { GoodsReceiptService } from '../../../../procurement/goods-receipts/appl
 import { GoodsReceiptRepository } from '../../../../procurement/goods-receipts/infrastructure/goods-receipt.repository.js';
 import { GrnAttachmentRepository } from '../../../../procurement/goods-receipts/infrastructure/grn-attachment.repository.js';
 import { ProjectAccessService } from '../../../../../platform/project-access/project-access.service.js';
+import { BuyerAdvanceService } from '../../application/buyer-advance.service.js';
+import { BuyerAdvanceRepository } from '../../infrastructure/buyer-advance.repository.js';
+import { AwardPaymentRepository } from '../../infrastructure/award-payment.repository.js';
 
 export function buildPaymentServices(prisma: PrismaClient, options: QuotationServiceOptions = {}) {
   const q = buildQuotationServices(prisma, options);
@@ -98,8 +101,24 @@ export function buildPaymentServices(prisma: PrismaClient, options: QuotationSer
     poService,
   );
 
+  const awardRepo = new AwardPaymentRepository();
+  const advances = new BuyerAdvanceService(
+    tenancy,
+    new BuyerAdvanceRepository(),
+    poService,
+    postingPort,
+    accountRepo,
+    awardRepo,
+    commandGovernance,
+    q.approvals,
+    sod,
+    audit,
+  );
+
   return {
     ...q,
+    awardRepo,
+    advances,
     poService,
     settlement,
     grnService,
