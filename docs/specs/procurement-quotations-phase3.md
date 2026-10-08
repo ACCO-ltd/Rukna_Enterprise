@@ -3,7 +3,9 @@
 Implements **ADR-045** (`docs/adr/ADR-045-paying-from-the-award.md`), which owns the decisions;
 read it first. Builds on ADR-044 Phase 1 (award, raise order, award-covered PO confirm) and Phase 2
 (NotificationWriter, `OutboundMessage` queue, dispatcher, kill switch). This document is the
-testable contract and the build order. Status: **design only, nothing built.**
+testable contract and the build order. Status: **backend P1–P9 built** (branch
+`feat/quotation-payment`, product-owner defaults Q1–Q4); frontend P10–P14 in progress. The
+backend's deviations from this text are listed in §8 — §8 wins where they differ.
 
 Phase 3 = after the award PO is confirmed, finance pays in one tap along the recorded path:
 **BUYER_CASH** — release cash to the buyer (posted staff advance) → buyer buys and photographs the
@@ -480,3 +482,77 @@ default; Playwright journeys S1→S6 and S8→S9 green in CI; prod pre-deploy ch
 | P12 | Procurement cash card + receipt capture | P10 |
 | P13 | Finance record receipt, change, top-up | P10 |
 | P14 | Setup readiness + advances screens | P10 |
+
+## 8. Backend build notes — deviations from the text above (P1–P9)
+
+Product-owner decisions: **all defaults** (Q1 cash box / mobile-money float without signatories;
+Q2 no amount in WhatsApp; Q3 top-up only up to the PO, above it only after the bill's price
+exception is approved; Q4 vendor-maintainer rule kept).
+
+**Routes.** New routes are exactly as §1 (`/buyer-advances/release-draft`, `/buyer-advances/release`,
+`/buyer-advances/:id/reverse|applications|applications/:appId/reverse`,
+`/supplier-payments/award-draft`, `/supplier-payments/from-award`,
+`/supplier-bills/from-store-document`, `/procurement/store-documents…`,
+`/procurement/quotation-requests/:id/payment-path`). The *existing* post routes the spec calls
+`/supplier-payments/:id/post` and `/supplier-bills/:id/post` are, as before, `POST /payments/:id/post`
+and `POST /bills/:id/post` (now with optional GL codes).
+
+**Responses.**
+- Release cash → `{ advance, payment }` (`payment` = the request's §1.4 block). Pay supplier →
+  `{ payment, awaiting?: 'RELEASE_SIGNATURES', paymentSummary }` (`payment` = the supplier payment
+  document with `shape`; `paymentSummary` = the §1.4 block). Record receipt →
+  `{ storeDocument, bill, step, applied: [{ kind: 'BUYER_ADVANCE'|'SUPPLIER_PAYMENT', id, amount }],
+  approvalInstanceId? }`.
+- **Gated (DoA) money commands answer 409** `{ details: { code: 'APPROVAL_REQUIRED',
+  approvalInstanceId, advanceId | paymentId } }` for both release cash and pay supplier (the
+  spec's `awaiting: 'APPROVAL'` 200 is not used); re-drive with the same body (same
+  `idempotencyKey`).
+- Reusing an `idempotencyKey` with a different body → 409 `IDEMPOTENCY_KEY_REUSED`.
+- R8 (closed / locked / missing period) is checked before anything is written and answers
+  409 with `code` `PERIOD_CLOSED` | `PERIOD_LOCKED` | `NO_PERIOD`.
+- 422 `AMOUNT_INVALID` / `DATE_INVALID` for malformed money / dates; 400 `DESTINATION_REQUIRED`
+  for a return without an account.
+- `payment` block: `advances` / `payments` are `null` (not filtered) for a money-blind viewer;
+  `storeDocuments[]` adds `supplierBillId`, `photoCount`, `photos` only when photos are visible;
+  allowed-action reasons used: `MISSING_PERMISSION`, `PAYMENT_PO_NOT_OPEN`, `NOTHING_TO_FUND`,
+  `NOTHING_WITH_BUYER`, `NOTHING_TO_FINISH`, `NO_RECEIPT_TO_RECORD`, `GOODS_NOT_RECEIVED`,
+  `PAYMENT_PATH_LOCKED`, `VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT`. RELEASE_CASH is
+  offered until the first live advance, TOP_UP after it.
+- State order: a CLOSED / settled order is `SETTLED` (checked before `READY_TO_PAY`); a pending
+  *or granted-not-consumed* approval counts as `AWAITING_APPROVAL`.
+- Queue rows (`pay`, `settle`) add `paymentWaitingWorkingMinutes`; `pay` = award order OPEN with
+  remaining-to-fund > 0; `settle` = a SUBMITTED receipt or cash still with the buyer. List and
+  detail are also open to `manage:payable` holders.
+
+**Model.**
+- `StoreDocumentStatus` has `WITHDRAWN` (for `/withdraw`). New `NotificationKind`
+  `RECEIPT_REJECTED` (the "buyer notified in-app" on reject). `SourceDocType` gains
+  `BUYER_ADVANCE`. `advance_returns.journal_entry_id` and
+  `buyer_advance_evidence_allocations.reversal_reason` added (not in P1's list).
+- Reversal events are named `EVT-AP-010` (advance) and `EVT-AP-011` (application).
+- `POST /buyer-advances/:id/reverse` on a DRAFT advance (e.g. stuck awaiting approval) cancels it
+  (`documentStatus CANCELLED`, approval voided, no journal) so it stops holding funding room.
+  `reversalDate` is required only for a posted advance.
+- Legacy advances (POSTED, no journal): evidence links and returns on them are recorded without a
+  journal (old arithmetic); reverse refused (409 `ADVANCE_LEGACY`).
+- Funding cap = max(PO ordered, Σ POSTED bills on the PO) — a bill above the order can only be
+  posted after its price exception is approved (Q3), and then the buyer can be reimbursed up to it.
+  The settlement read model uses the same target (a PO whose posted bill exceeds what was funded
+  shows `FUNDING_GAP` and does not auto-close), and counts bills paid directly by a payment that
+  does not also fund the PO.
+- Bill recorded from a store document: lines = PO lines with accepted − already-billed quantity
+  > 0 (copying line type, unique material, UoM, `purchaseOrderLineId`); a partial receipt is
+  accepted only when every billed line has a unique material, else 409 `GOODS_NOT_RECEIVED`.
+  `dueDate = billDate`. Line amounts are split on the 2-dp grid, unit price = amount ÷ qty (4 dp).
+- `SupplierBillPaymentState` gains `PAID_BY_BUYER_CASH`; bill-payment rows add
+  `paidByBuyerCashAmount` and `advanceApplications[]` (**web: `po-bill-payments.tsx` STATE_TONE
+  needs the new key**). `QuotationNotificationContext` gains optional `poNumber`, `storeName`,
+  `paymentPath`, `storeDocumentNumber`, `rejectReason`.
+- STAFF_ADVANCE is the only posting profile allowed to point at an ASSET account (create / re-point
+  validate it); bill lines still refuse it (expense profiles only) — the bill expense-profile
+  picker should hide it.
+
+**Fixes found while building.** A failed posting attempt no longer flips an already POSTED
+supplier payment / bill to FAILED (two concurrent posts — the loser used to overwrite the
+winner). Bill reverse is refused while buyer cash is applied to it.
+

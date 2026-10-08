@@ -1,6 +1,7 @@
 # ADR-045 — Paying from the award: buyer cash and supplier payment as posted finance documents
 
-**Status:** Proposed (owner: Abdulsalam; product owner decisions pending — see "Open questions").
+**Status:** Accepted with the product owner's defaults for Q1–Q4 (2026-10-08); backend built on
+`feat/quotation-payment` — build deviations are recorded in the spec §8.
 Phase 3 of competitive quotations (ADR-044 §11). Spec and tickets:
 `docs/specs/procurement-quotations-phase3.md`.
 
