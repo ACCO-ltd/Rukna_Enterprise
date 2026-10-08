@@ -2488,6 +2488,85 @@
         "reversed": "Cash release reversed",
         "pathChanged": "Payment path changed",
         "receiptRejected": "Receipt sent back"
+      },
+      "buyer": {
+        "title": "Payment for this order",
+        "stepsLabel": "Payment progress",
+        "steps": {
+          "cash": {
+            "waiting": "Waiting for cash",
+            "released": "Cash released",
+            "sent": "Receipt sent",
+            "settled": "Settled"
+          },
+          "supplier": {
+            "waiting": "Waiting for finance",
+            "released": "Store paid",
+            "sent": "Invoice sent",
+            "settled": "Settled"
+          }
+        },
+        "waiting": {
+          "cash": {
+            "title": "Waiting for cash",
+            "body": "Finance is releasing the cash. You'll get a message when it's ready."
+          },
+          "supplier": {
+            "title": "Finance pays the store",
+            "body": "Finance is paying the store. You'll get a message when it's paid."
+          },
+          "approval": "The payment is waiting for an approver.",
+          "order": "Payment starts once the order is issued."
+        },
+        "released": {
+          "toYou": "Cash released to you",
+          "toName": "Cash released to {name}",
+          "amountHidden": "Finance has the amount — ask them if you need it.",
+          "next": "Pay {store}, then photograph the receipt."
+        },
+        "paid": {
+          "title": "Finance paid {store}",
+          "next": "Collect the goods, then photograph the store's invoice."
+        },
+        "sent": {
+          "cash": "Receipt sent. Finance records it once the site has received the goods.",
+          "supplier": "Invoice sent. Finance records it once the site has received the goods."
+        },
+        "settled": {
+          "title": "Settled",
+          "body": "Everything for this order is paid and accounted for."
+        },
+        "rejectedAgain": "Photograph it again and send it.",
+        "capture": {
+          "snap": {
+            "cash": "Photograph the receipt",
+            "supplier": "Photograph the invoice"
+          },
+          "send": {
+            "cash": "Send receipt",
+            "supplier": "Send invoice"
+          },
+          "pagesLabel": {
+            "cash": "Receipt pages",
+            "supplier": "Invoice pages"
+          },
+          "fromGallery": "Choose from gallery",
+          "noAmount": "No amount to type — finance reads it from the photo.",
+          "addPage": "Add a page",
+          "pageAlt": "{kind} page {page}",
+          "pageUploaded": "Uploaded",
+          "discard": "Discard",
+          "retry": "Try again",
+          "state": {
+            "uploading": "Uploading…",
+            "offline": "No signal — the photos stay on the phone and go up when you're back online.",
+            "retrying": "Weak signal — still trying.",
+            "ready": "{count, plural, one {# page ready} other {# pages ready}}. Add another page or send.",
+            "sending": "Sending {count, plural, one {# page} other {# pages}} to finance…",
+            "sendingOffline": "No signal — it will send when you're back online.",
+            "failed": "This did not send."
+          }
+        }
       }
     },
     "paymentsQueue": {
