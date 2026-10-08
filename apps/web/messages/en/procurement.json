@@ -493,6 +493,7 @@
         "PAYMENT_IN_PROGRESS": "Payment in progress",
         "PARTIALLY_PAID": "Partly paid",
         "PAID": "Paid",
+        "PAID_BY_BUYER_CASH": "Paid by buyer cash",
         "REVERSED": "Reversed"
       }
     },

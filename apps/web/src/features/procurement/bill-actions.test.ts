@@ -220,6 +220,11 @@ describe('expenseProfiles', () => {
     expect(classes).toContain('EXPENSE');
   });
 
+  it('never offers STAFF_ADVANCE on a bill line, whatever account it points at (ADR-045)', () => {
+    // Even mis-pointed at an expense account, the buyer-cash profile is not a bill expense.
+    expect(expenseProfiles([profile('STAFF_ADVANCE', OFFICE.id, 'Staff advances')], ACCOUNTS)).toEqual([]);
+  });
+
   it('drops an INACTIVE profile', () => {
     const retired = [{ ...profile('OLD', OFFICE.id, 'Retired'), status: 'INACTIVE' as const }];
 

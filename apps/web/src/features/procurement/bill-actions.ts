@@ -317,6 +317,9 @@ function localToday(): string {
  * Dropped silently on purpose: "PROJECT_REVENUE — not selectable" invites the question of how
  * to select it, and the answer is that it is never right on this form.
  */
+/** The buyer-cash posting profile (ADR-045) — never offered on a bill line. */
+export const STAFF_ADVANCE_PROFILE = 'STAFF_ADVANCE';
+
 export function expenseProfiles(
   profiles: readonly PostingProfile[],
   accounts: readonly Account[],
@@ -333,6 +336,9 @@ export function expenseProfiles(
 
   for (const profile of profiles) {
     if (profile.status !== 'ACTIVE') continue;
+    // ADR-045: STAFF_ADVANCE is the one profile allowed to point at an asset (Staff advances). It
+    // is never a bill line's expense; the class check below drops it too, this says so outright.
+    if (profile.code === STAFF_ADVANCE_PROFILE) continue;
 
     // The version in force on the bill date — not simply the newest: since ADR-040 a profile can
     // carry a re-point scheduled for a later date, and the newest version would show it early.
