@@ -3,7 +3,9 @@
 **Status:** Proposed (owner: Abdulsalam; product decisions locked by ACCO's product owner,
 2026-10-07). Phase 1 is specified in `docs/specs/procurement-quotations-phase1.md`. Phase 2
 (WhatsApp alerts to staff + SLA reminders/escalation) was built 2026-10-07 — see "Phase 2" below.
-Phase 3 (executing the chosen payment path) is designed as a seam here and is not built.
+Phase 3 (executing the chosen payment path) is designed in **ADR-045**
+(`docs/adr/ADR-045-paying-from-the-award.md`, spec `docs/specs/procurement-quotations-phase3.md`)
+and is not built.
 
 ## Context
 
@@ -405,6 +407,14 @@ computable after the fact.
 Phase 3 executes it: `BUYER_CASH` → a `BuyerAdvance` against the raised PO
 (`/buyer-advances`, `manage:payable`); `FINANCE_PAYS_SUPPLIER` → the normal bill → payment path.
 Phase 1 shows the choice on the request and the PO, nothing more.
+
+*Phase 3 (2026-10-08) — superseded in detail by ADR-045.* Discovery found that a `BuyerAdvance`
+never reaches the general ledger (`buyer-advance.service.ts:192-214` only flips a flag), so
+"a BuyerAdvance against the raised PO" is not enough: ADR-045 makes the advance a posted cash
+document (EVT-AP-007/008/009, DoA on the supplier-payment bands, SoD `ADVANCE_RECIPIENT_CANNOT_RELEASE`),
+adds the `StoreDocument` receipt photo, and for `FINANCE_PAYS_SUPPLIER` composes the existing
+supplier payment (pay the invoice, or prepay as a supplier advance) prefilled from the award. Because
+those are Accounts Payable decisions for every caller, they live in their own ADR.
 
 ### 12. API
 
