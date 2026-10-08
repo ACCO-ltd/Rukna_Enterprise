@@ -2567,6 +2567,72 @@
             "failed": "This did not send."
           }
         }
+      },
+      "record": {
+        "loading": "Loading the receipt",
+        "back": "Back to the request",
+        "backToRequest": "Back to the request",
+        "notFound": "This receipt is not on the request any more — it may have been withdrawn.",
+        "title": "{kind} {number}",
+        "zoom": "Zoom {kind} page {page}",
+        "photoAlt": "{kind}, page {page}",
+        "pageOf": "Page {page} of {count}",
+        "previousPage": "Previous page",
+        "nextPage": "Next page",
+        "total": "Total on receipt",
+        "totalHint": "Type the total exactly as it is on the photo.",
+        "totalEmpty": "Enter the total from the receipt.",
+        "totalZero": "Enter a total above 0.",
+        "receiptNo": "Receipt no.",
+        "receiptNoHint": "If one is printed. Otherwise {number} is used.",
+        "date": "Date",
+        "expense": "Expense",
+        "noExpenseProfiles": "No expense account is set up for bills. Set up posting profiles first.",
+        "poTotal": "Order total {amount}",
+        "goods": "Goods: {status}",
+        "paidFromCash": "Paid from {name}'s cash",
+        "paidBySupplierPayment": "Paid to the store by finance",
+        "submit": "Record and settle",
+        "resume": "Resume",
+        "theBill": "the bill",
+        "openBill": "Open {number}",
+        "done": {
+          "title": "Recorded and settled",
+          "cash": "Settled {amount} from {name}'s cash",
+          "supplier": "Settled {amount} from the payment to the store",
+          "recorded": "This receipt is recorded.",
+          "stillWith": "{amount} still with {name}",
+          "theBuyer": "the buyer"
+        },
+        "exception": {
+          "title": "Receipt is above the order",
+          "body": "Approve the price exception on {bill} first, then tap Resume.",
+          "open": "Open {bill}"
+        },
+        "waitingApproval": {
+          "title": "Bill waiting for approval",
+          "body": "{bill} needs an approver before it settles. Tap Resume once it is approved."
+        },
+        "topUpGated": {
+          "title": "Top-up sent for approval",
+          "body": "Finish it from the request once it is approved."
+        }
+      },
+      "change": {
+        "title": "Change returned",
+        "subtitle": "From {name}",
+        "which": "Which cash",
+        "advanceOption": "Released {date} · {outstanding} still out",
+        "amount": "Amount returned",
+        "cap": "At most {cap} — what {name} still holds.",
+        "theBuyer": "the buyer",
+        "over": "That is more than the {cap} still held.",
+        "method": "Returned as",
+        "into": "Into",
+        "intoHint": "Where the money is now — the cash box for cash.",
+        "date": "Received on",
+        "submit": "Record {amount} returned",
+        "submitNoAmount": "Record change"
       }
     },
     "paymentsQueue": {
