@@ -5,6 +5,10 @@ import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.
 import { WorkflowsModule } from '../../../platform/workflows/workflows.module.js';
 import { PurchaseOrdersModule } from '../purchase-orders/purchase-orders.module.js';
 import { NotificationsModule } from '../../../platform/notifications/notifications.module.js';
+import { CommunicationModule } from '../../../platform/messaging/communication.module.js';
+import { QuotationWhatsAppAlerts } from './application/quotation-whatsapp-alerts.service.js';
+import { QuotationSlaAlertJob } from './application/quotation-sla-alert.job.js';
+import { QuotationAlertGuard } from './application/quotation-alert-guard.service.js';
 import { QuotationNotifier } from './application/quotation-notifier.service.js';
 import { QuotationRequestRepository } from './infrastructure/quotation-request.repository.js';
 import { QuotationAccessService } from './application/quotation-access.service.js';
@@ -24,7 +28,7 @@ import { QuotationRequestController } from './presentation/quotation-request.con
  * module: the MR module imports this one for the cancel cascade and the detail summary.
  */
 @Module({
-  imports: [TenancyModule, AuditLogsModule, WorkflowsModule, PurchaseOrdersModule, NotificationsModule],
+  imports: [TenancyModule, AuditLogsModule, WorkflowsModule, PurchaseOrdersModule, NotificationsModule, CommunicationModule],
   controllers: [QuotationRequestController],
   providers: [
     QuotationRequestRepository,
@@ -38,6 +42,10 @@ import { QuotationRequestController } from './presentation/quotation-request.con
     QuotationOrderService,
     QuotationListService,
     QuotationMaterialRequestLink,
+    // ADR-044 phase 2 — WhatsApp alerts to staff (queued) + the 2 h / 4 h SLA chaser (cron).
+    QuotationWhatsAppAlerts,
+    QuotationSlaAlertJob,
+    QuotationAlertGuard,
   ],
   exports: [QuotationMaterialRequestLink],
 })

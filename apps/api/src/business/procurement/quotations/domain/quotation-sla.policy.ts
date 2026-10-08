@@ -74,3 +74,15 @@ export function slaTone(minutes: number): SlaTone {
   if (minutes >= SLA_AMBER_MINUTES) return 'amber';
   return 'none';
 }
+
+/**
+ * ADR-044 phase 2 — whether `at` falls inside ACCO's working hours (Sat–Thu 07:00–17:00 in
+ * Mogadishu). Reminders and escalations for non-urgent requests are only sent then.
+ */
+export function isWithinWorkingHours(at: Date): boolean {
+  const local = at.getTime() + offsetMs(at.getTime());
+  const day = new Date(local);
+  if (day.getUTCDay() === FRIDAY) return false;
+  const minuteOfDay = day.getUTCHours() * 60 + day.getUTCMinutes();
+  return minuteOfDay >= WORK_START_MINUTE && minuteOfDay < WORK_END_MINUTE;
+}

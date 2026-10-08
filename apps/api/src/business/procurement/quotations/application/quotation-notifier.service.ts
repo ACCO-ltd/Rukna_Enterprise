@@ -7,13 +7,19 @@ import { NotificationWriter } from '../../../../platform/notifications/applicati
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { QuotationAccessService } from './quotation-access.service.js';
 import type { CommandContext } from './quotation-command-runner.service.js';
+import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js';
+import { awardRound, decisionRound, type QuotationAlertFacts } from '../domain/quotation-whatsapp.policy.js';
+import type { Db, QuotationRequestAggregate } from '../infrastructure/quotation-request.repository.js';
 
 const RESOURCE_TYPE = 'QuotationRequest';
 const ALL_KINDS: NotificationKind[] = ['QUOTES_READY', 'QUOTATION_AWARDED', 'ANOTHER_QUOTE_REQUESTED'];
+/** ADR-044 §10 — the SLA escalation goes to the holders of these roles (friendly Role.name). */
+const ESCALATION_ROLE_NAMES = ['CFO', 'CEO'];
 
 /** The request state an event is announced from (after the command's write). */
 export interface NotifiedRequest {
   sendCount: number;
+  sentAt: Date | null;
   updatedAt: Date;
 }
 
@@ -30,6 +36,10 @@ export interface NotifiedRequest {
  *
  * Recipients are all award holders, not band-specific: the value is unknown until finance types
  * the totals, so band routing happens through the award's approval instance instead.
+ *
+ * ADR-044 phase 2 — the same events also queue WhatsApp alerts (QuotationWhatsAppAlerts) to the
+ * same recipients who opted in: send / re-decision → QUOTE_READY, award → QUOTE_CHOSEN,
+ * ask-another → QUOTE_ANOTHER. Queued in this transaction; sent later by the dispatcher.
  */
 @Injectable()
 export class QuotationNotifier {
@@ -38,11 +48,13 @@ export class QuotationNotifier {
     private readonly access: QuotationAccessService,
     private readonly sod: SegregationOfDutiesService,
     private readonly projectAccess: ProjectAccessService,
+    private readonly whatsapp: QuotationWhatsAppAlerts,
   ) {}
 
   async sent(ctx: CommandContext, after: NotifiedRequest) {
     await this.resolve(ctx, ['ANOTHER_QUOTE_REQUESTED']);
-    await this.toSelectors(ctx, `quotation:${ctx.request.id}:QUOTES_READY:${after.sendCount}`);
+    const recipients = await this.toSelectors(ctx, `quotation:${ctx.request.id}:QUOTES_READY:${after.sendCount}`);
+    await this.alertSelectors(ctx, recipients, decisionRound(after));
   }
 
   async reopened(ctx: CommandContext) {
@@ -52,6 +64,15 @@ export class QuotationNotifier {
   async returned(ctx: CommandContext, after: NotifiedRequest, note: string) {
     await this.resolve(ctx, ['QUOTES_READY']);
     await this.toCollectors(ctx, 'ANOTHER_QUOTE_REQUESTED', `quotation:${ctx.request.id}:ANOTHER_QUOTE_REQUESTED:${after.sendCount}`, note);
+    await this.whatsapp.queue(ctx.tx, {
+      organizationId: ctx.request.organizationId,
+      requestId: ctx.request.id,
+      purpose: 'QUOTE_ANOTHER',
+      round: String(after.sendCount),
+      recipientUserIds: this.collectorIds(ctx),
+      facts: async () => ({ ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)), note }),
+      actorUserId: ctx.identity.userId,
+    });
   }
 
   /** The decision was made (it may still need approval): finance's "ready" ping is done. */
@@ -61,12 +82,45 @@ export class QuotationNotifier {
 
   /** The proposal was withdrawn: the request is back in finance's queue for this send cycle. */
   async awardWithdrawn(ctx: CommandContext) {
-    await this.toSelectors(ctx, `quotation:${ctx.request.id}:QUOTES_READY:${ctx.request.sendCount}`);
+    const recipients = await this.toSelectors(ctx, `quotation:${ctx.request.id}:QUOTES_READY:${ctx.request.sendCount}`);
+    // Same round as the original send: anyone already alerted is not alerted again.
+    await this.alertSelectors(ctx, recipients, decisionRound(ctx.request));
   }
 
   async awarded(ctx: CommandContext) {
     await this.resolve(ctx, ['QUOTES_READY']);
     await this.toCollectors(ctx, 'QUOTATION_AWARDED', `quotation:${ctx.request.id}:QUOTATION_AWARDED:${ctx.request.sendCount}`);
+    // The award was just written in this transaction: read the chosen store and payment path back —
+    // lazily, inside the alert's savepoint and only when alerts are on (review L1).
+    let read: Promise<{
+      awardedAt: Date | null;
+      awardedQuoteId: string | null;
+      paymentPath: 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER' | null;
+      awardedSupplier: { name: string } | null;
+    }> | null = null;
+    const award = () =>
+      (read ??= ctx.tx.quotationRequest.findUniqueOrThrow({
+        where: { id: ctx.request.id },
+        select: { awardedAt: true, awardedQuoteId: true, paymentPath: true, awardedSupplier: { select: { name: true } } },
+      }));
+    await this.whatsapp.queue(ctx.tx, {
+      organizationId: ctx.request.organizationId,
+      requestId: ctx.request.id,
+      purpose: 'QUOTE_CHOSEN',
+      // A re-decision can award again in the same send round: the award instant is the round.
+      round: async () => awardRound({ awardedAt: (await award()).awardedAt, sendCount: ctx.request.sendCount }),
+      recipientUserIds: this.collectorIds(ctx),
+      facts: async () => {
+        const chosen = await award();
+        const quote = ctx.request.quotes.find((q) => q.id === chosen.awardedQuoteId);
+        return {
+          ...(await this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber)),
+          storeName: chosen.awardedSupplier?.name ?? quote?.supplier?.name ?? quote?.storeName ?? null,
+          paymentPath: chosen.paymentPath,
+        };
+      },
+      actorUserId: ctx.identity.userId,
+    });
   }
 
   async orderRaised(ctx: CommandContext) {
@@ -76,10 +130,12 @@ export class QuotationNotifier {
   /** Re-notify the selectors with a fresh row (a re-decision is a new demand on them). */
   async redecisionRequested(ctx: CommandContext, after: NotifiedRequest) {
     await this.resolve(ctx, ['QUOTATION_AWARDED', 'QUOTES_READY']);
-    await this.toSelectors(
+    const recipients = await this.toSelectors(
       ctx,
       `quotation:${ctx.request.id}:QUOTES_READY:${after.sendCount}:redecision:${after.updatedAt.getTime()}`,
     );
+    // A re-decision restarts the clock (new sentAt): a new round of ready / reminder / escalation.
+    await this.alertSelectors(ctx, recipients, decisionRound(after));
   }
 
   async cancelled(ctx: CommandContext) {
@@ -91,6 +147,12 @@ export class QuotationNotifier {
    * project, minus anyone the SELECT_QUOTATION SoD bars on this request (they could not act on it).
    */
   async selectorIds(ctx: CommandContext): Promise<string[]> {
+    return this.selectorIdsFor(ctx.tx, ctx.request, ctx.mr.requestedBy);
+  }
+
+  /** `selectorIds` outside a command (the SLA job): the request and its MR's requester. */
+  async selectorIdsFor(tx: Db, request: QuotationRequestAggregate, mrRequestedBy: string): Promise<string[]> {
+    const ctx = { tx, request, mr: { requestedBy: mrRequestedBy } };
     const [action, resource] = PERMISSIONS.quotationsAward.split(':');
     const memberships = await ctx.tx.organizationMembership.findMany({
       where: {
@@ -133,16 +195,63 @@ export class QuotationNotifier {
 
   /** The request's creator and every quote/photo uploader. */
   collectorIds(ctx: CommandContext): string[] {
-    return this.access.evidenceTouchers(ctx.request);
+    return this.collectorIdsFor(ctx.request);
   }
 
-  private async toSelectors(ctx: CommandContext, dedupeKey: string) {
+  collectorIdsFor(request: QuotationRequestAggregate): string[] {
+    return this.access.evidenceTouchers(request);
+  }
+
+  /**
+   * Active org members holding a role named CFO or CEO who can reach the request's project — the
+   * SLA escalation audience (ADR-044 §10). Role names, as the project-access bypass list uses.
+   */
+  async escalationIdsFor(tx: Db, request: { organizationId: string; projectId: string | null }): Promise<string[]> {
+    const memberships = await tx.organizationMembership.findMany({
+      where: {
+        organizationId: request.organizationId,
+        status: 'ACTIVE',
+        removedAt: null,
+        user: { status: 'ACTIVE' },
+        roles: { some: { removedAt: null, role: { name: { in: ESCALATION_ROLE_NAMES } } } },
+      },
+      select: { userId: true },
+    });
+    const ids = [...new Set(memberships.map((m) => m.userId))];
+    if (!request.projectId) return ids;
+    const reachable = await this.projectAccess.usersWithAccess(request.organizationId, request.projectId, ids);
+    return ids.filter((id) => reachable.has(id));
+  }
+
+  /** `{ number, mrNumber, projectName, quoteCount }` for the WhatsApp templates — never an amount. */
+  async alertFacts(tx: Db, request: QuotationRequestAggregate, mrNumber: string): Promise<QuotationAlertFacts> {
+    const project = request.projectId
+      ? await tx.project.findUnique({ where: { id: request.projectId }, select: { name: true } })
+      : null;
+    const quoteCount = await tx.quote.count({ where: { quotationRequestId: request.id, status: 'ACTIVE' } });
+    return { number: request.number, mrNumber, projectName: project?.name ?? null, quoteCount };
+  }
+
+  private async alertSelectors(ctx: CommandContext, recipients: string[], round: string) {
+    await this.whatsapp.queue(ctx.tx, {
+      organizationId: ctx.request.organizationId,
+      requestId: ctx.request.id,
+      purpose: 'QUOTE_READY',
+      round,
+      recipientUserIds: recipients,
+      facts: () => this.alertFacts(ctx.tx, ctx.request, ctx.mr.mrNumber),
+      actorUserId: ctx.identity.userId,
+    });
+  }
+
+  private async toSelectors(ctx: CommandContext, dedupeKey: string): Promise<string[]> {
     const recipients = await this.selectorIds(ctx);
     const context = await this.context(ctx);
     await this.writer.upsertMany(
       ctx.tx,
       recipients.map((recipientUserId) => this.row(ctx, recipientUserId, 'QUOTES_READY', dedupeKey, context, `/finance/quotes/${ctx.request.id}`)),
     );
+    return recipients;
   }
 
   private async toCollectors(ctx: CommandContext, kind: NotificationKind, dedupeKey: string, note?: string) {

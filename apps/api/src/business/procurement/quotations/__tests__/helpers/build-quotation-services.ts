@@ -36,8 +36,22 @@ import { CommitmentLedgerRepository } from '../../../commitment-ledger/infrastru
 import { CommitmentLedgerWriter } from '../../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { ApprovalService } from '../../../../../platform/workflows/application/approval.service.js';
 import type { WorkflowsService } from '../../../../../platform/workflows/application/workflows.service.js';
+import { CommunicationService } from '../../../../../platform/messaging/communication.service.js';
+import { OutboundMessageRepository } from '../../../../../platform/messaging/infrastructure/outbound-message.repository.js';
+import { QuotationWhatsAppAlerts } from '../../application/quotation-whatsapp-alerts.service.js';
+import { QuotationSlaAlertJob } from '../../application/quotation-sla-alert.job.js';
+import { QuotationAlertGuard } from '../../application/quotation-alert-guard.service.js';
 
-export function buildQuotationServices(prisma: PrismaClient) {
+export interface QuotationServiceOptions {
+  /** Server environment seen by the WhatsApp alerts (e.g. QUOTATION_WHATSAPP_ENABLED). */
+  env?: Record<string, string | undefined>;
+  /** Whether the (fake) WhatsApp client reports itself configured. Default true. */
+  whatsappConfigured?: boolean;
+  /** The fake WhatsApp client's sendTemplate (default: accepts with a fresh wamid). */
+  sendTemplate?: (...args: unknown[]) => Promise<{ providerMessageId: string }>;
+}
+
+export function buildQuotationServices(prisma: PrismaClient, options: QuotationServiceOptions = {}) {
   const tenancy = { getClient: () => prisma } as unknown as TenancyService;
   const audit = new TransactionalAuditOutboxService();
   const sod = new SegregationOfDutiesService(tenancy);
@@ -48,11 +62,29 @@ export function buildQuotationServices(prisma: PrismaClient) {
   const repo = new QuotationRequestRepository();
   const poRepo = new PurchaseOrderRepository();
   const access = new QuotationAccessService(sod, projectAccess);
+  // ADR-044 phase 2 — real queue + dispatcher over a fake WhatsApp client and a no-op route table.
+  const env = options.env ?? {};
+  const config = { get: (key: string) => env[key] } as never;
+  let wamid = 0;
+  const whatsappClient = {
+    isConfigured: () => options.whatsappConfigured ?? true,
+    uploadMedia: async () => 'MEDIA',
+    sendTemplate: options.sendTemplate ?? (async () => ({ providerMessageId: `wamid.qt.${Date.now()}.${++wamid}` })),
+  };
+  const messages = new OutboundMessageRepository();
+  const communication = new CommunicationService(
+    tenancy,
+    messages,
+    { record: async () => undefined } as never,
+    whatsappClient as never,
+    audit,
+  );
+  const alerts = new QuotationWhatsAppAlerts(config, communication, messages);
   const runner = new QuotationCommandRunner(tenancy, repo, access, audit);
-  const query = new QuotationQueryService(tenancy, repo, access, commandGovernance);
+  const query = new QuotationQueryService(tenancy, repo, access, commandGovernance, alerts);
   // approve() never touches WorkflowsService (only initiate() does).
   const approvals = new ApprovalService(workflowsRepo, {} as WorkflowsService, sod);
-  const notifier = new QuotationNotifier(new NotificationWriter(), access, sod, projectAccess);
+  const notifier = new QuotationNotifier(new NotificationWriter(), access, sod, projectAccess, alerts);
   const noOpSettlement = { getSettlement: async () => ({ settlementStatus: 'OPEN' as const }) } as unknown as SettlementQueryService;
   const poService = new PurchaseOrderService(
     tenancy,
@@ -85,6 +117,8 @@ export function buildQuotationServices(prisma: PrismaClient) {
     link,
   );
   const fileAuth = new FileAuthorizationService(tenancy, projectAccess);
+  new QuotationAlertGuard(communication, alerts, repo, notifier).onModuleInit();
+  const slaJob = new QuotationSlaAlertJob({} as never, tenancy, repo, notifier, alerts);
 
   return {
     prisma,
@@ -109,6 +143,10 @@ export function buildQuotationServices(prisma: PrismaClient) {
     link,
     mrService,
     fileAuth,
+    communication,
+    alerts,
+    slaJob,
+    whatsappClient,
   };
 }
 

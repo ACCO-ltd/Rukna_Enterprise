@@ -52,6 +52,11 @@ export interface WhatsAppTemplateMessage {
   bodyParams: string[];
   /** A DOCUMENT header (invoice / receipt PDF) uploaded first with `uploadMedia`. */
   document?: { mediaId: string; filename: string };
+  /**
+   * The dynamic suffix of the template's first button when it is a URL button (ADR-044 phase 2:
+   * the quotation request id appended to the base URL registered with the template).
+   */
+  buttonUrlSuffix?: string;
 }
 
 export const WHATSAPP_DEFAULT_GRAPH_VERSION = 'v21.0';
@@ -147,6 +152,14 @@ export class WhatsAppClient {
     }
     if (message.bodyParams.length > 0) {
       components.push({ type: 'body', parameters: message.bodyParams.map((text) => ({ type: 'text', text })) });
+    }
+    if (message.buttonUrlSuffix) {
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: message.buttonUrlSuffix }],
+      });
     }
 
     const payload = {

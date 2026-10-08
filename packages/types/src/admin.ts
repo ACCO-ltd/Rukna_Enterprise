@@ -35,6 +35,10 @@ export interface ProvisionTemporaryUserResponse {
 export interface UpdateUserRequest {
   firstName?: string;
   lastName?: string;
+  /** ADR-044 phase 2 — E.164 staff WhatsApp number (e.g. +252612345678); null clears it. */
+  whatsappPhone?: string | null;
+  /** Opt-in to WhatsApp alerts; needs a number to turn on. */
+  whatsappAlertsEnabled?: boolean;
 }
 
 export interface SetUserPasswordRequest {
@@ -60,6 +64,10 @@ export interface UserWithRolesResponse {
   /** Membership status on the caller's active organization, if a membership exists. */
   membershipStatus: MembershipStatus | null;
   roles: RoleRef[];
+  /** ADR-044 phase 2 — staff WhatsApp number (E.164) or null. */
+  whatsappPhone: string | null;
+  /** WhatsApp alerts are sent only when this is true and the number is set. */
+  whatsappAlertsEnabled: boolean;
 }
 
 // ─── Roles ──────────────────────────────────────────────────────────────────

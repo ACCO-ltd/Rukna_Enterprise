@@ -206,6 +206,7 @@ export async function createUploadedPhoto(
 export async function cleanupQuotationEnv(prisma: PrismaClient, env: QuotationTestEnv): Promise<void> {
   const orgId = env.orgId;
   await prisma.$executeRaw`DELETE FROM notifications WHERE organization_id = ${orgId}`;
+  await prisma.$executeRaw`DELETE FROM outbound_messages WHERE organization_id = ${orgId}`;
   await prisma.$executeRaw`DELETE FROM quotation_quote_photos WHERE organization_id = ${orgId}`;
   await prisma.$executeRaw`DELETE FROM quotation_quotes WHERE organization_id = ${orgId}`;
   await prisma.$executeRaw`DELETE FROM quotation_requests WHERE organization_id = ${orgId}`;

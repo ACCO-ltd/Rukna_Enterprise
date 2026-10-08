@@ -10,6 +10,8 @@
  * (`moneyVisible: false`) — never `"0"`.
  */
 
+import type { StaffAlertLogEntry } from '@erp/types';
+
 import type { ApiDate, Money, ProcurementProjectRef, Quantity } from '../types';
 
 export type QuotationRequestStatus =
@@ -237,6 +239,8 @@ export interface QuotationRequestDetail {
    * False → every quote's `photos` is [] and only `photoCount` remains. Independent of moneyVisible.
    */
   photosVisible?: boolean;
+  /** ADR-044 phase 2 — WhatsApp alerts about the request, oldest first. Absent on older servers. */
+  messages?: StaffAlertLogEntry[];
 }
 
 /** The MR detail's quotation summary (Q8). Absent on servers that predate it. */

@@ -323,6 +323,8 @@ export class UsersPrismaRepository implements IUsersRepository {
     firstName: string;
     lastName: string;
     status: string;
+    whatsappPhone: string | null;
+    whatsappAlertsEnabled: boolean;
     memberships: {
       status: string;
       roles: { role: { id: string; name: string } }[];
@@ -337,6 +339,8 @@ export class UsersPrismaRepository implements IUsersRepository {
       status: raw.status as UserStatus,
       membershipStatus: membership ? (membership.status as MembershipStatus) : null,
       roles: membership ? membership.roles.map((r) => r.role) : [],
+      whatsappPhone: raw.whatsappPhone,
+      whatsappAlertsEnabled: raw.whatsappAlertsEnabled,
     };
   }
 }

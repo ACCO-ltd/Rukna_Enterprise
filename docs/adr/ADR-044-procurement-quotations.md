@@ -2,8 +2,8 @@
 
 **Status:** Proposed (owner: Abdulsalam; product decisions locked by ACCO's product owner,
 2026-10-07). Phase 1 is specified in `docs/specs/procurement-quotations-phase1.md`. Phase 2
-(WhatsApp + SLA reminders/escalation) and Phase 3 (executing the chosen payment path) are designed
-as seams here and are not built in Phase 1.
+(WhatsApp alerts to staff + SLA reminders/escalation) was built 2026-10-07 — see "Phase 2" below.
+Phase 3 (executing the chosen payment path) is designed as a seam here and is not built.
 
 ## Context
 
@@ -451,8 +451,8 @@ permission grants — each targeted and idempotent for the live tenant.
 
 ## Out of scope
 
-Partial awards and multiple requests per MR · OCR of quotes · supplier-facing RFQs · WhatsApp
-notifications and SLA reminders/escalation (Phase 2) · executing the payment path (Phase 3) ·
+Partial awards and multiple requests per MR · OCR of quotes · supplier-facing RFQs ·
+executing the payment path (Phase 3) ·
 offline-first PWA/service worker (Phase 1 keeps a page-lifetime IndexedDB upload queue, not a
 service worker) · writing MR `PARTIALLY_ORDERED`/`FULLY_ORDERED` · public-holiday calendar ·
 multi-currency quotes within one request · cleanup of unbound temporary files (pre-existing gap).
@@ -468,6 +468,98 @@ multi-currency quotes within one request · cleanup of unbound temporary files (
   modules that need immediacy.
 - First image capture/downscale path and first persistent client upload queue in the web app.
 - New money-bearing file owner kind with a stricter read rule than PO attachments.
+
+## Phase 2 — WhatsApp alerts to staff and the SLA chaser (built 2026-10-07)
+
+Locked by the product owner 2026-10-07. Spec addendum: `docs/specs/procurement-quotations-phase1.md`
+§0b. Template texts: `docs/integrations/whatsapp-templates.md` §5–9.
+
+1. **Five staff alerts, in Somali** (registered at Meta under language `en`; Somali is not a Meta
+   template language). Template names default to `quote_ready_so`, `quote_reminder_so`,
+   `quote_escalation_so`, `quote_chosen_so`, `quote_another_so`, overridable by
+   `WHATSAPP_TEMPLATE_QUOTE_READY|REMINDER|ESCALATION|CHOSEN|ANOTHER`; language
+   `WHATSAPP_TEMPLATE_QUOTE_LANGUAGE` (default `en`). Each has one dynamic-URL button whose suffix is
+   the request id; the base URL (the tenant's web address + `/finance/quotes/` or
+   `/procurement/quotes/`) is part of the Meta template, so the server never builds a host name.
+   **No message carries a price or a total.**
+
+   | Purpose | When | To |
+   |---|---|---|
+   | `QUOTE_READY` | send; re-decision | the in-app `QUOTES_READY` audience (award holders with project access, minus SoD-barred) |
+   | `QUOTE_REMINDER` | ≥ 2 working hours AWAITING_DECISION | the same selectors |
+   | `QUOTE_ESCALATION` | ≥ 4 working hours | active holders of the roles named `CFO` / `CEO` who can reach the project |
+   | `QUOTE_CHOSEN` | award completes | the request creator + quote uploaders (the in-app `QUOTATION_AWARDED` audience) |
+   | `QUOTE_ANOTHER` | ask-another | the same collectors, with finance's note (one line, ≤ 200 chars) |
+
+2. **Opt-in per person.** `User.whatsappPhone` (E.164, validated by libphonenumber, CHECK in SQL) and
+   `User.whatsappAlertsEnabled` (default false), edited by admins in Administration → Users through
+   the existing `PATCH /users/:id` (`manage:users`); alerts can only be on with a number, and the
+   change is audited with the number masked. Only ACTIVE users with both get WhatsApp; the in-app
+   notification is unchanged for everyone.
+
+3. **Queue, never inline.** Alerts are `OutboundMessage` rows (channel WHATSAPP, the new purposes,
+   `resourceType = quotation_request`, `recipientUserId`, `templateParams = { body, buttonUrlSuffix }`,
+   `nextAttemptAt`) written by `QuotationWhatsAppAlerts` inside the quotation command's transaction
+   (atomic with the event), under a SAVEPOINT so a failing insert is rolled back alone and logged —
+   it can never fail or block the action. `INSERT … ON CONFLICT DO NOTHING` on the existing
+   `(organization_id, idempotency_key)` unique key; key =
+   `quotation-wa:<requestId>:<purpose>:<round>:<userId>`, so each person gets each alert once per
+   round. Round = `<sendCount>.<sentAt ms>` for selector alerts (a re-send after ask-another and a
+   re-decision each start a new round; a withdrawn award does not), `sendCount` for ask-another, the
+   award instant for chosen.
+
+4. **Background sender** (`platform/messaging/OutboundMessageDispatcher`, `@nestjs/schedule` every
+   minute, every ACTIVE tenant inside `tenancyStorage.run` — ADR-031 Decision 3). Picks only rows
+   with `nextAttemptAt` set (client invoices/receipts stay synchronous and are never picked up),
+   claims them **one at a time, right before sending each**, with the time read at that claim and a
+   5-minute lease (`attemptCount + 1`) — longer than one send can take (20 s client timeout), so a
+   second replica can never claim a row that is still being sent. Then: a row past its attempt cap
+   (a process kept dying mid-send) → FAILED with its last error, not sent again; older than 12 h → FAILED `EXPIRED`;
+   the owning feature's **dispatch guard** (`QuotationAlertGuard`) says it is no longer wanted →
+   FAILED `NOT_NEEDED`. It re-reads everything: kill switch; the request still in the alert's round
+   (selector alerts: AWAITING_DECISION with the same send; chosen: AWARDED with the same award
+   instant — a re-award, possibly to another store, makes it stale; another: RETURNED in the same
+   send count; nothing for a cancelled request); the recipient still ACTIVE with an ACTIVE membership,
+   opted in and with a valid number (a changed number is used, a removed one drops the alert); and
+   still in the audience (selector not SoD-barred with project access / CFO-CEO with project access /
+   a collector of the request) → send.
+   `RATE_LIMITED` / `NETWORK` / `PROVIDER_ERROR` retry after 1, 2, 5, 15 min, FAILED after 5
+   attempts; other refusals fail at once; an unanswered send is UNKNOWN and never retried (ADR-042
+   item 4). Sent rows follow ADR-042's provider-id → route → SENT order, so the existing webhook moves
+   them to DELIVERED / READ / FAILED. If recording a send Meta accepted fails, the row is settled
+   UNKNOWN (best effort) so it is never re-sent. Background sends are not audited (no acting user, as for
+   webhooks); the row is the record. A process dying mid-send retries after the lease (at-least-once
+   in that crash only).
+
+5. **SLA chaser** (`QuotationSlaAlertJob`, every 5 minutes, every tenant): for each request
+   AWAITING_DECISION, `waitingMinutes(sentAt, now, urgent)` (the Phase 1 working-time function: Sat–Thu
+   07:00–17:00 Africa/Mogadishu, urgent = clock hours) ≥ 120 → reminder, ≥ 240 → escalation. A
+   non-urgent request is never chased outside working hours (also covers a missed run). Review M3:
+   only rounds sent within the last **3 days** and not before `QUOTATION_WHATSAPP_SINCE` (optional
+   ISO instant; set it to the moment the switch is turned on, so requests already waiting then are
+   not all chased at once) are looked at, and a round whose due reminder / escalation rows already
+   exist is skipped without a transaction. Review L6: due-ness is re-decided from the request read
+   under its row lock inside the job's transaction; the dispatch guard covers a decision made between
+   queueing and sending.
+
+6. **Switches.** `QUOTATION_WHATSAPP_ENABLED` (default **false**): unless `true`, nothing is queued,
+   the SLA job does nothing, and queued alerts are withdrawn at dispatch. If WhatsApp itself is not
+   configured (`WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID`), nothing is queued and the
+   dispatcher skips, each with one log line.
+
+7. **Delivery log.** The request detail gains `messages: [{ id, recipientName, recipientPhoneMasked
+   ('…678'), purpose, status, queuedAt, sentAt, deliveredAt, readAt, failedAt, failureReason }]`
+   (oldest first) for everyone who can open the detail (collect ∨ award holders). No full number, no
+   text, no amounts. The web shows it as a compact "WhatsApp" section on the decision and capture
+   screens.
+
+**Migration** `20261011120000_quotation_whatsapp_alerts` (additive): `MessagePurpose` + 5 values;
+`outbound_messages` + `recipient_user_id`, `template_params`, `attempt_count`, `next_attempt_at`,
+index `(status, next_attempt_at)`; `users` + `whatsapp_phone` (E.164 CHECK), `whatsapp_alerts_enabled`.
+
+**Not in Phase 2:** public holidays · per-person quiet hours · replies from staff (the webhook still
+only reads statuses) · a retry button for FAILED alerts · a profile page for staff to set their own
+number (none exists; admins set it) · rename-proof CFO/CEO matching (role names, as elsewhere).
 
 ## Open questions for the product owner
 

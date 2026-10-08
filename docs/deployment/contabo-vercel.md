@@ -268,6 +268,19 @@ docker compose -f deploy/docker-compose.prod.yml run --rm minio-init \
   mc admin config set local api cors_allow_origin='https://acco.rukna.site' && mc admin service restart local"
 ```
 
+**Quotation WhatsApp alerts (ADR-044 phase 2) — turning them on.** In `apps/api/.env`, set BOTH
+in the same edit, then restart the API (`docker compose -f deploy/docker-compose.prod.yml up -d api`):
+```bash
+QUOTATION_WHATSAPP_ENABLED=true
+QUOTATION_WHATSAPP_SINCE=2026-10-20T06:00:00Z   # the moment you turn it on (UTC, ISO)
+```
+`QUOTATION_WHATSAPP_SINCE` stops the 2 h / 4 h SLA chaser from reminding and escalating, all at
+once, every request that was already waiting before the switch (it also never chases a round sent
+more than 3 days ago). Prerequisites: the five `quote_*_so` templates approved in Meta
+(`docs/integrations/whatsapp-templates.md` §5–9) and staff numbers + "Send WhatsApp alerts" set in
+Administration → Users. To stop: `QUOTATION_WHATSAPP_ENABLED=false` + restart (queued alerts are
+withdrawn, nothing new is queued).
+
 **Logs:**
 ```bash
 docker compose -f deploy/docker-compose.prod.yml logs -f api
