@@ -39,7 +39,7 @@ import {
   planPaymentPost,
   type PaymentAction,
 } from '../payment-actions';
-import type { SupplierPayment } from '../types';
+import type { PostSupplierPaymentPayload, SupplierPayment } from '../types';
 
 // Approve is rendered separately — it is the governed transition (DRAFT → APPROVED) and runs
 // through the ADR-011 gate. Release, Post and Reverse keep the plain confirm-then-mutate flow.
@@ -199,11 +199,7 @@ function PostPaymentDialog({
   plan: ReturnType<typeof planPaymentPost>;
   isPending: boolean;
   isError: boolean;
-  onConfirm: (payload: {
-    apAccountCode: string;
-    bankGlCode: string;
-    supplierAdvanceCode: string;
-  }) => void;
+  onConfirm: (payload: PostSupplierPaymentPayload) => void;
   onDismiss: () => void;
 }) {
   const t = useTranslations('procurement.payments');

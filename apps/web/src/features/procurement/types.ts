@@ -696,9 +696,12 @@ export interface CreateSupplierBillPayload {
   lines: CreateSupplierBillLinePayload[];
 }
 
-/** Body of `POST /bills/:id/post`. The expense accounts come from each line's profile. */
+/**
+ * Body of `POST /bills/:id/post`. The expense accounts come from each line's profile; since
+ * ADR-045 (P3) the AP account is resolved by the server too, so the web sends nothing.
+ */
 export interface PostSupplierBillPayload {
-  apAccountCode: string;
+  apAccountCode?: string;
 }
 
 /** Body of `POST /bills/:id/reverse`. */
@@ -986,11 +989,16 @@ export interface CreateSupplierPaymentPayload {
   allocations?: PaymentAllocationPayload[];
 }
 
-/** Body of `POST /payments/:id/post`. All three are required even when a branch is unused. */
+/**
+ * Body of `POST /payments/:id/post`. Since ADR-045 (P3) the server resolves every account: the
+ * bank GL from the payment's bank account (a different `bankGlCode` is refused,
+ * `BANK_GL_MISMATCH`), AP and Supplier advance by role. The web sends nothing; the fields stay
+ * optional for the API's sake only.
+ */
 export interface PostSupplierPaymentPayload {
-  apAccountCode: string;
-  bankGlCode: string;
-  supplierAdvanceCode: string;
+  apAccountCode?: string;
+  bankGlCode?: string;
+  supplierAdvanceCode?: string;
 }
 
 /** Body of `POST /payments/:id/reverse`. */

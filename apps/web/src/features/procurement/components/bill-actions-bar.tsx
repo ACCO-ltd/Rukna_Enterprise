@@ -60,7 +60,7 @@ import {
   useReverseSupplierBill,
   useSubmitSupplierBill,
 } from '../hooks/use-procurement';
-import type { SupplierBill } from '../types';
+import type { PostSupplierBillPayload, SupplierBill } from '../types';
 import { ResolveExceptionDialog } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
@@ -391,7 +391,7 @@ function PostDialog({
   plan: ReturnType<typeof planBillPost>;
   isPending: boolean;
   errorMessage: string | null;
-  onConfirm: (payload: { apAccountCode: string }) => void;
+  onConfirm: (payload: PostSupplierBillPayload) => void;
   onDismiss: () => void;
 }) {
   const t = useTranslations('procurement.bills');
