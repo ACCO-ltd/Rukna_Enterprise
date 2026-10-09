@@ -5,6 +5,7 @@ import { ApiError } from '@/lib/api-client';
 import {
   amountProblem,
   appliedTotal,
+  returnDestinations,
   nextPending,
   prepaymentApplyAmount,
   bandSteps,
@@ -67,6 +68,20 @@ describe('payment rules', () => {
     expect(prepaymentApplyAmount('1000.00', '980.00')).toBe('980.00');
     expect(prepaymentApplyAmount('300.00', '980.00')).toBe('300.00');
     expect(prepaymentApplyAmount('0.00', '980.00')).toBeNull();
+  });
+
+  it('returns change where it came from: cash to the source cash box, EVC to the float, never a dual-control bank', () => {
+    const accounts = [
+      { id: 'bank', bankName: 'Salaam Bank', accountName: 'Main' },
+      { id: 'box', bankName: 'Cash box', accountName: 'Cash box' },
+      { id: 'evc', bankName: 'EVC Plus', accountName: 'EVC float' },
+    ];
+    const cash = new Set(['box', 'evc']);
+    expect(returnDestinations('CASH', accounts, cash, 'box')).toMatchObject({ defaultId: 'box' });
+    expect(returnDestinations('CASH', accounts, cash, 'bank').defaultId).toBe('box');
+    expect(returnDestinations('CASH', accounts, cash, null).options.map((a) => a.id)).toEqual(['box', 'evc']);
+    expect(returnDestinations('MOBILE_MONEY', accounts, cash, 'box').defaultId).toBe('evc');
+    expect(returnDestinations('BANK', accounts, cash, null).options).toHaveLength(3);
   });
 
   it('sums what a record applied', () => {

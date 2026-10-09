@@ -59,9 +59,14 @@ export function primaryFinanceAction(payment: QuotationPayment | null | undefine
   if (!payment || payment.state === 'SETTLED') return null;
   const enabled = PRIMARY_ORDER.map((name) => findPaymentAction(payment, name)).find((a) => a?.enabled);
   if (enabled) return enabled;
+  // "No receipt yet" is noise once a receipt was recorded (the order is settling).
+  const recorded = payment.storeDocuments.some((d) => d.status === 'RECORDED');
   return (
     BLOCKED_ORDER.map((name) => findPaymentAction(payment, name)).find(
-      (a) => a !== null && a.reason !== 'MISSING_PERMISSION',
+      (a) =>
+        a !== null &&
+        a.reason !== 'MISSING_PERMISSION' &&
+        !(recorded && a.reason === 'NO_RECEIPT_TO_RECORD'),
     ) ?? null
   );
 }
@@ -128,6 +133,34 @@ export function newIdempotencyKey(): string {
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+const CASH_LIKE = /cash|petty|sanduuq/i;
+const MOBILE_LIKE = /evc|zaad|sahal|e-?dahab|mobile|hormuud|telesom/i;
+
+/**
+ * Where change returned lands by default (QA B): cash goes back where it came from — the account
+ * the advance was paid out of — else a cash box; EVC goes to the EVC float. Cash and mobile money
+ * are offered only accounts without signatories (`cashAccountIds`, from the readiness endpoint),
+ * so a dual-control bank is never the default for cash. Bank returns may go to any account.
+ */
+export function returnDestinations(
+  method: 'CASH' | 'MOBILE_MONEY' | 'BANK',
+  accounts: ReadonlyArray<{ id: string; bankName: string; accountName: string }>,
+  cashAccountIds: ReadonlySet<string> | null,
+  sourceAccountId: string | null,
+): { options: Array<{ id: string; bankName: string; accountName: string }>; defaultId: string } {
+  const options =
+    method === 'BANK' || cashAccountIds === null ? [...accounts] : accounts.filter((a) => cashAccountIds.has(a.id));
+  const named = (re: RegExp) => options.find((a) => re.test(`${a.bankName} ${a.accountName}`))?.id;
+  const source = sourceAccountId && options.some((a) => a.id === sourceAccountId) ? sourceAccountId : undefined;
+  const defaultId =
+    method === 'CASH'
+      ? (source ?? named(CASH_LIKE) ?? options[0]?.id ?? '')
+      : method === 'MOBILE_MONEY'
+        ? (named(MOBILE_LIKE) ?? source ?? options[0]?.id ?? '')
+        : (source ?? options[0]?.id ?? '');
+  return { options, defaultId };
 }
 
 /** Today in Mogadishu (UTC+3, no DST) as `yyyy-MM-dd` — the default document date (ADR-045 §2). */

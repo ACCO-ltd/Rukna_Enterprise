@@ -37,6 +37,7 @@ import {
   useIdempotencyKey,
   useReleaseCash,
   useReleaseDraft,
+  useSubmitOnce,
 } from '../../hooks/use-quotation-payment';
 import {
   amountProblem,
@@ -125,6 +126,7 @@ function ReleaseForm({
   const { fromError } = usePaymentRefusalText();
   // One key for this open: a retry after a lost response cannot release twice.
   const idempotencyKey = useIdempotencyKey(true);
+  const once = useSubmitOnce(requestId);
 
   const creator = draft.recipients.find((r) => r.isRequestCreator) ?? draft.recipients[0];
   const lastUsed = draft.accounts.find((a) => a.lastUsed) ?? draft.accounts[0];
@@ -154,7 +156,7 @@ function ReleaseForm({
       onSubmit={(event) => {
         event.preventDefault();
         setTouched(true);
-        if (!canSubmit || !account || !amountText) return;
+        if (!canSubmit || !account || !amountText || !once.begin()) return;
         release.mutate(
           {
             idempotencyKey,
@@ -173,7 +175,14 @@ function ReleaseForm({
               if (instance) {
                 onGated(instance);
                 onClose();
+                return;
               }
+              void once.landedAnyway(err).then((landed) => {
+                if (landed) {
+                  release.reset();
+                  onClose();
+                }
+              });
             },
           },
         );
@@ -200,7 +209,9 @@ function ReleaseForm({
         <FormField
           htmlFor="release-amount"
           label={t('amount')}
-          hint={cap ? t(mode === 'topUp' ? 'topUpHint' : 'amountHint', { cap: money(cap) }) : undefined}
+          // A top-up against a recorded bill is the receipt's difference; before a receipt it is
+          // simply more cash, up to what the order still needs.
+          hint={cap ? t(mode === 'topUp' && applyToBillId ? 'topUpHint' : 'amountHint', { cap: money(cap) }) : undefined}
           error={
             touched && problem
               ? problem === 'over'

@@ -33,7 +33,7 @@ import {
 
 import { formatMoney } from '@/lib/format';
 
-import { useIdempotencyKey, usePayDraft, usePayFromAward } from '../../hooks/use-quotation-payment';
+import { useIdempotencyKey, usePayDraft, usePayFromAward, useSubmitOnce } from '../../hooks/use-quotation-payment';
 import {
   amountProblem,
   bandSteps,
@@ -118,6 +118,7 @@ function PayForm({
   const tCommon = useTranslations('common');
   const { fromError } = usePaymentRefusalText();
   const idempotencyKey = useIdempotencyKey(true);
+  const once = useSubmitOnce(requestId);
   const currency = draft.currencyCode ?? currencyCode;
   const money = (value: string | null | undefined) => formatMoney(value ?? null, currency) ?? '';
 
@@ -170,7 +171,7 @@ function PayForm({
       onSubmit={(event) => {
         event.preventDefault();
         setTouched(true);
-        if (!ready || !account || !amountText || !method) return;
+        if (!ready || !account || !amountText || !method || !once.begin()) return;
         pay.mutate(
           {
             idempotencyKey,
@@ -189,7 +190,14 @@ function PayForm({
               if (instance) {
                 onAwaiting('APPROVAL', instance);
                 onClose();
+                return;
               }
+              void once.landedAnyway(err).then((landed) => {
+                if (landed) {
+                  pay.reset();
+                  onClose();
+                }
+              });
             },
           },
         );
@@ -262,13 +270,17 @@ function PayForm({
           <DatePicker id="pay-date" value={paymentDate} onChange={setDate} />
         </FormField>
 
-        {account?.underDualControl ? <Notice tone="info">{t('signaturesNote')}</Notice> : null}
+        {/* One sentence for who still has to act: the approvers (bands), the signatories, both or
+            nobody — never "needs two signatures" next to "no approval needed". */}
         <p className="rounded-control bg-surface-subtle px-3 py-2 text-body-sm text-foreground">
           {draft.bandHint ? (
             <>
               {tRelease('approval', { band: draft.bandHint.name })}
               {steps.length ? <span className="block text-caption text-muted-foreground">{steps.join(' → ')}</span> : null}
+              {account?.underDualControl ? <span className="block">{t('thenSignatures')}</span> : null}
             </>
+          ) : account?.underDualControl ? (
+            t('signaturesOnly')
           ) : (
             tRelease('noApproval')
           )}

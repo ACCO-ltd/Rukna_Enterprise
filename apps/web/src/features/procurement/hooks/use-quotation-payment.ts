@@ -13,7 +13,7 @@
  * the approver acts — even after a reload.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   useMutation,
   useQuery,
@@ -56,6 +56,9 @@ import type {
   StoreDocumentRejectReason,
 } from '../quotations/payment-types';
 import type { QuotationRequestDetail } from '../quotations/types';
+import { ApiError } from '@/lib/api-client';
+
+import { getQuotationRequest } from '../api/quotations-api';
 import { procurementKeys } from './use-procurement';
 import { quotationKeys } from './use-quotations';
 
@@ -87,6 +90,62 @@ export function useIdempotencyKey(open: boolean): string {
     return next.key;
   }
   return state.key;
+}
+
+// ─── Submit once (QA D) ─────────────────────────────────────────────────────────
+
+/** What the payment block says about money documents — changes when a command landed. */
+export function paymentFingerprint(payment: QuotationPayment | null | undefined): string {
+  if (!payment) return '';
+  return JSON.stringify([
+    payment.funded,
+    payment.withBuyer,
+    payment.state,
+    (payment.advances ?? []).map((a) => [a.id, a.documentStatus, a.postingStatus, a.applied, a.returned]),
+    (payment.payments ?? []).map((p) => [p.id, p.documentStatus, p.postingStatus]),
+    (payment.pending ?? []).map((p) => [p.id, p.awaiting]),
+  ]);
+}
+
+/**
+ * A money dialog submits once: a second tap while the first is in flight is ignored. If the
+ * server then answers 409 for a command that in fact landed (a duplicate tap from elsewhere, a lost
+ * response replayed), the request is refetched and — when the payment block changed since the
+ * dialog was submitted — the dialog just closes instead of showing an error.
+ */
+export function useSubmitOnce(requestId: string) {
+  const qc = useQueryClient();
+  const locked = useRef(false);
+  const before = useRef('');
+  return {
+    /** False when a submit is already in flight. Call first in the submit handler. */
+    begin(): boolean {
+      if (locked.current) return false;
+      locked.current = true;
+      before.current = paymentFingerprint(
+        qc.getQueryData<QuotationRequestDetail>(quotationKeys.detail(requestId))?.payment,
+      );
+      return true;
+    },
+    done() {
+      locked.current = false;
+    },
+    /** On an error: true when the command landed anyway (close quietly), else unlock. */
+    async landedAnyway(error: unknown): Promise<boolean> {
+      locked.current = false;
+      if (!(error instanceof ApiError) || error.status !== 409 || gatedInstanceOf(error)) return false;
+      try {
+        const fresh = await qc.fetchQuery({
+          queryKey: quotationKeys.detail(requestId),
+          queryFn: () => getQuotationRequest(requestId),
+          staleTime: 0,
+        });
+        return paymentFingerprint(fresh?.payment) !== before.current;
+      } catch {
+        return false;
+      }
+    },
+  };
 }
 
 // ─── Pending re-drive (gated commands) ────────────────────────────────────────────

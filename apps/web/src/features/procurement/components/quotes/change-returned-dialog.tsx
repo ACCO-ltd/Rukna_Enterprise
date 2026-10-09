@@ -28,8 +28,20 @@ import {
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useIdempotencyKey, useRecordAdvanceReturn } from '../../hooks/use-quotation-payment';
-import { amountProblem, outstandingAdvances, todayInMogadishu, toMoneyString } from '../../quotations/payment-rules';
+import { useGetBuyerAdvance } from '../../hooks/use-procurement';
+import {
+  useBuyerCashReadiness,
+  useIdempotencyKey,
+  useRecordAdvanceReturn,
+  useSubmitOnce,
+} from '../../hooks/use-quotation-payment';
+import {
+  amountProblem,
+  outstandingAdvances,
+  returnDestinations,
+  todayInMogadishu,
+  toMoneyString,
+} from '../../quotations/payment-rules';
 import type { CashPaymentMethod, QuotationPayment } from '../../quotations/payment-types';
 import { usePaymentRefusalText } from './payment-shared';
 
@@ -56,6 +68,7 @@ export function ChangeReturnedDialog({
   const banks = useBankAccounts();
   // One key for this open: a double tap or a retry records one return.
   const idempotencyKey = useIdempotencyKey(true);
+  const once = useSubmitOnce(requestId);
 
   const open = outstandingAdvances(payment);
   const [advanceId, setAdvanceId] = useState(open[0]?.id ?? '');
@@ -63,9 +76,19 @@ export function ChangeReturnedDialog({
   const [typed, setTyped] = useState<string | null>(null);
   const amount = typed ?? advance?.outstanding ?? '';
   const [method, setMethod] = useState<CashPaymentMethod>('CASH');
-  const accounts = (banks.data ?? []).filter((b) => b.status === 'ACTIVE' && b.currencyCode === currencyCode);
+  const active = (banks.data ?? []).filter((b) => b.status === 'ACTIVE' && b.currencyCode === currencyCode);
+  // The account the cash came from, and the accounts without signatories (cash box, EVC float).
+  const source = useGetBuyerAdvance(advance?.id ?? '');
+  const readiness = useBuyerCashReadiness();
+  const cashIds = readiness.data ? new Set(readiness.data.cashAccounts.map((a) => a.bankAccountId)) : null;
+  const { options: accounts, defaultId } = returnDestinations(
+    method,
+    active,
+    cashIds,
+    source.data?.disbursementBankAccountId ?? null,
+  );
   const [destination, setDestination] = useState('');
-  const destinationId = destination || accounts[0]?.id || '';
+  const destinationId = accounts.some((a) => a.id === destination) ? destination : defaultId;
   const [receivedAt, setDate] = useState(todayInMogadishu());
   const [touched, setTouched] = useState(false);
 
@@ -87,13 +110,22 @@ export function ChangeReturnedDialog({
       busy={record.isPending}
       onSubmit={() => {
         setTouched(true);
-        if (!ready || !advance || !amountText) return;
+        if (!ready || !advance || !amountText || !once.begin()) return;
         record.mutate(
           {
             advanceId: advance.id,
             payload: { idempotencyKey, amount: amountText, returnMethod: method, destinationBankAccountId: destinationId, receivedAt },
           },
-          { onSuccess: onClose },
+          {
+            onSuccess: onClose,
+            onError: (err) =>
+              void once.landedAnyway(err).then((landed) => {
+                if (landed) {
+                  record.reset();
+                  onClose();
+                }
+              }),
+          },
         );
       }}
     >
@@ -140,7 +172,10 @@ export function ChangeReturnedDialog({
           label={t('method')}
           name="change-method"
           value={method}
-          onChange={setMethod}
+          onChange={(next) => {
+            setMethod(next);
+            setDestination('');
+          }}
           options={METHODS.map((m) => ({ value: m, label: tMethod(m) }))}
         />
 

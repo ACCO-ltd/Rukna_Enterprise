@@ -26,7 +26,7 @@ import {
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, parseMinorUnits } from '@/lib/money';
 
-import { useApplyPrepayment, usePayDraft } from '../../hooks/use-quotation-payment';
+import { useApplyPrepayment, usePayDraft, useSubmitOnce } from '../../hooks/use-quotation-payment';
 import { prepaymentApplyAmount } from '../../quotations/payment-rules';
 import type { QuotationPayment } from '../../quotations/payment-types';
 import { usePaymentRefusalText } from './payment-shared';
@@ -48,6 +48,7 @@ export function ApplyPrepaymentDialog({
   const { fromError } = usePaymentRefusalText();
   const draft = usePayDraft(requestId);
   const apply = useApplyPrepayment(requestId);
+  const once = useSubmitOnce(requestId);
 
   const prepayments = draft.data?.unappliedPrepayments ?? [];
   const bills = draft.data?.bills ?? [];
@@ -70,12 +71,21 @@ export function ApplyPrepaymentDialog({
       closeLabel={tCommon('close')}
       busy={apply.isPending}
       onSubmit={() => {
-        if (!prepayment || !bill || !amount) return;
+        if (!prepayment || !bill || !amount || !once.begin()) return;
         const minor = parseMinorUnits(amount, MONEY_SCALE)!;
         // The allocation DTO takes a JSON number; minor units keep the conversion exact.
         apply.mutate(
           { paymentId: prepayment.paymentId, supplierBillId: bill.id, amount: minor / 100 },
-          { onSuccess: onClose },
+          {
+            onSuccess: onClose,
+            onError: (err) =>
+              void once.landedAnyway(err).then((landed) => {
+                if (landed) {
+                  apply.reset();
+                  onClose();
+                }
+              }),
+          },
         );
       }}
     >

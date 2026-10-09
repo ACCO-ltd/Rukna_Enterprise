@@ -1312,7 +1312,7 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
 // ─── Buyer advances read ──────────────────────────────────────────────────────────
 
 export function useGetBuyerAdvance(id: string): UseQueryResult<BuyerAdvance> {
-  return useQuery({ queryKey: procurementKeys.buyerAdvance(id), queryFn: () => getBuyerAdvance(id) });
+  return useQuery({ queryKey: procurementKeys.buyerAdvance(id), queryFn: () => getBuyerAdvance(id), enabled: Boolean(id) });
 }
 
 /** The organisation's advances, newest first (the Buyer advances page). */
