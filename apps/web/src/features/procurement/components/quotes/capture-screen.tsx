@@ -686,17 +686,20 @@ function UploadState({
   if (item.phase === 'failed') {
     return (
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="min-h-11 border-danger/40 text-danger"
-          aria-label={t('retry', { store: label })}
-          onClick={onRetry}
-        >
-          <RotateCw className="size-4" aria-hidden="true" />
-          {t('failed')}
-        </Button>
+        {/* A duplicate photo is refused for what it is: retrying cannot help, only Discard. */}
+        {item.failureCode !== 'QUOTE_PHOTO_DUPLICATE' ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 border-danger/40 text-danger"
+            aria-label={t('retry', { store: label })}
+            onClick={onRetry}
+          >
+            <RotateCw className="size-4" aria-hidden="true" />
+            {t('failed')}
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" size="sm" className="min-h-11 text-muted-foreground" onClick={onDiscard}>
           {t('discard')}
         </Button>

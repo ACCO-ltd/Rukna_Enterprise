@@ -90,6 +90,35 @@ describe('BuyerAdvancesList', () => {
     expect(grid.getAllByText('Recorded before GL posting')).toHaveLength(1);
   });
 
+  it('shows a cancelled advance as cancelled, holding nothing — not "Not posted / outstanding"', async () => {
+    hooks.all.mockReturnValue({
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+      data: [
+        {
+          id: 'adv-c',
+          purchaseOrderId: 'po1',
+          purchaseOrder: { id: 'po1', poNumber: 'PO-2026-0009' },
+          amount: '900.00',
+          outstanding: '900.00',
+          currencyCode: 'USD',
+          advancedAt: '2026-10-08',
+          documentStatus: 'CANCELLED',
+          postingStatus: 'NOT_POSTED',
+          postedJournalEntryId: null,
+        },
+      ],
+    });
+    renderWithProviders(<BuyerAdvancesList />);
+    const grid = within(await screen.findByRole('table'));
+    expect(grid.getByText('Cancelled')).toBeInTheDocument();
+    // The amount is shown once (the advance); the outstanding cell holds nothing.
+    expect(grid.getAllByText('$900.00')).toHaveLength(1);
+    expect(grid.getAllByText('—').length).toBeGreaterThan(0);
+    expect(grid.queryByText('Not posted')).not.toBeInTheDocument();
+  });
+
   it('shows the empty state when the organisation has none', async () => {
     hooks.all.mockReturnValue({ isPending: false, isError: false, refetch: vi.fn(), data: [] });
     renderWithProviders(<BuyerAdvancesList />);

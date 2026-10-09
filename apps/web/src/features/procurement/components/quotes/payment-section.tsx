@@ -141,8 +141,15 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
   const chainApproved = payment.approval?.status === 'APPROVED';
   const roles = session.user?.roles ?? [];
   const currentRole = payment.approval?.currentStepRole ?? null;
-  const mayActOnStep =
-    can('manage:workflow') || (currentRole !== null && roles.includes(currentRole)) || (!payment.approval && Boolean(gated));
+  // The approve / reject panel reads workflow endpoints a Finance Officer may not see (403): mount
+  // it only for whoever can act on the current step. Everyone else reads the step from the
+  // request's own data ("Waiting for CFO").
+  const mayActOnStep = can('manage:workflow') || (currentRole !== null && roles.includes(currentRole));
+  // Finishing is offered only when it can go through: the chain is approved, or the attempt waits
+  // only for its post. While a step or the signatures are pending, the screen says who it waits for.
+  const readyToFinish = chainApproved || serverPending?.awaiting === 'POSTING';
+  const waitingOnOthers =
+    serverPending !== null && serverPending.awaiting !== 'POSTING' && !chainApproved;
   const mayChangePath = canPay && can(PAYMENT_PERMISSIONS.changePath) && offersAction(payment, 'CHANGE_PATH');
   const latestDoc = latestStoreDocument(payment);
   const submittedDoc = latestStoreDocument(payment, 'SUBMITTED');
@@ -184,13 +191,26 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
         </div>
         <PaymentStatePill state={payment.state} />
       </div>
-      <p className="text-body-sm text-muted-foreground">{t(`stateHint.${payment.state}`)}</p>
+      <p className="text-body-sm text-muted-foreground">
+        {!buyerCash && t.has(`stateHintSupplier.${payment.state}`)
+          ? t(`stateHintSupplier.${payment.state}`)
+          : t(`stateHint.${payment.state}`)}
+      </p>
 
       {/* ── Money (hidden for money-blind roles) ─────────────────────────────── */}
       {payment.moneyVisible ? (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-4">
           <Fact label={t('facts.ordered')} value={money(payment.orderedAmount)} />
-          <Fact label={t(buyerCash ? 'facts.released' : 'facts.paid')} value={money(payment.funded)} />
+          <Fact
+            label={t(
+              payment.state === 'AWAITING_SIGNATURES'
+                ? 'facts.awaitingSignatures'
+                : buyerCash
+                  ? 'facts.released'
+                  : 'facts.paid',
+            )}
+            value={money(payment.funded)}
+          />
           {buyerCash && funded > 0 ? (
             <Fact
               label={holder ? t('facts.withBuyer', { name: firstName(holder) }) : t('facts.withBuyerNoName')}
@@ -198,7 +218,9 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
               emphasis
             />
           ) : null}
-          <Fact label={t('facts.remaining')} value={money(payment.remainingToFund)} />
+          {payment.state !== 'SETTLED' ? (
+            <Fact label={t('facts.remaining')} value={money(payment.remainingToFund)} />
+          ) : null}
         </dl>
       ) : (
         <p className="text-caption text-muted-foreground">{t('moneyHidden')}</p>
@@ -259,10 +281,10 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
                   : t(gated?.kind === 'pay' || !buyerCash ? 'approval.gatedBodyPay' : 'approval.gatedBody')}
             </p>
           </Notice>
-          {!chainApproved && (canPay || mayActOnStep) && instanceId ? (
+          {!chainApproved && mayActOnStep && instanceId ? (
             <ApprovalPanel instanceId={instanceId} transactionType={PAYMENT_APPROVAL} />
           ) : null}
-          {canPay ? (
+          {canPay && readyToFinish ? (
             <Button
               type="button"
               variant={chainApproved ? 'default' : 'outline'}
@@ -300,7 +322,9 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
       ) : null}
 
       {/* ── The one primary action ───────────────────────────────────────────── */}
-      {primary && !(approvalPending && primary.action !== 'RECORD_RECEIPT') ? (
+      {primary &&
+      !(approvalPending && primary.action !== 'RECORD_RECEIPT') &&
+      !(primary.action === 'FINISH_PAYMENT' && waitingOnOthers) ? (
         <div className="space-y-1">
           {primary.action === 'RECORD_RECEIPT' && primary.enabled && submittedDoc ? (
             <Button asChild size="lg" className="h-14 w-full text-base">
@@ -329,6 +353,17 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
               {fromCode(primary.reason) ?? primary.reason}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {primary?.action === 'APPLY_PREPAYMENT' && findPaymentAction(payment, 'PAY_SUPPLIER')?.enabled === false ? (
+        <div className="space-y-1">
+          <Button type="button" variant="outline" className="min-h-11 w-full" disabled aria-describedby="payment-pay-reason">
+            {tActions('payTo', { name: storeName })}
+          </Button>
+          <p id="payment-pay-reason" className="text-center text-body-sm text-muted-foreground">
+            {fromCode(findPaymentAction(payment, 'PAY_SUPPLIER')?.reason) ?? ''}
+          </p>
         </div>
       ) : null}
 
@@ -489,6 +524,18 @@ function History({ payment, currency }: { payment: QuotationPayment; currency: s
       <ul className="divide-y divide-border rounded-panel border border-border">
         {advances.map((advance) => {
           const out = (parseMinorUnits(advance.outstanding, MONEY_SCALE) ?? 0) > 0;
+          const date = formatDate(advance.advancedAt, locale) ?? '';
+          // Honest status: a draft waits for approval; cancelled / reversed hold nothing.
+          const meta =
+            advance.documentStatus === 'DRAFT'
+              ? t('advanceWaiting', { date })
+              : advance.documentStatus === 'CANCELLED'
+                ? t('advanceCancelled', { date })
+                : advance.postingStatus === 'REVERSED'
+                  ? t('advanceReversed', { date })
+                  : out
+                    ? t('advanceMeta', { date, outstanding: money(advance.outstanding) })
+                    : t('advanceSettled', { date });
           return (
             <li key={advance.id}>
               <Link
@@ -500,9 +547,7 @@ function History({ payment, currency }: { payment: QuotationPayment; currency: s
                     {t('advance', { name: advance.recipientName ?? '—' })}
                   </span>
                   <span className="block text-caption text-muted-foreground">
-                    {out
-                      ? t('advanceMeta', { date: formatDate(advance.advancedAt, locale) ?? '', outstanding: money(advance.outstanding) })
-                      : t('advanceSettled', { date: formatDate(advance.advancedAt, locale) ?? '' })}
+                    {meta}
                     {advance.legacy ? ` · ${t('legacy')}` : ''}
                   </span>
                 </span>

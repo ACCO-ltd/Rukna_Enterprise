@@ -9,6 +9,7 @@ import {
   Button,
   EmptyState,
   Notice,
+  StatusPill,
   SectionHeader,
   type FilterValues,
   type ListFilterField,
@@ -28,7 +29,7 @@ import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-gr
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useAllBuyerAdvances, useGetBuyerAdvance, usePostBuyerAdvance } from '../hooks/use-procurement';
+import { useAllBuyerAdvances, useGetBuyerAdvance, usePostBuyerAdvance, useSupplierBill } from '../hooks/use-procurement';
 import { useCanPay, useReverseBuyerAdvance } from '../hooks/use-quotation-payment';
 import { todayInMogadishu } from '../quotations/payment-rules';
 import type { BuyerAdvance, BillPostingStatus } from '../types';
@@ -42,6 +43,37 @@ import { usePaymentRefusalText } from './quotes/payment-shared';
 export function isLegacyAdvance(advance: Pick<BuyerAdvance, 'legacy' | 'postingStatus' | 'postedJournalEntryId'>): boolean {
   if (typeof advance.legacy === 'boolean') return advance.legacy;
   return advance.postingStatus === 'POSTED' && !advance.postedJournalEntryId;
+}
+
+/** Drafts (awaiting approval), cancelled and reversed advances hold no cash. */
+export function holdsNothing(advance: Pick<BuyerAdvance, 'documentStatus' | 'postingStatus'>): boolean {
+  return (
+    advance.documentStatus === 'DRAFT' ||
+    advance.documentStatus === 'CANCELLED' ||
+    advance.documentStatus === 'REJECTED' ||
+    advance.postingStatus === 'REVERSED'
+  );
+}
+
+/** The advance's state in words: waiting for approval, cancelled, reversed — else its posting. */
+function AdvanceStatus({ advance }: { advance: Pick<BuyerAdvance, 'documentStatus' | 'postingStatus'> }) {
+  const t = useTranslations('procurement.advances.state');
+  if (advance.documentStatus === 'DRAFT') return <StatusPill tone="progress">{t('waiting')}</StatusPill>;
+  if (advance.documentStatus === 'CANCELLED' || advance.documentStatus === 'REJECTED')
+    return <StatusPill tone="historical">{t('cancelled')}</StatusPill>;
+  if (advance.postingStatus === 'REVERSED') return <StatusPill tone="historical">{t('reversed')}</StatusPill>;
+  return <PostingStatusBadge status={advance.postingStatus} />;
+}
+
+/** A bill reference: its number, read from the bill when the row has only the id. */
+function BillRef({ id, number }: { id: string; number?: string | null }) {
+  const bill = useSupplierBill(number ? '' : id);
+  const shown = number ?? bill.data?.billNumber ?? bill.data?.supplierInvoiceNumber ?? null;
+  return (
+    <Link href={`/finance/accounting/bills/${id}`} className="text-sm font-medium text-brand-primary hover:underline">
+      {shown ?? '…'}
+    </Link>
+  );
 }
 
 function LegacyBadge() {
@@ -127,10 +159,14 @@ export function BuyerAdvancesList() {
       header: t('colOutstanding'),
       numeric: true,
       sortable: true,
-      plainValue: (adv) => Number(adv.outstanding),
-      render: (adv, ctx) => (
-        <bdi className="tabular-nums">{formatMoney(adv.outstanding, adv.currencyCode, ctx.locale)}</bdi>
-      ),
+      plainValue: (adv) => (holdsNothing(adv) ? 0 : Number(adv.outstanding)),
+      // A draft, cancelled or reversed advance holds no cash: never show its amount as outstanding.
+      render: (adv, ctx) =>
+        holdsNothing(adv) ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <bdi className="tabular-nums">{formatMoney(adv.outstanding, adv.currencyCode, ctx.locale)}</bdi>
+        ),
     },
     {
       key: 'posting',
@@ -138,7 +174,7 @@ export function BuyerAdvancesList() {
       card: 'status',
       render: (adv) => (
         <span className="flex flex-wrap items-center gap-1">
-          <PostingStatusBadge status={adv.postingStatus} />
+          <AdvanceStatus advance={adv} />
           {isLegacyAdvance(adv) ? <LegacyBadge /> : null}
         </span>
       ),
@@ -230,7 +266,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           {t('detailTitle')}
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <PostingStatusBadge showAxis status={advance.postingStatus} />
+          <AdvanceStatus advance={advance} />
           <span className="text-sm text-muted-foreground">
             {formatDate(advance.advancedAt, locale)}
           </span>
@@ -305,7 +341,10 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
         <SectionHeader id="adv-amounts-heading" title={t('sectionDetails')} />
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label={t('colAmount')} value={formatMoney(advance.amount, advance.currencyCode, locale) ?? ''} />
-          <Field label={t('colOutstanding')} value={formatMoney(advance.outstanding, advance.currencyCode, locale) ?? ''} />
+          <Field
+            label={t('colOutstanding')}
+            value={holdsNothing(advance) ? '—' : (formatMoney(advance.outstanding, advance.currencyCode, locale) ?? '')}
+          />
           <Field label={t('colAdvancedAt')} value={formatDate(advance.advancedAt, locale) ?? ''} />
         </dl>
       </section>
@@ -363,12 +402,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
                 {advance.evidenceAllocations.map((ea) => (
                   <TableRow key={ea.id}>
                     <TableCell>
-                      <Link
-                        href={`/finance/accounting/bills/${ea.supplierBillId}`}
-                        className="text-sm font-medium text-brand-primary hover:underline"
-                      >
-                        {ea.billNumber ?? `${ea.supplierBillId.slice(0, 8)}…`}
-                      </Link>
+                      <BillRef id={ea.supplierBillId} number={ea.billNumber} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDate(ea.allocationDate ?? ea.createdAt, locale)}

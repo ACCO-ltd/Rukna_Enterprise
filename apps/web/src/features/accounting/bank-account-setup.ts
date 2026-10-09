@@ -181,7 +181,8 @@ export function cashAccountPreset(
     ...emptyBankAccountDraft(),
     accountName: names.evcName,
     bankName: names.evcProvider,
-    accountNumber: '',
+    // The float's merchant number when known; a readable placeholder otherwise (editable).
+    accountNumber: 'EVC-FLOAT',
     glAccountCode: named(/evc|zaad|mobile money|float/i),
   };
 }

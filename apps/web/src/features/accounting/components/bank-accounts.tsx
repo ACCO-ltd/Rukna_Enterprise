@@ -470,7 +470,6 @@ function ConfigureBankAccountForm({
       <>
       {/* A19 — the DTO offers an Arabic name, the column does not exist, and sending it fails
           the request. Said here so the omission does not read as an oversight. */}
-      <Alert variant="info" messages={[t('noArabicName')]} />
       {preset ? <Alert variant="info" messages={[tPreset('formHint')]} /> : null}
 
       <FormField htmlFor={ids.bankName} label={t('bankName')}>

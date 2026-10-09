@@ -24,7 +24,6 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 import { formatDate, formatMoney } from '@/lib/format';
-import { MONEY_SCALE, fromMinorUnits, sumMinorUnits } from '@/lib/money';
 
 import { useObjectUrl, useStoreDocumentUploads, useUploadQueue } from '../../hooks/use-quote-uploads';
 import { useStoreDocuments, useWithdrawStoreDocument } from '../../hooks/use-quotation-payment';
@@ -86,9 +85,12 @@ function CardBody({
   const toMe =
     advances.some((a) => a.recipientUserId === me) ||
     (recipientName !== null && Boolean(session.user?.name) && recipientName === session.user?.name);
-  const amountMinor = sumMinorUnits(mine.map((a) => a.amount), MONEY_SCALE);
-  const amountKnown = payment.moneyVisible && mine.length > 0 && mine.every((a) => a.amount !== null);
-  const amount = amountKnown ? formatMoney(fromMinorUnits(amountMinor, MONEY_SCALE), detail.currencyCode ?? 'USD', locale) : null;
+  // The server's figure (posted advances only, less what is applied / returned) — never a client
+  // sum, which would count a draft waiting for approval or a cancelled release.
+  const amount =
+    payment.moneyVisible && payment.withBuyer !== null && mine.length > 0
+      ? formatMoney(payment.withBuyer, detail.currencyCode ?? 'USD', locale)
+      : null;
 
   const photograph = findPaymentAction(payment, 'PHOTOGRAPH_RECEIPT');
   const mayCapture = can(QUOTATION_PERMISSIONS.collect) && photograph !== null;
@@ -393,10 +395,12 @@ function SendingRow({ item, onRetry, onDiscard }: { item: QueueItemView; onRetry
       <div className="space-y-1 rounded-control border border-danger/40 bg-surface px-3 py-2" role="alert">
         <p className="text-body-sm text-danger">{fromCode(item.failureCode) ?? t('state.failed')}</p>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={onRetry}>
-            <RotateCw className="size-4" aria-hidden="true" />
-            {t('retry')}
-          </Button>
+          {item.failureCode !== 'STORE_DOCUMENT_PHOTO_DUPLICATE' ? (
+            <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={onRetry}>
+              <RotateCw className="size-4" aria-hidden="true" />
+              {t('retry')}
+            </Button>
+          ) : null}
           <Button type="button" variant="ghost" size="sm" className="min-h-11 text-muted-foreground" onClick={onDiscard}>
             {t('discard')}
           </Button>

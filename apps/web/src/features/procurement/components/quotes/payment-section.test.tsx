@@ -69,6 +69,11 @@ function Harness() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps queued *Once results; a test that does not consume one must not leak it.
+  api.release.mockReset();
+  api.pay.mockReset();
+  api.cont.mockReset();
+  api.apply.mockReset();
   localStorage.clear();
   api.detail = awarded();
   api.releaseDraft.mockResolvedValue(releaseDraftFixture());
@@ -134,11 +139,28 @@ describe('PaymentSection — buyer cash', () => {
     expect(screen.getByText('Waiting for the site to receive the goods.')).toBeInTheDocument();
   });
 
-  it('a gated release is not a failure: it says "Sent for approval" and keeps the body for "Release now"', async () => {
+  it('a gated release is not a failure: "Sent for approval", waiting for the step role, no button that would 409', async () => {
     const user = userEvent.setup();
-    api.release.mockRejectedValueOnce(
-      new ApiError(409, 'Approval required', 'CONFLICT', [], { code: 'APPROVAL_REQUIRED', approvalInstanceId: 'wf-7', advanceId: 'adv-d' }),
-    );
+    api.release.mockImplementationOnce(async () => {
+      // The server now holds the draft and its approval chain.
+      api.detail = awarded({
+        state: 'AWAITING_APPROVAL',
+        approval: { instanceId: 'wf-7', status: 'PENDING', currentStepRole: 'CFO' },
+        pending: [
+          {
+            kind: 'BUYER_ADVANCE',
+            id: 'adv-d',
+            idempotencyKey: 'k',
+            amount: '1000.00',
+            awaiting: 'APPROVAL',
+            approvalInstanceId: 'wf-7',
+            continue: { method: 'POST', path: '/buyer-advances/adv-d/post' },
+          },
+        ],
+        allowedActions: [{ action: 'TOP_UP', enabled: false, reason: 'NOTHING_TO_FUND' }],
+      });
+      throw new ApiError(409, 'Approval required', 'CONFLICT', [], { code: 'APPROVAL_REQUIRED', approvalInstanceId: 'wf-7', advanceId: 'adv-d' });
+    });
     renderWithProviders(<Harness />, { permissions: PAYER });
 
     await user.click(await screen.findByRole('button', { name: 'Release cash to Ahmed' }));
@@ -146,13 +168,10 @@ describe('PaymentSection — buyer cash', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Release $1,000.00' }));
 
     expect(await screen.findByText('Sent for approval')).toBeInTheDocument();
-    expect(screen.getByTestId('approval-panel')).toHaveTextContent('wf-7');
-    const firstBody = api.release.mock.calls[0]![0];
-
-    api.release.mockResolvedValueOnce({ advance: { id: 'adv1' }, payment: null });
-    await user.click(screen.getByRole('button', { name: 'Release now' }));
-    await waitFor(() => expect(api.release).toHaveBeenCalledTimes(2));
-    expect(api.release.mock.calls[1]![0]).toEqual(firstBody);
+    expect(await screen.findByText('Waiting for CFO.')).toBeInTheDocument();
+    // A Finance Officer cannot act on the CFO step: no workflow panel (it would 403), no Release now.
+    expect(screen.queryByTestId('approval-panel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Release now' })).not.toBeInTheDocument();
   });
 
   it('finishes the server-pending attempt from any device: continue path, no body, chain from its instance', async () => {
@@ -182,9 +201,10 @@ describe('PaymentSection — buyer cash', () => {
     expect(api.release).not.toHaveBeenCalled();
   });
 
-  it('shows the approval chain from the pending attempt while it waits', async () => {
+  it('mounts the approve panel only for whoever can act on the current step', async () => {
     api.detail = awarded({
       state: 'AWAITING_APPROVAL',
+      approval: { instanceId: 'wf-5', status: 'PENDING', currentStepRole: 'CFO' },
       pending: [
         {
           kind: 'BUYER_ADVANCE',
@@ -198,8 +218,46 @@ describe('PaymentSection — buyer cash', () => {
       ],
       allowedActions: [],
     });
-    renderWithProviders(<Harness />, { permissions: PAYER });
+    renderWithProviders(<Harness />, { permissions: [...PAYER, 'manage:workflow'] });
     expect(await screen.findByTestId('approval-panel')).toHaveTextContent('wf-5');
+  });
+
+  it('a duplicate tap answered 409 after the release landed just closes the dialog (no error)', async () => {
+    const user = userEvent.setup();
+    api.release.mockImplementationOnce(async () => {
+      api.detail = awarded({
+        state: 'CASH_WITH_BUYER',
+        funded: '1000.00',
+        withBuyer: '1000.00',
+        advances: [
+          { id: 'adv1', recipientUserId: 'u-ahmed', recipientName: 'Ahmed Ali', amount: '1000.00', advancedAt: '2026-10-08', documentStatus: 'APPROVED', postingStatus: 'POSTED', applied: '0.00', returned: '0.00', outstanding: '1000.00', legacy: false },
+        ],
+        allowedActions: [{ action: 'TOP_UP', enabled: false, reason: 'NOTHING_TO_FUND' }],
+      });
+      throw new ApiError(409, 'Key reused', 'CONFLICT', [], { code: 'IDEMPOTENCY_KEY_REUSED' });
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    await user.click(await screen.findByRole('button', { name: 'Release cash to Ahmed' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Release cash' });
+    await user.click(within(dialog).getByRole('button', { name: 'Release $1,000.00' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(/already started with different details/)).not.toBeInTheDocument();
+    expect(await screen.findByText('Cash with buyer')).toBeInTheDocument();
+  });
+
+  it('says what each cash release is: waiting for approval, cancelled — never "settled"', async () => {
+    api.detail = awarded({
+      state: 'AWAITING_APPROVAL',
+      advances: [
+        { id: 'a1', recipientUserId: 'u-ahmed', recipientName: 'Ahmed Ali', amount: '1900.00', advancedAt: '2026-10-08', documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', applied: '0.00', returned: '0.00', outstanding: '0.00', legacy: false },
+        { id: 'a2', recipientUserId: 'u-ahmed', recipientName: 'Ahmed Ali', amount: '900.00', advancedAt: '2026-10-07', documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED', applied: '0.00', returned: '0.00', outstanding: '0.00', legacy: false },
+      ],
+      allowedActions: [],
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    expect(await screen.findByText(/waiting for approval/)).toBeInTheDocument();
+    expect(screen.getByText(/· cancelled/)).toBeInTheDocument();
+    expect(screen.queryByText(/settled/)).not.toBeInTheDocument();
   });
 
   it('renders a disabled action with the server reason in words (dual-control account)', async () => {
@@ -267,7 +325,10 @@ describe('PaymentSection — finance pays supplier', () => {
     await user.click(await screen.findByRole('button', { name: 'Pay Bakaara Steel' }));
     const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
     expect(within(dialog).getByRole('radio', { name: /Pay now, before goods/ })).toBeChecked();
-    expect(within(dialog).getByText('This account needs two bank signatures before the money goes out.')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('No approval needed — two bank signatories release it before the money goes out.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('No approval needed — you release it.')).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Pay $1,000.00' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -281,23 +342,38 @@ describe('PaymentSection — finance pays supplier', () => {
     expect(screen.getByText('Waiting for bank signatures')).toBeInTheDocument();
   });
 
-  it('a gated payment (409 APPROVAL_REQUIRED) shows the approval and re-drives with the same body and key', async () => {
+  it('a gated payment shows the approval; once approved, Complete the payment calls the continue path', async () => {
     const user = userEvent.setup();
     api.detail = awarded({ path: 'FINANCE_PAYS_SUPPLIER', allowedActions: [{ action: 'PAY_SUPPLIER', enabled: true }] });
-    api.pay.mockRejectedValueOnce(
-      new ApiError(409, 'Approval required', 'CONFLICT', [], { code: 'APPROVAL_REQUIRED', approvalInstanceId: 'wf-9', paymentId: 'sp-1' }),
-    );
+    api.pay.mockImplementationOnce(async () => {
+      api.detail = awarded({
+        path: 'FINANCE_PAYS_SUPPLIER',
+        state: 'AWAITING_APPROVAL',
+        approval: { instanceId: 'wf-9', status: 'APPROVED', currentStepRole: null },
+        pending: [
+          {
+            kind: 'SUPPLIER_PAYMENT',
+            id: 'sp-1',
+            idempotencyKey: 'k',
+            amount: '1000.00',
+            awaiting: 'APPROVAL',
+            approvalInstanceId: 'wf-9',
+            continue: { method: 'POST', path: '/supplier-payments/sp-1/continue' },
+          },
+        ],
+        allowedActions: [{ action: 'PAY_SUPPLIER', enabled: false, reason: 'NOTHING_TO_FUND' }],
+      });
+      throw new ApiError(409, 'Approval required', 'CONFLICT', [], { code: 'APPROVAL_REQUIRED', approvalInstanceId: 'wf-9', paymentId: 'sp-1' });
+    });
+    api.cont.mockResolvedValueOnce({ payment: { id: 'sp-1' }, paymentSummary: null });
     renderWithProviders(<Harness />, { permissions: PAYER });
     await user.click(await screen.findByRole('button', { name: 'Pay Bakaara Steel' }));
     const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
     await user.click(within(dialog).getByRole('button', { name: 'Pay $1,000.00' }));
 
-    expect(await screen.findByText('Sent for approval')).toBeInTheDocument();
-    expect(screen.getByTestId('approval-panel')).toHaveTextContent('wf-9');
-    api.pay.mockResolvedValueOnce({ payment: { id: 'sp-1' }, paymentSummary: null });
-    await user.click(screen.getByRole('button', { name: 'Complete the payment' }));
-    await waitFor(() => expect(api.pay).toHaveBeenCalledTimes(2));
-    expect(api.pay.mock.calls[1]![0]).toEqual(api.pay.mock.calls[0]![0]);
+    await user.click(await screen.findByRole('button', { name: 'Complete the payment' }));
+    await waitFor(() => expect(api.cont).toHaveBeenCalledWith('/supplier-payments/sp-1/continue'));
+    expect(api.pay).toHaveBeenCalledTimes(1);
   });
 
   it('when the order is paid, shows the next step blocked in words — not "nothing to finish"', async () => {
@@ -340,6 +416,9 @@ describe('PaymentSection — finance pays supplier', () => {
     api.apply.mockResolvedValueOnce({});
     renderWithProviders(<Harness />, { permissions: PAYER });
 
+    // Pay stays visible, disabled, with why — not hidden.
+    expect(await screen.findByRole('button', { name: 'Pay Bakaara Steel' })).toBeDisabled();
+    expect(screen.getByText('Apply the prepayment to this bill first.')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Apply the prepayment' }));
     const dialog = await screen.findByRole('dialog', { name: 'Apply the prepayment' });
     expect(within(dialog).getByText('Apply $980.00 from PAY-0042 to BILL-0091.')).toBeInTheDocument();
@@ -361,6 +440,16 @@ describe('PaymentSection — finance pays supplier', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
     await user.click(within(dialog).getByRole('button', { name: 'Pay $1,000.00' }));
     expect(await within(dialog).findByText('Apply the prepayment to this bill first.')).toBeInTheDocument();
+  });
+
+  it('shows Pay disabled with the reason when this finance user approved the bill (QA H)', async () => {
+    api.detail = awarded({
+      path: 'FINANCE_PAYS_SUPPLIER',
+      allowedActions: [{ action: 'PAY_SUPPLIER', enabled: false, reason: 'BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT' }],
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    expect(await screen.findByRole('button', { name: 'Pay Bakaara Steel' })).toBeDisabled();
+    expect(screen.getByText("You approved this store's bill, so another finance user must approve the payment.")).toBeInTheDocument();
   });
 
   it('pre-empts the vendor-maintainer rule: the store was registered by this user', async () => {
