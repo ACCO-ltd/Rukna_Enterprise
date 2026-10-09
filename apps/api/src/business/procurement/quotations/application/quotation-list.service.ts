@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { PERMISSIONS } from '@erp/types';
+import { waitingMinutes } from '../domain/quotation-sla.policy.js';
+import { AwardPaymentRepository } from '../../../accounting/accounts-payable/infrastructure/award-payment.repository.js';
+import { advanceOutstanding, fundingPosition, isLegacyAdvance } from '../../../accounting/accounts-payable/domain/award-payment.policy.js';
 import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
@@ -12,7 +16,7 @@ import { lowestQuoteIds } from '../domain/quote-selection.policy.js';
 import { QuotationAccessService } from './quotation-access.service.js';
 import { QuotationQueryService, slaOf } from './quotation-query.service.js';
 
-export const QUOTATION_QUEUES = ['collect', 'returned', 'waiting', 'decide', 'awarded', 'all'] as const;
+export const QUOTATION_QUEUES = ['collect', 'returned', 'waiting', 'decide', 'awarded', 'pay', 'settle', 'all'] as const;
 export type QuotationQueue = (typeof QUOTATION_QUEUES)[number];
 
 export interface QuotationListQuery {
@@ -68,6 +72,14 @@ export class QuotationListService {
     const page = Math.max(1, Math.floor(params.page ?? 1));
     const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(params.limit ?? DEFAULT_LIMIT)));
     const mine = params.mine ?? queue === 'waiting';
+    // ADR-045 §6 — the finance payment queues: award:quotation or manage:payable.
+    if (
+      (queue === 'pay' || queue === 'settle') &&
+      !identity.permissions.includes(PERMISSIONS.quotationsAward) &&
+      !identity.permissions.includes(PERMISSIONS.payablesManage)
+    ) {
+      throw new ForbiddenException({ errorCode: 'FORBIDDEN', message: 'The payment queues are for finance.', details: { code: 'MISSING_PERMISSION' } });
+    }
 
     if (params.projectId) await this.projectAccess.assertMember(identity, params.projectId);
     const accessible = await this.projectAccess.accessibleProjectIds(identity);
@@ -127,6 +139,10 @@ export class QuotationListService {
         and.push({ status: 'AWARDED', closedAt: null });
         and.push({ OR: [{ purchaseOrderId: null }, { purchaseOrder: { status: 'CANCELLED' } }] });
         break;
+      case 'pay':
+      case 'settle':
+        and.push({ status: 'AWARDED', paymentPath: { not: null }, purchaseOrder: { status: 'OPEN' } });
+        break;
       case 'all':
         break;
     }
@@ -148,6 +164,26 @@ export class QuotationListService {
         const role = roles.get(c.id);
         return role !== undefined && identity.roles.includes(role);
       });
+    }
+
+    // ADR-045 — pay: the order is not fully funded; settle: a receipt waits to be recorded or cash is
+    // still with the buyer. Oldest waiting first, with the age in working minutes.
+    const paymentAge = new Map<string, number>();
+    if (queue === 'pay' || queue === 'settle') {
+      const kept: typeof candidates = [];
+      const since = new Map<string, Date>();
+      for (const c of candidates) {
+        const facts = await this.paymentQueueFacts(prisma, orgId, c.id);
+        if (!facts) continue;
+        const inQueue = queue === 'pay' ? facts.unfunded : facts.settleSince !== null;
+        if (!inQueue) continue;
+        kept.push(c);
+        since.set(c.id, (queue === 'pay' ? facts.orderedSince : facts.settleSince) ?? new Date());
+      }
+      kept.sort((x, y) => since.get(x.id)!.getTime() - since.get(y.id)!.getTime());
+      const nowAt = this.query.now();
+      for (const c of kept) paymentAge.set(c.id, waitingMinutes(since.get(c.id)!, nowAt, { urgent: false }));
+      candidates = kept;
     }
 
     const total = candidates.length;
@@ -190,12 +226,54 @@ export class QuotationListService {
           estimateAmount: moneyOrNull(visible, dec(r.estimateAmount)),
           lowestTotal: moneyOrNull(visible, lowestTotal),
           awardedTotal: moneyOrNull(visible, dec(r.awardedTotal)),
+          ...(paymentAge.has(r.id) ? { paymentWaitingWorkingMinutes: paymentAge.get(r.id)! } : {}),
           moneyVisible: visible,
         };
       }),
       page,
       limit,
       total,
+    };
+  }
+
+  /**
+   * ADR-045 — for the pay / settle queues: is the award's order still unfunded (since when it was
+   * issued), and since when has something waited to be settled (a submitted receipt, or cash still
+   * with the buyer)?
+   */
+  private async paymentQueueFacts(prisma: ReturnType<TenancyService['getClient']>, orgId: string, requestId: string) {
+    const request = await prisma.quotationRequest.findUnique({
+      where: { id: requestId },
+      select: { purchaseOrderId: true, purchaseOrder: { select: { updatedAt: true } } },
+    });
+    if (!request?.purchaseOrderId) return null;
+    const ap = new AwardPaymentRepository();
+    const revision = await ap.activeRevision(prisma, request.purchaseOrderId);
+    const position = fundingPosition(await ap.fundingInputs(prisma, orgId, request.purchaseOrderId, revision?.ordered ?? new Decimal(0)));
+    const [submitted, advances] = await Promise.all([
+      prisma.storeDocument.findFirst({
+        where: { purchaseOrderId: request.purchaseOrderId, status: 'SUBMITTED' },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
+      }),
+      prisma.buyerAdvance.findMany({
+        where: { purchaseOrderId: request.purchaseOrderId, postingStatus: 'POSTED' },
+        include: { returns: true, evidenceAllocations: true },
+        orderBy: { postedAt: 'asc' },
+      }),
+    ]);
+    const withBuyer = advances.find((a) =>
+      advanceOutstanding(
+        { amount: new Decimal(a.amount.toString()), legacy: isLegacyAdvance(a) },
+        a.evidenceAllocations.map((x) => ({ amount: new Decimal(x.allocatedAmount.toString()), postingStatus: x.postingStatus })),
+        a.returns.map((r) => ({ amount: new Decimal(r.amount.toString()) })),
+      ).greaterThan(0),
+    );
+    const settleSince = submitted?.createdAt ?? withBuyer?.postedAt ?? null;
+    return {
+      unfunded: position.remaining.greaterThan(0),
+      orderedSince: request.purchaseOrder?.updatedAt ?? null,
+      settleSince,
     };
   }
 }

@@ -5,7 +5,10 @@ import {
   ConflictException,
   ForbiddenException,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { AWARD_PAYMENT_EVENTS, type AwardPaymentEvents } from '../domain/award-payment-events.port.js';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
@@ -15,11 +18,16 @@ import {
   type IAccountingPostingPort,
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
+import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
+import type { AccountSubtype } from '@prisma/client';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { PurchaseAllocationRepository } from '../infrastructure/purchase-allocation.repository.js';
-import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
+import { ApprovalService } from '../../../../platform/workflows/application/approval.service.js';
+import { driveGovernedTransition } from '../../../../platform/workflows/application/governed-transition.driver.js';
+import { WorkflowTransactionType } from '@erp/types';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
@@ -58,19 +66,25 @@ export interface CreateSupplierPaymentDto {
   allocations?: { supplierBillId: string; amount: number }[];
 }
 
+/**
+ * ADR-045 §3 (P3) — the GL codes are optional: the server resolves them (bank GL = the payment's
+ * bank account GL; AP / Supplier advance by role, ADR-024). A supplied code is still honoured for
+ * AP / Supplier advance (back-compat); a supplied bank GL that is not the account's is refused
+ * (409 BANK_GL_MISMATCH) — a payment must credit the account the money left.
+ */
 export interface PostSupplierPaymentDto {
   paymentId: string;
-  apAccountCode: string;
-  bankGlCode: string;
-  supplierAdvanceCode: string;
+  apAccountCode?: string;
+  bankGlCode?: string;
+  supplierAdvanceCode?: string;
 }
 
 export interface AllocateAdvanceDto {
   paymentId: string;
   supplierBillId: string;
   amount: number;
-  apAccountCode: string;
-  supplierAdvanceCode: string;
+  apAccountCode?: string;
+  supplierAdvanceCode?: string;
 }
 
 export interface CreatePurchaseAllocationDto {
@@ -95,7 +109,62 @@ export class SupplierPaymentService {
     private readonly sod: SegregationOfDutiesService,
     private readonly signatoryService: BankAccountSignatoryService,
     private readonly purchaseOrderService: PurchaseOrderService,
+    // ADR-045 §3/§5 — a payment made from a quotation award announces itself when posted (in the
+    // post transaction). Optional: absent in unit wiring.
+    @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
+    @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
+    // ADR-045 — the "acting counts as your step" approval used from the award (optional wiring).
+    @Optional() private readonly approvals?: ApprovalService,
   ) {}
+
+  /** Stateless role resolver over the same account repository (ADR-024 ACC-POST-001). */
+  private get accounts(): PostingAccountResolver {
+    return new PostingAccountResolver(this.accountRepo);
+  }
+
+  /**
+   * A posting account: the supplied code (404 when unknown, unchanged for existing callers), or the
+   * single ACTIVE account carrying `subtype` (400 POSTING_ACCOUNT_NOT_CONFIGURED / _AMBIGUOUS).
+   */
+  async glByCodeOrRole(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    code: string | undefined,
+    subtype: AccountSubtype,
+    label: string,
+  ): Promise<{ id: string; code: string }> {
+    if (code) {
+      const account = await this.accountRepo.findByCode(prisma, orgId, code);
+      if (!account) throw new NotFoundException(`${label} GL ${code} not found`);
+      return { id: account.id, code: account.code };
+    }
+    return this.accounts.resolve(prisma, orgId, subtype);
+  }
+
+  /**
+   * The GL the payment's bank account posts to. A supplied `bankGlCode` must be that account's GL
+   * (409 BANK_GL_MISMATCH otherwise): never silently credit a different ledger account.
+   */
+  private async bankGlFor(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    bankAccountId: string,
+    suppliedCode: string | undefined,
+  ): Promise<{ id: string; code: string }> {
+    const bank = await prisma.bankAccount.findFirst({
+      where: { id: bankAccountId, organizationId: orgId },
+      select: { glAccount: { select: { id: true, code: true } } },
+    });
+    if (!bank) throw new NotFoundException(`BankAccount ${bankAccountId} not found`);
+    if (suppliedCode && suppliedCode !== bank.glAccount.code) {
+      throw new ConflictException({
+        errorCode: 'BANK_GL_MISMATCH',
+        message: `The payment is drawn on the bank account whose GL is ${bank.glAccount.code}, not ${suppliedCode}.`,
+        details: { code: 'BANK_GL_MISMATCH', bankGlCode: bank.glAccount.code },
+      });
+    }
+    return bank.glAccount;
+  }
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
     const prisma = this.tenancyService.getClient();
@@ -192,7 +261,25 @@ export class SupplierPaymentService {
     });
   }
 
-  async approve(identity: RequestIdentity, paymentId: string) {
+  /**
+   * DRAFT → APPROVED. SoD (bill approver), then the DoA gate. ADR-045 (review M2/M5/M7):
+   *  - a granted approval is consumed in the same transaction as the APPROVED write (a failed
+   *    write never burns it), and the approval is audited when the outbox is wired;
+   *  - `selfApprove` (pay from the award): the caller's command counts as their own current step;
+   *  - `bandAmount`: the value that selects the band (default the payment total; from the award, the
+   *    cumulative funding of the order, so splitting a payment cannot stay in a lower band).
+   */
+  async approve(
+    identity: RequestIdentity,
+    paymentId: string,
+    opts: {
+      selfApprove?: boolean;
+      bandAmount?: Decimal;
+      note?: string;
+      /** Runs first inside the approving transaction (refusing rolls back; the approval stays granted). */
+      guard?: (tx: Prisma.TransactionClient) => Promise<void>;
+    } = {},
+  ) {
     const prisma = this.tenancyService.getClient();
     const payment = await this.paymentRepo.findById(prisma, identity.activeOrganizationId, paymentId);
     if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
@@ -215,20 +302,88 @@ export class SupplierPaymentService {
     });
 
     // Governance seam (ADR-011) — the payment has no separate submit, so approval is the
-    // request transition. Backward-compatible: null when no binding is configured.
-    throwIfGated(
-      await this.commandGovernance.gateStateTransition(
-        identity,
-        'SupplierPayment',
-        'DRAFT',
-        'APPROVED',
-        paymentId,
-        // ADR-022 CONST-DOA-005: the payment value selects the approval band.
-        payment.totalAmount as Decimal,
-      ),
-      'Supplier payment approval requires workflow approval.',
-    );
-    return this.paymentRepo.approve(prisma, paymentId, identity.userId);
+    // request transition. Backward-compatible: no binding → proceeds.
+    // ADR-022 CONST-DOA-005: the payment value (or the caller's band amount) selects the band.
+    const bandAmount = opts.bandAmount ?? (payment.totalAmount as Decimal);
+    let gateId: string | null = null;
+    let consumed: { instanceId: string; finalApproverId: string | null } | null = null;
+    if (opts.selfApprove && this.approvals) {
+      const outcome = await driveGovernedTransition(
+        { governance: this.commandGovernance, approvals: this.approvals },
+        {
+          identity,
+          entityType: 'SupplierPayment',
+          fromState: 'DRAFT',
+          toState: 'APPROVED',
+          transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
+          resourceId: paymentId,
+          amount: bandAmount,
+          selfApprovalNote: opts.note ?? 'Approved by paying',
+          vetApprovers: async (approval) => {
+            const codes = await this.sod.activeRuleCodes(identity.activeOrganizationId);
+            for (const a of approval.actions.filter((x) => x.action === 'APPROVE')) {
+              const barred = this.sod.violation(codes, {
+                organizationId: identity.activeOrganizationId,
+                action: 'APPROVE_OR_RELEASE_SUPPLIER_PAYMENT',
+                actorUserId: a.actorId,
+                supplierBillApproverUserId: allocations.some((x) => x.bill.approvedBy === a.actorId) ? a.actorId : undefined,
+              });
+              if (barred) {
+                await this.commandGovernance.voidOpenApproval(WorkflowTransactionType.SUPPLIER_PAYMENT, paymentId);
+                throw new ForbiddenException({
+                  errorCode: 'FORBIDDEN',
+                  message: `Segregation-of-duties rule '${barred}' prohibits an approver of this payment; the approval was voided.`,
+                  details: { code: barred },
+                });
+              }
+            }
+          },
+        },
+      );
+      if (outcome.gated) gateId = outcome.approvalInstanceId;
+      else consumed = outcome.consumed;
+    } else {
+      const outcome = await this.commandGovernance.evaluateStateTransition(
+        identity, 'SupplierPayment', 'DRAFT', 'APPROVED', paymentId, bandAmount, { deferConsume: true },
+      );
+      if (outcome.gate) gateId = outcome.gate.approvalInstanceId;
+      else consumed = outcome.consumedApproval;
+    }
+    if (gateId) {
+      throw new ConflictException({
+        errorCode: 'APPROVAL_REQUIRED',
+        message: 'Supplier payment approval requires workflow approval.',
+        details: { code: 'APPROVAL_REQUIRED', approvalInstanceId: gateId, paymentId },
+      });
+    }
+
+    const approvedBy = opts.selfApprove ? (consumed?.finalApproverId ?? identity.userId) : identity.userId;
+    return prisma.$transaction(async (tx) => {
+      if (opts.guard) await opts.guard(tx);
+      if (consumed) await this.commandGovernance.consumeApprovalIn(tx, consumed.instanceId);
+      const { count } = await tx.supplierPayment.updateMany({
+        where: { id: paymentId, documentStatus: 'DRAFT' },
+        data: { documentStatus: 'APPROVED', approvedBy, approvedAt: new Date() },
+      });
+      if (count !== 1) throw new ConflictException(`Payment ${paymentId} was approved by someone else — reload.`);
+      const after = await tx.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
+      if (this.auditOutbox) {
+        await this.auditOutbox.record(tx, {
+          organizationId: identity.activeOrganizationId,
+          actorUserId: identity.userId,
+          action: 'APPROVE',
+          resourceType: 'SupplierPayment',
+          resourceId: paymentId,
+          sourceCommand: 'supplier-payment.approve',
+          eventType: 'SUPPLIER_PAYMENT_APPROVED',
+          idempotencyKey: `supplier-payment-${paymentId}-APPROVED-${after.updatedAt.getTime()}`,
+          before: { documentStatus: 'DRAFT' },
+          after: { documentStatus: 'APPROVED', approvedBy, bandAmount: bandAmount.toString() },
+          approvalInstanceId: consumed?.instanceId,
+        });
+      }
+      return after;
+    });
   }
 
   /**
@@ -292,7 +447,12 @@ export class SupplierPaymentService {
    * EVT-AP-003 Branch A (allocated): Dr AP / Cr Bank
    * EVT-AP-003 Branch B (advance): Dr AP / Dr Supplier Advance / Cr Bank
    */
-  async post(identity: RequestIdentity, dto: PostSupplierPaymentDto) {
+  async post(
+    identity: RequestIdentity,
+    dto: PostSupplierPaymentDto,
+    // Runs first inside the posting transaction (e.g. the award re-checks under the PO lock).
+    opts: { guard?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
+  ) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
@@ -315,30 +475,50 @@ export class SupplierPaymentService {
       throw new BadRequestException(`Payment must be APPROVED before posting`);
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL ${dto.apAccountCode} not found`);
-
-    const bankGl = await this.accountRepo.findByCode(prisma, orgId, dto.bankGlCode);
-    if (!bankGl) throw new NotFoundException(`Bank GL ${dto.bankGlCode} not found`);
-
-    const advanceGl = await this.accountRepo.findByCode(prisma, orgId, dto.supplierAdvanceCode);
-    if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${dto.supplierAdvanceCode} not found`);
-
-    await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'SUPPLIER_PAYMENT', 'PMT-');
-
     const totalAmount = new Decimal(payment.totalAmount.toString());
     const allocatedAmount = new Decimal(payment.allocatedAmount.toString());
     const unallocatedAmount = new Decimal(payment.unallocatedAmount.toString());
+
+    // P3: resolved server-side. AP is needed for the allocated part (and the opening-balance
+    // tie-out), the supplier advance only for an unallocated remainder; a supplied code is always
+    // validated, as before.
+    const bankGl = await this.bankGlFor(prisma, orgId, payment.bankAccountId, dto.bankGlCode);
+    const apGl =
+      allocatedAmount.gt(0) || dto.apAccountCode
+        ? await this.glByCodeOrRole(prisma, orgId, dto.apAccountCode, 'ACCOUNTS_PAYABLE', 'AP')
+        : null;
+    const advanceGl =
+      unallocatedAmount.gt(0) || dto.supplierAdvanceCode
+        ? await this.glByCodeOrRole(prisma, orgId, dto.supplierAdvanceCode, 'SUPPLIER_ADVANCE', 'Supplier Advance')
+        : null;
+
+    await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'SUPPLIER_PAYMENT', 'PMT-');
 
     try {
       return await prisma.$transaction(async (tx) => {
         // A payment settling an opening-balance bill debits `apGl`: the carried-over payables must be
         // on exactly that account, or the debit would drain AP control while the balance sits elsewhere.
+        if (opts.guard) await opts.guard(tx);
+        // Item 3 (review) — defence in depth: every bill this payment settles must still be payable.
+        const unpayable = await tx.supplierPaymentAllocation.count({
+          where: {
+            supplierPaymentId: payment.id,
+            postingStatus: 'NOT_POSTED',
+            bill: { postingStatus: { notIn: ['POSTED', 'OPENING_BALANCE'] } },
+          },
+        });
+        if (unpayable > 0) {
+          throw new ConflictException({
+            errorCode: 'BILL_NOT_PAYABLE',
+            message: 'A bill this payment settles is no longer posted (reversed?). Re-create the payment.',
+            details: { code: 'BILL_NOT_PAYABLE' },
+          });
+        }
         const settlesOpeningBalance = await tx.supplierPaymentAllocation.count({
           where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED', bill: { postingStatus: 'OPENING_BALANCE' } },
         });
         if (settlesOpeningBalance > 0) {
-          const tieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, { id: apGl.id, code: apGl.code });
+          const tieOut = await loadOpeningBalanceApTieOut(tx as never, orgId, { id: apGl!.id, code: apGl!.code });
           if (openingBalanceApTieOutProblem(tieOut) !== null) throw openingBalanceNotReconciled(tieOut);
         }
 
@@ -346,7 +526,7 @@ export class SupplierPaymentService {
 
         if (allocatedAmount.gt(0)) {
           lines.push({
-            accountId: apGl.id,
+            accountId: apGl!.id,
             debitAmount: allocatedAmount,
             creditAmount: new Decimal(0),
             sourceSubledgerType: 'ACCOUNTS_PAYABLE' as const,
@@ -356,7 +536,7 @@ export class SupplierPaymentService {
 
         if (unallocatedAmount.gt(0)) {
           lines.push({
-            accountId: advanceGl.id,
+            accountId: advanceGl!.id,
             debitAmount: unallocatedAmount,
             creditAmount: new Decimal(0),
             supplierId: payment.supplierId,
@@ -370,12 +550,15 @@ export class SupplierPaymentService {
           sourceSubledgerType: 'BANK' as const,
         });
 
+        // QA LOW — the journal names documents (payment number, supplier), not raw ids.
+        const pmtNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_PAYMENT');
+        const supplierName = (await tx.supplier.findUnique({ where: { id: payment.supplierId }, select: { name: true } }))?.name ?? '';
         const postResult = await this.postingPort.post(
           {
             organizationId: orgId,
             accountingDate: payment.accountingDate,
             documentDate: payment.paymentDate,
-            description: `Supplier Payment — ${payment.supplierId}`,
+            description: `Supplier payment ${pmtNum.formattedNumber} — ${supplierName}`,
             currencyCode: payment.currencyCode,
             eventType: 'EVT-AP-003',
             sourceDocumentType: 'SUPPLIER_PAYMENT',
@@ -389,7 +572,6 @@ export class SupplierPaymentService {
           tx as never,
         );
 
-        const pmtNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_PAYMENT');
         await this.paymentRepo.markPosted(tx as never, payment.id, postResult.journalEntryId, pmtNum.formattedNumber, userId);
 
         // Stamp any pre-created allocations (from create-time dto.allocations[]) with
@@ -398,6 +580,36 @@ export class SupplierPaymentService {
           where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED' },
           data: { postingStatus: 'POSTED', journalEntryId: postResult.journalEntryId },
         });
+
+        // ADR-045 — paid from a quotation award: audit + SUPPLIER_PAID (collectors), atomically.
+        if (payment.quotationRequestId) {
+          if (this.auditOutbox) {
+            await this.auditOutbox.record(tx, {
+              organizationId: orgId,
+              actorUserId: userId,
+              action: 'TRANSITION',
+              resourceType: 'SupplierPayment',
+              resourceId: payment.id,
+              sourceCommand: 'supplier-payment.post',
+              eventType: 'SUPPLIER_PAID_FROM_AWARD',
+              idempotencyKey: `supplier-payment-${payment.id}-SUPPLIER_PAID_FROM_AWARD`,
+              after: {
+                quotationRequestId: payment.quotationRequestId,
+                paymentNumber: pmtNum.formattedNumber,
+                journalEntryId: postResult.journalEntryId,
+                accountingDate: payment.accountingDate.toISOString().slice(0, 10),
+              },
+            });
+          }
+          if (this.events) {
+            await this.events.supplierPaid(tx, {
+              organizationId: orgId,
+              quotationRequestId: payment.quotationRequestId,
+              paymentId: payment.id,
+              actorUserId: userId,
+            });
+          }
+        }
 
         return { ...postResult, paymentNumber: pmtNum.formattedNumber };
       });
@@ -441,11 +653,8 @@ export class SupplierPaymentService {
       throw new BadRequestException(`Bill currency does not match payment currency`);
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL ${dto.apAccountCode} not found`);
-
-    const advanceGl = await this.accountRepo.findByCode(prisma, orgId, dto.supplierAdvanceCode);
-    if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${dto.supplierAdvanceCode} not found`);
+    const apGl = await this.glByCodeOrRole(prisma, orgId, dto.apAccountCode, 'ACCOUNTS_PAYABLE', 'AP');
+    const advanceGl = await this.glByCodeOrRole(prisma, orgId, dto.supplierAdvanceCode, 'SUPPLIER_ADVANCE', 'Supplier Advance');
 
     return prisma.$transaction(async (tx) => {
       // Opening-balance bill: its payables must tie to the AP account this allocation debits.
@@ -456,12 +665,17 @@ export class SupplierPaymentService {
         }
       }
 
+      // ADR-045 review H2 — the application happens when both source documents exist: the later of
+      // the bill date and the payment's accounting date (never the clock). Dating it on the payment
+      // alone put an application of a bill posted months later into the (possibly closed) payment
+      // month, so it could never post. Applies to every caller of allocateAdvance.
+      const applicationDay = bill.billDate.getTime() > payment.accountingDate.getTime() ? bill.billDate : payment.accountingDate;
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: payment.accountingDate,
-          documentDate: payment.paymentDate,
-          description: `Advance Applied — Payment ${payment.id} → Bill ${bill.id}`,
+          accountingDate: applicationDay,
+          documentDate: applicationDay,
+          description: `Prepayment ${payment.paymentNumber ?? ''} applied to bill ${bill.billNumber ?? bill.supplierInvoiceNumber}`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-005',
           sourceDocumentType: 'SUPPLIER_PAYMENT',
@@ -494,9 +708,9 @@ export class SupplierPaymentService {
         supplierPaymentId: payment.id,
         supplierBillId: bill.id,
         allocatedAmount: amount,
-        // Dated on the source payment's accounting date (matches the EVT-AP-005 journal above),
-        // never `new Date()` — feedback-accounting-date-rule.
-        allocationDate: payment.accountingDate,
+        // Dated as the EVT-AP-005 journal above (later of bill date and payment date), never
+        // `new Date()` — feedback-accounting-date-rule.
+        allocationDate: applicationDay,
         journalEntryId: postResult.journalEntryId,
         postingStatus: 'POSTED',
         createdBy: userId,
@@ -516,8 +730,9 @@ export class SupplierPaymentService {
         );
       }
 
+      // Review M3 — also guarded on the bill still being payable (a reversal committed meanwhile).
       const billUpd = await tx.supplierBill.updateMany({
-        where: { id: bill.id, outstandingAmount: { gte: amount } },
+        where: { id: bill.id, outstandingAmount: { gte: amount }, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
         data: { outstandingAmount: { decrement: amount } },
       });
       if (billUpd.count === 0) {
@@ -633,7 +848,7 @@ export class SupplierPaymentService {
   async reverseAdvanceAllocation(
     identity: RequestIdentity,
     allocationId: string,
-    opts: { apAccountCode: string; supplierAdvanceCode: string },
+    opts: { apAccountCode?: string; supplierAdvanceCode?: string },
   ) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
@@ -652,10 +867,8 @@ export class SupplierPaymentService {
       );
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, opts.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL ${opts.apAccountCode} not found`);
-    const advanceGl = await this.accountRepo.findByCode(prisma, orgId, opts.supplierAdvanceCode);
-    if (!advanceGl) throw new NotFoundException(`Supplier Advance GL ${opts.supplierAdvanceCode} not found`);
+    const apGl = await this.glByCodeOrRole(prisma, orgId, opts.apAccountCode, 'ACCOUNTS_PAYABLE', 'AP');
+    const advanceGl = await this.glByCodeOrRole(prisma, orgId, opts.supplierAdvanceCode, 'SUPPLIER_ADVANCE', 'Supplier Advance');
 
     const amount = new Decimal(alloc.allocatedAmount.toString());
 
@@ -663,12 +876,11 @@ export class SupplierPaymentService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          // Reversal mirrors the source allocation's period (payment.accountingDate), never today —
-          // a `new Date()` here mis-periods AP and is rejected outright if the current period is
-          // closed, stranding the reversal. Enforces feedback-accounting-date-rule.
-          accountingDate: payment.accountingDate,
-          documentDate: payment.paymentDate,
-          description: `Advance Allocation Reversal — Allocation ${allocationId}`,
+          // Reversal mirrors the source allocation's own date (its EVT-AP-005), never today — a
+          // `new Date()` mis-periods AP. Enforces feedback-accounting-date-rule (ADR-045 H2).
+          accountingDate: alloc.allocationDate,
+          documentDate: alloc.allocationDate,
+          description: `Reversal of prepayment ${payment.paymentNumber ?? ''} applied to a bill (${alloc.allocationDate.toISOString().slice(0, 10)})`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-006',
           sourceDocumentType: 'SUPPLIER_PAYMENT',

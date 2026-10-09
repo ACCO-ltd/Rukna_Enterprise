@@ -17,11 +17,22 @@ export type MessagePurpose =
   | 'QUOTE_REMINDER'
   | 'QUOTE_ESCALATION'
   | 'QUOTE_CHOSEN'
-  | 'QUOTE_ANOTHER';
+  | 'QUOTE_ANOTHER'
+  // ADR-045 — paying from the award (no amounts in the text).
+  | 'QUOTE_PAY_NEEDED'
+  | 'QUOTE_CASH_RELEASED'
+  | 'QUOTE_SUPPLIER_PAID';
 
 export type StaffAlertPurpose = Extract<
   MessagePurpose,
-  'QUOTE_READY' | 'QUOTE_REMINDER' | 'QUOTE_ESCALATION' | 'QUOTE_CHOSEN' | 'QUOTE_ANOTHER'
+  | 'QUOTE_READY'
+  | 'QUOTE_REMINDER'
+  | 'QUOTE_ESCALATION'
+  | 'QUOTE_CHOSEN'
+  | 'QUOTE_ANOTHER'
+  | 'QUOTE_PAY_NEEDED'
+  | 'QUOTE_CASH_RELEASED'
+  | 'QUOTE_SUPPLIER_PAID'
 >;
 
 /**

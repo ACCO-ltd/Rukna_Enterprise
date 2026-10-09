@@ -69,7 +69,17 @@ export class SettlementQueryRepository {
   findBillsForPo(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
     return prisma.supplierBill.findMany({
       where: { organizationId, purchaseOrderId },
-      include: { allocations: { select: { allocatedAmount: true } } },
+      include: {
+        allocations: {
+          select: {
+            allocatedAmount: true,
+            postingStatus: true,
+            payment: { select: { postingStatus: true, purchaseAllocations: { where: { purchaseOrderId }, select: { id: true } } } },
+          },
+        },
+        // ADR-045 — buyer cash applied to the bill (EVT-AP-008).
+        advanceEvidenceAllocations: { select: { allocatedAmount: true, postingStatus: true } },
+      },
       orderBy: { billDate: 'asc' },
     });
   }
@@ -118,9 +128,35 @@ export class SettlementQueryRepository {
             payment: { select: { paymentDate: true } },
           },
         },
+        advanceEvidenceAllocations: {
+          select: { buyerAdvanceId: true, allocatedAmount: true, allocationDate: true, postingStatus: true },
+        },
       },
       orderBy: { billDate: 'asc' },
     });
+  }
+
+  /**
+   * ADR-045 review M6 — quantity billed per PO line by POSTED bills (their match lines): a PO is
+   * settled only when every accepted quantity is billed.
+   */
+  async billedByPoLine(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string): Promise<Map<string, Decimal>> {
+    const bills = await prisma.supplierBill.findMany({
+      where: { organizationId, purchaseOrderId, postingStatus: 'POSTED' },
+      select: { id: true },
+    });
+    const byLine = new Map<string, Decimal>();
+    if (bills.length === 0) return byLine;
+    const rows = await prisma.supplierBillMatchLine.findMany({
+      where: { billMatch: { supplierBillId: { in: bills.map((b) => b.id) } } },
+      select: { purchaseOrderLineId: true, billedQuantity: true },
+    });
+    for (const r of rows) {
+      const q = r.billedQuantity as Decimal;
+      const prev = byLine.get(r.purchaseOrderLineId);
+      byLine.set(r.purchaseOrderLineId, prev ? prev.add(q) : q);
+    }
+    return byLine;
   }
 
   // Buyer advances for this PO with returns and evidence allocations.

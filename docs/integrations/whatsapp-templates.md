@@ -205,6 +205,56 @@ Button: **Fur** → `https://acco.rukna.site/procurement/quotes/{{1}}`
 | {{1}} | Material request number | MR-00042 |
 | {{2}} | Finance's note (one line, ≤ 200 characters) | Fadlan keen quotation ka Xamar Steel |
 
+## 10. Payment needed: `quote_pay_needed_so` (ADR-045)
+
+To finance (`manage:payable` holders who can reach the project, not the request creator) when the
+purchase order raised from an award is issued. No amount (product owner Q2 — the Phase 2 rule).
+
+> Dalabka {{1}} ee dukaanka {{2}} (mashruuca {{3}}) waa la ansixiyay. Lacag bixinta: {{4}}. Fadlan bixi.
+
+Button: **Bixi** → `https://acco.rukna.site/finance/quotes/{{1}}` (suffix = request id)
+
+| Variable | Meaning | Sample |
+|---|---|---|
+| {{1}} | Purchase order number | PO-00311 |
+| {{2}} | Store / supplier name | Bakaara Steel |
+| {{3}} | Project name | Hodan Tower |
+| {{4}} | Who pays | Iibsaduhu kaash ayuu bixinayaa |
+
+Withdrawn at send time when the order is already being paid or the payment path changed.
+
+## 11. Cash released: `quote_cash_released_so` (ADR-045)
+
+To the buyer the cash was released to. The amount is visible only in the app behind login (Q2).
+
+> Lacag caddaan ah ayaa laguu sii daayay dalabka {{1}} ee dukaanka {{2}}. Fur si aad u aragto qadarka, kadibna sawir rasiidka marka aad iibsato.
+
+Button: **Fur** → `https://acco.rukna.site/procurement/quotes/{{1}}`
+
+| Variable | Meaning | Sample |
+|---|---|---|
+| {{1}} | Purchase order number | PO-00311 |
+| {{2}} | Store / supplier name | Bakaara Steel |
+
+Withdrawn at send time when the advance was reversed.
+
+## 12. Supplier paid: `quote_supplier_paid_so` (ADR-045)
+
+To procurement (request creator + quote uploaders) when finance's payment to the store is posted.
+
+> Maaliyaddu waxay lacagta u bixisay dukaanka {{1}} dalabka {{2}}. Alaabta qaado oo sawir rasiidka/invoice-ka.
+
+Button: **Fur** → `https://acco.rukna.site/procurement/quotes/{{1}}`
+
+| Variable | Meaning | Sample |
+|---|---|---|
+| {{1}} | Store / supplier name | Bakaara Steel |
+| {{2}} | Purchase order number | PO-00311 |
+
+Withdrawn at send time when the payment was reversed. Env overrides:
+`WHATSAPP_TEMPLATE_QUOTE_PAY_NEEDED`, `WHATSAPP_TEMPLATE_QUOTE_CASH_RELEASED`,
+`WHATSAPP_TEMPLATE_QUOTE_SUPPLIER_PAID`.
+
 ## Who receives staff alerts
 
 Only users an administrator has given a **WhatsApp number** and **Send WhatsApp alerts** in

@@ -1,0 +1,400 @@
+'use client';
+
+/**
+ * TanStack Query bindings for paying from the award (ADR-045).
+ *
+ * Every money command carries an `idempotencyKey` generated once per dialog open
+ * (`useIdempotencyKey`): a retry after a lost response inside the same dialog reuses it, so a
+ * double tap or a weak signal never pays twice; reopening the dialog is a new intent and gets a
+ * new key.
+ *
+ * A 409 carrying `approvalInstanceId` is the DoA gate, not a failure (ADR-015). The command body
+ * is kept (`pendingPaymentStore`) so the release can be re-driven with exactly the same body after
+ * the approver acts — even after a reload.
+ */
+
+import { useRef, useState } from 'react';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
+
+import { PAYMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { notificationKeys } from '@/features/notifications/hooks/use-notifications';
+
+import {
+  applyPrepayment,
+  changePaymentPath,
+  continuePendingPayment,
+  getBuyerCashReadiness,
+  listStoreDocuments,
+  getPayDraft,
+  getReleaseDraft,
+  payFromAward,
+  recordAdvanceReturn,
+  recordStoreDocument,
+  rejectStoreDocument,
+  releaseCash,
+  reverseBuyerAdvance,
+  withdrawStoreDocument,
+} from '../api/quotation-payment-api';
+import { gatedInstanceOf, isPaymentReadModel, newIdempotencyKey } from '../quotations/payment-rules';
+import type {
+  AdvanceReturnPayload,
+  ChangePaymentPathPayload,
+  PayDraft,
+  PayFromAwardPayload,
+  PaymentPending,
+  QuotationPayment,
+  RecordStoreDocumentPayload,
+  ReleaseCashPayload,
+  ReleaseDraft,
+  ReverseAdvancePayload,
+  StoreDocumentRejectReason,
+} from '../quotations/payment-types';
+import type { QuotationRequestDetail } from '../quotations/types';
+import { ApiError } from '@/lib/api-client';
+
+import { getQuotationRequest } from '../api/quotations-api';
+import { procurementKeys } from './use-procurement';
+import { quotationKeys } from './use-quotations';
+
+export const paymentKeys = {
+  all: [...quotationKeys.all, 'payment'] as const,
+  releaseDraft: (requestId: string) => [...paymentKeys.all, 'release-draft', requestId] as const,
+  payDraft: (requestId: string) => [...paymentKeys.all, 'pay-draft', requestId] as const,
+  readiness: () => [...paymentKeys.all, 'readiness'] as const,
+  storeDocuments: (purchaseOrderId: string) => [...paymentKeys.all, 'store-documents', purchaseOrderId] as const,
+};
+
+/** `manage:payable` — every money command (ADR-045 §1). The server still decides SoD and DoA. */
+export function useCanPay(): boolean {
+  const { can } = usePermissions();
+  return can(PAYMENT_PERMISSIONS.pay);
+}
+
+// ─── Idempotency ─────────────────────────────────────────────────────────────────
+
+/**
+ * One key per open: stable across re-renders and retries while `open` stays true; a fresh key the
+ * next time it opens.
+ */
+export function useIdempotencyKey(open: boolean): string {
+  const [state, setState] = useState(() => ({ open, key: newIdempotencyKey() }));
+  if (open !== state.open) {
+    const next = { open, key: open ? newIdempotencyKey() : state.key };
+    setState(next);
+    return next.key;
+  }
+  return state.key;
+}
+
+// ─── Submit once (QA D) ─────────────────────────────────────────────────────────
+
+/** What the payment block says about money documents — changes when a command landed. */
+export function paymentFingerprint(payment: QuotationPayment | null | undefined): string {
+  if (!payment) return '';
+  return JSON.stringify([
+    payment.funded,
+    payment.withBuyer,
+    payment.state,
+    (payment.advances ?? []).map((a) => [a.id, a.documentStatus, a.postingStatus, a.applied, a.returned]),
+    (payment.payments ?? []).map((p) => [p.id, p.documentStatus, p.postingStatus]),
+    (payment.pending ?? []).map((p) => [p.id, p.awaiting]),
+  ]);
+}
+
+/**
+ * A money dialog submits once: a second tap while the first is in flight is ignored. If the
+ * server then answers 409 for a command that in fact landed (a duplicate tap from elsewhere, a lost
+ * response replayed), the request is refetched and — when the payment block changed since the
+ * dialog was submitted — the dialog just closes instead of showing an error.
+ */
+export function useSubmitOnce(requestId: string) {
+  const qc = useQueryClient();
+  const locked = useRef(false);
+  const before = useRef('');
+  return {
+    /** False when a submit is already in flight. Call first in the submit handler. */
+    begin(): boolean {
+      if (locked.current) return false;
+      locked.current = true;
+      before.current = paymentFingerprint(
+        qc.getQueryData<QuotationRequestDetail>(quotationKeys.detail(requestId))?.payment,
+      );
+      return true;
+    },
+    done() {
+      locked.current = false;
+    },
+    /** On an error: true when the command landed anyway (close quietly), else unlock. */
+    async landedAnyway(error: unknown): Promise<boolean> {
+      locked.current = false;
+      if (!(error instanceof ApiError) || error.status !== 409 || gatedInstanceOf(error)) return false;
+      try {
+        const fresh = await qc.fetchQuery({
+          queryKey: quotationKeys.detail(requestId),
+          queryFn: () => getQuotationRequest(requestId),
+          staleTime: 0,
+        });
+        return paymentFingerprint(fresh?.payment) !== before.current;
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
+// ─── Pending re-drive (gated commands) ────────────────────────────────────────────
+
+export type PendingPayment =
+  | { kind: 'release'; body: ReleaseCashPayload }
+  | { kind: 'pay'; body: PayFromAwardPayload };
+
+const PENDING_PREFIX = 'quote-payment-pending:';
+
+/** The last gated command per request, in this browser — so "Complete" re-sends the same body. */
+export const pendingPaymentStore = {
+  get(requestId: string): PendingPayment | null {
+    try {
+      const raw = globalThis.localStorage?.getItem(PENDING_PREFIX + requestId);
+      return raw ? (JSON.parse(raw) as PendingPayment) : null;
+    } catch {
+      return null;
+    }
+  },
+  set(requestId: string, pending: PendingPayment): void {
+    try {
+      globalThis.localStorage?.setItem(PENDING_PREFIX + requestId, JSON.stringify(pending));
+    } catch {
+      // Private mode: re-drive falls back to opening the prefilled dialog.
+    }
+  },
+  clear(requestId: string): void {
+    try {
+      globalThis.localStorage?.removeItem(PENDING_PREFIX + requestId);
+    } catch {
+      // ignore
+    }
+  },
+};
+
+// ─── Reads ───────────────────────────────────────────────────────────────────────
+
+export function useReleaseDraft(requestId: string, options?: { enabled?: boolean }): UseQueryResult<ReleaseDraft> {
+  return useQuery({
+    queryKey: paymentKeys.releaseDraft(requestId),
+    queryFn: () => getReleaseDraft(requestId),
+    enabled: options?.enabled ?? true,
+    // Prefill must reflect what was released a moment ago (a top-up after a release).
+    staleTime: 0,
+  });
+}
+
+export function usePayDraft(requestId: string, options?: { enabled?: boolean }): UseQueryResult<PayDraft> {
+  return useQuery({
+    queryKey: paymentKeys.payDraft(requestId),
+    queryFn: () => getPayDraft(requestId),
+    enabled: options?.enabled ?? true,
+    staleTime: 0,
+  });
+}
+
+/** Buyer-cash set-up (P14). Only for payers — anyone else would 403. */
+export function useBuyerCashReadiness() {
+  const canPay = useCanPay();
+  return useQuery({
+    queryKey: paymentKeys.readiness(),
+    queryFn: getBuyerCashReadiness,
+    enabled: canPay,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * `GET /procurement/store-documents?purchaseOrderId=` — the full rows (reject reason and note,
+ * uploader id) that the request's payment block does not carry.
+ */
+export function useStoreDocuments(purchaseOrderId: string | null, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: paymentKeys.storeDocuments(purchaseOrderId ?? ''),
+    queryFn: () => listStoreDocuments(purchaseOrderId!),
+    enabled: Boolean(purchaseOrderId) && (options?.enabled ?? true),
+  });
+}
+
+// ─── Cache wiring ────────────────────────────────────────────────────────────────
+
+/**
+ * After any payment command: write the returned read model into the request detail (no round
+ * trip on a weak signal), then refresh everything that shows money for the PO — the request, the
+ * queues, the drafts, advances, bills, payments, the PO's settlement, notifications.
+ */
+export function applyPaymentResult(qc: QueryClient, requestId: string, payment: unknown) {
+  if (isPaymentReadModel(payment)) {
+    qc.setQueryData<QuotationRequestDetail>(quotationKeys.detail(requestId), (old) =>
+      old ? { ...old, payment: payment as QuotationPayment } : old,
+    );
+  }
+  void qc.invalidateQueries({ queryKey: quotationKeys.detail(requestId) });
+  void qc.invalidateQueries({ queryKey: quotationKeys.lists() });
+  void qc.invalidateQueries({ queryKey: paymentKeys.all });
+  void qc.invalidateQueries({ queryKey: procurementKeys.all, refetchType: 'active' });
+  void qc.invalidateQueries({ queryKey: notificationKeys.all });
+}
+
+function refreshAfterRefusal(qc: QueryClient, requestId: string) {
+  void qc.invalidateQueries({ queryKey: quotationKeys.detail(requestId) });
+  void qc.invalidateQueries({ queryKey: paymentKeys.all });
+}
+
+// ─── Commands ────────────────────────────────────────────────────────────────────
+
+/**
+ * Release cash to the buyer (EVT-AP-007). Gated → the error carries `approvalInstanceId`; the
+ * body is kept for the re-drive and the detail is refetched (state AWAITING_APPROVAL).
+ */
+export function useReleaseCash(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ReleaseCashPayload) => releaseCash(payload),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.released' },
+    onSuccess: (result) => {
+      pendingPaymentStore.clear(requestId);
+      applyPaymentResult(qc, requestId, result?.payment);
+    },
+    onError: (error, payload) => {
+      if (gatedInstanceOf(error)) pendingPaymentStore.set(requestId, { kind: 'release', body: payload });
+      refreshAfterRefusal(qc, requestId);
+    },
+  });
+}
+
+/**
+ * Pay the supplier from the award. The DoA gate is a 409 `APPROVAL_REQUIRED` (body kept for the
+ * re-drive); a 200 with `awaiting: 'RELEASE_SIGNATURES'` waits for the signatories — the body is
+ * kept so *Finish* re-drives it with the same key. `paymentSummary` is the request's block.
+ */
+export function usePayFromAward(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PayFromAwardPayload) => payFromAward(payload),
+    meta: {
+      flashRow: false,
+      successToast: 'procurement.quotes.payment.feedback.paid',
+    },
+    onSuccess: (result, payload) => {
+      if (result?.awaiting) pendingPaymentStore.set(requestId, { kind: 'pay', body: payload });
+      else pendingPaymentStore.clear(requestId);
+      applyPaymentResult(qc, requestId, result?.paymentSummary);
+    },
+    onError: (error, payload) => {
+      if (gatedInstanceOf(error)) pendingPaymentStore.set(requestId, { kind: 'pay', body: payload });
+      refreshAfterRefusal(qc, requestId);
+    },
+  });
+}
+
+/**
+ * Finish a pending attempt (`payment.pending[]`) by its server-given `continue` path — from any
+ * device. A 409 APPROVAL_REQUIRED still means "waiting for the approver"; APPROVAL_ALREADY_USED
+ * means someone else just finished it (the detail is refetched either way).
+ */
+export function useContinuePayment(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pending: PaymentPending) => continuePendingPayment(pending.continue.path),
+    meta: { flashRow: false },
+    onSuccess: (result) => {
+      pendingPaymentStore.clear(requestId);
+      applyPaymentResult(qc, requestId, (result as { paymentSummary?: unknown } | null)?.paymentSummary ?? null);
+    },
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+/** Apply a posted prepayment to the posted bill (APPLY_PREPAYMENT) — never pay the store twice. */
+export function useApplyPrepayment(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paymentId, supplierBillId, amount }: { paymentId: string; supplierBillId: string; amount: number }) =>
+      applyPrepayment(paymentId, supplierBillId, amount),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.prepaymentApplied' },
+    onSuccess: () => applyPaymentResult(qc, requestId, null),
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+/** Record the store receipt into a bill and settle it. Silent — the screen shows the result. */
+export function useRecordStoreDocument(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordStoreDocumentPayload) => recordStoreDocument(payload),
+    meta: { flashRow: false },
+    onSuccess: () => applyPaymentResult(qc, requestId, null),
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+export function useRecordAdvanceReturn(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ advanceId, payload }: { advanceId: string; payload: AdvanceReturnPayload }) =>
+      recordAdvanceReturn(advanceId, payload),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.changeRecorded' },
+    onSuccess: (result) => applyPaymentResult(qc, requestId, (result as { payment?: unknown } | null)?.payment ?? result),
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+/** Reverse an advance (only while nothing is applied or returned — the server decides, R15). */
+export function useReverseBuyerAdvance(requestId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ advanceId, payload }: { advanceId: string; payload: ReverseAdvancePayload }) =>
+      reverseBuyerAdvance(advanceId, payload),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.reversed' },
+    onSuccess: () => {
+      if (requestId) applyPaymentResult(qc, requestId, null);
+      else void qc.invalidateQueries({ queryKey: procurementKeys.all });
+    },
+  });
+}
+
+export function useChangePaymentPath(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ChangePaymentPathPayload) => changePaymentPath(requestId, payload),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.pathChanged' },
+    onSuccess: (result) => {
+      pendingPaymentStore.clear(requestId);
+      const payment = isPaymentReadModel(result) ? result : (result as QuotationRequestDetail | null)?.payment;
+      applyPaymentResult(qc, requestId, payment);
+    },
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+export function useRejectStoreDocument(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason, note }: { id: string; reason: StoreDocumentRejectReason; note?: string }) =>
+      rejectStoreDocument(id, reason, note),
+    meta: { flashRow: false, successToast: 'procurement.quotes.payment.feedback.receiptRejected' },
+    onSuccess: () => applyPaymentResult(qc, requestId, null),
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}
+
+export function useWithdrawStoreDocument(requestId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => withdrawStoreDocument(id),
+    meta: { flashRow: false },
+    onSuccess: () => applyPaymentResult(qc, requestId, null),
+    onError: () => refreshAfterRefusal(qc, requestId),
+  });
+}

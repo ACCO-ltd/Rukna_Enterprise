@@ -377,6 +377,10 @@ function buildPost(payment: Record<string, unknown>) {
   };
   const prisma = {
     supplierPaymentAllocation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), count: jest.fn().mockResolvedValue(0) },
+    // ADR-045 P3: the bank GL is the payment's bank account GL (the supplied code must match it).
+    bankAccount: { findFirst: jest.fn().mockResolvedValue({ glAccount: { id: 'acct-10200', code: '10200' } }) },
+    // QA LOW: the journal names the supplier and the payment number.
+    supplier: { findUnique: jest.fn().mockResolvedValue({ name: 'Test Supplier' }) },
     $transaction: async (cb: (tx: unknown) => unknown) => cb(prisma),
   };
   const signatoryService = {

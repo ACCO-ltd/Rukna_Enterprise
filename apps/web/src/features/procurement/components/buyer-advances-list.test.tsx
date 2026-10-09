@@ -16,7 +16,7 @@ vi.mock('next/link', () => ({
 
 const hooks = vi.hoisted(() => ({ all: vi.fn() }));
 vi.mock('../hooks/use-procurement', () => ({
-  useAllBuyerAdvances: () => hooks.all(),
+  useAllBuyerAdvances: (options?: { enabled?: boolean }) => hooks.all(options),
   useGetBuyerAdvance: vi.fn(),
   usePostBuyerAdvance: vi.fn(),
 }));
@@ -46,7 +46,7 @@ describe('BuyerAdvancesList', () => {
         },
       ],
     });
-    renderWithProviders(<BuyerAdvancesList />);
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
 
     const grid = within(await screen.findByRole('table'));
     expect(grid.getByRole('link', { name: 'PO-2026-0007' })).toHaveAttribute('href', '/procurement/orders/po1');
@@ -55,9 +55,80 @@ describe('BuyerAdvancesList', () => {
     expect(grid.getByText('Cash to Omar')).toBeInTheDocument();
   });
 
+  it('labels an advance posted before buyer cash reached the ledger (ADR-045 legacy)', async () => {
+    hooks.all.mockReturnValue({
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+      data: [
+        {
+          id: 'adv-old',
+          purchaseOrderId: 'po1',
+          purchaseOrder: { id: 'po1', poNumber: 'PO-2026-0001' },
+          amount: '300.00',
+          outstanding: '300.00',
+          currencyCode: 'USD',
+          advancedAt: '2026-09-01',
+          postingStatus: 'POSTED',
+          postedJournalEntryId: null,
+        },
+        {
+          id: 'adv-new',
+          purchaseOrderId: 'po2',
+          purchaseOrder: { id: 'po2', poNumber: 'PO-2026-0002' },
+          amount: '400.00',
+          outstanding: '0.00',
+          currencyCode: 'USD',
+          advancedAt: '2026-10-08',
+          postingStatus: 'POSTED',
+          postedJournalEntryId: 'je-1',
+        },
+      ],
+    });
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
+    const grid = within(await screen.findByRole('table'));
+    expect(grid.getAllByText('Recorded before GL posting')).toHaveLength(1);
+  });
+
+  it('shows a cancelled advance as cancelled, holding nothing — not "Not posted / outstanding"', async () => {
+    hooks.all.mockReturnValue({
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+      data: [
+        {
+          id: 'adv-c',
+          purchaseOrderId: 'po1',
+          purchaseOrder: { id: 'po1', poNumber: 'PO-2026-0009' },
+          amount: '900.00',
+          outstanding: '900.00',
+          currencyCode: 'USD',
+          advancedAt: '2026-10-08',
+          documentStatus: 'CANCELLED',
+          postingStatus: 'NOT_POSTED',
+          postedJournalEntryId: null,
+        },
+      ],
+    });
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
+    const grid = within(await screen.findByRole('table'));
+    expect(grid.getByText('Cancelled')).toBeInTheDocument();
+    // The amount is shown once (the advance); the outstanding cell holds nothing.
+    expect(grid.getAllByText('$900.00')).toHaveLength(1);
+    expect(grid.getAllByText('—').length).toBeGreaterThan(0);
+    expect(grid.queryByText('Not posted')).not.toBeInTheDocument();
+  });
+
   it('shows the empty state when the organisation has none', async () => {
     hooks.all.mockReturnValue({ isPending: false, isError: false, refetch: vi.fn(), data: [] });
-    renderWithProviders(<BuyerAdvancesList />);
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
     expect(await screen.findByText('No buyer advances recorded')).toBeInTheDocument();
+  });
+
+  it('asks nothing of a user without manage:payable and says finance manages advances', () => {
+    hooks.all.mockReturnValue({ isPending: true, isError: false, refetch: vi.fn(), data: undefined });
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'collect:quotation'] });
+    expect(hooks.all).toHaveBeenCalledWith({ enabled: false });
+    expect(screen.getByText(/Finance manages buyer advances/)).toBeInTheDocument();
   });
 });

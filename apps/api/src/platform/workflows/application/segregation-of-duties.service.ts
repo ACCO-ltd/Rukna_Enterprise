@@ -12,7 +12,9 @@ export type SodAction =
   | 'APPROVE_BUSINESS_TRANSACTION'
   // ADR-044 §6 — entering a quote total, rejecting a quote, asking for another, awarding (and
   // approving an award: the award command evaluates it for every approver on the instance).
-  | 'SELECT_QUOTATION';
+  | 'SELECT_QUOTATION'
+  // ADR-045 §2 — releasing a buyer (staff) cash advance, and approving its release.
+  | 'RELEASE_BUYER_ADVANCE';
 
 export interface SodEvaluationContext {
   organizationId: string;
@@ -26,6 +28,8 @@ export interface SodEvaluationContext {
   journalPreparerUserId?: string;
   /** ADR-044 §6 — the request's creator and every quote/photo uploader, withdrawn quotes included. */
   quoteUploaderUserIds?: string[];
+  /** ADR-045 §2 — the employee the cash advance is released to. */
+  advanceRecipientUserId?: string;
   isSystemAdministrator?: boolean;
   at?: Date;
 }
@@ -117,6 +121,12 @@ export class SegregationOfDutiesService {
       activeCodes.has('REQUESTER_CANNOT_SELECT') &&
       sameActor(context.requesterUserId)
     ) return 'REQUESTER_CANNOT_SELECT';
+
+    if (
+      context.action === 'RELEASE_BUYER_ADVANCE' &&
+      activeCodes.has('ADVANCE_RECIPIENT_CANNOT_RELEASE') &&
+      sameActor(context.advanceRecipientUserId)
+    ) return 'ADVANCE_RECIPIENT_CANNOT_RELEASE';
 
     if (
       context.action === 'APPROVE_BUSINESS_TRANSACTION' &&

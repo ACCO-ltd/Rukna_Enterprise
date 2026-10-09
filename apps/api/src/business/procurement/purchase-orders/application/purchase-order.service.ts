@@ -111,6 +111,12 @@ export interface DraftFromAwardInput {
   };
 }
 
+/** ADR-045 §5 — a listener on the confirm of an award-covered order, run in its transaction. */
+export type CoveredConfirmHook = (
+  tx: Prisma.TransactionClient,
+  ctx: { identity: RequestIdentity; purchaseOrderId: string; quotationRequestId: string },
+) => Promise<void>;
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(
@@ -333,6 +339,16 @@ export class PurchaseOrderService {
     return { id: created!.id, revisionId: revision.id };
   }
 
+  /**
+   * ADR-045 §5 — listeners called INSIDE the confirm transaction of an award-covered order (the
+   * quotations module registers PAYMENT_NEEDED here; this module cannot import it).
+   */
+  private readonly coveredConfirmHooks: CoveredConfirmHook[] = [];
+
+  registerCoveredConfirmHook(hook: CoveredConfirmHook): void {
+    this.coveredConfirmHooks.push(hook);
+  }
+
   async confirm(identity: RequestIdentity, id: string) {
     const prisma = this.tenancy.getClient();
     const po = await this.repo.findById(prisma, identity.activeOrganizationId, id);
@@ -501,6 +517,11 @@ export class PurchaseOrderService {
         ...(covered ? { reason: `Covered by quotation award ${covered.number}` } : {}),
         ...(approvalInstanceId ? { approvalInstanceId } : {}),
       });
+      if (covered) {
+        for (const hook of this.coveredConfirmHooks) {
+          await hook(tx, { identity, purchaseOrderId: po.id, quotationRequestId: covered.id });
+        }
+      }
     });
 
     return this.repo.findById(prisma, identity.activeOrganizationId, id);

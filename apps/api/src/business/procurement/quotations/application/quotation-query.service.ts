@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -18,6 +18,7 @@ import {
 } from '../infrastructure/quotation-request.repository.js';
 import { QuotationAccessService } from './quotation-access.service.js';
 import { QuotationWhatsAppAlerts } from './quotation-whatsapp-alerts.service.js';
+import { QuotationPaymentReadModel } from './quotation-payment-read-model.service.js';
 
 export interface Person {
   id: string;
@@ -53,6 +54,8 @@ export class QuotationQueryService {
     private readonly access: QuotationAccessService,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly alerts: QuotationWhatsAppAlerts,
+    // ADR-045 §6 — `payment` on the detail (absent in narrow unit wiring → null).
+    @Optional() private readonly payments?: QuotationPaymentReadModel,
   ) {}
 
   /**
@@ -293,6 +296,8 @@ export class QuotationQueryService {
        * Numbers masked to the last 3 digits; no message text, no amounts.
        */
       messages: await this.alerts.deliveryLog(db, orgId, request.id),
+      /** ADR-045 §6 — paying from the award (null until AWARDED with a payment path). */
+      payment: this.payments ? await this.payments.build(db, identity, request) : null,
     };
   }
 }

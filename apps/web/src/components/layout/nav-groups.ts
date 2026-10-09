@@ -73,7 +73,7 @@ export interface NavItem {
 }
 
 /** Live counts a nav item can carry. */
-export type NavBadgeKey = 'quotesToChoose';
+export type NavBadgeKey = 'quotesToChoose' | 'paymentsNeeded';
 
 export interface NavDomain {
   /** Translation key — also used as the collapse-store key. */
@@ -141,6 +141,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
       // ADR-044 — finance's inbox of quotation requests waiting for a choice; counts the decide queue.
       { href: '/finance/quotes', labelKey: 'quotesToChoose', iconKey: 'check-circle', groupKey: 'payables', permissionKey: 'award:quotation', badge: 'quotesToChoose' },
+      // ADR-045 — award orders to pay and store receipts to record; counts the pay queue.
+      { href: '/finance/payments-needed', labelKey: 'paymentsNeeded', iconKey: 'wallet', groupKey: 'payables', permissionKey: 'manage:payable', badge: 'paymentsNeeded' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
       { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'banking' },
@@ -180,7 +182,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },
-      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet' },
+      // ADR-045 — buyer advances are Accounts Payable's: GET /buyer-advances needs manage:payable.
+      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet', permissionKey: 'manage:payable' },
       { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
       // Suppliers: ungated master data — buyers add suppliers as purchasing widens, so this
       // must not require manage:procurement-config (a buyer needs to add the supplier their

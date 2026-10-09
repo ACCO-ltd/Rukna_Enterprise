@@ -191,6 +191,41 @@ describe('configure form', () => {
 
 });
 
+/** ADR-045 P14 — buyer cash needs a cash account without signatories; the presets fill one in. */
+describe('cash box / EVC float presets', () => {
+  const PETTY = account('gl-10900', '10900', 'Petty cash', 'CASH_AND_BANK');
+
+  it('opens the form filled as a cash box on GL 10900 when arriving from a payment (?preset=cash-box)', async () => {
+    mocks.useAccounts.mockReturnValue({ data: [CASH, PETTY], isPending: false, isError: false });
+    renderWithProviders(<BankAccounts preset="cash-box" />, { permissions: ['manage:accounting'] });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Add cash box' });
+    expect(within(dialog).getByLabelText('Bank name')).toHaveValue('Cash box');
+    expect(within(dialog).getByLabelText('Account number')).toHaveValue('CASH-BOX');
+    expect(within(dialog).getByText(/Keep this account without signatories/)).toBeInTheDocument();
+
+    await userEvent.setup().click(within(dialog).getByRole('button', { name: 'Configure account' }));
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ bankName: 'Cash box', glAccountCode: '10900', allowsPayments: true }),
+      expect.anything(),
+    );
+  });
+
+  it('offers the presets beside New Bank Account, and explains where buyer cash comes from', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BankAccounts />, { permissions: ['manage:accounting'] });
+    expect(screen.getByText(/Buyer cash for purchases is handed out only from an account with no signatories/)).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Add EVC float' })[0]!);
+    const dialog = await screen.findByRole('dialog', { name: 'Add EVC float' });
+    expect(within(dialog).getByLabelText('Bank name')).toHaveValue('EVC Plus');
+  });
+
+  it('ignores the preset for someone who cannot add accounts', () => {
+    renderWithProviders(<BankAccounts preset="cash-box" />, { permissions: ['view:accounting'] });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
 /** ADR-039 — the signatories panel is a FormDialog, not a side sheet. */
 describe('signatories dialog', () => {
   it('opens as a dialog named for the panel and the account, and closes from its footer', async () => {

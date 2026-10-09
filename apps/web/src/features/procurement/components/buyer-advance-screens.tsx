@@ -5,8 +5,11 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  Badge,
   Button,
   EmptyState,
+  Notice,
+  StatusPill,
   SectionHeader,
   type FilterValues,
   type ListFilterField,
@@ -26,9 +29,69 @@ import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-gr
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useAllBuyerAdvances, useGetBuyerAdvance, usePostBuyerAdvance } from '../hooks/use-procurement';
+import {
+  useAllBuyerAdvances,
+  useGetBuyerAdvance,
+  usePostBuyerAdvance,
+  usePurchaseOrder,
+  useSupplierBill,
+} from '../hooks/use-procurement';
+import { useCanPay, useReverseBuyerAdvance } from '../hooks/use-quotation-payment';
+import { todayInMogadishu } from '../quotations/payment-rules';
 import type { BuyerAdvance, BillPostingStatus } from '../types';
 import { PostingStatusBadge } from './procurement-badges';
+import { usePaymentRefusalText } from './quotes/payment-shared';
+
+/**
+ * ADR-045 §7: an advance POSTED before buyer cash reached the ledger has no journal. It is never
+ * re-posted (that would date it today or double-count a manual journal) — only labelled.
+ */
+export function isLegacyAdvance(advance: Pick<BuyerAdvance, 'legacy' | 'postingStatus' | 'postedJournalEntryId'>): boolean {
+  if (typeof advance.legacy === 'boolean') return advance.legacy;
+  return advance.postingStatus === 'POSTED' && !advance.postedJournalEntryId;
+}
+
+/** Drafts (awaiting approval), cancelled and reversed advances hold no cash. */
+export function holdsNothing(advance: Pick<BuyerAdvance, 'documentStatus' | 'postingStatus'>): boolean {
+  return (
+    advance.documentStatus === 'DRAFT' ||
+    advance.documentStatus === 'CANCELLED' ||
+    advance.documentStatus === 'REJECTED' ||
+    advance.postingStatus === 'REVERSED'
+  );
+}
+
+/** The advance's state in words: waiting for approval, cancelled, reversed — else its posting. */
+function AdvanceStatus({ advance }: { advance: Pick<BuyerAdvance, 'documentStatus' | 'postingStatus'> }) {
+  const t = useTranslations('procurement.advances.state');
+  if (advance.documentStatus === 'DRAFT') return <StatusPill tone="progress">{t('waiting')}</StatusPill>;
+  if (advance.documentStatus === 'CANCELLED' || advance.documentStatus === 'REJECTED')
+    return <StatusPill tone="historical">{t('cancelled')}</StatusPill>;
+  if (advance.postingStatus === 'REVERSED') return <StatusPill tone="historical">{t('reversed')}</StatusPill>;
+  return <PostingStatusBadge status={advance.postingStatus} />;
+}
+
+/** The PO's number: from the advance when it carries it, else read from the order (never a raw id). */
+function PoNumber({ id, number }: { id: string; number: string | null }) {
+  const po = usePurchaseOrder(number ? '' : id);
+  return <>{number ?? po.data?.poNumber ?? '…'}</>;
+}
+
+/** A bill reference: its number, read from the bill when the row has only the id. */
+function BillRef({ id, number }: { id: string; number?: string | null }) {
+  const bill = useSupplierBill(number ? '' : id);
+  const shown = number ?? bill.data?.billNumber ?? bill.data?.supplierInvoiceNumber ?? null;
+  return (
+    <Link href={`/finance/accounting/bills/${id}`} className="text-sm font-medium text-brand-primary hover:underline">
+      {shown ?? '…'}
+    </Link>
+  );
+}
+
+function LegacyBadge() {
+  const t = useTranslations('procurement.advances');
+  return <Badge tone="neutral">{t('legacy')}</Badge>;
+}
 
 const POSTING_STATUSES: BillPostingStatus[] = ['NOT_POSTED', 'POSTED', 'REVERSED', 'FAILED'];
 
@@ -41,7 +104,10 @@ export function BuyerAdvancesList() {
 
   // Org-wide, newest first (GET /buyer-advances without a PO). Advances are created from a
   // purchase order's settlement tab, so this page has no primary of its own.
-  const query = useAllBuyerAdvances();
+  // GET /buyer-advances is Accounts Payable's (manage:payable): don't ask without it (QA: two 403s
+  // for a Procurement Manager).
+  const canPay = useCanPay();
+  const query = useAllBuyerAdvances({ enabled: canPay });
   const [filters, setFilters] = useState<FilterValues>({});
 
   const data = useMemo(() => query.data ?? [], [query.data]);
@@ -108,16 +174,25 @@ export function BuyerAdvancesList() {
       header: t('colOutstanding'),
       numeric: true,
       sortable: true,
-      plainValue: (adv) => Number(adv.outstanding),
-      render: (adv, ctx) => (
-        <bdi className="tabular-nums">{formatMoney(adv.outstanding, adv.currencyCode, ctx.locale)}</bdi>
-      ),
+      plainValue: (adv) => (holdsNothing(adv) ? 0 : Number(adv.outstanding)),
+      // A draft, cancelled or reversed advance holds no cash: never show its amount as outstanding.
+      render: (adv, ctx) =>
+        holdsNothing(adv) ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <bdi className="tabular-nums">{formatMoney(adv.outstanding, adv.currencyCode, ctx.locale)}</bdi>
+        ),
     },
     {
       key: 'posting',
       header: t('colPosting'),
       card: 'status',
-      render: (adv) => <PostingStatusBadge status={adv.postingStatus} />,
+      render: (adv) => (
+        <span className="flex flex-wrap items-center gap-1">
+          <AdvanceStatus advance={adv} />
+          {isLegacyAdvance(adv) ? <LegacyBadge /> : null}
+        </span>
+      ),
     },
   ];
 
@@ -129,6 +204,10 @@ export function BuyerAdvancesList() {
       options: POSTING_STATUSES.map((s) => ({ value: s, label: tPosting(s) })),
     },
   ];
+
+  if (!canPay) {
+    return <Notice tone="info">{t('financeOnly')}</Notice>;
+  }
 
   return (
     <PlatformDataGrid
@@ -169,11 +248,15 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   // A buyer advance carries no document number of its own; the breadcrumb names the kind.
   useModuleTrail(query.data ? t('detailTitle') : undefined);
   const [showPostConfirm, setShowPostConfirm] = useState(false);
+  const [reversing, setReversing] = useState(false);
+  const canPay = useCanPay();
+  const { fromError } = usePaymentRefusalText();
 
   // poId is needed to invalidate settlement query; read from advance once loaded
   const advance = query.data;
   const poId = advance?.purchaseOrderId ?? '';
   const post = usePostBuyerAdvance(id, poId);
+  const reverse = useReverseBuyerAdvance(advance?.quotationRequestId ?? null);
 
   if (query.isPending) {
     return (
@@ -188,6 +271,11 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   }
 
   const canPost = advance.postingStatus === 'NOT_POSTED';
+  const legacy = isLegacyAdvance(advance);
+  // The server decides (R15: nothing applied or returned); offered only on a ledger-posted advance.
+  const mayReverse = canPay && advance.postingStatus === 'POSTED' && !legacy && !advance.reversedAt;
+  // A DRAFT advance (waiting for approval) is cancelled by the same endpoint, without a date.
+  const mayCancel = canPay && advance.documentStatus === 'DRAFT' && advance.postingStatus === 'NOT_POSTED';
 
   return (
     <div className="space-y-6">
@@ -197,18 +285,58 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           {t('detailTitle')}
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <PostingStatusBadge showAxis status={advance.postingStatus} />
+          <AdvanceStatus advance={advance} />
           <span className="text-sm text-muted-foreground">
             {formatDate(advance.advancedAt, locale)}
           </span>
           <Link
             href={`/procurement/orders/${advance.purchaseOrderId}`}
-            className="font-mono text-xs text-muted-foreground hover:underline"
+            className="text-xs text-muted-foreground hover:underline"
           >
-            PO {advance.purchaseOrderId.slice(0, 8)}…
+            <PoNumber id={advance.purchaseOrderId} number={advance.purchaseOrder?.poNumber ?? null} />
           </Link>
+          {legacy ? <LegacyBadge /> : null}
+          {advance.postedJournalEntryId ? (
+            <Link
+              href={`/finance/accounting/journals/${advance.postedJournalEntryId}`}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-brand-primary underline-offset-4 hover:underline"
+            >
+              {t('journalLink')}
+            </Link>
+          ) : null}
+          {advance.quotationRequestId ? (
+            <Link
+              href={`/finance/quotes/${advance.quotationRequestId}`}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-brand-primary underline-offset-4 hover:underline"
+            >
+              {t('requestLink')}
+            </Link>
+          ) : null}
         </div>
       </div>
+
+      {legacy ? <Notice tone="historical">{t('legacyBody')}</Notice> : null}
+      {advance.reversedAt ? (
+        <Notice tone="historical" title={t('reversedTitle', { date: formatDate(advance.reversedAt, locale) ?? '' })}>
+          {advance.reversalReason ? <p className="mt-1">{advance.reversalReason}</p> : null}
+          {advance.reversalJournalEntryId ? (
+            <Link
+              href={`/finance/accounting/journals/${advance.reversalJournalEntryId}`}
+              className="mt-1 inline-flex min-h-11 items-center font-medium text-brand-primary underline underline-offset-4"
+            >
+              {t('reversalJournalLink')}
+            </Link>
+          ) : null}
+        </Notice>
+      ) : null}
+
+      {mayReverse || mayCancel ? (
+        <div>
+          <Button type="button" variant="outline" className="min-h-11" onClick={() => setReversing(true)}>
+            {mayCancel ? t('cancelAction') : t('reverseAction')}
+          </Button>
+        </div>
+      ) : null}
 
       {/* Post action */}
       {canPost && (
@@ -223,7 +351,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           )}
         </div>
       )}
-      {!canPost && advance.postingStatus !== 'NOT_POSTED' && (
+      {!canPost && advance.postingStatus !== 'NOT_POSTED' && !legacy && (
         <p className="text-sm text-muted-foreground">{t('alreadyPosted')}</p>
       )}
 
@@ -232,7 +360,10 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
         <SectionHeader id="adv-amounts-heading" title={t('sectionDetails')} />
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label={t('colAmount')} value={formatMoney(advance.amount, advance.currencyCode, locale) ?? ''} />
-          <Field label={t('colOutstanding')} value={formatMoney(advance.outstanding, advance.currencyCode, locale) ?? ''} />
+          <Field
+            label={t('colOutstanding')}
+            value={holdsNothing(advance) ? '—' : (formatMoney(advance.outstanding, advance.currencyCode, locale) ?? '')}
+          />
           <Field label={t('colAdvancedAt')} value={formatDate(advance.advancedAt, locale) ?? ''} />
         </dl>
       </section>
@@ -281,6 +412,8 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('colBill')}</TableHead>
+                  <TableHead>{t('colApplied')}</TableHead>
+                  <TableHead>{t('colPosting')}</TableHead>
                   <TableHead className="text-end">{t('colAllocated')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -288,12 +421,25 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
                 {advance.evidenceAllocations.map((ea) => (
                   <TableRow key={ea.id}>
                     <TableCell>
-                      <Link
-                        href={`/finance/accounting/bills/${ea.supplierBillId}`}
-                        className="font-mono text-xs hover:underline"
-                      >
-                        {ea.supplierBillId.slice(0, 8)}…
-                      </Link>
+                      <BillRef id={ea.supplierBillId} number={ea.billNumber} />
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(ea.allocationDate ?? ea.createdAt, locale)}
+                    </TableCell>
+                    <TableCell>
+                      {ea.reversedAt ? (
+                        <Badge tone="neutral">{t('applicationReversed')}</Badge>
+                      ) : ea.postingStatus ? (
+                        ea.journalEntryId ? (
+                          <Link href={`/finance/accounting/journals/${ea.journalEntryId}`} className="hover:underline">
+                            <PostingStatusBadge status={ea.postingStatus} />
+                          </Link>
+                        ) : (
+                          <PostingStatusBadge status={ea.postingStatus} />
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{t('evidenceOnly')}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-end tabular-nums font-medium">
                       {formatMoney(ea.allocatedAmount, advance.currencyCode, locale)}
@@ -305,6 +451,33 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
           </TableScroll>
         )}
       </section>
+
+      {reversing ? (
+        <ConfirmActionDialog
+          title={mayCancel ? t('cancelTitle') : t('reverseTitle')}
+          description={
+            mayCancel ? t('cancelBody') : t('reverseBody', { date: formatDate(todayInMogadishu(), locale) ?? '' })
+          }
+          confirmLabel={mayCancel ? t('cancelAction') : t('reverseAction')}
+          reason={{ label: t('reverseReason'), required: true }}
+          destructive
+          isPending={reverse.isPending}
+          errorMessage={reverse.error ? fromError(reverse.error) : undefined}
+          onConfirm={(reason) =>
+            reverse.mutate(
+              {
+                advanceId: advance.id,
+                payload: mayCancel ? { reason } : { reason, reversalDate: todayInMogadishu() },
+              },
+              { onSuccess: () => setReversing(false) },
+            )
+          }
+          onDismiss={() => {
+            reverse.reset();
+            setReversing(false);
+          }}
+        />
+      ) : null}
 
       {/* Post confirm dialog */}
       {showPostConfirm ? (

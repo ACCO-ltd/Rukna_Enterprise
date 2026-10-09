@@ -8,6 +8,7 @@ import { CommitmentLedgerModule } from './commitment-ledger/commitment-ledger.mo
 import { ProjectProcurementModule } from './project-procurement/project-procurement.module.js';
 import { SupplierDirectoryModule } from './supplier-directory/supplier-directory.module.js';
 import { QuotationsModule } from './quotations/quotations.module.js';
+import { StoreDocumentsModule } from './store-documents/store-documents.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { QuotationsModule } from './quotations/quotations.module.js';
     ProjectProcurementModule,
     SupplierDirectoryModule,
     QuotationsModule,
+    StoreDocumentsModule,
   ],
   exports: [
     CatalogueModule,

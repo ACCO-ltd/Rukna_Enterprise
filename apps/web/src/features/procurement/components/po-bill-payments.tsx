@@ -16,6 +16,8 @@ const STATE_TONE: Record<SupplierBillPaymentState, StatusTone> = {
   PAYMENT_IN_PROGRESS: 'progress',
   PARTIALLY_PAID: 'progress',
   PAID: 'success',
+  // ADR-045: settled from the buyer's cash (a posted advance application), not a bank payment.
+  PAID_BY_BUYER_CASH: 'success',
   REVERSED: 'historical',
 };
 

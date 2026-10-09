@@ -77,4 +77,20 @@ describe('WhatsAppLog (ADR-044 phase 2)', () => {
     expect(screen.getByText('Read')).toBeInTheDocument();
     expect(screen.getByText('Store chosen')).toBeInTheDocument();
   });
+
+  it('labels the payment alerts in words (ADR-045), never a raw key', () => {
+    renderWithProviders(
+      <WhatsAppLog
+        messages={[
+          entry({ id: 'p1', purpose: 'QUOTE_CASH_RELEASED' as never }),
+          entry({ id: 'p2', purpose: 'QUOTE_PAY_NEEDED' as never }),
+          entry({ id: 'p3', purpose: 'QUOTE_SUPPLIER_PAID' as never }),
+        ] as never}
+      />,
+    );
+    expect(screen.getByText('Cash released')).toBeInTheDocument();
+    expect(screen.getByText('Payment needed')).toBeInTheDocument();
+    expect(screen.getByText('Supplier paid')).toBeInTheDocument();
+    expect(screen.queryByText(/QUOTE_/)).not.toBeInTheDocument();
+  });
 });

@@ -102,6 +102,15 @@ export class BillMatchRepository {
     });
   }
 
+  /** ADR-045 — the award payment path of the store document a bill was recorded from (null if none). */
+  async storeDocumentPaymentPath(prisma: TenantPrisma, organizationId: string, billId: string): Promise<string | null> {
+    const doc = await prisma.storeDocument.findFirst({
+      where: { supplierBillId: billId, organizationId },
+      select: { quotationRequest: { select: { paymentPath: true } } },
+    });
+    return doc?.quotationRequest?.paymentPath ?? null;
+  }
+
   findBillForMatching(prisma: TenantPrisma, organizationId: string, billId: string) {
     return prisma.supplierBill.findFirst({
       where: { id: billId, organizationId },

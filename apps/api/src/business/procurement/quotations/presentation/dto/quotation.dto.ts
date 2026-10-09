@@ -23,7 +23,7 @@ import {
 export const QUOTE_PHOTO_SOURCES = ['CAMERA', 'GALLERY', 'UNKNOWN'] as const;
 export const QUOTE_COUNT_EXCEPTION_REASONS = ['ONLY_ONE_SUPPLIER', 'URGENT', 'FRAMEWORK_SUPPLIER'] as const;
 
-export const QUOTATION_QUEUE_VALUES = ['collect', 'returned', 'waiting', 'decide', 'awarded', 'all'] as const;
+export const QUOTATION_QUEUE_VALUES = ['collect', 'returned', 'waiting', 'decide', 'awarded', 'pay', 'settle', 'all'] as const;
 
 export class ListQuotationRequestsQuery {
   @ApiPropertyOptional({
@@ -31,7 +31,8 @@ export class ListQuotationRequestsQuery {
     description:
       'collect = COLLECTING · returned = RETURNED · waiting = AWAITING_DECISION/AWARD_PENDING_APPROVAL (mine) · ' +
       'decide = AWAITING_DECISION (oldest sentAt first) + AWARD_PENDING_APPROVAL where I hold the current step · ' +
-      'awarded = AWARDED without a live PO · all (default)',
+      'awarded = AWARDED without a live PO · pay = award order OPEN and not fully funded · ' +
+      'settle = a receipt to record or cash still with the buyer (ADR-045; award:quotation or manage:payable) · all (default)',
   })
   @IsOptional()
   @IsIn(QUOTATION_QUEUE_VALUES)
@@ -240,6 +241,19 @@ export class RaiseOrderDto {
 }
 
 export class QuotationReasonDto {
+  @ApiProperty({ maxLength: 1000 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason: string;
+}
+
+/** ADR-045 §4 — switch BUYER_CASH ↔ FINANCE_PAYS_SUPPLIER before any money moved. */
+export class ChangePaymentPathDto {
+  @ApiProperty({ enum: ['BUYER_CASH', 'FINANCE_PAYS_SUPPLIER'] })
+  @IsIn(['BUYER_CASH', 'FINANCE_PAYS_SUPPLIER'])
+  paymentPath: 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER';
+
   @ApiProperty({ maxLength: 1000 })
   @IsString()
   @IsNotEmpty()

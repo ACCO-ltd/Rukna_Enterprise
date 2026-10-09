@@ -82,6 +82,24 @@ async function main() {
     );
   }
 
+  // ADR-045 §2 — buyer-advance release shares the supplier-payment band definitions: the same
+  // switch flips both. Refuse when the payment bands are bound but the advance bindings are not
+  // seeded yet (run prisma/seeds/grant-quotation-payment.seed.ts first).
+  const bindingCount = (entityType: string) =>
+    prisma.workflowTriggerBinding.count({
+      where: { organizationId: org.id, entityType, fromState: 'DRAFT', toState: 'APPROVED' },
+    });
+  const [paymentBindings, advanceBindings] = await Promise.all([
+    bindingCount('SupplierPayment'),
+    bindingCount('BuyerAdvance'),
+  ]);
+  if (paymentBindings > 0 && advanceBindings !== paymentBindings) {
+    throw new Error(
+      'Supplier-payment bands and buyer-advance bands must be switched together, but the buyer-advance ' +
+        'bindings are not seeded. Run prisma/seeds/grant-quotation-payment.seed.ts (or the governance seed) first.',
+    );
+  }
+
   await prisma.workflowDefinition.updateMany({ where: { id: { in: defIds } }, data: { isActive } });
   await prisma.workflowTriggerBinding.updateMany({
     where: { workflowDefinitionId: { in: defIds } },

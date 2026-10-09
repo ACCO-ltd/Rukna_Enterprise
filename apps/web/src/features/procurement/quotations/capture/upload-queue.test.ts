@@ -311,3 +311,109 @@ describe('upload queue', () => {
     expect(queue.getSnapshot()).toEqual([]);
   });
 });
+
+describe('upload queue — store receipts (ADR-045 P12)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-08T07:30:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function receiptHarness(createImpl?: () => Promise<unknown>) {
+    const addStoreDocument = vi.fn(
+      createImpl ?? (async () => ({ id: 'sd-1', number: 'SD-00019', status: 'SUBMITTED' })),
+    );
+    const addStoreDocumentPhoto = vi.fn(async () => ({ id: 'sd-1' }));
+    const h = harness({
+      addStoreDocument: addStoreDocument as unknown as QueueDeps['addStoreDocument'],
+      addStoreDocumentPhoto: addStoreDocumentPhoto as unknown as QueueDeps['addStoreDocumentPhoto'],
+    });
+    return { ...h, addStoreDocument, addStoreDocumentPhoto };
+  }
+
+  it('uploads the pages at once but creates the document only on Send, with every page and no amount', async () => {
+    const { queue, upload, addStoreDocument, addQuote } = receiptHarness();
+    await queue.start();
+    const ref = await queue.captureStoreDocument('qr1', { purchaseOrderId: 'po1', kind: 'RECEIPT' }, page('a.jpg'));
+    await queue.addPage(ref!, page('b.jpg'));
+    await settle();
+
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(addStoreDocument).not.toHaveBeenCalled();
+    expect(queue.getSnapshot()[0]?.phase).toBe('ready');
+
+    await queue.sendStoreDocument(ref!);
+    await settle();
+
+    expect(addQuote).not.toHaveBeenCalled();
+    expect(addStoreDocument).toHaveBeenCalledTimes(1);
+    const payload = (addStoreDocument.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(payload).toEqual({
+      clientRef: ref,
+      purchaseOrderId: 'po1',
+      kind: 'RECEIPT',
+      photos: [
+        { platformFileId: 'file-1', capturedAt: page().capturedAt, source: 'CAMERA' },
+        { platformFileId: 'file-2', capturedAt: page().capturedAt, source: 'CAMERA' },
+      ],
+    });
+    expect(Object.keys(payload)).not.toContain('amount');
+    expect(Object.keys(payload)).not.toContain('total');
+    expect(queue.getSnapshot()).toEqual([]);
+  });
+
+  it('retries a lost response with the same clientRef, so the server keeps one document', async () => {
+    let failures = 1;
+    const { queue, addStoreDocument } = receiptHarness(async () => {
+      if (failures > 0) {
+        failures -= 1;
+        throw new TypeError('Failed to fetch');
+      }
+      return { storeDocument: { id: 'sd-1' } };
+    });
+    await queue.start();
+    const ref = await queue.captureStoreDocument('qr1', { purchaseOrderId: 'po1', kind: 'RECEIPT' }, page());
+    await queue.sendStoreDocument(ref!);
+    await settle();
+    expect(queue.getSnapshot()[0]?.phase).toBe('retrying');
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await settle();
+    expect(addStoreDocument).toHaveBeenCalledTimes(2);
+    const refs = addStoreDocument.mock.calls.map((call) => (call as unknown as [{ clientRef: string }])[0].clientRef);
+    expect(refs).toEqual([ref, ref]);
+    expect(queue.getSnapshot()).toEqual([]);
+  });
+
+  it('waits while offline and sends when the signal is back', async () => {
+    const { queue, state, addStoreDocument } = receiptHarness();
+    await queue.start();
+    state.online = false;
+    const ref = await queue.captureStoreDocument('qr1', { purchaseOrderId: 'po1', kind: 'INVOICE' }, page());
+    await queue.sendStoreDocument(ref!);
+    await settle();
+    expect(queue.getSnapshot()[0]?.phase).toBe('offline');
+    expect(addStoreDocument).not.toHaveBeenCalled();
+
+    state.online = true;
+    queue.pump();
+    await settle();
+    expect(addStoreDocument).toHaveBeenCalledTimes(1);
+    expect((addStoreDocument.mock.calls[0] as unknown as [{ kind: string }])[0].kind).toBe('INVOICE');
+  });
+
+  it('stops on a duplicate-photo refusal and waits for the buyer', async () => {
+    const { queue } = receiptHarness(async () => {
+      throw new HttpError(409, 'CONFLICT', { code: 'STORE_DOCUMENT_PHOTO_DUPLICATE' });
+    });
+    await queue.start();
+    const ref = await queue.captureStoreDocument('qr1', { purchaseOrderId: 'po1', kind: 'RECEIPT' }, page());
+    await queue.sendStoreDocument(ref!);
+    await settle();
+    const item = queue.getSnapshot()[0]!;
+    expect(item.phase).toBe('failed');
+    expect(item.failureCode).toBe('STORE_DOCUMENT_PHOTO_DUPLICATE');
+  });
+});

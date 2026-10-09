@@ -33,6 +33,11 @@ export interface CreateSupplierBillData {
     costCenterId?: string;
     boqNodeId?: string;
     spendCategoryId?: string;
+    /** ADR-045 — a bill recorded from a store document copies its PO line's identity (3-way match). */
+    lineType?: 'MATERIAL' | 'SERVICE' | 'OTHER';
+    materialId?: string;
+    unitOfMeasureId?: string;
+    purchaseOrderLineId?: string;
   }[];
 }
 
@@ -84,6 +89,15 @@ export class SupplierBillRepository {
       include: {
         lines: { orderBy: { lineNumber: 'asc' } },
         supplier: { select: { id: true, code: true, name: true } },
+        // ADR-045 — the store receipt / invoice the bill was recorded from (its evidence).
+        storeDocument: {
+          select: {
+            id: true,
+            number: true,
+            kind: true,
+            photos: { select: { platformFileId: true, pageNumber: true }, orderBy: { pageNumber: 'asc' } },
+          },
+        },
       },
     });
   }
@@ -208,9 +222,14 @@ export class SupplierBillRepository {
     });
   }
 
+  /**
+   * Records a failed posting attempt. Never over a POSTED document: when two posts race, the loser
+   * fails on the journal's unique key AFTER the winner committed — it must not flip the posted
+   * document to FAILED (ADR-045 double-tap finding).
+   */
   markPostingFailed(prisma: TenantPrisma, id: string, errorCode: string) {
-    return prisma.supplierBill.update({
-      where: { id },
+    return prisma.supplierBill.updateMany({
+      where: { id, postingStatus: { not: 'POSTED' } },
       data: { postingStatus: 'FAILED', lastPostingAttemptAt: new Date(), lastPostingErrorCode: errorCode },
     });
   }

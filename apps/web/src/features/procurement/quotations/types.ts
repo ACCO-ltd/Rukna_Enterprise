@@ -13,6 +13,7 @@
 import type { StaffAlertLogEntry } from '@erp/types';
 
 import type { ApiDate, Money, ProcurementProjectRef, Quantity } from '../types';
+import type { QuotationPayment } from './payment-types';
 
 export type QuotationRequestStatus =
   | 'COLLECTING'
@@ -37,7 +38,8 @@ export type QuotePhotoSource = 'CAMERA' | 'GALLERY' | 'UNKNOWN';
 /** The server's verdict on waiting time: amber ≥ 2 working hours, red ≥ 4 (ADR-044 §10). */
 export type SlaTone = 'none' | 'amber' | 'red';
 
-export type QuotationQueue = 'collect' | 'returned' | 'waiting' | 'decide' | 'awarded' | 'all';
+/** `pay` / `settle` are finance's Phase 3 queues (ADR-045 §6): award POs to fund, receipts to record. */
+export type QuotationQueue = 'collect' | 'returned' | 'waiting' | 'decide' | 'awarded' | 'all' | 'pay' | 'settle';
 
 /** `GET /procurement/quotation-requests` row. */
 export interface QuotationRequestRow {
@@ -59,6 +61,12 @@ export interface QuotationRequestRow {
   lowestTotal: Money | null;
   awardedTotal: Money | null;
   moneyVisible: boolean;
+  /**
+   * ADR-045 `pay` / `settle` queues only: working minutes since payment became needed (pay: the
+   * award order was issued; settle: the receipt came in / cash went out). The row carries no
+   * payment state, store or remaining amount — the queue itself says what is waiting.
+   */
+  paymentWaitingWorkingMinutes?: number;
 }
 
 /** `GET /procurement/quotation-requests` envelope (spec §0a). */
@@ -241,6 +249,8 @@ export interface QuotationRequestDetail {
   photosVisible?: boolean;
   /** ADR-044 phase 2 — WhatsApp alerts about the request, oldest first. Absent on older servers. */
   messages?: StaffAlertLogEntry[];
+  /** ADR-045 phase 3 — paying from the award. Absent on older servers and before an award. */
+  payment?: QuotationPayment | null;
 }
 
 /** The MR detail's quotation summary (Q8). Absent on servers that predate it. */

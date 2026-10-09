@@ -27,7 +27,9 @@ import {
   QuotationReasonDto,
   QuotePhotoDto,
   SendQuotationDto,
+  ChangePaymentPathDto,
 } from './dto/quotation.dto.js';
+import { QuotationPaymentPathService } from '../application/quotation-payment-path.service.js';
 
 const P = PERMISSIONS;
 
@@ -49,11 +51,12 @@ export class QuotationRequestController {
     private readonly awards: QuotationAwardService,
     private readonly orders: QuotationOrderService,
     private readonly lists: QuotationListService,
+    private readonly paymentPath: QuotationPaymentPathService,
   ) {}
 
   @Get()
   @RequirePermissions(P.procurementView)
-  @RequireAnyPermission(P.quotationsCollect, P.quotationsAward)
+  @RequireAnyPermission(P.quotationsCollect, P.quotationsAward, P.payablesManage)
   @ApiOperation({
     summary: 'Quotation queues → { items, page, limit, total }; money fields null unless visible',
   })
@@ -79,7 +82,7 @@ export class QuotationRequestController {
 
   @Get(':id')
   @RequirePermissions(P.procurementView)
-  @RequireAnyPermission(P.quotationsCollect, P.quotationsAward)
+  @RequireAnyPermission(P.quotationsCollect, P.quotationsAward, P.payablesManage)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Quotation request detail: quotes, photos, totals (money-gated), allowed actions' })
   detail(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -173,6 +176,14 @@ export class QuotationRequestController {
   })
   award(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: AwardQuotationDto) {
     return this.awards.award(identity, id, dto);
+  }
+
+  @Post(':id/payment-path')
+  @RequirePermissions(P.procurementView, P.quotationsAward, P.payablesManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ADR-045 — change BUYER_CASH ↔ FINANCE_PAYS_SUPPLIER (with a reason) before any money moved' })
+  changePaymentPath(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ChangePaymentPathDto) {
+    return this.paymentPath.changePaymentPath(identity, id, dto);
   }
 
   @Post(':id/withdraw-award')

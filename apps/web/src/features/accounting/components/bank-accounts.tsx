@@ -48,7 +48,9 @@ import { formatDate } from '@/lib/format';
 import { accountName } from '../account-display';
 import {
   bankAccountProblems,
+  cashAccountPreset,
   emptyBankAccountDraft,
+  type CashAccountPreset,
   glAvailability,
   mappableGlAccounts,
   toConfigureBankAccountBody,
@@ -64,13 +66,18 @@ import {
 } from '../hooks/use-accounting';
 import type { BankAccount } from '../types';
 
-export function BankAccounts() {
+export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | null } = {}) {
   const t = useTranslations('accounting.bankAccounts');
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
 
   const banks = useBankAccounts();
-  const [creating, setCreating] = useState(false);
+  // ADR-045 P14: `?preset=cash-box` (from "Add a cash box or EVC float" on a payment) opens the
+  // create form already filled.
+  const mayCreate = can(ACCOUNTING_PERMISSIONS.manageChart);
+  const [creating, setCreating] = useState<CashAccountPreset | 'blank' | null>(
+    mayCreate && preset ? preset : null,
+  );
   const [signatoryBank, setSignatoryBank] = useState<BankAccount | null>(null);
 
   const columns: GridColumn<BankAccount>[] = [
@@ -142,18 +149,32 @@ export function BankAccounts() {
     },
   ];
 
-  const createAction = can(ACCOUNTING_PERMISSIONS.manageChart) ? (
-    <Button type="button" onClick={() => setCreating(true)}>
-      {t('create.new')}
-    </Button>
+  const createAction = mayCreate ? (
+    <span className="flex flex-wrap gap-2">
+      <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreating('cash-box')}>
+        {t('cashPreset.addCashBox')}
+      </Button>
+      <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreating('evc-float')}>
+        {t('cashPreset.addEvc')}
+      </Button>
+      <Button type="button" className="min-h-11" onClick={() => setCreating('blank')}>
+        {t('create.new')}
+      </Button>
+    </span>
   ) : null;
 
   return (
     <div className="space-y-6">
 
       {creating ? (
-        <ConfigureBankAccountForm title={t('create.title')} onDone={() => setCreating(false)} />
+        <ConfigureBankAccountForm
+          title={creating === 'blank' ? t('create.title') : t(`cashPreset.title.${creating}`)}
+          preset={creating === 'blank' ? null : creating}
+          onDone={() => setCreating(null)}
+        />
       ) : null}
+
+      <p className="max-w-prose text-body-sm text-muted-foreground">{t('cashPreset.explain')}</p>
 
       <PlatformDataGrid
         columns={columns}
@@ -352,18 +373,44 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
 /** A `FormDialog` (ADR-039), size `md`. The caller mounts it to open it. */
-function ConfigureBankAccountForm({ title, onDone }: { title: string; onDone: () => void }) {
+function ConfigureBankAccountForm({
+  title,
+  preset = null,
+  onDone,
+}: {
+  title: string;
+  preset?: CashAccountPreset | null;
+  onDone: () => void;
+}) {
   const t = useTranslations('accounting.bankAccounts.create');
+  const tPreset = useTranslations('accounting.bankAccounts.cashPreset');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
-
-  const [initialDraft] = useState<BankAccountDraft>(emptyBankAccountDraft);
-  const [draft, setDraft] = useState<BankAccountDraft>(initialDraft);
-  const [showErrors, setShowErrors] = useState(false);
 
   const accounts = useAccounts();
   const banks = useBankAccounts();
   const configure = useConfigureBankAccount();
+
+  // A preset is filled once the chart has loaded, so its GL account can be matched.
+  const presetDraft = (): BankAccountDraft =>
+    preset
+      ? cashAccountPreset(
+          preset,
+          { cashBoxName: tPreset('cashBoxName'), evcName: tPreset('evcName'), evcProvider: tPreset('evcProvider') },
+          accounts.data ?? [],
+          banks.data ?? [],
+        )
+      : emptyBankAccountDraft();
+  const [initialDraft, setInitialDraft] = useState<BankAccountDraft>(presetDraft);
+  const [draft, setDraft] = useState<BankAccountDraft>(initialDraft);
+  const [showErrors, setShowErrors] = useState(false);
+  const [presetFilledFromChart, setPresetFilled] = useState(Boolean(accounts.data && banks.data));
+  if (preset && !presetFilledFromChart && accounts.data && banks.data) {
+    const filled = presetDraft();
+    setPresetFilled(true);
+    setInitialDraft(filled);
+    setDraft(filled);
+  }
 
   const ids = {
     bankName: useId(),
@@ -423,7 +470,7 @@ function ConfigureBankAccountForm({ title, onDone }: { title: string; onDone: ()
       <>
       {/* A19 — the DTO offers an Arabic name, the column does not exist, and sending it fails
           the request. Said here so the omission does not read as an oversight. */}
-      <Alert variant="info" messages={[t('noArabicName')]} />
+      {preset ? <Alert variant="info" messages={[tPreset('formHint')]} /> : null}
 
       <FormField htmlFor={ids.bankName} label={t('bankName')}>
         <Input

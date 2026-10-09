@@ -41,6 +41,11 @@ import { OutboundMessageRepository } from '../../../../../platform/messaging/inf
 import { QuotationWhatsAppAlerts } from '../../application/quotation-whatsapp-alerts.service.js';
 import { QuotationSlaAlertJob } from '../../application/quotation-sla-alert.job.js';
 import { QuotationAlertGuard } from '../../application/quotation-alert-guard.service.js';
+import { QuotationPaymentNotifier } from '../../application/quotation-payment-notifier.service.js';
+import { QuotationPaymentReadModel } from '../../application/quotation-payment-read-model.service.js';
+import { QuotationPaymentPathService } from '../../application/quotation-payment-path.service.js';
+import { SettlementQueryService as RealSettlementQueryService } from '../../../purchase-orders/application/settlement-query.service.js';
+import { SettlementQueryRepository } from '../../../purchase-orders/infrastructure/settlement-query.repository.js';
 
 export interface QuotationServiceOptions {
   /** Server environment seen by the WhatsApp alerts (e.g. QUOTATION_WHATSAPP_ENABLED). */
@@ -81,7 +86,15 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
   );
   const alerts = new QuotationWhatsAppAlerts(config, communication, messages);
   const runner = new QuotationCommandRunner(tenancy, repo, access, audit);
-  const query = new QuotationQueryService(tenancy, repo, access, commandGovernance, alerts);
+  // ADR-045 §6 — the payment block on the detail reads the real settlement.
+  const paymentReadModel = new QuotationPaymentReadModel(
+    tenancy,
+    repo,
+    access,
+    commandGovernance,
+    new RealSettlementQueryService(tenancy, new SettlementQueryRepository(), projectAccess),
+  );
+  const query = new QuotationQueryService(tenancy, repo, access, commandGovernance, alerts, paymentReadModel);
   // approve() never touches WorkflowsService (only initiate() does).
   const approvals = new ApprovalService(workflowsRepo, {} as WorkflowsService, sod);
   const notifier = new QuotationNotifier(new NotificationWriter(), access, sod, projectAccess, alerts);
@@ -117,7 +130,11 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
     link,
   );
   const fileAuth = new FileAuthorizationService(tenancy, projectAccess);
-  new QuotationAlertGuard(communication, alerts, repo, notifier).onModuleInit();
+  // ADR-045 — payment notifications; registers PAYMENT_NEEDED on this PO service's covered confirm.
+  const paymentNotifier = new QuotationPaymentNotifier(new NotificationWriter(), access, projectAccess, alerts, repo, poService);
+  paymentNotifier.onModuleInit();
+  new QuotationAlertGuard(communication, alerts, repo, notifier, paymentNotifier).onModuleInit();
+  const paymentPath = new QuotationPaymentPathService(tenancy, repo, access, audit, paymentNotifier, paymentReadModel, query);
   const slaJob = new QuotationSlaAlertJob({} as never, tenancy, repo, notifier, alerts);
 
   return {
@@ -147,6 +164,9 @@ export function buildQuotationServices(prisma: PrismaClient, options: QuotationS
     alerts,
     slaJob,
     whatsappClient,
+    paymentNotifier,
+    paymentReadModel,
+    paymentPath,
   };
 }
 

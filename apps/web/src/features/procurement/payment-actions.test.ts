@@ -248,18 +248,13 @@ describe('planPaymentPost', () => {
     if (!result.ok) return;
 
     expect(result.plan.lines.at(-1)).toMatchObject({ accountCode: '10200' });
-    expect(result.plan.payload.bankGlCode).toBe('10200');
   });
 
-  it('sends all three codes even when a branch contributes no line', () => {
+  it('sends no GL codes — the server resolves them (ADR-045 P3); the lines are only the preview', () => {
     const result = planPaymentPost(payment(), ACCOUNTS, BANKS, 'en');
     if (!result.ok) return;
 
-    expect(result.plan.payload).toEqual({
-      apAccountCode: '20000',
-      bankGlCode: '10100',
-      supplierAdvanceCode: '20100',
-    });
+    expect(result.plan.payload).toEqual({});
   });
 
   it('refuses when the payment’s bank account is not in the list', () => {

@@ -28,6 +28,15 @@ export function deriveNotificationSeverity(
       return 'WARNING';
     case 'QUOTATION_AWARDED':
       return 'INFO';
+    // ADR-045 §5 — money to pay / a receipt to record / a rejected receipt to redo are someone's
+    // next action; cash released and a supplier paid are news the recipient acts on in the market.
+    case 'PAYMENT_NEEDED':
+    case 'RECEIPT_TO_RECORD':
+    case 'RECEIPT_REJECTED':
+      return 'WARNING';
+    case 'CASH_RELEASED':
+    case 'SUPPLIER_PAID':
+      return 'INFO';
     default: {
       // Exhaustiveness guard: a new kind must declare its severity here.
       const _exhaustive: never = kind;

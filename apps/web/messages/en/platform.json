@@ -113,7 +113,9 @@
     },
     "postingProfiles": "Posting profiles",
     "taxCodes": "Tax",
-    "invoiceSettings": "Invoice settings"
+    "invoiceSettings": "Invoice settings",
+    "paymentsNeeded": "Payments needed",
+    "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}"
   },
   "admin": {
     "title": "Administration",

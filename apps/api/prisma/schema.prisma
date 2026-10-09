@@ -87,6 +87,9 @@ model Organization {
   // Procurement v2 — Finance boundary
   supplierPaymentPurchaseAllocations SupplierPaymentPurchaseAllocation[]
   buyerAdvances                      BuyerAdvance[]
+  // ADR-045 — store receipts/invoices photographed by the buyer.
+  storeDocuments                     StoreDocument[]
+  storeDocumentPhotos                StoreDocumentPhoto[]
   advanceReturns                     AdvanceReturn[]
   buyerAdvanceEvidenceAllocations    BuyerAdvanceEvidenceAllocation[]
   poRevisionAttachments              PurchaseOrderRevisionAttachment[]
@@ -305,6 +308,12 @@ enum NotificationKind {
   QUOTES_READY
   QUOTATION_AWARDED
   ANOTHER_QUOTE_REQUESTED
+  // ADR-045 §5 — paying from the award.
+  PAYMENT_NEEDED
+  CASH_RELEASED
+  SUPPLIER_PAID
+  RECEIPT_TO_RECORD
+  RECEIPT_REJECTED
 }
 
 enum NotificationSeverity {
@@ -2084,6 +2093,8 @@ model PlatformFile {
   // ADR-044 — a page of a store's paper quotation. Money evidence: readable only by quotation
   // collectors/selectors and cost-visibility holders (QUOTATION_PHOTO owner kind).
   quotePhoto              QuotePhoto?
+  // ADR-045 — a page of a store's receipt/invoice (STORE_DOCUMENT_PHOTO owner kind, same rule).
+  storeDocumentPhoto      StoreDocumentPhoto?
 
   @@index([organizationId])
   @@index([lifecycle, createdAt])
@@ -3189,6 +3200,8 @@ model SupplierBill {
   lines                      SupplierBillLine[]
   allocations                SupplierPaymentAllocation[]
   advanceEvidenceAllocations BuyerAdvanceEvidenceAllocation[]
+  // ADR-045 — the store receipt/invoice this bill was recorded from.
+  storeDocument              StoreDocument?
 
   // One LIVE bill per supplier invoice number (ADR-037 amendment, 2026-09-27): a partial unique
   // index in migration 20260927120000 — `WHERE document_status NOT IN ('REJECTED','CANCELLED')` —
@@ -3275,6 +3288,10 @@ model SupplierPayment {
   createdBy            String           @map("created_by")
   approvedBy           String?          @map("approved_by")
   approvedAt           DateTime?        @map("approved_at")
+  /// ADR-045 — client key of "Pay supplier" from an award (partial unique per org, see migration).
+  idempotencyKey       String?          @map("idempotency_key") @db.VarChar(100)
+  /// ADR-045 — the quotation request this payment was made from (SUPPLIER_PAID notification).
+  quotationRequestId   String?          @map("quotation_request_id")
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
@@ -3287,6 +3304,7 @@ model SupplierPayment {
 
   @@index([organizationId, postingStatus])
   @@index([supplierId])
+  @@index([quotationRequestId])
   @@map("supplier_payments")
 }
 
@@ -3363,7 +3381,9 @@ model SupplierPaymentPurchaseAllocation {
 
 // Money disbursed by Finance to an employee buyer who purchases on ACCO's behalf.
 // Finance-owned; follows the same document status lifecycle as SupplierPayment.
-// Disbursement only via BankAccount (BANK or MOBILE_MONEY) — no cash disbursement.
+// ADR-045: disbursed from a BankAccount row — a bank, a mobile-money float or the cash box (CASH);
+// release posts EVT-AP-007 (Dr Staff advances / Cr the account's GL). A row POSTED with no
+// postedJournalEntryId is LEGACY (marked posted before GL posting existed) and is never re-posted.
 model BuyerAdvance {
   id                        String                    @id @default(cuid())
   organizationId            String                    @map("organization_id")
@@ -3381,6 +3401,19 @@ model BuyerAdvance {
   postedJournalEntryId      String?                   @map("posted_journal_entry_id")
   postedAt                  DateTime?                 @map("posted_at")
   postedBy                  String?                   @map("posted_by")
+  /// ADR-045 — client key of the one-tap release (partial unique per org, see migration).
+  idempotencyKey            String?                   @map("idempotency_key") @db.VarChar(100)
+  approvedBy                String?                   @map("approved_by")
+  approvedAt                DateTime?                 @map("approved_at")
+  approvalInstanceId        String?                   @map("approval_instance_id")
+  reversedAt                DateTime?                 @map("reversed_at")
+  reversedBy                String?                   @map("reversed_by")
+  reversalReason            String?                   @map("reversal_reason")
+  reversalJournalEntryId    String?                   @map("reversal_journal_entry_id")
+  /// ADR-045 — the quotation request the cash was released from (CASH_RELEASED notification).
+  quotationRequestId        String?                   @map("quotation_request_id")
+  /// ADR-045 — a top-up's target bill (applied when released; kept so a re-drive needs no body).
+  applyToBillId             String?                   @map("apply_to_bill_id")
   createdBy                 String                    @map("created_by")
   createdAt                 DateTime                  @default(now()) @map("created_at")
   updatedAt                 DateTime                  @updatedAt @map("updated_at")
@@ -3393,11 +3426,14 @@ model BuyerAdvance {
 
   @@index([organizationId, purchaseOrderId])
   @@index([recipientUserId])
+  @@index([quotationRequestId])
   @@map("buyer_advances")
 }
 
 // Cash or transfer returned from buyer to Finance after purchase completion.
-// destinationBankAccountId is required when returnMethod = BANK | MOBILE_MONEY; null for CASH.
+// ADR-045: destinationBankAccountId is required for every method (cash lands in the cash box);
+// a return on a posted advance posts EVT-AP-009 (Dr destination GL / Cr Staff advances) on
+// receivedAt. Legacy rows (and returns on legacy advances) carry no journal.
 model AdvanceReturn {
   id                       String              @id @default(cuid())
   organizationId           String              @map("organization_id")
@@ -3409,6 +3445,10 @@ model AdvanceReturn {
   receivedAt               DateTime            @map("received_at") @db.Date
   reference                String?
   note                     String?
+  /// ADR-045 — the EVT-AP-009 journal (null for legacy returns).
+  journalEntryId           String?             @map("journal_entry_id")
+  /// ADR-045 — client key (partial unique per org): a double tap records one return.
+  idempotencyKey           String?             @map("idempotency_key") @db.VarChar(100)
   createdAt                DateTime            @default(now()) @map("created_at")
 
   organization       Organization @relation(fields: [organizationId], references: [id])
@@ -3421,15 +3461,27 @@ model AdvanceReturn {
 
 // Explicit per-advance evidence link. Never infer per-advance accountability
 // from PO-total bill evidence — one PO can have multiple advances and multiple bills.
-// outstanding(advance) = amount - SUM(evidenceAllocations) - SUM(returns)
+// ADR-045: on a posted (non-legacy) advance this row is an APPLICATION — EVT-AP-008 Dr AP / Cr
+// Staff advances on allocationDate = max(bill date, advancedAt), reducing the bill's outstanding.
+//   outstanding(advance) = amount - SUM(POSTED applications) - SUM(returns)
+// Legacy advances keep the evidence arithmetic: amount - SUM(evidenceAllocations) - SUM(returns).
 model BuyerAdvanceEvidenceAllocation {
-  id              String   @id @default(cuid())
-  organizationId  String   @map("organization_id")
-  buyerAdvanceId  String   @map("buyer_advance_id")
-  supplierBillId  String   @map("supplier_bill_id")
-  allocatedAmount Decimal  @map("allocated_amount") @db.Decimal(18, 2)
-  createdBy       String   @map("created_by")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id                     String        @id @default(cuid())
+  organizationId         String        @map("organization_id")
+  buyerAdvanceId         String        @map("buyer_advance_id")
+  supplierBillId         String        @map("supplier_bill_id")
+  allocatedAmount        Decimal       @map("allocated_amount") @db.Decimal(18, 2)
+  allocationDate         DateTime?     @map("allocation_date") @db.Date
+  postingStatus          PostingStatus @default(NOT_POSTED) @map("posting_status")
+  journalEntryId         String?       @map("journal_entry_id")
+  reversalJournalEntryId String?       @map("reversal_journal_entry_id")
+  reversedAt             DateTime?     @map("reversed_at")
+  reversedBy             String?       @map("reversed_by")
+  reversalReason         String?       @map("reversal_reason")
+  /// ADR-045 — client key (partial unique per org): a double tap records one application.
+  idempotencyKey         String?       @map("idempotency_key") @db.VarChar(100)
+  createdBy              String        @map("created_by")
+  createdAt              DateTime      @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id])
   buyerAdvance BuyerAdvance @relation(fields: [buyerAdvanceId], references: [id])
@@ -4420,6 +4472,8 @@ enum SourceDocType {
   OPENING_BALANCE
   YEAR_END_CLOSE
   CREDIT_NOTE
+  // ADR-045 — buyer (staff) advance release / application / return and their reversals.
+  BUYER_ADVANCE
 }
 
 enum AttemptOutcome {
@@ -4655,6 +4709,8 @@ model PurchaseOrder {
   buyerAdvances               BuyerAdvance[]
   // ADR-044 §8 — the quotation award this order was raised from (the link lives on the request).
   quotationRequest            QuotationRequest?
+  // ADR-045 — receipts/invoices photographed against this order.
+  storeDocuments              StoreDocument[]
 
   @@unique([organizationId, poNumber])
   @@index([organizationId, status])
@@ -4930,6 +4986,7 @@ model QuotationRequest {
   awardedSupplier Supplier?       @relation("QuotationAwardedSupplier", fields: [awardedSupplierId], references: [id])
   purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
   quotes          Quote[]
+  storeDocuments  StoreDocument[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, sentAt])
@@ -4999,6 +5056,92 @@ model QuotePhoto {
   @@unique([quoteId, pageNumber])
   @@index([organizationId, sha256])
   @@map("quotation_quote_photos")
+}
+
+/// ADR-045 — the store's paper receipt or invoice, photographed by the buyer (the buyer types no
+/// amount). Finance records it into the PO bill (`supplierBillId`), which then settles the buyer's
+/// cash advance (EVT-AP-008) or the prepayment (EVT-AP-005).
+model StoreDocument {
+  id                 String                     @id @default(cuid())
+  organizationId     String                     @map("organization_id")
+  /// SD-00001, unique per organization.
+  number             String                     @db.VarChar(30)
+  purchaseOrderId    String                     @map("purchase_order_id")
+  quotationRequestId String?                    @map("quotation_request_id")
+  kind               StoreDocumentKind
+  status             StoreDocumentStatus        @default(SUBMITTED)
+  /// Idempotency key from the phone's upload queue.
+  clientRef          String                     @map("client_ref") @db.Uuid
+  uploadedBy         String                     @map("uploaded_by")
+  supplierBillId     String?                    @unique @map("supplier_bill_id")
+  /// What finance confirmed when recording (receipt date, total typed from the photo).
+  documentDate       DateTime?                  @map("document_date") @db.Date
+  enteredTotal       Decimal?                   @map("entered_total") @db.Decimal(18, 2)
+  enteredBy          String?                    @map("entered_by")
+  recordedAt         DateTime?                  @map("recorded_at")
+  rejectReason       StoreDocumentRejectReason? @map("reject_reason")
+  rejectNote         String?                    @map("reject_note")
+  rejectedBy         String?                    @map("rejected_by")
+  rejectedAt         DateTime?                  @map("rejected_at")
+  withdrawnAt        DateTime?                  @map("withdrawn_at")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+
+  organization     Organization         @relation(fields: [organizationId], references: [id])
+  purchaseOrder    PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  quotationRequest QuotationRequest?    @relation(fields: [quotationRequestId], references: [id])
+  supplierBill     SupplierBill?        @relation(fields: [supplierBillId], references: [id])
+  photos           StoreDocumentPhoto[]
+
+  @@unique([organizationId, number])
+  @@unique([organizationId, clientRef])
+  @@index([purchaseOrderId, status])
+  @@index([organizationId, status])
+  @@map("store_documents")
+}
+
+/// ADR-045 — one photographed page of a store document. BOUND at upload, IMMUTABLE once recorded.
+model StoreDocumentPhoto {
+  id              String           @id @default(cuid())
+  organizationId  String           @map("organization_id")
+  storeDocumentId String           @map("store_document_id")
+  platformFileId  String           @unique @map("platform_file_id")
+  pageNumber      Int              @map("page_number")
+  sha256          String           @db.Char(64)
+  capturedAt      DateTime         @map("captured_at")
+  receivedAt      DateTime         @default(now()) @map("received_at")
+  source          QuotePhotoSource
+  uploadedBy      String           @map("uploaded_by")
+  /// False once its document is REJECTED or WITHDRAWN. A partial unique index on
+  /// (organization_id, sha256) WHERE is_live enforces "a receipt cannot be claimed twice".
+  isLive          Boolean          @default(true) @map("is_live")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id])
+  storeDocument StoreDocument @relation(fields: [storeDocumentId], references: [id])
+  file          PlatformFile  @relation(fields: [platformFileId], references: [id])
+
+  @@unique([storeDocumentId, pageNumber])
+  @@index([organizationId, sha256])
+  @@map("store_document_photos")
+}
+
+enum StoreDocumentKind {
+  RECEIPT
+  INVOICE
+}
+
+enum StoreDocumentStatus {
+  SUBMITTED
+  RECORDED
+  REJECTED
+  WITHDRAWN
+}
+
+enum StoreDocumentRejectReason {
+  ILLEGIBLE
+  WRONG_PO
+  DUPLICATE
+  OTHER
 }
 
 // ─── Sprint 5: Goods Receipt ──────────────────────────────────────────────────
@@ -5324,6 +5467,8 @@ enum GrnStatus {
 enum BuyerAdvancePaymentMethod {
   BANK
   MOBILE_MONEY
+  /// ADR-045 — handed over from the cash box.
+  CASH
 }
 
 enum AdvanceReturnMethod {
@@ -5459,6 +5604,10 @@ enum MessagePurpose {
   QUOTE_ESCALATION
   QUOTE_CHOSEN
   QUOTE_ANOTHER
+  /// ADR-045 — paying from the award (no amounts in the text).
+  QUOTE_PAY_NEEDED
+  QUOTE_CASH_RELEASED
+  QUOTE_SUPPLIER_PAID
 }
 
 enum MessageStatus {

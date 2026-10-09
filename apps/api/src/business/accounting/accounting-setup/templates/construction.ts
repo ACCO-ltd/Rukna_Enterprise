@@ -17,6 +17,7 @@
  *   - every parent precedes its child; codes are unique.
  */
 import type { AccountClass, AccountSubtype, ControlPostingPolicy, SubledgerType } from '@prisma/client';
+import { STAFF_ADVANCE_PROFILE_CODE } from '../../accounts-payable/domain/staff-advance-profile.js';
 
 export const CONSTRUCTION_TEMPLATE_ID = 'CONSTRUCTION' as const;
 export const CONSTRUCTION_TEMPLATE_VERSION = '2026-09-30';
@@ -297,11 +298,20 @@ const PROFILE_PREFIX: Partial<Record<string, string>> = {
  * 40000 keeps the code `PROJECT_REVENUE` the seed and revenue flows already use.
  */
 export function derivePostingProfiles(accounts: TemplateAccount[]): TemplatePostingProfile[] {
-  return accounts
+  const profiles = accounts
     .filter((a) => !a.isHeading && PROFILE_PREFIX[a.accountClass] !== undefined)
     .map((a) => ({
       code: a.code === PROJECT_REVENUE_CODE ? 'PROJECT_REVENUE' : `${PROFILE_PREFIX[a.accountClass]}_${a.code}`,
       name: a.name,
       accountCode: a.code,
     }));
+  // ADR-045 — the one asset profile: buyer cash advances are held in Staff advances (EVT-AP-007).
+  const staffAdvances = accounts.find((a) => a.code === STAFF_ADVANCES_CODE && !a.isHeading);
+  if (staffAdvances) {
+    profiles.push({ code: STAFF_ADVANCE_PROFILE_CODE, name: staffAdvances.name, accountCode: staffAdvances.code });
+  }
+  return profiles;
 }
+
+/** ADR-045 — 13100 Staff advances, the target of the STAFF_ADVANCE posting profile. */
+export const STAFF_ADVANCES_CODE = '13100';

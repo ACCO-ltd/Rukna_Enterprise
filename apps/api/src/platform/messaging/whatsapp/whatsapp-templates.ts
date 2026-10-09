@@ -16,6 +16,9 @@ export const WHATSAPP_TEMPLATE_ENV: Record<MessagePurpose, string> = {
   QUOTE_ESCALATION: 'WHATSAPP_TEMPLATE_QUOTE_ESCALATION',
   QUOTE_CHOSEN: 'WHATSAPP_TEMPLATE_QUOTE_CHOSEN',
   QUOTE_ANOTHER: 'WHATSAPP_TEMPLATE_QUOTE_ANOTHER',
+  QUOTE_PAY_NEEDED: 'WHATSAPP_TEMPLATE_QUOTE_PAY_NEEDED',
+  QUOTE_CASH_RELEASED: 'WHATSAPP_TEMPLATE_QUOTE_CASH_RELEASED',
+  QUOTE_SUPPLIER_PAID: 'WHATSAPP_TEMPLATE_QUOTE_SUPPLIER_PAID',
 };
 
 /**
@@ -28,6 +31,10 @@ export const WHATSAPP_TEMPLATE_DEFAULT_NAME: Partial<Record<MessagePurpose, stri
   QUOTE_ESCALATION: 'quote_escalation_so',
   QUOTE_CHOSEN: 'quote_chosen_so',
   QUOTE_ANOTHER: 'quote_another_so',
+  // ADR-045 §5.
+  QUOTE_PAY_NEEDED: 'quote_pay_needed_so',
+  QUOTE_CASH_RELEASED: 'quote_cash_released_so',
+  QUOTE_SUPPLIER_PAID: 'quote_supplier_paid_so',
 };
 
 /** The staff alert purposes (Somali text, registered at Meta under language `en`). */

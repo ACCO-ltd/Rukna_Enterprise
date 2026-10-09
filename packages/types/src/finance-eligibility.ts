@@ -131,6 +131,8 @@ export type SupplierBillPaymentState =
   | 'PAYMENT_IN_PROGRESS'
   | 'PARTIALLY_PAID'
   | 'PAID'
+  // ADR-045 — settled (in full) by the buyer's cash advance applied to it (EVT-AP-008).
+  | 'PAID_BY_BUYER_CASH'
   | 'REVERSED';
 
 export interface PurchaseOrderBillPaymentRow {
@@ -152,6 +154,10 @@ export interface PurchaseOrderBillPaymentRow {
   /** Latest payment date among POSTED allocations; null when nothing is paid. */
   lastPaymentDate: string | null;
   paymentStatus: SupplierBillPaymentState;
+  /** ADR-045 — Σ POSTED buyer-cash applications (included in paidAmount). */
+  paidByBuyerCashAmount?: string;
+  /** ADR-045 — the buyer-cash applications to the bill. */
+  advanceApplications?: Array<{ advanceId: string; amount: string; allocationDate: string | null; postingStatus: string }>;
 }
 
 /**

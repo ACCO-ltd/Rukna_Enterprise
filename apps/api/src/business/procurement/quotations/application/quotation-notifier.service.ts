@@ -12,7 +12,7 @@ import { awardRound, decisionRound, type QuotationAlertFacts } from '../domain/q
 import type { Db, QuotationRequestAggregate } from '../infrastructure/quotation-request.repository.js';
 
 const RESOURCE_TYPE = 'QuotationRequest';
-const ALL_KINDS: NotificationKind[] = ['QUOTES_READY', 'QUOTATION_AWARDED', 'ANOTHER_QUOTE_REQUESTED'];
+const ALL_KINDS: NotificationKind[] = ['QUOTES_READY', 'QUOTATION_AWARDED', 'ANOTHER_QUOTE_REQUESTED', 'PAYMENT_NEEDED'];
 /** ADR-044 §10 — the SLA escalation goes to the holders of these roles (friendly Role.name). */
 const ESCALATION_ROLE_NAMES = ['CFO', 'CEO'];
 

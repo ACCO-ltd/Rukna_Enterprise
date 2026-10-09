@@ -7,6 +7,8 @@ import {
 export enum BuyerAdvancePaymentMethodDto {
   BANK = 'BANK',
   MOBILE_MONEY = 'MOBILE_MONEY',
+  // ADR-045 — handed over from the cash box.
+  CASH = 'CASH',
 }
 
 export class CreateBuyerAdvanceDto {

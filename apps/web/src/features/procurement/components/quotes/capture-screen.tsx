@@ -64,6 +64,7 @@ import type {
   QuotationRequestDetail,
   QuoteCountExceptionReason,
 } from '../../quotations/types';
+import { BuyerPaymentCard } from './buyer-payment-card';
 import { OrderCard } from './order-raise';
 import { usePhotoPicker } from './photo-picker';
 import {
@@ -88,7 +89,12 @@ export function QuoteCaptureScreen({ id }: { id: string }) {
   const t = useTranslations('procurement.quotes.capture');
   const tq = useTranslations('procurement.quotes');
   const detail = useQuotationRequest(id, {
-    poll: (data) => (data ? WAITING_STATUSES.has(data.status) : false),
+    // An awarded request keeps refreshing until settled: the buyer is waiting for cash (ADR-045).
+    poll: (data) =>
+      data
+        ? WAITING_STATUSES.has(data.status) ||
+          (data.status === 'AWARDED' && Boolean(data.payment) && data.payment?.state !== 'SETTLED')
+        : false,
   });
   useModuleTrail(detail.data?.number);
 
@@ -264,6 +270,8 @@ function CaptureBody({ detail }: { detail: QuotationRequestDetail }) {
       </header>
 
       <StatusNotice detail={detail} />
+      {/* ADR-045: once the order is issued, the money comes first — cash released, go pay. */}
+      {detail.status === 'AWARDED' ? <BuyerPaymentCard detail={detail} /> : null}
       {detail.status === 'AWARDED' ? <OrderCard detail={detail} /> : null}
 
       {/* ── Quotes ─────────────────────────────────────────────────────────── */}
@@ -678,17 +686,20 @@ function UploadState({
   if (item.phase === 'failed') {
     return (
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="min-h-11 border-danger/40 text-danger"
-          aria-label={t('retry', { store: label })}
-          onClick={onRetry}
-        >
-          <RotateCw className="size-4" aria-hidden="true" />
-          {t('failed')}
-        </Button>
+        {/* A duplicate photo is refused for what it is: retrying cannot help, only Discard. */}
+        {item.failureCode !== 'QUOTE_PHOTO_DUPLICATE' ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 border-danger/40 text-danger"
+            aria-label={t('retry', { store: label })}
+            onClick={onRetry}
+          >
+            <RotateCw className="size-4" aria-hidden="true" />
+            {t('failed')}
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" size="sm" className="min-h-11 text-muted-foreground" onClick={onDiscard}>
           {t('discard')}
         </Button>

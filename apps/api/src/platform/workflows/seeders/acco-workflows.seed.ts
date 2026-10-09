@@ -53,6 +53,8 @@ const ACTIVE_SOD_CODES = new Set<string>([
   // ADR-044 §6 — the quote collector and the MR requester cannot choose between the quotes.
   'QUOTE_UPLOADER_CANNOT_SELECT',
   'REQUESTER_CANNOT_SELECT',
+  // ADR-045 §2 — nobody releases buyer cash to themselves (or approves its release).
+  'ADVANCE_RECIPIENT_CANNOT_RELEASE',
 ]);
 
 async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {
@@ -172,6 +174,7 @@ async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: st
     ['JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL', 'A journal preparer cannot approve the same journal.'],
     ['SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION', 'A system administrator cannot approve a business transaction.'],
     ...QUOTATION_SOD_RULES,
+    ...QUOTATION_PAYMENT_SOD_RULES,
   ] as const;
 
   for (const [code, description] of sodRules) {
@@ -484,7 +487,86 @@ async function seedProcurementValueBands(
     bands: accoVariationOrderBands(),
   });
   await seedQuotationAwardBands(prisma, organizationId);
+  await seedBuyerAdvanceBands(prisma, organizationId);
 }
+
+/**
+ * ADR-045 §2 — releasing a buyer cash advance (BuyerAdvance DRAFT → APPROVED) is banded with the
+ * supplier-payment bands verbatim: same names, so the bindings share the SupplierPayment band
+ * definitions (one chain, one activation — the activation seed switches definitions and every
+ * binding on them together). Transaction type SUPPLIER_PAYMENT (no enum migration). Seeded INACTIVE.
+ */
+export async function seedBuyerAdvanceBands(prisma: PrismaClient, organizationId: string): Promise<void> {
+  // Review LOW — keyed by the band DEFINITION (found by name), never by the seeded amounts: a
+  // tenant may have re-tuned a payment band's range, and the advance binding must follow the
+  // payment binding on the same definition (its range and its on/off state).
+  for (const band of BUYER_ADVANCE_BAND_SET.bands) {
+    const definition = await prisma.workflowDefinition.findFirst({ where: { organizationId, name: band.name } });
+    if (!definition) {
+      await seedBandSet(prisma, organizationId, { ...BUYER_ADVANCE_BAND_SET, bands: [band] });
+      continue;
+    }
+    const payment = await prisma.workflowTriggerBinding.findFirst({
+      where: {
+        organizationId,
+        triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+        entityType: 'SupplierPayment',
+        fromState: 'DRAFT',
+        toState: 'APPROVED',
+        workflowDefinitionId: definition.id,
+      },
+    });
+    const advance = await prisma.workflowTriggerBinding.findFirst({
+      where: {
+        organizationId,
+        triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+        entityType: BUYER_ADVANCE_BAND_SET.entityType,
+        fromState: BUYER_ADVANCE_BAND_SET.fromState,
+        toState: BUYER_ADVANCE_BAND_SET.toState,
+        workflowDefinitionId: definition.id,
+      },
+    });
+    const range = {
+      minAmount: payment ? payment.minAmount : band.minAmount,
+      maxAmount: payment ? payment.maxAmount : band.maxAmount,
+      isActive: payment ? payment.isActive : false,
+    };
+    if (advance) {
+      await prisma.workflowTriggerBinding.update({ where: { id: advance.id }, data: range });
+    } else {
+      await prisma.workflowTriggerBinding.create({
+        data: {
+          organizationId,
+          triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+          entityType: BUYER_ADVANCE_BAND_SET.entityType,
+          transactionType: BUYER_ADVANCE_BAND_SET.transactionType,
+          fromState: BUYER_ADVANCE_BAND_SET.fromState,
+          toState: BUYER_ADVANCE_BAND_SET.toState,
+          workflowDefinitionId: definition.id,
+          priority: 50,
+          ...range,
+        },
+      });
+    }
+  }
+}
+
+/** ADR-045 §2 — the release transition the buyer-advance bindings bind. */
+export const BUYER_ADVANCE_BAND_SET = {
+  entityType: 'BuyerAdvance',
+  fromState: 'DRAFT',
+  toState: 'APPROVED',
+  transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
+  bands: accoSupplierPaymentBands(),
+};
+
+/** ADR-045 §2 — the buyer-advance SoD rule (code, description). */
+export const QUOTATION_PAYMENT_SOD_RULES = [
+  [
+    'ADVANCE_RECIPIENT_CANNOT_RELEASE',
+    'Nobody may release (or approve the release of) a cash advance paid to themselves.',
+  ],
+] as const;
 
 /**
  * ADR-044 §7 — the quotation award bands (the PO bands, bound to QuotationRequest
@@ -519,7 +601,7 @@ export const QUOTATION_SOD_RULES = [
   ],
 ] as const;
 
-async function seedBandSet(
+export async function seedBandSet(
   prisma: PrismaClient,
   organizationId: string,
   cfg: {

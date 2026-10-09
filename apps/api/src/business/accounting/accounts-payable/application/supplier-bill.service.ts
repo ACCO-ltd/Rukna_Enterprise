@@ -15,6 +15,8 @@ import {
   type IAccountingPostingPort,
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
+import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
+import { matchExceptionKind as computeMatchExceptionKind } from '../domain/award-payment.policy.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import {
   normalizeSupplierInvoiceNumber,
@@ -103,7 +105,8 @@ function requireReason(reason: string | undefined): string {
 
 export interface PostSupplierBillDto {
   billId: string;
-  apAccountCode: string;
+  /** ADR-045 P3: optional, resolved by role (the single ACTIVE ACCOUNTS_PAYABLE account) when omitted. */
+  apAccountCode?: string;
 }
 
 @Injectable()
@@ -496,8 +499,14 @@ export class SupplierBillService {
       );
     }
 
-    const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
-    if (!apGl) throw new NotFoundException(`AP GL account ${dto.apAccountCode} not found`);
+    let apGl: { id: string; code: string };
+    if (dto.apAccountCode) {
+      const found = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
+      if (!found) throw new NotFoundException(`AP GL account ${dto.apAccountCode} not found`);
+      apGl = found;
+    } else {
+      apGl = await new PostingAccountResolver(this.accountRepo).resolve(prisma, orgId, 'ACCOUNTS_PAYABLE');
+    }
 
     await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'SUPPLIER_BILL', 'BILL-');
 
@@ -677,12 +686,25 @@ export class SupplierBillService {
       throw new ConflictException(`Bill ${billId} is already reversed`);
     }
 
+    // (Pre-checked here for a clear message; re-checked under the bill lock in the transaction.)
+    // Item 3 (review) — a payment still pending against the bill (allocated, not yet posted, and
+    // neither cancelled nor rejected) blocks the reversal too: posting it would debit AP for a bill
+    // that no longer exists.
     const activeAllocs = await prisma.supplierPaymentAllocation.count({
-      where: { supplierBillId: billId, postingStatus: 'POSTED' },
+      where: { supplierBillId: billId, postingStatus: { in: ['POSTED', 'NOT_POSTED'] }, payment: { documentStatus: { notIn: ['CANCELLED', 'REJECTED'] }, postingStatus: { not: 'REVERSED' } } },
     });
     if (activeAllocs > 0) {
       throw new BadRequestException(
         `Cannot reverse bill ${billId} — it has ${activeAllocs} active payment allocation(s). Reverse the payments first.`,
+      );
+    }
+    // ADR-045 — buyer cash applied to the bill (EVT-AP-008) settles it like a payment does.
+    const advanceApplications = await prisma.buyerAdvanceEvidenceAllocation.count({
+      where: { supplierBillId: billId, postingStatus: 'POSTED' },
+    });
+    if (advanceApplications > 0) {
+      throw new BadRequestException(
+        `Cannot reverse bill ${billId} — buyer cash was applied to it (${advanceApplications} application(s)). Reverse the applications first.`,
       );
     }
 
@@ -698,6 +720,20 @@ export class SupplierBillService {
     const reversalDate = new Date(opts.reversalDate);
 
     return prisma.$transaction(async (tx) => {
+      // ADR-045 review M3 — under the bill's row lock, nothing may settle it any more: a payment
+      // allocation or buyer-cash application committed after the pre-check must block the reversal.
+      await tx.$queryRaw`SELECT id FROM supplier_bills WHERE id = ${billId} FOR UPDATE`;
+      const locked = await tx.supplierBill.findUniqueOrThrow({ where: { id: billId }, select: { postingStatus: true } });
+      if (locked.postingStatus !== 'POSTED') throw new ConflictException(`Bill ${billId} is already reversed`);
+      const [paid, applied] = await Promise.all([
+        tx.supplierPaymentAllocation.count({ where: { supplierBillId: billId, postingStatus: { in: ['POSTED', 'NOT_POSTED'] }, payment: { documentStatus: { notIn: ['CANCELLED', 'REJECTED'] }, postingStatus: { not: 'REVERSED' } } } }),
+        tx.buyerAdvanceEvidenceAllocation.count({ where: { supplierBillId: billId, postingStatus: 'POSTED' } }),
+      ]);
+      if (paid > 0 || applied > 0) {
+        throw new BadRequestException(
+          `Cannot reverse bill ${billId} — it is settled by ${paid} payment allocation(s) and ${applied} buyer-cash application(s). Reverse those first.`,
+        );
+      }
       const reversalResult = await this.postingPort.post(
         {
           organizationId: orgId,
@@ -806,10 +842,33 @@ export class SupplierBillService {
     const numberOf = (journalId: string | null) =>
       journalId ? (journals.find((j) => j.id === journalId)?.journalNumber ?? null) : null;
 
+    // ADR-045 — the store receipt / invoice the bill was recorded from is its evidence (photo file
+    // ids are readable under the STORE_DOCUMENT_PHOTO rule).
+    const storeDocument = bill.storeDocument ?? null;
+    // QA A — why a PO bill's match stopped, for the screen's wording (null unless stopped).
+    const stopped = bill.matchStatus === 'EXCEPTION' || bill.matchStatus === 'DISPUTED';
+    const matchExceptionKind = stopped
+      ? computeMatchExceptionKind(
+          await prisma.supplierBillMatchLine.findMany({
+            where: { billMatch: { supplierBillId: bill.id } },
+            select: { priceVariance: true, priceWithinTolerance: true, amountWithinTolerance: true, quantityWithinTolerance: true },
+          }),
+        )
+      : null;
+
     return {
       ...bill,
       postedJournalNumber: numberOf(bill.postedJournalEntryId),
       reversalJournalNumber: numberOf(bill.reversalJournalEntryId),
+      matchExceptionKind,
+      evidence: storeDocument
+        ? {
+            storeDocumentId: storeDocument.id,
+            number: storeDocument.number,
+            kind: storeDocument.kind,
+            photos: storeDocument.photos.map((p) => ({ fileId: p.platformFileId, pageNumber: p.pageNumber })),
+          }
+        : null,
     };
   }
 
