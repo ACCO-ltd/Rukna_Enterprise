@@ -71,6 +71,8 @@ export interface PaymentSupplierPaymentSummary {
   shape: PaymentShape | null;
   documentStatus: string;
   postingStatus: string;
+  /** Approved, waiting for the bank signatories: not paid yet. */
+  pendingSignatures?: boolean;
 }
 
 export type StoreDocumentKind = 'RECEIPT' | 'INVOICE';
@@ -139,6 +141,16 @@ export interface QuotationPayment {
   funded: Money | null;
   remainingToFund: Money | null;
   withBuyer: Money | null;
+  /**
+   * What actually left (QA E): posted buyer cash / posted supplier payments; what is still to pay
+   * against the cap after them; and what waits for approval or signatures. `funded` and
+   * `remainingToFund` include drafts — they are the cap for the dialogs, not what was paid.
+   * Absent on older servers.
+   */
+  released?: Money | null;
+  paid?: Money | null;
+  stillToPay?: Money | null;
+  pendingAmount?: Money | null;
   /** Null when money is hidden (spec `advances*`). */
   advances: PaymentAdvanceSummary[] | null;
   payments: PaymentSupplierPaymentSummary[] | null;

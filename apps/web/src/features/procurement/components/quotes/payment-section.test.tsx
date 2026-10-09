@@ -245,6 +245,50 @@ describe('PaymentSection — buyer cash', () => {
     expect(await screen.findByText('Cash with buyer')).toBeInTheDocument();
   });
 
+  it('a release waiting for approval is not released money: Released $0, waiting $1,900, still to pay $1,900', async () => {
+    api.detail = awarded({
+      state: 'AWAITING_APPROVAL',
+      orderedAmount: '1900.00',
+      funded: '1900.00',
+      remainingToFund: '0.00',
+      released: '0.00',
+      pendingAmount: '1900.00',
+      stillToPay: '1900.00',
+      withBuyer: '0.00',
+      approval: { instanceId: 'wf-1', status: 'PENDING', currentStepRole: 'CFO' },
+      allowedActions: [],
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    const facts = within(await screen.findByRole('region', { name: 'Payment' }));
+    const fact = (label: string) => facts.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
+    expect(fact('Released')).toBe('$0.00');
+    expect(fact('Waiting for approval')).toBe('$1,900.00');
+    expect(fact('Still to pay')).toBe('$1,900.00');
+  });
+
+  it('a dual-control payment is waiting for signatures — on the totals and on its row', async () => {
+    api.detail = awarded({
+      path: 'FINANCE_PAYS_SUPPLIER',
+      state: 'AWAITING_SIGNATURES',
+      orderedAmount: '280.00',
+      funded: '280.00',
+      remainingToFund: '0.00',
+      paid: '0.00',
+      pendingAmount: '280.00',
+      stillToPay: '280.00',
+      payments: [
+        { id: 'sp-2', number: 'PAY-0050', amount: '280.00', shape: 'PREPAY', documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED', pendingSignatures: true },
+      ],
+      allowedActions: [{ action: 'PAY_SUPPLIER', enabled: false, reason: 'NOTHING_TO_FUND' }],
+    });
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    const section = within(await screen.findByRole('region', { name: 'Payment' }));
+    expect(section.getByText('Paid', { selector: 'dt' }).nextElementSibling?.textContent).toBe('$0.00');
+    expect(section.getAllByText('Waiting for signatures').length).toBeGreaterThanOrEqual(2);
+    const row = section.getByRole('link', { name: /Payment PAY-0050/ });
+    expect(within(row).getByText('Waiting for signatures')).toBeInTheDocument();
+  });
+
   it('says what each cash release is: waiting for approval, cancelled — never "settled"', async () => {
     api.detail = awarded({
       state: 'AWAITING_APPROVAL',
@@ -463,6 +507,19 @@ describe('PaymentSection — finance pays supplier', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
     expect(within(dialog).getByText('You registered this store, so another finance user must pay it.')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Pay $1,000.00' })).toBeDisabled();
+  });
+
+  it('offers no "pay before goods" while a posted bill is owed (the server would refuse BILL_TO_PAY)', async () => {
+    const user = userEvent.setup();
+    api.detail = awarded({ path: 'FINANCE_PAYS_SUPPLIER', allowedActions: [{ action: 'PAY_SUPPLIER', enabled: true }] });
+    api.payDraft.mockResolvedValue(
+      payDraftFixture({ shape: 'PREPAY', bills: [{ id: 'b1', number: 'BILL-0091', outstanding: '980.00' }] }),
+    );
+    renderWithProviders(<Harness />, { permissions: PAYER });
+    await user.click(await screen.findByRole('button', { name: 'Pay Bakaara Steel' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Pay Bakaara Steel' });
+    expect(within(dialog).getByRole('radio', { name: /Pay the invoice BILL-0091/ })).toBeChecked();
+    expect(within(dialog).queryByRole('radio', { name: /Pay now, before goods/ })).not.toBeInTheDocument();
   });
 
   it('defaults to paying the posted invoice when there is one', async () => {

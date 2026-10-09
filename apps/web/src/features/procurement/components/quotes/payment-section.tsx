@@ -21,7 +21,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, Notice, cn } from '@erp/ui';
+import { Alert, Button, Notice, StatusPill, cn } from '@erp/ui';
 import { ArrowRight, Banknote, Camera, CircleCheck, CircleDashed, Clock } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -175,7 +175,11 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
     else if (action.action === 'FINISH_PAYMENT') redrive();
   };
 
-  const funded = parseMinorUnits(payment.funded, MONEY_SCALE) ?? 0;
+  const funded = parseMinorUnits(payment.released ?? payment.funded, MONEY_SCALE) ?? 0;
+  const hasPending = (parseMinorUnits(payment.pendingAmount ?? null, MONEY_SCALE) ?? 0) > 0;
+  const waitingForSignatures =
+    (payment.payments ?? []).some((p) => p.pendingSignatures) ||
+    (payment.pending ?? []).some((p) => p.awaiting === 'RELEASE_SIGNATURES');
 
   return (
     <section
@@ -201,16 +205,17 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
       {payment.moneyVisible ? (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-4">
           <Fact label={t('facts.ordered')} value={money(payment.orderedAmount)} />
+          {/* Posted money only; drafts and unsigned payments are "waiting", never "released". */}
           <Fact
-            label={t(
-              payment.state === 'AWAITING_SIGNATURES'
-                ? 'facts.awaitingSignatures'
-                : buyerCash
-                  ? 'facts.released'
-                  : 'facts.paid',
-            )}
-            value={money(payment.funded)}
+            label={t(buyerCash ? 'facts.released' : 'facts.paid')}
+            value={money((buyerCash ? payment.released : payment.paid) ?? payment.funded)}
           />
+          {hasPending ? (
+            <Fact
+              label={t(waitingForSignatures ? 'facts.awaitingSignatures' : 'facts.awaitingApproval')}
+              value={money(payment.pendingAmount)}
+            />
+          ) : null}
           {buyerCash && funded > 0 ? (
             <Fact
               label={holder ? t('facts.withBuyer', { name: firstName(holder) }) : t('facts.withBuyerNoName')}
@@ -219,7 +224,7 @@ function PaymentBody({ detail, payment }: { detail: QuotationRequestDetail; paym
             />
           ) : null}
           {payment.state !== 'SETTLED' ? (
-            <Fact label={t('facts.remaining')} value={money(payment.remainingToFund)} />
+            <Fact label={t('facts.remaining')} value={money(payment.stillToPay ?? payment.remainingToFund)} />
           ) : null}
         </dl>
       ) : (
@@ -565,6 +570,15 @@ function History({ payment, currency }: { payment: QuotationPayment; currency: s
               <span className="min-w-0">
                 <span className="block text-body-sm font-medium text-foreground">{t('payment', { number: p.number })}</span>
                 {p.shape ? <span className="block text-caption text-muted-foreground">{t(`shape.${p.shape}`)}</span> : null}
+                {p.pendingSignatures ? (
+                  <span className="mt-0.5 block">
+                    <StatusPill tone="progress">{t('waitingSignatures')}</StatusPill>
+                  </span>
+                ) : p.documentStatus === 'DRAFT' ? (
+                  <span className="mt-0.5 block">
+                    <StatusPill tone="progress">{t('waitingApproval')}</StatusPill>
+                  </span>
+                ) : null}
               </span>
               <span className="inline-flex items-center gap-1 tabular-nums text-body-sm font-medium text-foreground">
                 {p.postingStatus !== 'POSTED' ? <Clock className="size-3.5 text-muted-foreground" aria-hidden="true" /> : null}

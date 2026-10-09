@@ -1759,7 +1759,8 @@
       "waiting": "Waiting for approval",
       "cancelled": "Cancelled",
       "reversed": "Reversed"
-    }
+    },
+    "financeOnly": "Finance manages buyer advances. You see the cash released to you on each quote request."
   },
   "feedback": {
     "supplierCreated": "Supplier {name} created",
@@ -2335,7 +2336,8 @@
         "receipt": "Receipt",
         "goods": "Goods",
         "order": "Order",
-        "awaitingSignatures": "Waiting for signatures"
+        "awaitingSignatures": "Waiting for signatures",
+        "awaitingApproval": "Waiting for approval"
       },
       "receiving": {
         "NOT_RECEIVED": "Not received yet",
@@ -2426,7 +2428,9 @@
         },
         "advanceWaiting": "{date} · waiting for approval",
         "advanceCancelled": "{date} · cancelled",
-        "advanceReversed": "{date} · reversed"
+        "advanceReversed": "{date} · reversed",
+        "waitingSignatures": "Waiting for signatures",
+        "waitingApproval": "Waiting for approval"
       },
       "release": {
         "title": "Release cash",
