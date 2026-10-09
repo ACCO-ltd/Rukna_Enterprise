@@ -581,6 +581,19 @@ do not block the ledger.
 - Settlement: `UNBILLED_RECEIPT` exception (a PO auto-closes only when fully billed).
 - `SUPPLIER_PAYMENT_APPROVED` audit on every supplier-payment approval.
 
+**Browser-QA fixes (2026-10-09).**
+- Matching: a bill recorded from a store document on a BUYER_CASH award is not an exception for a
+  price / amount BELOW the order (product owner); above the order the normal tolerance applies; no
+  other bill changes (ACCO A2). Record result adds `exception: { kind } | null` and
+  `exceptionKind: 'ABOVE_ORDER'|'OTHER'|null`; the bill detail adds `matchExceptionKind`.
+- A same-key tap that waited for the PO lock replays the first advance / payment (no 409).
+- award-draft blockers and PAY_SUPPLIER's reason add `BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT`.
+- 422 `DATE_BEFORE_ORDER { orderDate }` (cash / payment dated before the order's effective date);
+  409 `BILL_TO_PAY` (PREPAY while a posted bill waits). Pay supplier accepts `paymentMethod: 'CASH'`.
+- Payment block adds `released`, `paid`, `pendingAmount`, `stillToPay` (POSTED only count as
+  released / paid); `payments[].pendingSignatures`. Journal descriptions name documents.
+- Bill eligibility `signaturesRequired` is 2 only when a payment in flight is under dual control.
+
 **Fixes found while building.** A failed posting attempt no longer flips an already POSTED
 supplier payment / bill to FAILED (two concurrent posts — the loser used to overwrite the
 winner). Bill reverse is refused while buyer cash is applied to it.
