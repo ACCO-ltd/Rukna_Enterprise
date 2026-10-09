@@ -32,6 +32,8 @@ const MESSAGES: Record<string, string> = {
   BANK_GL_MISMATCH: 'The bank GL does not match the account the money left.',
   PREPAYMENT_NOT_APPLIED:
     'A prepayment to this store is not applied to its bill yet. Apply the prepayment instead of paying again.',
+  DATE_BEFORE_ORDER: 'A payment for this order cannot be dated before the order itself.',
+  BILL_TO_PAY: 'The store already has a posted bill for this order: pay the bill (or apply a prepayment) instead.',
   PAYMENT_SHAPE_INVALID: 'Pay the invoice needs a posted bill on this order with enough outstanding.',
   STORE_DOCUMENT_NOT_SUBMITTED: 'This receipt is no longer waiting to be recorded.',
   STORE_DOCUMENT_PHOTO_DUPLICATE: 'This receipt photo was already sent on another receipt.',

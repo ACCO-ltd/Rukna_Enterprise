@@ -454,6 +454,8 @@ export function supplierBillEligibility(facts: BillEligibilityFacts): SupplierBi
     steps,
     outstandingAmount: outstanding.toFixed(2),
     paymentsInFlight: inFlight.length,
-    signaturesRequired: RELEASE_SIGNATURES_REQUIRED,
+    // QA: only when a payment in flight is drawn on an account with signatories (a cash box or a
+    // mobile-money float needs none) — otherwise the screen would promise "2 bank signatures".
+    signaturesRequired: inFlight.some((a) => a.payment.underDualControl) ? RELEASE_SIGNATURES_REQUIRED : 0,
   };
 }

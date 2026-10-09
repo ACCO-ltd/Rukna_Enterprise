@@ -7,7 +7,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
 import { AwardPaymentRepository } from '../infrastructure/award-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
-import { advanceOutstanding, splitReceiptTotal } from '../domain/award-payment.policy.js';
+import { advanceOutstanding, matchExceptionKind, splitReceiptTotal } from '../domain/award-payment.policy.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { parseDateOnly, parseMoney, paymentConflict, paymentUnprocessable } from '../domain/payment-errors.js';
 import { AWARD_PAYMENT_EVENTS, type AwardPaymentEvents } from '../domain/award-payment-events.port.js';
@@ -347,13 +347,7 @@ export class StoreDocumentSettlementService {
       where: { billMatch: { supplierBillId: bill.id } },
       select: { priceVariance: true, amountVariance: true, priceWithinTolerance: true, amountWithinTolerance: true, quantityWithinTolerance: true },
     });
-    // ABOVE_ORDER: every quantity is within tolerance and the stop comes from a price above the
-    // order (a price exception FO <= $1k / CFO above approves). Anything else: OTHER.
-    const quantitiesOk = lines.every((l) => l.quantityWithinTolerance);
-    const priceAbove = lines.some(
-      (l) => (!l.priceWithinTolerance || !l.amountWithinTolerance) && dec(l.priceVariance).greaterThan(0),
-    );
-    return { kind: quantitiesOk && priceAbove ? 'ABOVE_ORDER' : 'OTHER' };
+    return { kind: matchExceptionKind(lines) };
   }
 
   private async result(
@@ -365,6 +359,7 @@ export class StoreDocumentSettlementService {
   ) {
     const prisma = this.tenancy.getClient();
     const doc = await prisma.storeDocument.findUniqueOrThrow({ where: { id: storeDocumentId } });
+    let exception: { kind: 'ABOVE_ORDER' | 'OTHER' } | null = null;
     const bill = doc.supplierBillId
       ? await prisma.supplierBill.findUnique({
           where: { id: doc.supplierBillId },
@@ -381,6 +376,7 @@ export class StoreDocumentSettlementService {
           },
         })
       : null;
+    exception = await this.exceptionKind(bill);
     return {
       storeDocument: { id: doc.id, number: doc.number, status: doc.status, supplierBillId: doc.supplierBillId },
       bill: bill
@@ -390,7 +386,9 @@ export class StoreDocumentSettlementService {
       applied,
       // QA A — why the match stopped: ABOVE_ORDER (the receipt is above the order — a price
       // exception to approve) or OTHER (quantity / other variance); null when it did not stop.
-      exception: await this.exceptionKind(bill),
+      exception,
+      /** The same as `exception.kind` (null when the record did not stop on the match). */
+      exceptionKind: exception?.kind ?? null,
       ...(approvalInstanceId ? { approvalInstanceId } : {}),
 
     };

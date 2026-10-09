@@ -109,9 +109,10 @@ export class PayFromAwardDto {
   @IsString() @IsNotEmpty()
   bankAccountId!: string;
 
-  @ApiProperty({ enum: ['BANK', 'MOBILE_MONEY'] })
-  @IsIn(['BANK', 'MOBILE_MONEY'])
-  paymentMethod!: 'BANK' | 'MOBILE_MONEY';
+  // QA: CASH — the store is paid in cash from the cash box (the GL is the account's, as for any method).
+  @ApiProperty({ enum: ['BANK', 'MOBILE_MONEY', 'CASH'] })
+  @IsIn(['BANK', 'MOBILE_MONEY', 'CASH'])
+  paymentMethod!: 'BANK' | 'MOBILE_MONEY' | 'CASH';
 
   @ApiProperty({ example: '2026-10-08' })
   @IsDateString()

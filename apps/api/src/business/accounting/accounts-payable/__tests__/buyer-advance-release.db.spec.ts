@@ -131,7 +131,7 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
   });
 
   it('R7: no STAFF_ADVANCE profile on advancedAt → 409, nothing written', async () => {
-    const { requestId, poId } = await a.awardedOrder();
+    const { requestId, poId } = await a.awardedOrder({ effectiveFrom: '2025-12-01' });
     expect(await refusal(a.release(requestId, { advancedAt: '2025-12-31' }))).toEqual({
       status: 409,
       code: 'POSTING_ACCOUNT_NOT_CONFIGURED:STAFF_ADVANCE',
@@ -140,7 +140,7 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
   });
 
   it('R8: a closed period refuses the release before anything is written', async () => {
-    const { requestId, poId } = await a.awardedOrder();
+    const { requestId, poId } = await a.awardedOrder({ effectiveFrom: '2026-09-01' });
     const sept = await prisma.accountingPeriod.findFirstOrThrow({ where: { organizationId: env.orgId, startDate: new Date('2026-09-01') } });
     await prisma.accountingPeriod.update({ where: { id: sept.id }, data: { status: 'CLOSED' } });
     try {
@@ -172,6 +172,7 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
       const [draft] = await advancesOf(poId);
       expect(draft).toMatchObject({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', approvalInstanceId });
       expect(await journalsOf(draft.id)).toHaveLength(0);
+      expect((await svc.query.detail(env.as('selector'), requestId)).payment).toMatchObject({ released: '0.00', withBuyer: '0.00', pendingAmount: '4000.00' });
       const pending = (await svc.query.detail(env.as('selector'), requestId)).payment!.pending;
       expect(pending).toEqual([
         expect.objectContaining({ kind: 'BUYER_ADVANCE', id: draft.id, idempotencyKey: key, awaiting: 'APPROVAL', approvalInstanceId, continue: { method: 'POST', path: `/buyer-advances/${draft.id}/post` } }),
@@ -286,6 +287,21 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
     expect(new Set(results.map((r) => r.advance.id)).size).toBe(1);
     expect(await advancesOf(poId)).toHaveLength(1);
     expect(await journalsOf(results[0].advance.id)).toHaveLength(1);
+  });
+
+  it('QA LOW: cash dated before the order is refused; a waiting or reversed advance is not released money', async () => {
+    const { requestId } = await a.awardedOrder();
+    expect(await refusal(a.release(requestId, { advancedAt: '2026-09-30', amount: '10.00' }))).toEqual({
+      status: 422,
+      code: 'DATE_BEFORE_ORDER',
+    });
+    const { advance } = await a.release(requestId, { amount: '100.00' });
+    await svc.advances.reverse(env.as('selector'), advance.id, { reason: 'mistake', reversalDate: '2026-10-09' });
+    const p = (await svc.query.detail(env.as('selector'), requestId)).payment!;
+    expect(p).toMatchObject({ released: '0.00', withBuyer: '0.00' });
+    expect(p.advances![0]).toMatchObject({ outstanding: '0.00', postingStatus: 'REVERSED' });
+    const je = await prisma.journalEntry.findUniqueOrThrow({ where: { id: advance.postedJournalEntryId! } });
+    expect(je.description).not.toMatch(/c[a-z0-9]{24}/);
   });
 
   describe('change returned and reverse', () => {

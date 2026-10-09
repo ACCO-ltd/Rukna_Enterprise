@@ -550,12 +550,15 @@ export class SupplierPaymentService {
           sourceSubledgerType: 'BANK' as const,
         });
 
+        // QA LOW — the journal names documents (payment number, supplier), not raw ids.
+        const pmtNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_PAYMENT');
+        const supplierName = (await tx.supplier.findUnique({ where: { id: payment.supplierId }, select: { name: true } }))?.name ?? '';
         const postResult = await this.postingPort.post(
           {
             organizationId: orgId,
             accountingDate: payment.accountingDate,
             documentDate: payment.paymentDate,
-            description: `Supplier Payment — ${payment.supplierId}`,
+            description: `Supplier payment ${pmtNum.formattedNumber} — ${supplierName}`,
             currencyCode: payment.currencyCode,
             eventType: 'EVT-AP-003',
             sourceDocumentType: 'SUPPLIER_PAYMENT',
@@ -569,7 +572,6 @@ export class SupplierPaymentService {
           tx as never,
         );
 
-        const pmtNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_PAYMENT');
         await this.paymentRepo.markPosted(tx as never, payment.id, postResult.journalEntryId, pmtNum.formattedNumber, userId);
 
         // Stamp any pre-created allocations (from create-time dto.allocations[]) with
@@ -673,7 +675,7 @@ export class SupplierPaymentService {
           organizationId: orgId,
           accountingDate: applicationDay,
           documentDate: applicationDay,
-          description: `Advance Applied — Payment ${payment.id} → Bill ${bill.id}`,
+          description: `Prepayment ${payment.paymentNumber ?? ''} applied to bill ${bill.billNumber ?? bill.supplierInvoiceNumber}`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-005',
           sourceDocumentType: 'SUPPLIER_PAYMENT',
@@ -878,7 +880,7 @@ export class SupplierPaymentService {
           // `new Date()` mis-periods AP. Enforces feedback-accounting-date-rule (ADR-045 H2).
           accountingDate: alloc.allocationDate,
           documentDate: alloc.allocationDate,
-          description: `Advance Allocation Reversal — Allocation ${allocationId}`,
+          description: `Reversal of prepayment ${payment.paymentNumber ?? ''} applied to a bill (${alloc.allocationDate.toISOString().slice(0, 10)})`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-006',
           sourceDocumentType: 'SUPPLIER_PAYMENT',

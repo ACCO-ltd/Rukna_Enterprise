@@ -409,4 +409,21 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
       expect(paymentRepo.createAllocation).not.toHaveBeenCalled();
     }
   });
+
+  it('QA: "2 bank signatures" only when a payment in flight is drawn on an account with signatories', () => {
+    const none = supplierBillEligibility(facts({ postingStatus: 'POSTED', outstandingAmount: '100' }));
+    expect(none.signaturesRequired).toBe(0);
+    const cash = supplierBillEligibility(
+      facts({ postingStatus: 'POSTED', outstandingAmount: '0' }, {
+        allocations: [{ postingStatus: 'NOT_POSTED', payment: { documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED', underDualControl: false, signatures: 0 } }],
+      }),
+    );
+    expect(cash.signaturesRequired).toBe(0);
+    const bank = supplierBillEligibility(
+      facts({ postingStatus: 'POSTED', outstandingAmount: '0' }, {
+        allocations: [{ postingStatus: 'NOT_POSTED', payment: { documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED', underDualControl: true, signatures: 1 } }],
+      }),
+    );
+    expect(bank.signaturesRequired).toBe(2);
+  });
 });

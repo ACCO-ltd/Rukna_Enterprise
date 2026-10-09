@@ -16,6 +16,7 @@ import {
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
+import { matchExceptionKind as computeMatchExceptionKind } from '../domain/award-payment.policy.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import {
   normalizeSupplierInvoiceNumber,
@@ -844,11 +845,22 @@ export class SupplierBillService {
     // ADR-045 — the store receipt / invoice the bill was recorded from is its evidence (photo file
     // ids are readable under the STORE_DOCUMENT_PHOTO rule).
     const storeDocument = bill.storeDocument ?? null;
+    // QA A — why a PO bill's match stopped, for the screen's wording (null unless stopped).
+    const stopped = bill.matchStatus === 'EXCEPTION' || bill.matchStatus === 'DISPUTED';
+    const matchExceptionKind = stopped
+      ? computeMatchExceptionKind(
+          await prisma.supplierBillMatchLine.findMany({
+            where: { billMatch: { supplierBillId: bill.id } },
+            select: { priceVariance: true, priceWithinTolerance: true, amountWithinTolerance: true, quantityWithinTolerance: true },
+          }),
+        )
+      : null;
 
     return {
       ...bill,
       postedJournalNumber: numberOf(bill.postedJournalEntryId),
       reversalJournalNumber: numberOf(bill.reversalJournalEntryId),
+      matchExceptionKind,
       evidence: storeDocument
         ? {
             storeDocumentId: storeDocument.id,

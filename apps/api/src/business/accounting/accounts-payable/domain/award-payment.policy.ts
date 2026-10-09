@@ -231,3 +231,27 @@ export function cashAccountBlock(
   if (activeSignatories > 0) return 'ACCOUNT_REQUIRES_DUAL_CONTROL';
   return null;
 }
+
+// ── Match exception kind (QA A) ─────────────────────────────────────────────────────────────────
+
+export type MatchExceptionKind = 'ABOVE_ORDER' | 'OTHER';
+
+/**
+ * Why a PO bill's match stopped: ABOVE_ORDER when every quantity is within tolerance and the stop
+ * comes from a price above the order (a price exception: FO <= $1k, CFO above, approves it);
+ * otherwise OTHER (quantity beyond receipt, disputed, ...).
+ */
+export function matchExceptionKind(
+  lines: ReadonlyArray<{
+    priceVariance: { toString(): string };
+    priceWithinTolerance: boolean;
+    amountWithinTolerance: boolean;
+    quantityWithinTolerance: boolean;
+  }>,
+): MatchExceptionKind {
+  const quantitiesOk = lines.every((l) => l.quantityWithinTolerance);
+  const priceAbove = lines.some(
+    (l) => (!l.priceWithinTolerance || !l.amountWithinTolerance) && new Decimal(l.priceVariance.toString()).greaterThan(0),
+  );
+  return quantitiesOk && priceAbove ? 'ABOVE_ORDER' : 'OTHER';
+}

@@ -34,7 +34,7 @@ export interface PayFromAwardCommand {
   idempotencyKey: string;
   quotationRequestId: string;
   bankAccountId: string;
-  paymentMethod: 'BANK' | 'MOBILE_MONEY';
+  paymentMethod: 'BANK' | 'MOBILE_MONEY' | 'CASH';
   paymentDate: string;
   amount: string | number;
   shape: PayShape;
@@ -108,6 +108,11 @@ export class AwardSupplierPaymentService {
         })
       : [];
     const unapplied = po ? await this.unappliedPrepayments(prisma, orgId, po.id) : [];
+    // QA H — the bill-approver rule is knowable now: the caller approved a bill this payment would settle.
+    const approvedABill =
+      codes.has('BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT') && bills.length > 0
+        ? (await prisma.supplierBill.count({ where: { id: { in: bills.map((b) => b.id) }, approvedBy: identity.userId } })) > 0
+        : false;
     const lastUsed = await this.awardRepo.lastPaymentAccountId(prisma, orgId, identity.userId);
     const accounts = (await this.awardRepo.paymentAccounts(prisma, orgId, currencyCode))
       .filter((a) => a.status === 'ACTIVE' && a.allowsPayments)
@@ -134,7 +139,7 @@ export class AwardSupplierPaymentService {
       remainingToFund: position.remaining.toFixed(2),
       currencyCode,
       accounts,
-      methods: ['BANK', 'MOBILE_MONEY'] as const,
+      methods: ['BANK', 'MOBILE_MONEY', 'CASH'] as const,
       defaultPaymentDate: todayInMogadishu(),
       bandHint: await this.bandHint(orgId, position.remaining),
       blockers: releaseBlockers({
@@ -144,7 +149,9 @@ export class AwardSupplierPaymentService {
         remainingToFund: position.remaining,
         usableAccounts: accounts.length,
         callerIsVendorMaintainer: isVendorMaintainer,
-      }).concat(unapplied.length > 0 && bills.length > 0 ? (['PREPAYMENT_NOT_APPLIED'] as never[]) : []),
+      })
+        .concat(unapplied.length > 0 && bills.length > 0 ? (['PREPAYMENT_NOT_APPLIED'] as never[]) : [])
+        .concat(approvedABill ? (['BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT'] as never[]) : []),
     };
   }
 
@@ -202,6 +209,16 @@ export class AwardSupplierPaymentService {
     if (account.status !== 'ACTIVE' || !account.allowsPayments) throw paymentUnprocessable('ACCOUNT_NOT_USABLE');
     if (account.currencyCode !== currencyCode) throw paymentUnprocessable('CURRENCY_MISMATCH');
     if (cmd.shape === 'PREPAY' && cmd.supplierBillId) throw paymentUnprocessable('PAYMENT_SHAPE_INVALID');
+    // QA LOW — not before the order; and no prepayment once a posted bill waits (pay / apply it).
+    if (revision?.effectiveFrom && paymentDate.getTime() < revision.effectiveFrom.getTime()) {
+      throw paymentUnprocessable('DATE_BEFORE_ORDER', { orderDate: revision.effectiveFrom.toISOString().slice(0, 10) });
+    }
+    if (cmd.shape === 'PREPAY') {
+      const waiting = await prisma.supplierBill.count({
+        where: { organizationId: orgId, purchaseOrderId: po.id, postingStatus: 'POSTED', outstandingAmount: { gt: 0 } },
+      });
+      if (waiting > 0) throw paymentConflict('BILL_TO_PAY');
+    }
     if (cmd.shape === 'PAY_BILL' && !cmd.supplierBillId) throw paymentUnprocessable('PAYMENT_SHAPE_INVALID');
     await this.assertPeriodOpen(orgId, paymentDate);
 

@@ -122,6 +122,7 @@ export class AwardPaymentRepository {
       select: {
         id: true,
         currencyCode: true,
+        effectiveFrom: true,
         lines: {
           select: {
             id: true,

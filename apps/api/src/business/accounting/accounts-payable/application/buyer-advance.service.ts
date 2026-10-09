@@ -965,7 +965,7 @@ export class BuyerAdvanceService {
             organizationId: orgId,
             accountingDate: receivedAt,
             documentDate: receivedAt,
-            description: `Buyer change returned${request ? ` — ${request.number}` : ''}`,
+            description: `Buyer change returned${request ? ` — ${request.number}` : ''} (advance of ${day(current.advancedAt)})`,
             currencyCode: current.currencyCode,
             eventType: 'EVT-AP-009',
             sourceDocumentType: 'BUYER_ADVANCE',
@@ -1256,7 +1256,10 @@ export class BuyerAdvanceService {
   private async resolveTarget(
     identity: RequestIdentity,
     cmd: { quotationRequestId?: string; purchaseOrderId?: string },
-  ): Promise<{ po: { id: string; status: string; currencyCode: string; supplierId: string }; request: AwardRequestFacts | null }> {
+  ): Promise<{
+    po: { id: string; status: string; currencyCode: string; supplierId: string; effectiveFrom: Date | null };
+    request: AwardRequestFacts | null;
+  }> {
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
     let request: AwardRequestFacts | null = null;
@@ -1274,7 +1277,13 @@ export class BuyerAdvanceService {
     if (!request) request = await this.awardRepo.findRequestForPurchaseOrder(prisma, orgId, po.id);
     const revision = await this.awardRepo.activeRevision(prisma, po.id);
     return {
-      po: { id: po.id, status: po.status, currencyCode: revision?.currencyCode ?? request?.currencyCode ?? 'USD', supplierId: po.supplierId },
+      po: {
+        id: po.id,
+        status: po.status,
+        currencyCode: revision?.currencyCode ?? request?.currencyCode ?? 'USD',
+        supplierId: po.supplierId,
+        effectiveFrom: revision?.effectiveFrom ?? null,
+      },
       request,
     };
   }
@@ -1283,7 +1292,7 @@ export class BuyerAdvanceService {
   private async assertReleasable(
     identity: RequestIdentity,
     args: {
-      po: { id: string; status: string; currencyCode: string };
+      po: { id: string; status: string; currencyCode: string; effectiveFrom?: Date | null };
       request: AwardRequestFacts | null;
       recipientUserId: string;
       bankAccountId: string;
@@ -1296,6 +1305,10 @@ export class BuyerAdvanceService {
     if (request && request.status !== 'AWARDED') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
     if (po.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
     if (request && request.paymentPath !== 'BUYER_CASH') throw paymentConflict('PAYMENT_PATH_MISMATCH');
+    // QA LOW — cash for an order is not handed over before the order exists.
+    if (po.effectiveFrom && args.advancedAt.getTime() < po.effectiveFrom.getTime()) {
+      throw paymentUnprocessable('DATE_BEFORE_ORDER', { orderDate: day(po.effectiveFrom) });
+    }
 
     await this.assertNotSelfRelease(orgId, identity.userId, args.recipientUserId);
     const member = await this.awardRepo.activeMember(prisma, orgId, args.recipientUserId);

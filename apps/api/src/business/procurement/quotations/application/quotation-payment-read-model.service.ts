@@ -124,9 +124,13 @@ export class QuotationPaymentReadModel implements AwardPaymentReadModel {
     }
     const unposted = payments.filter((p) => (p.documentStatus === 'APPROVED' || p.documentStatus === 'RELEASED') && p.postingStatus !== 'POSTED');
     let awaitingSignatures = false;
+    const waitingSignatures = new Set<string>();
     for (const p of unposted) {
       const signatories = await db.bankAccountSignatory.count({ where: { bankAccountId: p.bankAccountId, isActive: true } });
-      if (signatories > 0 && p.documentStatus === 'APPROVED') awaitingSignatures = true;
+      if (signatories > 0 && p.documentStatus === 'APPROVED') {
+        awaitingSignatures = true;
+        waitingSignatures.add(p.id);
+      }
     }
 
     let receivingStatus: ReceivingStatus = 'NOT_RECEIVED';
@@ -174,12 +178,23 @@ export class QuotationPaymentReadModel implements AwardPaymentReadModel {
         (p) => p.postingStatus === 'POSTED' && dec(p.unallocatedAmount).greaterThan(0) && po !== null && p.purchaseAllocations.some((x) => x.purchaseOrderId === po.id),
       );
       const billWaiting = dec(postedBillOutstanding).greaterThan(0);
+      // QA H — the bill-approver SoD rule, known up front (the payer approved the waiting bill).
+      const billApproverRule = await db.segregationOfDutiesRule.count({
+        where: { organizationId: orgId, code: 'BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT', isActive: true },
+      });
+      const approvedWaitingBill =
+        billApproverRule > 0 && po
+          ? (await db.supplierBill.count({
+              where: { purchaseOrderId: po.id, postingStatus: 'POSTED', outstandingAmount: { gt: 0 }, approvedBy: identity.userId },
+            })) > 0
+          : false;
       const payBlock = first(
         gate(canPay, 'MISSING_PERMISSION'),
         gate(!(unappliedPrepayment && billWaiting), 'PREPAYMENT_NOT_APPLIED'),
         gate(poOpen, 'PAYMENT_PO_NOT_OPEN'),
         gate(position.remaining.greaterThan(0), 'NOTHING_TO_FUND'),
         gate(!isMaintainer, 'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT'),
+        gate(!approvedWaitingBill, 'BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT'),
       );
       allowedActions.push(act('PAY_SUPPLIER', payBlock === null, payBlock ?? undefined));
       const applyBlock = first(
@@ -254,6 +269,35 @@ export class QuotationPaymentReadModel implements AwardPaymentReadModel {
       funded: money(po ? position.funded : null),
       remainingToFund: money(po ? position.remaining : null),
       withBuyer: money(withBuyer),
+      // QA LOW — what actually left: released = posted (not reversed) buyer cash; paid = posted
+      // supplier payments; pendingAmount = advances awaiting approval + payments not yet posted
+      // (approval / signatures). A DRAFT, CANCELLED or REVERSED advance is never released money.
+      released: money(
+        advances.filter((x) => x.postingStatus === 'POSTED').reduce((sum, x) => sum.add(dec(x.amount)), ZERO),
+      ),
+      paid: money(payments.filter((x) => x.postingStatus === 'POSTED').reduce((sum, x) => sum.add(dec(x.totalAmount)), ZERO)),
+      // QA — still to pay = the cap minus what actually left (POSTED cash net of change returned,
+      // POSTED payments); pending approvals / signatures are not paid yet.
+      stillToPay: money(
+        (() => {
+          const left = advances
+            .filter((x) => x.postingStatus === 'POSTED')
+            .reduce((sum, x) => sum.add(dec(x.amount)).sub(x.returns.reduce((r, y) => r.add(dec(y.amount)), ZERO)), ZERO)
+            .add(payments.filter((x) => x.postingStatus === 'POSTED').reduce((sum, x) => sum.add(dec(x.totalAmount)), ZERO));
+          const rest = position.cap.sub(left);
+          return rest.isNegative() ? ZERO : rest;
+        })(),
+      ),
+      pendingAmount: money(
+        advances
+          .filter((x) => x.documentStatus === 'DRAFT' && x.postingStatus === 'NOT_POSTED')
+          .reduce((sum, x) => sum.add(dec(x.amount)), ZERO)
+          .add(
+            payments
+              .filter((x) => x.postingStatus !== 'POSTED' && x.postingStatus !== 'REVERSED' && x.documentStatus !== 'CANCELLED' && x.documentStatus !== 'REJECTED')
+              .reduce((sum, x) => sum.add(dec(x.totalAmount)), ZERO),
+          ),
+      ),
       advances: visible
         ? advanceRows.map(({ a, legacy, applied, returned, outstanding }) => ({
             id: a.id,
@@ -277,6 +321,8 @@ export class QuotationPaymentReadModel implements AwardPaymentReadModel {
             shape: po && p.purchaseAllocations.some((x) => x.purchaseOrderId === po.id) ? 'PREPAY' : 'PAY_BILL',
             documentStatus: p.documentStatus,
             postingStatus: p.postingStatus,
+            // QA LOW — approved but waiting for the bank signatories: pending, not paid.
+            pendingSignatures: waitingSignatures.has(p.id),
           }))
         : null,
       storeDocuments: docs.map((d) => ({

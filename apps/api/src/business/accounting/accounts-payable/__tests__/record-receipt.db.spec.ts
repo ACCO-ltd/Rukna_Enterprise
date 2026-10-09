@@ -258,6 +258,9 @@ describe('ADR-045 P6 — record receipt → bill → settle', () => {
       const result = await record(doc.id, '640.00');
       expect(result.step).toBe('MATCH_EXCEPTION');
       expect(result.exception).toEqual({ kind: 'ABOVE_ORDER' });
+      expect(result.exceptionKind).toBe('ABOVE_ORDER');
+      // Revisiting the bill later reads the same kind.
+      expect((await svc.bills.findById(env.payer2, result.bill!.id)).matchExceptionKind).toBe('ABOVE_ORDER');
     });
 
     it('an ordinary PO bill below the order price keeps the existing exception (ACCO A2)', async () => {

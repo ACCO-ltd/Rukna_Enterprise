@@ -18,7 +18,9 @@ export function awardSteps(prisma: PrismaClient, env: PaymentTestEnv, svc: Payme
    * An AWARDED request (registered supplier, `total`) on a one-line MR (qty 10), its order raised
    * by the collector and confirmed (covered by the award) → PO OPEN, ordered = total.
    */
-  async function awardedOrder(opts: { total?: string; path?: 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER'; lines?: MrLineSpec[]; extraCollector?: boolean } = {}) {
+  async function awardedOrder(
+    opts: { total?: string; path?: 'BUYER_CASH' | 'FINANCE_PAYS_SUPPLIER'; lines?: MrLineSpec[]; extraCollector?: boolean; effectiveFrom?: string } = {},
+  ) {
     const total = opts.total ?? '1000.00';
     const lines = opts.lines ?? [{ quantity: 10, estimate: new Decimal(total).div(10).toNumber() }];
     const mr = await createApprovedMr(prisma, env, { lines });
@@ -34,6 +36,12 @@ export function awardSteps(prisma: PrismaClient, env: PaymentTestEnv, svc: Payme
     await svc.awards.award(env.as('selector'), sent.id, { quoteId: a.id, paymentPath: opts.path ?? 'BUYER_CASH' });
     const { purchaseOrderId } = await svc.orders.raiseOrder(env.as('collector'), sent.id, {});
     await svc.poService.confirm(env.as('collector'), purchaseOrderId);
+    // The order's effective date is the award date (the real clock); pin it so the payment dates
+    // the specs use (from 2026-10-01) are on or after it (QA LOW: no payment before the order).
+    await prisma.purchaseOrderRevision.updateMany({
+      where: { purchaseOrderId },
+      data: { effectiveFrom: new Date(opts.effectiveFrom ?? '2026-10-01') },
+    });
     return { requestId: sent.id, poId: purchaseOrderId, mrId: mr.id };
   }
 
