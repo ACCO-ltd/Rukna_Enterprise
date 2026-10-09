@@ -232,7 +232,8 @@ export interface AdvanceReturnPayload {
 
 // ─── Supplier payment from the award (§1.2) ───────────────────────────────────────
 
-export type SupplierPaymentMethod = 'BANK' | 'MOBILE_MONEY';
+/** CASH is offered when paying the supplier from a cash box (ADR-045 QA follow-up). */
+export type SupplierPaymentMethod = 'BANK' | 'MOBILE_MONEY' | 'CASH';
 
 export interface PayDraft {
   /** Null before the award's order exists. */

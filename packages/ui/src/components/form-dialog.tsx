@@ -276,7 +276,7 @@ export function FormDialog({
                 aria-label={closeLabel}
                 disabled={busy}
                 className={cn(
-                  '-me-2 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors',
+                  '-me-2 -mt-1 flex size-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors',
                   'hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring',
                   'disabled:pointer-events-none disabled:opacity-50',
                 )}
