@@ -120,6 +120,13 @@ export class BillMatchingService {
     const qtyTolAbs = policy?.quantityVarianceAbsolute ? new Decimal(policy.quantityVarianceAbsolute) : null;
     const amountTolAbs = policy?.amountVarianceAbsolute ? new Decimal(policy.amountVarianceAbsolute) : null;
 
+    // ADR-045 (QA A, product owner): a bill recorded FROM A STORE DOCUMENT on a BUYER_CASH award —
+    // the buyer paid the store at the counter — is not an exception for paying LESS than the order
+    // (never a risk). Above the order the normal tolerance / exception applies. No other bill's
+    // matching changes (ACCO policy A2).
+    // (Optional call: unit specs stub the repository without this read.)
+    const belowOrderIsFine = (await this.repo.storeDocumentPaymentPath?.(prisma, orgId, billId)) === 'BUYER_CASH';
+
     const matchLines = await Promise.all(
       bill.lines.map(async (billLine, idx) => {
         // Match by materialId when present (MATERIAL lines), else by position
@@ -142,7 +149,7 @@ export class BillMatchingService {
 
         // ── Price dimension (CONST-MATCH-003) ──────────────────────────────────
         const priceVarPct = poPrice.greaterThan(0) ? priceVar.abs().div(poPrice).mul(100) : new Decimal(0);
-        const priceWithinTolerance = priceVarPct.lessThanOrEqualTo(priceTolPct);
+        const priceWithinTolerance = priceVarPct.lessThanOrEqualTo(priceTolPct) || (belowOrderIsFine && priceVar.lessThan(0));
 
         // ── Quantity dimension: cumulative, bounded by receipts (CONST-MATCH-005/006) ──
         // Three-way matches the billed quantity against what was actually received; two-way (no
@@ -172,7 +179,8 @@ export class BillMatchingService {
         const quantityWithinTolerance = overBill.lessThanOrEqualTo(qtyAllowance);
 
         // ── Amount dimension (CONST-MATCH-003) — evaluated when a policy sets an absolute limit ──
-        const amountWithinTolerance = !amountTolAbs || amtVar.abs().lessThanOrEqualTo(amountTolAbs);
+        const amountWithinTolerance =
+          !amountTolAbs || amtVar.abs().lessThanOrEqualTo(amountTolAbs) || (belowOrderIsFine && amtVar.lessThan(0));
 
         // ── Derived overall verdict (CONST-MATCH-004) ──────────────────────────
         const withinTolerance = quantityWithinTolerance && priceWithinTolerance && amountWithinTolerance;

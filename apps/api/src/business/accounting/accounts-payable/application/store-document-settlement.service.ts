@@ -341,6 +341,21 @@ export class StoreDocumentSettlementService {
     }
   }
 
+  private async exceptionKind(bill: { id: string; matchStatus: string } | null): Promise<{ kind: 'ABOVE_ORDER' | 'OTHER' } | null> {
+    if (!bill || (bill.matchStatus !== 'EXCEPTION' && bill.matchStatus !== 'DISPUTED')) return null;
+    const lines = await this.tenancy.getClient().supplierBillMatchLine.findMany({
+      where: { billMatch: { supplierBillId: bill.id } },
+      select: { priceVariance: true, amountVariance: true, priceWithinTolerance: true, amountWithinTolerance: true, quantityWithinTolerance: true },
+    });
+    // ABOVE_ORDER: every quantity is within tolerance and the stop comes from a price above the
+    // order (a price exception FO <= $1k / CFO above approves). Anything else: OTHER.
+    const quantitiesOk = lines.every((l) => l.quantityWithinTolerance);
+    const priceAbove = lines.some(
+      (l) => (!l.priceWithinTolerance || !l.amountWithinTolerance) && dec(l.priceVariance).greaterThan(0),
+    );
+    return { kind: quantitiesOk && priceAbove ? 'ABOVE_ORDER' : 'OTHER' };
+  }
+
   private async result(
     identity: RequestIdentity,
     storeDocumentId: string,
@@ -373,6 +388,9 @@ export class StoreDocumentSettlementService {
         : null,
       step,
       applied,
+      // QA A — why the match stopped: ABOVE_ORDER (the receipt is above the order — a price
+      // exception to approve) or OTHER (quantity / other variance); null when it did not stop.
+      exception: await this.exceptionKind(bill),
       ...(approvalInstanceId ? { approvalInstanceId } : {}),
 
     };

@@ -229,4 +229,52 @@ describe('ADR-045 P6 — record receipt → bill → settle', () => {
       await refusal(svc.advances.createApplication(env.payer2, advance.id, { idempotencyKey: key, supplierBillId: rec.bill!.id, amount: '401.00' })),
     ).toEqual({ status: 409, code: 'IDEMPOTENCY_KEY_REUSED' });
   });
+
+  describe('QA A - paying less than the order at the counter', () => {
+    it('540 on a 580 order (>2% under) settles; the change is returned and the order closes', async () => {
+      const { requestId, poId } = await a.awardedOrder({ total: '580.00' });
+      const { advance } = await a.release(requestId, { amount: '580.00' });
+      const doc = await receipt(poId);
+      await a.receive(poId);
+      const result = await record(doc.id, '540.00');
+      expect(result.step).toBe('DONE');
+      expect(result.exception).toBeNull();
+      expect(result.bill).toMatchObject({ postingStatus: 'POSTED', outstandingAmount: '0.00' });
+      await svc.advances.createReturn(env.payer2, advance.id, {
+        amount: '40.00',
+        returnMethod: 'CASH',
+        destinationBankAccountId: env.bank.cashBoxId,
+        receivedBy: env.payer2.userId,
+        receivedAt: '2026-10-09',
+      });
+      expect((await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: poId } })).status).toBe('CLOSED');
+    });
+
+    it('640 on a 580 order is still a price exception, reported as above the order', async () => {
+      const { requestId, poId } = await a.awardedOrder({ total: '580.00' });
+      await a.release(requestId, { amount: '580.00' });
+      const doc = await receipt(poId);
+      await a.receive(poId);
+      const result = await record(doc.id, '640.00');
+      expect(result.step).toBe('MATCH_EXCEPTION');
+      expect(result.exception).toEqual({ kind: 'ABOVE_ORDER' });
+    });
+
+    it('an ordinary PO bill below the order price keeps the existing exception (ACCO A2)', async () => {
+      const { poId } = await a.awardedOrder({ total: '580.00', path: 'FINANCE_PAYS_SUPPLIER' });
+      await a.receive(poId);
+      const lines = await a.poLines(poId);
+      const bill = await svc.bills.create(env.payer2, {
+        supplierId: env.supplierId,
+        supplierInvoiceNumber: `INV-${randomUUID().slice(0, 8)}`,
+        billDate: '2026-10-08',
+        dueDate: '2026-10-08',
+        currencyCode: 'USD',
+        purchaseOrderId: poId,
+        lines: [{ description: lines[0].description, quantity: 10, unitPrice: 54, netAmount: 540, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+      });
+      await svc.bills.submit(env.payer2, bill.id);
+      expect((await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } })).matchStatus).toBe('EXCEPTION');
+    });
+  });
 });
