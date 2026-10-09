@@ -308,6 +308,14 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
     }
   });
 
+  it('QA D: three concurrent same-key full-amount prepayments all return the same payment (no 409)', async () => {
+    const { requestId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    const key = randomUUID();
+    const results = await Promise.all([1, 2, 3].map(() => pay(requestId, { key, amount: '1000.00' })));
+    expect(new Set(results.map((r) => r.payment.id)).size).toBe(1);
+    expect(await prisma.supplierPayment.count({ where: { quotationRequestId: requestId } })).toBe(1);
+  });
+
   describe('bands active', () => {
     beforeAll(() => a.setPaymentBandsActive(true));
     afterAll(() => a.setPaymentBandsActive(false));

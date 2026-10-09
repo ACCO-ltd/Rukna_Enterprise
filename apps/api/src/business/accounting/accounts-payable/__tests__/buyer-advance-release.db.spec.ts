@@ -279,6 +279,15 @@ describe('ADR-045 P4 — buyer advance release, reverse, return', () => {
     });
   });
 
+  it('QA D: three concurrent same-key full-amount releases all return the same advance (no 409)', async () => {
+    const { requestId, poId } = await a.awardedOrder();
+    const key = randomUUID();
+    const results = await Promise.all([1, 2, 3].map(() => a.release(requestId, { key, amount: '1000.00' })));
+    expect(new Set(results.map((r) => r.advance.id)).size).toBe(1);
+    expect(await advancesOf(poId)).toHaveLength(1);
+    expect(await journalsOf(results[0].advance.id)).toHaveLength(1);
+  });
+
   describe('change returned and reverse', () => {
     it('S6 (return part): change returned posts EVT-AP-009 on receivedAt; over-return is refused (R11)', async () => {
       const { requestId } = await a.awardedOrder();

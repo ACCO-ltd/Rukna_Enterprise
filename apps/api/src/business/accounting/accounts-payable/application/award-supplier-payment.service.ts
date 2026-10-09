@@ -227,9 +227,16 @@ export class AwardSupplierPaymentService {
     }
 
     let paymentId: string;
+    let replayed = false;
     try {
       paymentId = await prisma.$transaction(async (tx) => {
         const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, po.id);
+        // QA D — the key is re-checked FIRST under the PO lock: a double tap answers with the first payment.
+        const first = await tx.supplierPayment.findFirst({ where: { organizationId: orgId, idempotencyKey: cmd.idempotencyKey }, select: { id: true } });
+        if (first) {
+          replayed = true;
+          return first.id;
+        }
         if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
         // Item 2 (review M4) — the award is re-read under the PO lock (a path change serialises here).
         await this.assertAwardStillPaysSupplier(tx, orgId, request.id);
@@ -330,6 +337,7 @@ export class AwardSupplierPaymentService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return this.payFromAward(identity, cmd);
       throw error;
     }
+    if (replayed) return this.payFromAward(identity, cmd);
     return this.continueFrom(identity, paymentId);
   }
 

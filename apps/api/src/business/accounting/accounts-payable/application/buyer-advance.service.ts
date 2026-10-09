@@ -269,9 +269,17 @@ export class BuyerAdvanceService {
     await this.assertReleasable(identity, { po, request, recipientUserId: cmd.recipientUserId, bankAccountId: cmd.bankAccountId, advancedAt });
 
     let advanceId: string;
+    let replayed = false;
     try {
       advanceId = await prisma.$transaction(async (tx) => {
         const locked = await this.awardRepo.lockPurchaseOrder(tx, orgId, po.id);
+        // QA D — a double tap: the first tap may have committed while we waited for the lock. The key
+        // is re-checked FIRST under the lock, so the replay answers with that advance (never a 409).
+        const first = await tx.buyerAdvance.findFirst({ where: { organizationId: orgId, idempotencyKey: cmd.idempotencyKey }, select: { id: true } });
+        if (first) {
+          replayed = true;
+          return first.id;
+        }
         if (!locked || locked.status !== 'OPEN') throw paymentConflict('PAYMENT_PO_NOT_OPEN');
         // Review M4 — the path is re-read under the PO lock (a concurrent path change serialises here).
         if (request) await this.assertAwardStillBuyerCash(tx, orgId, request.id);
@@ -316,6 +324,7 @@ export class BuyerAdvanceService {
       throw error;
     }
 
+    if (replayed) return this.release(identity, cmd);
     await this.approveAndPost(identity, advanceId, { applyToBillId: cmd.applyToBillId });
     return this.releaseResult(identity, advanceId);
   }
