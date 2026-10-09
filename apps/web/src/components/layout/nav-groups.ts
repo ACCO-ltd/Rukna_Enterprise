@@ -182,7 +182,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },
-      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet' },
+      // ADR-045 — buyer advances are Accounts Payable's: GET /buyer-advances needs manage:payable.
+      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet', permissionKey: 'manage:payable' },
       { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
       // Suppliers: ungated master data — buyers add suppliers as purchasing widens, so this
       // must not require manage:procurement-config (a buyer needs to add the supplier their

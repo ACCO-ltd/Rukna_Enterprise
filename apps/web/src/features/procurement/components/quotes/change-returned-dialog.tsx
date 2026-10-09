@@ -75,10 +75,12 @@ export function ChangeReturnedDialog({
   const advance = open.find((a) => a.id === advanceId) ?? null;
   const [typed, setTyped] = useState<string | null>(null);
   const amount = typed ?? advance?.outstanding ?? '';
-  const [method, setMethod] = useState<CashPaymentMethod>('CASH');
+  // Null = follow the advance: cash comes back as cash, EVC as EVC (into the float).
+  const [chosenMethod, setMethod] = useState<CashPaymentMethod | null>(null);
   const active = (banks.data ?? []).filter((b) => b.status === 'ACTIVE' && b.currencyCode === currencyCode);
   // The account the cash came from, and the accounts without signatories (cash box, EVC float).
   const source = useGetBuyerAdvance(advance?.id ?? '');
+  const method: CashPaymentMethod = chosenMethod ?? source.data?.paymentMethod ?? 'CASH';
   const readiness = useBuyerCashReadiness();
   const cashIds = readiness.data ? new Set(readiness.data.cashAccounts.map((a) => a.bankAccountId)) : null;
   const { options: accounts, defaultId } = returnDestinations(

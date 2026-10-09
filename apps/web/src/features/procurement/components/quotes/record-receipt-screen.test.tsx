@@ -33,6 +33,11 @@ vi.mock('../../api/quotation-payment-api', async (importOriginal) => ({
   getReleaseDraft: (...args: unknown[]) => api.releaseDraft(...args),
   releaseCash: (...args: unknown[]) => api.release(...args),
 }));
+const advanceApi = vi.hoisted(() => ({ method: 'CASH', source: 'ba-cash' }));
+vi.mock('../../api/procurement-api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getBuyerAdvance: async (id: string) => ({ id, paymentMethod: advanceApi.method, disbursementBankAccountId: advanceApi.source }),
+}));
 vi.mock('@/features/files/api/files-api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getFileDownloadUrl: async (id: string) => ({ url: `https://files.test/${id}`, originalName: id, mimeType: 'image/jpeg' }),
@@ -86,7 +91,7 @@ vi.mock('@/features/accounting/hooks/use-accounting', async (importOriginal) => 
   ...(await importOriginal<object>()),
   useAccounts: () => ({ data: [ACCOUNT], isPending: false, isError: false }),
   usePostingProfiles: () => ({ data: [PROFILE], isPending: false, isError: false }),
-  useBankAccounts: () => ({ data: [BANK], isPending: false, isError: false }),
+  useBankAccounts: () => ({ data: [BANK, { ...BANK, id: 'ba-evc', bankName: 'EVC Plus', accountName: 'EVC float' }], isPending: false, isError: false }),
 }));
 
 import { RecordReceiptScreen } from './record-receipt-screen';
@@ -232,6 +237,29 @@ describe('RecordReceiptScreen', () => {
     renderWithProviders(<RecordReceiptScreen requestId="qr1" documentId="sd-1" />, { permissions: PAYER });
     expect(await screen.findByRole('button', { name: 'Record and settle' })).toBeDisabled();
     expect(screen.getByText('Waiting for the site to receive the goods.')).toBeInTheDocument();
+  });
+
+  it('Change returned follows the advance: an EVC release comes back as EVC into the float', async () => {
+    const user = userEvent.setup();
+    advanceApi.method = 'MOBILE_MONEY';
+    advanceApi.source = 'ba-evc';
+    api.detail = awarded({
+      state: 'SETTLING',
+      withBuyer: '20.00',
+      advances: [{ ...advance('20.00'), applied: '980.00' }],
+      storeDocuments: [{ ...submitted, status: 'RECORDED', supplierBillId: 'b-91' }],
+      allowedActions: [{ action: 'RECORD_RETURN', enabled: true }],
+    });
+    api.ret.mockResolvedValueOnce({});
+    renderWithProviders(<RecordReceiptScreen requestId="qr1" documentId="sd-1" />, { permissions: PAYER });
+    await user.click(await screen.findByRole('button', { name: 'Change returned' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Change returned' });
+    await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'EVC / mobile money' })).toBeChecked());
+    await user.click(within(dialog).getByRole('button', { name: 'Record $20.00 returned' }));
+    await waitFor(() => expect(api.ret).toHaveBeenCalledTimes(1));
+    expect(api.ret.mock.calls[0]![1]).toMatchObject({ returnMethod: 'MOBILE_MONEY', destinationBankAccountId: 'ba-evc' });
+    advanceApi.method = 'CASH';
+    advanceApi.source = 'ba-cash';
   });
 
   it('Change returned is prefilled with what the buyer holds and capped there', async () => {

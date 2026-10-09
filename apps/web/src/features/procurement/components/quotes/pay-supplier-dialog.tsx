@@ -123,8 +123,10 @@ function PayForm({
   const money = (value: string | null | undefined) => formatMoney(value ?? null, currency) ?? '';
 
   const billsWithOutstanding = draft.bills;
+  // A posted bill still owed is paid as such — the server refuses a prepayment then (BILL_TO_PAY).
+  const billOwed = billsWithOutstanding.length > 0;
   const defaultTarget =
-    draft.shape === 'PAY_BILL' && billsWithOutstanding[0] ? billsWithOutstanding[0].id : PREPAY;
+    (draft.shape === 'PAY_BILL' || billOwed) && billsWithOutstanding[0] ? billsWithOutstanding[0].id : PREPAY;
   const lastUsed = draft.accounts.find((a) => a.lastUsed) ?? draft.accounts[0];
 
   const [target, setTarget] = useState(defaultTarget);
@@ -155,7 +157,7 @@ function PayForm({
       value: b.id,
       label: b.outstanding ? t('payBillAmount', { number: b.number, amount: money(b.outstanding) }) : t('payBill', { number: b.number }),
     })),
-    { value: PREPAY, label: t('prepay'), description: t('prepayHint') },
+    ...(billOwed ? [] : [{ value: PREPAY, label: t('prepay'), description: t('prepayHint') }]),
   ];
 
   // 200 may still stop short of posting: the account needs its bank signatures (S11). The DoA gate

@@ -1316,10 +1316,11 @@ export function useGetBuyerAdvance(id: string): UseQueryResult<BuyerAdvance> {
 }
 
 /** The organisation's advances, newest first (the Buyer advances page). */
-export function useAllBuyerAdvances(): UseQueryResult<BuyerAdvance[]> {
+export function useAllBuyerAdvances(options?: { enabled?: boolean }): UseQueryResult<BuyerAdvance[]> {
   return useQuery({
     queryKey: [...procurementKeys.all, 'buyer-advances', 'all'],
     queryFn: () => listAllBuyerAdvances(),
+    enabled: options?.enabled ?? true,
   });
 }
 

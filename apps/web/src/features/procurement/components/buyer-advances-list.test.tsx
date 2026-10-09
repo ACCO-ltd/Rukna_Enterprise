@@ -16,7 +16,7 @@ vi.mock('next/link', () => ({
 
 const hooks = vi.hoisted(() => ({ all: vi.fn() }));
 vi.mock('../hooks/use-procurement', () => ({
-  useAllBuyerAdvances: () => hooks.all(),
+  useAllBuyerAdvances: (options?: { enabled?: boolean }) => hooks.all(options),
   useGetBuyerAdvance: vi.fn(),
   usePostBuyerAdvance: vi.fn(),
 }));
@@ -46,7 +46,7 @@ describe('BuyerAdvancesList', () => {
         },
       ],
     });
-    renderWithProviders(<BuyerAdvancesList />);
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
 
     const grid = within(await screen.findByRole('table'));
     expect(grid.getByRole('link', { name: 'PO-2026-0007' })).toHaveAttribute('href', '/procurement/orders/po1');
@@ -85,7 +85,7 @@ describe('BuyerAdvancesList', () => {
         },
       ],
     });
-    renderWithProviders(<BuyerAdvancesList />);
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
     const grid = within(await screen.findByRole('table'));
     expect(grid.getAllByText('Recorded before GL posting')).toHaveLength(1);
   });
@@ -110,7 +110,7 @@ describe('BuyerAdvancesList', () => {
         },
       ],
     });
-    renderWithProviders(<BuyerAdvancesList />);
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
     const grid = within(await screen.findByRole('table'));
     expect(grid.getByText('Cancelled')).toBeInTheDocument();
     // The amount is shown once (the advance); the outstanding cell holds nothing.
@@ -121,7 +121,14 @@ describe('BuyerAdvancesList', () => {
 
   it('shows the empty state when the organisation has none', async () => {
     hooks.all.mockReturnValue({ isPending: false, isError: false, refetch: vi.fn(), data: [] });
-    renderWithProviders(<BuyerAdvancesList />);
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
     expect(await screen.findByText('No buyer advances recorded')).toBeInTheDocument();
+  });
+
+  it('asks nothing of a user without manage:payable and says finance manages advances', () => {
+    hooks.all.mockReturnValue({ isPending: true, isError: false, refetch: vi.fn(), data: undefined });
+    renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'collect:quotation'] });
+    expect(hooks.all).toHaveBeenCalledWith({ enabled: false });
+    expect(screen.getByText(/Finance manages buyer advances/)).toBeInTheDocument();
   });
 });

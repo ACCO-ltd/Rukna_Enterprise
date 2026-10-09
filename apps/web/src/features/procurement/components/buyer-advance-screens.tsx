@@ -29,7 +29,13 @@ import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-gr
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useAllBuyerAdvances, useGetBuyerAdvance, usePostBuyerAdvance, useSupplierBill } from '../hooks/use-procurement';
+import {
+  useAllBuyerAdvances,
+  useGetBuyerAdvance,
+  usePostBuyerAdvance,
+  usePurchaseOrder,
+  useSupplierBill,
+} from '../hooks/use-procurement';
 import { useCanPay, useReverseBuyerAdvance } from '../hooks/use-quotation-payment';
 import { todayInMogadishu } from '../quotations/payment-rules';
 import type { BuyerAdvance, BillPostingStatus } from '../types';
@@ -65,6 +71,12 @@ function AdvanceStatus({ advance }: { advance: Pick<BuyerAdvance, 'documentStatu
   return <PostingStatusBadge status={advance.postingStatus} />;
 }
 
+/** The PO's number: from the advance when it carries it, else read from the order (never a raw id). */
+function PoNumber({ id, number }: { id: string; number: string | null }) {
+  const po = usePurchaseOrder(number ? '' : id);
+  return <>{number ?? po.data?.poNumber ?? '…'}</>;
+}
+
 /** A bill reference: its number, read from the bill when the row has only the id. */
 function BillRef({ id, number }: { id: string; number?: string | null }) {
   const bill = useSupplierBill(number ? '' : id);
@@ -92,7 +104,10 @@ export function BuyerAdvancesList() {
 
   // Org-wide, newest first (GET /buyer-advances without a PO). Advances are created from a
   // purchase order's settlement tab, so this page has no primary of its own.
-  const query = useAllBuyerAdvances();
+  // GET /buyer-advances is Accounts Payable's (manage:payable): don't ask without it (QA: two 403s
+  // for a Procurement Manager).
+  const canPay = useCanPay();
+  const query = useAllBuyerAdvances({ enabled: canPay });
   const [filters, setFilters] = useState<FilterValues>({});
 
   const data = useMemo(() => query.data ?? [], [query.data]);
@@ -190,6 +205,10 @@ export function BuyerAdvancesList() {
     },
   ];
 
+  if (!canPay) {
+    return <Notice tone="info">{t('financeOnly')}</Notice>;
+  }
+
   return (
     <PlatformDataGrid
       columns={columns}
@@ -274,7 +293,7 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
             href={`/procurement/orders/${advance.purchaseOrderId}`}
             className="text-xs text-muted-foreground hover:underline"
           >
-            {advance.purchaseOrder?.poNumber ?? `PO ${advance.purchaseOrderId.slice(0, 8)}…`}
+            <PoNumber id={advance.purchaseOrderId} number={advance.purchaseOrder?.poNumber ?? null} />
           </Link>
           {legacy ? <LegacyBadge /> : null}
           {advance.postedJournalEntryId ? (
