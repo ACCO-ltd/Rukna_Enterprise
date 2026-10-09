@@ -313,6 +313,12 @@ export interface RecordStoreDocumentResult {
     matchStatus?: string;
   } | null;
   step: RecordStep;
+  /**
+   * MATCH_EXCEPTION: why the match stopped — `ABOVE_ORDER` (the receipt is above the order) or
+   * another kind. Read from `exceptionKind` or `exception.kind`, whichever the server sends.
+   */
+  exceptionKind?: string | null;
+  exception?: { kind?: string | null } | null;
   /** What settled the bill: buyer cash (EVT-AP-008) or the prepayment (EVT-AP-005). */
   applied: Array<{ kind: 'BUYER_ADVANCE' | 'SUPPLIER_PAYMENT'; id: string; amount: Money }>;
   /** WAITING_APPROVAL: the bill's approval chain. */

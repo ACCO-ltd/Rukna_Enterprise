@@ -45,6 +45,7 @@ import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, parseMinorUnits } from '@/lib/money';
 
 import { expenseProfiles } from '../../bill-actions';
+import { useSupplierBill } from '../../hooks/use-procurement';
 import { useCanPay, useRecordStoreDocument, useRejectStoreDocument } from '../../hooks/use-quotation-payment';
 import { useQuotationRequest } from '../../hooks/use-quotations';
 import {
@@ -97,7 +98,7 @@ export function RecordReceiptScreen({ requestId, documentId }: { requestId: stri
 
   if (detail.isPending) {
     return (
-      <div role="status" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <div role="status" className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <span className="sr-only">{t('loading')}</span>
         <Skeleton className="aspect-[3/4] w-full" />
         <Skeleton className="h-80 w-full" />
@@ -194,6 +195,23 @@ function RecordBody({
   const problem = amountProblem(total, null);
   const totalText = toMoneyString(total);
   const blockedReason = action && !action.enabled ? (fromCode(action.reason) ?? action.reason ?? null) : null;
+  // Started before (a bill exists): read the bill, so a revisit still explains why it stopped.
+  const startedBill = useSupplierBill(doc.status === 'SUBMITTED' && doc.supplierBillId ? doc.supplierBillId : '');
+  const stoppedAt: 'MATCH_EXCEPTION' | 'WAITING_APPROVAL' | null =
+    result?.step === 'MATCH_EXCEPTION' || result?.step === 'WAITING_APPROVAL'
+      ? result.step
+      : !result && startedBill.data
+        ? startedBill.data.matchStatus === 'EXCEPTION'
+          ? 'MATCH_EXCEPTION'
+          : startedBill.data.documentStatus === 'SUBMITTED'
+            ? 'WAITING_APPROVAL'
+            : null
+        : null;
+  const exceptionKind =
+    result?.exceptionKind ??
+    result?.exception?.kind ??
+    (startedBill.data as { matchExceptionKind?: string | null } | undefined)?.matchExceptionKind ??
+    null;
   const done = result?.step === 'DONE' || doc.status === 'RECORDED';
 
   const submit = () => {
@@ -215,7 +233,8 @@ function RecordBody({
 
   const photos = doc.photos ?? [];
   const billId = result?.bill?.id ?? doc.supplierBillId ?? null;
-  const billNumber = result?.bill?.billNumber ?? result?.bill?.supplierInvoiceNumber ?? doc.billNumber ?? null;
+  // The bill's own number only — never the receipt's SD number, which is not the bill.
+  const billNumber = result?.bill?.billNumber ?? startedBill.data?.billNumber ?? doc.billNumber ?? null;
   const applied = appliedTotal(result?.applied);
 
   return (
@@ -231,10 +250,10 @@ function RecordBody({
         <StoreDocumentStatusPill status={done ? 'RECORDED' : doc.status} />
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
         <ReceiptPhotos doc={doc} store={detail.award?.supplier?.name ?? doc.number} photos={photos} />
 
-        <div className="space-y-4 rounded-panel border border-border bg-surface p-4 shadow-e1">
+        <div className="min-w-0 space-y-4 rounded-panel border border-border bg-surface p-4 shadow-e1">
           {/* ── Result of the last tap ───────────────────────────────────────── */}
           {done ? (
             <Notice tone="success" title={t('done.title')}>
@@ -258,9 +277,16 @@ function RecordBody({
               ) : null}
             </Notice>
           ) : null}
-          {result?.step === 'MATCH_EXCEPTION' ? (
-            <Notice tone="attention" title={t('exception.title')}>
-              <p className="mt-1">{t('exception.body', { bill: billNumber ?? t('theBill') })}</p>
+          {stoppedAt === 'MATCH_EXCEPTION' ? (
+            <Notice
+              tone="attention"
+              title={exceptionKind === 'ABOVE_ORDER' ? t('exception.title') : t('exception.otherTitle')}
+            >
+              <p className="mt-1">
+                {t(exceptionKind === 'ABOVE_ORDER' ? 'exception.body' : 'exception.otherBody', {
+                  bill: billNumber ?? t('theBill'),
+                })}
+              </p>
               {billId ? (
                 <Link
                   href={`/finance/accounting/bills/${billId}`}
@@ -272,7 +298,7 @@ function RecordBody({
               ) : null}
             </Notice>
           ) : null}
-          {result?.step === 'WAITING_APPROVAL' ? (
+          {stoppedAt === 'WAITING_APPROVAL' ? (
             <Notice tone="info" title={t('waitingApproval.title')}>
               <p className="mt-1">{t('waitingApproval.body', { bill: billNumber ?? t('theBill') })}</p>
             </Notice>
@@ -340,7 +366,13 @@ function RecordBody({
                   !profiles.isPending && !accounts.isPending && options.length === 0 ? t('noExpenseProfiles') : undefined
                 }
               >
-                <Select id="record-expense" value={profileCode} onChange={setProfile} disabled={options.length === 0}>
+                <Select
+                  id="record-expense"
+                  value={profileCode}
+                  onChange={setProfile}
+                  disabled={options.length === 0}
+                  className="h-auto min-h-11 whitespace-normal break-words text-start"
+                >
                   {options.map((profile) => (
                     <option key={profile.code} value={profile.code}>
                       {profile.name} · {profile.account.code} {accountName(profile.account, locale)}
@@ -428,7 +460,7 @@ function ReceiptPhotos({ doc, store, photos }: { doc: StoreDocumentSummary; stor
   }));
   const kind = tDocs(`kind.${doc.kind}`);
   return (
-    <figure className="space-y-2">
+    <figure className="min-w-0 space-y-2">
       <button
         type="button"
         onClick={() => setZoom(true)}

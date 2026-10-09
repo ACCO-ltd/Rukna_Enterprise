@@ -50,9 +50,11 @@ export function WhatsAppLog({ messages }: { messages: StaffAlertLogEntry[] | und
       </h2>
       <ul className="mt-2 divide-y divide-border">
         {rows.map((m) => (
-          <li key={m.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 text-sm">
-            <span className="min-w-0">
-              <span className="text-muted-foreground">{t(`purpose.${m.purpose}`)}</span>
+          <li key={m.id} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 text-sm">
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              <span className="text-muted-foreground">
+                {t.has(`purpose.${m.purpose}`) ? t(`purpose.${m.purpose}`) : t('purpose.other')}
+              </span>
               <span className="text-muted-foreground"> · </span>
               <span className="font-medium text-foreground">{m.recipientName}</span>
               <span className="text-caption text-muted-foreground"> {m.recipientPhoneMasked}</span>

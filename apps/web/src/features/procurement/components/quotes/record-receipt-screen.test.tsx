@@ -190,6 +190,8 @@ describe('RecordReceiptScreen', () => {
       storeDocument: submitted,
       bill: { id: 'b-91', billNumber: 'BILL-0091' },
       step: 'MATCH_EXCEPTION',
+      exceptionKind: 'ABOVE_ORDER',
+      applied: [],
     });
     renderWithProviders(<RecordReceiptScreen requestId="qr1" documentId="sd-1" />, { permissions: PAYER });
     await user.type(await screen.findByLabelText('Total on receipt'), '1030');
@@ -202,6 +204,24 @@ describe('RecordReceiptScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Resume' }));
     await waitFor(() => expect(api.record).toHaveBeenCalledTimes(2));
     expect(api.record.mock.calls[1]![0]).toEqual({ storeDocumentId: 'sd-1' });
+  });
+
+  it('another match exception is worded as such, and a bill with no number is linked by id (never the SD number)', async () => {
+    const user = userEvent.setup();
+    api.record.mockResolvedValueOnce({
+      storeDocument: submitted,
+      bill: { id: 'b-92', billNumber: null, supplierInvoiceNumber: 'SD-00019' },
+      step: 'MATCH_EXCEPTION',
+      exceptionKind: 'QUANTITY',
+      applied: [],
+    });
+    renderWithProviders(<RecordReceiptScreen requestId="qr1" documentId="sd-1" />, { permissions: PAYER });
+    await user.type(await screen.findByLabelText('Total on receipt'), '900');
+    await user.click(screen.getByRole('button', { name: 'Record and settle' }));
+    expect(await screen.findByText("The bill doesn't match the order")).toBeInTheDocument();
+    expect(screen.queryByText('Receipt is above the order')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open the bill' })).toHaveAttribute('href', '/finance/accounting/bills/b-92');
+    expect(screen.queryByText(/SD-00019/, { selector: 'a' })).not.toBeInTheDocument();
   });
 
   it('waits for the goods, in words, before recording', async () => {

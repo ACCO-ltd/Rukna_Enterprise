@@ -1754,7 +1754,12 @@
     "reversalJournalLink": "Open reversal journal",
     "cancelAction": "Cancel release",
     "cancelTitle": "Cancel this cash release?",
-    "cancelBody": "It was never released: it is waiting for approval. Cancelling frees the order to be paid again."
+    "cancelBody": "It was never released: it is waiting for approval. Cancelling frees the order to be paid again.",
+    "state": {
+      "waiting": "Waiting for approval",
+      "cancelled": "Cancelled",
+      "reversed": "Reversed"
+    }
   },
   "feedback": {
     "supplierCreated": "Supplier {name} created",
@@ -2264,7 +2269,11 @@
         "QUOTE_REMINDER": "Reminder",
         "QUOTE_ESCALATION": "Escalation",
         "QUOTE_CHOSEN": "Store chosen",
-        "QUOTE_ANOTHER": "Another quote"
+        "QUOTE_ANOTHER": "Another quote",
+        "QUOTE_PAY_NEEDED": "Payment needed",
+        "QUOTE_CASH_RELEASED": "Cash released",
+        "QUOTE_SUPPLIER_PAID": "Supplier paid",
+        "other": "Alert"
       },
       "status": {
         "QUEUED": "Queued",
@@ -2325,7 +2334,8 @@
         "withBuyerNoName": "With the buyer",
         "receipt": "Receipt",
         "goods": "Goods",
-        "order": "Order"
+        "order": "Order",
+        "awaitingSignatures": "Waiting for signatures"
       },
       "receiving": {
         "NOT_RECEIVED": "Not received yet",
@@ -2413,7 +2423,10 @@
         "shape": {
           "PREPAY": "Paid before goods",
           "PAY_BILL": "Paid the invoice"
-        }
+        },
+        "advanceWaiting": "{date} · waiting for approval",
+        "advanceCancelled": "{date} · cancelled",
+        "advanceReversed": "{date} · reversed"
       },
       "release": {
         "title": "Release cash",
@@ -2438,7 +2451,7 @@
         "amountOver": "That is more than {cap}.",
         "loadFailed": "Could not load the payment details. Try again.",
         "noAccounts": "No cash account can hand out buyer cash yet.",
-        "noRecipients": "Nobody on this request can receive cash."
+        "noRecipients": "No one on this request can receive cash from you — you can't release cash to yourself. Another finance user must release it."
       },
       "method": {
         "CASH": "Cash",
@@ -2462,7 +2475,9 @@
         "submit": "Pay {amount}",
         "submitNoAmount": "Pay",
         "maintainer": "You registered this store, so another finance user must pay it.",
-        "maintainerNamed": "{name} registered this store, so someone else in finance must pay it."
+        "maintainerNamed": "{name} registered this store, so someone else in finance must pay it.",
+        "thenSignatures": "Then two bank signatories release it.",
+        "signaturesOnly": "No approval needed — two bank signatories release it before the money goes out."
       },
       "changePath": {
         "title": "Change how it's paid?",
@@ -2663,7 +2678,9 @@
         "exception": {
           "title": "Receipt is above the order",
           "body": "Approve the price exception on {bill} first, then tap Resume.",
-          "open": "Open {bill}"
+          "open": "Open {bill}",
+          "otherTitle": "The bill doesn't match the order",
+          "otherBody": "Resolve the matching exception on {bill}, then tap Resume."
         },
         "waitingApproval": {
           "title": "Bill waiting for approval",
@@ -2703,6 +2720,12 @@
         "nothing": "There is no prepayment and posted bill to match up right now.",
         "submit": "Apply {amount}",
         "submitNoAmount": "Apply"
+      },
+      "stateHintSupplier": {
+        "READY_TO_PAY": "Nothing has been paid to the store yet.",
+        "WAITING_FOR_GOODS": "The store is paid. Waiting for the site to receive the goods.",
+        "RECEIPT_TO_RECORD": "The store's invoice is in and the goods are received.",
+        "SETTLING": "Recorded. Apply the prepayment or pay the invoice to finish."
       }
     },
     "paymentsQueue": {
