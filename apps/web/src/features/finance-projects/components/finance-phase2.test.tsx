@@ -137,7 +137,20 @@ describe('BillEligibilityPanel — "Why can\'t I pay this?"', () => {
 });
 
 describe('Finance project workspace — Payables and Payments tabs', () => {
-  const header = { item: { projectId: 'p1', code: 'ACC-01', name: 'Mogadishu clinic', clientName: null, status: 'ACTIVE', currency: 'USD', contractValue: null } };
+  const header = {
+    item: {
+      projectId: 'p1',
+      code: 'ACC-01',
+      name: 'Mogadishu clinic',
+      clientName: null,
+      status: 'ACTIVE',
+      currency: 'USD',
+      contractValue: null,
+      readyToBill: { count: 0, draftCount: 0, amount: '0.00' },
+      overdueInvoices: { count: 0, oldestDaysPastDue: null },
+      billsToPay: { count: 0, amount: '0.00' },
+    },
+  };
 
   function renderWorkspace(permissions: string[]) {
     financeApi.getFinanceProject.mockResolvedValue({ ...header, moneyVisible: true, marginVisible: true, asOf: '2026-10-03T00:00:00.000Z' });

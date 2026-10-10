@@ -32,45 +32,7 @@
     }
   },
   "overview": {
-    "ratio": {
-      "committed": "Open commitment / Budget",
-      "accrued": "Accrued / Budget",
-      "actual": "Actual / Budget"
-    },
-    "costPosition": {
-      "title": "Project cost position",
-      "description": "From the project cost budget and the procurement commitment ledger.",
-      "budget": "Budget",
-      "budgetBasis": "Baselined cost budget",
-      "notBaselined": "Not baselined",
-      "openCommitment": "Open commitment",
-      "openCommitmentBasis": "Ordered, not yet received",
-      "accrued": "Accrued",
-      "accruedBasis": "Received, not yet billed",
-      "actual": "Actual",
-      "actualBasis": "Posted to the general ledger",
-      "uncommittedBudget": "Uncommitted budget",
-      "uncommittedBudgetBasis": "Budget still free to spend"
-    },
-    "accountingPosition": {
-      "title": "Accounting position",
-      "description": "From posted general ledger entries carrying this project.",
-      "revenue": "Revenue",
-      "revenueBasis": "Posted, excludes sales tax",
-      "projectCost": "Project cost",
-      "projectCostBasis": "Posted, includes non-recoverable sales tax",
-      "grossProfit": "Gross profit",
-      "margin": "Margin",
-      "marginBasis": "Gross profit / revenue",
-      "unavailableTitle": "Accounting position unavailable",
-      "unavailableReason": "The general ledger cannot accept postings yet, so this project has no accounting position. Cost budget, commitments and accruals above are unaffected.",
-      "setupDetails": "Accounting setup details",
-      "configure": "Open accounting setup",
-      "noCostYet": "No cost yet"
-    },
     "controls": {
-      "title": "Data & control status",
-      "description": "Whether the figures above can be relied on.",
       "reconciliation": "Procurement and general ledger",
       "reconciliationDetail": "Supplier-bill variance {variance}",
       "billing": "Billing and general ledger",
@@ -79,27 +41,14 @@
       "costBudget": "Cost budget",
       "budgetDetail": "Version {version}, baselined {date}",
       "period": "Accounting period",
-      "periodDetail": "{name} — {days} day(s) to period end",
-      "nonProcurementNote": "Total project cost {total} is procurement {procurement} plus non-procurement cost {other}. Non-procurement cost is payroll, plant and manual journals, and is not a reconciliation variance."
+      "periodDetail": "{name} — {days} day(s) to period end"
     },
     "attention": {
-      "title": "Needs attention",
-      "empty": "Nothing needs attention on this project.",
       "severity": {
         "CRITICAL": "Critical",
         "WARNING": "Warning",
         "INFO": "For info"
       }
-    },
-    "costByArea": {
-      "title": "Cost by area",
-      "description": "Top-level cost areas. The full breakdown is in Cost Control.",
-      "area": "Cost area",
-      "budget": "Budget",
-      "openCommitment": "Open commitment",
-      "actual": "Actual",
-      "openCostControl": "Cost control",
-      "empty": "No cost has been coded to this project yet."
     },
     "activity": {
       "title": "Recent financial activity",
@@ -419,6 +368,13 @@
         "payables": "Payables",
         "payments": "Payments",
         "cashflow": "Cash flow"
+      },
+      "picker": {
+        "label": "Project",
+        "search": "Search by project name or code",
+        "empty": "No project matches.",
+        "loading": "Loading projects",
+        "needsAction": "Needs action"
       }
     },
     "billing": {
@@ -458,7 +414,80 @@
       "noCurrency": "no currency"
     },
     "marginNoCost": "No cost yet",
-    "marginNoCostHint": "Revenue is posted but no cost has been coded to this project, so a margin would read 100%."
+    "marginNoCostHint": "Revenue is posted but no cost has been coded to this project, so a margin would read 100%.",
+    "dashboard": {
+      "asOf": "Figures as of {date}",
+      "loadFailed": "This part of the dashboard could not load.",
+      "retry": "Try again",
+      "controls": {
+        "title": "Can these figures be trusted?",
+        "reconciled": "Figures reconciled",
+        "review": "{count, plural, one {# check to review} other {# checks to review}}"
+      },
+      "figures": {
+        "label": "Project money at a glance",
+        "contract": "Contract value",
+        "contractSub": "Current value, incl. approved variations",
+        "noContract": "No contract yet",
+        "billed": "Billed (excl. tax)",
+        "ofContract": "{percent}% of contract",
+        "nothingBilled": "Nothing billed yet",
+        "collected": "Collected",
+        "ofBilled": "{percent}% of billed (incl. tax)",
+        "nothingToCollect": "Nothing to collect yet",
+        "outstanding": "Outstanding (incl. tax)",
+        "overdueSub": "{amount} overdue · oldest {days}d",
+        "nothingOverdue": "Nothing overdue",
+        "margin": "Gross margin",
+        "percent": "{value}%",
+        "marginSub": "Revenue {revenue} · cost {cost}",
+        "marginUnavailable": "Shows once revenue is posted",
+        "noCostYet": "No cost yet — nothing coded to this project",
+        "restricted": "Restricted"
+      },
+      "needs": {
+        "title": "Needs action ({count})",
+        "billsToPay": "{count, plural, one {# supplier bill to pay} other {# supplier bills to pay}}",
+        "billsToPayHint": "Posted bills coded to this project with a balance.",
+        "reviewBills": "Review bills",
+        "open": "Open",
+        "restricted": "Restricted"
+      },
+      "billing": {
+        "title": "Billing progress",
+        "sub": "{count, plural, one {# payment stage} other {# payment stages}} on the contract",
+        "open": "Billing",
+        "percent": "{value}%",
+        "noSchedule": "No payment schedule yet. It is set when the contract is recorded.",
+        "legendCollected": "Collected",
+        "legendBilled": "Billed, not collected",
+        "legendNotBilled": "Not billed yet",
+        "variations": "{count, plural, one {# variation is} other {# variations are}} billed as separate lines — see Billing."
+      },
+      "cashflow": {
+        "title": "Cash flow",
+        "sub": "Expected in and out over the coming months",
+        "open": "Full forecast",
+        "now": "Now",
+        "in": "Expected in",
+        "out": "Expected out",
+        "net": "Net",
+        "empty": "Nothing expected in or out yet.",
+        "restricted": "Cash flow is restricted for you.",
+        "summary": "Cash expected in and out across {count} periods: {in} in, {out} out."
+      },
+      "cost": {
+        "title": "Cost against budget",
+        "sub": "From the cost budget and the commitment ledger",
+        "open": "Cost detail",
+        "budget": "Budget",
+        "committed": "Committed to date",
+        "actual": "Actual (posted)",
+        "notBaselined": "Not baselined",
+        "noBudgetHint": "No cost budget is baselined, so cost is tracked but has nothing to measure against.",
+        "spentOfBudget": "{percent}% of budget spent."
+      }
+    }
   },
   "eligibility": {
     "bill": {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -68,8 +68,8 @@ export function CommercialBillingView({
       ? '/finance/accounting/periods'
       : '/finance/accounting/chart-of-accounts';
 
-  const [prepareFor, setPrepareFor] = useState<string | null>(null);
-  const [paymentFor, setPaymentFor] = useState<ClientReceivableView | null | 'none'>(null);
+  // The To do card owns its own Prepare / Record payment dialogs; this one is the Payments panel's.
+  const [paymentOpen, setPaymentOpen] = useState(false);
 
   // D5: one overdue rule on the server clock — the billing read model's asOf, never the browser's date.
   const today = billing.data?.asOf.slice(0, 10) ?? '';
@@ -102,15 +102,7 @@ export function CommercialBillingView({
         </Notice>
       ) : null}
 
-      <TodoPanel
-        projectId={projectId}
-        workspace={workspace}
-        ledgerBlocked={ledgerBlocked}
-        receivables={receivables}
-        invoiceHref={invoiceHref}
-        onPrepare={setPrepareFor}
-        onRecordPayment={(invoiceId) => setPaymentFor(receivables.find((row) => row.invoiceId === invoiceId) ?? 'none')}
-      />
+      <BillingTodoCard projectId={projectId} workspace={workspace} invoiceHref={invoiceHref} />
 
       {billing.isPending ? (
         <Skeleton className="h-64 w-full" />
@@ -131,14 +123,10 @@ export function CommercialBillingView({
           <PaymentsPanel
             receipts={billing.data.receipts}
             financialsVisible={financialsVisible}
-            onRecordPayment={canRecordPayment && !ledgerBlocked && payable.length > 0 ? () => setPaymentFor('none') : undefined}
+            onRecordPayment={canRecordPayment && !ledgerBlocked && payable.length > 0 ? () => setPaymentOpen(true) : undefined}
           />
         </>
       )}
-
-      {prepareFor ? (
-        <PrepareInvoiceDialog projectId={projectId} installmentId={prepareFor} open onClose={() => setPrepareFor(null)} />
-      ) : null}
 
       {reminderFor ? (
         <InvoiceReminderDialog
@@ -152,13 +140,13 @@ export function CommercialBillingView({
         />
       ) : null}
 
-      {paymentFor !== null ? (
+      {paymentOpen ? (
         <RecordPaymentDialog
           open
-          onOpenChange={(open) => !open && setPaymentFor(null)}
+          onOpenChange={(open) => !open && setPaymentOpen(false)}
           projectId={projectId}
           currency={workspace.currency}
-          preselectedInvoice={paymentFor === 'none' ? null : paymentFor}
+          preselectedInvoice={null}
           allInvoices={payable}
         />
       ) : null}
@@ -168,12 +156,80 @@ export function CommercialBillingView({
 
 // ─── To do ───────────────────────────────────────────────────────────────────
 
+/**
+ * The project's billing To do — ranked rows from `workspace.todo`, each with at most one command,
+ * and the Prepare invoice / Record payment dialogs those commands open. Self-contained so the
+ * Billing view and the Finance project dashboard (ADR-043) render the SAME rows and run the SAME
+ * commands; nothing here is a second implementation.
+ *
+ * `extraItems` are rows another read owns (supplier bills to pay, finance controls) appended after
+ * the billing rows, so a reader sees one list of what needs them.
+ */
+export function BillingTodoCard({
+  projectId,
+  workspace,
+  invoiceHref = projectInvoiceHref(projectId),
+  extraItems = [],
+  title,
+}: {
+  projectId: string;
+  workspace: CommercialWorkspaceResponse;
+  invoiceHref?: InvoiceHrefBuilder;
+  extraItems?: ActionListItem[];
+  /** Overrides the heading ("To do (3)"); receives the total row count. */
+  title?: (count: number) => string;
+}) {
+  const billing = useCommercialBilling(projectId);
+  const readiness = useAccountingReadiness();
+  const ledgerBlocked = readiness.data !== undefined && !readiness.data.ready;
+  const today = billing.data?.asOf.slice(0, 10) ?? '';
+  const receivables = useMemo(
+    () => (billing.data?.invoices ?? []).map((row) => toClientReceivableView(row, today)),
+    [billing.data, today],
+  );
+  const payable = receivables.filter((row) => row.canRecordPayment);
+
+  const [prepareFor, setPrepareFor] = useState<string | null>(null);
+  const [paymentFor, setPaymentFor] = useState<ClientReceivableView | null>(null);
+
+  return (
+    <>
+      <TodoPanel
+        projectId={projectId}
+        workspace={workspace}
+        ledgerBlocked={ledgerBlocked}
+        receivables={receivables}
+        invoiceHref={invoiceHref}
+        extraItems={extraItems}
+        title={title}
+        onPrepare={setPrepareFor}
+        onRecordPayment={(invoiceId) => setPaymentFor(receivables.find((row) => row.invoiceId === invoiceId) ?? null)}
+      />
+      {prepareFor ? (
+        <PrepareInvoiceDialog projectId={projectId} installmentId={prepareFor} open onClose={() => setPrepareFor(null)} />
+      ) : null}
+      {paymentFor !== null ? (
+        <RecordPaymentDialog
+          open
+          onOpenChange={(open) => !open && setPaymentFor(null)}
+          projectId={projectId}
+          currency={workspace.currency}
+          preselectedInvoice={paymentFor}
+          allInvoices={payable}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function TodoPanel({
   projectId,
   workspace,
   ledgerBlocked,
   receivables,
   invoiceHref,
+  extraItems,
+  title,
   onPrepare,
   onRecordPayment,
 }: {
@@ -182,6 +238,8 @@ function TodoPanel({
   ledgerBlocked: boolean;
   receivables: ClientReceivableView[];
   invoiceHref: InvoiceHrefBuilder;
+  extraItems: ActionListItem[];
+  title?: (count: number) => string;
   onPrepare: (installmentId: string) => void;
   onRecordPayment: (invoiceId: string) => void;
 }) {
@@ -191,7 +249,8 @@ function TodoPanel({
   // Verifying a milestone is manage:project (Progress → Review); others see the wait in words.
   const canVerify = usePermissions().can('manage:project');
 
-  const items: ActionListItem[] = todo.map((item, index) => {
+  const headingId = useId();
+  const billingItems: ActionListItem[] = todo.map((item, index) => {
     // One primary per screen: the first row's command. Everything else is secondary.
     const variant = index === 0 ? 'default' : 'outline';
     return {
@@ -218,10 +277,12 @@ function TodoPanel({
     };
   });
 
+  const items = [...billingItems, ...extraItems];
+
   return (
-    <section aria-labelledby="commercial-todo-title" className="rounded-panel border border-border bg-surface shadow-e1">
-      <h2 id="commercial-todo-title" className="border-b border-border px-4 py-3 text-h3 font-semibold text-foreground">
-        {t('todo.title', { count: todo.length })}
+    <section aria-labelledby={headingId} className="rounded-panel border border-border bg-surface shadow-e1">
+      <h2 id={headingId} className="border-b border-border px-4 py-3 text-h3 font-semibold text-foreground">
+        {title ? title(items.length) : t('todo.title', { count: items.length })}
       </h2>
       {items.length > 0 ? (
         <ActionList items={items} aria-label={t('todo.label')} />

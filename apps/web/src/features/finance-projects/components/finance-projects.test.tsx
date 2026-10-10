@@ -8,11 +8,12 @@ import { renderWithProviders } from '@/test/render';
 
 const nav = vi.hoisted(() => ({
   replace: vi.fn(),
+  push: vi.fn(),
   pathname: '/finance/projects',
   search: '',
 }));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: nav.replace, push: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ replace: nav.replace, push: nav.push, prefetch: vi.fn() }),
   usePathname: () => nav.pathname,
   useSearchParams: () => new URLSearchParams(nav.search),
 }));
@@ -219,6 +220,27 @@ describe('FinanceProjectWorkspace', () => {
     // The header reads one project, never the whole portfolio.
     expect(api.getFinanceProject).toHaveBeenCalledWith('p1');
     expect(api.getFinancePortfolio).not.toHaveBeenCalled();
+  });
+
+  it('switches project from the header picker, loading the list only once it is opened', async () => {
+    nav.pathname = '/finance/projects/p1/billing';
+    api.getFinanceProject.mockResolvedValue({ item: row(), moneyVisible: true, marginVisible: true, asOf: '2026-10-03T00:00:00.000Z' });
+    api.getFinancePortfolio.mockResolvedValue(response([row(), quiet]));
+    renderWithProviders(
+      <FinanceProjectWorkspace projectId="p1">
+        <div>tab body</div>
+      </FinanceProjectWorkspace>,
+      { permissions: [PERMISSION] },
+    );
+
+    const picker = await screen.findByRole('combobox', { name: 'Project' });
+    expect(picker).toHaveTextContent('Mogadishu clinic');
+    expect(api.getFinancePortfolio).not.toHaveBeenCalled();
+
+    await userEvent.click(picker);
+    await userEvent.click(await screen.findByRole('option', { name: /School · ACC-02/ }));
+    // Same view, the other project.
+    expect(nav.push).toHaveBeenCalledWith('/finance/projects/p2/billing');
   });
 
   it('reads a project outside the caller’s portfolio as not found', async () => {
