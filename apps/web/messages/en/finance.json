@@ -298,7 +298,6 @@
     "countLabel": "{count, plural, one {# project} other {# projects}}",
     "searchPlaceholder": "Search projects or clients",
     "percent": "{value}%",
-    "marginUnavailable": "Margin shows once revenue is posted and accounting is set up.",
     "col": {
       "project": "Project",
       "client": "Client",
@@ -309,7 +308,8 @@
       "overdue": "Overdue",
       "cost": "Cost",
       "margin": "Margin",
-      "needsAction": "Needs action"
+      "needsAction": "Needs action",
+      "billedShare": "Billed"
     },
     "queue": {
       "label": "Queue",
@@ -323,18 +323,6 @@
       "TO_BILL": "Nothing is ready to bill",
       "OVERDUE": "No overdue invoices",
       "TO_PAY": "No supplier bills to pay"
-    },
-    "totals": {
-      "title": "{currency} · {count, plural, one {# project} other {# projects}}",
-      "contract": "Contract value",
-      "billed": "Billed (excl. tax)",
-      "collected": "Collected",
-      "outstanding": "Outstanding",
-      "overdue": "Overdue",
-      "toPay": "Bills to pay",
-      "label": "Totals by currency",
-      "noCurrency": "No currency",
-      "noContract": "{count, plural, one {# project has} other {# projects have}} no contract yet."
     },
     "needs": {
       "none": "Nothing today",
@@ -394,8 +382,6 @@
       "total": "Total {currency}",
       "noCurrency": "no currency"
     },
-    "marginNoCost": "No cost yet",
-    "marginNoCostHint": "Revenue is posted but no cost has been coded to this project, so a margin would read 100%.",
     "dashboard": {
       "asOf": "Figures as of {date}",
       "loadFailed": "This part of the dashboard could not load.",
@@ -493,6 +479,69 @@
     },
     "payables": {
       "outstanding": "Outstanding"
+    },
+    "billedShareLabel": "Share of the contract billed for {name}",
+    "overdueLabel": "Overdue",
+    "landing": {
+      "totals": {
+        "label": "Portfolio totals by currency",
+        "stripLabel": "Portfolio totals in {currency}",
+        "contract": "Contract value ({currency})",
+        "projects": "{count, plural, one {# project} other {# projects}}",
+        "billed": "Billed (excl. tax)",
+        "ofContract": "{percent}% of contract",
+        "nothingBilled": "Nothing billed yet",
+        "collected": "Collected",
+        "ofBilled": "{percent}% of billed (incl. tax)",
+        "nothingToCollect": "Nothing to collect yet",
+        "outstanding": "Outstanding (incl. tax)",
+        "overdue": "Overdue",
+        "overdueInvoices": "{count, plural, one {# invoice past due} other {# invoices past due}}",
+        "nothingOverdue": "Nothing overdue",
+        "toPay": "Bills to pay",
+        "bills": "{count, plural, one {# supplier bill} other {# supplier bills}}",
+        "nothingToPay": "Nothing to pay",
+        "noContract": "{count, plural, one {# project has} other {# projects have}} no contract yet.",
+        "owedByClients": "What clients still owe"
+      },
+      "queues": {
+        "label": "What needs finance today",
+        "showAll": "Show all {count} in the table",
+        "toBill": {
+          "title": "To bill",
+          "sub": "{count, plural, one {# stage} other {# stages}} ready · {projects, plural, one {# project} other {# projects}}",
+          "empty": "Nothing is ready to bill.",
+          "stages": "{count, plural, one {# stage ready} other {# stages ready}}"
+        },
+        "overdue": {
+          "title": "Overdue",
+          "sub": "{count, plural, one {# invoice} other {# invoices}} past due · {projects, plural, one {# project} other {# projects}}",
+          "empty": "No invoice is overdue.",
+          "age": "{count, plural, one {# invoice} other {# invoices}} · oldest {days}d"
+        },
+        "toPay": {
+          "title": "To pay",
+          "sub": "{count, plural, one {# supplier bill} other {# supplier bills}} · {projects, plural, one {# project} other {# projects}}",
+          "empty": "No supplier bill is waiting to be paid.",
+          "bills": "{count, plural, one {# bill} other {# bills}} with a balance"
+        }
+      },
+      "charts": {
+        "inCurrency": "In {currency}",
+        "otherCurrencies": "In {currency}; projects in other currencies are in the table",
+        "billing": {
+          "title": "Billing progress by project",
+          "empty": "No project has a contract yet.",
+          "figure": "{billed} of {contract} · {percent}%"
+        },
+        "owed": {
+          "title": "Who owes the most",
+          "empty": "No client owes anything.",
+          "overdue": "{amount} overdue",
+          "legendOverdue": "Overdue",
+          "legendNotDue": "Not yet due"
+        }
+      }
     }
   },
   "eligibility": {

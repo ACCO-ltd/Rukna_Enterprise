@@ -271,6 +271,12 @@ billed / collected / owed, and no way to change project without going back to th
   note net amounts — each document's own tax, never an assumed rate); Outstanding stays
   tax-inclusive (what the client owes).
 
+- **The Finance → Projects landing** reads top-down: totals per currency, the three morning
+  queues (decision 5) as cards with their largest projects and the next step, two charts (billing
+  progress by project, who owes the most), then a slim six-column table (Project · Client ·
+  Contract · Billed % · Outstanding · Needs action) ordered with the projects that need finance
+  first. The queue switch and the exports (every column) are unchanged.
+
 **Unchanged.** No permission, endpoint or formula changed: every figure is an existing read, every
 command keeps its one home. Retired URLs redirect — `/finance/projects/:id/payables` →
 `transactions?view=bills`, `/payments` → `?view=receipts`, `/pl` → `?view=pl`; the older

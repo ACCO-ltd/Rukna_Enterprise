@@ -98,17 +98,33 @@ Reconciliation) · **Ledger** (Journals, Chart of accounts, Account ledger) · *
 balance, Balance sheet, Profit & Loss, Monthly comparison) · **Setup & close** (Posting profiles,
 Tax, Opening balance, Fiscal periods).
 
-### `/finance/projects` — portfolio
+### `/finance/projects` — portfolio (landing redesign 2026-10-10)
 
-- Totals: one line per currency — project count, contract value, billed (excl. tax), collected,
-  outstanding, overdue, bills to pay. Projects with no currency (no contract yet) are not a totals
-  line: one sentence says how many there are.
-- Margin over zero posted cost reads "No cost yet", not 100%.
-- Queue switch: All · To bill · Overdue · To pay, each with its count; the choice is in the URL
-  (`?queue=`).
-- Table (`PlatformDataGrid`, search, sort, pagination): Project (name, code, status) · Client ·
-  Contract · Billed (excl. tax) · Collected · Outstanding · Overdue · Cost · Margin · Needs action (state pills:
-  "N overdue · Xd", "N stages not prepared", "N drafts prepared", "N bills to pay").
+Read top-down; every figure is `GET /finance/projects` (the unfiltered read for totals, cards and
+charts; the queue's read for the table). Only display shares are computed in the browser, and a
+share with no denominator is absent, never 0%.
+
+1. **Totals** (`PortfolioTotals`) — one `MetricStrip` per currency: Contract value (project count)
+   · Billed (excl. tax) with % of contract · Collected with % of billed (incl. tax) · Outstanding
+   (incl. tax) · Overdue (invoices past due, in danger) · Bills to pay. Projects with no currency
+   (no contract yet) are one sentence, not a strip of zeros.
+2. **Queue cards** (`QueueCards`) — To bill · Overdue · To pay (ADR-043 decision 5): the queue's
+   total per currency, its count, and its three largest projects (`topRows`) each linking to the
+   next step (To bill / Overdue → the project's Billing; To pay → Transactions · Supplier bills).
+   An empty queue says so with a check. "Show all N in the table" sets `?queue=` and scrolls to
+   the table.
+3. **Charts** (`PortfolioCharts`) in the currency with the most projects (`chartCurrency`; other
+   currencies stay in the table): *Billing progress by project* (top 8 by contract: billed excl.
+   tax / contract, figures written beside the bar) and *Who owes the most* (top 8 by outstanding;
+   overdue part in violet `chart-4`, not-yet-due in `chart-1`).
+4. **Queue switch** All · To bill · Overdue · To pay with counts (`?queue=`), exports (CSV / Excel
+   keep every column: billed excl. tax, collected, overdue, cost, margin …).
+5. **Slim table** (`PlatformDataGrid`): Project (name, code, status) · Client · Contract · Billed
+   (meter + % of contract, excl. tax) · Outstanding (overdue amount under it in danger) · Needs
+   action (state pills: "N overdue · Xd", "N stages not prepared", "N drafts prepared", "N bills to
+   pay"; sortable by urgency). Rows are ordered for finance (`orderForFinance`): overdue, then to
+   bill, then to pay, then the rest; within each, the largest outstanding first.
+
 - Row → `/finance/projects/:id`.
 - No access → a lock empty state; the API is not called.
 
