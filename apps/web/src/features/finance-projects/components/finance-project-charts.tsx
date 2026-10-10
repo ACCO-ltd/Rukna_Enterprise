@@ -110,25 +110,48 @@ export function InOutBars({
           );
         })}
       </svg>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1" aria-hidden="true">
-        {[
-          { label: inLabel, colour: 'var(--color-chart-5)' },
-          { label: outLabel, colour: 'var(--color-chart-4)' },
-        ].map((item) => (
-          <li key={item.label} className="flex items-center gap-1.5 text-caption text-muted-foreground">
-            <span className="size-2.5 rounded-xs" style={{ background: item.colour }} />
-            {item.label}
-          </li>
-        ))}
-      </ul>
+      <ChartLegend
+        className="mt-2"
+        items={[
+          { label: inLabel, colour: 'chart-5' },
+          { label: outLabel, colour: 'chart-4' },
+        ]}
+      />
     </div>
+  );
+}
+
+/** A data-viz series colour (ADR-034: `--chart-1..5`), or the empty track. */
+export type ChartColour = 'chart-1' | 'chart-2' | 'chart-3' | 'chart-4' | 'chart-5' | 'track';
+
+// Literal class names, so Tailwind's scanner generates every one.
+const FILL: Record<ChartColour, string> = {
+  'chart-1': 'bg-chart-1',
+  'chart-2': 'bg-chart-2',
+  'chart-3': 'bg-chart-3',
+  'chart-4': 'bg-chart-4',
+  'chart-5': 'bg-chart-5',
+  track: 'bg-muted',
+};
+
+/** A chart's key: a swatch and a label per series. Decorative — each figure is written out. */
+export function ChartLegend({ items, className }: { items: { label: string; colour: ChartColour }[]; className?: string }) {
+  return (
+    <ul className={`flex flex-wrap gap-x-4 gap-y-1 ${className ?? ''}`} aria-hidden="true">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-center gap-1.5 text-caption text-muted-foreground">
+          <span className={`size-2.5 rounded-xs ${FILL[item.colour]} ${item.colour === 'track' ? 'border border-border' : ''}`} />
+          {item.label}
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export interface ShareSegment {
   /** Share of the whole, 0–100. */
   percent: number;
-  colour: 'chart-1' | 'chart-3' | 'chart-4' | 'track';
+  colour: ChartColour;
 }
 
 /**
@@ -141,7 +164,8 @@ export function SegmentBar({ segments, className }: { segments: ShareSegment[]; 
       {segments
         .filter((s) => s.colour !== 'track' && s.percent > 0)
         .map((s, i) => (
-          <span key={i} className="h-full" style={{ width: `${Math.min(100, s.percent)}%`, background: `var(--color-${s.colour})` }} />
+          // The width is data, so it stays a style; the colour is a token class.
+          <span key={i} className={`h-full ${FILL[s.colour]}`} style={{ width: `${Math.min(100, s.percent)}%` }} />
         ))}
     </span>
   );
@@ -151,11 +175,11 @@ export function SegmentBar({ segments, className }: { segments: ShareSegment[]; 
  * A figure against the largest of its group, as a bar — "Budget / Committed / Actual" read at a
  * glance. Decorative; the figure is printed in the row.
  */
-export function ValueBar({ value, max, colour }: { value: number; max: number; colour: 'chart-1' | 'chart-2' | 'chart-3' | 'chart-4' }) {
+export function ValueBar({ value, max, colour }: { value: number; max: number; colour: ChartColour }) {
   const percent = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
   return (
     <span aria-hidden="true" className="block h-2 w-full overflow-hidden rounded-full bg-muted">
-      <span className="block h-full rounded-full" style={{ width: `${percent}%`, background: `var(--color-${colour})` }} />
+      <span className={`block h-full rounded-full ${FILL[colour]}`} style={{ width: `${percent}%` }} />
     </span>
   );
 }

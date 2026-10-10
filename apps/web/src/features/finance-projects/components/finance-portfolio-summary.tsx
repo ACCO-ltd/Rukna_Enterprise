@@ -3,19 +3,63 @@
 import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import type { FinancePortfolioQueue, FinancePortfolioResponse, FinancePortfolioRow } from '@erp/types';
+import type {
+  FinancePortfolioQueue,
+  FinancePortfolioResponse,
+  FinancePortfolioRow,
+  FinancePortfolioTotals,
+} from '@erp/types';
 import { Button, Panel, Skeleton } from '@erp/ui';
 
 import { MetricStrip, type Metric } from '@/components/widget/metric-strip';
 import { formatMoney } from '@/lib/format';
 
+import { barPercent, isPositive, minor, share } from '../figures';
 import { financeProjectRedirects } from '../redirects';
-import { share } from './finance-project-dashboard';
-import { SegmentBar } from './finance-project-charts';
+import { ChartLegend, SegmentBar } from './finance-project-charts';
 
 type Locale = 'en' | 'ar';
 
-const num = (value: string | null | undefined): number => (value === null || value === undefined ? 0 : Number(value));
+/**
+ * What each morning queue reads from a portfolio row and from a currency's totals, and where its
+ * next step lives — one table, so the cards never disagree with themselves.
+ */
+const QUEUE_SPEC: Record<
+  FinancePortfolioQueue,
+  {
+    key: 'toBill' | 'overdue' | 'toPay';
+    rowAmount: (row: FinancePortfolioRow) => string | null;
+    inQueue: (row: FinancePortfolioRow) => boolean;
+    totalAmount: (totals: FinancePortfolioTotals) => string | null;
+    totalCount: (totals: FinancePortfolioTotals) => number;
+    href: (projectId: string) => string;
+  }
+> = {
+  TO_BILL: {
+    key: 'toBill',
+    rowAmount: (row) => row.readyToBill.amount,
+    inQueue: (row) => row.readyToBill.count > 0,
+    totalAmount: (totals) => totals.readyToBill.amount,
+    totalCount: (totals) => totals.readyToBill.count,
+    href: financeProjectRedirects.billing,
+  },
+  OVERDUE: {
+    key: 'overdue',
+    rowAmount: (row) => row.overdue,
+    inQueue: (row) => row.overdueInvoices.count > 0,
+    totalAmount: (totals) => totals.overdue,
+    totalCount: (totals) => totals.overdueInvoices.count,
+    href: financeProjectRedirects.billing,
+  },
+  TO_PAY: {
+    key: 'toPay',
+    rowAmount: (row) => row.billsToPay.amount,
+    inQueue: (row) => row.billsToPay.count > 0,
+    totalAmount: (totals) => totals.billsToPay.amount,
+    totalCount: (totals) => totals.billsToPay.count,
+    href: (projectId) => financeProjectRedirects.transactions(projectId, 'bills'),
+  },
+};
 
 /** The rows a queue card lists: those with something in the queue, largest amount first. */
 export function topRows(
@@ -23,11 +67,11 @@ export function topRows(
   queue: FinancePortfolioQueue,
   limit = 3,
 ): FinancePortfolioRow[] {
-  const amount = (row: FinancePortfolioRow) =>
-    queue === 'TO_BILL' ? num(row.readyToBill.amount) : queue === 'OVERDUE' ? num(row.overdue) : num(row.billsToPay.amount);
-  const inQueue = (row: FinancePortfolioRow) =>
-    queue === 'TO_BILL' ? row.readyToBill.count > 0 : queue === 'OVERDUE' ? row.overdueInvoices.count > 0 : row.billsToPay.count > 0;
-  return rows.filter(inQueue).sort((a, b) => amount(b) - amount(a)).slice(0, limit);
+  const spec = QUEUE_SPEC[queue];
+  return rows
+    .filter(spec.inQueue)
+    .sort((a, b) => minor(spec.rowAmount(b)) - minor(spec.rowAmount(a)))
+    .slice(0, limit);
 }
 
 /**
@@ -49,6 +93,8 @@ export function PortfolioTotals({ data }: { data: FinancePortfolioResponse | und
   if (!data) return <Skeleton className="h-24 w-full rounded-panel" />;
 
   const hidden = !data.moneyVisible;
+  // Money withheld: every sublabel says so, rather than "nothing billed" over a blank.
+  const restricted = hidden ? t('restricted') : undefined;
   const priced = data.totals.filter((totals) => totals.currency !== null);
   const unpriced = data.totals.find((totals) => totals.currency === null)?.projectCount ?? 0;
 
@@ -64,14 +110,14 @@ export function PortfolioTotals({ data }: { data: FinancePortfolioResponse | und
           {
             label: t('billed'),
             value: money(totals.billedExclTax),
-            sublabel: billedShare === null ? t('nothingBilled') : t('ofContract', { percent: billedShare }),
+            sublabel: restricted ?? (billedShare === null ? t('nothingBilled') : t('ofContract', { percent: billedShare })),
           },
           {
             label: t('collected'),
             value: money(totals.collected),
-            sublabel: collectedShare === null ? t('nothingToCollect') : t('ofBilled', { percent: collectedShare }),
+            sublabel: restricted ?? (collectedShare === null ? t('nothingToCollect') : t('ofBilled', { percent: collectedShare })),
           },
-          { label: t('outstanding'), value: money(totals.outstanding), sublabel: t('owedByClients') },
+          { label: t('outstanding'), value: money(totals.outstanding), sublabel: restricted ?? t('owedByClients') },
           {
             label: t('overdue'),
             value: money(totals.overdue),
@@ -143,8 +189,8 @@ function QueueCard({
 }) {
   const t = useTranslations('finance.projects.landing.queues');
   const locale = useLocale() as Locale;
+  const spec = QUEUE_SPEC[queue];
   const hidden = !data.moneyVisible;
-  const key = queue === 'TO_BILL' ? 'toBill' : queue === 'OVERDUE' ? 'overdue' : 'toPay';
   const projectCount = data.queueCounts[queue];
   const rows = topRows(data.items, queue);
 
@@ -152,22 +198,16 @@ function QueueCard({
   const amounts = data.totals
     .filter((totals) => totals.currency !== null)
     .map((totals) => {
-      const value = queue === 'TO_BILL' ? totals.readyToBill.amount : queue === 'OVERDUE' ? totals.overdue : totals.billsToPay.amount;
-      return hidden || value === null || Number(value) === 0 ? null : formatMoney(value, totals.currency!, locale);
+      const value = spec.totalAmount(totals);
+      return hidden || !isPositive(value) ? null : formatMoney(value, totals.currency!, locale);
     })
     .filter((v): v is string => Boolean(v));
-  const itemCount = data.totals.reduce(
-    (sum, totals) =>
-      sum + (queue === 'TO_BILL' ? totals.readyToBill.count : queue === 'OVERDUE' ? totals.overdueInvoices.count : totals.billsToPay.count),
-    0,
-  );
+  const itemCount = data.totals.reduce((sum, totals) => sum + spec.totalCount(totals), 0);
 
   const rowAmount = (row: FinancePortfolioRow) => {
-    const value = queue === 'TO_BILL' ? row.readyToBill.amount : queue === 'OVERDUE' ? row.overdue : row.billsToPay.amount;
+    const value = spec.rowAmount(row);
     return hidden || value === null || !row.currency ? null : formatMoney(value, row.currency, locale);
   };
-  const rowHref = (row: FinancePortfolioRow) =>
-    queue === 'TO_PAY' ? financeProjectRedirects.transactions(row.projectId, 'bills') : financeProjectRedirects.billing(row.projectId);
   const rowDetail = (row: FinancePortfolioRow) =>
     queue === 'TO_BILL'
       ? t('toBill.stages', { count: row.readyToBill.count })
@@ -177,14 +217,14 @@ function QueueCard({
 
   return (
     <Panel
-      title={t(`${key}.title`)}
-      sub={projectCount > 0 ? t(`${key}.sub`, { count: itemCount, projects: projectCount }) : undefined}
+      title={t(`${spec.key}.title`)}
+      sub={projectCount > 0 ? t(`${spec.key}.sub`, { count: itemCount, projects: projectCount }) : undefined}
       flush
     >
       {projectCount === 0 ? (
         <p className="flex items-center gap-2 px-4 py-6 text-body-sm text-muted-foreground">
           <CheckCircle2 size={16} className="shrink-0 text-success" aria-hidden="true" />
-          {t(`${key}.empty`)}
+          {t(`${spec.key}.empty`)}
         </p>
       ) : (
         <>
@@ -196,7 +236,7 @@ function QueueCard({
               <li key={row.projectId} className="flex items-center justify-between gap-3 border-t border-border px-4 py-2.5">
                 <div className="min-w-0">
                   <Link
-                    href={rowHref(row)}
+                    href={spec.href(row.projectId)}
                     className="block truncate text-body-sm font-medium text-foreground hover:text-brand-primary hover:underline"
                   >
                     {row.name}
@@ -237,14 +277,14 @@ export function PortfolioCharts({ data }: { data: FinancePortfolioResponse | und
   const others = data.totals.filter((totals) => totals.currency !== null && totals.currency !== currency).length > 0;
 
   const billing = rows
-    .filter((row) => num(row.contractValue) > 0)
-    .sort((a, b) => num(b.contractValue) - num(a.contractValue))
+    .filter((row) => isPositive(row.contractValue))
+    .sort((a, b) => minor(b.contractValue) - minor(a.contractValue))
     .slice(0, 8);
   const owed = rows
-    .filter((row) => num(row.outstanding) > 0)
-    .sort((a, b) => num(b.outstanding) - num(a.outstanding))
+    .filter((row) => isPositive(row.outstanding))
+    .sort((a, b) => minor(b.outstanding) - minor(a.outstanding))
     .slice(0, 8);
-  const maxOwed = Math.max(...owed.map((row) => num(row.outstanding)), 0);
+  const maxOwed = owed[0]?.outstanding ?? null;
   const note = others ? t('otherCurrencies', { currency }) : t('inCurrency', { currency });
 
   return (
@@ -260,7 +300,7 @@ export function PortfolioCharts({ data }: { data: FinancePortfolioResponse | und
                 <li key={row.projectId} className="border-b border-border px-4 py-2.5 last:border-b-0">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                     <Link
-                      href={`/finance/projects/${row.projectId}`}
+                      href={financeProjectRedirects.overview(row.projectId)}
                       className="min-w-0 truncate text-body-sm font-medium text-foreground hover:text-brand-primary hover:underline"
                     >
                       {row.name}
@@ -269,7 +309,10 @@ export function PortfolioCharts({ data }: { data: FinancePortfolioResponse | und
                       {t('billing.figure', { billed: money(row.billedExclTax), contract: money(row.contractValue), percent: billed })}
                     </span>
                   </div>
-                  <SegmentBar className="mt-1.5" segments={[{ percent: billed, colour: 'chart-1' }]} />
+                  <SegmentBar
+                    className="mt-1.5"
+                    segments={[{ percent: barPercent(row.billedExclTax, row.contractValue), colour: 'chart-1' }]}
+                  />
                 </li>
               );
             })}
@@ -283,47 +326,39 @@ export function PortfolioCharts({ data }: { data: FinancePortfolioResponse | und
         ) : (
           <>
             <ul aria-label={t('owed.title')}>
-              {owed.map((row) => {
-                const outstanding = num(row.outstanding);
-                const overdue = num(row.overdue);
-                const width = maxOwed > 0 ? (outstanding / maxOwed) * 100 : 0;
-                return (
-                  <li key={row.projectId} className="border-b border-border px-4 py-2.5 last:border-b-0">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                      <Link
-                        href={financeProjectRedirects.billing(row.projectId)}
-                        className="min-w-0 truncate text-body-sm font-medium text-foreground hover:text-brand-primary hover:underline"
-                      >
-                        {row.name}
-                      </Link>
-                      <span className="shrink-0 text-caption tabular-nums text-muted-foreground">
-                        {money(row.outstanding)}
-                        {overdue > 0 ? <span className="text-danger"> · {t('owed.overdue', { amount: money(row.overdue) })}</span> : null}
-                      </span>
-                    </div>
-                    <span className="mt-1.5 block" style={{ width: `${Math.max(width, 2)}%` }}>
-                      <SegmentBar
-                        segments={[
-                          { percent: outstanding > 0 ? (overdue / outstanding) * 100 : 0, colour: 'chart-4' },
-                          { percent: outstanding > 0 ? ((outstanding - overdue) / outstanding) * 100 : 0, colour: 'chart-1' },
-                        ]}
-                      />
+              {owed.map((row) => (
+                <li key={row.projectId} className="border-b border-border px-4 py-2.5 last:border-b-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <Link
+                      href={financeProjectRedirects.billing(row.projectId)}
+                      className="min-w-0 truncate text-body-sm font-medium text-foreground hover:text-brand-primary hover:underline"
+                    >
+                      {row.name}
+                    </Link>
+                    <span className="shrink-0 text-caption tabular-nums text-muted-foreground">
+                      {money(row.outstanding)}
+                      {isPositive(row.overdue) ? <span className="text-danger"> · {t('owed.overdue', { amount: money(row.overdue) })}</span> : null}
                     </span>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-4 py-2.5" aria-hidden="true">
-              {[
-                { label: t('owed.legendOverdue'), colour: 'var(--color-chart-4)' },
-                { label: t('owed.legendNotDue'), colour: 'var(--color-chart-1)' },
-              ].map((item) => (
-                <span key={item.label} className="flex items-center gap-1.5 text-caption text-muted-foreground">
-                  <span className="size-2.5 rounded-xs" style={{ background: item.colour }} />
-                  {item.label}
-                </span>
+                  </div>
+                  {/* The bar's length is this project's share of the largest balance — a data width. */}
+                  <span className="mt-1.5 block" style={{ width: `${Math.max(barPercent(row.outstanding, maxOwed), 2)}%` }}>
+                    <SegmentBar
+                      segments={[
+                        { percent: barPercent(row.overdue, row.outstanding), colour: 'chart-4' },
+                        { percent: 100 - barPercent(row.overdue, row.outstanding), colour: 'chart-1' },
+                      ]}
+                    />
+                  </span>
+                </li>
               ))}
-            </div>
+            </ul>
+            <ChartLegend
+              className="border-t border-border px-4 py-2.5"
+              items={[
+                { label: t('owed.legendOverdue'), colour: 'chart-4' },
+                { label: t('owed.legendNotDue'), colour: 'chart-1' },
+              ]}
+            />
           </>
         )}
       </Panel>

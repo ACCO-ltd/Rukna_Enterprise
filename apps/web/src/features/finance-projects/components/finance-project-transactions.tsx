@@ -12,10 +12,10 @@ import { SupplierPaymentsList } from '@/features/procurement/components/payment-
 import { ReceiptsList } from '@/features/receipts/components/receipts-list';
 
 import { useCanViewProjectPayables, useProjectPaymentsAccess } from '../hooks';
+import { TRANSACTION_VIEWS, financeProjectRedirects, type TransactionView } from '../redirects';
 
-/** The Transactions views, in reading order: money owed out, paid out, received, adjusted, then the books. */
-export const TRANSACTION_VIEWS = ['bills', 'supplierPayments', 'receipts', 'journals', 'ledger', 'pl'] as const;
-export type TransactionView = (typeof TRANSACTION_VIEWS)[number];
+export { TRANSACTION_VIEWS, type TransactionView };
+
 
 /** Views whose component carries its own heading and description — a second one would repeat it. */
 const SELF_TITLED: ReadonlySet<TransactionView> = new Set(['ledger', 'pl']);
@@ -55,7 +55,7 @@ export function resolveTransactionView(value: string | null | undefined, allowed
 export function FinanceProjectTransactions({ projectId }: { projectId: string }) {
   const t = useTranslations('finance.projects.transactions');
   const router = useRouter();
-  const pathname = usePathname() ?? `/finance/projects/${projectId}/transactions`;
+  const pathname = usePathname() ?? financeProjectRedirects.transactions(projectId);
   const searchParams = useSearchParams();
   const allowed = useTransactionViews();
   const view = resolveTransactionView(searchParams?.get('view'), allowed);

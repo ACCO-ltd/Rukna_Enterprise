@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
   Skeleton,
   StatusPill,
+  ActionList,
   type ActionListItem,
 } from '@erp/ui';
 
@@ -32,21 +33,11 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
 import { useCanViewProjectPayables, useCashflowForecast, useFinanceProject } from '../hooks';
+import { absMoney, barPercent, isPositive, isZero, minor, share } from '../figures';
 import { financeProjectRedirects } from '../redirects';
-import { InOutBars, SegmentBar, ValueBar } from './finance-project-charts';
+import { ChartLegend, InOutBars, SegmentBar, ValueBar } from './finance-project-charts';
 
 type Locale = 'en' | 'ar';
-
-const num = (value: string | null | undefined): number | null =>
-  value === null || value === undefined ? null : Number(value);
-
-/** A whole-number share, or null when there is no denominator — never a 0% that claims a fact. */
-export function share(part: string | null, whole: string | null): number | null {
-  const p = num(part);
-  const w = num(whole);
-  if (p === null || w === null || w <= 0) return null;
-  return Math.round((p / w) * 100);
-}
 
 /**
  * The Finance project dashboard (ADR-043, Finance → Projects → Overview). It answers, in order:
@@ -136,7 +127,7 @@ function ControlsBadge({ data }: { data: ProjectFinanceOverviewResponse }) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-caption font-medium text-foreground hover:bg-surface-subtle focus-visible:shadow-ring focus-visible:outline-none"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-full sm:min-h-9 border border-border bg-surface px-3 text-caption font-medium text-foreground hover:bg-surface-subtle focus-visible:shadow-ring focus-visible:outline-none"
         >
           {review === 0 ? (
             <ShieldCheck size={15} className="text-success" aria-hidden="true" />
@@ -217,8 +208,10 @@ function KeyFigures({
 
   const billedShare = share(row.billedExclTax, row.contractValue);
   const collectedShare = share(row.collected, row.billed);
-  const overdue = num(row.overdue) ?? 0;
-  const noCost = row.margin !== null && num(row.costToDate) === 0;
+  // Margin is the ledger's (posted revenue − posted project cost), so "no cost yet" and the cost
+  // beside it are the ledger's project cost too — never the procurement rollup's, which can differ.
+  const glCost = overview?.accountingPosition.projectCost ?? null;
+  const noCost = row.margin !== null && isZero(glCost);
 
   const metrics: Metric[] = [
     {
@@ -239,7 +232,7 @@ function KeyFigures({
     {
       label: t('outstanding'),
       value: money(row.outstanding),
-      ...(overdue > 0
+      ...(isPositive(row.overdue)
         ? {
             sublabel: t('overdueSub', {
               amount: money(row.overdue) ?? '',
@@ -260,7 +253,7 @@ function KeyFigures({
             ? t('noCostYet')
             : t('marginSub', {
                 revenue: money(overview?.accountingPosition.revenue ?? null) ?? '—',
-                cost: money(row.costToDate) ?? '—',
+                cost: money(glCost) ?? '—',
               }),
     },
   ];
@@ -285,7 +278,6 @@ function NeedsAction({
   const canPayables = useCanViewProjectPayables();
 
   if (workspace.isPending) return <Skeleton className="h-64 w-full rounded-panel" />;
-  if (workspace.isError || !workspace.data) return <PanelError onRetry={() => void workspace.refetch()} />;
 
   const extra: ActionListItem[] = [];
   if (row && row.billsToPay.count > 0) {
@@ -319,6 +311,19 @@ function NeedsAction({
     });
   }
 
+  // The billing rows come from the commercial read; bills to pay and the controls do not, so a
+  // failed commercial read still shows them, with the error in place of the billing rows.
+  if (workspace.isError || !workspace.data) {
+    return (
+      <Panel title={t('title', { count: extra.length })} flush>
+        <div className="p-4">
+          <PanelError onRetry={() => void workspace.refetch()} />
+        </div>
+        {extra.length > 0 ? <ActionList items={extra} aria-label={t('title', { count: extra.length })} /> : null}
+      </Panel>
+    );
+  }
+
   return (
     <BillingTodoCard
       projectId={projectId}
@@ -336,10 +341,9 @@ const BILLED_STATES = new Set(['BILLED', 'PART_PAID', 'OVERDUE']);
 
 /** A stage's money as three shares of its amount: collected, billed but unpaid, not yet billed. */
 export function stageSegments(stage: Pick<CommercialPaymentScheduleInstallment, 'amount' | 'amountPaid' | 'collectionStatus'>) {
-  const amount = num(stage.amount) ?? 0;
-  if (amount <= 0) return { collected: 0, billedUnpaid: 0 };
+  if (minor(stage.amount) <= 0) return { collected: 0, billedUnpaid: 0 };
   if (stage.collectionStatus === 'PAID') return { collected: 100, billedUnpaid: 0 };
-  const collected = Math.min(100, ((num(stage.amountPaid) ?? 0) / amount) * 100);
+  const collected = barPercent(stage.amountPaid, stage.amount);
   const billedUnpaid = BILLED_STATES.has(stage.collectionStatus) ? 100 - collected : 0;
   return { collected, billedUnpaid };
 }
@@ -350,7 +354,7 @@ function BillingProgress({ projectId }: { projectId: string }) {
   const locale = useLocale() as Locale;
   const cycle = useCommercialCurrentCycle(projectId);
 
-  const action = <OpenLink href={`/finance/projects/${projectId}/billing`}>{t('open')}</OpenLink>;
+  const action = <OpenLink href={financeProjectRedirects.billing(projectId)}>{t('open')}</OpenLink>;
 
   if (cycle.isPending) return <Skeleton className="h-64 w-full rounded-panel" />;
   if (cycle.isError) return <PanelError onRetry={() => void cycle.refetch()} />;
@@ -401,18 +405,14 @@ function BillingProgress({ projectId }: { projectId: string }) {
           );
         })}
       </ul>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-4 py-2.5" aria-hidden="true">
-        {[
-          { label: t('legendCollected'), colour: 'var(--color-chart-1)' },
-          { label: t('legendBilled'), colour: 'var(--color-chart-3)' },
-          { label: t('legendNotBilled'), colour: 'var(--color-muted)' },
-        ].map((item) => (
-          <span key={item.label} className="flex items-center gap-1.5 text-caption text-muted-foreground">
-            <span className="size-2.5 rounded-xs border border-border" style={{ background: item.colour }} />
-            {item.label}
-          </span>
-        ))}
-      </div>
+      <ChartLegend
+        className="border-t border-border px-4 py-2.5"
+        items={[
+          { label: t('legendCollected'), colour: 'chart-1' },
+          { label: t('legendBilled'), colour: 'chart-3' },
+          { label: t('legendNotBilled'), colour: 'track' },
+        ]}
+      />
       {schedule.variationLines.length > 0 ? (
         <p className="border-t border-border px-4 py-2.5 text-caption text-muted-foreground">
           {t('variations', { count: schedule.variationLines.length })}
@@ -436,8 +436,8 @@ export function cashflowGroups(
     .filter((b) => b.kind === 'NOW' || b.kind === 'PERIOD')
     .map((b) => ({
       label: b.kind === 'NOW' ? labels.now : labels.month(b.start!),
-      inflow: num(b.inflows.total) ?? 0,
-      outflow: num(b.outflows.total) ?? 0,
+      inflow: minor(b.inflows.total) / 100,
+      outflow: minor(b.outflows.total) / 100,
     }));
   return { forecast, groups };
 }
@@ -446,7 +446,7 @@ function CashFlow({ projectId, currency }: { projectId: string; currency: string
   const t = useTranslations('finance.projects.dashboard.cashflow');
   const locale = useLocale() as Locale;
   const query = useCashflowForecast({ projectId, bucket: 'MONTH' });
-  const action = <OpenLink href={`/finance/projects/${projectId}/cashflow`}>{t('open')}</OpenLink>;
+  const action = <OpenLink href={financeProjectRedirects.cashflow(projectId)}>{t('open')}</OpenLink>;
 
   if (query.isPending) return <Skeleton className="h-72 w-full rounded-panel" />;
   if (query.isError) return <PanelError onRetry={() => void query.refetch()} />;
@@ -498,7 +498,7 @@ function CashFlow({ projectId, currency }: { projectId: string; currency: string
 
 function CostVsBudget({ projectId, query }: { projectId: string; query: ReturnType<typeof useFinanceOverview> }) {
   const t = useTranslations('finance.projects.dashboard.cost');
-  const action = <OpenLink href={`/finance/projects/${projectId}/cost`}>{t('open')}</OpenLink>;
+  const action = <OpenLink href={financeProjectRedirects.costControl(projectId)}>{t('open')}</OpenLink>;
 
   if (query.isPending) return <Skeleton className="h-72 w-full rounded-panel" />;
   if (query.isError) return <PanelError onRetry={() => void query.refetch()} />;
@@ -510,7 +510,7 @@ function CostVsBudget({ projectId, query }: { projectId: string; query: ReturnTy
     { key: 'committed', label: t('committed'), amount: cost.committedToDate, colour: 'chart-2' as const },
     { key: 'actual', label: t('actual'), amount: cost.actual, colour: 'chart-1' as const },
   ];
-  const max = Math.max(...rows.map((r) => num(r.amount) ?? 0), 0);
+  const max = Math.max(...rows.map((r) => minor(r.amount)), 0);
 
   return (
     <Panel title={t('title')} sub={t('sub')} action={action}>
@@ -525,7 +525,7 @@ function CostVsBudget({ projectId, query }: { projectId: string; query: ReturnTy
                 <Money amount={r.amount} currency={currency} className="text-body-sm font-semibold text-foreground" />
               )}
             </div>
-            <ValueBar value={num(r.amount) ?? 0} max={max} colour={r.colour} />
+            <ValueBar value={minor(r.amount)} max={max} colour={r.colour} />
           </li>
         ))}
       </ul>
@@ -568,10 +568,10 @@ function RecentActivity({ query }: { query: ReturnType<typeof useFinanceOverview
               {/* Unsigned with Dr / Cr, as a ledger shows it — "−200,000" on an invoice reads as a loss. */}
               {row.amount === null ? null : (
                 <span className="shrink-0 text-body-sm text-foreground">
-                  <Money amount={Math.abs(Number(row.amount)).toFixed(2)} currency={data.currency} />{' '}
+                  <Money amount={absMoney(row.amount)} currency={data.currency} />{' '}
                   {/* A journal whose project lines net to nothing has no side. */}
-                  {Number(row.amount) === 0 ? null : (
-                    <span className="text-caption text-muted-foreground">{Number(row.amount) < 0 ? tc('credit') : tc('debit')}</span>
+                  {minor(row.amount) === 0 ? null : (
+                    <span className="text-caption text-muted-foreground">{minor(row.amount) < 0 ? tc('credit') : tc('debit')}</span>
                   )}
                 </span>
               )}

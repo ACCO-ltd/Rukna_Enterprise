@@ -17,13 +17,19 @@
  * | /projects/:id/ipc                               | /projects/:id/commercial                      |
  * | /projects/:id/contracts                         | /projects/:id/commercial/contract             |
  */
+/** The Transactions views (ADR-043 amendment, 2026-10-10), in reading order. */
+export const TRANSACTION_VIEWS = ['bills', 'supplierPayments', 'receipts', 'journals', 'ledger', 'pl'] as const;
+export type TransactionView = (typeof TRANSACTION_VIEWS)[number];
+
 export const financeProjectRedirects = {
   overview: (projectId: string) => `/finance/projects/${projectId}`,
   costControl: (projectId: string) => `/finance/projects/${projectId}/cost`,
+  /** The cash-flow forecast drill-in (ADR-043 amendment, 2026-10-10). */
+  cashflow: (projectId: string) => `/finance/projects/${projectId}/cashflow`,
   profitLoss: (projectId: string) => `/finance/projects/${projectId}/transactions?view=pl`,
   ledger: (projectId: string) => `/finance/projects/${projectId}/transactions?view=ledger`,
   /** ADR-043 amendment (2026-10-10): the Transactions tab, optionally on one view. */
-  transactions: (projectId: string, view?: string) =>
+  transactions: (projectId: string, view?: TransactionView) =>
     `/finance/projects/${projectId}/transactions${view ? `?view=${view}` : ''}`,
   bill: (billId: string) => `/finance/accounting/bills/${billId}`,
   billing: (projectId: string) => `/finance/projects/${projectId}/billing`,

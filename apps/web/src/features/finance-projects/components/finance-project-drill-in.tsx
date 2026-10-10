@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { CostControlView } from '@/features/finance/components/cost-control-view';
 
 import { useFinanceProject } from '../hooks';
+import { financeProjectRedirects } from '../redirects';
 import { CashflowView } from './cashflow-view';
 
 /**
@@ -18,10 +19,10 @@ function DrillInHeader({ projectId, title, description }: { projectId: string; t
   return (
     <div className="space-y-1">
       <Link
-        href={`/finance/projects/${projectId}`}
-        className="inline-flex min-h-9 items-center gap-1.5 text-body-sm font-medium text-brand-primary hover:underline"
+        href={financeProjectRedirects.overview(projectId)}
+        className="inline-flex min-h-11 items-center gap-1.5 text-body-sm font-medium text-brand-primary hover:underline sm:min-h-9"
       >
-        <ArrowLeft size={15} aria-hidden="true" className="rtl:rotate-180" />
+        <ArrowLeft size={15} aria-hidden="true" />
         {t('back')}
       </Link>
       {title ? <h2 className="text-h3 font-semibold text-foreground">{title}</h2> : null}

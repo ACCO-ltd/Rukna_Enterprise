@@ -168,6 +168,15 @@ describe('FinanceProjectsList', () => {
     expect(within(overdue).getByText('1 invoice · oldest 40d')).toBeInTheDocument();
   });
 
+  it('says "Restricted" under the totals when money is hidden — never "nothing billed"', async () => {
+    api.getFinancePortfolio.mockResolvedValue(response([row()], { moneyVisible: false }));
+    renderWithProviders(<FinanceProjectsList />, { permissions: [PERMISSION] });
+
+    const group = await screen.findByRole('group', { name: 'Portfolio totals by currency' });
+    expect(within(group).getAllByText('Restricted').length).toBeGreaterThan(0);
+    expect(within(group).queryByText('Nothing billed yet')).toBeNull();
+  });
+
   it('says a queue is clear instead of showing an empty card of zeros', async () => {
     api.getFinancePortfolio.mockResolvedValue(response([quiet], { queueCounts: { ALL: 1, TO_BILL: 0, OVERDUE: 0, TO_PAY: 0 } }));
     renderWithProviders(<FinanceProjectsList />, { permissions: [PERMISSION] });
@@ -239,6 +248,12 @@ describe('portfolio landing helpers', () => {
     });
     const calm = { ...quiet, name: 'Aaa' };
     expect(orderForFinance([calm, toPay, toBill, overdue]).map((r) => r.projectId)).toEqual(['o', 'b', 'p', 'p2']);
+  });
+
+  it('never compares outstanding across currencies: same urgency groups by currency first', () => {
+    const quietRow = (projectId: string, currency: string, outstanding: string) => ({ ...quiet, projectId, currency, outstanding });
+    const ordered = orderForFinance([quietRow('u1', 'USD', '10.00'), quietRow('s1', 'SOS', '900000.00'), quietRow('u2', 'USD', '50.00')]);
+    expect(ordered.map((r) => r.projectId)).toEqual(['s1', 'u2', 'u1']);
   });
 
   it('lists a queue’s largest projects first, and only those in the queue', () => {

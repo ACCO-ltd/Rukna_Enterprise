@@ -309,7 +309,7 @@
       "cost": "Cost",
       "margin": "Margin",
       "needsAction": "Needs action",
-      "billedShare": "Billed"
+      "billedShare": "Billed (excl. tax)"
     },
     "queue": {
       "label": "Queue",
@@ -502,7 +502,8 @@
         "bills": "{count, plural, one {# supplier bill} other {# supplier bills}}",
         "nothingToPay": "Nothing to pay",
         "noContract": "{count, plural, one {# project has} other {# projects have}} no contract yet.",
-        "owedByClients": "What clients still owe"
+        "owedByClients": "What clients still owe",
+        "restricted": "Restricted"
       },
       "queues": {
         "label": "What needs finance today",

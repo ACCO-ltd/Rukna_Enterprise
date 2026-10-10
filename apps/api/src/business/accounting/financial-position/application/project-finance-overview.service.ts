@@ -87,10 +87,11 @@ export class ProjectFinanceOverviewService {
         this.repo.findMainContract(prisma, orgId, projectId),
       ]);
 
-    // The cost rollup knows a currency only from a budget, a cost entry or the project record. A
-    // project billed on a USD contract with none of those would print bare "200000.00" — the
-    // contract's currency is the project's money currency, so it fills the gap.
-    const currency = cost.position.currency ?? contract?.currency ?? null;
+    // The project's money currency: the live contract's, else what the cost rollup knows (budget,
+    // cost entry, project record). The same precedence as the Finance portfolio row
+    // (`contract?.currency ?? project.currency`), so the header and this page cannot disagree —
+    // and a project billed on a USD contract never prints a bare "200000.00".
+    const currency = contract?.currency ?? cost.position.currency ?? null;
 
     const billingVariance = billedNet.minus(revenue);
     const billingReconciled = billingVariance.isZero();

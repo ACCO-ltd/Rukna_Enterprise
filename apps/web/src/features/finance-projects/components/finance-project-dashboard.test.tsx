@@ -11,7 +11,8 @@ import type {
 import { renderWithProviders } from '@/test/render';
 import { READY, workspaceFixture } from '@/features/commercial/test-fixtures';
 
-import { FinanceProjectDashboard, cashflowGroups, share, stageSegments } from './finance-project-dashboard';
+import { share } from '../figures';
+import { FinanceProjectDashboard, cashflowGroups, stageSegments } from './finance-project-dashboard';
 import { switchProjectHref } from './finance-project-picker';
 
 vi.mock('next/link', () => ({
@@ -29,6 +30,7 @@ const state = vi.hoisted(() => ({
   cashflow: undefined as unknown,
   schedule: undefined as unknown,
   workspace: undefined as unknown,
+  workspaceError: false,
 }));
 
 vi.mock('../hooks', () => ({
@@ -43,7 +45,10 @@ vi.mock('@/features/finance/hooks/use-finance', () => ({
   useFinanceOverview: () => ({ isPending: false, isError: false, data: state.overview }),
 }));
 vi.mock('@/features/commercial/hooks/use-commercial-workspace', () => ({
-  useCommercialWorkspace: () => ({ isPending: false, isError: false, data: state.workspace }),
+  useCommercialWorkspace: () =>
+    state.workspaceError
+      ? { isPending: false, isError: true, data: undefined, refetch: vi.fn() }
+      : { isPending: false, isError: false, data: state.workspace },
 }));
 vi.mock('@/features/commercial/hooks/use-commercial', () => ({
   useCommercialCurrentCycle: () => ({ isPending: false, isError: false, data: { paymentSchedule: state.schedule } }),
@@ -197,6 +202,7 @@ beforeEach(() => {
     variationLines: [],
   };
   state.workspace = workspaceFixture({ todo: [READY] });
+  state.workspaceError = false;
 });
 
 const render = () => renderWithProviders(<FinanceProjectDashboard projectId="p1" />, { permissions: ['view:financial-position', 'manage:payable'] });
@@ -221,12 +227,30 @@ describe('FinanceProjectDashboard — key figures', () => {
   });
 
   it('says "No cost yet" instead of a 100% margin, and no share without a contract', () => {
-    state.row = row({ costToDate: '0.00', margin: 100, contractValue: null });
+    state.row = row({ margin: 100, contractValue: null });
+    state.overview = overview({ accountingPosition: { ...overview().accountingPosition, projectCost: '0.00', marginPercent: 100 } });
     render();
     expect(screen.getByText('No cost yet — nothing coded to this project')).toBeInTheDocument();
     expect(screen.queryByText('100%')).toBeNull();
     expect(screen.getByText('No contract yet')).toBeInTheDocument();
     expect(screen.getByText('Nothing billed yet')).toBeInTheDocument();
+  });
+});
+
+describe('FinanceProjectDashboard — margin basis', () => {
+  it('reads margin, "no cost" and the cost beside it from the ledger, not the procurement rollup', () => {
+    // The rollup says 60,000 of cost; the ledger has none posted — margin is the ledger's.
+    state.row = row({ costToDate: '60000.00', margin: 100 });
+    state.overview = overview({ accountingPosition: { ...overview().accountingPosition, projectCost: '0.00', marginPercent: 100 } });
+    const { unmount } = render();
+    expect(screen.getByText('No cost yet — nothing coded to this project')).toBeInTheDocument();
+    unmount();
+
+    state.row = row({ costToDate: '0.00', margin: 70 });
+    state.overview = overview();
+    render();
+    expect(screen.getByText('70%')).toBeInTheDocument();
+    expect(screen.getByText('Revenue $200,000.00 · cost $60,000.00')).toBeInTheDocument();
   });
 });
 
@@ -248,6 +272,15 @@ describe('FinanceProjectDashboard — needs action', () => {
     expect(screen.getByText('2 approved bills are not posted')).toBeInTheDocument();
     // "For info" rows sit behind the controls badge, not in the work list.
     expect(screen.queryByText('No cost budget')).toBeNull();
+  });
+
+  it('keeps bills to pay and the controls when the commercial read fails', () => {
+    state.workspaceError = true;
+    state.row = row({ billsToPay: { count: 1, amount: '280.00' } });
+    render();
+    expect(screen.getByText('This part of the dashboard could not load.')).toBeInTheDocument();
+    expect(screen.getByText('1 supplier bill to pay')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Prepare invoice' })).toBeNull();
   });
 
   it('opens the same Prepare invoice dialog the Billing tab uses', async () => {
@@ -344,5 +377,10 @@ describe('dashboard helpers', () => {
     expect(switchProjectHref('/finance/projects/a', 'a', 'b')).toBe('/finance/projects/b');
     expect(switchProjectHref('/finance/projects/a/billing', 'a', 'b')).toBe('/finance/projects/b/billing');
     expect(switchProjectHref('/finance/projects/a/billing/invoices/inv-1', 'a', 'b')).toBe('/finance/projects/b/billing');
+    // A view's query (the Transactions view) goes along; a record's query does not.
+    expect(switchProjectHref('/finance/projects/a/transactions', 'a', 'b', 'view=journals')).toBe(
+      '/finance/projects/b/transactions?view=journals',
+    );
+    expect(switchProjectHref('/finance/projects/a/billing/invoices/inv-1', 'a', 'b', 'tab=notes')).toBe('/finance/projects/b/billing');
   });
 });

@@ -1,23 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { FinancePortfolioRow } from '@erp/types';
 import { Combobox, StatusPill, type ComboboxOption } from '@erp/ui';
 
 import { useFinancePortfolio } from '../hooks';
+import { financeProjectRedirects } from '../redirects';
 import { needsActionLabels } from './finance-projects-list';
 
 /**
  * Where the picker sends the reader for another project: the same view they are on (Billing stays
- * Billing), never a record of the old project — an invoice page falls back to its view.
+ * Billing, Transactions keeps its `?view=`), never a record of the old project — an invoice page
+ * falls back to its view, without the record's query.
  */
-export function switchProjectHref(pathname: string, fromId: string, toId: string): string {
-  const prefix = `/finance/projects/${fromId}`;
+export function switchProjectHref(pathname: string, fromId: string, toId: string, search = ''): string {
+  const prefix = financeProjectRedirects.overview(fromId);
   const rest = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : '';
-  const view = rest.split('/').filter(Boolean)[0];
-  return view ? `/finance/projects/${toId}/${view}` : `/finance/projects/${toId}`;
+  const segments = rest.split('/').filter(Boolean);
+  const target = segments[0] ? `${financeProjectRedirects.overview(toId)}/${segments[0]}` : financeProjectRedirects.overview(toId);
+  // The query belongs to the view only when the reader is on the view itself, not on a record in it.
+  const query = segments.length <= 1 && search ? (search.startsWith('?') ? search : `?${search}`) : '';
+  return `${target}${query}`;
 }
 
 /**
@@ -29,7 +34,8 @@ export function FinanceProjectPicker({ project }: { project: FinancePortfolioRow
   const t = useTranslations('finance.projects.workspace.picker');
   const tNeeds = useTranslations('finance.projects.needs');
   const router = useRouter();
-  const pathname = usePathname() ?? `/finance/projects/${project.projectId}`;
+  const pathname = usePathname() ?? financeProjectRedirects.overview(project.projectId);
+  const search = useSearchParams()?.toString() ?? '';
   const [wanted, setWanted] = useState(false);
   const portfolio = useFinancePortfolio({}, { enabled: wanted });
 
@@ -53,7 +59,7 @@ export function FinanceProjectPicker({ project }: { project: FinancePortfolioRow
         aria-label={t('label')}
         value={project.projectId}
         onChange={(next) => {
-          if (next && next !== project.projectId) router.push(switchProjectHref(pathname, project.projectId, next));
+          if (next && next !== project.projectId) router.push(switchProjectHref(pathname, project.projectId, next, search));
         }}
         options={options}
         renderValue={() => (

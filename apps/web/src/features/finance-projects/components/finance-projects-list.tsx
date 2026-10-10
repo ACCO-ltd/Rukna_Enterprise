@@ -14,7 +14,8 @@ import { downloadXlsx } from '@/lib/xlsx-export';
 import { portfolioExportTable } from '../exports';
 import { useCanViewFinanceProjects, useFinancePortfolio } from '../hooks';
 import { ExportButtons } from './export-buttons';
-import { share } from './finance-project-dashboard';
+import { isPositive, minor, share } from '../figures';
+import { financeProjectRedirects } from '../redirects';
 import { PortfolioCharts, PortfolioTotals, QueueCards } from './finance-portfolio-summary';
 import { NoFinanceAccess } from './no-finance-access';
 
@@ -25,7 +26,7 @@ export function parseQueue(value: string | null | undefined): QueueView {
   return FINANCE_PORTFOLIO_QUEUES.includes(value as FinancePortfolioQueue) ? (value as FinancePortfolioQueue) : 'ALL';
 }
 
-export const financeProjectHref = (projectId: string) => `/finance/projects/${projectId}`;
+export const financeProjectHref = financeProjectRedirects.overview;
 
 /** How urgent a row is for finance today: overdue money first, then billing, then paying, then nothing. */
 export function needsPriority(row: FinancePortfolioRow): number {
@@ -35,12 +36,17 @@ export function needsPriority(row: FinancePortfolioRow): number {
   return 0;
 }
 
-/** Rows that need finance first (most urgent, then largest outstanding), then the rest by name. */
+/**
+ * Rows that need finance first (most urgent), then the rest. Within a level, rows are grouped by
+ * currency before comparing outstanding — amounts in two currencies are never compared — then by
+ * name.
+ */
 export function orderForFinance(rows: readonly FinancePortfolioRow[]): FinancePortfolioRow[] {
   return [...rows].sort(
     (a, b) =>
       needsPriority(b) - needsPriority(a) ||
-      Number(b.outstanding ?? 0) - Number(a.outstanding ?? 0) ||
+      (a.currency ?? '\uffff').localeCompare(b.currency ?? '\uffff') ||
+      minor(b.outstanding) - minor(a.outstanding) ||
       a.name.localeCompare(b.name),
   );
 }
@@ -91,7 +97,7 @@ export function FinanceProjectsList() {
       value={value}
       hidden={!moneyVisible}
       hiddenLabel={t('hidden')}
-      className={cn(danger && value !== null && Number(value) > 0 && 'text-danger')}
+      className={cn(danger && isPositive(value) && 'text-danger')}
     />
   );
 
@@ -153,11 +159,11 @@ export function FinanceProjectsList() {
       sortable: true,
       card: 'amount',
       redacted: !moneyVisible,
-      plainValue: (row) => (row.outstanding === null ? null : Number(row.outstanding)),
+      plainValue: (row) => (row.outstanding === null ? null : minor(row.outstanding)),
       render: (row) => (
         <span className="block">
           <span className="block">{money(row.outstanding)}</span>
-          {row.overdue !== null && Number(row.overdue) > 0 ? (
+          {isPositive(row.overdue) ? (
             <span className="block text-caption text-danger">
               {t('overdueLabel')} <MoneyDisplay value={row.overdue} hidden={!moneyVisible} hiddenLabel={t('hidden')} />
             </span>
@@ -188,7 +194,7 @@ export function FinanceProjectsList() {
       numeric: true,
       sortable: true,
       redacted: !moneyVisible,
-      plainValue: (row) => (pick(row) === null ? null : Number(pick(row))),
+      plainValue: (row) => (pick(row) === null ? null : minor(pick(row))),
       render: (row) => money(pick(row), danger),
     };
   }

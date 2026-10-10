@@ -277,8 +277,17 @@ billed / collected / owed, and no way to change project without going back to th
   Contract · Billed % · Outstanding · Needs action) ordered with the projects that need finance
   first. The queue switch and the exports (every column) are unchanged.
 
-**Unchanged.** No permission, endpoint or formula changed: every figure is an existing read, every
-command keeps its one home. Retired URLs redirect — `/finance/projects/:id/payables` →
+**What changed in the read models (all additive).** One field, `billedExclTax`, on the portfolio
+row and its per-currency totals — computed in the shared `computeReceivablePosition`
+(`netBilledExclTax` = Σ posted invoice `subtotal` − Σ posted credit-note `netAmount`), so the
+Commercial Overview and the portfolio still share one formula; a DB test asserts it equals the
+Finance Overview's `billingReconciliation.invoicedNet`. The Finance Overview's `currency` now takes
+the live contract's currency first, then the cost rollup's — the portfolio row's precedence — so a
+project without a budget no longer prints bare amounts. Posting journals of client invoices,
+receipts and credit notes are described by the document number (claimed in the posting
+transaction) instead of the database id.
+
+**Unchanged.** No permission changed and no endpoint was added; every command keeps its one home. Retired URLs redirect — `/finance/projects/:id/payables` →
 `transactions?view=bills`, `/payments` → `?view=receipts`, `/pl` → `?view=pl`; the older
 `/projects/:id/finance/profit-loss`, `/projects/:id/pl` → `?view=pl` and `…/finance/ledger` →
 `?view=ledger` (`redirects.ts` is still the one table).
