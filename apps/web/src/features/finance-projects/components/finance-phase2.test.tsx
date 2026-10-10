@@ -60,13 +60,14 @@ import { BillEligibilityPanel } from '@/features/procurement/components/bill-eli
 import { PoBillPaymentsSection } from '@/features/procurement/components/po-bill-payments';
 import { SupplierBillsList } from '@/features/procurement/components/bill-screens';
 import { ReceiptsList } from '@/features/receipts/components/receipts-list';
-import { FinanceProjectPayments } from './finance-project-payments';
-import { FinanceProjectPayables } from './finance-project-payables';
+import { FinanceProjectTransactions, resolveTransactionView } from './finance-project-transactions';
 import { FinanceProjectWorkspace } from './finance-project-workspace';
 
 const FINANCE = 'view:financial-position';
 
 beforeEach(() => {
+  nav.pathname = '/finance/projects/p1';
+  nav.search = '';
   vi.clearAllMocks();
   nav.pathname = '/finance/projects/p1';
   nav.search = '';
@@ -136,7 +137,7 @@ describe('BillEligibilityPanel — "Why can\'t I pay this?"', () => {
   });
 });
 
-describe('Finance project workspace — Payables and Payments tabs', () => {
+describe('Finance project workspace — three tabs', () => {
   const header = {
     item: {
       projectId: 'p1',
@@ -162,49 +163,66 @@ describe('Finance project workspace — Payables and Payments tabs', () => {
     );
   }
 
-  it('hides Payables and Payments from a viewer without the lists’ permissions', async () => {
+  it('has three tabs — Overview, Billing, Transactions — whatever the viewer’s list permissions', async () => {
     renderWorkspace([FINANCE]);
     const tabs = await screen.findByRole('navigation', { name: 'Project finance' });
-    expect(within(tabs).queryByRole('link', { name: 'Payables' })).toBeNull();
-    expect(within(tabs).queryByRole('link', { name: 'Payments' })).toBeNull();
+    expect(within(tabs).getAllByRole('link').map((link) => link.textContent)).toEqual(['Overview', 'Billing', 'Transactions']);
+    expect(within(tabs).getByRole('link', { name: 'Transactions' })).toHaveAttribute('href', '/finance/projects/p1/transactions');
   });
 
-  it('shows Payables to a manage:payable holder', async () => {
-    renderWorkspace([FINANCE, 'manage:payable']);
+  it('marks Overview current on a drill-in (Cost detail) page', async () => {
+    nav.pathname = '/finance/projects/p1/cost';
+    renderWorkspace([FINANCE]);
     const tabs = await screen.findByRole('navigation', { name: 'Project finance' });
-    expect(within(tabs).getByRole('link', { name: 'Payables' })).toHaveAttribute('href', '/finance/projects/p1/payables');
-    expect(within(tabs).getByRole('link', { name: 'Payments' })).toHaveAttribute('href', '/finance/projects/p1/payments');
+    expect(within(tabs).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+describe('Finance project Transactions', () => {
+  beforeEach(() => {
+    nav.pathname = '/finance/projects/p1/transactions';
+    nav.search = '';
   });
 
-  it('Payables refuses without manage:payable and never lists bills', () => {
-    renderWithProviders(<FinanceProjectPayables projectId="p1" />, { permissions: [FINANCE] });
-    expect(screen.getByText("You don't have access to supplier bills")).toBeInTheDocument();
+  it('offers only the views the viewer may read; Ledger and P&L always', () => {
+    renderWithProviders(<FinanceProjectTransactions projectId="p1" />, { permissions: [FINANCE, 'manage:receivable'] });
+    const views = screen.getAllByRole('tab').map((tab) => tab.textContent);
+    expect(views).toEqual(['Client receipts', 'Ledger', 'P&L']);
     expect(procApi.listSupplierBills).not.toHaveBeenCalled();
-  });
-
-  it('Payables lists the project’s bills (server-side filter) with an Outstanding column and no project filter', async () => {
-    renderWithProviders(<FinanceProjectPayables projectId="p1" />, { permissions: [FINANCE, 'manage:payable'] });
-    await waitFor(() => expect(procApi.listSupplierBills).toHaveBeenCalledWith({ projectId: 'p1' }));
-    expect(await screen.findByRole('heading', { name: 'Supplier bills' })).toBeInTheDocument();
-  });
-
-  it('Payments shows only the sections the viewer may read, each fixed to the project', async () => {
-    renderWithProviders(<FinanceProjectPayments projectId="p1" />, { permissions: [FINANCE, 'manage:receivable'] });
-    expect(await screen.findByRole('heading', { name: 'Client receipts' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Supplier payments' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Manual journals' })).toBeNull();
-    await waitFor(() => expect(receiptsApi.listReceipts).toHaveBeenCalledWith(undefined, 'p1'));
     expect(procApi.listSupplierPayments).not.toHaveBeenCalled();
-    expect(accountingApi.listJournals).not.toHaveBeenCalled();
   });
 
-  it('Payments passes the project to supplier payments and journals', async () => {
-    renderWithProviders(<FinanceProjectPayments projectId="p1" />, {
+  it('opens on the first view the viewer may read: supplier bills, fixed to the project', async () => {
+    renderWithProviders(<FinanceProjectTransactions projectId="p1" />, { permissions: [FINANCE, 'manage:payable'] });
+    expect(await screen.findByRole('heading', { name: 'Supplier bills' })).toBeInTheDocument();
+    await waitFor(() => expect(procApi.listSupplierBills).toHaveBeenCalledWith({ projectId: 'p1' }));
+  });
+
+  it('reads the view from the URL: receipts, then supplier payments and journals, each fixed to the project', async () => {
+    nav.search = 'view=receipts';
+    const { unmount } = renderWithProviders(<FinanceProjectTransactions projectId="p1" />, {
+      permissions: [FINANCE, 'manage:receivable', 'manage:payable', 'manage:journal'],
+    });
+    expect(await screen.findByRole('heading', { name: 'Client receipts' })).toBeInTheDocument();
+    await waitFor(() => expect(receiptsApi.listReceipts).toHaveBeenCalledWith(undefined, 'p1'));
+    unmount();
+
+    nav.search = 'view=supplierPayments';
+    const second = renderWithProviders(<FinanceProjectTransactions projectId="p1" />, {
       permissions: [FINANCE, 'manage:payable', 'manage:journal'],
     });
     await waitFor(() => expect(procApi.listSupplierPayments).toHaveBeenCalledWith({ projectId: 'p1' }));
+    second.unmount();
+
+    nav.search = 'view=journals';
+    renderWithProviders(<FinanceProjectTransactions projectId="p1" />, { permissions: [FINANCE, 'manage:journal'] });
     await waitFor(() => expect(accountingApi.listJournals).toHaveBeenCalledWith('p1'));
-    expect(receiptsApi.listReceipts).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the first allowed view for an unknown or forbidden ?view=', () => {
+    expect(resolveTransactionView('bills', ['receipts', 'ledger', 'pl'])).toBe('receipts');
+    expect(resolveTransactionView('nonsense', ['ledger', 'pl'])).toBe('ledger');
+    expect(resolveTransactionView('pl', ['ledger', 'pl'])).toBe('pl');
   });
 });
 

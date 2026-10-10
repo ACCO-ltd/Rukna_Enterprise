@@ -292,8 +292,8 @@ function CashflowChart({ forecast, size }: { forecast: CashflowCurrencyForecast;
           const outflow = n(b.outflows.total);
           return (
             <g key={b.key} aria-hidden="true">
-              <rect x={centre - bar} y={y(inflow)} width={bar - 1} height={Math.max(0, y(0) - y(inflow))} rx={2} fill="var(--color-chart-1)" />
-              <rect x={centre} y={y(outflow)} width={bar - 1} height={Math.max(0, y(0) - y(outflow))} rx={2} fill="var(--color-chart-2)" />
+              <rect x={centre - bar} y={y(inflow)} width={bar - 1} height={Math.max(0, y(0) - y(inflow))} rx={2} fill="var(--color-chart-5)" />
+              <rect x={centre} y={y(outflow)} width={bar - 1} height={Math.max(0, y(0) - y(outflow))} rx={2} fill="var(--color-chart-4)" />
               {i % labelEvery === 0 ? (
                 <text x={centre} y={VIEW_H - 10} textAnchor="middle" fontSize={10} fill="var(--color-muted-foreground)">
                   {b.kind === 'PERIOD'
@@ -304,13 +304,15 @@ function CashflowChart({ forecast, size }: { forecast: CashflowCurrencyForecast;
             </g>
           );
         })}
-        <path d={line} fill="none" stroke="var(--color-chart-3)" strokeWidth={2} aria-hidden="true" />
+        <path d={line} fill="none" stroke="var(--color-chart-1)" strokeWidth={2} aria-hidden="true" />
       </svg>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
         {[
-          { key: 'inflows', color: 'var(--color-chart-1)' },
-          { key: 'outflows', color: 'var(--color-chart-2)' },
-          { key: 'cumulative', color: 'var(--color-chart-3)' },
+          // In and out are different things — two hues (teal / violet), as on the project dashboard;
+          // the running net is the ink-blue line over them.
+          { key: 'inflows', color: 'var(--color-chart-5)' },
+          { key: 'outflows', color: 'var(--color-chart-4)' },
+          { key: 'cumulative', color: 'var(--color-chart-1)' },
         ].map((s) => (
           <li key={s.key} className="flex items-center gap-1.5 text-caption text-muted-foreground">
             <span className="size-2.5 rounded-xs" style={{ background: s.color }} aria-hidden="true" />

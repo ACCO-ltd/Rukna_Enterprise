@@ -3,13 +3,8 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Briefcase } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import {
-  FINANCE_PORTFOLIO_QUEUES,
-  type FinancePortfolioQueue,
-  type FinancePortfolioResponse,
-  type FinancePortfolioRow,
-} from '@erp/types';
-import { ContextBar, EmptyState, MoneyDisplay, Skeleton, StatusPill, ViewSwitcher, cn } from '@erp/ui';
+import { FINANCE_PORTFOLIO_QUEUES, type FinancePortfolioQueue, type FinancePortfolioRow } from '@erp/types';
+import { EmptyState, Meter, MoneyDisplay, StatusPill, ViewSwitcher, cn } from '@erp/ui';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { exportCsv, reportFilename } from '@/features/accounting/lib/export-csv';
@@ -19,6 +14,8 @@ import { downloadXlsx } from '@/lib/xlsx-export';
 import { portfolioExportTable } from '../exports';
 import { useCanViewFinanceProjects, useFinancePortfolio } from '../hooks';
 import { ExportButtons } from './export-buttons';
+import { share } from './finance-project-dashboard';
+import { PortfolioCharts, PortfolioTotals, QueueCards } from './finance-portfolio-summary';
 import { NoFinanceAccess } from './no-finance-access';
 
 type QueueView = 'ALL' | FinancePortfolioQueue;
@@ -30,11 +27,31 @@ export function parseQueue(value: string | null | undefined): QueueView {
 
 export const financeProjectHref = (projectId: string) => `/finance/projects/${projectId}`;
 
+/** How urgent a row is for finance today: overdue money first, then billing, then paying, then nothing. */
+export function needsPriority(row: FinancePortfolioRow): number {
+  if (row.overdueInvoices.count > 0) return 3;
+  if (row.readyToBill.count > 0) return 2;
+  if (row.billsToPay.count > 0) return 1;
+  return 0;
+}
+
+/** Rows that need finance first (most urgent, then largest outstanding), then the rest by name. */
+export function orderForFinance(rows: readonly FinancePortfolioRow[]): FinancePortfolioRow[] {
+  return [...rows].sort(
+    (a, b) =>
+      needsPriority(b) - needsPriority(a) ||
+      Number(b.outstanding ?? 0) - Number(a.outstanding ?? 0) ||
+      a.name.localeCompare(b.name),
+  );
+}
+
 /**
- * Finance → Projects (ADR-043): every project the finance team looks after, with the morning
- * queues — To bill, Overdue, To pay — as one switch. Figures come from `GET /finance/projects`,
- * which reuses the per-project definitions; nothing is computed here. A row opens the project's
- * Finance workspace.
+ * Finance → Projects (ADR-043; landing redesign 2026-10-10): the portfolio a finance officer
+ * starts the day on — the money per currency, the three morning queues (To bill, Overdue, To pay)
+ * as cards with their largest projects, two charts, then a slim table with the projects that need
+ * finance first. Figures come from `GET /finance/projects`, which reuses the per-project
+ * definitions; only display shares are computed here. A row opens the project's Finance workspace;
+ * the export keeps every column.
  */
 export function FinanceProjectsList() {
   const t = useTranslations('finance.projects');
@@ -60,6 +77,11 @@ export function FinanceProjectsList() {
     else params.set('queue', next);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+  // A card's "Show all" filters the table and brings it into view.
+  const showQueue = (next: FinancePortfolioQueue) => {
+    setQueue(next);
+    document.getElementById('finance-projects-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const data = current.data;
@@ -105,38 +127,51 @@ export function FinanceProjectsList() {
         ),
     },
     moneyColumn('contractValue', t('col.contract'), (r) => r.contractValue),
-    // Before sales tax — comparable with the contract value; tax comes from each invoice.
-    moneyColumn('billed', t('col.billed'), (r) => r.billedExclTax),
-    moneyColumn('collected', t('col.collected'), (r) => r.collected),
-    { ...moneyColumn('outstanding', t('col.outstanding'), (r) => r.outstanding), card: 'amount' },
-    moneyColumn('overdue', t('col.overdue'), (r) => r.overdue, true),
-    moneyColumn('costToDate', t('col.cost'), (r) => r.costToDate),
     {
-      key: 'margin',
-      header: t('col.margin'),
+      key: 'billedShare',
+      header: t('col.billedShare'),
       numeric: true,
       sortable: true,
-      redacted: data ? !data.marginVisible : false,
-      plainValue: (row) => row.margin,
-      render: (row) =>
-        row.margin === null ? (
-          <span className="text-muted-foreground" title={t('marginUnavailable')}>
-            —
+      redacted: !moneyVisible,
+      plainValue: (row) => share(row.billedExclTax, row.contractValue),
+      render: (row) => {
+        const percent = share(row.billedExclTax, row.contractValue);
+        // No contract, no denominator: absent, never 0%.
+        if (percent === null) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span className="inline-flex items-center justify-end gap-2">
+            <Meter value={percent} label={t('billedShareLabel', { name: row.name })} />
+            <span className="w-10 text-end tabular-nums">{t('percent', { value: percent })}</span>
           </span>
-        ) : row.costToDate !== null && Number(row.costToDate) === 0 ? (
-          // Revenue with no cost reads as 100% — true of the ledger, but it says "no cost has been
-          // coded yet", not "this project is all profit".
-          <span className="text-caption text-muted-foreground" title={t('marginNoCostHint')}>
-            {t('marginNoCost')}
-          </span>
-        ) : (
-          <span className={cn('tabular-nums', row.margin < 0 && 'text-danger')}>{t('percent', { value: row.margin })}</span>
-        ),
+        );
+      },
+    },
+    {
+      key: 'outstanding',
+      header: t('col.outstanding'),
+      numeric: true,
+      sortable: true,
+      card: 'amount',
+      redacted: !moneyVisible,
+      plainValue: (row) => (row.outstanding === null ? null : Number(row.outstanding)),
+      render: (row) => (
+        <span className="block">
+          <span className="block">{money(row.outstanding)}</span>
+          {row.overdue !== null && Number(row.overdue) > 0 ? (
+            <span className="block text-caption text-danger">
+              {t('overdueLabel')} <MoneyDisplay value={row.overdue} hidden={!moneyVisible} hiddenLabel={t('hidden')} />
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     {
       key: 'actions',
       header: t('col.needsAction'),
       card: 'status',
+      sortable: true,
+      // Sorting by need puts the most urgent first: overdue, then to bill, then to pay.
+      plainValue: (row) => needsPriority(row),
       render: (row) => <NeedsAction row={row} />,
     },
   ];
@@ -188,10 +223,12 @@ export function FinanceProjectsList() {
     counts ? t('queue.withCount', { label: t(`queue.${key}`), count: counts[key] }) : t(`queue.${key}`);
 
   return (
-    <div className="space-y-4">
-      <TotalsBar data={all.data} />
+    <div className="space-y-6">
+      <PortfolioTotals data={all.data} />
+      <QueueCards data={all.data} onShowAll={showQueue} />
+      <PortfolioCharts data={all.data} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div id="finance-projects-table" className="flex scroll-mt-4 flex-wrap items-center justify-between gap-3">
         <ViewSwitcher
           aria-label={t('queue.label')}
           value={queue}
@@ -213,7 +250,7 @@ export function FinanceProjectsList() {
 
       <PlatformDataGrid
         columns={columns}
-        data={data?.items ?? []}
+        data={orderForFinance(data?.items ?? [])}
         rowKey={(row) => row.projectId}
         label={t('title')}
         isLoading={current.isPending}
@@ -231,50 +268,9 @@ export function FinanceProjectsList() {
         noMatchMessage={t('noMatches')}
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 25 }}
-        defaultSort={{ key: 'project', direction: 'asc' }}
         searchPlaceholder={t('searchPlaceholder')}
         searchLabel={tGrid('searchLabel')}
       />
-    </div>
-  );
-}
-
-/**
- * The portfolio's totals, from the unfiltered read — one line per currency. Money in different
- * currencies is never added together.
- */
-function TotalsBar({ data }: { data: FinancePortfolioResponse | undefined }) {
-  const t = useTranslations('finance.projects');
-  if (!data) return <Skeleton className="h-20 w-full rounded-panel" />;
-  const hidden = !data.moneyVisible;
-  const money = (value: string | null) => <MoneyDisplay value={value} hidden={hidden} hiddenLabel={t('hidden')} />;
-  // Projects with no currency have no contract yet: a bar of $0.00 under "No currency" says nothing
-  // a single line cannot.
-  const priced = data.totals.filter((totals) => totals.currency !== null);
-  const unpriced = data.totals.find((totals) => totals.currency === null)?.projectCount ?? 0;
-  return (
-    <div className="space-y-2" aria-label={t('totals.label')} role="group">
-      {priced.map((totals) => (
-        <ContextBar
-          key={totals.currency ?? 'none'}
-          headingId={`finance-projects-totals-${totals.currency ?? 'none'}`}
-          title={t('totals.title', {
-            currency: totals.currency ?? t('totals.noCurrency'),
-            count: totals.projectCount,
-          })}
-          metrics={[
-            { key: 'contract', label: t('totals.contract'), value: money(totals.contractValue) },
-            { key: 'billed', label: t('totals.billed'), value: money(totals.billedExclTax) },
-            { key: 'collected', label: t('totals.collected'), value: money(totals.collected) },
-            { key: 'outstanding', label: t('totals.outstanding'), value: money(totals.outstanding) },
-            { key: 'overdue', label: t('totals.overdue'), value: money(totals.overdue) },
-            { key: 'toPay', label: t('totals.toPay'), value: money(totals.billsToPay.amount) },
-          ]}
-        />
-      ))}
-      {unpriced > 0 ? (
-        <p className="text-caption text-muted-foreground">{t('totals.noContract', { count: unpriced })}</p>
-      ) : null}
     </div>
   );
 }

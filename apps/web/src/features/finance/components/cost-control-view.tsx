@@ -65,7 +65,18 @@ const BUDGET_BASELINE = 'baseline:project-budget' as const;
  * It reads the same cost rollup the Procurement tab renders. One read model, two purposes — the
  * alternative is two answers to "what has this project committed".
  */
-export function CostControlView({ projectId }: { projectId: string }) {
+export function CostControlView({
+  projectId,
+  fallbackCurrency = null,
+}: {
+  projectId: string;
+  /**
+   * The currency to show when the cost rollup knows none (no budget, no cost entry and no
+   * currency on the project record) — the Finance workspace passes the contract's, so figures
+   * read "$0.00", not a bare "0.00".
+   */
+  fallbackCurrency?: string | null;
+}) {
   const t = useTranslations('finance.costControl');
   const tc = useTranslations('finance.common');
   const tEditor = useTranslations('finance.budgetEditor');
@@ -96,7 +107,10 @@ export function CostControlView({ projectId }: { projectId: string }) {
     );
   }
 
-  const data = cost.data;
+  const data =
+    fallbackCurrency && !cost.data.position.currency
+      ? { ...cost.data, position: { ...cost.data.position, currency: fallbackCurrency } }
+      : cost.data;
   const position = data.position;
   const budgetList = budgets.data;
   const baselined = budgetList?.baselined ?? null;
