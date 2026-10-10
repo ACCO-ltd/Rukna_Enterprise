@@ -235,6 +235,11 @@ export function FinanceOverviewView({
               <span className="text-body-sm font-medium text-muted-foreground">
                 {tc('unavailable')}
               </span>
+            ) : accounting.projectCost !== null && Number(accounting.projectCost) === 0 ? (
+              // 100% over zero cost means "no cost coded yet", not "all profit".
+              <span className="text-body-sm font-medium text-muted-foreground">
+                {t('accountingPosition.noCostYet')}
+              </span>
             ) : (
               `${accounting.marginPercent}%`
             )}
@@ -524,12 +529,16 @@ export function FinanceOverviewView({
                 </p>
               </div>
               {/* A budget baseline moves no money; showing an amount would invent one. */}
+              {/* The amount is the project lines' debit − credit. Shown unsigned with Dr / Cr, as
+                  a ledger does: "−200,000" on an invoice reads as a loss to anyone but an
+                  accountant. */}
               {row.amount === null ? null : (
-                <Money
-                  amount={row.amount}
-                  currency={data.currency}
-                  className="shrink-0 text-body-sm text-foreground"
-                />
+                <span className="shrink-0 text-body-sm text-foreground">
+                  <Money amount={Math.abs(Number(row.amount)).toFixed(2)} currency={data.currency} />{' '}
+                  <span className="text-caption text-muted-foreground">
+                    {Number(row.amount) < 0 ? tc('credit') : tc('debit')}
+                  </span>
+                </span>
               )}
             </li>
           ))}

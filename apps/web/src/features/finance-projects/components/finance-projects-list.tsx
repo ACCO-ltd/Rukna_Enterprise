@@ -105,7 +105,8 @@ export function FinanceProjectsList() {
         ),
     },
     moneyColumn('contractValue', t('col.contract'), (r) => r.contractValue),
-    moneyColumn('billed', t('col.billed'), (r) => r.billed),
+    // Before sales tax — comparable with the contract value; tax comes from each invoice.
+    moneyColumn('billed', t('col.billed'), (r) => r.billedExclTax),
     moneyColumn('collected', t('col.collected'), (r) => r.collected),
     { ...moneyColumn('outstanding', t('col.outstanding'), (r) => r.outstanding), card: 'amount' },
     moneyColumn('overdue', t('col.overdue'), (r) => r.overdue, true),
@@ -121,6 +122,12 @@ export function FinanceProjectsList() {
         row.margin === null ? (
           <span className="text-muted-foreground" title={t('marginUnavailable')}>
             —
+          </span>
+        ) : row.costToDate !== null && Number(row.costToDate) === 0 ? (
+          // Revenue with no cost reads as 100% — true of the ledger, but it says "no cost has been
+          // coded yet", not "this project is all profit".
+          <span className="text-caption text-muted-foreground" title={t('marginNoCostHint')}>
+            {t('marginNoCost')}
           </span>
         ) : (
           <span className={cn('tabular-nums', row.margin < 0 && 'text-danger')}>{t('percent', { value: row.margin })}</span>
@@ -241,9 +248,13 @@ function TotalsBar({ data }: { data: FinancePortfolioResponse | undefined }) {
   if (!data) return <Skeleton className="h-20 w-full rounded-panel" />;
   const hidden = !data.moneyVisible;
   const money = (value: string | null) => <MoneyDisplay value={value} hidden={hidden} hiddenLabel={t('hidden')} />;
+  // Projects with no currency have no contract yet: a bar of $0.00 under "No currency" says nothing
+  // a single line cannot.
+  const priced = data.totals.filter((totals) => totals.currency !== null);
+  const unpriced = data.totals.find((totals) => totals.currency === null)?.projectCount ?? 0;
   return (
     <div className="space-y-2" aria-label={t('totals.label')} role="group">
-      {data.totals.map((totals) => (
+      {priced.map((totals) => (
         <ContextBar
           key={totals.currency ?? 'none'}
           headingId={`finance-projects-totals-${totals.currency ?? 'none'}`}
@@ -253,7 +264,7 @@ function TotalsBar({ data }: { data: FinancePortfolioResponse | undefined }) {
           })}
           metrics={[
             { key: 'contract', label: t('totals.contract'), value: money(totals.contractValue) },
-            { key: 'billed', label: t('totals.billed'), value: money(totals.billed) },
+            { key: 'billed', label: t('totals.billed'), value: money(totals.billedExclTax) },
             { key: 'collected', label: t('totals.collected'), value: money(totals.collected) },
             { key: 'outstanding', label: t('totals.outstanding'), value: money(totals.outstanding) },
             { key: 'overdue', label: t('totals.overdue'), value: money(totals.overdue) },
@@ -261,6 +272,9 @@ function TotalsBar({ data }: { data: FinancePortfolioResponse | undefined }) {
           ]}
         />
       ))}
+      {unpriced > 0 ? (
+        <p className="text-caption text-muted-foreground">{t('totals.noContract', { count: unpriced })}</p>
+      ) : null}
     </div>
   );
 }

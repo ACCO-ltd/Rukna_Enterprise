@@ -119,6 +119,47 @@ describe('FinanceOverviewView', () => {
     );
   });
 
+  it('says "No cost yet" instead of a 100% margin when no cost is posted', () => {
+    const base = overview();
+    hookMocks.useFinanceOverview.mockReturnValue(
+      ready(
+        overview({
+          accountingPosition: { ...base.accountingPosition, projectCost: '0.00', marginPercent: 100 },
+        }),
+      ),
+    );
+    renderWithProviders(<FinanceOverviewView projectId="p1" />);
+
+    expect(screen.getByText('No cost yet')).toBeInTheDocument();
+    expect(screen.queryByText('100%')).not.toBeInTheDocument();
+  });
+
+  it('shows activity amounts unsigned with Dr / Cr, never as a negative', () => {
+    hookMocks.useFinanceOverview.mockReturnValue(
+      ready(
+        overview({
+          activity: [
+            {
+              id: 'j1',
+              date: '2026-10-03',
+              description: 'Client invoice INV-000002',
+              source: 'Client invoice',
+              reference: 'JE-000002',
+              amount: '-200000.00',
+              sourceDocumentType: 'CLIENT_INVOICE',
+              sourceDocumentId: 'inv1',
+            },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<FinanceOverviewView projectId="p1" />);
+
+    expect(screen.getByText('$200,000.00')).toBeInTheDocument();
+    expect(screen.getByText('Cr')).toBeInTheDocument();
+    expect(screen.queryByText(/-\$?200,000/)).not.toBeInTheDocument();
+  });
+
   /** The bar must be absent, not drawn empty at 0%, when there is no denominator. */
   it('draws no ratio bar when no budget is baselined', () => {
     hookMocks.useFinanceOverview.mockReturnValue(

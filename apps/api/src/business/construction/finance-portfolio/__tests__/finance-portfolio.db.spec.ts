@@ -428,6 +428,9 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
     ]);
 
     expect(r.billed).toBe(overview.financialPosition.netBilled);
+    // Billed before tax is the Finance Overview's "Invoiced (excl. sales tax)" — the figure the
+    // billing-vs-revenue control compares with posted revenue. One number, two screens.
+    expect(r.billedExclTax).toBe(fin.billingReconciliation.invoicedNet);
     expect(r.collected).toBe(overview.financialPosition.collected);
     expect(r.outstanding).toBe(overview.financialPosition.outstanding);
     expect(r.overdue).toBe(overview.financialPosition.overdue);
@@ -438,6 +441,7 @@ describe('FinancePortfolioService — GET /finance/projects (ADR-043)', () => {
 
     // And the figures themselves, so equality is not equality of two wrong answers.
     expect(r.billed).toBe('160000.00'); // 150,000 + 20,000 − 10,000 credit note
+    expect(r.billedExclTax).toBe('160000.00'); // no sales tax on these invoices
     expect(r.collected).toBe('50000.00');
     expect(r.outstanding).toBe('110000.00');
     expect(r.overdue).toBe('90000.00');

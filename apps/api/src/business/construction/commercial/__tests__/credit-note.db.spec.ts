@@ -210,6 +210,9 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     expect(posted.postingStatus).toBe('POSTED');
     expect(posted.creditNoteNumber).toMatch(/^CN-\d+$/);
     expect(posted.postedJournalEntryId).toBeTruthy();
+    // The journal names the credit note's number, never its database id.
+    const journal = await prisma.journalEntry.findUniqueOrThrow({ where: { id: posted.postedJournalEntryId! } });
+    expect(journal.description).toBe(`Credit note ${posted.creditNoteNumber}`);
   });
 
   // ─── CN-DB-03: posted journal is balanced ────────────────────────────────────

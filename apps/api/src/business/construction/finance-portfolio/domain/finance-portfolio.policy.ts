@@ -94,6 +94,7 @@ export function portfolioTotals(
       projectCount: group.length,
       contractValue: sum((r) => r.contractValue),
       billed: sum((r) => r.billed),
+      billedExclTax: sum((r) => r.billedExclTax),
       collected: sum((r) => r.collected),
       outstanding: sum((r) => r.outstanding),
       overdue: sum((r) => r.overdue),

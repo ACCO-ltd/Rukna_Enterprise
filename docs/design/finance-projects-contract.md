@@ -25,13 +25,13 @@ bypass roles see every project, others only projects they are a member of).
 {
   items: Array<{
     projectId, code, name, clientName: string | null, status, currency: string | null,
-    contractValue, billed, collected, outstanding, overdue, costToDate, committedCost: string | null,
+    contractValue, billed, billedExclTax, collected, outstanding, overdue, costToDate, committedCost: string | null,
     margin: number | null,                       // percent, one decimal
     readyToBill: { count: number; draftCount: number; amount: string | null },
     overdueInvoices: { count: number; oldestDaysPastDue: number | null },
     billsToPay: { count: number; amount: string | null },
   }>,
-  totals: Array<{ currency, projectCount, contractValue, billed, collected, outstanding, overdue,
+  totals: Array<{ currency, projectCount, contractValue, billed, billedExclTax, collected, outstanding, overdue,
             costToDate, committedCost, readyToBill, overdueInvoices: { count }, billsToPay }>,
                                                  // one entry per currency — never summed across currencies
   queueCounts: { ALL, TO_BILL, OVERDUE, TO_PAY },  // over the search/status-filtered set
@@ -48,6 +48,7 @@ Money is a decimal string, or `null` when hidden. Counts are always present.
 | Field | Same as | Shared code |
 | --- | --- | --- |
 | `billed` | Commercial Overview `financialPosition.netBilled` (Σ POSTED invoice totals − Σ POSTED credit notes) | `findPostedReceivablesByProject` + `computeReceivablePosition` |
+| `billedExclTax` | `billed` before sales tax: Σ POSTED invoice `subtotal` − Σ POSTED credit-note `netAmount`. Equals the Finance Overview's `billingReconciliation.invoicedNet` (DB test FPF-1). Tax is each document's own (ADR-041 tax code) — never an assumed rate. **This is the "Billed" Finance shows**: comparable with the contract value and posted revenue; `outstanding` stays tax-inclusive (what the client owes) | `computeReceivablePosition.netBilledExclTax` |
 | `collected` | `financialPosition.collected` (Σ POSTED receipt allocations) | same |
 | `outstanding` | `financialPosition.outstanding` (Σ invoice `outstandingAmount`) | same |
 | `overdue` | `financialPosition.overdue` (outstanding of invoices whole UTC days past due > 0) | same (`daysPastDue`, D5) |
@@ -99,12 +100,14 @@ Tax, Opening balance, Fiscal periods).
 
 ### `/finance/projects` — portfolio
 
-- Totals: one line per currency — project count, contract value, billed, collected, outstanding,
-  overdue, bills to pay.
+- Totals: one line per currency — project count, contract value, billed (excl. tax), collected,
+  outstanding, overdue, bills to pay. Projects with no currency (no contract yet) are not a totals
+  line: one sentence says how many there are.
+- Margin over zero posted cost reads "No cost yet", not 100%.
 - Queue switch: All · To bill · Overdue · To pay, each with its count; the choice is in the URL
   (`?queue=`).
 - Table (`PlatformDataGrid`, search, sort, pagination): Project (name, code, status) · Client ·
-  Contract · Billed · Collected · Outstanding · Overdue · Cost · Margin · Needs action (state pills:
+  Contract · Billed (excl. tax) · Collected · Outstanding · Overdue · Cost · Margin · Needs action (state pills:
   "N overdue · Xd", "N stages not prepared", "N drafts prepared", "N bills to pay").
 - Row → `/finance/projects/:id`.
 - No access → a lock empty state; the API is not called.

@@ -6,6 +6,10 @@
  *
  * - `billed` / `collected` / `outstanding` / `overdue` are `financialPosition.netBilled` /
  *   `collected` / `outstanding` / `overdue` of `GET /projects/:id/commercial/overview`.
+ * - `billedExclTax` is the same billing before sales tax (invoice subtotals − credit-note net
+ *   amounts) — the figure Finance compares with the contract value and posted revenue. Tax comes
+ *   from each document's own tax code, never an assumed rate. `outstanding` stays tax-inclusive:
+ *   it is what the client owes.
  * - `costToDate` / `committedCost` are `costPosition.actual` / `costPosition.committedToDate` of
  *   `GET /projects/:id/finance/overview`; `margin` is its `accountingPosition.marginPercent`.
  * - `readyToBill` counts payment-schedule stages marked ready to bill whose invoice is not yet
@@ -42,7 +46,10 @@ export interface FinancePortfolioRow {
   currency: string | null;
   /** The live client contract's current value (incl. adopted variations); null without one. */
   contractValue: string | null;
+  /** Tax-inclusive: what was invoiced, net of credit notes. */
   billed: string | null;
+  /** `billed` before sales tax. */
+  billedExclTax: string | null;
   collected: string | null;
   outstanding: string | null;
   overdue: string | null;
@@ -73,6 +80,7 @@ export interface FinancePortfolioTotals {
   projectCount: number;
   contractValue: string | null;
   billed: string | null;
+  billedExclTax: string | null;
   collected: string | null;
   outstanding: string | null;
   overdue: string | null;

@@ -79,12 +79,15 @@ export interface PostedReceivables {
     invoiceDate: Date;
     dueDate: Date | null;
     currencyCode: string;
+    subtotal: Decimal;
     totalAmount: Decimal;
     outstandingAmount: Decimal;
     sourceInstallmentId: string | null;
     deliveryCount: number;
   }[];
   postedCreditNotesSum: Decimal;
+  /** The same credit notes before sales tax. */
+  postedCreditNotesNetSum: Decimal;
   collectedSum: Decimal;
 }
 
@@ -854,7 +857,12 @@ export class CommercialPrismaRepository {
     });
     const receivables = (await this.findPostedReceivablesByProject(prisma, organizationId, [projectId])).get(
       projectId,
-    ) ?? { invoices: [], postedCreditNotesSum: new Decimal(0), collectedSum: new Decimal(0) };
+    ) ?? {
+      invoices: [],
+      postedCreditNotesSum: new Decimal(0),
+      postedCreditNotesNetSum: new Decimal(0),
+      collectedSum: new Decimal(0),
+    };
     const invoiceIds = receivables.invoices.map((i) => i.id);
     const collectionData: CollectionDataByInvoice =
       invoiceIds.length === 0 ? new Map() : await this.findInvoiceCollectionData(prisma, organizationId, invoiceIds);
@@ -886,6 +894,7 @@ export class CommercialPrismaRepository {
         invoiceDate: true,
         dueDate: true,
         currencyCode: true,
+        subtotal: true,
         totalAmount: true,
         outstandingAmount: true,
         sourceInstallmentId: true,
@@ -901,6 +910,7 @@ export class CommercialPrismaRepository {
       const entry = result.get(inv.projectId) ?? {
         invoices: [],
         postedCreditNotesSum: new Decimal(0),
+        postedCreditNotesNetSum: new Decimal(0),
         collectedSum: new Decimal(0),
       };
       entry.invoices.push({
@@ -909,6 +919,7 @@ export class CommercialPrismaRepository {
         invoiceDate: inv.invoiceDate,
         dueDate: inv.dueDate,
         currencyCode: inv.currencyCode,
+        subtotal: new Decimal(inv.subtotal.toString()),
         totalAmount: new Decimal(inv.totalAmount.toString()),
         outstandingAmount: new Decimal(inv.outstandingAmount.toString()),
         sourceInstallmentId: inv.sourceInstallmentId,
@@ -922,7 +933,7 @@ export class CommercialPrismaRepository {
       prisma.creditNote.groupBy({
         by: ['invoiceId'],
         where: { organizationId, invoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
-        _sum: { totalAmount: true },
+        _sum: { totalAmount: true, netAmount: true },
       }),
       prisma.clientReceiptAllocation.groupBy({
         by: ['clientInvoiceId'],
@@ -932,7 +943,9 @@ export class CommercialPrismaRepository {
     ]);
     for (const row of creditNotes) {
       const entry = result.get(projectOfInvoice.get(row.invoiceId) ?? '');
-      if (entry) entry.postedCreditNotesSum = entry.postedCreditNotesSum.plus(row._sum.totalAmount?.toString() ?? 0);
+      if (!entry) continue;
+      entry.postedCreditNotesSum = entry.postedCreditNotesSum.plus(row._sum.totalAmount?.toString() ?? 0);
+      entry.postedCreditNotesNetSum = entry.postedCreditNotesNetSum.plus(row._sum.netAmount?.toString() ?? 0);
     }
     for (const row of allocations) {
       const entry = result.get(projectOfInvoice.get(row.clientInvoiceId) ?? '');

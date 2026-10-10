@@ -769,12 +769,17 @@ export class ClientInvoiceService {
         });
       }
 
+      // The number is claimed before posting, in the same transaction, so the journal names the
+      // invoice a reader knows (INV-000002) rather than its database id. A failed post rolls the
+      // claim back with it — no number is burnt.
+      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE');
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
           accountingDate: invoice.invoiceDate,
           documentDate: invoice.invoiceDate,
-          description: `Client Invoice — ${invoice.id}`,
+          description: `Client invoice ${invNum.formattedNumber}`,
           currencyCode: invoice.currencyCode,
           eventType: 'EVT-AR-001',
           sourceDocumentType: 'CLIENT_INVOICE',
@@ -787,8 +792,6 @@ export class ClientInvoiceService {
         },
         activeTx as never,
       );
-
-      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE');
 
       await this.repo.markPosted(
         activeTx as TenantPrisma,

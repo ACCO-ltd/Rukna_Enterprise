@@ -17,7 +17,9 @@
     "notStartedTitle": "This project has not started",
     "notStartedReason": "Its start date is in the future, so there is nothing for a financial report to cover yet.",
     "other": "Other",
-    "noChartData": "Nothing to chart yet."
+    "noChartData": "Nothing to chart yet.",
+    "debit": "Dr",
+    "credit": "Cr"
   },
   "shell": {
     "title": "Finance",
@@ -63,7 +65,8 @@
       "unavailableTitle": "Accounting position unavailable",
       "unavailableReason": "The general ledger cannot accept postings yet, so this project has no accounting position. Cost budget, commitments and accruals above are unaffected.",
       "setupDetails": "Accounting setup details",
-      "configure": "Open accounting setup"
+      "configure": "Open accounting setup",
+      "noCostYet": "No cost yet"
     },
     "controls": {
       "title": "Data & control status",
@@ -349,7 +352,7 @@
       "project": "Project",
       "client": "Client",
       "contract": "Contract",
-      "billed": "Billed",
+      "billed": "Billed (excl. tax)",
       "collected": "Collected",
       "outstanding": "Outstanding",
       "overdue": "Overdue",
@@ -373,13 +376,14 @@
     "totals": {
       "title": "{currency} · {count, plural, one {# project} other {# projects}}",
       "contract": "Contract value",
-      "billed": "Billed",
+      "billed": "Billed (excl. tax)",
       "collected": "Collected",
       "outstanding": "Outstanding",
       "overdue": "Overdue",
       "toPay": "Bills to pay",
       "label": "Totals by currency",
-      "noCurrency": "No currency"
+      "noCurrency": "No currency",
+      "noContract": "{count, plural, one {# project has} other {# projects have}} no contract yet."
     },
     "needs": {
       "none": "Nothing today",
@@ -452,7 +456,9 @@
       "currency": "Currency",
       "total": "Total {currency}",
       "noCurrency": "no currency"
-    }
+    },
+    "marginNoCost": "No cost yet",
+    "marginNoCostHint": "Revenue is posted but no cost has been coded to this project, so a margin would read 100%."
   },
   "eligibility": {
     "bill": {

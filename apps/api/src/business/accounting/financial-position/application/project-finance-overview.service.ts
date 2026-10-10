@@ -74,7 +74,7 @@ export class ProjectFinanceOverviewService {
     const orgId = identity.activeOrganizationId;
     const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
 
-    const [cost, reconciliation, readiness, budgets, period, revenue, unpostedBills, billedNet] =
+    const [cost, reconciliation, readiness, budgets, period, revenue, unpostedBills, billedNet, contract] =
       await Promise.all([
         this.procurement.getCost(identity, projectId),
         this.reconciliation.getForProject(identity, projectId),
@@ -84,7 +84,13 @@ export class ProjectFinanceOverviewService {
         this.repo.sumPostedRevenue(prisma, orgId, projectId),
         this.repo.countApprovedUnpostedBills(prisma, orgId, projectId),
         this.repo.sumPostedBillingNet(prisma, orgId, projectId),
+        this.repo.findMainContract(prisma, orgId, projectId),
       ]);
+
+    // The cost rollup knows a currency only from a budget, a cost entry or the project record. A
+    // project billed on a USD contract with none of those would print bare "200000.00" — the
+    // contract's currency is the project's money currency, so it fills the gap.
+    const currency = cost.position.currency ?? contract?.currency ?? null;
 
     const billingVariance = billedNet.minus(revenue);
     const billingReconciled = billingVariance.isZero();
@@ -113,9 +119,9 @@ export class ProjectFinanceOverviewService {
 
     return {
       projectId,
-      currency: cost.position.currency,
+      currency,
       financialsVisible: mayViewFinancials,
-      costPosition: cost.position,
+      costPosition: { ...cost.position, currency },
       accountingPosition,
       controls: {
         reconciliation: this.reconciliationStatus(reconciliation),

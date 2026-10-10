@@ -1708,6 +1708,7 @@ export class CommercialService {
       const position = computeReceivablePosition({
         invoices: overviewData.invoices,
         postedCreditNotesSum: overviewData.postedCreditNotesSum,
+        postedCreditNotesNetSum: overviewData.postedCreditNotesNetSum,
         collectedSum: overviewData.collectedSum,
         today,
       });

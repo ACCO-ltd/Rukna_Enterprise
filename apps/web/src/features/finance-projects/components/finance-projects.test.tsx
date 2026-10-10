@@ -35,6 +35,7 @@ function row(over: Partial<FinancePortfolioRow> = {}): FinancePortfolioRow {
     currency: 'USD',
     contractValue: '500000.00',
     billed: '160000.00',
+    billedExclTax: '160000.00',
     collected: '50000.00',
     outstanding: '110000.00',
     overdue: '90000.00',
@@ -54,6 +55,7 @@ function totalsFor(currency: string, projectCount: number, contractValue: string
     projectCount,
     contractValue,
     billed: '160000.00',
+    billedExclTax: '160000.00',
     collected: '50000.00',
     outstanding: '110000.00',
     overdue: '90000.00',
@@ -133,6 +135,37 @@ describe('FinanceProjectsList', () => {
     const group = await screen.findByRole('group', { name: 'Totals by currency' });
     expect(within(group).getByText('SOS · 1 project')).toBeInTheDocument();
     expect(within(group).getByText('USD · 2 projects')).toBeInTheDocument();
+  });
+
+  it('shows billed before tax, taken from the row — never the tax-inclusive figure', async () => {
+    api.getFinancePortfolio.mockResolvedValue(
+      response([row({ billed: '168000.00', billedExclTax: '160000.00' })]),
+    );
+    renderWithProviders(<FinanceProjectsList />, { permissions: [PERMISSION] });
+
+    expect(await screen.findAllByRole('columnheader', { name: /^Billed \(excl\. tax\)/ })).not.toHaveLength(0);
+    expect(screen.getAllByText('$160,000.00').length).toBeGreaterThan(0);
+    expect(screen.queryByText('$168,000.00')).toBeNull();
+  });
+
+  it('says "No cost yet" instead of a 100% margin over zero cost', async () => {
+    api.getFinancePortfolio.mockResolvedValue(response([row({ costToDate: '0.00', margin: 100 })]));
+    renderWithProviders(<FinanceProjectsList />, { permissions: [PERMISSION] });
+
+    expect((await screen.findAllByText('No cost yet')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('100%')).toBeNull();
+  });
+
+  it('folds projects with no contract into one line instead of a "No currency" bar of zeros', async () => {
+    api.getFinancePortfolio.mockResolvedValue(
+      response([row()], { totals: [totalsFor('USD', 1, '500000.00'), { ...totalsFor('USD', 5, '0.00'), currency: null }] }),
+    );
+    renderWithProviders(<FinanceProjectsList />, { permissions: [PERMISSION] });
+
+    const group = await screen.findByRole('group', { name: 'Totals by currency' });
+    expect(within(group).getByText('USD · 1 project')).toBeInTheDocument();
+    expect(within(group).getByText('5 projects have no contract yet.')).toBeInTheDocument();
+    expect(within(group).queryByText(/No currency/)).toBeNull();
   });
 
   it('opens a project in the Finance workspace', async () => {
