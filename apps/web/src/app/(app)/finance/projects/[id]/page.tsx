@@ -1,7 +1,7 @@
-import { FinanceOverviewView } from '@/features/finance/components/finance-overview-view';
+import { FinanceProjectDashboard } from '@/features/finance-projects/components/finance-project-dashboard';
 
-/** The same project Finance Overview, with its cost-control link kept inside Finance. */
+/** Finance → Projects → Overview: the project's finance dashboard (ADR-043). */
 export default async function FinanceProjectOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <FinanceOverviewView projectId={id} costControlHref={`/finance/projects/${id}/cost`} />;
+  return <FinanceProjectDashboard projectId={id} />;
 }

@@ -243,3 +243,42 @@ the existing project-access rule applies per row.
      no prefix.
 5. **Phase 5:** tidy-up — retire the redirect routes once bookmarks have aged out, role-seed
    review, and a rename-proof permission check for the role names project access still matches on.
+
+## Amendment — 2026-10-10: the Finance project workspace is a dashboard with three tabs
+
+**Status:** Accepted (owner: Abdulsalam, 2026-10-10). Phase 5 tidy-up, after a Finance → Projects
+audit found the project workspace hard to read: seven overlapping tabs (Overview, Billing, Cost &
+commitments, P&L, Payables, Payments, Cash flow), an Overview that repeated two tabs and left out
+billed / collected / owed, and no way to change project without going back to the list.
+
+**Decision.**
+
+- **Three tabs: Overview · Billing · Transactions.**
+  - **Overview** is a dashboard (`FinanceProjectDashboard`): a "Figures reconciled" badge over the
+    five controls, five key figures, one **Needs action** list (the Billing tab's own To do —
+    `BillingTodoCard`, the same rows and commands — plus bills to pay and controls that ask for
+    work), billing progress per payment stage, cash flow, cost against budget, recent activity.
+  - **Billing** is unchanged (the only home of the invoice commands, Phase 3).
+  - **Transactions** is one page with a view switcher in the URL (`?view=`): Supplier bills ·
+    Supplier payments · Client receipts · Journals · Ledger · P&L. Each list keeps its own API gate
+    (`manage:payable`, `manage:receivable`, `manage:journal`); Ledger and P&L ride on the
+    workspace's `view:financial-position`. The default is the first view the reader may open.
+- **Cost detail** (`/cost`) and the **cash-flow forecast** (`/cashflow`) are **drill-ins** from the
+  Overview's cards, not tabs: they lead back to Overview, and Overview stays the current tab.
+- **The header is a project picker** (`FinanceProjectPicker`): switching project keeps the view; the
+  portfolio is read only when the picker opens.
+- **Billed is shown before tax** everywhere in Finance (`billedExclTax`: invoice subtotals − credit
+  note net amounts — each document's own tax, never an assumed rate); Outstanding stays
+  tax-inclusive (what the client owes).
+
+- **The Finance → Projects landing** reads top-down: totals per currency, the three morning
+  queues (decision 5) as cards with their largest projects and the next step, two charts (billing
+  progress by project, who owes the most), then a slim six-column table (Project · Client ·
+  Contract · Billed % · Outstanding · Needs action) ordered with the projects that need finance
+  first. The queue switch and the exports (every column) are unchanged.
+
+**Unchanged.** No permission, endpoint or formula changed: every figure is an existing read, every
+command keeps its one home. Retired URLs redirect — `/finance/projects/:id/payables` →
+`transactions?view=bills`, `/payments` → `?view=receipts`, `/pl` → `?view=pl`; the older
+`/projects/:id/finance/profit-loss`, `/projects/:id/pl` → `?view=pl` and `…/finance/ledger` →
+`?view=ledger` (`redirects.ts` is still the one table).
