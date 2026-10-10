@@ -13,6 +13,7 @@ function row(over: Partial<FinancePortfolioRow> = {}): FinancePortfolioRow {
     currency: 'USD',
     contractValue: '100.00',
     billed: '50.00',
+    billedExclTax: '50.00',
     collected: '20.00',
     outstanding: '30.00',
     overdue: '0.00',

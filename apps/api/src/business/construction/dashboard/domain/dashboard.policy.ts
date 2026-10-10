@@ -140,10 +140,12 @@ export function buildFigures(input: FigureInputs): DashboardFigures[] {
     const contractValue = active.reduce((sum, p) => sum.plus(p.contractValue ?? ZERO), ZERO);
     const invoices = openInvoices.filter((inv) => inv.currencyCode === currency);
     // Only the open-balance side of the position is read: credit notes and receipts are already
-    // inside each invoice's `outstandingAmount` (the AR subledger value).
+    // inside each invoice's `outstandingAmount` (the AR subledger value). The billed side (and so
+    // each invoice's subtotal) is not read here.
     const position = computeReceivablePosition({
-      invoices,
+      invoices: invoices.map((inv) => ({ ...inv, subtotal: ZERO })),
       postedCreditNotesSum: ZERO,
+      postedCreditNotesNetSum: ZERO,
       collectedSum: ZERO,
       today,
     });

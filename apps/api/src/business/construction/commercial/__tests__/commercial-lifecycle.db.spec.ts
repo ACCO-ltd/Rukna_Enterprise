@@ -367,6 +367,10 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
     it('A-03: M1 invoice has a postedJournalEntryId (AR journal was fired)', async () => {
       const inv = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: m1InvoiceId } });
       expect(inv.postedJournalEntryId).not.toBeNull();
+      // The journal names the invoice a reader knows, never its database id.
+      const journal = await prisma.journalEntry.findUniqueOrThrow({ where: { id: inv.postedJournalEntryId! } });
+      expect(journal.description).toBe(`Client invoice ${inv.invoiceNumber}`);
+      expect(journal.description).not.toContain(inv.id);
     });
   });
 
@@ -599,6 +603,13 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
 
       const inv = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: m3InvoiceId } });
       expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('45000.00');
+      // The receipt's journal names its number, never its database id.
+      const receipt = await prisma.paymentReceipt.findFirstOrThrow({
+        where: { organizationId: orgId, postingStatus: 'POSTED' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const journal = await prisma.journalEntry.findUniqueOrThrow({ where: { id: receipt.postedJournalEntryId! } });
+      expect(journal.description).toBe(`Customer receipt ${receipt.receiptNumber}`);
     });
   });
 

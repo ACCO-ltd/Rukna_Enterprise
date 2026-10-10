@@ -33,10 +33,10 @@ describe('retired project routes → their new home', () => {
   const routes: Array<{ route: string; render: () => Promise<unknown>; target: string }> = [
     { route: '/projects/:id/finance', render: () => FinancePage({ params: id }), target: '/finance/projects/p-1' },
     { route: '/projects/:id/finance/cost-control', render: () => CostControlPage({ params: id }), target: '/finance/projects/p-1/cost' },
-    { route: '/projects/:id/finance/profit-loss', render: () => ProfitLossPage({ params: id }), target: '/finance/projects/p-1/pl' },
-    { route: '/projects/:id/finance/ledger', render: () => LedgerPage({ params: id }), target: '/finance/projects/p-1/pl#ledger' },
+    { route: '/projects/:id/finance/profit-loss', render: () => ProfitLossPage({ params: id }), target: '/finance/projects/p-1/transactions?view=pl' },
+    { route: '/projects/:id/finance/ledger', render: () => LedgerPage({ params: id }), target: '/finance/projects/p-1/transactions?view=ledger' },
     { route: '/projects/:id/finance/ledger/bills/:billId', render: () => LedgerBillPage({ params: Promise.resolve({ id: 'p-1', billId: 'b-9' }) }), target: '/finance/accounting/bills/b-9' },
-    { route: '/projects/:id/pl', render: () => PlPage({ params: id }), target: '/finance/projects/p-1/pl' },
+    { route: '/projects/:id/pl', render: () => PlPage({ params: id }), target: '/finance/projects/p-1/transactions?view=pl' },
     { route: '/projects/:id/ipc', render: () => IpcPage({ params: id }), target: '/projects/p-1/commercial' },
     { route: '/projects/:id/contracts', render: () => ContractsPage({ params: id }), target: '/projects/p-1/commercial/contract' },
     { route: '/projects/:id/commercial/billing', render: () => CommercialBillingPage({ params: id }), target: '/finance/projects/p-1/billing' },
@@ -57,7 +57,7 @@ describe('query strings survive the redirect', () => {
     ).rejects.toThrow('NEXT_REDIRECT:/finance/projects/p-1/billing?filter=needsAction');
     await expect(
       LedgerPage({ params: id, searchParams: Promise.resolve({ from: '2026-01-01', tag: ['a', 'b'] }) }),
-    ).rejects.toThrow('NEXT_REDIRECT:/finance/projects/p-1/pl?from=2026-01-01&tag=a&tag=b#ledger');
+    ).rejects.toThrow('NEXT_REDIRECT:/finance/projects/p-1/transactions?view=ledger&from=2026-01-01&tag=a&tag=b');
   });
 
   it('withQuery leaves a target alone when there is no query', () => {

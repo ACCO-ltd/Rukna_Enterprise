@@ -195,6 +195,7 @@ export class FinancePortfolioService {
       const position = computeReceivablePosition({
         invoices: rec?.invoices ?? [],
         postedCreditNotesSum: rec?.postedCreditNotesSum ?? ZERO,
+        postedCreditNotesNetSum: rec?.postedCreditNotesNetSum ?? ZERO,
         collectedSum: rec?.collectedSum ?? ZERO,
         today,
       });
@@ -217,6 +218,7 @@ export class FinancePortfolioService {
         currency: contract?.currency ?? p.currency ?? null,
         contractValue: contract ? money(new Decimal(contract.contractValue.toString())) : null,
         billed: money(position.netBilled),
+        billedExclTax: money(position.netBilledExclTax),
         collected: money(position.collected),
         outstanding: money(position.outstanding),
         overdue: money(position.overdue),

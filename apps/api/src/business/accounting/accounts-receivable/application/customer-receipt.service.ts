@@ -145,12 +145,14 @@ export class CustomerReceiptService {
         });
       }
 
+      // Claimed before posting (same transaction) so the journal names the receipt's number.
+      const receiptNumber = await this.claimReceiptNumber(tx, orgId);
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
           accountingDate: receipt.accountingDate,
           documentDate: receipt.receiptDate,
-          description: `Customer Receipt — ${receipt.id}`,
+          description: `Customer receipt ${receiptNumber}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-003',
           sourceDocumentType: 'PAYMENT_RECEIPT',
@@ -167,7 +169,6 @@ export class CustomerReceiptService {
       // Everything below runs on `tx`, with the journal entry: it used the outer client before, so
       // a failure part-way could leave a POSTED receipt without its allocations (and the receipt row
       // locked by this transaction would block the outer client's allocation writes).
-      const receiptNumber = await this.claimReceiptNumber(tx, orgId);
       await this.receiptRepo.markPosted(
         tx as never, receipt.id, postResult.journalEntryId, userId,
         allocatedAmount, unallocatedAmount, receiptNumber,
@@ -642,12 +643,14 @@ export class CustomerReceiptService {
     }
 
     // 3. Post to GL inside same tx
+    // Claimed before posting (same transaction) so the journal names the receipt's number.
+    const receiptNumber = await this.claimReceiptNumber(tx, orgId);
     const postResult = await this.postingPort.post(
       {
         organizationId: orgId,
         accountingDate: receiptDate,
         documentDate: receiptDate,
-        description: `Customer Receipt — ${receipt.id}`,
+        description: `Customer receipt ${receiptNumber}`,
         currencyCode: dto.currency,
         eventType: 'EVT-AR-003',
         sourceDocumentType: 'PAYMENT_RECEIPT',
@@ -662,7 +665,6 @@ export class CustomerReceiptService {
     );
 
     // 4. Mark receipt POSTED, with its document number
-    const receiptNumber = await this.claimReceiptNumber(tx, orgId);
     await tx.paymentReceipt.update({
       where: { id: receipt.id },
       data: {

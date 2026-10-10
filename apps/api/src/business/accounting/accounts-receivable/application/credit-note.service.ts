@@ -331,12 +331,15 @@ export class CreditNoteService {
         contractId: invoice?.contractId ?? undefined,
       });
 
+      // Claimed before posting (same transaction) so the journal names the credit note's number.
+      const cnNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'CREDIT_NOTE');
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
           accountingDate: creditNote.accountingDate,
           documentDate: creditNote.accountingDate,
-          description: `Credit Note — ${creditNote.id}`,
+          description: `Credit note ${cnNum.formattedNumber}`,
           currencyCode: invoice?.currencyCode ?? 'USD',
           eventType: 'EVT-AR-007',
           sourceDocumentType: 'CREDIT_NOTE',
@@ -349,8 +352,6 @@ export class CreditNoteService {
         },
         tx as never,
       );
-
-      const cnNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'CREDIT_NOTE');
 
       // Update credit note
       const updatedCreditNote = await (tx as unknown as TenantPrisma).creditNote.update({

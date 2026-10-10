@@ -74,7 +74,7 @@ export class ProjectFinanceOverviewService {
     const orgId = identity.activeOrganizationId;
     const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
 
-    const [cost, reconciliation, readiness, budgets, period, revenue, unpostedBills, billedNet] =
+    const [cost, reconciliation, readiness, budgets, period, revenue, unpostedBills, billedNet, contract] =
       await Promise.all([
         this.procurement.getCost(identity, projectId),
         this.reconciliation.getForProject(identity, projectId),
@@ -84,7 +84,14 @@ export class ProjectFinanceOverviewService {
         this.repo.sumPostedRevenue(prisma, orgId, projectId),
         this.repo.countApprovedUnpostedBills(prisma, orgId, projectId),
         this.repo.sumPostedBillingNet(prisma, orgId, projectId),
+        this.repo.findMainContract(prisma, orgId, projectId),
       ]);
+
+    // The project's money currency: the live contract's, else what the cost rollup knows (budget,
+    // cost entry, project record). The same precedence as the Finance portfolio row
+    // (`contract?.currency ?? project.currency`), so the header and this page cannot disagree —
+    // and a project billed on a USD contract never prints a bare "200000.00".
+    const currency = contract?.currency ?? cost.position.currency ?? null;
 
     const billingVariance = billedNet.minus(revenue);
     const billingReconciled = billingVariance.isZero();
@@ -113,9 +120,9 @@ export class ProjectFinanceOverviewService {
 
     return {
       projectId,
-      currency: cost.position.currency,
+      currency,
       financialsVisible: mayViewFinancials,
-      costPosition: cost.position,
+      costPosition: { ...cost.position, currency },
       accountingPosition,
       controls: {
         reconciliation: this.reconciliationStatus(reconciliation),
@@ -253,7 +260,7 @@ export class ProjectFinanceOverviewService {
         severity: 'CRITICAL',
         title: 'Procurement and the general ledger disagree',
         detail: `Supplier-bill variance ${reconciliation.variance}. Project cost figures cannot be relied on until this is resolved.`,
-        href: `/finance/projects/${projectId}/pl#ledger`,
+        href: `/finance/projects/${projectId}/transactions?view=ledger`,
       });
     }
 
@@ -349,6 +356,8 @@ export class ProjectFinanceOverviewService {
       SUPPLIER_PAYMENT: 'Supplier payment',
       OPENING_BALANCE: 'Opening balance',
       YEAR_END_CLOSE: 'Year-end close',
+      CREDIT_NOTE: 'Credit note',
+      BUYER_ADVANCE: 'Buyer cash advance',
     };
 
     const rows: FinanceActivityRow[] = journals.map((j) => ({
