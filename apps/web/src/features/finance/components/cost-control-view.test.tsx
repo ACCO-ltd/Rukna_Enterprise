@@ -190,6 +190,21 @@ describe('CostControlView', () => {
     expect(screen.queryByText(/% used/i)).not.toBeInTheDocument();
   });
 
+  it('uses the fallback currency when the cost rollup knows none — "$", never a bare number', () => {
+    const base = cost();
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost({ position: { ...base.position, currency: null } })));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(budgets()));
+    const { unmount } = renderWithProviders(<CostControlView projectId="p1" />);
+    const actual = base.position.actual!;
+    const bare = Number(actual).toFixed(2);
+    expect(screen.getAllByText(bare).length).toBeGreaterThan(0);
+    unmount();
+
+    renderWithProviders(<CostControlView projectId="p1" fallbackCurrency="USD" />);
+    expect(screen.queryByText(bare)).toBeNull();
+    expect(screen.getAllByText(`$${Number(actual).toLocaleString('en-US', { minimumFractionDigits: 2 })}`).length).toBeGreaterThan(0);
+  });
+
   /**
    * A cost area committed beyond its budget is an overrun and the most important thing on the
    * screen. A bare negative reads as a formatting mistake, so it is marked by a word as well as

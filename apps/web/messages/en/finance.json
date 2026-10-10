@@ -254,7 +254,9 @@
       "PAYMENT_RECEIPT": "Receipt",
       "SUPPLIER_PAYMENT": "Supplier payment",
       "OPENING_BALANCE": "Opening balance",
-      "YEAR_END_CLOSE": "Year-end close"
+      "YEAR_END_CLOSE": "Year-end close",
+      "CREDIT_NOTE": "Credit note",
+      "BUYER_ADVANCE": "Buyer cash advance"
     },
     "empty": "No posted entries carry this project in this range.",
     "noMatches": "No entries on this page match your search.",
@@ -363,11 +365,7 @@
       "views": {
         "overview": "Overview",
         "billing": "Billing",
-        "cost": "Cost & commitments",
-        "pl": "P&L",
-        "payables": "Payables",
-        "payments": "Payments",
-        "cashflow": "Cash flow"
+        "transactions": "Transactions"
       },
       "picker": {
         "label": "Project",
@@ -383,23 +381,6 @@
       "noContract": "No contract yet",
       "noContractHint": "Billing starts once the signed contract is recorded on the project's Commercial tab.",
       "openCommercial": "Open Commercial"
-    },
-    "payables": {
-      "title": "Supplier bills",
-      "hint": "This project's supplier bills — a bill coded to the project on any line is included. Open a bill to approve, post or pay it.",
-      "noAccess": "You don't have access to supplier bills",
-      "noAccessHint": "Supplier bills need the Manage payables permission. Ask an administrator if you need it.",
-      "outstanding": "Outstanding"
-    },
-    "payments": {
-      "receipts": "Client receipts",
-      "receiptsHint": "Receipts allocated to an invoice of this project.",
-      "supplierPayments": "Supplier payments",
-      "supplierPaymentsHint": "Payments allocated to a supplier bill of this project.",
-      "journals": "Manual journals",
-      "journalsHint": "Journals with a line coded to this project.",
-      "noAccess": "You don't have access to project payments",
-      "noAccessHint": "Receipts, supplier payments and journals each need their own finance permission. Ask an administrator if you need one."
     },
     "redirect": {
       "opening": "Opening…"
@@ -487,6 +468,31 @@
         "noBudgetHint": "No cost budget is baselined, so cost is tracked but has nothing to measure against.",
         "spentOfBudget": "{percent}% of budget spent."
       }
+    },
+    "transactions": {
+      "label": "Transaction views",
+      "views": {
+        "bills": "Supplier bills",
+        "supplierPayments": "Supplier payments",
+        "receipts": "Client receipts",
+        "journals": "Journals",
+        "ledger": "Ledger",
+        "pl": "P&L"
+      },
+      "hints": {
+        "bills": "This project's supplier bills — a bill coded to the project on any line is included. Open a bill to approve, post or pay it.",
+        "supplierPayments": "Payments allocated to a supplier bill of this project.",
+        "receipts": "Receipts allocated to an invoice of this project.",
+        "journals": "Journals with a line coded to this project."
+      }
+    },
+    "drillIn": {
+      "back": "Overview",
+      "cashflowTitle": "Cash-flow forecast",
+      "cashflowDescription": "Money expected in and out of this project, by week or month."
+    },
+    "payables": {
+      "outstanding": "Outstanding"
     }
   },
   "eligibility": {

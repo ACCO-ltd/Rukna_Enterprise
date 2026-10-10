@@ -6,8 +6,11 @@
  * | ----------------------------------------------- | --------------------------------------------- |
  * | /projects/:id/finance                           | /finance/projects/:id                         |
  * | /projects/:id/finance/cost-control              | /finance/projects/:id/cost                    |
- * | /projects/:id/finance/profit-loss, /pl          | /finance/projects/:id/pl                      |
- * | /projects/:id/finance/ledger                    | /finance/projects/:id/pl#ledger               |
+ * | /projects/:id/finance/profit-loss, /pl          | /finance/projects/:id/transactions?view=pl    |
+ * | /projects/:id/finance/ledger                    | /finance/projects/:id/transactions?view=ledger |
+ * | /finance/projects/:id/pl (retired tab)          | /finance/projects/:id/transactions?view=pl    |
+ * | /finance/projects/:id/payables (retired tab)    | /finance/projects/:id/transactions?view=bills |
+ * | /finance/projects/:id/payments (retired tab)    | /finance/projects/:id/transactions?view=receipts |
  * | /projects/:id/finance/ledger/bills/:billId      | /finance/accounting/bills/:billId             |
  * | /projects/:id/commercial/billing(-collection)   | /finance/projects/:id/billing                 |
  * | /projects/:id/commercial/invoices/:invoiceId    | /finance/projects/:id/billing/invoices/:invoiceId (finance) or the Commercial contract view |
@@ -17,8 +20,11 @@
 export const financeProjectRedirects = {
   overview: (projectId: string) => `/finance/projects/${projectId}`,
   costControl: (projectId: string) => `/finance/projects/${projectId}/cost`,
-  profitLoss: (projectId: string) => `/finance/projects/${projectId}/pl`,
-  ledger: (projectId: string) => `/finance/projects/${projectId}/pl#ledger`,
+  profitLoss: (projectId: string) => `/finance/projects/${projectId}/transactions?view=pl`,
+  ledger: (projectId: string) => `/finance/projects/${projectId}/transactions?view=ledger`,
+  /** ADR-043 amendment (2026-10-10): the Transactions tab, optionally on one view. */
+  transactions: (projectId: string, view?: string) =>
+    `/finance/projects/${projectId}/transactions${view ? `?view=${view}` : ''}`,
   bill: (billId: string) => `/finance/accounting/bills/${billId}`,
   billing: (projectId: string) => `/finance/projects/${projectId}/billing`,
   invoice: (projectId: string, invoiceId: string) => `/finance/projects/${projectId}/billing/invoices/${invoiceId}`,

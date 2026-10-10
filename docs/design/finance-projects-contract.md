@@ -126,8 +126,11 @@ status, client, currency, **Open project** (→ `/projects/:id`). The picker rea
 | Overview | `/finance/projects/:id` | `FinanceProjectDashboard` (2026-10-10, replaces `FinanceOverviewView`) — see below |
 | Billing | `/billing` | `PaymentSchedulePanel mode="finance"` + `CommercialBillingView` — milestones with verified / ready-to-bill state, To do, prepare/issue invoice, send on WhatsApp, record payment, reminder, invoices, payments; invoice links → `/finance/projects/:id/billing/invoices/:invoiceId` (Phase 3; was the accounting invoice page) |
 | Invoice | `/billing/invoices/:invoiceId` | `ProjectInvoicePage` (Phase 3) — issue, send, record payment, credit note, collection notes, edit / delete draft; back → Billing |
-| Cost & commitments | `/cost` | `CostControlView` |
-| P&L | `/pl` | `ProfitLossView` + `LedgerView` (sources → accounting bill / invoice pages) |
+| Transactions | `/transactions?view=` | `FinanceProjectTransactions` (2026-10-10) — Supplier bills · Supplier payments · Client receipts · Journals · Ledger · P&L, each the accounting list fixed to the project and behind its own permission; replaces the Payables, Payments and P&L tabs (old routes redirect) |
+| *Drill-in:* Cost detail | `/cost` | `CostControlView` with `fallbackCurrency` = the contract's; reached from the Overview cost card, back → Overview |
+| *Drill-in:* Cash-flow forecast | `/cashflow` | `CashflowView` for the project; reached from the Overview cash-flow card, back → Overview |
+
+Three tabs only (ADR-043 amendment, 2026-10-10); drill-ins keep Overview current.
 
 A project outside the caller's portfolio reads as "Project not found".
 
@@ -139,7 +142,7 @@ No new figure and no new endpoint — only display ratios are computed in the br
 | --- | --- | --- |
 | Controls badge | Finance Overview `controls` + INFO `attention` | "Figures reconciled" when no control is `ATTENTION`, else "N checks to review"; the five control rows and INFO items open in a popover |
 | Key figures (5) | portfolio row `GET /finance/projects/:id` | Contract value · **Billed (excl. tax)** (`billedExclTax`, share of contract) · Collected (share of tax-inclusive `billed`) · **Outstanding (incl. tax)** (overdue amount + oldest age in danger) · Gross margin (`margin`; "No cost yet" when `costToDate` is 0; revenue from the Finance Overview). A share with no denominator is absent, never 0% |
-| Needs action | `BillingTodoCard` (the Billing tab's To do: same rows, same Prepare / Record payment / Send commands and dialogs) + extra rows: supplier bills to pay (`billsToPay`, → Payables) and WARNING/CRITICAL Finance Overview `attention` items (→ their `href`) | One list, one command per row |
+| Needs action | `BillingTodoCard` (the Billing tab's To do: same rows, same Prepare / Record payment / Send commands and dialogs) + extra rows: supplier bills to pay (`billsToPay`, → Transactions · Supplier bills) and WARNING/CRITICAL Finance Overview `attention` items (→ their `href`) | One list, one command per row |
 | Billing progress | `GET …/commercial/current-cycle` `paymentSchedule.installments` | Per stage: name, %, amount, `collectionStatus` pill, a bar split collected / billed-unpaid / not billed (`stageSegments`). Variation lines are counted, not drawn |
 | Cash flow | `GET /finance/cashflow?projectId&bucket=MONTH` | NOW + dated periods (later / undated stay in the full forecast); in (teal `chart-5`) vs out (violet `chart-4`); totals printed above the chart |
 | Cost against budget | Finance Overview `costPosition` | Budget · Committed to date · Actual (one ramp, light → dark); budget "Not baselined", never $0 |
@@ -254,9 +257,9 @@ permissions.
 
 | Where | What |
 | --- | --- |
-| `/finance/projects/:id/payables` (needs `manage:payable`) | the bills list filtered to the project (match, approval, posted, outstanding); rows open the accounting bill page, where the existing actions live |
+| `/finance/projects/:id/payables` (needs `manage:payable`) — *since 2026-10-10 the Transactions · Supplier bills view* | the bills list filtered to the project (match, approval, posted, outstanding); rows open the accounting bill page, where the existing actions live |
 | bill detail | "Why can't I pay this?" — the eligibility steps with owners |
-| `/finance/projects/:id/payments` | receipts, supplier payments and journals of the project, each behind its list's permission |
+| `/finance/projects/:id/payments` — *since 2026-10-10 the Transactions views Supplier payments · Client receipts · Journals* | receipts, supplier payments and journals of the project, each behind its list's permission |
 | Billing tab / Commercial payment schedule | a blocked stage shows its reason and owner, with the steps folded |
 | receipts / supplier payments / journals lists | a project filter (`?projectId=`) |
 | purchase order detail | "Supplier bills & payments" (needs both gates above) |

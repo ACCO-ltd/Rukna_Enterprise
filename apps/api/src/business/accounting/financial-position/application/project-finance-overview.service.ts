@@ -259,7 +259,7 @@ export class ProjectFinanceOverviewService {
         severity: 'CRITICAL',
         title: 'Procurement and the general ledger disagree',
         detail: `Supplier-bill variance ${reconciliation.variance}. Project cost figures cannot be relied on until this is resolved.`,
-        href: `/finance/projects/${projectId}/pl#ledger`,
+        href: `/finance/projects/${projectId}/transactions?view=ledger`,
       });
     }
 
@@ -355,6 +355,8 @@ export class ProjectFinanceOverviewService {
       SUPPLIER_PAYMENT: 'Supplier payment',
       OPENING_BALANCE: 'Opening balance',
       YEAR_END_CLOSE: 'Year-end close',
+      CREDIT_NOTE: 'Credit note',
+      BUYER_ADVANCE: 'Buyer cash advance',
     };
 
     const rows: FinanceActivityRow[] = journals.map((j) => ({

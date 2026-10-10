@@ -244,7 +244,7 @@ describe('FinanceProjectDashboard — needs action', () => {
     expect(screen.getByRole('heading', { name: 'Needs action (3)' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Prepare invoice' })).toBeInTheDocument();
     expect(screen.getByText('2 supplier bills to pay')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Review bills' })).toHaveAttribute('href', '/finance/projects/p1/payables');
+    expect(screen.getByRole('link', { name: 'Review bills' })).toHaveAttribute('href', '/finance/projects/p1/transactions?view=bills');
     expect(screen.getByText('2 approved bills are not posted')).toBeInTheDocument();
     // "For info" rows sit behind the controls badge, not in the work list.
     expect(screen.queryByText('No cost budget')).toBeNull();

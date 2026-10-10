@@ -1,6 +1,15 @@
-import { FinanceProjectPayables } from '@/features/finance-projects/components/finance-project-payables';
+import { redirect } from 'next/navigation';
 
-export default async function FinanceProjectPayablesPage({ params }: { params: Promise<{ id: string }> }) {
+import { financeProjectRedirects, withQuery, type RouteSearchParams } from '@/features/finance-projects/redirects';
+
+/** The retired Payables tab (ADR-043 amendment, 2026-10-10) — now a Transactions view. */
+export default async function LegacyFinanceProjectPayablesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<RouteSearchParams>;
+}) {
   const { id } = await params;
-  return <FinanceProjectPayables projectId={id} />;
+  redirect(withQuery(financeProjectRedirects.transactions(id, 'bills'), await searchParams));
 }

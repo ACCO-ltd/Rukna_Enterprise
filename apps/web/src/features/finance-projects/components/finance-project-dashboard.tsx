@@ -32,6 +32,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
 import { useCanViewProjectPayables, useCashflowForecast, useFinanceProject } from '../hooks';
+import { financeProjectRedirects } from '../redirects';
 import { InOutBars, SegmentBar, ValueBar } from './finance-project-charts';
 
 type Locale = 'en' | 'ar';
@@ -296,7 +297,7 @@ function NeedsAction({
       amount: <MoneyDisplay value={row.billsToPay.amount} hidden={row.billsToPay.amount === null} hiddenLabel={t('restricted')} />,
       action: canPayables ? (
         <Button asChild size="sm" variant="outline">
-          <Link href={`/finance/projects/${projectId}/payables`}>{t('reviewBills')}</Link>
+          <Link href={financeProjectRedirects.transactions(projectId, 'bills')}>{t('reviewBills')}</Link>
         </Button>
       ) : null,
     });

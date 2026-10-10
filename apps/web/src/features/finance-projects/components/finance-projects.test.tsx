@@ -199,7 +199,7 @@ describe('FinanceProjectsList', () => {
 });
 
 describe('FinanceProjectWorkspace', () => {
-  it('names the project and links back to the construction workspace, with the four tabs', async () => {
+  it('names the project and links back to the construction workspace, with the three tabs', async () => {
     nav.pathname = '/finance/projects/p1/billing';
     api.getFinanceProject.mockResolvedValue({ item: row(), moneyVisible: true, marginVisible: true, asOf: '2026-10-03T00:00:00.000Z' });
     renderWithProviders(
@@ -214,8 +214,10 @@ describe('FinanceProjectWorkspace', () => {
     const tabs = screen.getByRole('navigation', { name: 'Project finance' });
     expect(within(tabs).getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/finance/projects/p1');
     expect(within(tabs).getByRole('link', { name: 'Billing' })).toHaveAttribute('aria-current', 'page');
-    expect(within(tabs).getByRole('link', { name: 'Cost & commitments' })).toHaveAttribute('href', '/finance/projects/p1/cost');
-    expect(within(tabs).getByRole('link', { name: 'P&L' })).toHaveAttribute('href', '/finance/projects/p1/pl');
+    expect(within(tabs).getByRole('link', { name: 'Transactions' })).toHaveAttribute('href', '/finance/projects/p1/transactions');
+    // Cost and P&L are no longer tabs: a drill-in and a Transactions view.
+    expect(within(tabs).queryByRole('link', { name: 'Cost & commitments' })).toBeNull();
+    expect(within(tabs).queryByRole('link', { name: 'P&L' })).toBeNull();
     expect(screen.getByText('tab body')).toBeInTheDocument();
     // The header reads one project, never the whole portfolio.
     expect(api.getFinanceProject).toHaveBeenCalledWith('p1');
