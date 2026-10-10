@@ -128,7 +128,7 @@ export function InOutBars({
 export interface ShareSegment {
   /** Share of the whole, 0–100. */
   percent: number;
-  colour: 'chart-1' | 'chart-3' | 'track';
+  colour: 'chart-1' | 'chart-3' | 'chart-4' | 'track';
 }
 
 /**
