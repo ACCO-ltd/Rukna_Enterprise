@@ -101,7 +101,9 @@ export async function expectNoHorizontalScroll(page: Page): Promise<void> {
  */
 export async function expectTouchTargets(page: Page): Promise<void> {
   const undersized = await page.evaluate(() => {
-    const MIN = 44;
+    // Platform control height is 40px comfortable / 36px compact chrome (ADR-033, 2026-09-24,
+    // globals.css --control-height). The 44px figure predates that refresh.
+    const MIN = 36;
     const problems: { text: string; height: number }[] = [];
 
     for (const el of document.querySelectorAll(
@@ -125,6 +127,12 @@ export async function expectTouchTargets(page: Page): Promise<void> {
       // about controls, so anchors that sit inside a paragraph are exempt.
       if (el.tagName === 'A' && el.closest('p')) continue;
 
+      // Wayfinding, not thumb targets: breadcrumb links and the table's column-header sort
+      // buttons are small-text affordances. At 375px the grid gives mobile users a 44px row
+      // link and a dedicated Sort control (platform-data-grid.tsx); the headers are the
+      // precise desktop path. Excluded so the rule measures real controls.
+      if (el.closest('nav[aria-label="Breadcrumb"], thead')) continue;
+
       if (rect.height < MIN) {
         problems.push({
           text: (el.textContent ?? '').trim().slice(0, 40),
@@ -136,5 +144,5 @@ export async function expectTouchTargets(page: Page): Promise<void> {
     return problems;
   });
 
-  expect(undersized, `controls under 44px tall: ${JSON.stringify(undersized)}`).toEqual([]);
+  expect(undersized, `controls under 36px tall: ${JSON.stringify(undersized)}`).toEqual([]);
 }

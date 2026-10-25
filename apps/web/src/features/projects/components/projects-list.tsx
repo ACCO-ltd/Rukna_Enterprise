@@ -106,8 +106,8 @@ export function ProjectsList() {
   const columns = useMemo(() => buildColumns(t, tTypes, locale, canViewFinancials), [t, tTypes, locale, canViewFinancials]);
 
   const statusFilter = (
-    <div className="flex flex-wrap gap-2">
-      <div className="relative min-w-44">
+    <div className="flex flex-wrap gap-2 min-w-0">
+      <div className="relative min-w-0 flex-1 basis-44">
         <Label htmlFor="project-status" className="sr-only">{t('filterByStatus')}</Label>
         <Select id="project-status" value={status} className="ps-10" onChange={(value) => setStatus(value as ProjectStatus | 'ALL')}>
           <option value="ALL">{t('allStatuses')}</option>
@@ -115,7 +115,7 @@ export function ProjectsList() {
         </Select>
         <Filter className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
       </div>
-      <div className="relative min-w-44">
+      <div className="relative min-w-0 flex-1 basis-44">
         <Label htmlFor="project-category" className="sr-only">{tTypes('display.filterByCategory')}</Label>
         <Select id="project-category" value={category} className="ps-10" onChange={(value) => setCategory(value as CategoryFilter)}>
           <option value="ALL">{tTypes('display.allCategories')}</option>

@@ -39,6 +39,7 @@ const TABS = [
   { label: 'Roles', slug: 'roles' },
   { label: 'Districts', slug: 'districts' },
   { label: 'Project subtypes', slug: 'project-subtypes' },
+  { label: 'Branding', slug: 'branding' },
   { label: 'Workflows', slug: 'workflows' },
   { label: 'Audit logs', slug: 'audit-logs' },
 ] as const;
@@ -82,6 +83,9 @@ test.describe('Administration workspace', () => {
   });
 
   test('draws the six screens as one tab row, in IA order', async ({ app }) => {
+    // The horizontal tab row is desktop chrome (it becomes a picker at 375px, covered separately);
+    // pin a desktop width so this runs meaningfully on the mobile project too.
+    await app.setViewportSize({ width: 1440, height: 900 });
     await app.goto('/admin/users');
 
     const tabs = app.getByRole('navigation', { name: NAV_LABEL }).getByRole('link');
@@ -89,6 +93,7 @@ test.describe('Administration workspace', () => {
   });
 
   test('moves the lit tab as you navigate, and keeps the workspace heading', async ({ app }) => {
+    await app.setViewportSize({ width: 1440, height: 900 });
     await app.goto('/admin/users');
     const nav = app.getByRole('navigation', { name: NAV_LABEL });
 
@@ -103,6 +108,9 @@ test.describe('Administration workspace', () => {
   });
 
   test('leaves one Administration row in the sidebar, with no second level', async ({ app }) => {
+    // The docked sidebar only mounts at desktop widths; pin one so the row is present on both
+    // the desktop and mobile Playwright projects (this is a desktop-sidebar assertion).
+    await app.setViewportSize({ width: 1440, height: 900 });
     await app.goto('/admin/users');
 
     const adminLinks = app.locator('aside a[href^="/admin"], nav a[href^="/admin"]');
