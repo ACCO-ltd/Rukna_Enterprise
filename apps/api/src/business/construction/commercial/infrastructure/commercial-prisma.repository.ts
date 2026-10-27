@@ -208,6 +208,10 @@ export class CommercialPrismaRepository {
         applicationId: true,
         certifiedTotal: true,
         currency: true,
+        createdAt: true,
+        // ADR-046 §5 — certificates are cumulative; the contract's certified-to-date is the
+        // effective certificate of its latest application, found by application number.
+        application: { select: { applicationNumber: true } },
         // `deductionType` as well as the amount: retention held and advance recovered are the
         // RETENTION / ADVANCE_RECOVERY slices of this same set, and deriving them here means
         // they can never disagree with the certified-net figure computed beside them.
@@ -511,6 +515,12 @@ export class CommercialPrismaRepository {
         documentStatus: true,
         postingStatus: true,
         totalAmount: true,
+        // ADR-046 §5 — what an IPC invoice billed of the certificate (null gross = raised before).
+        subtotal: true,
+        certifiedGrossAmount: true,
+        retentionAmount: true,
+        advanceRecoveryAmount: true,
+        otherDeductionsAmount: true,
         // Carried so the Receivables panel can list what is still owed and when it was due,
         // without a second round trip. `outstandingAmount` is maintained by the AR allocation
         // path — it is the settlement truth ADR-017 nominates.

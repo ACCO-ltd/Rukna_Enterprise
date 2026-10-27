@@ -39,6 +39,13 @@ import {
   type InvoiceDocumentSnapshot,
 } from '../../accounting-core/infrastructure/invoice-document-policy.repository.js';
 import { buildInvoiceLines } from './document-pdf/invoice-view-model.js';
+import {
+  billedToDate,
+  ipcInvoicePeriod,
+  IpcInvoicePeriodError,
+  type IpcAmounts,
+  type IpcInvoicePeriod,
+} from '../domain/ipc-invoice-period.policy.js';
 import { loadInvoiceLineSource, loadInvoiceProject } from './document-pdf/invoice-document-data.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
@@ -300,14 +307,56 @@ export class ClientInvoiceService {
       where: { id: dto.ipcId, organizationId: orgId },
       include: {
         application: { include: { contract: { include: { client: true } } } },
+        deductions: { select: { deductionType: true, amount: true } },
       },
     });
     if (!ipc) throw new NotFoundException(`IPC ${dto.ipcId} not found`);
     if (!ipc.isEffective) throw new BadRequestException(`IPC ${dto.ipcId} is not effective yet`);
 
     const contract = ipc.application.contract;
-    const subtotal = new Decimal(ipc.certifiedTotal.toString());
+
+    // ADR-046 §5 — the certificate is cumulative to date; bill only what earlier IPC invoices on
+    // this contract have not already billed, with retention and advance recovery netted.
+    const earlier = await this.repo.findEarlierIpcInvoices(prisma, orgId, contract.id);
+    let period: IpcInvoicePeriod;
+    try {
+      period = ipcInvoicePeriod(
+        certificateToDate(ipc.certifiedTotal, ipc.deductions),
+        billedToDate(
+          earlier.map((inv) => ({
+            certifiedGrossAmount:
+              inv.certifiedGrossAmount === null ? null : new Decimal(inv.certifiedGrossAmount.toString()),
+            subtotal: new Decimal(inv.subtotal.toString()),
+            retentionAmount: new Decimal(inv.retentionAmount.toString()),
+            advanceRecoveryAmount: new Decimal(inv.advanceRecoveryAmount.toString()),
+            otherDeductionsAmount: new Decimal(inv.otherDeductionsAmount.toString()),
+            creditedNet: inv.creditNotes.reduce(
+              (sum, cn) => sum.plus(cn.netAmount.toString()),
+              new Decimal(0),
+            ),
+          })),
+        ),
+      );
+    } catch (err) {
+      if (err instanceof IpcInvoicePeriodError) {
+        throw new BadRequestException({ code: err.code, message: err.message });
+      }
+      throw err;
+    }
+
+    const subtotal = period.revenue;
     const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
+    // Amount due = revenue + tax − what the client holds back this period.
+    const amountDue = tax.totalAmount.minus(period.retention).minus(period.advanceRecovery);
+    if (!amountDue.gt(0)) {
+      throw new BadRequestException({
+        code: 'IPC_AMOUNT_DUE_NOT_POSITIVE',
+        message:
+          `Retention (${period.retention.toFixed(2)}) and advance recovery ` +
+          `(${period.advanceRecovery.toFixed(2)}) leave nothing due on this period's ` +
+          `${tax.totalAmount.toFixed(2)}. Review the certificate's deductions.`,
+      });
+    }
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -322,9 +371,13 @@ export class ClientInvoiceService {
         currencyCode: ipc.currency,
         subtotal,
         vatAmount: tax.vatAmount,
-        totalAmount: tax.totalAmount,
+        totalAmount: amountDue,
         taxCodeId: tax.taxCodeId,
         taxRate: tax.taxRate,
+        certifiedGrossAmount: period.gross,
+        retentionAmount: period.retention,
+        advanceRecoveryAmount: period.advanceRecovery,
+        otherDeductionsAmount: period.other,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -736,6 +789,19 @@ export class ClientInvoiceService {
       );
     }
 
+    // ADR-046 §5 — what an IPC invoice holds back this period is an asset (retention) or clears the
+    // client's advance, never lost: the AR debit is the amount due, and these debits make up the
+    // difference to revenue + tax. Resolved only when present, so a chart without a retention
+    // account (ADR-040: ACCO uses none) posts every other invoice unchanged.
+    const retentionAmount = new Decimal(invoice.retentionAmount.toString());
+    const advanceRecoveryAmount = new Decimal(invoice.advanceRecoveryAmount.toString());
+    const retentionAccount = retentionAmount.gt(0)
+      ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'RETENTION_RECEIVABLE')
+      : null;
+    const clientAdvanceAccount = advanceRecoveryAmount.gt(0)
+      ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'CLIENT_ADVANCE_LIABILITY')
+      : null;
+
     await this.sequenceRepo.ensureSequence(outerPrisma as never, orgId, 'CLIENT_INVOICE', 'INV-');
 
     const runPost = async (activeTx: Prisma.TransactionClient) => {
@@ -766,6 +832,27 @@ export class ClientInvoiceService {
           accountId: (vatAccount as AccountWithCurrentVersion).id,
           debitAmount: new Decimal(0),
           creditAmount: vatAmount,
+        });
+      }
+
+      if (retentionAccount) {
+        lines.push({
+          accountId: retentionAccount.id,
+          debitAmount: retentionAmount,
+          creditAmount: new Decimal(0),
+          clientId: invoice.clientId,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
+        });
+      }
+      if (clientAdvanceAccount) {
+        lines.push({
+          accountId: clientAdvanceAccount.id,
+          debitAmount: advanceRecoveryAmount,
+          creditAmount: new Decimal(0),
+          clientId: invoice.clientId,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
         });
       }
 
@@ -1049,6 +1136,8 @@ export class ClientInvoiceService {
       subtotal: invoice.subtotal.toString(),
       vatAmount: invoice.vatAmount.toString(),
       taxRatePercent: invoice.taxRate.toString(),
+      retentionAmount: invoice.retentionAmount.toString(),
+      advanceRecoveryAmount: invoice.advanceRecoveryAmount.toString(),
       totalAmount: invoice.totalAmount.toString(),
       client: {
         name: client?.name ?? snapshot.clientName ?? 'Client',
@@ -1098,4 +1187,28 @@ export class ClientInvoiceService {
 
     return file.id;
   }
+}
+
+/**
+ * ADR-046 §5 — a certificate's figures to date: gross and its deductions split the way the IPC
+ * reconciliation policy splits them (RETENTION, ADVANCE_RECOVERY, everything else).
+ */
+function certificateToDate(
+  certifiedTotal: { toString(): string },
+  deductions: readonly { deductionType: string; amount: { toString(): string } }[],
+): IpcAmounts {
+  const toDate: IpcAmounts = {
+    gross: new Decimal(certifiedTotal.toString()),
+    retention: new Decimal(0),
+    advanceRecovery: new Decimal(0),
+    other: new Decimal(0),
+  };
+  for (const ded of deductions) {
+    const amount = new Decimal(ded.amount.toString());
+    if (ded.deductionType === 'RETENTION') toDate.retention = toDate.retention.plus(amount);
+    else if (ded.deductionType === 'ADVANCE_RECOVERY') {
+      toDate.advanceRecovery = toDate.advanceRecovery.plus(amount);
+    } else toDate.other = toDate.other.plus(amount);
+  }
+  return toDate;
 }

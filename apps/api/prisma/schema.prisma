@@ -2849,6 +2849,15 @@ model ClientInvoice {
   taxRate                Decimal          @default(0) @map("tax_rate") @db.Decimal(7, 4)
   totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
   outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
+  // ADR-046 §5 — the period breakdown of an IPC invoice. A certificate's figures are cumulative to
+  // date; the invoice bills them minus what earlier IPC invoices on the contract already billed.
+  // certifiedGrossAmount is null on every non-IPC invoice (and on IPC invoices raised before this).
+  // For an IPC invoice: subtotal = certifiedGross − otherDeductions (revenue and tax base) and
+  // totalAmount = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due).
+  certifiedGrossAmount   Decimal?         @map("certified_gross_amount") @db.Decimal(18, 2)
+  retentionAmount        Decimal          @default(0) @map("retention_amount") @db.Decimal(18, 2)
+  advanceRecoveryAmount  Decimal          @default(0) @map("advance_recovery_amount") @db.Decimal(18, 2)
+  otherDeductionsAmount  Decimal          @default(0) @map("other_deductions_amount") @db.Decimal(18, 2)
   paymentTerms           String?          @map("payment_terms")
   notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
@@ -4236,6 +4245,8 @@ enum AccountSubtype {
   // Assets
   CASH_AND_BANK
   ACCOUNTS_RECEIVABLE
+  // ADR-046 §5 — retention the client holds back on IPC invoices until its release invoice.
+  RETENTION_RECEIVABLE
   // Unallocated client receipts — liability to client pending invoice allocation (Correction 1)
   UNAPPLIED_CLIENT_RECEIPTS
   // Advance paid to supplier before bill allocation (Correction 2)

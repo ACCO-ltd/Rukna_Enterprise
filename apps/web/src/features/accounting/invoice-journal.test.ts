@@ -210,3 +210,50 @@ describe('planInvoicePost — when the chart cannot answer', () => {
     expect(result.ok).toBe(true);
   });
 });
+
+// ADR-046 §5 — an IPC invoice that holds back retention and recovers an advance. Amount due =
+// subtotal + vat − retention − advance recovery; the two hold-backs are debits of their own.
+describe('planInvoicePost — retention and advance recovery', () => {
+  const withHoldBacks = {
+    subtotal: '150000.00',
+    vatAmount: '0.00',
+    retentionAmount: '7500.00',
+    advanceRecoveryAmount: '15000.00',
+    totalAmount: '127500.00',
+  };
+  const fullChart = () => [
+    ...chart(),
+    account('11100', { name: 'Retention Receivable', accountSubtype: 'RETENTION_RECEIVABLE' }),
+    account('21000', { name: 'Advances received from clients', accountSubtype: 'CLIENT_ADVANCE_LIABILITY' }),
+  ];
+
+  it('needs the retention and client advance accounts only when the invoice holds them back', () => {
+    expect(rolesForInvoice(invoice({ ...withHoldBacks }))).toEqual([
+      'AR_CONTROL', 'REVENUE', 'RETENTION_RECEIVABLE', 'CLIENT_ADVANCE',
+    ]);
+    expect(rolesForInvoice(invoice(zeroVat))).toEqual(['AR_CONTROL', 'REVENUE']);
+  });
+
+  it('debits AR with the amount due and the hold-backs separately, and balances', () => {
+    const result = planInvoicePost(invoice(withHoldBacks), fullChart(), 'en');
+    if (!result.ok) throw new Error('expected a plan');
+
+    expect(result.plan.lines).toEqual([
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '127500.00', credit: null },
+      { accountCode: '11100', accountName: 'Retention Receivable', debit: '7500.00', credit: null },
+      { accountCode: '21000', accountName: 'Advances received from clients', debit: '15000.00', credit: null },
+      { accountCode: '42600', accountName: 'Project Income', debit: null, credit: '150000.00' },
+    ]);
+    expect(result.plan.totalDebit).toBe('150000.00');
+    expect(result.plan.totalCredit).toBe('150000.00');
+    expect(result.plan.balanced).toBe(true);
+  });
+
+  it('refuses when the chart has no retention account', () => {
+    const result = planInvoicePost(invoice(withHoldBacks), chart(), 'en');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problems.map((p) => p.role)).toEqual(['RETENTION_RECEIVABLE', 'CLIENT_ADVANCE']);
+  });
+});

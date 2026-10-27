@@ -491,6 +491,12 @@ export interface ClientInvoice {
   taxCodeId?: string | null;
   /** The rate it was raised at, as a PERCENT snapshot ("5", "5.0000", "0"). */
   taxRate?: string | null;
+  /**
+   * ADR-046 §5 — on an IPC invoice, what the client holds back this period. `totalAmount` (amount
+   * due) = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount. "0" on other invoices.
+   */
+  retentionAmount?: string;
+  advanceRecoveryAmount?: string;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
   paymentTerms: string | null;

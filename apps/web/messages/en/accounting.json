@@ -97,6 +97,7 @@
       "subtypeName": {
         "CASH_AND_BANK": "Cash and bank",
         "ACCOUNTS_RECEIVABLE": "Accounts receivable",
+        "RETENTION_RECEIVABLE": "Retention receivable",
         "SUPPLIER_ADVANCE": "Supplier advance",
         "INVENTORY": "Inventory",
         "FIXED_ASSETS": "Fixed assets",
@@ -809,7 +810,9 @@
         "VAT_OUTPUT": "Output sales tax",
         "UNAPPLIED_RECEIPTS": "Unapplied Receipts",
         "AP_CONTROL": "Accounts Payable",
-        "SUPPLIER_ADVANCE": "Supplier Advance"
+        "SUPPLIER_ADVANCE": "Supplier Advance",
+        "RETENTION_RECEIVABLE": "Retention Receivable",
+        "CLIENT_ADVANCE": "Client Advance"
       }
     },
     "billingCard": {

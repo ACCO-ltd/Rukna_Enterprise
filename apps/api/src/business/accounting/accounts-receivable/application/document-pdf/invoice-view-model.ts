@@ -64,6 +64,12 @@ export interface InvoiceDocumentInput {
    * from the amounts only when absent: tax is rounded to cents, so a derived rate can read 5.0105%.
    */
   taxRatePercent?: string | null;
+  /**
+   * ADR-046 §5 — what an IPC invoice holds back this period (decimal strings; absent or "0" on other
+   * invoices). Shown as "Less" rows between the tax and Total Due, which is the amount due net of them.
+   */
+  retentionAmount?: string;
+  advanceRecoveryAmount?: string;
   client: {
     name: string;
     address: string | null;
@@ -160,6 +166,7 @@ export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewM
     totals: [
       { label: 'Subtotal', value: money(input.subtotal) },
       { label: salesTaxLabel(input), value: money(input.vatAmount) },
+      ...holdBackRows(input, money),
     ],
     total: { label: 'Total Due', value: money(input.totalAmount) },
     payment: input.showBankDetails ? paymentCard(input) : null,
@@ -379,4 +386,19 @@ export function buildInvoiceLines(source: InvoiceLineSource): InvoiceDocumentLin
   }
 
   return single(source.description, source.contractNumber ? `Contract ${source.contractNumber}` : null);
+}
+
+/** ADR-046 §5 — the "Less retention" / "Less advance recovery" rows, only when non-zero. */
+function holdBackRows(
+  input: Pick<InvoiceDocumentInput, 'retentionAmount' | 'advanceRecoveryAmount'>,
+  money: (value: string) => string,
+): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  for (const [label, amount] of [
+    ['Less retention', input.retentionAmount],
+    ['Less advance recovery', input.advanceRecoveryAmount],
+  ] as const) {
+    if (amount && new Decimal(amount).gt(0)) rows.push({ label, value: `−${money(amount)}` });
+  }
+  return rows;
 }

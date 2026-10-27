@@ -8,9 +8,11 @@ import type { Account, ClientInvoice, PostInvoicePayload } from './types';
 /**
  * ─── The journal posting an invoice will write ──────────────────────────────────
  *
- * `client-invoice.service.ts:155-186` builds exactly three lines, and never more:
+ * `ClientInvoiceService.post` builds these lines:
  *
- *   Dr  Accounts Receivable    totalAmount
+ *   Dr  Accounts Receivable    totalAmount              (the amount due)
+ *   Dr  Retention Receivable   retentionAmount          ← IPC invoices holding retention (ADR-046 §5)
+ *   Dr  Client Advance         advanceRecoveryAmount    ← IPC invoices recovering an advance
  *     Cr  Revenue                          subtotal
  *     Cr  Output VAT                       vatAmount    ← only when vatAmount > 0
  *
@@ -40,8 +42,8 @@ export interface InvoicePostPlan {
   totalDebit: string;
   totalCredit: string;
   /**
-   * Always true for a well-formed invoice, since `total = subtotal + vat` is enforced at
-   * creation. Surfaced anyway: if it is ever false the invoice row itself is inconsistent, and
+   * Always true for a well-formed invoice, since `total + retention + advance recovery =
+   * subtotal + vat` is enforced at creation. Surfaced anyway: if it is ever false the invoice row itself is inconsistent, and
    * posting a journal the engine will reject is worse than refusing here.
    */
   balanced: boolean;
@@ -64,9 +66,21 @@ export function hasVat(invoice: ClientInvoice): boolean {
  * chart that is perfectly adequate for the invoice in hand.
  */
 export function rolesForInvoice(invoice: ClientInvoice): PostingRole[] {
-  return hasVat(invoice)
-    ? ['AR_CONTROL', 'REVENUE', 'VAT_OUTPUT']
-    : ['AR_CONTROL', 'REVENUE'];
+  const roles: PostingRole[] = ['AR_CONTROL', 'REVENUE'];
+  if (hasVat(invoice)) roles.push('VAT_OUTPUT');
+  if (retentionMinor(invoice) > 0) roles.push('RETENTION_RECEIVABLE');
+  if (advanceRecoveryMinor(invoice) > 0) roles.push('CLIENT_ADVANCE');
+  return roles;
+}
+
+/** ADR-046 §5 — retention an IPC invoice holds back, in minor units (0 on other invoices). */
+function retentionMinor(invoice: ClientInvoice): number {
+  return toMinorUnits(invoice.retentionAmount ?? '0', MONEY_SCALE);
+}
+
+/** ADR-046 §5 — advance an IPC invoice recovers, in minor units (0 on other invoices). */
+function advanceRecoveryMinor(invoice: ClientInvoice): number {
+  return toMinorUnits(invoice.advanceRecoveryAmount ?? '0', MONEY_SCALE);
 }
 
 /**
@@ -114,15 +128,35 @@ export function planInvoicePost(
     });
   }
 
+  // Retention and advance recovery debits sit after the AR line, as the server writes them.
+  const holdBackLines: JournalPreviewLine[] = [];
+  let heldBackMinor = 0;
+  for (const [role, minor] of [
+    ['RETENTION_RECEIVABLE', retentionMinor(invoice)],
+    ['CLIENT_ADVANCE', advanceRecoveryMinor(invoice)],
+  ] as const) {
+    const account = resolved.get(role);
+    if (!account || minor <= 0) continue;
+    heldBackMinor += minor;
+    holdBackLines.push({
+      accountCode: account.code,
+      accountName: accountName(account, locale),
+      debit: fromMinorUnits(minor, MONEY_SCALE),
+      credit: null,
+    });
+  }
+  lines.splice(1, 0, ...holdBackLines);
+
+  const debitMinor = totalMinor + heldBackMinor;
   const creditMinor = subtotalMinor + (vat ? vatMinor : 0);
 
   return {
     ok: true,
     plan: {
       lines,
-      totalDebit: fromMinorUnits(totalMinor, MONEY_SCALE),
+      totalDebit: fromMinorUnits(debitMinor, MONEY_SCALE),
       totalCredit: fromMinorUnits(creditMinor, MONEY_SCALE),
-      balanced: totalMinor === creditMinor,
+      balanced: debitMinor === creditMinor,
       payload: {
         arAccountCode: ar.code,
         revenueAccountCode: revenue.code,

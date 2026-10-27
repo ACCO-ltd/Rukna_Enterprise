@@ -70,13 +70,26 @@ Pre-conditions:
   AccountingPeriod covering accountingDate is OPEN or REOPENED
   PostingRuleVersion for CLIENT_INVOICE.POSTED v1 is ACTIVE for accountingDate
   PostingProfile PROJECT_REVENUE v1 resolves accountId for accountingDate
-  Lines balance: totalAmount (DR) = subtotal (CR) + vatAmount (CR)
+  Lines balance: totalAmount (DR) + retentionAmount (DR) + advanceRecoveryAmount (DR)
+                 = subtotal (CR) + vatAmount (CR)
+
+IPC invoices (ADR-046 §5): the certificate is cumulative to date; the invoice bills the period —
+certificate to date minus what earlier IPC invoices on the contract billed (credit notes netted).
+  subtotal              = period gross − period other deductions   (revenue, tax base)
+  retentionAmount       = period retention
+  advanceRecoveryAmount = period advance recovery
+  totalAmount           = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due)
+Every other invoice carries zero retention and advance recovery, so totalAmount = subtotal + vat.
 ```
 
 ```
 JOURNAL LINES
 
 Dr  Accounts Receivable   totalAmount   ACCOUNT_SUBTYPE: ACCOUNTS_RECEIVABLE
+                                         dim: clientId, projectId, contractId
+Dr  Retention Receivable   retentionAmount        ACCOUNT_SUBTYPE: RETENTION_RECEIVABLE  (only when > 0)
+                                         dim: clientId, projectId, contractId
+Dr  Advances received from clients  advanceRecoveryAmount  ACCOUNT_SUBTYPE: CLIENT_ADVANCE_LIABILITY (only when > 0)
                                          dim: clientId, projectId, contractId
 Cr  Project Revenue        subtotal      POSTING_PROFILE: PROJECT_REVENUE → accountId @ accountingDate
                                          dim: projectId, departmentId

@@ -25,6 +25,11 @@ export interface CreateClientInvoiceData {
   paymentTerms?: string;
   billingAddressSnapshot: object;
   createdBy: string;
+  /** ADR-046 §5 — the period breakdown of an IPC invoice (omitted by every other source). */
+  certifiedGrossAmount?: Decimal;
+  retentionAmount?: Decimal;
+  advanceRecoveryAmount?: Decimal;
+  otherDeductionsAmount?: Decimal;
 }
 
 /**
@@ -63,6 +68,83 @@ export class ClientInvoiceRepository {
 
   findByIpc(prisma: TenantPrisma, organizationId: string, ipcId: string): Promise<ClientInvoice | null> {
     return prisma.clientInvoice.findFirst({ where: { sourceIpcId: ipcId, organizationId } });
+  }
+
+  /**
+   * ADR-046 §5 — the IPC invoices a contract has already raised, with what each billed and the net
+   * of its posted credit notes. Drafts count (they will bill when posted); cancelled and reversed
+   * invoices billed nothing.
+   */
+  findEarlierIpcInvoices(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.clientInvoice.findMany({
+      where: {
+        organizationId,
+        contractId,
+        sourceIpcId: { not: null },
+        documentStatus: { not: 'CANCELLED' },
+        postingStatus: { not: 'REVERSED' },
+      },
+      select: {
+        id: true,
+        certifiedGrossAmount: true,
+        subtotal: true,
+        retentionAmount: true,
+        advanceRecoveryAmount: true,
+        otherDeductionsAmount: true,
+        creditNotes: { where: { postingStatus: 'POSTED' }, select: { netAmount: true } },
+      },
+    });
+  }
+
+  /**
+   * ADR-046 §5 — for the over-billing check: every contract with posted IPC invoices, those
+   * invoices (with posted credit notes) and the contract's latest effective certificate (highest
+   * application number, then newest — certificates are cumulative).
+   */
+  async findIpcBillingByContract(prisma: TenantPrisma, organizationId: string) {
+    const invoices = await prisma.clientInvoice.findMany({
+      where: { organizationId, sourceIpcId: { not: null }, contractId: { not: null }, postingStatus: 'POSTED' },
+      select: {
+        contractId: true,
+        certifiedGrossAmount: true,
+        subtotal: true,
+        retentionAmount: true,
+        advanceRecoveryAmount: true,
+        otherDeductionsAmount: true,
+        creditNotes: { where: { postingStatus: 'POSTED' }, select: { netAmount: true } },
+      },
+    });
+    const contractIds = [...new Set(invoices.map((inv) => inv.contractId!))];
+    if (contractIds.length === 0) return [];
+
+    const [contracts, certificates] = await Promise.all([
+      prisma.contract.findMany({
+        where: { organizationId, id: { in: contractIds } },
+        select: { id: true, contractNumber: true, projectId: true, clientId: true, currency: true },
+      }),
+      prisma.interimPaymentCertificate.findMany({
+        where: { organizationId, isEffective: true, application: { contractId: { in: contractIds } } },
+        orderBy: [{ application: { applicationNumber: { sort: 'desc', nulls: 'last' } } }, { createdAt: 'desc' }],
+        select: {
+          certifiedTotal: true,
+          deductions: { select: { amount: true } },
+          application: { select: { contractId: true } },
+        },
+      }),
+    ]);
+
+    // Ordered latest-first, so the first certificate seen for a contract is its latest.
+    const latestByContract = new Map<string, (typeof certificates)[number]>();
+    for (const cert of certificates) {
+      if (!latestByContract.has(cert.application.contractId)) {
+        latestByContract.set(cert.application.contractId, cert);
+      }
+    }
+    return contracts.map((contract) => ({
+      ...contract,
+      invoices: invoices.filter((inv) => inv.contractId === contract.id),
+      latestCertificate: latestByContract.get(contract.id) ?? null,
+    }));
   }
 
   // ADR-023: one invoice per payment-schedule installment (idempotent milestone billing).
@@ -181,6 +263,10 @@ export class ClientInvoiceRepository {
         outstandingAmount: data.totalAmount,
         paymentTerms: data.paymentTerms ?? null,
         billingAddressSnapshot: data.billingAddressSnapshot,
+        certifiedGrossAmount: data.certifiedGrossAmount ?? null,
+        retentionAmount: data.retentionAmount ?? 0,
+        advanceRecoveryAmount: data.advanceRecoveryAmount ?? 0,
+        otherDeductionsAmount: data.otherDeductionsAmount ?? 0,
         documentStatus: 'DRAFT',
         postingStatus: 'NOT_POSTED',
         createdBy: data.createdBy,

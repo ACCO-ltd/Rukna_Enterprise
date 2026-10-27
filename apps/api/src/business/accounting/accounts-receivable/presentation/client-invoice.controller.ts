@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { ClientInvoiceService } from '../application/client-invoice.service.js';
+import { IpcBillingCheckService } from '../application/ipc-billing-check.service.js';
 import { GenerateInvoiceFromIpcDto } from './dto/generate-invoice-from-ipc.dto.js';
 import { GenerateInvoiceFromInstallmentDto } from './dto/generate-invoice-from-installment.dto.js';
 import { GenerateInvoiceFromSeparateChargeDto } from './dto/generate-invoice-from-separate-charge.dto.js';
@@ -21,7 +22,10 @@ import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 @RequirePermissions(PERMISSIONS.receivablesManage)
 @Controller('invoices')
 export class ClientInvoiceController {
-  constructor(private readonly clientInvoiceService: ClientInvoiceService) {}
+  constructor(
+    private readonly clientInvoiceService: ClientInvoiceService,
+    private readonly ipcBillingCheckService: IpcBillingCheckService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List client invoices' })
@@ -66,6 +70,17 @@ export class ClientInvoiceController {
     @Body() dto: GenerateInvoiceFromSeparateChargeDto,
   ) {
     return this.clientInvoiceService.generateFromSeparateCharge(identity, dto);
+  }
+
+  // Declared before `:id` so the path is not read as an invoice id.
+  @Get('ipc-billing-check')
+  @ApiOperation({
+    summary:
+      'ADR-046 §5: contracts whose posted IPC invoices bill more (net, before tax) than their latest ' +
+      'certificate certifies — read-only, for correction by credit note',
+  })
+  ipcBillingCheck(@CurrentUser() identity: RequestIdentity) {
+    return this.ipcBillingCheckService.findOverBilledContracts(identity);
   }
 
   @Get(':id')

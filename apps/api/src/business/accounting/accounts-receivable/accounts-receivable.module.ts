@@ -7,6 +7,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module.
 import { ClientInvoiceRepository } from './infrastructure/client-invoice.repository.js';
 import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceService } from './application/client-invoice.service.js';
+import { IpcBillingCheckService } from './application/ipc-billing-check.service.js';
 import { CustomerReceiptService } from './application/customer-receipt.service.js';
 import { InvoiceDocumentService } from './application/invoice-document.service.js';
 import { ReceiptDocumentService } from './application/receipt-document.service.js';
@@ -37,6 +38,7 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
     ClientInvoiceRepository,
     PaymentReceiptArRepository,
     ClientInvoiceService,
+    IpcBillingCheckService,
     CustomerReceiptService,
     InvoiceDocumentService,
     ReceiptDocumentService,

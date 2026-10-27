@@ -1565,6 +1565,7 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 |---|---|---|
 | `GET` | `/invoices` | List client invoices (`?clientId=...&projectId=...`; `status` is not implemented — filter client-side). `projectId` added 2026-09-28 (flow plan PR 4). |
 | `POST` | `/invoices/from-ipc` | Generate invoice from a certified IPC |
+| `GET` | `/invoices/ipc-billing-check` | ADR-046 §5 — contracts whose posted IPC invoices bill more (net, before tax) than the latest certificate: `[{ contractId, contractNumber, projectId, clientId, currencyCode, netCertifiedToDate, netBilled, overBilledBy, invoiceCount }]`, largest first. Read-only. |
 | `GET` | `/invoices/:id` | Get invoice with GL status |
 | `POST` | `/invoices/:id/approve` | Approve the invoice |
 | `POST` | `/invoices/:id/post` | Post to AR control account |
@@ -1581,6 +1582,18 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 ```
 
 > The server reads `certifiedTotal`, `currency`, and `clientId` from the IPC. You do not supply amounts — they come from the IPC.
+
+> **Period billing (ADR-046 §5, 2026-10-27).** A certificate is cumulative to date, so the invoice
+> bills the certificate **minus what earlier IPC invoices on the contract billed** (drafts and posted;
+> cancelled, reversed and credit-noted amounts excluded). The invoice carries the breakdown:
+> `certifiedGrossAmount` (period gross), `otherDeductionsAmount`, `subtotal` (= gross − other; the
+> revenue and tax base), `retentionAmount`, `advanceRecoveryAmount`, and `totalAmount` = amount due =
+> subtotal + vatAmount − retentionAmount − advanceRecoveryAmount. All four are decimal strings,
+> `"0.00"` (and `certifiedGrossAmount` null) on every non-IPC invoice. `400` with code
+> `IPC_NOTHING_TO_BILL`, `IPC_PERIOD_NEGATIVE` or `IPC_AMOUNT_DUE_NOT_POSITIVE` (message carries the
+> figures) when the certificate adds nothing billable. Posting an invoice with retention needs an
+> active account of subtype `RETENTION_RECEIVABLE` (`POSTING_ACCOUNT_NOT_CONFIGURED:RETENTION_RECEIVABLE`
+> otherwise); advance recovery needs `CLIENT_ADVANCE_LIABILITY`.
 
 > **Idempotent (CONST-COM-006 / ADR-017):** one effective IPC maps to at most one client
 > invoice. Repeating `POST /invoices/from-ipc` for the same IPC returns the **existing**

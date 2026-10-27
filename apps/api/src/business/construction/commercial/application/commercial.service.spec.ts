@@ -42,6 +42,29 @@ const baseContract = {
   deliverables: [],
 };
 
+// ADR-046 §5 — certificates are cumulative and ordered by application; a fixture cert without an
+// application number takes its position in the list (1, 2, …).
+function withCertDefaults(certs: unknown): unknown {
+  return ((certs as Record<string, unknown>[] | undefined) ?? []).map((cert, i) => ({
+    application: { applicationNumber: i + 1 },
+    createdAt: new Date(Date.UTC(2026, 0, 1 + i)),
+    ...cert,
+  }));
+}
+
+// An invoice fixture without the IPC breakdown is a pre-ADR-046 invoice: it billed its subtotal
+// gross (taken as its total when not given) with nothing netted.
+function withInvoiceDefaults(invoices: unknown): unknown {
+  return ((invoices as Record<string, unknown>[] | undefined) ?? []).map((inv) => ({
+    subtotal: inv.totalAmount,
+    certifiedGrossAmount: null,
+    retentionAmount: new Decimal(0),
+    advanceRecoveryAmount: new Decimal(0),
+    otherDeductionsAmount: new Decimal(0),
+    ...inv,
+  }));
+}
+
 function build(overrides: {
   contract?: unknown;
   certs?: unknown;
@@ -70,8 +93,8 @@ function build(overrides: {
       .mockResolvedValue(overrides.variationAllocations ?? []),
     findEffectiveCertificates: overrides.certRejects
       ? jest.fn().mockRejectedValue(new Error('db down'))
-      : jest.fn().mockResolvedValue(overrides.certs ?? []),
-    findInvoices: jest.fn().mockResolvedValue(overrides.invoices ?? []),
+      : jest.fn().mockResolvedValue(withCertDefaults(overrides.certs)),
+    findInvoices: jest.fn().mockResolvedValue(withInvoiceDefaults(overrides.invoices)),
     findApplicationsWithCertificates: jest.fn().mockResolvedValue(overrides.applications ?? []),
     findRecentActivity: jest.fn().mockResolvedValue([]),
     findBoqVersionNumber: jest.fn().mockResolvedValue(overrides.boqVersionNumber ?? 3),
@@ -596,18 +619,23 @@ describe('CommercialService.getSummary', () => {
   });
 
   /**
-   * Certified work nobody has asked to be paid for. It is derived from the same effective
-   * set as certifiedNet, so the two can never tell different stories about one certificate.
+   * Certified work nobody has asked to be paid for: net certified to date (the latest, cumulative
+   * certificate) less the net already billed on posted IPC invoices (ADR-046 §5).
    */
-  it('sums certified net on effective certificates with no posted invoice', async () => {
+  it('takes certified net to date less what posted IPC invoices billed', async () => {
     const { service } = build({
       certs: [
         {
           id: 'ipc-1',
           certifiedTotal: new Decimal('300000'),
-          deductions: [{ amount: new Decimal('30000') }],
+          deductions: [{ amount: new Decimal('30000'), deductionType: 'RETENTION' }],
         },
-        { id: 'ipc-2', certifiedTotal: new Decimal('200000'), deductions: [] },
+        // Cumulative: includes ipc-1's 300,000.
+        {
+          id: 'ipc-2',
+          certifiedTotal: new Decimal('500000'),
+          deductions: [{ amount: new Decimal('50000'), deductionType: 'RETENTION' }],
+        },
       ],
       invoices: [
         {
@@ -617,6 +645,9 @@ describe('CommercialService.getSummary', () => {
           documentStatus: 'APPROVED',
           postingStatus: 'POSTED',
           totalAmount: new Decimal('270000'),
+          subtotal: new Decimal('300000'),
+          certifiedGrossAmount: new Decimal('300000'),
+          retentionAmount: new Decimal('30000'),
           outstandingAmount: new Decimal('0'),
           invoiceDate: new Date('2026-07-01'),
           dueDate: new Date('2026-07-31'),
@@ -627,12 +658,15 @@ describe('CommercialService.getSummary', () => {
     });
     const res = await service.getSummary(financeIdentity, 'p-1');
 
-    // ipc-2 only: 200,000 with no deductions and no invoice behind it.
+    // 450,000 net to date − 270,000 billed net = 180,000; one certificate (ipc-2) not yet invoiced.
     expect(res.metrics.uninvoicedCertified).toMatchObject({
       state: 'OK',
-      amount: '200000.00',
+      amount: '180000.00',
       sourceCount: 1,
     });
+    // Certified to date is the latest certificate, not 300,000 + 500,000.
+    expect(res.metrics.certifiedGross.amount).toBe('500000.00');
+    expect(res.metrics.certifiedNet.amount).toBe('450000.00');
   });
 
   it('counts the certification chain, and keeps the counts readable without financial access', async () => {

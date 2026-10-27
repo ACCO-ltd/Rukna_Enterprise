@@ -78,6 +78,27 @@ describe('buildInvoiceViewModel — the minimal layout', () => {
     expect(vm.total).toEqual({ label: 'Total Due', value: 'USD 8,400.00' });
   });
 
+  it('shows retention and advance recovery as "Less" rows above an amount due net of them (ADR-046 §5)', () => {
+    const ipc = buildInvoiceViewModel({
+      ...minimalInvoiceFixture,
+      retentionAmount: '400.00',
+      advanceRecoveryAmount: '800.00',
+      totalAmount: '7200.00',
+    });
+    expect(ipc.totals).toEqual([
+      { label: 'Subtotal', value: 'USD 8,000.00' },
+      { label: 'Sales Tax (5%)', value: 'USD 400.00' },
+      { label: 'Less retention', value: '−USD 400.00' },
+      { label: 'Less advance recovery', value: '−USD 800.00' },
+    ]);
+    expect(ipc.total).toEqual({ label: 'Total Due', value: 'USD 7,200.00' });
+  });
+
+  it('adds no "Less" rows when nothing is held back', () => {
+    const plain = buildInvoiceViewModel({ ...minimalInvoiceFixture, retentionAmount: '0.00' });
+    expect(plain.totals).toHaveLength(2);
+  });
+
   it('falls back to one line for the subtotal when the invoice has no lines', () => {
     const empty = buildInvoiceViewModel({ ...minimalInvoiceFixture, lines: [] });
     expect(empty.lines).toHaveLength(1);

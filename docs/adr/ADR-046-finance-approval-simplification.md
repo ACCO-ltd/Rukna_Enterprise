@@ -1,7 +1,7 @@
 # ADR-046 — Finance approval simplification: owner decisions of 2026-10-27
 
 **Status:** Accepted — decisions confirmed by the product owner (Abdulsalam) on 2026-10-27, with
-Eng Ahmed's agreement for the ADR-022 change (§1). §1 is built; §2–§8 are decided and not yet built.
+Eng Ahmed's agreement for the ADR-022 change (§1). §1 and §5 are built; §2–§4 and §6–§8 are decided and not yet built.
 
 *Numbering note:* main's highest ADR before this was ADR-045. The unmerged branch
 `docs/platform-multi-entity` must renumber its tenant-group ADR past this one.
@@ -41,11 +41,41 @@ an approval happens.
 Payments within the lowest ADR-022 band (≤ $1,000, Finance Officer authority) post on Save without a
 separate Approve click. The CFO and CFO + CEO bands and dual bank-signatory release are unchanged.
 
-### 5. IPC invoices bill the net amount due
+### 5. IPC invoices bill the net amount due — for this period
 The invoice shows gross certified, less retention, less advance recovery, equals amount due.
 Retention is posted to a Retention Receivable account and billed later with a release invoice;
 advance recovery clears the client advance. (Closes Finance Refinement Plan gap C2; amends the
 ADR-023/ADR-024 billing model.)
+
+**Owner decision, same day — certificates are cumulative, invoices are per period.** IPA and IPC
+quantities are cumulative to date (ADR-005 CONST-IPC-015), so `certifiedTotal` and the certificate's
+deductions are figures *to date*. Invoicing the whole `certifiedTotal` re-billed every earlier
+certificate. An IPC invoice now bills the certificate's cumulative figures **minus what earlier IPC
+invoices on the same contract already billed** (draft or posted; cancelled and reversed invoices and
+posted credit notes excluded). This also handles a superseding certificate: only the difference is
+billed. Built 2026-10-27:
+
+| Invoice field | Meaning (IPC invoices) |
+| --- | --- |
+| `certifiedGrossAmount` | gross certified this period (null on non-IPC invoices) |
+| `otherDeductionsAmount` | other certificate deductions this period (TAX, CONTRA, …) |
+| `subtotal` | revenue and tax base = gross − other deductions |
+| `retentionAmount`, `advanceRecoveryAmount` | held back this period |
+| `totalAmount` | amount due = subtotal + VAT − retention − advance recovery |
+
+EVT-AR-001 for such an invoice: Dr Accounts Receivable (amount due) · Dr Retention Receivable
+(retention) · Dr Advances received from clients (advance recovery) / Cr Contract revenue (subtotal)
+· Cr Output VAT. EVT-AR-002 mirrors it. A period whose revenue or amount due would not be positive
+is refused with the figures, so finance can correct earlier invoices with a credit note.
+
+Commercial and Financial Position read the **latest** effective certificate as the contract's
+certified-to-date figure instead of adding certificates up.
+
+*Defaults to confirm with the ACCO accountant:* VAT is charged on the revenue amount (gross − other
+deductions), so retention carries VAT when first billed and its release invoice carries none;
+"other" deductions reduce revenue. ACCO V1 contracts carry no retention or advance recovery
+(ADR-023 CONST-COM-013/014), so for them only the per-period fix changes anything. **Not built
+yet:** the retention release invoice, and advance billing into the client-advance account.
 
 ### 6. Customer payments land straight in the bank
 Receive payment picks the bank account and posts there. No holding ("Undeposited Funds") account.
