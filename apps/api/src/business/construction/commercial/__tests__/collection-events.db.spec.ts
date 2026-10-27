@@ -289,10 +289,26 @@ describe('CollectionEventsService — DB integration (Slice 6B)', () => {
     return receipt.id;
   }
 
+  // The DB-backed scenarios are set on 2026-09-18: promises fall due in October and payments land
+  // around them. `recordedAt` is stamped by the database clock (@default(now())), so left alone it
+  // moved with the calendar and these tests broke once real time passed the seeded payment dates.
+  // Pin it to the scenario day so the [recordedAt, promisedDate] window is what each test means.
+  const SCENARIO_RECORDED_AT = new Date('2026-09-18T09:00:00Z');
+
+  async function recordPromiseOnScenarioDay(
+    ...args: Parameters<CollectionEventsService['recordPromise']>
+  ) {
+    const promise = await service.recordPromise(...args);
+    return prisma.invoicePaymentPromise.update({
+      where: { id: promise.id },
+      data: { recordedAt: SCENARIO_RECORDED_AT },
+    });
+  }
+
   it('CE-10: promise 50k — payment 50k AFTER recording → KEPT', async () => {
     const invoiceId = await makePostedInvoice();
 
-    const promise = await service.recordPromise(identity, {
+    const promise = await recordPromiseOnScenarioDay(identity, {
       invoiceId,
       promisedDate: '2026-10-15',
       promisedAmount: '50000.00',
@@ -330,7 +346,7 @@ describe('CollectionEventsService — DB integration (Slice 6B)', () => {
   it('CE-11: promise 50k — payment 30k, promised date passed → MISSED', async () => {
     const invoiceId = await makePostedInvoice();
 
-    const promise = await service.recordPromise(identity, {
+    const promise = await recordPromiseOnScenarioDay(identity, {
       invoiceId,
       promisedDate: '2026-10-01',
       promisedAmount: '50000.00',
@@ -370,8 +386,8 @@ describe('CollectionEventsService — DB integration (Slice 6B)', () => {
     // Create a 50k allocation BEFORE the promise is recorded
     await seedReceipt('50000.00', new Date('2026-09-10'), invoiceId);
 
-    // Record the promise AFTER the allocation (recordedAt = now ~ 2026-09-18)
-    const promise = await service.recordPromise(identity, {
+    // Record the promise AFTER the allocation (recordedAt = the 2026-09-18 scenario day)
+    const promise = await recordPromiseOnScenarioDay(identity, {
       invoiceId,
       promisedDate: '2026-10-15',
       promisedAmount: '50000.00',
@@ -411,7 +427,7 @@ describe('CollectionEventsService — DB integration (Slice 6B)', () => {
   it('CE-13: null promisedAmount (DB-backed) → uses outstandingAtPromise as target; full amount paid → KEPT', async () => {
     const invoiceId = await makePostedInvoice(); // outstanding 105,000
 
-    const promise = await service.recordPromise(identity, {
+    const promise = await recordPromiseOnScenarioDay(identity, {
       invoiceId,
       promisedDate: '2026-10-15',
       // No promisedAmount → service captures outstandingAtPromise = 105,000
@@ -463,7 +479,7 @@ describe('CollectionEventsService — DB integration (Slice 6B)', () => {
     const invoiceId = await makePostedInvoice(); // outstanding 105,000
 
     // Promise: 50,000 by Sep 25 2026
-    const promise = await service.recordPromise(identity, {
+    const promise = await recordPromiseOnScenarioDay(identity, {
       invoiceId,
       promisedDate: '2026-09-25',
       promisedAmount: '50000.00',
