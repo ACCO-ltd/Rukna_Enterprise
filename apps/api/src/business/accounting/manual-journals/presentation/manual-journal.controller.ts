@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
+  Controller, Get, Post, Patch, Body, Param, Query,
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -46,6 +46,13 @@ export class ManualJournalController {
   @ApiOperation({ summary: 'Get journal entry with lines' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.manualJournalService.findById(identity, id);
+  }
+
+  @Patch(':id')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Edit a DRAFT journal, or correct a REJECTED one (returns it to DRAFT). Preparer only.' })
+  update(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: CreateManualJournalDto) {
+    return this.manualJournalService.update(identity, id, dto);
   }
 
   @Post(':id/submit')

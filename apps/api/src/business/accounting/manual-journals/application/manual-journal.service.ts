@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -65,6 +66,24 @@ export interface ReverseManualJournalDto {
   reason: string;
 }
 
+/** A draft journal line as typed; account snapshots are taken when the journal posts. */
+function draftLine(line: ManualJournalLineDto, idx: number) {
+  return {
+    lineNumber: idx + 1,
+    accountId: line.accountId,
+    accountCodeSnapshot: '',
+    accountNameSnapshot: '',
+    accountVersionNumber: 0,
+    debitAmount: new Decimal(line.debitAmount ?? 0),
+    creditAmount: new Decimal(line.creditAmount ?? 0),
+    postingOrigin: 'MANUAL' as const,
+    description: line.memo ?? null,
+    projectId: line.projectId ?? null,
+    departmentId: line.departmentId ?? null,
+    costCenterId: line.costCenterId ?? null,
+  };
+}
+
 @Injectable()
 export class ManualJournalService {
   constructor(
@@ -98,24 +117,55 @@ export class ManualJournalService {
         sourceDocumentId: `draft-${Date.now()}`,
         accountingEventId: null,
         createdBy: userId,
-        lines: {
-          create: dto.lines.map((line, idx) => ({
-            lineNumber: idx + 1,
-            accountId: line.accountId,
-            accountCodeSnapshot: '',
-            accountNameSnapshot: '',
-            accountVersionNumber: 0,
-            debitAmount: new Decimal(line.debitAmount ?? 0),
-            creditAmount: new Decimal(line.creditAmount ?? 0),
-            postingOrigin: 'MANUAL',
-            description: line.memo ?? null,
-            projectId: line.projectId ?? null,
-            departmentId: line.departmentId ?? null,
-            costCenterId: line.costCenterId ?? null,
-          })),
-        },
+        lines: { create: dto.lines.map(draftLine) },
       },
       include: { lines: true },
+    });
+  }
+
+  /**
+   * Phase 0 H2 — edit a draft, or correct a rejected journal for resubmission. Replaces the header
+   * and every line; a REJECTED journal returns to DRAFT (its rejection reason stays on record until
+   * the next decision). Only the preparer edits: anyone else editing would become a second preparer
+   * who could then approve it as the "second person" (ADR-022 CONST-DOA-003).
+   */
+  async update(identity: RequestIdentity, journalId: string, dto: CreateManualJournalDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const journal = await prisma.journalEntry.findFirst({
+      where: { id: journalId, organizationId: orgId, sourceDocumentType: 'MANUAL_JOURNAL' },
+    });
+    if (!journal) throw new NotFoundException(`Journal ${journalId} not found`);
+    if (journal.status !== 'DRAFT' && journal.status !== 'REJECTED') {
+      throw new ConflictException({
+        code: 'JOURNAL_NOT_EDITABLE',
+        message: `Only a draft or rejected journal can be edited (status: ${journal.status}).`,
+      });
+    }
+    if (journal.createdBy !== userId) {
+      throw new ForbiddenException({
+        code: 'JOURNAL_NOT_PREPARER',
+        message: 'Only the person who prepared this journal can edit it.',
+      });
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // Guarded on the status read above, so a concurrent submit or approval wins.
+      const claimed = await tx.journalEntry.updateMany({
+        where: { id: journal.id, status: journal.status },
+        data: {
+          status: 'DRAFT',
+          documentDate: new Date(dto.documentDate ?? dto.accountingDate),
+          accountingDate: new Date(dto.accountingDate),
+          description: dto.description,
+          currencyCode: dto.currencyCode,
+        },
+      });
+      if (claimed.count !== 1) throw new ConflictException('The journal changed while it was being edited; reload and retry.');
+      await tx.journalLine.deleteMany({ where: { journalEntryId: journal.id } });
+      await tx.journalLine.createMany({ data: dto.lines.map((line, idx) => ({ journalEntryId: journal.id, ...draftLine(line, idx) })) });
+      return tx.journalEntry.findUniqueOrThrow({ where: { id: journal.id }, include: { lines: true } });
     });
   }
 

@@ -1503,6 +1503,7 @@ The standard general-ledger journal entry — reviewed and approved by CFO befor
 | `GET` | `/journals` | List journals (`?status=DRAFT&periodId=...`) |
 | `POST` | `/journals` | Create a DRAFT journal |
 | `GET` | `/journals/:id` | Get journal with all lines |
+| `PATCH` | `/journals/:id` | Phase 0 H2 — same body as create; replaces the header and every line of a `DRAFT` journal, or corrects a `REJECTED` one and returns it to `DRAFT` for resubmission. Preparer only (`403 JOURNAL_NOT_PREPARER`); any other status `409 JOURNAL_NOT_EDITABLE`. |
 | `POST` | `/journals/:id/submit` | Submit for CFO approval |
 | `POST` | `/journals/:id/approve` | CFO approve or reject |
 | `POST` | `/journals/:id/post` | Post an approved journal to the GL |
