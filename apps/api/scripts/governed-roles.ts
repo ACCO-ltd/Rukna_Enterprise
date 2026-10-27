@@ -75,6 +75,10 @@ const CFO: GovernedRoleSpec = {
     P.contractsApprove,
     // ADR-044 — may choose between competitive quotations (the award approves the PO).
     P.quotationsAward,
+    // ADR-022 amendment 2026-10-27 — works journals and may approve/post own ones without a second
+    // person. (Live tenant: granted by prisma/seeds/grant-journal-self-post.seed.ts.)
+    P.journalsManage,
+    P.journalsPostOwn,
     // Finance visibility to review what is being approved.
     P.financialPositionView,
     P.accountingView,

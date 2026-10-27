@@ -146,6 +146,14 @@ Requester ≠ own MR/PO approver · PO creator ≠ goods receiver · Goods recei
 Bill approver ≠ payment approver/releaser · Vendor maintainer ≠ PO/payment processor ·
 Journal preparer ≠ journal approver · System administrator ≠ business-transaction approver.
 
+**Amendment 2026-10-27 (journals, Eng Ahmed via the product owner):** ACCO's finance team is too
+small for every journal to wait on a second person. A user holding the permission
+`post-own:journal` may approve and post a journal they prepared themselves; the CFO and Finance
+Officer roles hold it by default, and an admin can grant or remove it per role. For everyone else
+the journal preparer ≠ journal approver rule stands. The exemption covers one's **own** journals
+only — it never lets a holder bypass the rule on someone else's journal — and the org-level SoD
+toggle still applies. Full decision record: ADR-046 §1.
+
 ### CONST-DOA-004 — The one controlled exception
 A PO creator may temporarily also receive goods where staffing requires it, **only** if an
 independent supervisor verifies receipt **and** the CFO approves the documented exception.

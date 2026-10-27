@@ -13,8 +13,10 @@
 import { ConflictException } from '@nestjs/common';
 import { ManualJournalService } from './manual-journal.service.js';
 
-const identity = { userId: 'u-preparer', activeOrganizationId: 'o1' } as never;
-const approver = { userId: 'u-approver', activeOrganizationId: 'o1' } as never;
+const identity = { userId: 'u-preparer', activeOrganizationId: 'o1', permissions: [] } as never;
+const approver = { userId: 'u-approver', activeOrganizationId: 'o1', permissions: [] } as never;
+// A preparer holding post-own:journal (CFO / Finance Officer, ADR-022 amendment 2026-10-27).
+const selfPoster = { userId: 'u-preparer', activeOrganizationId: 'o1', permissions: ['post-own:journal'] } as never;
 
 /**
  * Builds a ManualJournalService with fully mocked collaborators.
@@ -231,5 +233,36 @@ describe('ManualJournalService — reverse is limited to manual journals', () =>
       svc.reverse(identity, { journalId: 'j1', reversalDate: '2025-03-20', reason: 'wrong' } as never),
     ).rejects.toThrow(/CLIENT_INVOICE/);
     expect(postingPort.post).not.toHaveBeenCalled();
+  });
+});
+
+// ADR-022 amendment (2026-10-27): a preparer holding post-own:journal approves and posts their own
+// journal without a second person; everyone else keeps the four-eyes rule.
+describe('ManualJournalService — post-own:journal', () => {
+  it('lets a holder post their own SUBMITTED journal without evaluating SoD', async () => {
+    const { svc, sod, postingPort } = build(null, { status: 'SUBMITTED', createdBy: 'u-preparer', approvedBy: null });
+
+    await svc.post(selfPoster, 'j1');
+
+    expect(sod.assertAllowed).not.toHaveBeenCalled();
+    expect(postingPort.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a holder approve their own journal without evaluating SoD', async () => {
+    const { svc, sod, prisma } = build(null, { status: 'SUBMITTED', createdBy: 'u-preparer', approvedBy: null });
+
+    await svc.approve(selfPoster, { journalId: 'j1', approved: true });
+
+    expect(sod.assertAllowed).not.toHaveBeenCalled();
+    expect(prisma.journalEntry.update.mock.calls[0][0].data.approvedBy).toBe('u-preparer');
+  });
+
+  it('does not exempt a holder acting on a journal someone else prepared', async () => {
+    const holderOther = { userId: 'u-cfo', activeOrganizationId: 'o1', permissions: ['post-own:journal'] } as never;
+    const { svc, sod } = build(null, { status: 'SUBMITTED', createdBy: 'u-preparer', approvedBy: null });
+
+    await svc.post(holderOther, 'j1');
+
+    expect(sod.assertAllowed).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: 'u-cfo', journalPreparerUserId: 'u-preparer' }));
   });
 });

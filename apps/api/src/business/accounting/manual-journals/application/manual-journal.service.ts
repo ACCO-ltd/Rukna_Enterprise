@@ -6,7 +6,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -162,8 +162,9 @@ export class ManualJournalService {
       throw new NotFoundException(`Journal ${dto.journalId} not found in SUBMITTED status`);
     }
 
-    // ADR-022 CONST-DOA-003: the journal preparer cannot approve the same journal.
-    if (dto.approved) {
+    // ADR-022 CONST-DOA-003: the journal preparer cannot approve the same journal — unless they
+    // hold `post-own:journal` (ADR-022 amendment 2026-10-27).
+    if (dto.approved && !this.mayActOnOwnJournal(identity, journal.createdBy)) {
       await this.sod.assertAllowed({
         organizationId: orgId,
         action: 'APPROVE_MANUAL_JOURNAL',
@@ -213,8 +214,13 @@ export class ManualJournalService {
     // ADR-022 CONST-DOA-003: journal preparer ≠ journal approver. A journal posted straight from
     // SUBMITTED has no recorded approver, so the person posting it is its only second pair of
     // eyes — the preparer must not be that person, or they could draft, submit and post alone.
-    // The check honours the org's JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL toggle, like approve().
-    if (journal.status === 'SUBMITTED' && !journal.approvedBy) {
+    // The check honours the org's JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL toggle, like approve(),
+    // and is waived for a preparer holding `post-own:journal` (ADR-022 amendment 2026-10-27).
+    if (
+      journal.status === 'SUBMITTED' &&
+      !journal.approvedBy &&
+      !this.mayActOnOwnJournal(identity, journal.createdBy)
+    ) {
       await this.sod.assertAllowed({
         organizationId: orgId,
         action: 'APPROVE_MANUAL_JOURNAL',
@@ -422,6 +428,19 @@ export class ManualJournalService {
     const journal = await this.journalRepo.findById(prisma, identity.activeOrganizationId, id);
     if (!journal) throw new NotFoundException(`Journal ${id} not found`);
     return journal;
+  }
+
+  /**
+   * ADR-022 amendment (2026-10-27): a preparer holding `post-own:journal` may approve and post their
+   * own journal without a second person. ACCO's finance team is small; the CFO and Finance Officer
+   * hold it, other journal users still need a second pair of eyes. It never widens what anyone else
+   * may do: for a journal prepared by someone else the ordinary rule applies.
+   */
+  private mayActOnOwnJournal(identity: RequestIdentity, preparerUserId: string): boolean {
+    return (
+      identity.userId === preparerUserId &&
+      identity.permissions.includes(PERMISSIONS.journalsPostOwn)
+    );
   }
 
   private async requireDraft(prisma: ReturnType<TenancyService['getClient']>, organizationId: string, journalId: string) {

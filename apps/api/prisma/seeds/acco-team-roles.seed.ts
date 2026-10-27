@@ -172,6 +172,9 @@ const ROLES: TeamRoleSpec[] = [
       P.accountingView,
       P.accountingManage,
       P.journalsManage,
+      // ADR-022 amendment 2026-10-27 — posts own journals without a second person (small team).
+      // (Live tenant: granted by prisma/seeds/grant-journal-self-post.seed.ts.)
+      P.journalsPostOwn,
       P.payablesManage,
       P.periodsManage,
       P.fiscalYearsManage,
