@@ -31,6 +31,8 @@ describe('ClientInvoiceService.reverse — dimensions', () => {
         postedJournalEntryId: 'je1',
         invoiceNumber: 'INV-1',
         currencyCode: 'USD',
+        sourceIpcId: null,
+        retentionAmount: new Decimal(0),
       }),
     };
     const postingPort = { post: jest.fn().mockResolvedValue({ journalEntryId: 'je2' }) };

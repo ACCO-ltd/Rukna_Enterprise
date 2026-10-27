@@ -515,8 +515,10 @@ export class CommercialPrismaRepository {
         documentStatus: true,
         postingStatus: true,
         totalAmount: true,
-        // ADR-046 §5 — what an IPC invoice billed of the certificate (null gross = raised before).
+        // ADR-046 §5 — what an IPC invoice billed of the certificate (null gross = raised before),
+        // and what a retention release invoice billed back out.
         subtotal: true,
+        retentionReleasedAmount: true,
         certifiedGrossAmount: true,
         retentionAmount: true,
         advanceRecoveryAmount: true,
@@ -558,8 +560,10 @@ export class CommercialPrismaRepository {
         vatAmount: true,
         totalAmount: true,
         outstandingAmount: true,
-        // ADR-046 §5 — retention held on certificate invoices, for the retention To do row.
+        // ADR-046 §5 — retention held on certificate invoices and billed on release invoices, for the
+        // retention To do row.
         retentionAmount: true,
+        retentionReleasedAmount: true,
         documentStatus: true,
         postingStatus: true,
         createdAt: true,

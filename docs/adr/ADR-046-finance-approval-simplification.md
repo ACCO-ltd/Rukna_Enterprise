@@ -79,12 +79,23 @@ yet:** advance billing into the client-advance account.
 
 **Retention release invoice (built 2026-10-27).** Once a contract's retention is released
 (`POST /contracts/:id/retention/release`, contract at FINAL_ACCOUNT_PENDING), `POST
-/invoices/from-retention-release` raises one invoice per contract (`sourceRetentionContractId`,
-unique) for the retention held on its posted IPC invoices. It earns no revenue and carries no tax:
-subtotal and VAT are zero, `retentionReleasedAmount` = amount due, and EVT-AR-001 posts Dr Accounts
-Receivable / Cr Retention Receivable. It is refused while an unposted IPC invoice still holds
-retention. The Billing To do shows a `RETENTION_TO_INVOICE` row (Release and invoice / Invoice
-retention); V1 releases all retention at once (`retentionSplitOnPC` is not yet applied).
+/invoices/from-retention-release` raises an invoice (`sourceRetentionContractId`) for the retention
+due: held on posted IPC invoices minus what posted release invoices already billed. It earns no
+revenue and carries no tax: subtotal and VAT are zero, `retentionReleasedAmount` = amount due, and
+EVT-AR-001 posts Dr Accounts Receivable / Cr Retention Receivable. Rules:
+- Refused while an unposted IPC invoice still holds retention, or when nothing is due.
+- One open draft at a time: raising again returns it while it still matches the amount due, and
+  refuses (`RETENTION_DRAFT_STALE`) once it no longer does.
+- Re-checked at post: a draft billing more than is now due is refused (`RETENTION_RELEASE_STALE`),
+  so Retention Receivable never goes negative.
+- A reversed release invoice no longer counts, so the retention can be invoiced again.
+- Retention certified after a release is billed by a further (top-up) release invoice.
+- An IPC invoice cannot be reversed once a posted release has billed its retention
+  (`RETENTION_ALREADY_RELEASED`); reverse the release first.
+The Billing To do shows a `RETENTION_TO_INVOICE` row for the amount due (Release and invoice /
+Invoice retention), hidden while a release draft is open or an IPC invoice holding retention is
+unposted. The commercial summary's retention held is net of posted releases. V1 releases all
+retention at once (`retentionSplitOnPC` is not yet applied).
 
 ### 6. Customer payments land straight in the bank
 Receive payment picks the bank account and posts there. No holding ("Undeposited Funds") account.

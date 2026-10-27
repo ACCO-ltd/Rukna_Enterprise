@@ -563,7 +563,13 @@ export class CommercialService {
         : null,
       securityPosition: this.securityPosition(
         contract,
-        retentionHeld,
+        // ADR-046 §5 — retention billed back to the client on posted release invoices is no longer held.
+        Decimal.max(
+          ZERO,
+          invoices
+            .filter((inv) => inv.postingStatus === 'POSTED')
+            .reduce((sum, inv) => sum.minus(inv.retentionReleasedAmount.toString()), retentionHeld),
+        ),
         advanceRecovered,
         certFailed,
         mayViewFinancials,

@@ -61,6 +61,7 @@ function withInvoiceDefaults(invoices: unknown): unknown {
     retentionAmount: new Decimal(0),
     advanceRecoveryAmount: new Decimal(0),
     otherDeductionsAmount: new Decimal(0),
+    retentionReleasedAmount: new Decimal(0),
     ...inv,
   }));
 }
@@ -1511,6 +1512,36 @@ describe('securityPosition — retention held and advance recovered', () => {
     expect(result.securityPosition.advanceOutstanding).toBe('190000.00');
     // The same deduction set still drives certified net — the two can never disagree.
     expect(result.metrics.certifiedNet.amount).toBe('424000.00');
+  });
+
+  /** ADR-046 §5 — retention billed back on a posted release invoice is no longer held. */
+  it('reports retention held net of posted retention release invoices', async () => {
+    const release = (id: string, amount: string, postingStatus: string) => ({
+      id,
+      sourceRetentionContractId: 'c-1',
+      postingStatus,
+      totalAmount: new Decimal(amount),
+      outstandingAmount: new Decimal(amount),
+      invoiceNumber: null,
+      invoiceDate: new Date(Date.UTC(2026, 9, 1)),
+      dueDate: new Date(Date.UTC(2026, 11, 31)),
+      retentionReleasedAmount: new Decimal(amount),
+      allocations: [],
+    });
+    const { service } = build({
+      certs: [
+        {
+          id: 'ipc-1',
+          certifiedTotal: new Decimal('500000'),
+          deductions: [{ amount: new Decimal('25000'), deductionType: 'RETENTION' }],
+        },
+      ],
+      invoices: [release('r-1', '10000', 'POSTED'), release('r-2', '15000', 'NOT_POSTED')],
+    });
+
+    const result = await service.getSummary(financeIdentity, 'p-1');
+
+    expect(result.securityPosition.retentionHeld).toBe('15000.00');
   });
 
   /**

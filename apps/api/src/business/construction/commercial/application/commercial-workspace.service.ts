@@ -348,19 +348,30 @@ export class CommercialWorkspaceService {
       }
     }
 
-    // ADR-046 §5 — retention held on posted certificate invoices, once the contract reaches its final
-    // account (or the retention was already released) and no release invoice exists yet.
+    // ADR-046 §5 — retention held on posted certificate invoices and not yet released, once the
+    // contract reaches its final account (or the retention was already released). Not offered while a
+    // release draft is open (its own DRAFT row leads there) or while a certificate invoice holding
+    // retention is unposted — the server refuses the release then, after an irreversible release.
+    const live = (inv: (typeof invoiceRows)[number]) => inv.documentStatus !== 'CANCELLED';
     const retentionHeld = invoiceRows
       .filter((inv) => inv.sourceIpcId && inv.postingStatus === 'POSTED')
       .reduce((sum, inv) => sum.plus(dec(inv.retentionAmount)), ZERO);
-    const releaseInvoiced = invoiceRows.some(
-      (inv) => inv.sourceRetentionContractId && inv.documentStatus !== 'CANCELLED',
+    const retentionReleased = invoiceRows
+      .filter((inv) => inv.sourceRetentionContractId && inv.postingStatus === 'POSTED')
+      .reduce((sum, inv) => sum.plus(dec(inv.retentionReleasedAmount)), ZERO);
+    const retentionDue = retentionHeld.minus(retentionReleased);
+    const releaseDraftOpen = invoiceRows.some(
+      (inv) => inv.sourceRetentionContractId && live(inv) && isUnposted(inv.postingStatus),
+    );
+    const retentionPending = invoiceRows.some(
+      (inv) => inv.sourceIpcId && live(inv) && isUnposted(inv.postingStatus) && dec(inv.retentionAmount).gt(ZERO),
     );
     const released = input.retentionTerms?.retentionReleasedAt != null;
     if (
       input.retentionTerms &&
-      retentionHeld.gt(ZERO) &&
-      !releaseInvoiced &&
+      retentionDue.gt(ZERO) &&
+      !releaseDraftOpen &&
+      !retentionPending &&
       (released || input.contractStatus === 'FINAL_ACCOUNT_PENDING')
     ) {
       items.push({
@@ -368,7 +379,7 @@ export class CommercialWorkspaceService {
         id: `retention:${input.contractId}`,
         kind: 'RETENTION_TO_INVOICE',
         sourceLabel: 'Retention held',
-        amount: money(retentionHeld),
+        amount: money(retentionDue),
         retention: { contractId: input.contractId, released },
       });
     }

@@ -422,20 +422,21 @@ export class ClientInvoiceService {
   }
 
   /**
-   * ADR-046 §5 — the retention release invoice: bills the retention a contract's IPC invoices held
-   * back, once the contract's retention has been released (`POST /contracts/:id/retention/release`).
+   * ADR-046 §5 — a retention release invoice: bills the retention a contract's IPC invoices held
+   * back, less what earlier release invoices already billed, once the contract's retention has been
+   * released (`POST /contracts/:id/retention/release`).
    *
    * It earns no revenue and carries no tax — both were recognised when each IPC invoice was raised —
    * so subtotal and VAT are zero and the amount due is the retention released. Posting moves it from
-   * Retention Receivable to Accounts Receivable. Idempotent: one release invoice per contract
-   * (unique `sourceRetentionContractId`); a repeat returns the existing invoice.
+   * Retention Receivable to Accounts Receivable, and re-checks the amount (see `post`).
+   *
+   * Billing held − released (rather than one invoice per contract) lets a reversed release be raised
+   * again and bills retention certified after a release with a top-up. An open draft that still
+   * matches is returned (idempotent); a draft that no longer matches is refused, to be cancelled.
    */
   async generateFromRetentionRelease(identity: RequestIdentity, dto: GenerateInvoiceFromRetentionReleaseDto) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
-
-    const existing = await this.repo.findByRetentionRelease(prisma, orgId, dto.contractId);
-    if (existing) return existing;
 
     const contract = await prisma.contract.findFirst({
       where: { id: dto.contractId, organizationId: orgId },
@@ -449,63 +450,71 @@ export class ClientInvoiceService {
       });
     }
 
-    const { held, pendingWithRetention } = await this.repo.findRetentionHeld(prisma, orgId, contract.id);
-    if (pendingWithRetention > 0) {
+    const position = await this.repo.findRetentionPosition(prisma, orgId, contract.id);
+    this.assertRetentionReleasable(position);
+    if (position.openDraft) {
+      if (new Decimal(position.openDraft.retentionReleasedAmount.toString()).equals(position.due)) {
+        return position.openDraft;
+      }
+      throw new BadRequestException({
+        code: 'RETENTION_DRAFT_STALE',
+        message:
+          `A retention release draft for ${position.openDraft.retentionReleasedAmount.toString()} is open, but ` +
+          `${position.due.toFixed(2)} is now due. Cancel the draft and raise the release again.`,
+      });
+    }
+    const amount = position.due;
+
+    // Zero subtotal: the tax code is still recorded (ADR-041) at a nil rate, so no document prints a
+    // "Sales Tax (5%) 0.00" line under the released amount.
+    const tax = await this.taxFor(prisma, identity, undefined, dto.invoiceDate, new Decimal(0));
+    const org = await this.snapshotOrgBranding(prisma, orgId);
+    return this.repo.create(prisma, {
+      organizationId: orgId,
+      clientId: contract.clientId,
+      sourceRetentionContractId: contract.id,
+      projectId: contract.projectId,
+      contractId: contract.id,
+      invoiceDate: new Date(dto.invoiceDate),
+      dueDate: new Date(dto.dueDate),
+      currencyCode: contract.currency,
+      subtotal: new Decimal(0),
+      vatAmount: new Decimal(0),
+      totalAmount: amount,
+      taxCodeId: tax.taxCodeId,
+      taxRate: new Decimal(0),
+      retentionReleasedAmount: amount,
+      paymentTerms: dto.paymentTerms,
+      billingAddressSnapshot: {
+        client: {
+          name: contract.client.name,
+          address: contract.client.address,
+          taxNumber: contract.client.taxNumber,
+          city: contract.client.city,
+          countryCode: contract.client.countryCode,
+        },
+        description: `Release of retention — contract ${contract.contractNumber}`,
+        org,
+      },
+      createdBy: userId,
+    });
+  }
+
+  /** ADR-046 §5 — the refusals shared by raising and posting a retention release invoice. */
+  private assertRetentionReleasable(position: { due: Decimal; pendingWithRetention: number }) {
+    if (position.pendingWithRetention > 0) {
       throw new BadRequestException({
         code: 'RETENTION_INVOICES_UNPOSTED',
         message:
-          `${pendingWithRetention} certificate invoice(s) on this contract still hold retention and are ` +
+          `${position.pendingWithRetention} certificate invoice(s) on this contract still hold retention and are ` +
           'not posted. Post or cancel them first, so the release bills all the retention held.',
       });
     }
-    const amount = new Decimal(held.toString());
-    if (!amount.gt(0)) {
+    if (!position.due.gt(0)) {
       throw new BadRequestException({
         code: 'RETENTION_NOTHING_HELD',
-        message: 'No posted certificate invoice on this contract holds retention, so there is nothing to release.',
+        message: 'No retention is held on this contract beyond what was already released and invoiced.',
       });
-    }
-
-    // Zero subtotal: the tax code is still recorded (ADR-041), at nil tax.
-    const tax = await this.taxFor(prisma, identity, undefined, dto.invoiceDate, new Decimal(0));
-    const org = await this.snapshotOrgBranding(prisma, orgId);
-    try {
-      return await this.repo.create(prisma, {
-        organizationId: orgId,
-        clientId: contract.clientId,
-        sourceRetentionContractId: contract.id,
-        projectId: contract.projectId,
-        contractId: contract.id,
-        invoiceDate: new Date(dto.invoiceDate),
-        dueDate: new Date(dto.dueDate),
-        currencyCode: contract.currency,
-        subtotal: new Decimal(0),
-        vatAmount: tax.vatAmount,
-        totalAmount: amount,
-        taxCodeId: tax.taxCodeId,
-        taxRate: tax.taxRate,
-        retentionReleasedAmount: amount,
-        paymentTerms: dto.paymentTerms,
-        billingAddressSnapshot: {
-          client: {
-            name: contract.client.name,
-            address: contract.client.address,
-            taxNumber: contract.client.taxNumber,
-            city: contract.client.city,
-            countryCode: contract.client.countryCode,
-          },
-          description: `Release of retention — contract ${contract.contractNumber}`,
-          org,
-        },
-        createdBy: userId,
-      });
-    } catch (err) {
-      // A concurrent request won the unique(source_retention_contract_id) index — one release invoice.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const winner = await this.repo.findByRetentionRelease(prisma, orgId, contract.id);
-        if (winner) return winner;
-      }
-      throw err;
     }
   }
 
@@ -870,6 +879,27 @@ export class ClientInvoiceService {
       }
     }
 
+    // ADR-046 §5 — a retention release invoice is re-checked when it posts: certificate invoices may
+    // have posted, been reversed or been released since the draft was raised. It may bill no more
+    // than the retention still held and not yet released, or Retention Receivable would go negative.
+    if (invoice.sourceRetentionContractId) {
+      const position = await this.repo.findRetentionPosition(
+        readPrisma,
+        orgId,
+        invoice.sourceRetentionContractId,
+        invoice.id,
+      );
+      if (new Decimal(invoice.retentionReleasedAmount.toString()).gt(position.due)) {
+        throw new BadRequestException({
+          code: 'RETENTION_RELEASE_STALE',
+          message:
+            `This release bills ${invoice.retentionReleasedAmount.toString()} but only ${position.due.toFixed(2)} ` +
+            'of retention is held and not yet released. Cancel it and raise the release again.',
+        });
+      }
+      this.assertRetentionReleasable(position);
+    }
+
     // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
     // DTO still works as an explicit override (backward-compatible) but is no longer required.
     const arAccount = await this.resolver.resolveByCodeOrRole(
@@ -878,12 +908,10 @@ export class ClientInvoiceService {
       dto.arAccountCode,
       'ACCOUNTS_RECEIVABLE',
     );
-    const revAccount = await this.resolver.resolveByCodeOrRole(
-      outerPrisma,
-      orgId,
-      dto.revenueAccountCode,
-      'PROJECT_REVENUE',
-    );
+    // A retention release invoice earns no revenue, so it needs no revenue account.
+    const revAccount = new Decimal(invoice.subtotal.toString()).gt(0)
+      ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE')
+      : null;
 
     let vatAccount: ResolvedAccount | null = null;
     if (new Decimal(invoice.vatAmount.toString()).gt(0)) {
@@ -934,7 +962,7 @@ export class ClientInvoiceService {
         },
       ];
       // A retention release invoice earns no revenue: no zero-value revenue line.
-      if (subtotal.gt(0)) {
+      if (revAccount && subtotal.gt(0)) {
         lines.push({
           accountId: revAccount.id,
           debitAmount: new Decimal(0),
@@ -1086,6 +1114,22 @@ export class ClientInvoiceService {
 
     if (!invoice.postedJournalEntryId) {
       throw new BadRequestException(`Invoice ${invoiceId} has no posted journal to reverse`);
+    }
+
+    // ADR-046 §5 — retention already invoiced to the client cannot be taken back by reversing the
+    // certificate invoice that held it: Retention Receivable would go negative. Reverse the release
+    // invoice first (the release can then be raised again for what remains held).
+    const heldHere = new Decimal(invoice.retentionAmount.toString());
+    if (invoice.sourceIpcId && invoice.contractId && heldHere.gt(0)) {
+      const position = await this.repo.findRetentionPosition(prisma, orgId, invoice.contractId);
+      if (position.released.gt(position.held.minus(heldHere))) {
+        throw new BadRequestException({
+          code: 'RETENTION_ALREADY_RELEASED',
+          message:
+            `This invoice holds ${heldHere.toFixed(2)} of retention that a posted retention release invoice ` +
+            'has already billed. Reverse the release invoice first.',
+        });
+      }
     }
 
     // Load original journal lines

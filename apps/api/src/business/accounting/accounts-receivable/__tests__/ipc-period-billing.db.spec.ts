@@ -10,6 +10,10 @@
  *   IPB-06  the read-only billing check flags a contract a legacy (cumulative) invoice over-billed
  *   IPB-07  the retention release invoice waits for the release and for unposted retention invoices
  *   IPB-08  the release invoice bills the retention held, moves it from Retention Receivable to AR
+ *   IPB-09  a certificate invoice whose retention a posted release billed cannot be reversed
+ *   IPB-10  a reversed release invoice can be raised again
+ *   IPB-11  a release draft that no longer matches the retention held is refused at post
+ *   IPB-12  retention certified after a release is billed by a top-up release invoice
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -255,6 +259,8 @@ it('IPB-07: retention cannot be invoiced before it is released, or while certifi
   );
 });
 
+let releaseInvoiceId: string;
+
 it('IPB-08: the release invoice bills the retention held, clears Retention Receivable into AR, and is raised once', async () => {
   await prisma.clientInvoice.updateMany({
     where: { organizationId: env.orgId, contractId, sourceIpcId: { not: null }, postingStatus: { not: 'POSTED' } },
@@ -265,6 +271,9 @@ it('IPB-08: the release invoice bills the retention held, clears Retention Recei
   expect((await balance(retentionAccountId)).toFixed(2)).toBe('5000.00');
 
   const draft = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
+  releaseInvoiceId = draft.id;
+  // Generating again while the draft is open returns that draft.
+  expect((await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto())).id).toBe(draft.id);
   expect(draft.subtotal.toFixed(2)).toBe('0.00');
   expect(draft.vatAmount.toFixed(2)).toBe('0.00');
   expect(draft.retentionReleasedAmount.toFixed(2)).toBe('5000.00');
@@ -275,8 +284,66 @@ it('IPB-08: the release invoice bills the retention held, clears Retention Recei
 
   expect((await balance(retentionAccountId)).toFixed(2)).toBe('0.00');
   expect((await balance(env.accounts.arId)).minus(arBefore).toFixed(2)).toBe('5000.00');
-  const again = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
-  expect(again.id).toBe(draft.id);
+  await expect(svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto())).rejects.toThrow(
+    /No retention is held/,
+  );
   const detail = await svc.clientInvoiceService.findById(env.identity, draft.id);
   expect(detail.source).toEqual({ kind: 'RETENTION_RELEASE', label: 'CTR-001', id: contractId });
+});
+
+const firstIpcInvoice = () =>
+  prisma.clientInvoice.findFirstOrThrow({
+    where: { organizationId: env.orgId, contractId, sourceIpcId: { not: null }, retentionAmount: { gt: 0 }, postingStatus: 'POSTED' },
+  });
+const reverseDto = (reason: string) => ({ reversalDate: env.periods.openStart.toISOString().slice(0, 10), reason });
+
+it('IPB-09: a certificate invoice whose retention a posted release billed cannot be reversed', async () => {
+  const first = await firstIpcInvoice();
+  await expect(svc.clientInvoiceService.reverse(env.identity, first.id, reverseDto('IPB-09'))).rejects.toThrow(
+    /Reverse the release invoice first/,
+  );
+  expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: first.id } })).postingStatus).toBe('POSTED');
+});
+
+it('IPB-10: a reversed release invoice can be raised again', async () => {
+  await svc.clientInvoiceService.reverse(env.identity, releaseInvoiceId, reverseDto('IPB-10'));
+  expect((await balance(retentionAccountId)).toFixed(2)).toBe('5000.00');
+
+  const reraised = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
+  expect(reraised.id).not.toBe(releaseInvoiceId);
+  expect(reraised.retentionReleasedAmount.toFixed(2)).toBe('5000.00');
+  releaseInvoiceId = reraised.id;
+});
+
+it('IPB-11: a release draft that no longer matches the retention held is refused at post', async () => {
+  // Nothing is released while the IPB-10 draft is unposted, so the certificate invoice may be reversed —
+  // and then the draft bills 5,000 that is no longer held.
+  await svc.clientInvoiceService.reverse(env.identity, (await firstIpcInvoice()).id, reverseDto('IPB-11'));
+  await svc.clientInvoiceService.approve(env.identity, releaseInvoiceId);
+
+  await expect(svc.clientInvoiceService.post(env.identity, { invoiceId: releaseInvoiceId })).rejects.toThrow(
+    /only 0.00 of retention is held/,
+  );
+  expect((await balance(retentionAccountId)).toFixed(2)).toBe('0.00');
+  await prisma.clientInvoice.update({ where: { id: releaseInvoiceId }, data: { documentStatus: 'CANCELLED' } });
+});
+
+it('IPB-12: retention certified after a release is billed by a top-up release invoice', async () => {
+  // Certificate 5 holds 15,000 of retention; the legacy invoice billed none.
+  const inv5 = await invoiceAndPost(await mkCertificate(contractId, 5, 300_000, 15_000, 30_000));
+  expect(inv5.retentionAmount.toFixed(2)).toBe('15000.00');
+  const release = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
+  expect(release.retentionReleasedAmount.toFixed(2)).toBe('15000.00');
+  await svc.clientInvoiceService.approve(env.identity, release.id);
+  await svc.clientInvoiceService.post(env.identity, { invoiceId: release.id });
+
+  // Certificate 6 certifies 20,000 to date: 5,000 more, then released by a second invoice.
+  const inv6 = await invoiceAndPost(await mkCertificate(contractId, 6, 400_000, 20_000, 40_000));
+  expect(inv6.retentionAmount.toFixed(2)).toBe('5000.00');
+  const topUp = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
+  expect(topUp.id).not.toBe(release.id);
+  expect(topUp.retentionReleasedAmount.toFixed(2)).toBe('5000.00');
+  await svc.clientInvoiceService.approve(env.identity, topUp.id);
+  await svc.clientInvoiceService.post(env.identity, { invoiceId: topUp.id });
+  expect((await balance(retentionAccountId)).toFixed(2)).toBe('0.00');
 });

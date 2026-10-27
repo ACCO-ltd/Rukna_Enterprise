@@ -151,33 +151,67 @@ export class ClientInvoiceRepository {
     }));
   }
 
-  /** ADR-046 §5 — the contract's retention release invoice, if one was raised (one per contract). */
-  findByRetentionRelease(prisma: TenantPrisma, organizationId: string, contractId: string) {
-    return prisma.clientInvoice.findFirst({ where: { organizationId, sourceRetentionContractId: contractId } });
-  }
-
   /**
-   * ADR-046 §5 — retention a contract's IPC invoices hold: posted invoices (their retention is in
-   * Retention Receivable), and how many unposted ones still carry retention (they must post or be
-   * cancelled first, or the release would leave their retention behind).
+   * ADR-046 §5 — a contract's retention position, everything a release invoice is checked against:
+   *  - `held`: retention on posted IPC invoices (debited to Retention Receivable);
+   *  - `pendingWithRetention`: unposted IPC invoices still carrying retention (they must post or be
+   *    cancelled first, or a release would leave their retention behind);
+   *  - `released`: retention billed on posted release invoices (credited back out), excluding
+   *    `exceptInvoiceId` (the invoice being posted);
+   *  - `openDraft`: an unposted, uncancelled release invoice, if any.
+   * Reversed and cancelled invoices count nowhere.
    */
-  async findRetentionHeld(prisma: TenantPrisma, organizationId: string, contractId: string) {
-    const ipcInvoices = { organizationId, contractId, sourceIpcId: { not: null } } as const;
-    const [posted, pendingWithRetention] = await Promise.all([
+  async findRetentionPosition(
+    prisma: TenantPrisma,
+    organizationId: string,
+    contractId: string,
+    exceptInvoiceId?: string,
+  ) {
+    const unposted = ['NOT_POSTED', 'PENDING', 'FAILED'] as const;
+    const [held, pendingWithRetention, released, openDraft] = await Promise.all([
       prisma.clientInvoice.aggregate({
-        where: { ...ipcInvoices, postingStatus: 'POSTED' },
+        where: { organizationId, contractId, sourceIpcId: { not: null }, postingStatus: 'POSTED' },
         _sum: { retentionAmount: true },
       }),
       prisma.clientInvoice.count({
         where: {
-          ...ipcInvoices,
+          organizationId,
+          contractId,
+          sourceIpcId: { not: null },
           documentStatus: { not: 'CANCELLED' },
-          postingStatus: { in: ['NOT_POSTED', 'PENDING', 'FAILED'] },
+          postingStatus: { in: [...unposted] },
           retentionAmount: { gt: 0 },
         },
       }),
+      prisma.clientInvoice.aggregate({
+        where: {
+          organizationId,
+          sourceRetentionContractId: contractId,
+          postingStatus: 'POSTED',
+          ...(exceptInvoiceId ? { id: { not: exceptInvoiceId } } : {}),
+        },
+        _sum: { retentionReleasedAmount: true },
+      }),
+      prisma.clientInvoice.findFirst({
+        where: {
+          organizationId,
+          sourceRetentionContractId: contractId,
+          documentStatus: { not: 'CANCELLED' },
+          postingStatus: { in: [...unposted] },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
-    return { held: posted._sum.retentionAmount ?? new Decimal(0), pendingWithRetention };
+    const heldAmount = new Decimal((held._sum.retentionAmount ?? 0).toString());
+    const releasedAmount = new Decimal((released._sum.retentionReleasedAmount ?? 0).toString());
+    return {
+      held: heldAmount,
+      released: releasedAmount,
+      /** What a release invoice may bill now. */
+      due: heldAmount.minus(releasedAmount),
+      pendingWithRetention,
+      openDraft,
+    };
   }
 
   // ADR-023: one invoice per payment-schedule installment (idempotent milestone billing).

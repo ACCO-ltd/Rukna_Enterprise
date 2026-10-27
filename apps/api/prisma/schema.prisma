@@ -1681,8 +1681,8 @@ model Contract {
   organization        Organization                 @relation(fields: [organizationId], references: [id])
   client              Client                       @relation(fields: [clientId], references: [id])
   retentionTerms      ContractRetentionTerms?
-  // ADR-046 §5 — the one invoice that bills the retention this contract's IPC invoices held back.
-  retentionReleaseInvoice ClientInvoice? @relation("ContractRetentionReleaseInvoice")
+  // ADR-046 §5 — the invoices that bill the retention this contract's IPC invoices held back.
+  retentionReleaseInvoices ClientInvoice[] @relation("ContractRetentionReleaseInvoice")
   advanceTerms        ContractAdvanceTerm[]
   guarantees          ContractGuarantee[]
   deliverables        ContractDeliverable[]
@@ -2838,9 +2838,10 @@ model ClientInvoice {
   // Unique → one invoice per separate-charge node (idempotent billing). Null for every other invoice
   // (additive-only, no backfill flip). Separate charges feed total client revenue, never contract value.
   sourceBoqNodeId        String?          @unique @map("source_boq_node_id")
-  // ADR-046 §5 — set on the retention release invoice: the contract whose held retention it bills.
-  // Unique → one release invoice per contract (idempotent). Null on every other invoice.
-  sourceRetentionContractId String?        @unique @map("source_retention_contract_id")
+  // ADR-046 §5 — set on a retention release invoice: the contract whose held retention it bills.
+  // Not unique: a reversed release can be raised again, and retention certified after a release
+  // is billed by a top-up. Each bills held − already released. Null on every other invoice.
+  sourceRetentionContractId String?        @map("source_retention_contract_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -2924,6 +2925,7 @@ model ClientInvoice {
   @@index([organizationId, documentStatus])
   @@index([projectId])
   @@index([taxCodeId])
+  @@index([sourceRetentionContractId])
   @@map("client_invoices")
 }
 
