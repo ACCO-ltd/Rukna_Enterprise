@@ -1215,10 +1215,10 @@ export class CommercialPrismaRepository {
   }
 
   /**
-   * Cancel unposted drafts. The unique source tags (`sourceInstallmentId`, `sourceBoqNodeId`) are
-   * released so the stage / separate charge can be prepared again (one live invoice per source); the
-   * cancelled row keeps its `billingAddressSnapshot.description` and the audit event records the
-   * original source. Guarded on unposted in the WHERE — a posted invoice is never cancelled here.
+   * Cancel unposted drafts. The unique source tags (`sourceInstallmentId`, `sourceBoqNodeId`,
+   * `sourceIpcId`) are released so the stage / separate charge / certificate can be prepared again
+   * (one live invoice per source); the cancelled row keeps its `billingAddressSnapshot.description`
+   * and the audit event records the original source. Guarded on unposted in the WHERE — a posted invoice is never cancelled here.
    * Returns the number of rows cancelled.
    */
   async cancelDraftInvoices(
@@ -1242,6 +1242,7 @@ export class CommercialPrismaRepository {
         cancellationReason: reason,
         sourceInstallmentId: null,
         sourceBoqNodeId: null,
+        sourceIpcId: null,
       },
     });
     return result.count;

@@ -3054,6 +3054,12 @@ model CreditNote {
   postedAt             DateTime?        @map("posted_at")
   postedBy             String?          @map("posted_by")
   postedJournalEntryId String?          @map("posted_journal_entry_id")
+  // Phase 0 H2 — a posted credit note issued in error is reversed (EVT-AR-008), restoring the
+  // invoice's outstanding balance. postingStatus becomes REVERSED.
+  reversedAt             DateTime?      @map("reversed_at")
+  reversedBy             String?        @map("reversed_by")
+  reversalReason         String?        @map("reversal_reason")
+  reversalJournalEntryId String?        @map("reversal_journal_entry_id")
   note                 String?
   createdBy            String           @map("created_by")
   createdAt            DateTime         @default(now()) @map("created_at")

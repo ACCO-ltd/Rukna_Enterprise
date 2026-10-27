@@ -451,6 +451,39 @@ SUBLEDGER AFTER REVERSAL
 
 ---
 
+### EVT-AR-008 — Credit Note Reversed
+
+```
+EVENT ID:     CREDIT_NOTE.REVERSED
+eventVersion: 1
+reversedBy:   n/a — this is itself a reversal; raise a new credit note instead
+
+Trigger (Phase 0 H2, 2026-10-27):
+  POST /projects/:projectId/commercial/invoices/:invoiceId/credit-notes/:creditNoteId/reverse
+  Source document: CreditNote with postingStatus = POSTED (EVT-AR-007), on a POSTED invoice
+  A reason is mandatory
+
+Pre-conditions:
+  AccountingPeriod for the reversal date is OPEN or REOPENED
+```
+
+```
+JOURNAL LINES  (exact mirror of EVT-AR-007, every dimension kept)
+
+Dr  Accounts Receivable   (credit note total)
+Cr  Project Revenue       (net)
+Cr  Output VAT Payable    (VAT, if any)
+
+journalCategory = ACCOUNTS_RECEIVABLE · entryPurpose = REVERSAL
+idempotency     = (org, CREDIT_NOTE, creditNote.id, EVT-AR-008)
+
+SUBLEDGER AFTER REVERSAL
+  CreditNote.postingStatus = REVERSED; reversalJournalEntryId / reversedAt / reversedBy / reversalReason set
+  ClientInvoice.outstandingAmount += credit note total
+```
+
+---
+
 ### EVT-AP-001 — Supplier Bill Posted
 
 ```
@@ -1136,6 +1169,7 @@ An `eventVersion` increment requires: (a) a new `PostingRuleVersion` with update
 | CLIENT_INVOICE.POSTED | CLIENT_INVOICE.REVERSED (EVT-AR-002) |
 | PAYMENT_RECEIPT.POSTED | PAYMENT_RECEIPT.REVERSED (EVT-AR-004) |
 | CLIENT_RECEIPT_ALLOCATED | CLIENT_RECEIPT_ALLOCATED.REVERSED (EVT-AR-006) — subsequent allocations only |
+| CREDIT_NOTE.POSTED (EVT-AR-007) | CREDIT_NOTE.REVERSED (EVT-AR-008) |
 | SUPPLIER_BILL.POSTED | SUPPLIER_BILL.REVERSED (EVT-AP-002) |
 | SUPPLIER_PAYMENT.POSTED | SUPPLIER_PAYMENT.REVERSED (EVT-AP-004) |
 | SUPPLIER_ADVANCE_ALLOCATED | SUPPLIER_ADVANCE_ALLOCATED.REVERSED (EVT-AP-006) — subsequent only |

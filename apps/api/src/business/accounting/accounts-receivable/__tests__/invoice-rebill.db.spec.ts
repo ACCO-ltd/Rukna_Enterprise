@@ -5,6 +5,7 @@
  *          invoice for the same certificate, which posts
  *   RB-02  the reversal is audited with the source it released
  *   RB-03  a reversed invoice cannot be posted again (A11)
+ *   RB-04  a cancelled certificate draft does not hold the certificate: a new invoice is raised
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -121,4 +122,31 @@ it('RB-03: a reversed invoice cannot be posted again', async () => {
   await expect(svc.clientInvoiceService.post(env.identity, { invoiceId: firstInvoiceId })).rejects.toThrow(
     /was reversed and cannot be posted again/,
   );
+});
+
+it('RB-04: a cancelled certificate draft gives up the certificate', async () => {
+  const ipa = await prisma.interimPaymentApplication.create({
+    data: { organizationId: env.orgId, contractId, applicationNumber: 2, status: 'SUBMITTED', createdBy: env.identity.userId },
+  });
+  const ipc2 = await prisma.interimPaymentCertificate.create({
+    data: {
+      organizationId: env.orgId,
+      applicationId: ipa.id,
+      certificateNumber: 1,
+      status: 'CERTIFIED',
+      isEffective: true,
+      effectiveAt: new Date(),
+      certifiedTotal: d(100_000),
+      currency: 'USD',
+      createdBy: env.identity.userId,
+    },
+  });
+  const draft = await svc.clientInvoiceService.generateFromIpc(env.identity, { ipcId: ipc2.id, ...dates() });
+  // Cancelled before cancelling released the tag: the row still names the certificate.
+  await prisma.clientInvoice.update({ where: { id: draft.id }, data: { documentStatus: 'CANCELLED' } });
+
+  const fresh = await svc.clientInvoiceService.generateFromIpc(env.identity, { ipcId: ipc2.id, ...dates() });
+  expect(fresh.id).not.toBe(draft.id);
+  expect(fresh.subtotal.toFixed(2)).toBe('20000.00'); // 100,000 to date − 80,000 already billed
+  expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: draft.id } })).sourceIpcId).toBeNull();
 });

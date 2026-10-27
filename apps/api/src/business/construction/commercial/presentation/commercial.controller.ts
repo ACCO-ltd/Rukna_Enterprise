@@ -41,6 +41,7 @@ import { OpenDisputeDto } from './dto/open-dispute.dto.js';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto.js';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto.js';
 import { PostCreditNoteDto } from './dto/post-credit-note.dto.js';
+import { ReverseCreditNoteDto } from './dto/reverse-credit-note.dto.js';
 
 @ApiTags('Commercial')
 @ApiBearerAuth('access-token')
@@ -502,6 +503,28 @@ export class CommercialController {
       arAccountCode: dto.arAccountCode,
       revenueAccountCode: dto.revenueAccountCode,
       vatAccountCode: dto.vatAccountCode,
+    });
+  }
+
+  @Post('invoices/:invoiceId/credit-notes/:creditNoteId/reverse')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.receivablesManage)
+  @ApiOperation({ summary: 'Phase 0 H2: reverse a posted credit note (EVT-AR-008) and restore the invoice outstanding' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'invoiceId', description: 'Client invoice ID' })
+  @ApiParam({ name: 'creditNoteId', description: 'Credit note ID' })
+  @ApiResponse({ status: 409, description: 'Credit note already reversed' })
+  reverseCreditNote(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('invoiceId') invoiceId: string,
+    @Param('creditNoteId') creditNoteId: string,
+    @Body() dto: ReverseCreditNoteDto,
+  ) {
+    return this.creditNoteService.reverseCreditNote(identity, {
+      creditNoteId,
+      invoiceId,
+      reversalDate: dto.reversalDate,
+      reason: dto.reason,
     });
   }
 

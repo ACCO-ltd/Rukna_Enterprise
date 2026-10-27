@@ -189,6 +189,11 @@ export class CreditNoteService {
     if (creditNote.postingStatus === 'POSTED') {
       throw new ConflictException(`CreditNote ${dto.creditNoteId} is already posted`);
     }
+    // A reversed credit note is finished (H2): posting it again would draw a new number and a second
+    // journal. Raise a new credit note instead.
+    if (creditNote.postingStatus !== 'NOT_POSTED' && creditNote.postingStatus !== 'FAILED') {
+      throw new ConflictException(`CreditNote ${dto.creditNoteId} cannot be posted (status: ${creditNote.postingStatus})`);
+    }
 
     // Resolve accounts
     const arAccount = await this.resolver.resolveByCodeOrRole(
@@ -378,6 +383,95 @@ export class CreditNoteService {
       });
 
       return updatedCreditNote;
+    });
+  }
+
+  // ─── reverseCreditNote ─────────────────────────────────────────────────────
+
+  /**
+   * Phase 0 H2 — EVT-AR-008: reverse a posted credit note issued in error. The mirror of EVT-AR-007
+   * (Dr AR / Cr Revenue / Cr VAT, every original dimension kept), dated on the reversal date; the
+   * invoice's outstanding balance is restored by the credit note total.
+   */
+  async reverseCreditNote(
+    identity: RequestIdentity,
+    dto: { creditNoteId: string; invoiceId?: string; reversalDate: string; reason: string },
+  ) {
+    const outerPrisma = this.tenancyService.getClient() as TenantPrisma;
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const creditNote = await outerPrisma.creditNote.findFirst({
+      where: { id: dto.creditNoteId, organizationId: orgId, ...(dto.invoiceId ? { invoiceId: dto.invoiceId } : {}) },
+    });
+    if (!creditNote) throw new NotFoundException(`CreditNote ${dto.creditNoteId} not found`);
+    if (creditNote.postingStatus !== 'POSTED' || !creditNote.postedJournalEntryId) {
+      throw new BadRequestException(`Only a POSTED credit note can be reversed (status: ${creditNote.postingStatus})`);
+    }
+    if (creditNote.reversalJournalEntryId) {
+      throw new ConflictException(`CreditNote ${dto.creditNoteId} is already reversed`);
+    }
+    const reason = dto.reason?.trim();
+    if (!reason) throw new BadRequestException('A reason is required to reverse a credit note');
+
+    const original = await outerPrisma.journalEntry.findUniqueOrThrow({
+      where: { id: creditNote.postedJournalEntryId },
+      include: { lines: true },
+    });
+    const reversalDate = new Date(dto.reversalDate);
+    const totalAmount = new Decimal(creditNote.totalAmount.toString());
+
+    return (outerPrisma as unknown as PrismaClient).$transaction(async (tx) => {
+      // Lock the invoice: the reversal restores outstanding while receipts may be allocating to it.
+      const locked = await (tx as unknown as PrismaClient).$queryRaw<Array<{ posting_status: string }>>`
+        SELECT posting_status FROM client_invoices WHERE id = ${creditNote.invoiceId} AND organization_id = ${orgId} FOR UPDATE`;
+      if (!locked.length) throw new NotFoundException(`ClientInvoice ${creditNote.invoiceId} not found`);
+      if (locked[0].posting_status !== 'POSTED') {
+        throw new BadRequestException(`The invoice is ${locked[0].posting_status}; only a credit note on a posted invoice is reversed.`);
+      }
+
+      const result = await this.postingPort.post(
+        {
+          organizationId: orgId,
+          accountingDate: reversalDate,
+          documentDate: reversalDate,
+          description: `Reversal of credit note ${creditNote.creditNoteNumber ?? creditNote.id}: ${reason}`,
+          currencyCode: original.currencyCode,
+          eventType: 'EVT-AR-008',
+          sourceDocumentType: 'CREDIT_NOTE',
+          sourceDocumentId: creditNote.id,
+          journalCategory: 'ACCOUNTS_RECEIVABLE',
+          entryPurpose: 'REVERSAL',
+          postingOrigin: 'SYSTEM_AR',
+          createdBy: userId,
+          lines: original.lines.map((l) => ({
+            accountId: l.accountId,
+            debitAmount: l.creditAmount as unknown as Decimal,
+            creditAmount: l.debitAmount as unknown as Decimal,
+            sourceSubledgerType: l.sourceSubledgerType ?? undefined,
+            clientId: l.clientId ?? undefined,
+            projectId: l.projectId ?? undefined,
+            contractId: l.contractId ?? undefined,
+            memo: `Reversal: ${l.description ?? ''}`,
+          })),
+        },
+        tx as never,
+      );
+
+      const reversed = await (tx as unknown as TenantPrisma).creditNote.update({
+        where: { id: creditNote.id },
+        data: {
+          postingStatus: 'REVERSED',
+          reversalJournalEntryId: result.journalEntryId,
+          reversedAt: new Date(),
+          reversedBy: userId,
+          reversalReason: reason,
+        },
+      });
+      await (tx as unknown as TenantPrisma).clientInvoice.update({
+        where: { id: creditNote.invoiceId },
+        data: { outstandingAmount: { increment: totalAmount } },
+      });
+      return reversed;
     });
   }
 }

@@ -14,6 +14,8 @@
  * CN-DB-09: credit > outstanding → CREDIT_EXCEEDS_OUTSTANDING
  * CN-DB-10: duplicate post → ConflictException
  * CN-DB-11: CN against NOT_POSTED invoice → BadRequestException
+ * CN-DB-22: reversing a posted CN (EVT-AR-008) mirrors its journal and restores the invoice outstanding
+ * CN-DB-23: a reversed CN can be neither reversed again nor posted again; a draft CN cannot be reversed
  */
 
 import { BadRequestException, ConflictException } from '@nestjs/common';
@@ -854,5 +856,69 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     const cnBRow = await prisma.creditNote.findUniqueOrThrow({ where: { id: cnB.id } });
     expect(cnBRow.postingStatus).toBe('NOT_POSTED');
     expect(cnBRow.postedJournalEntryId).toBeNull();
+  });
+
+  it('CN-DB-22: reversing a posted credit note mirrors its journal and restores the invoice outstanding', async () => {
+    const invoiceId = await makePostedInvoice();
+    const cn = await service.createCreditNote(identity, {
+      invoiceId,
+      reason: 'CORRECTION',
+      netAmount: '10000.00',
+      accountingDate: '2026-09-15',
+    });
+    await service.postCreditNote(identity, {
+      creditNoteId: cn.id,
+      arAccountCode: env.accounts.arCode,
+      revenueAccountCode: env.accounts.revCode,
+      vatAccountCode,
+    });
+    expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: invoiceId } })).outstandingAmount.toFixed(2)).toBe(
+      '94500.00',
+    );
+
+    const reversed = await service.reverseCreditNote(identity, {
+      creditNoteId: cn.id,
+      invoiceId,
+      reversalDate: '2026-09-20',
+      reason: 'Credited in error',
+    });
+    expect(reversed.postingStatus).toBe('REVERSED');
+    expect(reversed.reversalReason).toBe('Credited in error');
+    expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: invoiceId } })).outstandingAmount.toFixed(2)).toBe(
+      TOTAL,
+    );
+
+    const [original, reversal] = await Promise.all([
+      prisma.journalEntry.findUniqueOrThrow({ where: { id: reversed.postedJournalEntryId! }, include: { lines: true } }),
+      prisma.journalEntry.findUniqueOrThrow({ where: { id: reversed.reversalJournalEntryId! }, include: { lines: true } }),
+    ]);
+    const net = (lines: typeof original.lines) =>
+      lines.reduce((m, l) => m.set(l.accountId, (m.get(l.accountId) ?? new Decimal(0)).plus(l.debitAmount).minus(l.creditAmount)), new Map<string, Decimal>());
+    const before = net(original.lines);
+    for (const [accountId, amount] of net(reversal.lines)) expect(amount.plus(before.get(accountId)!).toFixed(2)).toBe('0.00');
+    expect(reversal.accountingDate.toISOString().slice(0, 10)).toBe('2026-09-20');
+  });
+
+  it('CN-DB-23: a reversed credit note is finished; a draft cannot be reversed', async () => {
+    const invoiceId = await makePostedInvoice();
+    const cn = await service.createCreditNote(identity, {
+      invoiceId,
+      reason: 'CORRECTION',
+      netAmount: '1000.00',
+      accountingDate: '2026-09-15',
+    });
+    await expect(
+      service.reverseCreditNote(identity, { creditNoteId: cn.id, reversalDate: '2026-09-20', reason: 'x' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await service.postCreditNote(identity, { creditNoteId: cn.id, arAccountCode: env.accounts.arCode, revenueAccountCode: env.accounts.revCode, vatAccountCode });
+    await service.reverseCreditNote(identity, { creditNoteId: cn.id, reversalDate: '2026-09-20', reason: 'Wrong invoice' });
+
+    await expect(
+      service.reverseCreditNote(identity, { creditNoteId: cn.id, reversalDate: '2026-09-21', reason: 'again' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.postCreditNote(identity, { creditNoteId: cn.id, arAccountCode: env.accounts.arCode, revenueAccountCode: env.accounts.revCode, vatAccountCode }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

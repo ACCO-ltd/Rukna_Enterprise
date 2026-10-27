@@ -322,7 +322,13 @@ export class ClientInvoiceService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const existing = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
-    if (existing) return existing;
+    // H2 — a draft cancelled before cancelling released `sourceIpcId` still holds the certificate:
+    // it billed nothing, so it gives the tag up and a new invoice is raised.
+    if (existing?.documentStatus === 'CANCELLED') {
+      await prisma.clientInvoice.update({ where: { id: existing.id }, data: { sourceIpcId: null } });
+    } else if (existing) {
+      return existing;
+    }
 
     const ipc = await prisma.interimPaymentCertificate.findFirst({
       where: { id: dto.ipcId, organizationId: orgId },
