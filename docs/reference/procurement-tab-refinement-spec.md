@@ -8,7 +8,7 @@ the read model is built on the commitment ledger rather than on new list filters
 (ADR wiring, DOA/SoD, the classifier, matching) remain accurate and unbuilt.
 
 Original status: **Backend largely built (INTEGRATED, org-level). Refinement = a project-scoped
-surface + ADR wiring.** Owners: Backend — Abdulsalam · Frontend — frontend engineer.
+surface + ADR wiring.** Owner: Abdulsalam (full stack).
 Source of truth: ADR-020 (BOQ backbone + change classifier), ADR-022 (DOA + SoD + roles), ADR-018
 (bill matching), ADR-013 (Project Financial Position).
 

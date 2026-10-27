@@ -92,9 +92,11 @@ If documentation is unclear, stop and request clarification.
 
 | Role | Name | Owns | Escalate to for |
 |---|---|---|---|
-| Backend Engineer | Abdulsalam | apps/api/, prisma/schema.prisma, packages/types/ | API contracts, schema changes, backend architecture |
+| Full-stack Engineer | Abdulsalam | The whole repository: apps/api/, apps/web/, prisma/schema.prisma, packages/types/, packages/ui/ | API contracts, schema, architecture, UI/UX, frontend state |
 | CEO / Domain Expert | Eng Ahmed Shirie | ACCO Ltd business processes | Construction domain rules, approval workflows, business logic |
-| Frontend Engineer | Abdimalik | apps/web/, packages/ui/ | UI/UX, component design, frontend state |
+
+Abdulsalam is the only engineer (2026-10-27): features are built end to end, backend through
+frontend, in the same change. There is no separate frontend owner to hand work to.
 
 ---
 

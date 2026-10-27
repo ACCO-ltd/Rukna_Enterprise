@@ -2,7 +2,7 @@
 
 Status: **DESIGN / build-ready for the parts noted; payment-plan portion gated on backend
 `ContractPaymentPlan` (ADR-023).**
-Owners: Backend — Abdulsalam · Frontend — frontend engineer · Domain — Eng Ahmed Shirie
+Owner: Abdulsalam (full stack) · Domain — Eng Ahmed Shirie
 Source of truth: **ADR-023** (billing models), ADR-020 (BOQ is the value source), ADR-022 (authority),
 ADR-019 (guarded commands / Preparation).
 
