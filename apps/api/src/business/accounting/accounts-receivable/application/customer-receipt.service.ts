@@ -271,17 +271,40 @@ export class CustomerReceiptService {
       prisma, orgId, dto.unappliedAccountCode, 'UNAPPLIED_CLIENT_RECEIPTS',
     );
 
+    // The application happens when both source documents exist: the later of the invoice date and
+    // the receipt's accounting date (never the clock) — the AR mirror of ADR-045 review H2. Dating
+    // it on the receipt alone put an application to an invoice raised months later into the
+    // (possibly closed) receipt month, so it could never post.
+    const applicationDay =
+      invoice.invoiceDate.getTime() > receipt.accountingDate.getTime()
+        ? invoice.invoiceDate
+        : receipt.accountingDate;
+
     return prisma.$transaction(async (tx) => {
+      // The allocation row is created first so its id keys the GL journal. Keying the journal on
+      // the receipt→invoice pair made a second allocation of the same pair (or a re-allocation
+      // after a reversal) hit the posting idempotency guard: the guard returned the first journal
+      // while the balances below were drawn down again, so the subledger drifted from the GL.
+      const allocation = await this.receiptRepo.createAllocation(tx as never, {
+        organizationId: orgId,
+        paymentReceiptId: receipt.id,
+        clientInvoiceId: invoice.id,
+        allocatedAmount: amount,
+        allocationDate: applicationDay,
+        postingStatus: 'POSTED',
+        createdBy: userId,
+      });
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: receipt.accountingDate,
-          documentDate: receipt.receiptDate,
+          accountingDate: applicationDay,
+          documentDate: applicationDay,
           description: `Receipt Allocation — Receipt ${receipt.id} → Invoice ${invoice.id}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-005',
           sourceDocumentType: 'PAYMENT_RECEIPT',
-          sourceDocumentId: `${receipt.id}-alloc-${invoice.id}`,
+          sourceDocumentId: `${receipt.id}-alloc-${allocation.id}`,
           journalCategory: 'ACCOUNTS_RECEIVABLE',
           entryPurpose: 'NORMAL',
           postingOrigin: 'SYSTEM_AR',
@@ -308,18 +331,8 @@ export class CustomerReceiptService {
       // All subledger side-effects run on `tx` (not the outer `prisma` client) so they commit or
       // roll back with the GL journal above. Writing them on `prisma` left the allocation row,
       // receipt balances, and invoice outstanding committed independently of a rolled-back journal
-      // — the same defect fixed for the receipt-post path in 4eb64e1. The allocation is dated on the
-      // source receipt's accountingDate (never `new Date()`), per the accounting-date rule.
-      await this.receiptRepo.createAllocation(tx as never, {
-        organizationId: orgId,
-        paymentReceiptId: receipt.id,
-        clientInvoiceId: invoice.id,
-        allocatedAmount: amount,
-        allocationDate: receipt.accountingDate,
-        journalEntryId: postResult.journalEntryId,
-        postingStatus: 'POSTED',
-        createdBy: userId,
-      });
+      // — the same defect fixed for the receipt-post path in 4eb64e1.
+      await this.receiptRepo.linkAllocationJournal(tx as never, allocation.id, postResult.journalEntryId);
 
       // Guarded atomic decrements: the `gte` predicate + decrement execute as one row-locked
       // statement, so two concurrent allocations of the same receipt (or against the same invoice)
@@ -496,11 +509,11 @@ export class CustomerReceiptService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          // Reversal mirrors the source allocation's period (receipt.accountingDate), never today's
+          // Reversal mirrors the source allocation's period (its allocationDate), never today's
           // date — a `new Date()` here mis-periods AR and can be rejected outright when the current
           // period is closed. Enforces feedback-accounting-date-rule.
-          accountingDate: receipt.accountingDate,
-          documentDate: receipt.receiptDate,
+          accountingDate: alloc.allocationDate,
+          documentDate: alloc.allocationDate,
           description: `Allocation Reversal — Allocation ${allocationId}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-006',

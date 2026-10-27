@@ -165,4 +165,16 @@ export class SupplierPaymentRepository {
       },
     });
   }
+
+  /** Records the GL journal of an allocation created before its journal was posted. */
+  linkAllocationJournal(
+    prisma: TenantPrisma,
+    allocationId: string,
+    journalEntryId: string,
+  ): Promise<SupplierPaymentAllocation> {
+    return prisma.supplierPaymentAllocation.update({
+      where: { id: allocationId },
+      data: { journalEntryId },
+    });
+  }
 }

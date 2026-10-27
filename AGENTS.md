@@ -211,9 +211,9 @@ dimensions to shared modules. Shared modules must not import `BoqService`, `Proj
 or any other construction-domain service. If a shared module needs construction data, it
 receives it as a plain ID through its own API — it does not call into construction code.
 
-**Known technical debt:** `src/business/finance/` (Sprint 3 PaymentReceipt module) is
-construction-coupled by domain. It will be absorbed into the AR module in Sprint 8
-when the AR/Cash-Banking boundary is formalized.
+The former `src/business/finance/` PaymentReceipt module has been absorbed into the AR
+module (`accounting/accounts-receivable`, ADR-024 ACC-SET-001); there is no separate finance
+module any more.
 
 ---
 

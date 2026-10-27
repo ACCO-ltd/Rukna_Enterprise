@@ -335,6 +335,12 @@ Pre-conditions:
 
   This event is ONLY for post-payment allocations. Allocations at payment posting time are
   part of EVT-AR-003 and do not produce a separate journal.
+
+Dating and keying:
+  allocationDate = the later of ClientInvoice.invoiceDate and PaymentReceipt.accountingDate
+  (never the clock) — the AR mirror of EVT-AP-005 (ADR-045 review H2).
+  One journal per ClientReceiptAllocation: sourceDocumentId = <receiptId>-alloc-<allocationId>,
+  so a second allocation of the same receipt → invoice pair posts its own journal.
 ```
 
 ```

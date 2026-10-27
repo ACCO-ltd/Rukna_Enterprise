@@ -677,7 +677,6 @@
     "checkingGate": "Checking whether this period can be closed…",
     "gateBlocked": "This period cannot be closed yet:",
     "gatePassed": "Nothing blocks closing this period.",
-    "unauthorizedNote": "These actions have no server-side authorization. Any signed-in user can run them, including the year-end close — raised as issue #25.",
     "confirm": {
       "lockTitle": "Lock this period?",
       "lockBody": "A locked period accepts closing adjustments only. Ordinary journals dated inside it will be rejected.",

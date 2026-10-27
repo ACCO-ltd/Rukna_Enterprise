@@ -210,6 +210,19 @@ export class ManualJournalService {
       );
     }
 
+    // ADR-022 CONST-DOA-003: journal preparer ≠ journal approver. A journal posted straight from
+    // SUBMITTED has no recorded approver, so the person posting it is its only second pair of
+    // eyes — the preparer must not be that person, or they could draft, submit and post alone.
+    // The check honours the org's JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL toggle, like approve().
+    if (journal.status === 'SUBMITTED' && !journal.approvedBy) {
+      await this.sod.assertAllowed({
+        organizationId: orgId,
+        action: 'APPROVE_MANUAL_JOURNAL',
+        actorUserId: userId,
+        journalPreparerUserId: journal.createdBy,
+      });
+    }
+
     return prisma.$transaction(async (tx) => {
       // Resolve snapshots and re-validate at post time
       const lines = await Promise.all(
@@ -315,6 +328,15 @@ export class ManualJournalService {
     }
     if (journal.reversalOfJournalEntryId) {
       throw new ConflictException(`Journal ${dto.journalId} is already a reversal — cannot reverse a reversal`);
+    }
+    // Only a manual journal is reversed here. A system journal (invoice, bill, receipt, payment,
+    // opening balance, year-end close) has a source document whose balances move with it;
+    // mirroring the journal alone would leave that document's subledger disagreeing with the GL.
+    // Such journals are reversed through their own document's reverse command.
+    if (journal.sourceDocumentType !== 'MANUAL_JOURNAL') {
+      throw new BadRequestException(
+        `Journal ${journal.journalNumber ?? journal.id} was posted by a ${journal.sourceDocumentType} — reverse it from that document, not as a manual journal`,
+      );
     }
 
     // Reversing twice would post the mirror entry twice and take the accounts to the

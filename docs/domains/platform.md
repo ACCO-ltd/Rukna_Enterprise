@@ -19,8 +19,10 @@ RBAC + DOA gating on a state transition. Returns `null` (proceed) or `{ gated: t
 approvalInstanceId }`. `throwIfGated()` throws 409. `GovernedEntity` (in `@erp/types`) types the
 entity name at the call site.
 
-**Not active yet:** value-threshold routing (needs CFO/CEO thresholds) and SoD enforcement
-(`SegregationOfDutiesService` has no callers).
+**Built (ADR-022):** value-threshold routing (amount-banded `WorkflowTriggerBinding`) and SoD
+enforcement (`SegregationOfDutiesService`, called by bills, payments, manual journals, buyer
+advances and quotation awards). Both are configured per organization and seeded inactive; go-live
+is `governance:seed` then `governance:activate`.
 
 See `docs/reference/tenancy.md`, `docs/reference/boundaries.md`,
 `docs/02-domain-boundaries.md`.

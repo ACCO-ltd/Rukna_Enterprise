@@ -367,3 +367,55 @@ it('PL-06: P&L net income matches Current Year Earnings in Balance Sheet', async
   expect(cyeLine).toBeDefined();
   expect(Number(cyeLine!.balance)).toBeCloseTo(Number(pl.netIncome), 2);
 });
+
+// ─── BS-05 ────────────────────────────────────────────────────────────────────
+// An equity account in debit (owner drawings beyond earnings) must reduce equity, not add to it.
+// Taking abs() of credit-normal balances turned it into an addition and unbalanced a correct ledger.
+it('BS-05: a debit-balance equity account reduces equity and the balance sheet still balances', async () => {
+  const own = await AccountingFixtureFactory.create(prisma);
+  try {
+    const d = (n: number) => new Decimal(n.toString());
+    const post = (key: string, lines: { accountId: string; debitAmount: Decimal; creditAmount: Decimal }[]) =>
+      prisma.$transaction((tx) =>
+        svc.postingService.post(
+          {
+            organizationId: own.orgId,
+            accountingDate: new Date('2025-01-20'),
+            documentDate:   new Date('2025-01-20'),
+            description:    `BS-05 ${key}`,
+            currencyCode:   'USD',
+            eventType:      `EVT-BS05-${key}-${Date.now()}`,
+            sourceDocumentType: 'MANUAL_JOURNAL',
+            sourceDocumentId:   `bs05-${key}-${Date.now()}`,
+            journalCategory:    'GENERAL',
+            entryPurpose:       'NORMAL',
+            postingOrigin:      'MANUAL',
+            createdBy:          own.identity.userId,
+            lines,
+          },
+          tx as never,
+        ),
+      );
+
+    // Cash 1,000 held against a 1,000 liability, then 300 of drawings charged to equity.
+    await post('cash', [
+      { accountId: own.accounts.bankId,  debitAmount: d(1000), creditAmount: d(0) },
+      { accountId: own.accounts.unaplId, debitAmount: d(0),    creditAmount: d(1000) },
+    ]);
+    await post('drawings', [
+      { accountId: own.accounts.reId,    debitAmount: d(300), creditAmount: d(0) },
+      { accountId: own.accounts.unaplId, debitAmount: d(0),   creditAmount: d(300) },
+    ]);
+
+    const bs = await svc.balanceSheetService.generate(own.identity, { asOfDate: '2025-01-31' });
+
+    const equityLine = bs.equity.lines.find((l) => l.accountId === own.accounts.reId);
+    expect(equityLine?.balance).toBe('-300.00');
+    expect(bs.assets.total).toBe('1000.00');
+    expect(bs.liabilities.total).toBe('1300.00');
+    expect(bs.totalLiabilitiesAndEquity).toBe('1000.00');
+    expect(bs.balanced).toBe(true);
+  } finally {
+    await AccountingFixtureFactory.cleanup(prisma, own.orgId);
+  }
+});

@@ -102,7 +102,7 @@ export class OpeningBalanceService {
     });
     if (existing) {
       throw new ConflictException(
-        `Opening balance already imported (journal ${existing.journalNumber}). Reverse it first to re-import.`,
+        `Opening balance already imported (journal ${existing.journalNumber}); it can be imported only once.`,
       );
     }
 

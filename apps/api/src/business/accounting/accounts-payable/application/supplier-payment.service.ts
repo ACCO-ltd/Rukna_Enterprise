@@ -670,6 +670,23 @@ export class SupplierPaymentService {
       // alone put an application of a bill posted months later into the (possibly closed) payment
       // month, so it could never post. Applies to every caller of allocateAdvance.
       const applicationDay = bill.billDate.getTime() > payment.accountingDate.getTime() ? bill.billDate : payment.accountingDate;
+
+      // The allocation row is created first so its id keys the GL journal. Keying the journal on
+      // the payment→bill pair made a second allocation of the same pair (or a re-allocation after
+      // a reversal) hit the posting idempotency guard: the guard returned the first journal while
+      // the balances below were drawn down again, so the subledger drifted from the GL.
+      const allocation = await this.paymentRepo.createAllocation(tx as never, {
+        organizationId: orgId,
+        supplierPaymentId: payment.id,
+        supplierBillId: bill.id,
+        allocatedAmount: amount,
+        // Dated as the EVT-AP-005 journal below (later of bill date and payment date), never
+        // `new Date()` — feedback-accounting-date-rule.
+        allocationDate: applicationDay,
+        postingStatus: 'POSTED',
+        createdBy: userId,
+      });
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
@@ -679,7 +696,7 @@ export class SupplierPaymentService {
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-005',
           sourceDocumentType: 'SUPPLIER_PAYMENT',
-          sourceDocumentId: `${payment.id}-alloc-${bill.id}`,
+          sourceDocumentId: `${payment.id}-alloc-${allocation.id}`,
           journalCategory: 'ACCOUNTS_PAYABLE',
           entryPurpose: 'NORMAL',
           postingOrigin: 'SYSTEM_AP',
@@ -703,18 +720,7 @@ export class SupplierPaymentService {
         tx as never,
       );
 
-      const allocation = await this.paymentRepo.createAllocation(tx as never, {
-        organizationId: orgId,
-        supplierPaymentId: payment.id,
-        supplierBillId: bill.id,
-        allocatedAmount: amount,
-        // Dated as the EVT-AP-005 journal above (later of bill date and payment date), never
-        // `new Date()` — feedback-accounting-date-rule.
-        allocationDate: applicationDay,
-        journalEntryId: postResult.journalEntryId,
-        postingStatus: 'POSTED',
-        createdBy: userId,
-      });
+      await this.paymentRepo.linkAllocationJournal(tx as never, allocation.id, postResult.journalEntryId);
 
       // Guarded atomic decrements so two concurrent allocations cannot over-draw the payment's
       // unallocated balance or over-pay the same bill: the `gte` predicate + decrement run as one

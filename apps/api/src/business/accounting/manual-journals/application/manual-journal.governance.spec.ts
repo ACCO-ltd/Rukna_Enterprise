@@ -182,3 +182,54 @@ describe('ManualJournalService — no fabricated approvals (JD1)', () => {
     expect(sod.assertAllowed).not.toHaveBeenCalled();
   });
 });
+
+// ADR-022 CONST-DOA-003 — posting straight from SUBMITTED makes the poster the journal's only
+// second pair of eyes, so the preparer may not be that poster.
+describe('ManualJournalService — preparer cannot post their own unapproved journal', () => {
+  it('evaluates journal-preparer SoD with the poster as actor when posting from SUBMITTED', async () => {
+    const { svc, sod } = build(null, { status: 'SUBMITTED', createdBy: 'u-preparer', approvedBy: null });
+
+    await svc.post(approver, 'j1');
+
+    expect(sod.assertAllowed).toHaveBeenCalledWith({
+      organizationId: 'o1',
+      action: 'APPROVE_MANUAL_JOURNAL',
+      actorUserId: 'u-approver',
+      journalPreparerUserId: 'u-preparer',
+    });
+  });
+
+  it('blocks the preparer from posting when the SoD rule is active, before anything is posted', async () => {
+    const { svc, sod, postingPort } = build(null, { status: 'SUBMITTED', createdBy: 'u-preparer', approvedBy: null });
+    sod.assertAllowed.mockRejectedValueOnce(new Error('SoD: preparer cannot approve'));
+
+    await expect(svc.post(identity, 'j1')).rejects.toThrow(/SoD/);
+    expect(postingPort.post).not.toHaveBeenCalled();
+  });
+
+  it('does not re-check SoD for an APPROVED journal (its approver already passed it)', async () => {
+    const { svc, sod } = build(null, { status: 'APPROVED', approvedBy: 'u-approver' });
+
+    await svc.post(identity, 'j1');
+
+    expect(sod.assertAllowed).not.toHaveBeenCalled();
+  });
+});
+
+// Only manual journals are reversed through the manual-journal endpoint; a system journal's
+// source document must move with it.
+describe('ManualJournalService — reverse is limited to manual journals', () => {
+  it('rejects reversing a journal posted by another source document', async () => {
+    const { svc, postingPort } = build(null, {
+      status: 'POSTED',
+      sourceDocumentType: 'CLIENT_INVOICE',
+      journalNumber: 'JE-9',
+      reversalOfJournalEntryId: null,
+    });
+
+    await expect(
+      svc.reverse(identity, { journalId: 'j1', reversalDate: '2025-03-20', reason: 'wrong' } as never),
+    ).rejects.toThrow(/CLIENT_INVOICE/);
+    expect(postingPort.post).not.toHaveBeenCalled();
+  });
+});

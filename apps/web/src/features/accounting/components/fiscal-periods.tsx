@@ -34,7 +34,6 @@ export function FiscalPeriods() {
   const t = useTranslations('accounting.periods');
   const tCommon = useTranslations('common');
 
-  const tActions = useTranslations('accounting.periodActions');
   const years = useFiscalYears();
   const [creating, setCreating] = useState(false);
   const { can } = usePermissions();
@@ -68,12 +67,6 @@ export function FiscalPeriods() {
       {creating ? (
         <CreateFiscalYearForm title={t('create.title')} onDone={() => setCreating(false)} />
       ) : null}
-
-      {/* The lifecycle endpoints carry `JwtAuthGuard` and nothing else — any signed-in user
-          can close a fiscal year (#25). The actions are gated on `can()` so one flag secures
-          them when a guard lands, but that is presentation only, and saying so is more honest
-          than a screen that looks authorised. */}
-      <Alert variant="warning" messages={[tActions('unauthorizedNote')]} />
 
 
       {years.data.length === 0 ? (
