@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SnapshotService } from './snapshot.service.js';
@@ -213,13 +214,7 @@ export class PeriodManagementService {
   ): Promise<CloseGateResult> {
     const blockers: string[] = [];
 
-    const pendingJournals = await prisma.journalEntry.count({
-      where: {
-        organizationId: orgId,
-        accountingPeriodId: period.id,
-        status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED'] },
-      },
-    });
+    const pendingJournals = await this.countPendingJournals(prisma, orgId, period);
     if (pendingJournals > 0) {
       blockers.push(`${pendingJournals} journal(s) are not yet posted (DRAFT/SUBMITTED/APPROVED)`);
     }
@@ -235,66 +230,86 @@ export class PeriodManagementService {
     const blockers: string[] = [];
 
     // 1. No non-terminal journals
-    const pendingJournals = await prisma.journalEntry.count({
-      where: {
-        organizationId: orgId,
-        accountingPeriodId: period.id,
-        status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED'] },
-      },
-    });
+    const pendingJournals = await this.countPendingJournals(prisma, orgId, period);
     if (pendingJournals > 0) {
       blockers.push(`${pendingJournals} journal(s) are not yet posted`);
     }
 
     // 2. AR control reconciliation: AR GL must equal sum of open invoice outstanding amounts
-    const arCheck = await this.checkArReconciliation(prisma, orgId, period.endDate);
+    const arCheck = await this.checkArReconciliation(prisma, orgId);
     if (!arCheck.passed) blockers.push(arCheck.message);
 
     // 3. AP control reconciliation
-    const apCheck = await this.checkApReconciliation(prisma, orgId, period.endDate);
+    const apCheck = await this.checkApReconciliation(prisma, orgId);
     if (!apCheck.passed) blockers.push(apCheck.message);
 
     return { passed: blockers.length === 0, blockers };
   }
 
+  /**
+   * M1 — journals not yet posted that fall in the period. A draft has no `accountingPeriodId` until
+   * it posts, so it is matched on its accounting date as well; counting by period id alone let every
+   * draft escape the gate.
+   */
+  private countPendingJournals(
+    prisma: Omit<import('@prisma/client').PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
+    orgId: string,
+    period: { id: string; startDate: Date; endDate: Date },
+  ): Promise<number> {
+    return prisma.journalEntry.count({
+      where: {
+        organizationId: orgId,
+        status: { in: ['DRAFT', 'SUBMITTED', 'APPROVED'] },
+        OR: [
+          { accountingPeriodId: period.id },
+          { accountingPeriodId: null, accountingDate: { gte: period.startDate, lte: period.endDate } },
+        ],
+      },
+    });
+  }
+
+  /**
+   * M1 — the posted GL balance of every account that is an AR/AP control account in any version,
+   * each account once (an account with several versions used to be summed once per version).
+   *
+   * The tie-out compares like with like: the whole posted GL against today's subledger outstanding.
+   * Comparing the GL as of period end with today's outstanding failed whenever anything posted after
+   * the period end. Rebuilding the subledger as of a past date would need per-date allocation and
+   * credit-note history; the control-account invariant (GL = subledger) holds at every moment, so
+   * checking it now is what proves the books tie when the period closes.
+   */
+  private async controlAccountGlBalance(
+    prisma: Omit<import('@prisma/client').PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
+    orgId: string,
+    subledger: 'ACCOUNTS_RECEIVABLE' | 'ACCOUNTS_PAYABLE',
+  ): Promise<Decimal | null> {
+    const versions = await prisma.accountVersion.findMany({
+      where: { account: { organizationId: orgId }, controlledSubledgerType: subledger, isControlAccount: true },
+      select: { accountId: true },
+    });
+    const accountIds = [...new Set(versions.map((v) => v.accountId))];
+    if (accountIds.length === 0) return null;
+    const agg = await prisma.journalLine.aggregate({
+      where: { accountId: { in: accountIds }, entry: { organizationId: orgId, status: 'POSTED' } },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+    const debit = new Decimal(agg._sum.debitAmount?.toString() ?? '0');
+    const credit = new Decimal(agg._sum.creditAmount?.toString() ?? '0');
+    return subledger === 'ACCOUNTS_RECEIVABLE' ? debit.minus(credit) : credit.minus(debit);
+  }
+
   private async checkArReconciliation(
     prisma: Omit<import('@prisma/client').PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
     orgId: string,
-    asOf: Date,
   ): Promise<{ passed: boolean; message: string }> {
-    // Find AR control accounts
-    const arAccounts = await prisma.accountVersion.findMany({
-      where: {
-        account: { organizationId: orgId },
-        controlledSubledgerType: 'ACCOUNTS_RECEIVABLE',
-        isControlAccount: true,
-      },
-      select: { accountId: true },
-    });
-
-    if (arAccounts.length === 0) return { passed: true, message: '' };
-
-    let glBalance = new (await import('@prisma/client/runtime/library')).Decimal(0);
-    for (const { accountId } of arAccounts) {
-      const agg = await prisma.journalLine.aggregate({
-        where: {
-          accountId,
-          entry: { organizationId: orgId, status: 'POSTED', accountingDate: { lte: asOf } },
-        },
-        _sum: { debitAmount: true, creditAmount: true },
-      });
-      const d = new (await import('@prisma/client/runtime/library')).Decimal(agg._sum.debitAmount?.toString() ?? '0');
-      const c = new (await import('@prisma/client/runtime/library')).Decimal(agg._sum.creditAmount?.toString() ?? '0');
-      glBalance = glBalance.plus(d.minus(c));
-    }
+    const glBalance = await this.controlAccountGlBalance(prisma, orgId, 'ACCOUNTS_RECEIVABLE');
+    if (glBalance === null) return { passed: true, message: '' };
 
     const subledgerAgg = await prisma.clientInvoice.aggregate({
       where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
       _sum: { outstandingAmount: true },
     });
-    const subledgerBalance = new (await import('@prisma/client/runtime/library')).Decimal(
-      subledgerAgg._sum.outstandingAmount?.toString() ?? '0',
-    );
+    const subledgerBalance = new Decimal(subledgerAgg._sum.outstandingAmount?.toString() ?? '0');
 
     const variance = glBalance.minus(subledgerBalance).abs();
     if (variance.gt('0.01')) {
@@ -310,39 +325,15 @@ export class PeriodManagementService {
   private async checkApReconciliation(
     prisma: Omit<import('@prisma/client').PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
     orgId: string,
-    asOf: Date,
   ): Promise<{ passed: boolean; message: string }> {
-    const apAccounts = await prisma.accountVersion.findMany({
-      where: {
-        account: { organizationId: orgId },
-        controlledSubledgerType: 'ACCOUNTS_PAYABLE',
-        isControlAccount: true,
-      },
-      select: { accountId: true },
-    });
-
-    if (apAccounts.length === 0) return { passed: true, message: '' };
-
-    const { Decimal: D } = await import('@prisma/client/runtime/library');
-    let glBalance = new D(0);
-    for (const { accountId } of apAccounts) {
-      const agg = await prisma.journalLine.aggregate({
-        where: {
-          accountId,
-          entry: { organizationId: orgId, status: 'POSTED', accountingDate: { lte: asOf } },
-        },
-        _sum: { debitAmount: true, creditAmount: true },
-      });
-      const d = new D(agg._sum.debitAmount?.toString() ?? '0');
-      const c = new D(agg._sum.creditAmount?.toString() ?? '0');
-      glBalance = glBalance.plus(c.minus(d)); // AP is credit-normal
-    }
+    const glBalance = await this.controlAccountGlBalance(prisma, orgId, 'ACCOUNTS_PAYABLE');
+    if (glBalance === null) return { passed: true, message: '' };
 
     const subledgerAgg = await prisma.supplierBill.aggregate({
       where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
       _sum: { outstandingAmount: true },
     });
-    const subledgerBalance = new D(subledgerAgg._sum.outstandingAmount?.toString() ?? '0');
+    const subledgerBalance = new Decimal(subledgerAgg._sum.outstandingAmount?.toString() ?? '0');
 
     const variance = glBalance.minus(subledgerBalance).abs();
     if (variance.gt('0.01')) {

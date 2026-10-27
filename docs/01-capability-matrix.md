@@ -86,7 +86,7 @@ Last verified against code: **2026-08-14** (branch `main`); access-governance + 
 | Tax | ✓ | — | PARTIAL | `TaxCode`/`TaxPolicy` + NON_RECOVERABLE VAT posting; broader tax handling incomplete. |
 | Project Actual P&L (posted GL only) | ✓ | ✓ | INTEGRATED | ADR-013. `GET /projects/:id/pl`, page `/projects/[id]/pl`. |
 | Project Financial Position (actual + commitments + forecast) | ✓ | — | BACKEND | ADR-013. `GET /projects/:id/financial-position`, `ProjectFinancialPositionController/Service`. **UI card built but not mounted:** `features/projects/components/project-financial-position-card.tsx` is rendered by no page. |
-| Period close | ✓ | ✓ | INTEGRATED | Lock/close/reopen/snapshot/year-end. |
+| Period close | ✓ | ✓ | INTEGRATED | Lock/close/reopen/snapshot/year-end. **Close gate (Phase 0 M1, 2026-10-27):** unposted journals are matched by accounting date too (drafts carry no period until they post); the AR/AP tie-out compares the whole posted GL with today's subledger (like with like), each control account once however many versions it has. Reopen needs the permission and a written reason (ADR-046 §7). |
 
 ---
 

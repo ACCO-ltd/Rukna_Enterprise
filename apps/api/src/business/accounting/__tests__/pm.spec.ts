@@ -11,6 +11,9 @@
  *   PM-08  closePeriod is blocked when AR reconciliation fails (pending invoices)
  *   PM-09  validateCloseGate returns blockers without mutating period status
  *   PM-10  Period state machine: OPEN → LOCKED → CLOSED → REOPENED → LOCKED → CLOSED
+ *   PM-11  a draft journal dated in the period blocks the lock though it has no period yet (M1)
+ *   PM-12  an AR control account with two versions is counted once in the tie-out (M1)
+ *   PM-13  AR posted after the period end does not fail the close tie-out (M1)
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -576,6 +579,117 @@ it('PM-10: period can traverse OPEN → LOCKED → CLOSED → REOPENED → LOCKE
     // LOCKED → CLOSED again
     await freshSvc.periodManagementService.closePeriod(freshEnv.identity, freshEnv.periods.openId);
     expect((await prisma.accountingPeriod.findUnique({ where: { id: freshEnv.periods.openId } }))?.status).toBe('CLOSED');
+  } finally {
+    await AccountingFixtureFactory.cleanup(prisma, freshEnv.orgId);
+  }
+});
+
+// ─── PM-11..13 (Phase 0 M1) ───────────────────────────────────────────────────
+async function postAr(env2: AccountingTestEnv, svc2: AccountingServices, id: string, date: Date, amount: string) {
+  await prisma.$transaction((tx) =>
+    svc2.postingService.post(
+      {
+        organizationId: env2.orgId,
+        accountingDate: date,
+        documentDate: date,
+        description: `PM AR ${id}`,
+        currencyCode: 'USD',
+        eventType: `EVT-PM-${id}`,
+        sourceDocumentType: 'MANUAL_JOURNAL',
+        sourceDocumentId: id,
+        journalCategory: 'GENERAL',
+        entryPurpose: 'NORMAL',
+        postingOrigin: 'SYSTEM_AR',
+        createdBy: env2.identity.userId,
+        lines: [
+          { accountId: env2.accounts.arId, debitAmount: new Decimal(amount), creditAmount: new Decimal(0) },
+          { accountId: env2.accounts.revId, debitAmount: new Decimal(0), creditAmount: new Decimal(amount) },
+        ],
+      },
+      tx as never,
+    ),
+  );
+  // The matching subledger row: a posted invoice outstanding by the same amount.
+  await prisma.clientInvoice.create({
+    data: {
+      organizationId: env2.orgId,
+      clientId: env2.clientId,
+      invoiceDate: date,
+      subtotal: new Decimal(amount),
+      vatAmount: new Decimal(0),
+      totalAmount: new Decimal(amount),
+      outstandingAmount: new Decimal(amount),
+      currencyCode: 'USD',
+      billingAddressSnapshot: {},
+      postingStatus: 'POSTED',
+      documentStatus: 'APPROVED',
+      createdBy: env2.identity.userId,
+    },
+  });
+}
+
+it('PM-11: a draft journal dated in the period blocks the lock though it has no period yet', async () => {
+  const freshEnv = await AccountingFixtureFactory.create(prisma);
+  const freshSvc = buildServices(prisma);
+  try {
+    // Drafts get their period only when they post: this one carries none, as create() leaves it.
+    await freshSvc.manualJournalService.create(freshEnv.identity, {
+      accountingDate: freshEnv.periods.openStart.toISOString().slice(0, 10),
+      description: 'PM-11 draft',
+      currencyCode: 'USD',
+      lines: [
+        { accountId: freshEnv.accounts.bankId, debitAmount: 100 },
+        { accountId: freshEnv.accounts.revId, creditAmount: 100 },
+      ],
+    });
+    const gate = await freshSvc.periodManagementService.validateCloseGate(freshEnv.identity, freshEnv.periods.openId);
+    expect(gate.passed).toBe(false);
+    expect(gate.blockers.join(' ')).toMatch(/1 journal\(s\) are not yet posted/);
+  } finally {
+    await AccountingFixtureFactory.cleanup(prisma, freshEnv.orgId);
+  }
+});
+
+it('PM-12: an AR control account with two versions is counted once in the tie-out', async () => {
+  const freshEnv = await AccountingFixtureFactory.create(prisma);
+  const freshSvc = buildServices(prisma);
+  try {
+    await prisma.accountVersion.updateMany({ where: { accountId: freshEnv.accounts.arId, versionNumber: 1 }, data: { effectiveTo: new Date('2025-05-31') } });
+    await prisma.accountVersion.create({
+      data: {
+        accountId: freshEnv.accounts.arId,
+        versionNumber: 2,
+        name: 'Accounts Receivable (renamed)',
+        accountClass: 'ASSET',
+        accountSubtype: 'ACCOUNTS_RECEIVABLE',
+        isPostingAllowed: true,
+        isControlAccount: true,
+        controlPostingPolicy: 'SYSTEM_ONLY',
+        controlledSubledgerType: 'ACCOUNTS_RECEIVABLE',
+        effectiveFrom: new Date('2025-06-01'),
+        changedBy: freshEnv.identity.userId,
+      },
+    });
+    await postAr(freshEnv, freshSvc, `pm12-${Date.now()}`, freshEnv.periods.openStart, '500');
+
+    await freshSvc.periodManagementService.lockPeriod(freshEnv.identity, freshEnv.periods.openId);
+    const result = await freshSvc.periodManagementService.closePeriod(freshEnv.identity, freshEnv.periods.openId);
+    expect(result.newStatus).toBe('CLOSED');
+  } finally {
+    await AccountingFixtureFactory.cleanup(prisma, freshEnv.orgId);
+  }
+});
+
+it('PM-13: AR posted after the period end does not fail the close tie-out', async () => {
+  const freshEnv = await AccountingFixtureFactory.create(prisma);
+  const freshSvc = buildServices(prisma);
+  try {
+    // Invoiced in 2026 (the fixture's open FY2026 period), after January 2025 ends.
+    await postAr(freshEnv, freshSvc, `pm13-${Date.now()}`, new Date('2026-06-01'), '750');
+
+    await freshSvc.periodManagementService.lockPeriod(freshEnv.identity, freshEnv.periods.openId);
+    const result = await freshSvc.periodManagementService.closePeriod(freshEnv.identity, freshEnv.periods.openId);
+    expect(result.newStatus).toBe('CLOSED');
   } finally {
     await AccountingFixtureFactory.cleanup(prisma, freshEnv.orgId);
   }
