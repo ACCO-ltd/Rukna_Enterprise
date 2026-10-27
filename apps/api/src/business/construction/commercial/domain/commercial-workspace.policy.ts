@@ -186,9 +186,10 @@ export function redateForIssue(
 const KIND_ORDER: Record<CommercialTodoKind, number> = {
   OVERDUE_INVOICE: 0,
   READY_TO_INVOICE: 1,
-  DRAFT_INVOICE: 2,
-  ISSUED_NOT_SENT: 3,
-  BLOCKED_STAGE: 4,
+  RETENTION_TO_INVOICE: 2,
+  DRAFT_INVOICE: 3,
+  ISSUED_NOT_SENT: 4,
+  BLOCKED_STAGE: 5,
 };
 
 /**
@@ -216,6 +217,8 @@ export function rankTodo(items: CommercialTodoItem[]): CommercialTodoItem[] {
         return (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
       case 'ISSUED_NOT_SENT':
         return (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999');
+      case 'RETENTION_TO_INVOICE':
+        return 0;
     }
   };
   return kept

@@ -558,6 +558,8 @@ export class CommercialPrismaRepository {
         vatAmount: true,
         totalAmount: true,
         outstandingAmount: true,
+        // ADR-046 §5 — retention held on certificate invoices, for the retention To do row.
+        retentionAmount: true,
         documentStatus: true,
         postingStatus: true,
         createdAt: true,
@@ -577,6 +579,8 @@ export class CommercialPrismaRepository {
         // the human reference the read model surfaces.
         sourceBoqNodeId: true,
         sourceBoqNode: { select: { id: true, code: true, description: true } },
+        sourceRetentionContractId: true,
+        sourceRetentionContract: { select: { id: true, contractNumber: true } },
         allocations: {
           where: { postingStatus: 'POSTED' },
           orderBy: { allocationDate: 'desc' },
@@ -1267,6 +1271,10 @@ export class CommercialPrismaRepository {
         dueDate: true,
         currencyCode: true,
         subtotal: true,
+        // ADR-046 §5 — what a certificate invoice holds back, and what a release invoice bills.
+        retentionAmount: true,
+        advanceRecoveryAmount: true,
+        retentionReleasedAmount: true,
         vatAmount: true,
         taxRate: true,
         totalAmount: true,
@@ -1288,6 +1296,8 @@ export class CommercialPrismaRepository {
         },
         sourceBoqNodeId: true,
         sourceBoqNode: { select: { id: true, code: true, description: true } },
+        sourceRetentionContractId: true,
+        sourceRetentionContract: { select: { id: true, contractNumber: true } },
         client: { select: { name: true, address: true } },
         deliveries: {
           orderBy: { sentAt: 'asc' },

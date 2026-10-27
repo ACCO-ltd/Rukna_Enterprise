@@ -30,6 +30,7 @@ export function makeInvoiceDocument(
       { description: 'VO-03 Extra parking level', detail: null, amount: '12000.00' },
     ],
     subtotal: '162000.00',
+    deductions: [],
     taxLabel: 'Sales tax 5%',
     taxAmount: '8100.00',
     total: '170100.00',

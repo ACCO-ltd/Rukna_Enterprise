@@ -83,6 +83,7 @@ describe('vocabularies added when per-feature tone maps were retired (ADR-034)',
       {
         OVERDUE_INVOICE: 'danger',
         READY_TO_INVOICE: 'progress',
+        RETENTION_TO_INVOICE: 'progress',
         DRAFT_INVOICE: 'neutral',
         ISSUED_NOT_SENT: 'attention',
         BLOCKED_STAGE: 'neutral',

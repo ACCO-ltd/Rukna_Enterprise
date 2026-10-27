@@ -1681,6 +1681,8 @@ model Contract {
   organization        Organization                 @relation(fields: [organizationId], references: [id])
   client              Client                       @relation(fields: [clientId], references: [id])
   retentionTerms      ContractRetentionTerms?
+  // ADR-046 §5 — the one invoice that bills the retention this contract's IPC invoices held back.
+  retentionReleaseInvoice ClientInvoice? @relation("ContractRetentionReleaseInvoice")
   advanceTerms        ContractAdvanceTerm[]
   guarantees          ContractGuarantee[]
   deliverables        ContractDeliverable[]
@@ -2836,6 +2838,9 @@ model ClientInvoice {
   // Unique → one invoice per separate-charge node (idempotent billing). Null for every other invoice
   // (additive-only, no backfill flip). Separate charges feed total client revenue, never contract value.
   sourceBoqNodeId        String?          @unique @map("source_boq_node_id")
+  // ADR-046 §5 — set on the retention release invoice: the contract whose held retention it bills.
+  // Unique → one release invoice per contract (idempotent). Null on every other invoice.
+  sourceRetentionContractId String?        @unique @map("source_retention_contract_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -2858,6 +2863,9 @@ model ClientInvoice {
   retentionAmount        Decimal          @default(0) @map("retention_amount") @db.Decimal(18, 2)
   advanceRecoveryAmount  Decimal          @default(0) @map("advance_recovery_amount") @db.Decimal(18, 2)
   otherDeductionsAmount  Decimal          @default(0) @map("other_deductions_amount") @db.Decimal(18, 2)
+  // ADR-046 §5 — on the retention release invoice, the retention it bills (cleared from Retention
+  // Receivable). totalAmount = subtotal + vat − retention − advanceRecovery + retentionReleased.
+  retentionReleasedAmount Decimal         @default(0) @map("retention_released_amount") @db.Decimal(18, 2)
   paymentTerms           String?          @map("payment_terms")
   notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
@@ -2898,6 +2906,7 @@ model ClientInvoice {
   // invoice is the durable billing record and outlives the node; a node is deactivated not deleted
   // (CONST-BOQ-003), so this only ever nulls under a full BOQ cascade, never orphaning the invoice.
   sourceBoqNode     BoqNode?                    @relation("BoqNodeSeparateChargeInvoice", fields: [sourceBoqNodeId], references: [id], onDelete: SetNull)
+  sourceRetentionContract Contract?           @relation("ContractRetentionReleaseInvoice", fields: [sourceRetentionContractId], references: [id])
   allocations       ClientReceiptAllocation[]
   // ADR-030 CONST-COM-028 (Commercial redesign P1): the variation-billing realization rows that name
   // this invoice as where a VO slice was billed. Read/trace only — the invoice header is unchanged.

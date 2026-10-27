@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
-import { BLOCKED, DRAFT, OVERDUE, READY, invoiceRow, receiptRow, workspaceFixture } from '../test-fixtures';
+import { BLOCKED, DRAFT, OVERDUE, READY, invoiceRow, receiptRow, todoFixture, workspaceFixture } from '../test-fixtures';
 import { CommercialBillingView, collectionState } from './commercial-billing-view';
 
 vi.mock('next/link', () => ({
@@ -22,7 +22,9 @@ vi.mock('@/features/finance/hooks/use-accounting-readiness', () => ({
 }));
 
 const billing = vi.hoisted(() => ({ invoices: [] as unknown[], receipts: [] as unknown[] }));
+const retentionMutation = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }));
 vi.mock('../hooks/use-commercial', () => ({
+  useInvoiceRetention: () => retentionMutation,
   useCommercialBilling: () => ({
     isPending: false,
     isError: false,
@@ -150,6 +152,52 @@ describe('Billing — To do', () => {
 });
 
 /** The grid labels its scroll region, not the <table>; phones get a card list alongside it. */
+// ADR-046 §5 — retention held at the final account: release it (a contract manager) and invoice it.
+describe('Billing — retention to invoice', () => {
+  const retentionRow = (released: boolean) =>
+    todoFixture({
+      id: 'retention:c1',
+      kind: 'RETENTION_TO_INVOICE',
+      sourceLabel: 'Retention held',
+      amount: '12500.00',
+      retention: { contractId: 'c1', released },
+    });
+
+  it('offers Release and invoice to someone who can bill and release, and sends the contract and dates', async () => {
+    retentionMutation.mutate.mockClear();
+    renderWithProviders(
+      <CommercialBillingView projectId="p1" workspace={workspaceFixture({ todo: [retentionRow(false)] })} />,
+      { permissions: ['manage:contract', 'manage:receivable'] },
+    );
+
+    expect(screen.getByText('Retention held is ready to invoice')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Release and invoice' }));
+    expect(retentionMutation.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ contractId: 'c1', released: false, invoiceDate: expect.any(String), dueDate: expect.any(String) }),
+      expect.anything(),
+    );
+  });
+
+  it('says a contract manager releases it first, to a biller who cannot release', () => {
+    renderWithProviders(
+      <CommercialBillingView projectId="p1" workspace={workspaceFixture({ todo: [retentionRow(false)] })} />,
+      { permissions: ['manage:receivable'] },
+    );
+
+    expect(screen.queryByRole('button', { name: 'Release and invoice' })).not.toBeInTheDocument();
+    expect(screen.getByText('A contract manager releases it first')).toBeInTheDocument();
+  });
+
+  it('offers Invoice retention once the retention is already released', () => {
+    renderWithProviders(
+      <CommercialBillingView projectId="p1" workspace={workspaceFixture({ todo: [retentionRow(true)] })} />,
+      { permissions: ['manage:receivable'] },
+    );
+
+    expect(screen.getByRole('button', { name: 'Invoice retention' })).toBeInTheDocument();
+  });
+});
+
 function tableIn(heading: string) {
   const section = screen.getByRole('heading', { name: heading }).closest('section')!;
   return within(section).getByRole('table');

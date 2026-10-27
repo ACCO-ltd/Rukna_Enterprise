@@ -156,6 +156,8 @@ function sourceKindText(kind: ClientInvoiceSourceKind): string {
       return 'IPC';
     case 'SEPARATE_CHARGE':
       return 'Separate charge';
+    case 'RETENTION_RELEASE':
+      return 'Retention release';
     default:
       return 'Invoice';
   }

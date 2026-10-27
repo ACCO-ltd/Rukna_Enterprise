@@ -257,3 +257,36 @@ describe('planInvoicePost — retention and advance recovery', () => {
     expect(result.problems.map((p) => p.role)).toEqual(['RETENTION_RECEIVABLE', 'CLIENT_ADVANCE']);
   });
 });
+
+// ADR-046 §5 — the retention release invoice: no revenue, no tax; AR takes the retention back from
+// Retention Receivable.
+describe('planInvoicePost — retention release', () => {
+  const release = {
+    subtotal: '0.00',
+    vatAmount: '0.00',
+    retentionReleasedAmount: '12500.00',
+    totalAmount: '12500.00',
+    source: { kind: 'RETENTION_RELEASE' as const, label: 'CTR-001', id: 'con-1' },
+  };
+  const withRetention = () => [
+    ...chart(),
+    account('11100', { name: 'Retention Receivable', accountSubtype: 'RETENTION_RECEIVABLE' }),
+  ];
+
+  it('debits AR and credits Retention Receivable, with no revenue line', () => {
+    const result = planInvoicePost(invoice(release), withRetention(), 'en');
+    if (!result.ok) throw new Error('expected a plan');
+
+    expect(result.plan.lines).toEqual([
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '12500.00', credit: null },
+      { accountCode: '11100', accountName: 'Retention Receivable', debit: null, credit: '12500.00' },
+    ]);
+    expect(result.plan.balanced).toBe(true);
+  });
+
+  it('refuses when the chart has no retention account', () => {
+    const result = planInvoicePost(invoice(release), chart(), 'en');
+
+    expect(result.ok).toBe(false);
+  });
+});

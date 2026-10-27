@@ -25,6 +25,7 @@ import type {
 
 import { boqKeys } from '@/features/boq/hooks/use-boq';
 import { accountingKeys } from '@/features/accounting/hooks/use-accounting';
+import { generateInvoiceFromRetentionRelease } from '@/features/accounting/api/invoices-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 
 import {
@@ -340,6 +341,27 @@ export function useReleaseRetention(contractId: string, projectId: string) {
     mutationFn: () => releaseRetention(contractId),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) });
+    },
+  });
+}
+
+/**
+ * ADR-046 §5 — the retention To do row's command: release the contract's retention when it is not
+ * released yet, then raise the release invoice (a draft, reviewed and issued like any other).
+ */
+export function useInvoiceRetention(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { contractId: string; released: boolean; invoiceDate: string; dueDate: string }) => {
+      if (!input.released) await releaseRetention(input.contractId);
+      return generateInvoiceFromRetentionRelease({
+        contractId: input.contractId,
+        invoiceDate: input.invoiceDate,
+        dueDate: input.dueDate,
+      });
+    },
+    onSettled: async () => {
+      await qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
     },
   });
 }

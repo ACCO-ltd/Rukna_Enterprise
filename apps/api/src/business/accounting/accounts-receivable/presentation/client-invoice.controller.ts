@@ -13,6 +13,7 @@ import { IpcBillingCheckService } from '../application/ipc-billing-check.service
 import { GenerateInvoiceFromIpcDto } from './dto/generate-invoice-from-ipc.dto.js';
 import { GenerateInvoiceFromInstallmentDto } from './dto/generate-invoice-from-installment.dto.js';
 import { GenerateInvoiceFromSeparateChargeDto } from './dto/generate-invoice-from-separate-charge.dto.js';
+import { GenerateInvoiceFromRetentionReleaseDto } from './dto/generate-invoice-from-retention-release.dto.js';
 import { PostInvoiceDto } from './dto/post-invoice.dto.js';
 import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 
@@ -44,6 +45,19 @@ export class ClientInvoiceController {
   @ApiResponse({ status: 409, description: 'Invoice already exists for this IPC' })
   generateFromIpc(@CurrentUser() identity: RequestIdentity, @Body() dto: GenerateInvoiceFromIpcDto) {
     return this.clientInvoiceService.generateFromIpc(identity, dto);
+  }
+
+  @Post('from-retention-release')
+  @ApiOperation({
+    summary:
+      'ADR-046 §5: invoice the retention a contract held back, after its retention was released (one per contract)',
+  })
+  @ApiResponse({ status: 400, description: 'Retention not released, nothing held, or certificate invoices unposted' })
+  generateFromRetentionRelease(
+    @CurrentUser() identity: RequestIdentity,
+    @Body() dto: GenerateInvoiceFromRetentionReleaseDto,
+  ) {
+    return this.clientInvoiceService.generateFromRetentionRelease(identity, dto);
   }
 
   @Post('from-installment')

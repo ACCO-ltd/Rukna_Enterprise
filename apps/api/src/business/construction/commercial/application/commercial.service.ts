@@ -141,6 +141,8 @@ export function invoiceSource(inv: {
   } | null;
   sourceBoqNodeId: string | null;
   sourceBoqNode: { id: string; code: string; description: string } | null;
+  sourceRetentionContractId?: string | null;
+  sourceRetentionContract?: { id: string; contractNumber: string } | null;
 }): ClientInvoiceSource {
   if (inv.sourceInstallmentId) {
     return {
@@ -167,6 +169,14 @@ export function invoiceSource(inv: {
       kind: 'SEPARATE_CHARGE',
       label: inv.sourceBoqNode?.description || inv.sourceBoqNode?.code || null,
       id: inv.sourceBoqNodeId,
+    };
+  }
+  // ADR-046 §5 — the invoice billing the contract's held retention once released.
+  if (inv.sourceRetentionContractId) {
+    return {
+      kind: 'RETENTION_RELEASE',
+      label: inv.sourceRetentionContract?.contractNumber ?? null,
+      id: inv.sourceRetentionContractId,
     };
   }
   return { kind: 'NONE', label: null, id: null };

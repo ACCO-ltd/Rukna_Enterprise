@@ -477,7 +477,7 @@ export interface ClientInvoice {
   sourceIpcId: string | null;
   /** The source document, resolved to its human reference — never re-derived in the browser. */
   source: {
-    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
+    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'RETENTION_RELEASE' | 'NONE';
     label: string | null;
     id: string | null;
   };
@@ -497,6 +497,8 @@ export interface ClientInvoice {
    */
   retentionAmount?: string;
   advanceRecoveryAmount?: string;
+  /** ADR-046 §5 — on a retention release invoice, the retention it bills (subtotal is "0.00"). */
+  retentionReleasedAmount?: string;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
   paymentTerms: string | null;

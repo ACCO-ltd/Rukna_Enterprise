@@ -144,7 +144,9 @@ export class CommercialWorkspaceService {
     );
 
     const todo = this.buildTodo({
+      contractId: contract.id,
       contractStatus: contract.status,
+      retentionTerms: contract.retentionTerms,
       installments: built?.schedule.installments ?? [],
       variationInputs,
       allocations,
@@ -193,7 +195,9 @@ export class CommercialWorkspaceService {
 
   /** The To do rows (spec §2), ranked. Exposed for unit testing through `getWorkspace`. */
   private buildTodo(input: {
+    contractId: string;
     contractStatus: string;
+    retentionTerms: { retentionReleasedAt: Date | null } | null;
     installments: Awaited<ReturnType<CommercialService['buildPaymentSchedule']>>['schedule']['installments'];
     variationInputs: Awaited<ReturnType<VariationOrderPrismaRepository['findValuationInputs']>>;
     allocations: Awaited<ReturnType<CommercialPrismaRepository['findVariationAllocationsForContract']>>;
@@ -225,6 +229,7 @@ export class CommercialWorkspaceService {
       if (inv.sourceBoqNode) {
         return `Separate charge · ${inv.sourceBoqNode.code} ${inv.sourceBoqNode.description}`.trim();
       }
+      if (inv.sourceRetentionContractId) return 'Retention release';
       const vo = voByInvoice.get(inv.id);
       if (vo) return `Variation · ${vo.reference} ${vo.title}`;
       const src = invoiceSource(inv);
@@ -341,6 +346,31 @@ export class CommercialWorkspaceService {
         blockedAdded = true;
         items.push({ ...stage, id: `blocked:${inst.id}`, kind: 'BLOCKED_STAGE', blocker: inst.billingBlocker });
       }
+    }
+
+    // ADR-046 §5 — retention held on posted certificate invoices, once the contract reaches its final
+    // account (or the retention was already released) and no release invoice exists yet.
+    const retentionHeld = invoiceRows
+      .filter((inv) => inv.sourceIpcId && inv.postingStatus === 'POSTED')
+      .reduce((sum, inv) => sum.plus(dec(inv.retentionAmount)), ZERO);
+    const releaseInvoiced = invoiceRows.some(
+      (inv) => inv.sourceRetentionContractId && inv.documentStatus !== 'CANCELLED',
+    );
+    const released = input.retentionTerms?.retentionReleasedAt != null;
+    if (
+      input.retentionTerms &&
+      retentionHeld.gt(ZERO) &&
+      !releaseInvoiced &&
+      (released || input.contractStatus === 'FINAL_ACCOUNT_PENDING')
+    ) {
+      items.push({
+        ...base,
+        id: `retention:${input.contractId}`,
+        kind: 'RETENTION_TO_INVOICE',
+        sourceLabel: 'Retention held',
+        amount: money(retentionHeld),
+        retention: { contractId: input.contractId, released },
+      });
     }
 
     return rankTodo(items);
@@ -464,7 +494,15 @@ export class CommercialWorkspaceService {
           .catch(() => null) // a replaced/unreadable logo renders as "no logo", never an error
       : null;
 
-    const subtotal = dec(inv.subtotal);
+    // ADR-046 §5 — a retention release invoice earns no revenue (subtotal 0): it shows the retention
+    // released as its line and subtotal, so the client reads amount = total due, as on its PDF.
+    const subtotal = dec(inv.subtotal).plus(dec(inv.retentionReleasedAmount));
+    const deductions = [
+      { label: 'Less retention', amount: dec(inv.retentionAmount) },
+      { label: 'Less advance recovery', amount: dec(inv.advanceRecoveryAmount) },
+    ]
+      .filter((d) => d.amount.gt(ZERO))
+      .map((d) => ({ label: d.label, amount: money(d.amount) }));
     const tax = dec(inv.vatAmount);
     const total = dec(inv.totalAmount);
     const balance = posted ? dec(inv.outstandingAmount) : total;
@@ -541,6 +579,7 @@ export class CommercialWorkspaceService {
       currency: inv.currencyCode,
       lines,
       subtotal: money(subtotal),
+      deductions,
       taxLabel: taxLabelFor(subtotal, tax, inv.taxRate ? dec(inv.taxRate) : null),
       taxAmount: money(tax),
       total: money(total),

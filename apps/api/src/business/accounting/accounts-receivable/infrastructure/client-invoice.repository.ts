@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient, ClientInvoice } from '@prisma/client';
-import type { Decimal } from '@prisma/client/runtime/library';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -30,10 +30,13 @@ export interface CreateClientInvoiceData {
   retentionAmount?: Decimal;
   advanceRecoveryAmount?: Decimal;
   otherDeductionsAmount?: Decimal;
+  /** ADR-046 §5 — the retention release invoice: its contract and the retention it bills. */
+  sourceRetentionContractId?: string;
+  retentionReleasedAmount?: Decimal;
 }
 
 /**
- * The three mutually-exclusive source relations, each narrowed to its human reference. Read by
+ * The four mutually-exclusive source relations, each narrowed to its human reference. Read by
  * the detail and list paths so both can resolve an invoice's `source`; never by the
  * approve/post/reverse guards, which need only the flat entity.
  */
@@ -46,6 +49,7 @@ const INVOICE_SOURCE_INCLUDE = {
     },
   },
   sourceBoqNode: { select: { id: true, code: true, description: true } },
+  sourceRetentionContract: { select: { id: true, contractNumber: true } },
 } as const;
 
 @Injectable()
@@ -145,6 +149,35 @@ export class ClientInvoiceRepository {
       invoices: invoices.filter((inv) => inv.contractId === contract.id),
       latestCertificate: latestByContract.get(contract.id) ?? null,
     }));
+  }
+
+  /** ADR-046 §5 — the contract's retention release invoice, if one was raised (one per contract). */
+  findByRetentionRelease(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.clientInvoice.findFirst({ where: { organizationId, sourceRetentionContractId: contractId } });
+  }
+
+  /**
+   * ADR-046 §5 — retention a contract's IPC invoices hold: posted invoices (their retention is in
+   * Retention Receivable), and how many unposted ones still carry retention (they must post or be
+   * cancelled first, or the release would leave their retention behind).
+   */
+  async findRetentionHeld(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    const ipcInvoices = { organizationId, contractId, sourceIpcId: { not: null } } as const;
+    const [posted, pendingWithRetention] = await Promise.all([
+      prisma.clientInvoice.aggregate({
+        where: { ...ipcInvoices, postingStatus: 'POSTED' },
+        _sum: { retentionAmount: true },
+      }),
+      prisma.clientInvoice.count({
+        where: {
+          ...ipcInvoices,
+          documentStatus: { not: 'CANCELLED' },
+          postingStatus: { in: ['NOT_POSTED', 'PENDING', 'FAILED'] },
+          retentionAmount: { gt: 0 },
+        },
+      }),
+    ]);
+    return { held: posted._sum.retentionAmount ?? new Decimal(0), pendingWithRetention };
   }
 
   // ADR-023: one invoice per payment-schedule installment (idempotent milestone billing).
@@ -267,6 +300,8 @@ export class ClientInvoiceRepository {
         retentionAmount: data.retentionAmount ?? 0,
         advanceRecoveryAmount: data.advanceRecoveryAmount ?? 0,
         otherDeductionsAmount: data.otherDeductionsAmount ?? 0,
+        sourceRetentionContractId: data.sourceRetentionContractId ?? null,
+        retentionReleasedAmount: data.retentionReleasedAmount ?? 0,
         documentStatus: 'DRAFT',
         postingStatus: 'NOT_POSTED',
         createdBy: data.createdBy,

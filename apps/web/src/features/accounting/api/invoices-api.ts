@@ -84,6 +84,24 @@ export function generateInvoiceFromIpc(
 }
 
 /**
+ * `POST /invoices/from-retention-release` — ADR-046 §5: bill the retention a contract's certificate
+ * invoices held back, once the contract's retention is released. One per contract: a repeat returns
+ * the existing invoice. **400** (with the reason) when the retention is not released, nothing is
+ * held, or certificate invoices holding retention are unposted.
+ */
+export function generateInvoiceFromRetentionRelease(payload: {
+  contractId: string;
+  invoiceDate: string;
+  dueDate: string;
+}): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>('/invoices/from-retention-release', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * `POST /invoices/from-installment` — raise an invoice from a MILESTONE contract's payment
  * installment (ADR-023). Mirrors `from-ipc`: the new invoice is DRAFT/NOT_POSTED with a null
  * `invoiceNumber`, and a second attempt on the same installment answers **409**.

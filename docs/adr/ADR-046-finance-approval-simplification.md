@@ -75,7 +75,16 @@ certified-to-date figure instead of adding certificates up.
 deductions), so retention carries VAT when first billed and its release invoice carries none;
 "other" deductions reduce revenue. ACCO V1 contracts carry no retention or advance recovery
 (ADR-023 CONST-COM-013/014), so for them only the per-period fix changes anything. **Not built
-yet:** the retention release invoice, and advance billing into the client-advance account.
+yet:** advance billing into the client-advance account.
+
+**Retention release invoice (built 2026-10-27).** Once a contract's retention is released
+(`POST /contracts/:id/retention/release`, contract at FINAL_ACCOUNT_PENDING), `POST
+/invoices/from-retention-release` raises one invoice per contract (`sourceRetentionContractId`,
+unique) for the retention held on its posted IPC invoices. It earns no revenue and carries no tax:
+subtotal and VAT are zero, `retentionReleasedAmount` = amount due, and EVT-AR-001 posts Dr Accounts
+Receivable / Cr Retention Receivable. It is refused while an unposted IPC invoice still holds
+retention. The Billing To do shows a `RETENTION_TO_INVOICE` row (Release and invoice / Invoice
+retention); V1 releases all retention at once (`retentionSplitOnPC` is not yet applied).
 
 ### 6. Customer payments land straight in the bank
 Receive payment picks the bank account and posts there. No holding ("Undeposited Funds") account.

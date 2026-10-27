@@ -2309,11 +2309,15 @@ export type ArPostingStatus =
  * `SEPARATE_CHARGE` (ADR-029 R-4) = a one-off invoice for a SEPARATE_CHARGE BOQ leaf, billed outside
  * the milestone schedule; it feeds total client revenue, never the contract value (CONST-BOQ-030).
  */
-export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
+// RETENTION_RELEASE (ADR-046 §5): the invoice billing a contract's held retention.
+export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'RETENTION_RELEASE' | 'NONE';
 
 export interface ClientInvoiceSource {
   kind: ClientInvoiceSourceKind;
-  /** The source document's human reference — the installment name, or the IPA ref behind the IPC. */
+  /**
+   * The source document's human reference — the installment name, the IPA ref behind the IPC, or the
+   * contract number of a retention release.
+   */
   label: string | null;
   /** The source record's id, for a drill-through. Null for `NONE`. */
   id: string | null;
@@ -3735,6 +3739,8 @@ export interface ProjectCostBudgetListResponse {
 export type CommercialTodoKind =
   | 'OVERDUE_INVOICE'
   | 'READY_TO_INVOICE'
+  // ADR-046 §5 — retention held on posted certificate invoices, ready to release and invoice.
+  | 'RETENTION_TO_INVOICE'
   | 'DRAFT_INVOICE'
   | 'ISSUED_NOT_SENT'
   | 'BLOCKED_STAGE';
@@ -3764,6 +3770,11 @@ export interface CommercialTodoItem {
   unbilledVariations: { count: number; amount: string | null; references: string[] } | null;
   /** DRAFT_INVOICE: when the draft was created. */
   createdAt: string | null;
+  /**
+   * RETENTION_TO_INVOICE: whether the contract's retention is already released (then the command
+   * only raises the invoice), and the contract it belongs to. Null on every other kind.
+   */
+  retention?: { contractId: string; released: boolean } | null;
 }
 
 export interface CommercialWorkspaceCapabilities {
@@ -3921,6 +3932,12 @@ export interface CommercialInvoiceDocumentResponse {
   currency: string;
   lines: Array<{ description: string; detail: string | null; amount: string | null }>;
   subtotal: string | null;
+  /**
+   * ADR-046 §5 — amounts a certificate invoice holds back this period ("Less retention", "Less
+   * advance recovery"), shown between the tax and the total so the figures add up. Empty otherwise.
+   * Amounts null without financial visibility.
+   */
+  deductions: Array<{ label: string; amount: string | null }>;
   /** e.g. "Sales tax 5%". */
   taxLabel: string | null;
   taxAmount: string | null;

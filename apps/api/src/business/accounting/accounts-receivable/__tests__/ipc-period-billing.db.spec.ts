@@ -8,6 +8,8 @@
  *   IPB-04  a certificate already fully billed is refused and creates no invoice
  *   IPB-05  retention without a Retention Receivable account fails the post and names the role
  *   IPB-06  the read-only billing check flags a contract a legacy (cumulative) invoice over-billed
+ *   IPB-07  the retention release invoice waits for the release and for unposted retention invoices
+ *   IPB-08  the release invoice bills the retention held, moves it from Retention Receivable to AR
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -229,4 +231,52 @@ it('IPB-06: the billing check lists a contract a legacy invoice over-billed, by 
     overBilledBy: '166000.00',
     invoiceCount: 2,
   });
+});
+
+const releaseDto = () => ({
+  contractId,
+  invoiceDate: env.periods.openStart.toISOString().slice(0, 10),
+  dueDate: env.periods.openEnd.toISOString().slice(0, 10),
+});
+
+it('IPB-07: retention cannot be invoiced before it is released, or while certificate invoices holding it are unposted', async () => {
+  await expect(svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto())).rejects.toThrow(
+    /Release the contract/,
+  );
+
+  await prisma.contractRetentionTerms.upsert({
+    where: { contractId },
+    create: { contractId, retentionRate: 0.05, retentionCap: 0.1, retentionSplitOnPC: 0.5, retentionReleasedAt: new Date() },
+    update: { retentionReleasedAt: new Date() },
+  });
+  // IPB-05 left a certificate-4 invoice holding 2,000 of retention unposted.
+  await expect(svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto())).rejects.toThrow(
+    /not posted/,
+  );
+});
+
+it('IPB-08: the release invoice bills the retention held, clears Retention Receivable into AR, and is raised once', async () => {
+  await prisma.clientInvoice.updateMany({
+    where: { organizationId: env.orgId, contractId, sourceIpcId: { not: null }, postingStatus: { not: 'POSTED' } },
+    data: { documentStatus: 'CANCELLED' },
+  });
+  const arBefore = await balance(env.accounts.arId);
+  // Posted: the IPB-01 invoice (5,000 retention) and the legacy one (none); IPB-02's was reversed.
+  expect((await balance(retentionAccountId)).toFixed(2)).toBe('5000.00');
+
+  const draft = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
+  expect(draft.subtotal.toFixed(2)).toBe('0.00');
+  expect(draft.vatAmount.toFixed(2)).toBe('0.00');
+  expect(draft.retentionReleasedAmount.toFixed(2)).toBe('5000.00');
+  expect(draft.totalAmount.toFixed(2)).toBe('5000.00');
+
+  await svc.clientInvoiceService.approve(env.identity, draft.id);
+  await svc.clientInvoiceService.post(env.identity, { invoiceId: draft.id });
+
+  expect((await balance(retentionAccountId)).toFixed(2)).toBe('0.00');
+  expect((await balance(env.accounts.arId)).minus(arBefore).toFixed(2)).toBe('5000.00');
+  const again = await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto());
+  expect(again.id).toBe(draft.id);
+  const detail = await svc.clientInvoiceService.findById(env.identity, draft.id);
+  expect(detail.source).toEqual({ kind: 'RETENTION_RELEASE', label: 'CTR-001', id: contractId });
 });

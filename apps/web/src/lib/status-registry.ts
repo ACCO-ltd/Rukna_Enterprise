@@ -319,6 +319,7 @@ export const STATUS_REGISTRY = {
   commercialTodo: {
     OVERDUE_INVOICE: 'danger',
     READY_TO_INVOICE: 'progress',
+    RETENTION_TO_INVOICE: 'progress',
     DRAFT_INVOICE: 'neutral',
     ISSUED_NOT_SENT: 'attention',
     BLOCKED_STAGE: 'neutral',

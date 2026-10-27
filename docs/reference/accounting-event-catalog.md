@@ -80,6 +80,10 @@ certificate to date minus what earlier IPC invoices on the contract billed (cred
   advanceRecoveryAmount = period advance recovery
   totalAmount           = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due)
 Every other invoice carries zero retention and advance recovery, so totalAmount = subtotal + vat.
+
+Retention release invoice (ADR-046 §5): subtotal = vatAmount = 0, retentionReleasedAmount =
+totalAmount. Lines: Dr Accounts Receivable totalAmount / Cr Retention Receivable
+retentionReleasedAmount (no revenue line).
 ```
 
 ```

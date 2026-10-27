@@ -13,8 +13,9 @@ import type { Account, ClientInvoice, PostInvoicePayload } from './types';
  *   Dr  Accounts Receivable    totalAmount              (the amount due)
  *   Dr  Retention Receivable   retentionAmount          ← IPC invoices holding retention (ADR-046 §5)
  *   Dr  Client Advance         advanceRecoveryAmount    ← IPC invoices recovering an advance
- *     Cr  Revenue                          subtotal
+ *     Cr  Revenue                          subtotal     ← omitted when 0 (a retention release)
  *     Cr  Output VAT                       vatAmount    ← only when vatAmount > 0
+ *     Cr  Retention Receivable             retentionReleasedAmount  ← a retention release invoice
  *
  * The user is shown this before they confirm, because posting is irreversible except by a
  * reversal journal and an accountant should see which accounts are about to move.
@@ -68,7 +69,7 @@ export function hasVat(invoice: ClientInvoice): boolean {
 export function rolesForInvoice(invoice: ClientInvoice): PostingRole[] {
   const roles: PostingRole[] = ['AR_CONTROL', 'REVENUE'];
   if (hasVat(invoice)) roles.push('VAT_OUTPUT');
-  if (retentionMinor(invoice) > 0) roles.push('RETENTION_RECEIVABLE');
+  if (retentionMinor(invoice) > 0 || retentionReleasedMinor(invoice) > 0) roles.push('RETENTION_RECEIVABLE');
   if (advanceRecoveryMinor(invoice) > 0) roles.push('CLIENT_ADVANCE');
   return roles;
 }
@@ -76,6 +77,11 @@ export function rolesForInvoice(invoice: ClientInvoice): PostingRole[] {
 /** ADR-046 §5 — retention an IPC invoice holds back, in minor units (0 on other invoices). */
 function retentionMinor(invoice: ClientInvoice): number {
   return toMinorUnits(invoice.retentionAmount ?? '0', MONEY_SCALE);
+}
+
+/** ADR-046 §5 — retention a release invoice bills, in minor units (0 on other invoices). */
+function retentionReleasedMinor(invoice: ClientInvoice): number {
+  return toMinorUnits(invoice.retentionReleasedAmount ?? '0', MONEY_SCALE);
 }
 
 /** ADR-046 §5 — advance an IPC invoice recovers, in minor units (0 on other invoices). */
@@ -111,13 +117,16 @@ export function planInvoicePost(
       debit: fromMinorUnits(totalMinor, MONEY_SCALE),
       credit: null,
     },
-    {
+  ];
+  // A retention release earns no revenue: no zero-value revenue line, as the server writes it.
+  if (subtotalMinor > 0) {
+    lines.push({
       accountCode: revenue.code,
       accountName: accountName(revenue, locale),
       debit: null,
       credit: fromMinorUnits(subtotalMinor, MONEY_SCALE),
-    },
-  ];
+    });
+  }
 
   if (vat && vatMinor > 0) {
     lines.push({
@@ -147,8 +156,20 @@ export function planInvoicePost(
   }
   lines.splice(1, 0, ...holdBackLines);
 
+  // A retention release invoice moves its retention out of Retention Receivable.
+  const releasedMinor = retentionReleasedMinor(invoice);
+  const releasedFrom = resolved.get('RETENTION_RECEIVABLE');
+  if (releasedFrom && releasedMinor > 0) {
+    lines.push({
+      accountCode: releasedFrom.code,
+      accountName: accountName(releasedFrom, locale),
+      debit: null,
+      credit: fromMinorUnits(releasedMinor, MONEY_SCALE),
+    });
+  }
+
   const debitMinor = totalMinor + heldBackMinor;
-  const creditMinor = subtotalMinor + (vat ? vatMinor : 0);
+  const creditMinor = subtotalMinor + (vat ? vatMinor : 0) + (releasedFrom ? releasedMinor : 0);
 
   return {
     ok: true,

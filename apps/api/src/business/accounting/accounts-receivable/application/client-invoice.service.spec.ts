@@ -472,6 +472,7 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     vatAmount: { toString: () => '1154.62' },
     taxRate: { toString: () => '5' },
     retentionAmount: { toString: () => '0.00' },
+    retentionReleasedAmount: { toString: () => '0.00' },
     advanceRecoveryAmount: { toString: () => '0.00' },
     totalAmount: { toString: () => '24247.02' },
     paymentTerms: null,

@@ -85,6 +85,14 @@ export interface GenerateInvoiceFromIpcDto {
   taxCodeId?: string;
 }
 
+/** ADR-046 §5 — the retention release invoice: no amounts, they come from the contract's invoices. */
+export interface GenerateInvoiceFromRetentionReleaseDto {
+  contractId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
 export interface GenerateInvoiceFromInstallmentDto {
   installmentId: string;
   invoiceDate: string;
@@ -162,6 +170,8 @@ function resolveInvoiceSource(inv: {
   } | null;
   sourceBoqNodeId: string | null;
   sourceBoqNode: { id: string; code: string; description: string } | null;
+  sourceRetentionContractId?: string | null;
+  sourceRetentionContract?: { id: string; contractNumber: string } | null;
 }): { kind: ClientInvoiceSourceKind; label: string | null; id: string | null } {
   if (inv.sourceInstallmentId) {
     return {
@@ -186,6 +196,13 @@ function resolveInvoiceSource(inv: {
       id: inv.sourceBoqNodeId,
     };
   }
+  if (inv.sourceRetentionContractId) {
+    return {
+      kind: 'RETENTION_RELEASE',
+      label: inv.sourceRetentionContract?.contractNumber ?? null,
+      id: inv.sourceRetentionContractId,
+    };
+  }
   return { kind: 'NONE', label: null, id: null };
 }
 
@@ -195,14 +212,15 @@ function resolveInvoiceSource(inv: {
  */
 function toInvoiceWithSource<T extends Parameters<typeof resolveInvoiceSource>[0]>(
   invoice: T,
-): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode' | 'sourceRetentionContract'> & {
   source: ReturnType<typeof resolveInvoiceSource>;
 } {
   const rest: Record<string, unknown> = { ...invoice, source: resolveInvoiceSource(invoice) };
   delete rest.sourceInstallment;
   delete rest.sourceIpc;
   delete rest.sourceBoqNode;
-  return rest as Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+  delete rest.sourceRetentionContract;
+  return rest as Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode' | 'sourceRetentionContract'> & {
     source: ReturnType<typeof resolveInvoiceSource>;
   };
 }
@@ -397,6 +415,94 @@ export class ClientInvoiceService {
       // Return the invoice the winning request created — still exactly one receivable.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const winner = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
+        if (winner) return winner;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * ADR-046 §5 — the retention release invoice: bills the retention a contract's IPC invoices held
+   * back, once the contract's retention has been released (`POST /contracts/:id/retention/release`).
+   *
+   * It earns no revenue and carries no tax — both were recognised when each IPC invoice was raised —
+   * so subtotal and VAT are zero and the amount due is the retention released. Posting moves it from
+   * Retention Receivable to Accounts Receivable. Idempotent: one release invoice per contract
+   * (unique `sourceRetentionContractId`); a repeat returns the existing invoice.
+   */
+  async generateFromRetentionRelease(identity: RequestIdentity, dto: GenerateInvoiceFromRetentionReleaseDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const existing = await this.repo.findByRetentionRelease(prisma, orgId, dto.contractId);
+    if (existing) return existing;
+
+    const contract = await prisma.contract.findFirst({
+      where: { id: dto.contractId, organizationId: orgId },
+      include: { client: true, retentionTerms: true },
+    });
+    if (!contract) throw new NotFoundException(`Contract ${dto.contractId} not found`);
+    if (!contract.retentionTerms?.retentionReleasedAt) {
+      throw new BadRequestException({
+        code: 'RETENTION_NOT_RELEASED',
+        message: 'Release the contract’s retention before invoicing it.',
+      });
+    }
+
+    const { held, pendingWithRetention } = await this.repo.findRetentionHeld(prisma, orgId, contract.id);
+    if (pendingWithRetention > 0) {
+      throw new BadRequestException({
+        code: 'RETENTION_INVOICES_UNPOSTED',
+        message:
+          `${pendingWithRetention} certificate invoice(s) on this contract still hold retention and are ` +
+          'not posted. Post or cancel them first, so the release bills all the retention held.',
+      });
+    }
+    const amount = new Decimal(held.toString());
+    if (!amount.gt(0)) {
+      throw new BadRequestException({
+        code: 'RETENTION_NOTHING_HELD',
+        message: 'No posted certificate invoice on this contract holds retention, so there is nothing to release.',
+      });
+    }
+
+    // Zero subtotal: the tax code is still recorded (ADR-041), at nil tax.
+    const tax = await this.taxFor(prisma, identity, undefined, dto.invoiceDate, new Decimal(0));
+    const org = await this.snapshotOrgBranding(prisma, orgId);
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        clientId: contract.clientId,
+        sourceRetentionContractId: contract.id,
+        projectId: contract.projectId,
+        contractId: contract.id,
+        invoiceDate: new Date(dto.invoiceDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: contract.currency,
+        subtotal: new Decimal(0),
+        vatAmount: tax.vatAmount,
+        totalAmount: amount,
+        taxCodeId: tax.taxCodeId,
+        taxRate: tax.taxRate,
+        retentionReleasedAmount: amount,
+        paymentTerms: dto.paymentTerms,
+        billingAddressSnapshot: {
+          client: {
+            name: contract.client.name,
+            address: contract.client.address,
+            taxNumber: contract.client.taxNumber,
+            city: contract.client.city,
+            countryCode: contract.client.countryCode,
+          },
+          description: `Release of retention — contract ${contract.contractNumber}`,
+          org,
+        },
+        createdBy: userId,
+      });
+    } catch (err) {
+      // A concurrent request won the unique(source_retention_contract_id) index — one release invoice.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const winner = await this.repo.findByRetentionRelease(prisma, orgId, contract.id);
         if (winner) return winner;
       }
       throw err;
@@ -801,6 +907,14 @@ export class ClientInvoiceService {
     const clientAdvanceAccount = advanceRecoveryAmount.gt(0)
       ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'CLIENT_ADVANCE_LIABILITY')
       : null;
+    // ADR-046 §5 — a retention release invoice moves the released retention out of Retention
+    // Receivable into AR; it shares the retention account resolution above.
+    const retentionReleasedAmount = new Decimal(invoice.retentionReleasedAmount.toString());
+    const releasedFromAccount =
+      retentionReleasedAmount.gt(0)
+        ? (retentionAccount ??
+          (await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'RETENTION_RECEIVABLE')))
+        : null;
 
     await this.sequenceRepo.ensureSequence(outerPrisma as never, orgId, 'CLIENT_INVOICE', 'INV-');
 
@@ -818,14 +932,17 @@ export class ClientInvoiceService {
           clientId: invoice.clientId,
           contractId: invoice.contractId ?? undefined,
         },
-        {
+      ];
+      // A retention release invoice earns no revenue: no zero-value revenue line.
+      if (subtotal.gt(0)) {
+        lines.push({
           accountId: revAccount.id,
           debitAmount: new Decimal(0),
           creditAmount: subtotal,
           projectId: invoice.projectId ?? undefined,
           contractId: invoice.contractId ?? undefined,
-        },
-      ];
+        });
+      }
 
       if (vatAccount && vatAmount.gt(0)) {
         lines.push({
@@ -835,6 +952,16 @@ export class ClientInvoiceService {
         });
       }
 
+      if (releasedFromAccount) {
+        lines.push({
+          accountId: releasedFromAccount.id,
+          debitAmount: new Decimal(0),
+          creditAmount: retentionReleasedAmount,
+          clientId: invoice.clientId,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
+        });
+      }
       if (retentionAccount) {
         lines.push({
           accountId: retentionAccount.id,
@@ -1121,10 +1248,16 @@ export class ClientInvoiceService {
       snapshot.separateCharge ??
       `Invoice ${invoice.invoiceNumber ?? id}`;
 
+    // ADR-046 §5 — a retention release invoice has no revenue (subtotal 0): its document shows the
+    // retention released as its one line and subtotal, so the client reads amount = total due.
+    const documentSubtotal = new Decimal(invoice.subtotal.toString()).plus(
+      invoice.retentionReleasedAmount.toString(),
+    );
+
     const [logo, project, lineSource] = await Promise.all([
       org ? this.files.readBytesForRendering(org.logoFileId) : null,
       loadInvoiceProject(prisma, invoice.organizationId, invoice.projectId),
-      loadInvoiceLineSource(prisma, invoice, description),
+      loadInvoiceLineSource(prisma, { ...invoice, subtotal: documentSubtotal }, description),
     ]);
 
     const pdf = await this.documentService.render({
@@ -1133,7 +1266,7 @@ export class ClientInvoiceService {
       dueDate: invoice.dueDate,
       paymentTerms: invoice.paymentTerms,
       currencyCode: invoice.currencyCode,
-      subtotal: invoice.subtotal.toString(),
+      subtotal: documentSubtotal.toFixed(2),
       vatAmount: invoice.vatAmount.toString(),
       taxRatePercent: invoice.taxRate.toString(),
       retentionAmount: invoice.retentionAmount.toString(),

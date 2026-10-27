@@ -1565,6 +1565,7 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 |---|---|---|
 | `GET` | `/invoices` | List client invoices (`?clientId=...&projectId=...`; `status` is not implemented — filter client-side). `projectId` added 2026-09-28 (flow plan PR 4). |
 | `POST` | `/invoices/from-ipc` | Generate invoice from a certified IPC |
+| `POST` | `/invoices/from-retention-release` | ADR-046 §5 — body `{ contractId, invoiceDate, dueDate, paymentTerms? }`. Bills the retention held on the contract's posted IPC invoices, after `POST /contracts/:id/retention/release`. One per contract (a repeat returns it). `400` `RETENTION_NOT_RELEASED` / `RETENTION_NOTHING_HELD` / `RETENTION_INVOICES_UNPOSTED`. Invoice source kind `RETENTION_RELEASE`; `subtotal` and `vatAmount` `"0.00"`, `retentionReleasedAmount` = `totalAmount`. |
 | `GET` | `/invoices/ipc-billing-check` | ADR-046 §5 — contracts whose posted IPC invoices bill more (net, before tax) than the latest certificate: `[{ contractId, contractNumber, projectId, clientId, currencyCode, netCertifiedToDate, netBilled, overBilledBy, invoiceCount }]`, largest first. Read-only. |
 | `GET` | `/invoices/:id` | Get invoice with GL status |
 | `POST` | `/invoices/:id/approve` | Approve the invoice |

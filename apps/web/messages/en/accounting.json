@@ -752,6 +752,7 @@
       "INSTALLMENT": "Milestone",
       "IPC": "IPC",
       "SEPARATE_CHARGE": "Separate charge",
+      "RETENTION_RELEASE": "Retention release",
       "NONE": "Invoice"
     },
     "statusList": {
