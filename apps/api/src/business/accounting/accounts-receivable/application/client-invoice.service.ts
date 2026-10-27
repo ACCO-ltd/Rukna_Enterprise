@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -27,6 +28,7 @@ import {
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { InvoiceDocumentService } from './invoice-document.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import {
   installmentBillingBlocker,
   installmentBillingBlockerMessage,
@@ -251,6 +253,7 @@ export class ClientInvoiceService {
     private readonly documentService: InvoiceDocumentService,
     private readonly files: PlatformFileService,
     private readonly taxCodes: TaxCodeService,
+    @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
   ) {}
 
   /**
@@ -859,6 +862,18 @@ export class ClientInvoiceService {
     if (invoice.postingStatus === 'POSTED') {
       throw new ConflictException(`Invoice ${dto.invoiceId} is already posted`);
     }
+    // A11 — only an unposted (or failed) invoice posts. A reversed invoice is finished: posting it
+    // again would draw a new number over the old one and orphan its journal — bill the source again
+    // with a replacement invoice instead. An opening-balance invoice is already in the opening journal.
+    if (invoice.postingStatus === 'REVERSED') {
+      throw new ConflictException({
+        code: 'INVOICE_REVERSED',
+        message: `Invoice ${invoice.invoiceNumber ?? dto.invoiceId} was reversed and cannot be posted again. Raise a replacement invoice.`,
+      });
+    }
+    if (invoice.postingStatus !== 'NOT_POSTED' && invoice.postingStatus !== 'FAILED') {
+      throw new ConflictException(`Invoice ${dto.invoiceId} cannot be posted (status: ${invoice.postingStatus})`);
+    }
     // Strict CONST-COM-011 at the point of posting: a stage invoice drafted before the rule (or
     // whose milestone was unlinked since) must not reach the ledger without site-verified evidence.
     // Covers the invoice screen's Post and the billing package, which posts through here.
@@ -1132,6 +1147,15 @@ export class ClientInvoiceService {
       }
     }
 
+    // H2 — a reversed invoice billed nothing, so its source (stage, certificate, separate charge)
+    // can be billed again: the unique source tag is released, exactly as cancelling a draft
+    // releases it. The description keeps the source on the invoice and the audit event records the
+    // tag. A stage invoice carrying variation billing lines keeps its tag: those lines are undone by
+    // a credit note in the variation workflow, not by re-billing the stage.
+    const releaseSource =
+      (invoice.sourceInstallmentId !== null || invoice.sourceIpcId !== null || invoice.sourceBoqNodeId !== null) &&
+      !(await this.repo.hasVariationBilling(prisma, orgId, invoice.id, invoice.sourceInstallmentId));
+
     // Load original journal lines
     const originalJournal = await prisma.journalEntry.findUniqueOrThrow({
       where: { id: invoice.postedJournalEntryId },
@@ -1180,8 +1204,29 @@ export class ClientInvoiceService {
           reversalJournalEntryId: reversalResult.journalEntryId,
           reversedBy: userId,
           reversedAt: new Date(),
+          ...(releaseSource ? { sourceInstallmentId: null, sourceIpcId: null, sourceBoqNodeId: null } : {}),
         },
       });
+      if (this.auditOutbox) {
+        await this.auditOutbox.record(tx as never, {
+          organizationId: orgId,
+          actorUserId: userId,
+          action: 'REVERSE',
+          resourceType: 'ClientInvoice',
+          resourceId: invoiceId,
+          sourceCommand: 'client-invoice.reverse',
+          eventType: 'CLIENT_INVOICE_REVERSED',
+          idempotencyKey: `client-invoice-${invoiceId}-REVERSED`,
+          before: {
+            postingStatus: 'POSTED',
+            sourceInstallmentId: invoice.sourceInstallmentId,
+            sourceIpcId: invoice.sourceIpcId,
+            sourceBoqNodeId: invoice.sourceBoqNodeId,
+          },
+          after: { postingStatus: 'REVERSED', sourceReleased: releaseSource },
+          reason: opts.reason,
+        });
+      }
 
       return reversalResult;
     });

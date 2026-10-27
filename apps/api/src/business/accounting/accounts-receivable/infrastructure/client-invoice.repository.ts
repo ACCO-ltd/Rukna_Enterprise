@@ -215,6 +215,26 @@ export class ClientInvoiceRepository {
   }
 
   // ADR-023: one invoice per payment-schedule installment (idempotent milestone billing).
+  /**
+   * H2 — whether variation billing lines name this invoice, or (for a stage invoice) its stage.
+   * Such an invoice keeps its source tag when reversed: the variation lines are undone by a credit
+   * note, and the `(variation, installment)` unique would refuse them on a re-billed stage.
+   */
+  async hasVariationBilling(
+    prisma: TenantPrisma,
+    organizationId: string,
+    invoiceId: string,
+    installmentId: string | null,
+  ): Promise<boolean> {
+    const count = await prisma.variationBillingAllocation.count({
+      where: {
+        organizationId,
+        OR: [{ clientInvoiceId: invoiceId }, ...(installmentId ? [{ installmentId }] : [])],
+      },
+    });
+    return count > 0;
+  }
+
   findByInstallment(
     prisma: TenantPrisma,
     organizationId: string,

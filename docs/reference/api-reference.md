@@ -1570,7 +1570,7 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 | `GET` | `/invoices/:id` | Get invoice with GL status |
 | `POST` | `/invoices/:id/approve` | Approve the invoice |
 | `POST` | `/invoices/:id/post` | Post to AR control account |
-| `POST` | `/invoices/:id/reverse` | Reverse a posted invoice |
+| `POST` | `/invoices/:id/reverse` | Reverse a posted invoice. Phase 0 H2: releases its source tag (`sourceInstallmentId` / `sourceIpcId` / `sourceBoqNodeId`) so the source can be billed again by a replacement invoice — unless variation billing lines name the invoice or its stage. Audited (`CLIENT_INVOICE_REVERSED`, with the released tag). Posting a reversed invoice is refused: `409 INVOICE_REVERSED`. |
 
 **Generate from IPC — body:**
 ```json

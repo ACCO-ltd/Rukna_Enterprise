@@ -32,6 +32,8 @@ describe('ClientInvoiceService.reverse — dimensions', () => {
         invoiceNumber: 'INV-1',
         currencyCode: 'USD',
         sourceIpcId: null,
+        sourceInstallmentId: null,
+        sourceBoqNodeId: null,
         retentionAmount: new Decimal(0),
       }),
     };
@@ -60,5 +62,64 @@ describe('ClientInvoiceService.reverse — dimensions', () => {
     expect(revenue.projectId).toBe('p1');
     expect(revenue.debitAmount.toString()).toBe('1000');
     expect(lines.find((l) => l.accountId === 'ar')!.projectId).toBeUndefined();
+  });
+});
+
+/**
+ * Phase 0 H2 — reversing releases the invoice's unique source tag so the stage can be billed again,
+ * unless variation billing lines hang off it (those are undone by a credit note).
+ */
+describe('ClientInvoiceService.reverse — source release', () => {
+  async function reverseStageInvoice(hasVariationBilling: boolean) {
+    const prisma = {
+      clientReceiptAllocation: { count: jest.fn().mockResolvedValue(0) },
+      creditNote: { count: jest.fn().mockResolvedValue(0) },
+      journalEntry: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'je1', lines: [] }) },
+      clientInvoice: { update: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation((cb: (tx: unknown) => unknown) => cb(prisma)),
+    };
+    const repo = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'inv1',
+        postingStatus: 'POSTED',
+        reversalJournalEntryId: null,
+        postedJournalEntryId: 'je1',
+        invoiceNumber: 'INV-1',
+        currencyCode: 'USD',
+        sourceIpcId: null,
+        sourceInstallmentId: 'st-1',
+        sourceBoqNodeId: null,
+        retentionAmount: new Decimal(0),
+      }),
+      hasVariationBilling: jest.fn().mockResolvedValue(hasVariationBilling),
+    };
+    const service = new ClientInvoiceService(
+      { getClient: () => prisma } as never,
+      repo as never,
+      {} as never,
+      {} as never,
+      { post: jest.fn().mockResolvedValue({ journalEntryId: 'je2' }) } as never,
+      {} as never,
+      {} as never,
+      fakeTaxCodes() as never,
+    );
+    await service.reverse(
+      { userId: 'u1', activeOrganizationId: 'o1', roles: [], permissions: [] } as never,
+      'inv1',
+      { reversalDate: '2026-10-27', reason: 'Issued in error' },
+    );
+    expect(repo.hasVariationBilling).toHaveBeenCalledWith(prisma, 'o1', 'inv1', 'st-1');
+    return prisma.clientInvoice.update.mock.calls[0]![0].data as Record<string, unknown>;
+  }
+
+  it('releases the stage so it can be billed again', async () => {
+    const data = await reverseStageInvoice(false);
+    expect(data).toMatchObject({ postingStatus: 'REVERSED', sourceInstallmentId: null, sourceIpcId: null, sourceBoqNodeId: null });
+  });
+
+  it('keeps the stage on an invoice that carries variation billing lines', async () => {
+    const data = await reverseStageInvoice(true);
+    expect(data.postingStatus).toBe('REVERSED');
+    expect(data).not.toHaveProperty('sourceInstallmentId');
   });
 });
