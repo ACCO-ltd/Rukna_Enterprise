@@ -1257,7 +1257,7 @@ export class ClientInvoiceService {
     const [logo, project, lineSource] = await Promise.all([
       org ? this.files.readBytesForRendering(org.logoFileId) : null,
       loadInvoiceProject(prisma, invoice.organizationId, invoice.projectId),
-      loadInvoiceLineSource(prisma, { ...invoice, subtotal: documentSubtotal }, description),
+      loadInvoiceLineSource(prisma, { ...invoice, subtotal: documentSubtotal.toFixed(2) }, description),
     ]);
 
     const pdf = await this.documentService.render({
