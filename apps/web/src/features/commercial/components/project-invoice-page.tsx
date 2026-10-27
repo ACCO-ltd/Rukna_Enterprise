@@ -44,6 +44,7 @@ import {
 } from '../hooks/use-commercial-invoice';
 import { toClientReceivableView } from '../lib/collection-view-model';
 import { CreditNoteDialog } from './credit-note-dialog';
+import { InvoiceCreditNotes } from './invoice-credit-notes';
 import { InvoiceCollectionDialogs, type CollectionDialogKind } from './invoice-collection-dialogs';
 import { InvoiceEditDraftDialog } from './invoice-edit-draft-dialog';
 import { InvoicePaper } from './invoice-paper';
@@ -367,6 +368,14 @@ function InvoiceDocumentView({
           ) : null}
 
           <InvoicePaper document={document} />
+
+          <InvoiceCreditNotes
+            projectId={projectId}
+            invoiceId={document.id}
+            creditNotes={document.creditNotes}
+            hidden={hidden}
+            canReverse={caps.canIssueCreditNote}
+          />
 
           {collects ? (
             <MessageHistory

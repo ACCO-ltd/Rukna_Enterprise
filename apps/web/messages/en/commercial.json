@@ -120,7 +120,25 @@
     "whatsappTitle": "Send invoice on WhatsApp",
     "whatsappSubtitle": "Invoice {number} goes to the client as a PDF.",
     "whatsappPackageTitle": "Send stage invoices on WhatsApp",
-    "whatsappPackageSubtitle": "All {count} invoices of this stage go to the client, each as its own message with its PDF."
+    "whatsappPackageSubtitle": "All {count} invoices of this stage go to the client, each as its own message with its PDF.",
+    "creditNotes": {
+      "heading": "Credit notes",
+      "unnumbered": "Unnumbered credit note",
+      "status": {
+        "NOT_POSTED": "Not posted",
+        "PENDING": "Posting",
+        "POSTED": "Posted",
+        "FAILED": "Failed",
+        "REVERSED": "Reversed",
+        "OPENING_BALANCE": "Opening balance"
+      },
+      "reversedBecause": "Reversed: {reason}",
+      "reverse": "Reverse",
+      "reverseTitle": "Reverse credit note {ref}?",
+      "reverseBody": "The credit is taken back: a mirror journal is posted today and the invoice balance goes back up by this amount. The credit note stays on record as reversed.",
+      "reasonLabel": "Why is it being reversed?",
+      "reverseFailed": "Could not reverse the credit note."
+    }
   },
   "prepare": {
     "title": "Prepare invoice",
@@ -1894,6 +1912,7 @@
     "contractActiveTitle": "Contract {ref} is active",
     "contractActiveDescription": "Billing is now open: the advance and each payment stage can be invoiced from Billing & Collection.",
     "stageMarkedReady": "Marked ready to bill — Finance will prepare the invoice",
-    "stageReadyUndone": "Ready to bill undone"
+    "stageReadyUndone": "Ready to bill undone",
+    "creditNoteReversed": "Credit note reversed"
   }
 }

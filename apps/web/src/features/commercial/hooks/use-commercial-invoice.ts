@@ -24,6 +24,7 @@ import {
   issueInvoice,
   postInvoiceCreditNote,
   preparePackage,
+  reverseInvoiceCreditNote,
   type CreateInvoiceCreditNotePayload,
 } from '../api/commercial-invoice-api';
 import { patchDraftInvoice, type PatchDraftInvoicePayload } from '../api/commercial-api';
@@ -174,6 +175,22 @@ export function useIssueCreditNote(projectId: string, invoiceId: string) {
         }),
       },
     },
+    onSettled: async () => {
+      await invalidate();
+    },
+  });
+}
+
+/** Reverse a posted credit note issued in error; the invoice balance comes back. */
+export function useReverseCreditNote(projectId: string, invoiceId: string) {
+  const invalidate = useInvalidateInvoice(projectId);
+  return useMutation({
+    mutationFn: ({ creditNoteId, reason }: { creditNoteId: string; reason: string }) =>
+      reverseInvoiceCreditNote(projectId, invoiceId, creditNoteId, {
+        reversalDate: new Date().toISOString().slice(0, 10),
+        reason,
+      }),
+    meta: { successToast: { key: 'commercial.feedback.creditNoteReversed' } },
     onSettled: async () => {
       await invalidate();
     },

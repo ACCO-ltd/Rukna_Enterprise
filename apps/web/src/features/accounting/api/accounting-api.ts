@@ -398,6 +398,18 @@ export function createJournal(payload: CreateJournalPayload): Promise<JournalEnt
   });
 }
 
+/**
+ * `PATCH /journals/:id` — same body as create. Replaces the header and every line of a DRAFT, or
+ * corrects a REJECTED journal and returns it to DRAFT for resubmission. Preparer only (403).
+ */
+export function updateJournal(id: string, payload: CreateJournalPayload): Promise<JournalEntry> {
+  return apiClient<JournalEntry>(`/journals/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function submitJournal(id: string): Promise<JournalEntry> {
   return apiClient<JournalEntry>(`/journals/${id}/submit`, { method: 'POST' });
 }

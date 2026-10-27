@@ -464,7 +464,14 @@
       "lineAmountInvalid": "Enter a valid amount.",
       "lineAmountNegative": "Enter a positive amount. Use the other column to reverse the direction.",
       "outOfBalance": "Debits and credits must be equal. Currently out by {difference}."
-    }
+    },
+    "editTitle": "Edit journal",
+    "correctTitle": "Correct rejected journal",
+    "editIntro": "Saving replaces the journal’s details and lines. It stays a draft until you submit it.",
+    "correctIntro": "Saving returns the journal to draft. Submit it again from the journal when it is right.",
+    "rejectedBecause": "Rejected: {reason}",
+    "saveChanges": "Save changes",
+    "backToJournal": "Back to journal"
   },
   "journalDetail": {
     "back": "Back to journals",
@@ -493,7 +500,9 @@
       "reverse": "Reverse",
       "working": "Working…",
       "failed": "The action could not be completed.",
-      "noneAvailable": "No action is available from this status."
+      "noneAvailable": "No action is available from this status.",
+      "edit": "Edit",
+      "correct": "Edit and resubmit"
     },
     "confirm": {
       "submitTitle": "Submit this journal for approval?",
@@ -509,7 +518,10 @@
       "reverseBody": "A new entry is raised with the debits and credits swapped. Neither entry is removed.",
       "reverseDateLabel": "Reversal date",
       "reverseReasonLabel": "Reason"
-    }
+    },
+    "rejectedHint": "Correct the journal, then submit it again.",
+    "notEditable": "Only the person who prepared this journal can edit it, and only while it is a draft or rejected.",
+    "backToJournal": "Back to journal"
   },
   "trialBalance": {
     "title": "Trial Balance",

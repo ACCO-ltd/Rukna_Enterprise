@@ -103,3 +103,19 @@ export function postInvoiceCreditNote(
     { method: 'POST', body: JSON.stringify({}) },
   );
 }
+
+/**
+ * Reverses a posted credit note (EVT-AR-008): a mirror journal on the reversal date, and the
+ * invoice balance restored. The reason is mandatory.
+ */
+export function reverseInvoiceCreditNote(
+  projectId: string,
+  invoiceId: string,
+  creditNoteId: string,
+  payload: { reversalDate: string; reason: string },
+): Promise<{ id: string; postingStatus: string }> {
+  return apiClient<{ id: string; postingStatus: string }>(
+    `${base(projectId)}/invoices/${invoiceId}/credit-notes/${creditNoteId}/reverse`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}

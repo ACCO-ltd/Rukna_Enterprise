@@ -38,6 +38,7 @@ import {
   postJournal,
   reverseJournal,
   submitJournal,
+  updateJournal,
   createPostingProfile,
   getAccountingSetupStatus,
   getAccountingSetupTemplate,
@@ -414,6 +415,24 @@ export function useCreateJournal() {
       },
     },
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.journals() });
+    },
+  });
+}
+
+/** Edit a draft, or correct a rejected journal (it returns to DRAFT). */
+export function useUpdateJournal(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateJournalPayload) => updateJournal(id, payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.journalSaved',
+        values: (journal) => ({ ref: refOrNone((journal as JournalEntry).journalNumber) }),
+      },
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.journal(id) });
       void qc.invalidateQueries({ queryKey: accountingKeys.journals() });
     },
   });

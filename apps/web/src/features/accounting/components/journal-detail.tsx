@@ -16,6 +16,7 @@ import {
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useSession } from '@/features/auth/session/use-session';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -23,7 +24,7 @@ import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
 import { indexAccounts, lineAccountLabel } from '../account-display';
 import { useAccounts, useJournal, useJournalAction } from '../hooks/use-accounting';
-import { availableActions, entryTotals, formatDifference } from '../journal-entry';
+import { availableActions, canEditJournal, entryTotals, formatDifference } from '../journal-entry';
 import type { JournalAction } from '../journal-entry';
 import { JournalStatusBadge } from './journal-status-badge';
 
@@ -40,6 +41,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
   // posting engine fills them. Not blocking: a line falls back to its id tail.
   const accounts = useAccounts();
   const action = useJournalAction(journalId);
+  const userId = useSession().user?.id ?? null;
 
   const [pending, setPending] = useState<JournalAction | null>(null);
 
@@ -76,6 +78,8 @@ export function JournalDetail({ journalId }: { journalId: string }) {
   const entry = journal.data;
   const totals = entryTotals(entry);
   const actions = availableActions(entry.status);
+  // The preparer edits a draft, or corrects a rejected journal and resubmits it.
+  const editable = canEditJournal(entry, userId);
 
   function runAction(type: JournalAction, reason: string) {
     switch (type) {
@@ -254,10 +258,21 @@ export function JournalDetail({ journalId }: { journalId: string }) {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-foreground">{t('actions.heading')}</h2>
 
-        {actions.length === 0 ? (
+        {entry.status === 'REJECTED' && editable ? (
+          <p className="text-sm text-muted-foreground">{t('rejectedHint')}</p>
+        ) : null}
+
+        {actions.length === 0 && !editable ? (
           <p className="text-sm text-muted-foreground">{t('actions.noneAvailable')}</p>
         ) : (
           <div className="flex flex-wrap gap-3">
+            {editable ? (
+              <Button variant={entry.status === 'REJECTED' ? 'default' : 'outline'} asChild>
+                <Link href={`/finance/accounting/journals/${entry.id}/edit`}>
+                  {entry.status === 'REJECTED' ? t('actions.correct') : t('actions.edit')}
+                </Link>
+              </Button>
+            ) : null}
             {actions.map((type) => (
               <Button
                 key={type}

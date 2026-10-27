@@ -3946,6 +3946,20 @@ export interface CommercialInvoiceDocumentResponse {
   source: ClientInvoiceSource;
   journalEntryId: string | null;
   deliveries: CommercialDeliveryRecord[];
+  /**
+   * Credit notes raised against this invoice, oldest first. A posted one can be reversed
+   * (EVT-AR-008, Phase 0 H2) by a caller with `canIssueCreditNote`. Amount null without financials.
+   */
+  creditNotes: Array<{
+    id: string;
+    creditNoteNumber: string | null;
+    reason: string;
+    totalAmount: string | null;
+    accountingDate: string;
+    postingStatus: ArPostingStatus;
+    reversedAt: string | null;
+    reversalReason: string | null;
+  }>;
   createdAt: string;
   createdBy: string | null;
   financialsVisible: boolean;

@@ -1316,6 +1316,19 @@ export class CommercialPrismaRepository {
             variation: { select: { reference: true, title: true } },
           },
         },
+        creditNotes: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            creditNoteNumber: true,
+            reason: true,
+            totalAmount: true,
+            accountingDate: true,
+            postingStatus: true,
+            reversedAt: true,
+            reversalReason: true,
+          },
+        },
       },
     });
   }

@@ -30,6 +30,10 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
   reverseJournal: vi.fn(),
 }));
 
+// The journals' preparer is user-abcd1234; the signed-in user is set per test.
+const sessionMocks = vi.hoisted(() => ({ useSession: vi.fn(() => ({ user: { id: 'user-abcd1234' } })) }));
+vi.mock('@/features/auth/session/use-session', () => sessionMocks);
+
 vi.mock('next/link', () => ({
   default: ({
     href,
@@ -247,18 +251,31 @@ describe('JournalDetail', () => {
     });
 
     /**
-     * §6.17 draws `REJECTED → DRAFT`, but no endpoint performs that transition and `submit`
-     * accepts a REJECTED journal directly. Offering nothing would strand it.
+     * The server submits only a DRAFT. A rejected journal goes back to its preparer, who corrects
+     * it (`PATCH /journals/:id` returns it to DRAFT) and submits it again.
      */
-    it('lets a rejected journal be resubmitted', async () => {
+    it('sends the preparer of a rejected journal to correct it', async () => {
       vi.mocked(getJournal).mockResolvedValue(
         withStatus('REJECTED', { rejectionReason: 'Wrong account used' }),
       );
 
       render();
 
-      expect(await screen.findByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
+      const correct = await screen.findByRole('link', { name: 'Edit and resubmit' });
+      expect(correct).toHaveAttribute('href', '/finance/accounting/journals/jrn-1/edit');
+      expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
       expect(screen.getByText(/Wrong account used/)).toBeInTheDocument();
+    });
+
+    it('offers no edit to anyone but the preparer', async () => {
+      sessionMocks.useSession.mockReturnValueOnce({ user: { id: 'user-2' } }).mockReturnValue({ user: { id: 'user-2' } });
+      vi.mocked(getJournal).mockResolvedValue(withStatus('REJECTED', { rejectionReason: 'Wrong account used' }));
+
+      render();
+
+      expect(await screen.findByText('No action is available from this status.')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Edit and resubmit' })).not.toBeInTheDocument();
+      sessionMocks.useSession.mockReturnValue({ user: { id: 'user-abcd1234' } });
     });
   });
 

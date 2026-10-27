@@ -4,14 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { chooseOption, openSelect } from '@/test/choose-option';
-import { createJournal, listAccounts, listFiscalYears } from '@/features/accounting/api/accounting-api';
-import type { Account, AccountVersion } from '@/features/accounting/types';
+import { createJournal, listAccounts, listFiscalYears, updateJournal } from '@/features/accounting/api/accounting-api';
+import type { Account, AccountVersion, JournalEntry } from '@/features/accounting/types';
 
 import { JournalForm } from './journal-form';
 
 vi.mock('@/features/accounting/api/accounting-api', () => ({
   listAccounts: vi.fn(),
   createJournal: vi.fn(),
+  updateJournal: vi.fn(),
   // The accounting-date picker refuses days outside an open period, and reads the periods
   // through useFiscalYears -> listFiscalYears.
   listFiscalYears: vi.fn(),
@@ -359,4 +360,54 @@ describe('JournalForm', () => {
     expect(bar).not.toHaveTextContent('$180.00');
   });
 
+
+  describe('editing a saved journal', () => {
+    const rejected = (): JournalEntry =>
+      ({
+        id: 'jrn-9',
+        status: 'REJECTED',
+        createdBy: 'user-1',
+        rejectionReason: 'Wrong amount',
+        accountingDate: '2026-10-15T00:00:00.000Z',
+        documentDate: '2026-10-15T00:00:00.000Z',
+        description: 'Accrue rent',
+        currencyCode: 'USD',
+        lines: [
+          { id: 'l1', lineNumber: 1, accountId: 'acc-expense', debitAmount: '2400.00', creditAmount: '0.00', description: null, projectId: null },
+          { id: 'l2', lineNumber: 2, accountId: 'acc-accrual', debitAmount: '0.00', creditAmount: '2400.00', description: null, projectId: null },
+        ],
+      }) as unknown as JournalEntry;
+
+    it('loads the journal, shows why it was rejected, and saves the correction to it', async () => {
+      const user = userEvent.setup();
+      vi.mocked(updateJournal).mockReset().mockResolvedValue({ id: 'jrn-9' } as never);
+
+      renderWithProviders(<JournalForm journal={rejected()} />);
+
+      expect(await screen.findByRole('heading', { name: 'Correct rejected journal' })).toBeInTheDocument();
+      expect(screen.getByText('Rejected: Wrong amount')).toBeInTheDocument();
+      expect(screen.getByLabelText('Description')).toHaveValue('Accrue rent');
+
+      const debit = await screen.findByLabelText('Debit 1');
+      const credit = screen.getByLabelText('Credit 2');
+      await user.clear(debit);
+      await user.type(debit, '2500');
+      await user.clear(credit);
+      await user.type(credit, '2500');
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      expect(vi.mocked(updateJournal)).toHaveBeenCalledWith(
+        'jrn-9',
+        expect.objectContaining({
+          description: 'Accrue rent',
+          lines: [
+            expect.objectContaining({ accountId: 'acc-expense', debitAmount: 2500 }),
+            expect.objectContaining({ accountId: 'acc-accrual', creditAmount: 2500 }),
+          ],
+        }),
+      );
+      expect(vi.mocked(createJournal)).not.toHaveBeenCalled();
+      expect(push).toHaveBeenCalledWith('/finance/accounting/journals/jrn-9');
+    });
+  });
 });

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   availableActions,
+  canEditJournal,
   canSaveDraft,
+  draftFromEntry,
   draftProblems,
   emptyDraft,
   emptyLine,
@@ -268,12 +270,65 @@ describe('availableActions', () => {
     expect(availableActions(status)).toEqual(expected);
   });
 
-  /**
-   * §6.17 draws `REJECTED → DRAFT`, but no endpoint performs that transition and `submit`
-   * accepts a REJECTED journal directly. Offering nothing here would strand it.
-   */
-  it('lets a rejected journal be resubmitted', () => {
-    expect(availableActions('REJECTED')).toEqual(['submit']);
+  /** The server submits only a DRAFT: a rejected journal is corrected first (`canEditJournal`). */
+  it('offers no direct action on a rejected journal', () => {
+    expect(availableActions('REJECTED')).toEqual([]);
+  });
+});
+
+describe('canEditJournal', () => {
+  it.each([
+    ['DRAFT', 'u-1', true],
+    ['REJECTED', 'u-1', true],
+    ['DRAFT', 'u-2', false],
+    ['SUBMITTED', 'u-1', false],
+    ['POSTED', 'u-1', false],
+  ] as const)('%s journal, user %s → %s', (status, userId, expected) => {
+    expect(canEditJournal({ status, createdBy: 'u-1' }, userId)).toBe(expected);
+  });
+
+  it('refuses when nobody is signed in', () => {
+    expect(canEditJournal({ status: 'DRAFT', createdBy: 'u-1' }, null)).toBe(false);
+  });
+});
+
+describe('draftFromEntry', () => {
+  it('loads a saved journal into the editor, a zero side as empty, lines in order, project kept', () => {
+    const line = (lineNumber: number, debitAmount: string, creditAmount: string, projectId: string | null) => ({
+      id: `l${lineNumber}`,
+      journalEntryId: 'j',
+      lineNumber,
+      accountId: `a${lineNumber}`,
+      accountVersionId: null,
+      accountCodeSnapshot: '',
+      accountNameSnapshot: '',
+      accountVersionNumber: 0,
+      debitAmount,
+      creditAmount,
+      description: lineNumber === 1 ? 'Accrual' : null,
+      projectId,
+      departmentId: null,
+      costCenterId: null,
+    });
+    const draft = draftFromEntry({
+      accountingDate: '2026-10-15T00:00:00.000Z',
+      documentDate: '2026-10-14T00:00:00.000Z',
+      description: 'October accrual',
+      currencyCode: 'USD',
+      lines: [line(2, '0.00', '250.00', null), line(1, '250.00', '0.00', 'p-1')],
+    } as never);
+
+    expect(draft).toEqual({
+      accountingDate: '2026-10-15',
+      documentDate: '2026-10-14',
+      description: 'October accrual',
+      currencyCode: 'USD',
+      lines: [
+        { accountId: 'a1', debit: '250.00', credit: '', memo: 'Accrual', projectId: 'p-1' },
+        { accountId: 'a2', debit: '', credit: '250.00', memo: '' },
+      ],
+    });
+    expect(toJournalPayload(draft).lines[0]).toEqual({ accountId: 'a1', debitAmount: 250, memo: 'Accrual', projectId: 'p-1' });
   });
 });
 

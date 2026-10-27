@@ -38,6 +38,7 @@ export function makeInvoiceDocument(
     source: { kind: 'INSTALLMENT', label: 'Structure complete', id: 'inst-2' },
     journalEntryId: null,
     deliveries: [],
+    creditNotes: [],
     createdAt: '2026-09-20T08:00:00.000Z',
     createdBy: 'Amina Yusuf',
     financialsVisible: true,
