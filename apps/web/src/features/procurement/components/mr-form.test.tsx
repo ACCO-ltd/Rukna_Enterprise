@@ -154,7 +154,7 @@ describe('MrForm', () => {
     const user = userEvent.setup();
     renderWithProviders(<MrForm />, { permissions: [MONEY] });
 
-    await user.click(screen.getByRole('radio', { name: /ACCO overhead/ }));
+    await user.click(screen.getByRole('radio', { name: /company overhead/i }));
     expect(screen.queryByRole('combobox', { name: /Project/ })).not.toBeInTheDocument();
 
     await user.click(lines().getByRole('combobox', { name: /Item/ }));

@@ -149,7 +149,7 @@ describe('MrList', () => {
     expect(grid.getByText('Urgent')).toBeInTheDocument();
     expect(grid.getByText('$8,500.00')).toBeInTheDocument();
     // Overhead request: no project, no date, nothing estimated — never $0.
-    expect(grid.getByText('ACCO overhead')).toBeInTheDocument();
+    expect(grid.getByText('Company overhead')).toBeInTheDocument();
     expect(grid.getByText('No date')).toBeInTheDocument();
     expect(grid.queryByText('$0.00')).not.toBeInTheDocument();
   });
@@ -251,7 +251,7 @@ describe('PoList', () => {
 
     const grid = await table();
     expect(grid.getByRole('link', { name: /PO-2026-0001/ })).not.toHaveTextContent('revision');
-    expect(grid.getByText('ACCO overhead')).toBeInTheDocument();
+    expect(grid.getByText('Company overhead')).toBeInTheDocument();
     expect(grid.getAllByText('—').length).toBeGreaterThanOrEqual(2);
     expect(grid.queryByText('$0.00')).not.toBeInTheDocument();
   });
