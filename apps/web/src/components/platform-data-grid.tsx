@@ -115,6 +115,17 @@ export interface ServerListConfig {
   pageSizeOptions?: number[];
 }
 
+/**
+ * Search and sort held by the caller while the grid still filters, sorts and pages `data` in the
+ * browser — so a saved view (Step 2a, ADR-047) can restore them. Ignored when `server` is set.
+ */
+export interface ListStateConfig {
+  search: string;
+  onSearchChange: (next: string) => void;
+  sort: SortState | null;
+  onSortChange: (next: SortState | null) => void;
+}
+
 // ─── Selection ────────────────────────────────────────────────────────────────
 
 export interface SelectionConfig {
@@ -407,6 +418,9 @@ export interface PlatformDataGridProps<T> {
    */
   server?: ServerListConfig;
 
+  /** Caller-held search and sort on a client-side list (see `ListStateConfig`). */
+  listState?: ListStateConfig;
+
   /**
    * Row selection. Only provide when the caller has bulk actions to perform —
    * a checkbox column that does nothing is not useful.
@@ -608,6 +622,7 @@ export function PlatformDataGrid<T>({
   filterValues,
   onFilterValuesChange,
   server,
+  listState,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
   const t = useTranslations('common.grid');
@@ -620,12 +635,13 @@ export function PlatformDataGrid<T>({
   const [localSort, setLocalSort] = useState<SortState | null>(defaultSort ?? null);
   const [localPage, setLocalPage] = useState(1);
   // A server-driven list owns these; the grid only reports changes.
-  const search = server ? server.search : localSearch;
-  const setSearch = (next: string) => (server ? server.onSearchChange(next) : setLocalSearch(next));
-  const sort = server ? server.sort : localSort;
+  const owner = server ?? listState;
+  const search = owner ? owner.search : localSearch;
+  const setSearch = (next: string) => (owner ? owner.onSearchChange(next) : setLocalSearch(next));
+  const sort = owner ? owner.sort : localSort;
   const setSort = (next: SortState | null | ((prev: SortState | null) => SortState | null)) => {
     const resolved = typeof next === 'function' ? next(sort) : next;
-    if (server) server.onSortChange(resolved);
+    if (owner) owner.onSortChange(resolved);
     else setLocalSort(resolved);
   };
   const page = server ? server.page : localPage;

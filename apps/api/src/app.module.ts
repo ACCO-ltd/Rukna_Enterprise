@@ -13,6 +13,7 @@ import { HealthModule } from './platform/health/health.module.js';
 import { AuthModule } from './platform/auth/auth.module.js';
 import { UsersModule } from './platform/users/users.module.js';
 import { OrganizationsModule } from './platform/organizations/organizations.module.js';
+import { SavedViewsModule } from './platform/saved-views/saved-views.module.js';
 import { RolesModule } from './platform/roles/roles.module.js';
 import { PermissionsModule } from './platform/permissions/permissions.module.js';
 import { AuditLogsModule } from './platform/audit-logs/audit-logs.module.js';
@@ -39,6 +40,7 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     AuthModule,
     UsersModule,
     OrganizationsModule,
+    SavedViewsModule,
     RolesModule,
     PermissionsModule,
     AuditLogsModule,

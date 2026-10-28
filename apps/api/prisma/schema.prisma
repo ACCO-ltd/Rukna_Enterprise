@@ -51,6 +51,7 @@ model Organization {
   roleAccessReviews        RoleAccessReview[]
   projects                 Project[]
   districts                District[]
+  savedViews               SavedView[]
   projectSubtypes          ProjectSubtype[]
   projectCodeSequences     ProjectCodeSequence[]
   clients                  Client[]
@@ -745,6 +746,27 @@ model Project {
 // ADR-025: districts are org-scoped construction reference data. The `code` is the
 // immutable 3-letter segment of a project code (WBR); the `name` is editable. Managed
 // in Settings so ACCO can add districts beyond Banaadir.
+/// Step 2a (ADR-047): a named list state — filters, search, sort, columns — saved on a list
+/// (`listKey`, e.g. "invoices"). Personal to its owner until an admin publishes it to everyone.
+/// UI preference, not business data: hard-deleted when its owner removes it.
+model SavedView {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  listKey        String   @map("list_key") @db.VarChar(64)
+  name           String   @db.VarChar(60)
+  /// { search?, filters?: Record<string,string>, sort?: { key, direction }, columns?: string[] }
+  state          Json
+  ownerUserId    String   @map("owner_user_id")
+  published      Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, listKey])
+  @@map("saved_views")
+}
+
 model District {
   id             String   @id @default(cuid())
   organizationId String   @map("organization_id")

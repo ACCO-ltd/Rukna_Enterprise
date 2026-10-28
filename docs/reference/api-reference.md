@@ -251,6 +251,21 @@ All endpoints are scoped to the authenticated user's organization.
 | `GET` | `/organizations/:id` | Get organization |
 | `PATCH` | `/organizations/:id/branding` | `manage:organization`. Invoice branding: logo file, legal address, tax ID, brand colour, footer note, template. |
 
+#### Saved list views (Step 2a, ADR-047)
+
+Authentication only. A view is a named list state (`{ search?, filters?, sort?, columns? }`, strings
+only, validated) saved on one list (`listKey`, e.g. `invoices`). Personal to its owner; an admin
+(`manage:organization`) may publish it to everyone and may then edit or delete it. Someone else's
+personal view answers 404. At most 30 views per user per list; names are unique per owner and list.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/saved-views?listKey=` | The caller's views plus every published view: `SavedViewDto[]` (`{ id, listKey, name, state, published, mine, createdAt, updatedAt }`). |
+| `POST` | `/saved-views` | Body `{ listKey, name, state }`. `409 SAVED_VIEW_NAME_TAKEN` / `SAVED_VIEW_LIMIT`; `400 SAVED_VIEW_INVALID` with `details.problems`. |
+| `PATCH` | `/saved-views/:id` | Body `{ name?, state? }`. Owner, or an admin for a published view. |
+| `POST` | `/saved-views/:id/publish` · `/unpublish` | `manage:organization`. |
+| `DELETE` | `/saved-views/:id` | `204`. Owner, or an admin for a published view. |
+
 #### Company templates (Step 1b, ADR-047)
 
 Rukna ships a default payment plan and building schedule; a company may save its own copy and reset

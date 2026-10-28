@@ -251,5 +251,29 @@
       "subtitle": "{number, select, none {Opening balance invoice} other {Invoice {number}}} · {amount} outstanding. Rukna records the reminder as a follow-up.",
       "subtitleOverdue": "{number, select, none {Opening balance invoice} other {Invoice {number}}} · {amount} outstanding, {days, plural, one {# day} other {# days}} overdue. Rukna records the reminder as a follow-up."
     }
+  },
+  "views": {
+    "shared": "Shared",
+    "saveView": "Save view",
+    "saveChanges": "Save changes",
+    "manage": "Manage view {name}",
+    "rename": "Rename",
+    "shareWithEveryone": "Share with everyone",
+    "makePersonal": "Make personal again",
+    "delete": "Delete view",
+    "saveTitle": "Save this view",
+    "saveHint": "Saves the current search, filters and sort. Only you see it until an administrator shares it.",
+    "renameTitle": "Rename view",
+    "nameLabel": "View name",
+    "save": "Save",
+    "saving": "Saving…",
+    "saveFailed": "The view could not be saved.",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteBody": "The view is removed. The records it showed are not affected.",
+    "deleteSharedBody": "Everyone loses this shared view. The records it showed are not affected.",
+    "saved": "View saved",
+    "updated": "View updated",
+    "sharingChanged": "Sharing updated",
+    "deleted": "View deleted"
   }
 }

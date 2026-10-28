@@ -955,7 +955,19 @@
     "sendWhatsApp": "Send on WhatsApp",
     "whatsappTitle": "Send invoice on WhatsApp",
     "whatsappSubtitle": "Invoice {number} goes to the client as a PDF.",
-    "messagesHeading": "Messages"
+    "messagesHeading": "Messages",
+    "filterByDue": "Due",
+    "dueFilter": {
+      "overdue": "Overdue",
+      "notOverdue": "Not overdue"
+    },
+    "views": {
+      "label": "Invoice views",
+      "all": "All",
+      "overdue": "Overdue",
+      "drafts": "Drafts",
+      "toPost": "To post"
+    }
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

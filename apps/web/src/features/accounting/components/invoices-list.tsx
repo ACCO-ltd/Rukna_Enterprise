@@ -20,7 +20,8 @@ import {
 } from '@erp/ui';
 import { FileText } from 'lucide-react';
 
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { PlatformDataGrid, searchRows, type GridColumn, type SortState } from '@/components/platform-data-grid';
+import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate } from '@/lib/format';
@@ -30,12 +31,25 @@ import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 import { useInvoices, useOpenInvoiceDocument } from '../hooks/use-invoices';
 import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
 import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
+import type { SavedViewState } from '@erp/types';
 import { InvoiceDocStatusBadge, InvoicePostingStatusBadge } from './invoice-status-badges';
 
 const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
 const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'PENDING', 'POSTED', 'REVERSED', 'FAILED'];
 
 const detailHref = (invoice: ClientInvoice) => `/finance/accounting/invoices/${invoice.id}`;
+
+const DEFAULT_SORT: SortState = { key: 'dueDate', direction: 'desc' };
+
+/** Whether an invoice passes the list's filters (`project` is applied by the API query). */
+export function invoiceMatchesFilters(inv: ClientInvoice, filters: FilterValues, today: string): boolean {
+  if (filters.status && inv.documentStatus !== filters.status) return false;
+  if (filters.posting && inv.postingStatus !== filters.posting) return false;
+  if (filters.client && inv.clientId !== filters.client) return false;
+  if (filters.due === 'overdue' && !isInvoiceOverdue(inv, today)) return false;
+  if (filters.due === 'notOverdue' && isInvoiceOverdue(inv, today)) return false;
+  return true;
+}
 
 /**
  * The client invoice list (ADR-035 list page, ADR-036 pilot).
@@ -66,6 +80,8 @@ export function InvoicesList() {
     if (initialClientId) initial.client = initialClientId;
     return initial;
   });
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortState | null>(DEFAULT_SORT);
   const invoices = useInvoices({ projectId: filters.project || undefined });
   // Joined here because `GET /invoices` embeds no client relation.
   const clients = useClients();
@@ -78,16 +94,8 @@ export function InvoicesList() {
   }, [clients.data]);
 
   const all = useMemo(() => invoices.data ?? [], [invoices.data]);
-  const visible = useMemo(
-    () =>
-      all.filter(
-        (inv) =>
-          (!filters.status || inv.documentStatus === filters.status) &&
-          (!filters.posting || inv.postingStatus === filters.posting) &&
-          (!filters.client || inv.clientId === filters.client),
-      ),
-    [all, filters],
-  );
+  const visible = useMemo(() => all.filter((inv) => invoiceMatchesFilters(inv, filters, today)), [all, filters, today]);
+
 
   // Client options are the clients that have invoices — never an option that can only empty the list.
   const clientOptions = useMemo(() => {
@@ -109,6 +117,15 @@ export function InvoicesList() {
       type: 'select',
       label: t('filterByPostingStatus'),
       options: POSTING_STATUSES.map((s) => ({ value: s, label: t(`postingStatus.${s}`) })),
+    },
+    {
+      key: 'due',
+      type: 'select',
+      label: t('filterByDue'),
+      options: [
+        { value: 'overdue', label: t('dueFilter.overdue') },
+        { value: 'notOverdue', label: t('dueFilter.notOverdue') },
+      ],
     },
     { key: 'client', type: 'select', label: t('colClient'), options: clientOptions },
     { key: 'project', type: 'select', label: t('filterByProject'), options: projectFilter.options },
@@ -209,6 +226,28 @@ export function InvoicesList() {
     },
   ];
 
+  // Step 2a (ADR-047): views. A view's count is how many invoices its filters and search keep; the project
+  // filter is the API's, so a count is only shown while the view's project matches the loaded one.
+  const countFor = (state: SavedViewState): number | undefined => {
+    const f = state.filters ?? {};
+    if ((f.project ?? '') !== (filters.project ?? '')) return undefined;
+    const filtered = all.filter((inv) => invoiceMatchesFilters(inv, f, today));
+    return searchRows(filtered, state.search ?? '', columns).length;
+  };
+  const builtInViews: Omit<BuiltInView, 'count'>[] = [
+    { id: 'all', label: t('views.all'), state: { sort: DEFAULT_SORT } },
+    { id: 'overdue', label: t('views.overdue'), state: { filters: { due: 'overdue' }, sort: { key: 'dueDate', direction: 'asc' } } },
+    { id: 'drafts', label: t('views.drafts'), state: { filters: { status: 'DRAFT' }, sort: DEFAULT_SORT } },
+    { id: 'toPost', label: t('views.toPost'), state: { filters: { status: 'APPROVED', posting: 'NOT_POSTED' }, sort: DEFAULT_SORT } },
+  ];
+  const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
+  const currentState: SavedViewState = { search, filters: filters as Record<string, string>, sort };
+  const applyView = (state: SavedViewState) => {
+    setSearch(state.search ?? '');
+    setFilters({ ...(state.filters ?? {}) });
+    setSort(state.sort ?? null);
+  };
+
   const copyLink = async (invoice: ClientInvoice) => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${detailHref(invoice)}`);
@@ -274,7 +313,17 @@ export function InvoicesList() {
       noMatchMessage={t('noMatches')}
       resultLabel={(count) => t('countLabel', { count })}
       pagination={{ defaultPageSize: 25 }}
-      defaultSort={{ key: 'dueDate', direction: 'desc' }}
+      listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
+      savedViews={
+        <ListViewsBar
+          listKey="invoices"
+          builtIns={builtIns}
+          current={currentState}
+          onApply={applyView}
+          countFor={countFor}
+          label={t('views.label')}
+        />
+      }
       searchPlaceholder={t('searchPlaceholder')}
       searchLabel={tGrid('searchLabel')}
       filters={filterFields}
