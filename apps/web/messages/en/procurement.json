@@ -964,7 +964,9 @@
       "PAID": "Paid",
       "CANCELLED": "Cancelled",
       "REVERSED": "Reversed"
-    }
+    },
+    "groupSupplier": "Supplier",
+    "groupStatus": "Status"
   },
   "payments": {
     "title": "Supplier payments",

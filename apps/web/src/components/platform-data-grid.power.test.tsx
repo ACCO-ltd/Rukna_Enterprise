@@ -94,3 +94,32 @@ describe('PlatformDataGrid shortcuts (Step 2d, ADR-047)', () => {
     expect(onNew).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('PlatformDataGrid group-by and totals (Step 2e, ADR-047)', () => {
+  const sum = (list: Row[]) => String(list.reduce((s, r) => s + r.amount, 0));
+  it('groups rows under a header with count and subtotal, and totals every filtered row in the footer', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <PlatformDataGrid
+        columns={columns}
+        data={rows.slice(0, 6)}
+        rowKey={(r) => r.id}
+        label="Rows"
+        pagination={{ defaultPageSize: 4 }}
+        groupOptions={[{ key: 'parity', label: 'Parity', groupOf: (r) => ({ id: r.name.split(' ')[0]!, label: r.name.split(' ')[0]! }) }]}
+        totals={{ label: (n) => `${n} rows`, columns: { amount: sum } }}
+      />,
+    );
+    // Footer totals all six rows (0+10+…+50 = 150), not just the four on the page.
+    const footer = screen.getByText('6 rows').closest('tr')!;
+    expect(footer).toHaveTextContent('150');
+
+    await user.click(screen.getByRole('button', { name: /Group:/ }));
+    await user.click(screen.getByRole('menuitem', { name: 'Parity' }));
+    // "Even" sorts before "Odd": evens 0, 20, 40 → 3 rows, 60.
+    const even = screen.getByText('Even · 3 rows').closest('tr')!;
+    expect(even).toHaveTextContent('60');
+    // Page 1 holds four rows: the three evens, then the first odd under its own header.
+    expect(screen.getByText('Odd · 3 rows').closest('tr')).toHaveTextContent('90');
+  });
+});

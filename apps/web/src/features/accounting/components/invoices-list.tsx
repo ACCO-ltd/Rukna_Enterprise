@@ -54,6 +54,12 @@ const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'PENDING', 'POSTED', 'R
 
 const detailHref = (invoice: ClientInvoice) => `/finance/accounting/invoices/${invoice.id}`;
 
+/** Σ of a money field over rows, formatted — exact, in minor units. */
+function sumMoney<T>(rows: T[], field: (row: T) => string, currency: string | null): string {
+  const minor = rows.reduce((sum, row) => sum + toMinorUnits(field(row), 2), 0);
+  return formatMoney(fromMinorUnits(minor, 2), currency) ?? '—';
+}
+
 const DEFAULT_SORT: SortState = { key: 'dueDate', direction: 'desc' };
 
 /** Whether an invoice passes the list's filters (`project` is applied by the API query). */
@@ -459,6 +465,51 @@ export function InvoicesList() {
             ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
             : undefined,
         }}
+        groupOptions={[
+          {
+            key: 'client',
+            label: t('groupClient'),
+            groupOf: (inv) => ({
+              id: inv.clientId,
+              label: clientNames.get(inv.clientId) ?? inv.clientId.slice(-8),
+            }),
+          },
+          {
+            key: 'project',
+            label: t('groupProject'),
+            groupOf: (inv) => ({
+              id: inv.projectId ?? '',
+              label: projectName(inv) ?? t('noProject'),
+            }),
+          },
+          {
+            key: 'state',
+            label: t('groupStatus'),
+            groupOf: (inv) => {
+              const st = invoiceListState(inv, today);
+              return { id: st, label: t(`listState.${st}`) };
+            },
+          },
+        ]}
+        totals={
+          summary.mixedCurrencies || !summary.currency
+            ? undefined
+            : {
+                label: (count) => t('countLabel', { count }),
+                columns: {
+                  total: (rows) => sumMoney(rows, (inv) => inv.totalAmount, summary.currency),
+                  outstanding: (rows) =>
+                    sumMoney(
+                      rows.filter(
+                        (inv) =>
+                          inv.documentStatus !== 'CANCELLED' && inv.postingStatus !== 'REVERSED',
+                      ),
+                      (inv) => inv.outstandingAmount,
+                      summary.currency,
+                    ),
+                },
+              }
+        }
         exportAs={{ fileName: `invoices-${today}`, sheetName: t('title') }}
         summary={
           all.length > 0 ? (

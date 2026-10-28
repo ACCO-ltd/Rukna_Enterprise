@@ -113,7 +113,9 @@
     "keyMove": "move",
     "keyOpen": "open",
     "keySelect": "select",
-    "keyNew": "new"
+    "keyNew": "new",
+    "groupBy": "Group:",
+    "groupNone": "None"
   },
   "emptyState": {
     "noData": "No items yet",

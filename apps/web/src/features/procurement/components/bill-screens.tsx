@@ -420,6 +420,38 @@ export function SupplierBillsList({
           label={t('views.label')}
         />
       }
+      groupOptions={[
+        {
+          key: 'supplier',
+          label: t('groupSupplier'),
+          groupOf: (bill) => ({
+            id: bill.supplierId,
+            label: bill.supplier?.name ?? tc('notAvailable'),
+          }),
+        },
+        {
+          key: 'state',
+          label: t('groupStatus'),
+          groupOf: (bill) => ({ id: state(bill), label: t(`listState.${state(bill)}`) }),
+        },
+      ]}
+      totals={
+        currencies.size === 1
+          ? {
+              label: (count) => t('countLabel', { count }),
+              columns: {
+                total: (rows) =>
+                  sumBillMoney(rows, (bill) => bill.totalAmount, [...currencies][0]!),
+                outstanding: (rows) =>
+                  sumBillMoney(
+                    rows.filter(isSettleableBill),
+                    (bill) => bill.outstandingAmount,
+                    [...currencies][0]!,
+                  ),
+              },
+            }
+          : undefined
+      }
       exportAs={{ fileName: `bills-${today}`, sheetName: t('title') }}
       shortcuts={
         projectId
@@ -451,6 +483,15 @@ export function SupplierBillsList({
       {grid}
     </div>
   );
+}
+
+function sumBillMoney(
+  rows: SupplierBill[],
+  field: (bill: SupplierBill) => string,
+  currency: string,
+): string {
+  const minor = rows.reduce((sum, bill) => sum + toMinorUnits(field(bill), 2), 0);
+  return formatMoney(fromMinorUnits(minor, 2), currency) ?? '—';
 }
 
 const DEFAULT_BILL_SORT: SortState = { key: 'billDate', direction: 'desc' };

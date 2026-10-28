@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -443,6 +443,20 @@ export interface PlatformDataGridProps<T> {
   shortcuts?: { onNew?: () => void };
 
   /**
+   * Ways to group the rows (Step 2e, ADR-047 list design) — "Group: Client". Each names how a
+   * row maps to a group. Grouping orders the rows by group (then by the sort) before paging, and
+   * draws a header per group with its count and `totals`. Client-side lists only.
+   */
+  groupOptions?: { key: string; label: string; groupOf: (row: T) => { id: string; label: string } }[];
+
+  /**
+   * Column totals: a footer row under the table and a subtotal in each group header. Keyed by
+   * column key; each sums the rows it is given. Totals cover every row the filters keep, not
+   * just the page.
+   */
+  totals?: { label: (count: number) => string; columns: Record<string, (rows: T[]) => React.ReactNode> };
+
+  /**
    * Row selection. Only provide when the caller has bulk actions to perform —
    * a checkbox column that does nothing is not useful.
    */
@@ -647,6 +661,8 @@ export function PlatformDataGrid<T>({
   listState,
   exportAs,
   shortcuts,
+  groupOptions,
+  totals,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
   const t = useTranslations('common.grid');
@@ -658,6 +674,7 @@ export function PlatformDataGrid<T>({
   const [localSearch, setLocalSearch] = useState('');
   const [localSort, setLocalSort] = useState<SortState | null>(defaultSort ?? null);
   const [localPage, setLocalPage] = useState(1);
+  const [groupKey, setGroupKey] = useState<string>('');
   // A server-driven list owns these; the grid only reports changes.
   const owner = server ?? listState;
   const search = owner ? owner.search : localSearch;
@@ -737,11 +754,20 @@ export function PlatformDataGrid<T>({
   const paged = Boolean(paginationConfig || server);
   const totalPages = paged ? Math.max(1, Math.ceil(rowCount / pageSize)) : 1;
   const safePage = Math.min(page, totalPages);
+  // Grouping (Step 2e): group order first, the chosen sort within each group. Stable, so rows
+  // keep their sorted order inside a group.
+  const activeGroup = server ? undefined : groupOptions?.find((g) => g.key === groupKey);
+  const ordered = activeGroup
+    ? [...sorted]
+        .map((row, index) => ({ row, index, group: activeGroup.groupOf(row) }))
+        .sort((a, b) => a.group.label.localeCompare(b.group.label) || a.index - b.index)
+        .map((entry) => entry.row)
+    : sorted;
   const visible = server
     ? sorted
     : paginationConfig
-      ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
-      : sorted;
+      ? ordered.slice((safePage - 1) * pageSize, safePage * pageSize)
+      : ordered;
   const from = paged ? (safePage - 1) * pageSize + 1 : 1;
   const to = server
     ? from + visible.length - 1
@@ -963,6 +989,26 @@ export function PlatformDataGrid<T>({
     );
   };
 
+  // ── Group header / totals row (Step 2e) ────────────────────────────────────
+  // The label spans the columns before the first totalled one; totals sit under their columns.
+  // Deliberately a render helper, not a hook — it is used below the early returns.
+  const summaryRow = (rows: T[], label: (count: number) => string, className: string) => {
+    const firstTotal = visibleColumns.findIndex((c) => totals?.columns[c.key]);
+    const span = (firstTotal === -1 ? visibleColumns.length : Math.max(1, firstTotal)) + (hasSelection ? 1 : 0);
+    const rest = firstTotal === -1 ? [] : visibleColumns.slice(Math.max(1, firstTotal));
+    return (
+      <TableRow className={cn('hover:bg-transparent', className)}>
+        <TableCell colSpan={span}>{label(rows.length)}</TableCell>
+        {rest.map((col) => (
+          <TableCell key={col.key} numeric={col.numeric} className="tabular-nums">
+            {totals?.columns[col.key]?.(rows) ?? null}
+          </TableCell>
+        ))}
+        {hasActions ? <TableCell /> : null}
+      </TableRow>
+    );
+  };
+
   // ── Export (Step 2b) ───────────────────────────────────────────────────────
 
   const runExport = (format: 'csv' | 'xlsx') => {
@@ -1063,6 +1109,31 @@ export function PlatformDataGrid<T>({
                 any: t('filterAny'),
               }}
             />
+          ) : null}
+
+          {groupOptions && groupOptions.length > 0 && !server ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <span className="text-muted-foreground">{t('groupBy')}</span>
+                  <span>{groupOptions.find((g) => g.key === groupKey)?.label ?? t('groupNone')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {[{ key: '', label: t('groupNone') }, ...groupOptions].map((option) => (
+                  <DropdownMenuItem
+                    key={option.key || 'none'}
+                    onSelect={() => {
+                      setGroupKey(option.key);
+                      setPage(1);
+                    }}
+                  >
+                    <span className="flex-1">{option.label}</span>
+                    {option.key === groupKey ? <span aria-hidden="true">✓</span> : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
 
           {exportAs && !server ? (
@@ -1337,9 +1408,20 @@ export function PlatformDataGrid<T>({
               {visible.length === 0 ? (
                 <TableEmpty colSpan={colCount}>{filteredEmpty}</TableEmpty>
               ) : (
-                visible.map((row) => {
+                visible.map((row, index) => {
                   const href = rowHref?.(row);
+                  const group = activeGroup?.groupOf(row);
+                  const startsGroup =
+                    group && (index === 0 || activeGroup!.groupOf(visible[index - 1]!).id !== group.id);
                   return (
+                    <Fragment key={rowKey(row)}>
+                    {startsGroup ? (
+                      summaryRow(
+                        ordered.filter((r) => activeGroup!.groupOf(r).id === group.id),
+                        (count) => `${group.label} · ${totals ? totals.label(count) : count}`,
+                        'bg-surface-subtle text-body-sm font-semibold text-muted-foreground',
+                      )
+                    ) : null}
                     <TableRow
                       key={rowKey(row)}
                       data-just-saved={savedRows.has(rowKey(row)) || undefined}
@@ -1391,10 +1473,16 @@ export function PlatformDataGrid<T>({
                         <TableCell className="w-12 text-end">{rowActions!(row)}</TableCell>
                       ) : null}
                     </TableRow>
+                    </Fragment>
                   );
                 })
               )}
             </TableBody>
+            {totals && ordered.length > 0 ? (
+              <tfoot>
+                {summaryRow(ordered, totals.label, 'border-t-2 border-border bg-surface text-body-sm font-semibold text-foreground')}
+              </tfoot>
+            ) : null}
           </Table>
         </TableScroll>
         </div>

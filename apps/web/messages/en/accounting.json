@@ -1011,7 +1011,11 @@
       "CANCELLED": "Cancelled",
       "REVERSED": "Reversed"
     },
-    "pageTitle": "Invoices"
+    "pageTitle": "Invoices",
+    "groupClient": "Client",
+    "groupProject": "Project",
+    "groupStatus": "Status",
+    "noProject": "No project"
   },
   "openingBalance": {
     "title": "Opening Balance Migration",
