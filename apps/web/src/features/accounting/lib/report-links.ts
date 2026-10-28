@@ -42,3 +42,19 @@ export function ledgerHref(
   });
   return `${LEDGER_PATH}?${params.toString()}`;
 }
+
+const PROFIT_LOSS_PATH = '/finance/accounting/profit-loss';
+const WIRE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Step 4 — the Profit & Loss for a range: the monthly comparison's drill-down into one period. */
+export function profitLossHref(range: { from: string; to: string }): string {
+  return `${PROFIT_LOSS_PATH}?${new URLSearchParams(range).toString()}`;
+}
+
+/** A `from`/`to` range from a URL, or null when either is missing or not a date or out of order. */
+export function rangeFromParams(params: { get(name: string): string | null } | null): { from: string; to: string } | null {
+  const from = params?.get('from') ?? '';
+  const to = params?.get('to') ?? '';
+  if (!WIRE_DATE.test(from) || !WIRE_DATE.test(to) || from > to) return null;
+  return { from, to };
+}

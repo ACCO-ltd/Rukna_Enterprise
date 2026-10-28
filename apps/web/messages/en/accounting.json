@@ -685,7 +685,8 @@
     "colNetIncome": "Net Income",
     "total": "Year to date",
     "empty": "Nothing was posted in any period of this year.",
-    "csvPeriod": "Period"
+    "csvPeriod": "Period",
+    "openPeriod": "Open the profit and loss for {period}"
   },
   "periodActions": {
     "heading": "Period management",
