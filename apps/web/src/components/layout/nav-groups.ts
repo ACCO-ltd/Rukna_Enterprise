@@ -127,13 +127,16 @@ export const NAV_DOMAINS: NavDomain[] = [
     // Accounting; every route is unchanged (`/finance/accounting/*`, `/receipts`), only labels and
     // grouping moved. `moduleKey` stays `accounting` (the module-visibility gate, view:accounting).
     labelKey: 'finance',
-    href: '/accounting',
+    href: '/finance',
     moduleKey: 'accounting',
     iconKey: 'chart-bar',
     // Ungrouped items lead the tab bar: Get started (the guided accounting hub, the module's landing
     // while setup is incomplete — a company-wide Finance overview does not exist yet) and Projects (the portfolio, gated like its API on
     // view:financial-position). Then the named sections; the groupKey draws the micro-label.
     items: [
+      // Step 4 (ADR-047 §4) — the dashboard is the module's landing; the setup checklist leads it
+      // until setup is complete.
+      { href: '/finance', labelKey: 'financeHome', iconKey: 'grid' },
       { href: '/finance/accounting/guide', labelKey: 'getStarted', iconKey: 'check-circle' },
       { href: '/finance/projects', labelKey: 'financeProjects', iconKey: 'briefcase', permissionKey: 'view:financial-position' },
       // Receivables

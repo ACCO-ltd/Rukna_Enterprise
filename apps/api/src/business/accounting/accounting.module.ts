@@ -6,6 +6,7 @@ import { AccountsPayableModule } from './accounts-payable/accounts-payable.modul
 import { GeneralLedgerModule } from './general-ledger/general-ledger.module.js';
 import { FinancialPositionModule } from './financial-position/financial-position.module.js';
 import { AccountingSetupModule } from './accounting-setup/accounting-setup.module.js';
+import { FinanceHomeModule } from './finance-home/finance-home.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AccountingSetupModule } from './accounting-setup/accounting-setup.modul
     GeneralLedgerModule,
     FinancialPositionModule,
     AccountingSetupModule,
+    FinanceHomeModule,
   ],
   exports: [
     AccountingCoreModule,

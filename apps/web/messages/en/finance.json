@@ -677,5 +677,52 @@
       "laterShort": "Later",
       "undated": "Undated"
     }
+  },
+  "home": {
+    "title": "Home",
+    "asOf": "As of {date}",
+    "loadFailed": "The finance figures could not be loaded.",
+    "headlines": "Headline figures",
+    "cash": "Cash in the bank",
+    "cashNote": "{count, plural, one {Across # account} other {Across # accounts}}",
+    "owedToUs": "Clients owe",
+    "overdueNote": "{amount} overdue",
+    "nothingOverdue": "Nothing overdue",
+    "weOwe": "We owe suppliers",
+    "dueThisWeekNote": "{amount} due this week ({count, plural, one {# bill} other {# bills}})",
+    "nothingDue": "Nothing due this week",
+    "waiting": "Waiting on you",
+    "waitingNote": "Open Approvals to decide",
+    "waitingNone": "Nothing waits on you",
+    "agingTitle": "What clients owe, by age",
+    "outstanding": "Outstanding",
+    "allInvoices": "All invoices",
+    "aging": {
+      "current": "Not yet due",
+      "d1_30": "1–30 days late",
+      "d31_60": "31–60 days late",
+      "d61_90": "61–90 days late",
+      "d90_plus": "Over 90 days late",
+      "other": "Other"
+    },
+    "colAge": "Age",
+    "colInvoices": "Invoices",
+    "colAmount": "Amount",
+    "topOverdue": "Most overdue clients",
+    "daysLate": "{count, plural, one {Oldest # day late} other {Oldest # days late}}",
+    "monthTitle": "This month",
+    "month": {
+      "invoiced": "Invoiced",
+      "collected": "Collected from clients",
+      "paid": "Paid to suppliers"
+    },
+    "cashTitle": "Cash by bank",
+    "banks": "Bank accounts",
+    "noBanks": "No bank account yet. Add one under Banking.",
+    "setupTitle": "Finish setting up finance",
+    "setupProgress": "{done} of {total} steps done",
+    "setupNext": "Next: {step}",
+    "stepDone": "Done",
+    "stepTodo": "To do"
   }
 }

@@ -136,7 +136,8 @@
     "approvals": "Approvals",
     "approvalsCount": "{count, plural, one {# item waits on you} other {# items wait on you}}",
     "approvalSettings": "Approval rules",
-    "rolesMatrix": "Roles matrix"
+    "rolesMatrix": "Roles matrix",
+    "financeHome": "Home"
   },
   "admin": {
     "title": "Administration",
