@@ -94,6 +94,8 @@
     "supplierPayments": "Supplier payments",
     "monthlyComparison": "Monthly comparison",
     "cashFlow": "Cash flow",
+    "receivablesAging": "Aging",
+    "payablesAging": "Aging",
     "accountingSetup": "Setup",
     "accountingEntry": "Transactions",
     "financialReports": "Financial reports",

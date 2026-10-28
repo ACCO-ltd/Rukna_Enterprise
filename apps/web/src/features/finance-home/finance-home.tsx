@@ -77,7 +77,7 @@ function HomeBody({ data, approvalsCount }: { data: FinanceHomeData; approvalsCo
             label={t('owedToUs')}
             value={usd(receivables.outstanding)}
             note={Number(receivables.overdue) > 0 ? t('overdueNote', { amount: usd(receivables.overdue) ?? '' }) : t('nothingOverdue')}
-            href="/finance/accounting/invoices"
+            href="/finance/accounting/aging/receivables"
             renderLink={tileLink}
           />
         ) : null}
@@ -92,7 +92,7 @@ function HomeBody({ data, approvalsCount }: { data: FinanceHomeData; approvalsCo
                   ? t('overdueNote', { amount: usd(payables.overdue) ?? '' })
                   : t('nothingDue')
             }
-            href="/finance/accounting/bills"
+            href="/finance/accounting/aging/payables"
             renderLink={tileLink}
           />
         ) : null}
@@ -143,7 +143,7 @@ function ReceivablesCard({ data }: { data: NonNullable<FinanceHomeData['receivab
     t('aging.other'),
   );
   return (
-    <Card title={t('agingTitle')} action={<SeeAll href="/finance/accounting/invoices" label={t('allInvoices')} />}>
+    <Card title={t('agingTitle')} action={<SeeAll href="/finance/accounting/aging/receivables" label={t('fullAging')} />}>
       <ShareBar title={t('agingTitle')} segments={segments} total={data.outstanding} currency="USD" totalLabel={t('outstanding')} />
       <table className="w-full text-body-sm">
         <caption className="sr-only">{t('agingTitle')}</caption>

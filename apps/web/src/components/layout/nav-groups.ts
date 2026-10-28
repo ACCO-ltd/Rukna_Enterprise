@@ -42,7 +42,8 @@ export type NavIconKey =
   | 'tag'
   | 'user-gear'
   | 'key'
-  | 'check-circle';
+  | 'check-circle'
+  | 'clock';
 
 export interface NavItem {
   href: string;
@@ -142,6 +143,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       // Receivables
       { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text', groupKey: 'receivables' },
       { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt', groupKey: 'receivables' },
+      // Step 6 — what clients owe, by days past due.
+      { href: '/finance/accounting/aging/receivables', labelKey: 'receivablesAging', iconKey: 'clock', groupKey: 'receivables' },
       // Payables
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', groupKey: 'payables' },
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
@@ -149,6 +152,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/quotes', labelKey: 'quotesToChoose', iconKey: 'check-circle', groupKey: 'payables', permissionKey: 'award:quotation', badge: 'quotesToChoose' },
       // ADR-045 — award orders to pay and store receipts to record; counts the pay queue.
       { href: '/finance/payments-needed', labelKey: 'paymentsNeeded', iconKey: 'wallet', groupKey: 'payables', permissionKey: 'manage:payable', badge: 'paymentsNeeded' },
+      // Step 6 — what is owed to suppliers, by days past due.
+      { href: '/finance/accounting/aging/payables', labelKey: 'payablesAging', iconKey: 'clock', groupKey: 'payables' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
       { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'banking' },

@@ -48,3 +48,41 @@ export interface FinanceHome {
   payables: FinanceHomePayables | null;
   month: FinanceHomeMonth | null;
 }
+
+// ─── Aging reports (Step 6) ──────────────────────────────────────────────
+// `GET /finance/aging/:side` — what clients owe (receivables) or what is owed to suppliers
+// (payables), by party and by days past due, as of today. Amounts are decimal strings (USD).
+
+export type AgingSide = 'receivables' | 'payables';
+
+export interface AgingDocument {
+  id: string;
+  /** The document's number: invoice number, or the bill's number (else the supplier's invoice number). */
+  number: string | null;
+  date: string;
+  dueDate: string;
+  outstanding: string;
+  daysLate: number;
+  bucket: AgingBucketKey;
+  /** Carried in from the previous system rather than posted here. */
+  opening: boolean;
+}
+
+export interface AgingPartyRow {
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+  buckets: Record<AgingBucketKey, string>;
+  total: string;
+  oldestDaysLate: number;
+  documents: AgingDocument[];
+}
+
+export interface AgingReport {
+  side: AgingSide;
+  asOf: string;
+  totals: Record<AgingBucketKey, string>;
+  total: string;
+  /** Largest balance first. */
+  rows: AgingPartyRow[];
+}

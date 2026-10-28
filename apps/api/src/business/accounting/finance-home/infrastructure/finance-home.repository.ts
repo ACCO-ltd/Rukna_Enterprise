@@ -53,6 +53,38 @@ export class FinanceHomeRepository {
     });
   }
 
+  /** Step 6 — every open invoice with its client, for the receivables aging report. */
+  agingInvoices(prisma: TenantPrisma, organizationId: string) {
+    return prisma.clientInvoice.findMany({
+      where: {
+        organizationId,
+        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
+        documentStatus: { not: 'CANCELLED' },
+        outstandingAmount: { gt: 0 },
+      },
+      select: {
+        id: true, invoiceNumber: true, invoiceDate: true, dueDate: true, outstandingAmount: true, postingStatus: true,
+        client: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  /** Step 6 — every open bill with its supplier, for the payables aging report. */
+  agingBills(prisma: TenantPrisma, organizationId: string) {
+    return prisma.supplierBill.findMany({
+      where: {
+        organizationId,
+        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
+        documentStatus: { notIn: ['CANCELLED', 'REJECTED'] },
+        outstandingAmount: { gt: 0 },
+      },
+      select: {
+        id: true, billNumber: true, supplierInvoiceNumber: true, billDate: true, dueDate: true, outstandingAmount: true, postingStatus: true,
+        supplier: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
   async invoicedBetween(prisma: TenantPrisma, organizationId: string, from: Date, to: Date) {
     const r = await prisma.clientInvoice.aggregate({
       where: { organizationId, postingStatus: 'POSTED', invoiceDate: { gte: from, lte: to } },

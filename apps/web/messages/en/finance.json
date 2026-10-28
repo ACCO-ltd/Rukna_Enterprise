@@ -696,7 +696,6 @@
     "waitingNone": "Nothing waits on you",
     "agingTitle": "What clients owe, by age",
     "outstanding": "Outstanding",
-    "allInvoices": "All invoices",
     "aging": {
       "current": "Not yet due",
       "d1_30": "1–30 days late",
@@ -726,7 +725,8 @@
     "stepTodo": "To do",
     "setupOptional": "Optional",
     "setupReadyNote": "Finance can post now. The remaining steps are optional.",
-    "setupProgressLabel": "Setup progress"
+    "setupProgressLabel": "Setup progress",
+    "fullAging": "Full aging"
   },
   "setupImport": {
     "title": "Import from a spreadsheet",
@@ -853,5 +853,33 @@
     "notImportedRows": "{count, plural, one {# row is} other {# rows are}} not imported.",
     "noAccessTitle": "Nothing to import",
     "noAccess": "Importing suppliers needs Manage payables; importing clients needs Create clients or Manage receivables."
+  },
+  "aging": {
+    "summary": "{total} open as of {date}",
+    "export": "Export CSV",
+    "loadFailed": "The aging report could not be loaded.",
+    "colParty": "Name",
+    "colCode": "Code",
+    "colTotal": "Total",
+    "documentsOf": "Open documents of {name}",
+    "noNumber": "(no number)",
+    "due": "due {date}",
+    "daysLate": "{count, plural, one {# day late} other {# days late}}",
+    "opening": "opening balance",
+    "receivables": {
+      "title": "What clients owe",
+      "subtitle": "Open invoices by client and days past due.",
+      "party": "Client",
+      "emptyTitle": "Nothing owed",
+      "empty": "No client has an open invoice."
+    },
+    "payables": {
+      "title": "What we owe suppliers",
+      "subtitle": "Open bills by supplier and days past due.",
+      "party": "Supplier",
+      "emptyTitle": "Nothing owed",
+      "empty": "No supplier has an open bill."
+    },
+    "loading": "Loading the aging report"
   }
 }

@@ -3,6 +3,8 @@
  *
  *   FH-01  an issued invoice part-paid into the bank shows as cash, receivable (aged) and month activity
  *   FH-02  a caller with only manage:receivable sees receivables, not cash or the month
+ *   FH-03  the receivables aging lists the same open invoice, by client and bucket, as Finance Home
+ *   FH-04  the payables aging includes opening-balance bills; each side keeps its own permission
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -12,6 +14,7 @@ import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests_
 import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
 import { FinanceHomeService } from '../application/finance-home.service';
 import { FinanceHomeRepository } from '../infrastructure/finance-home.repository';
+import { AgingReportService } from '../application/aging-report.service';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -74,4 +77,36 @@ it('FH-02: a receivables clerk sees receivables only', async () => {
   expect(r.cash).toBeNull();
   expect(r.payables).toBeNull();
   expect(r.month).toBeNull();
+});
+
+it('FH-03: the receivables aging agrees with Finance Home, by client and bucket', async () => {
+  const today = new Date(env.periods.openStart.getTime() + 45 * 86_400_000);
+  const aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
+  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'receivables', today);
+  expect(r.total).toBe('650.00');
+  expect(r.totals.d31_60).toBe('650.00');
+  expect(r.rows).toHaveLength(1);
+  expect(r.rows[0]).toMatchObject({ partyId: env.clientId, total: '650.00', oldestDaysLate: 45 });
+  expect(r.rows[0].documents[0]).toMatchObject({ outstanding: '650.00', daysLate: 45, bucket: 'd31_60', opening: false });
+  expect(r.rows[0].documents[0].number).toMatch(/^INV-/);
+});
+
+it('FH-04: the payables aging includes opening bills; each side has its own permission', async () => {
+  const today = new Date('2026-03-31T00:00:00Z');
+  await prisma.supplierBill.create({
+    data: {
+      organizationId: env.orgId, supplierId: env.supplierId, supplierInvoiceNumber: 'OPEN-1', supplierInvoiceNumberNorm: 'OPEN1',
+      billDate: new Date('2026-01-01'), dueDate: new Date('2026-01-31'), currencyCode: 'USD',
+      subtotal: 500, vatAmount: 0, totalAmount: 500, outstandingAmount: 500,
+      documentStatus: 'APPROVED', postingStatus: 'OPENING_BALANCE', createdBy: env.identity.userId,
+    },
+  });
+  const aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
+  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.payablesManage] }, 'payables', today);
+  const row = r.rows.find((x) => x.partyId === env.supplierId)!;
+  expect(row.buckets.d31_60).toBe('500.00');
+  expect(row.documents).toEqual([expect.objectContaining({ number: 'OPEN-1', daysLate: 59, opening: true, dueDate: '2026-01-31' })]);
+
+  await expect(aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'payables', today))
+    .rejects.toMatchObject({ status: 403 });
 });

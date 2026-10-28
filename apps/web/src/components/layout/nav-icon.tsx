@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Clock,
   BookOpen,
   Briefcase,
   Inbox,
@@ -57,6 +58,7 @@ const ICONS: Record<NavIconKey, LucideIcon> = {
   'shopping-cart': ShoppingCart,
   truck: Truck,
   'trending-up': TrendingUp,
+  clock: Clock,
   shield: ShieldCheck,
   'git-branch': GitBranch,
   list: List,
