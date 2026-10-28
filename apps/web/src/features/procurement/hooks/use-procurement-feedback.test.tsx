@@ -79,6 +79,15 @@ describe('procurement feedback', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Record payment' }));
 
-    expect(await screen.findByText('Payment saved as a draft')).toBeInTheDocument();
+    expect(await screen.findByText('Payment saved as a draft for approval')).toBeInTheDocument();
+  });
+
+  it('says when Save approved and posted the payment (ADR-046 §4)', async () => {
+    api.createSupplierPayment.mockResolvedValue({ id: 'pay-2', paymentNumber: 'PAY-000031', approvedOnSave: true, postedOnSave: true });
+    renderWithProviders(<Harness />, { withToast: true });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Record payment' }));
+
+    expect(await screen.findByText('Payment PAY-000031 posted')).toBeInTheDocument();
   });
 });

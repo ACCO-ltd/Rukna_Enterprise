@@ -52,6 +52,8 @@ import {
   previewInvoiceDocumentSettings,
   setDefaultOutputTaxCode,
   setTaxCodeActive,
+  getApprovalSettings,
+  updateApprovalSettings,
 } from '../api/accounting-api';
 import type { CreateTaxCodeBody, TaxCodesView } from '../tax-codes';
 import type {
@@ -913,5 +915,23 @@ export function useUpdateInvoiceDocumentSettings() {
     onSuccess: (view) => {
       qc.setQueryData(accountingKeys.invoiceDocumentSettings(), view);
     },
+  });
+}
+
+/** ADR-046 §8 — the optional finance approvals in force (defaults when never saved). */
+export function useApprovalSettings(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...accountingKeys.all, 'approval-settings'],
+    queryFn: getApprovalSettings,
+    enabled: options.enabled ?? true,
+  });
+}
+
+export function useUpdateApprovalSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateApprovalSettings,
+    meta: { successToast: 'accounting.feedback.approvalSettingsSaved' },
+    onSuccess: (saved) => qc.setQueryData([...accountingKeys.all, 'approval-settings'], saved),
   });
 }

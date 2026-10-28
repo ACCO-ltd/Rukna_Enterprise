@@ -4,8 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Inject,
-} from '@nestjs/common';
+  Inject, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { WorkflowTransactionType, type RequestIdentity } from '@erp/types';
@@ -35,6 +34,8 @@ import {
   isNotApprovedBlock,
   SUPPLIER_BILL_JOURNAL_CATEGORY,
 } from '../domain/supplier-bill-eligibility.policy.js';
+import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
+import { billPostsOnSave } from '../../accounting-core/domain/approval-settings.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -122,7 +123,48 @@ export class SupplierBillService {
     private readonly billMatching: BillMatchingService,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly sod: SegregationOfDutiesService,
+    @Optional() private readonly accountingConfig?: AccountingConfigurationService,
   ) {}
+
+  /**
+   * ADR-046 §3 — after Submit, a bill the settings let through is approved and posted at once, so
+   * Save is the only click. A PO bill qualifies on an exact three-way match (or a tolerated one,
+   * when the setting allows); a non-PO bill below the approval amount. A PO bill whose goods the
+   * saver received still waits for someone else (ADR-022). Returns null when the bill waits for
+   * approval. A refusal at posting leaves it APPROVED and says why, rather than failing the save.
+   */
+  private async postOnSaveIfAllowed(identity: RequestIdentity, billId: string) {
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const bill = await prisma.supplierBill.findFirst({
+      where: { id: billId, organizationId: orgId, documentStatus: 'SUBMITTED' },
+      select: { id: true, purchaseOrderId: true, matchStatus: true, totalAmount: true },
+    });
+    // No settings reader wired (a bare unit build): the classic Submit → Approve → Post path.
+    if (!bill || !this.accountingConfig) return null;
+    const settings = await this.accountingConfig.getApprovalSettings(orgId);
+    const allowed = billPostsOnSave(settings, {
+      hasPurchaseOrder: Boolean(bill.purchaseOrderId),
+      matchStatus: bill.matchStatus,
+      total: new Decimal(bill.totalAmount.toString()),
+    });
+    if (!allowed) return null;
+    if (bill.purchaseOrderId) {
+      const received = await prisma.goodsReceiptNote.count({
+        where: { organizationId: orgId, purchaseOrderId: bill.purchaseOrderId, createdBy: identity.userId },
+      });
+      if (received > 0) return null;
+    }
+
+    await this.approve(identity, bill.id);
+    try {
+      await this.post(identity, { billId: bill.id });
+      return { ...(await this.findById(identity, bill.id)), postedOnSave: true as const };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The bill could not be posted.';
+      return { ...(await this.findById(identity, bill.id)), postedOnSave: false as const, postOnSaveError: message };
+    }
+  }
 
   /**
    * Validation and line building shared by create and update, so an edited draft passes exactly
@@ -290,7 +332,8 @@ export class SupplierBillService {
       await this.billMatching.runMatching(identity, bill.id);
     }
 
-    return updated;
+    // ADR-046 §3 — Save posts, where the organisation's settings allow it.
+    return (await this.postOnSaveIfAllowed(identity, bill.id)) ?? updated;
   }
 
   /**

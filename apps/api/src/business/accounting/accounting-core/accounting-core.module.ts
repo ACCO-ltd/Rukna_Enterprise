@@ -36,10 +36,13 @@ import { OpeningBalanceController } from './presentation/opening-balance.control
 import { ReconciliationController } from './presentation/reconciliation.controller.js';
 import { TaxCodeController } from './presentation/tax-code.controller.js';
 import { InvoiceDocumentSettingsController } from './presentation/invoice-document-settings.controller.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
+import { ApprovalSettingsController } from './presentation/approval-settings.controller.js';
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, AuditLogsModule],
   controllers: [
+    ApprovalSettingsController,
     AccountController,
     AccountingReadinessController,
     AccountingGuideController,

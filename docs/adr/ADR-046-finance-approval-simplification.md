@@ -1,7 +1,7 @@
 # ADR-046 — Finance approval simplification: owner decisions of 2026-10-27
 
 **Status:** Accepted — decisions confirmed by the product owner (Abdulsalam) on 2026-10-27, with
-Eng Ahmed's agreement for the ADR-022 change (§1). §1, §2 and §5–§7 are built; §3, §4 and §8 are decided and not yet built.
+Eng Ahmed's agreement for the ADR-022 change (§1). All eight decisions are built (§1 and §5 on 2026-10-27, the rest on 2026-10-28).
 
 *Numbering note:* main's highest ADR before this was ADR-045. The unmerged branch
 `docs/platform-multi-entity` must renumber its tenant-group ADR past this one.
@@ -41,10 +41,22 @@ offers "Issue invoice" (the journal preview first) in place of Approve then Post
 A bill that matches its PO within tolerance posts on Save. A non-PO bill posts on Save unless a
 setting requires approval above an amount. Goods receiver ≠ bill approver (ADR-022) stays wherever
 an approval happens.
+*Built 2026-10-28:* Submit (`POST /bills/:id/submit`) runs the match, then approves and posts the bill
+at once when the settings allow: a PO bill on an **exact** match (`MATCHED`; owner decision
+2026-10-28, until Eng Ahmed sets the tolerances), or a tolerated match too when "post bills that
+match within tolerance" is on; a non-PO bill below the bill approval amount. A PO bill whose goods
+the saver received still waits for someone else. If posting is refused, the bill stays APPROVED and
+the response says why (`postedOnSave: false`, `postOnSaveError`). On the bill form, Save is save +
+submit; "Save draft" only saves.
 
 ### 4. Supplier payments — auto-approve below the lowest band
 Payments within the lowest ADR-022 band (≤ $1,000, Finance Officer authority) post on Save without a
 separate Approve click. The CFO and CFO + CEO bands and dual bank-signatory release are unchanged.
+*Built 2026-10-28:* the limit is a Finance setting, defaulting to $1,000 (owner decision 2026-10-28:
+it applies while governance bands are off; governed bands still route a payment that needs them).
+`POST /payments` approves a payment within the limit as it is saved, and posts it unless its bank
+account is under dual signatory control. A payment the bill-approver rule stops stays a draft for
+someone else. The response carries `approvedOnSave` / `postedOnSave`.
 
 ### 5. IPC invoices bill the net amount due — for this period
 The invoice shows gross certified, less retention, less advance recovery, equals amount due.
@@ -122,6 +134,14 @@ in the same transaction.
 Each optional approval in §2–§4 is an organisation setting that defaults to off, so approvals can be
 added later without a code change, in line with ADR-008 §3 ("services must not embed amount bands or
 approver roles").
+*Built 2026-10-28:* four columns on `posting_policy`: `invoice_approval_above` (null = off),
+`bill_approval_above` (null = off), `auto_post_tolerated_bills` (false), and
+`payment_auto_approve_up_to` (1000; 0 = off). Read and written through `GET/PUT
+/accounting/approval-settings` (`manage:accounting` to change; audited
+`FINANCE_APPROVAL_SETTINGS_UPDATED`). The pure rules live in `accounting-core/domain/approval-settings.ts`.
+Finance → Setup & close → Approval rules edits them. An approval the invoice setting asks for is a
+second person's: the preparer cannot approve their own invoice (`INVOICE_APPROVER_IS_PREPARER`), and
+the Approvals inbox lists such drafts for everyone else.
 
 ## Consequences
 

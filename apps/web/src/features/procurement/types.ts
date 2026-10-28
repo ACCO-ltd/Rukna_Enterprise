@@ -593,6 +593,10 @@ export interface SupplierBillEvidence {
 }
 
 export interface SupplierBill {
+  /** ADR-046 §3 — on a Submit response: true when the bill posted on save; false when posting was refused. */
+  postedOnSave?: boolean;
+  /** Why posting on save was refused (the bill stays approved, to post from its page). */
+  postOnSaveError?: string;
   /** Bill detail: the store document it was recorded from. Absent on lists and older servers. */
   evidence?: SupplierBillEvidence | null;
   id: string;
@@ -935,6 +939,11 @@ export type PaymentDocumentStatus = 'DRAFT' | 'APPROVED' | 'RELEASED' | 'REJECTE
  * joining against the supplier and bank-account lists the screens already hold.
  */
 export interface SupplierPayment {
+  /** ADR-046 §4 — on a create response: approved on save (within the auto-approval limit). */
+  approvedOnSave?: boolean;
+  /** …and posted on save (no dual signatory release needed). */
+  postedOnSave?: boolean;
+  postOnSaveError?: string;
   id: string;
   paymentNumber: string | null;
   supplierId: string;

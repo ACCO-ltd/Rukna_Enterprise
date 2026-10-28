@@ -970,7 +970,11 @@ function useBillMutation<TArgs>(
     meta: {
       successToast: {
         key: feedbackKey,
-        values: (bill) => ({ ref: billRef(bill as SupplierBill) }),
+        values: (bill) => ({
+          ref: billRef(bill as SupplierBill),
+          // ADR-046 §3 — Submit may have posted the bill on save.
+          outcome: (bill as SupplierBill).postedOnSave === true ? 'posted' : (bill as SupplierBill).postedOnSave === false ? 'notPosted' : 'submitted',
+        }),
       },
     },
     onSuccess: (bill) => {
@@ -1016,6 +1020,17 @@ export function useRejectSupplierBill() {
 
 export function useSubmitSupplierBill() {
   return useBillMutation((id: string) => submitSupplierBill(id), 'procurement.feedback.billSubmitted');
+}
+
+/**
+ * ADR-046 §3 — Save on the bill form: save the bill, then submit it, so a bill the approval rules
+ * let through posts at once. The submit response says whether it posted (`postedOnSave`).
+ */
+export function useSaveAndSubmitSupplierBill() {
+  return useBillMutation(async (args: { id?: string; payload: CreateSupplierBillPayload }) => {
+    const saved = args.id ? await updateSupplierBill(args.id, args.payload) : await createSupplierBill(args.payload);
+    return submitSupplierBill(saved.id);
+  }, 'procurement.feedback.billSubmitted');
 }
 
 export function useApproveSupplierBill() {
@@ -1080,7 +1095,14 @@ function usePaymentMutation<TArgs>(
       successToast: {
         key: feedbackKey,
         // A draft payment has no number yet; the message reads without one (ICU `select`).
-        values: (payment) => ({ ref: (payment as SupplierPayment).paymentNumber ?? 'none' }),
+        values: (payment) => {
+          const p = payment as SupplierPayment;
+          return {
+            ref: p.paymentNumber ?? 'none',
+            // ADR-046 §4 — what Save did with it.
+            outcome: p.postedOnSave ? 'posted' : p.approvedOnSave ? 'approved' : 'draft',
+          };
+        },
       },
     },
     onSuccess: (payment) => {

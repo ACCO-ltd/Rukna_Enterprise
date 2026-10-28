@@ -200,3 +200,29 @@ it('MI-09 (ADR-046 §2): a refused Issue leaves the draft a draft, unnumbered', 
   await svc.clientInvoiceService.cancelDraft(env.identity, draft.id);
   await expect(svc.clientInvoiceService.issue(env.identity, draft.id)).rejects.toThrow(/cancelled/);
 });
+
+it('MI-10 (ADR-046 §8): above the approval amount, Issue waits for a second person to approve', async () => {
+  await svc.accountingConfig.updateApprovalSettings(env.identity, {
+    invoiceApprovalAbove: '1000.00',
+    billApprovalAbove: null,
+    autoPostToleratedBills: false,
+    paymentAutoApproveUpTo: '1000.00',
+  });
+  try {
+    const small = await svc.clientInvoiceService.createManual(env.identity, input([{ description: 'Small hire', quantity: '1', unitPrice: '100.00', revenueAccountCode: '42100' }]));
+    expect((await svc.clientInvoiceService.issue(env.identity, small.id)).postingStatus).toBe('POSTED');
+
+    const large = await svc.clientInvoiceService.createManual(env.identity, input([{ description: 'Crane hire', quantity: '1', unitPrice: '1200.00', revenueAccountCode: '42100' }]));
+    await expect(svc.clientInvoiceService.issue(env.identity, large.id)).rejects.toMatchObject({ response: { errorCode: 'INVOICE_APPROVAL_REQUIRED' } });
+    await expect(svc.clientInvoiceService.approve(env.identity, large.id)).rejects.toMatchObject({ response: { errorCode: 'INVOICE_APPROVER_IS_PREPARER' } });
+
+    const approver = { ...env.identity, userId: `${env.identity.userId}-approver` };
+    await svc.clientInvoiceService.approve(approver, large.id);
+    const issued = await svc.clientInvoiceService.issue(env.identity, large.id);
+    expect(issued.postingStatus).toBe('POSTED');
+  } finally {
+    await svc.accountingConfig.updateApprovalSettings(env.identity, {
+      invoiceApprovalAbove: null, billApprovalAbove: null, autoPostToleratedBills: false, paymentAutoApproveUpTo: '1000.00',
+    });
+  }
+});

@@ -37,6 +37,7 @@ const journal = (id: string, createdBy: string, submittedAt: string) => ({
 
 function build(overrides: Record<string, unknown> = {}, rules = ALL_RULES) {
   const repo = {
+    invoicesAwaitingApproval: jest.fn().mockResolvedValue([]),
     submittedJournals: jest.fn().mockResolvedValue([]),
     submittedBills: jest.fn().mockResolvedValue([]),
     goodsReceivers: jest.fn().mockResolvedValue(new Map()),
@@ -154,5 +155,17 @@ describe('ApprovalsInboxService (Step 3, ADR-049)', () => {
     const { service } = build({ submittedJournals: journals, submittedProgressReports: reports });
     const res = await service.inbox(who([PERMISSIONS.journalsManage, PERMISSIONS.progressApprove]));
     expect(res.items.map((i) => i.id)).toEqual(['early', 'dpr', 'late']);
+  });
+
+  it("lists a large draft invoice for a second person, never its preparer (ADR-046 §8)", async () => {
+    const { service } = build({
+      invoicesAwaitingApproval: jest.fn().mockResolvedValue([
+        { id: 'inv-mine', invoiceDate: new Date('2026-10-20'), totalAmount: new Decimal('9000'), currencyCode: 'USD', projectId: null, createdBy: 'me', createdAt: new Date('2026-10-20'), client: { name: 'Water Agency' } },
+        { id: 'inv-theirs', invoiceDate: new Date('2026-10-21'), totalAmount: new Decimal('12000'), currencyCode: 'USD', projectId: null, createdBy: 'amina', createdAt: new Date('2026-10-21'), client: { name: 'Water Agency' } },
+      ]),
+    });
+    const res = await service.inbox(who([PERMISSIONS.receivablesManage]));
+    expect(res.items.map((i) => i.id)).toEqual(['inv-theirs']);
+    expect(res.items[0]).toMatchObject({ kind: 'INVOICE', title: 'Water Agency', amount: '12000.00' });
   });
 });

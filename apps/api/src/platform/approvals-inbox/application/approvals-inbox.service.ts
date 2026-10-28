@@ -42,7 +42,8 @@ export class ApprovalsInboxService {
     const barred = (context: Omit<Parameters<SegregationOfDutiesService['violation']>[1], 'organizationId' | 'actorUserId'>) =>
       this.sod.violation(codes, { organizationId: org, actorUserId: me, ...context }) !== null;
 
-    const [journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
+    const [invoices, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
+      has(PERMISSIONS.receivablesManage) ? this.repo.invoicesAwaitingApproval(prisma, org, projects) : [],
       has(PERMISSIONS.journalsManage) ? this.repo.submittedJournals(prisma, org) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.submittedBills(prisma, org, projects) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.draftPayments(prisma, org) : [],
@@ -60,6 +61,23 @@ export class ApprovalsInboxService {
     type Draft = Omit<ApprovalItem, 'requestedByName' | 'projectName'> & { requestedBy: string | null };
     const drafts: Draft[] = [];
     const base = { projectId: null, transactionType: null };
+
+    // Invoices above the approval amount (ADR-046 §8): a second person approves, never the preparer.
+    for (const inv of invoices) {
+      if (inv.createdBy === me) continue;
+      drafts.push({
+        ...base,
+        kind: 'INVOICE',
+        id: inv.id,
+        title: inv.client.name,
+        detail: `Draft of ${day(inv.invoiceDate)}`,
+        amount: inv.totalAmount.toFixed(2),
+        currencyCode: inv.currencyCode,
+        waitingSince: iso(inv.createdAt),
+        requestedBy: inv.createdBy,
+        projectId: inv.projectId,
+      });
+    }
 
     // Journals: the preparer may decide their own only with post-own:journal (ADR-046 §1).
     for (const j of journals) {

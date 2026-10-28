@@ -3890,6 +3890,16 @@ model PostingPolicy {
   requireFourEyesOnJournals     Boolean  @default(true) @map("require_four_eyes_on_journals")
   draftJournalsBlockPeriodClose Boolean  @default(true) @map("draft_journals_block_period_close")
   enforceControlAccountAtDb     Boolean  @default(true) @map("enforce_control_account_at_db")
+  // ADR-046 §8 — optional approvals, as settings rather than code. Each defaults to "no extra
+  // approval" except the payment limit, which defaults to the ADR-022 lowest band.
+  /// §2 — a client invoice at or above this total needs Approve before it is issued. NULL = never.
+  invoiceApprovalAbove          Decimal? @map("invoice_approval_above") @db.Decimal(18, 2)
+  /// §3 — a non-PO supplier bill at or above this total needs approval; below it, Save posts. NULL = never.
+  billApprovalAbove             Decimal? @map("bill_approval_above") @db.Decimal(18, 2)
+  /// §3 — a PO bill matched within the matching tolerance (not exactly) also posts on Save.
+  autoPostToleratedBills        Boolean  @default(false) @map("auto_post_tolerated_bills")
+  /// §4 — a supplier payment up to this amount is approved on Save. 0 = every payment needs Approve.
+  paymentAutoApproveUpTo        Decimal  @default(1000) @map("payment_auto_approve_up_to") @db.Decimal(18, 2)
   updatedBy                     String   @map("updated_by")
   updatedAt                     DateTime @updatedAt @map("updated_at")
 

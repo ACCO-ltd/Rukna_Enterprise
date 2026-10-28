@@ -18,6 +18,33 @@ const optionalProjectWhere = (ids: ProjectScope) =>
  */
 @Injectable()
 export class ApprovalsInboxRepository {
+  /** ADR-046 §8 — draft invoices at or above the organisation's invoice approval amount. */
+  async invoicesAwaitingApproval(prisma: TenantPrisma, organizationId: string, projects: ProjectScope) {
+    const policy = await prisma.postingPolicy.findUnique({ where: { organizationId }, select: { invoiceApprovalAbove: true } });
+    if (!policy?.invoiceApprovalAbove) return [];
+    return prisma.clientInvoice.findMany({
+      where: {
+        organizationId,
+        documentStatus: 'DRAFT',
+        postingStatus: 'NOT_POSTED',
+        totalAmount: { gte: policy.invoiceApprovalAbove },
+        ...optionalProjectWhere(projects),
+      },
+      orderBy: { createdAt: 'asc' },
+      take: LIMIT,
+      select: {
+        id: true,
+        invoiceDate: true,
+        totalAmount: true,
+        currencyCode: true,
+        projectId: true,
+        createdBy: true,
+        createdAt: true,
+        client: { select: { name: true } },
+      },
+    });
+  }
+
   submittedJournals(prisma: TenantPrisma, organizationId: string) {
     return prisma.journalEntry.findMany({
       where: { organizationId, status: 'SUBMITTED' },

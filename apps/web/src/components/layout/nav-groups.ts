@@ -164,6 +164,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/posting-profiles', labelKey: 'postingProfiles', iconKey: 'git-branch', groupKey: 'acctSetup' },
       { href: '/finance/accounting/tax', labelKey: 'taxCodes', iconKey: 'tag', groupKey: 'acctSetup' },
       { href: '/finance/accounting/invoice-settings', labelKey: 'invoiceSettings', iconKey: 'receipt', groupKey: 'acctSetup' },
+      // ADR-046 §8 — the optional finance approvals.
+      { href: '/finance/accounting/approval-settings', labelKey: 'approvalSettings', iconKey: 'shield', groupKey: 'acctSetup' },
       { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance', iconKey: 'book-open', groupKey: 'acctSetup' },
       { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar', groupKey: 'acctSetup' },
     ],

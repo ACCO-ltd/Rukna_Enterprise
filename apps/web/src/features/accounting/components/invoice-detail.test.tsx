@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   useInvoiceAction: vi.fn(),
   useInvoiceDocumentUrl: vi.fn(),
   useAccounts: vi.fn(),
+  useApprovalSettings: vi.fn(() => ({ data: { invoiceApprovalAbove: null as string | null } })),
   useClients: vi.fn(),
   searchParams: new URLSearchParams(),
 }));
@@ -28,7 +29,7 @@ vi.mock('@/features/communications/hooks', () => ({
   useResolveCommunication: () => ({ isPending: false, mutate: vi.fn() }),
   communicationKeys: { all: ['communications'], resource: () => ['communications'] },
 }));
-vi.mock('../hooks/use-accounting', () => ({ useAccounts: mocks.useAccounts }));
+vi.mock('../hooks/use-accounting', () => ({ useAccounts: mocks.useAccounts, useApprovalSettings: mocks.useApprovalSettings }));
 vi.mock('@/features/clients/hooks/use-clients', () => ({ useClients: mocks.useClients }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.searchParams }));
 vi.mock('next/link', () => ({
@@ -82,6 +83,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
 
 beforeEach(() => {
   mocks.searchParams = new URLSearchParams();
+  mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: null } });
   mocks.useAccounts.mockReturnValue({ data: [], isPending: false, isError: false });
   mocks.useClients.mockReturnValue({ data: [], isPending: false, isError: false });
   mocks.useInvoiceAction.mockReturnValue({
@@ -190,6 +192,32 @@ describe('InvoiceDetail — state-aware title and totals', () => {
       permissions: ['manage:receivable'],
     });
     expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+  });
+});
+
+describe('InvoiceDetail — approval above an amount (ADR-046 §8)', () => {
+  it('offers Approve, not Issue, to someone other than the preparer', () => {
+    mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: '10000.00' } });
+    mocks.useInvoice.mockReturnValue({ data: invoice({ createdBy: 'user-1' }), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByRole('button', { name: 'Approve invoice' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
+  });
+
+  it('tells the preparer someone else must approve it', () => {
+    mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: '10000.00' } });
+    mocks.useInvoice.mockReturnValue({ data: invoice({ createdBy: 'test-user' }), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByText(/need another person’s approval before they are issued/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
+  });
+
+  it('issues directly below the amount', () => {
+    mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: '50000.00' } });
+    mocks.useInvoice.mockReturnValue({ data: invoice({ createdBy: 'test-user' }), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByRole('button', { name: 'Issue invoice' })).toBeInTheDocument();
   });
 });
 

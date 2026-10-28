@@ -91,6 +91,7 @@ import {
 import { systemFinds } from '../bill-po-match';
 import {
   useCreateSupplierBill,
+  useSaveAndSubmitSupplierBill,
   useGoodsReceipts,
   usePurchaseOrder,
   useSpendCategories,
@@ -288,8 +289,20 @@ export function SupplierBillCreateForm({
 
   const create = useCreateSupplierBill();
   const update = useUpdateSupplierBill();
-  // The one mutation this page runs — create a draft, or save changes to one.
-  const save = editing ? update : create;
+  // ADR-046 §3 — Save submits too (a bill the approval rules let through posts); Save draft only saves.
+  const saveAndSubmit = useSaveAndSubmitSupplierBill();
+  const draftSave = editing ? update : create;
+  const draftOnly = useRef(false);
+  const save = {
+    isPending: draftSave.isPending || saveAndSubmit.isPending,
+    isError: draftSave.isError || saveAndSubmit.isError,
+    isSuccess: draftSave.isSuccess || saveAndSubmit.isSuccess,
+    error: draftSave.error ?? saveAndSubmit.error,
+    reset: () => {
+      draftSave.reset();
+      saveAndSubmit.reset();
+    },
+  };
   const suppliers = useSuppliers();
   const accounts = useAccounts();
   const profiles = usePostingProfiles();
@@ -531,8 +544,11 @@ export function SupplierBillCreateForm({
         : buildDirectBillPayload(header, projectChoice, directLines);
 
     const onSuccess = (bill: SupplierBill) => router.push(`${BILLS_HREF}/${bill.id}`);
-    if (initialBill) update.mutate({ id: initialBill.id, payload }, { onSuccess });
+    if (!draftOnly.current) {
+      saveAndSubmit.mutate({ id: initialBill?.id, payload }, { onSuccess });
+    } else if (initialBill) update.mutate({ id: initialBill.id, payload }, { onSuccess });
     else create.mutate(payload, { onSuccess });
+    draftOnly.current = false;
   }
 
   // Discarding an edit goes back to the bill; discarding a new bill goes back to the list.
@@ -562,14 +578,26 @@ export function SupplierBillCreateForm({
             </Button>
           }
           save={
-            <Button
-              type="submit"
-              loading={save.isPending}
-              loadingText={t('saving')}
-              disabled={noProfiles}
-            >
-              {editing ? t('saveChanges') : t('save')}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                loading={saveAndSubmit.isPending}
+                loadingText={t('saving')}
+                disabled={noProfiles || save.isPending}
+              >
+                {editing ? t('saveChanges') : t('save')}
+              </Button>
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={noProfiles || save.isPending}
+                onClick={() => {
+                  draftOnly.current = true;
+                }}
+              >
+                {t('saveDraft')}
+              </Button>
+            </div>
           }
           discard={
             <Button type="button" variant="ghost" onClick={() => (dirty ? setConfirmLeave(true) : leave())}>

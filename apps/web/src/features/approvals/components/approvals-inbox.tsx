@@ -15,6 +15,7 @@ import { useApprovalsInbox } from '../hooks';
 
 type Area = 'all' | 'finance' | 'procurement' | 'site';
 const AREA_OF: Record<ApprovalItemKind, Exclude<Area, 'all'>> = {
+  INVOICE: 'finance',
   JOURNAL: 'finance',
   BILL: 'finance',
   PAYMENT: 'finance',

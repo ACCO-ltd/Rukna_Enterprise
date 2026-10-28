@@ -847,7 +847,8 @@
         "dueDate": "Enter the due date.",
         "costLine": "Choose the BOQ item or cost category this project cost is for.",
         "noLines": "Add at least one line."
-      }
+      },
+      "saveDraft": "Save draft"
     },
     "submitForApproval": "Submit for approval",
     "stepOf": "step {n} of {total}",
@@ -1850,11 +1851,11 @@
     "billUpdated": "Bill {ref} updated",
     "billReturned": "Bill {ref} returned for correction",
     "billRejected": "Bill {ref} rejected",
-    "billSubmitted": "Bill {ref} submitted for approval",
+    "billSubmitted": "{outcome, select, posted {Bill {ref} posted} notPosted {Bill {ref} approved — post it from its page} other {Bill {ref} submitted for approval}}",
     "billApproved": "Bill {ref} approved",
     "billPosted": "Bill {ref} posted",
     "billReversed": "Bill {ref} reversed",
-    "paymentSaved": "{ref, select, none {Payment saved as a draft} other {Payment {ref} saved}}",
+    "paymentSaved": "{outcome, select, posted {{ref, select, none {Payment posted} other {Payment {ref} posted}}} approved {Payment approved — post it from its page} other {Payment saved as a draft for approval}}",
     "paymentApproved": "{ref, select, none {Payment approved} other {Payment {ref} approved}}",
     "paymentReleaseSigned": "{ref, select, none {Payment release signed} other {Release signed for payment {ref}}}",
     "paymentPosted": "{ref, select, none {Payment posted} other {Payment {ref} posted}}",

@@ -43,9 +43,10 @@ export class SupplierPaymentController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Record a supplier payment in DRAFT status' })
+  @ApiOperation({ summary: 'Record a supplier payment: DRAFT, or approved (and posted) on save within the ADR-046 §4 auto-approval limit' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateSupplierPaymentDto) {
-    return this.supplierPaymentService.create(identity, dto);
+    // ADR-046 §4 — within the auto-approval limit, Save approves (and posts) it.
+    return this.supplierPaymentService.record(identity, dto);
   }
 
   @Get(':id')

@@ -4,8 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
-  Optional,
-} from '@nestjs/common';
+  Optional, ForbiddenException } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -55,6 +54,8 @@ import {
   type IpcInvoicePeriod,
 } from '../domain/ipc-invoice-period.policy.js';
 import { loadInvoiceLineSource, loadInvoiceProject } from './document-pdf/invoice-document-data.js';
+import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
+import { DEFAULT_APPROVAL_SETTINGS, invoiceNeedsApproval } from '../../accounting-core/domain/approval-settings.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
 interface OrgBrandingSnapshot {
@@ -262,7 +263,35 @@ export class ClientInvoiceService {
     private readonly files: PlatformFileService,
     private readonly taxCodes: TaxCodeService,
     @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
+    @Optional() private readonly accountingConfig?: AccountingConfigurationService,
   ) {}
+
+  /** ADR-046 §8 — the organisation's optional approvals (defaults when none is wired, e.g. in tests). */
+  private approvalSettings(organizationId: string) {
+    return this.accountingConfig?.getApprovalSettings(organizationId) ?? Promise.resolve(DEFAULT_APPROVAL_SETTINGS);
+  }
+
+  /**
+   * ADR-046 §2/§8 — a draft at or above the organisation's invoice approval amount is not issued
+   * until someone approves it. Every issue path calls this before approving a draft itself: the
+   * invoice page's Issue and the contract billing package.
+   */
+  async assertIssuableWithoutApproval(
+    identity: RequestIdentity,
+    invoice: { id: string; documentStatus: string },
+    tx?: Prisma.TransactionClient,
+  ) {
+    if (invoice.documentStatus !== 'DRAFT') return;
+    const settings = await this.approvalSettings(identity.activeOrganizationId);
+    if (settings.invoiceApprovalAbove === null) return;
+    const row = await this.repo.findById((tx ?? this.tenancyService.getClient()) as TenantPrisma, identity.activeOrganizationId, invoice.id);
+    if (row && invoiceNeedsApproval(settings, new Decimal(row.totalAmount.toString()))) {
+      throw new ConflictException({
+        errorCode: 'INVOICE_APPROVAL_REQUIRED',
+        message: `Invoices of ${settings.invoiceApprovalAbove!.toFixed(2)} or more need approval before they are issued. Ask an approver to approve it.`,
+      });
+    }
+  }
 
   /**
    * ADR-041 — the code, rate and amounts an invoice is raised at. Resolved after each path's
@@ -1014,6 +1043,17 @@ export class ClientInvoiceService {
     if (invoice.documentStatus !== 'DRAFT') {
       throw new BadRequestException(`Invoice is already ${invoice.documentStatus}`);
     }
+    // ADR-046 §8 — an approval the setting asks for is a second person's: the preparer cannot give
+    // it. Issue's own internal approval only runs when no approval is required.
+    if (!externalTx && invoice.createdBy === userId) {
+      const settings = await this.approvalSettings(orgId);
+      if (invoiceNeedsApproval(settings, new Decimal(invoice.totalAmount.toString()))) {
+        throw new ForbiddenException({
+          errorCode: 'INVOICE_APPROVER_IS_PREPARER',
+          message: 'You prepared this invoice, so someone else must approve it.',
+        });
+      }
+    }
 
     return this.repo.approve(prisma, invoiceId, userId);
   }
@@ -1298,6 +1338,7 @@ export class ClientInvoiceService {
         message: `Invoice ${invoice.invoiceNumber ?? invoiceId} is already issued.`,
       });
     }
+    await this.assertIssuableWithoutApproval(identity, invoice);
     await prisma.$transaction(async (tx) => {
       await this.refreshBrandingSnapshot(identity, invoiceId, tx);
       if (invoice.documentStatus === 'DRAFT') await this.approve(identity, invoiceId, tx);

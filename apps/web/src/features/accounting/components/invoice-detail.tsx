@@ -36,11 +36,14 @@ import { InvoiceDocumentPreview, MobileInvoicePreviewTrigger } from './invoice-d
 import { InvoiceStatusBadges } from './invoice-status-badges';
 import { PostInvoiceDialog } from './post-invoice-dialog';
 import { LoadError } from '@/components/load-error';
+import { useApprovalSettings } from '../hooks/use-accounting';
+import { useSession } from '@/features/auth/session/use-session';
+import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
 
-type OpenDialog = 'issue' | 'post' | 'reverse' | 'cancel' | 'whatsapp' | 'reminder' | null;
+type OpenDialog = 'issue' | 'approve' | 'post' | 'reverse' | 'cancel' | 'whatsapp' | 'reminder' | null;
 
 export function InvoiceDetail({
   invoiceId,
@@ -70,6 +73,8 @@ export function InvoiceDetail({
   const clients = useClients();
   const action = useInvoiceAction(invoiceId);
   const cancel = useCancelInvoice();
+  const approvalSettings = useApprovalSettings();
+  const { user } = useSession();
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
@@ -101,6 +106,10 @@ export function InvoiceDetail({
   const money = (value: string | null) => formatMoney(value, data.currencyCode, locale);
 
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
+  // ADR-046 §8 — at or above the organisation's amount, a draft waits for a second person.
+  const approvalAbove = approvalSettings.data?.invoiceApprovalAbove ?? null;
+  const needsApproval =
+    approvalAbove !== null && toMinorUnits(data.totalAmount, MONEY_SCALE) >= toMinorUnits(approvalAbove, MONEY_SCALE);
   // ADR-042 — an issued invoice (numbered, posted, not cancelled) can be sent on WhatsApp.
   const issued =
     data.postingStatus === 'POSTED' &&
@@ -168,9 +177,18 @@ export function InvoiceDetail({
                   <Link href={`/finance/accounting/invoices/${data.id}/edit`}>{t('editDraft')}</Link>
                 </Button>
               ) : null}
-              {/* ADR-046 §2 — one action from draft to a numbered, posted invoice. */}
-              {canIssue(data) && !ledgerBlocked ? (
+              {/* ADR-046 §2 — one action from draft to a numbered, posted invoice; §8 — a large
+                  draft is approved by a second person first. */}
+              {canIssue(data) && !ledgerBlocked && !needsApproval ? (
                 <Button onClick={() => setDialog('issue')}>{t('issueAction')}</Button>
+              ) : null}
+              {canIssue(data) && needsApproval && user?.id !== data.createdBy ? (
+                <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
+              ) : null}
+              {canIssue(data) && needsApproval && user?.id === data.createdBy ? (
+                <p className="self-center text-body-sm text-muted-foreground">
+                  {t('needsApproval', { amount: money(approvalSettings.data?.invoiceApprovalAbove ?? null) ?? '' })}
+                </p>
               ) : null}
 
               {canPost(data) && !ledgerBlocked ? (
@@ -290,6 +308,18 @@ export function InvoiceDetail({
           </RecordPanel>
         </div>
       </div>
+
+      {dialog === 'approve' ? (
+        <ConfirmActionDialog
+          title={t('approveTitle')}
+          description={t('approveDescription')}
+          confirmLabel={t('approve')}
+          isPending={action.isPending}
+          errorMessage={errorMessage}
+          onConfirm={() => run({ type: 'approve' })}
+          onDismiss={close}
+        />
+      ) : null}
 
       {dialog === 'issue' ? (
         <PostInvoiceDialog

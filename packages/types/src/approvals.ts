@@ -4,6 +4,7 @@
 // segregation-of-duties rule would not stop them deciding (their own journal, request, quote …).
 
 export type ApprovalItemKind =
+  | 'INVOICE'
   | 'JOURNAL'
   | 'BILL'
   | 'PAYMENT'
@@ -36,4 +37,19 @@ export interface ApprovalItem {
 export interface ApprovalInbox {
   items: ApprovalItem[];
   count: number;
+}
+
+// ─── Finance approval settings (ADR-046 §8) ──────────────────────────────
+// `GET/PUT /accounting/approval-settings`. Optional approvals as settings, never code. Amounts are
+// decimal strings; null means "no approval needed at any amount".
+
+export interface FinanceApprovalSettings {
+  /** §2 — a client invoice at or above this total needs Approve before it is issued. */
+  invoiceApprovalAbove: string | null;
+  /** §3 — a non-PO supplier bill at or above this total needs approval; below it, Save posts. */
+  billApprovalAbove: string | null;
+  /** §3 — a PO bill matched within the matching tolerance (not exactly) also posts on Save. */
+  autoPostToleratedBills: boolean;
+  /** §4 — a supplier payment up to this amount is approved on Save; "0.00" = never. */
+  paymentAutoApproveUpTo: string;
 }

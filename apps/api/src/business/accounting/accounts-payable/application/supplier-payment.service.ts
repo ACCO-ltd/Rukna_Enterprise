@@ -42,6 +42,8 @@ import {
   loadOpeningBalanceApTieOut,
   resolveApControlAccount,
 } from '../infrastructure/opening-balance-tie-out.repository.js';
+import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
+import { paymentApprovedOnSave } from '../../accounting-core/domain/approval-settings.js';
 
 /** 409 for an opening-balance bill whose carried-over payables do not tie to AP control. */
 function openingBalanceNotReconciled(tieOut: OpeningBalanceApTieOut | undefined): ConflictException {
@@ -114,7 +116,42 @@ export class SupplierPaymentService {
     @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
     // ADR-045 — the "acting counts as your step" approval used from the award (optional wiring).
     @Optional() private readonly approvals?: ApprovalService,
+    @Optional() private readonly accountingConfig?: AccountingConfigurationService,
   ) {}
+
+  /**
+   * ADR-046 §4 — record a payment from the payments screen. One within the organisation's
+   * auto-approval limit (default the ADR-022 lowest band, $1,000) is approved as it is saved and,
+   * when its bank account is not under dual signatory control, posted too. The bill-approver rule
+   * and governed bands still apply: a payment they stop stays a draft for someone else to approve.
+   * A refusal at posting leaves it approved and says why instead of failing the save.
+   */
+  async record(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
+    const payment = await this.create(identity, dto);
+    if (!this.accountingConfig) return payment;
+    const settings = await this.accountingConfig.getApprovalSettings(identity.activeOrganizationId);
+    if (!paymentApprovedOnSave(settings, new Decimal(payment.totalAmount.toString()))) return payment;
+
+    try {
+      await this.approve(identity, payment.id, { selfApprove: true, note: 'Approved on save (within the auto-approval limit)' });
+    } catch (err) {
+      if (err instanceof ForbiddenException) return { ...payment, approvedOnSave: false as const };
+      throw err;
+    }
+    const prisma = this.tenancyService.getClient();
+    const approved = await this.paymentRepo.findById(prisma, identity.activeOrganizationId, payment.id);
+    if (!approved || approved.documentStatus !== 'APPROVED') return { ...(approved ?? payment), approvedOnSave: false as const };
+    if (await this.signatoryService.requiresDualControl(prisma, approved.bankAccountId)) {
+      return { ...approved, approvedOnSave: true as const, postedOnSave: false as const };
+    }
+    try {
+      await this.post(identity, { paymentId: payment.id });
+      return { ...(await this.findById(identity, payment.id)), approvedOnSave: true as const, postedOnSave: true as const };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The payment could not be posted.';
+      return { ...(await this.findById(identity, payment.id)), approvedOnSave: true as const, postedOnSave: false as const, postOnSaveError: message };
+    }
+  }
 
   /** Stateless role resolver over the same account repository (ADR-024 ACC-POST-001). */
   private get accounts(): PostingAccountResolver {

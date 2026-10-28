@@ -17,6 +17,8 @@ const WORKFLOW_ROUTES: Record<string, (id: string) => string> = {
  */
 export function approvalHref(item: ApprovalItem): string | null {
   switch (item.kind) {
+    case 'INVOICE':
+      return `/finance/accounting/invoices/${item.id}`;
     case 'JOURNAL':
       return `/finance/accounting/journals/${item.id}`;
     case 'BILL':

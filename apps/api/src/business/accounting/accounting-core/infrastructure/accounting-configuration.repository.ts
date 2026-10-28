@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
+import type { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -81,6 +82,25 @@ export class AccountingConfigurationRepository {
       requireFourEyesOnJournals: boolean;
       draftJournalsBlockPeriodClose: boolean;
       enforceControlAccountAtDb: boolean;
+      updatedBy: string;
+    },
+  ) {
+    return prisma.postingPolicy.upsert({
+      where: { organizationId },
+      create: { organizationId, ...data },
+      update: data,
+    });
+  }
+
+  /** ADR-046 §8 — the approval settings live on the posting policy row (created on first save). */
+  upsertApprovalSettings(
+    prisma: TenantPrisma,
+    organizationId: string,
+    data: {
+      invoiceApprovalAbove: Decimal | null;
+      billApprovalAbove: Decimal | null;
+      autoPostToleratedBills: boolean;
+      paymentAutoApproveUpTo: Decimal;
       updatedBy: string;
     },
   ) {

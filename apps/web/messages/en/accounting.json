@@ -741,7 +741,7 @@
     "viewDocumentFailed": "Could not open the invoice document. Try again.",
     "approve": "Approve invoice",
     "approveTitle": "Approve this invoice?",
-    "approveDescription": "Approval cannot be undone. Once approved the invoice can be posted to the general ledger.",
+    "approveDescription": "Approving lets the person who prepared it issue the invoice. It cannot be undone.",
     "approveHint": "Approval precedes posting and invoice numbering.",
     "postAction": "Post & assign number",
     "postHint": "Posting assigns an invoice number and freezes the issued document.",
@@ -1123,7 +1123,8 @@
       "title": "Issue this invoice?",
       "description": "Issuing gives the invoice its number and writes the entry below to the ledger. It can only be undone by a reversal.",
       "confirm": "Issue invoice"
-    }
+    },
+    "needsApproval": "Invoices of {amount} or more need another person’s approval before they are issued."
   },
   "openingBalance": {
     "title": "Opening Balance Migration",
@@ -1275,7 +1276,8 @@
     "taxCodeStatus": "{action, select, deactivate {Tax code {code} deactivated} other {Tax code {code} reactivated}}",
     "invoiceSaved": "Invoice saved",
     "invoiceDraftCreated": "Draft invoice created",
-    "paymentReceived": "Payment received and posted"
+    "paymentReceived": "Payment received and posted",
+    "approvalSettingsSaved": "Approval rules saved"
   },
   "setup": {
     "title": "Set up accounting",
@@ -1612,5 +1614,34 @@
     "previewFrame": "Invoice preview (PDF)",
     "previewUnsaved": "Not saved yet",
     "previewPartial": "Some values are not complete yet and are left out of the preview until they are."
+  },
+  "approvalSettings": {
+    "title": "Approval rules",
+    "description": "Which finance documents need a second person before they reach the ledger. Everything else is approved as it is saved. Changes apply to documents saved from now on.",
+    "readOnly": "Only someone who manages accounting can change these rules.",
+    "loading": "Loading approval rules…",
+    "loadFailed": "The approval rules could not be loaded.",
+    "invoicesTitle": "Client invoices",
+    "invoicesDescription": "Issue numbers an invoice and posts it in one step.",
+    "invoiceSwitch": "Large invoices need approval before they are issued",
+    "invoiceSwitchHint": "Someone other than the person who prepared it approves it from Approvals.",
+    "invoiceAbove": "Invoices of this amount or more",
+    "billsTitle": "Supplier bills",
+    "billsDescription": "A bill that passes these rules posts as soon as it is saved.",
+    "billSwitch": "Large bills without a purchase order need approval",
+    "billSwitchHint": "Bills against a purchase order are checked by the three-way match instead.",
+    "billAbove": "Bills of this amount or more",
+    "toleratedSwitch": "Post bills that match their purchase order within tolerance",
+    "toleratedHint": "Off: only an exact match posts on save; a tolerated difference waits for approval.",
+    "paymentsTitle": "Supplier payments",
+    "paymentsDescription": "Bank signatory release and the approval bands above this limit always apply.",
+    "paymentSwitch": "Approve small payments as they are saved",
+    "paymentSwitchHint": "A payment that settles a bill the same person approved still needs someone else.",
+    "paymentUpTo": "Payments up to",
+    "amountInvalid": "Enter an amount with at most two decimals.",
+    "save": "Save rules",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "saveFailed": "The approval rules could not be saved."
   }
 }

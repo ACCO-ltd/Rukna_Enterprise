@@ -40,6 +40,7 @@ import type {
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
 } from '../types';
+import type { FinanceApprovalSettings } from '@erp/types';
 
 // ─── Chart of accounts ───────────────────────────────────────────────────────────
 
@@ -638,4 +639,14 @@ export function previewInvoiceDocumentSettings(
     body: JSON.stringify(body),
     responseType: 'blob',
   });
+}
+
+/** ADR-046 §8 — `GET /accounting/approval-settings`: the optional finance approvals in force. */
+export function getApprovalSettings(): Promise<FinanceApprovalSettings> {
+  return apiClient<FinanceApprovalSettings>('/accounting/approval-settings');
+}
+
+/** ADR-046 §8 — `PUT /accounting/approval-settings` (`manage:accounting`), saved whole and audited. */
+export function updateApprovalSettings(body: FinanceApprovalSettings): Promise<FinanceApprovalSettings> {
+  return apiClient<FinanceApprovalSettings>('/accounting/approval-settings', { method: 'PUT', body: JSON.stringify(body) });
 }
