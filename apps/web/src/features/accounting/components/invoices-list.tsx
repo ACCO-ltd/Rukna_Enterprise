@@ -196,7 +196,12 @@ export function InvoicesList() {
       // what was billed — a certificate, a milestone, a separate charge.
       render: (inv) => (
         <span className="block">
-          <span className="block font-mono text-body-sm font-semibold text-brand-primary">
+          <span
+            className={cn(
+              'block text-body-sm font-semibold text-brand-primary',
+              inv.invoiceNumber ? 'font-mono' : 'italic',
+            )}
+          >
             {inv.invoiceNumber ?? t('unnumbered')}
           </span>
           <span className="block max-w-[16rem] truncate text-caption font-normal text-muted-foreground">

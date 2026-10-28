@@ -3095,8 +3095,6 @@
     "newReceipt": "Record receipt",
     "searchLabel": "Search receipts",
     "searchPlaceholder": "Search reference, client or amount",
-    "filterByClient": "Filter by client",
-    "allClients": "All clients",
     "countLabel": "{count, plural, =0 {No receipts} one {# receipt} other {# receipts}}",
     "empty": "No receipts recorded yet.",
     "emptyHint": "Record money received from a client, then allocate it against certificates.",
@@ -3112,7 +3110,8 @@
       "client": "Client",
       "amount": "Amount",
       "unallocated": "Unallocated",
-      "status": "Status"
+      "status": "Status",
+      "number": "Receipt"
     },
     "create": {
       "title": "Record a receipt",
@@ -3215,7 +3214,35 @@
       "reversed": "Reversed"
     },
     "filterByProject": "Project",
-    "allProjects": "All projects"
+    "allProjects": "All projects",
+    "eyebrow": "Receivables",
+    "unnumbered": "Not posted yet",
+    "filterByPosting": "Posting",
+    "postingFilter": {
+      "NOT_POSTED": "Not posted",
+      "POSTED": "Posted",
+      "REVERSED": "Reversed"
+    },
+    "filterByAllocation": "Allocation",
+    "allocationFilter": {
+      "unallocated": "Has unallocated money"
+    },
+    "headerCount": "{count, plural, one {# receipt} other {# receipts}}",
+    "headerSummary": "{count, plural, one {# receipt} other {# receipts}} · {received} received",
+    "views": {
+      "label": "Receipt views",
+      "all": "All",
+      "notPosted": "Not posted",
+      "unallocated": "Unallocated"
+    },
+    "listState": {
+      "NOT_POSTED": "Not posted",
+      "POSTING": "Posting",
+      "POSTING_FAILED": "Posting failed",
+      "UNALLOCATED": "Received · unallocated",
+      "RECEIVED": "Received",
+      "REVERSED": "Reversed"
+    }
   },
   "ipc": {
     "title": "Payment Certificates",

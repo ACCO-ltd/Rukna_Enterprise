@@ -397,7 +397,6 @@
     "loadFailed": "Could not load journals.",
     "filterByStatus": "Status",
     "allStatuses": "All statuses",
-    "clientFilterNote": "Filtered in the browser — the API returns every journal.",
     "countLabel": "{count, plural, =0 {No journals} one {# journal} other {# journals}}",
     "colNumber": "Number",
     "colDate": "Accounting date",
@@ -414,7 +413,17 @@
       "REVERSED": "Reversed"
     },
     "filterByProject": "Project",
-    "allProjects": "All projects"
+    "allProjects": "All projects",
+    "eyebrow": "General ledger",
+    "headerSummary": "{count, plural, one {# journal} other {# journals}}{waiting, plural, =0 {} other { · # waiting for approval}}",
+    "views": {
+      "label": "Journal views",
+      "all": "All",
+      "drafts": "Drafts",
+      "toApprove": "To approve",
+      "returned": "Returned",
+      "posted": "Posted"
+    }
   },
   "journalForm": {
     "title": "New journal",

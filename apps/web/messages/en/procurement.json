@@ -1060,7 +1060,34 @@
       "filterByPosting": "Posting",
       "emptyHint": "A payment records money paid to a supplier and how it settles against their bills.",
       "colTotal": "Amount",
-      "filterByProject": "Project"
+      "filterByProject": "Project",
+      "eyebrow": "Payables",
+      "pageTitle": "Payments",
+      "filterByAllocation": "Allocation",
+      "allocationFilter": {
+        "unallocated": "Has unallocated money"
+      },
+      "headerCount": "{count, plural, one {# payment} other {# payments}}",
+      "headerSummary": "{count, plural, one {# payment} other {# payments}} · {paid} paid out",
+      "views": {
+        "label": "Payment views",
+        "all": "All",
+        "drafts": "Drafts",
+        "approved": "Approved",
+        "unallocated": "Unallocated"
+      },
+      "listState": {
+        "DRAFT": "Draft",
+        "APPROVED": "Approved",
+        "RELEASED": "Released",
+        "RETURNED": "Returned",
+        "POSTING": "Posting",
+        "POSTING_FAILED": "Posting failed",
+        "PAID_UNALLOCATED": "Paid · unallocated",
+        "PAID": "Paid",
+        "CANCELLED": "Cancelled",
+        "REVERSED": "Reversed"
+      }
     }
   },
   "allocation": {
