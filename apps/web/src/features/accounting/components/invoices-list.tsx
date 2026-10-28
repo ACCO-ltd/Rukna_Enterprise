@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -47,6 +47,7 @@ import { toMinorUnits } from '@/lib/money';
 import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
 import type { SavedViewState } from '@erp/types';
 import { InvoiceSummaryTiles } from './invoice-summary-tiles';
+import { QuickAddInvoice, type QuickAddInvoiceHandle } from './quick-add-invoice';
 import { invoiceSummary } from '../invoice-summary';
 
 const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
@@ -90,17 +91,12 @@ export function InvoicesList() {
   const { toast } = useToast();
   const openDocument = useOpenInvoiceDocument();
   const { can } = usePermissions();
+  const quickAddRef = useRef<QuickAddInvoiceHandle>(null);
   const createAction = can(ACCOUNTING_PERMISSIONS.manageReceivables) ? (
     <Button asChild>
       <Link href="/finance/accounting/invoices/new" data-shortcut-new="">
         <Plus size={16} aria-hidden="true" />
         {t('newInvoice')}
-        <kbd
-          className="hidden rounded border border-white/40 px-1 font-mono text-micro md:inline"
-          aria-hidden="true"
-        >
-          N
-        </kbd>
       </Link>
     </Button>
   ) : null;
@@ -459,12 +455,13 @@ export function InvoicesList() {
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 25 }}
         columnVisibility
+        quickAdd={createAction ? <QuickAddInvoice ref={quickAddRef} /> : undefined}
       listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
         shortcuts={{
           // Follows the visible "New invoice" link, so N and the button can never go to different places.
-          onNew: createAction
-            ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
-            : undefined,
+          // N opens the quick-add row (ADR-047 list design); the full form is the header button.
+          onNew: createAction ? () => quickAddRef.current?.open() : undefined,
+          newLabel: t('quickAdd.keyHint'),
         }}
         groupOptions={[
           {

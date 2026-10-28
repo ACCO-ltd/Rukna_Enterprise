@@ -441,7 +441,7 @@ export interface PlatformDataGridProps<T> {
    * previous row (focusing its link, so Enter opens it), `X` select the focused row, `N` new.
    * Off unless set; one list per screen should own them. `onNew` is the screen's create action.
    */
-  shortcuts?: { onNew?: () => void };
+  shortcuts?: { onNew?: () => void; /** Hint word for N, e.g. "quick add" (default "new"). */ newLabel?: string };
 
   /**
    * Ways to group the rows (Step 2e, ADR-047 list design) — "Group: Client". Each names how a
@@ -456,6 +456,9 @@ export interface PlatformDataGridProps<T> {
    * just the page.
    */
   totals?: { label: (count: number) => string; columns: Record<string, (rows: T[]) => React.ReactNode> };
+
+  /** A quick-add row at the top of the table (ADR-047 list design) — the caller's own form. */
+  quickAdd?: React.ReactNode;
 
   /**
    * Row selection. Only provide when the caller has bulk actions to perform —
@@ -664,6 +667,7 @@ export function PlatformDataGrid<T>({
   shortcuts,
   groupOptions,
   totals,
+  quickAdd,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
   const density = useDensityPreference();
@@ -1429,6 +1433,13 @@ export function PlatformDataGrid<T>({
             </TableHeader>
 
             <TableBody>
+              {quickAdd ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="bg-surface py-2">
+                    {quickAdd}
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {visible.length === 0 ? (
                 <TableEmpty colSpan={colCount}>{filteredEmpty}</TableEmpty>
               ) : (
@@ -1550,7 +1561,7 @@ export function PlatformDataGrid<T>({
             ) : null}
             {shortcuts.onNew ? (
               <>
-                {' '}· <kbd className="rounded border border-border px-1 font-mono">N</kbd> {t('keyNew')}
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">N</kbd> {shortcuts.newLabel ?? t('keyNew')}
               </>
             ) : null}
           </p>

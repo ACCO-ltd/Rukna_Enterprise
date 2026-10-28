@@ -1082,6 +1082,25 @@
         "amount": "Line {n} needs a quantity and a rate above 0.",
         "account": "Line {n} needs an income account."
       }
+    },
+    "quickAdd": {
+      "open": "Quick add sale invoice",
+      "formLabel": "Quick add a sale invoice",
+      "newDraft": "New · draft",
+      "client": "Client",
+      "clientSearch": "Search clients",
+      "clientEmpty": "No client matches",
+      "description": "What it is for",
+      "amount": "Amount",
+      "account": "Income account",
+      "save": "Save draft",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "terms": "Net 15",
+      "hint": "A one-line sale outside a contract, dated today, Net 15. Enter saves, Esc cancels. Contract billing uses New invoice.",
+      "incomplete": "Choose a client, say what it is for, and enter an amount above 0.",
+      "failed": "The invoice could not be saved.",
+      "keyHint": "quick add"
     }
   },
   "openingBalance": {
