@@ -28,11 +28,16 @@ import { SupplierController } from './presentation/supplier.controller.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
 import { PostingProfileRepository } from './infrastructure/posting-profile.repository.js';
 import { PostingProfileService } from './application/posting-profile.service.js';
+import { FilesModule } from '../../../platform/files/files.module.js';
+import { RemittanceDocumentService } from './application/remittance-document.service.js';
+import { SupplierPaymentDocumentService } from './application/supplier-payment-document.service.js';
+import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-payment-document.repository.js';
 
 @Module({
   imports: [
     TenancyModule,
     AccountingCoreModule,
+    FilesModule,
     CommitmentLedgerModule,
     BillMatchingModule,
     WorkflowsModule,
@@ -50,6 +55,9 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     AwardPaymentController,
   ],
   providers: [
+    RemittanceDocumentService,
+    SupplierPaymentDocumentService,
+    SupplierPaymentDocumentRepository,
     SupplierBillRepository,
     SupplierPaymentRepository,
     SupplierRepository,

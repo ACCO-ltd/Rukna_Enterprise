@@ -16,6 +16,7 @@ import { AllocateAdvanceDto } from './dto/allocate-advance.dto.js';
 import { ReverseSupplierPaymentDto } from './dto/reverse-supplier-payment.dto.js';
 import { ReverseAdvanceAllocationDto } from './dto/reverse-advance-allocation.dto.js';
 import { CreatePurchaseAllocationDto } from './dto/create-purchase-allocation.dto.js';
+import { SupplierPaymentDocumentService } from '../application/supplier-payment-document.service.js';
 
 @ApiTags('Supplier Payments')
 @ApiBearerAuth('access-token')
@@ -26,6 +27,7 @@ export class SupplierPaymentController {
   constructor(
     private readonly supplierPaymentService: SupplierPaymentService,
     private readonly projectAccess: ProjectAccessService,
+    private readonly paymentDocuments: SupplierPaymentDocumentService,
   ) {}
 
   @Get()
@@ -54,6 +56,13 @@ export class SupplierPaymentController {
   @ApiOperation({ summary: 'Get supplier payment with allocations' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.supplierPaymentService.findById(identity, id);
+  }
+
+  @Get(':id/document')
+  @ApiOperation({ summary: 'Step 4: the branded remittance advice PDF of a posted payment — a short-lived signed download URL' })
+  @ApiResponse({ status: 409, description: 'NOT_POSTED | PAYMENT_REVERSED' })
+  getDocument(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.paymentDocuments.getOrGenerateDocument(identity, id);
   }
 
   @Post(':id/approve')

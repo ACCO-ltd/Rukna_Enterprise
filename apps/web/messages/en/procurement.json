@@ -1091,7 +1091,10 @@
         "CANCELLED": "Cancelled",
         "REVERSED": "Reversed"
       }
-    }
+    },
+    "remittance": "Remittance advice (PDF)",
+    "remittanceOpening": "Opening…",
+    "remittanceFailed": "The remittance advice could not be opened. Try again."
   },
   "allocation": {
     "title": "Apply this advance",

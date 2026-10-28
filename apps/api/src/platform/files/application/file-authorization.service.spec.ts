@@ -53,6 +53,7 @@ interface FileRow {
   organizationLogoFor: { id: string }[];
   invoiceDocumentFor: { id: string }[];
   receiptDocumentFor: { id: string }[];
+  paymentDocumentFor: { id: string }[];
   poRevisionAttachments: { id: string; purchaseOrderRevisionId: string; organizationId: string }[];
   grnAttachments: { id: string; goodsReceiptNoteId: string; organizationId: string }[];
   quotePhoto: { id: string; quoteId: string; quote: { quotationRequestId: string } } | null;
@@ -79,6 +80,7 @@ function fileRow(over: Partial<FileRow> = {}): FileRow {
     organizationLogoFor: [],
     invoiceDocumentFor: [],
     receiptDocumentFor: [],
+    paymentDocumentFor: [],
     poRevisionAttachments: [],
     grnAttachments: [],
     quotePhoto: null,

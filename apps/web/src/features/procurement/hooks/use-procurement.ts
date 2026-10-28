@@ -107,6 +107,7 @@ import {
   postBuyerAdvance,
   createAdvanceReturn,
   createEvidenceAllocation,
+  getSupplierPaymentDocument,
 } from '../api/procurement-api';
 import type {
   CatalogueStatusFilter,
@@ -162,6 +163,7 @@ import type {
   CreateAdvanceReturnPayload,
   CreateEvidenceAllocationPayload,
 } from '../types';
+import { openSignedDocument } from '@/lib/open-signed-document';
 
 export const procurementKeys = {
   all: ['procurement'] as const,
@@ -1364,5 +1366,12 @@ export function usePostBuyerAdvance(advanceId: string, poId: string) {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
+  });
+}
+
+/** Step 4 — open the remittance advice in a new tab (rendered on first request, then frozen). */
+export function useOpenSupplierPaymentDocument() {
+  return useMutation({
+    mutationFn: (id: string) => openSignedDocument(() => getSupplierPaymentDocument(id)),
   });
 }

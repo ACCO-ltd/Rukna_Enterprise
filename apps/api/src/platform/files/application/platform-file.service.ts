@@ -316,6 +316,7 @@ export class PlatformFileService {
             // Generated documents (receipt/invoice PDF) and the org logo are owners too.
             invoiceDocumentFor: true,
             receiptDocumentFor: true,
+            paymentDocumentFor: true,
             organizationLogoFor: true,
           },
         },

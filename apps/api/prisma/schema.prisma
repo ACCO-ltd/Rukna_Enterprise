@@ -2118,6 +2118,8 @@ model PlatformFile {
   invoiceDocumentFor      ClientInvoice[]          @relation("ClientInvoiceDocument")
   // The generated branded PDF for a posted payment receipt — same storeGenerated path, immutable.
   receiptDocumentFor      PaymentReceipt[]         @relation("PaymentReceiptDocument")
+  // Step 4 — the generated remittance advice for a posted supplier payment, immutable.
+  paymentDocumentFor      SupplierPayment[]        @relation("SupplierPaymentDocument")
   // ADR-044 — a page of a store's paper quotation. Money evidence: readable only by quotation
   // collectors/selectors and cost-visibility holders (QUOTATION_PHOTO owner kind).
   quotePhoto              QuotePhoto?
@@ -3379,6 +3381,10 @@ model SupplierPayment {
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
   organization      Organization                @relation(fields: [organizationId], references: [id])
+  // Step 4 — the branded remittance advice for a POSTED payment: rendered on first request, then
+  // IMMUTABLE (SupplierPaymentDocumentService), like payment_receipts.document_file_id.
+  documentFileId    String?                     @map("document_file_id")
+  documentFile      PlatformFile?               @relation("SupplierPaymentDocument", fields: [documentFileId], references: [id], onDelete: SetNull)
   supplier          Supplier                    @relation(fields: [supplierId], references: [id])
   bankAccount       BankAccount                 @relation(fields: [bankAccountId], references: [id])
   allocations          SupplierPaymentAllocation[]

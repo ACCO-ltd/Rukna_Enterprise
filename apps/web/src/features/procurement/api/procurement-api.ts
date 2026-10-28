@@ -1019,3 +1019,8 @@ export function createEvidenceAllocation(advanceId: string, payload: CreateEvide
     body: JSON.stringify(payload),
   });
 }
+
+/** Step 4 — `GET /payments/:id/document`: the remittance advice of a posted payment (signed URL). */
+export function getSupplierPaymentDocument(id: string): Promise<{ url: string; originalName: string; mimeType: string }> {
+  return apiClient<{ url: string; originalName: string; mimeType: string }>(`/payments/${id}/document`);
+}

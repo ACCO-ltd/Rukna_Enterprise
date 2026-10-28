@@ -47,7 +47,9 @@ import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissi
 import { formatDate, formatMoney } from '@/lib/format';
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
-import { useSupplierPayment, useSupplierPayments, useSuppliers } from '../hooks/use-procurement';
+import { useSupplierPayment, useSupplierPayments, useSuppliers,
+  useOpenSupplierPaymentDocument,
+} from '../hooks/use-procurement';
 import { bankAccountLabel } from '../payment-actions';
 import { PAYMENT_LIST_STATE_TONE, paymentListState } from '../payment-list-state';
 import type { PaymentDocumentStatus, SupplierPayment } from '../types';
@@ -445,6 +447,7 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
       </div>
 
       <PaymentActionBar payment={payment} />
+      {payment.postingStatus === 'POSTED' && payment.paymentNumber ? <RemittanceButton paymentId={payment.id} /> : null}
 
       <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-3">
         <Field
@@ -484,6 +487,20 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
       </dl>
 
       <AllocationPanel payment={payment} />
+    </div>
+  );
+}
+
+/** Step 4 — the branded remittance advice to send the supplier, once the payment is posted. */
+function RemittanceButton({ paymentId }: { paymentId: string }) {
+  const t = useTranslations('procurement.payments');
+  const open = useOpenSupplierPaymentDocument();
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button type="button" variant="outline" loading={open.isPending} loadingText={t('remittanceOpening')} onClick={() => open.mutate(paymentId)}>
+        {t('remittance')}
+      </Button>
+      {open.isError ? <p className="text-body-sm text-danger" role="alert">{t('remittanceFailed')}</p> : null}
     </div>
   );
 }

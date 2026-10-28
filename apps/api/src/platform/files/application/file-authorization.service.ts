@@ -45,6 +45,9 @@ export type FileOwner =
   // The rendered PDF for a posted payment receipt — same rule as INVOICE_DOCUMENT: the receipts
   // controller gates every route on manage:receivable, not project membership.
   | { kind: 'RECEIPT_DOCUMENT'; receiptId: string }
+  // Step 4 — the remittance advice for a posted supplier payment; the payments controller gates
+  // every route on manage:payable.
+  | { kind: 'PAYMENT_DOCUMENT'; paymentId: string }
   // Procurement attachments: quotation evidence on a PO revision, delivery note on a GRN.
   // Neither lives inside a project — they are org-level records. Reachable by procurementView.
   | {
@@ -173,6 +176,7 @@ export class FileAuthorizationService {
         organizationLogoFor: { select: { id: true } },
         invoiceDocumentFor: { select: { id: true } },
         receiptDocumentFor: { select: { id: true } },
+        paymentDocumentFor: { select: { id: true } },
         poRevisionAttachments: {
           select: {
             id: true,
@@ -255,6 +259,10 @@ export class FileAuthorizationService {
       ...file.receiptDocumentFor.map((receipt) => ({
         kind: 'RECEIPT_DOCUMENT' as const,
         receiptId: receipt.id,
+      })),
+      ...file.paymentDocumentFor.map((payment) => ({
+        kind: 'PAYMENT_DOCUMENT' as const,
+        paymentId: payment.id,
       })),
       ...file.poRevisionAttachments.map((a) => ({
         kind: 'PO_REVISION_ATTACHMENT' as const,
@@ -410,6 +418,8 @@ export class FileAuthorizationService {
       case 'INVOICE_DOCUMENT':
       case 'RECEIPT_DOCUMENT':
         return identity.permissions.includes(PERMISSIONS.receivablesManage);
+      case 'PAYMENT_DOCUMENT':
+        return identity.permissions.includes(PERMISSIONS.payablesManage);
       // Procurement attachments are org-level (no project). Any holder of procurementView can
       // read them — the same guard that gates the PO and GRN list endpoints.
       case 'PO_REVISION_ATTACHMENT':
