@@ -42,6 +42,7 @@ import {
 import { BillingModel } from '../types';
 import { useRecordSignedContract } from '../hooks/use-record-signed-contract';
 import { useStandardPaymentPlan } from '../hooks/use-standard-payment-plan';
+import { LoadError } from '@/components/load-error';
 
 const PAYMENT_TERMS = ['DUE_ON_RECEIPT', 'NET_7', 'NET_14', 'NET_30', 'NET_45', 'NET_60'] as const;
 type PaymentTermsKey = (typeof PAYMENT_TERMS)[number];
@@ -113,7 +114,16 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
     );
   }
   if (projects.isError || clients.isError || boq.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return (
+      <LoadError
+        message={t('loadFailed')}
+        onRetry={() => {
+          void projects.refetch();
+          void clients.refetch();
+          void boq.refetch();
+        }}
+      />
+    );
   }
 
   const set = <K extends keyof Fields>(key: K, value: Fields[K]) => setFields((current) => ({ ...current, [key]: value }));

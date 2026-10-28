@@ -51,6 +51,7 @@ import {
   userName,
 } from '../members';
 import type { ProjectMember } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function ProjectMembers({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.projects.members');
@@ -110,7 +111,7 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
           />
         </div>
       ) : members.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void members.refetch()} />
       ) : (
         <>
           <TableScroll aria-label={t('title')} className="rounded-panel border-border">

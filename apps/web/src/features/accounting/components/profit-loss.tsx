@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Card,
   CardHeader,
   CardTitle,
@@ -21,6 +20,7 @@ import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ledgerHref } from '../lib/report-links';
 import type { ProfitLoss, ProfitLossSection } from '../types';
 import { ReportActions } from './report-actions';
+import { LoadError } from '@/components/load-error';
 
 /** First and last day of the current month — the range a P&L is asked for most often. */
 function currentMonth(): { from: string; to: string } {
@@ -86,7 +86,7 @@ export function ProfitLossReport() {
           />
         </div>
       ) : report.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
       ) : (
         <>
           <p className="text-xs text-muted-foreground">

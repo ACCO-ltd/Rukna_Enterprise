@@ -25,6 +25,7 @@ import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ledgerHref } from '../lib/report-links';
 import type { TrialBalanceLine } from '../types';
 import { ReportActions } from './report-actions';
+import { LoadError } from '@/components/load-error';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -103,7 +104,7 @@ export function TrialBalanceReport() {
           />
         </div>
       ) : report.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
       ) : (
         <>
           {/* A trial balance that does not balance means the ledger holds an entry that

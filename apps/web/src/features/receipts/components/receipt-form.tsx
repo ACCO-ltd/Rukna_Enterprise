@@ -12,6 +12,7 @@ import { toDecimalString } from '@/features/contracts/contract-form-payload';
 import { ApiError } from '@/lib/api-client';
 
 import { useCreateReceipt } from '../hooks/use-receipts';
+import { LoadError } from '@/components/load-error';
 
 interface ReceiptFormValues {
   clientId: string;
@@ -75,7 +76,7 @@ export function ReceiptForm() {
       noValidate
     >
       {errorMessages.length > 0 ? <Alert variant="error" messages={errorMessages} /> : null}
-      {clients.isError ? <Alert variant="error" messages={[t('loadFailed')]} /> : null}
+      {clients.isError ? <LoadError message={t('loadFailed')} onRetry={() => void clients.refetch()} /> : null}
 
       <FormField htmlFor="receipt-client" label={t('client')} error={errors.clientId?.message}>
         <Controller

@@ -14,6 +14,7 @@ import { approvalBlockReason, canActOnStep, stepPosition } from '../approval-act
 import { useApprovalStep, useApprovalAction } from '../hooks/use-approval';
 import { useWorkflowDefinition } from '../hooks/use-workflow-definition';
 import type { WorkflowTransactionType } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function ApprovalPanel({
   instanceId,
@@ -48,7 +49,7 @@ export function ApprovalPanel({
   }
 
   if (step.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void step.refetch()} />;
   }
 
   const current = step.data ?? null;

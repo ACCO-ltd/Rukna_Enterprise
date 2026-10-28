@@ -1095,7 +1095,8 @@
       "eyebrow": "Client invoice · other sale",
       "discard": "Discard",
       "lineTitle": "Line {n}",
-      "lineTitleNamed": "Line {n} — {name}"
+      "lineTitleNamed": "Line {n} — {name}",
+      "pickersLoadFailed": "Clients or income accounts could not be loaded, so the invoice cannot be finished yet."
     },
     "quickAdd": {
       "open": "Quick add sale invoice",
@@ -1114,7 +1115,8 @@
       "hint": "A one-line sale outside a contract, dated today, Net 15. Enter saves, Esc cancels. Contract billing uses New invoice.",
       "incomplete": "Choose a client, say what it is for, and enter an amount above 0.",
       "failed": "The invoice could not be saved.",
-      "keyHint": "quick add"
+      "keyHint": "quick add",
+      "pickersFailed": "Clients or income accounts could not be loaded. Reload the page, or use the full form."
     }
   },
   "openingBalance": {

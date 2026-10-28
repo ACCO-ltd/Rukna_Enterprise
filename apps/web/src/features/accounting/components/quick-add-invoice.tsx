@@ -160,7 +160,7 @@ export const QuickAddInvoice = forwardRef<QuickAddInvoiceHandle, { onCreated?: (
           </Button>
         </div>
         <p className="text-caption text-muted-foreground" role={error ? 'alert' : undefined}>
-          {error ?? t('hint')}
+          {error ?? (accounts.isError || clients.isError ? t('pickersFailed') : t('hint'))}
         </p>
       </form>
     );

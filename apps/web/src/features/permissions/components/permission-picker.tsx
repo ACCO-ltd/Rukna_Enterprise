@@ -2,10 +2,11 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, CheckboxField, Input } from '@erp/ui';
+import { Badge, CheckboxField, Input } from '@erp/ui';
 
 import { permissionKey, type PermissionCatalogueItem } from '../api/permissions-api';
 import { usePermissionsCatalogue } from '../hooks/use-permissions-catalogue';
+import { LoadError } from '@/components/load-error';
 
 interface PermissionPickerProps {
   /** Currently-selected permission ids. */
@@ -52,7 +53,7 @@ export function PermissionPicker({ selectedIds, onChange, disabled }: Permission
   const searchId = useId();
   const [query, setQuery] = useState('');
 
-  const { data, isPending, isError } = usePermissionsCatalogue();
+  const { data, isPending, isError, refetch } = usePermissionsCatalogue();
 
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const normalisedQuery = query.trim().toLocaleLowerCase();
@@ -93,7 +94,7 @@ export function PermissionPicker({ selectedIds, onChange, disabled }: Permission
   }
 
   if (isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />;
   }
 
   return (

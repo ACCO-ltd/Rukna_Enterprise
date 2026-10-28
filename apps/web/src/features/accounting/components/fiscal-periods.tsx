@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Button,
   Table,
   TableBody,
@@ -23,6 +22,7 @@ import { useFiscalYears } from '../hooks/use-accounting';
 import type { AccountingPeriod, FiscalYear } from '../types';
 import { CreateFiscalYearForm } from './create-fiscal-year-form';
 import { FiscalYearCloseAction, PeriodActions } from './period-actions';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Period status is the single most consequential thing on this screen: it decides whether a
@@ -51,7 +51,7 @@ export function FiscalPeriods() {
   }
 
   if (years.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void years.refetch()} />;
   }
 
   return (

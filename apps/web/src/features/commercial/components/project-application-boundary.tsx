@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
 import { useCommercialSummary } from '../hooks/use-commercial';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Resolves the project's single main contract for the project-scoped IPA/IPC routes, then hands
@@ -47,7 +48,7 @@ export function ProjectApplicationBoundary({
   if (summary.isError) {
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void summary.refetch()} />
         <Button variant="outline" asChild>
           <Link href={contractSecurityHref}>{t('back')}</Link>
         </Button>

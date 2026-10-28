@@ -11,6 +11,7 @@ import { formatPhone } from '@/lib/phone';
 import type { CommunicationResourceType } from '../api';
 import { useCommunications, useCommunicationsFor, useResolveCommunication } from '../hooks';
 import { MESSAGE_STATUS_TONE, statusTime } from '../message-status';
+import { LoadError } from '@/components/load-error';
 
 export interface MessageHistoryProps {
   /** One kind of record, or several kept for the same id (an invoice: sends + reminders). */
@@ -68,14 +69,14 @@ function HistoryList({
   hideWhenEmpty = false,
   showTitle = true,
 }: HistoryViewProps & {
-  messages: { isPending: boolean; isError: boolean; data?: OutboundMessageView[] };
+  messages: { isPending: boolean; isError: boolean; data?: OutboundMessageView[]; refetch?: () => unknown };
   showPurpose: boolean;
 }) {
   const t = useTranslations('common.messaging.history');
 
   if (messages.isPending) return null;
   if (messages.isError || !messages.data) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={messages.refetch ? () => void messages.refetch?.() : undefined} />;
   }
   const data = messages.data;
   if (hideWhenEmpty && data.length === 0) return null;

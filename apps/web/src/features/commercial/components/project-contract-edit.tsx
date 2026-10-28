@@ -7,6 +7,7 @@ import { Alert, Button } from '@erp/ui';
 import { ContractEdit } from '@/features/contracts/components/contract-edit';
 
 import { useCommercialSummary } from '../hooks/use-commercial';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Resolves the project's single main contract, then hands editing to the shared `ContractEdit`.
@@ -39,7 +40,7 @@ export function ProjectContractEdit({ projectId }: { projectId: string }) {
   if (summary.isError) {
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void summary.refetch()} />
         <Button variant="outline" asChild>
           <Link href={backHref}>{t('back')}</Link>
         </Button>

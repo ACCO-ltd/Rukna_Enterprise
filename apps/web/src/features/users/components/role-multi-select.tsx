@@ -2,9 +2,10 @@
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, CheckboxField } from '@erp/ui';
+import { CheckboxField } from '@erp/ui';
 
 import { useRoles } from '@/features/roles/hooks/use-roles';
+import { LoadError } from '@/components/load-error';
 
 interface RoleMultiSelectProps {
   /** Currently-selected role ids. */
@@ -23,7 +24,7 @@ interface RoleMultiSelectProps {
 export function RoleMultiSelect({ selectedIds, onChange, disabled }: RoleMultiSelectProps) {
   const t = useTranslations('platform.users.roles');
   const tCommon = useTranslations('common');
-  const { data, isPending, isError } = useRoles();
+  const { data, isPending, isError, refetch } = useRoles();
 
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -48,7 +49,7 @@ export function RoleMultiSelect({ selectedIds, onChange, disabled }: RoleMultiSe
   }
 
   if (isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />;
   }
 
   if (data.length === 0) {

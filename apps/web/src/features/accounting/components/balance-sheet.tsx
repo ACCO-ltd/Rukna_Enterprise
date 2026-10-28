@@ -12,6 +12,7 @@ import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ledgerHref } from '../lib/report-links';
 import type { BalanceSheet, BalanceSheetSection } from '../types';
 import { ReportActions } from './report-actions';
+import { LoadError } from '@/components/load-error';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -74,7 +75,7 @@ export function BalanceSheetReport() {
           />
         </div>
       ) : report.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
       ) : (
         <>
           {/* Assets = Liabilities + Equity is an identity, not a target. If it fails, the

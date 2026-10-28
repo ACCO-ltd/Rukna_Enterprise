@@ -27,6 +27,7 @@ import {
 } from '@erp/ui';
 import type { ManualInvoiceInput, ManualInvoiceLineInput } from '@erp/types';
 
+import { LoadError } from '@/components/load-error';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
 import { ClientForm } from '@/features/clients/components/client-form';
@@ -355,6 +356,16 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
             <FormErrorSummary errors={shownErrors} formErrors={serverProblems} />
           ) : null}
         </div>
+
+        {clients.isError || accounts.isError ? (
+          <LoadError
+            message={t('pickersLoadFailed')}
+            onRetry={() => {
+              if (clients.isError) void clients.refetch();
+              if (accounts.isError) void accounts.refetch();
+            }}
+          />
+        ) : null}
 
         <FormGroup title={t('whoTitle')} description={t('whoSub')}>
           <FormField htmlFor="manual-client" label={t('client')} required error={shownFor('manual-client')}>

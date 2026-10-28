@@ -35,6 +35,7 @@ import type { ClientInvoice, PostInvoicePayload } from '../types';
 import { InvoiceDocumentPreview, MobileInvoicePreviewTrigger } from './invoice-document-preview';
 import { InvoiceStatusBadges } from './invoice-status-badges';
 import { PostInvoiceDialog } from './post-invoice-dialog';
+import { LoadError } from '@/components/load-error';
 
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
@@ -87,7 +88,7 @@ export function InvoiceDetail({
   }
 
   if (invoice.isError || !invoice.data) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void invoice.refetch()} />;
   }
 
   const data = invoice.data;

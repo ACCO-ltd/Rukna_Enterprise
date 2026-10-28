@@ -65,6 +65,7 @@ import {
   useSignatories,
 } from '../hooks/use-accounting';
 import type { BankAccount } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | null } = {}) {
   const t = useTranslations('accounting.bankAccounts');
@@ -276,7 +277,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
     <div className="space-y-6">
       <p className="text-xs text-muted-foreground">{t('dualControlNote')}</p>
 
-      {query.isError && <Alert variant="error" messages={[t('loadFailed')]} />}
+      {query.isError && <LoadError message={t('loadFailed')} onRetry={() => void query.refetch()} />}
 
       {!query.isError && signatories.length === 0 && !query.isPending && (
         <div className="rounded-panel border border-dashed border-border px-4 py-8 text-center">

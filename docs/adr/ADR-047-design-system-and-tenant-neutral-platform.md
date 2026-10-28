@@ -101,6 +101,12 @@ These replace earlier rules, so they are listed explicitly:
   that focuses it, and the same message under the field), `FormGroup`, `LineItemsEditor` and
   `MoneyInput` / `QuantityInput`. Enter inside a line never submits; on the last line it adds the
   next one. The hand-typed sale invoice moved onto the kit on 2026-10-28.
+- **Loading, empty and failed states:** loading shows the matching skeleton (`SkeletonTable`,
+  `SkeletonForm`, `SkeletonRecord`), never a blank area. Empty uses `EmptyState` (what will appear
+  here, plus the action that adds it). A failed load uses `LoadError` (`components/load-error.tsx`):
+  what failed, plus "Try again" whenever the screen can refetch. A list never shows a failed load
+  as "no records". `PlatformDataGrid` does all three for lists. Step 2 (2026-10-28) moved 27
+  screens that showed a bare error with no retry onto `LoadError`.
 - **Undo by delay** (`useUndoableAction`, Step 2g): a reversible list command (cancel a draft)
   removes the row at once and shows a toast with Undo (or Z) for 8 seconds. The command is sent
   only when the window closes, so Undo never needs a server rollback. Leaving the page sends what

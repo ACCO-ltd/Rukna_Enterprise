@@ -23,6 +23,7 @@ import { useFiscalYears, useMonthlyPL } from '../hooks/use-accounting';
 import { exportCsv, reportFilename } from '../lib/export-csv';
 import type { MonthlyPLColumn } from '../types';
 import { ReportActions } from './report-actions';
+import { LoadError } from '@/components/load-error';
 
 export function MonthlyComparisonReport() {
   const t = useTranslations('accounting.monthlyPL');
@@ -116,7 +117,7 @@ export function MonthlyComparisonReport() {
               />
             </div>
           ) : report.isError ? (
-            <Alert variant="error" messages={[t('loadFailed')]} />
+            <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
           ) : /* The endpoint answers 200 with a null body for an unknown fiscal year rather
                 than 404, so the null has to be interpreted here. */
           report.data === null ? (

@@ -50,6 +50,7 @@ import {
 } from '../../quotations/payment-rules';
 import type { ReleaseDraft } from '../../quotations/payment-types';
 import { PaymentBlockers, usePaymentRefusalText } from './payment-shared';
+import { LoadError } from '@/components/load-error';
 
 export interface ReleaseCashDialogProps {
   requestId: string;
@@ -96,7 +97,7 @@ export function ReleaseCashDialog(props: ReleaseCashDialogProps) {
       ) : draft.isError || !draft.data ? (
         <>
           <FormDialogBody>
-            <Alert variant="error" messages={[t('loadFailed')]} />
+            <LoadError message={t('loadFailed')} />
           </FormDialogBody>
           <FormDialogFooter>
             <Button type="button" variant="outline" className="min-h-11" onClick={() => void draft.refetch()}>

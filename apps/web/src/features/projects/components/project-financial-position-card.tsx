@@ -23,6 +23,7 @@ import { Alert } from '@erp/ui';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useProjectFinancialPosition } from '@/features/accounting/hooks/use-accounting';
 import { formatMoney } from '@/lib/format';
+import { LoadError } from '@/components/load-error';
 
 const FINANCIAL_POSITION_VIEW = 'view:financial-position' as const;
 
@@ -63,7 +64,7 @@ export function ProjectFinancialPositionCard({ projectId }: { projectId: string 
           />
         </div>
       ) : fp.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void fp.refetch()} />
       ) : (
         <div className="space-y-4">
           {!fp.data.hasContract ? (

@@ -31,6 +31,7 @@ import type {
   UpdateInvoiceDocumentSettingsBody,
 } from '../types';
 import { InvoiceSettingsPreview } from './invoice-settings-preview';
+import { LoadError } from '@/components/load-error';
 
 export const MAX_PAYMENT_ACCOUNTS = 8;
 const TAGLINE_MAX = 80;
@@ -178,7 +179,7 @@ export function InvoiceDocumentSettingsPanel() {
   const settings = useInvoiceDocumentSettings();
 
   if (settings.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void settings.refetch()} />;
   }
   if (!settings.data) {
     return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
