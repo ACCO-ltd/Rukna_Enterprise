@@ -42,3 +42,24 @@ export interface ReadDocumentRequest {
   platformFileId: string;
   kind: DocumentReadingKind;
 }
+
+// ─── Phone Home: sent back (Step 7) ──────────────────────────────────────
+// `GET /procurement/sent-back` — what the signed-in collector was asked to redo, newest first:
+// a quotation round returned for more quotes, a quote rejected, a receipt photo rejected.
+
+export type SentBackKind = 'QUOTATION_RETURNED' | 'QUOTE_REJECTED' | 'RECEIPT_REJECTED';
+
+export interface SentBackItem {
+  kind: SentBackKind;
+  id: string;
+  /** The quotation request it belongs to (every item opens there). */
+  quotationRequestId: string;
+  /** The round's number (QR-…), or the receipt's number (SD-…). */
+  number: string;
+  /** Who the quote or receipt is from, when known. */
+  storeName: string | null;
+  /** ILLEGIBLE, WRONG_ITEMS, INCOMPLETE, WRONG_PO, DUPLICATE, OTHER — null for a returned round. */
+  reason: string | null;
+  note: string | null;
+  at: string;
+}

@@ -21,6 +21,9 @@ import { QuotationOrderService } from './application/quotation-order.service.js'
 import { QuotationListService } from './application/quotation-list.service.js';
 import { QuotationMaterialRequestLink } from './application/quotation-material-request-link.service.js';
 import { QuotationRequestController } from './presentation/quotation-request.controller.js';
+import { SentBackController } from './presentation/sent-back.controller.js';
+import { SentBackService } from './application/sent-back.service.js';
+import { SentBackRepository } from './infrastructure/sent-back.repository.js';
 import { QuotationPaymentNotifier } from './application/quotation-payment-notifier.service.js';
 import { QuotationPaymentReadModel } from './application/quotation-payment-read-model.service.js';
 import { QuotationPaymentPathService } from './application/quotation-payment-path.service.js';
@@ -36,8 +39,11 @@ import {
  */
 @Module({
   imports: [TenancyModule, AuditLogsModule, WorkflowsModule, PurchaseOrdersModule, NotificationsModule, CommunicationModule],
-  controllers: [QuotationRequestController],
+  controllers: [QuotationRequestController, SentBackController],
   providers: [
+    // Step 7 — the phone Home's sent-back list.
+    SentBackService,
+    SentBackRepository,
     QuotationRequestRepository,
     QuotationAccessService,
     QuotationCommandRunner,

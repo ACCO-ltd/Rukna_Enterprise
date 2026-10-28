@@ -2858,5 +2858,37 @@
         "missing": "missing"
       }
     }
+  },
+  "site": {
+    "title": "What are you sending?",
+    "actionsLabel": "Send",
+    "waiting": "{count, plural, one {# photo is waiting for signal} other {# photos are waiting for signal}} — it goes by itself when the phone is back online.",
+    "sentBackTitle": "{count, plural, one {Sent back to you (#)} other {Sent back to you (#)}}",
+    "sentBack": {
+      "QUOTATION_RETURNED": "{number}: one more quote needed",
+      "QUOTE_REJECTED": "{number}: retake the quote from {store}",
+      "RECEIPT_REJECTED": "Receipt {number} from {store}: send it again"
+    },
+    "reason": {
+      "ILLEGIBLE": "Photo is blurry — retake",
+      "WRONG_ITEMS": "Quote is for the wrong items",
+      "INCOMPLETE": "Quote is incomplete",
+      "WRONG_PO": "Receipt is for another order",
+      "DUPLICATE": "Already sent",
+      "OTHER": "See the note"
+    },
+    "actions": {
+      "quote": "Supplier quote",
+      "receipt": "Receipt",
+      "delivery": "Delivery note",
+      "request": "Material request"
+    },
+    "actionHints": {
+      "quote": "Photograph each quote",
+      "receipt": "Photograph what you paid",
+      "delivery": "Goods arrived on site",
+      "request": "Ask for materials"
+    },
+    "nothingToSend": "Your role does not send quotes, receipts, delivery notes or material requests."
   }
 }
