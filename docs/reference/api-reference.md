@@ -251,6 +251,22 @@ All endpoints are scoped to the authenticated user's organization.
 | `GET` | `/organizations/:id` | Get organization |
 | `PATCH` | `/organizations/:id/branding` | `manage:organization`. Invoice branding: logo file, legal address, tax ID, brand colour, footer note, template. |
 
+#### Hand-typed invoices (ADR-048)
+
+`manage:receivable`. For sales **outside** a construction contract only: no project, contract or
+source. Lines are `{ description, quantity, unitPrice, revenueAccountCode }` (1–50), priced to
+cents. Each line's account must be an active, posting INCOME account. Errors:
+`400 MANUAL_INVOICE_INVALID` with `details.problems`.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/invoices/manual` | Body `{ clientId, invoiceDate, dueDate, currencyCode, taxCodeId?, paymentTerms?, lines }`. Returns the invoice detail with `source.kind = 'MANUAL'` and `lines`. |
+| `PUT` | `/invoices/:id/manual` | Same body; rewrites a DRAFT in full. `409 INVOICE_NOT_DRAFT` once it is approved; `400 INVOICE_NOT_MANUAL` for a contract invoice. |
+
+`GET /invoices/:id` now also returns `lines: ManualInvoiceLineDto[]` (empty for source invoices).
+Posting a manual invoice credits each income account for its lines (`409 MANUAL_LINES_MISMATCH` if
+the lines and subtotal disagree).
+
 #### Saved list views (Step 2a, ADR-047)
 
 Authentication only. A view is a named list state (`{ search?, filters?, sort?, columns? }`, strings

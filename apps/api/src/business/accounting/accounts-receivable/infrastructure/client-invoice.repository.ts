@@ -35,6 +35,16 @@ export interface CreateClientInvoiceData {
   retentionReleasedAmount?: Decimal;
 }
 
+/** ADR-048 — one priced line of a hand-typed invoice, as stored. */
+export interface ManualInvoiceLineData {
+  lineNo: number;
+  description: string;
+  quantity: Decimal;
+  unitPrice: Decimal;
+  amount: Decimal;
+  revenueAccountId: string;
+}
+
 /**
  * The four mutually-exclusive source relations, each narrowed to its human reference. Read by
  * the detail and list paths so both can resolve an invoice's `source`; never by the
@@ -360,6 +370,105 @@ export class ClientInvoiceRepository {
         postingStatus: 'NOT_POSTED',
         createdBy: data.createdBy,
       },
+    });
+  }
+
+  // ─── ADR-048 — hand-typed (non-contract) invoices ─────────────────────────────
+
+  /**
+   * The income accounts a manual invoice line may credit, by code: active, posting-allowed, and
+   * of class INCOME in their current version. Anything else (a header, a control account, an
+   * expense) is simply absent from the result, so the service can name the bad code.
+   */
+  async findIncomeAccountsByCode(prisma: TenantPrisma, organizationId: string, codes: string[]) {
+    const accounts = await prisma.account.findMany({
+      where: {
+        organizationId,
+        code: { in: codes },
+        status: 'ACTIVE',
+        versions: { some: { effectiveTo: null, accountClass: 'INCOME', isPostingAllowed: true, isControlAccount: false } },
+      },
+      select: { id: true, code: true },
+    });
+    return new Map(accounts.map((a) => [a.code, a.id]));
+  }
+
+  findClientForInvoice(prisma: TenantPrisma, organizationId: string, clientId: string) {
+    return prisma.client.findFirst({
+      where: { id: clientId, organizationId },
+      select: { id: true, name: true, status: true, address: true, taxNumber: true, city: true, countryCode: true },
+    });
+  }
+
+  createManual(
+    prisma: TenantPrisma,
+    data: CreateClientInvoiceData,
+    lines: ManualInvoiceLineData[],
+  ): Promise<ClientInvoice> {
+    return prisma.clientInvoice.create({
+      data: {
+        organizationId: data.organizationId,
+        clientId: data.clientId,
+        isManual: true,
+        invoiceDate: data.invoiceDate,
+        dueDate: data.dueDate,
+        currencyCode: data.currencyCode,
+        subtotal: data.subtotal,
+        vatAmount: data.vatAmount,
+        totalAmount: data.totalAmount,
+        taxCodeId: data.taxCodeId,
+        taxRate: data.taxRate,
+        outstandingAmount: data.totalAmount,
+        paymentTerms: data.paymentTerms ?? null,
+        billingAddressSnapshot: data.billingAddressSnapshot,
+        documentStatus: 'DRAFT',
+        postingStatus: 'NOT_POSTED',
+        createdBy: data.createdBy,
+        lines: {
+          create: lines.map((l) => ({ ...l, organizationId: data.organizationId, currencyCode: data.currencyCode })),
+        },
+      },
+    });
+  }
+
+  /** Rewrite a draft manual invoice's header figures and its whole line set. Run inside a tx. */
+  async replaceManual(
+    tx: TenantPrisma,
+    invoiceId: string,
+    header: Pick<
+      CreateClientInvoiceData,
+      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'vatAmount' | 'totalAmount' | 'taxCodeId' | 'taxRate' | 'paymentTerms' | 'billingAddressSnapshot'
+    >,
+    organizationId: string,
+    lines: ManualInvoiceLineData[],
+  ): Promise<ClientInvoice> {
+    await tx.clientInvoiceLine.deleteMany({ where: { invoiceId } });
+    return tx.clientInvoice.update({
+      where: { id: invoiceId },
+      data: {
+        clientId: header.clientId,
+        invoiceDate: header.invoiceDate,
+        dueDate: header.dueDate,
+        currencyCode: header.currencyCode,
+        subtotal: header.subtotal,
+        vatAmount: header.vatAmount,
+        totalAmount: header.totalAmount,
+        outstandingAmount: header.totalAmount,
+        taxCodeId: header.taxCodeId,
+        taxRate: header.taxRate,
+        paymentTerms: header.paymentTerms ?? null,
+        billingAddressSnapshot: header.billingAddressSnapshot,
+        revision: { increment: 1 },
+        lines: { create: lines.map((l) => ({ ...l, organizationId, currencyCode: header.currencyCode })) },
+      },
+    });
+  }
+
+  findManualLines(prisma: TenantPrisma, organizationId: string, invoiceId: string) {
+    return prisma.clientInvoiceLine.findMany({
+      where: { invoiceId, organizationId },
+      orderBy: { lineNo: 'asc' },
+      include: { revenueAccount: { select: { code: true } } },
     });
   }
 

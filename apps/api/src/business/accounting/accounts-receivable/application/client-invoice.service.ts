@@ -14,7 +14,12 @@ type TenantPrisma = Omit<
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >;
 import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
-import type { RequestIdentity, ClientInvoiceSourceKind } from '@erp/types';
+import type {
+  RequestIdentity,
+  ClientInvoiceSourceKind,
+  ManualInvoiceInput,
+  ManualInvoiceLineDto,
+} from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -25,6 +30,7 @@ import {
   PostingAccountResolver,
   type ResolvedAccount,
 } from '../../accounting-core/application/posting-account-resolver.service.js';
+import { priceManualLines } from '../domain/manual-invoice.policy.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { InvoiceDocumentService } from './invoice-document.service.js';
@@ -174,6 +180,7 @@ function resolveInvoiceSource(inv: {
   sourceBoqNode: { id: string; code: string; description: string } | null;
   sourceRetentionContractId?: string | null;
   sourceRetentionContract?: { id: string; contractNumber: string } | null;
+  isManual?: boolean;
 }): { kind: ClientInvoiceSourceKind; label: string | null; id: string | null } {
   if (inv.sourceInstallmentId) {
     return {
@@ -205,6 +212,7 @@ function resolveInvoiceSource(inv: {
       id: inv.sourceRetentionContractId,
     };
   }
+  if (inv.isManual) return { kind: 'MANUAL', label: null, id: null };
   return { kind: 'NONE', label: null, id: null };
 }
 
@@ -734,6 +742,107 @@ export class ClientInvoiceService {
   }
 
   /**
+   * ADR-048 — a hand-typed DRAFT invoice for a sale outside any construction contract (equipment
+   * hire, surplus materials, services). Its subtotal is the sum of its priced lines; tax follows the
+   * same tax-code rule as every invoice (ADR-041). It never carries a project, contract or source
+   * tag, so contract billing stays source-only (ADR-037). Same lifecycle afterwards: approve → post.
+   */
+  async createManual(identity: RequestIdentity, dto: ManualInvoiceInput) {
+    const prisma = this.tenancyService.getClient();
+    const prepared = await this.prepareManual(prisma, identity, dto);
+    const invoice = await this.repo.createManual(prisma, prepared.header, prepared.lines);
+    return this.findById(identity, invoice.id);
+  }
+
+  /** ADR-048 — rewrite a DRAFT hand-typed invoice: header and the whole line set. */
+  async updateManual(identity: RequestIdentity, invoiceId: string, dto: ManualInvoiceInput) {
+    const prisma = this.tenancyService.getClient();
+    const existing = await this.repo.findById(prisma, identity.activeOrganizationId, invoiceId);
+    if (!existing) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (!existing.isManual) {
+      throw new BadRequestException({
+        errorCode: 'INVOICE_NOT_MANUAL',
+        message: 'Only a hand-typed invoice can be edited. Contract invoices follow their source.',
+      });
+    }
+    if (existing.documentStatus !== 'DRAFT') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_NOT_DRAFT',
+        message: 'Only a draft invoice can be edited. Cancel or reverse it and raise a new one.',
+      });
+    }
+    const prepared = await this.prepareManual(prisma, identity, dto);
+    await prisma.$transaction((tx) =>
+      this.repo.replaceManual(tx as never, invoiceId, prepared.header, identity.activeOrganizationId, prepared.lines),
+    );
+    return this.findById(identity, invoiceId);
+  }
+
+  private async prepareManual(
+    prisma: ReturnType<TenancyService['getClient']>,
+    identity: RequestIdentity,
+    dto: ManualInvoiceInput,
+  ) {
+    const orgId = identity.activeOrganizationId;
+    const priced = priceManualLines(dto.lines);
+    const problems = [...priced.problems];
+    if (!/^[A-Z]{3}$/.test(dto.currencyCode)) problems.push('Choose a three-letter currency code.');
+    if (dto.dueDate < dto.invoiceDate) problems.push('The due date cannot be before the invoice date.');
+
+    const client = await this.repo.findClientForInvoice(prisma, orgId, dto.clientId);
+    if (!client) problems.push('Choose a client.');
+    else if (client.status !== 'ACTIVE') problems.push(`${client.name} is not active, so it cannot be invoiced.`);
+
+    const codes = [...new Set(priced.lines.map((l) => l.revenueAccountCode))];
+    const accounts = codes.length > 0 ? await this.repo.findIncomeAccountsByCode(prisma, orgId, codes) : new Map();
+    for (const code of codes) {
+      if (!accounts.has(code)) problems.push(`${code} is not an active income account that accepts postings.`);
+    }
+
+    if (problems.length > 0) {
+      throw new BadRequestException({ errorCode: 'MANUAL_INVOICE_INVALID', message: problems.join(' '), details: { problems } });
+    }
+
+    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, priced.subtotal);
+    const org = await this.snapshotOrgBranding(prisma as never, orgId);
+    return {
+      header: {
+        organizationId: orgId,
+        clientId: client!.id,
+        invoiceDate: new Date(dto.invoiceDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: dto.currencyCode,
+        subtotal: priced.subtotal,
+        vatAmount: tax.vatAmount,
+        totalAmount: tax.totalAmount,
+        taxCodeId: tax.taxCodeId,
+        taxRate: tax.taxRate,
+        paymentTerms: dto.paymentTerms,
+        billingAddressSnapshot: {
+          client: {
+            name: client!.name,
+            address: client!.address,
+            taxNumber: client!.taxNumber,
+            city: client!.city,
+            countryCode: client!.countryCode,
+          },
+          description: priced.lines[0]!.description,
+          org,
+        },
+        createdBy: identity.userId,
+      },
+      lines: priced.lines.map((l) => ({
+        lineNo: l.lineNo,
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+        revenueAccountId: accounts.get(l.revenueAccountCode)!,
+      })),
+    };
+  }
+
+  /**
    * ADR-030 CONST-COM-028 (Commercial redesign P1) — compose a variation's OWN standalone DRAFT
    * ClientInvoice from primitives.
    *
@@ -929,8 +1038,21 @@ export class ClientInvoiceService {
       dto.arAccountCode,
       'ACCOUNTS_RECEIVABLE',
     );
-    // A retention release invoice earns no revenue, so it needs no revenue account.
-    const revAccount = new Decimal(invoice.subtotal.toString()).gt(0)
+    // ADR-048 — a hand-typed invoice credits each line's own income account. Its lines must still
+    // add up to the subtotal it was approved at; anything else is refused rather than posted.
+    const manualLines = invoice.isManual ? await this.repo.findManualLines(readPrisma, orgId, invoice.id) : [];
+    if (invoice.isManual) {
+      const linesTotal = manualLines.reduce((sum, l) => sum.plus(l.amount.toString()), new Decimal(0));
+      if (manualLines.length === 0 || !linesTotal.eq(invoice.subtotal.toString())) {
+        throw new ConflictException({
+          errorCode: 'MANUAL_LINES_MISMATCH',
+          message: 'This invoice\'s lines do not add up to its subtotal. Open the draft and save it again.',
+        });
+      }
+    }
+    // A retention release invoice earns no revenue, so it needs no revenue account; a hand-typed one
+    // names an account per line.
+    const revAccount = !invoice.isManual && new Decimal(invoice.subtotal.toString()).gt(0)
       ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE')
       : null;
 
@@ -982,6 +1104,16 @@ export class ClientInvoiceService {
           contractId: invoice.contractId ?? undefined,
         },
       ];
+      // ADR-048 — one credit per income account, summed across the lines that use it.
+      if (invoice.isManual) {
+        const byAccount = new Map<string, Decimal>();
+        for (const line of manualLines) {
+          byAccount.set(line.revenueAccountId, (byAccount.get(line.revenueAccountId) ?? new Decimal(0)).plus(line.amount.toString()));
+        }
+        for (const [accountId, amount] of byAccount) {
+          lines.push({ accountId, debitAmount: new Decimal(0), creditAmount: amount });
+        }
+      }
       // A retention release invoice earns no revenue: no zero-value revenue line.
       if (revAccount && subtotal.gt(0)) {
         lines.push({
@@ -1254,7 +1386,17 @@ export class ClientInvoiceService {
     const prisma = this.tenancyService.getClient();
     const invoice = await this.repo.findByIdWithSource(prisma, identity.activeOrganizationId, id);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
-    return toInvoiceWithSource(invoice);
+    const lines: ManualInvoiceLineDto[] = invoice.isManual
+      ? (await this.repo.findManualLines(prisma, identity.activeOrganizationId, id)).map((l) => ({
+          lineNo: l.lineNo,
+          description: l.description,
+          quantity: l.quantity.toString(),
+          unitPrice: l.unitPrice.toFixed(2),
+          amount: l.amount.toFixed(2),
+          revenueAccountCode: l.revenueAccount.code,
+        }))
+      : [];
+    return { ...toInvoiceWithSource(invoice), lines };
   }
 
   /**
@@ -1375,7 +1517,15 @@ export class ClientInvoiceService {
         taxNumber: client?.taxNumber ?? null,
       },
       project,
-      lines: buildInvoiceLines(lineSource),
+      lines: invoice.isManual
+        ? (await this.repo.findManualLines(prisma, invoice.organizationId, invoice.id)).map((l) => ({
+            title: l.description,
+            detail: null,
+            quantity: l.quantity.toString(),
+            unitPrice: l.unitPrice.toFixed(2),
+            amount: l.amount.toFixed(2),
+          }))
+        : buildInvoiceLines(lineSource),
       paymentAccounts: invoiceDocument?.paymentAccounts ?? [],
       notes: invoiceDocument?.notes ?? null,
       showBankDetails: invoiceDocument?.showBankDetails ?? false,

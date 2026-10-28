@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
+  Controller, Get, Post, Put, Body, Param, Query,
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -16,6 +16,7 @@ import { GenerateInvoiceFromSeparateChargeDto } from './dto/generate-invoice-fro
 import { GenerateInvoiceFromRetentionReleaseDto } from './dto/generate-invoice-from-retention-release.dto.js';
 import { PostInvoiceDto } from './dto/post-invoice.dto.js';
 import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
+import { ManualInvoiceDto } from './dto/manual-invoice.dto.js';
 
 @ApiTags('Client Invoices')
 @ApiBearerAuth('access-token')
@@ -38,6 +39,24 @@ export class ClientInvoiceController {
     @Query('projectId') projectId?: string,
   ) {
     return this.clientInvoiceService.findAll(identity, { clientId, projectId });
+  }
+
+  @Post('manual')
+  @ApiOperation({
+    summary:
+      'ADR-048: a hand-typed draft invoice for a non-contract sale (lines × income accounts; no project or contract)',
+  })
+  @ApiResponse({ status: 400, description: 'MANUAL_INVOICE_INVALID — details.problems lists every rule broken' })
+  createManual(@CurrentUser() identity: RequestIdentity, @Body() dto: ManualInvoiceDto) {
+    return this.clientInvoiceService.createManual(identity, dto);
+  }
+
+  @Put(':id/manual')
+  @ApiOperation({ summary: 'ADR-048: rewrite a DRAFT hand-typed invoice (header and every line)' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 409, description: 'INVOICE_NOT_DRAFT' })
+  updateManual(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ManualInvoiceDto) {
+    return this.clientInvoiceService.updateManual(identity, id, dto);
   }
 
   @Post('from-ipc')

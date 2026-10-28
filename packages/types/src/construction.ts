@@ -2341,7 +2341,48 @@ export type ArPostingStatus =
  * the milestone schedule; it feeds total client revenue, never the contract value (CONST-BOQ-030).
  */
 // RETENTION_RELEASE (ADR-046 §5): the invoice billing a contract's held retention.
-export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'RETENTION_RELEASE' | 'NONE';
+export type ClientInvoiceSourceKind =
+  | 'INSTALLMENT'
+  | 'IPC'
+  | 'SEPARATE_CHARGE'
+  | 'RETENTION_RELEASE'
+  /** ADR-048 — a hand-typed invoice for a non-contract sale. */
+  | 'MANUAL'
+  | 'NONE';
+
+// ─── Hand-typed invoices (ADR-048) ─────────────────────────────────────────
+// Only for sales outside a construction contract (equipment hire, materials, services): no project,
+// no contract. Contract billing stays source-only (ADR-037).
+
+export interface ManualInvoiceLineInput {
+  description: string;
+  /** Decimal string, up to 3 dp. */
+  quantity: string;
+  /** Decimal string, up to 2 dp. */
+  unitPrice: string;
+  /** An active, posting INCOME account (e.g. 42100 Equipment hire income). */
+  revenueAccountCode: string;
+}
+
+export interface ManualInvoiceInput {
+  clientId: string;
+  invoiceDate: string;
+  dueDate: string;
+  currencyCode: string;
+  /** Omitted = the organisation's default sales tax code. */
+  taxCodeId?: string;
+  paymentTerms?: string;
+  lines: ManualInvoiceLineInput[];
+}
+
+export interface ManualInvoiceLineDto {
+  lineNo: number;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  amount: string;
+  revenueAccountCode: string;
+}
 
 export interface ClientInvoiceSource {
   kind: ClientInvoiceSourceKind;

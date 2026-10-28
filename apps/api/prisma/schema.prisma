@@ -2461,6 +2461,7 @@ model Account {
   childVersions AccountVersion[] @relation("AccountVersionParent")
   bankAccount   BankAccount?
   journalLines  JournalLine[]    @relation("JournalLineAccount")
+  invoiceLines  ClientInvoiceLine[] @relation("ClientInvoiceLineRevenue")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -2845,6 +2846,31 @@ model DocumentNumberSequence {
 //   Draft invoice → CANCELLED, new DRAFT generated from new effective IPC
 //   Approved+unposted → Finance manually cancels, new invoice generated
 //   Posted → credit note (reversal JournalEntry) + replacement ClientInvoice
+/// ADR-048 — one line of a hand-typed (non-contract) invoice. Rewritten as a set while the invoice is a
+/// DRAFT; frozen once it is approved. Each line names the income account it credits when posted.
+model ClientInvoiceLine {
+  id               String   @id @default(cuid())
+  organizationId   String   @map("organization_id")
+  invoiceId        String   @map("invoice_id")
+  lineNo           Int      @map("line_no")
+  description      String   @db.VarChar(300)
+  quantity         Decimal  @db.Decimal(18, 3)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(18, 2)
+  /// quantity × unitPrice, rounded to cents — stored so the posted figure never re-derives.
+  amount           Decimal  @db.Decimal(18, 2)
+  currencyCode     String   @map("currency_code") @db.VarChar(3)
+  revenueAccountId String   @map("revenue_account_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  invoice        ClientInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  revenueAccount Account       @relation("ClientInvoiceLineRevenue", fields: [revenueAccountId], references: [id])
+
+  @@unique([invoiceId, lineNo])
+  @@index([organizationId, invoiceId])
+  @@map("client_invoice_lines")
+}
+
 model ClientInvoice {
   id                     String           @id @default(cuid())
   organizationId         String           @map("organization_id")
@@ -2893,6 +2919,10 @@ model ClientInvoice {
   // ADR-046 §5 — on the retention release invoice, the retention it bills (cleared from Retention
   // Receivable). totalAmount = subtotal + vat − retention − advanceRecovery + retentionReleased.
   retentionReleasedAmount Decimal         @default(0) @map("retention_released_amount") @db.Decimal(18, 2)
+  // ADR-048 — a hand-typed invoice for a non-contract sale (equipment hire, materials, services):
+  // its amount is the sum of its `lines`, not copied from a contract source. Never carries a
+  // project, contract or source tag — contract billing stays source-only (ADR-037).
+  isManual               Boolean          @default(false) @map("is_manual")
   paymentTerms           String?          @map("payment_terms")
   notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
@@ -2939,6 +2969,7 @@ model ClientInvoice {
   // this invoice as where a VO slice was billed. Read/trace only — the invoice header is unchanged.
   variationBillingAllocations VariationBillingAllocation[]
   documentFile      PlatformFile?               @relation("ClientInvoiceDocument", fields: [documentFileId], references: [id])
+  lines             ClientInvoiceLine[]
   deliveries        ClientInvoiceDelivery[]
   // Slice 6B — Collection Events + Credit Notes
   followUps         InvoiceFollowUp[]
