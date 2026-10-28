@@ -115,7 +115,10 @@
     "keySelect": "select",
     "keyNew": "new",
     "groupBy": "Group:",
-    "groupNone": "None"
+    "groupNone": "None",
+    "density": "Row density",
+    "densityComfortable": "Comfortable rows",
+    "densityCompact": "Compact rows"
   },
   "emptyState": {
     "noData": "No items yet",

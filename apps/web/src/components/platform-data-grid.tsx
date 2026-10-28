@@ -31,9 +31,10 @@ import {
   TableScroll,
 } from '@erp/ui';
 import Link from 'next/link';
-import { ArrowUpDown, Columns3, Download, Search } from 'lucide-react';
+import { ArrowUpDown, Columns3, Download, Rows3, Rows4, Search } from 'lucide-react';
 
 import { useRecentlySavedRows } from '@/lib/mutation-feedback';
+import { setDensityPreference, useDensityPreference } from '@/features/theme/density-store';
 import { exportCsv, type CsvCell } from '@/features/accounting/lib/export-csv';
 import { downloadXlsx } from '@/lib/xlsx-export';
 
@@ -665,6 +666,7 @@ export function PlatformDataGrid<T>({
   totals,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
+  const density = useDensityPreference();
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
   const searchId = useId();
@@ -1151,11 +1153,33 @@ export function PlatformDataGrid<T>({
             </DropdownMenu>
           ) : null}
 
+          {/* Row density (ADR-047 list toolbar) — a per-user display preference, the same one
+              the design gallery sets; compact shows about a third more rows. */}
+          <div className="hidden items-center rounded-control border border-border-strong p-0.5 md:flex" role="group" aria-label={t('density')}>
+            {(['comfortable', 'compact'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={density === option}
+                aria-label={t(option === 'compact' ? 'densityCompact' : 'densityComfortable')}
+                title={t(option === 'compact' ? 'densityCompact' : 'densityComfortable')}
+                onClick={() => setDensityPreference(option)}
+                className={cn(
+                  'flex size-8 items-center justify-center rounded-sm text-muted-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+                  density === option ? 'bg-surface-selected text-foreground' : 'hover:bg-surface-hover',
+                )}
+              >
+                {option === 'compact' ? <Rows4 size={16} aria-hidden="true" /> : <Rows3 size={16} aria-hidden="true" />}
+              </button>
+            ))}
+          </div>
+
           {enableColumnVisibility ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label={t('columnVisibility')}>
+                <Button variant="outline" className="gap-1.5">
                   <Columns3 size={16} aria-hidden="true" />
+                  <span>{t('columnVisibility')}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

@@ -458,7 +458,8 @@ export function InvoicesList() {
         noMatchMessage={t('noMatches')}
         resultLabel={(count) => t('countLabel', { count })}
         pagination={{ defaultPageSize: 25 }}
-        listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
+        columnVisibility
+      listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
         shortcuts={{
           // Follows the visible "New invoice" link, so N and the button can never go to different places.
           onNew: createAction

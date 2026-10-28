@@ -341,6 +341,7 @@ export function SupplierPaymentsList({
       noMatchMessage={tList('noMatches')}
       resultLabel={(count) => tList('count', { count })}
       pagination={{ defaultPageSize: 25 }}
+      columnVisibility
       listState={view.listState}
       savedViews={
         <ListViewsBar
