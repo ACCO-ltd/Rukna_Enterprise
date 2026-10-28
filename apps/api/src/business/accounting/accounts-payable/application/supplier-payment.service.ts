@@ -47,7 +47,6 @@ import {
 function openingBalanceNotReconciled(tieOut: OpeningBalanceApTieOut | undefined): ConflictException {
   return new ConflictException({
     message: openingBalanceApTieOutProblem(tieOut) ?? 'Opening-balance payables do not tie to the AP control account.',
-    code: 'OPENING_BALANCE_AP_NOT_RECONCILED',
     errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED',
   });
 }

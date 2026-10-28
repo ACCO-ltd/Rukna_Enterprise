@@ -366,7 +366,7 @@ export class ClientInvoiceService {
       );
     } catch (err) {
       if (err instanceof IpcInvoicePeriodError) {
-        throw new BadRequestException({ code: err.code, message: err.message });
+        throw new BadRequestException({ errorCode: err.code, message: err.message });
       }
       throw err;
     }
@@ -377,7 +377,7 @@ export class ClientInvoiceService {
     const amountDue = tax.totalAmount.minus(period.retention).minus(period.advanceRecovery);
     if (!amountDue.gt(0)) {
       throw new BadRequestException({
-        code: 'IPC_AMOUNT_DUE_NOT_POSITIVE',
+        errorCode: 'IPC_AMOUNT_DUE_NOT_POSITIVE',
         message:
           `Retention (${period.retention.toFixed(2)}) and advance recovery ` +
           `(${period.advanceRecovery.toFixed(2)}) leave nothing due on this period's ` +
@@ -454,7 +454,7 @@ export class ClientInvoiceService {
     if (!contract) throw new NotFoundException(`Contract ${dto.contractId} not found`);
     if (!contract.retentionTerms?.retentionReleasedAt) {
       throw new BadRequestException({
-        code: 'RETENTION_NOT_RELEASED',
+        errorCode: 'RETENTION_NOT_RELEASED',
         message: 'Release the contract’s retention before invoicing it.',
       });
     }
@@ -466,7 +466,7 @@ export class ClientInvoiceService {
         return position.openDraft;
       }
       throw new BadRequestException({
-        code: 'RETENTION_DRAFT_STALE',
+        errorCode: 'RETENTION_DRAFT_STALE',
         message:
           `A retention release draft for ${position.openDraft.retentionReleasedAmount.toString()} is open, but ` +
           `${position.due.toFixed(2)} is now due. Cancel the draft and raise the release again.`,
@@ -513,7 +513,7 @@ export class ClientInvoiceService {
   private assertRetentionReleasable(position: { due: Decimal; pendingWithRetention: number }) {
     if (position.pendingWithRetention > 0) {
       throw new BadRequestException({
-        code: 'RETENTION_INVOICES_UNPOSTED',
+        errorCode: 'RETENTION_INVOICES_UNPOSTED',
         message:
           `${position.pendingWithRetention} certificate invoice(s) on this contract still hold retention and are ` +
           'not posted. Post or cancel them first, so the release bills all the retention held.',
@@ -521,7 +521,7 @@ export class ClientInvoiceService {
     }
     if (!position.due.gt(0)) {
       throw new BadRequestException({
-        code: 'RETENTION_NOTHING_HELD',
+        errorCode: 'RETENTION_NOTHING_HELD',
         message: 'No retention is held on this contract beyond what was already released and invoiced.',
       });
     }
@@ -873,7 +873,7 @@ export class ClientInvoiceService {
     // with a replacement invoice instead. An opening-balance invoice is already in the opening journal.
     if (invoice.postingStatus === 'REVERSED') {
       throw new ConflictException({
-        code: 'INVOICE_REVERSED',
+        errorCode: 'INVOICE_REVERSED',
         message: `Invoice ${invoice.invoiceNumber ?? dto.invoiceId} was reversed and cannot be posted again. Raise a replacement invoice.`,
       });
     }
@@ -912,7 +912,7 @@ export class ClientInvoiceService {
       );
       if (new Decimal(invoice.retentionReleasedAmount.toString()).gt(position.due)) {
         throw new BadRequestException({
-          code: 'RETENTION_RELEASE_STALE',
+          errorCode: 'RETENTION_RELEASE_STALE',
           message:
             `This release bills ${invoice.retentionReleasedAmount.toString()} but only ${position.due.toFixed(2)} ` +
             'of retention is held and not yet released. Cancel it and raise the release again.',
@@ -1145,7 +1145,7 @@ export class ClientInvoiceService {
       const position = await this.repo.findRetentionPosition(prisma, orgId, invoice.contractId);
       if (position.released.gt(position.held.minus(heldHere))) {
         throw new BadRequestException({
-          code: 'RETENTION_ALREADY_RELEASED',
+          errorCode: 'RETENTION_ALREADY_RELEASED',
           message:
             `This invoice holds ${heldHere.toFixed(2)} of retention that a posted retention release invoice ` +
             'has already billed. Reverse the release invoice first.',

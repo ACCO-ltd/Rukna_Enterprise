@@ -276,7 +276,7 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
 
   it('PR-02: prepare refuses a stage that already has a live invoice (STAGE_ALREADY_INVOICED)', async () => {
     await expect(billing.preparePackage(identity, projectId, st.A, {})).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'STAGE_ALREADY_INVOICED' }),
+      response: expect.objectContaining({ errorCode: 'STAGE_ALREADY_INVOICED' }),
     });
   });
 
@@ -299,7 +299,7 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
     expect(built.todo.filter((t) => t.kind === 'DRAFT_INVOICE')).toHaveLength(1);
     expect(todoDraft?.amount).toBe('215250.00'); // 204,750 + 10,500
     await expect(workspace.getPreparePreview(identity, projectId, st.A)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'STAGE_ALREADY_INVOICED' }),
+      response: expect.objectContaining({ errorCode: 'STAGE_ALREADY_INVOICED' }),
     });
   });
 

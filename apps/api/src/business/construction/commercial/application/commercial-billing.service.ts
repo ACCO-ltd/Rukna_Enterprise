@@ -425,7 +425,6 @@ export class CommercialBillingService {
       if (now.hasLiveInvoice) {
         throw new ConflictException({
           message: `Installment "${installment.name}" already has an invoice — readiness cannot be set after billing.`,
-          code: 'STAGE_ALREADY_INVOICED',
           errorCode: 'STAGE_ALREADY_INVOICED',
         });
       }
@@ -500,7 +499,6 @@ export class CommercialBillingService {
       if (now.hasLiveInvoice) {
         throw new ConflictException({
           message: `Installment "${installment.name}" has an invoice — readiness cannot be revoked after billing.`,
-          code: 'STAGE_ALREADY_INVOICED',
           errorCode: 'STAGE_ALREADY_INVOICED',
         });
       }

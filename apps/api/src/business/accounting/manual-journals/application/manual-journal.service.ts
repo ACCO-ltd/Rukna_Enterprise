@@ -139,13 +139,13 @@ export class ManualJournalService {
     if (!journal) throw new NotFoundException(`Journal ${journalId} not found`);
     if (journal.status !== 'DRAFT' && journal.status !== 'REJECTED') {
       throw new ConflictException({
-        code: 'JOURNAL_NOT_EDITABLE',
+        errorCode: 'JOURNAL_NOT_EDITABLE',
         message: `Only a draft or rejected journal can be edited (status: ${journal.status}).`,
       });
     }
     if (journal.createdBy !== userId) {
       throw new ForbiddenException({
-        code: 'JOURNAL_NOT_PREPARER',
+        errorCode: 'JOURNAL_NOT_PREPARER',
         message: 'Only the person who prepared this journal can edit it.',
       });
     }

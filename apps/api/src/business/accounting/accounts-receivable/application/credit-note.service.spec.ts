@@ -196,7 +196,7 @@ describe('createCreditNote', () => {
     }).catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'CREDIT_EXCEEDS_OUTSTANDING',
+      errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
     });
   });
 });

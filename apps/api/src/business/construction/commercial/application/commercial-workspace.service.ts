@@ -404,7 +404,6 @@ export class CommercialWorkspaceService {
     if (installment.clientInvoice && installment.clientInvoice.documentStatus !== 'CANCELLED') {
       throw new BadRequestException({
         message: `"${installment.name}" already has an invoice.`,
-        code: 'STAGE_ALREADY_INVOICED',
         errorCode: 'STAGE_ALREADY_INVOICED',
       });
     }

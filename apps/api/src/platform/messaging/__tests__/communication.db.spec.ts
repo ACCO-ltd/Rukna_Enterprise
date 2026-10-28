@@ -281,7 +281,7 @@ describe('WA-07 review follow-ups', () => {
     const req = input();
     await run(() => service.sendWhatsAppTemplate(me, req));
     await expect(run(() => service.sendWhatsAppTemplate(me, { ...req, resourceId: 'inv-2' }))).rejects.toMatchObject({
-      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+      response: { errorCode: 'IDEMPOTENCY_KEY_REUSED' },
     });
   });
 

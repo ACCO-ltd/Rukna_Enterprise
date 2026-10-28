@@ -487,7 +487,6 @@ export class SupplierBillService {
       if (block === 'OPENING_BALANCE_BILL') {
         throw new ConflictException({
           message: `Bill ${dto.billId} is an opening balance from the previous system — it is already in the ledger and is not posted again`,
-          code: 'OPENING_BALANCE_BILL',
           errorCode: 'OPENING_BALANCE_BILL',
         });
       }

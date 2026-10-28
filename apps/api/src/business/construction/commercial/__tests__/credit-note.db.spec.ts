@@ -415,7 +415,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'CREDIT_EXCEEDS_OUTSTANDING',
+      errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
     });
   });
 
@@ -702,7 +702,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'CREDIT_EXCEEDS_OUTSTANDING',
+      errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
     });
 
     // Outstanding must remain at 100,000 — no partial decrement
@@ -771,7 +771,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'CREDIT_EXCEEDS_OUTSTANDING',
+      errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
     });
 
     // Outstanding remains 0 — CN-B did not further decrement it

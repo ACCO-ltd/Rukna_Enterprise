@@ -109,7 +109,7 @@ export class CreditNoteService {
 
     if (alreadyCredited.plus(totalAmount).gt(outstanding)) {
       throw new BadRequestException({
-        code: 'CREDIT_EXCEEDS_OUTSTANDING',
+        errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
         message:
           `Credit note total (${totalAmount.toFixed(2)}) plus existing credits ` +
           `(${alreadyCredited.toFixed(2)}) would exceed the invoice outstanding balance ` +
@@ -275,7 +275,7 @@ export class CreditNoteService {
       const currentOutstanding = new Decimal(String(lockedRows[0].outstanding_amount));
       if (totalAmount.gt(currentOutstanding)) {
         throw new BadRequestException({
-          code: 'CREDIT_EXCEEDS_OUTSTANDING',
+          errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
           message:
             `Credit note total (${totalAmount.toFixed(2)}) exceeds current invoice outstanding balance ` +
             `(${currentOutstanding.toFixed(2)}).`,
