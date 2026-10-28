@@ -429,6 +429,11 @@ export function listGoodsReceiptAttachments(grnId: string): Promise<GrnAttachmen
   return apiClient<GrnAttachment[]>(`/procurement/goods-receipts/${grnId}/attachments`);
 }
 
+/** Step 7 — `POST /procurement/goods-receipts/:id/attachments`: the delivery note's photo, before posting. */
+export function attachGoodsReceiptFile(grnId: string, platformFileId: string, purpose: 'DELIVERY_NOTE' | 'OTHER' = 'DELIVERY_NOTE'): Promise<GrnAttachment> {
+  return apiClient<GrnAttachment>(`/procurement/goods-receipts/${grnId}/attachments`, { method: 'POST', body: JSON.stringify({ platformFileId, purpose }) });
+}
+
 /**
  * `POST /procurement/purchase-orders/:id/revise` — a new DRAFT revision.
  *

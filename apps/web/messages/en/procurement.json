@@ -416,6 +416,15 @@
       "reasonHint": "What needs to change before it can be approved.",
       "reasonRequired": "Enter a reason.",
       "confirm": "Reject request"
+    },
+    "photo": {
+      "take": "Photograph a list",
+      "retake": "Retake",
+      "choose": "Choose a photo",
+      "attached": "Photo ready",
+      "hint": "A handwritten or printed list of what is needed.",
+      "failed": "The photo could not be uploaded. Try again, or type the items.",
+      "read": "Add the items from the photo"
     }
   },
   "po": {
@@ -601,6 +610,17 @@
         "dialogBody": "Explain why you need to receive this order yourself. An approver will review it.",
         "reasonLabel": "Reason",
         "submit": "Request exception"
+      },
+      "photo": {
+        "take": "Photograph the delivery note",
+        "retake": "Retake",
+        "choose": "Choose a photo",
+        "attached": "Photo ready",
+        "hint": "Kept with the receipt as evidence of what arrived.",
+        "failed": "The photo could not be uploaded. Try again, or carry on without it.",
+        "read": "Read the quantities from the photo",
+        "unmatchedTitle": "{count, plural, one {# line on the note matches nothing on the order} other {# lines on the note match nothing on the order}}",
+        "attachFailed": "The receipt was saved, but the photo could not be attached to it. Attach it from the receipt."
       }
     },
     "post": "Post",

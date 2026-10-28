@@ -34,6 +34,8 @@ import { FormErrorSummary, type FormFieldError } from '@/components/form-error-s
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjects } from '@/features/projects/hooks/use-projects';
+import type { DocumentReadResult } from '@erp/types';
+
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 
@@ -43,6 +45,8 @@ import {
   useSpendCategories,
   useUoms,
 } from '../hooks/use-procurement';
+import { itemsFromMaterialList } from '../material-list-reading';
+import { ReadablePhoto } from './readable-photo';
 import type { CreateMaterialRequestPayload, MaterialRequestPriority, MaterialRequestScope } from '../types';
 import {
   MrItemsEditor,
@@ -180,6 +184,21 @@ export function MrForm() {
   const leave = () =>
     router.push(fromProjectId ? `/projects/${fromProjectId}/procurement/requests` : '/procurement/requests');
 
+  // Step 7 — a photographed list: its lines replace an untouched first row, or follow the typed ones.
+  const [listPhotoId, setListPhotoId] = useState<string | null>(null);
+  const addReadItems = (reading: DocumentReadResult) => {
+    const read = itemsFromMaterialList(reading, materials.data ?? [], uoms.data ?? [], () => {
+      const key = `item-${nextKey.current}`;
+      nextKey.current += 1;
+      return key;
+    });
+    if (read.length === 0) return;
+    setItems((current) => {
+      const untouched = current.length === 1 && !current[0]!.material && !current[0]!.description && !current[0]!.quantity;
+      return untouched ? read : [...current, ...read];
+    });
+  };
+
   const addItem = () => {
     const key = `item-${nextKey.current}`;
     nextKey.current += 1;
@@ -303,6 +322,14 @@ export function MrForm() {
             <h2 id="mr-items-section" className="border-b border-border pb-2 text-body font-semibold text-foreground">
               {t('itemsSection')}
             </h2>
+
+            <ReadablePhoto
+              kind="MATERIAL_LIST"
+              messages="procurement.mr.photo"
+              fileId={listPhotoId}
+              onUploaded={setListPhotoId}
+              onRead={addReadItems}
+            />
 
             <MrItemsEditor
               items={items}

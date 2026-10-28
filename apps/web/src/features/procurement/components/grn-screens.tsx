@@ -55,6 +55,8 @@ import {
   usePurchaseOrder,
   useReceivablePurchaseOrders,
 } from '../hooks/use-procurement';
+import { attachGoodsReceiptFile } from '../api/procurement-api';
+import { applyDeliveryReading } from '../delivery-note-reading';
 import { activeRevision } from '../quantities';
 import type { GoodsReceipt, GoodsReceiptStatus } from '../types';
 import {
@@ -68,6 +70,7 @@ import {
   toGrnLinePayload,
   type GrnLineDraft,
 } from './grn-line-editor';
+import { ReadablePhoto } from './readable-photo';
 import { ClassificationChips } from './classification-chips';
 import { ListRowMenu, errorText } from './list-row-menu';
 import { useListControls } from './use-list-controls';
@@ -329,6 +332,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const [purchaseOrderId, setPurchaseOrderId] = useState(initialPoId ?? '');
   const [deliveryDate, setDeliveryDate] = useState(today);
   const [deliveryNoteRef, setDeliveryNoteRef] = useState('');
+  // Step 7 — the delivery note's photo, attached to the receipt when it is saved, and what
+  // reading it found that matched no order line (for the person to place).
+  const [photoFileId, setPhotoFileId] = useState<string | null>(null);
+  const [unmatchedRead, setUnmatchedRead] = useState<string[]>([]);
+  const [attachFailed, setAttachFailed] = useState(false);
   const [edited, setEdited] = useState<GrnLineDraft[] | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -436,6 +444,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
           lines: submittableGrnLines(lines ?? []).map(toGrnLinePayload),
         });
         createdIdRef.current = grn.id;
+        // The photo goes on while the receipt is still a draft; posting freezes it with the
+        // record. A failed attach does not stop the receipt — the person is told.
+        if (photoFileId) {
+          await attachGoodsReceiptFile(grn.id, photoFileId).catch(() => setAttachFailed(true));
+        }
       }
 
       // A held receipt (A1) is never forced through. The server does not hold over-receipts
@@ -457,7 +470,7 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     } finally {
       setBusy(false);
     }
-  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef, lines, tc]);
+  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef, lines, tc, photoFileId]);
 
   // ── States before the form ─────────────────────────────────────────────────────
   if (receivable.isPending) return <SkeletonRecord label={tc('loading')} />;
@@ -568,6 +581,30 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
               >
                 <Input id="grn-note" value={deliveryNoteRef} onChange={(e) => setDeliveryNoteRef(e.target.value)} />
               </FormField>
+
+              {selected && !blocked && lines ? (
+                <div className="sm:col-span-2">
+                  <ReadablePhoto
+                    kind="DELIVERY_NOTE"
+                    messages="procurement.grn.receive.photo"
+                    fileId={photoFileId}
+                    onUploaded={setPhotoFileId}
+                    onRead={(reading) => {
+                      const applied = applyDeliveryReading(lines, reading);
+                      setEdited(applied.lines);
+                      setUnmatchedRead(applied.unmatched);
+                      if (reading.documentNumber && !deliveryNoteRef.trim()) setDeliveryNoteRef(reading.documentNumber);
+                      if (reading.date) setDeliveryDate(reading.date);
+                    }}
+                  />
+                  {unmatchedRead.length > 0 ? (
+                    <Notice tone="attention" title={t('photo.unmatchedTitle', { count: unmatchedRead.length })} className="mt-2">
+                      <ul className="list-disc ps-5">{unmatchedRead.map((u) => <li key={u}>{u}</li>)}</ul>
+                    </Notice>
+                  ) : null}
+                  {attachFailed ? <Notice tone="attention" className="mt-2">{t('photo.attachFailed')}</Notice> : null}
+                </div>
+              ) : null}
             </div>
           </section>
 

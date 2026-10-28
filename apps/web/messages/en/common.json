@@ -303,5 +303,11 @@
     "openFailed": "Couldn’t open the file. Try again.",
     "removeFailed": "Couldn’t remove the file. Try again.",
     "loadFailed": "Couldn’t load the attachments."
+  },
+  "photoReader": {
+    "read": "Read the photo",
+    "failed": "The photo could not be read. Fill the form in by hand.",
+    "checkTitle": "Filled in from the photo — check each field",
+    "checkBody": "The reader can misread. Compare each field with the photo before you save."
   }
 }
