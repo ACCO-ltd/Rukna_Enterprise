@@ -251,6 +251,12 @@ All endpoints are scoped to the authenticated user's organization.
 | `GET` | `/organizations/:id` | Get organization |
 | `PATCH` | `/organizations/:id/branding` | `manage:organization`. Invoice branding: logo file, legal address, tax ID, brand colour, footer note, template. |
 
+#### Record search (⌘K, Step 2f, ADR-047)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/search?q=` | Authentication only. Up to 5 records per type matching number, reference or name (`q` ≥ 2 characters): invoices (`manage:receivable`), receipts (`manage:receivable` or `view:receipt`), bills and payments (`manage:payable`), manual journals (`manage:journal`), projects (`view:project`, limited to the caller's memberships), clients (`view:client`), suppliers (`manage:payable` or `view:procurement`). Returns `{ query, records: [{ kind, id, title, detail, amount, currencyCode, status, clientId }] }`. |
+
 #### Hand-typed invoices (ADR-048)
 
 `manage:receivable`. For sales **outside** a construction contract only: no project, contract or

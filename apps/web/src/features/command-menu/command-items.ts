@@ -16,7 +16,7 @@ import type { PermissionKey } from '@/features/auth/permissions/can';
 
 import { COMMAND_ACTIONS, type CommandAction } from './command-actions';
 
-export type CommandGroup = 'goTo' | 'action';
+export type CommandGroup = 'record' | 'action' | 'goTo';
 
 export interface CommandEntry {
   /** Unique within the built list; used as the React key and the active-descendant id. */
@@ -27,6 +27,9 @@ export interface CommandEntry {
   /** Domain context shown after the label, e.g. "Accounting" — undefined for standalone. */
   context?: string;
   href: string;
+  /** Records only: the quiet second line ("Invoice · $237,500.00 · Posted") and the kind word. */
+  detail?: string;
+  kindLabel?: string;
 }
 
 /** The permission seam, matching the shape of `usePermissions()`. */

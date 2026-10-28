@@ -2,6 +2,7 @@
 
 import { Controller, useForm } from 'react-hook-form';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, DatePicker, FormField, Input, MoneyInput, Select } from '@erp/ui';
 
@@ -25,6 +26,7 @@ export function ReceiptForm() {
   const tCommon = useTranslations('common');
   useModuleTrail(t('title'));
 
+  const searchParams = useSearchParams();
   const create = useCreateReceipt();
   const clients = useClients();
 
@@ -35,7 +37,8 @@ export function ReceiptForm() {
     formState: { errors },
   } = useForm<ReceiptFormValues>({
     defaultValues: {
-      clientId: '',
+      // "Record receipt from …" (⌘K) arrives with the client chosen.
+      clientId: searchParams?.get('clientId') ?? '',
       receiptDate: '',
       amount: '',
       reference: '',

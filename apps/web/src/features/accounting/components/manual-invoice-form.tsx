@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import {
@@ -78,7 +78,9 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
   const taxError = useInvoiceTaxErrorMessage();
 
   const today = todayWireDate();
-  const [clientId, setClientId] = useState(invoice?.clientId ?? '');
+  // "New sale invoice for …" (⌘K) arrives with the client chosen.
+  const searchParams = useSearchParams();
+  const [clientId, setClientId] = useState(invoice?.clientId ?? searchParams?.get('clientId') ?? '');
   const [invoiceDate, setInvoiceDate] = useState(invoice?.invoiceDate.slice(0, 10) ?? today);
   const [terms, setTerms] = useState<TermsKey>(termsFromLabel(invoice?.paymentTerms ?? null));
   const [customDue, setCustomDue] = useState(invoice?.dueDate?.slice(0, 10) ?? defaultDueDate(today, 15));

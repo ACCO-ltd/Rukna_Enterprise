@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/api-client';
 import { ManualInvoiceForm } from './manual-invoice-form';
 
 const push = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), useSearchParams: () => null }));
 
 const mutateAsync = vi.fn();
 vi.mock('../hooks/use-invoices', () => ({

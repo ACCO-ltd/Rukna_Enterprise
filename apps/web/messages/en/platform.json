@@ -34,6 +34,22 @@
       "newJournal": "New journal",
       "newBill": "New bill",
       "newPayment": "New payment"
+    },
+    "records": "Records",
+    "search": {
+      "searching": "Searching…",
+      "newSaleFor": "New sale invoice for {name}",
+      "receiptFrom": "Record receipt from {name}",
+      "kind": {
+        "INVOICE": "Invoice",
+        "BILL": "Bill",
+        "PAYMENT": "Payment",
+        "RECEIPT": "Receipt",
+        "JOURNAL": "Journal",
+        "PROJECT": "Project",
+        "CLIENT": "Client",
+        "SUPPLIER": "Supplier"
+      }
     }
   },
   "nav": {
