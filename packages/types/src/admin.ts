@@ -126,6 +126,15 @@ export interface RoleSummary {
   memberCount: number;
 }
 
+/** Step 3 — `GET /roles/matrix`: every role with the ids of the permissions it grants. */
+export interface RoleMatrixRole extends RoleSummary {
+  permissionIds: string[];
+}
+
+export interface RoleMatrix {
+  roles: RoleMatrixRole[];
+}
+
 // ─── Approval-policy versions (ADR-027 GOV-ADM-005) ───────────────────────────
 // Read side for the policy version-history, comparison, and rollback-preview views.
 // The API is the source of truth for the lifecycle: DRAFT → IN_REVIEW → SCHEDULED

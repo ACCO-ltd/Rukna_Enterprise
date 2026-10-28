@@ -7,6 +7,7 @@ describe('ADMIN_TABS', () => {
     expect(ADMIN_TABS.map((tab) => tab.href)).toEqual([
       '/admin/users',
       '/admin/roles',
+      '/admin/roles/matrix',
       '/admin/districts',
       '/admin/project-subtypes',
       '/admin/branding',
@@ -51,5 +52,16 @@ describe('visibleAdminTabs', () => {
   it('keeps every tab for a holder of all three org gates', () => {
     const held = new Set(['manage:district', 'manage:project-type', 'manage:organization']);
     expect(visibleAdminTabs((p) => held.has(p))).toHaveLength(8);
+  });
+});
+
+describe('nested admin tabs (roles matrix)', () => {
+  it('keeps the tab bar on a tab nested under another, and lights only the nested one', async () => {
+    const { activeAdminTab, isAdminDeepRoute } = await import('./admin-nav');
+    expect(isAdminDeepRoute('/admin/roles/matrix')).toBe(false);
+    expect(activeAdminTab('/admin/roles/matrix')).toBe('/admin/roles/matrix');
+    expect(activeAdminTab('/admin/roles')).toBe('/admin/roles');
+    // The governance builder is still a deep route.
+    expect(isAdminDeepRoute('/admin/workflows/pol-1')).toBe(true);
   });
 });

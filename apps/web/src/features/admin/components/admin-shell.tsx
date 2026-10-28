@@ -3,12 +3,11 @@
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
-import { isActiveNavItem } from '@/components/layout/nav-groups';
 import { NavIcon } from '@/components/layout/nav-icon';
 import { WorkspaceTabs } from '@/components/layout/workspace-tabs';
 import { usePermissions } from '@/features/auth/permissions/can';
 
-import { isAdminDeepRoute, visibleAdminTabs } from '../admin-nav';
+import { activeAdminTab, isAdminDeepRoute, visibleAdminTabs } from '../admin-nav';
 
 /**
  * The Administration workspace shell.
@@ -50,6 +49,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   if (isAdminDeepRoute(pathname)) return <>{children}</>;
 
   const tabs = visibleAdminTabs(can);
+  const active = activeAdminTab(pathname);
 
   return (
     <div>
@@ -63,7 +63,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           href: tab.href,
           label: t(`nav.${tab.labelKey}`),
           icon: tab.iconKey ? <NavIcon iconKey={tab.iconKey} size={16} /> : undefined,
-          active: isActiveNavItem(pathname, tab.href),
+          active: tab.href === active,
         }))}
       />
 

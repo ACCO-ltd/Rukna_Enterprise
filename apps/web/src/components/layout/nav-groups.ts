@@ -221,6 +221,8 @@ export const NAV_DOMAINS: NavDomain[] = [
     items: [
       { href: '/admin/users', labelKey: 'users', iconKey: 'users', groupKey: 'people' },
       { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear', groupKey: 'people' },
+      // Step 3 — every permission against every role on one screen.
+      { href: '/admin/roles/matrix', labelKey: 'rolesMatrix', iconKey: 'grid', groupKey: 'people', permissionKey: 'view:role' },
       { href: '/admin/districts', labelKey: 'districts', iconKey: 'building', permissionKey: 'manage:district', groupKey: 'organization' },
       { href: '/admin/project-subtypes', labelKey: 'projectSubtypes', iconKey: 'tag', permissionKey: 'manage:project-type', groupKey: 'organization' },
       { href: '/admin/branding', labelKey: 'branding', iconKey: 'receipt', permissionKey: 'manage:organization', groupKey: 'organization' },

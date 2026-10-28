@@ -9,6 +9,7 @@ import type {
   RequestIdentity,
   RoleWithPermissionsResponse,
   RoleSummary,
+  RoleMatrix,
 } from '@erp/types';
 
 import { AuditLogsService } from '../../audit-logs/application/audit-logs.service.js';
@@ -34,6 +35,16 @@ export class RolesService {
 
   async findAll(orgId: string): Promise<RoleSummary[]> {
     return this.rolesRepository.listSummaries(orgId);
+  }
+
+  /** Step 3 — the roles matrix: every role with what it grants, in two reads rather than one per role. */
+  async matrix(orgId: string): Promise<RoleMatrix> {
+    const [summaries, grants] = await Promise.all([
+      this.rolesRepository.listSummaries(orgId),
+      this.rolesRepository.listPermissionGrants(orgId),
+    ]);
+    const byRole = new Map(grants.map((g) => [g.roleId, g.permissionIds]));
+    return { roles: summaries.map((role) => ({ ...role, permissionIds: byRole.get(role.id) ?? [] })) };
   }
 
   async findOne(orgId: string, id: string): Promise<RoleWithPermissionsResponse> {

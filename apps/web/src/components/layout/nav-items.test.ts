@@ -268,7 +268,7 @@ describe('NAV_DOMAINS', () => {
     it('keeps its items declared here — they feed the command menu and the tab bar', () => {
       // Moving them out of the sidebar must not move them out of the nav model: three
       // consumers read this one list, and a second copy is how they drift apart.
-      expect(admin().items).toHaveLength(8);
+      expect(admin().items).toHaveLength(9);
     });
 
     it('contains users, roles, workflows and audit-logs', () => {
@@ -297,7 +297,7 @@ describe('NAV_DOMAINS', () => {
     it('puts Users and Roles under People', () => {
       const groups = groupNavItems(admin().items);
       const people = groups.find((g) => g.key === 'people');
-      expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles']);
+      expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles', '/admin/roles/matrix']);
     });
 
     it('puts Districts, Project subtypes, Branding and Templates under Organization, keeping their gates', () => {

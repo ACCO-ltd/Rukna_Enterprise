@@ -21,7 +21,15 @@ export const ADMIN_TABS: NavItem[] =
  * rediscovering the bug.
  */
 export function isAdminDeepRoute(pathname: string): boolean {
+  // A tab's own page is never deep, even when it nests under another tab (/admin/roles/matrix).
+  if (ADMIN_TABS.some((tab) => tab.href === pathname)) return false;
   return ADMIN_TABS.some((tab) => pathname.startsWith(`${tab.href}/`));
+}
+
+/** The tab a route belongs to: the longest tab href it sits under, so /admin/roles/matrix lights Matrix only. */
+export function activeAdminTab(pathname: string): string | null {
+  const matches = ADMIN_TABS.filter((tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`));
+  return matches.sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
 }
 
 /** The tabs this user may see. Gates are the item's own — there is no second list to keep. */

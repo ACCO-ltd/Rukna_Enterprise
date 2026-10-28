@@ -135,7 +135,8 @@
     "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}",
     "approvals": "Approvals",
     "approvalsCount": "{count, plural, one {# item waits on you} other {# items wait on you}}",
-    "approvalSettings": "Approval rules"
+    "approvalSettings": "Approval rules",
+    "rolesMatrix": "Roles matrix"
   },
   "admin": {
     "title": "Administration",
@@ -1859,6 +1860,32 @@
       "systemHint": "This is a protected system role. Its access can be reviewed but not altered here.",
       "customHint": "Review access impact and maintain accountable ownership.",
       "loadFailed": "Could not load role governance details."
+    },
+    "matrix": {
+      "title": "Roles matrix",
+      "summary": "{roles} roles · {permissions} permissions",
+      "search": "Search permissions",
+      "area": "Area",
+      "allAreas": "All areas",
+      "hintEdit": "Tick a box to grant a permission to a custom role. System roles are locked.",
+      "hintRead": "Read only. Ask someone who manages roles to change what a role can do.",
+      "colPermission": "Permission",
+      "locked": "System role, locked",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "risk": {
+        "HIGH": "High risk",
+        "CRITICAL": "Critical"
+      },
+      "cellOn": "{role} has {permission}",
+      "cellOff": "{role} does not have {permission}",
+      "noMatches": "No permission matches",
+      "noMatchesHint": "Try another search or area.",
+      "changesLabel": "Unsaved changes",
+      "changes": "{count, plural, one {Unsaved changes to # role} other {Unsaved changes to # roles}}",
+      "discard": "Discard",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "loadFailed": "The roles matrix could not be loaded."
     }
   },
   "auditLogs": {
@@ -3555,7 +3582,8 @@
     "contactUpdated": "Contact updated",
     "contactMadePrimary": "Primary contact changed",
     "templateSaved": "Template saved",
-    "templateReset": "Template reset to the Rukna default"
+    "templateReset": "Template reset to the Rukna default",
+    "roleMatrixSaved": "{count, plural, one {Permissions saved for # role} other {Permissions saved for # roles}}"
   },
   "approvals": {
     "eyebrow": "Your decisions",

@@ -316,6 +316,7 @@ to the default. `GET` needs `view:project`; the writes need `manage:organization
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/roles` | List roles for the authenticated org |
+| `GET` | `/roles/matrix` | Step 3. `view:role`. `{ roles: (RoleSummary & { permissionIds: string[] })[] }`: every role with the permission ids it grants, in one read, for the roles matrix. Saving uses `PUT /roles/:id/permissions` per changed role. |
 | `GET` | `/permissions` | List all platform permissions |
 | `GET` | `/audit-logs` | List audit log entries |
 

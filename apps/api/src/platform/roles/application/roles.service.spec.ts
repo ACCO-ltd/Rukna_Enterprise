@@ -53,6 +53,7 @@ function build(
       : { id: 'role-1', name: over.roleName ?? 'QS' };
   const repo = {
     listSummaries: jest.fn().mockResolvedValue([summary]),
+    listPermissionGrants: jest.fn().mockResolvedValue([{ roleId: summary.id, permissionIds: ['perm-a', 'perm-b'] }]),
     findWithPermissions: jest.fn().mockResolvedValue(roleRecord),
     findByIdInOrg: jest.fn().mockResolvedValue(roleInOrg),
     nameExists: jest.fn().mockResolvedValue(over.nameExists ?? false),
@@ -200,5 +201,14 @@ describe('RolesService', () => {
       ConflictException,
     );
     expect(repo.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('RolesService.matrix (Step 3)', () => {
+  it('returns each role with the permission ids it grants', async () => {
+    const { service } = build();
+    const matrix = await service.matrix('org-1');
+    expect(matrix.roles).toHaveLength(1);
+    expect(matrix.roles[0]!.permissionIds).toEqual(['perm-a', 'perm-b']);
   });
 });
