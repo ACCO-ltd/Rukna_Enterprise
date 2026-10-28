@@ -714,6 +714,100 @@ export class CustomerReceiptService {
     return { receiptId: receipt.id, journalEntryId: postResult.journalEntryId };
   }
 
+  /**
+   * ADR-046 §6 — Receive payment: the money lands straight in the chosen bank account. Records,
+   * posts (EVT-AR-003, Dr that bank's GL account) and applies the receipt in one transaction — no
+   * holding account, no separate Post step. Each allocation must be a posted invoice of this
+   * client, in the receipt's currency, within its outstanding balance (CONST: allocation guards).
+   */
+  async receive(
+    identity: RequestIdentity,
+    dto: {
+      clientId: string;
+      bankAccountId: string;
+      receiptDate: string;
+      amount: string;
+      currency: string;
+      paymentMethod?: string;
+      reference?: string;
+      notes?: string;
+      allocations?: Array<{ clientInvoiceId: string; amount: number }>;
+    },
+  ) {
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const ZERO = new Decimal(0);
+    const allocations = dto.allocations ?? [];
+
+    const total = new Decimal(dto.amount);
+    if (total.lte(ZERO)) throw new BadRequestException('The payment amount must be above 0.');
+
+    const client = await prisma.client.findFirst({ where: { id: dto.clientId, organizationId: orgId }, select: { id: true } });
+    if (!client) throw new NotFoundException(`Client ${dto.clientId} not found`);
+
+    const bank = await prisma.bankAccount.findFirst({
+      where: { id: dto.bankAccountId, organizationId: orgId },
+      include: { glAccount: { select: { code: true } } },
+    });
+    if (!bank) throw new NotFoundException(`Bank account ${dto.bankAccountId} not found`);
+    if (bank.status !== 'ACTIVE' || !bank.allowsReceipts) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_RECEIVING', message: `${bank.accountName} does not accept receipts.` });
+    }
+    if (bank.currencyCode !== dto.currency) {
+      throw new BadRequestException({
+        errorCode: 'CURRENCY_MISMATCH',
+        message: `${bank.accountName} holds ${bank.currencyCode}; this payment is ${dto.currency}.`,
+      });
+    }
+
+    const ids = allocations.map((a) => a.clientInvoiceId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('An invoice is listed twice; combine its amounts into one line.');
+    }
+    const applied = allocations.reduce((sum, a) => sum.plus(new Decimal(a.amount)), ZERO);
+    if (applied.gt(total)) {
+      throw new BadRequestException(`Applied ${applied.toFixed(2)} is more than the payment of ${total.toFixed(2)}.`);
+    }
+    const invoices = ids.length
+      ? await prisma.clientInvoice.findMany({
+          where: { organizationId: orgId, id: { in: ids } },
+          select: { id: true, invoiceNumber: true, clientId: true, postingStatus: true, outstandingAmount: true, currencyCode: true },
+        })
+      : [];
+    for (const a of allocations) {
+      const inv = invoices.find((i) => i.id === a.clientInvoiceId);
+      if (!inv) throw new NotFoundException(`Invoice ${a.clientInvoiceId} not found`);
+      const ref = inv.invoiceNumber ?? inv.id;
+      if (inv.clientId !== dto.clientId) {
+        throw new BadRequestException({ errorCode: 'ALLOCATION_CLIENT_MISMATCH', message: `Invoice ${ref} belongs to a different client.` });
+      }
+      if (inv.postingStatus !== 'POSTED') throw new BadRequestException(`Invoice ${ref} is not issued yet.`);
+      if (inv.currencyCode !== dto.currency) {
+        throw new BadRequestException({ errorCode: 'CURRENCY_MISMATCH', message: `Invoice ${ref} is in ${inv.currencyCode}; this payment is ${dto.currency}.` });
+      }
+      const outstanding = new Decimal(inv.outstandingAmount.toString());
+      if (new Decimal(a.amount).gt(outstanding)) {
+        throw new BadRequestException(`Invoice ${ref} has ${outstanding.toFixed(2)} outstanding; ${a.amount} cannot be applied.`);
+      }
+    }
+
+    const { receiptId } = await prisma.$transaction(async (tx) => {
+      const result = await this.createAndPost(
+        identity,
+        { ...dto, bankAccountCode: bank.glAccount.code, allocations },
+        tx,
+      );
+      // The invoices' outstanding balances moved inside the same transaction; a concurrent receipt
+      // that already settled one would drive it below zero, so re-check before committing.
+      if (ids.length) {
+        const overdrawn = await tx.clientInvoice.count({ where: { id: { in: ids }, outstandingAmount: { lt: 0 } } });
+        if (overdrawn > 0) throw new ConflictException('An invoice was paid while this payment was being recorded. Reload and try again.');
+      }
+      return result;
+    });
+    return this.findById(identity, receiptId);
+  }
+
   // ACC-SET-001 BE-2: receipt creation moved here from the retired finance module. No separate
   // accounting date is captured on the receipt form, so the receipt date is its accounting date.
   async create(identity: RequestIdentity, dto: CreateReceiptDto) {

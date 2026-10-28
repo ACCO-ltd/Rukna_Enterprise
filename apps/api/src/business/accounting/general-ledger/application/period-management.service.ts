@@ -2,11 +2,13 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SnapshotService } from './snapshot.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 
 export interface PeriodTransitionResult {
   periodId: string;
@@ -29,6 +31,7 @@ export class PeriodManagementService {
   constructor(
     private readonly tenancyService: TenancyService,
     private readonly snapshotService: SnapshotService,
+    @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
   ) {}
 
   /**
@@ -177,6 +180,22 @@ export class PeriodManagementService {
           reopenedBy: userId,
           reopenedAt: new Date(),
         },
+      });
+
+      // ADR-046 §7 — reopening needs the permission and a written reason, and no second person;
+      // the audit event is the control, committed with the reopen itself.
+      await this.auditOutbox?.record(tx as never, {
+        organizationId: orgId,
+        actorUserId: userId,
+        action: 'REOPEN',
+        resourceType: 'AccountingPeriod',
+        resourceId: dto.periodId,
+        sourceCommand: 'period.reopen',
+        eventType: 'ACCOUNTING_PERIOD_REOPENED',
+        idempotencyKey: `period-reopen:${dto.periodId}:${Date.now()}`,
+        before: { status: 'CLOSED' },
+        after: { status: 'REOPENED', downstreamInvalidated: count },
+        reason: dto.reason,
       });
 
       return count;

@@ -62,7 +62,7 @@ async function expectRefused(env: AccountingTestEnv, billId: string, message: Re
     totalAmount: 100, paymentMethod: 'BANK_TRANSFER', allocations: [{ supplierBillId: billId, amount: 100 }],
   });
   await expect(create).rejects.toBeInstanceOf(ConflictException);
-  await expect(create).rejects.toMatchObject({ response: { code: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
+  await expect(create).rejects.toMatchObject({ response: { errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
   await expect(create).rejects.toThrow(message);
 
   // A posted advance cannot be applied to it either (the check runs inside the allocation tx).
@@ -80,7 +80,7 @@ async function expectRefused(env: AccountingTestEnv, billId: string, message: Re
       paymentId: advance.id, supplierBillId: billId, amount: 100,
       apAccountCode: env.accounts.apCode, supplierAdvanceCode: env.accounts.advOutCode,
     }),
-  ).rejects.toMatchObject({ response: { code: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
+  ).rejects.toMatchObject({ response: { errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
 
   const bill = await prisma.supplierBill.findUniqueOrThrow({ where: { id: billId } });
   expect(bill.outstandingAmount.toString()).toBe(bill.totalAmount.toString()); // untouched

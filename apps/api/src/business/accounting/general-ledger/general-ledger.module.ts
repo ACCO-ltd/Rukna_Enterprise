@@ -16,9 +16,10 @@ import { YearEndCloseService } from './application/year-end-close.service.js';
 import { ReportController } from './presentation/report.controller.js';
 import { ProjectReportController } from './presentation/project-report.controller.js';
 import { PeriodController } from './presentation/period.controller.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 
 @Module({
-  imports: [TenancyModule, AccountingCoreModule],
+  imports: [TenancyModule, AccountingCoreModule, AuditLogsModule],
   providers: [
     // Phase 3 services — order matters for readability but not for NestJS DI
     SnapshotService,

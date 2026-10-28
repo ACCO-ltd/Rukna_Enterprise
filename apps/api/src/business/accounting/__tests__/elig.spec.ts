@@ -278,5 +278,5 @@ test('ELIG-08 an opening-balance bill whose payables are not on AP control: not 
       paymentMethod: 'BANK_TRANSFER',
       allocations: [{ supplierBillId: b.id, amount: 1 }],
     }),
-  ).rejects.toMatchObject({ response: { code: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
+  ).rejects.toMatchObject({ response: { errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
 });

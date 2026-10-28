@@ -1,7 +1,7 @@
 # ADR-046 — Finance approval simplification: owner decisions of 2026-10-27
 
 **Status:** Accepted — decisions confirmed by the product owner (Abdulsalam) on 2026-10-27, with
-Eng Ahmed's agreement for the ADR-022 change (§1). §1, §2 and §5 are built; §3, §4 and §6–§8 are decided and not yet built.
+Eng Ahmed's agreement for the ADR-022 change (§1). §1, §2 and §5–§7 are built; §3, §4 and §8 are decided and not yet built.
 
 *Numbering note:* main's highest ADR before this was ADR-045. The unmerged branch
 `docs/platform-multi-entity` must renumber its tenant-group ADR past this one.
@@ -104,10 +104,19 @@ retention at once (`retentionSplitOnPC` is not yet applied).
 
 ### 6. Customer payments land straight in the bank
 Receive payment picks the bank account and posts there. No holding ("Undeposited Funds") account.
+*Built 2026-10-28:* `POST /customer-receipts/receive` records, posts (EVT-AR-003, Dr the chosen bank
+account's GL account) and applies the receipt in one transaction. The bank account must be active,
+accept receipts and hold the receipt's currency. Each allocation must be an issued invoice of the
+same client, in that currency, within its balance; whatever is not applied stays unapplied on the
+client. The receipt form shows the bank picker and the client's open invoices, applied oldest due
+first and editable. A user without `manage:receivable` still records a receipt for finance to post.
 
 ### 7. Reopening a closed period — permission plus a written reason
 Anyone holding the reopen permission (CFO by default) reopens with a mandatory reason, which is
 audited. No second person.
+*Built:* `POST /periods/:id/reopen` requires `manage:period` and a reason (≤500), stored
+on the period. Since 2026-10-28 the reopen also writes an `ACCOUNTING_PERIOD_REOPENED` audit event
+in the same transaction.
 
 ### 8. Settings over code
 Each optional approval in §2–§4 is an organisation setting that defaults to off, so approvals can be

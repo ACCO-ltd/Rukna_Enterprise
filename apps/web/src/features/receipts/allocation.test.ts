@@ -5,6 +5,7 @@ import type { ClientInvoice } from '@/features/accounting/types';
 import {
   allocatedMinor,
   allocationProblem,
+  applyOldestFirst,
   fromMinorUnits,
   invoicesForClient,
   isFullyAllocated,
@@ -159,5 +160,28 @@ describe('invoicesForClient', () => {
       invoice({ id: 'payable' }),
     ];
     expect(invoicesForClient(invoices, 'client-a').map((o) => o.invoice.id)).toEqual(['payable']);
+  });
+});
+
+describe('applyOldestFirst (ADR-046 §6)', () => {
+  const option = (id: string, dueDate: string, outstanding: number) => ({
+    invoice: { id, dueDate } as ClientInvoice,
+    outstandingMinor: outstanding,
+  });
+
+  it('settles the oldest due first, each up to its balance, and leaves the rest unapplied', () => {
+    const applied = applyOldestFirst(150_00, [
+      option('late', '2026-10-30', 100_00),
+      option('early', '2026-09-30', 80_00),
+    ]);
+    expect([...applied]).toEqual([
+      ['early', 80_00],
+      ['late', 70_00],
+    ]);
+  });
+
+  it('applies nothing to a later invoice once the money runs out, and nothing for a zero amount', () => {
+    expect([...applyOldestFirst(50_00, [option('a', '2026-09-01', 80_00), option('b', '2026-10-01', 10_00)])]).toEqual([['a', 50_00]]);
+    expect(applyOldestFirst(0, [option('a', '2026-09-01', 80_00)]).size).toBe(0);
   });
 });

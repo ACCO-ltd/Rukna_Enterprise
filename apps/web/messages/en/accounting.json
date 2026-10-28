@@ -1274,7 +1274,8 @@
     "taxCodeDefault": "{code} is now the default sales tax",
     "taxCodeStatus": "{action, select, deactivate {Tax code {code} deactivated} other {Tax code {code} reactivated}}",
     "invoiceSaved": "Invoice saved",
-    "invoiceDraftCreated": "Draft invoice created"
+    "invoiceDraftCreated": "Draft invoice created",
+    "paymentReceived": "Payment received and posted"
   },
   "setup": {
     "title": "Set up accounting",

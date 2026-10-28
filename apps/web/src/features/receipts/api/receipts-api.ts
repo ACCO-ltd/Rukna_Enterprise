@@ -75,6 +75,23 @@ export function createReceipt(payload: CreateReceiptPayload): Promise<Receipt> {
   });
 }
 
+/** ADR-046 §6 — the body of `POST /customer-receipts/receive`. */
+export interface ReceivePaymentPayload extends CreateReceiptPayload {
+  bankAccountId: string;
+  allocations: ReceiptAllocationInput[];
+}
+
+/**
+ * ADR-046 §6 — `POST /customer-receipts/receive`: the payment lands in the chosen bank account,
+ * posted and applied in one action. Returns the posted, numbered receipt.
+ */
+export function receivePayment(payload: ReceivePaymentPayload): Promise<Receipt> {
+  return apiClient<Receipt>('/customer-receipts/receive', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 /** `POST /customer-receipts/:id/post` — Dr Bank / Cr AR (+ Cr Unapplied), atomic with allocations. */
 export function postReceipt(id: string, payload: PostReceiptPayload): Promise<Receipt> {
   return apiClient<Receipt>(`/customer-receipts/${id}/post`, {

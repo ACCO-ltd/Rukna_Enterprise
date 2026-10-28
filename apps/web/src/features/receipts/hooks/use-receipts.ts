@@ -14,6 +14,8 @@ import {
   type AllocateToInvoicePayload,
   type CreateReceiptPayload,
   type PostReceiptPayload,
+  receivePayment,
+  type ReceivePaymentPayload,
 } from '../api/receipts-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 import { openSignedDocument } from '@/lib/open-signed-document';
@@ -54,6 +56,24 @@ export function useCreateReceipt() {
     meta: { successToast: 'accounting.feedback.receiptRecorded' },
     onSuccess: async (receipt) => {
       await queryClient.invalidateQueries({ queryKey: receiptKeys.all });
+      router.push(`/receipts/${receipt.id}`);
+    },
+  });
+}
+
+/** ADR-046 §6 — receive into a bank: posted and applied at once, so invoices and the ledger move. */
+export function useReceivePayment() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: ReceivePaymentPayload) => receivePayment(payload),
+    meta: { successToast: 'accounting.feedback.paymentReceived' },
+    onSuccess: async (receipt) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: receiptKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ['accounting'] }),
+      ]);
       router.push(`/receipts/${receipt.id}`);
     },
   });
