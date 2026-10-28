@@ -123,6 +123,8 @@ export class CustomerReceiptService {
           debitAmount: totalAmount,
           creditAmount: new Decimal(0),
           sourceSubledgerType: 'BANK',
+          // Step 6 (fix forward): the bank line names who paid, like the AR line it balances.
+          clientId: receipt.clientId,
         },
       ];
 
@@ -635,7 +637,7 @@ export class CustomerReceiptService {
 
     // 2. GL journal lines (EVT-AR-003)
     const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
-      { accountId: bankGl.id, debitAmount: totalAmount, creditAmount: ZERO, sourceSubledgerType: 'BANK' },
+      { accountId: bankGl.id, debitAmount: totalAmount, creditAmount: ZERO, sourceSubledgerType: 'BANK', clientId: dto.clientId },
     ];
     if (allocatedAmount.gt(ZERO)) {
       lines.push({

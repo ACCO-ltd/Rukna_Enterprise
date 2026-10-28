@@ -584,6 +584,8 @@ export class SupplierPaymentService {
           debitAmount: new Decimal(0),
           creditAmount: totalAmount,
           sourceSubledgerType: 'BANK' as const,
+          // Step 6 (fix forward): the bank line names who was paid, like the AP line it balances.
+          supplierId: payment.supplierId,
         });
 
         // QA LOW — the journal names documents (payment number, supplier), not raw ids.

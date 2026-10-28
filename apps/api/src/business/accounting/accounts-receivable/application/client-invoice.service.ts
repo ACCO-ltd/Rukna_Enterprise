@@ -1196,14 +1196,21 @@ export class ClientInvoiceService {
       const vatAmount = new Decimal(invoice.vatAmount.toString());
       const totalAmount = new Decimal(invoice.totalAmount.toString());
 
+      // Step 6 (fix forward, owner decision 2026-10-28): every line of the invoice carries the
+      // invoice's client, project and contract, so the ledger answers "by client" and "by project"
+      // for any account, not only revenue. Posted history is left as it is.
+      const tags = {
+        clientId: invoice.clientId,
+        projectId: invoice.projectId ?? undefined,
+        contractId: invoice.contractId ?? undefined,
+      };
       const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
         {
           accountId: arAccount.id,
           debitAmount: totalAmount,
           creditAmount: new Decimal(0),
           sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
-          clientId: invoice.clientId,
-          contractId: invoice.contractId ?? undefined,
+          ...tags,
         },
       ];
       // ADR-048 — one credit per income account, summed across the lines that use it.
@@ -1213,7 +1220,7 @@ export class ClientInvoiceService {
           byAccount.set(line.revenueAccountId, (byAccount.get(line.revenueAccountId) ?? new Decimal(0)).plus(line.amount.toString()));
         }
         for (const [accountId, amount] of byAccount) {
-          lines.push({ accountId, debitAmount: new Decimal(0), creditAmount: amount });
+          lines.push({ accountId, debitAmount: new Decimal(0), creditAmount: amount, ...tags });
         }
       }
       // A retention release invoice earns no revenue: no zero-value revenue line.
@@ -1222,8 +1229,7 @@ export class ClientInvoiceService {
           accountId: revAccount.id,
           debitAmount: new Decimal(0),
           creditAmount: subtotal,
-          projectId: invoice.projectId ?? undefined,
-          contractId: invoice.contractId ?? undefined,
+          ...tags,
         });
       }
 
@@ -1232,6 +1238,8 @@ export class ClientInvoiceService {
           accountId: (vatAccount as AccountWithCurrentVersion).id,
           debitAmount: new Decimal(0),
           creditAmount: vatAmount,
+          ...tags,
+          taxCodeId: invoice.taxCodeId ?? undefined,
         });
       }
 
@@ -1459,6 +1467,7 @@ export class ClientInvoiceService {
             // project revenue (and the project P&L) kept a reversed invoice.
             projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
+            taxCodeId: l.taxCodeId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
         },

@@ -234,7 +234,7 @@ export class CreditNoteService {
     // Invoice lookup for AR client/contract tags plus immutable tax fields for cap re-check
     const invoice = await outerPrisma.clientInvoice.findFirst({
       where: { id: creditNote.invoiceId, organizationId: orgId },
-      select: { clientId: true, contractId: true, projectId: true, currencyCode: true, subtotal: true, vatAmount: true },
+      select: { clientId: true, contractId: true, projectId: true, taxCodeId: true, currencyCode: true, subtotal: true, vatAmount: true },
     });
 
     // Pre-compute vatRate and variationCap from immutable invoice/variation fields (outside tx)
@@ -306,17 +306,16 @@ export class CreditNoteService {
         }
       }
 
-      // EVT-AR-007: Dr Revenue / Dr VAT / Cr AR
+      // EVT-AR-007: Dr Revenue / Dr VAT / Cr AR. Every line carries the invoice's client, project
+      // and contract — the credit takes revenue back from the project the invoice recognised it on
+      // (EVT-AR-001), and Step 6 tags the VAT and AR lines the same way (fix forward).
+      const tags = {
+        clientId: invoice?.clientId ?? undefined,
+        projectId: invoice?.projectId ?? undefined,
+        contractId: invoice?.contractId ?? undefined,
+      };
       const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
-        {
-          accountId: revAccount.id,
-          debitAmount: netAmount,
-          creditAmount: new Decimal(0),
-          // The credit takes revenue back from the project the invoice recognised it on — the
-          // invoice posts its revenue credit with the same projectId (EVT-AR-001).
-          projectId: invoice?.projectId ?? undefined,
-          contractId: invoice?.contractId ?? undefined,
-        },
+        { accountId: revAccount.id, debitAmount: netAmount, creditAmount: new Decimal(0), ...tags },
       ];
 
       if (vatAccount && vatAmount.gt(0)) {
@@ -324,6 +323,8 @@ export class CreditNoteService {
           accountId: vatAccount.id,
           debitAmount: vatAmount,
           creditAmount: new Decimal(0),
+          ...tags,
+          taxCodeId: invoice?.taxCodeId ?? undefined,
         });
       }
 
@@ -332,8 +333,7 @@ export class CreditNoteService {
         debitAmount: new Decimal(0),
         creditAmount: totalAmount,
         sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
-        clientId: invoice?.clientId ?? undefined,
-        contractId: invoice?.contractId ?? undefined,
+        ...tags,
       });
 
       // Claimed before posting (same transaction) so the journal names the credit note's number.
@@ -451,6 +451,7 @@ export class CreditNoteService {
             clientId: l.clientId ?? undefined,
             projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
+            taxCodeId: l.taxCodeId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
         },
