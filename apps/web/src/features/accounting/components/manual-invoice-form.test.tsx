@@ -111,4 +111,31 @@ describe('ManualInvoiceForm (ADR-048)', () => {
     await user.click(screen.getByRole('radio', { name: 'Net 30' }));
     expect(screen.getByRole('radio', { name: 'Net 30' })).toHaveAttribute('aria-checked', 'true');
   });
+
+  it('links each problem in the summary to its field (ADR-037 form kit)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ManualInvoiceForm />);
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(screen.getByText('Fix 3 fields before saving')).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Line 1 description' }));
+    expect(screen.getByLabelText('Line 1 description')).toHaveFocus();
+  });
+
+  it('adds a line on Enter in the last line and never submits from a line', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ManualInvoiceForm />);
+    await user.type(screen.getByLabelText('Line 1 rate'), '10{Enter}');
+    expect(screen.getByLabelText('Line 2 description')).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(screen.queryByText('Choose a client.')).toBeNull();
+  });
+
+  it('asks before discarding typed changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ManualInvoiceForm />);
+    await user.type(screen.getByLabelText('Line 1 description'), 'Hire');
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
 });

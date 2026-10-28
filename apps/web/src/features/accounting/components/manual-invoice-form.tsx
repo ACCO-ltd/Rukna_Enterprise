@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import {
   Alert,
   Avatar,
@@ -13,17 +13,26 @@ import {
   Combobox,
   DatePicker,
   entityTintClass,
+  FormActionBar,
   FormField,
+  FormGroup,
   Input,
+  LifecycleStepper,
+  LineItemsEditor,
+  type LineColumn,
+  MoneyInput,
+  QuantityInput,
   Select,
   SideSheet,
 } from '@erp/ui';
 import type { ManualInvoiceInput, ManualInvoiceLineInput } from '@erp/types';
 
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
 import { ClientForm } from '@/features/clients/components/client-form';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { ApiError } from '@/lib/api-client';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import { fromMinorUnits, MONEY_SCALE, parseMinorUnits } from '@/lib/money';
 import { prepareTotals, formatRate } from '@/features/commercial/components/prepare-invoice-dialog.model';
 
@@ -34,6 +43,8 @@ import type { ClientInvoice } from '../types';
 import { InvoiceTaxField, taxCodeBody, useInvoiceTaxChoice, useInvoiceTaxErrorMessage } from './invoice-tax-field';
 
 const LIST_HREF = '/finance/accounting/invoices';
+const LIFECYCLE_KEYS = ['DRAFT', 'APPROVED', 'POSTED'] as const;
+const MAX_LINES = 50;
 const TERMS = [
   { key: 'RECEIPT', days: 0 },
   { key: 'NET_15', days: 15 },
@@ -71,6 +82,8 @@ function termsFromLabel(label: string | null): TermsKey {
 export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
   const t = useTranslations('accounting.invoices.manual');
   const tCommon = useTranslations('common');
+  const tCreate = useTranslations('accounting.invoices.create');
+  const summaryRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const clients = useClients();
   const accounts = useIncomeAccounts();
@@ -118,27 +131,56 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
   const money = (value: string | null) => (value === null ? '—' : (formatMoney(value, currency, 'en') ?? value));
 
   // ── Validation (the server re-checks everything and lists its own problems) ────────────────
-  const problems: string[] = [];
-  if (!clientId) problems.push(t('errors.client'));
-  if (dueDate < invoiceDate) problems.push(t('errors.dueBeforeDate'));
+  // Each problem names its field, so the summary links to it and the field shows it too (ADR-037).
+  const lineId = (key: number, field: string) => `manual-line-${field}-${key}`;
+  const fieldErrors: FormFieldError[] = [];
+  const lineErrors = new Map<number, Partial<Record<string, string>>>();
+  if (!clientId) fieldErrors.push({ fieldId: 'manual-client', label: t('client'), message: t('errors.client') });
+  if (dueDate < invoiceDate)
+    fieldErrors.push({ fieldId: terms === 'CUSTOM' ? 'manual-due' : 'manual-date', label: t('dueDate'), message: t('errors.dueBeforeDate') });
   lines.forEach((line, i) => {
-    if (!line.description.trim()) problems.push(t('errors.description', { n: i + 1 }));
-    if (lineMinor(line) === null) problems.push(t('errors.amount', { n: i + 1 }));
-    if (!accountOf(line)) problems.push(t('errors.account', { n: i + 1 }));
+    const errors: Partial<Record<string, string>> = {};
+    const add = (field: string, label: string, message: string) => {
+      errors[field] = message;
+      fieldErrors.push({ fieldId: lineId(line.key, field), label, message });
+    };
+    if (!line.description.trim()) add('description', t('lineDescription', { n: i + 1 }), t('errors.description', { n: i + 1 }));
+    if (lineMinor(line) === null) add('unitPrice', t('lineRate', { n: i + 1 }), t('errors.amount', { n: i + 1 }));
+    if (!accountOf(line)) add('account', t('lineAccount', { n: i + 1 }), t('errors.account', { n: i + 1 }));
+    lineErrors.set(i, errors);
   });
-  const shown = attempted ? problems : [];
+  const shownErrors = attempted ? fieldErrors : [];
+  const shownFor = (fieldId: string) => shownErrors.find((e) => e.fieldId === fieldId)?.message;
+
+  // Unsaved changes: anything different from what the form opened with.
+  const snapshot = JSON.stringify({ clientId, invoiceDate, terms, customDue, currency, lines: lines.map((l) => [l.description, l.quantity, l.unitPrice, l.revenueAccountCode]) });
+  const [initialSnapshot] = useState(snapshot);
+  const dirty = snapshot !== initialSnapshot;
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const backHref = invoice ? `${LIST_HREF}/${invoice.id}` : LIST_HREF;
+  const leave = () => router.push(backHref);
 
   const update = (key: number, patch: Partial<ManualInvoiceLineInput>) =>
     setLines((current) => current.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const addLine = () => {
+    if (lines.length >= MAX_LINES) return;
     setLines((current) => [...current, { key: nextKey, description: '', quantity: '1', unitPrice: '', revenueAccountCode: accountOf(current[current.length - 1] ?? ({} as LineDraft)) }]);
     setNextKey((k) => k + 1);
+  };
+  // Enter in a line never submits the form; on the last line it adds the next one (the mockup).
+  const lineEnter = (index: number) => (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (index === lines.length - 1) addLine();
   };
 
   async function submit() {
     setAttempted(true);
     setServerProblems([]);
-    if (problems.length > 0 || tax.blocked) return;
+    if (fieldErrors.length > 0 || tax.blocked) {
+      summaryRef.current?.scrollIntoView({ block: 'start' });
+      return;
+    }
     const payload: ManualInvoiceInput = {
       clientId,
       invoiceDate,
@@ -166,35 +208,156 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
     }
   }
 
+  const columns: LineColumn<LineDraft>[] = [
+    {
+      key: 'description',
+      header: t('colDescription'),
+      required: true,
+      width: 'minmax(14rem,2fr)',
+      controlId: (i) => lineId(lines[i]!.key, 'description'),
+      cell: (line, i) => (
+        <Input
+          id={lineId(line.key, 'description')}
+          aria-label={t('lineDescription', { n: i + 1 })}
+          value={line.description}
+          maxLength={300}
+          aria-invalid={Boolean(attempted && lineErrors.get(i)?.description)}
+          onKeyDown={lineEnter(i)}
+          onChange={(e) => update(line.key, { description: e.target.value })}
+        />
+      ),
+    },
+    {
+      key: 'quantity',
+      header: t('colQty'),
+      required: true,
+      width: '6.5rem',
+      controlId: (i) => lineId(lines[i]!.key, 'quantity'),
+      cell: (line, i) => (
+        <QuantityInput
+          id={lineId(line.key, 'quantity')}
+          aria-label={t('lineQty', { n: i + 1 })}
+          value={line.quantity}
+          autoComplete="off"
+          onKeyDown={lineEnter(i)}
+          onValueChange={(quantity) => update(line.key, { quantity })}
+        />
+      ),
+    },
+    {
+      key: 'unitPrice',
+      header: t('colRate'),
+      required: true,
+      width: '8.5rem',
+      controlId: (i) => lineId(lines[i]!.key, 'unitPrice'),
+      cell: (line, i) => (
+        <MoneyInput
+          id={lineId(line.key, 'unitPrice')}
+          aria-label={t('lineRate', { n: i + 1 })}
+          value={line.unitPrice}
+          currencyMark={currency === 'USD' ? '$' : null}
+          autoComplete="off"
+          aria-invalid={Boolean(attempted && lineErrors.get(i)?.unitPrice)}
+          onKeyDown={lineEnter(i)}
+          onValueChange={(unitPrice) => update(line.key, { unitPrice })}
+        />
+      ),
+    },
+    {
+      key: 'account',
+      header: t('colAccount'),
+      required: true,
+      // A fraction track, so the phone card gives the account name the full width.
+      width: 'minmax(13rem,1fr)',
+      controlId: (i) => lineId(lines[i]!.key, 'account'),
+      cell: (line, i) => (
+        <Select
+          id={lineId(line.key, 'account')}
+          aria-label={t('lineAccount', { n: i + 1 })}
+          value={accountOf(line)}
+          onChange={(value) => update(line.key, { revenueAccountCode: value })}
+        >
+          {(accounts.data ?? []).map((a) => (
+            <option key={a.code} value={a.code}>
+              {a.code} · {a.name}
+            </option>
+          ))}
+        </Select>
+      ),
+    },
+    {
+      key: 'amount',
+      header: t('colAmount'),
+      width: '8.5rem',
+      align: 'end',
+      cell: (line) => {
+        const minor = lineMinor(line);
+        return (
+          <span className="block pt-2 font-semibold tabular-nums">
+            {minor === null ? '—' : money(fromMinorUnits(minor, MONEY_SCALE))}
+          </span>
+        );
+      },
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <form
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <FormActionBar
+        back={
           <Button variant="ghost" className="gap-1.5 px-2" asChild>
-            <Link href={invoice ? `${LIST_HREF}/${invoice.id}` : LIST_HREF}>
+            <Link href={backHref}>
               <ArrowLeft size={16} aria-hidden="true" />
               {t('back')}
             </Link>
           </Button>
-          <h2 className="text-h1 font-bold text-foreground">{invoice ? t('editTitle') : t('title')}</h2>
+        }
+        save={
+          <Button type="submit" disabled={save.isPending || tax.blocked}>
+            {save.isPending ? t('saving') : t('saveDraft')}
+          </Button>
+        }
+        discard={
+          <Button type="button" variant="ghost" disabled={save.isPending} onClick={() => (dirty ? setConfirmLeave(true) : leave())}>
+            {t('discard')}
+          </Button>
+        }
+        saveState={dirty ? 'dirty' : invoice ? 'clean' : 'new'}
+        saveStateLabels={{
+          new: tCommon('formState.new'),
+          dirty: tCommon('formState.dirty'),
+          clean: tCommon('formState.clean'),
+        }}
+        lifecycle={
+          <LifecycleStepper
+            steps={LIFECYCLE_KEYS.map((key) => ({ key, label: tCreate(`lifecycle.${key}`) }))}
+            current="DRAFT"
+            stepOfLabel={(n, total) => tCreate('stepOf', { n, total })}
+          />
+        }
+      />
+
+      <div className="space-y-8">
+        <header className="space-y-1">
+          <p className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">{t('eyebrow')}</p>
+          <h2 className="text-h2 font-semibold text-foreground">{invoice ? t('editTitle') : t('title')}</h2>
+          <p className="max-w-prose text-body-sm text-muted-foreground">{t('intro')}</p>
+        </header>
+
+        <div ref={summaryRef} className="scroll-mt-32">
+          {shownErrors.length > 0 || serverProblems.length > 0 ? (
+            <FormErrorSummary errors={shownErrors} formErrors={serverProblems} />
+          ) : null}
         </div>
-        <Button onClick={() => void submit()} disabled={save.isPending}>
-          {save.isPending ? t('saving') : t('saveDraft')}
-        </Button>
-      </div>
 
-      <p className="max-w-prose text-body-sm text-muted-foreground">{t('intro')}</p>
-
-      {shown.length > 0 || serverProblems.length > 0 ? (
-        <Alert variant="error" title={t('fixTitle')} messages={[...shown, ...serverProblems]} />
-      ) : null}
-
-      {/* ── Who and when ─────────────────────────────────────────────── */}
-      <section className="rounded-panel border border-border bg-surface p-5" aria-labelledby="manual-who">
-        <h3 id="manual-who" className="text-h2 font-semibold text-foreground">{t('whoTitle')}</h3>
-        <p className="mt-0.5 text-body-sm text-muted-foreground">{t('whoSub')}</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <FormField htmlFor="manual-client" label={t('client')} required>
+        <FormGroup title={t('whoTitle')} description={t('whoSub')}>
+          <FormField htmlFor="manual-client" label={t('client')} required error={shownFor('manual-client')}>
             <Combobox
               id="manual-client"
               value={clientId}
@@ -210,7 +373,7 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
               loading={clients.isPending}
               loadingLabel={tCommon('loading')}
               footerAction={{ label: (q) => (q ? t('createClientNamed', { name: q }) : t('createClient')), onSelect: (q) => setNewClientName(q) }}
-              invalid={attempted && !clientId}
+              invalid={Boolean(shownFor('manual-client'))}
             />
           </FormField>
           <FormField htmlFor="manual-currency" label={t('currency')} hint={t('currencyHint')}>
@@ -223,13 +386,13 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
             />
           </FormField>
           {client ? (
-            <p className="-mt-2 flex items-center gap-2 text-caption text-muted-foreground md:col-span-2">
+            <p className="-mt-2 flex items-center gap-2 text-caption text-muted-foreground sm:col-span-2">
               <Avatar name={client.name} size="sm" className={cn('rounded-control ring-0', entityTintClass(client.id))} />
               {client.name}
               {client.taxNumber ? ` · ${t('taxNumber', { number: client.taxNumber })}` : ''}
             </p>
           ) : null}
-          <FormField htmlFor="manual-date" label={t('invoiceDate')} required>
+          <FormField htmlFor="manual-date" label={t('invoiceDate')} required error={terms === 'CUSTOM' ? undefined : shownFor('manual-date')}>
             <DatePicker id="manual-date" value={invoiceDate} onChange={setInvoiceDate} />
           </FormField>
           <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
@@ -253,124 +416,50 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
                 ))}
               </div>
             </div>
-            <FormField htmlFor="manual-due" label={t('dueDate')} hint={terms === 'CUSTOM' ? undefined : t('dueHint')}>
+            <FormField
+              htmlFor="manual-due"
+              label={t('dueDate')}
+              hint={terms === 'CUSTOM' ? undefined : t('dueHint')}
+              error={terms === 'CUSTOM' ? shownFor('manual-due') : undefined}
+            >
               {terms === 'CUSTOM' ? (
                 <DatePicker id="manual-due" value={customDue} onChange={setCustomDue} min={invoiceDate} />
               ) : (
-                <Input id="manual-due" value={dueDate} readOnly className="tabular-nums" />
+                <Input id="manual-due" value={formatDate(dueDate) ?? dueDate} readOnly className="tabular-nums" />
               )}
             </FormField>
           </div>
-          <div className="md:col-span-2">
+          <div className="sm:col-span-2">
             <InvoiceTaxField choice={tax} id="manual-tax" disabled={save.isPending} />
           </div>
-        </div>
-      </section>
+        </FormGroup>
 
-      {/* ── What you're billing ──────────────────────────────────────── */}
-      <section className="rounded-panel border border-border bg-surface p-5" aria-labelledby="manual-lines">
-        <h3 id="manual-lines" className="text-h2 font-semibold text-foreground">{t('linesTitle')}</h3>
-        <p className="mt-0.5 text-body-sm text-muted-foreground">{t('linesSub')}</p>
+        <section className="space-y-4" aria-labelledby="manual-lines">
+          <div className="border-b border-border pb-2">
+            <h2 id="manual-lines" className="text-body font-semibold text-foreground">{t('linesTitle')}</h2>
+            <p className="text-caption text-muted-foreground">{t('linesSub')}</p>
+          </div>
 
-        {accounts.data && accounts.data.length === 0 ? (
-          <Alert className="mt-4" variant="warning" messages={[t('noIncomeAccounts')]} />
-        ) : null}
+          {accounts.data && accounts.data.length === 0 ? (
+            <Alert variant="warning" messages={[t('noIncomeAccounts')]} />
+          ) : null}
 
-        <div className="-mx-5 mt-4 overflow-x-auto px-5">
-          <table className="w-full min-w-[720px] text-body-sm">
-            <thead>
-              <tr className="text-caption text-muted-foreground">
-                <th scope="col" className="w-8 pb-2 text-start font-medium">#</th>
-                <th scope="col" className="pb-2 text-start font-medium">{t('colDescription')}</th>
-                <th scope="col" className="w-24 pb-2 text-end font-medium">{t('colQty')}</th>
-                <th scope="col" className="w-32 pb-2 pe-3 text-end font-medium">{t('colRate')}</th>
-                <th scope="col" className="w-64 pb-2 ps-1 text-start font-medium">{t('colAccount')}</th>
-                <th scope="col" className="w-32 pb-2 text-end font-medium">{t('colAmount')}</th>
-                <th scope="col" className="w-10 pb-2"><span className="sr-only">{t('remove')}</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, i) => {
-                const minor = lineMinor(line);
-                const isLast = i === lines.length - 1;
-                return (
-                  <tr key={line.key} className="border-t border-border align-top">
-                    <td className="py-2 pt-4 tabular-nums text-muted-foreground">{i + 1}</td>
-                    <td className="py-2 pe-2">
-                      <Input
-                        aria-label={t('lineDescription', { n: i + 1 })}
-                        value={line.description}
-                        maxLength={300}
-                        onChange={(e) => update(line.key, { description: e.target.value })}
-                      />
-                    </td>
-                    <td className="py-2 pe-2">
-                      <Input
-                        aria-label={t('lineQty', { n: i + 1 })}
-                        inputMode="decimal"
-                        value={line.quantity}
-                        className="text-end tabular-nums"
-                        onChange={(e) => update(line.key, { quantity: e.target.value.replace(/[^0-9.]/g, '') })}
-                      />
-                    </td>
-                    <td className="py-2 pe-2">
-                      <Input
-                        aria-label={t('lineRate', { n: i + 1 })}
-                        inputMode="decimal"
-                        value={line.unitPrice}
-                        placeholder="0.00"
-                        className="text-end tabular-nums"
-                        onChange={(e) => update(line.key, { unitPrice: e.target.value.replace(/[^0-9.]/g, '') })}
-                      />
-                    </td>
-                    <td className="py-2 pe-2">
-                      <Select
-                        id={`manual-line-account-${line.key}`}
-                        aria-label={t('lineAccount', { n: i + 1 })}
-                        value={accountOf(line)}
-                        onChange={(value) => update(line.key, { revenueAccountCode: value })}
-                      >
-                        {(accounts.data ?? []).map((a) => (
-                          <option key={a.code} value={a.code}>
-                            {a.code} · {a.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="py-2 pt-4 text-end font-semibold tabular-nums">
-                      {minor === null ? '—' : money(fromMinorUnits(minor, MONEY_SCALE))}
-                    </td>
-                    <td className="py-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={lines.length === 1}
-                        onClick={() => setLines((current) => current.filter((l) => l.key !== line.key))}
-                        aria-label={t('removeLine', { n: i + 1 })}
-                        onKeyDown={(e) => {
-                          // Enter on the last row's last control adds a line, as the mockup notes.
-                          if (isLast && e.key === 'Enter') {
-                            e.preventDefault();
-                            addLine();
-                          }
-                        }}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+          <LineItemsEditor<LineDraft>
+            label={t('linesTitle')}
+            rows={lines}
+            rowKey={(line) => String(line.key)}
+            columns={columns}
+            errors={(i) => (attempted ? lineErrors.get(i) : undefined)}
+            cardTitle={(line, i) =>
+              line.description.trim() ? t('lineTitleNamed', { n: i + 1, name: line.description.trim() }) : t('lineTitle', { n: i + 1 })
+            }
+            onAdd={lines.length < MAX_LINES ? addLine : undefined}
+            addLabel={t('addLine')}
+            onRemove={lines.length > 1 ? (index) => setLines((current) => current.filter((_, i) => i !== index)) : undefined}
+            removeLabel={(i) => t('removeLine', { n: i + 1 })}
+          />
 
-        <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <Button type="button" variant="ghost" className="gap-1.5 text-brand-primary" onClick={addLine} disabled={lines.length >= 50}>
-            <Plus size={16} aria-hidden="true" /> {t('addLine')}
-          </Button>
-          <dl className="w-full max-w-xs space-y-1.5 text-body-sm sm:ms-auto">
+          <dl className="ms-auto w-full max-w-xs space-y-1.5 text-body-sm">
             <div className="flex justify-between">
               <dt className="text-muted-foreground">{t('subtotal')}</dt>
               <dd className="tabular-nums">{money(totals.subtotal)}</dd>
@@ -386,8 +475,19 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
               <dd className="tabular-nums">{money(totals.total)}</dd>
             </div>
           </dl>
-        </div>
-      </section>
+        </section>
+      </div>
+
+      {confirmLeave ? (
+        <ConfirmActionDialog
+          title={tCommon('unsavedChanges.title')}
+          description={tCommon('unsavedChanges.body')}
+          confirmLabel={tCommon('unsavedChanges.leave')}
+          isPending={false}
+          onConfirm={leave}
+          onDismiss={() => setConfirmLeave(false)}
+        />
+      ) : null}
 
       <SideSheet
         open={newClientName !== null}
@@ -409,6 +509,6 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
           />
         ) : null}
       </SideSheet>
-    </div>
+    </form>
   );
 }

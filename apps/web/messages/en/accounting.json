@@ -1040,7 +1040,6 @@
       "saveDraft": "Save draft",
       "saving": "Saving…",
       "saveFailed": "The invoice could not be saved.",
-      "fixTitle": "Fix these to save the invoice",
       "whoTitle": "Who and when",
       "whoSub": "The client, the dates and the payment terms.",
       "client": "Client",
@@ -1092,7 +1091,11 @@
         "description": "Line {n} needs a description.",
         "amount": "Line {n} needs a quantity and a rate above 0.",
         "account": "Line {n} needs an income account."
-      }
+      },
+      "eyebrow": "Client invoice · other sale",
+      "discard": "Discard",
+      "lineTitle": "Line {n}",
+      "lineTitleNamed": "Line {n} — {name}"
     },
     "quickAdd": {
       "open": "Quick add sale invoice",

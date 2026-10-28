@@ -93,6 +93,14 @@ These replace earlier rules, so they are listed explicitly:
   keeps both status axes.
 - **Entity avatars:** a client's or supplier's initials on a stable tinted square
   (`entityTintClass`), with dark ink on a tint and never a status colour's solid fill.
+- **Side sheet, for quick-create only** (`SideSheet`, from the approved mockups): adding a missing
+  related record without leaving a form, such as "+ Create client" on a sale invoice. This amends
+  ADR-039 for that one case. Editing a record, previews and confirmations stay in `FormDialog`.
+- **Forms use the ADR-037 kit:** `FormActionBar` (back, one Save, Discard with an unsaved-changes
+  confirm, save-state dot, lifecycle stepper), `FormErrorSummary` (counted, each field a link
+  that focuses it, and the same message under the field), `FormGroup`, `LineItemsEditor` and
+  `MoneyInput` / `QuantityInput`. Enter inside a line never submits; on the last line it adds the
+  next one. The hand-typed sale invoice moved onto the kit on 2026-10-28.
 - **Undo by delay** (`useUndoableAction`, Step 2g): a reversible list command (cancel a draft)
   removes the row at once and shows a toast with Undo (or Z) for 8 seconds. The command is sent
   only when the window closes, so Undo never needs a server rollback. Leaving the page sends what
