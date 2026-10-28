@@ -249,6 +249,21 @@ All endpoints are scoped to the authenticated user's organization.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/organizations/:id` | Get organization |
+| `PATCH` | `/organizations/:id/branding` | `manage:organization`. Invoice branding: logo file, legal address, tax ID, brand colour, footer note, template. |
+
+#### Company templates (Step 1b, ADR-047)
+
+Rukna ships a default payment plan and building schedule; a company may save its own copy and reset
+to the default. `GET` needs `view:project`; the writes need `manage:organization` and are audited
+(`COMPANY_TEMPLATE_SAVED` / `COMPANY_TEMPLATE_RESET`).
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/company-templates` | `{ paymentPlan: { rows: [{ name, percentage, isAdvance }], isDefault }, schedule: { phases: [{ name, durationDays, scheduleOnly }], isDefault } }` — the templates in force. |
+| `PUT` | `/company-templates/payment-plan` | Body `{ rows }` (1–20). Stages total exactly 100%, at most one advance, names required, up to 2 decimals. `400 TEMPLATE_INVALID` with `details.problems: string[]`. |
+| `DELETE` | `/company-templates/payment-plan` | Back to the Rukna default. Returns the `GET` shape. |
+| `PUT` | `/company-templates/schedule` | Body `{ phases }` (1–30). Unique names, whole-day durations 1–365. Applying `STANDARD_BUILDING` (`POST …/apply-schedule-template`) uses this copy. |
+| `DELETE` | `/company-templates/schedule` | Back to the Rukna default. |
 
 ---
 

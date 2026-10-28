@@ -202,7 +202,7 @@ export const NAV_DOMAINS: NavDomain[] = [
     moduleKey: 'administration',
     iconKey: 'shield',
     flat: true,
-    // These six items no longer render in the sidebar. Clicking Administration opens the
+    // These eight items no longer render in the sidebar. Clicking Administration opens the
     // Administration workspace, and they are its tab bar (`AdminShell`) — the same move the
     // project Finance workspace made. They stay declared here because this list is the single
     // source of truth for the routes, their labels, their icons and their permission gates,
@@ -219,6 +219,7 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/admin/districts', labelKey: 'districts', iconKey: 'building', permissionKey: 'manage:district', groupKey: 'organization' },
       { href: '/admin/project-subtypes', labelKey: 'projectSubtypes', iconKey: 'tag', permissionKey: 'manage:project-type', groupKey: 'organization' },
       { href: '/admin/branding', labelKey: 'branding', iconKey: 'receipt', permissionKey: 'manage:organization', groupKey: 'organization' },
+      { href: '/admin/templates', labelKey: 'templates', iconKey: 'clipboard', permissionKey: 'manage:organization', groupKey: 'organization' },
       { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch', groupKey: 'governance' },
       { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key', groupKey: 'evidence' },
     ],

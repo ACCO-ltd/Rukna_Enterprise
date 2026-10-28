@@ -56,6 +56,7 @@
     "districts": "Districts",
     "projectSubtypes": "Project subtypes",
     "branding": "Branding",
+    "templates": "Templates",
     "auditLogs": "Audit logs",
     "settings": "Settings",
     "workflows": "Workflows",
@@ -1591,6 +1592,54 @@
     "retry": "Try again",
     "saveFailed": "Could not save branding settings.",
     "noPermission": "You do not have permission to manage organization branding."
+  },
+  "templates": {
+    "title": "Templates",
+    "pageIntro": "The standard payment plan and building schedule new contracts and projects start from. Rukna ships a default; edit your company's own copy here.",
+    "loadFailed": "The templates could not be loaded.",
+    "retry": "Try again",
+    "ruknaDefault": "Rukna default",
+    "companyCopy": "Your company's copy",
+    "actions": "Row actions",
+    "moveUp": "Move {name} up",
+    "moveDown": "Move {name} down",
+    "remove": "Remove {name}",
+    "save": "Save template",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "reset": "Reset to Rukna default",
+    "resetTitle": "Reset to the Rukna default?",
+    "resetBody": "Your company's copy is replaced by the Rukna default. Contracts and projects already set up keep what they have.",
+    "resetConfirm": "Reset template",
+    "paymentPlan": {
+      "title": "Payment plan",
+      "sub": "Offered as “Use company standard” when a milestone contract's payment plan is set up. Stages must total 100%.",
+      "stage": "Stage",
+      "percent": "Share",
+      "advance": "Advance",
+      "stageN": "Stage {n}",
+      "stageName": "Stage {n} name",
+      "stagePercent": "{name} share in percent",
+      "isAdvance": "{name} is the advance",
+      "add": "Add stage",
+      "totalOk": "Stages total 100%",
+      "totalOff": "Stages total {total}% — they must total 100%"
+    },
+    "schedule": {
+      "title": "Building schedule",
+      "sub": "Applied by the schedule setup wizard: each phase becomes a work package, numbered in this order.",
+      "code": "Code",
+      "phase": "Phase",
+      "days": "Days",
+      "datesOnly": "Dates only",
+      "phaseN": "Phase {n}",
+      "phaseName": "Phase {n} name",
+      "phaseDays": "{name} duration in days",
+      "isDatesOnly": "{name} is tracked by dates only",
+      "datesOnlyHint": "A dates-only phase (design, mobilisation) has no BOQ scope and is tracked by its dates, not measured quantities.",
+      "add": "Add phase",
+      "total": "{phases} phases · {days} days if run one after another"
+    }
   },
   "users": {
     "title": "Users",
@@ -3442,6 +3491,8 @@
     "clientDeactivated": "Client deactivated",
     "clientReactivated": "Client reactivated",
     "contactUpdated": "Contact updated",
-    "contactMadePrimary": "Primary contact changed"
+    "contactMadePrimary": "Primary contact changed",
+    "templateSaved": "Template saved",
+    "templateReset": "Template reset to the Rukna default"
   }
 }

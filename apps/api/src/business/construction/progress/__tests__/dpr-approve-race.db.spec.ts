@@ -86,6 +86,7 @@ describe('DPR approve — over-quantity race (CONST-PROG-002/009) [DB]', () => {
       gate as never,
       { markManyImmutable: jest.fn(async () => 0) } as never,
       { findApproved: jest.fn(async () => null) } as never,
+      {} as never, // companyTemplates (Step 1b) — unused here
     );
   });
 

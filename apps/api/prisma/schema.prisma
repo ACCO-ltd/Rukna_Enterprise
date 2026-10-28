@@ -32,6 +32,10 @@ model Organization {
   brandColorHex          String?         @map("brand_color_hex") @db.VarChar(9)
   invoiceFooterNote      String?         @map("invoice_footer_note") @db.Text
   invoiceTemplate        InvoiceTemplate @default(STANDARD) @map("invoice_template")
+  // Step 1b (ADR-047): the company's own copy of the platform templates. NULL = use the Rukna
+  // default (company-templates/domain/default-templates.ts); "Reset to default" writes NULL back.
+  paymentPlanTemplate    Json?           @map("payment_plan_template")
+  scheduleTemplate       Json?           @map("schedule_template")
 
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")

@@ -98,6 +98,7 @@ function build(over: Over = {}) {
     commandGovernance as never,
     fileService as never,
     baselineRepo as never,
+    {} as never, // companyTemplates (Step 1b) — unused here
   );
   return { repo, service, commandGovernance, fileService, baselineRepo };
 }

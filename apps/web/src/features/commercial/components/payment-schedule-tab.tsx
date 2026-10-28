@@ -85,7 +85,7 @@ export function frozenPercentTotal(frozen: CommercialPaymentScheduleInstallment[
  * - the reused `PaymentSchedulePanel` (the installment ledger, Generate-invoice, link-milestone and
  *   the CONST-COM-011 gate — unchanged from Billing & Collection),
  * - a DRAFT-only inline editor that re-profiles the whole schedule through the same replace-all
- *   route the create builder seeds, plus the "ACCO standard 40/30/20/10" template.
+ *   route the create builder seeds, plus the company-standard payment plan (Administration → Templates).
  *
  * The tab only mounts for a MILESTONE contract (the nav hides it otherwise), but it still degrades
  * to a no-contract empty state so a force-navigation lands on an explanation, not a crash.
@@ -325,7 +325,7 @@ type EditorValues = Pick<ContractFormValues, 'billingModel' | 'paymentPlan'>;
  *
  * DRAFT and ACTIVE both open pre-populated from the un-invoiced installments so the user adjusts the
  * existing tail, not a blank slate. A brand-new DRAFT with no plan yet still needs something to type
- * into, so it falls back to a single blank row (the ACCO template and Add cover the rest).
+ * into, so it falls back to a single blank row (the company template and Add cover the rest).
  */
 function seedEditableRows(editable: CommercialPaymentScheduleInstallment[]): PaymentPlanRow[] {
   if (editable.length === 0) return [{ ...EMPTY_PAYMENT_PLAN_ROW }];

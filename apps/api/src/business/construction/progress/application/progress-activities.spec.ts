@@ -52,6 +52,7 @@ function build(over: { workPackage?: unknown; activity?: unknown } = {}) {
     {} as never,
     files() as never,
     baselineRepo as never,
+    {} as never, // companyTemplates (Step 1b) — unused here
   );
   return { svc, repo, projectAccess, captured };
 }

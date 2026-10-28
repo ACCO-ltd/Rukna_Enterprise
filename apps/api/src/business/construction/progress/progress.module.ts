@@ -15,12 +15,13 @@ import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.
 // module. ProgrammeModule exports ProgrammeService and imports nothing that reaches back here, so the
 // dependency is acyclic.
 import { ProgrammeModule } from '../programme/programme.module.js';
+import { CompanyTemplatesModule } from '../company-templates/company-templates.module.js';
 
 // TenancyModule and ProjectAccessModule are @Global. FilesModule is imported for the evidence
 // lifecycle: attaching evidence binds the file, and approving the report freezes it. AuditLogsModule
 // provides the transactional audit-outbox the programme-baseline freeze records against.
 @Module({
-  imports: [FinancialPositionModule, WorkflowsModule, FilesModule, AuditLogsModule, ProgrammeModule],
+  imports: [FinancialPositionModule, WorkflowsModule, FilesModule, AuditLogsModule, ProgrammeModule, CompanyTemplatesModule],
   controllers: [ProgressController],
   providers: [
     ProgressService,

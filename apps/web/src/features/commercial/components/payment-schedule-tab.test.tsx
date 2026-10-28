@@ -19,6 +19,16 @@ import {
 // The reused ledger panel drags in the programme + payment-schedule mutation graph; the tab's own
 // behaviour (summary strip, reconcile footer, editor gating) is what these tests cover, so the panel
 // is stubbed to a marker. Its own behaviour is tested in payment-schedule-panel.test.tsx.
+// Step 1b (ADR-047): the company's standard payment plan (here, the Rukna default rows).
+const STANDARD_PLAN = [
+  { name: 'Advance (mobilisation)', percentage: '40', isAdvance: true, dueDate: '' },
+  { name: 'Partition & Plastering', percentage: '30', isAdvance: false, dueDate: '' },
+  { name: 'Installation & Paint', percentage: '20', isAdvance: false, dueDate: '' },
+  { name: 'Inspection & Handover', percentage: '10', isAdvance: false, dueDate: '' },
+];
+vi.mock('@/features/contracts/hooks/use-standard-payment-plan', () => ({
+  useStandardPaymentPlan: () => STANDARD_PLAN,
+}));
 vi.mock('./payment-schedule-panel', () => ({
   PaymentSchedulePanel: () => <div data-testid="schedule-panel" />,
 }));

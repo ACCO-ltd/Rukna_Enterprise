@@ -110,6 +110,7 @@ function build(
     {} as never,
     files() as never,
     baselineRepo as never,
+    {} as never, // companyTemplates (Step 1b) — unused here
   );
   return { svc, repo, projectAccess, baselineRepo, created };
 }

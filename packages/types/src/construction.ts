@@ -395,8 +395,39 @@ export interface ProjectRollupResponse {
 // phases from a server-side template so the user edits rather than invents; `suggest-weights`
 // derives each phase's progress weight from its assigned BOQ value so the user doesn't guess.
 
-/** The schedule templates the wizard can apply (single-tenant; more may be added later). */
+/** The schedule templates the wizard can apply. STANDARD_BUILDING reads the company's copy. */
 export type ScheduleTemplateKey = 'STANDARD_BUILDING';
+
+// ─── Company templates (Step 1b, ADR-047) ──────────────────────────────────
+// Rukna ships a platform default for each template; a company may save its own copy and reset it
+// back to the default at any time. `isDefault` tells the UI which one is in force.
+
+/** One stage of the standard payment plan. `percentage` is a decimal string, e.g. "40". */
+export interface PaymentPlanTemplateRow {
+  name: string;
+  percentage: string;
+  isAdvance: boolean;
+}
+
+/** One phase of the standard building schedule → one work package when applied. */
+export interface ScheduleTemplatePhaseDto {
+  name: string;
+  durationDays: number;
+  scheduleOnly: boolean;
+}
+
+export interface CompanyTemplatesResponse {
+  paymentPlan: { rows: PaymentPlanTemplateRow[]; isDefault: boolean };
+  schedule: { phases: ScheduleTemplatePhaseDto[]; isDefault: boolean };
+}
+
+export interface UpdatePaymentPlanTemplateInput {
+  rows: PaymentPlanTemplateRow[];
+}
+
+export interface UpdateScheduleTemplateInput {
+  phases: ScheduleTemplatePhaseDto[];
+}
 
 /**
  * One work package created by `apply-schedule-template`. A thin echo of the seeded rows so the

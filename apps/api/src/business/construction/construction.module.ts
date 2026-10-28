@@ -13,9 +13,10 @@ import { ProgrammeModule } from './programme/programme.module.js';
 import { DistrictsModule } from './districts/districts.module.js';
 import { ProjectSubtypesModule } from './project-subtypes/project-subtypes.module.js';
 import { VariationsModule } from './variations/variations.module.js';
+import { CompanyTemplatesModule } from './company-templates/company-templates.module.js';
 
 @Module({
-  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, FinancePortfolioModule, DashboardModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule],
-  exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule],
+  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, FinancePortfolioModule, DashboardModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule, CompanyTemplatesModule],
+  exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, ProjectSubtypesModule, VariationsModule, CompanyTemplatesModule],
 })
 export class ConstructionModule {}

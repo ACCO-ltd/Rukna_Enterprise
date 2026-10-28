@@ -267,7 +267,7 @@ describe('NAV_DOMAINS', () => {
     it('keeps its items declared here — they feed the command menu and the tab bar', () => {
       // Moving them out of the sidebar must not move them out of the nav model: three
       // consumers read this one list, and a second copy is how they drift apart.
-      expect(admin().items).toHaveLength(7);
+      expect(admin().items).toHaveLength(8);
     });
 
     it('contains users, roles, workflows and audit-logs', () => {
@@ -299,13 +299,14 @@ describe('NAV_DOMAINS', () => {
       expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles']);
     });
 
-    it('puts Districts, Project subtypes and Branding under Organization, keeping their gates', () => {
+    it('puts Districts, Project subtypes, Branding and Templates under Organization, keeping their gates', () => {
       const groups = groupNavItems(admin().items);
       const organization = groups.find((g) => g.key === 'organization');
       expect(organization?.items.map((i) => i.href)).toEqual([
         '/admin/districts',
         '/admin/project-subtypes',
         '/admin/branding',
+        '/admin/templates',
       ]);
       expect(organization?.items[0]?.permissionKey).toBe('manage:district');
       // The subtype registry is admin/Settings work — gated on manage:project-type, the same
@@ -313,6 +314,8 @@ describe('NAV_DOMAINS', () => {
       expect(organization?.items[1]?.permissionKey).toBe('manage:project-type');
       // Invoice branding (Commercial round-3) — gated on manage:organization.
       expect(organization?.items[2]?.permissionKey).toBe('manage:organization');
+      // Company templates (Step 1b, ADR-047) — saving them needs manage:organization.
+      expect(organization?.items[3]?.permissionKey).toBe('manage:organization');
     });
 
     it('puts Policies/Workflows under Approval governance as a single entry (no duplicate deep route)', () => {

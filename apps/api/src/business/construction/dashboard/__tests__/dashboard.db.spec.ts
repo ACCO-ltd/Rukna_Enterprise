@@ -195,6 +195,7 @@ describe('DashboardService — GET /dashboard', () => {
       {} as never,
       {} as never,
       new ProgrammeBaselineRepository(),
+      {} as never, // companyTemplates (Step 1b) — unused here
     );
     const programme = new ProgrammeService(tenancy, new ProgrammeRepository(), projectAccess);
     dashboard = new DashboardService(

@@ -1,20 +1,16 @@
 /**
- * Master Schedule P1-d (ADR-029): the server-side schedule templates the guided setup wizard can
- * apply. A template is just an ordered list of phases (work-package names + a suggested duration +
- * whether the phase is non-measurable). Single-tenant for now — ACCO's canonical building sequence;
- * more templates (or an admin-configurable registry) can be added later without touching the apply
- * flow, which reads only from this table.
+ * Master Schedule P1-d (ADR-029): the schedule templates the guided setup wizard can apply. A
+ * template is an ordered list of phases (work-package name + suggested duration + whether the phase
+ * is non-measurable). STANDARD_BUILDING is company-editable (Step 1b, ADR-047): the apply flow asks
+ * CompanyTemplatesService for the company's copy and falls back to the Rukna default kept here.
  *
  * Weights are DELIBERATELY not here: they are derived from the BOQ value assigned to each phase
- * (see `suggest-weights`), not guessed at template time. Planned dates are also left to the wizard;
- * the template carries only the suggested duration so the wizard can sequence dates from the project
- * start.
- *
- * Pure data + a lookup — no Prisma, no I/O — so the apply flow stays testable and the phase list is
- * reviewable in one place.
+ * (see `suggest-weights`), not guessed at template time. Planned dates are also left to the wizard.
  */
 
 import type { ScheduleTemplateKey } from '@erp/types';
+
+import { DEFAULT_BUILDING_PHASES } from '../../company-templates/domain/default-templates.js';
 
 /** One phase in a schedule template → one work package when applied. */
 export interface ScheduleTemplatePhase {
@@ -26,23 +22,8 @@ export interface ScheduleTemplatePhase {
   scheduleOnly: boolean;
 }
 
-/**
- * ACCO's standard building schedule (from ACCO's sample programme). Order is significant — it is the
- * phase sequence, and the applied work packages are auto-numbered WP-01…WP-09 in this order. Design
- * and Mobilization are `scheduleOnly` (non-measurable, no BOQ scope); the structural/finishing phases
- * are measurable and take BOQ scope in the wizard's next step.
- */
-export const STANDARD_BUILDING_PHASES: readonly ScheduleTemplatePhase[] = [
-  { name: 'Design Completion (2D & 3D)', durationDays: 7, scheduleOnly: true },
-  { name: 'Mobilization & Site Preparation', durationDays: 7, scheduleOnly: true },
-  { name: 'Excavation & Foundation Works', durationDays: 21, scheduleOnly: false },
-  { name: 'Ground Floor Structural Works', durationDays: 30, scheduleOnly: false },
-  { name: 'First Floor Structural Works', durationDays: 30, scheduleOnly: false },
-  { name: 'Second Floor & Roof Structure', durationDays: 30, scheduleOnly: false },
-  { name: 'Blockwork, Plaster & MEP First Fix', durationDays: 30, scheduleOnly: false },
-  { name: 'Finishing Works', durationDays: 30, scheduleOnly: false },
-  { name: 'External Works, Testing & Handover', durationDays: 30, scheduleOnly: false },
-];
+/** The Rukna default building schedule (the company may override it — see CompanyTemplatesService). */
+export const STANDARD_BUILDING_PHASES: readonly ScheduleTemplatePhase[] = DEFAULT_BUILDING_PHASES;
 
 /** The registry of schedule templates, keyed by the wire `ScheduleTemplateKey`. */
 export const SCHEDULE_TEMPLATES: Record<ScheduleTemplateKey, readonly ScheduleTemplatePhase[]> = {

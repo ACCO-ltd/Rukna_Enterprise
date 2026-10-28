@@ -38,6 +38,16 @@ vi.mock('@/features/projects/hooks/use-projects', () => ({
 vi.mock('@/features/clients/hooks/use-clients', () => ({
   useClients: () => ({ isPending: false, isError: false, data: [{ id: 'c1', name: 'Hayat Market' }] }),
 }));
+// Step 1b (ADR-047): the company's standard payment plan (here, the Rukna default rows).
+const STANDARD_PLAN = [
+  { name: 'Advance (mobilisation)', percentage: '40', isAdvance: true, dueDate: '' },
+  { name: 'Partition & Plastering', percentage: '30', isAdvance: false, dueDate: '' },
+  { name: 'Installation & Paint', percentage: '20', isAdvance: false, dueDate: '' },
+  { name: 'Inspection & Handover', percentage: '10', isAdvance: false, dueDate: '' },
+];
+vi.mock('../hooks/use-standard-payment-plan', () => ({
+  useStandardPaymentPlan: () => STANDARD_PLAN,
+}));
 vi.mock('@/features/boq/hooks/use-boq', () => ({
   useBoqWorkspace: () => ({ isPending: false, isError: false, data: { draft: { versionNumber: 1 }, approved: null } }),
 }));
@@ -50,7 +60,7 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('RecordSignedContractForm', () => {
-  it('starts from the ACCO standard 40/30/20/10 with the advance first, allocating 100%', () => {
+  it('starts from the company standard 40/30/20/10 with the advance first, allocating 100%', () => {
     renderWithProviders(<RecordSignedContractForm projectId="p1" />);
     expect(screen.getByDisplayValue('Advance (mobilisation)')).toBeInTheDocument();
     expect(screen.getAllByRole('textbox', { name: /Share/ }).map((input) => (input as HTMLInputElement).value)).toEqual(['40', '30', '20', '10']);
