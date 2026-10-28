@@ -503,7 +503,7 @@ export function ScheduleForm({
             targetPercent={targetPercent}
             frozenPercent={frozenPercent}
             allowAdvance={frozen.length === 0}
-            showAccoStandard={!isReprofile}
+            showCompanyStandard={!isReprofile}
           />
         </div>
       </FormSection>

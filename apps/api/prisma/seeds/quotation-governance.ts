@@ -4,7 +4,7 @@ import {
   QUOTATION_AWARD_BAND_SET,
   QUOTATION_SOD_RULES,
   seedQuotationAwardBands,
-} from '../../src/platform/workflows/seeders/acco-workflows.seed.js';
+} from '../../src/platform/workflows/seeders/default-workflows.seed.js';
 
 /**
  * ADR-044 §6/§7 — the quotation governance a live tenant needs, without re-running the whole ACCO

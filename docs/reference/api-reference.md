@@ -217,6 +217,7 @@ All endpoints are scoped to the authenticated user's organization.
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/auth/branding` | Public. `{ name: string | null }` — the organisation the request subdomain resolves to, for the login page. Nothing about a company is built into the web app (ADR-047). |
 | `POST` | `/auth/login` | Login — returns accessToken + sets refresh cookie |
 | `POST` | `/auth/refresh` | Rotate refresh token — returns new accessToken |
 | `POST` | `/auth/logout` | Revoke refresh token + clear cookie |

@@ -4,7 +4,7 @@ import { CommercialModel, ParticipationModel, ProjectCategory } from '@prisma/cl
 
 export class CreateProjectDto {
   @ApiPropertyOptional({
-    example: 'ACCO-2026-001',
+    example: 'PRJ-2026-001',
     maxLength: 30,
     deprecated: true,
     description: 'Legacy compatibility only. Omit to receive an automatically assigned project code.',
@@ -20,7 +20,7 @@ export class CreateProjectDto {
   name!: string;
 
   @ApiProperty({
-    description: 'District where the project is built (ADR-025). Forms the code segment, e.g. WBR in ACCO-WBR-26-0065.',
+    description: 'District where the project is built (ADR-025). Forms the code segment, e.g. WBR in PRJ-WBR-26-0065.',
   })
   @IsString()
   districtId!: string;

@@ -1,5 +1,5 @@
-import { accoApprovalChains } from './acco-lifecycle-chains.js';
-import { ACCO_ROLES } from './acco-value-bands.js';
+import { defaultApprovalChains } from './default-lifecycle-chains.js';
+import { DEFAULT_ROLES } from './default-value-bands.js';
 import { WorkflowTriggerResolverService } from '../application/workflow-trigger-resolver.service.js';
 
 /**
@@ -8,7 +8,7 @@ import { WorkflowTriggerResolverService } from '../application/workflow-trigger-
  * its transition, using the real chain data rather than fixtures.
  */
 describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
-  const chains = accoApprovalChains();
+  const chains = defaultApprovalChains();
   const byKey = (key: string) => chains.find((c) => c.key === key)!;
 
   it('covers exactly the Start, Closeout, BOQ-commit and DPR chains', () => {
@@ -21,16 +21,16 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
   it('CONST-DOA-006 Start: DRAFT → ACTIVE, PM → CFO → CEO', () => {
     const c = byKey('PROJECT_START');
     expect([c.entityType, c.fromState, c.toState]).toEqual(['Project', 'DRAFT', 'ACTIVE']);
-    expect(c.steps).toEqual([ACCO_ROLES.PROJECT_MANAGER, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
+    expect(c.steps).toEqual([DEFAULT_ROLES.PROJECT_MANAGER, DEFAULT_ROLES.CFO, DEFAULT_ROLES.CEO]);
   });
 
   it('CONST-DOA-007 Closeout: CLOSEOUT → CLOSED, PM → Finance Officer → CEO', () => {
     const c = byKey('PROJECT_CLOSEOUT');
     expect([c.entityType, c.fromState, c.toState]).toEqual(['Project', 'CLOSEOUT', 'CLOSED']);
     expect(c.steps).toEqual([
-      ACCO_ROLES.PROJECT_MANAGER,
-      ACCO_ROLES.FINANCE_OFFICER,
-      ACCO_ROLES.CEO,
+      DEFAULT_ROLES.PROJECT_MANAGER,
+      DEFAULT_ROLES.FINANCE_OFFICER,
+      DEFAULT_ROLES.CEO,
     ]);
   });
 
@@ -40,7 +40,7 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
     const c = byKey('BOQ_COMMIT');
     expect([c.entityType, c.fromState, c.toState]).toEqual(['BoqVersion', 'DRAFT', 'COMMITTED']);
     // The Construction Director prepares scope+cost, so CFO and CEO must also sign.
-    expect(c.steps).toEqual([ACCO_ROLES.CONSTRUCTION_DIRECTOR, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
+    expect(c.steps).toEqual([DEFAULT_ROLES.CONSTRUCTION_DIRECTOR, DEFAULT_ROLES.CFO, DEFAULT_ROLES.CEO]);
   });
 
   it('CONST-DOA-008 DPR: DailyProgressReport SUBMITTED → APPROVED, PM-only chain', () => {
@@ -50,11 +50,11 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
       'SUBMITTED',
       'APPROVED',
     ]);
-    expect(c.steps).toEqual([ACCO_ROLES.PROJECT_MANAGER]);
+    expect(c.steps).toEqual([DEFAULT_ROLES.PROJECT_MANAGER]);
   });
 
   describe('each chain resolves through the gate for its own transition', () => {
-    function resolverWith(chain: ReturnType<typeof accoApprovalChains>[number]) {
+    function resolverWith(chain: ReturnType<typeof defaultApprovalChains>[number]) {
       const binding = {
         id: `bind-${chain.key}`,
         organizationId: 'o1',

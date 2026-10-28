@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { seedDistricts } from '../prisma/seeds/districts.js';
 import { seedUnitsOfMeasure } from '../prisma/seeds/units-of-measure.js';
-import { seedAccoWorkflows } from '../src/platform/workflows/seeders/acco-workflows.seed.js';
+import { seedDefaultWorkflows } from '../src/platform/workflows/seeders/default-workflows.seed.js';
 import { seedUserAccess } from './tenant-access.js';
 import { seedGovernedSystemRoles } from './governed-roles.js';
 
@@ -61,7 +61,7 @@ async function main() {
     console.log(`  ✓ Governed role ${role.roleName}: ${role.permissionsLinked} permissions`);
   }
 
-  await seedAccoWorkflows(prisma, org.id);
+  await seedDefaultWorkflows(prisma, org.id);
   console.log(`  ✓ Workflow chains seeded`);
 
   console.log('\nDone. Login: admin@acco.com / acco.admin@123');

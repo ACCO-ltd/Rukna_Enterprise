@@ -204,7 +204,7 @@ export function ShellSection() {
             <ModuleHeader
               title="Accounting"
               crumbs={[{ label: 'Payables' }, { label: 'Supplier bills', href: '#module' }, { label: 'BILL-2026-0042' }]}
-              description="Receivables, payables and the general ledger for ACCO Ltd. All amounts in USD."
+              description="Receivables, payables and the general ledger."
             >
               <ModuleTabs tabs={ACCOUNTING_TABS} navLabel="Accounting sections" />
             </ModuleHeader>

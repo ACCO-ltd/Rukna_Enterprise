@@ -59,7 +59,7 @@ const PLATFORM_FALLBACK_QTY_PCT = new Decimal('0');
 const PER_INVOICE_ROUNDING_ABS = new Decimal('5');
 
 // ADR-018/ADR-024 item D (Q6) — matching-exception approval authority by bill amount. Reuses ACCO's
-// existing finance threshold (the same $1,000 boundary as the DOA value bands, acco-value-bands.ts):
+// existing finance threshold (the same $1,000 boundary as the DOA value bands, default-value-bands.ts):
 // the Finance ladder's middle tier ("Finance Manager" in the memo = FINANCE_OFFICER in the ACCO role
 // registry) may approve an exception when the bill total ≤ USD 1,000; above that requires CFO. No new
 // approval-chain binding is introduced — the rule is enforced directly against the approver's roles.

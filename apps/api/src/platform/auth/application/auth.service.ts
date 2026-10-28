@@ -44,6 +44,17 @@ export class AuthService {
     private readonly auditLogs: AuditLogsService,
   ) {}
 
+  /** The active organisation of the tenant this request's subdomain resolves to (login page). */
+  async getBranding(): Promise<{ name: string | null }> {
+    const prisma = this.tenancyService.getClient();
+    const org = await prisma.organization.findFirst({
+      where: { status: 'ACTIVE' },
+      orderBy: { createdAt: 'asc' },
+      select: { name: true },
+    });
+    return { name: org?.name ?? null };
+  }
+
   async login(dto: LoginDto, deviceHint?: string): Promise<TokenPairInternal> {
     const prisma = this.tenancyService.getClient();
     const ctx = tenancyStorage.getStore()!;

@@ -6,7 +6,7 @@
  *   1. SEED   — the approved governed SYSTEM roles (CFO + Governance Publisher, via the WP-A
  *               `seedGovernedSystemRoles` seeder) plus the transaction-role holders, and an ACTIVE
  *               ACCO governance policy carrying the SoD rules (reuses the `seedAccoGovernancePolicy`
- *               building block through `seedAccoWorkflows`).
+ *               building block through `seedDefaultWorkflows`).
  *   2. AUTHOR — a policy version is taken DRAFT → add matrix rule → submit-review → schedule →
  *               activate through the REAL `WorkflowsService`. Scheduling is done by a DIFFERENT
  *               actor than the submitter, so four-eyes (GOV-ADM-007) is satisfied, and it is
@@ -41,7 +41,7 @@ import { AccountingPostingService } from '../../../business/accounting/accountin
 import { JournalRepository } from '../../../business/accounting/accounting-core/infrastructure/journal.repository.js';
 import { DocumentSequenceRepository } from '../../../business/accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import { seedGovernedSystemRoles } from '../../../../scripts/governed-roles.js';
-import { seedAccoWorkflows } from '../seeders/acco-workflows.seed.js';
+import { seedDefaultWorkflows } from '../seeders/default-workflows.seed.js';
 
 const prisma = new PrismaClient();
 const tenancy = { getClient: () => prisma } as unknown as TenancyService;
@@ -105,7 +105,7 @@ beforeAll(async () => {
   // 1c. The full ACCO governance config, including the ACTIVE ACCO_GOVERNANCE policy whose SoD
   //     rules (JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL, SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION)
   //     are active — this is what makes the self-approval denial real, not mocked.
-  await seedAccoWorkflows(prisma, orgId);
+  await seedDefaultWorkflows(prisma, orgId);
 
   // GL accounts for the manual journal (balanced two-line entry).
   const mkAccount = async (code: string, normalBalance: 'DEBIT' | 'CREDIT', accountClass: string, accountSubtype: string) => {

@@ -359,7 +359,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
                   type="email"
                   value={draft.footerEmail}
                   onChange={(event) => patch({ footerEmail: event.target.value })}
-                  placeholder="info@acco.com"
+                  placeholder="info@company.com"
                   maxLength={FOOTER_LIMITS.email}
                   disabled={disabled}
                   autoComplete="off"
@@ -376,7 +376,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
                   startSlot={<Globe className="size-4 text-muted-foreground" aria-hidden="true" />}
                   value={draft.footerWebsite}
                   onChange={(event) => patch({ footerWebsite: event.target.value })}
-                  placeholder="www.acco.com"
+                  placeholder="www.company.com"
                   maxLength={FOOTER_LIMITS.website}
                   disabled={disabled}
                   autoComplete="off"

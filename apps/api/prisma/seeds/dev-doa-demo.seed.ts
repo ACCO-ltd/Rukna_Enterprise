@@ -1,7 +1,7 @@
 /**
  * DEV-ONLY DoA demo seed — makes the ADR-011/015 approval gate fire on real documents.
  *
- * The shared `acco-workflows.seed.ts` seeds every chain and binding **inactive** on purpose:
+ * The shared `default-workflows.seed.ts` seeds every chain and binding **inactive** on purpose:
  * no governance rule may take effect until ACCO records the formal policy effective date. That
  * is correct for any real environment, and it also means that out of the box every governed
  * command sails straight through — there is nothing to *see*.

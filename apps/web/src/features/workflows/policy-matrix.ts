@@ -29,7 +29,7 @@ export interface PolicyMatrixEntry {
  * Keyed by `WorkflowTransactionType`. Kept as a plain record (not the enum) so this module
  * has no runtime dependency and the keys read as the API sends them.
  */
-export const ACCO_POLICY_MATRIX: Record<string, PolicyMatrixEntry> = {
+export const DEFAULT_POLICY_MATRIX: Record<string, PolicyMatrixEntry> = {
   MATERIAL_REQUEST: {
     label: 'Material request',
     transition: 'DRAFT → SUBMITTED',
@@ -65,10 +65,10 @@ export const ACCO_POLICY_MATRIX: Record<string, PolicyMatrixEntry> = {
 };
 
 /** The transaction types that can be authored, in matrix order. */
-export const AUTHORABLE_TRANSACTION_TYPES = Object.keys(ACCO_POLICY_MATRIX);
+export const AUTHORABLE_TRANSACTION_TYPES = Object.keys(DEFAULT_POLICY_MATRIX);
 
 /** The approved matrix entry for a transaction type, or null when it is not authorable. */
 export function policyMatrixFor(transactionType: string | null | undefined): PolicyMatrixEntry | null {
   if (!transactionType) return null;
-  return ACCO_POLICY_MATRIX[transactionType] ?? null;
+  return DEFAULT_POLICY_MATRIX[transactionType] ?? null;
 }

@@ -192,7 +192,7 @@ export function FormsSection() {
               <Input id="fs-client" className={RECORD_NAME_INPUT} placeholder="e.g. Ministry of Water Resources" />
             </FormField>
           </RecordCreateHeader>
-          <FormGroup title="Contact" description="Who ACCO calls about documents and payments.">
+          <FormGroup title="Contact" description="Who your company calls about documents and payments.">
             <FormField htmlFor="fs-person" label="Contact person" required>
               <Input id="fs-person" />
             </FormField>

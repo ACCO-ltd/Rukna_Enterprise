@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { CreateUserRequest } from '@erp/types';
 
 export class CreateUserDto implements CreateUserRequest {
-  @ApiProperty({ example: 'jane.doe@acco.com' })
+  @ApiProperty({ example: 'jane.doe@company.com' })
   @IsEmail()
   email!: string;
 

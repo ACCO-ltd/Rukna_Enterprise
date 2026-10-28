@@ -227,7 +227,7 @@ export async function cleanupQuotationEnv(prisma: PrismaClient, env: QuotationTe
  * them on or off — the per-org activation step.
  */
 export async function setAwardBandsActive(prisma: PrismaClient, env: QuotationTestEnv, isActive: boolean) {
-  const { seedQuotationAwardBands } = await import('../../../../../platform/workflows/seeders/acco-workflows.seed.js');
+  const { seedQuotationAwardBands } = await import('../../../../../platform/workflows/seeders/default-workflows.seed.js');
   const log = console.log;
   console.log = () => undefined;
   try {

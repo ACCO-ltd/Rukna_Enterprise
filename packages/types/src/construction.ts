@@ -396,7 +396,7 @@ export interface ProjectRollupResponse {
 // derives each phase's progress weight from its assigned BOQ value so the user doesn't guess.
 
 /** The schedule templates the wizard can apply (single-tenant; more may be added later). */
-export type ScheduleTemplateKey = 'ACCO_STANDARD_BUILDING';
+export type ScheduleTemplateKey = 'STANDARD_BUILDING';
 
 /**
  * One work package created by `apply-schedule-template`. A thin echo of the seeded rows so the

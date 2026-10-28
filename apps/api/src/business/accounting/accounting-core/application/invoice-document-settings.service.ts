@@ -206,7 +206,7 @@ export function resolveInvoiceDocumentSettings(
     throw invalid(`"${next.footerEmail}" is not an email address.`);
   }
   if (next.footerWebsite && !WEBSITE.test(next.footerWebsite)) {
-    throw invalid(`"${next.footerWebsite}" is not a website address (e.g. www.acco.com).`);
+    throw invalid(`"${next.footerWebsite}" is not a website address (e.g. www.company.com).`);
   }
   return next;
 }

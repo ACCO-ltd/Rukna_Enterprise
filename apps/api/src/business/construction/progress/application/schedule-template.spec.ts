@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 
 import { ProgressService } from './progress.service.js';
-import { ACCO_STANDARD_BUILDING_PHASES } from '../domain/schedule-templates.js';
+import { STANDARD_BUILDING_PHASES } from '../domain/schedule-templates.js';
 
 /**
  * Master Schedule P1-d (ADR-029): the guided schedule builder's two backend helpers.
@@ -78,7 +78,7 @@ describe('ProgressService.applyScheduleTemplate (Master Schedule P1-d)', () => {
   it('creates the nine standard phases in order with the right scheduleOnly / durationDays', async () => {
     const { repo, service } = build();
 
-    const res = await service.applyScheduleTemplate(identity, 'p-1', 'ACCO_STANDARD_BUILDING');
+    const res = await service.applyScheduleTemplate(identity, 'p-1', 'STANDARD_BUILDING');
 
     expect(repo.createWorkPackage).toHaveBeenCalledTimes(9);
     expect(res.workPackages).toHaveLength(9);
@@ -90,13 +90,13 @@ describe('ProgressService.applyScheduleTemplate (Master Schedule P1-d)', () => {
 
     // Names, durations and scheduleOnly track the template exactly, in order.
     expect(res.workPackages.map((w) => w.name)).toEqual(
-      ACCO_STANDARD_BUILDING_PHASES.map((p) => p.name),
+      STANDARD_BUILDING_PHASES.map((p) => p.name),
     );
     expect(res.workPackages.map((w) => w.durationDays)).toEqual(
-      ACCO_STANDARD_BUILDING_PHASES.map((p) => p.durationDays),
+      STANDARD_BUILDING_PHASES.map((p) => p.durationDays),
     );
     expect(res.workPackages.map((w) => w.scheduleOnly)).toEqual(
-      ACCO_STANDARD_BUILDING_PHASES.map((p) => p.scheduleOnly),
+      STANDARD_BUILDING_PHASES.map((p) => p.scheduleOnly),
     );
 
     // First two phases are non-measurable (Design, Mobilization); the rest are measurable.
@@ -112,7 +112,7 @@ describe('ProgressService.applyScheduleTemplate (Master Schedule P1-d)', () => {
 
   it('seeds progressWeight 0 and leaves planned dates unset (the wizard fills those later)', async () => {
     const { repo, service } = build();
-    await service.applyScheduleTemplate(identity, 'p-1', 'ACCO_STANDARD_BUILDING');
+    await service.applyScheduleTemplate(identity, 'p-1', 'STANDARD_BUILDING');
     // Every created row carries weight 0 and no planned dates.
     for (const call of repo.createWorkPackage.mock.calls) {
       const data = call[1] as Record<string, unknown>;
@@ -127,7 +127,7 @@ describe('ProgressService.applyScheduleTemplate (Master Schedule P1-d)', () => {
   it('409s when the project already has work packages (does not duplicate)', async () => {
     const { repo, service } = build({ existingCount: 3 });
     await expect(
-      service.applyScheduleTemplate(identity, 'p-1', 'ACCO_STANDARD_BUILDING'),
+      service.applyScheduleTemplate(identity, 'p-1', 'STANDARD_BUILDING'),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(repo.createWorkPackage).not.toHaveBeenCalled();
   });

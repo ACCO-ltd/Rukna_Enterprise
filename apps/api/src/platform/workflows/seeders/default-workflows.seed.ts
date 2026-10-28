@@ -7,21 +7,21 @@ import {
 } from '@prisma/client';
 
 import {
-  accoPurchaseOrderBands,
-  accoQuotationAwardBands,
-  accoSupplierPaymentBands,
-  accoVariationOrderBands,
+  defaultPurchaseOrderBands,
+  defaultQuotationAwardBands,
+  defaultSupplierPaymentBands,
+  defaultVariationOrderBands,
   type ValueBand,
-} from './acco-value-bands.js';
-import { accoApprovalChains, type ApprovalChain } from './acco-lifecycle-chains.js';
+} from './default-value-bands.js';
+import { defaultApprovalChains, type ApprovalChain } from './default-lifecycle-chains.js';
 
 /**
  * Seeds all ACCO workflow chains + project lifecycle trigger bindings for a given organization.
  * All chains seeded with is_active=false and requires_ceo_confirmation=true.
  * Amount thresholds are PLACEHOLDER values — must be confirmed by Eng Ahmed Shirie before activation.
  */
-export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: string): Promise<void> {
-  await seedAccoGovernancePolicy(prisma, organizationId);
+export async function seedDefaultWorkflows(prisma: PrismaClient, organizationId: string): Promise<void> {
+  await seedGovernancePolicy(prisma, organizationId);
   await seedWorkflowRequirementPolicies(prisma);
   await seedDocumentWorkflows(prisma, organizationId);
   await seedProjectLifecycleBindings(prisma, organizationId);
@@ -38,7 +38,7 @@ export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: st
  * The value-threshold WorkflowPolicyRules stay `PENDING` until ACCO confirms the numbers (item D),
  * so activating the version does not switch on threshold routing — only the SoD rules wired below.
  */
-const ACCO_GOVERNANCE_EFFECTIVE_FROM = new Date('2026-08-17T00:00:00.000Z');
+const GOVERNANCE_EFFECTIVE_FROM = new Date('2026-08-17T00:00:00.000Z');
 
 // ADR-022: all seven SoD rules are now wired into services and therefore activated (Phase 1 wired
 // the procure-to-pay + journal five; Phase 1b added vendor-maintainer and system-administrator).
@@ -57,15 +57,16 @@ const ACTIVE_SOD_CODES = new Set<string>([
   'ADVANCE_RECIPIENT_CANNOT_RELEASE',
 ]);
 
-async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {
+async function seedGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {
+  // Stored key, kept as-is: existing tenants' policy versions are keyed on it (ADR-047).
   const policyKey = 'ACCO_GOVERNANCE';
   const versionData = {
     status: 'ACTIVE' as const,
-    effectiveFrom: ACCO_GOVERNANCE_EFFECTIVE_FROM,
+    effectiveFrom: GOVERNANCE_EFFECTIVE_FROM,
     amountBasis: 'UNSPECIFIED' as const,
     notes:
-      'CEO-approved ACCO governance (ADR-022, effective 2026-08-17). Segregation-of-Duties rules ' +
-      'are active. Value-threshold rules remain PENDING until ACCO confirms the numbers.',
+      'Default construction governance (ADR-022). Segregation-of-Duties rules ' +
+      'are active. Value-threshold rules stay PENDING until the company confirms its numbers.',
   };
   const policy = await prisma.workflowPolicyVersion.upsert({
     where: { organizationId_policyKey_version: { organizationId, policyKey, version: 1 } },
@@ -243,7 +244,7 @@ async function seedWorkflowRequirementPolicies(prisma: PrismaClient): Promise<vo
 }
 
 async function seedDocumentWorkflows(prisma: PrismaClient, organizationId: string): Promise<void> {
-  const chains = buildAccoChains(organizationId);
+  const chains = buildDefaultChains(organizationId);
 
   for (const chain of chains) {
     const existing = await prisma.workflowDefinition.findFirst({
@@ -360,7 +361,7 @@ type ChainDef = {
   }>;
 };
 
-function buildAccoChains(organizationId: string): (ChainDef & { organizationId: string })[] {
+function buildDefaultChains(organizationId: string): (ChainDef & { organizationId: string })[] {
   return [
     {
       organizationId,
@@ -467,14 +468,14 @@ async function seedProcurementValueBands(
     fromState: 'DRAFT',
     toState: 'SUBMITTED',
     transactionType: WorkflowTransactionType.PURCHASE_ORDER,
-    bands: accoPurchaseOrderBands(),
+    bands: defaultPurchaseOrderBands(),
   });
   await seedBandSet(prisma, organizationId, {
     entityType: 'SupplierPayment',
     fromState: 'DRAFT',
     toState: 'APPROVED',
     transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
-    bands: accoSupplierPaymentBands(),
+    bands: defaultSupplierPaymentBands(),
   });
   // ADR-026 CONST-VAR-010 — VariationOrder internal approval, banded on |net price|. Seeded
   // INACTIVE (no active binding = the gate proceeds; backward-compatible). entityType is the
@@ -484,7 +485,7 @@ async function seedProcurementValueBands(
     fromState: 'PENDING_INTERNAL',
     toState: 'INTERNAL_APPROVED',
     transactionType: WorkflowTransactionType.VARIATION,
-    bands: accoVariationOrderBands(),
+    bands: defaultVariationOrderBands(),
   });
   await seedQuotationAwardBands(prisma, organizationId);
   await seedBuyerAdvanceBands(prisma, organizationId);
@@ -557,7 +558,7 @@ export const BUYER_ADVANCE_BAND_SET = {
   fromState: 'DRAFT',
   toState: 'APPROVED',
   transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
-  bands: accoSupplierPaymentBands(),
+  bands: defaultSupplierPaymentBands(),
 };
 
 /** ADR-045 §2 — the buyer-advance SoD rule (code, description). */
@@ -586,7 +587,7 @@ export const QUOTATION_AWARD_BAND_SET = {
   fromState: 'AWAITING_DECISION',
   toState: 'AWARDED',
   transactionType: WorkflowTransactionType.QUOTATION_AWARD,
-  bands: accoQuotationAwardBands(),
+  bands: defaultQuotationAwardBands(),
 };
 
 /** ADR-044 §6 — the two selection SoD rules (code, description). */
@@ -680,7 +681,7 @@ export async function seedBandSet(
  * get fresh bindings.
  */
 async function seedApprovalChains(prisma: PrismaClient, organizationId: string): Promise<void> {
-  for (const chain of accoApprovalChains()) {
+  for (const chain of defaultApprovalChains()) {
     const definition = await seedChainDefinition(prisma, organizationId, chain);
 
     const existing = await prisma.workflowTriggerBinding.findFirst({

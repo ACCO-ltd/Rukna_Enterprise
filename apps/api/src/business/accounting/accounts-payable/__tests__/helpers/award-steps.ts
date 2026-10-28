@@ -6,8 +6,8 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 import { createApprovedMr, type MrLineSpec } from '../../../../procurement/quotations/__tests__/helpers/quotation-fixture.js';
 import { steps } from '../../../../procurement/quotations/__tests__/helpers/quotation-steps.js';
-import { seedBandSet, seedBuyerAdvanceBands } from '../../../../../platform/workflows/seeders/acco-workflows.seed.js';
-import { accoSupplierPaymentBands } from '../../../../../platform/workflows/seeders/acco-value-bands.js';
+import { seedBandSet, seedBuyerAdvanceBands } from '../../../../../platform/workflows/seeders/default-workflows.seed.js';
+import { defaultSupplierPaymentBands } from '../../../../../platform/workflows/seeders/default-value-bands.js';
 import type { PaymentServices } from './build-payment-services.js';
 import type { PaymentTestEnv } from './payment-fixture.js';
 
@@ -79,7 +79,7 @@ export function awardSteps(prisma: PrismaClient, env: PaymentTestEnv, svc: Payme
         fromState: 'DRAFT',
         toState: 'APPROVED',
         transactionType: 'SUPPLIER_PAYMENT' as never,
-        bands: accoSupplierPaymentBands(),
+        bands: defaultSupplierPaymentBands(),
       });
       await seedBuyerAdvanceBands(prisma, env.orgId);
     } finally {

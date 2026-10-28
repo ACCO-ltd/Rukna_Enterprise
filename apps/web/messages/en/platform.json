@@ -373,7 +373,7 @@
       "subtitle": "Created in Preparation. Complete setup before starting work.",
       "codeLabel": "Project code",
       "codeHint": "Cannot be changed after the project is created.",
-      "codePlaceholder": "ACCO-2026-001",
+      "codePlaceholder": "PRJ-2026-001",
       "nameLabel": "Project name",
       "namePlaceholder": "Al-Baraka Tower Construction",
       "nameArLabel": "Project name (Arabic)",
@@ -1546,7 +1546,7 @@
   },
   "districts": {
     "title": "Districts",
-    "intro": "Districts are the site segment of a project code (e.g. WBR in ACCO-WBR-26-0065). Add the areas you build in; the code is fixed once a project uses it.",
+    "intro": "Districts are the site segment of a project code (e.g. WBR in PRJ-WBR-26-0065). Add the areas you build in; the code is fixed once a project uses it.",
     "addTitle": "Add a district",
     "codeLabel": "Code",
     "nameLabel": "Name",
@@ -2374,7 +2374,7 @@
       "detailsGroup": "Details",
       "detailsGroupHint": "How the client appears on invoices and in search.",
       "contactGroup": "Primary contact",
-      "contactGroupHint": "Who ACCO calls about documents and payments.",
+      "contactGroupHint": "Who your company calls about documents and payments.",
       "contactGroupEditHint": "Where documents are sent. People to call are managed on the client page.",
       "taxId": "Tax ID",
       "taxIdPlaceholder": "e.g. SO123456789",
@@ -2642,7 +2642,7 @@
       "numberAuto": "Assigned on create",
       "numberAutoHint": "The contract number is generated from the project code when you create the contract.",
       "billingModelHint": "How this contract is billed.",
-      "billingDefaultNote": "ACCO's standard. The contract value is billed across the milestones you set below.",
+      "billingDefaultNote": "Your company standard. The contract value is billed across the milestones you set below.",
       "billingAdvancedReveal": "Use a different billing model",
       "billingMeasuredNote": "Measured, time-and-material and hybrid contracts are billed through Applications & Certifications instead of a fixed milestone schedule.",
       "boqGateTitle": "Commit the BOQ first",
@@ -2658,7 +2658,7 @@
         "subtitle": "How the contract value is billed across stages. The first stage is the advance; the rest are milestones. Must total 100%.",
         "empty": "No installments yet. Add the first to define the payment schedule.",
         "add": "Add installment",
-        "useAccoStandard": "Use ACCO standard schedule",
+        "useCompanyStandard": "Use company standard schedule",
         "remove": "Remove",
         "name": "Installment",
         "namePlaceholder": "e.g. Mobilization advance",
@@ -2750,7 +2750,7 @@
         "NET_60": "Net 60 days"
       },
       "schedule": {
-        "hint": "Starts from the ACCO standard schedule. Milestone stages bill only after their programme milestone is verified — you link them in Progress › Plan & setup.",
+        "hint": "Starts from your company standard schedule. Milestone stages bill only after their programme milestone is verified — you link them in Progress › Plan & setup.",
         "name": "Stage",
         "billedOn": "Billed on",
         "dueDate": "Due date",
@@ -3385,7 +3385,7 @@
       "description": "Projects and the clients they are built for."
     },
     "accounting": {
-      "description": "Receivables, payables and the general ledger for ACCO Ltd. All amounts in USD."
+      "description": "Receivables, payables and the general ledger."
     },
     "procurement": {
       "description": "Requests, purchase orders, receipts and suppliers."

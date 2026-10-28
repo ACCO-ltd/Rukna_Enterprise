@@ -89,7 +89,7 @@ export class CreateContractDto {
   // CONST-COM-022 (S-CC-3): the client contract number is system-generated from the project code
   // (`{projectCode}-C{n}`) via an atomic per-project sequence. Optional so the create form sends
   // nothing; the old form's supplied number is still honoured, with the duplicate guard intact.
-  @ApiPropertyOptional({ example: 'ACCO-WBR-26-0065-C1' })
+  @ApiPropertyOptional({ example: 'PRJ-WBR-26-0065-C1' })
   @IsString()
   @MaxLength(50)
   @IsOptional()

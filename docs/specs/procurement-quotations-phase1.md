@@ -265,8 +265,8 @@ Write areas: `apps/api/prisma/` (schema, migration, seeds), `apps/api/src/busine
   `prisma/seeds/grant-quotation-permissions.seed.ts` + `quotation-permissions.ts` (pattern:
   `grant-finance-mr-approval.seed.ts`); SoD rule codes `QUOTE_UPLOADER_CANNOT_SELECT`,
   `REQUESTER_CANNOT_SELECT` added to the ACCO SoD policy seed and a targeted
-  `grant-quotation-sod-rules.seed.ts` for the live tenant; `accoQuotationAwardBands()` (returns
-  `accoPurchaseOrderBands()`), bound to `QUOTATION_AWARD AWAITING_DECISION:AWARDED`, seeded
+  `grant-quotation-sod-rules.seed.ts` for the live tenant; `defaultQuotationAwardBands()` (returns
+  `defaultPurchaseOrderBands()`), bound to `QUOTATION_AWARD AWAITING_DECISION:AWARDED`, seeded
   inactive; `dev-activate-doa-bands.seed.ts` activates PO and award bands together.
 - **Acceptance:** migration applies on a clone of prod; `prisma validate` passes; re-running each
   seed is a no-op; the catalog/seed consistency test passes with the new keys.

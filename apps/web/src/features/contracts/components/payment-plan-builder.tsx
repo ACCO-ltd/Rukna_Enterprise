@@ -14,7 +14,7 @@ import { Button, cn } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 
-import { ACCO_STANDARD_PLAN, PlanRowFields } from './payment-plan-fields';
+import { STANDARD_PAYMENT_PLAN, PlanRowFields } from './payment-plan-fields';
 import {
   EMPTY_PAYMENT_PLAN_ROW,
   installmentAmount,
@@ -48,7 +48,7 @@ export function PaymentPlanBuilder({
   targetPercent,
   frozenPercent = 0,
   allowAdvance,
-  showAccoStandard,
+  showCompanyStandard,
 }: {
   control: Control<ContractFormValues>;
   register: UseFormRegister<ContractFormValues>;
@@ -66,7 +66,7 @@ export function PaymentPlanBuilder({
   /** Whether the advance may be designated on this plan (false on a frozen ACTIVE re-profile). */
   allowAdvance: boolean;
   /** Offer the ACCO 40/30/20/10 one-click fill (create / DRAFT only — it is a full 100% plan). */
-  showAccoStandard: boolean;
+  showCompanyStandard: boolean;
 }) {
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'paymentPlan' });
   const rows = useWatch({ control, name: 'paymentPlan' }) ?? [];
@@ -135,14 +135,14 @@ export function PaymentPlanBuilder({
           >
             <Plus size={16} aria-hidden="true" /> {t('plan.add')}
           </Button>
-          {showAccoStandard ? (
+          {showCompanyStandard ? (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => replace(ACCO_STANDARD_PLAN.map((row) => ({ ...row })))}
+              onClick={() => replace(STANDARD_PAYMENT_PLAN.map((row) => ({ ...row })))}
             >
-              {t('plan.useAccoStandard')}
+              {t('plan.useCompanyStandard')}
             </Button>
           ) : null}
         </div>

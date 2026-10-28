@@ -156,7 +156,7 @@ an unverified milestone does. There is deliberately no "commercial review is eno
   exist only on the retired Payment Schedule tab.
 - **Resolved 2026-09-28 (owner, confirming ACCO practice):** the first 40% of ACCO's standard plan is a
   genuine **up-front advance**. The client pays it before any work starts, to fund the project's initial
-  costs, and the milestone work stages follow. It therefore stays `ADVANCE` in `ACCO_STANDARD_PLAN` and
+  costs, and the milestone work stages follow. It therefore stays `ADVANCE` in `STANDARD_PAYMENT_PLAN` and
   is correctly **not** gated by milestone verification.
 - **Advance rule (owner decision 2026-09-28):** an `ADVANCE` stage is billable once the contract is
   **executed** (`ACTIVE`), and not before; no site evidence is required. An advance invoice already

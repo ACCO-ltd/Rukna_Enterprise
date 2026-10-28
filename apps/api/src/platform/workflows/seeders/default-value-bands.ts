@@ -13,7 +13,7 @@
  * Because the engine is dormant they change no live decision; a renamed step may leave two adjacent
  * identical approvers until the chain is re-cut.
  */
-export const ACCO_ROLES = {
+export const DEFAULT_ROLES = {
   CONSTRUCTION_DIRECTOR: 'Construction Director', // org-wide construction lead; owns BOQ (absorbs QS/commercial)
   PROJECT_MANAGER: 'Project Manager', // single-project authority
   SITE_ENGINEER: 'Site Engineer',
@@ -24,7 +24,7 @@ export const ACCO_ROLES = {
   SYSTEM_ADMINISTRATOR: 'SYSTEM_ADMINISTRATOR', // sentinel — no approval authority; never assigned to a holder
 } as const;
 
-export type AccoRole = (typeof ACCO_ROLES)[keyof typeof ACCO_ROLES];
+export type DefaultRole = (typeof DEFAULT_ROLES)[keyof typeof DEFAULT_ROLES];
 
 /**
  * One amount band of a per-command approval ladder. The band is half-open `[minAmount, maxAmount)`
@@ -35,13 +35,13 @@ export interface ValueBand {
   name: string;
   minAmount: string | null;
   maxAmount: string | null;
-  steps: AccoRole[];
+  steps: DefaultRole[];
 }
 
 // The .01 boundaries are faithful to CONST-DOA-005's ranges: "≤ $100" includes 100.00, and
 // "$100.01 – $1,000" starts at 100.01. Money is 2dp, so a max of 100.01 (exclusive) admits up to
 // 100.00 and hands 100.01 to the next band.
-const R = ACCO_ROLES;
+const R = DEFAULT_ROLES;
 
 /**
  * CONST-DOA-005 — Purchase Orders. Chains are cumulative: each higher band routes through the
@@ -51,7 +51,7 @@ const R = ACCO_ROLES;
  *   $1,000.01 – $50k  + CFO (merged band — no separate $10k control for POs)
  *   > $50,000         + CEO   (ACCO 2026-08-22: no Board Chairman tier)
  */
-export function accoPurchaseOrderBands(): ValueBand[] {
+export function defaultPurchaseOrderBands(): ValueBand[] {
   return [
     { name: 'PO ≤ $100', minAmount: null, maxAmount: '100.01', steps: [R.CONSTRUCTION_DIRECTOR] },
     {
@@ -83,8 +83,8 @@ export function accoPurchaseOrderBands(): ValueBand[] {
  * omission is governed like a large addition. Seeded INACTIVE like every ADR-022 chain: with no
  * active binding the gate resolves to null and internal approval proceeds unchanged.
  */
-export function accoVariationOrderBands(): ValueBand[] {
-  return accoPurchaseOrderBands().map((b) => ({
+export function defaultVariationOrderBands(): ValueBand[] {
+  return defaultPurchaseOrderBands().map((b) => ({
     ...b,
     // Rename so the seeded WorkflowDefinition is distinguishable from the PO band it mirrors.
     name: b.name.replace(/^PO /, 'VO '),
@@ -98,8 +98,8 @@ export function accoVariationOrderBands(): ValueBand[] {
  * the transaction type (QUOTATION_AWARD, not PURCHASE_ORDER). Seeded INACTIVE alongside the PO bands
  * and activated together with them — they are one control.
  */
-export function accoQuotationAwardBands(): ValueBand[] {
-  return accoPurchaseOrderBands().map((b) => ({ ...b, name: b.name.replace(/^PO /, 'Quote award ') }));
+export function defaultQuotationAwardBands(): ValueBand[] {
+  return defaultPurchaseOrderBands().map((b) => ({ ...b, name: b.name.replace(/^PO /, 'Quote award ') }));
 }
 
 /**
@@ -109,7 +109,7 @@ export function accoQuotationAwardBands(): ValueBand[] {
  *   $1,000.01 – $10,000 + CFO
  *   > $10,000           + Group CEO
  */
-export function accoSupplierPaymentBands(): ValueBand[] {
+export function defaultSupplierPaymentBands(): ValueBand[] {
   return [
     { name: 'Payment ≤ $1,000', minAmount: null, maxAmount: '1000.01', steps: [R.FINANCE_OFFICER] },
     {

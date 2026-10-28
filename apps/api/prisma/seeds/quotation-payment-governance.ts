@@ -4,7 +4,7 @@ import {
   BUYER_ADVANCE_BAND_SET,
   QUOTATION_PAYMENT_SOD_RULES,
   seedBuyerAdvanceBands,
-} from '../../src/platform/workflows/seeders/acco-workflows.seed.js';
+} from '../../src/platform/workflows/seeders/default-workflows.seed.js';
 import { STAFF_ADVANCES_CODE } from '../../src/business/accounting/accounting-setup/templates/construction.js';
 import { STAFF_ADVANCE_PROFILE_CODE } from '../../src/business/accounting/accounts-payable/domain/staff-advance-profile.js';
 

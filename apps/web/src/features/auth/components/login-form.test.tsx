@@ -5,13 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { sessionStore } from '@/features/auth/session/session-store';
 import { ApiError } from '@/lib/api-client';
-import { loginRequest } from '@/features/auth/api/auth-api';
+import { getTenantBranding, loginRequest } from '@/features/auth/api/auth-api';
 
 import { LoginForm } from './login-form';
 
 vi.mock('@/features/auth/api/auth-api', () => ({
   loginRequest: vi.fn(),
   logoutRequest: vi.fn(),
+  getTenantBranding: vi.fn(),
 }));
 
 const push = vi.fn();
@@ -42,15 +43,25 @@ describe('LoginForm', () => {
     push.mockReset();
     refresh.mockReset();
     vi.mocked(loginRequest).mockReset();
+    vi.mocked(getTenantBranding).mockResolvedValue({ name: 'Hormuud Builders' });
     sessionStore.clearSession();
     document.cookie = '__auth=; path=/; Max-Age=0';
     document.cookie = 'lang=; path=/; Max-Age=0';
   });
 
-  it('renders the enterprise tenant identity', () => {
+  it('shows the name of the company the subdomain belongs to', async () => {
     renderWithProviders(<LoginForm />);
 
-    expect(screen.getByText('ACCO Ltd')).toBeInTheDocument();
+    expect(await screen.findByText('Hormuud Builders')).toBeInTheDocument();
+    expect(screen.getByText('Rukna ERP Platform')).toBeInTheDocument();
+    expect(screen.getByText(/Authorized Hormuud Builders personnel only/)).toBeInTheDocument();
+  });
+
+  it('falls back to the product name when the tenant has no organisation', async () => {
+    vi.mocked(getTenantBranding).mockResolvedValue({ name: null });
+    renderWithProviders(<LoginForm />);
+
+    expect(await screen.findByText(/Authorized personnel only/)).toBeInTheDocument();
     expect(screen.getByText('Rukna ERP Platform')).toBeInTheDocument();
   });
 

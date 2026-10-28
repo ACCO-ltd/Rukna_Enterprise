@@ -5,8 +5,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
+import { useQuery } from '@tanstack/react-query';
 import { Button, FormField, Input } from '@erp/ui';
 
+import { getTenantBranding } from '../api/auth-api';
 import { useLogin } from '../hooks/use-login';
 
 type LoginFormData = { email: string; password: string };
@@ -15,6 +17,9 @@ export function LoginForm() {
   const t = useTranslations('auth.login');
   const [showPassword, setShowPassword] = useState(false);
   const { mutate: login, isPending, errorType } = useLogin();
+  // Multi-tenant (ADR-047): the company name comes from the tenant the subdomain resolves to.
+  const branding = useQuery({ queryKey: ['auth', 'branding'], queryFn: getTenantBranding, staleTime: Infinity, retry: false });
+  const companyName = branding.data?.name ?? null;
   const loginSchema = z.object({
     email: z.string().email(t('emailInvalid')),
     password: z.string().min(8, t('passwordMinLength')),
@@ -34,8 +39,8 @@ export function LoginForm() {
     <main className="w-full max-w-5xl overflow-hidden rounded-lg border border-border bg-surface shadow-[0_18px_50px_rgba(23,32,51,0.10)] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
       <section className="relative flex flex-col justify-between bg-brand-panel px-6 py-6 text-white sm:min-h-72 sm:px-10 sm:py-8 lg:min-h-[620px] lg:px-12 lg:py-12">
         <div>
-          <p className="text-sm font-semibold tracking-wide text-white">{t('companyName')}</p>
-          <p className="mt-1 text-xs font-medium text-slate-400">{t('productName')}</p>
+          <p className="text-sm font-semibold tracking-wide text-white">{companyName ?? t('productName')}</p>
+          {companyName ? <p className="mt-1 text-xs font-medium text-slate-400">{t('productName')}</p> : null}
         </div>
 
         <div className="my-8 max-w-sm sm:my-12 lg:my-0">
@@ -148,7 +153,7 @@ export function LoginForm() {
         </div>
 
         <p className="border-t border-border pt-5 text-center text-xs leading-5 text-muted-foreground">
-          {t('accessNotice')}
+          {companyName ? t('accessNotice', { company: companyName }) : t('accessNoticeGeneric')}
         </p>
       </section>
     </main>

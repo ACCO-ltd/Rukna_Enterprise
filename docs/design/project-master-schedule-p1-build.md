@@ -43,12 +43,12 @@ scheduleOnly  Boolean   @default(false) @map("schedule_only") // non-measurable 
 - **`PATCH /work-packages/:id`** — accept `{ name?, responsibleOwner?, progressWeight?, plannedStart?, plannedEnd?, durationDays?, forecastEnd?, scheduleOnly? }`. *(Add if no WP PATCH exists today; else extend it.)*
   - Validation: `plannedEnd ≥ plannedStart` (reuse `validateActivityDates` logic, `progress.service.ts`); `durationDays ≥ 0`; if `scheduleOnly=true` the WP must have **no** `WorkPackageBoqNode` links (else 400).
   - Auth: project-scoped (`projectAccess.assertMember`).
-- **`POST /projects/:id/programme/apply-schedule-template`** — body `{ templateKey: 'ACCO_STANDARD_BUILDING' }`.
+- **`POST /projects/:id/programme/apply-schedule-template`** — body `{ templateKey: 'STANDARD_BUILDING' }`.
   - Creates the standard phases as work packages in **one transaction**.
   - Guard: only when the project has **zero** work packages (else 409 — don't silently duplicate). Alternative "append" mode is a later option.
 - **`POST /projects/:id/programme/suggest-weights`** *(or a query on the rollup)* — returns suggested `progressWeight` per WP = (assigned BOQ value ÷ total assigned BOQ value). Read-only suggestion; the PATCH above persists chosen weights. *(This is the "don't make the user guess weights" helper.)*
 
-### 3.3 The template (`ACCO_STANDARD_BUILDING`)
+### 3.3 The template (`STANDARD_BUILDING`)
 Server-side constant (single-tenant; configurable later). Phases + suggested durations from ACCO's sample; weights are **not** hardcoded (derived from BOQ value after scope assignment):
 
 | # | Phase (WP name) | Suggested duration | scheduleOnly |

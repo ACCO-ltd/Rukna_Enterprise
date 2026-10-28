@@ -19,7 +19,7 @@ is built. -->
 > `docs/reference/variations-implementation-plan.md` Phase 1. Delivered:
 > CONST-VAR-001/-002/-003/-004/-005/-006/-006a/-010/-012. Internal approval routes through
 > `CommandGovernanceService.gateStateTransition` on entityType `VariationOrder`, amount-banded on
-> `|net price|`, with the band set seeded **inactive** (`acco-value-bands.ts` → `accoVariationOrderBands`).
+> `|net price|`, with the band set seeded **inactive** (`default-value-bands.ts` → `defaultVariationOrderBands`).
 > `Contract.contractValue` is **unchanged** (derived, never mutated). Client-approval evidence is a
 > **provisional** payload (`clientApprovalReference` + optional note) pending **OQ-4** — see the
 > `TODO(OQ-4)` in `variation-order.service.ts`. Downstream (CONST-VAR-007/-008/-009/-011: BOQ
@@ -307,7 +307,7 @@ Internal approval of a VariationOrder (`PENDING_INTERNAL → INTERNAL_APPROVED`)
 `CommandGovernanceService.gateStateTransition` on a `VariationOrder` governed entity (entityType is a
 free-form string in the binding model — **no enum migration required**), using **amount-banded
 `STATE_TRANSITION` bindings keyed on the VO's proposed net price**, exactly like PO approval
-(ADR-022 CONST-DOA-005, `acco-value-bands.ts`). Memo Q6 is explicit: **no new authority matrix** —
+(ADR-022 CONST-DOA-005, `default-value-bands.ts`). Memo Q6 is explicit: **no new authority matrix** —
 the VO reuses ACCO's existing thresholds. The band evaluated on `|net price|` (absolute value, so a
 large omission is governed like a large addition). On reaching `CLIENT_APPROVED`, the VO's line
 items, net price, and proposed time impact become **immutable** (only its lifecycle-terminal
@@ -329,7 +329,7 @@ metadata and audit trail may extend).
   CFO jointly** authorise beginning the work while the VO is still `PENDING_INTERNAL` /
   `INTERNAL_APPROVED` (i.e. before `CLIENT_APPROVED`), escalating to **CEO** when the VO's exposure
   exceeds a **cap** (OQ-1 — the cap number is not in the memo). This is modelled as a **named fixed
-  approval chain** in the ADR-022 style (`acco-lifecycle-chains.ts`): entityType `VariationOrder`, a
+  approval chain** in the ADR-022 style (`default-lifecycle-chains.ts`): entityType `VariationOrder`, a
   dedicated `AT_RISK_COMMENCEMENT` transaction/decision, steps `[CONSTRUCTION_DIRECTOR, CFO]` below
   the cap and `[CONSTRUCTION_DIRECTOR, CFO, CEO]` above it. It is **never** satisfiable by informal
   verbal instruction (memo Q7B) — the authorisation is a governed, audited record or the work is not

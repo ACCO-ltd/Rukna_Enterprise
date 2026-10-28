@@ -25,7 +25,7 @@ import {
  * title, not by whatever the bytes happened to be called on someone's laptop.
  */
 export class CreateProjectDocumentDto {
-  @ApiProperty({ example: 'ACCO-OB-STR-DRG-0012', description: 'Unique within the project' })
+  @ApiProperty({ example: 'PRJ-OB-STR-DRG-0012', description: 'Unique within the project' })
   @IsString() @IsNotEmpty() @MaxLength(60)
   documentNumber!: string;
 

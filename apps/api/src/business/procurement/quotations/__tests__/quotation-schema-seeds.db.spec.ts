@@ -4,7 +4,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 import { grantQuotationPermissions } from '../../../../../prisma/seeds/quotation-permissions.js';
 import { grantQuotationGovernance } from '../../../../../prisma/seeds/quotation-governance.js';
-import { accoQuotationAwardBands } from '../../../../platform/workflows/seeders/acco-value-bands.js';
+import { defaultQuotationAwardBands } from '../../../../platform/workflows/seeders/default-value-bands.js';
 import {
   cleanupQuotationEnv,
   createApprovedMr,
@@ -151,7 +151,7 @@ describe('ADR-044 Q1 — schema constraints and seeds', () => {
       expect(bindings.map((b) => [b.fromState, b.toState, b.transactionType, b.isActive, b.definition.isActive])).toEqual(
         Array(4).fill(['AWAITING_DECISION', 'AWARDED', 'QUOTATION_AWARD', false, false]),
       );
-      expect(bindings.map((b) => b.definition.name)).toEqual(accoQuotationAwardBands().map((b) => b.name));
+      expect(bindings.map((b) => b.definition.name)).toEqual(defaultQuotationAwardBands().map((b) => b.name));
       expect(bindings[2].definition.steps.map((s) => s.roleRequired)).toEqual([
         'Construction Director',
         'Finance Officer',

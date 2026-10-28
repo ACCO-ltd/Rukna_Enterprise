@@ -188,7 +188,7 @@ Migration `2026101xxxxxxx_quotation_payment` (additive):
   char(64), captured_at, received_at, source, uploaded_by`), index `(organization_id, sha256)`.
 - Seeds (targeted + idempotent for the live tenant, and in the full seeds for new tenants):
   SoD rule `ADVANCE_RECIPIENT_CANNOT_RELEASE` (active); BuyerAdvance band set (`entityType
-  'BuyerAdvance'`, `DRAFT → APPROVED`, `SUPPLIER_PAYMENT`, `accoSupplierPaymentBands()`, inactive);
+  'BuyerAdvance'`, `DRAFT → APPROVED`, `SUPPLIER_PAYMENT`, `defaultSupplierPaymentBands()`, inactive);
   activation script couples it with the SupplierPayment set (refuse one without the other); posting
   profile `STAFF_ADVANCE` → `13100` added to the construction template and seeded for orgs whose
   chart has `13100`; registry `SUPPLIER_PAYMENT` gains `'DRAFT:APPROVED'` (fixes the registry/seed

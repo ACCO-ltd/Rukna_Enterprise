@@ -57,7 +57,7 @@
     "notInProject": "This bill is not coded to this project.",
     "rowMenu": "Actions for {number}",
     "open": "Open",
-    "overhead": "ACCO overhead",
+    "overhead": "Company overhead",
     "moreProjects": "+{count} more"
   },
   "lineType": {
@@ -357,7 +357,7 @@
       "forLabel": "What is it for?",
       "forProject": "A project",
       "forProjectHint": "The cost is charged to the project.",
-      "forOverhead": "ACCO overhead",
+      "forOverhead": "Company overhead",
       "forOverheadHint": "Office, yard or plant — not charged to a project.",
       "project": "Project",
       "projectPlaceholder": "Choose a project",
@@ -1988,7 +1988,7 @@
       "searchPlaceholder": "Search by request or project",
       "noMatches": "Nothing matches.",
       "openRequests": "Material requests",
-      "overhead": "ACCO overhead"
+      "overhead": "Company overhead"
     },
     "capture": {
       "back": "Quotes",

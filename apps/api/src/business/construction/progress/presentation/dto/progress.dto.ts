@@ -5,10 +5,10 @@ import type { ScheduleTemplateKey } from '@erp/types';
 import { DprObservationCategory } from '@erp/types';
 
 // Master Schedule P1-d (ADR-029) — apply a server-side schedule template to seed the project phases.
-const SCHEDULE_TEMPLATE_KEYS: ScheduleTemplateKey[] = ['ACCO_STANDARD_BUILDING'];
+const SCHEDULE_TEMPLATE_KEYS: ScheduleTemplateKey[] = ['STANDARD_BUILDING'];
 
 export class ApplyScheduleTemplateDto {
-  @ApiProperty({ enum: SCHEDULE_TEMPLATE_KEYS, example: 'ACCO_STANDARD_BUILDING' })
+  @ApiProperty({ enum: SCHEDULE_TEMPLATE_KEYS, example: 'STANDARD_BUILDING' })
   @IsIn(SCHEDULE_TEMPLATE_KEYS)
   templateKey!: ScheduleTemplateKey;
 }

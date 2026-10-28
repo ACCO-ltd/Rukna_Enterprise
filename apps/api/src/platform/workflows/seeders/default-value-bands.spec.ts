@@ -1,12 +1,12 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
 import {
-  accoPurchaseOrderBands,
-  accoQuotationAwardBands,
-  accoSupplierPaymentBands,
-  ACCO_ROLES,
+  defaultPurchaseOrderBands,
+  defaultQuotationAwardBands,
+  defaultSupplierPaymentBands,
+  DEFAULT_ROLES,
   type ValueBand,
-} from './acco-value-bands.js';
+} from './default-value-bands.js';
 import { WorkflowTriggerResolverService } from '../application/workflow-trigger-resolver.service.js';
 
 /**
@@ -17,9 +17,9 @@ import { WorkflowTriggerResolverService } from '../application/workflow-trigger-
  */
 describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
   describe.each([
-    ['Purchase Orders', accoPurchaseOrderBands()],
-    ['Supplier Payments', accoSupplierPaymentBands()],
-    ['Quotation awards (ADR-044)', accoQuotationAwardBands()],
+    ['Purchase Orders', defaultPurchaseOrderBands()],
+    ['Supplier Payments', defaultSupplierPaymentBands()],
+    ['Quotation awards (ADR-044)', defaultQuotationAwardBands()],
   ])('%s — the bands partition the amount axis', (_label, bands: ValueBand[]) => {
     it('starts at the floor and ends unbounded', () => {
       expect(bands[0].minAmount).toBeNull();
@@ -46,7 +46,7 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
   });
 
   it('encodes the CONST-DOA-005 PO thresholds and authorities', () => {
-    const bands = accoPurchaseOrderBands();
+    const bands = defaultPurchaseOrderBands();
     expect(bands.map((b) => [b.minAmount, b.maxAmount])).toEqual([
       [null, '100.01'],
       ['100.01', '1000.01'],
@@ -55,16 +55,16 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
     ]);
     // > $50,000 is the only band that pulls in the CEO (ACCO 2026-08-22: no Board Chairman tier).
     expect(bands[3].steps).toEqual([
-      ACCO_ROLES.CONSTRUCTION_DIRECTOR,
-      ACCO_ROLES.FINANCE_OFFICER,
-      ACCO_ROLES.CFO,
-      ACCO_ROLES.CEO,
+      DEFAULT_ROLES.CONSTRUCTION_DIRECTOR,
+      DEFAULT_ROLES.FINANCE_OFFICER,
+      DEFAULT_ROLES.CFO,
+      DEFAULT_ROLES.CEO,
     ]);
   });
 
   it('ADR-044 §7 — the quotation award bands are the PO bands verbatim (same cut-offs, same chains)', () => {
-    const award = accoQuotationAwardBands();
-    const po = accoPurchaseOrderBands();
+    const award = defaultQuotationAwardBands();
+    const po = defaultPurchaseOrderBands();
     expect(award.map((b) => [b.minAmount, b.maxAmount, b.steps])).toEqual(
       po.map((b) => [b.minAmount, b.maxAmount, b.steps]),
     );
@@ -79,13 +79,13 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
   });
 
   it('encodes the CONST-DOA-005 payment thresholds ($1k and $10k)', () => {
-    const bands = accoSupplierPaymentBands();
+    const bands = defaultSupplierPaymentBands();
     expect(bands.map((b) => [b.minAmount, b.maxAmount])).toEqual([
       [null, '1000.01'],
       ['1000.01', '10000.01'],
       ['10000.01', null],
     ]);
-    expect(bands[2].steps).toEqual([ACCO_ROLES.FINANCE_OFFICER, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
+    expect(bands[2].steps).toEqual([DEFAULT_ROLES.FINANCE_OFFICER, DEFAULT_ROLES.CFO, DEFAULT_ROLES.CEO]);
   });
 
   describe('routing the real bands through the Phase-2 resolver', () => {
@@ -124,7 +124,7 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
       [50000, 'PO $1,000.01–$50,000'],
       [100000, 'PO > $50,000'],
     ])('a $%d PO routes to "%s"', async (amount, expectedName) => {
-      const svc = resolverWith(bindingsFor('PurchaseOrder', 'SUBMITTED', accoPurchaseOrderBands()));
+      const svc = resolverWith(bindingsFor('PurchaseOrder', 'SUBMITTED', defaultPurchaseOrderBands()));
       const binding = await svc.resolveForStateTransition(
         'o1',
         'PurchaseOrder',
@@ -140,7 +140,7 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
       [5000, 'Payment $1,000.01–$10,000'],
       [50000, 'Payment > $10,000'],
     ])('a $%d payment routes to "%s"', async (amount, expectedName) => {
-      const svc = resolverWith(bindingsFor('SupplierPayment', 'APPROVED', accoSupplierPaymentBands()));
+      const svc = resolverWith(bindingsFor('SupplierPayment', 'APPROVED', defaultSupplierPaymentBands()));
       const binding = await svc.resolveForStateTransition(
         'o1',
         'SupplierPayment',

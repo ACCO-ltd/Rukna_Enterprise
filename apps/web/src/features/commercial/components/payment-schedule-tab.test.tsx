@@ -239,8 +239,8 @@ describe('PaymentScheduleTab — editor gating (DRAFT vs committed, §5 P2)', ()
   });
 });
 
-describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2)', () => {
-  it('populates the four ACCO rows and reconciles the editor to 100%', async () => {
+describe('PaymentScheduleTab — company standard template quick-fill (§4.2/§5 P2)', () => {
+  it('populates the four standard rows and reconciles the editor to 100%', async () => {
     const user = userEvent.setup();
     stubCycle([installment()]);
     renderWithProviders(
@@ -249,7 +249,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     );
 
     await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
-    await user.click(screen.getByRole('button', { name: 'Use ACCO standard schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Use company standard schedule' }));
 
     // The four house-standard stages, seeded verbatim.
     for (const name of ['Advance (mobilisation)', 'Partition & Plastering', 'Installation & Paint', 'Inspection & Handover']) {
@@ -263,7 +263,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     expect(screen.getByText('Totals 100%')).toBeInTheDocument();
   });
 
-  it('saves the ACCO template through the replace-all route', async () => {
+  it('saves the company template through the replace-all route', async () => {
     const user = userEvent.setup();
     stubCycle([installment()]);
     renderWithProviders(
@@ -272,7 +272,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     );
 
     await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
-    await user.click(screen.getByRole('button', { name: 'Use ACCO standard schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Use company standard schedule' }));
     await user.click(screen.getByRole('button', { name: 'Save schedule' }));
 
     expect(replaceMutate).toHaveBeenCalledTimes(1);

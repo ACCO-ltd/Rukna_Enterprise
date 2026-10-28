@@ -39,7 +39,7 @@ import {
   type PaymentPlanBilledOn,
   type PaymentPlanRow,
 } from '../contract-form-payload';
-import { ACCO_STANDARD_PLAN } from './payment-plan-fields';
+import { STANDARD_PAYMENT_PLAN } from './payment-plan-fields';
 import { BillingModel } from '../types';
 import { useRecordSignedContract } from '../hooks/use-record-signed-contract';
 
@@ -86,7 +86,7 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
     contractValue: '',
     paymentTerms: 'NET_30',
   });
-  const [stages, setStages] = useState<StageRow[]>(() => ACCO_STANDARD_PLAN.map(stageFromTemplate));
+  const [stages, setStages] = useState<StageRow[]>(() => STANDARD_PAYMENT_PLAN.map(stageFromTemplate));
   const [file, setFile] = useState<File | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [confirming, setConfirming] = useState(false);

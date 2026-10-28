@@ -34,7 +34,7 @@ import {
  * `paymentPlanTotalPercent`. The user can re-designate which stage is the advance, so this is only
  * the default.
  */
-export const ACCO_STANDARD_PLAN: PaymentPlanRow[] = [
+export const STANDARD_PAYMENT_PLAN: PaymentPlanRow[] = [
   { name: 'Advance (mobilisation)', percentage: '40', isAdvance: true, dueDate: '' },
   { name: 'Partition & Plastering', percentage: '30', isAdvance: false, dueDate: '' },
   { name: 'Installation & Paint', percentage: '20', isAdvance: false, dueDate: '' },

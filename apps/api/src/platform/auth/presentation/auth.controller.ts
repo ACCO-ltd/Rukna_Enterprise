@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
@@ -16,6 +16,16 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
   ) {}
+
+  /**
+   * The signed-out face of the tenant the subdomain resolves to: its name, for the login page.
+   * Multi-tenant: nothing about a company is built into the web app (ADR-047).
+   */
+  @Get('branding')
+  @ApiOperation({ summary: 'Public — the tenant organisation name for the login page' })
+  branding(): Promise<{ name: string | null }> {
+    return this.authService.getBranding();
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

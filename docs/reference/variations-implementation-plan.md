@@ -46,7 +46,7 @@ condition-override pattern, and the commercial summary read model (ADR-017 Gate 
   `pendingVariations = Σ (PENDING_INTERNAL + INTERNAL_APPROVED) net`. **Do not mutate**
   `Contract.contractValue`. Extend the ADR-017 commercial summary read model with the four figures.
 - **Governance:** wire `VariationOrder` internal approval through `CommandGovernanceService.gateStateTransition`
-  with amount-banded bindings on `|net price|` (reuse `acco-value-bands.ts` shape). Bands seeded
+  with amount-banded bindings on `|net price|` (reuse `default-value-bands.ts` shape). Bands seeded
   **inactive**, like every other ADR-022 chain.
 - **Depends on:** Phase 0 (OQ-4 for the client-approval command shape). Reuses ADR-022 governance.
 - **De-risks:** the core of the memo — the pending-vs-approved rule and immutable-baseline preservation.
@@ -119,7 +119,7 @@ condition-override pattern, and the commercial summary read model (ADR-017 Gate 
   / `CONTRACT_START_DATE` Start conditions via the existing ADR-019 condition override
   (`override: { condition, reason, approvedBy }` → `PROJECT_CONDITION_WAIVED` audit), authorised by the
   Start chain apex. 7B = VariationOrder — an `AT_RISK_COMMENCEMENT` authorisation record + named fixed
-  chain (`acco-lifecycle-chains.ts` style): `[CONSTRUCTION_DIRECTOR, CFO]`, adding `CEO` above the
+  chain (`default-lifecycle-chains.ts` style): `[CONSTRUCTION_DIRECTOR, CFO]`, adding `CEO` above the
   OQ-1 exposure cap. At-risk commencement changes **neither** contract value **nor** BOQ.
 - **Endpoints:** 7A reuses the existing `POST /projects/:id/start` override path (may need to permit
   waiving those specific MANDATORY conditions under apex authority). 7B: `POST /variations/:id/at-risk-commencement`.

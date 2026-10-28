@@ -1,6 +1,6 @@
 import { WorkflowTransactionType } from '@prisma/client';
 
-import { ACCO_ROLES, type AccoRole } from './acco-value-bands.js';
+import { DEFAULT_ROLES, type DefaultRole } from './default-value-bands.js';
 
 /**
  * ADR-022 — ACCO's fixed (non-amount-banded) approval chains, expressed as data.
@@ -17,12 +17,12 @@ export interface ApprovalChain {
   toState: string;
   /** Set when the gated command carries a transaction type (BOQ baseline); omitted otherwise. */
   transactionType?: WorkflowTransactionType;
-  steps: AccoRole[];
+  steps: DefaultRole[];
 }
 
-const R = ACCO_ROLES;
+const R = DEFAULT_ROLES;
 
-export function accoApprovalChains(): ApprovalChain[] {
+export function defaultApprovalChains(): ApprovalChain[] {
   return [
     // CONST-DOA-006 — Start Project: PM/Construction Director recommends → CFO confirms budget
     // & funding → Group CEO final approval. (The Board is pulled in per delegated authority.)
@@ -81,7 +81,7 @@ export function accoApprovalChains(): ApprovalChain[] {
  * (the VO lifecycle is untouched — CONST-VAR-011) — it is the authority declaration for the dedicated
  * `POST /variations/:id/at-risk-commencement` command, whose config-driven cap decides the CEO step.
  *
- * Exposed as data (mirrors accoApprovalChains) so the two-tier chain lives in ONE place with the rest
+ * Exposed as data (mirrors defaultApprovalChains) so the two-tier chain lives in ONE place with the rest
  * of ACCO's authority matrix rather than being hard-coded in the service.
  */
 export const AT_RISK_COMMENCEMENT_CHAIN = {
@@ -89,7 +89,7 @@ export const AT_RISK_COMMENCEMENT_CHAIN = {
   name: 'Variation At-Risk Commencement Authorisation',
   entityType: 'VariationOrder' as const,
   /** Below the exposure cap (CD + CFO jointly). */
-  belowCap: [R.CONSTRUCTION_DIRECTOR, R.CFO] as AccoRole[],
+  belowCap: [R.CONSTRUCTION_DIRECTOR, R.CFO] as DefaultRole[],
   /** Above the exposure cap (adds the CEO). */
-  aboveCap: [R.CONSTRUCTION_DIRECTOR, R.CFO, R.CEO] as AccoRole[],
+  aboveCap: [R.CONSTRUCTION_DIRECTOR, R.CFO, R.CEO] as DefaultRole[],
 } as const;

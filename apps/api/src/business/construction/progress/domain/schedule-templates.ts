@@ -32,7 +32,7 @@ export interface ScheduleTemplatePhase {
  * and Mobilization are `scheduleOnly` (non-measurable, no BOQ scope); the structural/finishing phases
  * are measurable and take BOQ scope in the wizard's next step.
  */
-export const ACCO_STANDARD_BUILDING_PHASES: readonly ScheduleTemplatePhase[] = [
+export const STANDARD_BUILDING_PHASES: readonly ScheduleTemplatePhase[] = [
   { name: 'Design Completion (2D & 3D)', durationDays: 7, scheduleOnly: true },
   { name: 'Mobilization & Site Preparation', durationDays: 7, scheduleOnly: true },
   { name: 'Excavation & Foundation Works', durationDays: 21, scheduleOnly: false },
@@ -46,7 +46,7 @@ export const ACCO_STANDARD_BUILDING_PHASES: readonly ScheduleTemplatePhase[] = [
 
 /** The registry of schedule templates, keyed by the wire `ScheduleTemplateKey`. */
 export const SCHEDULE_TEMPLATES: Record<ScheduleTemplateKey, readonly ScheduleTemplatePhase[]> = {
-  ACCO_STANDARD_BUILDING: ACCO_STANDARD_BUILDING_PHASES,
+  STANDARD_BUILDING: STANDARD_BUILDING_PHASES,
 };
 
 /** Look up a template's phases, or `undefined` when the key is unknown. */

@@ -7,6 +7,11 @@ export interface LoginCredentials {
   password: string;
 }
 
+/** Public: the organisation the subdomain belongs to, so the login page shows its own name. */
+export function getTenantBranding(): Promise<{ name: string | null }> {
+  return apiClient<{ name: string | null }>('/auth/branding', { skipAuth: true });
+}
+
 export function loginRequest(credentials: LoginCredentials): Promise<LoginResponse> {
   return apiClient<LoginResponse>('/auth/login', {
     method: 'POST',
