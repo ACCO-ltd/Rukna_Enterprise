@@ -774,7 +774,8 @@
       "IPC": "IPC",
       "SEPARATE_CHARGE": "Separate charge",
       "RETENTION_RELEASE": "Retention release",
-      "NONE": "Invoice"
+      "NONE": "Invoice",
+      "MANUAL": "Other sale"
     },
     "statusList": {
       "heading": "Approval and posting",
@@ -958,7 +959,10 @@
       },
       "saveFailed": "The invoice could not be saved.",
       "noPermissionTitle": "You can't raise client invoices",
-      "noPermissionBody": "Creating a client invoice needs permission to manage receivables."
+      "noPermissionBody": "Creating a client invoice needs permission to manage receivables.",
+      "otherSaleTitle": "Selling something outside a contract?",
+      "otherSaleBody": "Equipment hire, surplus materials or services — type the lines yourself.",
+      "otherSaleAction": "Other sale"
     },
     "notInProject": "This invoice does not belong to this project.",
     "sendWhatsApp": "Send on WhatsApp",
@@ -1015,7 +1019,70 @@
     "groupClient": "Client",
     "groupProject": "Project",
     "groupStatus": "Status",
-    "noProject": "No project"
+    "noProject": "No project",
+    "editDraft": "Edit draft",
+    "manual": {
+      "title": "New sale invoice",
+      "editTitle": "Edit sale invoice",
+      "back": "Invoices",
+      "intro": "For sales outside a construction contract: equipment hire, surplus materials, services. Contract billing stays on New invoice, from a certificate, stage or charge.",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "saveFailed": "The invoice could not be saved.",
+      "fixTitle": "Fix these to save the invoice",
+      "whoTitle": "Who and when",
+      "whoSub": "The client, the dates and the payment terms.",
+      "client": "Client",
+      "clientPlaceholder": "Choose a client",
+      "clientSearch": "Search clients",
+      "clientEmpty": "No client matches",
+      "createClient": "+ New client",
+      "createClientNamed": "+ Create client “{name}”",
+      "currency": "Currency",
+      "currencyHint": "Three letters, e.g. USD.",
+      "taxNumber": "Tax no. {number}",
+      "invoiceDate": "Invoice date",
+      "termsLabel": "Terms",
+      "dueDate": "Due date",
+      "dueHint": "Worked out from the terms.",
+      "terms": {
+        "RECEIPT": "Due on receipt",
+        "NET_15": "Net 15",
+        "NET_30": "Net 30",
+        "CUSTOM": "Custom"
+      },
+      "linesTitle": "What you’re billing",
+      "linesSub": "Each line credits the income account you choose. Amounts are before tax.",
+      "noIncomeAccounts": "No income account accepts postings yet. Add one under Setup & close → Chart of accounts.",
+      "colDescription": "Description",
+      "colQty": "Qty",
+      "colRate": "Rate",
+      "colAccount": "Income account",
+      "colAmount": "Amount",
+      "remove": "Remove",
+      "removeLine": "Remove line {n}",
+      "lineDescription": "Line {n} description",
+      "lineQty": "Line {n} quantity",
+      "lineRate": "Line {n} rate",
+      "lineAccount": "Line {n} income account",
+      "addLine": "Add line",
+      "subtotal": "Subtotal",
+      "tax": "Tax",
+      "taxAt": "Tax {rate}",
+      "totalDue": "Total due",
+      "newClientTitle": "New client",
+      "newClientSub": "Added without leaving your invoice.",
+      "loading": "Loading invoice…",
+      "loadFailed": "The invoice could not be loaded.",
+      "notEditable": "Only a draft sale invoice can be edited. Contract invoices follow their source.",
+      "errors": {
+        "client": "Choose a client.",
+        "dueBeforeDate": "The due date cannot be before the invoice date.",
+        "description": "Line {n} needs a description.",
+        "amount": "Line {n} needs a quantity and a rate above 0.",
+        "account": "Line {n} needs an income account."
+      }
+    }
   },
   "openingBalance": {
     "title": "Opening Balance Migration",
@@ -1164,7 +1231,9 @@
     "postingProfileStatus": "{action, select, deactivate {Posting profile {code} deactivated} other {Posting profile {code} reactivated}}",
     "taxCodeCreated": "Tax code {code} created",
     "taxCodeDefault": "{code} is now the default sales tax",
-    "taxCodeStatus": "{action, select, deactivate {Tax code {code} deactivated} other {Tax code {code} reactivated}}"
+    "taxCodeStatus": "{action, select, deactivate {Tax code {code} deactivated} other {Tax code {code} reactivated}}",
+    "invoiceSaved": "Invoice saved",
+    "invoiceDraftCreated": "Draft invoice created"
   },
   "setup": {
     "title": "Set up accounting",

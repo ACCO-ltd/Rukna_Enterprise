@@ -41,6 +41,13 @@ export class ClientInvoiceController {
     return this.clientInvoiceService.findAll(identity, { clientId, projectId });
   }
 
+  // Declared before `:id` so the path is not read as an invoice id.
+  @Get('income-accounts')
+  @ApiOperation({ summary: 'ADR-048: the active, posting income accounts a hand-typed invoice line may credit' })
+  listIncomeAccounts(@CurrentUser() identity: RequestIdentity) {
+    return this.clientInvoiceService.listIncomeAccounts(identity);
+  }
+
   @Post('manual')
   @ApiOperation({
     summary:

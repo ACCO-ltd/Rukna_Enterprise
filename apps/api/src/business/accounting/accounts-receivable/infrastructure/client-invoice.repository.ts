@@ -393,6 +393,24 @@ export class ClientInvoiceRepository {
     return new Map(accounts.map((a) => [a.code, a.id]));
   }
 
+  /** Every income account a manual invoice line may credit, by code — the form's choices. */
+  async listIncomeAccounts(prisma: TenantPrisma, organizationId: string) {
+    const accounts = await prisma.account.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        versions: { some: { effectiveTo: null, accountClass: 'INCOME', isPostingAllowed: true, isControlAccount: false } },
+      },
+      orderBy: { code: 'asc' },
+      select: { code: true, versions: { where: { effectiveTo: null }, select: { name: true, accountSubtype: true } } },
+    });
+    return accounts.map((a) => ({
+      code: a.code,
+      name: a.versions[0]?.name ?? a.code,
+      subtype: a.versions[0]?.accountSubtype ?? null,
+    }));
+  }
+
   findClientForInvoice(prisma: TenantPrisma, organizationId: string, clientId: string) {
     return prisma.client.findFirst({
       where: { id: clientId, organizationId },

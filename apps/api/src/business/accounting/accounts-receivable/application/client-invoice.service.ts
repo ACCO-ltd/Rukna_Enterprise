@@ -754,6 +754,12 @@ export class ClientInvoiceService {
     return this.findById(identity, invoice.id);
   }
 
+  /** ADR-048 — the income accounts a hand-typed line may credit (`OTHER_INCOME` ones first). */
+  async listIncomeAccounts(identity: RequestIdentity) {
+    const accounts = await this.repo.listIncomeAccounts(this.tenancyService.getClient(), identity.activeOrganizationId);
+    return [...accounts].sort((a, b) => Number(b.subtype === 'OTHER_INCOME') - Number(a.subtype === 'OTHER_INCOME'));
+  }
+
   /** ADR-048 — rewrite a DRAFT hand-typed invoice: header and the whole line set. */
   async updateManual(identity: RequestIdentity, invoiceId: string, dto: ManualInvoiceInput) {
     const prisma = this.tenancyService.getClient();

@@ -4,13 +4,17 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 
 import {
   approveInvoice,
+  createManualInvoice,
   generateInvoiceFromIpc,
   getInvoice,
   getInvoiceDocument,
   listInvoices,
   postInvoice,
   reverseInvoice,
+  updateManualInvoice,
+  listIncomeAccounts,
 } from '../api/invoices-api';
+import type { ManualInvoiceInput } from '@erp/types';
 import { accountingKeys, refOrNone } from './use-accounting';
 import { openSignedDocument } from '@/lib/open-signed-document';
 
@@ -73,6 +77,24 @@ export function useInvoiceForIpc(ipcId: string): UseQueryResult<ClientInvoice | 
  * Generates the invoice and invalidates every list, including the per-IPC lookup — the billing
  * card that triggered this is showing "not invoiced yet" and has to stop.
  */
+/** ADR-048 — the income accounts a hand-typed invoice line may credit. */
+export function useIncomeAccounts() {
+  return useQuery({ queryKey: [...invoiceKeys.all, 'income-accounts'], queryFn: listIncomeAccounts, staleTime: 5 * 60_000 });
+}
+
+/** ADR-048 — create or rewrite a hand-typed draft; the list and that invoice refresh. */
+export function useSaveManualInvoice(invoiceId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ManualInvoiceInput) =>
+      invoiceId ? updateManualInvoice(invoiceId, payload) : createManualInvoice(payload),
+    meta: { successToast: invoiceId ? 'accounting.feedback.invoiceSaved' : 'accounting.feedback.invoiceDraftCreated' },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: invoiceKeys.all });
+    },
+  });
+}
+
 export function useGenerateInvoice() {
   const qc = useQueryClient();
 

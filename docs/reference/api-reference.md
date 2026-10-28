@@ -261,8 +261,10 @@ cents. Each line's account must be an active, posting INCOME account. Errors:
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/invoices/manual` | Body `{ clientId, invoiceDate, dueDate, currencyCode, taxCodeId?, paymentTerms?, lines }`. Returns the invoice detail with `source.kind = 'MANUAL'` and `lines`. |
+| `GET` | `/invoices/income-accounts` | `[{ code, name, subtype }]`: the active posting INCOME accounts a line may credit (`OTHER_INCOME` ones first). Readable without `manage:accounting`. |
 | `PUT` | `/invoices/:id/manual` | Same body; rewrites a DRAFT in full. `409 INVOICE_NOT_DRAFT` once it is approved; `400 INVOICE_NOT_MANUAL` for a contract invoice. |
 
+`POST /clients` also accepts `manage:receivable` (ADR-048 §7: add a client without leaving the invoice).
 `GET /invoices/:id` now also returns `lines: ManualInvoiceLineDto[]` (empty for source invoices).
 Posting a manual invoice credits each income account for its lines (`409 MANUAL_LINES_MISMATCH` if
 the lines and subtotal disagree).

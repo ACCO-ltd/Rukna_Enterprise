@@ -159,6 +159,11 @@ export function InvoiceDetail({
         actions={
           mayManage ? (
             <>
+              {data.isManual && data.documentStatus === 'DRAFT' ? (
+                <Button variant="outline" asChild>
+                  <Link href={`/finance/accounting/invoices/${data.id}/edit`}>{t('editDraft')}</Link>
+                </Button>
+              ) : null}
               {canApprove(data) ? (
                 <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
               ) : null}
@@ -192,6 +197,8 @@ export function InvoiceDetail({
       />
 
       {data.postingStatus !== 'POSTED' ? <AccountingSetupNotice /> : null}
+
+      {data.isManual && data.lines && data.lines.length > 0 ? <ManualLinesTable invoice={data} locale={locale} /> : null}
 
       {state === 'DRAFT' ? (
         <p className="text-caption text-muted-foreground">{t('approveHint')}</p>
@@ -334,6 +341,43 @@ export function InvoiceDetail({
         />
       ) : null}
     </div>
+  );
+}
+
+/** ADR-048 — what a hand-typed invoice bills, line by line, with the income account each credits. */
+function ManualLinesTable({ invoice, locale }: { invoice: ClientInvoice; locale: 'en' | 'ar' }) {
+  const t = useTranslations('accounting.invoices.manual');
+  const money = (value: string) => formatMoney(value, invoice.currencyCode, locale) ?? value;
+  return (
+    <section className="overflow-hidden rounded-panel border border-border bg-surface" aria-labelledby="manual-lines-detail">
+      <h2 id="manual-lines-detail" className="border-b border-border px-4 py-3 text-body font-semibold text-foreground">
+        {t('linesTitle')}
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-body-sm">
+          <thead className="bg-surface-subtle text-caption text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-4 py-2 text-start font-medium">{t('colDescription')}</th>
+              <th scope="col" className="px-4 py-2 text-end font-medium">{t('colQty')}</th>
+              <th scope="col" className="px-4 py-2 text-end font-medium">{t('colRate')}</th>
+              <th scope="col" className="px-4 py-2 text-start font-medium">{t('colAccount')}</th>
+              <th scope="col" className="px-4 py-2 text-end font-medium">{t('colAmount')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(invoice.lines ?? []).map((line) => (
+              <tr key={line.lineNo} className="border-t border-border">
+                <td className="px-4 py-2.5">{line.description}</td>
+                <td className="px-4 py-2.5 text-end tabular-nums">{line.quantity}</td>
+                <td className="px-4 py-2.5 text-end tabular-nums">{money(line.unitPrice)}</td>
+                <td className="px-4 py-2.5 font-mono text-caption text-muted-foreground">{line.revenueAccountCode}</td>
+                <td className="px-4 py-2.5 text-end font-semibold tabular-nums">{money(line.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

@@ -343,6 +343,18 @@ export function InvoiceCreate() {
 
       <FormErrorSummary errors={summaryErrors} formErrors={saveError ? [saveError] : []} />
 
+      {/* ADR-048 — a sale outside any contract is typed by hand, on its own form. */}
+      <Link
+        href="/finance/accounting/invoices/new/sale"
+        className="flex items-center justify-between gap-4 rounded-panel border border-dashed border-border-strong bg-surface px-4 py-3 text-body-sm hover:border-brand-primary hover:bg-brand-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+      >
+        <span>
+          <span className="block font-semibold text-foreground">{t('otherSaleTitle')}</span>
+          <span className="block text-muted-foreground">{t('otherSaleBody')}</span>
+        </span>
+        <span className="shrink-0 font-semibold text-brand-primary">{t('otherSaleAction')} →</span>
+      </Link>
+
       <RadioGroup<InvoiceSourceKind>
         label={t('kindLabel')}
         name="invoice-kind"

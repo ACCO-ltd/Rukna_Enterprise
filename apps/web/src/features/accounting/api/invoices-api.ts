@@ -1,3 +1,4 @@
+import type { ManualInvoiceInput } from '@erp/types';
 /**
  * ─── Client invoices (AR) ───────────────────────────────────────────────────────
  *
@@ -179,4 +180,24 @@ export function reverseInvoice(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+/** ADR-048 — `POST /invoices/manual`: a hand-typed draft for a non-contract sale. */
+export function createManualInvoice(payload: ManualInvoiceInput): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>('/invoices/manual', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/** ADR-048 — `PUT /invoices/:id/manual`: rewrite a draft hand-typed invoice in full. */
+export function updateManualInvoice(id: string, payload: ManualInvoiceInput): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>(`/invoices/${id}/manual`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+/** ADR-048 — `GET /invoices/income-accounts`: the accounts a hand-typed line may credit. */
+export interface IncomeAccountOption {
+  code: string;
+  name: string;
+  subtype: string | null;
+}
+export function listIncomeAccounts(): Promise<IncomeAccountOption[]> {
+  return apiClient<IncomeAccountOption[]>('/invoices/income-accounts');
 }

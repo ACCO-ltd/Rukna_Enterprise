@@ -15,7 +15,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@ne
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
-import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
+import { RequireAnyPermission, RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ClientService } from '../application/client.service.js';
@@ -57,7 +57,9 @@ export class ClientsController {
   }
 
   @Post()
-  @RequirePermissions(PERMISSIONS.clientsCreate)
+  // ADR-048 §7 (owner decision 2026-10-28): whoever can invoice may add a client without leaving
+  // the invoice, so manage:receivable also creates. The class-level view:client still applies.
+  @RequireAnyPermission(PERMISSIONS.clientsCreate, PERMISSIONS.receivablesManage)
   @ApiOperation({ summary: 'Create a client with its primary contact' })
   @ApiResponse({ status: 201, description: 'Client created (same shape as GET /clients/:id)' })
   @ApiResponse({ status: 400, description: 'PHONE_INVALID / EMAIL_INVALID / NAME_INVALID …' })

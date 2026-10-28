@@ -1,3 +1,4 @@
+import type { ManualInvoiceLineDto } from '@erp/types';
 /**
  * Response shapes for the accounting module.
  *
@@ -477,7 +478,7 @@ export interface ClientInvoice {
   sourceIpcId: string | null;
   /** The source document, resolved to its human reference — never re-derived in the browser. */
   source: {
-    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'RETENTION_RELEASE' | 'NONE';
+    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'RETENTION_RELEASE' | 'MANUAL' | 'NONE';
     label: string | null;
     id: string | null;
   };
@@ -501,6 +502,10 @@ export interface ClientInvoice {
   retentionReleasedAmount?: string;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
+  /** ADR-048 — a hand-typed invoice for a non-contract sale; its `lines` carry the amount. */
+  isManual?: boolean;
+  /** ADR-048 — the hand-typed lines (detail read only; empty for source invoices). */
+  lines?: ManualInvoiceLineDto[];
   paymentTerms: string | null;
   documentStatus: InvoiceDocStatus;
   postingStatus: PostingStatus;
