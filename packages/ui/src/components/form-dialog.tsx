@@ -227,7 +227,7 @@ export function FormDialog({
             // panels that portal into it (Combobox list), and `overflow-hidden` would then clip them
             // at the dialog's edge.
             'sm:inset-0 sm:m-auto sm:h-fit sm:max-h-[90dvh] sm:w-[calc(100vw-2rem)]',
-            'sm:rounded-container sm:border sm:border-border',
+            'sm:rounded-overlay sm:border sm:border-border',
             formDialogSizeClass[size],
             className,
           )}

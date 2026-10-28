@@ -134,7 +134,7 @@ export const DialogContent = React.forwardRef<
           // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
           className={cn(
             'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
-            'rounded-t-container sm:rounded-container',
+            'rounded-t-overlay sm:rounded-overlay',
             // Centred without a translate — see form-dialog.tsx: a transform would clip the panels
             // that portal into the dialog.
             'sm:inset-0 sm:m-auto sm:h-fit sm:w-full sm:p-8',

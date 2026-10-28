@@ -27,7 +27,7 @@ const buttonVariants = cva(
       size: {
         default: 'h-control px-4 py-2',
         sm: 'h-9 rounded-control px-3',
-        lg: 'h-12 px-8',
+        lg: 'h-11 px-6', // 44px — the touch-target size (ADR-047 controls 28 / 36 / 38 / 44)
         icon: 'h-control w-control',
       },
     },
