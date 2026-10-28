@@ -89,7 +89,10 @@ export function ListViewsBar({ listKey, builtIns, current, onApply, countFor, la
   // A deleted or hidden view, or a list changed by hand, reads as "no view matches" — never as
   // a tab claiming to show something it does not.
   const matchesSelected = selectedState ? sameViewState(selectedState, current) : false;
-  const activeId = matchesSelected ? selectedId : '';
+  // A list put into a view's state from elsewhere (a summary tile, a link) shows that view.
+  const matchingId =
+    builtIns.find((v) => sameViewState(v.state, current))?.id ?? savedViews.find((v) => sameViewState(v.state, current))?.id;
+  const activeId = matchesSelected ? selectedId : (matchingId ?? '');
   const canEdit = (view: SavedViewDto) => view.mine || (view.published && isAdmin);
 
   const tabs: SavedView[] = [
@@ -127,7 +130,7 @@ export function ListViewsBar({ listKey, builtIns, current, onApply, countFor, la
             {t('saveChanges')}
           </Button>
         ) : null}
-        {!matchesSelected ? (
+        {activeId === '' ? (
           <Button type="button" variant="ghost" size="sm" onClick={() => setNaming({ mode: 'create' })}>
             <Plus size={16} aria-hidden="true" /> {t('saveView')}
           </Button>

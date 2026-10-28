@@ -31,9 +31,11 @@ import {
   TableScroll,
 } from '@erp/ui';
 import Link from 'next/link';
-import { ArrowUpDown, Columns3, Search } from 'lucide-react';
+import { ArrowUpDown, Columns3, Download, Search } from 'lucide-react';
 
 import { useRecentlySavedRows } from '@/lib/mutation-feedback';
+import { exportCsv, type CsvCell } from '@/features/accounting/lib/export-csv';
+import { downloadXlsx } from '@/lib/xlsx-export';
 
 // ─── Column definition ────────────────────────────────────────────────────────
 
@@ -68,6 +70,8 @@ export interface GridColumn<T> {
    * Required for `sortable: true`. Also powers global text search.
    */
   plainValue?: (row: T) => string | number | null | undefined;
+  /** The cell as exported (Step 2b) when it differs from `plainValue` — which also feeds search. */
+  exportValue?: (row: T) => string | number | null | undefined;
   /** Renders the cell's visual content. */
   render: (row: T, ctx: GridRenderContext) => React.ReactNode;
   /**
@@ -422,6 +426,14 @@ export interface PlatformDataGridProps<T> {
   listState?: ListStateConfig;
 
   /**
+   * Offer "Export" (CSV / Excel) of every row the current search, filters and sort keep — not
+   * just the page on screen (Step 2b, ADR-047). Columns export their `plainValue`; a column
+   * without one, or a redacted or hidden column, is left out. `fileName` has no extension.
+   * Client-side lists only: a server list holds one page and would export a misleading part.
+   */
+  exportAs?: { fileName: string; sheetName: string };
+
+  /**
    * Row selection. Only provide when the caller has bulk actions to perform —
    * a checkbox column that does nothing is not useful.
    */
@@ -623,6 +635,7 @@ export function PlatformDataGrid<T>({
   onFilterValuesChange,
   server,
   listState,
+  exportAs,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
   const t = useTranslations('common.grid');
@@ -899,6 +912,17 @@ export function PlatformDataGrid<T>({
     );
   };
 
+  // ── Export (Step 2b) ───────────────────────────────────────────────────────
+
+  const runExport = (format: 'csv' | 'xlsx') => {
+    if (!exportAs) return;
+    const exportColumns = readableColumns.filter((c) => c.exportValue ?? c.plainValue);
+    const headers = exportColumns.map((c) => c.header);
+    const rows: CsvCell[][] = sorted.map((row) => exportColumns.map((c) => (c.exportValue ?? c.plainValue)?.(row) ?? null));
+    if (format === 'csv') exportCsv(`${exportAs.fileName}.csv`, headers, rows);
+    else downloadXlsx(`${exportAs.fileName}.xlsx`, [{ name: exportAs.sheetName, rows: [headers, ...rows] }]);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -982,6 +1006,21 @@ export function PlatformDataGrid<T>({
                 any: t('filterAny'),
               }}
             />
+          ) : null}
+
+          {exportAs && !server ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-1.5" disabled={sorted.length === 0}>
+                  <Download size={16} aria-hidden="true" />
+                  <span>{t('export')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => runExport('csv')}>{t('exportCsv', { count: sorted.length })}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => runExport('xlsx')}>{t('exportXlsx', { count: sorted.length })}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
 
           {enableColumnVisibility ? (

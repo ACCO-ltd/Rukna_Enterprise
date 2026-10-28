@@ -105,7 +105,10 @@
     "filterAny": "Any",
     "clearAllFilters": "Clear all",
     "removeFilter": "Remove filter: {filter}",
-    "noMatchesHint": "Try clearing a filter or changing your search."
+    "noMatchesHint": "Try clearing a filter or changing your search.",
+    "export": "Export",
+    "exportCsv": "CSV · {count, plural, one {# row} other {# rows}}",
+    "exportXlsx": "Excel · {count, plural, one {# row} other {# rows}}"
   },
   "emptyState": {
     "noData": "No items yet",

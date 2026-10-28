@@ -966,7 +966,23 @@
       "all": "All",
       "overdue": "Overdue",
       "drafts": "Drafts",
-      "toPost": "To post"
+      "toPost": "To post",
+      "notDue": "Not due yet"
+    },
+    "summary": {
+      "draft": "Draft",
+      "draftSub": "{count, plural, =0 {Nothing to issue} one {# to issue} other {# to issue}}",
+      "overdue": "Overdue",
+      "overdueSub": "{count, plural, one {# invoice} other {# invoices}} · oldest {days, plural, one {# day} other {# days}} late",
+      "overdueNone": "No overdue invoices",
+      "notDue": "Not due yet",
+      "invoices": "{count, plural, one {# invoice} other {# invoices}}",
+      "collected": "Collected",
+      "paidSub": "{count, plural, one {# invoice paid in full} other {# invoices paid in full}}",
+      "retention": "Retention held",
+      "contracts": "{count, plural, =0 {Nothing held} one {# contract} other {# contracts}}",
+      "show": "Show {label} invoices ({value})",
+      "mixedCurrencies": "Invoices are in more than one currency, so no totals are shown. Filter by client or project to see them."
     }
   },
   "openingBalance": {

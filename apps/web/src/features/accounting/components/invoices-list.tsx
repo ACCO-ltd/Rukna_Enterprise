@@ -20,7 +20,12 @@ import {
 } from '@erp/ui';
 import { FileText } from 'lucide-react';
 
-import { PlatformDataGrid, searchRows, type GridColumn, type SortState } from '@/components/platform-data-grid';
+import {
+  PlatformDataGrid,
+  searchRows,
+  type GridColumn,
+  type SortState,
+} from '@/components/platform-data-grid';
 import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -33,6 +38,8 @@ import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
 import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
 import type { SavedViewState } from '@erp/types';
 import { InvoiceDocStatusBadge, InvoicePostingStatusBadge } from './invoice-status-badges';
+import { InvoiceSummaryTiles } from './invoice-summary-tiles';
+import { invoiceSummary } from '../invoice-summary';
 
 const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
 const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'PENDING', 'POSTED', 'REVERSED', 'FAILED'];
@@ -42,7 +49,11 @@ const detailHref = (invoice: ClientInvoice) => `/finance/accounting/invoices/${i
 const DEFAULT_SORT: SortState = { key: 'dueDate', direction: 'desc' };
 
 /** Whether an invoice passes the list's filters (`project` is applied by the API query). */
-export function invoiceMatchesFilters(inv: ClientInvoice, filters: FilterValues, today: string): boolean {
+export function invoiceMatchesFilters(
+  inv: ClientInvoice,
+  filters: FilterValues,
+  today: string,
+): boolean {
   if (filters.status && inv.documentStatus !== filters.status) return false;
   if (filters.posting && inv.postingStatus !== filters.posting) return false;
   if (filters.client && inv.clientId !== filters.client) return false;
@@ -94,8 +105,10 @@ export function InvoicesList() {
   }, [clients.data]);
 
   const all = useMemo(() => invoices.data ?? [], [invoices.data]);
-  const visible = useMemo(() => all.filter((inv) => invoiceMatchesFilters(inv, filters, today)), [all, filters, today]);
-
+  const visible = useMemo(
+    () => all.filter((inv) => invoiceMatchesFilters(inv, filters, today)),
+    [all, filters, today],
+  );
 
   // Client options are the clients that have invoices — never an option that can only empty the list.
   const clientOptions = useMemo(() => {
@@ -147,6 +160,7 @@ export function InvoicesList() {
       sortable: true,
       card: 'title',
       plainValue: (inv) => `${inv.invoiceNumber ?? ''} ${sourceText(inv)}`,
+      exportValue: (inv) => `${inv.invoiceNumber ?? t('unnumbered')} (${sourceText(inv)})`,
       // The invoice number is the row's one link (the grid wraps this cell); the source says
       // what was billed — a certificate, a milestone, a separate charge.
       render: (inv) => (
@@ -217,6 +231,8 @@ export function InvoicesList() {
       key: 'status',
       header: t('colStatus'),
       card: 'status',
+      exportValue: (inv) =>
+        `${t(`docStatus.${inv.documentStatus}`)} · ${t(`postingStatus.${inv.postingStatus}`)}`,
       render: (inv) => (
         <span className="flex flex-col items-start gap-1">
           <InvoiceDocStatusBadge status={inv.documentStatus} />
@@ -236,10 +252,25 @@ export function InvoicesList() {
   };
   const builtInViews: Omit<BuiltInView, 'count'>[] = [
     { id: 'all', label: t('views.all'), state: { sort: DEFAULT_SORT } },
-    { id: 'overdue', label: t('views.overdue'), state: { filters: { due: 'overdue' }, sort: { key: 'dueDate', direction: 'asc' } } },
-    { id: 'drafts', label: t('views.drafts'), state: { filters: { status: 'DRAFT' }, sort: DEFAULT_SORT } },
-    { id: 'toPost', label: t('views.toPost'), state: { filters: { status: 'APPROVED', posting: 'NOT_POSTED' }, sort: DEFAULT_SORT } },
+    {
+      id: 'overdue',
+      label: t('views.overdue'),
+      state: { filters: { due: 'overdue' }, sort: { key: 'dueDate', direction: 'asc' } },
+    },
+    {
+      id: 'drafts',
+      label: t('views.drafts'),
+      state: { filters: { status: 'DRAFT' }, sort: DEFAULT_SORT },
+    },
+    {
+      id: 'toPost',
+      label: t('views.toPost'),
+      state: { filters: { status: 'APPROVED', posting: 'NOT_POSTED' }, sort: DEFAULT_SORT },
+    },
   ];
+  // The summary follows the project filter (the API's) but not the other filters: it is the
+  // overview of the whole receivables book the list is drilling into.
+  const summary = invoiceSummary(all, today);
   const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
   const currentState: SavedViewState = { search, filters: filters as Record<string, string>, sort };
   const applyView = (state: SavedViewState) => {
@@ -294,7 +325,9 @@ export function InvoicesList() {
                 >
                   {t('rowOpenPdf')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void copyLink(invoice)}>{t('rowCopyLink')}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void copyLink(invoice)}>
+                  {t('rowCopyLink')}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           }
@@ -314,15 +347,31 @@ export function InvoicesList() {
       resultLabel={(count) => t('countLabel', { count })}
       pagination={{ defaultPageSize: 25 }}
       listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
+      exportAs={{ fileName: `invoices-${today}`, sheetName: t('title') }}
       savedViews={
-        <ListViewsBar
-          listKey="invoices"
-          builtIns={builtIns}
-          current={currentState}
-          onApply={applyView}
-          countFor={countFor}
-          label={t('views.label')}
-        />
+        <>
+          {all.length > 0 ? (
+            <InvoiceSummaryTiles
+              summary={summary}
+              onShowDrafts={() => applyView(builtInViews[2]!.state)}
+              onShowOverdue={() => applyView(builtInViews[1]!.state)}
+              onShowNotDue={() =>
+                applyView({
+                  filters: { status: 'APPROVED', posting: 'POSTED', due: 'notOverdue' },
+                  sort: { key: 'dueDate', direction: 'asc' },
+                })
+              }
+            />
+          ) : null}
+          <ListViewsBar
+            listKey="invoices"
+            builtIns={builtIns}
+            current={currentState}
+            onApply={applyView}
+            countFor={countFor}
+            label={t('views.label')}
+          />
+        </>
       }
       searchPlaceholder={t('searchPlaceholder')}
       searchLabel={tGrid('searchLabel')}
