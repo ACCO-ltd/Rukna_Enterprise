@@ -881,5 +881,43 @@
       "empty": "No supplier has an open bill."
     },
     "loading": "Loading the aging report"
+  },
+  "vat": {
+    "title": "VAT report",
+    "subtitle": "Output VAT for a period, from the ledger, by rate and by document.",
+    "period": "Period",
+    "export": "Export CSV",
+    "loadFailed": "The VAT report could not be loaded.",
+    "loading": "Loading the VAT report",
+    "outputTotal": "Output VAT for the period",
+    "outputNote": "{from} – {to}",
+    "closingBalance": "VAT account balance",
+    "closingNote": "Owed and not yet paid over, at {date}",
+    "inputTotal": "VAT on supplier bills",
+    "inputNote": "{count, plural, one {# bill} other {# bills}} · not recoverable",
+    "emptyTitle": "No VAT in this period",
+    "empty": "Nothing was posted to the VAT account between these dates.",
+    "summaryTitle": "Output VAT by rate",
+    "linesTitle": "Every VAT posting in the period",
+    "colLine": "Line",
+    "colTaxable": "Taxable amount",
+    "colVat": "VAT",
+    "colDate": "Date",
+    "colJournal": "Journal",
+    "colKind": "Type",
+    "colDocument": "Document",
+    "colParty": "Client",
+    "colRate": "Rate",
+    "atRate": "Sales at {rate}%",
+    "adjustments": "{count, plural, one {# journal adjustment} other {# journal adjustments}}",
+    "noNumber": "(no number)",
+    "reversal": "reversal",
+    "kinds": {
+      "INVOICE": "Invoice",
+      "CREDIT_NOTE": "Credit note",
+      "ADJUSTMENT": "Journal adjustment"
+    },
+    "inputTitle": "VAT paid to suppliers",
+    "inputBody": "{count, plural, one {# bill} other {# bills}} posted in this period carried {vat} of VAT on {taxable}. It is not recoverable, so it is part of each bill's cost and is not deducted here."
   }
 }

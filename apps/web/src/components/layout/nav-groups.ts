@@ -166,6 +166,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison', iconKey: 'trending-up', groupKey: 'reports' },
+      // Step 6 — output VAT for a period, from the ledger.
+      { href: '/finance/accounting/vat-report', labelKey: 'vatReport', iconKey: 'tag', groupKey: 'reports' },
       // ADR-043 Phase 4 — a forward-looking report across projects, AR and AP; gated like its API.
       { href: '/finance/cashflow', labelKey: 'cashFlow', iconKey: 'trending-up', groupKey: 'reports', permissionKey: 'view:financial-position' },
       // Setup & close

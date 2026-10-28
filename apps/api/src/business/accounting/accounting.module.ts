@@ -9,6 +9,7 @@ import { AccountingSetupModule } from './accounting-setup/accounting-setup.modul
 import { FinanceHomeModule } from './finance-home/finance-home.module.js';
 import { FinanceAttachmentsModule } from './finance-attachments/finance-attachments.module.js';
 import { SetupImportModule } from './setup-import/setup-import.module.js';
+import { VatReportModule } from './vat-report/vat-report.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SetupImportModule } from './setup-import/setup-import.module.js';
     FinanceHomeModule,
     FinanceAttachmentsModule,
     SetupImportModule,
+    VatReportModule,
   ],
   exports: [
     AccountingCoreModule,
