@@ -8,5 +8,7 @@ import { VatReportRepository } from './infrastructure/vat-report.repository.js';
 @Module({
   controllers: [VatReportController],
   providers: [VatReportService, VatReportRepository],
+  // The close checklist shows the month's VAT.
+  exports: [VatReportService],
 })
 export class VatReportModule {}

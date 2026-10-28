@@ -262,7 +262,46 @@ export class PeriodManagementService {
     const apCheck = await this.checkApReconciliation(prisma, orgId);
     if (!apCheck.passed) blockers.push(apCheck.message);
 
+    // 4. Step 6 — when the organisation's banking policy asks for it, every bank account must be
+    //    reconciled to a statement reaching the period's end before the month closes.
+    const policy = await prisma.bankingPolicy.findUnique({ where: { organizationId: orgId }, select: { requireBankReviewBeforeClose: true } });
+    if (policy?.requireBankReviewBeforeClose) {
+      for (const bank of await this.bankReconciliationStatus(prisma, orgId, period.endDate)) {
+        if (!bank.reconciled) blockers.push(`${bank.label} is not reconciled to ${period.endDate.toISOString().slice(0, 10)}`);
+      }
+    }
+
     return { passed: blockers.length === 0, blockers };
+  }
+
+  /**
+   * Step 6 — each reconcilable, active bank account and whether a reconciled statement reaches
+   * `periodEnd`. Read by the close gate (when the banking policy requires it) and the close checklist.
+   */
+  async bankReconciliationStatus(
+    prisma: Omit<import('@prisma/client').PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
+    orgId: string,
+    periodEnd: Date,
+  ): Promise<Array<{ bankAccountId: string; label: string; reconciled: boolean; reconciledTo: Date | null }>> {
+    const banks = await prisma.bankAccount.findMany({
+      where: { organizationId: orgId, status: 'ACTIVE', isReconcilable: true },
+      select: {
+        id: true, bankName: true, accountName: true,
+        statements: { where: { status: 'RECONCILED' }, orderBy: { statementDate: 'desc' }, take: 1, select: { statementDate: true } },
+      },
+      orderBy: { bankName: 'asc' },
+    });
+    return banks.map((b) => {
+      const reconciledTo = b.statements[0]?.statementDate ?? null;
+      return { bankAccountId: b.id, label: `${b.bankName} · ${b.accountName}`, reconciled: reconciledTo !== null && reconciledTo >= periodEnd, reconciledTo };
+    });
+  }
+
+  /** Step 6 — the AR and AP control-account tie-outs the close gate runs, for the close checklist. */
+  async controlTieOut(orgId: string): Promise<{ ar: { passed: boolean; message: string }; ap: { passed: boolean; message: string } }> {
+    const prisma = this.tenancyService.getClient();
+    const [ar, ap] = await Promise.all([this.checkArReconciliation(prisma, orgId), this.checkApReconciliation(prisma, orgId)]);
+    return { ar, ap };
   }
 
   /**
@@ -270,7 +309,7 @@ export class PeriodManagementService {
    * it posts, so it is matched on its accounting date as well; counting by period id alone let every
    * draft escape the gate.
    */
-  private countPendingJournals(
+  countPendingJournals(
     prisma: Omit<import('@prisma/client').PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
     orgId: string,
     period: { id: string; startDate: Date; endDate: Date },

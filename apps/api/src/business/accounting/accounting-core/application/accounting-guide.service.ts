@@ -311,7 +311,7 @@ export class AccountingGuideService {
     prisma: ReturnType<TenancyService['getClient']>,
     orgId: string,
     ready: boolean,
-    currentPeriod: { id: string; name: string; status: string } | null,
+    currentPeriod: { id: string; name: string; status: string; endDate: Date } | null,
     can: (p: string) => boolean,
   ): Promise<GuideCycle> {
     if (!ready) {
@@ -328,6 +328,18 @@ export class AccountingGuideService {
         })
       : 0;
 
+    // Bank accounts with no reconciled statement reaching the current period's end.
+    const banksBehind = currentPeriod
+      ? await prisma.bankAccount.count({
+          where: {
+            organizationId: orgId,
+            status: 'ACTIVE',
+            isReconcilable: true,
+            statements: { none: { status: 'RECONCILED', statementDate: { gte: currentPeriod.endDate } } },
+          },
+        })
+      : 0;
+
     const restricted = (href: string | null): { s: GuideStepStatus; href: string | null } =>
       managePeriod ? { s: 'TODO', href } : { s: 'RESTRICTED', href: null };
 
@@ -341,11 +353,22 @@ export class AccountingGuideService {
         count: unposted > 0 ? unposted : undefined,
       },
       {
+        // Step 6 — read from the bank statements, not a permanent TODO.
         key: 'reconcile',
-        label: 'Reconcile AR/AP control accounts',
-        detail: 'Check GL control balances against the subledgers before closing.',
+        label: 'Reconcile the bank accounts',
+        detail: banksBehind > 0
+          ? `${banksBehind} bank account(s) not yet reconciled to the end of ${currentPeriod?.name}.`
+          : 'Every bank account is reconciled to the end of the period.',
+        status: banksBehind > 0 ? 'TODO' : 'DONE',
+        href: `${BASE}/bank-reconciliation`,
+        count: banksBehind > 0 ? banksBehind : undefined,
+      },
+      {
+        key: 'close-checklist',
+        label: 'Work through the close checklist',
+        detail: 'Everything posted, banks reconciled, AR/AP tied out and the VAT for the month, in one place.',
         status: 'TODO',
-        href: `${BASE}/reconciliation`,
+        href: `${BASE}/close`,
       },
       {
         key: 'lock-period',

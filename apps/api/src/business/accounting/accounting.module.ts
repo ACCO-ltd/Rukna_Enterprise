@@ -11,6 +11,7 @@ import { FinanceAttachmentsModule } from './finance-attachments/finance-attachme
 import { SetupImportModule } from './setup-import/setup-import.module.js';
 import { VatReportModule } from './vat-report/vat-report.module.js';
 import { BankReconciliationModule } from './bank-reconciliation/bank-reconciliation.module.js';
+import { CloseChecklistModule } from './close-checklist/close-checklist.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { BankReconciliationModule } from './bank-reconciliation/bank-reconciliat
     SetupImportModule,
     VatReportModule,
     BankReconciliationModule,
+    CloseChecklistModule,
   ],
   exports: [
     AccountingCoreModule,

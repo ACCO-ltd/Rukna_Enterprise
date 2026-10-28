@@ -97,3 +97,30 @@ export interface PostStatementLineRequest {
   accountId: string;
   memo?: string;
 }
+
+// ─── Month-end close checklist (Step 6) ──────────────────────────────────
+// `GET /finance/close-checklist?periodId` — every check that matters before a month is closed,
+// read live from the ledger. Nothing here is a stored tick: a check is done when the data says so.
+
+export type CloseCheckStatus = 'DONE' | 'TODO' | 'BLOCKED' | 'INFO';
+
+export interface CloseCheck {
+  key: 'documents' | 'banks' | 'tie-out' | 'vat' | 'lock' | 'close';
+  status: CloseCheckStatus;
+  /** Server-written English detail, for screens and logs. */
+  detail: string;
+  href: string | null;
+  /** Per-item breakdown: each document queue, each bank account. */
+  items: Array<{ key: string; label: string; status: CloseCheckStatus; detail: string; href: string | null; count?: number }>;
+}
+
+export interface CloseChecklist {
+  period: { id: string; name: string; startDate: string; endDate: string; status: 'OPEN' | 'LOCKED' | 'CLOSED' | 'REOPENED' };
+  /** Other periods the checklist can be opened for (open, locked, reopened; newest first). */
+  periods: Array<{ id: string; name: string; status: string }>;
+  checks: CloseCheck[];
+  /** Whether the close gate refuses to close a month until every bank account is reconciled. */
+  requireBankReconciliation: boolean;
+  /** Every check that blocks closing is done. */
+  readyToClose: boolean;
+}

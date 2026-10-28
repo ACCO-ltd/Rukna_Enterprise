@@ -180,6 +180,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       // ADR-046 §8 — the optional finance approvals.
       { href: '/finance/accounting/approval-settings', labelKey: 'approvalSettings', iconKey: 'shield', groupKey: 'acctSetup' },
       { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance', iconKey: 'book-open', groupKey: 'acctSetup' },
+      // Step 6 — every check before a month closes, then the periods screen that closes it.
+      { href: '/finance/accounting/close', labelKey: 'closeChecklist', iconKey: 'check-circle', groupKey: 'acctSetup' },
       { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar', groupKey: 'acctSetup' },
     ],
   },

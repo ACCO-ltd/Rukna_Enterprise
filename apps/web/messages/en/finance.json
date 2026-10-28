@@ -256,7 +256,8 @@
       "OPENING_BALANCE": "Opening balance",
       "YEAR_END_CLOSE": "Year-end close",
       "CREDIT_NOTE": "Credit note",
-      "BUYER_ADVANCE": "Buyer cash advance"
+      "BUYER_ADVANCE": "Buyer cash advance",
+      "BANK_STATEMENT": "Bank statement"
     },
     "empty": "No posted entries carry this project in this range.",
     "noMatches": "No entries on this page match your search.",
@@ -1046,5 +1047,45 @@
       },
       "match": "Match"
     }
+  },
+  "close": {
+    "title": "Close {period}",
+    "loadFailed": "The close checklist could not be loaded.",
+    "loading": "Loading the close checklist",
+    "closed": "This month is closed.",
+    "ready": "Every check is done: lock the period, then close it.",
+    "progress": "{done} of {total} checks done",
+    "period": "Month",
+    "checksLabel": "Close checks",
+    "periodStatus": {
+      "OPEN": "open",
+      "LOCKED": "locked",
+      "CLOSED": "closed",
+      "REOPENED": "reopened"
+    },
+    "status": {
+      "DONE": "Done",
+      "TODO": "To do",
+      "BLOCKED": "Blocking the close",
+      "INFO": "For information"
+    },
+    "checks": {
+      "documents": "Post everything dated in the month",
+      "banks": "Reconcile the bank accounts",
+      "tie-out": "Tie out receivables and payables",
+      "vat": "VAT for the month",
+      "lock": "Lock the period",
+      "close": "Close the period"
+    },
+    "open": {
+      "documents": "",
+      "banks": "Bank reconciliation",
+      "tie-out": "AR/AP tie-out",
+      "vat": "VAT report",
+      "lock": "Periods",
+      "close": "Periods"
+    },
+    "policyLabel": "Require bank reconciliation before closing a month",
+    "policyHint": "When on, a month cannot close until every bank account is reconciled to a statement reaching its last day."
   }
 }

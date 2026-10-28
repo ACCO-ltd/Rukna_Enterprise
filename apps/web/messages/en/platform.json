@@ -117,6 +117,7 @@
     "bankAccounts": "Bank accounts",
     "reconciliation": "AR/AP tie-out",
     "bankReconciliation": "Bank reconciliation",
+    "closeChecklist": "Month-end close",
     "openingBalance": "Opening balance",
     "accountingReports": "Accounting reports",
     "group": {
