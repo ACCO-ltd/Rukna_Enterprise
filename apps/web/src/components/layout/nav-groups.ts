@@ -242,6 +242,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/admin/project-subtypes', labelKey: 'projectSubtypes', iconKey: 'tag', permissionKey: 'manage:project-type', groupKey: 'organization' },
       { href: '/admin/branding', labelKey: 'branding', iconKey: 'receipt', permissionKey: 'manage:organization', groupKey: 'organization' },
       { href: '/admin/templates', labelKey: 'templates', iconKey: 'clipboard', permissionKey: 'manage:organization', groupKey: 'organization' },
+      // Step 7 — the photo reader's per-company switch.
+      { href: '/admin/photo-reader', labelKey: 'photoReader', iconKey: 'cog', permissionKey: 'manage:organization', groupKey: 'organization' },
       { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch', groupKey: 'governance' },
       { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key', groupKey: 'evidence' },
     ],

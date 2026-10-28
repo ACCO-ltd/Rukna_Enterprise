@@ -24,3 +24,4 @@ export * from './finance-home';
 export * from './finance-attachments';
 export * from './setup-import';
 export * from './bank-reconciliation';
+export * from './document-reader';

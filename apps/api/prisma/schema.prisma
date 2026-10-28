@@ -3989,6 +3989,38 @@ model BankStatementLine {
   @@map("bank_statement_lines")
 }
 
+// Step 7 — the photo reader. Off until an administrator turns it on for the company (owner
+// decision 2026-10-28): a photo sent to the reader leaves the platform for the named provider.
+model DocumentReaderPolicy {
+  organizationId String   @id @map("organization_id")
+  enabled        Boolean  @default(false)
+  updatedBy      String   @map("updated_by")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("document_reader_policy")
+}
+
+// Every reading the photo reader made — what was sent, to whom, and what came back. The reading
+// only pre-fills a form; a person confirms before anything is saved.
+model DocumentReading {
+  id             String                @id @default(cuid())
+  organizationId String                @map("organization_id")
+  platformFileId String                @map("platform_file_id")
+  kind           DocumentReadingKind
+  provider       String                @db.VarChar(40)
+  model          String                @db.VarChar(120)
+  status         DocumentReadingStatus
+  result         Json?
+  errorCode      String?               @map("error_code") @db.VarChar(60)
+  durationMs     Int                   @map("duration_ms")
+  createdBy      String                @map("created_by")
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([platformFileId])
+  @@map("document_readings")
+}
+
 model BankingPolicy {
   organizationId                String   @id @map("organization_id")
   requireBankAccountForReceipts Boolean  @default(true) @map("require_bank_account_for_receipts")
@@ -4658,6 +4690,18 @@ enum SnapshotStatus {
   VALID
   INVALID
   REBUILDING
+}
+
+enum DocumentReadingKind {
+  DELIVERY_NOTE
+  RECEIPT
+  QUOTE
+  MATERIAL_LIST
+}
+
+enum DocumentReadingStatus {
+  SUCCEEDED
+  FAILED
 }
 
 enum BankStatementStatus {

@@ -118,6 +118,7 @@
     "reconciliation": "AR/AP tie-out",
     "bankReconciliation": "Bank reconciliation",
     "closeChecklist": "Month-end close",
+    "photoReader": "Photo reader",
     "openingBalance": "Opening balance",
     "accountingReports": "Accounting reports",
     "group": {
@@ -3626,5 +3627,21 @@
     "noneInArea": "Nothing waits on you in this area.",
     "countLabel": "{count, plural, one {# item} other {# items}}",
     "loadFailed": "Your approvals could not be loaded."
+  },
+  "photoReader": {
+    "title": "Photo reader",
+    "pageIntro": "Read photos of delivery notes, receipts, quotes and material lists to fill forms faster.",
+    "loadFailed": "The photo reader settings could not be loaded.",
+    "loading": "Loading the photo reader settings",
+    "saveFailed": "The setting could not be saved.",
+    "notConfiguredTitle": "No reader on this server",
+    "notConfigured": "The server has no photo reader configured. Staff fill forms by hand; everything else works the same.",
+    "switch": "Use the photo reader for this company",
+    "switchHint": "Offers \"Read the photo\" on delivery notes, material requests, receipts and quotes.",
+    "whereTitle": "Where photos go",
+    "where": "When someone reads a photo, it is sent to {provider} (model {model}) to be read. Supplier names, prices and other details in the photo leave this system.",
+    "rule1": "The reader only fills in a form. Nothing is saved until a person checks it and saves.",
+    "rule2": "Only someone who fills that kind of form can read its photo, and only a photo they can already see.",
+    "rule3": "Every reading is logged: who, which photo, which provider and model, and the result."
   }
 }

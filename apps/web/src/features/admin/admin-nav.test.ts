@@ -12,6 +12,7 @@ describe('ADMIN_TABS', () => {
       '/admin/project-subtypes',
       '/admin/branding',
       '/admin/templates',
+      '/admin/photo-reader',
       '/admin/workflows',
       '/admin/audit-logs',
     ]);
@@ -51,7 +52,7 @@ describe('visibleAdminTabs', () => {
 
   it('keeps every tab for a holder of all three org gates', () => {
     const held = new Set(['manage:district', 'manage:project-type', 'manage:organization']);
-    expect(visibleAdminTabs((p) => held.has(p))).toHaveLength(8);
+    expect(visibleAdminTabs((p) => held.has(p))).toHaveLength(9);
   });
 });
 

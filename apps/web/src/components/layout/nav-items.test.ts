@@ -270,7 +270,7 @@ describe('NAV_DOMAINS', () => {
     it('keeps its items declared here — they feed the command menu and the tab bar', () => {
       // Moving them out of the sidebar must not move them out of the nav model: three
       // consumers read this one list, and a second copy is how they drift apart.
-      expect(admin().items).toHaveLength(9);
+      expect(admin().items).toHaveLength(10);
     });
 
     it('contains users, roles, workflows and audit-logs', () => {
@@ -310,7 +310,10 @@ describe('NAV_DOMAINS', () => {
         '/admin/project-subtypes',
         '/admin/branding',
         '/admin/templates',
+        '/admin/photo-reader',
       ]);
+      // Step 7 — the photo reader's switch is company configuration (manage:organization).
+      expect(organization?.items[4]?.permissionKey).toBe('manage:organization');
       expect(organization?.items[0]?.permissionKey).toBe('manage:district');
       // The subtype registry is admin/Settings work — gated on manage:project-type, the same
       // permission POST /project-subtypes enforces.

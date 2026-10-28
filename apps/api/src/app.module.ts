@@ -21,6 +21,7 @@ import { PermissionsModule } from './platform/permissions/permissions.module.js'
 import { AuditLogsModule } from './platform/audit-logs/audit-logs.module.js';
 import { NotificationsModule } from './platform/notifications/notifications.module.js';
 import { FilesModule } from './platform/files/files.module.js';
+import { DocumentReaderModule } from './platform/document-reader/document-reader.module.js';
 import { WorkflowsModule } from './platform/workflows/workflows.module.js';
 import { ClientsModule } from './platform/clients/clients.module.js';
 import { CommunicationModule } from './platform/messaging/communication.module.js';
@@ -50,6 +51,7 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     AuditLogsModule,
     NotificationsModule,
     FilesModule,
+    DocumentReaderModule,
     WorkflowsModule,
     ClientsModule,
     CommunicationModule,
