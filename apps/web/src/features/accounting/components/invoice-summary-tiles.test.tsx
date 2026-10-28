@@ -15,6 +15,7 @@ const summary: InvoiceSummary = {
   notDue: { count: 21, outstandingMinor: 96830000 },
   collected: { paidCount: 18, collectedMinor: 110540000 },
   retentionHeld: { contracts: 4, heldMinor: 13694000 },
+  billedThisYear: { count: 142, totalMinor: 321488000 },
 };
 
 describe('InvoiceSummaryTiles (Step 2c)', () => {

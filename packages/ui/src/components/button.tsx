@@ -10,11 +10,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary = navy ink (ADR-034). Blue `brand-primary` is reserved for interactive
-        // affordances — links, focus ring, the selected tab — so the one primary action on a
-        // screen reads as weight, not as another link.
+        // Primary = Rukna Blue (ADR-047, replacing ADR-034's navy ink). One per screen, so blue
+        // still means "the thing to do here"; links stay underlined to tell them apart.
         default:
-          'border-brand-ink bg-brand-ink text-brand-on-primary shadow-e1 hover:border-brand-ink-soft hover:bg-brand-ink-soft active:bg-brand-ink-deep',
+          'border-brand-primary bg-brand-primary text-brand-on-primary shadow-e1 hover:border-brand-primary-hover hover:bg-brand-primary-hover active:bg-brand-primary-active',
         outline:
           'border-border-strong bg-surface text-foreground shadow-e1 hover:border-border-interactive hover:bg-surface-hover',
         ghost: 'text-foreground hover:bg-surface-hover',

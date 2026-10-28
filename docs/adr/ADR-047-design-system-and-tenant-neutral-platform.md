@@ -71,6 +71,29 @@ unchanged: only token values moved.
 - **Living reference:** `/design` (the gallery) shows every token at its current value. Update it
   in the same change as any token.
 
+### 3a. Shell and list layout (built 2026-10-28, from the approved mockups)
+
+These replace earlier rules, so they are listed explicitly:
+
+- **Primary button = Rukna Blue** (`--brand-primary`). This replaces ADR-034's navy-ink primary.
+  Each screen still has only one primary action. Links stay underlined, so blue on its own never
+  marks a link.
+- **Sidebar = navy panel** (`--brand-panel` #111d42) with its own `--nav-*` ink tokens. The active
+  item is a lighter fill with a `--nav-accent` icon.
+- **Table header = light row** (`bg-surface-subtle`, muted labels; the sorted column is darker).
+  This replaces ADR-035's navy header band.
+- **One list card:** the views tabs, toolbar, filter chips, bulk bar, rows, pager and shortcut
+  hints sit on one surface. Summary tiles sit above it. Filter chips are blue-tinted (`brand-accent`).
+- **List page title block** (`ListPageHeader`): an eyebrow naming the section, the list name at
+  display size, one summary line (count and amount), and the page actions (the primary carries
+  its `N` shortcut).
+- **One state per list row:** a list shows a single derived state pill: what the reader acts on
+  next (for invoices: Draft, To post, Overdue, Part paid, Not due, Paid, …), computed from the
+  stored axes and the balance (`invoice-list-state.ts`). Nothing new is stored. The detail page
+  keeps both status axes.
+- **Entity avatars:** a client's or supplier's initials on a stable tinted square
+  (`entityTintClass`), with dark ink on a tint and never a status colour's solid fill.
+
 ## 4. Grill decisions for later steps (not yet built)
 
 | Topic | Decision |

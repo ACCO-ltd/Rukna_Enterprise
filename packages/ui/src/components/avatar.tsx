@@ -33,6 +33,25 @@ export function initialsFromName(name: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
+/**
+ * A stable tint for an entity's initials (ADR-047 lists: client and supplier avatars), so the same
+ * client reads the same colour on every row. Tinted fills with dark ink — every pair clears 4.5:1 —
+ * and never a status colour's solid fill, which would read as a status.
+ */
+const ENTITY_TINTS = [
+  'bg-brand-accent text-brand-primary',
+  'bg-success-subtle text-success',
+  'bg-historical-subtle text-historical',
+  'bg-warning-subtle text-warning',
+  'bg-progress-subtle text-progress',
+] as const;
+
+export function entityTintClass(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return ENTITY_TINTS[Math.abs(hash) % ENTITY_TINTS.length]!;
+}
+
 export function Avatar({ src, name, size = 'default', className, ...props }: AvatarProps) {
   const [errored, setErrored] = React.useState(false);
   const showImage = Boolean(src) && !errored;

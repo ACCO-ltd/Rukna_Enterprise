@@ -983,7 +983,26 @@
       "contracts": "{count, plural, =0 {Nothing held} one {# contract} other {# contracts}}",
       "show": "Show {label} invoices ({value})",
       "mixedCurrencies": "Invoices are in more than one currency, so no totals are shown. Filter by client or project to see them."
-    }
+    },
+    "eyebrow": "Receivables",
+    "headerCount": "{count, plural, one {# invoice} other {# invoices}}",
+    "headerSummary": "{count, plural, one {# invoice} other {# invoices}} · {billed} billed this year",
+    "colClientProject": "Client & project",
+    "colIssued": "Issued",
+    "daysLate": "{days, plural, one {# day late} other {# days late}}",
+    "listState": {
+      "DRAFT": "Draft",
+      "TO_POST": "To post",
+      "POSTING": "Posting",
+      "POSTING_FAILED": "Posting failed",
+      "OVERDUE": "Overdue",
+      "PART_PAID": "Part paid",
+      "OPEN": "Not due",
+      "PAID": "Paid",
+      "CANCELLED": "Cancelled",
+      "REVERSED": "Reversed"
+    },
+    "pageTitle": "Invoices"
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

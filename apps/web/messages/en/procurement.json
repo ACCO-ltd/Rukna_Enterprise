@@ -765,7 +765,7 @@
     "emptyHint": "Bills you record against suppliers will show up here.",
     "searchPlaceholder": "Search bills, suppliers, references",
     "backToList": "Supplier bills",
-    "eyebrow": "Supplier bill",
+    "eyebrow": "Payables",
     "create": {
       "title": "New bill",
       "intro": "The number is assigned when you save. Submitting, approving and posting happen after saving, as separate commands.",
@@ -932,6 +932,38 @@
       "photosLabel": "Photos of {number}",
       "zoom": "Zoom {kind} page {page}",
       "photoAlt": "{kind}, page {page}"
+    },
+    "pageTitle": "Bills",
+    "balance": "Balance",
+    "filterByDue": "Due",
+    "dueFilter": {
+      "overdue": "Overdue",
+      "notOverdue": "Not overdue"
+    },
+    "daysLate": "{days, plural, one {# day late} other {# days late}}",
+    "headerCount": "{count, plural, one {# bill} other {# bills}}",
+    "headerSummary": "{count, plural, one {# bill} other {# bills}} · {owed} still to pay",
+    "views": {
+      "label": "Bill views",
+      "all": "All",
+      "toApprove": "To approve",
+      "toPost": "To post",
+      "overdue": "Overdue",
+      "drafts": "Drafts"
+    },
+    "listState": {
+      "DRAFT": "Draft",
+      "AWAITING_APPROVAL": "Awaiting approval",
+      "RETURNED": "Returned",
+      "TO_POST": "To post",
+      "POSTING": "Posting",
+      "POSTING_FAILED": "Posting failed",
+      "OVERDUE": "Overdue",
+      "PART_PAID": "Part paid",
+      "OPEN": "Not due",
+      "PAID": "Paid",
+      "CANCELLED": "Cancelled",
+      "REVERSED": "Reversed"
     }
   },
   "payments": {

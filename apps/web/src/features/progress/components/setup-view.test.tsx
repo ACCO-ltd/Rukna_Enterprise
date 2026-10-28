@@ -127,7 +127,7 @@ describe('SetupView', () => {
     expect(within(wp).getByText('Start from the BOQ')).toBeInTheDocument();
 
     const primary = within(wp).getByRole('button', { name: 'Create delivery plan from BOQ' });
-    expect(primary).toHaveClass('bg-brand-ink');
+    expect(primary).toHaveClass('bg-brand-primary');
     await user.click(primary);
     expect(screen.getByText('delivery plan review dialog')).toBeInTheDocument();
 

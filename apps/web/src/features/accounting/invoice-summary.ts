@@ -19,6 +19,8 @@ export interface InvoiceSummary {
   collected: { paidCount: number; collectedMinor: number };
   /** Retention the clients hold back on IPC invoices, less what release invoices have billed. */
   retentionHeld: { contracts: number; heldMinor: number };
+  /** Live invoices dated in `today`'s calendar year, and their total. */
+  billedThisYear: { count: number; totalMinor: number };
 }
 
 const SCALE = 2;
@@ -62,5 +64,10 @@ export function invoiceSummary(invoices: readonly ClientInvoice[], today: string
       ),
     },
     retentionHeld: { contracts: held.length, heldMinor: held.reduce((a, b) => a + b, 0) },
+    billedThisYear: (() => {
+      const year = today.slice(0, 4);
+      const billed = live.filter((i) => (i.invoiceDate ?? '').slice(0, 4) === year);
+      return { count: billed.length, totalMinor: sumMinorUnits(billed.map((i) => i.totalAmount), SCALE) };
+    })(),
   };
 }

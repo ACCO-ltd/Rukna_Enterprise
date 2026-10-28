@@ -175,18 +175,18 @@ describe('InvoicesList', () => {
     expect(within(table).getByText('Not yet numbered')).toBeInTheDocument();
   });
 
-  it('shows both status axes, because one badge cannot express the pair', async () => {
+  it('shows the one state a reader acts on, derived from both axes and the balance (ADR-047)', async () => {
     vi.mocked(listInvoices).mockResolvedValue([
-      invoice({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' }),
+      invoice({ id: 'a', documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' }),
+      invoice({ id: 'b', documentStatus: 'APPROVED', postingStatus: 'POSTED', totalAmount: '100.00', outstandingAmount: '40.00', dueDate: '2999-01-01' }),
     ]);
 
     renderWithProviders(<InvoicesList />, { withToast: true });
 
-    // Scoped to the table: the status filter renders its own "Approved" option, and an
-    // unscoped query would pass on the dropdown while the badge was missing.
+    // Scoped to the table: the filters render their own option labels.
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('Approved')).toBeInTheDocument();
-    expect(within(table).getByText('Not posted')).toBeInTheDocument();
+    expect(within(table).getByText('To post')).toBeInTheDocument();
+    expect(within(table).getByText('Part paid')).toBeInTheDocument();
   });
 
   it('filters by document status in the browser', async () => {

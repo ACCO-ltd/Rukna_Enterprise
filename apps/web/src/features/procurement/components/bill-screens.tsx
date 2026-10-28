@@ -21,12 +21,16 @@
  * Arabic UI shows the English name here while a purchase order shows the Arabic one (A13).
  */
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
+  Avatar,
   Button,
+  cn,
+  entityTintClass,
+  StatusPill,
   EmptyState,
   type FilterValues,
   type ListFilterField,
@@ -40,13 +44,30 @@ import {
 import { Plus, Receipt } from 'lucide-react';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import {
+  PlatformDataGrid,
+  searchRows,
+  type GridColumn,
+  type SortState,
+} from '@/components/platform-data-grid';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
+import { useListViewState } from '@/features/saved-views/hooks/use-list-view-state';
+import { todayWireDate } from '@/features/accounting/invoice-overdue';
+import { fromMinorUnits, toMinorUnits } from '@/lib/money';
+import type { SavedViewState } from '@erp/types';
 import { useModuleTrail } from '@/components/layout/module-chrome';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
 import { isSettleableBill } from '../bill-actions';
+import {
+  BILL_LIST_STATE_TONE,
+  billDaysLate,
+  billListState,
+  isBillOverdue,
+} from '../bill-list-state';
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
@@ -64,10 +85,22 @@ import {
   useBillTotals,
 } from './bill-document-body';
 import { BillMatchSummary } from './bill-matching';
-import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
+import { BillMatchStatusBadge } from './procurement-badges';
 
-const BILL_DOC_STATUSES: BillDocumentStatus[] = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED'];
-const BILL_POSTING_STATUSES: BillPostingStatus[] = ['NOT_POSTED', 'PENDING', 'POSTED', 'FAILED', 'REVERSED'];
+const BILL_DOC_STATUSES: BillDocumentStatus[] = [
+  'DRAFT',
+  'SUBMITTED',
+  'APPROVED',
+  'REJECTED',
+  'CANCELLED',
+];
+const BILL_POSTING_STATUSES: BillPostingStatus[] = [
+  'NOT_POSTED',
+  'PENDING',
+  'POSTED',
+  'FAILED',
+  'REVERSED',
+];
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
@@ -76,35 +109,30 @@ export function SupplierBillsList({
 }: {
   /**
    * ADR-043 Phase 2: fixes the list to one project (the Finance project workspace's Payables
-   * tab). The project filter is then not offered, and an Outstanding column is added.
+   * tab). The project filter is then not offered, and the page title block is left to the tab.
    */
   projectId?: string;
 } = {}) {
   const t = useTranslations('procurement.bills');
-  const tProject = useTranslations('finance.projects.payables');
   const tc = useTranslations('procurement.common');
   const tStatus = useTranslations('procurement.status');
   const tPosting = useTranslations('procurement.postingStatus');
+  const tGrid = useTranslations('common.grid');
   const { can } = usePermissions();
+  const today = todayWireDate();
 
   const projectFilter = useProjectFilter();
-  const [filters, setFilters] = useState<FilterValues>(() => {
-    const initial: FilterValues = {};
-    if (projectFilter.initialProjectId) initial.project = projectFilter.initialProjectId;
-    return initial;
-  });
+  const view = useListViewState(
+    DEFAULT_BILL_SORT,
+    projectFilter.initialProjectId ? { project: projectFilter.initialProjectId } : {},
+  );
+  const { filters } = view;
   const bills = useSupplierBills({ projectId: projectId ?? (filters.project || undefined) });
 
   const all = useMemo(() => bills.data ?? [], [bills.data]);
   const visible = useMemo(
-    () =>
-      all.filter(
-        (bill) =>
-          (!filters.status || bill.documentStatus === filters.status) &&
-          (!filters.posting || bill.postingStatus === filters.posting) &&
-          (!filters.supplier || bill.supplierId === filters.supplier),
-      ),
-    [all, filters],
+    () => all.filter((bill) => billMatchesFilters(bill, filters, today)),
+    [all, filters, today],
   );
 
   // Supplier options come from the bills themselves: a filter offering a supplier with no bills
@@ -112,7 +140,8 @@ export function SupplierBillsList({
   const supplierOptions = useMemo(() => {
     const seen = new Map<string, string>();
     for (const bill of all) {
-      if (bill.supplier && !seen.has(bill.supplierId)) seen.set(bill.supplierId, bill.supplier.name);
+      if (bill.supplier && !seen.has(bill.supplierId))
+        seen.set(bill.supplierId, bill.supplier.name);
     }
     return [...seen]
       .map(([value, label]) => ({ value, label }))
@@ -132,11 +161,29 @@ export function SupplierBillsList({
       label: tPosting('axis'),
       options: BILL_POSTING_STATUSES.map((s) => ({ value: s, label: tPosting(s) })),
     },
+    {
+      key: 'due',
+      type: 'select',
+      label: t('filterByDue'),
+      options: [
+        { value: 'overdue', label: t('dueFilter.overdue') },
+        { value: 'notOverdue', label: t('dueFilter.notOverdue') },
+      ],
+    },
     { key: 'supplier', type: 'select', label: tc('supplier'), options: supplierOptions },
     ...(projectId
       ? []
-      : [{ key: 'project', type: 'select' as const, label: tc('project'), options: projectFilter.options }]),
+      : [
+          {
+            key: 'project',
+            type: 'select' as const,
+            label: tc('project'),
+            options: projectFilter.options,
+          },
+        ]),
   ];
+
+  const state = (bill: SupplierBill) => billListState(bill, today);
 
   const columns: GridColumn<SupplierBill>[] = [
     {
@@ -146,10 +193,11 @@ export function SupplierBillsList({
       sortable: true,
       card: 'title',
       plainValue: (bill) => [bill.billNumber, bill.supplierInvoiceNumber].filter(Boolean).join(' '),
+      exportValue: (bill) => bill.billNumber ?? tStatus('DRAFT'),
       // The document number is the row's one link — the grid wraps this cell in it.
       render: (bill) => (
         <span className="block">
-          <span className="block font-semibold text-brand-primary">
+          <span className="block font-mono text-body-sm font-semibold text-brand-primary">
             {bill.billNumber ?? tStatus('DRAFT')}
           </span>
           <span className="block text-caption font-normal text-muted-foreground">
@@ -166,7 +214,14 @@ export function SupplierBillsList({
       plainValue: (bill) => bill.supplier?.name ?? '',
       render: (bill) =>
         bill.supplier ? (
-          <span className="block max-w-[18rem] truncate font-medium">{bill.supplier.name}</span>
+          <span className="flex items-center gap-2.5">
+            <Avatar
+              name={bill.supplier.name}
+              size="sm"
+              className={cn('rounded-control ring-0', entityTintClass(bill.supplierId))}
+            />
+            <span className="block max-w-[18rem] truncate font-medium">{bill.supplier.name}</span>
+          </span>
         ) : (
           <span className="text-muted-foreground">{tc('notAvailable')}</span>
         ),
@@ -176,7 +231,9 @@ export function SupplierBillsList({
       header: t('billDate'),
       sortable: true,
       plainValue: (bill) => bill.billDate,
-      render: (bill, ctx) => formatDate(bill.billDate, ctx.locale),
+      render: (bill, ctx) => (
+        <span className="whitespace-nowrap">{formatDate(bill.billDate, ctx.locale)}</span>
+      ),
     },
     {
       key: 'dueDate',
@@ -184,7 +241,17 @@ export function SupplierBillsList({
       sortable: true,
       card: 'meta',
       plainValue: (bill) => bill.dueDate,
-      render: (bill, ctx) => formatDate(bill.dueDate, ctx.locale),
+      render: (bill, ctx) => (
+        <span className="whitespace-nowrap">
+          {formatDate(bill.dueDate, ctx.locale)}
+          {billDaysLate(bill, today) > 0 ? (
+            <span className="font-medium text-danger">
+              {' '}
+              · {t('daysLate', { days: billDaysLate(bill, today) })}
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     {
       key: 'total',
@@ -195,38 +262,35 @@ export function SupplierBillsList({
       plainValue: (bill) => Number(bill.totalAmount),
       render: (bill) => <MoneyDisplay value={bill.totalAmount} />,
     },
-    ...(projectId
-      ? [
-          {
-            key: 'outstanding',
-            header: tProject('outstanding'),
-            numeric: true,
-            sortable: true,
-            plainValue: (bill: SupplierBill) => Number(bill.outstandingAmount),
-            // The bill's stored balance — what no payment covers yet. Only meaningful once in the
-            // ledger (posted, or carried in as an opening balance).
-            render: (bill: SupplierBill) =>
-              isSettleableBill(bill) ? (
-                <MoneyDisplay value={bill.outstandingAmount} />
-              ) : (
-                <span className="text-muted-foreground">
-                  <span aria-hidden="true">—</span>
-                  <span className="sr-only">{tc('notAvailable')}</span>
-                </span>
-              ),
-          } satisfies GridColumn<SupplierBill>,
-        ]
-      : []),
+    {
+      key: 'outstanding',
+      header: t('balance'),
+      numeric: true,
+      sortable: true,
+      plainValue: (bill) => (isSettleableBill(bill) ? Number(bill.outstandingAmount) : null),
+      // The bill's stored balance — what no payment covers yet. Only meaningful once in the
+      // ledger (posted, or carried in as an opening balance).
+      render: (bill) =>
+        isSettleableBill(bill) ? (
+          <span className={cn('font-semibold', state(bill) === 'OVERDUE' && 'text-danger')}>
+            <MoneyDisplay value={bill.outstandingAmount} />
+          </span>
+        ) : (
+          <span className="text-muted-foreground">
+            <span aria-hidden="true">—</span>
+            <span className="sr-only">{tc('notAvailable')}</span>
+          </span>
+        ),
+    },
     {
       key: 'status',
       header: tc('status'),
       card: 'status',
-      // Document status is the one pill; posting is the quiet second axis beneath it.
+      plainValue: (bill) => t(`listState.${state(bill)}`),
       render: (bill) => (
-        <span className="flex flex-col items-start gap-1">
-          <ProcurementStatusBadge vocabulary="supplierBill" status={bill.documentStatus} />
-          <PostingStatusBadge status={bill.postingStatus} />
-        </span>
+        <StatusPill tone={BILL_LIST_STATE_TONE[state(bill)]}>
+          {t(`listState.${state(bill)}`)}
+        </StatusPill>
       ),
     },
     {
@@ -250,21 +314,78 @@ export function SupplierBillsList({
 
   // Two controlled paths (D6): a PO-backed bill that auto-matches on submit — the primary —
   // and a genuine non-PO bill (utilities, rent, one-off) that never matches.
-  const createActions = can(ACCOUNTING_PERMISSIONS.managePayables) ? (
+  const canCreate = can(ACCOUNTING_PERMISSIONS.managePayables);
+  const createActions = canCreate ? (
     <div className="flex flex-wrap gap-2">
       <Button asChild variant="outline">
         <Link href="/finance/accounting/bills/new">{t('newNonPo')}</Link>
       </Button>
       <Button asChild className="gap-1.5">
-        <Link href="/finance/accounting/bills/new?po=1">
+        <Link href="/finance/accounting/bills/new?po=1" data-shortcut-new="">
           <Plus size={16} aria-hidden="true" />
           {t('newPo')}
+          <kbd
+            className="hidden rounded border border-white/40 px-1 font-mono text-micro md:inline"
+            aria-hidden="true"
+          >
+            N
+          </kbd>
         </Link>
       </Button>
     </div>
   ) : null;
 
-  return (
+  // Views (Step 2a). A count is shown only while the view's project matches the loaded one —
+  // the project filter is the API's.
+  const countFor = (viewState: SavedViewState): number | undefined => {
+    const f = viewState.filters ?? {};
+    if (!projectId && (f.project ?? '') !== (filters.project ?? '')) return undefined;
+    return searchRows(
+      all.filter((bill) => billMatchesFilters(bill, f, today)),
+      viewState.search ?? '',
+      columns,
+    ).length;
+  };
+  const builtInViews: Omit<BuiltInView, 'count'>[] = [
+    { id: 'all', label: t('views.all'), state: { sort: DEFAULT_BILL_SORT } },
+    {
+      id: 'toApprove',
+      label: t('views.toApprove'),
+      state: { filters: { status: 'SUBMITTED' }, sort: DEFAULT_BILL_SORT },
+    },
+    {
+      id: 'toPost',
+      label: t('views.toPost'),
+      state: { filters: { status: 'APPROVED', posting: 'NOT_POSTED' }, sort: DEFAULT_BILL_SORT },
+    },
+    {
+      id: 'overdue',
+      label: t('views.overdue'),
+      state: { filters: { due: 'overdue' }, sort: { key: 'dueDate', direction: 'asc' } },
+    },
+    {
+      id: 'drafts',
+      label: t('views.drafts'),
+      state: { filters: { status: 'DRAFT' }, sort: DEFAULT_BILL_SORT },
+    },
+  ];
+  const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
+
+  const owedMinor = all
+    .filter((bill) => isSettleableBill(bill) && bill.postingStatus !== 'REVERSED')
+    .reduce((sum, bill) => sum + toMinorUnits(bill.outstandingAmount, 2), 0);
+  const currencies = new Set(all.map((bill) => bill.currencyCode));
+  const headerSummary =
+    all.length === 0
+      ? undefined
+      : currencies.size === 1
+        ? t('headerSummary', {
+            count: all.length,
+            owed: formatMoney(fromMinorUnits(owedMinor, 2), [...currencies][0]) ?? '—',
+          })
+        : t('headerCount', { count: all.length });
+
+  const grid = (
     <PlatformDataGrid
       columns={columns}
       data={visible}
@@ -288,14 +409,64 @@ export function SupplierBillsList({
       noMatchMessage={t('noMatches')}
       resultLabel={(count) => t('countLabel', { count })}
       pagination={{ defaultPageSize: 25 }}
-      defaultSort={{ key: 'billDate', direction: 'desc' }}
+      listState={view.listState}
+      savedViews={
+        <ListViewsBar
+          listKey={projectId ? 'project-bills' : 'bills'}
+          builtIns={builtIns}
+          current={view.current}
+          onApply={view.applyView}
+          countFor={countFor}
+          label={t('views.label')}
+        />
+      }
+      exportAs={{ fileName: `bills-${today}`, sheetName: t('title') }}
+      shortcuts={
+        projectId
+          ? undefined
+          : {
+              onNew: canCreate
+                ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
+                : undefined,
+            }
+      }
       searchPlaceholder={t('searchPlaceholder')}
+      searchLabel={tGrid('searchLabel')}
       filters={filterFields}
       filterValues={filters}
-      onFilterValuesChange={setFilters}
-      toolbarActions={createActions}
+      onFilterValuesChange={view.setFilters}
+      toolbarActions={projectId ? createActions : undefined}
     />
   );
+
+  if (projectId) return grid;
+  return (
+    <div className="space-y-5">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={t('pageTitle')}
+        summary={headerSummary}
+        actions={createActions ?? undefined}
+      />
+      {grid}
+    </div>
+  );
+}
+
+const DEFAULT_BILL_SORT: SortState = { key: 'billDate', direction: 'desc' };
+
+/** Whether a bill passes the list's filters (`project` is applied by the API query). */
+export function billMatchesFilters(
+  bill: SupplierBill,
+  filters: FilterValues,
+  today: string,
+): boolean {
+  if (filters.status && bill.documentStatus !== filters.status) return false;
+  if (filters.posting && bill.postingStatus !== filters.posting) return false;
+  if (filters.supplier && bill.supplierId !== filters.supplier) return false;
+  if (filters.due === 'overdue' && !isBillOverdue(bill, today)) return false;
+  if (filters.due === 'notOverdue' && isBillOverdue(bill, today)) return false;
+  return true;
 }
 
 // ─── Detail ──────────────────────────────────────────────────────────────────────
@@ -341,7 +512,13 @@ export function SupplierBillDetail({
  * tabs, totals, and the summary rail — then the purchase-order match, which is the bill's own
  * procurement concern and keeps its section.
  */
-function SupplierBillDocument({ bill, back }: { bill: SupplierBill; back?: { href: string; label: string } }) {
+function SupplierBillDocument({
+  bill,
+  back,
+}: {
+  bill: SupplierBill;
+  back?: { href: string; label: string };
+}) {
   const t = useTranslations('procurement.bills');
   const tMatch = useTranslations('procurement.matching');
   const facts = useBillFacts(bill);
@@ -409,7 +586,11 @@ function SupplierBillDocument({ bill, back }: { bill: SupplierBill; back?: { hre
 
       {/* Matching — the auto-match outcome (D6). BillMatchSummary self-suppresses to "not
           applicable" for a genuine non-PO bill. The blocked-posting notice links here. */}
-      <section id="bill-matching" aria-labelledby="bill-matching-heading" className="mt-10 scroll-mt-40 space-y-4">
+      <section
+        id="bill-matching"
+        aria-labelledby="bill-matching-heading"
+        className="mt-10 scroll-mt-40 space-y-4"
+      >
         <SectionHeader id="bill-matching-heading" title={tMatch('title')} />
         <BillMatchSummary bill={bill} />
       </section>

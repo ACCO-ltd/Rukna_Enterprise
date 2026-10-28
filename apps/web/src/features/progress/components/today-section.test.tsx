@@ -51,7 +51,7 @@ describe('TodaySection', () => {
 
     expect(screen.getByText('Not started')).toBeInTheDocument();
     const primary = screen.getByRole('button', { name: "Start today's report" });
-    expect(primary).toHaveClass('bg-brand-ink');
+    expect(primary).toHaveClass('bg-brand-primary');
     await user.click(primary);
     expect(mocks.create).toHaveBeenCalledWith({ reportDate: TODAY }, expect.anything());
     expect(screen.getByText('dialog open: new-dpr')).toBeInTheDocument();

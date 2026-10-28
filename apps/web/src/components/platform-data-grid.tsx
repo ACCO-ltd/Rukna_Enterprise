@@ -362,6 +362,8 @@ export interface PlatformDataGridProps<T> {
    * only thing that knows whether that query has resolved.
    */
   savedViews?: React.ReactNode;
+  /** Figures above the list card — summary tiles (Step 2c). */
+  summary?: React.ReactNode;
 
   // ── Toolbar ────────────────────────────────────────────────────────────────
 
@@ -610,6 +612,7 @@ export function PlatformDataGrid<T>({
   rowKey,
   label,
   savedViews,
+  summary,
   footerSummary,
   toolbarFilters,
   toolbarLeft,
@@ -761,7 +764,10 @@ export function PlatformDataGrid<T>({
   const tableRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const shortcutsRef = useRef({ shortcuts, selection, visible, rowKey });
-  shortcutsRef.current = { shortcuts, selection, visible, rowKey };
+  // The listener reads the latest props through this ref, refreshed after each render.
+  useEffect(() => {
+    shortcutsRef.current = { shortcuts, selection, visible, rowKey };
+  });
   const shortcutsOn = Boolean(shortcuts);
   useEffect(() => {
     if (!shortcutsOn) return;
@@ -972,13 +978,18 @@ export function PlatformDataGrid<T>({
 
   return (
     <div className="space-y-4">
-      {/* ── Saved views ─────────────────────────────────────────────────── */}
-      {savedViews}
+      {/* ── Summary above the list (tiles) ──────────────────────────────── */}
+      {summary}
+
+      {/* ── The list card (ADR-047): views, toolbar, chips and rows are ONE surface, so the
+          tabs and filters read as belonging to the table they change. ───────────────── */}
+      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+      {savedViews ? <div className="px-4 pt-1">{savedViews}</div> : null}
 
       {/* ── Toolbar (ADR-035): scoped search · filters · one create ─────── */}
       <div
         hidden={!toolbar}
-        className="flex flex-wrap items-center gap-2 rounded-panel border border-border bg-surface p-3"
+        className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3"
       >
         <div className="relative min-w-0 flex-1 basis-56 sm:max-w-md">
           <Label htmlFor={searchId} className="sr-only">
@@ -1116,6 +1127,7 @@ export function PlatformDataGrid<T>({
 
       {/* ── Applied filters — applied only, never the panel's draft ─────── */}
       <FilterChips
+        className="border-b border-border px-4 py-2"
         chips={filterChips}
         onRemove={(key) => applyFilters({ ...appliedFilters, [key]: '' })}
         onClearAll={() => applyFilters({})}
@@ -1127,7 +1139,7 @@ export function PlatformDataGrid<T>({
 
       {/* ── Bulk action bar (when rows selected) ──────────────────────────── */}
       {hasSelection && selection && selection.selected.size > 0 ? (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-subtle px-4 py-2">
+        <div className="flex items-center gap-3 border-b border-border bg-brand-accent px-4 py-2">
           <span className="text-sm font-medium text-foreground">
             {selection.selected.size} selected
           </span>
@@ -1140,7 +1152,7 @@ export function PlatformDataGrid<T>({
           on the page background. The rules that used to separate them were doing the work a
           single container does better, and the count now reads as a property of the table
           under it instead of a sentence stranded above it. */}
-      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+      <div>
         {header ? <div className="border-b border-border px-4 py-3">{header}</div> : null}
         {/* ── Money in view — only for lists that total a column ─────────── */}
         {footerSummary ? (
@@ -1257,12 +1269,13 @@ export function PlatformDataGrid<T>({
           }}
         >
           <Table>
-            {/* Navy header band (ADR-035) — the same on every list in the product. */}
-            <TableHeader className="bg-brand-panel">
-              <TableRow className="bg-brand-panel hover:bg-brand-panel">
+            {/* Light header row (ADR-047, replacing ADR-035's navy band): quiet labels over the
+                data, so the figures — not the chrome — carry the weight. */}
+            <TableHeader className="bg-surface-subtle">
+              <TableRow className="border-b border-border bg-surface-subtle hover:bg-surface-subtle">
                 {/* Selection checkbox header */}
                 {hasSelection && selection ? (
-                  <TableHead className="w-10 text-brand-on-panel">
+                  <TableHead className="w-10">
                     <Checkbox
                       aria-label="Select all"
                       checked={
@@ -1286,8 +1299,9 @@ export function PlatformDataGrid<T>({
                     numeric={col.numeric}
                     aria-sort={col.sortable ? ariaSort(col.key) : undefined}
                     className={cn(
-                      'font-semibold text-brand-on-panel',
-                      col.sticky && 'sticky start-0 z-10 bg-brand-panel',
+                      'font-medium text-muted-foreground',
+                      sort?.key === col.key && 'text-foreground',
+                      col.sticky && 'sticky start-0 z-10 bg-surface-subtle',
                       col.sticky && scrolledX && 'shadow-[1px_0_0_0] shadow-border',
                     )}
                   >
@@ -1296,7 +1310,7 @@ export function PlatformDataGrid<T>({
                         type="button"
                         className={cn(
                           'inline-flex w-full items-center gap-1 text-start',
-                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-on-panel',
+                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
                           col.numeric && 'flex-row-reverse',
                         )}
                         aria-label={sortButtonLabel(col)}
@@ -1389,24 +1403,6 @@ export function PlatformDataGrid<T>({
             Paginated lists get the full control bar; an unpaginated one still says how much
             of the data it is showing, because "1 result" at the top of a list you have
             scrolled away from stops being visible exactly when you want it. */}
-        {shortcuts && visible.length > 0 ? (
-          <p className="hidden border-t border-border px-4 py-2 text-caption text-muted-foreground md:block" aria-hidden="true">
-            <kbd className="rounded border border-border px-1 font-mono">/</kbd> {t('keySearch')} ·{' '}
-            <kbd className="rounded border border-border px-1 font-mono">J</kbd>{' '}
-            <kbd className="rounded border border-border px-1 font-mono">K</kbd> {t('keyMove')} ·{' '}
-            <kbd className="rounded border border-border px-1 font-mono">Enter</kbd> {t('keyOpen')}
-            {selection ? (
-              <>
-                {' '}· <kbd className="rounded border border-border px-1 font-mono">X</kbd> {t('keySelect')}
-              </>
-            ) : null}
-            {shortcuts.onNew ? (
-              <>
-                {' '}· <kbd className="rounded border border-border px-1 font-mono">N</kbd> {t('keyNew')}
-              </>
-            ) : null}
-          </p>
-        ) : null}
         {paged && rowCount > 0 ? (
           <div className="border-t border-border px-4 py-3">
             <PaginationBar
@@ -1429,6 +1425,25 @@ export function PlatformDataGrid<T>({
             </p>
           </div>
         ) : null}
+        {shortcuts && visible.length > 0 ? (
+          <p className="hidden border-t border-border bg-surface-subtle px-4 py-2 text-end text-caption text-muted-foreground md:block" aria-hidden="true">
+            <kbd className="rounded border border-border px-1 font-mono">/</kbd> {t('keySearch')} ·{' '}
+            <kbd className="rounded border border-border px-1 font-mono">J</kbd>{' '}
+            <kbd className="rounded border border-border px-1 font-mono">K</kbd> {t('keyMove')} ·{' '}
+            <kbd className="rounded border border-border px-1 font-mono">Enter</kbd> {t('keyOpen')}
+            {selection ? (
+              <>
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">X</kbd> {t('keySelect')}
+              </>
+            ) : null}
+            {shortcuts.onNew ? (
+              <>
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">N</kbd> {t('keyNew')}
+              </>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
       </section>
     </div>
   );

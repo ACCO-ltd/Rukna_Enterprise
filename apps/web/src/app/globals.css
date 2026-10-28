@@ -157,6 +157,13 @@
   --brand-panel: #111d42;
   /* Text on brand-panel (navy table headers, hero panels) — light in both themes. */
   --brand-on-panel: #ffffff;
+  /* Navigation on the navy panel (ADR-047 sidebar). Text at #c7d2ea on #111d42 is 11:1. */
+  --nav-foreground: #c7d2ea;
+  --nav-foreground-active: #ffffff;
+  --nav-accent: #98b4ff;
+  --nav-hover: rgb(255 255 255 / 0.06);
+  --nav-active: rgb(255 255 255 / 0.11);
+  --nav-border: rgb(255 255 255 / 0.09);
   /* Rukna Blue (ADR-047): 600 #2453e0, hover 700, active 800 of the brand ramp. */
   --brand-primary: #2453e0;
   --brand-primary-hover: #1c42b8;
@@ -279,6 +286,12 @@
   --brand-ink-soft: #c5ccd8;
   --brand-panel: #151d2c;
   --brand-on-panel: #e4e9f2;
+  --nav-foreground: #b4bfd6;
+  --nav-foreground-active: #ffffff;
+  --nav-accent: #93b4ff;
+  --nav-hover: rgb(255 255 255 / 0.05);
+  --nav-active: rgb(255 255 255 / 0.09);
+  --nav-border: rgb(255 255 255 / 0.08);
   --brand-primary: #6d96ff;
   --brand-primary-hover: #88aaff;
   --brand-primary-active: #a2bcff;
@@ -367,6 +380,12 @@
   --color-brand-ink-soft: var(--brand-ink-soft);
   --color-brand-panel: var(--brand-panel);
   --color-brand-on-panel: var(--brand-on-panel);
+  --color-nav-foreground: var(--nav-foreground);
+  --color-nav-foreground-active: var(--nav-foreground-active);
+  --color-nav-accent: var(--nav-accent);
+  --color-nav-hover: var(--nav-hover);
+  --color-nav-active: var(--nav-active);
+  --color-nav-border: var(--nav-border);
   --color-brand-primary: var(--brand-primary);
   --color-brand-primary-hover: var(--brand-primary-hover);
   --color-brand-primary-active: var(--brand-primary-active);

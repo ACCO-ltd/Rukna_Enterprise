@@ -64,6 +64,18 @@ describe('invoiceSummary (Step 2c)', () => {
     expect(s.retentionHeld).toEqual({ contracts: 2, heldMinor: 4000 });
   });
 
+  it('totals what was billed this calendar year', () => {
+    const s = invoiceSummary(
+      [
+        inv({ invoiceDate: '2026-02-01', totalAmount: '10.00' }),
+        inv({ invoiceDate: '2025-12-31', totalAmount: '99.00' }),
+        inv({ invoiceDate: '2026-03-01', documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }),
+      ],
+      TODAY,
+    );
+    expect(s.billedThisYear).toEqual({ count: 1, totalMinor: 1000 });
+  });
+
   it('refuses to add currencies together', () => {
     const s = invoiceSummary([inv({}), inv({ currencyCode: 'SOS' })], TODAY);
     expect(s.mixedCurrencies).toBe(true);

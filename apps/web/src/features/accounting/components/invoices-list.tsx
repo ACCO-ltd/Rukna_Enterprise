@@ -5,7 +5,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
+  Avatar,
   Button,
+  cn,
+  entityTintClass,
+  StatusPill,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -18,7 +22,7 @@ import {
   RowActions,
   useToast,
 } from '@erp/ui';
-import { FileText } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 
 import {
   PlatformDataGrid,
@@ -29,15 +33,19 @@ import {
 import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useClients } from '@/features/clients/hooks/use-clients';
-import { formatDate } from '@/lib/format';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { formatDate, formatMoney } from '@/lib/format';
+import { fromMinorUnits } from '@/lib/money';
 
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
 import { useInvoices, useOpenInvoiceDocument } from '../hooks/use-invoices';
 import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
+import { daysLate, INVOICE_LIST_STATE_TONE, invoiceListState } from '../invoice-list-state';
+import { useProjects } from '@/features/projects/hooks/use-projects';
+import { toMinorUnits } from '@/lib/money';
 import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
 import type { SavedViewState } from '@erp/types';
-import { InvoiceDocStatusBadge, InvoicePostingStatusBadge } from './invoice-status-badges';
 import { InvoiceSummaryTiles } from './invoice-summary-tiles';
 import { invoiceSummary } from '../invoice-summary';
 
@@ -79,7 +87,14 @@ export function InvoicesList() {
   const createAction = can(ACCOUNTING_PERMISSIONS.manageReceivables) ? (
     <Button asChild>
       <Link href="/finance/accounting/invoices/new" data-shortcut-new="">
+        <Plus size={16} aria-hidden="true" />
         {t('newInvoice')}
+        <kbd
+          className="hidden rounded border border-white/40 px-1 font-mono text-micro md:inline"
+          aria-hidden="true"
+        >
+          N
+        </kbd>
       </Link>
     </Button>
   ) : null;
@@ -106,6 +121,20 @@ export function InvoicesList() {
     return map;
   }, [clients.data]);
 
+  const projects = useProjects();
+  const projectNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const project of projects.data ?? []) map.set(project.id, project.name);
+    return map;
+  }, [projects.data]);
+  const projectName = (inv: ClientInvoice) =>
+    inv.projectId ? (projectNames.get(inv.projectId) ?? null) : null;
+  const paidPercent = (inv: ClientInvoice) => {
+    const total = toMinorUnits(inv.totalAmount, 2);
+    return total > 0
+      ? Math.round(((total - toMinorUnits(inv.outstandingAmount, 2)) / total) * 100)
+      : 0;
+  };
   const all = useMemo(() => invoices.data ?? [], [invoices.data]);
   const visible = useMemo(
     () => all.filter((inv) => invoiceMatchesFilters(inv, filters, today)),
@@ -167,7 +196,7 @@ export function InvoicesList() {
       // what was billed — a certificate, a milestone, a separate charge.
       render: (inv) => (
         <span className="block">
-          <span className="block font-semibold text-brand-primary">
+          <span className="block font-mono text-body-sm font-semibold text-brand-primary">
             {inv.invoiceNumber ?? t('unnumbered')}
           </span>
           <span className="block max-w-[16rem] truncate text-caption font-normal text-muted-foreground">
@@ -178,14 +207,41 @@ export function InvoicesList() {
     },
     {
       key: 'client',
-      header: t('colClient'),
+      header: t('colClientProject'),
       sortable: true,
       card: 'subtitle',
-      plainValue: (inv) => clientNames.get(inv.clientId) ?? '',
-      render: (inv) => (
-        <span className="block max-w-[16rem] truncate font-medium">
-          {clientNames.get(inv.clientId) ?? inv.clientId.slice(-8)}
-        </span>
+      plainValue: (inv) =>
+        `${clientNames.get(inv.clientId) ?? ''} ${projectName(inv) ?? ''}`.trim(),
+      exportValue: (inv) => clientNames.get(inv.clientId) ?? '',
+      render: (inv) => {
+        const name = clientNames.get(inv.clientId) ?? inv.clientId.slice(-8);
+        const project = projectName(inv);
+        return (
+          <span className="flex items-center gap-2.5">
+            <Avatar
+              name={name}
+              size="sm"
+              className={cn('rounded-control ring-0', entityTintClass(inv.clientId))}
+            />
+            <span className="min-w-0">
+              <span className="block max-w-[16rem] truncate font-medium">{name}</span>
+              {project ? (
+                <span className="block max-w-[16rem] truncate text-caption text-muted-foreground">
+                  {project}
+                </span>
+              ) : null}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      key: 'issued',
+      header: t('colIssued'),
+      sortable: true,
+      plainValue: (inv) => inv.invoiceDate ?? '',
+      render: (inv, ctx) => (
+        <span className="whitespace-nowrap">{formatDate(inv.invoiceDate, ctx.locale)}</span>
       ),
     },
     {
@@ -196,10 +252,13 @@ export function InvoicesList() {
       plainValue: (inv) => inv.dueDate ?? '',
       render: (inv, ctx) =>
         inv.dueDate ? (
-          <span className="block">
-            <span className="block">{formatDate(inv.dueDate, ctx.locale)}</span>
-            {isInvoiceOverdue(inv, today) ? (
-              <span className="block text-caption font-semibold text-danger">{t('overdue')}</span>
+          <span className="whitespace-nowrap">
+            {formatDate(inv.dueDate, ctx.locale)}
+            {daysLate(inv, today) > 0 ? (
+              <span className="font-medium text-danger">
+                {' '}
+                · {t('daysLate', { days: daysLate(inv, today) })}
+              </span>
             ) : null}
           </span>
         ) : (
@@ -226,19 +285,40 @@ export function InvoicesList() {
         inv.documentStatus === 'CANCELLED' || inv.postingStatus === 'REVERSED' ? (
           <MoneyDisplay value={null} />
         ) : (
-          <MoneyDisplay value={inv.outstandingAmount} />
+          <span className="inline-flex items-center justify-end gap-2">
+            <span
+              className={cn(
+                'font-semibold',
+                invoiceListState(inv, today) === 'OVERDUE' && 'text-danger',
+              )}
+            >
+              <MoneyDisplay value={inv.outstandingAmount} />
+            </span>
+            {invoiceListState(inv, today) === 'PART_PAID' ? (
+              // How much is collected, as a bar — the figure beside it is the authority.
+              <svg
+                viewBox="0 0 100 6"
+                preserveAspectRatio="none"
+                className="hidden h-1.5 w-14 overflow-hidden rounded-full lg:block"
+                aria-hidden="true"
+              >
+                <rect width="100" height="6" rx="3" className="fill-muted" />
+                <rect width={paidPercent(inv)} height="6" rx="3" className="fill-success" />
+              </svg>
+            ) : null}
+          </span>
         ),
     },
     {
       key: 'status',
       header: t('colStatus'),
       card: 'status',
-      exportValue: (inv) =>
-        `${t(`docStatus.${inv.documentStatus}`)} · ${t(`postingStatus.${inv.postingStatus}`)}`,
+      plainValue: (inv) => t(`listState.${invoiceListState(inv, today)}`),
       render: (inv) => (
         <span className="flex flex-col items-start gap-1">
-          <InvoiceDocStatusBadge status={inv.documentStatus} />
-          <InvoicePostingStatusBadge status={inv.postingStatus} />
+          <StatusPill tone={INVOICE_LIST_STATE_TONE[invoiceListState(inv, today)]}>
+            {t(`listState.${invoiceListState(inv, today)}`)}
+          </StatusPill>
         </span>
       ),
     },
@@ -290,75 +370,93 @@ export function InvoicesList() {
     }
   };
 
+  const headerSummary =
+    all.length === 0
+      ? undefined
+      : summary.mixedCurrencies
+        ? t('headerCount', { count: all.length })
+        : t('headerSummary', {
+            count: all.length,
+            billed:
+              formatMoney(fromMinorUnits(summary.billedThisYear.totalMinor, 2), summary.currency) ??
+              '—',
+          });
+
   return (
-    <PlatformDataGrid
-      columns={columns}
-      data={visible}
-      rowKey={(invoice) => invoice.id}
-      label={t('title')}
-      isLoading={invoices.isPending}
-      isError={invoices.isError}
-      onRetry={() => void invoices.refetch()}
-      errorMessage={t('loadFailed')}
-      rowHref={detailHref}
-      rowActions={(invoice) => (
-        <RowActions
-          overflow={
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('rowMenu', { number: invoice.invoiceNumber ?? t('unnumbered') })}
-                >
-                  <OverflowGlyph />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href={detailHref(invoice)}>{t('rowOpen')}</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() =>
-                    openDocument.mutate(invoice.id, {
-                      onError: () => toast({ title: t('viewDocumentFailed'), tone: 'error' }),
-                    })
-                  }
-                >
-                  {t('rowOpenPdf')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void copyLink(invoice)}>
-                  {t('rowCopyLink')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
-        />
-      )}
-      emptyState={
-        all.length === 0 ? (
-          <EmptyState
-            icon={<FileText size={20} aria-hidden="true" />}
-            title={t('empty')}
-            description={t('emptyHint')}
-            action={createAction ?? undefined}
+    <div className="space-y-5">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={t('pageTitle')}
+        summary={headerSummary}
+        actions={createAction ?? undefined}
+      />
+      <PlatformDataGrid
+        columns={columns}
+        data={visible}
+        rowKey={(invoice) => invoice.id}
+        label={t('title')}
+        isLoading={invoices.isPending}
+        isError={invoices.isError}
+        onRetry={() => void invoices.refetch()}
+        errorMessage={t('loadFailed')}
+        rowHref={detailHref}
+        rowActions={(invoice) => (
+          <RowActions
+            overflow={
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('rowMenu', { number: invoice.invoiceNumber ?? t('unnumbered') })}
+                  >
+                    <OverflowGlyph />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href={detailHref(invoice)}>{t('rowOpen')}</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openDocument.mutate(invoice.id, {
+                        onError: () => toast({ title: t('viewDocumentFailed'), tone: 'error' }),
+                      })
+                    }
+                  >
+                    {t('rowOpenPdf')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void copyLink(invoice)}>
+                    {t('rowCopyLink')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
           />
-        ) : undefined
-      }
-      noMatchMessage={t('noMatches')}
-      resultLabel={(count) => t('countLabel', { count })}
-      pagination={{ defaultPageSize: 25 }}
-      listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
-      shortcuts={{
-        // Follows the visible "New invoice" link, so N and the button can never go to different places.
-        onNew: createAction
-          ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
-          : undefined,
-      }}
-      exportAs={{ fileName: `invoices-${today}`, sheetName: t('title') }}
-      savedViews={
-        <>
-          {all.length > 0 ? (
+        )}
+        emptyState={
+          all.length === 0 ? (
+            <EmptyState
+              icon={<FileText size={20} aria-hidden="true" />}
+              title={t('empty')}
+              description={t('emptyHint')}
+              action={createAction ?? undefined}
+            />
+          ) : undefined
+        }
+        noMatchMessage={t('noMatches')}
+        resultLabel={(count) => t('countLabel', { count })}
+        pagination={{ defaultPageSize: 25 }}
+        listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
+        shortcuts={{
+          // Follows the visible "New invoice" link, so N and the button can never go to different places.
+          onNew: createAction
+            ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
+            : undefined,
+        }}
+        exportAs={{ fileName: `invoices-${today}`, sheetName: t('title') }}
+        summary={
+          all.length > 0 ? (
             <InvoiceSummaryTiles
               summary={summary}
               onShowDrafts={() => applyView(builtInViews[2]!.state)}
@@ -370,7 +468,9 @@ export function InvoicesList() {
                 })
               }
             />
-          ) : null}
+          ) : undefined
+        }
+        savedViews={
           <ListViewsBar
             listKey="invoices"
             builtIns={builtIns}
@@ -379,14 +479,13 @@ export function InvoicesList() {
             countFor={countFor}
             label={t('views.label')}
           />
-        </>
-      }
-      searchPlaceholder={t('searchPlaceholder')}
-      searchLabel={tGrid('searchLabel')}
-      filters={filterFields}
-      filterValues={filters}
-      onFilterValuesChange={setFilters}
-      toolbarActions={createAction ?? undefined}
-    />
+        }
+        searchPlaceholder={t('searchPlaceholder')}
+        searchLabel={tGrid('searchLabel')}
+        filters={filterFields}
+        filterValues={filters}
+        onFilterValuesChange={setFilters}
+      />
+    </div>
   );
 }

@@ -2,7 +2,7 @@ export { Alert } from './components/alert';
 export type { AlertProps } from './components/alert';
 export { Notice } from './components/notice';
 export type { NoticeProps, NoticeTone } from './components/notice';
-export { Avatar, initialsFromName } from './components/avatar';
+export { Avatar, entityTintClass, initialsFromName } from './components/avatar';
 export type { AvatarProps } from './components/avatar';
 export {
   ApprovalChain,
