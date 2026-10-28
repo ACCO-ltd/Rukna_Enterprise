@@ -10,7 +10,10 @@ import { ChevronLeft, Layers } from 'lucide-react';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 
-import { isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV, type NavDomain, type NavIconKey } from './nav-groups';
+import { useApprovalsInbox } from '@/features/approvals/hooks';
+
+import { isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV, type NavBadgeKey, type NavDomain, type NavIconKey } from './nav-groups';
+import { NavCount } from './nav-badges';
 import { NavIcon } from './nav-icon';
 import { sidebarCollapseStore } from './sidebar-collapse-store';
 
@@ -51,12 +54,17 @@ export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarP
     isActiveNavItem(pathname, domain.href) ||
     domain.items.some((item) => !item.crossLink && isActiveNavItem(pathname, item.href));
 
-  const rows: Array<{ href: string; labelKey: string; iconKey: NavIconKey; active: boolean }> = [
+  // The Approvals count follows the reader everywhere (ADR-049); the page shares this query.
+  const approvals = useApprovalsInbox({ enabled: Boolean(user) });
+  const counts: Partial<Record<NavBadgeKey, number | undefined>> = { approvals: approvals.data?.count };
+
+  const rows: Array<{ href: string; labelKey: string; iconKey: NavIconKey; active: boolean; badge?: NavBadgeKey }> = [
     ...STANDALONE_NAV.map((item) => ({
       href: item.href,
       labelKey: item.labelKey,
       iconKey: item.iconKey ?? 'grid',
       active: isActiveNavItem(pathname, item.href),
+      badge: item.badge,
     })),
     ...NAV_DOMAINS.filter((domain) => moduleVisible(domain.moduleKey)).map((domain) => ({
       href: domain.href,
@@ -106,8 +114,27 @@ export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarP
                       : 'text-nav-foreground hover:bg-nav-hover hover:text-nav-foreground-active',
                   )}
                 >
-                  <NavIcon iconKey={row.iconKey} className={cn('shrink-0', row.active && 'text-nav-accent')} />
+                  <span className="relative shrink-0">
+                    <NavIcon iconKey={row.iconKey} className={cn(row.active && 'text-nav-accent')} />
+                    {/* On the icon rail the count shrinks to a dot on the icon. */}
+                    {row.badge && counts[row.badge] && docked ? (
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'absolute -end-1 -top-1 size-2 rounded-full bg-nav-accent',
+                          !userCollapsed && 'lg:hidden',
+                        )}
+                      />
+                    ) : null}
+                  </span>
                   <span className={cn('truncate', labelClass)}>{label}</span>
+                  {row.badge ? (
+                    <NavCount
+                      badge={row.badge}
+                      count={counts[row.badge]}
+                      className={cn('ms-auto', docked && (userCollapsed ? 'sr-only' : 'sr-only lg:not-sr-only'))}
+                    />
+                  ) : null}
                 </Link>
                 {/* Rail tooltip — the label the rail hides, on hover and keyboard focus. */}
                 {docked ? (

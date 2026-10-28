@@ -3,6 +3,7 @@
 import {
   BookOpen,
   Briefcase,
+  Inbox,
   Building2,
   Calendar,
   ChartColumn,
@@ -44,6 +45,7 @@ import type { NavIconKey } from './nav-groups';
  */
 const ICONS: Record<NavIconKey, LucideIcon> = {
   grid: LayoutGrid,
+  inbox: Inbox,
   building: Building2,
   folder: FolderOpen,
   receipt: Receipt,

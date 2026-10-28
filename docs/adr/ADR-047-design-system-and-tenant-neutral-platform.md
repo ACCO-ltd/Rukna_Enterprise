@@ -120,7 +120,7 @@ These replace earlier rules, so they are listed explicitly:
 | Phone flows | An installable web app (PWA), not a native app. |
 | Reading photos (receipts, delivery notes) | Built now, alongside the phone flows, using free or open models behind a pluggable reader with a configurable provider (OpenRouter free vision models or self-hosted). A person always confirms the reading before anything is saved. The privacy implications of the chosen provider are confirmed with the owner at that step. |
 | Saved table views | Personal views, plus views an admin publishes to everyone. |
-| Approvals | One Approvals tab with a count, not an inbox per module. |
+| Approvals | One Approvals tab with a count, not an inbox per module. **Built 2026-10-28 (ADR-049).** |
 | Finance Home | A dashboard, with the setup checklist shown until setup is complete. |
 | Navigation | An icon-only sidebar that can be collapsed; the Payables count and the period label stay. |
 

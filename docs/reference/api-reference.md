@@ -256,6 +256,7 @@ All endpoints are scoped to the authenticated user's organization.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/search?q=` | Authentication only. Up to 5 records per type matching number, reference or name (`q` ≥ 2 characters): invoices (`manage:receivable`), receipts (`manage:receivable` or `view:receipt`), bills and payments (`manage:payable`), manual journals (`manage:journal`), projects (`view:project`, limited to the caller's memberships), clients (`view:client`), suppliers (`manage:payable` or `view:procurement`). Returns `{ query, records: [{ kind, id, title, detail, amount, currencyCode, status, clientId }] }`. |
+| `GET` | `/approvals/inbox` | ADR-049. Everything waiting on the caller's decision, oldest first: `{ items: ApprovalItem[], count }`. `ApprovalItem` = `{ kind: JOURNAL \| BILL \| PAYMENT \| QUOTATION \| MATERIAL_REQUEST \| PROGRESS_REPORT \| WORKFLOW, id, title, detail, amount, currencyCode, waitingSince, requestedByName, projectId, projectName, transactionType }`. Each queue requires its decision's permission; project documents only for the caller's projects; items an active SoD rule would bar are left out. |
 
 #### Hand-typed invoices (ADR-048)
 

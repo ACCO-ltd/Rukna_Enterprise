@@ -19,3 +19,4 @@ export * from './finance-cashflow';
 export * from './dashboard';
 export * from './saved-views';
 export * from './search';
+export * from './approvals';

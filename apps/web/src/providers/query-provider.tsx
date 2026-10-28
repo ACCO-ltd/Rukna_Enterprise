@@ -13,6 +13,7 @@ import {
   type FeedbackMessage,
 } from '@/lib/mutation-feedback';
 import { makeQueryClient } from '@/lib/query-client';
+import { approvalsKeys } from '@/features/approvals/hooks';
 
 /** Long enough for a closing FormDialog's exit animation (--motion-exit / --motion-enter). */
 const SUCCESS_DIALOG_DELAY_MS = 200;
@@ -44,6 +45,15 @@ export function QueryProvider({
   const [successOpen, setSuccessOpen] = useState(false);
 
   const [queryClient] = useState(() => createClient());
+
+  // Any command can settle or create a decision (approve, submit, reject …), so the Approvals
+  // count re-reads after every successful mutation rather than waiting for its minute (ADR-049).
+  useEffect(() => {
+    return queryClient.getMutationCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.action.type !== 'success') return;
+      void queryClient.invalidateQueries({ queryKey: approvalsKeys.inbox });
+    });
+  }, [queryClient]);
 
   // Every finished mutation passes through the cache; the ones that carry feedback `meta` get
   // it here. A cache subscription (not `MutationCache.onSuccess`) because the `success` action

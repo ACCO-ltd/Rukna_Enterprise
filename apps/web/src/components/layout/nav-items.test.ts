@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { groupNavItems, isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV } from './nav-groups';
 
 describe('STANDALONE_NAV', () => {
-  it('contains only Dashboard as a standalone item', () => {
-    expect(STANDALONE_NAV.map((i) => i.href)).toEqual(['/dashboard']);
+  it('holds Dashboard and the one Approvals inbox, with its count (ADR-049)', () => {
+    expect(STANDALONE_NAV.map((i) => i.href)).toEqual(['/dashboard', '/approvals']);
+    expect(STANDALONE_NAV[1]?.badge).toBe('approvals');
   });
 });
 

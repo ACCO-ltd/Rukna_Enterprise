@@ -15,6 +15,7 @@
 
 export type NavIconKey =
   | 'grid'
+  | 'inbox'
   | 'building'
   | 'folder'
   | 'receipt'
@@ -73,7 +74,7 @@ export interface NavItem {
 }
 
 /** Live counts a nav item can carry. */
-export type NavBadgeKey = 'quotesToChoose' | 'paymentsNeeded';
+export type NavBadgeKey = 'quotesToChoose' | 'paymentsNeeded' | 'approvals';
 
 export interface NavDomain {
   /** Translation key — also used as the collapse-store key. */
@@ -103,6 +104,8 @@ export interface NavDomain {
 
 export const STANDALONE_NAV: NavItem[] = [
   { href: '/dashboard', labelKey: 'dashboard', iconKey: 'grid' },
+  // ADR-047 §4 / ADR-049 — one Approvals tab with a count, not an inbox per module.
+  { href: '/approvals', labelKey: 'approvals', iconKey: 'inbox', badge: 'approvals' },
 ];
 
 // ─── Domains ──────────────────────────────────────────────────────────────────

@@ -132,7 +132,9 @@
     "taxCodes": "Tax",
     "invoiceSettings": "Invoice settings",
     "paymentsNeeded": "Payments needed",
-    "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}"
+    "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}",
+    "approvals": "Approvals",
+    "approvalsCount": "{count, plural, one {# item waits on you} other {# items wait on you}}"
   },
   "admin": {
     "title": "Administration",
@@ -3537,5 +3539,40 @@
     "contactMadePrimary": "Primary contact changed",
     "templateSaved": "Template saved",
     "templateReset": "Template reset to the Rukna default"
+  },
+  "approvals": {
+    "eyebrow": "Your decisions",
+    "title": "Approvals",
+    "summary": "{count, plural, one {# item waits on you} other {# items wait on you}}",
+    "summaryLate": "{count, plural, one {# item waits on you} other {# items wait on you}} · {late} waiting more than 3 days",
+    "summaryNone": "Nothing waits on you",
+    "areasLabel": "Approval areas",
+    "area": {
+      "all": "All",
+      "finance": "Finance",
+      "procurement": "Procurement",
+      "site": "Site"
+    },
+    "kind": {
+      "JOURNAL": "Journal",
+      "BILL": "Supplier bill",
+      "PAYMENT": "Supplier payment",
+      "QUOTATION": "Choose a quote",
+      "MATERIAL_REQUEST": "Material request",
+      "PROGRESS_REPORT": "Daily progress report",
+      "WORKFLOW": "Approval step"
+    },
+    "colItem": "Waiting for your decision",
+    "colProject": "Project",
+    "colRequestedBy": "Sent by",
+    "colWaiting": "Waiting",
+    "colAmount": "Amount",
+    "today": "Today",
+    "days": "{count, plural, one {# day} other {# days}}",
+    "emptyTitle": "Nothing waits on you",
+    "emptyHint": "Journals, bills, payments, quotes, material requests and progress reports that need your decision appear here, oldest first.",
+    "noneInArea": "Nothing waits on you in this area.",
+    "countLabel": "{count, plural, one {# item} other {# items}}",
+    "loadFailed": "Your approvals could not be loaded."
   }
 }

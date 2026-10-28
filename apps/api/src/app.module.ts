@@ -15,6 +15,7 @@ import { UsersModule } from './platform/users/users.module.js';
 import { OrganizationsModule } from './platform/organizations/organizations.module.js';
 import { SavedViewsModule } from './platform/saved-views/saved-views.module.js';
 import { SearchModule } from './platform/search/search.module.js';
+import { ApprovalsInboxModule } from './platform/approvals-inbox/approvals-inbox.module.js';
 import { RolesModule } from './platform/roles/roles.module.js';
 import { PermissionsModule } from './platform/permissions/permissions.module.js';
 import { AuditLogsModule } from './platform/audit-logs/audit-logs.module.js';
@@ -43,6 +44,7 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     OrganizationsModule,
     SavedViewsModule,
     SearchModule,
+    ApprovalsInboxModule,
     RolesModule,
     PermissionsModule,
     AuditLogsModule,
