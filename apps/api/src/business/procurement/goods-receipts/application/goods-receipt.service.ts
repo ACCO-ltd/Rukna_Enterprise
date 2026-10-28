@@ -33,6 +33,8 @@ export interface CreateGrnLineDto {
 }
 
 export interface CreateGoodsReceiptDto {
+  /** Step 7 — the phone outbox reference: a repeat send returns the same record. */
+  clientRef?: string;
   purchaseOrderId: string;
   deliveryDate: string;
   deliveryNoteRef?: string;
@@ -73,6 +75,12 @@ export class GoodsReceiptService {
   async create(identity: RequestIdentity, dto: CreateGoodsReceiptDto) {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
+
+    // Step 7 — a phone resending from its outbox (the first reply was lost): the same receipt.
+    if (dto.clientRef) {
+      const existingId = await this.repo.idByClientRef(prisma, orgId, dto.clientRef);
+      if (existingId) return this.repo.findById(prisma, orgId, existingId);
+    }
 
     const po = await this.poRepo.findById(prisma, orgId, dto.purchaseOrderId);
     if (!po) throw new NotFoundException(`Purchase order ${dto.purchaseOrderId} not found`);
@@ -142,6 +150,7 @@ export class GoodsReceiptService {
     const grnId = await prisma.$transaction(async (tx) => {
       const grn = await this.repo.create(tx, {
         organizationId: orgId,
+        ...(dto.clientRef ? { clientRef: dto.clientRef } : {}),
         grnNumber,
         purchaseOrderId: po.id,
         purchaseOrderRevisionId: activeRevision.id,

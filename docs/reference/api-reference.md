@@ -2457,7 +2457,7 @@ A formal internal request for materials or services. Can be PROJECT-scoped (link
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/procurement/material-requests` | List MRs |
-| `POST` | `/procurement/material-requests` | Create a DRAFT MR |
+| `POST` | `/procurement/material-requests` | Create a DRAFT MR. Optional `clientRef` (UUID, Step 7): a repeat with the same reference returns the request already created instead of a second one — the phone's offline outbox resends safely. |
 | `GET` | `/procurement/material-requests/:id` | Get MR with lines |
 | `POST` | `/procurement/material-requests/:id/submit` | Submit for approval |
 | `POST` | `/procurement/material-requests/:id/approve` | Approve |
@@ -2656,7 +2656,7 @@ Records physical delivery against an ACTIVE PO revision. Each line records the f
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/procurement/goods-receipts` | List GRNs |
-| `POST` | `/procurement/goods-receipts` | Create GRN (DRAFT) |
+| `POST` | `/procurement/goods-receipts` | Create GRN (DRAFT). Optional `clientRef` (UUID, Step 7): idempotent per company, as for material requests. |
 | `GET` | `/procurement/goods-receipts/:id` | Get GRN with lines + allocations |
 | `POST` | `/procurement/goods-receipts/:id/post` | Post GRN → COMMITTED→ACCRUED |
 | `POST` | `/procurement/goods-receipts/:id/approve-exception` | Supervisor approves over-receipt: EXCEPTION_PENDING → DRAFT |

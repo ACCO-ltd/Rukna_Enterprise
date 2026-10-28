@@ -800,6 +800,8 @@ export interface CreateMrLinePayload {
  * sent. `notes` carries the "Note to the buyer".
  */
 export interface CreateMaterialRequestPayload {
+  /** Step 7 — the form's own reference: a repeat send returns the same request. */
+  clientRef?: string;
   requestScope: MaterialRequestScope;
   projectId?: string;
   requiredByDate?: string;
@@ -908,6 +910,8 @@ export interface CreateReceiptExceptionPayload {
 }
 
 export interface CreateGoodsReceiptPayload {
+  /** Step 7 — the form's own reference: a repeat send returns the same receipt. */
+  clientRef?: string;
   purchaseOrderId: string;
   deliveryDate: string;
   deliveryNoteRef?: string;

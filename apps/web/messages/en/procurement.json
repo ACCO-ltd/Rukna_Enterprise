@@ -403,7 +403,8 @@
         "item": "Choose an item, or type its name and add it as a one-off item.",
         "unit": "Choose a unit.",
         "quantity": "Enter a quantity greater than zero."
-      }
+      },
+      "outboxLabel": "Material request · {count, plural, one {# item} other {# items}}"
     },
     "approveOwnRequest": "You raised this request, so someone else must approve it.",
     "submitAwaitingApproval": "This request was routed for approval. Once the approver acts, complete the submission.",
@@ -620,8 +621,10 @@
         "failed": "The photo could not be uploaded. Try again, or carry on without it.",
         "read": "Read the quantities from the photo",
         "unmatchedTitle": "{count, plural, one {# line on the note matches nothing on the order} other {# lines on the note match nothing on the order}}",
-        "attachFailed": "The receipt was saved, but the photo could not be attached to it. Attach it from the receipt."
-      }
+        "attachFailed": "The receipt was saved, but the photo could not be attached to it. Attach it from the receipt.",
+        "keptOnPhone": "No signal: the photo is kept on this phone and goes with the receipt."
+      },
+      "outboxLabel": "Delivery for {po}"
     },
     "post": "Post",
     "postTitle": "Post {number}",
@@ -2889,6 +2892,16 @@
       "delivery": "Goods arrived on site",
       "request": "Ask for materials"
     },
-    "nothingToSend": "Your role does not send quotes, receipts, delivery notes or material requests."
+    "nothingToSend": "Your role does not send quotes, receipts, delivery notes or material requests.",
+    "outboxTitle": "{count, plural, one {Waiting on this phone (#)} other {Waiting on this phone (#)}}",
+    "outboxWaiting": "No signal when it was sent. It goes by itself when the phone is back online.",
+    "outboxSending": "Sending…",
+    "outboxFailed": "Not accepted: {error}",
+    "outboxRetry": "Try again",
+    "outboxDiscard": "Discard",
+    "keptTitle": "Kept on this phone",
+    "keptBody": "It could not reach the server just now, so it waits here and is sent by itself when the connection is back. You can see it on the site home.",
+    "keptHome": "Site home",
+    "keptAnother": "Start another"
   }
 }

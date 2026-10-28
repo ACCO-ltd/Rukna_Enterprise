@@ -1,5 +1,5 @@
 import {
-  IsString, IsEnum, IsOptional, IsArray, ValidateNested,
+  IsString, IsEnum, IsUUID, IsOptional, IsArray, ValidateNested,
   IsPositive, IsDateString, ArrayMinSize, IsNumber, MaxLength, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -71,6 +71,11 @@ export class CreateMrLineDto {
 }
 
 export class CreateMaterialRequestDto {
+  @ApiPropertyOptional({ description: 'Step 7 — the phone outbox reference (UUID). A repeat send returns the same record.' })
+  @IsOptional()
+  @IsUUID()
+  clientRef?: string;
+
   @ApiProperty({ enum: ['PROJECT', 'ORGANIZATION'] })
   @IsEnum(['PROJECT', 'ORGANIZATION'])
   requestScope: 'PROJECT' | 'ORGANIZATION';

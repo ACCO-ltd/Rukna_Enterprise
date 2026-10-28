@@ -1,5 +1,5 @@
 import {
-  IsString, IsEnum, IsOptional, IsArray, ValidateNested,
+  IsString, IsEnum, IsUUID, IsOptional, IsArray, ValidateNested,
   IsPositive, IsDateString, ArrayMinSize, IsNumber, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -40,6 +40,11 @@ export class CreateGrnLineDto {
 }
 
 export class CreateGoodsReceiptDto {
+  @ApiPropertyOptional({ description: 'Step 7 — the phone outbox reference (UUID). A repeat send returns the same record.' })
+  @IsOptional()
+  @IsUUID()
+  clientRef?: string;
+
   @ApiProperty()
   @IsString()
   purchaseOrderId: string;

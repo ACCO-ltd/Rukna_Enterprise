@@ -29,6 +29,7 @@ export interface CreateMrLineData {
 
 export interface CreateMrData {
   organizationId: string;
+  clientRef?: string;
   mrNumber: string;
   requestScope: MaterialRequestScope;
   projectId?: string;
@@ -127,6 +128,11 @@ export class MaterialRequestRepository {
       where: { organizationId, id: { in: ids } },
       select: { id: true, code: true, name: true },
     });
+  }
+
+  /** Step 7 — the request a phone already sent under this reference, if any. */
+  findByClientRef(prisma: TenantPrisma, organizationId: string, clientRef: string) {
+    return prisma.materialRequest.findFirst({ where: { organizationId, clientRef }, include: MR_INCLUDE });
   }
 
   async create(prisma: TenantPrisma, data: CreateMrData) {

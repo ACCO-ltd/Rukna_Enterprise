@@ -46,6 +46,9 @@ import {
   useUoms,
 } from '../hooks/use-procurement';
 import { itemsFromMaterialList } from '../material-list-reading';
+import { isRetryable, newClientRef } from '@/features/outbox/outbox';
+import { useOutbox } from '@/features/outbox/instance';
+import { KeptOnPhone } from '@/features/outbox/kept-on-phone';
 import { ReadablePhoto } from './readable-photo';
 import type { CreateMaterialRequestPayload, MaterialRequestPriority, MaterialRequestScope } from '../types';
 import {
@@ -99,6 +102,9 @@ export function MrForm() {
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const create = useCreateMaterialRequest();
+  const outbox = useOutbox();
+  const [clientRef] = useState(() => ({ current: newClientRef() }));
+  const [kept, setKept] = useState(false);
   const projects = useProjects();
   const materials = useMaterials();
   const uoms = useUoms();
@@ -171,13 +177,28 @@ export function MrForm() {
       requestAnimationFrame(() => summaryRef.current?.scrollIntoView({ block: 'start' }));
       return;
     }
-    create.mutate(buildPayload(), {
+    // Step 7 — one reference for this form: a send repeated after a lost reply is the same request.
+    const payload = { ...buildPayload(), clientRef: clientRef.current };
+    const keepForLater = () =>
+      void outbox
+        ?.queue('MATERIAL_REQUEST', t('outboxLabel', { count: payload.lines.length }), payload as never)
+        .then(() => setKept(true));
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      keepForLater();
+      return;
+    }
+    create.mutate(payload, {
       onSuccess: (mr) =>
         router.push(
           fromProjectId && scope === 'PROJECT' && projectId === fromProjectId
             ? `/projects/${projectId}/procurement/requests`
             : `/procurement/requests/${mr.id}`,
         ),
+      onError: (error) => {
+        if (!isRetryable(error)) return;
+        create.reset();
+        keepForLater();
+      },
     });
   }
 
@@ -204,6 +225,9 @@ export function MrForm() {
     nextKey.current += 1;
     setItems((current) => [...current, emptyMrItem(key)]);
   };
+
+  // A fresh page load starts a new form, with a new reference, whatever the signal.
+  if (kept) return <KeptOnPhone onAnother={() => window.location.reload()} />;
 
   return (
     <>

@@ -23,17 +23,21 @@ export function ReadablePhoto({
   fileId,
   onUploaded,
   onRead,
+  onLocalPhoto,
 }: {
   kind: DocumentReadingKind;
   messages: 'procurement.grn.receive.photo' | 'procurement.mr.photo';
   fileId: string | null;
   onUploaded: (fileId: string | null) => void;
   onRead: (result: DocumentReadResult) => void;
+  /** Step 7 — the downscaled photo itself, so a form sent later (no signal) can carry it. */
+  onLocalPhoto?: (file: File) => void;
 }) {
   const t = useTranslations(messages);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [kept, setKept] = useState(false);
 
   const picker = usePhotoPicker(
     (files) => {
@@ -44,11 +48,21 @@ export function ReadablePhoto({
       void (async () => {
         try {
           const small = await downscaleImage(file);
-          const id = await uploadFile(new File([small], small.name || 'photo.jpg', { type: small.type || 'image/jpeg' }));
+          const local = new File([small], small.name || 'photo.jpg', { type: small.type || 'image/jpeg' });
+          onLocalPhoto?.(local);
           setName(file.name);
-          onUploaded(id);
+          setKept(false);
+          if (typeof navigator !== 'undefined' && navigator.onLine === false && onLocalPhoto) {
+            // No signal: the form keeps the photo and sends it later.
+            setKept(true);
+            onUploaded(null);
+            return;
+          }
+          onUploaded(await uploadFile(local));
         } catch {
-          setError(true);
+          // A failed upload with no signal is kept with the form when the form can carry it.
+          if (onLocalPhoto && typeof navigator !== 'undefined' && navigator.onLine === false) setKept(true);
+          else setError(true);
           onUploaded(null);
         } finally {
           setBusy(false);
@@ -77,6 +91,7 @@ export function ReadablePhoto({
         )}
       </div>
       {error ? <Alert variant="error">{t('failed')}</Alert> : null}
+      {kept && messages === 'procurement.grn.receive.photo' ? <p className="text-caption text-muted-foreground">{t('keptOnPhone')}</p> : null}
       {fileId ? <ReadPhotoButton fileId={fileId} kind={kind} onRead={onRead} label={t('read')} /> : null}
     </div>
   );

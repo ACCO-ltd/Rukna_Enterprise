@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ClipboardList, CloudUpload, FileText, PackageCheck, Receipt, Undo2 } from 'lucide-react';
-import { cn } from '@erp/ui';
+import { Button, cn } from '@erp/ui';
 import { PERMISSIONS, type SentBackItem } from '@erp/types';
 
 import { usePermissions } from '@/features/auth/permissions/can';
+import { useOutbox, useOutboxItems } from '@/features/outbox/instance';
 import { useQueueItems } from '@/features/procurement/hooks/use-quote-uploads';
 import { apiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
@@ -29,6 +30,9 @@ export function SiteHome() {
   const sentBack = useQuery({ queryKey: ['procurement', 'sent-back'], queryFn: getSentBack, enabled: collects });
   // Sent from this phone but not yet through: queued, uploading, or held for signal.
   const waiting = useQueueItems().filter((i) => SENDING.has(i.phase)).length;
+  // Forms kept on the phone (no signal when sent), and any the server refused since.
+  const outbox = useOutbox();
+  const forms = useOutboxItems();
 
   const actions = [
     { key: 'quote', href: '/procurement/quotes', Icon: FileText, allowed: collects },
@@ -46,6 +50,28 @@ export function SiteHome() {
           <CloudUpload size={18} className="shrink-0 text-brand-primary" aria-hidden="true" />
           {t('waiting', { count: waiting })}
         </p>
+      ) : null}
+
+      {forms.length > 0 ? (
+        <section aria-labelledby="site-outbox" className="space-y-2">
+          <h2 id="site-outbox" className="text-body font-semibold text-foreground">{t('outboxTitle', { count: forms.length })}</h2>
+          <ul className="space-y-2">
+            {forms.map((f) => (
+              <li key={f.clientRef} className={cn('rounded-panel border px-4 py-3', f.status === 'failed' ? 'border-danger/40 bg-danger-subtle' : 'border-border bg-surface')}>
+                <p className="font-medium text-foreground">{f.label}</p>
+                <p className="text-body-sm text-muted-foreground">
+                  {f.status === 'failed' ? t('outboxFailed', { error: f.error ?? '' }) : f.status === 'sending' ? t('outboxSending') : t('outboxWaiting')}
+                </p>
+                {f.status === 'failed' ? (
+                  <div className="mt-2 flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => void outbox?.retry(f.clientRef)}>{t('outboxRetry')}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => void outbox?.discard(f.clientRef)}>{t('outboxDiscard')}</Button>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {sentBack.data && sentBack.data.length > 0 ? (

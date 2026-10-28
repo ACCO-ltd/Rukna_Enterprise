@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,7 +28,7 @@ vi.mock('@/features/projects/hooks/use-projects', () => ({
   }),
 }));
 
-const create = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false, error: null as unknown }));
+const create = vi.hoisted(() => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null as unknown }));
 vi.mock('../hooks/use-procurement', () => ({
   useCreateMaterialRequest: () => create,
   useMaterials: () => ({
@@ -55,6 +55,10 @@ vi.mock('../hooks/use-procurement', () => ({
   }),
 }));
 
+const outbox = vi.hoisted(() => ({ queue: vi.fn(() => Promise.resolve()) }));
+vi.mock('@/features/outbox/instance', () => ({ useOutbox: () => outbox }));
+
+import { ApiError } from '@/lib/api-client';
 import { MrForm } from './mr-form';
 
 const MONEY = 'view:commitment-ledger';
@@ -128,6 +132,8 @@ describe('MrForm', () => {
     expect(create.mutate).toHaveBeenCalledTimes(1);
     const [payload, options] = create.mutate.mock.calls[0]!;
     expect(payload).toEqual({
+      // Step 7 — the form's own reference, so a repeated send is the same request.
+      clientRef: expect.any(String),
       requestScope: 'PROJECT',
       projectId: 'p1',
       title: 'Rebar for level 2 slab',
@@ -148,6 +154,38 @@ describe('MrForm', () => {
     expect(payload).not.toHaveProperty('requestedDate');
     options.onSuccess({ id: 'req-1' });
     expect(routerMocks.push).toHaveBeenCalledWith('/procurement/requests/req-1');
+  });
+
+  it('keeps the request on the phone when the server cannot be reached, and says so in place', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MrForm />, { permissions: [MONEY] });
+
+    await pickProject(user);
+    await pickRebar(user);
+    await user.type(lines().getByLabelText(/Quantity/), '2');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    const [payload, options] = create.mutate.mock.calls[0]!;
+    act(() => options.onError(new ApiError(503, 'Service unavailable')));
+
+    await screen.findByText('Kept on this phone');
+    expect(outbox.queue).toHaveBeenCalledWith('MATERIAL_REQUEST', 'Material request · 1 item', payload);
+    // It stays here: with no signal the next page may not load.
+    expect(routerMocks.push).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Site home' })).toHaveAttribute('href', '/site');
+  });
+
+  it('does not queue a request the server refused', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MrForm />, { permissions: [MONEY] });
+
+    await pickProject(user);
+    await pickRebar(user);
+    await user.type(lines().getByLabelText(/Quantity/), '2');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    act(() => create.mutate.mock.calls[0]![1].onError(new ApiError(400, 'Bad unit')));
+
+    expect(outbox.queue).not.toHaveBeenCalled();
+    expect(screen.queryByText('Kept on this phone')).not.toBeInTheDocument();
   });
 
   it('adds a one-off item from the typed text, with a Service/Other type and its own unit', async () => {
@@ -175,6 +213,7 @@ describe('MrForm', () => {
 
     await waitFor(() => expect(create.mutate).toHaveBeenCalledTimes(1));
     expect(create.mutate.mock.calls[0]![0]).toEqual({
+      clientRef: expect.any(String),
       requestScope: 'ORGANIZATION',
       lines: [{ lineType: 'SERVICE', description: 'Crane hire', uomCode: 'DAY', requestedQuantity: 3 }],
     });

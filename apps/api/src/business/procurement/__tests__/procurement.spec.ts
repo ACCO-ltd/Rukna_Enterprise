@@ -1718,3 +1718,32 @@ test('T38 — findAll by projectId returns only POs for that project', async () 
   // PO1 should not appear in project2 filter
   expect(po2POs.some((p) => p.id === po1!.id)).toBe(false);
 });
+
+// ─── Step 7 — sends from the phone outbox are idempotent ─────────────────────────
+it('OUTBOX-01: a material request or goods receipt sent twice under one clientRef is one record', async () => {
+  const clientRef = '6f2d3c1e-8a4b-4c9d-9e7f-1a2b3c4d5e6f';
+  const body = {
+    requestScope: 'PROJECT' as const,
+    projectId: env.projectId,
+    clientRef,
+    lines: [{ lineType: 'MATERIAL' as const, materialCode: 'REBAR-12', description: '12mm Rebar', uomCode: 'TON', requestedQuantity: 3, spendCategoryId: env.spendCategoryId }],
+  };
+  const first = await svc.mrService.create(identity(env), body as never);
+  const again = await svc.mrService.create(identity(env), body as never);
+  expect(again!.id).toBe(first!.id);
+  expect(await prisma.materialRequest.count({ where: { organizationId: env.orgId, clientRef } })).toBe(1);
+
+  const mr = await createApprovedMr(10);
+  const po = await createAndApprovePo(mr.lines[0].id, 10);
+  const poLineId = po.revisions[0].lines[0].id;
+  const grnBody = {
+    purchaseOrderId: po.id,
+    deliveryDate: '2026-08-20',
+    clientRef: '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d',
+    lines: [{ purchaseOrderLineId: poLineId, receivedQuantity: 4, acceptedQuantity: 4, rejectedQuantity: 0, qualityStatus: 'ACCEPTED' as const }],
+  };
+  const g1 = await svc.grnService.create(identity(env), grnBody as never);
+  const g2 = await svc.grnService.create(identity(env), grnBody as never);
+  expect(g2!.id).toBe(g1!.id);
+  expect(await prisma.goodsReceiptNote.count({ where: { purchaseOrderId: po.id } })).toBe(1);
+});

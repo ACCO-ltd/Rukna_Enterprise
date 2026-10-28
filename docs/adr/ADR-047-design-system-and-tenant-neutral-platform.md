@@ -117,7 +117,7 @@ These replace earlier rules, so they are listed explicitly:
 
 | Topic | Decision |
 |---|---|
-| Phone flows | An installable web app (PWA), not a native app. **Built 2026-10-28 (Step 7):** manifest + service worker, `/site` Home (sent back first, then four big buttons), reusing the ADR-044/045 photo queue. Unsent photos wait on the phone (IndexedDB) and go when signal returns (owner decision 2026-10-28). |
+| Phone flows | An installable web app (PWA), not a native app. **Built 2026-10-28 (Step 7):** manifest + service worker, `/site` Home (sent back first, then four big buttons), reusing the ADR-044/045 photo queue. Unsent photos wait on the phone (IndexedDB) and go when signal returns (owner decision 2026-10-28). Whole forms too (Step 7d): a material request or delivery note sent with no signal is queued on the phone and sent later; the create endpoints take a `clientRef` so a resend never makes a second record. |
 | Reading photos (receipts, delivery notes) | Built now, alongside the phone flows, using free or open models behind a pluggable reader with a configurable provider (OpenRouter free vision models or self-hosted). A person always confirms the reading before anything is saved. **Decided 2026-10-28 (owner):** OpenRouter free models; allowed, but off per company until an administrator turns it on, with the provider named; every reading logged. Money is read only on finance's screens (the collector never enters money, ADR-044/045). **Built (Step 7):** `platform/document-reader`. |
 | Saved table views | Personal views, plus views an admin publishes to everyone. |
 | Approvals | One Approvals tab with a count, not an inbox per module. **Built 2026-10-28 (ADR-049).** |

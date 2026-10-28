@@ -45,6 +45,8 @@ export interface CreateMrLineDto {
 }
 
 export interface CreateMaterialRequestDto {
+  /** Step 7 — the phone outbox reference: a repeat send returns the same record. */
+  clientRef?: string;
   requestScope: MaterialRequestScope;
   projectId?: string;
   /** Ignored — the server stamps the request date (see todayDateOnly). */
@@ -160,6 +162,12 @@ export class MaterialRequestService {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
+    // Step 7 — a phone resending from its outbox (the first reply was lost): the same request.
+    if (dto.clientRef) {
+      const existing = await this.repo.findByClientRef(prisma, orgId, dto.clientRef);
+      if (existing) return existing;
+    }
+
     // Rule MR-001: PROJECT scope requires projectId
     if (dto.requestScope === 'PROJECT' && !dto.projectId) {
       throw new BadRequestException('projectId is required for PROJECT-scoped material requests');
@@ -241,6 +249,7 @@ export class MaterialRequestService {
     return prisma.$transaction(async (tx) => {
       const mr = await this.repo.create(tx, {
         organizationId: orgId,
+        ...(dto.clientRef ? { clientRef: dto.clientRef } : {}),
         mrNumber,
         requestScope: dto.requestScope,
         projectId: dto.projectId,

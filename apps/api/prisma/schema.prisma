@@ -4866,7 +4866,12 @@ model MaterialRequest {
   // ADR-044 — at most one live (non-CANCELLED) quotation request (partial unique index in SQL).
   quotationRequests QuotationRequest[]
 
+  // Step 7 — the phone's own reference for a form sent from its outbox: a repeat send (the
+  // reply was lost to a dropped signal) returns this record instead of creating another.
+  clientRef      String?  @map("client_ref") @db.VarChar(64)
+
   @@unique([organizationId, mrNumber])
+  @@unique([organizationId, clientRef])
   @@index([organizationId, status])
   @@index([organizationId, projectId])
   @@map("material_requests")
@@ -5395,7 +5400,12 @@ model GoodsReceiptNote {
   lines         GoodsReceiptLine[]
   attachments   GoodsReceiptAttachment[]
 
+  // Step 7 — the phone's own reference for a form sent from its outbox: a repeat send (the
+  // reply was lost to a dropped signal) returns this record instead of creating another.
+  clientRef      String?  @map("client_ref") @db.VarChar(64)
+
   @@unique([organizationId, grnNumber])
+  @@unique([organizationId, clientRef])
   @@index([organizationId, status])
   @@index([purchaseOrderId])
   @@map("goods_receipt_notes")

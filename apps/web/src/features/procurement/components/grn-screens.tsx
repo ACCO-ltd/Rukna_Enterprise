@@ -57,6 +57,9 @@ import {
 } from '../hooks/use-procurement';
 import { attachGoodsReceiptFile } from '../api/procurement-api';
 import { applyDeliveryReading } from '../delivery-note-reading';
+import { isRetryable, newClientRef } from '@/features/outbox/outbox';
+import { useOutbox } from '@/features/outbox/instance';
+import { KeptOnPhone } from '@/features/outbox/kept-on-phone';
 import { activeRevision } from '../quantities';
 import type { GoodsReceipt, GoodsReceiptStatus } from '../types';
 import {
@@ -337,6 +340,10 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
   const [unmatchedRead, setUnmatchedRead] = useState<string[]>([]);
   const [attachFailed, setAttachFailed] = useState(false);
+  const [localPhoto, setLocalPhoto] = useState<File | null>(null);
+  const outbox = useOutbox();
+  const [clientRef] = useState(() => ({ current: newClientRef() }));
+  const [kept, setKept] = useState(false);
   const [edited, setEdited] = useState<GrnLineDraft[] | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -431,18 +438,35 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const runReceive = useCallback(async () => {
     setReceiveError(null);
     setBusy(true);
+    // Step 7 — one reference for this form, so a send repeated after a lost reply (from here, or
+    // from the outbox once signal returns) is the same receipt, never a second one.
+    const payload = {
+      clientRef: clientRef.current,
+      purchaseOrderId,
+      deliveryDate,
+      ...(deliveryNoteRef.trim() ? { deliveryNoteRef: deliveryNoteRef.trim() } : {}),
+      lines: submittableGrnLines(lines ?? []).map(toGrnLinePayload),
+    };
+    const keepForLater = async () => {
+      const po = orders.find((o) => o.id === purchaseOrderId)?.poNumber ?? '';
+      await outbox?.queue('GOODS_RECEIPT', t('outboxLabel', { po }), payload as never, {
+        ...(localPhoto ? { photo: { blob: localPhoto, name: localPhoto.name, ...(photoFileId ? { fileId: photoFileId } : {}) } } : {}),
+        ...(createdIdRef.current ? { recordId: createdIdRef.current } : {}),
+      });
+      setKept(true);
+    };
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await keepForLater();
+      setBusy(false);
+      return;
+    }
     try {
       let grn: GoodsReceipt;
       if (createdIdRef.current) {
         // The create already succeeded on a prior attempt; only the post is left to retry.
         grn = { id: createdIdRef.current, status: 'DRAFT' } as GoodsReceipt;
       } else {
-        grn = await create.mutateAsync({
-          purchaseOrderId,
-          deliveryDate,
-          ...(deliveryNoteRef.trim() ? { deliveryNoteRef: deliveryNoteRef.trim() } : {}),
-          lines: submittableGrnLines(lines ?? []).map(toGrnLinePayload),
-        });
+        grn = await create.mutateAsync(payload);
         createdIdRef.current = grn.id;
         // The photo goes on while the receipt is still a draft; posting freezes it with the
         // record. A failed attach does not stop the receipt — the person is told.
@@ -462,6 +486,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
       router.push(`/procurement/grn/${grn.id}`);
     } catch (e) {
       setConfirming(false);
+      // No signal mid-send: the phone keeps it and finishes the job when signal returns.
+      if (isRetryable(e)) {
+        await keepForLater();
+        return;
+      }
       if (isCreatorCannotReceive(e)) {
         setRefusedPoIds((current) => new Set(current).add(purchaseOrderId));
         return;
@@ -470,9 +499,10 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     } finally {
       setBusy(false);
     }
-  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef, lines, tc, photoFileId]);
+  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef, lines, tc, photoFileId, localPhoto, outbox, orders, t, clientRef]);
 
   // ── States before the form ─────────────────────────────────────────────────────
+  if (kept) return <KeptOnPhone />;
   if (receivable.isPending) return <SkeletonRecord label={tc('loading')} />;
   if (receivable.isError) {
     return (
@@ -589,6 +619,7 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
                     messages="procurement.grn.receive.photo"
                     fileId={photoFileId}
                     onUploaded={setPhotoFileId}
+                    onLocalPhoto={setLocalPhoto}
                     onRead={(reading) => {
                       const applied = applyDeliveryReading(lines, reading);
                       setEdited(applied.lines);

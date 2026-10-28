@@ -18,6 +18,13 @@ vi.mock('@/features/auth/permissions/can', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/auth/permissions/can')>()),
   usePermissions: () => ({ can: (p: string) => mocks.held.has(p) }),
 }));
+vi.mock('@/features/outbox/instance', () => ({
+  useOutbox: () => ({ retry: vi.fn(), discard: vi.fn() }),
+  useOutboxItems: () => [
+    { clientRef: 'c1', label: 'Delivery for PO-00012', status: 'waiting' },
+    { clientRef: 'c2', label: 'Material request · 3 items', status: 'failed', error: 'The order is closed' },
+  ],
+}));
 vi.mock('@/features/procurement/hooks/use-quote-uploads', () => ({
   useQueueItems: () => [{ phase: 'offline' }, { phase: 'uploading' }, { phase: 'failed' }],
 }));
@@ -30,6 +37,10 @@ describe('SiteHome (Step 7)', () => {
     expect(back).toHaveAttribute('href', '/procurement/quotes/qr1');
     expect(back).toHaveTextContent('Photo is blurry — retake — Top half cut off');
     expect(screen.getByRole('status')).toHaveTextContent('2 photos are waiting for signal');
+    const outbox = screen.getByRole('region', { name: 'Waiting on this phone (2)' });
+    expect(outbox).toHaveTextContent('Delivery for PO-00012');
+    expect(outbox).toHaveTextContent('Not accepted: The order is closed');
+    expect(within(outbox).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     const actions = screen.getByRole('navigation', { name: 'Send' });
     expect(within(actions).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
       '/procurement/quotes', '/procurement/quotes', '/procurement/grn/new',
