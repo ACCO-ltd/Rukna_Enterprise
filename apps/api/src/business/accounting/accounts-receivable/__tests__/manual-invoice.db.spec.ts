@@ -158,3 +158,16 @@ it('MI-06: the detail reads source MANUAL with its lines', async () => {
     revenueAccountCode: '42200',
   });
 });
+
+it('MI-07 (Step 2g): an unposted invoice is cancelled; a posted one is refused', async () => {
+  const draft = await svc.clientInvoiceService.createManual(
+    env.identity,
+    input([{ description: 'Wrong client', quantity: '1', unitPrice: '10.00', revenueAccountCode: '42100' }]),
+  );
+  const cancelled = await svc.clientInvoiceService.cancelDraft(env.identity, draft.id, 'Raised for the wrong client');
+  expect(cancelled.documentStatus).toBe('CANCELLED');
+  expect(cancelled.cancellationReason).toBe('Raised for the wrong client');
+  await expect(svc.clientInvoiceService.cancelDraft(env.identity, draft.id)).rejects.toThrow(/already cancelled/);
+  // MI-01's invoice was posted (then reversed): it is in the ledger, so it cannot be cancelled.
+  await expect(svc.clientInvoiceService.cancelDraft(env.identity, invoiceId)).rejects.toThrow(/in the ledger/);
+});

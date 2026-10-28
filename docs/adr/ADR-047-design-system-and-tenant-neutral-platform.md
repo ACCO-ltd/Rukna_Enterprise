@@ -93,6 +93,11 @@ These replace earlier rules, so they are listed explicitly:
   keeps both status axes.
 - **Entity avatars:** a client's or supplier's initials on a stable tinted square
   (`entityTintClass`), with dark ink on a tint and never a status colour's solid fill.
+- **Undo by delay** (`useUndoableAction`, Step 2g): a reversible list command (cancel a draft)
+  removes the row at once and shows a toast with Undo (or Z) for 8 seconds. The command is sent
+  only when the window closes, so Undo never needs a server rollback. Leaving the page sends what
+  is pending. Never used for posting, payments, or anything another person waits on; those keep
+  a confirm dialog.
 
 ## 4. Grill decisions for later steps (not yet built)
 

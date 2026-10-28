@@ -17,6 +17,7 @@ import { GenerateInvoiceFromRetentionReleaseDto } from './dto/generate-invoice-f
 import { PostInvoiceDto } from './dto/post-invoice.dto.js';
 import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 import { ManualInvoiceDto } from './dto/manual-invoice.dto.js';
+import { CancelInvoiceDto } from './dto/cancel-invoice.dto.js';
 
 @ApiTags('Client Invoices')
 @ApiBearerAuth('access-token')
@@ -56,6 +57,15 @@ export class ClientInvoiceController {
   @ApiResponse({ status: 400, description: 'MANUAL_INVOICE_INVALID — details.problems lists every rule broken' })
   createManual(@CurrentUser() identity: RequestIdentity, @Body() dto: ManualInvoiceDto) {
     return this.clientInvoiceService.createManual(identity, dto);
+  }
+
+  @Post(':id/cancel')
+  @ApiOperation({ summary: 'Step 2g: cancel an unposted invoice and free its source (not a stage invoice)' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 409, description: 'INVOICE_ALREADY_POSTED | INVOICE_CANCELLED' })
+  @ApiResponse({ status: 400, description: "STAGE_DRAFT_USE_COMMERCIAL — delete it from the contract's Billing tab" })
+  cancelDraft(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: CancelInvoiceDto) {
+    return this.clientInvoiceService.cancelDraft(identity, id, dto.reason);
   }
 
   @Put(':id/manual')

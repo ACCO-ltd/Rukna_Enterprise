@@ -39,7 +39,9 @@ import { fromMinorUnits } from '@/lib/money';
 
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 
-import { useInvoices, useOpenInvoiceDocument } from '../hooks/use-invoices';
+import { useCancelInvoice, useInvoices, useOpenInvoiceDocument } from '../hooks/use-invoices';
+import { useUndoableAction } from '@/lib/use-undoable-action';
+import { ApiError } from '@/lib/api-client';
 import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
 import { daysLate, INVOICE_LIST_STATE_TONE, invoiceListState } from '../invoice-list-state';
 import { useProjects } from '@/features/projects/hooks/use-projects';
@@ -91,6 +93,8 @@ export function InvoicesList() {
   const { toast } = useToast();
   const openDocument = useOpenInvoiceDocument();
   const { can } = usePermissions();
+  const cancelInvoice = useCancelInvoice();
+  const undoable = useUndoableAction({ undo: t('cancelDraft.undo'), undoneTitle: t('cancelDraft.undone') });
   const quickAddRef = useRef<QuickAddInvoiceHandle>(null);
   const createAction = can(ACCOUNTING_PERMISSIONS.manageReceivables) ? (
     <Button asChild>
@@ -137,7 +141,11 @@ export function InvoicesList() {
       ? Math.round(((total - toMinorUnits(inv.outstandingAmount, 2)) / total) * 100)
       : 0;
   };
-  const all = useMemo(() => invoices.data ?? [], [invoices.data]);
+  // A draft cancelled from the row menu leaves the list at once; the call waits out the undo window.
+  const all = useMemo(
+    () => (invoices.data ?? []).filter((inv) => !undoable.hidden.has(inv.id)),
+    [invoices.data, undoable.hidden],
+  );
   const visible = useMemo(
     () => all.filter((inv) => invoiceMatchesFilters(inv, filters, today)),
     [all, filters, today],
@@ -368,6 +376,26 @@ export function InvoicesList() {
     setSort(state.sort ?? null);
   };
 
+  // Stage-plan drafts are deleted from the contract's Billing tab (the server refuses them here).
+  const canCancelDraft = (invoice: ClientInvoice) =>
+    can(ACCOUNTING_PERMISSIONS.manageReceivables) &&
+    invoice.documentStatus !== 'CANCELLED' &&
+    invoice.postingStatus === 'NOT_POSTED' &&
+    invoice.source?.kind !== 'INSTALLMENT';
+  const cancelDraft = (invoice: ClientInvoice) =>
+    undoable.run({
+      key: invoice.id,
+      title: t('cancelDraft.done'),
+      description: `${clientNames.get(invoice.clientId) ?? ''} · ${formatMoney(invoice.totalAmount, invoice.currencyCode) ?? ''}`,
+      commit: () => cancelInvoice.mutateAsync({ id: invoice.id }),
+      onError: (error) =>
+        toast({
+          title: t('cancelDraft.failed'),
+          description: error instanceof ApiError ? error.message : undefined,
+          tone: 'error',
+        }),
+    });
+
   const copyLink = async (invoice: ClientInvoice) => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${detailHref(invoice)}`);
@@ -436,6 +464,11 @@ export function InvoicesList() {
                   <DropdownMenuItem onSelect={() => void copyLink(invoice)}>
                     {t('rowCopyLink')}
                   </DropdownMenuItem>
+                  {canCancelDraft(invoice) ? (
+                    <DropdownMenuItem className="text-danger" onSelect={() => cancelDraft(invoice)}>
+                      {t('cancelDraft.action')}
+                    </DropdownMenuItem>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
             }

@@ -13,6 +13,7 @@ import { useClients } from '@/features/clients/hooks/use-clients';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecycle-error';
 import { formatDate, formatMoney } from '@/lib/format';
+import { ApiError } from '@/lib/api-client';
 import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
@@ -22,7 +23,7 @@ import { canSendReminder, daysOverdue } from '@/features/communications/reminder
 
 import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
-import { invoiceKeys, useInvoice, useInvoiceAction } from '../hooks/use-invoices';
+import { invoiceKeys, useCancelInvoice, useInvoice, useInvoiceAction } from '../hooks/use-invoices';
 import {
   canApprove,
   canPost,
@@ -38,7 +39,7 @@ import { PostInvoiceDialog } from './post-invoice-dialog';
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
 
-type OpenDialog = 'approve' | 'post' | 'reverse' | 'whatsapp' | 'reminder' | null;
+type OpenDialog = 'approve' | 'post' | 'reverse' | 'cancel' | 'whatsapp' | 'reminder' | null;
 
 export function InvoiceDetail({
   invoiceId,
@@ -67,6 +68,7 @@ export function InvoiceDetail({
   const accounts = useAccounts();
   const clients = useClients();
   const action = useInvoiceAction(invoiceId);
+  const cancel = useCancelInvoice();
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
@@ -126,6 +128,7 @@ export function InvoiceDetail({
 
   const close = () => {
     action.reset();
+    cancel.reset();
     setDialog(null);
   };
 
@@ -189,6 +192,15 @@ export function InvoiceDetail({
               {canReverse(data) ? (
                 <Button variant="outline" onClick={() => setDialog('reverse')}>
                   {t('reverse')}
+                </Button>
+              ) : null}
+
+              {/* Step 2g — a stage-plan draft is deleted from the contract's Billing tab instead. */}
+              {data.documentStatus !== 'CANCELLED' &&
+              data.postingStatus === 'NOT_POSTED' &&
+              data.source?.kind !== 'INSTALLMENT' ? (
+                <Button variant="ghost" className="text-danger" onClick={() => setDialog('cancel')}>
+                  {t('cancelDraft.action')}
                 </Button>
               ) : null}
             </>
@@ -285,6 +297,22 @@ export function InvoiceDetail({
           isPending={action.isPending}
           errorMessage={errorMessage}
           onConfirm={() => run({ type: 'approve' })}
+          onDismiss={close}
+        />
+      ) : null}
+
+      {dialog === 'cancel' ? (
+        <ConfirmActionDialog
+          title={t('cancelDraft.confirmTitle')}
+          description={t('cancelDraft.confirmBody')}
+          confirmLabel={t('cancelDraft.confirm')}
+          destructive
+          reason={{ required: false, maxLength: 500 }}
+          isPending={cancel.isPending}
+          errorMessage={cancel.isError ? (cancel.error instanceof ApiError ? cancel.error.message : t('cancelDraft.failed')) : undefined}
+          onConfirm={(reason) =>
+            cancel.mutate({ id: data.id, reason: reason.trim() || undefined }, { onSuccess: () => setDialog(null) })
+          }
           onDismiss={close}
         />
       ) : null}

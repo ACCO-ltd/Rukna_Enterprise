@@ -13,6 +13,7 @@ import {
   reverseInvoice,
   updateManualInvoice,
   listIncomeAccounts,
+  cancelInvoice,
 } from '../api/invoices-api';
 import type { ManualInvoiceInput } from '@erp/types';
 import { accountingKeys, refOrNone } from './use-accounting';
@@ -77,6 +78,17 @@ export function useInvoiceForIpc(ipcId: string): UseQueryResult<ClientInvoice | 
  * Generates the invoice and invalidates every list, including the per-IPC lookup — the billing
  * card that triggered this is showing "not invoiced yet" and has to stop.
  */
+/** Step 2g — cancel an unposted invoice. No success toast: the undo toast already said it. */
+export function useCancelInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => cancelInvoice(id, reason),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: invoiceKeys.all });
+    },
+  });
+}
+
 /** ADR-048 — the income accounts a hand-typed invoice line may credit. */
 export function useIncomeAccounts() {
   return useQuery({ queryKey: [...invoiceKeys.all, 'income-accounts'], queryFn: listIncomeAccounts, staleTime: 5 * 60_000 });

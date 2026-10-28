@@ -754,6 +754,62 @@ export class ClientInvoiceService {
     return this.findById(identity, invoice.id);
   }
 
+  /**
+   * Cancel an invoice that was never posted (Step 2g) — a wrong draft no longer sits on the list for
+   * good. Its source is freed, so the certificate, separate charge or retention release can be billed
+   * again; a hand-typed invoice simply ends. Audited. A stage invoice is refused here: its package
+   * and variation billing are released by the contract's Billing tab (Commercial → Delete draft),
+   * which accounting may not call into (ARCH-BOUNDARY-001).
+   */
+  async cancelDraft(identity: RequestIdentity, invoiceId: string, reason?: string) {
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const invoice = await this.repo.findById(prisma, orgId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (invoice.documentStatus === 'CANCELLED') {
+      throw new ConflictException({ errorCode: 'INVOICE_CANCELLED', message: 'This invoice is already cancelled.' });
+    }
+    if (invoice.postingStatus !== 'NOT_POSTED' && invoice.postingStatus !== 'FAILED') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_ALREADY_POSTED',
+        message: 'This invoice is in the ledger. Reverse it, or raise a credit note, instead of cancelling.',
+      });
+    }
+    if (invoice.sourceInstallmentId || (await this.repo.hasVariationBilling(prisma, orgId, invoice.id, null))) {
+      throw new BadRequestException({
+        errorCode: 'STAGE_DRAFT_USE_COMMERCIAL',
+        message: "A stage invoice is part of its contract's billing package. Delete the draft from the contract's Billing tab.",
+      });
+    }
+    const why = reason?.trim() || 'Draft cancelled';
+    await prisma.$transaction(async (tx) => {
+      const cancelled = await this.repo.cancelDraft(tx as never, orgId, invoice.id, identity.userId, why);
+      if (cancelled !== 1) {
+        throw new ConflictException('The invoice changed while it was being cancelled; reload and try again.');
+      }
+      await this.auditOutbox?.record(tx as never, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'ClientInvoice',
+        resourceId: invoice.id,
+        sourceCommand: 'clientInvoice.cancelDraft',
+        eventType: 'CLIENT_INVOICE_CANCELLED',
+        idempotencyKey: `client-invoice-cancel:${invoice.id}`,
+        before: {
+          documentStatus: invoice.documentStatus,
+          sourceIpcId: invoice.sourceIpcId,
+          sourceBoqNodeId: invoice.sourceBoqNodeId,
+          sourceRetentionContractId: invoice.sourceRetentionContractId,
+          isManual: invoice.isManual,
+        },
+        after: { documentStatus: 'CANCELLED' },
+        reason: why,
+      });
+    });
+    return this.findById(identity, invoice.id);
+  }
+
   /** ADR-048 — the income accounts a hand-typed line may credit (`OTHER_INCOME` ones first). */
   async listIncomeAccounts(identity: RequestIdentity) {
     const accounts = await this.repo.listIncomeAccounts(this.tenancyService.getClient(), identity.activeOrganizationId);

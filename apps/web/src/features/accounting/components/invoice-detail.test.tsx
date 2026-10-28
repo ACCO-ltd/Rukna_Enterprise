@@ -19,6 +19,7 @@ vi.mock('../hooks/use-invoices', () => ({
   useInvoice: mocks.useInvoice,
   useInvoiceAction: mocks.useInvoiceAction,
   useInvoiceDocumentUrl: mocks.useInvoiceDocumentUrl,
+  useCancelInvoice: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   invoiceKeys: { all: ['accounting', 'invoices'] },
 }));
 vi.mock('@/features/communications/hooks', () => ({
@@ -105,6 +106,8 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
     expect(screen.getByText('Draft total')).toBeInTheDocument();
     expect(screen.queryByText('Balance due')).not.toBeInTheDocument();
+    // Step 2g — an unposted invoice can be cancelled from its page.
+    expect(screen.getByRole('button', { name: 'Cancel draft' })).toBeInTheDocument();
   });
 
   it('shows "awaiting posting" for an approved, not-yet-posted invoice, with the Post action', () => {
@@ -145,6 +148,8 @@ describe('InvoiceDetail — state-aware title and totals', () => {
 
     expect(screen.getByText('Invoice INV-2026-0042')).toBeInTheDocument();
     expect(screen.getByText('Balance due')).toBeInTheDocument();
+    // A posted invoice is reversed, never cancelled.
+    expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
     expect(screen.queryByText('Draft total')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reverse' })).toBeInTheDocument();
     // ADR-042 step 4 — something is still owed, so a WhatsApp reminder is offered.
@@ -198,6 +203,7 @@ describe('InvoiceDetail — permission gating', () => {
 
     expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
   });
 });
 

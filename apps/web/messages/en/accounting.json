@@ -861,6 +861,17 @@
     "rowOpen": "Open",
     "rowOpenPdf": "Open PDF",
     "rowCopyLink": "Copy link",
+    "cancelDraft": {
+      "action": "Cancel draft",
+      "done": "Draft invoice cancelled",
+      "undo": "Undo",
+      "undone": "Draft restored",
+      "failed": "Could not cancel the draft",
+      "confirmTitle": "Cancel this draft invoice?",
+      "confirmBody": "The draft is kept as cancelled for the record, and what it billed can be invoiced again.",
+      "confirm": "Cancel draft",
+      "keep": "Keep draft"
+    },
     "linkCopied": "Link copied",
     "linkCopyFailed": "Could not copy the link",
     "newInvoice": "New invoice",

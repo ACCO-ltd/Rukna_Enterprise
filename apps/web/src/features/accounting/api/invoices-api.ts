@@ -201,3 +201,8 @@ export interface IncomeAccountOption {
 export function listIncomeAccounts(): Promise<IncomeAccountOption[]> {
   return apiClient<IncomeAccountOption[]>('/invoices/income-accounts');
 }
+
+/** Step 2g — `POST /invoices/:id/cancel`: cancel an unposted invoice and free its source. */
+export function cancelInvoice(id: string, reason?: string): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>(`/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+}

@@ -373,6 +373,31 @@ export class ClientInvoiceRepository {
     });
   }
 
+  /**
+   * Cancel one unposted invoice and free its source, so the certificate / charge / release can be
+   * billed again. Conditional on still being unposted: a concurrent post makes this a no-op (0).
+   */
+  async cancelDraft(prisma: TenantPrisma, organizationId: string, id: string, cancelledBy: string, reason: string) {
+    const result = await prisma.clientInvoice.updateMany({
+      where: {
+        id,
+        organizationId,
+        postingStatus: { in: ['NOT_POSTED', 'FAILED'] },
+        documentStatus: { not: 'CANCELLED' },
+      },
+      data: {
+        documentStatus: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledBy,
+        cancellationReason: reason,
+        sourceIpcId: null,
+        sourceBoqNodeId: null,
+        sourceInstallmentId: null,
+      },
+    });
+    return result.count;
+  }
+
   // ─── ADR-048 — hand-typed (non-contract) invoices ─────────────────────────────
 
   /**
