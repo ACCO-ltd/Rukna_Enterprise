@@ -7,6 +7,7 @@ import { GeneralLedgerModule } from './general-ledger/general-ledger.module.js';
 import { FinancialPositionModule } from './financial-position/financial-position.module.js';
 import { AccountingSetupModule } from './accounting-setup/accounting-setup.module.js';
 import { FinanceHomeModule } from './finance-home/finance-home.module.js';
+import { FinanceAttachmentsModule } from './finance-attachments/finance-attachments.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { FinanceHomeModule } from './finance-home/finance-home.module.js';
     FinancialPositionModule,
     AccountingSetupModule,
     FinanceHomeModule,
+    FinanceAttachmentsModule,
   ],
   exports: [
     AccountingCoreModule,

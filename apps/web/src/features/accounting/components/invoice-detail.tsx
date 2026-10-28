@@ -39,6 +39,7 @@ import { LoadError } from '@/components/load-error';
 import { useApprovalSettings } from '../hooks/use-accounting';
 import { useSession } from '@/features/auth/session/use-session';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
@@ -231,6 +232,8 @@ export function InvoiceDetail({
       {data.postingStatus !== 'POSTED' ? <AccountingSetupNotice /> : null}
 
       {data.isManual && data.lines && data.lines.length > 0 ? <ManualLinesTable invoice={data} locale={locale} /> : null}
+
+      <AttachmentsPanel kind="INVOICE" ownerId={data.id} />
 
       {state === 'DRAFT' ? (
         <p className="text-caption text-muted-foreground">{t('approveHint')}</p>

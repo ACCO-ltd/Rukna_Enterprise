@@ -21,3 +21,4 @@ export * from './saved-views';
 export * from './search';
 export * from './approvals';
 export * from './finance-home';
+export * from './finance-attachments';

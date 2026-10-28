@@ -2120,6 +2120,11 @@ model PlatformFile {
   receiptDocumentFor      PaymentReceipt[]         @relation("PaymentReceiptDocument")
   // Step 4 — the generated remittance advice for a posted supplier payment, immutable.
   paymentDocumentFor      SupplierPayment[]        @relation("SupplierPaymentDocument")
+  // Step 4 — evidence on finance documents.
+  clientInvoiceAttachments   ClientInvoiceAttachment[]
+  supplierBillAttachments    SupplierBillAttachment[]
+  supplierPaymentAttachments SupplierPaymentAttachment[]
+  paymentReceiptAttachments  PaymentReceiptAttachment[]
   // ADR-044 — a page of a store's paper quotation. Money evidence: readable only by quotation
   // collectors/selectors and cost-visibility holders (QUOTATION_PHOTO owner kind).
   quotePhoto              QuotePhoto?
@@ -2986,6 +2991,7 @@ model ClientInvoice {
   @@index([taxCodeId])
   @@index([sourceRetentionContractId])
   @@map("client_invoices")
+  attachments ClientInvoiceAttachment[]
 }
 
 // Slice 4B — append-only invoice delivery history. One row per send event (one per channel per day
@@ -3229,6 +3235,7 @@ model PaymentReceipt {
   @@index([organizationId, postingStatus])
   @@index([receiptDate])
   @@map("payment_receipts")
+  attachments PaymentReceiptAttachment[]
 }
 
 // ─── AP Subledger ─────────────────────────────────────────────────────────────
@@ -3298,6 +3305,7 @@ model SupplierBill {
   @@index([projectId])
   @@index([supplierId])
   @@map("supplier_bills")
+  attachments SupplierBillAttachment[]
 }
 
 // VAT on supplier bills (NON_RECOVERABLE per ACC-TAX-001):
@@ -3395,6 +3403,7 @@ model SupplierPayment {
   @@index([supplierId])
   @@index([quotationRequestId])
   @@map("supplier_payments")
+  attachments SupplierPaymentAttachment[]
 }
 
 // ADR-022 CONST-DOA-005 — one signatory's signature releasing a supplier payment. Two distinct
@@ -5765,4 +5774,70 @@ model OutboundMessage {
   @@index([organizationId, resourceType, resourceId], map: "outbound_messages_org_resource_idx")
   @@index([organizationId, clientId], map: "outbound_messages_org_client_idx")
   @@map("outbound_messages")
+}
+
+// ─── Finance attachments (Step 4) ─────────────────────────────────────────────
+// Evidence on a finance document: the supplier's invoice scan, a signed delivery note, a bank
+// advice. One table per owner, like ContractAttachment and JournalEntryAttachment. Removable until
+// the document posts; a file added after posting is supplementary and is kept for good
+// (FinanceAttachmentService).
+
+model ClientInvoiceAttachment {
+  id               String   @id @default(cuid())
+  clientInvoiceId  String   @map("client_invoice_id")
+  platformFileId   String   @map("platform_file_id")
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  clientInvoice ClientInvoice @relation(fields: [clientInvoiceId], references: [id], onDelete: Cascade)
+  platformFile  PlatformFile  @relation(fields: [platformFileId], references: [id])
+
+  @@index([clientInvoiceId])
+  @@map("client_invoice_attachments")
+}
+
+model SupplierBillAttachment {
+  id               String   @id @default(cuid())
+  supplierBillId   String   @map("supplier_bill_id")
+  platformFileId   String   @map("platform_file_id")
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  supplierBill SupplierBill @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
+
+  @@index([supplierBillId])
+  @@map("supplier_bill_attachments")
+}
+
+model SupplierPaymentAttachment {
+  id                String   @id @default(cuid())
+  supplierPaymentId String   @map("supplier_payment_id")
+  platformFileId    String   @map("platform_file_id")
+  isPostSubmission  Boolean  @default(false) @map("is_post_submission")
+  createdAt         DateTime @default(now()) @map("created_at")
+  createdBy         String   @map("created_by")
+
+  supplierPayment SupplierPayment @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade)
+  platformFile    PlatformFile    @relation(fields: [platformFileId], references: [id])
+
+  @@index([supplierPaymentId])
+  @@map("supplier_payment_attachments")
+}
+
+model PaymentReceiptAttachment {
+  id               String   @id @default(cuid())
+  paymentReceiptId String   @map("payment_receipt_id")
+  platformFileId   String   @map("platform_file_id")
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  paymentReceipt PaymentReceipt @relation(fields: [paymentReceiptId], references: [id], onDelete: Cascade)
+  platformFile   PlatformFile   @relation(fields: [platformFileId], references: [id])
+
+  @@index([paymentReceiptId])
+  @@map("payment_receipt_attachments")
 }

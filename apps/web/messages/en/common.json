@@ -288,5 +288,20 @@
     "updated": "View updated",
     "sharingChanged": "Sharing updated",
     "deleted": "View deleted"
+  },
+  "attachments": {
+    "title": "Attachments",
+    "add": "Attach files",
+    "uploading": "Uploading…",
+    "empty": "No files attached.",
+    "emptyCanAdd": "No files attached. Add the supplier’s invoice, a bank advice or a signed delivery note.",
+    "addedAfterPosting": "Added after posting",
+    "remove": "Remove",
+    "removeNamed": "Remove {name}",
+    "lockedNote": "This document is posted, so its files are part of the record and can’t be removed. You can still add more.",
+    "uploadFailed": "Couldn’t attach {name}. Try again.",
+    "openFailed": "Couldn’t open the file. Try again.",
+    "removeFailed": "Couldn’t remove the file. Try again.",
+    "loadFailed": "Couldn’t load the attachments."
   }
 }

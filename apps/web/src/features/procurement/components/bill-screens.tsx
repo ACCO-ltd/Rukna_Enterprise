@@ -86,6 +86,7 @@ import {
 } from './bill-document-body';
 import { BillMatchSummary } from './bill-matching';
 import { BillMatchStatusBadge } from './procurement-badges';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 const BILL_DOC_STATUSES: BillDocumentStatus[] = [
   'DRAFT',
@@ -610,6 +611,7 @@ function SupplierBillDocument({
                 },
               ]
             : []),
+          { key: 'files', label: t('tabFiles'), content: <AttachmentsPanel kind="BILL" ownerId={bill.id} /> },
           { key: 'journal', label: t('tabJournal'), content: <BillJournalTab bill={bill} /> },
           {
             key: 'approvals',

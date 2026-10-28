@@ -27,6 +27,7 @@ import { useAccounts, useJournal, useJournalAction } from '../hooks/use-accounti
 import { availableActions, canEditJournal, entryTotals, formatDifference } from '../journal-entry';
 import type { JournalAction } from '../journal-entry';
 import { JournalStatusBadge } from './journal-status-badge';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 /** Actions that take a free-text reason the server requires. */
 const REASON_REQUIRED: Partial<Record<JournalAction, true>> = { reject: true, reverse: true };
@@ -330,6 +331,8 @@ export function JournalDetail({ journalId }: { journalId: string }) {
           {formatDifference(totals.differenceMinor)}
         </p>
       ) : null}
+
+      <AttachmentsPanel kind="JOURNAL" ownerId={journalId} />
     </div>
   );
 }

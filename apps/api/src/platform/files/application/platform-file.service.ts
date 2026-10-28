@@ -311,6 +311,10 @@ export class PlatformFileService {
             ipaAttachments: true,
             ipcAttachments: true,
             journalEntryAttachments: true,
+            clientInvoiceAttachments: true,
+            paymentReceiptAttachments: true,
+            supplierBillAttachments: true,
+            supplierPaymentAttachments: true,
             poRevisionAttachments: true,
             grnAttachments: true,
             // Generated documents (receipt/invoice PDF) and the org logo are owners too.

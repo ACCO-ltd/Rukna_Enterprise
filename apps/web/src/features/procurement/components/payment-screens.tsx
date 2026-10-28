@@ -56,6 +56,7 @@ import type { PaymentDocumentStatus, SupplierPayment } from '../types';
 import { AllocationPanel } from './allocation-panel';
 import { PaymentActionBar } from './payment-actions-bar';
 import { PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
@@ -487,6 +488,8 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
       </dl>
 
       <AllocationPanel payment={payment} />
+
+      <AttachmentsPanel kind="PAYMENT" ownerId={payment.id} />
     </div>
   );
 }

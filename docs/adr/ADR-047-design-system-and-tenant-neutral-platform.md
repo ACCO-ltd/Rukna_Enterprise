@@ -122,6 +122,7 @@ These replace earlier rules, so they are listed explicitly:
 | Saved table views | Personal views, plus views an admin publishes to everyone. |
 | Approvals | One Approvals tab with a count, not an inbox per module. **Built 2026-10-28 (ADR-049).** |
 | Finance Home | A dashboard, with the setup checklist shown until setup is complete. **Built 2026-10-28 (Step 4):** `GET /finance/home` and the Finance module's landing `/finance`. |
+| Attachments | Every finance document takes supporting files; they freeze when it posts. **Built 2026-10-28 (Step 4):** one table per owner, one permission-gated service (`finance-attachments`), one shared panel. |
 | Navigation | An icon-only sidebar that can be collapsed; the Payables count and the period label stay. |
 
 ## Consequences

@@ -19,6 +19,7 @@ import { receiptKeys, useOpenReceiptDocument, useReceipt } from '../hooks/use-re
 import type { ReceiptDetail as ReceiptDetailModel } from '../types';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
 import { PostReceiptDialog } from './post-receipt-dialog';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const t = useTranslations('platform.receipts.detail');
@@ -136,6 +137,8 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
           invalidate={[receiptKeys.detail(receipt.id)]}
         />
       ) : null}
+
+      <AttachmentsPanel kind="RECEIPT" ownerId={receipt.id} />
 
       <span className="sr-only">{tReceipts('title')}</span>
     </div>
