@@ -2616,6 +2616,8 @@ model BankAccount {
   signatories           BankAccountSignatory[]
   buyerAdvances         BuyerAdvance[]         @relation("BuyerAdvanceDisbursement")
   advanceReturns        AdvanceReturn[]        @relation("AdvanceReturnDestination")
+  // Step 6 — statements imported for reconciliation.
+  statements            BankStatement[]
 
   @@unique([organizationId, accountNumber])
   @@index([organizationId, status])
@@ -3706,6 +3708,9 @@ model JournalLine {
   accountVersion        AccountVersion?        @relation(fields: [accountVersionId], references: [id])
   postingProfileVersion PostingProfileVersion? @relation(fields: [postingProfileVersionId], references: [id])
 
+  // Step 6 — the statement line this ledger line was matched to (cleared), if any.
+  statementMatch        BankStatementLine?     @relation("StatementLineMatch")
+
   @@unique([journalEntryId, lineNumber])
   @@index([accountId, createdAt])
   @@index([journalEntryId])
@@ -3930,6 +3935,58 @@ model DimensionPolicy {
   updatedAt                  DateTime             @updatedAt @map("updated_at")
 
   @@map("dimension_policy")
+}
+
+// Step 6 — bank reconciliation. A statement is imported for one bank account, its lines are
+// matched one-to-one to the ledger lines on that bank's GL account (a matched ledger line is
+// "cleared"), lines with no ledger counterpart (charges, interest) are posted as a journal from the
+// line, and the statement is reconciled once every line is matched and the balances agree.
+model BankStatement {
+  id              String              @id @default(cuid())
+  organizationId  String              @map("organization_id")
+  bankAccountId   String              @map("bank_account_id")
+  periodStart     DateTime            @map("period_start") @db.Date
+  statementDate   DateTime            @map("statement_date") @db.Date
+  currencyCode    String              @map("currency_code") @db.VarChar(3)
+  openingBalance  Decimal             @map("opening_balance") @db.Decimal(18, 2)
+  closingBalance  Decimal             @map("closing_balance") @db.Decimal(18, 2)
+  fileName        String?             @map("file_name")
+  status          BankStatementStatus @default(OPEN)
+  reconciledAt    DateTime?           @map("reconciled_at")
+  reconciledBy    String?             @map("reconciled_by")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  createdBy       String              @map("created_by")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  bankAccount BankAccount         @relation(fields: [bankAccountId], references: [id])
+  lines       BankStatementLine[]
+
+  @@index([organizationId, bankAccountId, statementDate])
+  @@map("bank_statements")
+}
+
+model BankStatementLine {
+  id                       String               @id @default(cuid())
+  statementId              String               @map("statement_id")
+  lineNumber               Int                  @map("line_number")
+  transactionDate          DateTime             @map("transaction_date") @db.Date
+  description              String
+  reference                String?
+  // Signed: money in is positive, money out negative.
+  amount                   Decimal              @db.Decimal(18, 2)
+  matchStatus              StatementMatchStatus @default(UNMATCHED) @map("match_status")
+  // One ledger line clears at most one statement line.
+  matchedJournalLineId     String?              @unique @map("matched_journal_line_id")
+  // Set when the line was posted from here (a charge or interest) rather than matched.
+  adjustmentJournalEntryId String?              @map("adjustment_journal_entry_id")
+  matchedAt                DateTime?            @map("matched_at")
+  matchedBy                String?              @map("matched_by")
+
+  statement          BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  matchedJournalLine JournalLine?  @relation("StatementLineMatch", fields: [matchedJournalLineId], references: [id])
+
+  @@unique([statementId, lineNumber])
+  @@map("bank_statement_lines")
 }
 
 model BankingPolicy {
@@ -4584,6 +4641,8 @@ enum SourceDocType {
   CREDIT_NOTE
   // ADR-045 — buyer (staff) advance release / application / return and their reversals.
   BUYER_ADVANCE
+  // Step 6 — a bank charge or interest posted from a statement line during reconciliation.
+  BANK_STATEMENT
 }
 
 enum AttemptOutcome {
@@ -4599,6 +4658,17 @@ enum SnapshotStatus {
   VALID
   INVALID
   REBUILDING
+}
+
+enum BankStatementStatus {
+  OPEN
+  RECONCILED
+}
+
+enum StatementMatchStatus {
+  UNMATCHED
+  MATCHED
+  POSTED
 }
 
 enum ReconciliationStatus {

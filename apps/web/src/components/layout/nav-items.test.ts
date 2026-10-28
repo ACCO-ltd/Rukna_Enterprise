@@ -110,8 +110,10 @@ describe('NAV_DOMAINS', () => {
       expect(groups[0]!.items.map((i) => i.labelKey)).toEqual(['financeHome', 'getStarted', 'financeProjects']);
       expect(groups.find((g) => g.key === 'banking')!.items.map((i) => i.href)).toEqual([
         '/finance/accounting/bank-accounts',
-        '/finance/accounting/reconciliation',
+        '/finance/accounting/bank-reconciliation',
       ]);
+      // Step 6 — the subledger-to-GL check is a ledger tool, not bank reconciliation.
+      expect(groups.find((g) => g.key === 'ledger')!.items.map((i) => i.href)).toContain('/finance/accounting/reconciliation');
     });
 
     it('gates Projects on the same permission as GET /finance/projects', () => {

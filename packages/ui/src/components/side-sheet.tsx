@@ -5,6 +5,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
 import { cn } from '../lib/utils';
+import { PortalContainerContext, isEscapeInFloatingPanel } from '../lib/portal-container';
 import { useReturnFocus } from './dialog';
 
 /**
@@ -38,12 +39,20 @@ export function SideSheet({
   className,
 }: SideSheetProps) {
   const focus = useReturnFocus();
+  // Floating panels inside the sheet (the Combobox list) portal into it — a modal sheet makes the
+  // rest of the page inert, so a list portalled to the body could not be clicked (portal-container.ts).
+  const [portalContainer, setPortalContainer] = React.useState<HTMLDivElement | null>(null);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay motion-safe:animate-enter-fade" />
         <DialogPrimitive.Content
           {...focus}
+          ref={setPortalContainer}
+          // Escape in an open Combobox list closes the list, not the sheet.
+          onEscapeKeyDown={(event) => {
+            if (isEscapeInFloatingPanel(event)) event.preventDefault();
+          }}
           className={cn(
             'fixed inset-y-0 end-0 z-50 flex w-full flex-col border-s border-border bg-surface shadow-e3 sm:max-w-[34rem]',
             'motion-safe:animate-enter-fade',
@@ -66,7 +75,9 @@ export function SideSheet({
               <X size={16} aria-hidden="true" />
             </DialogPrimitive.Close>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <PortalContainerContext.Provider value={portalContainer}>{children}</PortalContainerContext.Provider>
+          </div>
           {footer ? <div className="border-t border-border px-6 py-4">{footer}</div> : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

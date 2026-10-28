@@ -10,6 +10,7 @@ import { FinanceHomeModule } from './finance-home/finance-home.module.js';
 import { FinanceAttachmentsModule } from './finance-attachments/finance-attachments.module.js';
 import { SetupImportModule } from './setup-import/setup-import.module.js';
 import { VatReportModule } from './vat-report/vat-report.module.js';
+import { BankReconciliationModule } from './bank-reconciliation/bank-reconciliation.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { VatReportModule } from './vat-report/vat-report.module.js';
     FinanceAttachmentsModule,
     SetupImportModule,
     VatReportModule,
+    BankReconciliationModule,
   ],
   exports: [
     AccountingCoreModule,

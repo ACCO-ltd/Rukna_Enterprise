@@ -417,6 +417,8 @@ export class AccountingFixtureFactory {
 
     await prisma.$executeRaw`DELETE FROM projects WHERE organization_id = ${orgId}`;
 
+    await prisma.$executeRaw`DELETE FROM bank_statements WHERE organization_id = ${orgId}`;
+
     await prisma.$executeRaw`DELETE FROM bank_accounts WHERE organization_id = ${orgId}`;
 
     await prisma.$executeRaw`DELETE FROM account_versions

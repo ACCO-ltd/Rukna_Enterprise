@@ -115,7 +115,8 @@
     "commitments": "Commitments",
     "suppliers": "Suppliers",
     "bankAccounts": "Bank accounts",
-    "reconciliation": "Reconciliation",
+    "reconciliation": "AR/AP tie-out",
+    "bankReconciliation": "Bank reconciliation",
     "openingBalance": "Opening balance",
     "accountingReports": "Accounting reports",
     "group": {

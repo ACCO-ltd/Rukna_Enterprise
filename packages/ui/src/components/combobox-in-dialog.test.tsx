@@ -117,3 +117,22 @@ describe('Escape inside a dialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 });
+
+describe('Combobox inside a SideSheet', () => {
+  it('portals its list into the sheet, so its options take clicks', async () => {
+    const { SideSheet } = await import('./side-sheet');
+    const onChange = vi.fn();
+    render(
+      <SideSheet open onOpenChange={() => {}} title="Post a bank charge" closeLabel="Close">
+        <Combobox id="acct" value="" onChange={onChange} options={OPTIONS} placeholder="Choose an account" searchPlaceholder="Search accounts" emptyLabel="No match" />
+      </SideSheet>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('combobox'));
+    const sheet = screen.getByRole('dialog');
+    const option = await screen.findByRole('option', { name: /51200/ });
+    expect(sheet.contains(option)).toBe(true);
+    await user.click(option);
+    expect(onChange).toHaveBeenCalledWith('51200');
+  });
+});
