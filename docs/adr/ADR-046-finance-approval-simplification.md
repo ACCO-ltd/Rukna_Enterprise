@@ -1,7 +1,7 @@
 # ADR-046 — Finance approval simplification: owner decisions of 2026-10-27
 
 **Status:** Accepted — decisions confirmed by the product owner (Abdulsalam) on 2026-10-27, with
-Eng Ahmed's agreement for the ADR-022 change (§1). §1 and §5 are built; §2–§4 and §6–§8 are decided and not yet built.
+Eng Ahmed's agreement for the ADR-022 change (§1). §1, §2 and §5 are built; §3, §4 and §6–§8 are decided and not yet built.
 
 *Numbering note:* main's highest ADR before this was ADR-045. The unmerged branch
 `docs/platform-multi-entity` must renumber its tenant-group ADR past this one.
@@ -31,6 +31,11 @@ Approval chains for journals can still be configured later through the governanc
 ### 2. Client invoices — one step: Issue
 Draft is optional; Issue assigns the number and posts in one action. The separate Approve step is
 removed. Approval can be switched on later by a setting, by amount.
+*Built 2026-10-28:* `POST /invoices/:id/issue` refreshes the printed company details, approves a
+draft and posts it in one transaction, so a refusal at posting leaves the draft untouched and
+unnumbered. An invoice approved before this change issues by posting alone. The invoice page
+offers "Issue invoice" (the journal preview first) in place of Approve then Post. `POST
+/invoices/:id/approve` stays for compatibility. The approval-by-amount setting is §8, not built.
 
 ### 3. Supplier bills — Save posts; approval by setting
 A bill that matches its PO within tolerance posts on Save. A non-PO bill posts on Save unless a

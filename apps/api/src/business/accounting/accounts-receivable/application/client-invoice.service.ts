@@ -1280,6 +1280,33 @@ export class ClientInvoiceService {
   }
 
   /**
+   * ADR-046 §2 — Issue: one action from draft to a numbered, posted invoice. Refreshes the printed
+   * company details, approves a draft and posts it (EVT-AR-001) in one transaction, so a refusal
+   * at posting (period closed, account missing, stale retention) leaves the draft untouched. An
+   * invoice already approved (before this change) issues by posting alone.
+   */
+  async issue(identity: RequestIdentity, invoiceId: string, dto: Omit<PostInvoiceDto, 'invoiceId'> = {}) {
+    const prisma = this.tenancyService.getClient();
+    const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (invoice.documentStatus === 'CANCELLED') {
+      throw new ConflictException({ errorCode: 'INVOICE_CANCELLED', message: 'This invoice was cancelled and cannot be issued.' });
+    }
+    if (invoice.postingStatus === 'POSTED') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_ALREADY_POSTED',
+        message: `Invoice ${invoice.invoiceNumber ?? invoiceId} is already issued.`,
+      });
+    }
+    await prisma.$transaction(async (tx) => {
+      await this.refreshBrandingSnapshot(identity, invoiceId, tx);
+      if (invoice.documentStatus === 'DRAFT') await this.approve(identity, invoiceId, tx);
+      await this.post(identity, { ...dto, invoiceId }, tx);
+    });
+    return this.findById(identity, invoiceId);
+  }
+
+  /**
    * Reverse a posted ClientInvoice.
    * EVT-AR-002: Dr Revenue + Dr VAT (if any) / Cr AR — the mirror of EVT-AR-001.
    * Guard: invoice must have zero active (POSTED) receipt allocations.

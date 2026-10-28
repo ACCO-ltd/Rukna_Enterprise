@@ -1117,6 +1117,12 @@
       "failed": "The invoice could not be saved.",
       "keyHint": "quick add",
       "pickersFailed": "Clients or income accounts could not be loaded. Reload the page, or use the full form."
+    },
+    "issueAction": "Issue invoice",
+    "issue": {
+      "title": "Issue this invoice?",
+      "description": "Issuing gives the invoice its number and writes the entry below to the ledger. It can only be undone by a reversal.",
+      "confirm": "Issue invoice"
     }
   },
   "openingBalance": {
@@ -1244,7 +1250,7 @@
     "periodClosedBody": "{kind, select, year {The closing journal moved every profit and loss balance into retained earnings. The next year starts from these balances.} other {Its balances are now snapshotted and it accepts no further postings. Reports for the period read from the snapshot.}}",
     "invoiceGenerated": "Draft invoice generated",
     "invoiceAction": "{action, select, approve {Invoice approved} reverse {{ref, select, none {Invoice reversed} other {Invoice {ref} reversed}}} other {Invoice updated}}",
-    "invoicePostedTitle": "{ref, select, none {Invoice posted} other {Invoice {ref} posted}}",
+    "invoicePostedTitle": "{ref, select, none {Invoice issued} other {Invoice {ref} issued}}",
     "invoicePostedBody": "It is now in the ledger and on the client’s account. Record a receipt against it when payment arrives.",
     "receiptRecorded": "Receipt recorded",
     "receiptPosted": "Receipt posted",

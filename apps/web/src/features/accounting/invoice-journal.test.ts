@@ -290,3 +290,42 @@ describe('planInvoicePost — retention release', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('planInvoicePost — a hand-typed invoice (ADR-048)', () => {
+  const hireChart = () => [
+    ...chart().filter((a) => a.code !== '42600'),
+    account('42100', { name: 'Equipment hire income', accountSubtype: 'OTHER_INCOME' }),
+    account('42200', { name: 'Sale of surplus materials', accountSubtype: 'OTHER_INCOME' }),
+  ];
+  const manual = invoice({
+    isManual: true,
+    source: { kind: 'MANUAL', label: null, id: null },
+    sourceIpcId: null,
+    subtotal: '2120.00',
+    vatAmount: '106.00',
+    totalAmount: '2226.00',
+    lines: [
+      { lineNo: 1, description: 'Excavator hire', quantity: '4', unitPrice: '450.00', amount: '1800.00', revenueAccountCode: '42100' },
+      { lineNo: 2, description: 'Surplus rebar', quantity: '10', unitPrice: '12.00', amount: '120.00', revenueAccountCode: '42200' },
+      { lineNo: 3, description: 'Dump truck hire', quantity: '1', unitPrice: '200.00', amount: '200.00', revenueAccountCode: '42100' },
+    ],
+  });
+
+  it('credits each income account its lines, as the server posts them — never the revenue role', () => {
+    // The chart has no PROJECT_REVENUE account at all, and the plan still resolves.
+    const result = planInvoicePost(manual, hireChart(), 'en');
+    if (!result.ok) throw new Error('expected a plan');
+    expect(result.plan.lines).toEqual([
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '2226.00', credit: null },
+      { accountCode: '42100', accountName: 'Equipment hire income', debit: null, credit: '2000.00' },
+      { accountCode: '42200', accountName: 'Sale of surplus materials', debit: null, credit: '120.00' },
+      { accountCode: '20200', accountName: 'Output VAT Payable', debit: null, credit: '106.00' },
+    ]);
+    expect(result.plan.balanced).toBe(true);
+    expect(result.plan.payload).toEqual({ arAccountCode: '11000', vatAccountCode: '20200' });
+  });
+
+  it('does not ask for a revenue account', () => {
+    expect(rolesForInvoice(manual)).not.toContain('REVENUE');
+  });
+});

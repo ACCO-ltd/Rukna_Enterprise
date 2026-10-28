@@ -150,6 +150,15 @@ export class ClientInvoiceController {
     return this.clientInvoiceService.getOrGenerateDocument(identity, id);
   }
 
+  @Post(':id/issue')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'ADR-046 §2: issue — approve (if a draft) and post in one action; returns the numbered invoice' })
+  @ApiResponse({ status: 409, description: 'INVOICE_CANCELLED | INVOICE_REVERSED | already posted' })
+  issue(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: PostInvoiceDto) {
+    return this.clientInvoiceService.issue(identity, id, dto);
+  }
+
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })

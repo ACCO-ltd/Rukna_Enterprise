@@ -163,6 +163,18 @@ export function postInvoice(
 }
 
 /**
+ * ADR-046 §2 — `POST /invoices/:id/issue`: approve (when a draft) and post in one action, so the
+ * invoice is numbered and in the ledger at once. Same body as `postInvoice`, built the same way.
+ */
+export function issueInvoice(id: string, payload: PostInvoicePayload): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>(`/invoices/${id}/issue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * `POST /invoices/:id/reverse` — raises a mirrored journal. Neither entry is removed.
  *
  * No account codes: the reversal is built from the original journal's own lines, so it cannot

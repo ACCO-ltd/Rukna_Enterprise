@@ -10,6 +10,7 @@ import {
   getInvoiceDocument,
   listInvoices,
   postInvoice,
+  issueInvoice,
   reverseInvoice,
   updateManualInvoice,
   listIncomeAccounts,
@@ -152,6 +153,7 @@ export function useInvoiceDocumentUrl(id: string, enabled: boolean) {
 export type InvoiceActionRequest =
   | { type: 'approve' }
   | { type: 'post'; payload: PostInvoicePayload }
+  | { type: 'issue'; payload: PostInvoicePayload }
   | { type: 'reverse'; payload: ReverseInvoicePayload };
 
 /**
@@ -176,6 +178,8 @@ export function useInvoiceAction(id: string) {
           return approveInvoice(id);
         case 'post':
           return postInvoice(id, action.payload);
+        case 'issue':
+          return issueInvoice(id, action.payload);
         case 'reverse':
           return reverseInvoice(id, action.payload);
       }
@@ -183,7 +187,7 @@ export function useInvoiceAction(id: string) {
     onSuccess: (_result, action) => {
       void qc.invalidateQueries({ queryKey: invoiceKeys.all });
 
-      if (action.type === 'post' || action.type === 'reverse') {
+      if (action.type === 'post' || action.type === 'issue' || action.type === 'reverse') {
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'profit-loss'] });
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'balance-sheet'] });
@@ -199,7 +203,7 @@ export function useInvoiceAction(id: string) {
         }),
       },
       successDialog: {
-        when: (_invoice, action) => (action as InvoiceActionRequest).type === 'post',
+        when: (_invoice, action) => ['post', 'issue'].includes((action as InvoiceActionRequest).type),
         title: {
           key: 'accounting.feedback.invoicePostedTitle',
           values: (invoice) => ({ ref: refOrNone((invoice as ClientInvoice).invoiceNumber) }),

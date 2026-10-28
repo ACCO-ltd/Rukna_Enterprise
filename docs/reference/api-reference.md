@@ -271,6 +271,7 @@ cents. Each line's account must be an active, posting INCOME account. Errors:
 | `GET` | `/invoices/income-accounts` | `[{ code, name, subtype }]`: the active posting INCOME accounts a line may credit (`OTHER_INCOME` ones first). Readable without `manage:accounting`. |
 | `PUT` | `/invoices/:id/manual` | Same body; rewrites a DRAFT in full. `409 INVOICE_NOT_DRAFT` once it is approved; `400 INVOICE_NOT_MANUAL` for a contract invoice. |
 | `POST` | `/invoices/:id/cancel` | Step 2g. Body `{ reason? }` (≤500). Cancels an unposted invoice (any source except a stage plan) and frees its IPC / BOQ / separate-charge source so it can be billed again; audited `CLIENT_INVOICE_CANCELLED`. `409 INVOICE_ALREADY_POSTED` (reverse it instead) · `409 INVOICE_CANCELLED` · `400 STAGE_DRAFT_USE_COMMERCIAL` (delete it from the contract's Billing tab). The web list sends it only after an 8-second undo window. |
+| `POST` | `/invoices/:id/issue` | ADR-046 §2. Same optional body as `/post` (`arAccountCode?`, `revenueAccountCode?`, `vatAccountCode?`). Approves a DRAFT and posts it in one transaction; returns the numbered invoice. A refusal leaves the draft untouched. `409 INVOICE_ALREADY_POSTED` · `409 INVOICE_CANCELLED` · `409 INVOICE_REVERSED` · any `/post` refusal. |
 
 `POST /clients` also accepts `manage:receivable` (ADR-048 §7: add a client without leaving the invoice).
 `GET /invoices/:id` now also returns `lines: ManualInvoiceLineDto[]` (empty for source invoices).

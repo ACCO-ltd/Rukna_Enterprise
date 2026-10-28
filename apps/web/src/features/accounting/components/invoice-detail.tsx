@@ -25,7 +25,7 @@ import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
 import { invoiceKeys, useCancelInvoice, useInvoice, useInvoiceAction } from '../hooks/use-invoices';
 import {
-  canApprove,
+  canIssue,
   canPost,
   canReverse,
   invoiceBlockReason,
@@ -40,7 +40,7 @@ import { LoadError } from '@/components/load-error';
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
 
-type OpenDialog = 'approve' | 'post' | 'reverse' | 'cancel' | 'whatsapp' | 'reminder' | null;
+type OpenDialog = 'issue' | 'post' | 'reverse' | 'cancel' | 'whatsapp' | 'reminder' | null;
 
 export function InvoiceDetail({
   invoiceId,
@@ -168,13 +168,14 @@ export function InvoiceDetail({
                   <Link href={`/finance/accounting/invoices/${data.id}/edit`}>{t('editDraft')}</Link>
                 </Button>
               ) : null}
-              {canApprove(data) ? (
-                <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
+              {/* ADR-046 §2 — one action from draft to a numbered, posted invoice. */}
+              {canIssue(data) && !ledgerBlocked ? (
+                <Button onClick={() => setDialog('issue')}>{t('issueAction')}</Button>
               ) : null}
 
               {canPost(data) && !ledgerBlocked ? (
                 <Button onClick={() => setDialog('post')}>{t('postAction')}</Button>
-              ) : canPost(data) ? null : (
+              ) : canPost(data) || canIssue(data) ? null : (
                 <BlockedHint invoice={data} />
               )}
 
@@ -290,14 +291,14 @@ export function InvoiceDetail({
         </div>
       </div>
 
-      {dialog === 'approve' ? (
-        <ConfirmActionDialog
-          title={t('approveTitle')}
-          description={t('approveDescription')}
-          confirmLabel={t('approve')}
+      {dialog === 'issue' ? (
+        <PostInvoiceDialog
+          mode="issue"
+          invoice={data}
+          accounts={accounts.data ?? []}
           isPending={action.isPending}
           errorMessage={errorMessage}
-          onConfirm={() => run({ type: 'approve' })}
+          onConfirm={(payload: PostInvoicePayload) => run({ type: 'issue', payload })}
           onDismiss={close}
         />
       ) : null}

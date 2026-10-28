@@ -171,3 +171,32 @@ it('MI-07 (Step 2g): an unposted invoice is cancelled; a posted one is refused',
   // MI-01's invoice was posted (then reversed): it is in the ledger, so it cannot be cancelled.
   await expect(svc.clientInvoiceService.cancelDraft(env.identity, invoiceId)).rejects.toThrow(/in the ledger/);
 });
+
+it('MI-08 (ADR-046 §2): Issue takes a draft to a numbered, posted invoice in one action', async () => {
+  const draft = await svc.clientInvoiceService.createManual(
+    env.identity,
+    input([{ description: 'Generator hire', quantity: '2', unitPrice: '150.00', revenueAccountCode: '42100' }]),
+  );
+  const issued = await svc.clientInvoiceService.issue(env.identity, draft.id);
+  expect(issued.documentStatus).toBe('APPROVED');
+  expect(issued.postingStatus).toBe('POSTED');
+  expect(issued.invoiceNumber).toMatch(/^INV-/);
+  expect(issued.postedJournalEntryId).not.toBeNull();
+  await expect(svc.clientInvoiceService.issue(env.identity, draft.id)).rejects.toThrow(/already issued/);
+});
+
+it('MI-09 (ADR-046 §2): a refused Issue leaves the draft a draft, unnumbered', async () => {
+  const draft = await svc.clientInvoiceService.createManual(
+    env.identity,
+    input([{ description: 'Scaffold hire', quantity: '1', unitPrice: '80.00', revenueAccountCode: '42100' }]),
+  );
+  // Lines that no longer add up to the subtotal are refused at posting (ADR-048).
+  await prisma.clientInvoice.update({ where: { id: draft.id }, data: { subtotal: '81.00' } });
+  await expect(svc.clientInvoiceService.issue(env.identity, draft.id)).rejects.toThrow(/do not add up/);
+  const after = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: draft.id } });
+  expect(after.documentStatus).toBe('DRAFT');
+  expect(after.invoiceNumber).toBeNull();
+
+  await svc.clientInvoiceService.cancelDraft(env.identity, draft.id);
+  await expect(svc.clientInvoiceService.issue(env.identity, draft.id)).rejects.toThrow(/cancelled/);
+});

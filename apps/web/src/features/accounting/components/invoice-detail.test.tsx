@@ -94,7 +94,7 @@ beforeEach(() => {
 });
 
 describe('InvoiceDetail — state-aware title and totals', () => {
-  it('shows the draft title, Approve action, and "Draft total" (never a collectible balance)', () => {
+  it('shows the draft title, the one Issue action (ADR-046 §2), and "Draft total" (never a collectible balance)', () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
@@ -102,7 +102,9 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     });
 
     expect(screen.getByText('Review draft invoice')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve invoice' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Issue invoice' })).toBeInTheDocument();
+    // No separate Approve step any more, and no Post before issue.
+    expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
     expect(screen.getByText('Draft total')).toBeInTheDocument();
     expect(screen.queryByText('Balance due')).not.toBeInTheDocument();
@@ -201,7 +203,7 @@ describe('InvoiceDetail — permission gating', () => {
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
 
-    expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
   });

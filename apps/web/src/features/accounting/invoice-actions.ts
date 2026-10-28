@@ -42,6 +42,15 @@ export function canApprove(invoice: ClientInvoice): boolean {
 }
 
 /**
+ * ADR-046 §2 — a draft is issued in one action (approve + post, one server transaction). The
+ * separate Approve step is gone from the invoice page; an invoice approved before this change
+ * still posts with `canPost`.
+ */
+export function canIssue(invoice: ClientInvoice): boolean {
+  return invoice.documentStatus === 'DRAFT' && invoice.postingStatus === 'NOT_POSTED';
+}
+
+/**
  * Posting statuses from which posting is safe.
  *
  * NOT_POSTED is the first attempt. FAILED is a retry: the engine records `lastPostingErrorCode`

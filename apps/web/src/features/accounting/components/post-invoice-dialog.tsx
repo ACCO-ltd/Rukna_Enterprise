@@ -24,6 +24,7 @@ export function PostInvoiceDialog({
   errorMessage,
   onConfirm,
   onDismiss,
+  mode = 'post',
 }: {
   invoice: ClientInvoice;
   accounts: readonly Account[];
@@ -31,16 +32,19 @@ export function PostInvoiceDialog({
   errorMessage?: string | undefined;
   onConfirm: (payload: PostInvoicePayload) => void;
   onDismiss: () => void;
+  /** `issue` (ADR-046 §2): the draft is approved and posted together, so the copy says Issue. */
+  mode?: 'post' | 'issue';
 }) {
   const t = useTranslations('accounting.invoices.post');
+  const tIssue = useTranslations('accounting.invoices.issue');
   const locale = useLocale() as 'en' | 'ar';
 
   const result = planInvoicePost(invoice, accounts, locale);
 
   return (
     <PostingPreviewDialog
-      title={t('title')}
-      description={t('description')}
+      title={mode === 'issue' ? tIssue('title') : t('title')}
+      description={mode === 'issue' ? tIssue('description') : t('description')}
       size="md"
       currencyCode={invoice.currencyCode}
       lines={result.ok ? result.plan.lines : undefined}
@@ -69,7 +73,7 @@ export function PostInvoiceDialog({
             )
       }
       errorMessage={errorMessage}
-      confirmLabel={t('confirm')}
+      confirmLabel={mode === 'issue' ? tIssue('confirm') : t('confirm')}
       isPending={isPending}
       onConfirm={() => {
         if (result.ok && result.plan.balanced) onConfirm(result.plan.payload);

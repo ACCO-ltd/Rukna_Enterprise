@@ -67,7 +67,8 @@ export function hasVat(invoice: ClientInvoice): boolean {
  * chart that is perfectly adequate for the invoice in hand.
  */
 export function rolesForInvoice(invoice: ClientInvoice): PostingRole[] {
-  const roles: PostingRole[] = ['AR_CONTROL', 'REVENUE'];
+  // ADR-048 — a hand-typed invoice credits each line's own income account, never the revenue role.
+  const roles: PostingRole[] = invoice.isManual ? ['AR_CONTROL'] : ['AR_CONTROL', 'REVENUE'];
   if (hasVat(invoice)) roles.push('VAT_OUTPUT');
   if (retentionMinor(invoice) > 0 || retentionReleasedMinor(invoice) > 0) roles.push('RETENTION_RECEIVABLE');
   if (advanceRecoveryMinor(invoice) > 0) roles.push('CLIENT_ADVANCE');
@@ -103,7 +104,7 @@ export function planInvoicePost(
   if (problems.length > 0) return { ok: false, problems };
 
   const ar = resolved.get('AR_CONTROL')!;
-  const revenue = resolved.get('REVENUE')!;
+  const revenue = resolved.get('REVENUE') ?? null;
   const vat = resolved.get('VAT_OUTPUT') ?? null;
 
   const totalMinor = toMinorUnits(invoice.totalAmount, MONEY_SCALE);
@@ -118,8 +119,24 @@ export function planInvoicePost(
       credit: null,
     },
   ];
-  // A retention release earns no revenue: no zero-value revenue line, as the server writes it.
-  if (subtotalMinor > 0) {
+  // ADR-048 — a hand-typed invoice: one credit per income account, in line order, summed as the
+  // server sums them (EVT-AR-001 for manual invoices).
+  if (invoice.isManual) {
+    const byCode = new Map<string, number>();
+    for (const line of invoice.lines ?? []) {
+      byCode.set(line.revenueAccountCode, (byCode.get(line.revenueAccountCode) ?? 0) + toMinorUnits(line.amount, MONEY_SCALE));
+    }
+    for (const [code, minor] of byCode) {
+      const account = accounts.find((a) => a.code === code);
+      lines.push({
+        accountCode: code,
+        accountName: account ? accountName(account, locale) : code,
+        debit: null,
+        credit: fromMinorUnits(minor, MONEY_SCALE),
+      });
+    }
+  } else if (revenue && subtotalMinor > 0) {
+    // A retention release earns no revenue: no zero-value revenue line, as the server writes it.
     lines.push({
       accountCode: revenue.code,
       accountName: accountName(revenue, locale),
@@ -169,7 +186,10 @@ export function planInvoicePost(
   }
 
   const debitMinor = totalMinor + heldBackMinor;
-  const creditMinor = subtotalMinor + (vat ? vatMinor : 0) + (releasedFrom ? releasedMinor : 0);
+  const revenueMinor = invoice.isManual
+    ? (invoice.lines ?? []).reduce((sum, line) => sum + toMinorUnits(line.amount, MONEY_SCALE), 0)
+    : subtotalMinor;
+  const creditMinor = revenueMinor + (vat ? vatMinor : 0) + (releasedFrom ? releasedMinor : 0);
 
   return {
     ok: true,
@@ -180,7 +200,7 @@ export function planInvoicePost(
       balanced: debitMinor === creditMinor,
       payload: {
         arAccountCode: ar.code,
-        revenueAccountCode: revenue.code,
+        ...(revenue && !invoice.isManual ? { revenueAccountCode: revenue.code } : {}),
         ...(vat ? { vatAccountCode: vat.code } : {}),
       },
     },

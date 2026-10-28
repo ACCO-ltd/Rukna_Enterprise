@@ -554,7 +554,8 @@ export interface GenerateInvoiceFromInstallmentPayload {
  */
 export interface PostInvoicePayload {
   arAccountCode: string;
-  revenueAccountCode: string;
+  /** Omitted for a hand-typed invoice, whose lines name their own income accounts (ADR-048). */
+  revenueAccountCode?: string;
   vatAccountCode?: string;
 }
 
