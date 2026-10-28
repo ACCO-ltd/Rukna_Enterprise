@@ -42,7 +42,7 @@ export class AccountingGuideService {
     const readiness = await this.readiness.getReadiness(identity);
 
     // Shared facts (a handful of cheap queries, run together).
-    const [setup, currentPeriod, fiscalYear] = await Promise.all([
+    const [setup, currentPeriod, fiscalYear, organization] = await Promise.all([
       this.loadSetup(prisma, orgId, readiness, can),
       prisma.accountingPeriod.findFirst({
         where: { organizationId: orgId, startDate: { lte: today }, endDate: { gte: today } },
@@ -53,6 +53,7 @@ export class AccountingGuideService {
         where: { organizationId: orgId, startDate: { lte: today }, endDate: { gte: today } },
         select: { id: true, name: true, status: true },
       }),
+      prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } }),
     ]);
 
     const daily = await this.buildDaily(prisma, orgId, readiness.ready, can);
@@ -61,6 +62,7 @@ export class AccountingGuideService {
 
     return {
       ready: readiness.ready,
+      organizationName: organization?.name ?? '',
       cycles: [setup, daily, monthEnd, yearEnd],
       currentPeriod: currentPeriod
         ? { id: currentPeriod.id, name: currentPeriod.name, status: currentPeriod.status, endDate: currentPeriod.endDate.toISOString() }
@@ -94,27 +96,61 @@ export class AccountingGuideService {
     can: (p: string) => boolean,
   ): Promise<GuideCycle> {
     const hasBlocker = (code: string) => readiness.blockers.some((b) => b.code === code);
-    const [bankAccounts, openingJournal] = await Promise.all([
+    const [bankAccounts, openingJournal, tradingJournal, organization, suppliers, clients] = await Promise.all([
       prisma.bankAccount.count({ where: { organizationId: orgId } }),
       prisma.journalEntry.count({
         where: { organizationId: orgId, sourceDocumentType: 'OPENING_BALANCE' },
       }),
+      // Once the ledger has a posted entry of its own, the cutover has happened: opening balances
+      // are then a journal, not a setup step that stays open for ever.
+      prisma.journalEntry.count({
+        where: { organizationId: orgId, status: 'POSTED', NOT: { sourceDocumentType: 'OPENING_BALANCE' } },
+        take: 1,
+      }),
+      prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { legalAddress: true, taxRegistrationNumber: true },
+      }),
+      prisma.supplier.count({ where: { organizationId: orgId }, take: 1 }),
+      prisma.client.count({ where: { organizationId: orgId }, take: 1 }),
     ]);
-    return this.buildSetup(readiness.ready, hasBlocker, bankAccounts, openingJournal, can);
+    return this.buildSetup(readiness.ready, hasBlocker, can, {
+      bankAccounts,
+      openingDone: openingJournal > 0 || tradingJournal > 0,
+      companyDetails: Boolean(organization?.legalAddress?.trim() && organization?.taxRegistrationNumber?.trim()),
+      partiesImported: suppliers > 0 && clients > 0,
+    });
   }
 
   private buildSetup(
     ready: boolean,
     hasBlocker: (code: string) => boolean,
-    bankAccounts: number,
-    openingJournal: number,
     can: (p: string) => boolean,
+    facts: { bankAccounts: number; openingDone: boolean; companyDetails: boolean; partiesImported: boolean },
   ): GuideCycle {
     const manage = can(PERMISSIONS.accountingManage);
     const chartEmpty = hasBlocker('NO_CHART_OF_ACCOUNTS');
     const restrictedNote = 'Set up by an administrator (needs Manage accounting).';
+    const { bankAccounts } = facts;
 
-    const raw: Array<{ key: string; label: string; detail: string; done: boolean; href: string | null; blocked?: boolean }> = [
+    // Step 5 (ADR-047): eight steps. Company details, importing suppliers and clients, and opening
+    // balances are optional — the ledger posts without them — but the checklist still lists them,
+    // because a first invoice without the company's tax number is the cost of skipping them.
+    type RawStep = {
+      key: string; label: string; detail: string; done: boolean; href: string | null;
+      blocked?: boolean; optional?: boolean; allowed?: boolean; restrictedNote?: string;
+    };
+    const raw: RawStep[] = [
+      {
+        key: 'company-details',
+        label: 'Company details',
+        detail: 'The legal address and tax number printed on invoices, receipts and remittances.',
+        done: facts.companyDetails,
+        href: '/admin/branding',
+        optional: true,
+        allowed: can(PERMISSIONS.organizationsManage),
+        restrictedNote: 'Set by an administrator (needs Manage organization).',
+      },
       {
         key: 'chart-of-accounts',
         label: 'Chart of accounts',
@@ -158,26 +194,41 @@ export class AccountingGuideService {
       {
         key: 'opening-balances',
         label: 'Opening balances',
-        detail: 'One-time: import the trial balance and open AR/AP items from your prior system. Skip if starting fresh.',
-        done: openingJournal > 0,
+        detail: 'One-time: post the trial balance from your prior system. Starting fresh? It closes by itself with your first posted entry.',
+        done: facts.openingDone,
         href: `${BASE}/opening-balance`,
+        optional: true,
       },
     ];
+    // Suppliers and clients come in before the trial balance, so their open items are there to
+    // tie the opening AR and AP balances out against.
+    raw.splice(raw.length - 1, 0, {
+      key: 'import-parties',
+      label: 'Suppliers and clients',
+      detail: 'Import them from a spreadsheet, with what each owes or is owed on the opening date.',
+      done: facts.partiesImported,
+      href: `${BASE}/import`,
+      optional: true,
+      allowed: can(PERMISSIONS.payablesManage) || can(PERMISSIONS.clientsCreate) || can(PERMISSIONS.receivablesManage),
+      restrictedNote: 'Imported by the payables or receivables team.',
+    });
 
     let nextAssigned = false;
     const steps: GuideStep[] = raw.map((s) => {
+      const allowed = s.allowed ?? manage;
       let status: GuideStepStatus;
       if (s.done) status = 'DONE';
-      else if (!manage) status = 'RESTRICTED';
+      else if (!allowed) status = 'RESTRICTED';
       else if (s.blocked) status = 'BLOCKED';
       else if (!nextAssigned) { status = 'NEXT'; nextAssigned = true; }
       else status = 'TODO';
       return {
         key: s.key,
         label: s.label,
-        detail: !s.done && !manage ? `${s.detail} ${restrictedNote}` : s.detail,
+        detail: !s.done && !allowed ? `${s.detail} ${s.restrictedNote ?? restrictedNote}` : s.detail,
         status,
         href: status === 'RESTRICTED' ? null : s.href,
+        ...(s.optional ? { optional: true } : {}),
       };
     });
 

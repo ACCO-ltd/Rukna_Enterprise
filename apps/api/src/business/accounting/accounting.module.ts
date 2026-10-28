@@ -8,6 +8,7 @@ import { FinancialPositionModule } from './financial-position/financial-position
 import { AccountingSetupModule } from './accounting-setup/accounting-setup.module.js';
 import { FinanceHomeModule } from './finance-home/finance-home.module.js';
 import { FinanceAttachmentsModule } from './finance-attachments/finance-attachments.module.js';
+import { SetupImportModule } from './setup-import/setup-import.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { FinanceAttachmentsModule } from './finance-attachments/finance-attachme
     AccountingSetupModule,
     FinanceHomeModule,
     FinanceAttachmentsModule,
+    SetupImportModule,
   ],
   exports: [
     AccountingCoreModule,

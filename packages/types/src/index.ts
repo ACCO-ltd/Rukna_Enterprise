@@ -22,3 +22,4 @@ export * from './search';
 export * from './approvals';
 export * from './finance-home';
 export * from './finance-attachments';
+export * from './setup-import';

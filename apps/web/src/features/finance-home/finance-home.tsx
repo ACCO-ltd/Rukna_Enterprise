@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ArrowRight, CircleCheck, Circle } from 'lucide-react';
-import { cn, StatTile } from '@erp/ui';
+import { cn, Progress, StatTile } from '@erp/ui';
 import type { FinanceHome as FinanceHomeData, GuideCycle } from '@erp/types';
 
 import { LoadError } from '@/components/load-error';
@@ -43,7 +43,9 @@ export function FinanceHome() {
         summary={home.data ? t('asOf', { date: formatDate(home.data.asOf) ?? home.data.asOf }) : undefined}
       />
 
-      {guide.data && !guide.data.ready && setup ? <SetupChecklist cycle={setup} /> : null}
+      {guide.data && setup && setupOutstanding(setup) ? (
+        <SetupChecklist cycle={setup} company={guide.data.organizationName} ready={guide.data.ready} />
+      ) : null}
 
       {home.isError ? (
         <LoadError message={t('loadFailed')} onRetry={() => void home.refetch()} />
@@ -234,16 +236,30 @@ function CashCard({ data }: { data: NonNullable<FinanceHomeData['cash']> }) {
   );
 }
 
-function SetupChecklist({ cycle }: { cycle: GuideCycle }) {
+/** The checklist stays until every step is done (or not for this reader to do). */
+function setupOutstanding(cycle: GuideCycle): boolean {
+  return cycle.steps.some((s) => s.status !== 'DONE' && s.status !== 'NA' && s.status !== 'RESTRICTED');
+}
+
+/**
+ * Step 5 — "Get {company} ready": a progress bar and the eight setup steps, done ones ticked and
+ * the current one highlighted. Optional steps are labelled; once the ledger can post, a line says
+ * the rest is optional so the card informs rather than nags.
+ */
+function SetupChecklist({ cycle, company, ready }: { cycle: GuideCycle; company: string; ready: boolean }) {
   const t = useTranslations('finance.home');
   const done = cycle.steps.filter((s) => s.status === 'DONE').length;
   const next = cycle.steps.find((s) => s.status !== 'DONE' && s.href);
   return (
-    <section className="rounded-panel border border-brand-primary/30 bg-brand-accent px-4 py-4 sm:px-5" aria-label={t('setupTitle')}>
+    <section className="rounded-panel border border-brand-primary/30 bg-brand-accent px-4 py-4 sm:px-5" aria-label={t('setupTitle', { company })}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-body font-semibold text-foreground">{t('setupTitle')}</h2>
-          <p className="text-body-sm text-muted-foreground">{t('setupProgress', { done, total: cycle.steps.length })}</p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-body font-semibold text-foreground">{t('setupTitle', { company })}</h2>
+          <p className="text-body-sm text-muted-foreground">
+            {t('setupProgress', { done, total: cycle.steps.length })}
+            {ready ? ` · ${t('setupReadyNote')}` : ''}
+          </p>
+          <Progress className="mt-2 max-w-md" value={done} max={cycle.steps.length} label={t('setupProgressLabel')} />
         </div>
         {next?.href ? (
           <Link href={next.href} className="inline-flex min-h-9 items-center gap-1.5 rounded-control bg-brand-primary px-3 text-body-sm font-medium text-brand-on-primary hover:bg-brand-primary-hover">
@@ -251,21 +267,29 @@ function SetupChecklist({ cycle }: { cycle: GuideCycle }) {
           </Link>
         ) : null}
       </div>
-      <ol className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-        {cycle.steps.map((s) => (
-          <li key={s.key} className="flex items-center gap-2 text-body-sm">
-            {s.status === 'DONE' ? (
-              <CircleCheck size={16} className="shrink-0 text-success" aria-label={t('stepDone')} />
-            ) : (
-              <Circle size={16} className="shrink-0 text-muted-foreground" aria-label={t('stepTodo')} />
-            )}
-            {s.href && s.status !== 'DONE' ? (
-              <Link href={s.href} className="text-foreground hover:underline">{s.label}</Link>
-            ) : (
-              <span className={s.status === 'DONE' ? 'text-muted-foreground' : 'text-foreground'}>{s.label}</span>
-            )}
-          </li>
-        ))}
+      <ol className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+        {cycle.steps.map((s) => {
+          const current = s === next;
+          return (
+            <li
+              key={s.key}
+              aria-current={current ? 'step' : undefined}
+              className={cn('flex min-h-8 items-center gap-2 rounded-control px-2 text-body-sm', current && 'bg-surface font-medium ring-1 ring-brand-primary/40')}
+            >
+              {s.status === 'DONE' ? (
+                <CircleCheck size={16} className="shrink-0 text-success" aria-label={t('stepDone')} />
+              ) : (
+                <Circle size={16} className={cn('shrink-0', current ? 'text-brand-primary' : 'text-muted-foreground')} aria-label={t('stepTodo')} />
+              )}
+              {s.href && s.status !== 'DONE' ? (
+                <Link href={s.href} className="min-w-0 truncate text-foreground hover:underline">{s.label}</Link>
+              ) : (
+                <span className={cn('min-w-0 truncate', s.status === 'DONE' ? 'text-muted-foreground' : 'text-foreground')}>{s.label}</span>
+              )}
+              {s.optional && s.status !== 'DONE' ? <span className="shrink-0 text-caption text-muted-foreground">{t('setupOptional')}</span> : null}
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

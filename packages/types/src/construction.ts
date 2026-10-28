@@ -2921,6 +2921,11 @@ export interface GuideStep {
   href: string | null;
   /** For queue-style daily steps: how many items await the user. */
   count?: number;
+  /**
+   * Step 5 — a setup step the ledger can post without (company details, importing suppliers and
+   * clients, opening balances). `ready` does not wait for it; the setup checklist still lists it.
+   */
+  optional?: boolean;
 }
 
 export type GuideCycleKey = 'setup' | 'daily' | 'month_end' | 'year_end';
@@ -2952,6 +2957,8 @@ export interface GuideCycle {
 export interface AccountingGuideResponse {
   /** Mirrors readiness.ready — setup is complete and the ledger can accept postings. */
   ready: boolean;
+  /** Step 5 — the company the checklist is getting ready ("Get {organizationName} ready"). */
+  organizationName: string;
   cycles: GuideCycle[];
   currentPeriod: { id: string; name: string; status: string; endDate: string } | null;
   fiscalYear: { id: string; name: string; status: string } | null;

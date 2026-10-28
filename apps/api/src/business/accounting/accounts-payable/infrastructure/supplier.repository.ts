@@ -11,6 +11,7 @@ export interface CreateSupplierData {
   defaultCurrency?: string;
   paymentTermsDays?: number;
   createdBy?: string;
+  address?: string;
 }
 
 // A15 (D8): master-data corrections only. `code` (identity) and `status` are intentionally
@@ -42,6 +43,15 @@ export class SupplierRepository {
 
   create(prisma: TenantPrisma, data: CreateSupplierData) {
     return prisma.supplier.create({ data });
+  }
+
+  createContact(prisma: TenantPrisma, supplierId: string, data: { name: string; phone: string | null; email: string | null; isPrimary: boolean }) {
+    return prisma.supplierContact.create({ data: { supplierId, ...data } });
+  }
+
+  /** Step 5 — every supplier, for the import's duplicate and code checks. */
+  listForImport(prisma: TenantPrisma, organizationId: string) {
+    return prisma.supplier.findMany({ where: { organizationId }, select: { id: true, code: true, name: true, taxNumber: true } });
   }
 
   // A15: identity (`code`) and `status` are not in UpdateSupplierData, so they can never be

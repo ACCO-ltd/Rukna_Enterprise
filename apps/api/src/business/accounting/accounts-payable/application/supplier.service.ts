@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
-import type { SupplierStatus } from '@prisma/client';
+import type { Prisma, SupplierStatus } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { SupplierRepository, CreateSupplierData, UpdateSupplierData } from '../infrastructure/supplier.repository.js';
@@ -39,6 +39,11 @@ export class SupplierService {
     return this.repo.findAll(prisma, identity.activeOrganizationId, status);
   }
 
+  /** Step 5 — id, code, name and tax number of every supplier, for an import's checks. */
+  listForImport(identity: RequestIdentity) {
+    return this.repo.listForImport(this.tenancy.getClient(), identity.activeOrganizationId);
+  }
+
   async findById(identity: RequestIdentity, id: string) {
     const prisma = this.tenancy.getClient();
     const supplier = await this.repo.findById(prisma, identity.activeOrganizationId, id);
@@ -54,6 +59,32 @@ export class SupplierService {
     // ADR-022 CONST-DOA-003: record who set the vendor up (the vendor maintainer).
     const data: CreateSupplierData = { organizationId: orgId, createdBy: identity.userId, ...dto };
     return this.repo.create(prisma, data);
+  }
+
+  /**
+   * Step 5 — one supplier from a spreadsheet import, inside the importer's transaction, with its
+   * primary contact when the sheet named one. Audited like an edit, with the maintainer recorded.
+   */
+  async createInTransaction(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    data: Omit<CreateSupplierData, 'organizationId' | 'createdBy'> & { address?: string },
+    contact: { name: string; phone: string | null; email: string | null } | null,
+  ): Promise<{ id: string; code: string }> {
+    const created = await this.repo.create(tx, { ...data, organizationId: identity.activeOrganizationId, createdBy: identity.userId });
+    if (contact) await this.repo.createContact(tx, created.id, { ...contact, isPrimary: true });
+    await this.auditOutbox.record(tx, {
+      organizationId: identity.activeOrganizationId,
+      actorUserId: identity.userId,
+      action: 'CREATE',
+      resourceType: 'Supplier',
+      resourceId: created.id,
+      sourceCommand: 'supplier.import',
+      eventType: 'SUPPLIER_IMPORTED',
+      idempotencyKey: `supplier-import-${created.id}`,
+      after: { code: created.code, name: created.name, taxNumber: created.taxNumber, paymentTermsDays: created.paymentTermsDays },
+    });
+    return { id: created.id, code: created.code };
   }
 
   /**
