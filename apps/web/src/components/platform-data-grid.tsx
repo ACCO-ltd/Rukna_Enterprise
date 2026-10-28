@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState, useCallback } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -434,6 +434,13 @@ export interface PlatformDataGridProps<T> {
   exportAs?: { fileName: string; sheetName: string };
 
   /**
+   * Keyboard shortcuts while no field has focus (Step 2d, ADR-047): `/` search, `J`/`K` next /
+   * previous row (focusing its link, so Enter opens it), `X` select the focused row, `N` new.
+   * Off unless set; one list per screen should own them. `onNew` is the screen's create action.
+   */
+  shortcuts?: { onNew?: () => void };
+
+  /**
    * Row selection. Only provide when the caller has bulk actions to perform —
    * a checkbox column that does nothing is not useful.
    */
@@ -636,6 +643,7 @@ export function PlatformDataGrid<T>({
   server,
   listState,
   exportAs,
+  shortcuts,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
   const t = useTranslations('common.grid');
@@ -747,6 +755,43 @@ export function PlatformDataGrid<T>({
   // Merge toolbar slots (support both old and new prop names)
   const filtersSlot = toolbarFilters ?? toolbarLeft;
   const actionsSlot = toolbarActions ?? toolbarRight;
+
+  // ── Keyboard shortcuts (Step 2d) ───────────────────────────────────────────
+  // Above the early returns: a hook below them would change the hook count between renders.
+  const tableRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const shortcutsRef = useRef({ shortcuts, selection, visible, rowKey });
+  shortcutsRef.current = { shortcuts, selection, visible, rowKey };
+  const shortcutsOn = Boolean(shortcuts);
+  useEffect(() => {
+    if (!shortcutsOn) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]')) return;
+      const { shortcuts: current, selection: sel, visible: rows, rowKey: keyOf } = shortcutsRef.current;
+      const links = Array.from(tableRef.current?.querySelectorAll<HTMLAnchorElement>('a[data-row-link]') ?? []);
+      const at = links.findIndex((link) => link === document.activeElement);
+      const key = event.key.toLowerCase();
+      if (event.key === '/') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      } else if ((key === 'j' || key === 'k') && links.length > 0) {
+        event.preventDefault();
+        const next = at === -1 ? 0 : Math.min(links.length - 1, Math.max(0, at + (key === 'j' ? 1 : -1)));
+        links[next]?.focus();
+      } else if (key === 'x' && sel && at !== -1) {
+        event.preventDefault();
+        const row = rows[at];
+        if (row) sel.onSelect(keyOf(row), !sel.selected.has(keyOf(row)));
+      } else if (key === 'n' && current?.onNew) {
+        event.preventDefault();
+        current.onNew();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [shortcutsOn]);
 
   // ── Loading ────────────────────────────────────────────────────────────────
 
@@ -945,6 +990,7 @@ export function PlatformDataGrid<T>({
             className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
+            ref={searchInputRef}
             id={searchId}
             type="search"
             placeholder={searchPlaceholder ?? t('searchPlaceholder')}
@@ -1194,6 +1240,8 @@ export function PlatformDataGrid<T>({
         ) : null}
 
         {/* ── Table ────────────────────────────────────────────────────────── */}
+        {/* `contents`: a handle for the shortcuts to find row links, adding no box of its own. */}
+        <div ref={tableRef} className="contents">
         <TableScroll
           aria-label={label}
           // The panel around it already draws the frame; a second border here would read as a
@@ -1335,11 +1383,30 @@ export function PlatformDataGrid<T>({
             </TableBody>
           </Table>
         </TableScroll>
+        </div>
 
         {/* ── Footer ─────────────────────────────────────────────────────────
             Paginated lists get the full control bar; an unpaginated one still says how much
             of the data it is showing, because "1 result" at the top of a list you have
             scrolled away from stops being visible exactly when you want it. */}
+        {shortcuts && visible.length > 0 ? (
+          <p className="hidden border-t border-border px-4 py-2 text-caption text-muted-foreground md:block" aria-hidden="true">
+            <kbd className="rounded border border-border px-1 font-mono">/</kbd> {t('keySearch')} ·{' '}
+            <kbd className="rounded border border-border px-1 font-mono">J</kbd>{' '}
+            <kbd className="rounded border border-border px-1 font-mono">K</kbd> {t('keyMove')} ·{' '}
+            <kbd className="rounded border border-border px-1 font-mono">Enter</kbd> {t('keyOpen')}
+            {selection ? (
+              <>
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">X</kbd> {t('keySelect')}
+              </>
+            ) : null}
+            {shortcuts.onNew ? (
+              <>
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">N</kbd> {t('keyNew')}
+              </>
+            ) : null}
+          </p>
+        ) : null}
         {paged && rowCount > 0 ? (
           <div className="border-t border-border px-4 py-3">
             <PaginationBar

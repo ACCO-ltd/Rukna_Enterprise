@@ -78,7 +78,9 @@ export function InvoicesList() {
   const { can } = usePermissions();
   const createAction = can(ACCOUNTING_PERMISSIONS.manageReceivables) ? (
     <Button asChild>
-      <Link href="/finance/accounting/invoices/new">{t('newInvoice')}</Link>
+      <Link href="/finance/accounting/invoices/new" data-shortcut-new="">
+        {t('newInvoice')}
+      </Link>
     </Button>
   ) : null;
 
@@ -347,6 +349,12 @@ export function InvoicesList() {
       resultLabel={(count) => t('countLabel', { count })}
       pagination={{ defaultPageSize: 25 }}
       listState={{ search, onSearchChange: setSearch, sort, onSortChange: setSort }}
+      shortcuts={{
+        // Follows the visible "New invoice" link, so N and the button can never go to different places.
+        onNew: createAction
+          ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
+          : undefined,
+      }}
       exportAs={{ fileName: `invoices-${today}`, sheetName: t('title') }}
       savedViews={
         <>

@@ -108,7 +108,12 @@
     "noMatchesHint": "Try clearing a filter or changing your search.",
     "export": "Export",
     "exportCsv": "CSV · {count, plural, one {# row} other {# rows}}",
-    "exportXlsx": "Excel · {count, plural, one {# row} other {# rows}}"
+    "exportXlsx": "Excel · {count, plural, one {# row} other {# rows}}",
+    "keySearch": "search",
+    "keyMove": "move",
+    "keyOpen": "open",
+    "keySelect": "select",
+    "keyNew": "new"
   },
   "emptyState": {
     "noData": "No items yet",

@@ -56,3 +56,41 @@ describe('PlatformDataGrid export (Step 2b, ADR-047)', () => {
     ]);
   });
 });
+
+describe('PlatformDataGrid shortcuts (Step 2d, ADR-047)', () => {
+  const linkRows = rows.slice(0, 3);
+  it('/ focuses search; J/K walk the row links; X selects; N creates — never while typing', async () => {
+    const onNew = vi.fn();
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(
+      <PlatformDataGrid
+        columns={columns}
+        data={linkRows}
+        rowKey={(r) => r.id}
+        rowHref={(r) => `/rows/${r.id}`}
+        label="Rows"
+        selection={{ selected: new Set(), onSelect, onSelectAll: vi.fn(), actions: null }}
+        shortcuts={{ onNew }}
+      />,
+    );
+    await user.keyboard('j');
+    expect(screen.getByRole('link', { name: 'Even 0' })).toHaveFocus();
+    await user.keyboard('j');
+    expect(screen.getByRole('link', { name: 'Odd 1' })).toHaveFocus();
+    await user.keyboard('k');
+    expect(screen.getByRole('link', { name: 'Even 0' })).toHaveFocus();
+    await user.keyboard('x');
+    expect(onSelect).toHaveBeenCalledWith('r0', true);
+
+    await user.keyboard('/');
+    expect(screen.getByRole('searchbox')).toHaveFocus();
+    await user.keyboard('n');
+    expect(onNew).not.toHaveBeenCalled(); // typed into search, not a shortcut
+    expect(screen.getByRole('searchbox')).toHaveValue('n');
+
+    (document.activeElement as HTMLElement).blur();
+    await user.keyboard('n');
+    expect(onNew).toHaveBeenCalledTimes(1);
+  });
+});
