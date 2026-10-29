@@ -37,7 +37,8 @@ export class SupplierPaymentRepository {
     return prisma.supplierPayment.findFirst({
       where: { id, organizationId },
       include: {
-        allocations: { orderBy: { createdAt: 'asc' } },
+        // AP-6 — with the bill's number, so the payment page can say what it settled.
+        allocations: { orderBy: { createdAt: 'asc' }, include: { bill: { select: { billNumber: true, supplierInvoiceNumber: true } } } },
         releaseSignatures: { orderBy: { signedAt: 'asc' } },
       },
     });
@@ -103,14 +104,17 @@ export class SupplierPaymentRepository {
     paymentNumber: string,
     postedBy: string,
   ) {
+    // AP-1 — guarded: a payment rejected or cancelled while it was being posted must not post
+    // (the update finds no row and the posting transaction rolls back).
     return prisma.supplierPayment.update({
-      where: { id },
+      where: { id, documentStatus: { in: ['APPROVED', 'RELEASED'] } },
       data: {
         postingStatus: 'POSTED',
         postedJournalEntryId: journalEntryId,
         paymentNumber,
         postedAt: new Date(),
         postedBy,
+        lastPostingErrorCode: null,
       },
     });
   }
@@ -163,6 +167,18 @@ export class SupplierPaymentRepository {
         postingStatus: data.postingStatus as never,
         createdBy: data.createdBy,
       },
+    });
+  }
+
+  /** Records the GL journal of an allocation created before its journal was posted. */
+  linkAllocationJournal(
+    prisma: TenantPrisma,
+    allocationId: string,
+    journalEntryId: string,
+  ): Promise<SupplierPaymentAllocation> {
+    return prisma.supplierPaymentAllocation.update({
+      where: { id: allocationId },
+      data: { journalEntryId },
     });
   }
 }

@@ -42,12 +42,13 @@ import {
   loadOpeningBalanceApTieOut,
   resolveApControlAccount,
 } from '../infrastructure/opening-balance-tie-out.repository.js';
+import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
+import { paymentApprovedOnSave } from '../../accounting-core/domain/approval-settings.js';
 
 /** 409 for an opening-balance bill whose carried-over payables do not tie to AP control. */
 function openingBalanceNotReconciled(tieOut: OpeningBalanceApTieOut | undefined): ConflictException {
   return new ConflictException({
     message: openingBalanceApTieOutProblem(tieOut) ?? 'Opening-balance payables do not tie to the AP control account.',
-    code: 'OPENING_BALANCE_AP_NOT_RECONCILED',
     errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED',
   });
 }
@@ -94,6 +95,10 @@ export interface CreatePurchaseAllocationDto {
   notes?: string;
 }
 
+/** AP-1 — the states in which a payment can still be rejected or cancelled. */
+const LIVE_UNPOSTED_DOC: readonly string[] = ['DRAFT', 'APPROVED', 'RELEASED'];
+const UNPOSTED: readonly string[] = ['NOT_POSTED', 'FAILED'];
+
 @Injectable()
 export class SupplierPaymentService {
   constructor(
@@ -115,7 +120,42 @@ export class SupplierPaymentService {
     @Optional() @Inject(AWARD_PAYMENT_EVENTS) private readonly events?: AwardPaymentEvents,
     // ADR-045 — the "acting counts as your step" approval used from the award (optional wiring).
     @Optional() private readonly approvals?: ApprovalService,
+    @Optional() private readonly accountingConfig?: AccountingConfigurationService,
   ) {}
+
+  /**
+   * ADR-046 §4 — record a payment from the payments screen. One within the organisation's
+   * auto-approval limit (default the ADR-022 lowest band, $1,000) is approved as it is saved and,
+   * when its bank account is not under dual signatory control, posted too. The bill-approver rule
+   * and governed bands still apply: a payment they stop stays a draft for someone else to approve.
+   * A refusal at posting leaves it approved and says why instead of failing the save.
+   */
+  async record(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
+    const payment = await this.create(identity, dto);
+    if (!this.accountingConfig) return payment;
+    const settings = await this.accountingConfig.getApprovalSettings(identity.activeOrganizationId);
+    if (!paymentApprovedOnSave(settings, new Decimal(payment.totalAmount.toString()))) return payment;
+
+    try {
+      await this.approve(identity, payment.id, { selfApprove: true, note: 'Approved on save (within the auto-approval limit)' });
+    } catch (err) {
+      if (err instanceof ForbiddenException) return { ...payment, approvedOnSave: false as const };
+      throw err;
+    }
+    const prisma = this.tenancyService.getClient();
+    const approved = await this.paymentRepo.findById(prisma, identity.activeOrganizationId, payment.id);
+    if (!approved || approved.documentStatus !== 'APPROVED') return { ...(approved ?? payment), approvedOnSave: false as const };
+    if (await this.signatoryService.requiresDualControl(prisma, approved.bankAccountId)) {
+      return { ...approved, approvedOnSave: true as const, postedOnSave: false as const };
+    }
+    try {
+      await this.post(identity, { paymentId: payment.id });
+      return { ...(await this.findById(identity, payment.id)), approvedOnSave: true as const, postedOnSave: true as const };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The payment could not be posted.';
+      return { ...(await this.findById(identity, payment.id)), approvedOnSave: true as const, postedOnSave: false as const, postOnSaveError: message };
+    }
+  }
 
   /** Stateless role resolver over the same account repository (ADR-024 ACC-POST-001). */
   private get accounts(): PostingAccountResolver {
@@ -153,9 +193,13 @@ export class SupplierPaymentService {
   ): Promise<{ id: string; code: string }> {
     const bank = await prisma.bankAccount.findFirst({
       where: { id: bankAccountId, organizationId: orgId },
-      select: { glAccount: { select: { id: true, code: true } } },
+      select: { accountName: true, status: true, allowsPayments: true, glAccount: { select: { id: true, code: true } } },
     });
     if (!bank) throw new NotFoundException(`BankAccount ${bankAccountId} not found`);
+    // B-1 — an account suspended or closed after the payment was raised no longer pays out.
+    if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
+    }
     if (suppliedCode && suppliedCode !== bank.glAccount.code) {
       throw new ConflictException({
         errorCode: 'BANK_GL_MISMATCH',
@@ -178,6 +222,20 @@ export class SupplierPaymentService {
     const totalAmount = new Decimal(dto.totalAmount);
     if (allocatedAmount.gt(totalAmount)) {
       throw new BadRequestException(`Total allocations exceed payment amount`);
+    }
+
+    // B-1 — money leaves from an account that is open and pays out, in the payment's currency.
+    // (The create path validated no bank account at all — A16.)
+    const bank = await prisma.bankAccount.findFirst({
+      where: { id: dto.bankAccountId, organizationId: orgId },
+      select: { accountName: true, status: true, allowsPayments: true, currencyCode: true },
+    });
+    if (!bank) throw new NotFoundException({ errorCode: 'BANK_ACCOUNT_NOT_FOUND', message: 'Bank account not found.' });
+    if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
+    }
+    if (bank.currencyCode !== dto.currencyCode) {
+      throw new BadRequestException({ errorCode: 'CURRENCY_MISMATCH', message: `${bank.accountName} is in ${bank.currencyCode}, the payment in ${dto.currencyCode}.` });
     }
 
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also process a payment to that vendor.
@@ -387,6 +445,85 @@ export class SupplierPaymentService {
   }
 
   /**
+   * AP-1 — an unposted payment that will not be made. Raising a payment reserves the bills it
+   * settles (A16: their `outstandingAmount` drops at create, so nobody pays them twice), and until
+   * now nothing could release that reservation. Rejecting (an approver, never the person who raised
+   * it — the bill rule) or cancelling (the person who raised it) ends the payment: the bills get
+   * their balance back, any open approval is voided, and the payment stays on record with the reason.
+   * A posted payment is undone by reversal, not here.
+   */
+  async reject(identity: RequestIdentity, paymentId: string, reason: string) {
+    return this.end(identity, paymentId, reason, 'REJECTED');
+  }
+
+  async cancel(identity: RequestIdentity, paymentId: string, reason: string) {
+    return this.end(identity, paymentId, reason, 'CANCELLED');
+  }
+
+  private async end(identity: RequestIdentity, paymentId: string, reason: string, to: 'REJECTED' | 'CANCELLED') {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+    const payment = await this.paymentRepo.findById(prisma, orgId, paymentId);
+    if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
+    if (!LIVE_UNPOSTED_DOC.includes(payment.documentStatus) || !UNPOSTED.includes(payment.postingStatus)) {
+      throw new ConflictException({
+        errorCode: 'PAYMENT_NOT_OPEN',
+        message: payment.postingStatus === 'POSTED'
+          ? 'This payment is posted — reverse it instead.'
+          : `This payment is already ${payment.documentStatus.toLowerCase()}.`,
+      });
+    }
+    if (to === 'REJECTED' && payment.createdBy === userId) {
+      throw new ForbiddenException({ errorCode: 'FORBIDDEN', message: 'You raised this payment, so someone else must reject it. You can cancel it instead.' });
+    }
+    if (to === 'CANCELLED' && payment.createdBy !== userId) {
+      throw new ForbiddenException({ errorCode: 'FORBIDDEN', message: 'Only the person who raised this payment can cancel it. Reject it instead.' });
+    }
+    const why = (reason ?? '').trim();
+    if (!why) throw new BadRequestException({ errorCode: 'REASON_REQUIRED', message: 'Say why the payment will not be made.' });
+
+    const after = await prisma.$transaction(async (tx) => {
+      const stamp = to === 'REJECTED'
+        ? { rejectedAt: new Date(), rejectedBy: userId, rejectionReason: why }
+        : { cancelledAt: new Date(), cancelledBy: userId, cancellationReason: why };
+      // Guarded on the read state: a payment posted a moment ago must never also release its bills.
+      const { count } = await tx.supplierPayment.updateMany({
+        where: { id: paymentId, documentStatus: payment.documentStatus, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } },
+        data: { documentStatus: to, ...stamp },
+      });
+      if (count !== 1) throw new ConflictException('The payment changed a moment ago — reload it and try again.');
+      const held = await tx.supplierPaymentAllocation.findMany({
+        where: { supplierPaymentId: paymentId, postingStatus: 'NOT_POSTED' },
+        select: { supplierBillId: true, allocatedAmount: true },
+      });
+      for (const alloc of held) {
+        await tx.supplierBill.update({
+          where: { id: alloc.supplierBillId },
+          data: { outstandingAmount: { increment: alloc.allocatedAmount } },
+        });
+      }
+      const row = await tx.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
+      if (this.auditOutbox) {
+        await this.auditOutbox.record(tx, {
+          organizationId: orgId,
+          actorUserId: userId,
+          action: to === 'REJECTED' ? 'REJECT' : 'CANCEL',
+          resourceType: 'SupplierPayment',
+          resourceId: paymentId,
+          sourceCommand: to === 'REJECTED' ? 'supplier-payment.reject' : 'supplier-payment.cancel',
+          eventType: to === 'REJECTED' ? 'SUPPLIER_PAYMENT_REJECTED' : 'SUPPLIER_PAYMENT_CANCELLED',
+          idempotencyKey: `supplier-payment-${paymentId}-${to}`,
+          before: { documentStatus: payment.documentStatus },
+          after: { documentStatus: to, reason: why, billsReleased: held.length },
+        });
+      }
+      await this.commandGovernance.voidOpenApprovalIn(tx, WorkflowTransactionType.SUPPLIER_PAYMENT, paymentId);
+      return row;
+    });
+    return after;
+  }
+
+  /**
    * ADR-022 CONST-DOA-005 — one authorized signatory signs to release an APPROVED payment. Release
    * is a dual control distinct from approval: it needs ≥2 distinct signatories of the payment's bank
    * account, and the signer may be neither the payment approver nor the approver of a bill it settles
@@ -548,6 +685,8 @@ export class SupplierPaymentService {
           debitAmount: new Decimal(0),
           creditAmount: totalAmount,
           sourceSubledgerType: 'BANK' as const,
+          // Step 6 (fix forward): the bank line names who was paid, like the AP line it balances.
+          supplierId: payment.supplierId,
         });
 
         // QA LOW — the journal names documents (payment number, supplier), not raw ids.
@@ -670,6 +809,23 @@ export class SupplierPaymentService {
       // alone put an application of a bill posted months later into the (possibly closed) payment
       // month, so it could never post. Applies to every caller of allocateAdvance.
       const applicationDay = bill.billDate.getTime() > payment.accountingDate.getTime() ? bill.billDate : payment.accountingDate;
+
+      // The allocation row is created first so its id keys the GL journal. Keying the journal on
+      // the payment→bill pair made a second allocation of the same pair (or a re-allocation after
+      // a reversal) hit the posting idempotency guard: the guard returned the first journal while
+      // the balances below were drawn down again, so the subledger drifted from the GL.
+      const allocation = await this.paymentRepo.createAllocation(tx as never, {
+        organizationId: orgId,
+        supplierPaymentId: payment.id,
+        supplierBillId: bill.id,
+        allocatedAmount: amount,
+        // Dated as the EVT-AP-005 journal below (later of bill date and payment date), never
+        // `new Date()` — feedback-accounting-date-rule.
+        allocationDate: applicationDay,
+        postingStatus: 'POSTED',
+        createdBy: userId,
+      });
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
@@ -679,7 +835,7 @@ export class SupplierPaymentService {
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-005',
           sourceDocumentType: 'SUPPLIER_PAYMENT',
-          sourceDocumentId: `${payment.id}-alloc-${bill.id}`,
+          sourceDocumentId: `${payment.id}-alloc-${allocation.id}`,
           journalCategory: 'ACCOUNTS_PAYABLE',
           entryPurpose: 'NORMAL',
           postingOrigin: 'SYSTEM_AP',
@@ -703,18 +859,7 @@ export class SupplierPaymentService {
         tx as never,
       );
 
-      const allocation = await this.paymentRepo.createAllocation(tx as never, {
-        organizationId: orgId,
-        supplierPaymentId: payment.id,
-        supplierBillId: bill.id,
-        allocatedAmount: amount,
-        // Dated as the EVT-AP-005 journal above (later of bill date and payment date), never
-        // `new Date()` — feedback-accounting-date-rule.
-        allocationDate: applicationDay,
-        journalEntryId: postResult.journalEntryId,
-        postingStatus: 'POSTED',
-        createdBy: userId,
-      });
+      await this.paymentRepo.linkAllocationJournal(tx as never, allocation.id, postResult.journalEntryId);
 
       // Guarded atomic decrements so two concurrent allocations cannot over-draw the payment's
       // unallocated balance or over-pay the same bill: the `gte` predicate + decrement run as one
@@ -776,6 +921,16 @@ export class SupplierPaymentService {
       throw new BadRequestException(
         `Payment ${paymentId} has ${subsequentAllocs} subsequent advance allocation(s) that must be reversed first.`,
       );
+    }
+
+    // AP-5 — part of the unapplied money came back from the supplier; reversing the payment would
+    // put the whole of it back on the advance account. Reverse the refunds first.
+    const refunds = await prisma.supplierRefund.count({ where: { supplierPaymentId: paymentId, status: 'POSTED' } });
+    if (refunds > 0) {
+      throw new BadRequestException({
+        errorCode: 'PAYMENT_HAS_REFUNDS',
+        message: `Payment ${paymentId} has ${refunds} posted supplier refund(s). Reverse those first.`,
+      });
     }
 
     if (!payment.postedJournalEntryId) {

@@ -110,7 +110,7 @@ describe.each(CHOICES)('construction template (banks=$bankNames.length)', (choic
 });
 
 describe('construction template — shape', () => {
-  it('lists exactly the ADR-040 chart codes (78 without banks)', () => {
+  it('lists exactly the ADR-040 chart codes (79 without banks)', () => {
     const ADR_040_CODES = [
     '10000', '10900', '11000', '12000', '13000', '13100', '13200', '14000', '15000',
     '15100', '15200', '15300', '15400', '15500', '15900', '20000', '21000', '21100', '22000',
@@ -119,11 +119,11 @@ describe('construction template — shape', () => {
     '51600', '51700', '51900', '52000', '52100', '52200', '52300', '53000', '53100', '53200',
     '54000', '54100', '54200', '54300', '55000', '55100', '55200', '55300', '55400', '55500',
     '55900', '60000', '61000', '61100', '61200', '61300', '61400', '61500', '61600', '61700',
-    '61800', '61900', '62000', '62900', '65000', '66000', '66100', '66200', '69000',
+    '61800', '61900', '62000', '62900', '65000', '66000', '66100', '66200', '67000', '69000',
     ];
     const codes = resolveTemplate({ bankNames: [] }).accounts.map((a) => a.code);
     expect([...codes].sort()).toEqual([...ADR_040_CODES].sort());
-    expect(codes).toHaveLength(78);
+    expect(codes).toHaveLength(79);
   });
 
   it('rejects more than MAX_BANKS banks', () => {

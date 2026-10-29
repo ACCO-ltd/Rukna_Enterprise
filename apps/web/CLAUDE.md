@@ -20,25 +20,12 @@ Read these documents **in order** before making any change or answering any ques
 
 ---
 
-## ⚠️ BACKEND BOUNDARY WARNING ⚠️
+## Ownership
 
-The following paths are **NOT** owned by the frontend engineer.
-Do **NOT** modify them. Do **NOT** instruct an AI agent to modify them.
-
-```
-apps/api/**
-apps/api/prisma/schema.prisma
-packages/types/src/**
-docker-compose.yml
-apps/api/.env
-```
-
-If you need a backend change (new endpoint, different response shape, schema addition):
-
-1. STOP — do not implement it yourself
-2. Create a GitHub issue describing what you need
-3. Contact **Abdulsalam** (backend engineer) for review and implementation
-4. Wait for the updated types in `packages/types/` before consuming them
+**Abdulsalam owns the whole repository** (2026-10-27): `apps/web/`, `packages/ui/`, `apps/api/`,
+`packages/types/` and the Prisma schema. Features are built end to end — backend, shared types and
+frontend in the same change. When a screen needs a new endpoint or response field, build it in
+`apps/api/` and `packages/types/` first, then consume it here. Keep `api-reference.md` in sync.
 
 If you have a question about construction domain logic (how an IPC works, what triggers a
 retention release, approval chain rules):
@@ -49,11 +36,11 @@ Implementing incorrect business logic is worse than waiting for clarification.
 
 ---
 
-## What You Own
+## What This File Covers
 
 ```
-apps/web/src/**           ← Your primary workspace
-packages/ui/src/**        ← Shared UI components (you own this)
+apps/web/src/**           ← The web app
+packages/ui/src/**        ← Shared UI components
 ```
 
 ---
@@ -255,7 +242,7 @@ require a `supplierId`, and no supplier is seeded in any environment.
 
 ### ⏳ Sprint 6 Frontend — Variations / Change Orders
 
-Backend: not yet built. Nothing to build against yet — confirm with Abdulsalam before
+Backend: not yet built. Build the backend first, end to end — confirm the domain with Eng Ahmed before
 planning.
 
 ---
@@ -414,5 +401,5 @@ All API errors return:
 Ask before guessing. Construction ERP errors (wrong retention calculation, wrong IPC amount,
 wrong approval chain) cost real money for real people.
 
-- Technical / API question → Abdulsalam (backend engineer)
+- Technical / API question → Abdulsalam (the engineer)
 - Business / domain question → Eng Ahmed Shirie (CEO, ACCO Ltd)

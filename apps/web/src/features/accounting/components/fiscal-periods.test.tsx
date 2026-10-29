@@ -132,9 +132,10 @@ describe('FiscalPeriods', () => {
 
       await screen.findByText('January 2026');
 
-      // OPEN → lock, LOCKED → close, CLOSED → reopen and rebuild.
+      // OPEN → lock, LOCKED → close or unlock (S-1), CLOSED → reopen and rebuild.
       expect(screen.getByRole('button', { name: 'Lock' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Unlock' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Reopen' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Rebuild snapshot' })).toBeInTheDocument();
     });

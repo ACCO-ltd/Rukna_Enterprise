@@ -203,7 +203,7 @@ export function ControlsSection() {
               checking
               checkingLabel="Checking this number is not already in use…"
             >
-              <Input id="ds-code2" defaultValue="ACCO-2026-0184" />
+              <Input id="ds-code2" defaultValue="PRJ-2026-0184" />
             </FormField>
 
             <FormField

@@ -1,0 +1,112 @@
+/**
+ * Step 4 — Finance Home figures from the live ledger.
+ *
+ *   FH-01  an issued invoice part-paid into the bank shows as cash, receivable (aged) and month activity
+ *   FH-02  a caller with only manage:receivable sees receivables, not cash or the month
+ *   FH-03  the receivables aging lists the same open invoice, by client and bucket, as Finance Home
+ *   FH-04  the payables aging includes opening-balance bills; each side keeps its own permission
+ */
+
+import { PrismaClient } from '@prisma/client';
+import { PERMISSIONS } from '@erp/types';
+
+import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests__/helpers/fixture.factory';
+import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
+import { FinanceHomeService } from '../application/finance-home.service';
+import { FinanceHomeRepository } from '../infrastructure/finance-home.repository';
+import { AgingReportService } from '../application/aging-report.service';
+
+const prisma = new PrismaClient();
+let env: AccountingTestEnv;
+let svc: AccountingServices;
+let home: FinanceHomeService;
+
+beforeAll(async () => {
+  env = await AccountingFixtureFactory.create(prisma);
+  svc = buildServices(prisma);
+  home = new FinanceHomeService({ getClient: () => prisma } as never, new FinanceHomeRepository());
+  for (const [code, name, accountClass, subtype] of [
+    ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
+    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
+  ] as const) {
+    const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
+    await prisma.accountVersion.create({
+      data: { accountId: a.id, versionNumber: 1, name, accountClass, accountSubtype: subtype, isPostingAllowed: true, isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED', effectiveFrom: new Date('2020-01-01'), changedBy: env.identity.userId },
+    });
+  }
+  const openDay = env.periods.openStart.toISOString().slice(0, 10);
+  const inv = await svc.clientInvoiceService.createManual(env.identity, {
+    clientId: env.clientId,
+    invoiceDate: openDay,
+    dueDate: openDay,
+    currencyCode: 'USD',
+    paymentTerms: 'Due on receipt',
+    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1000.00', revenueAccountCode: '42100' }],
+  });
+  await svc.clientInvoiceService.issue(env.identity, inv.id);
+  await svc.customerReceiptService.receive(env.identity, {
+    clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: openDay, amount: '400.00', currency: 'USD',
+    allocations: [{ clientInvoiceId: inv.id, amount: 400 }],
+  });
+}, 60_000);
+
+afterAll(async () => {
+  await AccountingFixtureFactory.cleanup(prisma, env.orgId);
+  await prisma.$disconnect();
+});
+
+it('FH-01: cash, aged receivables and the month come from the ledger', async () => {
+  // "Today" is 45 days after the due date, inside the open period's month for the month figures.
+  const due = env.periods.openStart;
+  const today = new Date(due.getTime() + 45 * 86_400_000);
+  const r = await home.home({ ...env.identity, permissions: [PERMISSIONS.accountingView] }, today);
+
+  expect(r.cash?.accounts.find((a) => a.bankAccountId === env.bankAccountId)?.balance).toBe('400.00');
+  // 1000 + 5% tax = 1050, less 400 received.
+  expect(r.receivables).toMatchObject({ outstanding: '650.00', overdue: '650.00' });
+  expect(r.receivables?.aging.find((b) => b.key === 'd31_60')).toEqual({ key: 'd31_60', amount: '650.00', count: 1 });
+  expect(r.receivables?.topOverdue[0]).toMatchObject({ clientId: env.clientId, overdue: '650.00', oldestDaysLate: 45 });
+
+  const inMonth = await home.home({ ...env.identity, permissions: [PERMISSIONS.accountingView] }, due);
+  expect(inMonth.month).toMatchObject({ invoiced: '1050.00', collected: '400.00' });
+});
+
+it('FH-02: a receivables clerk sees receivables only', async () => {
+  const r = await home.home({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] });
+  expect(r.receivables).not.toBeNull();
+  expect(r.cash).toBeNull();
+  expect(r.payables).toBeNull();
+  expect(r.month).toBeNull();
+});
+
+it('FH-03: the receivables aging agrees with Finance Home, by client and bucket', async () => {
+  const today = new Date(env.periods.openStart.getTime() + 45 * 86_400_000);
+  const aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
+  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'receivables', today);
+  expect(r.total).toBe('650.00');
+  expect(r.totals.d31_60).toBe('650.00');
+  expect(r.rows).toHaveLength(1);
+  expect(r.rows[0]).toMatchObject({ partyId: env.clientId, total: '650.00', oldestDaysLate: 45 });
+  expect(r.rows[0].documents[0]).toMatchObject({ outstanding: '650.00', daysLate: 45, bucket: 'd31_60', opening: false });
+  expect(r.rows[0].documents[0].number).toMatch(/^INV-/);
+});
+
+it('FH-04: the payables aging includes opening bills; each side has its own permission', async () => {
+  const today = new Date('2026-03-31T00:00:00Z');
+  await prisma.supplierBill.create({
+    data: {
+      organizationId: env.orgId, supplierId: env.supplierId, supplierInvoiceNumber: 'OPEN-1', supplierInvoiceNumberNorm: 'OPEN1',
+      billDate: new Date('2026-01-01'), dueDate: new Date('2026-01-31'), currencyCode: 'USD',
+      subtotal: 500, vatAmount: 0, totalAmount: 500, outstandingAmount: 500,
+      documentStatus: 'APPROVED', postingStatus: 'OPENING_BALANCE', createdBy: env.identity.userId,
+    },
+  });
+  const aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
+  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.payablesManage] }, 'payables', today);
+  const row = r.rows.find((x) => x.partyId === env.supplierId)!;
+  expect(row.buckets.d31_60).toBe('500.00');
+  expect(row.documents).toEqual([expect.objectContaining({ number: 'OPEN-1', daysLate: 59, opening: true, dueDate: '2026-01-31' })]);
+
+  await expect(aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'payables', today))
+    .rejects.toMatchObject({ status: 403 });
+});

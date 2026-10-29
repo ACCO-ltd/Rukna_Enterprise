@@ -37,6 +37,7 @@ import { PostingPreviewDialog } from '@/features/accounting/components/posting-p
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
+import { DebitNoteDialog } from '@/features/debit-notes/debit-note-dialog';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -56,6 +57,7 @@ import {
   useBillMatch,
   usePostSupplierBill,
   useRejectSupplierBill,
+  useCancelSupplierBill,
   useReturnSupplierBill,
   useReverseSupplierBill,
   useSubmitSupplierBill,
@@ -99,7 +101,8 @@ export function BillDocumentHeader({
   const { can } = usePermissions();
   const router = useRouter();
 
-  const [pending, setPending] = useState<BillAction | null>(null);
+  const [pending, setPending] = useState<BillAction | 'cancel' | null>(null);
+  const [debitNoteOpen, setDebitNoteOpen] = useState(false);
 
   const accounts = useAccounts();
   const profiles = usePostingProfiles();
@@ -110,6 +113,7 @@ export function BillDocumentHeader({
   const reverse = useReverseSupplierBill();
   const returnBill = useReturnSupplierBill();
   const reject = useRejectSupplierBill();
+  const cancel = useCancelSupplierBill();
 
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
   const viewerId = useSession().user?.id ?? null;
@@ -154,6 +158,14 @@ export function BillDocumentHeader({
       : []),
     ...(allowed.includes('reject')
       ? [{ key: 'reject', label: t('reject'), onSelect: () => setPending('reject'), destructive: true }]
+      : []),
+    // AP-4 — a credit the supplier gave against a posted bill with a balance left to pay.
+    ...(canManage && bill.postingStatus === 'POSTED' && Number(bill.outstandingAmount) > 0
+      ? [{ key: 'debit-note', label: t('recordDebitNote'), onSelect: () => setDebitNoteOpen(true) }]
+      : []),
+    // AP-2 — a draft that will never be submitted (a duplicate, the wrong supplier).
+    ...(canManage && bill.documentStatus === 'DRAFT'
+      ? [{ key: 'cancel', label: t('cancelDraft'), onSelect: () => setPending('cancel'), destructive: true }]
       : []),
     ...(allowed.includes('reverse')
       ? [{ key: 'reverse', label: t('reverse'), onSelect: () => setPending('reverse'), destructive: true }]
@@ -243,6 +255,14 @@ export function BillDocumentHeader({
         >
           {bill.rejectionReason ?? ''}
         </Notice>
+      ) : bill.documentStatus === 'CANCELLED' ? (
+        <Notice
+          tone="historical"
+          title={t('notice.cancelledTitle', { date: formatDate(bill.cancelledAt ?? null, locale) ?? '' })}
+          className="mb-6"
+        >
+          {bill.cancellationReason ?? ''}
+        </Notice>
       ) : notice === 'post-blocked' ? (
         <Notice
           tone="attention"
@@ -314,6 +334,22 @@ export function BillDocumentHeader({
           isPending={returnBill.isPending}
           errorMessage={commandError(returnBill.error, tc('loadFailed'))}
           onConfirm={(reason) => returnBill.mutate({ id: bill.id, reason }, { onSuccess: close })}
+          onDismiss={close}
+        />
+      ) : null}
+
+      <DebitNoteDialog open={debitNoteOpen} onOpenChange={setDebitNoteOpen} billId={bill.id} leftToPay={bill.outstandingAmount} />
+
+      {pending === 'cancel' ? (
+        <ConfirmActionDialog
+          title={t('cancelTitle', { bill: billName })}
+          description={t('cancelBody')}
+          confirmLabel={t('cancelDraft')}
+          reason={{ label: t('cancelReason'), required: true }}
+          destructive
+          isPending={cancel.isPending}
+          errorMessage={commandError(cancel.error, tc('loadFailed'))}
+          onConfirm={(reason) => cancel.mutate({ id: bill.id, reason }, { onSuccess: close })}
           onDismiss={close}
         />
       ) : null}

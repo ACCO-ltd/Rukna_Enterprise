@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
+  Controller, Get, Post, Put, Body, Param, Query,
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -9,11 +9,15 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { ClientInvoiceService } from '../application/client-invoice.service.js';
+import { IpcBillingCheckService } from '../application/ipc-billing-check.service.js';
 import { GenerateInvoiceFromIpcDto } from './dto/generate-invoice-from-ipc.dto.js';
 import { GenerateInvoiceFromInstallmentDto } from './dto/generate-invoice-from-installment.dto.js';
 import { GenerateInvoiceFromSeparateChargeDto } from './dto/generate-invoice-from-separate-charge.dto.js';
+import { GenerateInvoiceFromRetentionReleaseDto } from './dto/generate-invoice-from-retention-release.dto.js';
 import { PostInvoiceDto } from './dto/post-invoice.dto.js';
 import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
+import { ManualInvoiceDto } from './dto/manual-invoice.dto.js';
+import { CancelInvoiceDto } from './dto/cancel-invoice.dto.js';
 
 @ApiTags('Client Invoices')
 @ApiBearerAuth('access-token')
@@ -21,7 +25,10 @@ import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 @RequirePermissions(PERMISSIONS.receivablesManage)
 @Controller('invoices')
 export class ClientInvoiceController {
-  constructor(private readonly clientInvoiceService: ClientInvoiceService) {}
+  constructor(
+    private readonly clientInvoiceService: ClientInvoiceService,
+    private readonly ipcBillingCheckService: IpcBillingCheckService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List client invoices' })
@@ -35,11 +42,58 @@ export class ClientInvoiceController {
     return this.clientInvoiceService.findAll(identity, { clientId, projectId });
   }
 
+  // Declared before `:id` so the path is not read as an invoice id.
+  @Get('income-accounts')
+  @ApiOperation({ summary: 'ADR-048: the active, posting income accounts a hand-typed invoice line may credit' })
+  listIncomeAccounts(@CurrentUser() identity: RequestIdentity) {
+    return this.clientInvoiceService.listIncomeAccounts(identity);
+  }
+
+  @Post('manual')
+  @ApiOperation({
+    summary:
+      'ADR-048: a hand-typed draft invoice for a non-contract sale (lines × income accounts; no project or contract)',
+  })
+  @ApiResponse({ status: 400, description: 'MANUAL_INVOICE_INVALID — details.problems lists every rule broken' })
+  createManual(@CurrentUser() identity: RequestIdentity, @Body() dto: ManualInvoiceDto) {
+    return this.clientInvoiceService.createManual(identity, dto);
+  }
+
+  @Post(':id/cancel')
+  @ApiOperation({ summary: 'Step 2g: cancel an unposted invoice and free its source (not a stage invoice)' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 409, description: 'INVOICE_ALREADY_POSTED | INVOICE_CANCELLED' })
+  @ApiResponse({ status: 400, description: "STAGE_DRAFT_USE_COMMERCIAL — delete it from the contract's Billing tab" })
+  cancelDraft(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: CancelInvoiceDto) {
+    return this.clientInvoiceService.cancelDraft(identity, id, dto.reason);
+  }
+
+  @Put(':id/manual')
+  @ApiOperation({ summary: 'ADR-048: rewrite a DRAFT hand-typed invoice (header and every line)' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 409, description: 'INVOICE_NOT_DRAFT' })
+  updateManual(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ManualInvoiceDto) {
+    return this.clientInvoiceService.updateManual(identity, id, dto);
+  }
+
   @Post('from-ipc')
   @ApiOperation({ summary: 'Generate a draft invoice from an effective IPC (one invoice per IPC)' })
   @ApiResponse({ status: 409, description: 'Invoice already exists for this IPC' })
   generateFromIpc(@CurrentUser() identity: RequestIdentity, @Body() dto: GenerateInvoiceFromIpcDto) {
     return this.clientInvoiceService.generateFromIpc(identity, dto);
+  }
+
+  @Post('from-retention-release')
+  @ApiOperation({
+    summary:
+      'ADR-046 §5: invoice the retention a contract held back, after its retention was released (one per contract)',
+  })
+  @ApiResponse({ status: 400, description: 'Retention not released, nothing held, or certificate invoices unposted' })
+  generateFromRetentionRelease(
+    @CurrentUser() identity: RequestIdentity,
+    @Body() dto: GenerateInvoiceFromRetentionReleaseDto,
+  ) {
+    return this.clientInvoiceService.generateFromRetentionRelease(identity, dto);
   }
 
   @Post('from-installment')
@@ -68,6 +122,17 @@ export class ClientInvoiceController {
     return this.clientInvoiceService.generateFromSeparateCharge(identity, dto);
   }
 
+  // Declared before `:id` so the path is not read as an invoice id.
+  @Get('ipc-billing-check')
+  @ApiOperation({
+    summary:
+      'ADR-046 §5: contracts whose posted IPC invoices bill more (net, before tax) than their latest ' +
+      'certificate certifies — read-only, for correction by credit note',
+  })
+  ipcBillingCheck(@CurrentUser() identity: RequestIdentity) {
+    return this.ipcBillingCheckService.findOverBilledContracts(identity);
+  }
+
   @Get(':id')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Get client invoice details' })
@@ -83,6 +148,15 @@ export class ClientInvoiceController {
   })
   getDocument(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.clientInvoiceService.getOrGenerateDocument(identity, id);
+  }
+
+  @Post(':id/issue')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'ADR-046 §2: issue — approve (if a draft) and post in one action; returns the numbered invoice' })
+  @ApiResponse({ status: 409, description: 'INVOICE_CANCELLED | INVOICE_REVERSED | already posted' })
+  issue(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: PostInvoiceDto) {
+    return this.clientInvoiceService.issue(identity, id, dto);
   }
 
   @Post(':id/approve')

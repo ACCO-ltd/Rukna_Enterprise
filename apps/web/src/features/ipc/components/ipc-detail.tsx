@@ -16,7 +16,10 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  SkeletonRecord,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { ChevronLeft } from 'lucide-react';
 
 import { useBoqTree } from '@/features/boq/hooks/use-boq';
@@ -98,13 +101,7 @@ export function IpcDetail({ contractId, ipaId, ipcId, basePath }: IpcDetailProps
 
   if (certificate.isPending || contract.isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
+      <SkeletonRecord label={tCommon('loading')} />
     );
   }
 
@@ -112,7 +109,17 @@ export function IpcDetail({ contractId, ipaId, ipcId, basePath }: IpcDetailProps
     const notFound = certificate.error instanceof ApiError && certificate.error.status === 404;
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
+        {notFound ? (
+          <Alert variant="error" messages={[t('notFound')]} />
+        ) : (
+          <LoadError
+            message={t('loadFailed')}
+            onRetry={() => {
+              if (certificate.isError) void certificate.refetch();
+              if (contract.isError) void contract.refetch();
+            }}
+          />
+        )}
         <Button variant="outline" asChild>
           <Link href={backHref}>{t('back')}</Link>
         </Button>

@@ -103,6 +103,7 @@ export class SettlementQueryService {
             postingStatus: a.postingStatus,
             paymentId: a.supplierPaymentId,
             paymentDate: a.payment.paymentDate,
+            paymentDocumentStatus: a.payment.documentStatus,
           })),
         );
         // ADR-045 — buyer cash applied to the bill counts as paid (dated the application date).

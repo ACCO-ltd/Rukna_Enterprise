@@ -4,7 +4,7 @@ Status: **SUPERSEDED 2026-09-05 by `docs/design/commercial-workspace-refinement.
 built). This document remains accurate on the ADR-023 backend contract and the billing-model
 branch it specified; the delivered navigation, Overview composition and Billing & Collection went
 further than it describes. Read the design doc first.
-Owners: Frontend — frontend engineer · Backend — Abdulsalam · Domain — Eng Ahmed Shirie
+Owner: Abdulsalam (full stack) · Domain — Eng Ahmed Shirie
 Source of truth: **ADR-023** (billing models). Companion: `contract-creation-form-spec.md`.
 
 ## Purpose

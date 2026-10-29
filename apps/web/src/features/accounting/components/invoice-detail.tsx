@@ -13,6 +13,7 @@ import { useClients } from '@/features/clients/hooks/use-clients';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecycle-error';
 import { formatDate, formatMoney } from '@/lib/format';
+import { ApiError } from '@/lib/api-client';
 import { AccountingSetupNotice } from '@/features/finance/components/accounting-setup-notice';
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import { InvoiceWhatsAppDialog } from '@/features/communications/components/invoice-whatsapp-dialog';
@@ -22,9 +23,14 @@ import { canSendReminder, daysOverdue } from '@/features/communications/reminder
 
 import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
-import { invoiceKeys, useInvoice, useInvoiceAction } from '../hooks/use-invoices';
+import { invoiceKeys, useCancelInvoice, useInvoice, useInvoiceAction, useInvoiceCreditNotes } from '../hooks/use-invoices';
+import { CreditNoteDialog } from '@/features/commercial/components/credit-note-dialog';
+import { WriteOffDialog } from '@/features/write-offs/write-off-dialog';
+import { WriteOffsPanel } from '@/features/write-offs/write-offs-panel';
+import { useWriteOffs } from '@/features/write-offs/hooks';
+import { InvoiceCreditNotes } from '@/features/commercial/components/invoice-credit-notes';
 import {
-  canApprove,
+  canIssue,
   canPost,
   canReverse,
   invoiceBlockReason,
@@ -34,11 +40,16 @@ import type { ClientInvoice, PostInvoicePayload } from '../types';
 import { InvoiceDocumentPreview, MobileInvoicePreviewTrigger } from './invoice-document-preview';
 import { InvoiceStatusBadges } from './invoice-status-badges';
 import { PostInvoiceDialog } from './post-invoice-dialog';
+import { LoadError } from '@/components/load-error';
+import { useApprovalSettings } from '../hooks/use-accounting';
+import { useSession } from '@/features/auth/session/use-session';
+import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 /** An invoice's messages: the invoice sends and its reminders (ADR-042). */
 const INVOICE_MESSAGE_TYPES = ['client_invoice', 'client_invoice_reminder'] as const;
 
-type OpenDialog = 'approve' | 'post' | 'reverse' | 'whatsapp' | 'reminder' | null;
+type OpenDialog = 'issue' | 'approve' | 'post' | 'reverse' | 'cancel' | 'whatsapp' | 'reminder' | null;
 
 export function InvoiceDetail({
   invoiceId,
@@ -56,6 +67,7 @@ export function InvoiceDetail({
 }) {
   const t = useTranslations('accounting.invoices');
   const tCommon = useTranslations('common');
+  const tWriteOff = useTranslations('accounting.writeOff');
   const tLifecycle = useTranslations('common.lifecycleErrors');
   const tReminder = useTranslations('common.messaging.reminder');
   const locale = useLocale() as 'en' | 'ar';
@@ -67,8 +79,15 @@ export function InvoiceDetail({
   const accounts = useAccounts();
   const clients = useClients();
   const action = useInvoiceAction(invoiceId);
+  const cancel = useCancelInvoice();
+  const approvalSettings = useApprovalSettings();
+  const { user } = useSession();
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const writeOffs = useWriteOffs(invoiceId, invoice.data?.postingStatus === 'POSTED' || invoice.data?.postingStatus === 'OPENING_BALANCE');
+  const creditNotes = useInvoiceCreditNotes(invoiceId, invoice.data?.postingStatus === 'POSTED' || invoice.data?.postingStatus === 'REVERSED');
 
   useModuleTrail(invoice.data ? (invoice.data.invoiceNumber ?? t('unnumbered')) : undefined);
 
@@ -85,7 +104,7 @@ export function InvoiceDetail({
   }
 
   if (invoice.isError || !invoice.data) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void invoice.refetch()} />;
   }
 
   const data = invoice.data;
@@ -98,6 +117,10 @@ export function InvoiceDetail({
   const money = (value: string | null) => formatMoney(value, data.currencyCode, locale);
 
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
+  // ADR-046 §8 — at or above the organisation's amount, a draft waits for a second person.
+  const approvalAbove = approvalSettings.data?.invoiceApprovalAbove ?? null;
+  const needsApproval =
+    approvalAbove !== null && toMinorUnits(data.totalAmount, MONEY_SCALE) >= toMinorUnits(approvalAbove, MONEY_SCALE);
   // ADR-042 — an issued invoice (numbered, posted, not cancelled) can be sent on WhatsApp.
   const issued =
     data.postingStatus === 'POSTED' &&
@@ -105,6 +128,13 @@ export function InvoiceDetail({
     Boolean(data.invoiceNumber);
   // ADR-042 step 4 — a manual payment / overdue reminder while something is still outstanding.
   const remindable = canSendReminder(data);
+  // AR-1 — a posted invoice with a balance can be credited (the server caps it at the balance).
+  const canCredit = issued && toMinorUnits(data.outstandingAmount, MONEY_SCALE) > 0;
+  // AR-4 — an issued invoice or an opening balance that still owes can be written off.
+  const canWriteOff =
+    (data.postingStatus === 'POSTED' || data.postingStatus === 'OPENING_BALANCE') &&
+    data.documentStatus !== 'CANCELLED' &&
+    toMinorUnits(data.outstandingAmount, MONEY_SCALE) > 0;
   // Post needs a ready ledger. When it is not, the action is withheld and the notice below the
   // header says why and where to fix it — never a button that fails and rolls back (A7).
   const ledgerBlocked = ledgerBlockedState;
@@ -126,6 +156,7 @@ export function InvoiceDetail({
 
   const close = () => {
     action.reset();
+    cancel.reset();
     setDialog(null);
   };
 
@@ -159,13 +190,28 @@ export function InvoiceDetail({
         actions={
           mayManage ? (
             <>
-              {canApprove(data) ? (
+              {data.isManual && data.documentStatus === 'DRAFT' ? (
+                <Button variant="outline" asChild>
+                  <Link href={`/finance/accounting/invoices/${data.id}/edit`}>{t('editDraft')}</Link>
+                </Button>
+              ) : null}
+              {/* ADR-046 §2 — one action from draft to a numbered, posted invoice; §8 — a large
+                  draft is approved by a second person first. */}
+              {canIssue(data) && !ledgerBlocked && !needsApproval ? (
+                <Button onClick={() => setDialog('issue')}>{t('issueAction')}</Button>
+              ) : null}
+              {canIssue(data) && needsApproval && user?.id !== data.createdBy ? (
                 <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
+              ) : null}
+              {canIssue(data) && needsApproval && user?.id === data.createdBy ? (
+                <p className="self-center text-body-sm text-muted-foreground">
+                  {t('needsApproval', { amount: money(approvalSettings.data?.invoiceApprovalAbove ?? null) ?? '' })}
+                </p>
               ) : null}
 
               {canPost(data) && !ledgerBlocked ? (
                 <Button onClick={() => setDialog('post')}>{t('postAction')}</Button>
-              ) : canPost(data) ? null : (
+              ) : canPost(data) || canIssue(data) ? null : (
                 <BlockedHint invoice={data} />
               )}
 
@@ -181,9 +227,33 @@ export function InvoiceDetail({
                 </Button>
               ) : null}
 
+              {/* AR-1 — the way to correct an issued invoice short of reversing it: any posted
+                  invoice with a balance, project or not. */}
+              {canCredit ? (
+                <Button variant="outline" onClick={() => setCreditOpen(true)}>
+                  {t('creditNote')}
+                </Button>
+              ) : null}
+
+              {/* AR-4 — what the client will not pay: posts now up to the limit, else Approvals. */}
+              {canWriteOff ? (
+                <Button variant="outline" onClick={() => setWriteOffOpen(true)}>
+                  {tWriteOff('action')}
+                </Button>
+              ) : null}
+
               {canReverse(data) ? (
                 <Button variant="outline" onClick={() => setDialog('reverse')}>
                   {t('reverse')}
+                </Button>
+              ) : null}
+
+              {/* Step 2g — a stage-plan draft is deleted from the contract's Billing tab instead. */}
+              {data.documentStatus !== 'CANCELLED' &&
+              data.postingStatus === 'NOT_POSTED' &&
+              data.source?.kind !== 'INSTALLMENT' ? (
+                <Button variant="ghost" className="text-danger" onClick={() => setDialog('cancel')}>
+                  {t('cancelDraft.action')}
                 </Button>
               ) : null}
             </>
@@ -192,6 +262,41 @@ export function InvoiceDetail({
       />
 
       {data.postingStatus !== 'POSTED' ? <AccountingSetupNotice /> : null}
+
+      {data.isManual && data.lines && data.lines.length > 0 ? <ManualLinesTable invoice={data} locale={locale} /> : null}
+
+      <InvoiceCreditNotes
+        projectId={data.projectId ?? ''}
+        invoiceId={data.id}
+        creditNotes={creditNotes.data ?? []}
+        hidden={false}
+        canReverse={mayManage}
+      />
+
+      <WriteOffsPanel writeOffs={writeOffs.data ?? []} canManage={mayManage} />
+
+      <AttachmentsPanel kind="INVOICE" ownerId={data.id} />
+
+      {canWriteOff ? (
+        <WriteOffDialog
+          open={writeOffOpen}
+          onOpenChange={setWriteOffOpen}
+          invoiceId={data.id}
+          balance={data.outstandingAmount}
+          approvalAbove={approvalSettings.data?.writeOffApprovalAbove ?? null}
+        />
+      ) : null}
+
+      {canCredit ? (
+        <CreditNoteDialog
+          open={creditOpen}
+          onOpenChange={setCreditOpen}
+          projectId={data.projectId ?? ''}
+          invoiceId={data.id}
+          invoiceNumber={data.invoiceNumber}
+          balanceDue={data.outstandingAmount}
+        />
+      ) : null}
 
       {state === 'DRAFT' ? (
         <p className="text-caption text-muted-foreground">{t('approveHint')}</p>
@@ -282,6 +387,34 @@ export function InvoiceDetail({
         />
       ) : null}
 
+      {dialog === 'issue' ? (
+        <PostInvoiceDialog
+          mode="issue"
+          invoice={data}
+          accounts={accounts.data ?? []}
+          isPending={action.isPending}
+          errorMessage={errorMessage}
+          onConfirm={(payload: PostInvoicePayload) => run({ type: 'issue', payload })}
+          onDismiss={close}
+        />
+      ) : null}
+
+      {dialog === 'cancel' ? (
+        <ConfirmActionDialog
+          title={t('cancelDraft.confirmTitle')}
+          description={t('cancelDraft.confirmBody')}
+          confirmLabel={t('cancelDraft.confirm')}
+          destructive
+          reason={{ required: false, maxLength: 500 }}
+          isPending={cancel.isPending}
+          errorMessage={cancel.isError ? (cancel.error instanceof ApiError ? cancel.error.message : t('cancelDraft.failed')) : undefined}
+          onConfirm={(reason) =>
+            cancel.mutate({ id: data.id, reason: reason.trim() || undefined }, { onSuccess: () => setDialog(null) })
+          }
+          onDismiss={close}
+        />
+      ) : null}
+
       {dialog === 'post' ? (
         <PostInvoiceDialog
           invoice={data}
@@ -334,6 +467,43 @@ export function InvoiceDetail({
         />
       ) : null}
     </div>
+  );
+}
+
+/** ADR-048 — what a hand-typed invoice bills, line by line, with the income account each credits. */
+function ManualLinesTable({ invoice, locale }: { invoice: ClientInvoice; locale: 'en' | 'ar' }) {
+  const t = useTranslations('accounting.invoices.manual');
+  const money = (value: string) => formatMoney(value, invoice.currencyCode, locale) ?? value;
+  return (
+    <section className="overflow-hidden rounded-panel border border-border bg-surface" aria-labelledby="manual-lines-detail">
+      <h2 id="manual-lines-detail" className="border-b border-border px-4 py-3 text-body font-semibold text-foreground">
+        {t('linesTitle')}
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-body-sm">
+          <thead className="bg-surface-subtle text-caption text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-4 py-2 text-start font-medium">{t('colDescription')}</th>
+              <th scope="col" className="px-4 py-2 text-end font-medium">{t('colQty')}</th>
+              <th scope="col" className="px-4 py-2 text-end font-medium">{t('colRate')}</th>
+              <th scope="col" className="px-4 py-2 text-start font-medium">{t('colAccount')}</th>
+              <th scope="col" className="px-4 py-2 text-end font-medium">{t('colAmount')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(invoice.lines ?? []).map((line) => (
+              <tr key={line.lineNo} className="border-t border-border">
+                <td className="px-4 py-2.5">{line.description}</td>
+                <td className="px-4 py-2.5 text-end tabular-nums">{line.quantity}</td>
+                <td className="px-4 py-2.5 text-end tabular-nums">{money(line.unitPrice)}</td>
+                <td className="px-4 py-2.5 font-mono text-caption text-muted-foreground">{line.revenueAccountCode}</td>
+                <td className="px-4 py-2.5 text-end font-semibold tabular-nums">{money(line.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

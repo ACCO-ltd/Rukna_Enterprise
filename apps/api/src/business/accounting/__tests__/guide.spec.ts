@@ -4,6 +4,8 @@
  *   GD-01  returns the four cycles in order; ready + setup DONE once the chart is complete
  *   GD-02  daily cycle surfaces a draft invoice as an awaiting item (with count)
  *   GD-03  a view-only user sees actionable steps as RESTRICTED with no href
+ *   GD-04  setup lists eight steps; the three optional ones do not hold back `ready`, and the
+ *          company-details and import steps follow their own permissions
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -83,4 +85,31 @@ it('GD-03: a view-only user sees actionable daily steps as RESTRICTED (no href)'
   expect(invoices.status).toBe('RESTRICTED');
   expect(invoices.href).toBeNull();
   expect(invoices.count).toBeUndefined();
+});
+
+// ─── GD-04 ────────────────────────────────────────────────────────────────────
+it('GD-04: setup has eight steps; optional ones do not hold back ready', async () => {
+  const res = await guide.getGuide(env.identity);
+  const setup = res.cycles.find((c) => c.key === 'setup')!;
+  expect(res.organizationName).not.toBe('');
+  expect(setup.steps.map((s) => [s.key, s.optional ?? false])).toEqual([
+    ['company-details', true],
+    ['chart-of-accounts', false],
+    ['fiscal-year', false],
+    ['bank-accounts', false],
+    ['posting-profiles', false],
+    ['document-numbering', false],
+    ['import-parties', true],
+    ['opening-balances', true],
+  ]);
+  expect(res.ready).toBe(true);
+  // The fixture has a supplier and a client but no company tax number and no opening journal.
+  expect(setup.steps.find((s) => s.key === 'import-parties')!.status).toBe('DONE');
+  expect(setup.steps.find((s) => s.key === 'company-details')!.status).not.toBe('DONE');
+
+  // A payables clerk may import, but company details belong to an administrator.
+  const clerk = await guide.getSetupCycle({ ...env.identity, permissions: ['manage:payable'] });
+  const byKey = new Map(clerk.cycle.steps.map((s) => [s.key, s]));
+  expect(byKey.get('company-details')).toMatchObject({ status: 'RESTRICTED', href: null });
+  expect(byKey.get('import-parties')!.status).toBe('DONE');
 });

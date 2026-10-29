@@ -59,6 +59,7 @@ function build(over: Over = {}) {
     {} as never, // commandGovernance — unused here
     { bind: jest.fn(), markImmutable: jest.fn(), markManyImmutable: jest.fn() } as never,
     { findApproved: jest.fn().mockResolvedValue(null) } as never,
+    {} as never, // companyTemplates (Step 1b) — unused here
   );
   return { repo, service };
 }

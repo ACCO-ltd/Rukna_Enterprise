@@ -55,6 +55,10 @@ function buildPrisma(overrides: Partial<{
     clientInvoice: {
       findFirst: jest.fn().mockResolvedValue(invoiceReturnValue),
     },
+    // An invoice without lines (a certificate) credits the project revenue role.
+    clientInvoiceLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     creditNote: {
       aggregate: jest.fn()
         .mockResolvedValueOnce(overrides.creditNoteAggregate ?? { _sum: { totalAmount: null } })
@@ -196,7 +200,7 @@ describe('createCreditNote', () => {
     }).catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'CREDIT_EXCEEDS_OUTSTANDING',
+      errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
     });
   });
 });

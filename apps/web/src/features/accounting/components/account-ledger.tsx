@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   DateRangePicker,
   FilterBar,
   FilterField,
@@ -24,6 +23,7 @@ import { accountLabel, postableAccounts } from '../account-display';
 import { useAccountLedger, useAccounts } from '../hooks/use-accounting';
 import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ReportActions } from './report-actions';
+import { LoadError } from '@/components/load-error';
 
 /** The current month — the range a ledger is read for most often. */
 function currentMonth(): { from: string; to: string } {
@@ -135,7 +135,7 @@ export function AccountLedgerReport() {
           />
         </div>
       ) : ledger.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void ledger.refetch()} />
       ) : (
         <>
           <section className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">

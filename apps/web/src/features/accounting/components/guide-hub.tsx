@@ -14,11 +14,6 @@ import { useAccountingSetupStatus } from '../hooks/use-accounting';
 import { AccountingSetupDialog } from './accounting-setup-dialog';
 import { PartialSetupNotice } from './partial-setup-notice';
 
-/**
- * Setup steps the one-step install does not do and that are optional — importing opening balances
- * from a prior system. Once only these remain, setup is complete for practical purposes.
- */
-const OPTIONAL_SETUP_STEPS = new Set(['opening-balances']);
 
 /**
  * How the setup part of the hub reads.
@@ -40,7 +35,9 @@ function setupModeOf(
   const nothingDone = !setup.steps.some((step) => step.status === 'DONE');
   if (!mayManage && nothingDone) return 'awaitAdmin';
   const remaining = setup.steps.filter((step) => step.status !== 'DONE' && step.status !== 'NA');
-  return remaining.every((step) => OPTIONAL_SETUP_STEPS.has(step.key)) ? 'done' : 'checklist';
+  // Optional steps (company details, importing suppliers and clients, opening balances — the server
+  // flags them) do not hold setup open.
+  return remaining.every((step) => step.optional) ? 'done' : 'checklist';
 }
 
 /**

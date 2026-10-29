@@ -243,7 +243,9 @@ export class ProcurementFixtureFactory {
     await prisma.$executeRaw`DELETE FROM journal_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM journal_entries WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_payment_allocations WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM supplier_refunds WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_payments WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM supplier_debit_notes WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_bill_lines WHERE supplier_bill_id IN (SELECT id FROM supplier_bills WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM supplier_bills WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM document_number_sequences WHERE organization_id = ${orgId}`;

@@ -395,8 +395,39 @@ export interface ProjectRollupResponse {
 // phases from a server-side template so the user edits rather than invents; `suggest-weights`
 // derives each phase's progress weight from its assigned BOQ value so the user doesn't guess.
 
-/** The schedule templates the wizard can apply (single-tenant; more may be added later). */
-export type ScheduleTemplateKey = 'ACCO_STANDARD_BUILDING';
+/** The schedule templates the wizard can apply. STANDARD_BUILDING reads the company's copy. */
+export type ScheduleTemplateKey = 'STANDARD_BUILDING';
+
+// ─── Company templates (Step 1b, ADR-047) ──────────────────────────────────
+// Rukna ships a platform default for each template; a company may save its own copy and reset it
+// back to the default at any time. `isDefault` tells the UI which one is in force.
+
+/** One stage of the standard payment plan. `percentage` is a decimal string, e.g. "40". */
+export interface PaymentPlanTemplateRow {
+  name: string;
+  percentage: string;
+  isAdvance: boolean;
+}
+
+/** One phase of the standard building schedule → one work package when applied. */
+export interface ScheduleTemplatePhaseDto {
+  name: string;
+  durationDays: number;
+  scheduleOnly: boolean;
+}
+
+export interface CompanyTemplatesResponse {
+  paymentPlan: { rows: PaymentPlanTemplateRow[]; isDefault: boolean };
+  schedule: { phases: ScheduleTemplatePhaseDto[]; isDefault: boolean };
+}
+
+export interface UpdatePaymentPlanTemplateInput {
+  rows: PaymentPlanTemplateRow[];
+}
+
+export interface UpdateScheduleTemplateInput {
+  phases: ScheduleTemplatePhaseDto[];
+}
 
 /**
  * One work package created by `apply-schedule-template`. A thin echo of the seeded rows so the
@@ -2309,11 +2340,56 @@ export type ArPostingStatus =
  * `SEPARATE_CHARGE` (ADR-029 R-4) = a one-off invoice for a SEPARATE_CHARGE BOQ leaf, billed outside
  * the milestone schedule; it feeds total client revenue, never the contract value (CONST-BOQ-030).
  */
-export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
+// RETENTION_RELEASE (ADR-046 §5): the invoice billing a contract's held retention.
+export type ClientInvoiceSourceKind =
+  | 'INSTALLMENT'
+  | 'IPC'
+  | 'SEPARATE_CHARGE'
+  | 'RETENTION_RELEASE'
+  /** ADR-048 — a hand-typed invoice for a non-contract sale. */
+  | 'MANUAL'
+  | 'NONE';
+
+// ─── Hand-typed invoices (ADR-048) ─────────────────────────────────────────
+// Only for sales outside a construction contract (equipment hire, materials, services): no project,
+// no contract. Contract billing stays source-only (ADR-037).
+
+export interface ManualInvoiceLineInput {
+  description: string;
+  /** Decimal string, up to 3 dp. */
+  quantity: string;
+  /** Decimal string, up to 2 dp. */
+  unitPrice: string;
+  /** An active, posting INCOME account (e.g. 42100 Equipment hire income). */
+  revenueAccountCode: string;
+}
+
+export interface ManualInvoiceInput {
+  clientId: string;
+  invoiceDate: string;
+  dueDate: string;
+  currencyCode: string;
+  /** Omitted = the organisation's default sales tax code. */
+  taxCodeId?: string;
+  paymentTerms?: string;
+  lines: ManualInvoiceLineInput[];
+}
+
+export interface ManualInvoiceLineDto {
+  lineNo: number;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  amount: string;
+  revenueAccountCode: string;
+}
 
 export interface ClientInvoiceSource {
   kind: ClientInvoiceSourceKind;
-  /** The source document's human reference — the installment name, or the IPA ref behind the IPC. */
+  /**
+   * The source document's human reference — the installment name, the IPA ref behind the IPC, or the
+   * contract number of a retention release.
+   */
   label: string | null;
   /** The source record's id, for a drill-through. Null for `NONE`. */
   id: string | null;
@@ -2845,6 +2921,11 @@ export interface GuideStep {
   href: string | null;
   /** For queue-style daily steps: how many items await the user. */
   count?: number;
+  /**
+   * Step 5 — a setup step the ledger can post without (company details, importing suppliers and
+   * clients, opening balances). `ready` does not wait for it; the setup checklist still lists it.
+   */
+  optional?: boolean;
 }
 
 export type GuideCycleKey = 'setup' | 'daily' | 'month_end' | 'year_end';
@@ -2876,6 +2957,8 @@ export interface GuideCycle {
 export interface AccountingGuideResponse {
   /** Mirrors readiness.ready — setup is complete and the ledger can accept postings. */
   ready: boolean;
+  /** Step 5 — the company the checklist is getting ready ("Get {organizationName} ready"). */
+  organizationName: string;
   cycles: GuideCycle[];
   currentPeriod: { id: string; name: string; status: string; endDate: string } | null;
   fiscalYear: { id: string; name: string; status: string } | null;
@@ -3735,6 +3818,8 @@ export interface ProjectCostBudgetListResponse {
 export type CommercialTodoKind =
   | 'OVERDUE_INVOICE'
   | 'READY_TO_INVOICE'
+  // ADR-046 §5 — retention held on posted certificate invoices, ready to release and invoice.
+  | 'RETENTION_TO_INVOICE'
   | 'DRAFT_INVOICE'
   | 'ISSUED_NOT_SENT'
   | 'BLOCKED_STAGE';
@@ -3764,6 +3849,11 @@ export interface CommercialTodoItem {
   unbilledVariations: { count: number; amount: string | null; references: string[] } | null;
   /** DRAFT_INVOICE: when the draft was created. */
   createdAt: string | null;
+  /**
+   * RETENTION_TO_INVOICE: whether the contract's retention is already released (then the command
+   * only raises the invoice), and the contract it belongs to. Null on every other kind.
+   */
+  retention?: { contractId: string; released: boolean } | null;
 }
 
 export interface CommercialWorkspaceCapabilities {
@@ -3921,6 +4011,12 @@ export interface CommercialInvoiceDocumentResponse {
   currency: string;
   lines: Array<{ description: string; detail: string | null; amount: string | null }>;
   subtotal: string | null;
+  /**
+   * ADR-046 §5 — amounts a certificate invoice holds back this period ("Less retention", "Less
+   * advance recovery"), shown between the tax and the total so the figures add up. Empty otherwise.
+   * Amounts null without financial visibility.
+   */
+  deductions: Array<{ label: string; amount: string | null }>;
   /** e.g. "Sales tax 5%". */
   taxLabel: string | null;
   taxAmount: string | null;
@@ -3929,6 +4025,20 @@ export interface CommercialInvoiceDocumentResponse {
   source: ClientInvoiceSource;
   journalEntryId: string | null;
   deliveries: CommercialDeliveryRecord[];
+  /**
+   * Credit notes raised against this invoice, oldest first. A posted one can be reversed
+   * (EVT-AR-008, Phase 0 H2) by a caller with `canIssueCreditNote`. Amount null without financials.
+   */
+  creditNotes: Array<{
+    id: string;
+    creditNoteNumber: string | null;
+    reason: string;
+    totalAmount: string | null;
+    accountingDate: string;
+    postingStatus: ArPostingStatus;
+    reversedAt: string | null;
+    reversalReason: string | null;
+  }>;
   createdAt: string;
   createdBy: string | null;
   financialsVisible: boolean;

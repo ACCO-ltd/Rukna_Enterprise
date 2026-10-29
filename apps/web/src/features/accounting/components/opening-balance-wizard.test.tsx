@@ -88,11 +88,11 @@ describe('OpeningBalanceWizard', () => {
    * The AR/AP import shares the same one-shot guard, so deferring it has a consequence the
    * user has to know before they run: those documents cannot be added afterwards.
    */
-  it('says the AR and AP import is not on this screen, and why that is consequential', () => {
+  it('says open invoices and bills come in first, through the import, then the trial balance', () => {
     renderWithProviders(<OpeningBalanceWizard />);
 
-    expect(screen.getByText('Trial balance only')).toBeInTheDocument();
-    expect(screen.getByText(/cannot be added later without reversing it/i)).toBeInTheDocument();
+    expect(screen.getByText('Open invoices and bills first, then the trial balance')).toBeInTheDocument();
+    expect(screen.getByText(/can no longer be imported/i)).toBeInTheDocument();
   });
 
   it('offers only AR-subtype accounts for the AR control account', async () => {

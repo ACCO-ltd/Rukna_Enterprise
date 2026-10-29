@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No signal · Rukna</title>
+<style>
+  :root { color-scheme: light dark; --fg: #111827; --muted: #6b7280; --bg: #ffffff; --brand: #2453e0; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f3f4f6; --muted: #9ca3af; --bg: #0f172a; } }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 system-ui, sans-serif; padding: 16px; box-sizing: border-box; }
+  main { max-width: 22rem; text-align: center; }
+  h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+  p { color: var(--muted); margin: 0 0 1.25rem; }
+  button { min-height: 44px; padding: 0 1.25rem; border: 0; border-radius: 6px; background: var(--brand); color: #fff; font: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>No signal</h1>
+  <p>This page has not been opened on this phone before, so it needs signal. Photos and forms you already sent are waiting on the phone and go when signal returns.</p>
+  <button type="button" onclick="location.reload()">Try again</button>
+</main>
+</body>
+</html>

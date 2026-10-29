@@ -89,8 +89,8 @@ describe('WorkPackageEditor weights', () => {
     await user.type(weight('WP-02'), '25.46');
     expect(totalLine('Total 85% — must be 100%')).toHaveClass('text-warning');
     // One primary: Save weights takes over from "Suggest from BOQ values".
-    expect(screen.getByRole('button', { name: 'Save weights' })).toHaveClass('bg-brand-ink');
-    expect(screen.getByRole('button', { name: 'Suggest from BOQ values' })).not.toHaveClass('bg-brand-ink');
+    expect(screen.getByRole('button', { name: 'Save weights' })).toHaveClass('bg-brand-primary');
+    expect(screen.getByRole('button', { name: 'Suggest from BOQ values' })).not.toHaveClass('bg-brand-primary');
   });
 
   it('announces the total once typing stops, atomically', async () => {

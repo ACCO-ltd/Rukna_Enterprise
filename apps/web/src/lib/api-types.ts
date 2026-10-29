@@ -602,6 +602,9 @@ export interface Receipt {
   notes: string | null;
   documentStatus: string;
   postingStatus: ReceiptPostingStatus;
+  /** AR-2 — set when a posted receipt was reversed. */
+  reversedAt?: string | null;
+  reversalReason?: string | null;
   createdBy: string;
   createdAt: string;
 }

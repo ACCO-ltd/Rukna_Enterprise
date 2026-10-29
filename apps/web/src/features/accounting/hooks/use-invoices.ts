@@ -1,16 +1,23 @@
 'use client';
 
+import { listInvoiceCreditNotes } from '@/features/commercial/api/commercial-invoice-api';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
   approveInvoice,
+  createManualInvoice,
   generateInvoiceFromIpc,
   getInvoice,
   getInvoiceDocument,
   listInvoices,
   postInvoice,
+  issueInvoice,
   reverseInvoice,
+  updateManualInvoice,
+  listIncomeAccounts,
+  cancelInvoice,
 } from '../api/invoices-api';
+import type { ManualInvoiceInput } from '@erp/types';
 import { accountingKeys, refOrNone } from './use-accounting';
 import { openSignedDocument } from '@/lib/open-signed-document';
 
@@ -30,7 +37,17 @@ export const invoiceKeys = {
   list: (filters: { clientId?: string; projectId?: string } = {}) =>
     [...invoiceKeys.all, 'list', filters.clientId ?? 'all', filters.projectId ?? 'all'] as const,
   detail: (id: string) => [...invoiceKeys.all, 'detail', id] as const,
+  creditNotes: (id: string) => [...invoiceKeys.all, 'credit-notes', id] as const,
 };
+
+/** AR-1 — the credit notes raised against an invoice (any invoice, project or not). */
+export function useInvoiceCreditNotes(invoiceId: string, enabled = true) {
+  return useQuery({
+    queryKey: invoiceKeys.creditNotes(invoiceId),
+    queryFn: () => listInvoiceCreditNotes(invoiceId),
+    enabled: enabled && Boolean(invoiceId),
+  });
+}
 
 export function useInvoices(
   filters: { clientId?: string; projectId?: string } = {},
@@ -73,6 +90,35 @@ export function useInvoiceForIpc(ipcId: string): UseQueryResult<ClientInvoice | 
  * Generates the invoice and invalidates every list, including the per-IPC lookup — the billing
  * card that triggered this is showing "not invoiced yet" and has to stop.
  */
+/** Step 2g — cancel an unposted invoice. No success toast: the undo toast already said it. */
+export function useCancelInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => cancelInvoice(id, reason),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: invoiceKeys.all });
+    },
+  });
+}
+
+/** ADR-048 — the income accounts a hand-typed invoice line may credit. */
+export function useIncomeAccounts() {
+  return useQuery({ queryKey: [...invoiceKeys.all, 'income-accounts'], queryFn: listIncomeAccounts, staleTime: 5 * 60_000 });
+}
+
+/** ADR-048 — create or rewrite a hand-typed draft; the list and that invoice refresh. */
+export function useSaveManualInvoice(invoiceId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ManualInvoiceInput) =>
+      invoiceId ? updateManualInvoice(invoiceId, payload) : createManualInvoice(payload),
+    meta: { successToast: invoiceId ? 'accounting.feedback.invoiceSaved' : 'accounting.feedback.invoiceDraftCreated' },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: invoiceKeys.all });
+    },
+  });
+}
+
 export function useGenerateInvoice() {
   const qc = useQueryClient();
 
@@ -118,6 +164,7 @@ export function useInvoiceDocumentUrl(id: string, enabled: boolean) {
 export type InvoiceActionRequest =
   | { type: 'approve' }
   | { type: 'post'; payload: PostInvoicePayload }
+  | { type: 'issue'; payload: PostInvoicePayload }
   | { type: 'reverse'; payload: ReverseInvoicePayload };
 
 /**
@@ -142,6 +189,8 @@ export function useInvoiceAction(id: string) {
           return approveInvoice(id);
         case 'post':
           return postInvoice(id, action.payload);
+        case 'issue':
+          return issueInvoice(id, action.payload);
         case 'reverse':
           return reverseInvoice(id, action.payload);
       }
@@ -149,7 +198,7 @@ export function useInvoiceAction(id: string) {
     onSuccess: (_result, action) => {
       void qc.invalidateQueries({ queryKey: invoiceKeys.all });
 
-      if (action.type === 'post' || action.type === 'reverse') {
+      if (action.type === 'post' || action.type === 'issue' || action.type === 'reverse') {
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'profit-loss'] });
         void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'balance-sheet'] });
@@ -165,7 +214,7 @@ export function useInvoiceAction(id: string) {
         }),
       },
       successDialog: {
-        when: (_invoice, action) => (action as InvoiceActionRequest).type === 'post',
+        when: (_invoice, action) => ['post', 'issue'].includes((action as InvoiceActionRequest).type),
         title: {
           key: 'accounting.feedback.invoicePostedTitle',
           values: (invoice) => ({ ref: refOrNone((invoice as ClientInvoice).invoiceNumber) }),

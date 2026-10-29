@@ -3,10 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -43,6 +44,8 @@ export interface CreateManualJournalDto {
   description: string;
   currencyCode: string;
   lines: ManualJournalLineDto[];
+  /** G-2 — an accrual reverses itself on this date when it posts. */
+  autoReverseOn?: string;
 }
 
 export interface SubmitManualJournalDto {
@@ -63,6 +66,36 @@ export interface ReverseManualJournalDto {
   journalId: string;
   reversalDate: string;
   reason: string;
+}
+
+/** G-2 — an automatic reversal must fall after the journal it reverses. */
+function autoReverseDate(dto: CreateManualJournalDto): Date | null {
+  if (!dto.autoReverseOn) return null;
+  if (dto.autoReverseOn.slice(0, 10) <= dto.accountingDate.slice(0, 10)) {
+    throw new BadRequestException({
+      errorCode: 'AUTO_REVERSE_DATE_INVALID',
+      message: 'The automatic reversal must be dated after the journal — usually the first day of the next month.',
+    });
+  }
+  return new Date(dto.autoReverseOn.slice(0, 10) + 'T00:00:00.000Z');
+}
+
+/** A draft journal line as typed; account snapshots are taken when the journal posts. */
+function draftLine(line: ManualJournalLineDto, idx: number) {
+  return {
+    lineNumber: idx + 1,
+    accountId: line.accountId,
+    accountCodeSnapshot: '',
+    accountNameSnapshot: '',
+    accountVersionNumber: 0,
+    debitAmount: new Decimal(line.debitAmount ?? 0),
+    creditAmount: new Decimal(line.creditAmount ?? 0),
+    postingOrigin: 'MANUAL' as const,
+    description: line.memo ?? null,
+    projectId: line.projectId ?? null,
+    departmentId: line.departmentId ?? null,
+    costCenterId: line.costCenterId ?? null,
+  };
 }
 
 @Injectable()
@@ -94,28 +127,61 @@ export class ManualJournalService {
         accountingDate: new Date(dto.accountingDate),
         description: dto.description,
         currencyCode: dto.currencyCode,
+        autoReverseOn: autoReverseDate(dto),
         sourceDocumentType: 'MANUAL_JOURNAL',
         sourceDocumentId: `draft-${Date.now()}`,
         accountingEventId: null,
         createdBy: userId,
-        lines: {
-          create: dto.lines.map((line, idx) => ({
-            lineNumber: idx + 1,
-            accountId: line.accountId,
-            accountCodeSnapshot: '',
-            accountNameSnapshot: '',
-            accountVersionNumber: 0,
-            debitAmount: new Decimal(line.debitAmount ?? 0),
-            creditAmount: new Decimal(line.creditAmount ?? 0),
-            postingOrigin: 'MANUAL',
-            description: line.memo ?? null,
-            projectId: line.projectId ?? null,
-            departmentId: line.departmentId ?? null,
-            costCenterId: line.costCenterId ?? null,
-          })),
-        },
+        lines: { create: dto.lines.map(draftLine) },
       },
       include: { lines: true },
+    });
+  }
+
+  /**
+   * Phase 0 H2 — edit a draft, or correct a rejected journal for resubmission. Replaces the header
+   * and every line; a REJECTED journal returns to DRAFT (its rejection reason stays on record until
+   * the next decision). Only the preparer edits: anyone else editing would become a second preparer
+   * who could then approve it as the "second person" (ADR-022 CONST-DOA-003).
+   */
+  async update(identity: RequestIdentity, journalId: string, dto: CreateManualJournalDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const journal = await prisma.journalEntry.findFirst({
+      where: { id: journalId, organizationId: orgId, sourceDocumentType: 'MANUAL_JOURNAL' },
+    });
+    if (!journal) throw new NotFoundException(`Journal ${journalId} not found`);
+    if (journal.status !== 'DRAFT' && journal.status !== 'REJECTED') {
+      throw new ConflictException({
+        errorCode: 'JOURNAL_NOT_EDITABLE',
+        message: `Only a draft or rejected journal can be edited (status: ${journal.status}).`,
+      });
+    }
+    if (journal.createdBy !== userId) {
+      throw new ForbiddenException({
+        errorCode: 'JOURNAL_NOT_PREPARER',
+        message: 'Only the person who prepared this journal can edit it.',
+      });
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // Guarded on the status read above, so a concurrent submit or approval wins.
+      const claimed = await tx.journalEntry.updateMany({
+        where: { id: journal.id, status: journal.status },
+        data: {
+          status: 'DRAFT',
+          documentDate: new Date(dto.documentDate ?? dto.accountingDate),
+          accountingDate: new Date(dto.accountingDate),
+          description: dto.description,
+          currencyCode: dto.currencyCode,
+          autoReverseOn: autoReverseDate(dto),
+        },
+      });
+      if (claimed.count !== 1) throw new ConflictException('The journal changed while it was being edited; reload and retry.');
+      await tx.journalLine.deleteMany({ where: { journalEntryId: journal.id } });
+      await tx.journalLine.createMany({ data: dto.lines.map((line, idx) => ({ journalEntryId: journal.id, ...draftLine(line, idx) })) });
+      return tx.journalEntry.findUniqueOrThrow({ where: { id: journal.id }, include: { lines: true } });
     });
   }
 
@@ -162,8 +228,9 @@ export class ManualJournalService {
       throw new NotFoundException(`Journal ${dto.journalId} not found in SUBMITTED status`);
     }
 
-    // ADR-022 CONST-DOA-003: the journal preparer cannot approve the same journal.
-    if (dto.approved) {
+    // ADR-022 CONST-DOA-003: the journal preparer cannot approve the same journal — unless they
+    // hold `post-own:journal` (ADR-022 amendment 2026-10-27).
+    if (dto.approved && !this.mayActOnOwnJournal(identity, journal.createdBy)) {
       await this.sod.assertAllowed({
         organizationId: orgId,
         action: 'APPROVE_MANUAL_JOURNAL',
@@ -208,6 +275,24 @@ export class ManualJournalService {
       throw new NotFoundException(
         `Journal ${journalId} not found in a postable status (SUBMITTED or APPROVED)`,
       );
+    }
+
+    // ADR-022 CONST-DOA-003: journal preparer ≠ journal approver. A journal posted straight from
+    // SUBMITTED has no recorded approver, so the person posting it is its only second pair of
+    // eyes — the preparer must not be that person, or they could draft, submit and post alone.
+    // The check honours the org's JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL toggle, like approve(),
+    // and is waived for a preparer holding `post-own:journal` (ADR-022 amendment 2026-10-27).
+    if (
+      journal.status === 'SUBMITTED' &&
+      !journal.approvedBy &&
+      !this.mayActOnOwnJournal(identity, journal.createdBy)
+    ) {
+      await this.sod.assertAllowed({
+        organizationId: orgId,
+        action: 'APPROVE_MANUAL_JOURNAL',
+        actorUserId: userId,
+        journalPreparerUserId: journal.createdBy,
+      });
     }
 
     return prisma.$transaction(async (tx) => {
@@ -286,6 +371,41 @@ export class ManualJournalService {
         data: { submittedBy: journal.submittedBy, submittedAt: journal.submittedAt },
       });
 
+      // G-2 — an accrual reverses itself: the mirror posts now, dated the reversal day, in the same
+      // transaction (both post or neither does). Its period must be open, like any posting.
+      if (journal.autoReverseOn) {
+        const reversal = await this.postingPort.post(
+          {
+            organizationId: orgId,
+            accountingDate: journal.autoReverseOn,
+            documentDate: journal.autoReverseOn,
+            description: `Automatic reversal of ${result.journalNumber}: ${journal.description}`,
+            currencyCode: journal.currencyCode,
+            eventType: `MANUAL-REVERSAL-${result.journalEntryId}`,
+            sourceDocumentType: 'MANUAL_JOURNAL',
+            sourceDocumentId: `reversal-${result.journalEntryId}`,
+            journalCategory: journal.journalCategory,
+            entryPurpose: 'REVERSAL',
+            postingOrigin: 'MANUAL',
+            reversalOfJournalEntryId: result.journalEntryId,
+            createdBy: userId,
+            approvedBy: journal.approvedBy ?? undefined,
+            lines: lines.map((line) => ({
+              ...line,
+              debitAmount: line.creditAmount,
+              creditAmount: line.debitAmount,
+              memo: `Reversal: ${line.memo ?? ''}`,
+            })),
+          },
+          tx as never,
+        );
+        await tx.journalEntry.update({
+          where: { id: result.journalEntryId },
+          data: { autoReverseOn: journal.autoReverseOn, reversedBy: userId, reversalReason: 'Automatic reversal (accrual)' },
+        });
+        return { ...result, autoReversal: reversal };
+      }
+
       return result;
     });
   }
@@ -315,6 +435,15 @@ export class ManualJournalService {
     }
     if (journal.reversalOfJournalEntryId) {
       throw new ConflictException(`Journal ${dto.journalId} is already a reversal — cannot reverse a reversal`);
+    }
+    // Only a manual journal is reversed here. A system journal (invoice, bill, receipt, payment,
+    // opening balance, year-end close) has a source document whose balances move with it;
+    // mirroring the journal alone would leave that document's subledger disagreeing with the GL.
+    // Such journals are reversed through their own document's reverse command.
+    if (journal.sourceDocumentType !== 'MANUAL_JOURNAL') {
+      throw new BadRequestException(
+        `Journal ${journal.journalNumber ?? journal.id} was posted by a ${journal.sourceDocumentType} — reverse it from that document, not as a manual journal`,
+      );
     }
 
     // Reversing twice would post the mirror entry twice and take the accounts to the
@@ -400,6 +529,19 @@ export class ManualJournalService {
     const journal = await this.journalRepo.findById(prisma, identity.activeOrganizationId, id);
     if (!journal) throw new NotFoundException(`Journal ${id} not found`);
     return journal;
+  }
+
+  /**
+   * ADR-022 amendment (2026-10-27): a preparer holding `post-own:journal` may approve and post their
+   * own journal without a second person. ACCO's finance team is small; the CFO and Finance Officer
+   * hold it, other journal users still need a second pair of eyes. It never widens what anyone else
+   * may do: for a journal prepared by someone else the ordinary rule applies.
+   */
+  private mayActOnOwnJournal(identity: RequestIdentity, preparerUserId: string): boolean {
+    return (
+      identity.userId === preparerUserId &&
+      identity.permissions.includes(PERMISSIONS.journalsPostOwn)
+    );
   }
 
   private async requireDraft(prisma: ReturnType<TenancyService['getClient']>, organizationId: string, journalId: string) {

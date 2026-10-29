@@ -21,7 +21,8 @@ Read these documents in order before making any change:
 
 ## Ownership
 
-This directory is owned by **Abdulsalam** (Backend Engineer).
+This directory, like the whole repository, is owned by **Abdulsalam** — the only engineer. Features
+are built end to end (backend and frontend in the same change).
 
 Domain questions (business rules, approval workflows, construction processes) must be confirmed with **Eng Ahmed Shirie, CEO of ACCO Ltd**, before implementation.
 

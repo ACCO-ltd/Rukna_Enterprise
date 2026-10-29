@@ -127,6 +127,18 @@ export class PaymentReceiptArRepository {
     });
   }
 
+  /** Records the GL journal of an allocation created before its journal was posted. */
+  linkAllocationJournal(
+    prisma: TenantPrisma,
+    allocationId: string,
+    journalEntryId: string,
+  ): Promise<ClientReceiptAllocation> {
+    return prisma.clientReceiptAllocation.update({
+      where: { id: allocationId },
+      data: { journalEntryId },
+    });
+  }
+
   /**
    * All allocations on a receipt for the receipt workspace (ACC-SET-001 FE-1) — including
    * REVERSED ones, which the panel renders struck-through as an audit trail rather than

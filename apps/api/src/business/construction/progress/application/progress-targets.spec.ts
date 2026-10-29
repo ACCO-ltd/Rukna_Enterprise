@@ -69,6 +69,7 @@ function build(
     {} as never, // commandGovernance — not used here
     files() as never,
     baselineRepo as never,
+    {} as never, // companyTemplates (Step 1b) — unused here
   );
   return { svc, repo, baselineRepo, captured };
 }

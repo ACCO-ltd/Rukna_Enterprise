@@ -5,7 +5,7 @@ import { WorkflowsService } from './workflows.service.js';
 import { SegregationOfDutiesService } from './segregation-of-duties.service.js';
 
 // ADR-022 CONST-DOA-001: the System Administrator role has no business-transaction approval
-// authority. This is the consolidated role name (see ACCO_ROLES); the tenant super-user 'ADMIN'
+// authority. This is the consolidated role name (see DEFAULT_ROLES); the tenant super-user 'ADMIN'
 // is a different role and is not blocked here.
 const SYSTEM_ADMINISTRATOR_ROLE = 'SYSTEM_ADMINISTRATOR';
 

@@ -12,6 +12,9 @@
  *   AL-09  AP: subsequent advance allocation (advance → bill) reduces bill outstanding
  *   AL-10  Cannot reverse a bill that has active payment allocations
  *   AL-11  Cannot reverse a receipt that has subsequent (post-payment) allocations
+ *   AL-12  Allocation reversal is dated on the allocation's own date, not today
+ *   AL-13  AR: two partial allocations of the same receipt → invoice each post a GL journal
+ *   AL-14  AP: two partial advance allocations of the same payment → bill each post a GL journal
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -253,8 +256,8 @@ it('AL-05: reversed receipt cannot be subsequently allocated', async () => {
 });
 
 // ─── AL-12 ────────────────────────────────────────────────────────────────────
-// A subsequent-allocation reversal (EVT-AR-006) must be dated on the SOURCE receipt's accounting
-// date, never new Date(). A `new Date()` mis-periods AR and would be rejected outright once the
+// A subsequent-allocation reversal (EVT-AR-006) must be dated on the allocation it reverses (here
+// the receipt's accounting date: the invoice predates it), never new Date(). A `new Date()` mis-periods AR and would be rejected outright once the
 // current period is closed. Enforces feedback-accounting-date-rule.
 it('AL-12: reverseAllocation dates the EVT-AR-006 journal on the receipt accounting date, not today', async () => {
   const invoice = await createAndPostInvoice(5000);
@@ -463,5 +466,71 @@ it('AL-11: cannot reverse a receipt that has subsequent (post-payment) allocatio
       reversalDate: '2025-01-26',
       reason:       'AL-11 test',
     }),
-  ).rejects.toThrow(/subsequent|allocation.*must be reversed|has \d+ subsequent/i);
+  ).rejects.toThrow(/applied to invoices after it was posted/i);
+});
+
+// ─── AL-13 ────────────────────────────────────────────────────────────────────
+// The allocation journal is keyed on the allocation, not the receipt→invoice pair. Keyed on the
+// pair, the second allocation hit the posting idempotency guard: the subledger moved twice while
+// the GL moved once, and AR drifted from its control account.
+it('AL-13: two partial allocations of the same receipt → invoice each post a GL journal', async () => {
+  const invoice = await createAndPostInvoice(1000);
+  const receipt = await createApprovedReceipt(1000);
+  await svc.customerReceiptService.post(env.identity, {
+    receiptId:            receipt.id,
+    bankAccountCode:      env.accounts.bankCode,
+    arAccountCode:        env.accounts.arCode,
+    unappliedAccountCode: env.accounts.unaplCode,
+    allocations:          [],
+  });
+
+  const arBefore = await svc.journalRepo.getGlBalance(prisma as never, env.orgId, env.accounts.arId);
+  for (const amount of [400, 600]) {
+    await svc.customerReceiptService.allocate(env.identity, {
+      receiptId:            receipt.id,
+      clientInvoiceId:      invoice.id,
+      amount,
+      arAccountCode:        env.accounts.arCode,
+      unappliedAccountCode: env.accounts.unaplCode,
+    });
+  }
+  const arAfter = await svc.journalRepo.getGlBalance(prisma as never, env.orgId, env.accounts.arId);
+
+  const allocations = await prisma.clientReceiptAllocation.findMany({ where: { paymentReceiptId: receipt.id } });
+  expect(allocations).toHaveLength(2);
+  expect(new Set(allocations.map((a) => a.journalEntryId)).size).toBe(2);
+  expect(arBefore.minus(arAfter).toFixed(2)).toBe('1000.00');
+  const updated = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: invoice.id } });
+  expect(Number(updated.outstandingAmount)).toBe(0);
+});
+
+// ─── AL-14 ────────────────────────────────────────────────────────────────────
+it('AL-14: two partial advance allocations of the same payment → bill each post a GL journal', async () => {
+  const bill    = await createAndPostBill(1000, '-al14');
+  const payment = await createApprovedAdvancePayment(1000);
+  await svc.supplierPaymentService.post(env.identity, {
+    paymentId:           payment.id,
+    apAccountCode:       env.accounts.apCode,
+    bankGlCode:          env.accounts.bankCode,
+    supplierAdvanceCode: env.accounts.advOutCode,
+  });
+
+  const advBefore = await svc.journalRepo.getGlBalance(prisma as never, env.orgId, env.accounts.advOutId);
+  for (const amount of [250, 750]) {
+    await svc.supplierPaymentService.allocateAdvance(env.identity, {
+      paymentId:           payment.id,
+      supplierBillId:      bill.id,
+      amount,
+      apAccountCode:       env.accounts.apCode,
+      supplierAdvanceCode: env.accounts.advOutCode,
+    });
+  }
+  const advAfter = await svc.journalRepo.getGlBalance(prisma as never, env.orgId, env.accounts.advOutId);
+
+  const allocations = await prisma.supplierPaymentAllocation.findMany({ where: { supplierPaymentId: payment.id } });
+  expect(allocations).toHaveLength(2);
+  expect(new Set(allocations.map((a) => a.journalEntryId)).size).toBe(2);
+  expect(advBefore.minus(advAfter).abs().toFixed(2)).toBe('1000.00');
+  const updated = await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } });
+  expect(Number(updated.outstandingAmount)).toBe(0);
 });

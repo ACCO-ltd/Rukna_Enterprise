@@ -88,6 +88,9 @@ export const PERMISSIONS = {
   financialPositionView: 'view:financial-position',
   accountingManage: 'manage:accounting',
   journalsManage: 'manage:journal',
+  // ADR-022 amendment (2026-10-27) — post or approve a journal one prepared oneself, without a
+  // second person. Granted to the CFO and Finance Officer for ACCO's small finance team.
+  journalsPostOwn: 'post-own:journal',
   receivablesManage: 'manage:receivable',
   payablesManage: 'manage:payable',
   periodsManage: 'manage:period',
@@ -150,7 +153,8 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
 
 function riskFor(action: string): PermissionDefinition['riskClass'] {
   // `award` (ADR-044) sets the price money flows from and stands in for the PO approval.
-  if (['approve', 'award', 'issue', 'post', 'baseline', 'supersede'].includes(action))
+  // `post-own` waives the journal four-eyes rule for its holder (ADR-022 amendment).
+  if (['approve', 'award', 'issue', 'post', 'post-own', 'baseline', 'supersede'].includes(action))
     return 'CRITICAL';
   // `manage-contingency` decides how the internal buffer is spent — a commercial-authority act, so
   // it carries the same review weight as a plain `manage`. `edit-scope`/`edit-cost` are the split
@@ -234,6 +238,8 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.financialPositionView]: 'View organization and project financial position',
   [PERMISSIONS.accountingManage]: 'Manage accounting configuration and operational records',
   [PERMISSIONS.journalsManage]: 'Create, approve, post and reverse journals',
+  [PERMISSIONS.journalsPostOwn]:
+    'Approve and post journals you prepared yourself, without a second person (exempt from the journal preparer ≠ approver rule)',
   [PERMISSIONS.receivablesManage]: 'Manage accounts receivable',
   [PERMISSIONS.payablesManage]: 'Manage accounts payable',
   [PERMISSIONS.periodsManage]: 'Lock, close and reopen fiscal periods',

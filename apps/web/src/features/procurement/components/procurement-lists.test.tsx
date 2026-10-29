@@ -149,7 +149,7 @@ describe('MrList', () => {
     expect(grid.getByText('Urgent')).toBeInTheDocument();
     expect(grid.getByText('$8,500.00')).toBeInTheDocument();
     // Overhead request: no project, no date, nothing estimated — never $0.
-    expect(grid.getByText('ACCO overhead')).toBeInTheDocument();
+    expect(grid.getByText('Company overhead')).toBeInTheDocument();
     expect(grid.getByText('No date')).toBeInTheDocument();
     expect(grid.queryByText('$0.00')).not.toBeInTheDocument();
   });
@@ -165,11 +165,34 @@ describe('MrList', () => {
     expect(screen.getByText('Estimates are hidden for your role.')).toBeInTheDocument();
   });
 
-  it('sends "Requested for" as requestedFor (a project id or overhead)', async () => {
-    hooks.useMaterialRequests.mockReturnValue(loaded([mr({ id: '1' })]));
+  it('opens narrowed to the linked project, filtering the fetched set (only the search goes to the API)', async () => {
+    hooks.useMaterialRequests.mockReturnValue(
+      loaded([mr({ id: '1' }), mr({ id: '2', requestScope: 'ORGANIZATION', projectId: null })]),
+    );
     search.params = new URLSearchParams('projectId=p1');
     renderWithProviders(<MrList />);
-    expect(hooks.useMaterialRequests).toHaveBeenLastCalledWith({ requestedFor: 'p1' });
+    const grid = await table();
+    expect(grid.getByRole('link', { name: /MR-2026-0001/ })).toBeInTheDocument();
+    expect(grid.queryByRole('link', { name: /MR-2026-0002/ })).not.toBeInTheDocument();
+    expect(hooks.useMaterialRequests).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('views: To approve keeps submitted requests, with live counts; the title block counts what is open', async () => {
+    const user = userEvent.setup();
+    hooks.useMaterialRequests.mockReturnValue(
+      loaded([
+        mr({ id: '1', status: 'SUBMITTED' }),
+        mr({ id: '2', status: 'DRAFT' }),
+        mr({ id: '3', status: 'FULLY_ORDERED' }),
+      ]),
+    );
+    renderWithProviders(<MrList />);
+
+    expect(await screen.findByText('3 requests · 2 still open')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /To approve/ }));
+    const grid = await table();
+    expect(grid.getByRole('link', { name: /MR-2026-0001/ })).toBeInTheDocument();
+    expect(grid.queryByRole('link', { name: /MR-2026-0002/ })).not.toBeInTheDocument();
   });
 
   it('first use: title, hint and the primary — no Clear filters', async () => {
@@ -237,11 +260,13 @@ describe('PoList', () => {
     const grid = await table();
     const link = grid.getByRole('link', { name: /PO-2026-0001/ });
     expect(link).toHaveTextContent('PO-2026-0001 · revision 2');
-    expect(link).toHaveTextContent('Bakaal Steel');
+    // The supplier has its own column, with its avatar.
+    expect(grid.getByText('Bakaal Steel')).toBeInTheDocument();
     expect(grid.getByText('Hodan villa')).toBeInTheDocument();
     expect(grid.getByText('+2 more')).toBeInTheDocument();
     expect(grid.getByText('Partly received')).toBeInTheDocument();
-    expect(grid.getByText('$12,500.00')).toBeInTheDocument();
+    // The row, and the totals row under it.
+    expect(grid.getAllByText('$12,500.00')).toHaveLength(2);
     expect(grid.getByText('Open')).toBeInTheDocument();
   });
 
@@ -251,7 +276,7 @@ describe('PoList', () => {
 
     const grid = await table();
     expect(grid.getByRole('link', { name: /PO-2026-0001/ })).not.toHaveTextContent('revision');
-    expect(grid.getByText('ACCO overhead')).toBeInTheDocument();
+    expect(grid.getByText('Company overhead')).toBeInTheDocument();
     expect(grid.getAllByText('—').length).toBeGreaterThanOrEqual(2);
     expect(grid.queryByText('$0.00')).not.toBeInTheDocument();
   });
@@ -274,7 +299,7 @@ describe('PoList', () => {
 });
 
 describe('GrnList', () => {
-  it('shows receipt + supplier as the one row link, the PO as its own link, and who delivered', async () => {
+  it('shows the receipt number as the one row link, the supplier with its avatar, the PO as its own link, and who delivered', async () => {
     hooks.usePurchaseOrders.mockReturnValue(loaded([po({ id: '1' })]));
     hooks.useGoodsReceipts.mockReturnValue(
       loaded([
@@ -294,7 +319,7 @@ describe('GrnList', () => {
     const grid = await table();
     const link = grid.getByRole('link', { name: /GRN-2026-0001/ });
     expect(link).toHaveAttribute('href', '/procurement/grn/1');
-    expect(link).toHaveTextContent('Bakaal Steel');
+    expect(grid.getByText('Bakaal Steel')).toBeInTheDocument();
     expect(grid.getByRole('link', { name: 'PO-2026-0001' })).toHaveAttribute('href', '/procurement/orders/1');
     expect(grid.getByText('by Omar Site')).toBeInTheDocument();
     expect(grid.getByText('DN-4410')).toBeInTheDocument();

@@ -51,6 +51,7 @@ import {
   userName,
 } from '../members';
 import type { ProjectMember } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function ProjectMembers({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.projects.members');
@@ -110,7 +111,7 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
           />
         </div>
       ) : members.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void members.refetch()} />
       ) : (
         <>
           <TableScroll aria-label={t('title')} className="rounded-panel border-border">
@@ -433,7 +434,7 @@ function AddMemberForm({
       }}
     >
       <FormDialogBody className="space-y-4">
-        {users.isError ? <Alert variant="error" messages={[t('usersLoadFailed')]} /> : null}
+        {users.isError ? <LoadError message={t('usersLoadFailed')} onRetry={() => void users.refetch()} /> : null}
         {!users.isPending && !users.isError && candidates.length === 0 ? (
           <Alert variant="info" messages={[t('everyoneAdded')]} />
         ) : null}

@@ -20,6 +20,7 @@ vi.mock('../api/commercial-invoice-api', () => ({
   preparePackage: vi.fn(),
   createInvoiceCreditNote: vi.fn(),
   postInvoiceCreditNote: vi.fn(),
+  reverseInvoiceCreditNote: vi.fn(),
 }));
 
 vi.mock('../api/commercial-api', async (importOriginal) => ({
@@ -272,5 +273,56 @@ describe('ProjectInvoicePage — the invoice as a document inside the project', 
     getDocument.mockRejectedValue(new ApiError(404, 'Not found'));
     renderPage();
     expect(await screen.findByText('Invoice not found')).toBeInTheDocument();
+  });
+
+  describe('credit notes (Phase 0 H2)', () => {
+    const creditNote = (overrides: Record<string, unknown> = {}) => ({
+      id: 'cn-1',
+      creditNoteNumber: 'CN-000001',
+      reason: 'CORRECTION',
+      totalAmount: '1050.00',
+      accountingDate: '2026-10-01',
+      postingStatus: 'POSTED' as const,
+      reversedAt: null,
+      reversalReason: null,
+      ...overrides,
+    });
+
+    it('lists the credit notes and reverses a posted one with a reason', async () => {
+      const user = userEvent.setup();
+      getDocument.mockResolvedValue(
+        makeInvoiceDocument({ ...ISSUED, capabilities: { ...ISSUED_CAPS, canIssueCreditNote: true }, creditNotes: [creditNote()] }),
+      );
+      vi.mocked(invoiceApi.reverseInvoiceCreditNote).mockResolvedValue({ id: 'cn-1', postingStatus: 'REVERSED' });
+      renderPage();
+
+      const section = await screen.findByRole('region', { name: 'Credit notes' });
+      expect(within(section).getByText('CN-000001')).toBeInTheDocument();
+      await user.click(within(section).getByRole('button', { name: 'Reverse' }));
+      await user.type(screen.getByLabelText('Why is it being reversed?'), 'Credited the wrong invoice');
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reverse' }));
+
+      await waitFor(() =>
+        expect(vi.mocked(invoiceApi.reverseInvoiceCreditNote)).toHaveBeenCalledWith('inv-1', 'cn-1', {
+          reversalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          reason: 'Credited the wrong invoice',
+        }),
+      );
+    });
+
+    it('offers no Reverse on a reversed credit note, or without the permission', async () => {
+      getDocument.mockResolvedValue(
+        makeInvoiceDocument({
+          ...ISSUED,
+          capabilities: { ...ISSUED_CAPS, canIssueCreditNote: true },
+          creditNotes: [creditNote({ postingStatus: 'REVERSED', reversalReason: 'Wrong invoice' })],
+        }),
+      );
+      renderPage();
+
+      const section = await screen.findByRole('region', { name: 'Credit notes' });
+      expect(within(section).getByText('Reversed: Wrong invoice')).toBeInTheDocument();
+      expect(within(section).queryByRole('button', { name: 'Reverse' })).not.toBeInTheDocument();
+    });
   });
 });

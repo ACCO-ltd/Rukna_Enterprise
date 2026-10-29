@@ -90,9 +90,12 @@ import {
   postSupplierBill,
   postSupplierPayment,
   rejectSupplierBill,
+  cancelSupplierBill,
   returnSupplierBill,
   reverseSupplierBill,
   reverseSupplierPayment,
+  endSupplierPayment,
+  reverseAdvanceAllocation,
   revisePurchaseOrder,
   resolveMatchException,
   runBillMatch,
@@ -107,6 +110,7 @@ import {
   postBuyerAdvance,
   createAdvanceReturn,
   createEvidenceAllocation,
+  getSupplierPaymentDocument,
 } from '../api/procurement-api';
 import type {
   CatalogueStatusFilter,
@@ -162,6 +166,7 @@ import type {
   CreateAdvanceReturnPayload,
   CreateEvidenceAllocationPayload,
 } from '../types';
+import { openSignedDocument } from '@/lib/open-signed-document';
 
 export const procurementKeys = {
   all: ['procurement'] as const,
@@ -970,7 +975,11 @@ function useBillMutation<TArgs>(
     meta: {
       successToast: {
         key: feedbackKey,
-        values: (bill) => ({ ref: billRef(bill as SupplierBill) }),
+        values: (bill) => ({
+          ref: billRef(bill as SupplierBill),
+          // ADR-046 §3 — Submit may have posted the bill on save.
+          outcome: (bill as SupplierBill).postedOnSave === true ? 'posted' : (bill as SupplierBill).postedOnSave === false ? 'notPosted' : 'submitted',
+        }),
       },
     },
     onSuccess: (bill) => {
@@ -1007,6 +1016,13 @@ export function useReturnSupplierBill() {
   );
 }
 
+export function useCancelSupplierBill() {
+  return useBillMutation((args: { id: string; reason: string }) =>
+    cancelSupplierBill(args.id, args.reason),
+    'procurement.feedback.billCancelled',
+  );
+}
+
 export function useRejectSupplierBill() {
   return useBillMutation((args: { id: string; reason: string }) =>
     rejectSupplierBill(args.id, args.reason),
@@ -1016,6 +1032,17 @@ export function useRejectSupplierBill() {
 
 export function useSubmitSupplierBill() {
   return useBillMutation((id: string) => submitSupplierBill(id), 'procurement.feedback.billSubmitted');
+}
+
+/**
+ * ADR-046 §3 — Save on the bill form: save the bill, then submit it, so a bill the approval rules
+ * let through posts at once. The submit response says whether it posted (`postedOnSave`).
+ */
+export function useSaveAndSubmitSupplierBill() {
+  return useBillMutation(async (args: { id?: string; payload: CreateSupplierBillPayload }) => {
+    const saved = args.id ? await updateSupplierBill(args.id, args.payload) : await createSupplierBill(args.payload);
+    return submitSupplierBill(saved.id);
+  }, 'procurement.feedback.billSubmitted');
 }
 
 export function useApproveSupplierBill() {
@@ -1080,7 +1107,14 @@ function usePaymentMutation<TArgs>(
       successToast: {
         key: feedbackKey,
         // A draft payment has no number yet; the message reads without one (ICU `select`).
-        values: (payment) => ({ ref: (payment as SupplierPayment).paymentNumber ?? 'none' }),
+        values: (payment) => {
+          const p = payment as SupplierPayment;
+          return {
+            ref: p.paymentNumber ?? 'none',
+            // ADR-046 §4 — what Save did with it.
+            outcome: p.postedOnSave ? 'posted' : p.approvedOnSave ? 'approved' : 'draft',
+          };
+        },
       },
     },
     onSuccess: (payment) => {
@@ -1129,6 +1163,14 @@ export function usePostSupplierPayment() {
   );
 }
 
+/** AP-1 — reject or cancel an unposted payment; its bills get their balance back. */
+export function useEndSupplierPayment(how: 'reject' | 'cancel') {
+  return usePaymentMutation((args: { id: string; reason: string }) =>
+    endSupplierPayment(args.id, how, args.reason),
+    how === 'reject' ? 'procurement.feedback.paymentRejected' : 'procurement.feedback.paymentCancelled',
+  );
+}
+
 export function useReverseSupplierPayment() {
   return usePaymentMutation((args: { id: string; payload: ReverseSupplierPaymentPayload }) =>
     reverseSupplierPayment(args.id, args.payload),
@@ -1149,6 +1191,21 @@ export function useAllocateAdvance(paymentId: string) {
   return useMutation({
     mutationFn: (payload: AllocateAdvancePayload) => allocateAdvance(paymentId, payload),
     meta: { successToast: 'procurement.feedback.advanceApplied', flashRow: false },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: procurementKeys.payment(paymentId) });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+      void qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
+    },
+  });
+}
+
+/** AP-6 — undo advance applied to a bill; the same four records move back. */
+export function useReverseAdvanceAllocation(paymentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (allocationId: string) => reverseAdvanceAllocation(paymentId, allocationId),
+    meta: { successToast: 'procurement.feedback.advanceApplicationReversed', flashRow: false },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: procurementKeys.payment(paymentId) });
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
@@ -1342,5 +1399,12 @@ export function usePostBuyerAdvance(advanceId: string, poId: string) {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderReceiving(poId) });
     },
+  });
+}
+
+/** Step 4 — open the remittance advice in a new tab (rendered on first request, then frozen). */
+export function useOpenSupplierPaymentDocument() {
+  return useMutation({
+    mutationFn: (id: string) => openSignedDocument(() => getSupplierPaymentDocument(id)),
   });
 }

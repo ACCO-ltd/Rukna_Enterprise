@@ -18,6 +18,7 @@ import { AllocateReceiptDto } from './dto/allocate-receipt.dto.js';
 import { ReverseReceiptDto } from './dto/reverse-receipt.dto.js';
 import { ReverseAllocationDto } from './dto/reverse-allocation.dto.js';
 import { SendReceiptWhatsAppDto } from './dto/send-receipt-whatsapp.dto.js';
+import { ReceivePaymentDto } from './dto/receive-payment.dto.js';
 
 @ApiTags('Customer Receipts')
 @ApiBearerAuth('access-token')
@@ -52,6 +53,15 @@ export class CustomerReceiptController {
   @ApiOperation({ summary: 'Record a new payment receipt (NOT_POSTED until posted to the GL)' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateReceiptDto) {
     return this.customerReceiptService.create(identity, dto);
+  }
+
+  @Post('receive')
+  @ApiOperation({
+    summary: 'ADR-046 §6: receive a payment straight into a bank account — record, post (Dr bank / Cr AR or unapplied) and apply in one action',
+  })
+  @ApiResponse({ status: 400, description: 'BANK_ACCOUNT_NOT_RECEIVING | CURRENCY_MISMATCH | ALLOCATION_CLIENT_MISMATCH | over-allocation' })
+  receive(@CurrentUser() identity: RequestIdentity, @Body() dto: ReceivePaymentDto) {
+    return this.customerReceiptService.receive(identity, dto);
   }
 
   @Get('certificate/:certificateId/payment-status')

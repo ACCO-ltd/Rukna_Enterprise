@@ -14,6 +14,7 @@
  *   REC-04  the accrual is released at what was accrued, leaving no residual
  *   REC-05  reversing a bill reverses BOTH sides                          (Scenario G1)
  *   REC-06  non-procurement project cost does not break the reconciliation (Scenario E)
+ *   REC-07  a supplier debit note lowers BOTH GL project cost and ledger ACTUAL (Scenario H, AP-4)
  *
  * Runs against the real test DB through the real services â€” no mocking. The reconciliation
  * read model is asserted alongside the raw sums, because it is what the UI will render and
@@ -36,6 +37,9 @@ import { ProjectCostReconciliationService } from '../../accounting/financial-pos
 import { AccountingPostingService } from '../../accounting/accounting-core/infrastructure/accounting-posting.service.js';
 import { JournalRepository } from '../../accounting/accounting-core/infrastructure/journal.repository.js';
 import { DocumentSequenceRepository } from '../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
+import { SupplierDebitNoteService } from '../../accounting/accounts-payable/application/supplier-debit-note.service.js';
+import { CommitmentLedgerWriter } from '../commitment-ledger/application/commitment-ledger-writer.service.js';
+import { CommitmentLedgerRepository } from '../commitment-ledger/infrastructure/commitment-ledger.repository.js';
 
 const prisma = new PrismaClient();
 let env: ProcurementTestEnv;
@@ -437,3 +441,33 @@ describe('Scenario E â€” a manual project journal', () => {
   });
 });
 
+// ─── Scenario H — a supplier debit note on a purchase-order bill (AP-4) ─────────
+describe('Scenario H — a debit note on a PO bill', () => {
+  it('REC-07: the debit note lowers GL project cost and ledger ACTUAL by the same amount', async () => {
+    const mr = await approvedMr(10, { boq: true });
+    const po = await approvedPo(mr.lines[0]!.id, 10, 100, { boq: true });
+    const line = po.revisions.find((r) => r.status === 'ACTIVE')!.lines[0]!;
+    await postGrn(po.id, line.id, 10);
+    const billId = await postBill(po.id, 10, 100, 0);
+
+    const actualBefore = await ledgerStage('ACTUAL');
+    const glBefore = await glProjectCost();
+    const notes = new SupplierDebitNoteService(
+      { getClient: () => prisma } as unknown as TenancyService,
+      new DocumentSequenceRepository(),
+      posting as never,
+      new CommitmentLedgerWriter(new CommitmentLedgerRepository()),
+    );
+    const note = await notes.record(env.identity, { billId, amount: '250.00', accountingDate: '2026-08-26', reason: 'Two bundles returned' });
+
+    expect((await ledgerStage('ACTUAL')).toFixed(2)).toBe(actualBefore.minus(250).toFixed(2));
+    expect((await glProjectCost()).toFixed(2)).toBe(glBefore.minus(250).toFixed(2));
+    let rec = await reconciliation.getForProject(env.identity, env.projectId);
+    expect(rec.reconciled).toBe(true);
+
+    await notes.reverse(env.identity, note.id, { reversalDate: '2026-08-27', reason: 'Credit withdrawn' });
+    expect((await ledgerStage('ACTUAL')).toFixed(2)).toBe(actualBefore.toFixed(2));
+    rec = await reconciliation.getForProject(env.identity, env.projectId);
+    expect(rec.reconciled).toBe(true);
+  }, 60_000);
+});

@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => '/procurement/suppliers', useSearchParams: () => new URLSearchParams() }));
 
 import { SupplierList } from './supplier-list';
 import type { SupplierDirectoryRow } from '../types';

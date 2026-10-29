@@ -58,6 +58,7 @@ export function UomList() {
 
   return (
     <CatalogueListScreen<UnitOfMeasure>
+      exportName="units-of-measure"
       label={t('title')}
       rows={uoms.data ?? []}
       isPending={uoms.isPending}

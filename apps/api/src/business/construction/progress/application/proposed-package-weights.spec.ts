@@ -41,6 +41,7 @@ function service(leaves: unknown[]) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never, // companyTemplates (Step 1b) — unused here
   );
   return { svc, repo };
 }

@@ -49,6 +49,12 @@ export class RolesController {
     return this.rolesService.create(identity, dto);
   }
 
+  @Get('matrix')
+  @ApiOperation({ summary: 'Step 3 — every role with the permission ids it grants (the roles matrix)' })
+  matrix(@CurrentUser() identity: RequestIdentity) {
+    return this.rolesService.matrix(identity.activeOrganizationId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a role with its permissions' })
   @ApiParam({ name: 'id', description: 'Role CUID' })

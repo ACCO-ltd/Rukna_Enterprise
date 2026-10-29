@@ -104,7 +104,7 @@ describe('AppShell — navigation', () => {
     const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
     const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent?.trim());
 
-    expect(links).toEqual(['Dashboard', 'Projects', 'Finance', 'Procurement', 'Administration']);
+    expect(links).toEqual(['Dashboard', 'Approvals', 'Projects', 'Finance', 'Procurement', 'Administration']);
     expect(links).not.toContain('Clients');
     expect(links).not.toContain('Receipts');
     expect(links).not.toContain('Journals');

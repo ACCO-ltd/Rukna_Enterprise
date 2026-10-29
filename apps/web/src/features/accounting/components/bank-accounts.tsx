@@ -44,6 +44,11 @@ import { useUsers } from '@/features/users/hooks/use-users';
 import { ApiError } from '@/lib/api-client';
 import { statusTone } from '@/lib/status-registry';
 import { formatDate } from '@/lib/format';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { ListRowMenu } from '@/features/procurement/components/list-row-menu';
+import { useRouter } from 'next/navigation';
+import { MoneyDisplay } from '@erp/ui';
+import { EditBankAccountDialog, accountNumberRecorded } from './bank-account-edit';
 
 import { accountName } from '../account-display';
 import {
@@ -62,9 +67,11 @@ import {
   useBankAccounts,
   useConfigureBankAccount,
   useRemoveSignatory,
+  useSetBankAccountStatus,
   useSignatories,
 } from '../hooks/use-accounting';
 import type { BankAccount } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | null } = {}) {
   const t = useTranslations('accounting.bankAccounts');
@@ -79,6 +86,10 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
     mayCreate && preset ? preset : null,
   );
   const [signatoryBank, setSignatoryBank] = useState<BankAccount | null>(null);
+  const [editing, setEditing] = useState<BankAccount | null>(null);
+  const [statusChange, setStatusChange] = useState<{ bank: BankAccount; to: BankAccount['status'] } | null>(null);
+  const setStatus = useSetBankAccountStatus();
+  const router = useRouter();
 
   const columns: GridColumn<BankAccount>[] = [
     {
@@ -102,8 +113,28 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
       render: (bank) => (
         // Masked to the last four. A full account number on a list screen is a detail
         // nobody needs at a glance and everybody can screenshot.
-        <span className="font-mono text-xs text-muted-foreground">
-          ****{bank.accountNumber.slice(-4)}
+        accountNumberRecorded(bank.accountNumber) ? (
+          <span className="font-mono text-xs text-muted-foreground">
+            ****{bank.accountNumber.slice(-4)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">{t('numberNotRecorded')}</span>
+        )
+      ),
+    },
+    // B-1 — what the ledger says is in it, and how far it has been checked against the bank.
+    {
+      key: 'balance',
+      header: t('colBalance'),
+      numeric: true,
+      render: (bank) => <MoneyDisplay value={bank.bookBalance ?? null} />,
+    },
+    {
+      key: 'reconciled',
+      header: t('colReconciled'),
+      render: (bank) => (
+        <span className="text-xs text-muted-foreground">
+          {bank.lastReconciledTo ? formatDate(bank.lastReconciledTo) : t('neverReconciled')}
         </span>
       ),
     },
@@ -146,6 +177,27 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
             {t('signatories.button')}
           </Button>
         ) : null,
+    },
+    {
+      key: 'menu',
+      header: '',
+      render: (bank) => (
+        <ListRowMenu
+          label={t('rowMenu', { name: bank.accountName })}
+          commands={[
+            { key: 'transactions', label: t('transactions'), onSelect: () => router.push(`/finance/accounting/ledger?accountId=${bank.glAccountId}`) },
+            ...(mayCreate && bank.status !== 'CLOSED'
+              ? [
+                  { key: 'edit', label: t('editAction'), onSelect: () => setEditing(bank) },
+                  bank.status === 'ACTIVE'
+                    ? { key: 'suspend', label: t('suspend'), onSelect: () => setStatusChange({ bank, to: 'SUSPENDED' }) }
+                    : { key: 'reactivate', label: t('reactivate'), onSelect: () => setStatusChange({ bank, to: 'ACTIVE' }) },
+                  { key: 'close', label: t('close'), onSelect: () => setStatusChange({ bank, to: 'CLOSED' }) },
+                ]
+              : []),
+          ]}
+        />
+      ),
     },
   ];
 
@@ -199,7 +251,23 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
         toolbarActions={createAction}
       />
 
-      <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>
+      {editing ? <EditBankAccountDialog bank={editing} onClose={() => setEditing(null)} /> : null}
+
+      {statusChange ? (
+        <ConfirmActionDialog
+          title={t(`statusTitle.${statusChange.to}`, { name: statusChange.bank.accountName })}
+          description={t(`statusBody.${statusChange.to}`)}
+          confirmLabel={t(`statusConfirm.${statusChange.to}`)}
+          destructive={statusChange.to === 'CLOSED'}
+          isPending={setStatus.isPending}
+          errorMessage={setStatus.isError ? (setStatus.error instanceof ApiError ? setStatus.error.message : t('loadFailed')) : undefined}
+          onConfirm={() => setStatus.mutate({ id: statusChange.bank.id, status: statusChange.to }, { onSuccess: () => setStatusChange(null) })}
+          onDismiss={() => {
+            setStatus.reset();
+            setStatusChange(null);
+          }}
+        />
+      ) : null}
 
       {/* ADR-039: a FormDialog (md). Adding and removing act at once, so the footer only closes. */}
       <FormDialog
@@ -276,7 +344,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
     <div className="space-y-6">
       <p className="text-xs text-muted-foreground">{t('dualControlNote')}</p>
 
-      {query.isError && <Alert variant="error" messages={[t('loadFailed')]} />}
+      {query.isError && <LoadError message={t('loadFailed')} onRetry={() => void query.refetch()} />}
 
       {!query.isError && signatories.length === 0 && !query.isPending && (
         <div className="rounded-panel border border-dashed border-border px-4 py-8 text-center">

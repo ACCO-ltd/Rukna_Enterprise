@@ -1,0 +1,115 @@
+import { Injectable } from '@nestjs/common';
+import type { PrismaClient } from '@prisma/client';
+
+type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+
+/**
+ * Read-only figures for Finance Home (Step 4). Every query is org-scoped and reads only what is in
+ * the ledger: posted invoices, bills, receipts and payments, and posted journal lines on the bank
+ * accounts' GL accounts.
+ */
+@Injectable()
+export class FinanceHomeRepository {
+  bankAccounts(prisma: TenantPrisma, organizationId: string) {
+    return prisma.bankAccount.findMany({
+      where: { organizationId, status: { not: 'CLOSED' } },
+      orderBy: { bankName: 'asc' },
+      select: { id: true, bankName: true, accountName: true, glAccountId: true },
+    });
+  }
+
+  /** Σ debit − Σ credit per GL account over posted journals. */
+  async glBalances(prisma: TenantPrisma, organizationId: string, accountIds: string[]) {
+    if (accountIds.length === 0) return [];
+    return prisma.journalLine.groupBy({
+      by: ['accountId'],
+      where: { accountId: { in: accountIds }, entry: { organizationId, status: 'POSTED' } },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+  }
+
+  /** Issued invoices still owed (posted or carried in as opening balances). */
+  openInvoices(prisma: TenantPrisma, organizationId: string) {
+    return prisma.clientInvoice.findMany({
+      where: {
+        organizationId,
+        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
+        documentStatus: { not: 'CANCELLED' },
+        outstandingAmount: { gt: 0 },
+      },
+      select: { clientId: true, dueDate: true, invoiceDate: true, outstandingAmount: true, client: { select: { name: true } } },
+    });
+  }
+
+  openBills(prisma: TenantPrisma, organizationId: string) {
+    return prisma.supplierBill.findMany({
+      where: {
+        organizationId,
+        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
+        documentStatus: { notIn: ['CANCELLED', 'REJECTED'] },
+        outstandingAmount: { gt: 0 },
+      },
+      select: { dueDate: true, outstandingAmount: true },
+    });
+  }
+
+  /** Step 6 — every open invoice with its client, for the receivables aging report. */
+  agingInvoices(prisma: TenantPrisma, organizationId: string) {
+    return prisma.clientInvoice.findMany({
+      where: {
+        organizationId,
+        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
+        documentStatus: { not: 'CANCELLED' },
+        outstandingAmount: { gt: 0 },
+      },
+      select: {
+        id: true, invoiceNumber: true, invoiceDate: true, dueDate: true, outstandingAmount: true, postingStatus: true,
+        client: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  /** Step 6 — every open bill with its supplier, for the payables aging report. */
+  agingBills(prisma: TenantPrisma, organizationId: string) {
+    return prisma.supplierBill.findMany({
+      where: {
+        organizationId,
+        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
+        documentStatus: { notIn: ['CANCELLED', 'REJECTED'] },
+        // AP-1 — a bill an unposted payment holds in full is still owed until that payment posts.
+        OR: [
+          { outstandingAmount: { gt: 0 } },
+          { allocations: { some: { postingStatus: 'NOT_POSTED', payment: { documentStatus: { notIn: ['REJECTED', 'CANCELLED'] }, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } } } } },
+        ],
+      },
+      select: {
+        id: true, billNumber: true, supplierInvoiceNumber: true, billDate: true, dueDate: true, outstandingAmount: true, postingStatus: true,
+        supplier: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  async invoicedBetween(prisma: TenantPrisma, organizationId: string, from: Date, to: Date) {
+    const r = await prisma.clientInvoice.aggregate({
+      where: { organizationId, postingStatus: 'POSTED', invoiceDate: { gte: from, lte: to } },
+      _sum: { totalAmount: true },
+    });
+    return r._sum.totalAmount;
+  }
+
+  async collectedBetween(prisma: TenantPrisma, organizationId: string, from: Date, to: Date) {
+    const r = await prisma.paymentReceipt.aggregate({
+      where: { organizationId, postingStatus: 'POSTED', receiptDate: { gte: from, lte: to } },
+      _sum: { totalAmount: true },
+    });
+    return r._sum.totalAmount;
+  }
+
+  async paidBetween(prisma: TenantPrisma, organizationId: string, from: Date, to: Date) {
+    const r = await prisma.supplierPayment.aggregate({
+      where: { organizationId, postingStatus: 'POSTED', paymentDate: { gte: from, lte: to } },
+      _sum: { totalAmount: true },
+    });
+    return r._sum.totalAmount;
+  }
+}

@@ -3,12 +3,13 @@
 import { useEffect, useId, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Input, LtrValue, Skeleton, cn } from '@erp/ui';
+import { Input, LtrValue, Skeleton, cn } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 
 import type { BoqLibraryItem } from '../api/boq-item-library-api';
 import { useLibrarySearch } from '../hooks/use-boq-item-library';
+import { LoadError } from '@/components/load-error';
 
 /**
  * "Add from library" — the fast-entry path (ADR-020 CONST-BOQ-020).
@@ -39,7 +40,7 @@ export function BoqLibraryPicker({
   const [query, setQuery] = useState('');
   const debounced = useDebounced(query, 250);
 
-  const { data, isPending, isError } = useLibrarySearch(debounced, true);
+  const { data, isPending, isError, refetch } = useLibrarySearch(debounced, true);
   const items = data ?? [];
 
   return (
@@ -65,7 +66,7 @@ export function BoqLibraryPicker({
       </div>
 
       {isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
       ) : isPending ? (
         <div className="space-y-2" role="status" aria-live="polite">
           <span className="sr-only">{t('searching')}</span>

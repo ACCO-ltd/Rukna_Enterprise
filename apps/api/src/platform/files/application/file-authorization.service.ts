@@ -3,6 +3,10 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../project-access/project-access.service.js';
+import {
+  canReadAttachments,
+  type FinanceAttachmentKind,
+} from '../domain/finance-attachment-policy.js';
 
 /**
  * Who is allowed to touch a file's bytes.
@@ -45,6 +49,12 @@ export type FileOwner =
   // The rendered PDF for a posted payment receipt — same rule as INVOICE_DOCUMENT: the receipts
   // controller gates every route on manage:receivable, not project membership.
   | { kind: 'RECEIPT_DOCUMENT'; receiptId: string }
+  // Step 4 — the remittance advice for a posted supplier payment; the payments controller gates
+  // every route on manage:payable.
+  | { kind: 'PAYMENT_DOCUMENT'; paymentId: string }
+  // Step 4 — evidence on a finance document. Read by the permission that runs that document, or
+  // by view:accounting (FinanceAttachmentService's own rule, finance-attachments/domain).
+  | { kind: 'FINANCE_ATTACHMENT'; attachmentId: string; documentKind: FinanceAttachmentKind }
   // Procurement attachments: quotation evidence on a PO revision, delivery note on a GRN.
   // Neither lives inside a project — they are org-level records. Reachable by procurementView.
   | {
@@ -173,6 +183,12 @@ export class FileAuthorizationService {
         organizationLogoFor: { select: { id: true } },
         invoiceDocumentFor: { select: { id: true } },
         receiptDocumentFor: { select: { id: true } },
+        paymentDocumentFor: { select: { id: true } },
+        clientInvoiceAttachments: { select: { id: true } },
+        paymentReceiptAttachments: { select: { id: true } },
+        supplierBillAttachments: { select: { id: true } },
+        supplierPaymentAttachments: { select: { id: true } },
+        journalEntryAttachments: { select: { id: true } },
         poRevisionAttachments: {
           select: {
             id: true,
@@ -256,6 +272,15 @@ export class FileAuthorizationService {
         kind: 'RECEIPT_DOCUMENT' as const,
         receiptId: receipt.id,
       })),
+      ...file.paymentDocumentFor.map((payment) => ({
+        kind: 'PAYMENT_DOCUMENT' as const,
+        paymentId: payment.id,
+      })),
+      ...financeOwners('INVOICE', file.clientInvoiceAttachments),
+      ...financeOwners('RECEIPT', file.paymentReceiptAttachments),
+      ...financeOwners('BILL', file.supplierBillAttachments),
+      ...financeOwners('PAYMENT', file.supplierPaymentAttachments),
+      ...financeOwners('JOURNAL', file.journalEntryAttachments),
       ...file.poRevisionAttachments.map((a) => ({
         kind: 'PO_REVISION_ATTACHMENT' as const,
         attachmentId: a.id,
@@ -410,6 +435,10 @@ export class FileAuthorizationService {
       case 'INVOICE_DOCUMENT':
       case 'RECEIPT_DOCUMENT':
         return identity.permissions.includes(PERMISSIONS.receivablesManage);
+      case 'PAYMENT_DOCUMENT':
+        return identity.permissions.includes(PERMISSIONS.payablesManage);
+      case 'FINANCE_ATTACHMENT':
+        return canReadAttachments(identity.permissions, owner.documentKind);
       // Procurement attachments are org-level (no project). Any holder of procurementView can
       // read them — the same guard that gates the PO and GRN list endpoints.
       case 'PO_REVISION_ATTACHMENT':
@@ -460,4 +489,8 @@ export class FileAuthorizationService {
       `Only the uploader can ${verb} a file that is not attached to a record.`,
     );
   }
+}
+
+function financeOwners(documentKind: FinanceAttachmentKind, rows: { id: string }[]): FileOwner[] {
+  return rows.map((row) => ({ kind: 'FINANCE_ATTACHMENT' as const, attachmentId: row.id, documentKind }));
 }

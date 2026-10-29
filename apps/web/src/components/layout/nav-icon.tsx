@@ -1,8 +1,10 @@
 'use client';
 
 import {
+  Clock,
   BookOpen,
   Briefcase,
+  Inbox,
   Building2,
   Calendar,
   ChartColumn,
@@ -44,6 +46,7 @@ import type { NavIconKey } from './nav-groups';
  */
 const ICONS: Record<NavIconKey, LucideIcon> = {
   grid: LayoutGrid,
+  inbox: Inbox,
   building: Building2,
   folder: FolderOpen,
   receipt: Receipt,
@@ -55,6 +58,7 @@ const ICONS: Record<NavIconKey, LucideIcon> = {
   'shopping-cart': ShoppingCart,
   truck: Truck,
   'trending-up': TrendingUp,
+  clock: Clock,
   shield: ShieldCheck,
   'git-branch': GitBranch,
   list: List,

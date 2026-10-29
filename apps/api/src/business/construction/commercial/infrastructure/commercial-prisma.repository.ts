@@ -208,6 +208,10 @@ export class CommercialPrismaRepository {
         applicationId: true,
         certifiedTotal: true,
         currency: true,
+        createdAt: true,
+        // ADR-046 §5 — certificates are cumulative; the contract's certified-to-date is the
+        // effective certificate of its latest application, found by application number.
+        application: { select: { applicationNumber: true } },
         // `deductionType` as well as the amount: retention held and advance recovered are the
         // RETENTION / ADVANCE_RECOVERY slices of this same set, and deriving them here means
         // they can never disagree with the certified-net figure computed beside them.
@@ -511,6 +515,14 @@ export class CommercialPrismaRepository {
         documentStatus: true,
         postingStatus: true,
         totalAmount: true,
+        // ADR-046 §5 — what an IPC invoice billed of the certificate (null gross = raised before),
+        // and what a retention release invoice billed back out.
+        subtotal: true,
+        retentionReleasedAmount: true,
+        certifiedGrossAmount: true,
+        retentionAmount: true,
+        advanceRecoveryAmount: true,
+        otherDeductionsAmount: true,
         // Carried so the Receivables panel can list what is still owed and when it was due,
         // without a second round trip. `outstandingAmount` is maintained by the AR allocation
         // path — it is the settlement truth ADR-017 nominates.
@@ -548,6 +560,10 @@ export class CommercialPrismaRepository {
         vatAmount: true,
         totalAmount: true,
         outstandingAmount: true,
+        // ADR-046 §5 — retention held on certificate invoices and billed on release invoices, for the
+        // retention To do row.
+        retentionAmount: true,
+        retentionReleasedAmount: true,
         documentStatus: true,
         postingStatus: true,
         createdAt: true,
@@ -567,6 +583,8 @@ export class CommercialPrismaRepository {
         // the human reference the read model surfaces.
         sourceBoqNodeId: true,
         sourceBoqNode: { select: { id: true, code: true, description: true } },
+        sourceRetentionContractId: true,
+        sourceRetentionContract: { select: { id: true, contractNumber: true } },
         allocations: {
           where: { postingStatus: 'POSTED' },
           orderBy: { allocationDate: 'desc' },
@@ -1197,10 +1215,10 @@ export class CommercialPrismaRepository {
   }
 
   /**
-   * Cancel unposted drafts. The unique source tags (`sourceInstallmentId`, `sourceBoqNodeId`) are
-   * released so the stage / separate charge can be prepared again (one live invoice per source); the
-   * cancelled row keeps its `billingAddressSnapshot.description` and the audit event records the
-   * original source. Guarded on unposted in the WHERE — a posted invoice is never cancelled here.
+   * Cancel unposted drafts. The unique source tags (`sourceInstallmentId`, `sourceBoqNodeId`,
+   * `sourceIpcId`) are released so the stage / separate charge / certificate can be prepared again
+   * (one live invoice per source); the cancelled row keeps its `billingAddressSnapshot.description`
+   * and the audit event records the original source. Guarded on unposted in the WHERE — a posted invoice is never cancelled here.
    * Returns the number of rows cancelled.
    */
   async cancelDraftInvoices(
@@ -1224,6 +1242,7 @@ export class CommercialPrismaRepository {
         cancellationReason: reason,
         sourceInstallmentId: null,
         sourceBoqNodeId: null,
+        sourceIpcId: null,
       },
     });
     return result.count;
@@ -1257,6 +1276,10 @@ export class CommercialPrismaRepository {
         dueDate: true,
         currencyCode: true,
         subtotal: true,
+        // ADR-046 §5 — what a certificate invoice holds back, and what a release invoice bills.
+        retentionAmount: true,
+        advanceRecoveryAmount: true,
+        retentionReleasedAmount: true,
         vatAmount: true,
         taxRate: true,
         totalAmount: true,
@@ -1278,6 +1301,8 @@ export class CommercialPrismaRepository {
         },
         sourceBoqNodeId: true,
         sourceBoqNode: { select: { id: true, code: true, description: true } },
+        sourceRetentionContractId: true,
+        sourceRetentionContract: { select: { id: true, contractNumber: true } },
         client: { select: { name: true, address: true } },
         deliveries: {
           orderBy: { sentAt: 'asc' },
@@ -1289,6 +1314,19 @@ export class CommercialPrismaRepository {
             amount: true,
             treatment: true,
             variation: { select: { reference: true, title: true } },
+          },
+        },
+        creditNotes: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            creditNoteNumber: true,
+            reason: true,
+            totalAmount: true,
+            accountingDate: true,
+            postingStatus: true,
+            reversedAt: true,
+            reversalReason: true,
           },
         },
       },

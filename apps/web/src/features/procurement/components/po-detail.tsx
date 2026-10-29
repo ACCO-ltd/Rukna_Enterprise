@@ -31,7 +31,9 @@
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from '@erp/ui';
+import { Alert, Button, Card, CardContent, CardFooter, CardHeader, CardTitle, SkeletonRecord } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
@@ -101,20 +103,14 @@ export function PoDetail({ id }: { id: string }) {
 
   if (po.isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
+      <SkeletonRecord label={tCommon('loading')} />
     );
   }
 
   if (po.isError || !po.data) {
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[tc('loadFailed')]} />
+        <LoadError message={tc('loadFailed')} onRetry={() => void po.refetch()} />
         <Button variant="outline" asChild>
           <Link href="/procurement/orders">{t('backToList')}</Link>
         </Button>

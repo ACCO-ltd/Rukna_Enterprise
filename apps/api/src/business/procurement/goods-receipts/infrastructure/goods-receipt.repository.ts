@@ -32,6 +32,7 @@ export interface CreateGrnLineAllocationData {
 
 export interface CreateGrnData {
   organizationId: string;
+  clientRef?: string;
   grnNumber: string;
   purchaseOrderId: string;
   purchaseOrderRevisionId: string;
@@ -60,6 +61,12 @@ const GRN_INCLUDE = {
 
 @Injectable()
 export class GoodsReceiptRepository {
+  /** Step 7 — the receipt a phone already sent under this reference, if any (its id). */
+  async idByClientRef(prisma: TenantPrisma, organizationId: string, clientRef: string): Promise<string | null> {
+    const found = await prisma.goodsReceiptNote.findFirst({ where: { organizationId, clientRef }, select: { id: true } });
+    return found?.id ?? null;
+  }
+
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
     return prisma.goodsReceiptNote.findFirst({ where: { id, organizationId }, include: GRN_INCLUDE });
   }

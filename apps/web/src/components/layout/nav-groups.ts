@@ -15,6 +15,7 @@
 
 export type NavIconKey =
   | 'grid'
+  | 'inbox'
   | 'building'
   | 'folder'
   | 'receipt'
@@ -41,7 +42,8 @@ export type NavIconKey =
   | 'tag'
   | 'user-gear'
   | 'key'
-  | 'check-circle';
+  | 'check-circle'
+  | 'clock';
 
 export interface NavItem {
   href: string;
@@ -73,7 +75,7 @@ export interface NavItem {
 }
 
 /** Live counts a nav item can carry. */
-export type NavBadgeKey = 'quotesToChoose' | 'paymentsNeeded';
+export type NavBadgeKey = 'quotesToChoose' | 'paymentsNeeded' | 'approvals';
 
 export interface NavDomain {
   /** Translation key — also used as the collapse-store key. */
@@ -103,6 +105,8 @@ export interface NavDomain {
 
 export const STANDALONE_NAV: NavItem[] = [
   { href: '/dashboard', labelKey: 'dashboard', iconKey: 'grid' },
+  // ADR-047 §4 / ADR-049 — one Approvals tab with a count, not an inbox per module.
+  { href: '/approvals', labelKey: 'approvals', iconKey: 'inbox', badge: 'approvals' },
 ];
 
 // ─── Domains ──────────────────────────────────────────────────────────────────
@@ -124,18 +128,25 @@ export const NAV_DOMAINS: NavDomain[] = [
     // Accounting; every route is unchanged (`/finance/accounting/*`, `/receipts`), only labels and
     // grouping moved. `moduleKey` stays `accounting` (the module-visibility gate, view:accounting).
     labelKey: 'finance',
-    href: '/accounting',
+    href: '/finance',
     moduleKey: 'accounting',
     iconKey: 'chart-bar',
     // Ungrouped items lead the tab bar: Get started (the guided accounting hub, the module's landing
     // while setup is incomplete — a company-wide Finance overview does not exist yet) and Projects (the portfolio, gated like its API on
     // view:financial-position). Then the named sections; the groupKey draws the micro-label.
     items: [
+      // Step 4 (ADR-047 §4) — the dashboard is the module's landing; the setup checklist leads it
+      // until setup is complete.
+      { href: '/finance', labelKey: 'financeHome', iconKey: 'grid' },
       { href: '/finance/accounting/guide', labelKey: 'getStarted', iconKey: 'check-circle' },
       { href: '/finance/projects', labelKey: 'financeProjects', iconKey: 'briefcase', permissionKey: 'view:financial-position' },
       // Receivables
       { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text', groupKey: 'receivables' },
       { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt', groupKey: 'receivables' },
+      // Step 6 — what clients owe, by days past due.
+      { href: '/finance/accounting/aging/receivables', labelKey: 'receivablesAging', iconKey: 'clock', groupKey: 'receivables' },
+      // AR-3 — a client's statement of account, across every project and sale.
+      { href: '/finance/accounting/statement', labelKey: 'clientStatement', iconKey: 'file-text', groupKey: 'receivables' },
       // Payables
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', groupKey: 'payables' },
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
@@ -143,9 +154,18 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/quotes', labelKey: 'quotesToChoose', iconKey: 'check-circle', groupKey: 'payables', permissionKey: 'award:quotation', badge: 'quotesToChoose' },
       // ADR-045 — award orders to pay and store receipts to record; counts the pay queue.
       { href: '/finance/payments-needed', labelKey: 'paymentsNeeded', iconKey: 'wallet', groupKey: 'payables', permissionKey: 'manage:payable', badge: 'paymentsNeeded' },
+      // Step 6 — what is owed to suppliers, by days past due.
+      { href: '/finance/accounting/aging/payables', labelKey: 'payablesAging', iconKey: 'clock', groupKey: 'payables' },
+      // AP-3 — a supplier's account, to agree with the statement the supplier sends.
+      { href: '/finance/accounting/supplier-statement', labelKey: 'supplierStatement', iconKey: 'file-text', groupKey: 'payables' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
-      { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'check-circle', groupKey: 'banking' },
+      // B-2 — money moved between the organisation's own accounts.
+      { href: '/finance/accounting/transfers', labelKey: 'bankTransfers', iconKey: 'wallet', groupKey: 'banking' },
+      // Step 6 — statement-to-ledger matching. The older subledger-to-GL check keeps its route, now
+      // named for what it is.
+      { href: '/finance/accounting/bank-reconciliation', labelKey: 'bankReconciliation', iconKey: 'check-circle', groupKey: 'banking' },
+      { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'clipboard', groupKey: 'ledger' },
       // General Ledger
       { href: '/finance/accounting/journals', labelKey: 'journals', iconKey: 'book-open', groupKey: 'ledger' },
       { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts', iconKey: 'list', groupKey: 'ledger' },
@@ -155,13 +175,19 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison', iconKey: 'trending-up', groupKey: 'reports' },
+      // Step 6 — output VAT for a period, from the ledger.
+      { href: '/finance/accounting/vat-report', labelKey: 'vatReport', iconKey: 'tag', groupKey: 'reports' },
       // ADR-043 Phase 4 — a forward-looking report across projects, AR and AP; gated like its API.
       { href: '/finance/cashflow', labelKey: 'cashFlow', iconKey: 'trending-up', groupKey: 'reports', permissionKey: 'view:financial-position' },
       // Setup & close
       { href: '/finance/accounting/posting-profiles', labelKey: 'postingProfiles', iconKey: 'git-branch', groupKey: 'acctSetup' },
       { href: '/finance/accounting/tax', labelKey: 'taxCodes', iconKey: 'tag', groupKey: 'acctSetup' },
       { href: '/finance/accounting/invoice-settings', labelKey: 'invoiceSettings', iconKey: 'receipt', groupKey: 'acctSetup' },
+      // ADR-046 §8 — the optional finance approvals.
+      { href: '/finance/accounting/approval-settings', labelKey: 'approvalSettings', iconKey: 'shield', groupKey: 'acctSetup' },
       { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance', iconKey: 'book-open', groupKey: 'acctSetup' },
+      // Step 6 — every check before a month closes, then the periods screen that closes it.
+      { href: '/finance/accounting/close', labelKey: 'closeChecklist', iconKey: 'check-circle', groupKey: 'acctSetup' },
       { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar', groupKey: 'acctSetup' },
     ],
   },
@@ -202,7 +228,7 @@ export const NAV_DOMAINS: NavDomain[] = [
     moduleKey: 'administration',
     iconKey: 'shield',
     flat: true,
-    // These six items no longer render in the sidebar. Clicking Administration opens the
+    // These eight items no longer render in the sidebar. Clicking Administration opens the
     // Administration workspace, and they are its tab bar (`AdminShell`) — the same move the
     // project Finance workspace made. They stay declared here because this list is the single
     // source of truth for the routes, their labels, their icons and their permission gates,
@@ -216,9 +242,14 @@ export const NAV_DOMAINS: NavDomain[] = [
     items: [
       { href: '/admin/users', labelKey: 'users', iconKey: 'users', groupKey: 'people' },
       { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear', groupKey: 'people' },
+      // Step 3 — every permission against every role on one screen.
+      { href: '/admin/roles/matrix', labelKey: 'rolesMatrix', iconKey: 'grid', groupKey: 'people', permissionKey: 'view:role' },
       { href: '/admin/districts', labelKey: 'districts', iconKey: 'building', permissionKey: 'manage:district', groupKey: 'organization' },
       { href: '/admin/project-subtypes', labelKey: 'projectSubtypes', iconKey: 'tag', permissionKey: 'manage:project-type', groupKey: 'organization' },
       { href: '/admin/branding', labelKey: 'branding', iconKey: 'receipt', permissionKey: 'manage:organization', groupKey: 'organization' },
+      { href: '/admin/templates', labelKey: 'templates', iconKey: 'clipboard', permissionKey: 'manage:organization', groupKey: 'organization' },
+      // Step 7 — the photo reader's per-company switch.
+      { href: '/admin/photo-reader', labelKey: 'photoReader', iconKey: 'cog', permissionKey: 'manage:organization', groupKey: 'organization' },
       { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch', groupKey: 'governance' },
       { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key', groupKey: 'evidence' },
     ],

@@ -25,6 +25,7 @@ import { currentVersion } from '../account-display';
 import { useAccounts, useBankAccounts, useFiscalYears, useRunReconciliation } from '../hooks/use-accounting';
 import { ledgerHref } from '../lib/report-links';
 import type { ControlAccountCheck } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function BankReconciliation() {
   const t = useTranslations('accounting.reconciliation');
@@ -85,7 +86,15 @@ export function BankReconciliation() {
   }
 
   if (accounts.isError || bankAccounts.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return (
+      <LoadError
+        message={t('loadFailed')}
+        onRetry={() => {
+          void accounts.refetch();
+          void bankAccounts.refetch();
+        }}
+      />
+    );
   }
 
   const report = reconcile.data;

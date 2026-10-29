@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Button,
   Table,
   TableBody,
@@ -23,6 +22,7 @@ import { useFiscalYears } from '../hooks/use-accounting';
 import type { AccountingPeriod, FiscalYear } from '../types';
 import { CreateFiscalYearForm } from './create-fiscal-year-form';
 import { FiscalYearCloseAction, PeriodActions } from './period-actions';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Period status is the single most consequential thing on this screen: it decides whether a
@@ -34,7 +34,6 @@ export function FiscalPeriods() {
   const t = useTranslations('accounting.periods');
   const tCommon = useTranslations('common');
 
-  const tActions = useTranslations('accounting.periodActions');
   const years = useFiscalYears();
   const [creating, setCreating] = useState(false);
   const { can } = usePermissions();
@@ -52,7 +51,7 @@ export function FiscalPeriods() {
   }
 
   if (years.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void years.refetch()} />;
   }
 
   return (
@@ -68,12 +67,6 @@ export function FiscalPeriods() {
       {creating ? (
         <CreateFiscalYearForm title={t('create.title')} onDone={() => setCreating(false)} />
       ) : null}
-
-      {/* The lifecycle endpoints carry `JwtAuthGuard` and nothing else — any signed-in user
-          can close a fiscal year (#25). The actions are gated on `can()` so one flag secures
-          them when a guard lands, but that is presentation only, and saying so is more honest
-          than a screen that looks authorised. */}
-      <Alert variant="warning" messages={[tActions('unauthorizedNote')]} />
 
 
       {years.data.length === 0 ? (

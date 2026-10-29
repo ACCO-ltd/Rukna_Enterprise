@@ -57,11 +57,11 @@ export class UpdateInvoiceDocumentSettingsDto {
   @IsOptional() @IsArray() @ArrayMaxSize(2) @IsString({ each: true }) @MaxLength(30, { each: true })
   footerPhones?: string[];
 
-  @ApiPropertyOptional({ nullable: true, example: 'info@acco.com' })
+  @ApiPropertyOptional({ nullable: true, example: 'info@company.com' })
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80)
   footerEmail?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: 'www.acco.com' })
+  @ApiPropertyOptional({ nullable: true, example: 'www.company.com' })
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80)
   footerWebsite?: string | null;
 

@@ -48,6 +48,8 @@ import { CLIENT_TYPES, type Client } from '../types';
 
 interface ClientFormProps {
   client?: Client;
+  /** Inline create: the name typed where the client was missing (e.g. the invoice's client box). */
+  initialName?: string;
   onCreated?: (client: Client) => void;
   onCancel?: () => void;
 }
@@ -73,7 +75,7 @@ const phoneSchema = z.object({ country: z.string(), number: z.string() });
  * Three hosts: /clients/new, the edit page, and inline inside the project form (`onCreated` /
  * `onCancel`), where saving hands the new client back instead of navigating.
  */
-export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}) {
+export function ClientForm({ client, initialName, onCreated, onCancel }: ClientFormProps = {}) {
   const t = useTranslations('platform.clients.create');
   const tErrors = useTranslations('platform.clients.errors');
   const tCommon = useTranslations('common');
@@ -133,7 +135,7 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
   const mutation = isEdit ? update : create;
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: client ? toClientFormValues(client) : EMPTY_CLIENT_FORM,
+    defaultValues: client ? toClientFormValues(client) : { ...EMPTY_CLIENT_FORM, name: initialName ?? '' },
   });
   const {
     register,

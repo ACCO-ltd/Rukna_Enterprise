@@ -3,9 +3,10 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, SkeletonForm } from '@erp/ui';
 
 import { useCommercialSummary } from '../hooks/use-commercial';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Resolves the project's single main contract for the project-scoped IPA/IPC routes, then hands
@@ -33,21 +34,13 @@ export function ProjectApplicationBoundary({
   const contractSecurityHref = `/projects/${projectId}/commercial/contract`;
 
   if (summary.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-96 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
+    return <SkeletonForm label={tCommon('loading')} />;
   }
 
   if (summary.isError) {
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void summary.refetch()} />
         <Button variant="outline" asChild>
           <Link href={contractSecurityHref}>{t('back')}</Link>
         </Button>

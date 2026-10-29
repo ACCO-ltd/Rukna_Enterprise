@@ -34,7 +34,7 @@ export class RecordSignedContractDto {
   @IsNotEmpty()
   clientId!: string;
 
-  @ApiPropertyOptional({ example: 'ACCO-WBR-26-0065-C1', description: 'Auto-generated if absent' })
+  @ApiPropertyOptional({ example: 'PRJ-WBR-26-0065-C1', description: 'Auto-generated if absent' })
   @IsString()
   @MaxLength(50)
   @IsOptional()

@@ -70,6 +70,8 @@ import {
   scheduleBaseValue,
 } from '../domain/receivable-position.js';
 import { AGING_BUCKETS, agingBucket } from '../domain/receivable-aging.js';
+import { latestCertificate } from '../../ipc/domain/certified-to-date.js';
+import { billedToDate } from '../../../accounting/accounts-receivable/domain/ipc-invoice-period.policy.js';
 import { issuePostingDate, stageBillingEligibility, stagePrepareBlock } from '../domain/stage-billing-eligibility.policy.js';
 import { PeriodValidator } from '../../../accounting/accounting-core/application/validators/period.validator.js';
 
@@ -139,6 +141,8 @@ export function invoiceSource(inv: {
   } | null;
   sourceBoqNodeId: string | null;
   sourceBoqNode: { id: string; code: string; description: string } | null;
+  sourceRetentionContractId?: string | null;
+  sourceRetentionContract?: { id: string; contractNumber: string } | null;
 }): ClientInvoiceSource {
   if (inv.sourceInstallmentId) {
     return {
@@ -165,6 +169,14 @@ export function invoiceSource(inv: {
       kind: 'SEPARATE_CHARGE',
       label: inv.sourceBoqNode?.description || inv.sourceBoqNode?.code || null,
       id: inv.sourceBoqNodeId,
+    };
+  }
+  // ADR-046 §5 — the invoice billing the contract's held retention once released.
+  if (inv.sourceRetentionContractId) {
+    return {
+      kind: 'RETENTION_RELEASE',
+      label: inv.sourceRetentionContract?.contractNumber ?? null,
+      id: inv.sourceRetentionContractId,
     };
   }
   return { kind: 'NONE', label: null, id: null };
@@ -316,7 +328,10 @@ export class CommercialService {
     // been paid down. Summed here so they can never disagree with certifiedNet.
     let retentionHeld = ZERO;
     let advanceRecovered = ZERO;
-    for (const cert of certs) {
+    // ADR-046 §5 — certificates are cumulative: the latest one IS certified-to-date. Summing them
+    // counted earlier work once per later certificate.
+    const latestCert = latestCertificate(certs);
+    for (const cert of latestCert ? [latestCert] : []) {
       certifiedGross = certifiedGross.plus(new Decimal(cert.certifiedTotal.toString()));
       for (const ded of cert.deductions) {
         const amount = new Decimal(ded.amount.toString());
@@ -385,19 +400,27 @@ export class CommercialService {
         .filter((i) => i.postingStatus === 'POSTED' && i.sourceIpcId)
         .map((i) => i.sourceIpcId!),
     );
-    let uninvoicedCertified = ZERO;
-    let uninvoicedCount = 0;
-    for (const cert of certs) {
-      if (invoicedIpcIds.has(cert.id)) continue;
-      const deductions = cert.deductions.reduce(
-        (sum, d) => sum.plus(new Decimal(d.amount.toString())),
-        ZERO,
-      );
-      uninvoicedCertified = uninvoicedCertified.plus(
-        new Decimal(cert.certifiedTotal.toString()).minus(deductions),
-      );
-      uninvoicedCount += 1;
-    }
+    // ADR-046 §5 — net certified to date minus the net already billed on posted IPC invoices (each
+    // bills a period). Never below zero: an over-billed contract has nothing uninvoiced.
+    const billed = billedToDate(
+      invoices
+        .filter((i) => i.postingStatus === 'POSTED' && i.sourceIpcId)
+        .map((i) => ({
+          certifiedGrossAmount:
+            i.certifiedGrossAmount === null ? null : new Decimal(i.certifiedGrossAmount.toString()),
+          subtotal: new Decimal(i.subtotal.toString()),
+          retentionAmount: new Decimal(i.retentionAmount.toString()),
+          advanceRecoveryAmount: new Decimal(i.advanceRecoveryAmount.toString()),
+          otherDeductionsAmount: new Decimal(i.otherDeductionsAmount.toString()),
+          creditedNet: ZERO,
+        })),
+    );
+    const billedNet = billed.gross
+      .minus(billed.retention)
+      .minus(billed.advanceRecovery)
+      .minus(billed.other);
+    const uninvoicedCertified = Decimal.max(ZERO, certifiedNet.minus(billedNet));
+    const uninvoicedCount = certs.filter((cert) => !invoicedIpcIds.has(cert.id)).length;
 
     // Recent commercial activity spans the contract and its audited children.
     const resourceIds = [
@@ -540,7 +563,13 @@ export class CommercialService {
         : null,
       securityPosition: this.securityPosition(
         contract,
-        retentionHeld,
+        // ADR-046 §5 — retention billed back to the client on posted release invoices is no longer held.
+        Decimal.max(
+          ZERO,
+          invoices
+            .filter((inv) => inv.postingStatus === 'POSTED')
+            .reduce((sum, inv) => sum.minus(inv.retentionReleasedAmount.toString()), retentionHeld),
+        ),
         advanceRecovered,
         certFailed,
         mayViewFinancials,

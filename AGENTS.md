@@ -92,9 +92,11 @@ If documentation is unclear, stop and request clarification.
 
 | Role | Name | Owns | Escalate to for |
 |---|---|---|---|
-| Backend Engineer | Abdulsalam | apps/api/, prisma/schema.prisma, packages/types/ | API contracts, schema changes, backend architecture |
+| Full-stack Engineer | Abdulsalam | The whole repository: apps/api/, apps/web/, prisma/schema.prisma, packages/types/, packages/ui/ | API contracts, schema, architecture, UI/UX, frontend state |
 | CEO / Domain Expert | Eng Ahmed Shirie | ACCO Ltd business processes | Construction domain rules, approval workflows, business logic |
-| Frontend Engineer | Abdimalik | apps/web/, packages/ui/ | UI/UX, component design, frontend state |
+
+Abdulsalam is the only engineer (2026-10-27): features are built end to end, backend through
+frontend, in the same change. There is no separate frontend owner to hand work to.
 
 ---
 
@@ -211,9 +213,9 @@ dimensions to shared modules. Shared modules must not import `BoqService`, `Proj
 or any other construction-domain service. If a shared module needs construction data, it
 receives it as a plain ID through its own API — it does not call into construction code.
 
-**Known technical debt:** `src/business/finance/` (Sprint 3 PaymentReceipt module) is
-construction-coupled by domain. It will be absorbed into the AR module in Sprint 8
-when the AR/Cash-Banking boundary is formalized.
+The former `src/business/finance/` PaymentReceipt module has been absorbed into the AR
+module (`accounting/accounts-receivable`, ADR-024 ACC-SET-001); there is no separate finance
+module any more.
 
 ---
 

@@ -25,6 +25,7 @@ import {
   TableScroll,
   Textarea,
   StatusPill,
+  SkeletonTable,
 } from '@erp/ui';
 
 import { statusTone } from '@/lib/status-registry';
@@ -34,6 +35,7 @@ import { AdminPanel } from '@/features/admin/components/admin-panel';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
 import { filterPolicies, type PolicyStatusFilter } from '../filter-policies';
 import { PolicyVersionComparisonDialog } from './policy-version-comparison-dialog';
+import { LoadError } from '@/components/load-error';
 
 /** The server's policy-key shape (once the input's native `pattern`). */
 const POLICY_KEY_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/;
@@ -60,7 +62,7 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
   const searchId = useId();
   const statusFilterId = useId();
 
-  const { data = [], isPending, isError } = useApprovalPolicies();
+  const { data = [], isPending, isError, refetch } = useApprovalPolicies();
   const create = useCreateApprovalPolicyDraft();
   const [open, setOpen] = useState(false);
   const [compareKey, setCompareKey] = useState<string | null>(null);
@@ -117,9 +119,9 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
     >
       <div className="space-y-4">
         {isPending ? (
-          <div className="h-32 animate-pulse rounded-panel border border-border bg-muted" />
+          <SkeletonTable columns={5} rows={3} label={tCommon('loading')} />
         ) : isError ? (
-          <Alert variant="error" messages={[t('loadFailed')]} />
+          <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
         ) : data.length === 0 ? (
           <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-10 text-center text-sm text-muted-foreground">
             {t('empty')}

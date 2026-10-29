@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, SkeletonForm } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { ApiError } from '@/lib/api-client';
 import { useModuleTrail } from '@/components/layout/module-chrome';
@@ -20,20 +22,12 @@ import { ClientForm } from './client-form';
 export function ClientEdit({ id }: { id: string }) {
   const t = useTranslations('platform.clients.detail');
   const tCommon = useTranslations('common');
-  const { data: client, isPending, isError, error } = useClient(id);
+  const { data: client, isPending, isError, error, refetch } = useClient(id);
   // Names the client being edited in the module breadcrumb (ADR-035): "Clients / <name>".
   useModuleTrail(client?.name);
 
   if (isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-96 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
+    return <SkeletonForm label={tCommon('loading')} />;
   }
 
   if (isError) {
@@ -41,7 +35,11 @@ export function ClientEdit({ id }: { id: string }) {
 
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
+        {notFound ? (
+          <Alert variant="error" messages={[t('notFound')]} />
+        ) : (
+          <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
+        )}
         <Button variant="outline" asChild>
           <Link href="/clients">{t('back')}</Link>
         </Button>

@@ -277,7 +277,7 @@ test('OBPAY-10 posting against an AP account that does not carry the opening pay
     supplierAdvanceCode: env.accounts.advOutCode,
   });
   await expect(run).rejects.toBeInstanceOf(ConflictException);
-  await expect(run).rejects.toMatchObject({ response: { code: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
+  await expect(run).rejects.toMatchObject({ response: { errorCode: 'OPENING_BALANCE_AP_NOT_RECONCILED' } });
   const after = await prisma.supplierPayment.findUniqueOrThrow({ where: { id: payment.id } });
   expect(after.postingStatus).not.toBe('POSTED');
   expect(await prisma.journalEntry.count({ where: { sourceDocumentId: payment.id, sourceDocumentType: 'SUPPLIER_PAYMENT' } })).toBe(0);

@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, DatePicker, FormField } from '@erp/ui';
+import { DatePicker, FormField, SkeletonTable } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { formatDate } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
@@ -60,12 +62,9 @@ export function ProjectPlContent({ projectId }: { projectId: string }) {
       </div>
 
       {report.isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tShared('loading')}</span>
-          <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
-        </div>
+        <SkeletonTable columns={2} rows={8} label={tShared('loading')} />
       ) : report.isError ? (
-        <Alert variant="error" messages={[tPl('loadFailed')]} />
+        <LoadError message={tPl('loadFailed')} onRetry={() => void report.refetch()} />
       ) : (
         <>
           <p className="text-xs text-muted-foreground">

@@ -39,6 +39,8 @@ export interface CreateCreditNoteDto {
 
 export interface PostCreditNoteDto {
   creditNoteId: string;
+  /** When given, the credit note must belong to this invoice (the Finance route names both). */
+  invoiceId?: string;
   arAccountCode?: string;
   revenueAccountCode?: string;
   vatAccountCode?: string;
@@ -53,6 +55,35 @@ export class CreditNoteService {
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
   ) {}
+
+  // ─── listForInvoice ─────────────────────────────────────────────────────────
+
+  /** AR-1 — the credit notes raised against an invoice, oldest first. */
+  async listForInvoice(identity: RequestIdentity, invoiceId: string) {
+    const prisma = this.tenancyService.getClient() as TenantPrisma;
+    const orgId = identity.activeOrganizationId;
+    const invoice = await prisma.clientInvoice.findFirst({ where: { id: invoiceId, organizationId: orgId }, select: { id: true } });
+    if (!invoice) throw new NotFoundException({ errorCode: 'INVOICE_NOT_FOUND', message: `Invoice ${invoiceId} not found` });
+    const rows = await prisma.creditNote.findMany({
+      where: { invoiceId, organizationId: orgId },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((cn) => ({
+      id: cn.id,
+      creditNoteNumber: cn.creditNoteNumber,
+      reason: cn.reason,
+      netAmount: cn.netAmount.toFixed(2),
+      vatAmount: cn.vatAmount.toFixed(2),
+      totalAmount: cn.totalAmount.toFixed(2),
+      accountingDate: cn.accountingDate.toISOString().slice(0, 10),
+      postingStatus: cn.postingStatus,
+      note: cn.note,
+      reversedAt: cn.reversedAt ? cn.reversedAt.toISOString() : null,
+      reversalReason: cn.reversalReason,
+      postedJournalEntryId: cn.postedJournalEntryId,
+      reversalJournalEntryId: cn.reversalJournalEntryId,
+    }));
+  }
 
   // ─── createCreditNote ──────────────────────────────────────────────────────
 
@@ -109,7 +140,7 @@ export class CreditNoteService {
 
     if (alreadyCredited.plus(totalAmount).gt(outstanding)) {
       throw new BadRequestException({
-        code: 'CREDIT_EXCEEDS_OUTSTANDING',
+        errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
         message:
           `Credit note total (${totalAmount.toFixed(2)}) plus existing credits ` +
           `(${alreadyCredited.toFixed(2)}) would exceed the invoice outstanding balance ` +
@@ -184,10 +215,17 @@ export class CreditNoteService {
     const creditNote = await outerPrisma.creditNote.findFirst({
       where: { id: dto.creditNoteId, organizationId: orgId },
     });
-    if (!creditNote) throw new NotFoundException(`CreditNote ${dto.creditNoteId} not found`);
+    if (!creditNote || (dto.invoiceId && creditNote.invoiceId !== dto.invoiceId)) {
+      throw new NotFoundException({ errorCode: 'CREDIT_NOTE_NOT_FOUND', message: `Credit note ${dto.creditNoteId} not found` });
+    }
 
     if (creditNote.postingStatus === 'POSTED') {
       throw new ConflictException(`CreditNote ${dto.creditNoteId} is already posted`);
+    }
+    // A reversed credit note is finished (H2): posting it again would draw a new number and a second
+    // journal. Raise a new credit note instead.
+    if (creditNote.postingStatus !== 'NOT_POSTED' && creditNote.postingStatus !== 'FAILED') {
+      throw new ConflictException(`CreditNote ${dto.creditNoteId} cannot be posted (status: ${creditNote.postingStatus})`);
     }
 
     // Resolve accounts
@@ -197,14 +235,31 @@ export class CreditNoteService {
       dto.arAccountCode,
       'ACCOUNTS_RECEIVABLE',
     );
-    const revAccount = await this.resolver.resolveByCodeOrRole(
-      outerPrisma as never,
-      orgId,
-      dto.revenueAccountCode,
-      'PROJECT_REVENUE',
-    );
-
     const netAmount = new Decimal(creditNote.netAmount.toString());
+
+    // Revenue comes back off the account(s) the invoice recognised it on (AR-1). A hand-typed
+    // invoice names an income account per line, so with no account given the credit is split
+    // across those accounts in proportion to the line amounts. Only an invoice without lines (a
+    // certificate, a stage payment) falls back to the project revenue role.
+    const invoiceLines = await outerPrisma.clientInvoiceLine.findMany({
+      where: { invoiceId: creditNote.invoiceId },
+      select: { amount: true, revenueAccountId: true },
+    });
+    const revenueSplit: Array<{ accountId: string; amount: Decimal }> =
+      dto.revenueAccountCode || invoiceLines.length === 0
+        ? [
+            {
+              accountId: (
+                await this.resolver.resolveByCodeOrRole(outerPrisma as never, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE')
+              ).id,
+              amount: netAmount,
+            },
+          ]
+        : splitByWeight(
+            netAmount,
+            invoiceLines.map((l) => ({ key: l.revenueAccountId, weight: new Decimal(l.amount.toString()) })),
+          ).map((b) => ({ accountId: b.key, amount: b.amount }));
+
     const vatAmount = new Decimal(creditNote.vatAmount.toString());
     const totalAmount = new Decimal(creditNote.totalAmount.toString());
 
@@ -229,7 +284,7 @@ export class CreditNoteService {
     // Invoice lookup for AR client/contract tags plus immutable tax fields for cap re-check
     const invoice = await outerPrisma.clientInvoice.findFirst({
       where: { id: creditNote.invoiceId, organizationId: orgId },
-      select: { clientId: true, contractId: true, projectId: true, currencyCode: true, subtotal: true, vatAmount: true },
+      select: { clientId: true, contractId: true, projectId: true, taxCodeId: true, currencyCode: true, subtotal: true, vatAmount: true },
     });
 
     // Pre-compute vatRate and variationCap from immutable invoice/variation fields (outside tx)
@@ -270,7 +325,7 @@ export class CreditNoteService {
       const currentOutstanding = new Decimal(String(lockedRows[0].outstanding_amount));
       if (totalAmount.gt(currentOutstanding)) {
         throw new BadRequestException({
-          code: 'CREDIT_EXCEEDS_OUTSTANDING',
+          errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
           message:
             `Credit note total (${totalAmount.toFixed(2)}) exceeds current invoice outstanding balance ` +
             `(${currentOutstanding.toFixed(2)}).`,
@@ -301,24 +356,25 @@ export class CreditNoteService {
         }
       }
 
-      // EVT-AR-007: Dr Revenue / Dr VAT / Cr AR
-      const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
-        {
-          accountId: revAccount.id,
-          debitAmount: netAmount,
-          creditAmount: new Decimal(0),
-          // The credit takes revenue back from the project the invoice recognised it on — the
-          // invoice posts its revenue credit with the same projectId (EVT-AR-001).
-          projectId: invoice?.projectId ?? undefined,
-          contractId: invoice?.contractId ?? undefined,
-        },
-      ];
+      // EVT-AR-007: Dr Revenue / Dr VAT / Cr AR. Every line carries the invoice's client, project
+      // and contract — the credit takes revenue back from the project the invoice recognised it on
+      // (EVT-AR-001), and Step 6 tags the VAT and AR lines the same way (fix forward).
+      const tags = {
+        clientId: invoice?.clientId ?? undefined,
+        projectId: invoice?.projectId ?? undefined,
+        contractId: invoice?.contractId ?? undefined,
+      };
+      const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = revenueSplit
+        .filter((r) => r.amount.gt(0))
+        .map((r) => ({ accountId: r.accountId, debitAmount: r.amount, creditAmount: new Decimal(0), ...tags }));
 
       if (vatAccount && vatAmount.gt(0)) {
         lines.push({
           accountId: vatAccount.id,
           debitAmount: vatAmount,
           creditAmount: new Decimal(0),
+          ...tags,
+          taxCodeId: invoice?.taxCodeId ?? undefined,
         });
       }
 
@@ -327,8 +383,7 @@ export class CreditNoteService {
         debitAmount: new Decimal(0),
         creditAmount: totalAmount,
         sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
-        clientId: invoice?.clientId ?? undefined,
-        contractId: invoice?.contractId ?? undefined,
+        ...tags,
       });
 
       // Claimed before posting (same transaction) so the journal names the credit note's number.
@@ -380,4 +435,111 @@ export class CreditNoteService {
       return updatedCreditNote;
     });
   }
+
+  // ─── reverseCreditNote ─────────────────────────────────────────────────────
+
+  /**
+   * Phase 0 H2 — EVT-AR-008: reverse a posted credit note issued in error. The mirror of EVT-AR-007
+   * (Dr AR / Cr Revenue / Cr VAT, every original dimension kept), dated on the reversal date; the
+   * invoice's outstanding balance is restored by the credit note total.
+   */
+  async reverseCreditNote(
+    identity: RequestIdentity,
+    dto: { creditNoteId: string; invoiceId?: string; reversalDate: string; reason: string },
+  ) {
+    const outerPrisma = this.tenancyService.getClient() as TenantPrisma;
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const creditNote = await outerPrisma.creditNote.findFirst({
+      where: { id: dto.creditNoteId, organizationId: orgId, ...(dto.invoiceId ? { invoiceId: dto.invoiceId } : {}) },
+    });
+    if (!creditNote) throw new NotFoundException(`CreditNote ${dto.creditNoteId} not found`);
+    if (creditNote.postingStatus !== 'POSTED' || !creditNote.postedJournalEntryId) {
+      throw new BadRequestException(`Only a POSTED credit note can be reversed (status: ${creditNote.postingStatus})`);
+    }
+    if (creditNote.reversalJournalEntryId) {
+      throw new ConflictException(`CreditNote ${dto.creditNoteId} is already reversed`);
+    }
+    const reason = dto.reason?.trim();
+    if (!reason) throw new BadRequestException('A reason is required to reverse a credit note');
+
+    const original = await outerPrisma.journalEntry.findUniqueOrThrow({
+      where: { id: creditNote.postedJournalEntryId },
+      include: { lines: true },
+    });
+    const reversalDate = new Date(dto.reversalDate);
+    const totalAmount = new Decimal(creditNote.totalAmount.toString());
+
+    return (outerPrisma as unknown as PrismaClient).$transaction(async (tx) => {
+      // Lock the invoice: the reversal restores outstanding while receipts may be allocating to it.
+      const locked = await (tx as unknown as PrismaClient).$queryRaw<Array<{ posting_status: string }>>`
+        SELECT posting_status FROM client_invoices WHERE id = ${creditNote.invoiceId} AND organization_id = ${orgId} FOR UPDATE`;
+      if (!locked.length) throw new NotFoundException(`ClientInvoice ${creditNote.invoiceId} not found`);
+      if (locked[0].posting_status !== 'POSTED') {
+        throw new BadRequestException(`The invoice is ${locked[0].posting_status}; only a credit note on a posted invoice is reversed.`);
+      }
+
+      const result = await this.postingPort.post(
+        {
+          organizationId: orgId,
+          accountingDate: reversalDate,
+          documentDate: reversalDate,
+          description: `Reversal of credit note ${creditNote.creditNoteNumber ?? creditNote.id}: ${reason}`,
+          currencyCode: original.currencyCode,
+          eventType: 'EVT-AR-008',
+          sourceDocumentType: 'CREDIT_NOTE',
+          sourceDocumentId: creditNote.id,
+          journalCategory: 'ACCOUNTS_RECEIVABLE',
+          entryPurpose: 'REVERSAL',
+          postingOrigin: 'SYSTEM_AR',
+          createdBy: userId,
+          lines: original.lines.map((l) => ({
+            accountId: l.accountId,
+            debitAmount: l.creditAmount as unknown as Decimal,
+            creditAmount: l.debitAmount as unknown as Decimal,
+            sourceSubledgerType: l.sourceSubledgerType ?? undefined,
+            clientId: l.clientId ?? undefined,
+            projectId: l.projectId ?? undefined,
+            contractId: l.contractId ?? undefined,
+            taxCodeId: l.taxCodeId ?? undefined,
+            memo: `Reversal: ${l.description ?? ''}`,
+          })),
+        },
+        tx as never,
+      );
+
+      const reversed = await (tx as unknown as TenantPrisma).creditNote.update({
+        where: { id: creditNote.id },
+        data: {
+          postingStatus: 'REVERSED',
+          reversalJournalEntryId: result.journalEntryId,
+          reversedAt: new Date(),
+          reversedBy: userId,
+          reversalReason: reason,
+        },
+      });
+      await (tx as unknown as TenantPrisma).clientInvoice.update({
+        where: { id: creditNote.invoiceId },
+        data: { outstandingAmount: { increment: totalAmount } },
+      });
+      return reversed;
+    });
+  }
+}
+
+/**
+ * Splits `total` across keys in proportion to their weights, to the cent, merging repeated keys.
+ * The rounding remainder goes to the largest bucket, so the parts always add up to `total`.
+ */
+export function splitByWeight(total: Decimal, items: Array<{ key: string; weight: Decimal }>): Array<{ key: string; amount: Decimal }> {
+  const merged = new Map<string, Decimal>();
+  for (const item of items) merged.set(item.key, (merged.get(item.key) ?? new Decimal(0)).plus(item.weight));
+  const entries = [...merged].filter(([, w]) => w.gt(0));
+  const sum = entries.reduce((acc, [, w]) => acc.plus(w), new Decimal(0));
+  if (entries.length === 0 || sum.isZero()) return [];
+  const parts = entries.map(([key, w]) => ({ key, amount: total.mul(w).div(sum).toDecimalPlaces(2, Decimal.ROUND_DOWN) }));
+  const remainder = total.minus(parts.reduce((acc, p) => acc.plus(p.amount), new Decimal(0)));
+  const largest = parts.reduce((best, p, i) => (entries[i]![1].gt(entries[best]![1]) ? i : best), 0);
+  parts[largest]!.amount = parts[largest]!.amount.plus(remainder);
+  return parts;
 }

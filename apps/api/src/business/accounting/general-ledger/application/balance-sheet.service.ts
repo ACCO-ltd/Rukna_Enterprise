@@ -187,25 +187,27 @@ export class BalanceSheetService {
       if (netBalance.isZero()) continue;
 
       const cls = version.accountClass;
+      // Each line shows its balance on the account's normal side, keeping the sign: assets are
+      // debit-normal (debit − credit), liabilities and equity credit-normal (credit − debit). An
+      // abs() here turned a contra balance — owner drawings, a liability in debit — into an
+      // addition, so the totals overstated and `balanced` could flag a correct ledger.
+      const normalBalance = cls === 'ASSET' ? netBalance : netBalance.negated();
       const line: BSLine = {
         accountId: account.id,
         accountCode: account.code,
         accountName: version.name,
         accountSubtype: version.accountSubtype,
-        balance: netBalance.abs().toFixed(2),
+        balance: normalBalance.toFixed(2),
       };
 
       if (cls === 'ASSET') {
-        // Assets: debit-normal → positive netBalance = asset balance
-        totalAssets = totalAssets.plus(netBalance);
+        totalAssets = totalAssets.plus(normalBalance);
         assetLines.push(line);
       } else if (cls === 'LIABILITY') {
-        // Liabilities: credit-normal → negative netBalance (debit-credit) = liability balance
-        totalLiabilities = totalLiabilities.plus(netBalance.abs());
+        totalLiabilities = totalLiabilities.plus(normalBalance);
         liabilityLines.push(line);
       } else if (cls === 'EQUITY') {
-        // Equity: credit-normal → negative netBalance = equity balance
-        totalEquity = totalEquity.plus(netBalance.abs());
+        totalEquity = totalEquity.plus(normalBalance);
         equityLines.push(line);
       }
     }

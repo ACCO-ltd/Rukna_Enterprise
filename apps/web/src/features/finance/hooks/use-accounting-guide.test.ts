@@ -10,6 +10,7 @@ function step(key: string, overrides: Partial<GuideStep> = {}): GuideStep {
 function guide(setupSteps: GuideStep[], dailySteps: GuideStep[] = []): AccountingGuideResponse {
   return {
     ready: false,
+  organizationName: 'Test Co',
     cycles: [
       { key: 'setup', title: 'Setup', summary: '', status: 'IN_PROGRESS', steps: setupSteps },
       { key: 'daily', title: 'Daily', summary: '', status: 'IN_PROGRESS', steps: dailySteps },

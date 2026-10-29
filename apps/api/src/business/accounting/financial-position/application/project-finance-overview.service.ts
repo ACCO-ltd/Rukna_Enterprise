@@ -350,6 +350,7 @@ export class ProjectFinanceOverviewService {
 
     const SOURCE_LABEL: Record<string, string> = {
       SUPPLIER_BILL: 'Supplier bill',
+      SUPPLIER_DEBIT_NOTE: 'Supplier debit note',
       CLIENT_INVOICE: 'Client invoice',
       MANUAL_JOURNAL: 'Manual journal',
       PAYMENT_RECEIPT: 'Receipt',

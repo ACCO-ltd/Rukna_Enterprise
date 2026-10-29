@@ -22,7 +22,7 @@ const TYPE_STEPS = [
   },
   {
     token: 'text-h1',
-    metrics: '24 / 32 · -0.015em',
+    metrics: '22 / 30 · -0.015em',
     weight: 'font-bold',
     weightLabel: '700',
     sample: 'Purchase Order PO-2026-00418',
@@ -30,7 +30,7 @@ const TYPE_STEPS = [
   },
   {
     token: 'text-h2',
-    metrics: '18 / 26 · -0.01em',
+    metrics: '16 / 24 · -0.01em',
     weight: 'font-semibold',
     weightLabel: '600',
     sample: 'Bill of Quantities — Revision 3',
@@ -38,7 +38,7 @@ const TYPE_STEPS = [
   },
   {
     token: 'text-h3',
-    metrics: '15 / 22',
+    metrics: '14 / 22',
     weight: 'font-semibold',
     weightLabel: '600',
     sample: 'Deductions and retention',
@@ -111,10 +111,10 @@ const COLOUR_GROUPS = [
   {
     group: 'Brand — the only layer a tenant may override',
     swatches: [
-      { token: 'brand-primary', cls: 'bg-brand-primary', use: 'Primary action, focus, active nav' },
+      { token: 'brand-primary', cls: 'bg-brand-primary', use: 'Rukna Blue #2453e0 — primary action, focus, active nav' },
       { token: 'brand-primary-hover', cls: 'bg-brand-primary-hover', use: 'Hover' },
       { token: 'brand-accent', cls: 'bg-brand-accent', use: 'Selected and informational fills' },
-      { token: 'brand-panel', cls: 'bg-brand-panel', use: 'Dark navigation panel' },
+      { token: 'brand-panel', cls: 'bg-brand-panel', use: 'Dark navigation panel (#111d42)' },
     ],
   },
   {
@@ -123,7 +123,7 @@ const COLOUR_GROUPS = [
       { token: 'success', cls: 'bg-success', use: 'In force, certified, paid' },
       { token: 'warning', cls: 'bg-warning', use: 'Needs attention, winding down' },
       { token: 'danger', cls: 'bg-danger', use: 'Stopped short, rejected, destructive' },
-      { token: 'historical', cls: 'bg-historical', use: 'Superseded, archived' },
+      { token: 'historical', cls: 'bg-historical', use: 'Retention, superseded, archived' },
     ],
   },
 ] as const;
@@ -139,7 +139,7 @@ export function FoundationsSection() {
         title="Type scale"
         intro={
           <>
-            Eight steps, anchored on the existing 14px body so nothing reflows. Every one of
+            Eight steps — 30 / 22 / 16 / 14 / 14 / 13 / 12 / 11 (ADR-047), anchored on the 14px body. h3 shares the body size and is set apart by weight. Every one of
             the 14 arbitrary <code className="font-mono text-caption">text-[Npx]</code> values
             in the codebase maps onto one of these.
           </>
@@ -252,19 +252,20 @@ export function FoundationsSection() {
       <Section
         id="geometry"
         title="Radius and elevation"
-        intro="Radius encodes nesting depth; elevation encodes intent. Three values each, and nothing between them."
+        intro="Radius encodes nesting depth; elevation encodes intent. Four radii and three elevations, and nothing between them."
       >
-        <Specimen label="Radius" token="rounded-control · panel · container · full">
+        <Specimen label="Radius" token="rounded-control · panel · container · overlay · full">
           <div className="flex flex-wrap gap-6">
             {[
               { cls: 'rounded-control', px: '6px', name: 'control', use: 'input, button, chip, tab' },
-              { cls: 'rounded-panel', px: '10px', name: 'panel', use: 'card, table, dialog' },
+              { cls: 'rounded-panel', px: '8px', name: 'panel', use: 'card, table, popover' },
               {
                 cls: 'rounded-container',
-                px: '14px',
+                px: '12px',
                 name: 'container',
                 use: 'workspace shell, page frame',
               },
+              { cls: 'rounded-overlay', px: '16px', name: 'overlay', use: 'dialog, sheet, drawer' },
               { cls: 'rounded-full', px: 'full', name: 'full', use: 'status, avatar, count' },
             ].map((r) => (
               <figure key={r.name} className="m-0">
@@ -398,7 +399,7 @@ export function FoundationsSection() {
                 </TableRow>
                 <TableRow>
                   <TableCell className="font-mono text-caption">h-row · h-control</TableCell>
-                  <TableCell className="font-mono text-caption tabular-nums">44px / 36px</TableCell>
+                  <TableCell className="font-mono text-caption tabular-nums">row 40 / 34px · control 38 / 34px</TableCell>
                   <TableCell>
                     Comfortable by default, compact when the user asks. Switch it in the
                     toolbar above and watch this table.

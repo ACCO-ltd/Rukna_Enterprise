@@ -125,7 +125,7 @@ export class SettlementQueryRepository {
             allocatedAmount: true,
             postingStatus: true,
             supplierPaymentId: true,
-            payment: { select: { paymentDate: true } },
+            payment: { select: { paymentDate: true, documentStatus: true } },
           },
         },
         advanceEvidenceAllocations: {

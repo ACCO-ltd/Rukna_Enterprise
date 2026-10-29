@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Shared furniture for the four Tier A master-data screens.
+ * Shared create-dialog scaffold for the four Tier A master-data screens.
  *
  * All four are the same shape — a create action, a create dialog, a table, a deactivate
  * confirmation — so the shape lives here once and each screen supplies its columns and
@@ -12,7 +12,6 @@
  */
 
 import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -25,99 +24,12 @@ import {
 
 import { ApiError } from '@/lib/api-client';
 
-interface SetupScreenProps {
-  /**
-   * One muted line of guidance above the create action, for a screen whose purpose is easy
-   * to confuse with another's (spend vs material categories). Omit it otherwise.
-   */
-  guidance?: string;
-  /** Rendered as an informational banner above the table. */
-  notice?: string;
-  createLabel: string;
-  /** Withheld when the user lacks `manage:procurement-config`. */
-  canCreate: boolean;
-  /**
-   * A full create page to link to instead of the dialog — for master data whose create form has
-   * outgrown a few short fields (ADR-037's container rule). When set, `createForm` is unused.
-   */
-  createHref?: string;
-  createForm?: (close: () => void) => ReactNode;
-  createTitle?: string;
-  isPending: boolean;
-  isError: boolean;
-  children: ReactNode;
-}
-
-export function SetupScreen({
-  guidance,
-  notice,
-  createLabel,
-  canCreate,
-  createHref,
-  createForm,
-  createTitle,
-  isPending,
-  isError,
-  children,
-}: SetupScreenProps) {
-  const t = useTranslations('procurement.common');
-  const tCommon = useTranslations('common');
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="space-y-6">
-      {guidance || canCreate ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {guidance ? (
-            <p className="me-auto max-w-prose text-body-sm text-muted-foreground">{guidance}</p>
-          ) : null}
-          {canCreate && createHref ? (
-            <Button asChild>
-              <Link href={createHref}>{createLabel}</Link>
-            </Button>
-          ) : canCreate ? (
-            <Button type="button" onClick={() => setOpen(true)}>
-              {createLabel}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {notice ? <Alert variant="info" messages={[notice]} /> : null}
-
-      {isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tCommon('loading')}</span>
-          <div
-            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
-      ) : isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
-      ) : (
-        children
-      )}
-
-      {/* A dialog, not the side panel this was: these setup forms are three or four short
-          fields, and none of them needs the table behind it to stay readable while you type.
-          `CreateForm` draws the FormDialog itself (it owns the pending state the guard needs);
-          the title reaches it through context. */}
-      {createForm && open ? (
-        <CreateDialogTitle.Provider value={createTitle ?? createLabel}>
-          {createForm(() => setOpen(false))}
-        </CreateDialogTitle.Provider>
-      ) : null}
-    </div>
-  );
-}
-
 // ─── Create form scaffold ────────────────────────────────────────────────────────
 
-/** The create dialog's title, from `SetupScreen` to the `CreateForm` its render prop returns. */
+/** The create dialog's title, from the list that opens it to the `CreateForm` it renders. */
 const CreateDialogTitle = createContext<string | null>(null);
 
-/** Names the create dialog a list opens — the same title `SetupScreen` supplies. */
+/** Names the create dialog a list opens. */
 export const CreateDialogTitleProvider = CreateDialogTitle.Provider;
 
 interface CreateFormProps {
@@ -126,7 +38,7 @@ interface CreateFormProps {
   error: unknown;
   onCancel: () => void;
   submitLabel?: string;
-  /** Dialog title; defaults to the `SetupScreen`'s `createTitle`. */
+  /** Dialog title; defaults to the title the opening list provides. */
   title?: string;
   subtitle?: string;
   children: ReactNode;

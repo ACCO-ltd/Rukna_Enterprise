@@ -41,7 +41,7 @@ bands/chains remains a deliberate per-org step (role-holders + `dev-activate-doa
 ### Role set correction (ACCO, 2026-08-22)
 
 The CONST-DOA-001 role list below was **revised by ACCO** after implementation. The seeded role
-vocabulary (`acco-value-bands.ts`) and all chains now use:
+vocabulary (`default-value-bands.ts`) and all chains now use:
 
 - **Procurement Manager** — not "Procurement Officer".
 - **No Store Keeper** and **no Quantity Surveyor** roles (procurement covers stores; the
@@ -65,7 +65,7 @@ UI-facing concept and is intentionally not migrated here.)
 - **Phase 3 — value-threshold config + role vocabulary (CONST-DOA-005, CONST-DOA-001): DONE
   (config-ready, dev-proven).** ACCO's PO bands (≤\$100 / \$100.01–\$1k / \$1k.01–\$50k / >\$50k) and
   payment bands (≤\$1k / \$1k.01–\$10k / >\$10k) are seeded as amount-banded `STATE_TRANSITION`
-  bindings + cumulative role chains, expressed as data in `acco-value-bands.ts` and using the
+  bindings + cumulative role chains, expressed as data in `default-value-bands.ts` and using the
   consolidated role vocabulary (`CONSTRUCTION_DIRECTOR`, `FINANCE_OFFICER`, `CFO`, `BOARD_CHAIRMAN`,
   `GROUP_CEO`, …). Everything is seeded **inactive**: the engine still gates nothing until a
   deliberate per-org activation (`prisma/seeds/dev-activate-doa-bands.seed.ts` does this for a dev
@@ -76,7 +76,7 @@ UI-facing concept and is intentionally not migrated here.)
   Project **Start** (`DRAFT→ACTIVE`: PM → CFO → CEO), Project **Closeout** (`CLOSEOUT→CLOSED`:
   PM → Finance Officer → CEO), **BOQ baseline** (`BoqVersion DRAFT→BASELINED`: Construction
   Director → CFO → CEO), and **DPR** (`DailyProgressReport SUBMITTED→APPROVED`: Project
-  Manager) chains are seeded as data (`acco-lifecycle-chains.ts`), inactive, with the consolidated
+  Manager) chains are seeded as data (`default-lifecycle-chains.ts`), inactive, with the consolidated
   roles. Start/Closeout repoint their existing generic project bindings to the specific chains. DPR
   approval — which was not gated — now routes through a backward-compatible governance seam
   (`DailyProgressReport` added to `GovernedEntity`; null gate → approval proceeds as before). Tests
@@ -145,6 +145,14 @@ The following must be different people:
 Requester ≠ own MR/PO approver · PO creator ≠ goods receiver · Goods receiver ≠ bill approver ·
 Bill approver ≠ payment approver/releaser · Vendor maintainer ≠ PO/payment processor ·
 Journal preparer ≠ journal approver · System administrator ≠ business-transaction approver.
+
+**Amendment 2026-10-27 (journals, Eng Ahmed via the product owner):** ACCO's finance team is too
+small for every journal to wait on a second person. A user holding the permission
+`post-own:journal` may approve and post a journal they prepared themselves; the CFO and Finance
+Officer roles hold it by default, and an admin can grant or remove it per role. For everyone else
+the journal preparer ≠ journal approver rule stands. The exemption covers one's **own** journals
+only — it never lets a holder bypass the rule on someone else's journal — and the org-level SoD
+toggle still applies. Full decision record: ADR-046 §1.
 
 ### CONST-DOA-004 — The one controlled exception
 A PO creator may temporarily also receive goods where staffing requires it, **only** if an

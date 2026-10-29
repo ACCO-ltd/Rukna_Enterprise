@@ -1,7 +1,7 @@
 # Finance tab — refinement spec
 
 Status: **Under-built. Backend mostly exists (ADR-013); refinement = surface it + project scoping.**
-Owners: Backend — Abdulsalam · Frontend — frontend engineer.
+Owner: Abdulsalam (full stack).
 Source of truth: ADR-013 (Project Actual P&L vs Financial Position), ADR-020 (BOQ backbone),
 ADR-021 (physical progress), ADR-023 (collection).
 

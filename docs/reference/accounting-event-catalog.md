@@ -70,13 +70,30 @@ Pre-conditions:
   AccountingPeriod covering accountingDate is OPEN or REOPENED
   PostingRuleVersion for CLIENT_INVOICE.POSTED v1 is ACTIVE for accountingDate
   PostingProfile PROJECT_REVENUE v1 resolves accountId for accountingDate
-  Lines balance: totalAmount (DR) = subtotal (CR) + vatAmount (CR)
+  Lines balance: totalAmount (DR) + retentionAmount (DR) + advanceRecoveryAmount (DR)
+                 = subtotal (CR) + vatAmount (CR)
+
+IPC invoices (ADR-046 §5): the certificate is cumulative to date; the invoice bills the period —
+certificate to date minus what earlier IPC invoices on the contract billed (credit notes netted).
+  subtotal              = period gross − period other deductions   (revenue, tax base)
+  retentionAmount       = period retention
+  advanceRecoveryAmount = period advance recovery
+  totalAmount           = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due)
+Every other invoice carries zero retention and advance recovery, so totalAmount = subtotal + vat.
+
+Retention release invoice (ADR-046 §5): subtotal = vatAmount = 0, retentionReleasedAmount =
+totalAmount. Lines: Dr Accounts Receivable totalAmount / Cr Retention Receivable
+retentionReleasedAmount (no revenue line).
 ```
 
 ```
 JOURNAL LINES
 
 Dr  Accounts Receivable   totalAmount   ACCOUNT_SUBTYPE: ACCOUNTS_RECEIVABLE
+                                         dim: clientId, projectId, contractId
+Dr  Retention Receivable   retentionAmount        ACCOUNT_SUBTYPE: RETENTION_RECEIVABLE  (only when > 0)
+                                         dim: clientId, projectId, contractId
+Dr  Advances received from clients  advanceRecoveryAmount  ACCOUNT_SUBTYPE: CLIENT_ADVANCE_LIABILITY (only when > 0)
                                          dim: clientId, projectId, contractId
 Cr  Project Revenue        subtotal      POSTING_PROFILE: PROJECT_REVENUE → accountId @ accountingDate
                                          dim: projectId, departmentId
@@ -335,6 +352,12 @@ Pre-conditions:
 
   This event is ONLY for post-payment allocations. Allocations at payment posting time are
   part of EVT-AR-003 and do not produce a separate journal.
+
+Dating and keying:
+  allocationDate = the later of ClientInvoice.invoiceDate and PaymentReceipt.accountingDate
+  (never the clock) — the AR mirror of EVT-AP-005 (ADR-045 review H2).
+  One journal per ClientReceiptAllocation: sourceDocumentId = <receiptId>-alloc-<allocationId>,
+  so a second allocation of the same receipt → invoice pair posts its own journal.
 ```
 
 ```
@@ -424,6 +447,39 @@ SUBLEDGER AFTER REVERSAL
   PaymentReceipt.unallocatedAmount += 3,000 → 3,000
   ClientInvoice.outstandingAmount  += 3,000
   ClientReceiptAllocation.postingStatus = REVERSED
+```
+
+---
+
+### EVT-AR-008 — Credit Note Reversed
+
+```
+EVENT ID:     CREDIT_NOTE.REVERSED
+eventVersion: 1
+reversedBy:   n/a — this is itself a reversal; raise a new credit note instead
+
+Trigger (Phase 0 H2, 2026-10-27):
+  POST /projects/:projectId/commercial/invoices/:invoiceId/credit-notes/:creditNoteId/reverse
+  Source document: CreditNote with postingStatus = POSTED (EVT-AR-007), on a POSTED invoice
+  A reason is mandatory
+
+Pre-conditions:
+  AccountingPeriod for the reversal date is OPEN or REOPENED
+```
+
+```
+JOURNAL LINES  (exact mirror of EVT-AR-007, every dimension kept)
+
+Dr  Accounts Receivable   (credit note total)
+Cr  Project Revenue       (net)
+Cr  Output VAT Payable    (VAT, if any)
+
+journalCategory = ACCOUNTS_RECEIVABLE · entryPurpose = REVERSAL
+idempotency     = (org, CREDIT_NOTE, creditNote.id, EVT-AR-008)
+
+SUBLEDGER AFTER REVERSAL
+  CreditNote.postingStatus = REVERSED; reversalJournalEntryId / reversedAt / reversedBy / reversalReason set
+  ClientInvoice.outstandingAmount += credit note total
 ```
 
 ---
@@ -810,6 +866,33 @@ carries the award's `projectId`. Accounting dates are source-document dates, nev
 Legacy advances (POSTED before ADR-045, no journal) are never re-posted: their returns and evidence
 links are recorded without a journal, and finance clears their balance by manual journal if needed.
 
+### EVT-AP-012 / EVT-AP-013 — Supplier debit note and its reversal (AP-4)
+
+A credit the supplier gives against a POSTED bill (goods returned, an overcharge, a discount agreed
+later). `sourceDocumentType = SUPPLIER_DEBIT_NOTE`. Posts at once — it lowers what is owed and no
+money moves — capped at what is left to pay on the bill (`400 DEBIT_NOTE_EXCEEDS_BALANCE`). A bill
+with a posted debit note cannot be reversed (`400 BILL_HAS_DEBIT_NOTES`).
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-AP-012 `SUPPLIER_DEBIT_NOTE_POSTED` | debit note recorded | Dr AP (the account the bill credited; AP subledger) / Cr the bill journal's own cost lines, split by weight, each keeping its project, department, cost centre, BOQ node and spend category; bill `outstandingAmount` reduced; a PO bill's commitment-ledger ACTUAL lowered in proportion on the same cost-targets (`SUPPLIER_DEBIT_NOTE`) | the note's date | note id | ACCOUNTS_PAYABLE / SYSTEM_AP |
+| EVT-AP-013 (reversal of 012) | debit note reversed | exact mirror of EVT-AP-012; bill outstanding and ACTUAL restored | `reversalDate` | `reversal-<note id>` | ACCOUNTS_PAYABLE / SYSTEM_AP, REVERSAL |
+
+Project cost reconciliation counts SUPPLIER_DEBIT_NOTE journals with SUPPLIER_BILL as procurement cost
+(REC-07), so the commitment ledger and the GL keep telling the same story.
+
+### EVT-AP-014 / EVT-AP-015 — Supplier refund and its reversal (AP-5)
+
+Money paid ahead to a supplier (the unapplied part of a POSTED payment, held as a supplier advance)
+that the supplier paid back. `sourceDocumentType = SUPPLIER_REFUND`. Money comes in, so it posts at
+once, capped at what the payment holds unapplied (`400 REFUND_EXCEEDS_UNAPPLIED`). A payment with a
+posted refund cannot be reversed (`400 PAYMENT_HAS_REFUNDS`).
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-AP-014 `SUPPLIER_REFUND_POSTED` | refund recorded | Dr the receiving bank's GL (BANK subledger) / Cr Supplier advance — the account the payment debited — both tagged with the supplier; payment `unallocatedAmount` reduced | `refundDate` | refund id | CASH_AND_BANK / SYSTEM_CASH |
+| EVT-AP-015 (reversal of 014) | refund reversed (e.g. the transfer bounced) | exact mirror of EVT-AP-014; payment `unallocatedAmount` restored | `reversalDate` | `reversal-<refund id>` | CASH_AND_BANK / SYSTEM_CASH, REVERSAL |
+
 Fixture (S2 → S6, PO 1,000.00): EVT-AP-007 Dr 13100 1,000 / Cr 10900 1,000 (08 Oct) → bill
 EVT-AP-001 Dr expense 980 / Cr AP 980 (08 Oct) → EVT-AP-008 Dr AP 980 / Cr 13100 980 (08 Oct) →
 EVT-AP-009 Dr 10900 20 / Cr 13100 20 (09 Oct). Net: 13100 = 0, AP = 0, cash −980, expense +980.
@@ -1113,6 +1196,7 @@ An `eventVersion` increment requires: (a) a new `PostingRuleVersion` with update
 | CLIENT_INVOICE.POSTED | CLIENT_INVOICE.REVERSED (EVT-AR-002) |
 | PAYMENT_RECEIPT.POSTED | PAYMENT_RECEIPT.REVERSED (EVT-AR-004) |
 | CLIENT_RECEIPT_ALLOCATED | CLIENT_RECEIPT_ALLOCATED.REVERSED (EVT-AR-006) — subsequent allocations only |
+| CREDIT_NOTE.POSTED (EVT-AR-007) | CREDIT_NOTE.REVERSED (EVT-AR-008) |
 | SUPPLIER_BILL.POSTED | SUPPLIER_BILL.REVERSED (EVT-AP-002) |
 | SUPPLIER_PAYMENT.POSTED | SUPPLIER_PAYMENT.REVERSED (EVT-AP-004) |
 | SUPPLIER_ADVANCE_ALLOCATED | SUPPLIER_ADVANCE_ALLOCATED.REVERSED (EVT-AP-006) — subsequent only |
@@ -1133,3 +1217,17 @@ An `eventVersion` increment requires: (a) a new `PostingRuleVersion` with update
 | EVT-FA-001–010 | Fixed Assets |
 | EVT-BNK-001–010 | Bank Reconciliation |
 | EVT-CLO-002–010 | Period and Year-end Close extensions |
+
+### EVT-CB-001 / EVT-CB-002 — Transfer between own accounts and its reversal (B-2)
+
+Money moved between two of the organisation's own accounts (bank to cash box, a float top-up, bank
+to bank). `sourceDocumentType = BANK_TRANSFER`. Money leaves an account, so it follows the payment
+rule: up to `paymentAutoApproveUpTo` it posts at once; above it, it waits (`PENDING_APPROVAL`) for
+someone other than the requester (`403 TRANSFER_SELF_APPROVAL`). Both accounts are re-checked when
+it posts: the sender ACTIVE and paying out, the receiver ACTIVE and taking money in, one currency.
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-CB-001 `BANK_TRANSFER_POSTED` | transfer posted (at once, or on approval) | Dr the receiving account's GL / Cr the sending account's GL, both BANK subledger | `transferDate` | transfer id | CASH_AND_BANK / SYSTEM_CASH |
+| EVT-CB-002 (reversal of 001) | transfer reversed (it never happened at the bank) | exact mirror of EVT-CB-001 | `reversalDate` | `reversal-<transfer id>` | CASH_AND_BANK / SYSTEM_CASH, REVERSAL |
+

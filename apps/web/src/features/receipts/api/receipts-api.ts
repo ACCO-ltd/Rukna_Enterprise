@@ -75,6 +75,23 @@ export function createReceipt(payload: CreateReceiptPayload): Promise<Receipt> {
   });
 }
 
+/** ADR-046 §6 — the body of `POST /customer-receipts/receive`. */
+export interface ReceivePaymentPayload extends CreateReceiptPayload {
+  bankAccountId: string;
+  allocations: ReceiptAllocationInput[];
+}
+
+/**
+ * ADR-046 §6 — `POST /customer-receipts/receive`: the payment lands in the chosen bank account,
+ * posted and applied in one action. Returns the posted, numbered receipt.
+ */
+export function receivePayment(payload: ReceivePaymentPayload): Promise<Receipt> {
+  return apiClient<Receipt>('/customer-receipts/receive', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 /** `POST /customer-receipts/:id/post` — Dr Bank / Cr AR (+ Cr Unapplied), atomic with allocations. */
 export function postReceipt(id: string, payload: PostReceiptPayload): Promise<Receipt> {
   return apiClient<Receipt>(`/customer-receipts/${id}/post`, {
@@ -100,6 +117,18 @@ export function reverseAllocation(receiptId: string, allocationId: string): Prom
     `/customer-receipts/${receiptId}/allocations/${allocationId}/reverse`,
     { method: 'POST', body: JSON.stringify({}) },
   );
+}
+
+/**
+ * `POST /customer-receipts/:id/reverse` — AR-2: undo a posted receipt (a bounced cheque, money
+ * booked to the wrong client). A mirror journal on the reversal date; the invoices it paid owe
+ * again. Refused while the receipt has applications made after posting (undo those first).
+ */
+export function reverseReceipt(receiptId: string, payload: { reversalDate: string; reason: string }): Promise<void> {
+  return apiClient<void>(`/customer-receipts/${receiptId}/reverse`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 /**

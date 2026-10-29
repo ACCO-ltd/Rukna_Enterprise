@@ -2,7 +2,7 @@
 
 Version: 2.0.0
 Last Updated: 2026-08-06
-Owner: Frontend Engineer (Abdimalik)
+Owner: Abdulsalam (full stack)
 Reviewed by: Abdulsalam (Backend Engineer)
 Status: **SUPERSEDED (2026-08-25) by [`ux-doctrine.md`](./ux-doctrine.md).**
 
@@ -432,7 +432,7 @@ All other frontend screens consume endpoints already built in Sprints 1–3.
 ## 11. Accounting Workspace — Sprint 4 Frontend
 
 The backend for Sprint 4 is complete, tested, and API-ready. This section is the build plan
-for the accounting workspace. The intended reader is **Abdimalik (Frontend Engineer)**.
+for the accounting workspace. The intended reader is whoever builds the frontend (Abdulsalam).
 
 **Backend contact:** All accounting API questions go to Abdulsalam. All business rule
 questions (e.g., "what does locked mean for a period?") go to Eng Ahmed Shirie.

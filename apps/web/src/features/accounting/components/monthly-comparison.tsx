@@ -23,6 +23,9 @@ import { useFiscalYears, useMonthlyPL } from '../hooks/use-accounting';
 import { exportCsv, reportFilename } from '../lib/export-csv';
 import type { MonthlyPLColumn } from '../types';
 import { ReportActions } from './report-actions';
+import { profitLossHref } from '../lib/report-links';
+import Link from 'next/link';
+import { LoadError } from '@/components/load-error';
 
 export function MonthlyComparisonReport() {
   const t = useTranslations('accounting.monthlyPL');
@@ -40,6 +43,13 @@ export function MonthlyComparisonReport() {
 
   const report = useMonthlyPL(fiscalYearId);
   const yearName = (years.data ?? []).find((y) => y.id === fiscalYearId)?.name;
+  // Step 4 — each month opens its own Profit & Loss, which drills on to the ledger.
+  const periodRange = new Map(
+    ((years.data ?? []).find((y) => y.id === fiscalYearId)?.periods ?? []).map((p) => [
+      p.periodNumber,
+      { from: p.startDate.slice(0, 10), to: p.endDate.slice(0, 10) },
+    ]),
+  );
 
   const columns = report.data && report.data !== null ? report.data.columns : [];
 
@@ -116,13 +126,13 @@ export function MonthlyComparisonReport() {
               />
             </div>
           ) : report.isError ? (
-            <Alert variant="error" messages={[t('loadFailed')]} />
+            <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
           ) : /* The endpoint answers 200 with a null body for an unknown fiscal year rather
                 than 404, so the null has to be interpreted here. */
           report.data === null ? (
             <Alert variant="warning" messages={[t('notFound')]} />
           ) : (
-            <ComparisonTable columns={report.data.columns} locale={locale} />
+            <ComparisonTable columns={report.data.columns} locale={locale} periodRange={periodRange} />
           )}
         </>
       )}
@@ -133,9 +143,12 @@ export function MonthlyComparisonReport() {
 function ComparisonTable({
   columns,
   locale,
+  periodRange,
 }: {
   columns: MonthlyPLColumn[];
   locale: 'en' | 'ar';
+  /** periodNumber → its dates, for the drill-down to that month's Profit & Loss. */
+  periodRange: ReadonlyMap<number, { from: string; to: string }>;
 }) {
   const t = useTranslations('accounting.monthlyPL');
 
@@ -178,7 +191,17 @@ function ComparisonTable({
           {columns.map((column) => (
             <TableRow key={column.periodNumber}>
               <TableCell className="min-w-35">
-                <span className="text-sm text-foreground">{column.periodName}</span>
+                {periodRange.get(column.periodNumber) ? (
+                  <Link
+                    href={profitLossHref(periodRange.get(column.periodNumber)!)}
+                    className="text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
+                    aria-label={t('openPeriod', { period: column.periodName })}
+                  >
+                    {column.periodName}
+                  </Link>
+                ) : (
+                  <span className="text-sm text-foreground">{column.periodName}</span>
+                )}
               </TableCell>
               {[
                 column.revenue,

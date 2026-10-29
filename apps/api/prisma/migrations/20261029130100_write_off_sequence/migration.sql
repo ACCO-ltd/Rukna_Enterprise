@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "DocumentType" ADD VALUE 'RECEIVABLE_WRITE_OFF';
+

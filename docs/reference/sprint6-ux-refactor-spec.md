@@ -3,7 +3,7 @@
 
 Status: **LOCKED — implement against this document**  
 Grilled by: Abdulsalam (lead engineer / architecture owner)  
-Frontend owner: Abdimalik (frontend engineer)  
+Owner: Abdulsalam (full stack)  
 Date: 2026-08-12
 
 ---

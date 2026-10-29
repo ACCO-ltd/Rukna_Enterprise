@@ -25,6 +25,7 @@ import {
   useUpsertApprovalPolicySodRule,
 } from '../hooks/use-approval-policies';
 import type { PolicySodRule } from '../api/workflows-api';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Segregation-of-duties editor for a DRAFT policy.
@@ -118,7 +119,7 @@ export function PolicySodEditor({ policyId, editable }: { policyId: string; edit
       {rules.isPending ? (
         <div className="h-24 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
       ) : rules.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void rules.refetch()} />
       ) : (
         <TableScroll aria-label={t('heading')}>
           <Table>

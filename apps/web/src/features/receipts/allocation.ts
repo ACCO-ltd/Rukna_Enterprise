@@ -114,3 +114,21 @@ export function invoicesForClient(
     .map((invoice) => ({ invoice, outstandingMinor: toMinorUnits(invoice.outstandingAmount) }))
     .sort((a, b) => (a.invoice.invoiceNumber ?? '').localeCompare(b.invoice.invoiceNumber ?? ''));
 }
+
+/**
+ * ADR-046 §6 — spread a payment over the client's open invoices, oldest due first, each up to its
+ * balance. What is left after the last invoice stays unapplied on the client. Minor units in and
+ * out, so the split is exact to the cent.
+ */
+export function applyOldestFirst(amountMinor: number, options: readonly InvoiceOption[]): Map<string, number> {
+  const applied = new Map<string, number>();
+  let left = Math.max(0, amountMinor);
+  const byDue = [...options].sort((a, b) => a.invoice.dueDate.localeCompare(b.invoice.dueDate));
+  for (const option of byDue) {
+    if (left <= 0) break;
+    const take = Math.min(left, option.outstandingMinor);
+    applied.set(option.invoice.id, take);
+    left -= take;
+  }
+  return applied;
+}

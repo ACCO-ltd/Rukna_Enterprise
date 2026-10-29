@@ -59,11 +59,11 @@ async function bootstrap(): Promise<void> {
     .addTag('Permissions', 'Platform permission catalogue')
     .addTag('Audit Logs', 'Immutable audit trail')
     .addTag('Workflows', 'Approval workflow engine')
-    .addTag('Clients', 'Client aggregate — organizations billed by ACCO')
+    .addTag('Clients', 'Client aggregate — organizations billed by the company')
     .addTag('Projects', 'Construction project lifecycle and membership')
     .addTag('BOQ', 'Bill of Quantities versioning and tree management')
     .addTag('Contracts', 'Contract lifecycle, retention, advances, guarantees and milestones')
-    .addTag('IPA', 'Interim Payment Applications — ACCO internal commercial valuations')
+    .addTag('IPA', 'Interim Payment Applications — internal commercial valuations')
     .addTag('IPC', 'Interim Payment Certificates — client/consultant responses to IPAs')
     .addTag('Finance', 'Payment receipts and allocation against certified IPCs')
     .build();

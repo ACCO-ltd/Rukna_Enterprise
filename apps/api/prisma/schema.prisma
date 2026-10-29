@@ -32,6 +32,10 @@ model Organization {
   brandColorHex          String?         @map("brand_color_hex") @db.VarChar(9)
   invoiceFooterNote      String?         @map("invoice_footer_note") @db.Text
   invoiceTemplate        InvoiceTemplate @default(STANDARD) @map("invoice_template")
+  // Step 1b (ADR-047): the company's own copy of the platform templates. NULL = use the Rukna
+  // default (company-templates/domain/default-templates.ts); "Reset to default" writes NULL back.
+  paymentPlanTemplate    Json?           @map("payment_plan_template")
+  scheduleTemplate       Json?           @map("schedule_template")
 
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
@@ -47,6 +51,7 @@ model Organization {
   roleAccessReviews        RoleAccessReview[]
   projects                 Project[]
   districts                District[]
+  savedViews               SavedView[]
   projectSubtypes          ProjectSubtype[]
   projectCodeSequences     ProjectCodeSequence[]
   clients                  Client[]
@@ -741,6 +746,27 @@ model Project {
 // ADR-025: districts are org-scoped construction reference data. The `code` is the
 // immutable 3-letter segment of a project code (WBR); the `name` is editable. Managed
 // in Settings so ACCO can add districts beyond Banaadir.
+/// Step 2a (ADR-047): a named list state — filters, search, sort, columns — saved on a list
+/// (`listKey`, e.g. "invoices"). Personal to its owner until an admin publishes it to everyone.
+/// UI preference, not business data: hard-deleted when its owner removes it.
+model SavedView {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  listKey        String   @map("list_key") @db.VarChar(64)
+  name           String   @db.VarChar(60)
+  /// { search?, filters?: Record<string,string>, sort?: { key, direction }, columns?: string[] }
+  state          Json
+  ownerUserId    String   @map("owner_user_id")
+  published      Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, listKey])
+  @@map("saved_views")
+}
+
 model District {
   id             String   @id @default(cuid())
   organizationId String   @map("organization_id")
@@ -1681,6 +1707,8 @@ model Contract {
   organization        Organization                 @relation(fields: [organizationId], references: [id])
   client              Client                       @relation(fields: [clientId], references: [id])
   retentionTerms      ContractRetentionTerms?
+  // ADR-046 §5 — the invoices that bill the retention this contract's IPC invoices held back.
+  retentionReleaseInvoices ClientInvoice[] @relation("ContractRetentionReleaseInvoice")
   advanceTerms        ContractAdvanceTerm[]
   guarantees          ContractGuarantee[]
   deliverables        ContractDeliverable[]
@@ -2090,6 +2118,13 @@ model PlatformFile {
   invoiceDocumentFor      ClientInvoice[]          @relation("ClientInvoiceDocument")
   // The generated branded PDF for a posted payment receipt — same storeGenerated path, immutable.
   receiptDocumentFor      PaymentReceipt[]         @relation("PaymentReceiptDocument")
+  // Step 4 — the generated remittance advice for a posted supplier payment, immutable.
+  paymentDocumentFor      SupplierPayment[]        @relation("SupplierPaymentDocument")
+  // Step 4 — evidence on finance documents.
+  clientInvoiceAttachments   ClientInvoiceAttachment[]
+  supplierBillAttachments    SupplierBillAttachment[]
+  supplierPaymentAttachments SupplierPaymentAttachment[]
+  paymentReceiptAttachments  PaymentReceiptAttachment[]
   // ADR-044 — a page of a store's paper quotation. Money evidence: readable only by quotation
   // collectors/selectors and cost-visibility holders (QUOTATION_PHOTO owner kind).
   quotePhoto              QuotePhoto?
@@ -2433,6 +2468,7 @@ model Account {
   childVersions AccountVersion[] @relation("AccountVersionParent")
   bankAccount   BankAccount?
   journalLines  JournalLine[]    @relation("JournalLineAccount")
+  invoiceLines  ClientInvoiceLine[] @relation("ClientInvoiceLineRevenue")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -2580,6 +2616,8 @@ model BankAccount {
   signatories           BankAccountSignatory[]
   buyerAdvances         BuyerAdvance[]         @relation("BuyerAdvanceDisbursement")
   advanceReturns        AdvanceReturn[]        @relation("AdvanceReturnDestination")
+  // Step 6 — statements imported for reconciliation.
+  statements            BankStatement[]
 
   @@unique([organizationId, accountNumber])
   @@index([organizationId, status])
@@ -2817,6 +2855,31 @@ model DocumentNumberSequence {
 //   Draft invoice → CANCELLED, new DRAFT generated from new effective IPC
 //   Approved+unposted → Finance manually cancels, new invoice generated
 //   Posted → credit note (reversal JournalEntry) + replacement ClientInvoice
+/// ADR-048 — one line of a hand-typed (non-contract) invoice. Rewritten as a set while the invoice is a
+/// DRAFT; frozen once it is approved. Each line names the income account it credits when posted.
+model ClientInvoiceLine {
+  id               String   @id @default(cuid())
+  organizationId   String   @map("organization_id")
+  invoiceId        String   @map("invoice_id")
+  lineNo           Int      @map("line_no")
+  description      String   @db.VarChar(300)
+  quantity         Decimal  @db.Decimal(18, 3)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(18, 2)
+  /// quantity × unitPrice, rounded to cents — stored so the posted figure never re-derives.
+  amount           Decimal  @db.Decimal(18, 2)
+  currencyCode     String   @map("currency_code") @db.VarChar(3)
+  revenueAccountId String   @map("revenue_account_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  invoice        ClientInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  revenueAccount Account       @relation("ClientInvoiceLineRevenue", fields: [revenueAccountId], references: [id])
+
+  @@unique([invoiceId, lineNo])
+  @@index([organizationId, invoiceId])
+  @@map("client_invoice_lines")
+}
+
 model ClientInvoice {
   id                     String           @id @default(cuid())
   organizationId         String           @map("organization_id")
@@ -2836,6 +2899,10 @@ model ClientInvoice {
   // Unique → one invoice per separate-charge node (idempotent billing). Null for every other invoice
   // (additive-only, no backfill flip). Separate charges feed total client revenue, never contract value.
   sourceBoqNodeId        String?          @unique @map("source_boq_node_id")
+  // ADR-046 §5 — set on a retention release invoice: the contract whose held retention it bills.
+  // Not unique: a reversed release can be raised again, and retention certified after a release
+  // is billed by a top-up. Each bills held − already released. Null on every other invoice.
+  sourceRetentionContractId String?        @map("source_retention_contract_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -2849,6 +2916,22 @@ model ClientInvoice {
   taxRate                Decimal          @default(0) @map("tax_rate") @db.Decimal(7, 4)
   totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
   outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
+  // ADR-046 §5 — the period breakdown of an IPC invoice. A certificate's figures are cumulative to
+  // date; the invoice bills them minus what earlier IPC invoices on the contract already billed.
+  // certifiedGrossAmount is null on every non-IPC invoice (and on IPC invoices raised before this).
+  // For an IPC invoice: subtotal = certifiedGross − otherDeductions (revenue and tax base) and
+  // totalAmount = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due).
+  certifiedGrossAmount   Decimal?         @map("certified_gross_amount") @db.Decimal(18, 2)
+  retentionAmount        Decimal          @default(0) @map("retention_amount") @db.Decimal(18, 2)
+  advanceRecoveryAmount  Decimal          @default(0) @map("advance_recovery_amount") @db.Decimal(18, 2)
+  otherDeductionsAmount  Decimal          @default(0) @map("other_deductions_amount") @db.Decimal(18, 2)
+  // ADR-046 §5 — on the retention release invoice, the retention it bills (cleared from Retention
+  // Receivable). totalAmount = subtotal + vat − retention − advanceRecovery + retentionReleased.
+  retentionReleasedAmount Decimal         @default(0) @map("retention_released_amount") @db.Decimal(18, 2)
+  // ADR-048 — a hand-typed invoice for a non-contract sale (equipment hire, materials, services):
+  // its amount is the sum of its `lines`, not copied from a contract source. Never carries a
+  // project, contract or source tag — contract billing stays source-only (ADR-037).
+  isManual               Boolean          @default(false) @map("is_manual")
   paymentTerms           String?          @map("payment_terms")
   notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
@@ -2889,24 +2972,29 @@ model ClientInvoice {
   // invoice is the durable billing record and outlives the node; a node is deactivated not deleted
   // (CONST-BOQ-003), so this only ever nulls under a full BOQ cascade, never orphaning the invoice.
   sourceBoqNode     BoqNode?                    @relation("BoqNodeSeparateChargeInvoice", fields: [sourceBoqNodeId], references: [id], onDelete: SetNull)
+  sourceRetentionContract Contract?           @relation("ContractRetentionReleaseInvoice", fields: [sourceRetentionContractId], references: [id])
   allocations       ClientReceiptAllocation[]
   // ADR-030 CONST-COM-028 (Commercial redesign P1): the variation-billing realization rows that name
   // this invoice as where a VO slice was billed. Read/trace only — the invoice header is unchanged.
   variationBillingAllocations VariationBillingAllocation[]
   documentFile      PlatformFile?               @relation("ClientInvoiceDocument", fields: [documentFileId], references: [id])
+  lines             ClientInvoiceLine[]
   deliveries        ClientInvoiceDelivery[]
   // Slice 6B — Collection Events + Credit Notes
   followUps         InvoiceFollowUp[]
   promises          InvoicePaymentPromise[]
   disputes          InvoiceDispute[]
   creditNotes       CreditNote[]
+  writeOffs         ReceivableWriteOff[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
   @@index([organizationId, documentStatus])
   @@index([projectId])
   @@index([taxCodeId])
+  @@index([sourceRetentionContractId])
   @@map("client_invoices")
+  attachments ClientInvoiceAttachment[]
 }
 
 // Slice 4B — append-only invoice delivery history. One row per send event (one per channel per day
@@ -3019,6 +3107,104 @@ model InvoiceDispute {
   @@map("invoice_disputes")
 }
 
+/// AR-4 — part or all of an invoice's balance written off: a bad debt, or a small leftover (bank
+/// charges, rounding). Dr Bad debts / Cr Accounts receivable. Above the organisation's limit it
+/// waits for a second person's approval; posted, it can be reversed (the balance comes back).
+model ReceivableWriteOff {
+  id                     String               @id @default(cuid())
+  organizationId         String               @map("organization_id")
+  invoiceId              String               @map("invoice_id")
+  clientId               String               @map("client_id")
+  writeOffNumber         String?              @map("write_off_number") @db.VarChar(30)
+  reason                 ReceivableWriteOffReason
+  note                   String?
+  amount                 Decimal              @db.Decimal(18, 2)
+  accountingDate         DateTime             @map("accounting_date") @db.Date
+  status                 ReceivableWriteOffStatus
+  requestedBy            String               @map("requested_by")
+  requestedAt            DateTime             @default(now()) @map("requested_at")
+  approvedBy             String?              @map("approved_by")
+  approvedAt             DateTime?            @map("approved_at")
+  rejectedBy             String?              @map("rejected_by")
+  rejectedAt             DateTime?            @map("rejected_at")
+  rejectionReason        String?              @map("rejection_reason")
+  postedJournalEntryId   String?              @map("posted_journal_entry_id")
+  postedAt               DateTime?            @map("posted_at")
+  reversedBy             String?              @map("reversed_by")
+  reversedAt             DateTime?            @map("reversed_at")
+  reversalReason         String?              @map("reversal_reason")
+  reversalJournalEntryId String?              @map("reversal_journal_entry_id")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  invoice ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([organizationId, writeOffNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
+  @@index([invoiceId])
+  @@map("receivable_write_offs")
+}
+
+/// AR-5 — cash a client paid in advance or overpaid (held on account on a receipt) paid back from
+/// a bank account: Dr Unapplied client receipts / Cr the bank. Above the organisation's payment
+/// limit it waits for a second person; posted, it can be reversed (the cash is on account again).
+model ClientRefund {
+  id                     String             @id @default(cuid())
+  organizationId         String             @map("organization_id")
+  clientId               String             @map("client_id")
+  receiptId              String             @map("receipt_id")
+  bankAccountId          String             @map("bank_account_id")
+  refundNumber           String?            @map("refund_number") @db.VarChar(30)
+  amount                 Decimal            @db.Decimal(18, 2)
+  refundDate             DateTime           @map("refund_date") @db.Date
+  reference              String?
+  reason                 String
+  status                 ClientRefundStatus
+  requestedBy            String             @map("requested_by")
+  requestedAt            DateTime           @default(now()) @map("requested_at")
+  approvedBy             String?            @map("approved_by")
+  approvedAt             DateTime?          @map("approved_at")
+  rejectedBy             String?            @map("rejected_by")
+  rejectedAt             DateTime?          @map("rejected_at")
+  rejectionReason        String?            @map("rejection_reason")
+  postedJournalEntryId   String?            @map("posted_journal_entry_id")
+  postedAt               DateTime?          @map("posted_at")
+  reversedBy             String?            @map("reversed_by")
+  reversedAt             DateTime?          @map("reversed_at")
+  reversalReason         String?            @map("reversal_reason")
+  reversalJournalEntryId String?            @map("reversal_journal_entry_id")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  receipt PaymentReceipt @relation(fields: [receiptId], references: [id])
+
+  @@unique([organizationId, refundNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
+  @@index([receiptId])
+  @@map("client_refunds")
+}
+
+enum ClientRefundStatus {
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
+enum ReceivableWriteOffReason {
+  BAD_DEBT
+  SMALL_BALANCE
+}
+
+enum ReceivableWriteOffStatus {
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
 model CreditNote {
   id                   String           @id @default(cuid())
   organizationId       String           @map("organization_id")
@@ -3034,6 +3220,12 @@ model CreditNote {
   postedAt             DateTime?        @map("posted_at")
   postedBy             String?          @map("posted_by")
   postedJournalEntryId String?          @map("posted_journal_entry_id")
+  // Phase 0 H2 — a posted credit note issued in error is reversed (EVT-AR-008), restoring the
+  // invoice's outstanding balance. postingStatus becomes REVERSED.
+  reversedAt             DateTime?      @map("reversed_at")
+  reversedBy             String?        @map("reversed_by")
+  reversalReason         String?        @map("reversal_reason")
+  reversalJournalEntryId String?        @map("reversal_journal_entry_id")
   note                 String?
   createdBy            String           @map("created_by")
   createdAt            DateTime         @default(now()) @map("created_at")
@@ -3113,6 +3305,12 @@ model PaymentReceipt {
   postedJournalEntryId String?          @map("posted_journal_entry_id")
   postedAt             DateTime?        @map("posted_at")
   postedBy             String?          @map("posted_by")
+  // AR-2 — a posted receipt reversed (a bounced cheque, money booked to the wrong client): when, by
+  // whom, why, and the mirror journal. postingStatus becomes REVERSED.
+  reversedAt             DateTime?      @map("reversed_at")
+  reversedBy             String?        @map("reversed_by")
+  reversalReason         String?        @map("reversal_reason")
+  reversalJournalEntryId String?        @map("reversal_journal_entry_id")
   lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
   lastPostingErrorCode String?          @map("last_posting_error_code")
   migrationBatchId     String?          @map("migration_batch_id")
@@ -3138,12 +3336,14 @@ model PaymentReceipt {
   documentFile      PlatformFile?             @relation("PaymentReceiptDocument", fields: [documentFileId], references: [id])
   // Accounting subledger (receipt ↔ ClientInvoice) — the sole allocation ledger (ACC-SET-001).
   clientAllocations ClientReceiptAllocation[]
+  refunds           ClientRefund[]
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, clientId])
   @@index([organizationId, postingStatus])
   @@index([receiptDate])
   @@map("payment_receipts")
+  attachments PaymentReceiptAttachment[]
 }
 
 // ─── AP Subledger ─────────────────────────────────────────────────────────────
@@ -3191,6 +3391,11 @@ model SupplierBill {
   rejectedAt                DateTime?       @map("rejected_at")
   rejectedBy                String?         @map("rejected_by")
   rejectionReason           String?         @map("rejection_reason")
+  // AP-2 — a draft dropped before it was ever submitted (a duplicate, a wrong supplier). Frees the
+  // supplier invoice number like a rejection does.
+  cancelledAt               DateTime?       @map("cancelled_at")
+  cancelledBy               String?         @map("cancelled_by")
+  cancellationReason        String?         @map("cancellation_reason")
   approvedAt                DateTime?       @map("approved_at")
   createdAt                 DateTime        @default(now()) @map("created_at")
   updatedAt                 DateTime        @updatedAt @map("updated_at")
@@ -3202,6 +3407,7 @@ model SupplierBill {
   advanceEvidenceAllocations BuyerAdvanceEvidenceAllocation[]
   // ADR-045 — the store receipt/invoice this bill was recorded from.
   storeDocument              StoreDocument?
+  debitNotes                 SupplierDebitNote[]
 
   // One LIVE bill per supplier invoice number (ADR-037 amendment, 2026-09-27): a partial unique
   // index in migration 20260927120000 — `WHERE document_status NOT IN ('REJECTED','CANCELLED')` —
@@ -3213,12 +3419,53 @@ model SupplierBill {
   @@index([projectId])
   @@index([supplierId])
   @@map("supplier_bills")
+  attachments SupplierBillAttachment[]
 }
 
 // VAT on supplier bills (NON_RECOVERABLE per ACC-TAX-001):
 //   vatAmount stored for audit trail only.
 //   grossAmount (= netAmount + vatAmount) posts to expense/inventory.
 //   No separate GL VAT debit line.
+/// AP-4 — a credit the supplier gives against a posted bill: goods sent back, an overcharge, a
+/// discount agreed after the bill. Posts at once — it lowers what is owed and no money moves —
+/// Dr Accounts payable / Cr the bill's own cost lines in proportion, with the bill's project and
+/// cost dimensions, and lowers the bill's ACTUAL cost in the commitment ledger the same way. The
+/// bill's balance falls; the note can be reversed (the balance comes back). Never deleted.
+model SupplierDebitNote {
+  id                     String                  @id @default(cuid())
+  organizationId         String                  @map("organization_id")
+  supplierId             String                  @map("supplier_id")
+  supplierBillId         String                  @map("supplier_bill_id")
+  debitNoteNumber        String?                 @map("debit_note_number") @db.VarChar(30)
+  /// The supplier's own credit note number, when they sent one.
+  supplierReference      String?                 @map("supplier_reference") @db.VarChar(100)
+  reason                 String
+  accountingDate         DateTime                @map("accounting_date") @db.Date
+  amount                 Decimal                 @db.Decimal(18, 2)
+  currencyCode           String                  @map("currency_code") @db.VarChar(3)
+  status                 SupplierDebitNoteStatus @default(POSTED)
+  postedJournalEntryId   String?                 @map("posted_journal_entry_id")
+  reversalJournalEntryId String?                 @map("reversal_journal_entry_id")
+  reversedAt             DateTime?               @map("reversed_at")
+  reversedBy             String?                 @map("reversed_by")
+  reversalReason         String?                 @map("reversal_reason")
+  createdBy              String                  @map("created_by")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+
+  bill SupplierBill @relation(fields: [supplierBillId], references: [id])
+
+  @@unique([organizationId, debitNoteNumber])
+  @@index([organizationId, supplierId])
+  @@index([supplierBillId])
+  @@map("supplier_debit_notes")
+}
+
+enum SupplierDebitNoteStatus {
+  POSTED
+  REVERSED
+}
+
 model SupplierBillLine {
   id                  String              @id @default(cuid())
   supplierBillId      String              @map("supplier_bill_id")
@@ -3288,6 +3535,14 @@ model SupplierPayment {
   createdBy            String           @map("created_by")
   approvedBy           String?          @map("approved_by")
   approvedAt           DateTime?        @map("approved_at")
+  // AP-1 — an unposted payment that will not be made: REJECTED by someone other than the person
+  // who raised it, or CANCELLED by that person. Either way the bills it held are released.
+  rejectedAt           DateTime?        @map("rejected_at")
+  rejectedBy           String?          @map("rejected_by")
+  rejectionReason      String?          @map("rejection_reason")
+  cancelledAt          DateTime?        @map("cancelled_at")
+  cancelledBy          String?          @map("cancelled_by")
+  cancellationReason   String?          @map("cancellation_reason")
   /// ADR-045 — client key of "Pay supplier" from an award (partial unique per org, see migration).
   idempotencyKey       String?          @map("idempotency_key") @db.VarChar(100)
   /// ADR-045 — the quotation request this payment was made from (SUPPLIER_PAID notification).
@@ -3296,20 +3551,110 @@ model SupplierPayment {
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
   organization      Organization                @relation(fields: [organizationId], references: [id])
+  // Step 4 — the branded remittance advice for a POSTED payment: rendered on first request, then
+  // IMMUTABLE (SupplierPaymentDocumentService), like payment_receipts.document_file_id.
+  documentFileId    String?                     @map("document_file_id")
+  documentFile      PlatformFile?               @relation("SupplierPaymentDocument", fields: [documentFileId], references: [id], onDelete: SetNull)
   supplier          Supplier                    @relation(fields: [supplierId], references: [id])
   bankAccount       BankAccount                 @relation(fields: [bankAccountId], references: [id])
   allocations          SupplierPaymentAllocation[]
   releaseSignatures    PaymentReleaseSignature[]
   purchaseAllocations  SupplierPaymentPurchaseAllocation[]
+  supplierRefunds      SupplierRefund[]
 
   @@index([organizationId, postingStatus])
   @@index([supplierId])
   @@index([quotationRequestId])
   @@map("supplier_payments")
+  attachments SupplierPaymentAttachment[]
 }
 
 // ADR-022 CONST-DOA-005 — one signatory's signature releasing a supplier payment. Two distinct
 // signatures (from active signatories of the payment's bank account) flip it to RELEASED.
+/// AP-5 — money paid ahead to a supplier (a payment's unapplied balance, held as a supplier
+/// advance) that the supplier paid back. Money comes in, so it posts at once: Dr the receiving bank
+/// / Cr Supplier advance (the account the payment debited), and the payment holds that much less
+/// unapplied. Reversible (a bounced refund); never deleted.
+model SupplierRefund {
+  id                     String               @id @default(cuid())
+  organizationId         String               @map("organization_id")
+  supplierId             String               @map("supplier_id")
+  supplierPaymentId      String               @map("supplier_payment_id")
+  bankAccountId          String               @map("bank_account_id")
+  refundNumber           String?              @map("refund_number") @db.VarChar(30)
+  refundDate             DateTime             @map("refund_date") @db.Date
+  amount                 Decimal              @db.Decimal(18, 2)
+  currencyCode           String               @map("currency_code") @db.VarChar(3)
+  reference              String?              @db.VarChar(100)
+  reason                 String
+  status                 SupplierRefundStatus @default(POSTED)
+  postedJournalEntryId   String?              @map("posted_journal_entry_id")
+  reversalJournalEntryId String?              @map("reversal_journal_entry_id")
+  reversedAt             DateTime?            @map("reversed_at")
+  reversedBy             String?              @map("reversed_by")
+  reversalReason         String?              @map("reversal_reason")
+  createdBy              String               @map("created_by")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  payment SupplierPayment @relation(fields: [supplierPaymentId], references: [id])
+
+  @@unique([organizationId, refundNumber])
+  @@index([organizationId, supplierId])
+  @@index([supplierPaymentId])
+  @@map("supplier_refunds")
+}
+
+enum SupplierRefundStatus {
+  POSTED
+  REVERSED
+}
+
+/// B-2 — money moved between two of the organisation's own accounts (bank to cash box, a float
+/// top-up, bank to bank). Dr the receiving account's GL / Cr the sending account's GL. Money leaves
+/// an account, so it follows the payment rule: up to the payment limit it posts at once; above it
+/// a second person approves. Reversible; never deleted.
+model BankTransfer {
+  id                     String             @id @default(cuid())
+  organizationId         String             @map("organization_id")
+  transferNumber         String?            @map("transfer_number") @db.VarChar(30)
+  fromBankAccountId      String             @map("from_bank_account_id")
+  toBankAccountId        String             @map("to_bank_account_id")
+  amount                 Decimal            @db.Decimal(18, 2)
+  currencyCode           String             @map("currency_code") @db.VarChar(3)
+  transferDate           DateTime           @map("transfer_date") @db.Date
+  reference              String?            @db.VarChar(100)
+  memo                   String?
+  status                 BankTransferStatus @default(PENDING_APPROVAL)
+  requestedBy            String             @map("requested_by")
+  requestedAt            DateTime           @default(now()) @map("requested_at")
+  approvedBy             String?            @map("approved_by")
+  approvedAt             DateTime?          @map("approved_at")
+  rejectedBy             String?            @map("rejected_by")
+  rejectedAt             DateTime?          @map("rejected_at")
+  rejectionReason        String?            @map("rejection_reason")
+  postedJournalEntryId   String?            @map("posted_journal_entry_id")
+  postedAt               DateTime?          @map("posted_at")
+  reversalJournalEntryId String?            @map("reversal_journal_entry_id")
+  reversedBy             String?            @map("reversed_by")
+  reversedAt             DateTime?          @map("reversed_at")
+  reversalReason         String?            @map("reversal_reason")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  @@unique([organizationId, transferNumber])
+  @@index([organizationId, status])
+  @@index([fromBankAccountId])
+  @@index([toBankAccountId])
+  @@map("bank_transfers")
+}
+
+enum BankTransferStatus {
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
 model PaymentReleaseSignature {
   id                String   @id @default(cuid())
   supplierPaymentId String   @map("supplier_payment_id")
@@ -3535,6 +3880,8 @@ model JournalEntry {
   postedBy                 String?         @map("posted_by")
   reversedBy               String?         @map("reversed_by")
   reversalReason           String?         @map("reversal_reason")
+  /// G-2 — an accrual's automatic reversal date: when the journal posts, its mirror posts too, dated here.
+  autoReverseOn            DateTime?       @map("auto_reverse_on") @db.Date
   revision                 Int             @default(1)
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
@@ -3607,6 +3954,9 @@ model JournalLine {
   account               Account                @relation("JournalLineAccount", fields: [accountId], references: [id])
   accountVersion        AccountVersion?        @relation(fields: [accountVersionId], references: [id])
   postingProfileVersion PostingProfileVersion? @relation(fields: [postingProfileVersionId], references: [id])
+
+  // Step 6 — the statement line this ledger line was matched to (cleared), if any.
+  statementMatch        BankStatementLine?     @relation("StatementLineMatch")
 
   @@unique([journalEntryId, lineNumber])
   @@index([accountId, createdAt])
@@ -3807,6 +4157,19 @@ model PostingPolicy {
   requireFourEyesOnJournals     Boolean  @default(true) @map("require_four_eyes_on_journals")
   draftJournalsBlockPeriodClose Boolean  @default(true) @map("draft_journals_block_period_close")
   enforceControlAccountAtDb     Boolean  @default(true) @map("enforce_control_account_at_db")
+  // ADR-046 §8 — optional approvals, as settings rather than code. Each defaults to "no extra
+  // approval" except the payment limit, which defaults to the ADR-022 lowest band.
+  /// §2 — a client invoice at or above this total needs Approve before it is issued. NULL = never.
+  invoiceApprovalAbove          Decimal? @map("invoice_approval_above") @db.Decimal(18, 2)
+  /// §3 — a non-PO supplier bill at or above this total needs approval; below it, Save posts. NULL = never.
+  billApprovalAbove             Decimal? @map("bill_approval_above") @db.Decimal(18, 2)
+  /// §3 — a PO bill matched within the matching tolerance (not exactly) also posts on Save.
+  autoPostToleratedBills        Boolean  @default(false) @map("auto_post_tolerated_bills")
+  /// §4 — a supplier payment up to this amount is approved on Save. 0 = every payment needs Approve.
+  paymentAutoApproveUpTo        Decimal  @default(1000) @map("payment_auto_approve_up_to") @db.Decimal(18, 2)
+  /// AR-4 — a write-off up to this amount posts at once; above it a second person approves it in
+  /// Approvals. 0 = every write-off needs approval. Owner decision 2026-10-29: default 50.
+  writeOffApprovalAbove         Decimal  @default(50) @map("write_off_approval_above") @db.Decimal(18, 2)
   updatedBy                     String   @map("updated_by")
   updatedAt                     DateTime @updatedAt @map("updated_at")
 
@@ -3822,6 +4185,90 @@ model DimensionPolicy {
   updatedAt                  DateTime             @updatedAt @map("updated_at")
 
   @@map("dimension_policy")
+}
+
+// Step 6 — bank reconciliation. A statement is imported for one bank account, its lines are
+// matched one-to-one to the ledger lines on that bank's GL account (a matched ledger line is
+// "cleared"), lines with no ledger counterpart (charges, interest) are posted as a journal from the
+// line, and the statement is reconciled once every line is matched and the balances agree.
+model BankStatement {
+  id              String              @id @default(cuid())
+  organizationId  String              @map("organization_id")
+  bankAccountId   String              @map("bank_account_id")
+  periodStart     DateTime            @map("period_start") @db.Date
+  statementDate   DateTime            @map("statement_date") @db.Date
+  currencyCode    String              @map("currency_code") @db.VarChar(3)
+  openingBalance  Decimal             @map("opening_balance") @db.Decimal(18, 2)
+  closingBalance  Decimal             @map("closing_balance") @db.Decimal(18, 2)
+  fileName        String?             @map("file_name")
+  status          BankStatementStatus @default(OPEN)
+  reconciledAt    DateTime?           @map("reconciled_at")
+  reconciledBy    String?             @map("reconciled_by")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  createdBy       String              @map("created_by")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  bankAccount BankAccount         @relation(fields: [bankAccountId], references: [id])
+  lines       BankStatementLine[]
+
+  @@index([organizationId, bankAccountId, statementDate])
+  @@map("bank_statements")
+}
+
+model BankStatementLine {
+  id                       String               @id @default(cuid())
+  statementId              String               @map("statement_id")
+  lineNumber               Int                  @map("line_number")
+  transactionDate          DateTime             @map("transaction_date") @db.Date
+  description              String
+  reference                String?
+  // Signed: money in is positive, money out negative.
+  amount                   Decimal              @db.Decimal(18, 2)
+  matchStatus              StatementMatchStatus @default(UNMATCHED) @map("match_status")
+  // One ledger line clears at most one statement line.
+  matchedJournalLineId     String?              @unique @map("matched_journal_line_id")
+  // Set when the line was posted from here (a charge or interest) rather than matched.
+  adjustmentJournalEntryId String?              @map("adjustment_journal_entry_id")
+  matchedAt                DateTime?            @map("matched_at")
+  matchedBy                String?              @map("matched_by")
+
+  statement          BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  matchedJournalLine JournalLine?  @relation("StatementLineMatch", fields: [matchedJournalLineId], references: [id])
+
+  @@unique([statementId, lineNumber])
+  @@map("bank_statement_lines")
+}
+
+// Step 7 — the photo reader. Off until an administrator turns it on for the company (owner
+// decision 2026-10-28): a photo sent to the reader leaves the platform for the named provider.
+model DocumentReaderPolicy {
+  organizationId String   @id @map("organization_id")
+  enabled        Boolean  @default(false)
+  updatedBy      String   @map("updated_by")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("document_reader_policy")
+}
+
+// Every reading the photo reader made — what was sent, to whom, and what came back. The reading
+// only pre-fills a form; a person confirms before anything is saved.
+model DocumentReading {
+  id             String                @id @default(cuid())
+  organizationId String                @map("organization_id")
+  platformFileId String                @map("platform_file_id")
+  kind           DocumentReadingKind
+  provider       String                @db.VarChar(40)
+  model          String                @db.VarChar(120)
+  status         DocumentReadingStatus
+  result         Json?
+  errorCode      String?               @map("error_code") @db.VarChar(60)
+  durationMs     Int                   @map("duration_ms")
+  createdBy      String                @map("created_by")
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([platformFileId])
+  @@map("document_readings")
 }
 
 model BankingPolicy {
@@ -4236,6 +4683,8 @@ enum AccountSubtype {
   // Assets
   CASH_AND_BANK
   ACCOUNTS_RECEIVABLE
+  // ADR-046 §5 — retention the client holds back on IPC invoices until its release invoice.
+  RETENTION_RECEIVABLE
   // Unallocated client receipts — liability to client pending invoice allocation (Correction 1)
   UNAPPLIED_CLIENT_RECEIPTS
   // Advance paid to supplier before bill allocation (Correction 2)
@@ -4270,6 +4719,8 @@ enum AccountSubtype {
   ADMINISTRATIVE_EXPENSE
   DEPRECIATION_EXPENSE
   FINANCE_COST
+  // AR-4 — where a receivable written off is expensed.
+  BAD_DEBT_EXPENSE
   OTHER_EXPENSE
 }
 
@@ -4373,6 +4824,16 @@ enum DocumentType {
   SUPPLIER_PAYMENT
   JOURNAL_ENTRY
   CREDIT_NOTE
+  // AR-4 — WO- numbers for receivable write-offs.
+  RECEIVABLE_WRITE_OFF
+  // AR-5 — RF- numbers for refunds of client cash held on account.
+  CLIENT_REFUND
+  // AP-4 — DN- numbers for supplier debit notes.
+  SUPPLIER_DEBIT_NOTE
+  // AP-5 — SR- numbers for refunds received from suppliers.
+  SUPPLIER_REFUND
+  // B-2 — TR- numbers for transfers between the organisation's own accounts.
+  BANK_TRANSFER
 }
 
 enum SequenceStatus {
@@ -4474,6 +4935,18 @@ enum SourceDocType {
   CREDIT_NOTE
   // ADR-045 — buyer (staff) advance release / application / return and their reversals.
   BUYER_ADVANCE
+  // Step 6 — a bank charge or interest posted from a statement line during reconciliation.
+  BANK_STATEMENT
+  // AR-4 — a client balance written off (bad debt or a small leftover), and its reversal.
+  RECEIVABLE_WRITE_OFF
+  // AR-5 — client cash held on account paid back, and its reversal.
+  CLIENT_REFUND
+  // AP-4 — a credit received from a supplier against a posted bill, and its reversal.
+  SUPPLIER_DEBIT_NOTE
+  // AP-5 — money paid ahead that a supplier paid back, and its reversal.
+  SUPPLIER_REFUND
+  // B-2 — money moved between the organisation's own bank, cash and float accounts.
+  BANK_TRANSFER
 }
 
 enum AttemptOutcome {
@@ -4489,6 +4962,29 @@ enum SnapshotStatus {
   VALID
   INVALID
   REBUILDING
+}
+
+enum DocumentReadingKind {
+  DELIVERY_NOTE
+  RECEIPT
+  QUOTE
+  MATERIAL_LIST
+}
+
+enum DocumentReadingStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum BankStatementStatus {
+  OPEN
+  RECONCILED
+}
+
+enum StatementMatchStatus {
+  UNMATCHED
+  MATCHED
+  POSTED
 }
 
 enum ReconciliationStatus {
@@ -4642,7 +5138,12 @@ model MaterialRequest {
   // ADR-044 — at most one live (non-CANCELLED) quotation request (partial unique index in SQL).
   quotationRequests QuotationRequest[]
 
+  // Step 7 — the phone's own reference for a form sent from its outbox: a repeat send (the
+  // reply was lost to a dropped signal) returns this record instead of creating another.
+  clientRef      String?  @map("client_ref") @db.VarChar(64)
+
   @@unique([organizationId, mrNumber])
+  @@unique([organizationId, clientRef])
   @@index([organizationId, status])
   @@index([organizationId, projectId])
   @@map("material_requests")
@@ -5171,7 +5672,12 @@ model GoodsReceiptNote {
   lines         GoodsReceiptLine[]
   attachments   GoodsReceiptAttachment[]
 
+  // Step 7 — the phone's own reference for a form sent from its outbox: a repeat send (the
+  // reply was lost to a dropped signal) returns this record instead of creating another.
+  clientRef      String?  @map("client_ref") @db.VarChar(64)
+
   @@unique([organizationId, grnNumber])
+  @@unique([organizationId, clientRef])
   @@index([organizationId, status])
   @@index([purchaseOrderId])
   @@map("goods_receipt_notes")
@@ -5544,6 +6050,8 @@ enum CommitmentSourceDocType {
   BILL_REVERSAL
   OVER_RECEIPT_ADJUSTMENT
   EXCEPTION_APPROVAL
+  // AP-4 — a supplier debit note lowers the bill's ACTUAL cost (and its reversal raises it again).
+  SUPPLIER_DEBIT_NOTE
 }
 
 enum ToleranceScopeType {
@@ -5664,4 +6172,70 @@ model OutboundMessage {
   @@index([organizationId, resourceType, resourceId], map: "outbound_messages_org_resource_idx")
   @@index([organizationId, clientId], map: "outbound_messages_org_client_idx")
   @@map("outbound_messages")
+}
+
+// ─── Finance attachments (Step 4) ─────────────────────────────────────────────
+// Evidence on a finance document: the supplier's invoice scan, a signed delivery note, a bank
+// advice. One table per owner, like ContractAttachment and JournalEntryAttachment. Removable until
+// the document posts; a file added after posting is supplementary and is kept for good
+// (FinanceAttachmentService).
+
+model ClientInvoiceAttachment {
+  id               String   @id @default(cuid())
+  clientInvoiceId  String   @map("client_invoice_id")
+  platformFileId   String   @map("platform_file_id")
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  clientInvoice ClientInvoice @relation(fields: [clientInvoiceId], references: [id], onDelete: Cascade)
+  platformFile  PlatformFile  @relation(fields: [platformFileId], references: [id])
+
+  @@index([clientInvoiceId])
+  @@map("client_invoice_attachments")
+}
+
+model SupplierBillAttachment {
+  id               String   @id @default(cuid())
+  supplierBillId   String   @map("supplier_bill_id")
+  platformFileId   String   @map("platform_file_id")
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  supplierBill SupplierBill @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
+
+  @@index([supplierBillId])
+  @@map("supplier_bill_attachments")
+}
+
+model SupplierPaymentAttachment {
+  id                String   @id @default(cuid())
+  supplierPaymentId String   @map("supplier_payment_id")
+  platformFileId    String   @map("platform_file_id")
+  isPostSubmission  Boolean  @default(false) @map("is_post_submission")
+  createdAt         DateTime @default(now()) @map("created_at")
+  createdBy         String   @map("created_by")
+
+  supplierPayment SupplierPayment @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade)
+  platformFile    PlatformFile    @relation(fields: [platformFileId], references: [id])
+
+  @@index([supplierPaymentId])
+  @@map("supplier_payment_attachments")
+}
+
+model PaymentReceiptAttachment {
+  id               String   @id @default(cuid())
+  paymentReceiptId String   @map("payment_receipt_id")
+  platformFileId   String   @map("platform_file_id")
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  paymentReceipt PaymentReceipt @relation(fields: [paymentReceiptId], references: [id], onDelete: Cascade)
+  platformFile   PlatformFile   @relation(fields: [platformFileId], references: [id])
+
+  @@index([paymentReceiptId])
+  @@map("payment_receipt_attachments")
 }

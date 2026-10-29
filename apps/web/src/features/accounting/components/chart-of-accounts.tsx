@@ -20,7 +20,9 @@ import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-gr
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import { accountName, currentVersion } from '../account-display';
-import { useAccountingSetupStatus, useAccounts } from '../hooks/use-accounting';
+import { useAccountingSetupStatus, useAccounts, useTrialBalance } from '../hooks/use-accounting';
+import Link from 'next/link';
+import { formatMoney } from '@/lib/format';
 import type { Account, AccountClass } from '../types';
 import { AccountClassBadge, NormalBalanceLabel, PostingPolicyBadge } from './account-badges';
 import { AccountingSetupDialog } from './accounting-setup-dialog';
@@ -43,6 +45,14 @@ export function ChartOfAccounts() {
   const tClass = useTranslations('accounting.accountClass');
 
   const accounts = useAccounts();
+  // G-3 — each account's balance today, from the trial balance (posted lines only).
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const trial = useTrialBalance(today, false);
+  const balanceOf = useMemo(() => {
+    const map = new Map<string, { debit: number; credit: number }>();
+    for (const line of trial.data?.lines ?? []) map.set(line.accountId, { debit: Number(line.closingDebit), credit: Number(line.closingCredit) });
+    return map;
+  }, [trial.data]);
 
   const [accountClass, setAccountClass] = useState<AccountClass | ''>('');
   const [creating, setCreating] = useState(false);
@@ -89,6 +99,17 @@ export function ChartOfAccounts() {
     return all.filter((account) => currentVersion(account)?.accountClass === accountClass);
   }, [accounts.data, accountClass]);
 
+  // The subtype's plain name ("Cash and bank"), not its code.
+  const subtypeLabel = (subtype: string | undefined) =>
+    subtype ? (t.has(`create.subtypeName.${subtype}`) ? t(`create.subtypeName.${subtype}`) : subtype) : '';
+  // On the account's normal side: a credit-normal account (payables, income) reads positive when in credit.
+  const balanceText = (account: Account) => {
+    const b = balanceOf.get(account.id);
+    if (!b || (b.debit === 0 && b.credit === 0)) return '';
+    const net = account.normalBalance === 'CREDIT' ? b.credit - b.debit : b.debit - b.credit;
+    return formatMoney(net.toFixed(2), 'USD') ?? net.toFixed(2);
+  };
+
   const columns: GridColumn<Account>[] = [
     {
       key: 'code',
@@ -125,12 +146,26 @@ export function ChartOfAccounts() {
     {
       key: 'subtype',
       header: t('colSubtype'),
-      plainValue: (account) => currentVersion(account)?.accountSubtype ?? '',
+      plainValue: (account) => subtypeLabel(currentVersion(account)?.accountSubtype),
       render: (account) => (
-        <span className="text-xs text-muted-foreground">
-          {currentVersion(account)?.accountSubtype ?? '—'}
-        </span>
+        <span className="text-xs text-muted-foreground">{subtypeLabel(currentVersion(account)?.accountSubtype) || '—'}</span>
       ),
+    },
+    {
+      key: 'balance',
+      header: t('colBalance'),
+      numeric: true,
+      plainValue: (account) => balanceText(account),
+      render: (account) => {
+        const text = balanceText(account);
+        return text ? (
+          <Link href={`/finance/accounting/ledger?accountId=${account.id}`} className="tabular-nums text-brand-primary underline-offset-2 hover:underline" onClick={(e) => e.stopPropagation()}>
+            {text}
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        );
+      },
     },
     {
       key: 'normalBalance',

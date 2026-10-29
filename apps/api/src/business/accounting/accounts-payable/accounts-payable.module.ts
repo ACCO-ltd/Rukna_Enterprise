@@ -25,14 +25,26 @@ import { SupplierService } from './application/supplier.service.js';
 import { SupplierBillController } from './presentation/supplier-bill.controller.js';
 import { SupplierPaymentController } from './presentation/supplier-payment.controller.js';
 import { SupplierController } from './presentation/supplier.controller.js';
+import { SupplierDebitNoteController } from './presentation/supplier-debit-note.controller.js';
+import { SupplierDebitNoteService } from './application/supplier-debit-note.service.js';
+import { SupplierRefundController } from './presentation/supplier-refund.controller.js';
+import { SupplierRefundService } from './application/supplier-refund.service.js';
+import { SupplierStatementController } from './presentation/supplier-statement.controller.js';
+import { SupplierStatementService } from './application/supplier-statement.service.js';
+import { SupplierStatementRepository } from './infrastructure/supplier-statement.repository.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
 import { PostingProfileRepository } from './infrastructure/posting-profile.repository.js';
 import { PostingProfileService } from './application/posting-profile.service.js';
+import { FilesModule } from '../../../platform/files/files.module.js';
+import { RemittanceDocumentService } from './application/remittance-document.service.js';
+import { SupplierPaymentDocumentService } from './application/supplier-payment-document.service.js';
+import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-payment-document.repository.js';
 
 @Module({
   imports: [
     TenancyModule,
     AccountingCoreModule,
+    FilesModule,
     CommitmentLedgerModule,
     BillMatchingModule,
     WorkflowsModule,
@@ -45,11 +57,17 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     SupplierBillController,
     SupplierPaymentController,
     SupplierController,
+    SupplierStatementController,
+    SupplierDebitNoteController,
+    SupplierRefundController,
     PostingProfileController,
     BuyerAdvanceController,
     AwardPaymentController,
   ],
   providers: [
+    RemittanceDocumentService,
+    SupplierPaymentDocumentService,
+    SupplierPaymentDocumentRepository,
     SupplierBillRepository,
     SupplierPaymentRepository,
     SupplierRepository,
@@ -62,6 +80,10 @@ import { PostingProfileService } from './application/posting-profile.service.js'
     SupplierBillDocumentService,
     SupplierPaymentService,
     SupplierService,
+    SupplierStatementService,
+    SupplierDebitNoteService,
+    SupplierRefundService,
+    SupplierStatementRepository,
     BuyerAdvanceService,
     AwardSupplierPaymentService,
     StoreDocumentSettlementService,

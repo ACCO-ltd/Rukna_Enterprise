@@ -4,11 +4,11 @@ import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { grantQuotationPaymentGovernance } from '../../../../../prisma/seeds/quotation-payment-governance.js';
-import { accoSupplierPaymentBands } from '../../../../platform/workflows/seeders/acco-value-bands.js';
+import { defaultSupplierPaymentBands } from '../../../../platform/workflows/seeders/default-value-bands.js';
 import {
   seedBandSet,
   seedBuyerAdvanceBands,
-} from '../../../../platform/workflows/seeders/acco-workflows.seed.js';
+} from '../../../../platform/workflows/seeders/default-workflows.seed.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { isSupportedPolicyTransition } from '../../../../platform/workflows/application/policy-transition-registry.js';
 import {
@@ -174,7 +174,7 @@ describe('ADR-045 P1 — schema constraints and seeds', () => {
           fromState: 'DRAFT',
           toState: 'APPROVED',
           transactionType: 'SUPPLIER_PAYMENT' as never,
-          bands: accoSupplierPaymentBands(),
+          bands: defaultSupplierPaymentBands(),
         });
       } finally {
         console.log = log;
@@ -203,7 +203,7 @@ describe('ADR-045 P1 — schema constraints and seeds', () => {
         Array(3).fill(['DRAFT', 'APPROVED', 'SUPPLIER_PAYMENT', true]),
       );
       // The same band definitions (one chain) as the supplier payments.
-      expect(bindings.map((b) => b.definition.name)).toEqual(accoSupplierPaymentBands().map((b) => b.name));
+      expect(bindings.map((b) => b.definition.name)).toEqual(defaultSupplierPaymentBands().map((b) => b.name));
       expect(new Set(bindings.map((b) => b.workflowDefinitionId))).toEqual(
         new Set(paymentBindings.map((b) => b.workflowDefinitionId)),
       );

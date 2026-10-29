@@ -10,7 +10,7 @@ import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissi
 import { useCloseGate, usePeriodAction } from '../hooks/use-accounting';
 import type { AccountingPeriod, FiscalYear } from '../types';
 
-type PeriodActionType = 'lock' | 'close' | 'reopen' | 'rebuild';
+type PeriodActionType = 'lock' | 'unlock' | 'close' | 'reopen' | 'rebuild';
 
 /**
  * What the server accepts from each period status.
@@ -25,7 +25,8 @@ function actionsFor(status: AccountingPeriod['status']): PeriodActionType[] {
     case 'REOPENED':
       return ['lock'];
     case 'LOCKED':
-      return ['close'];
+      // S-1 — a lock that came too early can be undone (with a reason) until the period closes.
+      return ['close', 'unlock'];
     case 'CLOSED':
       return ['reopen', 'rebuild'];
   }
@@ -39,7 +40,8 @@ export function PeriodActions({ period }: { period: AccountingPeriod }) {
   const [pending, setPending] = useState<PeriodActionType | null>(null);
 
   // Fetched only while a close is being considered — it is a pre-flight, not page data.
-  const gate = useCloseGate(pending === 'close' ? period.id : null);
+  // S-1 — also read when locking: what will stand in the way of closing, said before the lock.
+  const gate = useCloseGate(pending === 'close' || pending === 'lock' ? period.id : null);
 
   const available = actionsFor(period.status).filter(() =>
     can(ACCOUNTING_PERMISSIONS.managePeriods),
@@ -49,8 +51,8 @@ export function PeriodActions({ period }: { period: AccountingPeriod }) {
 
   function run(type: PeriodActionType, reason: string) {
     const request =
-      type === 'reopen'
-        ? ({ type: 'reopen', periodId: period.id, reason } as const)
+      type === 'reopen' || type === 'unlock'
+        ? ({ type, periodId: period.id, reason } as const)
         : ({ type, periodId: period.id } as const);
 
     action.mutate(request, { onSuccess: () => setPending(null) });
@@ -72,10 +74,14 @@ export function PeriodActions({ period }: { period: AccountingPeriod }) {
       {pending ? (
         <ConfirmActionDialog
           title={t(`confirm.${pending}Title`)}
-          description={t(`confirm.${pending}Body`)}
+          description={
+            pending === 'lock' && gate.data && !gate.data.passed
+              ? `${t('confirm.lockBody')} ${t('lockWarning', { blockers: gate.data.blockers.join('; ') })}`
+              : t(`confirm.${pending}Body`)
+          }
           confirmLabel={t(pending)}
           reason={
-            pending === 'reopen'
+            pending === 'reopen' || pending === 'unlock'
               ? { required: true, label: t('confirm.reopenReasonLabel'), maxLength: 500 }
               : undefined
           }

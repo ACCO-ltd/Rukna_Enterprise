@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -39,9 +39,10 @@ import {
   type PaymentPlanBilledOn,
   type PaymentPlanRow,
 } from '../contract-form-payload';
-import { ACCO_STANDARD_PLAN } from './payment-plan-fields';
 import { BillingModel } from '../types';
 import { useRecordSignedContract } from '../hooks/use-record-signed-contract';
+import { useStandardPaymentPlan } from '../hooks/use-standard-payment-plan';
+import { LoadError } from '@/components/load-error';
 
 const PAYMENT_TERMS = ['DUE_ON_RECEIPT', 'NET_7', 'NET_14', 'NET_30', 'NET_45', 'NET_60'] as const;
 type PaymentTermsKey = (typeof PAYMENT_TERMS)[number];
@@ -86,7 +87,16 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
     contractValue: '',
     paymentTerms: 'NET_30',
   });
-  const [stages, setStages] = useState<StageRow[]>(() => ACCO_STANDARD_PLAN.map(stageFromTemplate));
+  // Seeded once from the company's standard payment plan (Step 1b, ADR-047) when it loads; after
+  // that the stages are the user's — clearing them never brings the template back.
+  const standardPlan = useStandardPaymentPlan();
+  const [stages, setStages] = useState<StageRow[]>([]);
+  const [seeded, setSeeded] = useState(false);
+  useEffect(() => {
+    if (!standardPlan || seeded) return;
+    setSeeded(true);
+    setStages((current) => (current.length === 0 ? standardPlan.map(stageFromTemplate) : current));
+  }, [standardPlan, seeded]);
   const [file, setFile] = useState<File | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -96,7 +106,7 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
   const clientName = clients.data?.find((c) => c.id === clientId)?.name ?? null;
   const boqVersion = boq.data?.draft?.versionNumber ?? boq.data?.approved?.versionNumber ?? null;
 
-  if (projects.isPending || clients.isPending || boq.isPending) {
+  if (projects.isPending || clients.isPending || boq.isPending || !seeded) {
     return (
       <div className="h-72 animate-pulse rounded-panel border border-border bg-muted" role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
@@ -104,7 +114,16 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
     );
   }
   if (projects.isError || clients.isError || boq.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return (
+      <LoadError
+        message={t('loadFailed')}
+        onRetry={() => {
+          void projects.refetch();
+          void clients.refetch();
+          void boq.refetch();
+        }}
+      />
+    );
   }
 
   const set = <K extends keyof Fields>(key: K, value: Fields[K]) => setFields((current) => ({ ...current, [key]: value }));

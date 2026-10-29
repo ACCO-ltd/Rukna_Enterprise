@@ -66,9 +66,8 @@ export function deleteDraftInvoice(projectId: string, invoiceId: string): Promis
 
 // ─── Credit notes ────────────────────────────────────────────────────────────
 //
-// The server mounts these under the invoice: `POST …/commercial/invoices/:invoiceId/credit-notes`
-// and `…/credit-notes/:creditNoteId/post`. (`createCreditNote` / `postCreditNote` in
-// commercial-api.ts call `…/commercial/credit-notes`, which no controller serves.)
+// AR-1: one route for every invoice, project or not — `/invoices/:invoiceId/credit-notes` (Finance
+// owns credit notes; a hand-typed sale has no project to mount them under).
 
 export type CreditNoteReason = 'OMISSION' | 'PRICE_ERROR' | 'CORRECTION';
 
@@ -81,25 +80,57 @@ export interface CreateInvoiceCreditNotePayload {
   note?: string;
 }
 
+export interface InvoiceCreditNote {
+  id: string;
+  creditNoteNumber: string | null;
+  reason: CreditNoteReason | 'NEGATIVE_VARIATION';
+  netAmount: string;
+  vatAmount: string;
+  totalAmount: string;
+  accountingDate: string;
+  postingStatus: 'NOT_POSTED' | 'PENDING' | 'POSTED' | 'FAILED' | 'REVERSED';
+  note: string | null;
+  reversedAt: string | null;
+  reversalReason: string | null;
+}
+
+/** The credit notes raised against an invoice, oldest first. */
+export function listInvoiceCreditNotes(invoiceId: string): Promise<InvoiceCreditNote[]> {
+  return apiClient<InvoiceCreditNote[]>(`/invoices/${invoiceId}/credit-notes`);
+}
+
 export function createInvoiceCreditNote(
-  projectId: string,
   invoiceId: string,
   payload: CreateInvoiceCreditNotePayload,
 ): Promise<{ id: string; postingStatus: string }> {
   return apiClient<{ id: string; postingStatus: string }>(
-    `${base(projectId)}/invoices/${invoiceId}/credit-notes`,
+    `/invoices/${invoiceId}/credit-notes`,
     { method: 'POST', body: JSON.stringify(payload) },
   );
 }
 
 /** Posts the credit note: numbers it, writes its journal and reduces the invoice balance. */
 export function postInvoiceCreditNote(
-  projectId: string,
   invoiceId: string,
   creditNoteId: string,
 ): Promise<{ id: string; postingStatus: string; creditNoteNumber: string | null }> {
   return apiClient<{ id: string; postingStatus: string; creditNoteNumber: string | null }>(
-    `${base(projectId)}/invoices/${invoiceId}/credit-notes/${creditNoteId}/post`,
+    `/invoices/${invoiceId}/credit-notes/${creditNoteId}/post`,
     { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+/**
+ * Reverses a posted credit note (EVT-AR-008): a mirror journal on the reversal date, and the
+ * invoice balance restored. The reason is mandatory.
+ */
+export function reverseInvoiceCreditNote(
+  invoiceId: string,
+  creditNoteId: string,
+  payload: { reversalDate: string; reason: string },
+): Promise<{ id: string; postingStatus: string }> {
+  return apiClient<{ id: string; postingStatus: string }>(
+    `/invoices/${invoiceId}/credit-notes/${creditNoteId}/reverse`,
+    { method: 'POST', body: JSON.stringify(payload) },
   );
 }

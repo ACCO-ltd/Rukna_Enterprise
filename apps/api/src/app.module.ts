@@ -13,11 +13,15 @@ import { HealthModule } from './platform/health/health.module.js';
 import { AuthModule } from './platform/auth/auth.module.js';
 import { UsersModule } from './platform/users/users.module.js';
 import { OrganizationsModule } from './platform/organizations/organizations.module.js';
+import { SavedViewsModule } from './platform/saved-views/saved-views.module.js';
+import { SearchModule } from './platform/search/search.module.js';
+import { ApprovalsInboxModule } from './platform/approvals-inbox/approvals-inbox.module.js';
 import { RolesModule } from './platform/roles/roles.module.js';
 import { PermissionsModule } from './platform/permissions/permissions.module.js';
 import { AuditLogsModule } from './platform/audit-logs/audit-logs.module.js';
 import { NotificationsModule } from './platform/notifications/notifications.module.js';
 import { FilesModule } from './platform/files/files.module.js';
+import { DocumentReaderModule } from './platform/document-reader/document-reader.module.js';
 import { WorkflowsModule } from './platform/workflows/workflows.module.js';
 import { ClientsModule } from './platform/clients/clients.module.js';
 import { CommunicationModule } from './platform/messaging/communication.module.js';
@@ -39,11 +43,15 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     AuthModule,
     UsersModule,
     OrganizationsModule,
+    SavedViewsModule,
+    SearchModule,
+    ApprovalsInboxModule,
     RolesModule,
     PermissionsModule,
     AuditLogsModule,
     NotificationsModule,
     FilesModule,
+    DocumentReaderModule,
     WorkflowsModule,
     ClientsModule,
     CommunicationModule,

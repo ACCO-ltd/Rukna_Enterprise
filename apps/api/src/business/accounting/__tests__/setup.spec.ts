@@ -157,7 +157,7 @@ describe('ADR-040 accounting setup (DB)', () => {
     expect(result.fiscalYear.name).toBe(`FY${YEAR}`);
     expect(result.bankAccountsCreated).toBe(2);
     expect(result.taxCodesCreated).toBe(2);
-    expect(result.accountsCreated).toBe(78 + 2); // chart + 2 banks; no input-VAT asset (ACC-TAX-001)
+    expect(result.accountsCreated).toBe(79 + 2); // chart + 2 banks; no input-VAT asset (ACC-TAX-001)
     expect(await prisma.account.count({ where: { organizationId: orgId } })).toBe(result.accountsCreated);
     expect(await prisma.postingProfile.count({ where: { organizationId: orgId } })).toBe(result.postingProfilesCreated);
 
@@ -365,7 +365,7 @@ describe('ADR-040 accounting setup (DB)', () => {
     for (const r of refused) {
       expect(r.reason).toMatchObject({ status: 409, response: { errorCode: 'ACCOUNTING_ALREADY_SET_UP' } });
     }
-    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(78); // the chart, no banks; no input-VAT asset (ACC-TAX-001)
+    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(79); // the chart, no banks; no input-VAT asset (ACC-TAX-001)
   });
 
   it('ST-03: a failure part-way rolls the whole install back', async () => {

@@ -425,7 +425,6 @@ export class CommercialBillingService {
       if (now.hasLiveInvoice) {
         throw new ConflictException({
           message: `Installment "${installment.name}" already has an invoice — readiness cannot be set after billing.`,
-          code: 'STAGE_ALREADY_INVOICED',
           errorCode: 'STAGE_ALREADY_INVOICED',
         });
       }
@@ -500,7 +499,6 @@ export class CommercialBillingService {
       if (now.hasLiveInvoice) {
         throw new ConflictException({
           message: `Installment "${installment.name}" has an invoice — readiness cannot be revoked after billing.`,
-          code: 'STAGE_ALREADY_INVOICED',
           errorCode: 'STAGE_ALREADY_INVOICED',
         });
       }
@@ -1574,6 +1572,8 @@ export class CommercialBillingService {
         await this.repo.redateDraft(tx as never, identity.activeOrganizationId, draft.id, redated.invoiceDate, redated.dueDate);
       }
       await this.clientInvoiceService.refreshBrandingSnapshot(identity, draft.id, tx);
+      // ADR-046 §8 — a large draft waits for its approval here too, as on the invoice page.
+      await this.clientInvoiceService.assertIssuableWithoutApproval(identity, draft, tx);
       if (draft.documentStatus === 'DRAFT') {
         await this.clientInvoiceService.approve(identity, draft.id, tx);
       }

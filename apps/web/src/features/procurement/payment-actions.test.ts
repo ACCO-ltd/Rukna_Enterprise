@@ -4,6 +4,7 @@ import type { Account, BankAccount } from '@/features/accounting/types';
 
 import {
   availablePaymentActions,
+  canEndPayment,
   bankAccountLabel,
   canPost,
   canRelease,
@@ -284,5 +285,16 @@ describe('planPaymentPost', () => {
     if (!result.ok) return;
 
     expect(result.plan.balanced).toBe(false);
+  });
+});
+
+describe('canEndPayment (AP-1)', () => {
+  it('offers reject/cancel only while the payment is unposted and still open', () => {
+    expect(canEndPayment(payment({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }))).toBe(true);
+    expect(canEndPayment(payment({ documentStatus: 'APPROVED', postingStatus: 'FAILED' }))).toBe(true);
+    expect(canEndPayment(payment({ documentStatus: 'RELEASED', postingStatus: 'NOT_POSTED' }))).toBe(true);
+    expect(canEndPayment(payment({ documentStatus: 'APPROVED', postingStatus: 'POSTED' }))).toBe(false);
+    expect(canEndPayment(payment({ documentStatus: 'REJECTED', postingStatus: 'NOT_POSTED' }))).toBe(false);
+    expect(canEndPayment(payment({ documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED' }))).toBe(false);
   });
 });

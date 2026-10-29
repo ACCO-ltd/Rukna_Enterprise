@@ -3,7 +3,7 @@
 Status: **PARTIALLY BUILT (2026-08-19).** PlatformFile (ADR-014) + the standalone **Project documents**
 register (§1) and the Documents tab UI are built and shipped. The **Linked documents** aggregation (§2)
 is **DEFERRED** — its own future task (see the §2 note below). Not gated anymore; it's a scoped follow-up.
-Owners: Backend — Abdulsalam · Frontend — frontend engineer · Storage decision — ADR-014.
+Owner: Abdulsalam (full stack) · Storage decision — ADR-014.
 
 ## Purpose
 

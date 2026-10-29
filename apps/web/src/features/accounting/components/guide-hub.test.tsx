@@ -31,11 +31,14 @@ const step = (key: string, label: string, status: GuideStep['status'], href: str
   detail: `${label} detail.`,
   status,
   href,
+  // As the server flags them (accounting-guide.service.ts).
+  ...(['company-details', 'import-parties', 'opening-balances'].includes(key) ? { optional: true } : {}),
 });
 
 function guide(setupSteps: GuideStep[], ready = false): AccountingGuideResponse {
   return {
     ready,
+    organizationName: 'Test Co',
     currentPeriod: null,
     fiscalYear: null,
     checkedAt: '2026-09-30T00:00:00.000Z',

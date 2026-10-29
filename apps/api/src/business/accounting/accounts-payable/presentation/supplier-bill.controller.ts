@@ -124,6 +124,18 @@ export class SupplierBillController {
     return this.supplierBillService.reject(identity, id, dto.reason);
   }
 
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'AP-2: cancel a DRAFT bill that will never be submitted, with a reason; frees its supplier invoice number' })
+  cancel(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: BillDecisionReasonDto,
+  ) {
+    return this.supplierBillService.cancel(identity, id, dto.reason);
+  }
+
   @Post(':id/submit')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })

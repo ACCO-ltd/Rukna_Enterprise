@@ -72,6 +72,7 @@ export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
     subtypes: [
       'CASH_AND_BANK',
       'ACCOUNTS_RECEIVABLE',
+      'RETENTION_RECEIVABLE',
       'SUPPLIER_ADVANCE',
       'INVENTORY',
       'FIXED_ASSETS',
@@ -108,6 +109,7 @@ export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
       'ADMINISTRATIVE_EXPENSE',
       'DEPRECIATION_EXPENSE',
       'FINANCE_COST',
+      'BAD_DEBT_EXPENSE',
       'OTHER_EXPENSE',
     ],
   },

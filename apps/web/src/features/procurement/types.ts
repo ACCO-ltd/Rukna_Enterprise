@@ -593,6 +593,10 @@ export interface SupplierBillEvidence {
 }
 
 export interface SupplierBill {
+  /** ADR-046 §3 — on a Submit response: true when the bill posted on save; false when posting was refused. */
+  postedOnSave?: boolean;
+  /** Why posting on save was refused (the bill stays approved, to post from its page). */
+  postOnSaveError?: string;
   /** Bill detail: the store document it was recorded from. Absent on lists and older servers. */
   evidence?: SupplierBillEvidence | null;
   id: string;
@@ -651,6 +655,9 @@ export interface SupplierBill {
   rejectedAt?: string | null;
   rejectedBy?: string | null;
   rejectionReason?: string | null;
+  /** AP-2 — a draft dropped before it was submitted. */
+  cancelledAt?: ApiDate | null;
+  cancellationReason?: string | null;
   /** Who entered the bill. The detail returns the whole row; they may not reject it themselves. */
   createdBy?: string;
   /** Present on detail only — `findAll` includes no lines. */
@@ -796,6 +803,8 @@ export interface CreateMrLinePayload {
  * sent. `notes` carries the "Note to the buyer".
  */
 export interface CreateMaterialRequestPayload {
+  /** Step 7 — the form's own reference: a repeat send returns the same request. */
+  clientRef?: string;
   requestScope: MaterialRequestScope;
   projectId?: string;
   requiredByDate?: string;
@@ -904,6 +913,8 @@ export interface CreateReceiptExceptionPayload {
 }
 
 export interface CreateGoodsReceiptPayload {
+  /** Step 7 — the form's own reference: a repeat send returns the same receipt. */
+  clientRef?: string;
   purchaseOrderId: string;
   deliveryDate: string;
   deliveryNoteRef?: string;
@@ -934,7 +945,23 @@ export type PaymentDocumentStatus = 'DRAFT' | 'APPROVED' | 'RELEASED' | 'REJECTE
  * reading "Get supplier payment with allocations" — **no allocations**. Names are resolved by
  * joining against the supplier and bank-account lists the screens already hold.
  */
+export interface SupplierPaymentAllocationRow {
+  id: string;
+  supplierBillId: string;
+  allocatedAmount: Money;
+  allocationDate: ApiDate;
+  postingStatus: BillPostingStatus;
+  /** The payment's own journal for an allocation made when it was raised; its own journal for advance applied later. */
+  journalEntryId: string | null;
+  bill?: { billNumber: string | null; supplierInvoiceNumber: string };
+}
+
 export interface SupplierPayment {
+  /** ADR-046 §4 — on a create response: approved on save (within the auto-approval limit). */
+  approvedOnSave?: boolean;
+  /** …and posted on save (no dual signatory release needed). */
+  postedOnSave?: boolean;
+  postOnSaveError?: string;
   id: string;
   paymentNumber: string | null;
   supplierId: string;
@@ -961,6 +988,14 @@ export interface SupplierPayment {
   documentStatus: PaymentDocumentStatus;
   postingStatus: BillPostingStatus;
   postedJournalEntryId: string | null;
+  createdBy?: string;
+  /** AP-6 — the bills this payment settled: at creation, and advance applied later. */
+  allocations?: SupplierPaymentAllocationRow[];
+  /** AP-1 — set when an unposted payment was rejected (by someone else) or cancelled (by its raiser). */
+  rejectedAt?: ApiDate | null;
+  rejectionReason?: string | null;
+  cancelledAt?: ApiDate | null;
+  cancellationReason?: string | null;
 }
 
 /**

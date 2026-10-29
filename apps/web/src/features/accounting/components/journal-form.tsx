@@ -1,12 +1,15 @@
 'use client';
 
 /**
- * New manual journal — a full-page document editor laid out like the New bill page (ADR-037):
+ * New or edited manual journal — a full-page document editor laid out like the New bill page (ADR-037):
  * the sticky FormActionBar (back, Save, Cancel), a FormGroup header card, the lines in the shared
  * `LineItemsEditor` (a table row from `md`, a labelled card below it), and a live balance bar.
  *
  * The rules — two lines, one side per line, debits equal credits, strict amount parsing — live in
  * `../journal-entry.ts`, pure and unit-tested. This file only lays them out.
+ *
+ * Given a `journal`, it edits that DRAFT, or corrects a REJECTED one (`PATCH /journals/:id`
+ * returns it to DRAFT for resubmission).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -34,10 +37,11 @@ import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
 import { accountLabel, postableAccounts } from '../account-display';
-import { useAccounts, useCreateJournal, useFiscalYears } from '../hooks/use-accounting';
+import { useAccounts, useCreateJournal, useFiscalYears, useUpdateJournal } from '../hooks/use-accounting';
 import { makeClosedPeriodPredicate } from '../open-period';
 import {
   canSaveDraft,
+  draftFromEntry,
   draftProblems,
   emptyDraft,
   emptyLine,
@@ -49,6 +53,7 @@ import {
   type JournalLineDraft,
   type LineProblem,
 } from '../journal-entry';
+import type { JournalEntry } from '../types';
 
 const JOURNALS_HREF = '/finance/accounting/journals';
 
@@ -72,16 +77,21 @@ interface KeyedLine extends JournalLineDraft {
   key: string;
 }
 
-export function JournalForm() {
+export function JournalForm({ journal }: { journal?: JournalEntry } = {}) {
   const t = useTranslations('accounting.journalForm');
   const tCommon = useTranslations('common');
   const tForm = useTranslations('common.formState');
   const locale = useLocale() as 'en' | 'ar';
   const router = useRouter();
-  useModuleTrail(t('title'));
+  const correcting = journal?.status === 'REJECTED';
+  const title = !journal ? t('title') : correcting ? t('correctTitle') : t('editTitle');
+  const exitHref = journal ? `${JOURNALS_HREF}/${journal.id}` : JOURNALS_HREF;
+  useModuleTrail(title);
 
   const accounts = useAccounts();
-  const create = useCreateJournal();
+  const createJournal = useCreateJournal();
+  const updateJournal = useUpdateJournal(journal?.id ?? '');
+  const create = journal ? updateJournal : createJournal;
 
   // A posting must land in a period that is still OPEN or REOPENED. The calendar refuses
   // the rest outright, so a closed month is never a value the user has to have rejected
@@ -89,7 +99,7 @@ export function JournalForm() {
   const { data: fiscalYears } = useFiscalYears();
   const isClosedPeriod = useMemo(() => makeClosedPeriodPredicate(fiscalYears), [fiscalYears]);
 
-  const [initialDraft] = useState<JournalDraft>(() => emptyDraft(today(), 'USD'));
+  const [initialDraft] = useState<JournalDraft>(() => (journal ? draftFromEntry(journal) : emptyDraft(today(), 'USD')));
   const [draft, setDraft] = useState<JournalDraft>(initialDraft);
   // Parallel to `draft.lines`: React keys only, never sent to the API.
   const nextKey = useRef(initialDraft.lines.length);
@@ -161,7 +171,7 @@ export function JournalForm() {
     }
 
     create.mutate(toJournalPayload(draft), {
-      onSuccess: (journal) => router.push(`${JOURNALS_HREF}/${journal.id}`),
+      onSuccess: (saved) => router.push(`${JOURNALS_HREF}/${saved.id}`),
     });
   }
 
@@ -265,27 +275,31 @@ export function JournalForm() {
       <FormActionBar
         back={
           <Button asChild variant="ghost" className="gap-1.5 px-2">
-            <Link href={JOURNALS_HREF}>
+            <Link href={exitHref}>
               <ArrowLeft size={16} aria-hidden="true" />
-              {t('back')}
+              {journal ? t('backToJournal') : t('back')}
             </Link>
           </Button>
         }
         save={
           <Button type="submit" loading={create.isPending} loadingText={t('saving')}>
-            {t('save')}
+            {journal ? t('saveChanges') : t('save')}
           </Button>
         }
         discard={
           <Button variant="ghost" asChild>
-            <Link href={JOURNALS_HREF}>{tCommon('cancel')}</Link>
+            <Link href={exitHref}>{tCommon('cancel')}</Link>
           </Button>
         }
-        saveState={dirty ? 'dirty' : 'new'}
+        saveState={dirty ? 'dirty' : journal ? 'clean' : 'new'}
         saveStateLabels={{ new: tForm('new'), dirty: tForm('dirty'), clean: tForm('clean') }}
       />
 
       <div className="space-y-8">
+        {correcting && journal?.rejectionReason ? (
+          <Alert variant="warning" messages={[t('rejectedBecause', { reason: journal.rejectionReason })]} />
+        ) : null}
+
         <div ref={problemsRef} className="scroll-mt-32 space-y-3 empty:hidden">
           {submitted && problemMessages.length > 0 ? (
             <Alert variant="error" messages={problemMessages} />
@@ -297,8 +311,10 @@ export function JournalForm() {
           <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('eyebrow')}
           </p>
-          <h2 className="mt-1 text-display font-semibold tracking-tight text-foreground">{t('title')}</h2>
-          <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{t('intro')}</p>
+          <h2 className="mt-1 text-display font-semibold tracking-tight text-foreground">{title}</h2>
+          <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">
+            {!journal ? t('intro') : correcting ? t('correctIntro') : t('editIntro')}
+          </p>
         </div>
 
         <FormGroup title={t('detailsTitle')} description={t('detailsDescription')}>
@@ -325,6 +341,20 @@ export function JournalForm() {
               id="journal-doc-date"
               value={draft.documentDate}
               onChange={(value) => setDraft((d) => ({ ...d, documentDate: value }))}
+            />
+          </FormField>
+
+          {/* G-2 — an accrual that reverses itself, usually on the first day of the next month. */}
+          <FormField
+            htmlFor="journal-auto-reverse"
+            label={t('autoReverseLabel')}
+            hint={t('autoReverseHint')}
+            error={draft.autoReverseOn && draft.autoReverseOn <= draft.accountingDate ? t('autoReverseAfter') : undefined}
+          >
+            <DatePicker
+              id="journal-auto-reverse"
+              value={draft.autoReverseOn ?? ''}
+              onChange={(value) => setDraft((d) => ({ ...d, autoReverseOn: value }))}
             />
           </FormField>
 

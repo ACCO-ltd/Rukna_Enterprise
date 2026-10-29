@@ -22,6 +22,9 @@ export interface EntryLabels {
 const PO_TYPES = new Set(['PURCHASE_ORDER_REVISION', 'PO_CANCELLATION']);
 const GRN_TYPES = new Set(['GOODS_RECEIPT', 'GRN_REVERSAL']);
 const BILL_TYPES = new Set(['SUPPLIER_BILL', 'BILL_REVERSAL']);
+// AP-4 — keyed by the debit note (its reversal by `reversal-<id>`).
+const DEBIT_NOTE_TYPES = new Set(['SUPPLIER_DEBIT_NOTE']);
+const debitNoteId = (sourceDocumentId: string) => sourceDocumentId.replace(/^reversal-/, '');
 
 /**
  * Batch-resolves the labels a commitment-ledger row needs to be read by a person — the source
@@ -37,10 +40,11 @@ export class CommitmentEntryLabelsRepository {
     const poIds = ids(() => true, (e) => (PO_TYPES.has(e.sourceDocumentType) ? e.sourceDocumentId : e.purchaseOrderId));
     const grnIds = ids((e) => GRN_TYPES.has(e.sourceDocumentType), (e) => e.sourceDocumentId);
     const billIds = ids((e) => BILL_TYPES.has(e.sourceDocumentType), (e) => e.sourceDocumentId);
+    const debitNoteIds = ids((e) => DEBIT_NOTE_TYPES.has(e.sourceDocumentType), (e) => debitNoteId(e.sourceDocumentId));
     const supplierIds = ids(() => true, (e) => e.supplierId);
     const nodeIds = ids(() => true, (e) => e.boqNodeId);
 
-    const [pos, grns, bills, suppliers, nodes] = await Promise.all([
+    const [pos, grns, bills, suppliers, nodes, debitNotes] = await Promise.all([
       poIds.length
         ? prisma.purchaseOrder.findMany({ where: { organizationId, id: { in: poIds } }, select: { id: true, poNumber: true } })
         : [],
@@ -62,12 +66,18 @@ export class CommitmentEntryLabelsRepository {
             select: { id: true, code: true, description: true },
           })
         : [],
+      debitNoteIds.length
+        ? prisma.supplierDebitNote.findMany({ where: { organizationId, id: { in: debitNoteIds } }, select: { id: true, debitNoteNumber: true } })
+        : ([] as Array<{ id: string; debitNoteNumber: string | null }>),
     ]);
 
     const poNumber = new Map<string, string>(pos.map((p) => [p.id, p.poNumber] as const));
     const grnNumber = new Map<string, string>(grns.map((g) => [g.id, g.grnNumber] as const));
     const billNumber = new Map<string, string>(
       bills.map((b) => [b.id, b.billNumber ?? b.supplierInvoiceNumber] as const),
+    );
+    const debitNoteNumber = new Map<string, string>(
+      debitNotes.filter((n) => n.debitNoteNumber).map((n) => [n.id, n.debitNoteNumber!] as const),
     );
     const supplierName = new Map<string, string>(suppliers.map((s) => [s.id, s.name] as const));
     const node = new Map<string, { id: string; code: string; name: string }>(
@@ -83,6 +93,8 @@ export class CommitmentEntryLabelsRepository {
         documentNumber = grnNumber.get(e.sourceDocumentId) ?? null;
       } else if (BILL_TYPES.has(e.sourceDocumentType)) {
         documentNumber = billNumber.get(e.sourceDocumentId) ?? null;
+      } else if (DEBIT_NOTE_TYPES.has(e.sourceDocumentType)) {
+        documentNumber = debitNoteNumber.get(debitNoteId(e.sourceDocumentId)) ?? null;
       }
       return {
         documentNumber,

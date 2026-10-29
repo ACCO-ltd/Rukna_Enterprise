@@ -4,8 +4,7 @@ import type {
   RoleSummary,
   RoleWithPermissionsResponse,
   SetRolePermissionsRequest,
-  UpdateRoleRequest,
-} from '@erp/types';
+  UpdateRoleRequest, RoleMatrix } from '@erp/types';
 
 export interface RoleImpact {
   id: string; name: string; kind: 'SYSTEM' | 'CUSTOM'; memberCount: number;
@@ -17,6 +16,11 @@ export interface RoleAccessReview { id: string; reviewerUserId: string; decision
 /** `GET /roles` — role summaries with permission and member counts. */
 export async function listRoles(): Promise<RoleSummary[]> {
   return apiClient<RoleSummary[]>('/roles');
+}
+
+/** Step 3 — `GET /roles/matrix`: every role with the permission ids it grants, in one read. */
+export async function getRoleMatrix(): Promise<RoleMatrix> {
+  return apiClient<RoleMatrix>('/roles/matrix');
 }
 
 /** `GET /roles/:id` — a role with its full permission set (used to pre-check the picker). */

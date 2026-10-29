@@ -30,22 +30,26 @@ export class ProjectFinancialPositionRepository {
     });
   }
 
-  /** Net certified revenue over the contract's effective certificates (CONST-COM-003). */
+  /**
+   * Net certified revenue to date (CONST-COM-003): the effective certificate of the contract's latest
+   * application. ADR-046 §5 — certificates are cumulative, so summing them counted earlier work once
+   * per later certificate. (Same rule as construction's `latestCertificate`; accounting may not
+   * import construction code, ARCH-BOUNDARY-001.)
+   */
   async sumCertifiedRevenue(
     prisma: TenantPrisma,
     organizationId: string,
     contractId: string,
   ): Promise<Decimal> {
-    const certs = await prisma.interimPaymentCertificate.findMany({
+    const cert = await prisma.interimPaymentCertificate.findFirst({
       where: { organizationId, isEffective: true, application: { contractId } },
+      orderBy: [{ application: { applicationNumber: { sort: 'desc', nulls: 'last' } } }, { createdAt: 'desc' }],
       select: { certifiedTotal: true, deductions: { select: { amount: true } } },
     });
+    if (!cert) return ZERO;
 
-    let net = ZERO;
-    for (const cert of certs) {
-      net = net.plus(new Decimal(cert.certifiedTotal.toString()));
-      for (const ded of cert.deductions) net = net.minus(new Decimal(ded.amount.toString()));
-    }
+    let net = new Decimal(cert.certifiedTotal.toString());
+    for (const ded of cert.deductions) net = net.minus(new Decimal(ded.amount.toString()));
     return net;
   }
 
@@ -231,7 +235,10 @@ export class ProjectFinancialPositionRepository {
       const net = new Decimal((row._sum.debitAmount ?? 0).toString()).minus(
         new Decimal((row._sum.creditAmount ?? 0).toString()),
       );
-      if (sourceById.get(row.journalEntryId) === 'SUPPLIER_BILL') {
+      // AP-4 — a supplier debit note takes back procurement cost (and the commitment ledger's
+      // ACTUAL with it), so it counts with the bills.
+      const source = sourceById.get(row.journalEntryId);
+      if (source === 'SUPPLIER_BILL' || source === 'SUPPLIER_DEBIT_NOTE') {
         fromSupplierBills = fromSupplierBills.plus(net);
       } else {
         fromOtherSources = fromOtherSources.plus(net);

@@ -304,7 +304,7 @@ describe('CommunicationService (ADR-042 phase 2)', () => {
       run(() => service.sendWhatsAppTemplate(identity, input(over as never))),
     ).rejects.toThrow(BadRequestException);
     await run(() => service.sendWhatsAppTemplate(identity, input(over as never))).catch(
-      (e: BadRequestException) => expect((e.getResponse() as { field: string }).field).toBe(field),
+      (e: BadRequestException) => expect((e.getResponse() as { details: { field: string } }).details.field).toBe(field),
     );
     expect(repo.rows).toHaveLength(0);
   });
@@ -349,7 +349,7 @@ describe('CommunicationService (ADR-042 phase 2)', () => {
         (e: ConflictException) => e,
       );
       expect(err).toBeInstanceOf(ConflictException);
-      expect(((err as ConflictException).getResponse() as { code: string }).code).toBe(
+      expect(((err as ConflictException).getResponse() as { errorCode: string }).errorCode).toBe(
         'IDEMPOTENCY_KEY_REUSED',
       );
       expect(whatsapp.sendTemplate).toHaveBeenCalledTimes(1);

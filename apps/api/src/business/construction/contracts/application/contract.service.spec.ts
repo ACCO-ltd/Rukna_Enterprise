@@ -204,7 +204,6 @@ describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () =
     const err = await service.transition(identity, 'c-1', 'activate').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).getResponse()).toMatchObject({
-      code: 'CONTRACT_SIGNED_DATE_REQUIRED',
       errorCode: 'CONTRACT_SIGNED_DATE_REQUIRED',
     });
     expect(repo.update).not.toHaveBeenCalled();
@@ -858,10 +857,10 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
       .catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
     const response = (err as BadRequestException).getResponse() as {
-      code: string;
+      errorCode: string;
       details: { tieOutTotal: string; suppliedContractValue: string; delta: string };
     };
-    expect(response.code).toBe('TIEOUT_MISMATCH');
+    expect(response.errorCode).toBe('TIEOUT_MISMATCH');
     expect(response.details).toMatchObject({
       tieOutTotal: '750000.00',
       suppliedContractValue: '700000.00',
@@ -1019,7 +1018,7 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
       .create(identity, { ...minimal, contractValue: '700000.00' } as never)
       .catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'TIEOUT_MISMATCH' });
+    expect((err as BadRequestException).getResponse()).toMatchObject({ errorCode: 'TIEOUT_MISMATCH' });
     expect(repo.create).not.toHaveBeenCalled();
   });
 
@@ -1049,7 +1048,7 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
       .create(identity, { ...minimal, boqVersionId: 'bv-stale' } as never)
       .catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'BOQ_VERSION_MISMATCH' });
+    expect((err as BadRequestException).getResponse()).toMatchObject({ errorCode: 'BOQ_VERSION_MISMATCH' });
     expect(repo.create).not.toHaveBeenCalled();
   });
 });

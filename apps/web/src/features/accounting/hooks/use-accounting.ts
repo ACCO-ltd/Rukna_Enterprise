@@ -8,6 +8,8 @@ import {
   closeFiscalYear,
   closePeriod,
   configureBankAccount,
+  setBankAccountStatus,
+  updateBankAccount,
   createAccount,
   importChartOfAccounts,
   createFiscalYear,
@@ -17,6 +19,7 @@ import {
   lockPeriod,
   rebuildSnapshot,
   reopenPeriod,
+  unlockPeriod,
   runOpeningBalance,
   runReconciliation,
   updateAccount,
@@ -38,6 +41,7 @@ import {
   postJournal,
   reverseJournal,
   submitJournal,
+  updateJournal,
   createPostingProfile,
   getAccountingSetupStatus,
   getAccountingSetupTemplate,
@@ -51,6 +55,8 @@ import {
   previewInvoiceDocumentSettings,
   setDefaultOutputTaxCode,
   setTaxCodeActive,
+  getApprovalSettings,
+  updateApprovalSettings,
 } from '../api/accounting-api';
 import type { CreateTaxCodeBody, TaxCodesView } from '../tax-codes';
 import type {
@@ -90,6 +96,7 @@ import type {
   TrialBalance,
   InvoiceDocumentSettings,
   UpdateInvoiceDocumentSettingsBody,
+  UpdateBankAccountBody,
 } from '../types';
 import { ApiError } from '@/lib/api-client';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
@@ -283,6 +290,26 @@ export function useCreateFiscalYear() {
  * the newly-mapped one has to disappear from it — otherwise the next attempt offers an account
  * that now answers 409.
  */
+/** B-1 — edit a bank account's details. */
+export function useUpdateBankAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; payload: UpdateBankAccountBody }) => updateBankAccount(args.id, args.payload),
+    meta: { successToast: 'accounting.feedback.bankAccountUpdated' },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() }),
+  });
+}
+
+/** B-1 — suspend, reactivate or close a bank account. */
+export function useSetBankAccountStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; status: BankAccount['status'] }) => setBankAccountStatus(args.id, args.status),
+    meta: { successToast: 'accounting.feedback.bankAccountStatusChanged' },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() }),
+  });
+}
+
 export function useConfigureBankAccount() {
   const qc = useQueryClient();
   return useMutation({
@@ -414,6 +441,24 @@ export function useCreateJournal() {
       },
     },
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.journals() });
+    },
+  });
+}
+
+/** Edit a draft, or correct a rejected journal (it returns to DRAFT). */
+export function useUpdateJournal(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateJournalPayload) => updateJournal(id, payload),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.journalSaved',
+        values: (journal) => ({ ref: refOrNone((journal as JournalEntry).journalNumber) }),
+      },
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.journal(id) });
       void qc.invalidateQueries({ queryKey: accountingKeys.journals() });
     },
   });
@@ -578,6 +623,7 @@ export type PeriodActionRequest =
   | { type: 'lock'; periodId: string }
   | { type: 'close'; periodId: string }
   | { type: 'reopen'; periodId: string; reason: string }
+  | { type: 'unlock'; periodId: string; reason: string }
   | { type: 'rebuild'; periodId: string }
   | { type: 'close-year'; fiscalYearId: string };
 
@@ -602,6 +648,8 @@ export function usePeriodAction() {
           return closePeriod(action.periodId);
         case 'reopen':
           return reopenPeriod(action.periodId, action.reason);
+        case 'unlock':
+          return unlockPeriod(action.periodId, action.reason);
         case 'rebuild':
           return rebuildSnapshot(action.periodId);
         case 'close-year':
@@ -894,5 +942,23 @@ export function useUpdateInvoiceDocumentSettings() {
     onSuccess: (view) => {
       qc.setQueryData(accountingKeys.invoiceDocumentSettings(), view);
     },
+  });
+}
+
+/** ADR-046 §8 — the optional finance approvals in force (defaults when never saved). */
+export function useApprovalSettings(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...accountingKeys.all, 'approval-settings'],
+    queryFn: getApprovalSettings,
+    enabled: options.enabled ?? true,
+  });
+}
+
+export function useUpdateApprovalSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateApprovalSettings,
+    meta: { successToast: 'accounting.feedback.approvalSettingsSaved' },
+    onSuccess: (saved) => qc.setQueryData([...accountingKeys.all, 'approval-settings'], saved),
   });
 }

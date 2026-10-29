@@ -11,12 +11,14 @@ import type { SupplierBill, SupplierPayment } from '../types';
  *
  * Two things are asserted that a future reader would otherwise be tempted to change:
  *
- *  - **no reverse control**, because no endpoint returns an allocation id (A17 / #35)
+ *  - **reverse only for advance applied later** (AP-6): an allocation made with the payment is
+ *    part of its own journal and is undone by reversing the payment
  *  - **the picker filters by supplier and currency**, which the server does not (A18 / #36)
  */
 
 const mocks = vi.hoisted(() => ({
   useAllocateAdvance: vi.fn(),
+  useReverseAdvanceAllocation: vi.fn(),
   useSupplierBills: vi.fn(),
 }));
 
@@ -84,6 +86,7 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
+  mocks.useReverseAdvanceAllocation.mockReturnValue({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null });
   mocks.useSupplierBills.mockReturnValue({ data: [bill()], isPending: false, isError: false });
   accountingMocks.useAccounts.mockReturnValue({ data: [], isPending: false, isError: false });
 });
@@ -97,16 +100,20 @@ describe('AllocationPanel', () => {
     expect(screen.getByRole('option', { name: /INV-100/ })).toBeInTheDocument();
   });
 
-  /**
-   * A17 / #35. The endpoint exists and cannot be called — allocating returns only the journal,
-   * the payment payload embeds no allocations, and nothing lists them. A reverse button here
-   * would have no argument to pass.
-   */
-  it('offers no reverse control, and says the history is unavailable', () => {
-    renderWithProviders(<AllocationPanel payment={payment()} />);
+  /** AP-6 — what the payment settled, and Reverse only on advance applied later. */
+  it('lists what the payment settled; only advance applied later can be reversed', () => {
+    const withAllocations = payment({
+      postedJournalEntryId: 'je-pay',
+      allocations: [
+        { id: 'a1', supplierBillId: 'b1', allocatedAmount: '400.00', allocationDate: '2026-07-02', postingStatus: 'POSTED', journalEntryId: 'je-pay', bill: { billNumber: 'BILL-000001', supplierInvoiceNumber: 'INV-1' } },
+        { id: 'a2', supplierBillId: 'b2', allocatedAmount: '100.00', allocationDate: '2026-07-05', postingStatus: 'POSTED', journalEntryId: 'je-app', bill: { billNumber: 'BILL-000002', supplierInvoiceNumber: 'INV-2' } },
+      ],
+    } as never);
+    renderWithProviders(<AllocationPanel payment={withAllocations} />, { permissions: ['manage:payable'] });
 
-    expect(screen.queryByRole('button', { name: /reverse/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/cannot be listed/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'BILL-000001' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'BILL-000002' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Reverse' })).toHaveLength(1);
   });
 
   /** A18 / #36 — the filter the server does not apply. */

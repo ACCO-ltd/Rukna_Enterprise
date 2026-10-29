@@ -1,3 +1,4 @@
+import type { ManualInvoiceInput } from '@erp/types';
 /**
  * ─── Client invoices (AR) ───────────────────────────────────────────────────────
  *
@@ -84,6 +85,24 @@ export function generateInvoiceFromIpc(
 }
 
 /**
+ * `POST /invoices/from-retention-release` — ADR-046 §5: bill the retention a contract's certificate
+ * invoices held back, once the contract's retention is released. One per contract: a repeat returns
+ * the existing invoice. **400** (with the reason) when the retention is not released, nothing is
+ * held, or certificate invoices holding retention are unposted.
+ */
+export function generateInvoiceFromRetentionRelease(payload: {
+  contractId: string;
+  invoiceDate: string;
+  dueDate: string;
+}): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>('/invoices/from-retention-release', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * `POST /invoices/from-installment` — raise an invoice from a MILESTONE contract's payment
  * installment (ADR-023). Mirrors `from-ipc`: the new invoice is DRAFT/NOT_POSTED with a null
  * `invoiceNumber`, and a second attempt on the same installment answers **409**.
@@ -144,6 +163,18 @@ export function postInvoice(
 }
 
 /**
+ * ADR-046 §2 — `POST /invoices/:id/issue`: approve (when a draft) and post in one action, so the
+ * invoice is numbered and in the ledger at once. Same body as `postInvoice`, built the same way.
+ */
+export function issueInvoice(id: string, payload: PostInvoicePayload): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>(`/invoices/${id}/issue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * `POST /invoices/:id/reverse` — raises a mirrored journal. Neither entry is removed.
  *
  * No account codes: the reversal is built from the original journal's own lines, so it cannot
@@ -161,4 +192,29 @@ export function reverseInvoice(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+/** ADR-048 — `POST /invoices/manual`: a hand-typed draft for a non-contract sale. */
+export function createManualInvoice(payload: ManualInvoiceInput): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>('/invoices/manual', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/** ADR-048 — `PUT /invoices/:id/manual`: rewrite a draft hand-typed invoice in full. */
+export function updateManualInvoice(id: string, payload: ManualInvoiceInput): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>(`/invoices/${id}/manual`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+/** ADR-048 — `GET /invoices/income-accounts`: the accounts a hand-typed line may credit. */
+export interface IncomeAccountOption {
+  code: string;
+  name: string;
+  subtype: string | null;
+}
+export function listIncomeAccounts(): Promise<IncomeAccountOption[]> {
+  return apiClient<IncomeAccountOption[]>('/invoices/income-accounts');
+}
+
+/** Step 2g — `POST /invoices/:id/cancel`: cancel an unposted invoice and free its source. */
+export function cancelInvoice(id: string, reason?: string): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>(`/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
 }

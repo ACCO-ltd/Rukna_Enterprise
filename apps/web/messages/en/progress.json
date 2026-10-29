@@ -589,7 +589,7 @@
     },
     "alignedHint": "Collection and physical progress are broadly aligned.",
     "cashAheadHint": "Collection is running ahead of physical progress — the client is financing the work; watch advance exposure.",
-    "workAheadHint": "Physical progress is ahead of collection — ACCO is financing the client; chase certification and billing.",
+    "workAheadHint": "Physical progress is ahead of collection — your company is financing the client; chase certification and billing.",
     "insufficientHint": "There is no contract value yet, so no comparison can be made."
   },
   "programme": {
@@ -709,8 +709,8 @@
       "step4": "Weights"
     },
     "start": {
-      "lead": "Start from ACCO's standard building schedule, or start blank and add phases yourself.",
-      "templateTitle": "ACCO standard building schedule",
+      "lead": "Start from your company's standard building schedule, or start blank and add phases yourself.",
+      "templateTitle": "Company standard building schedule",
       "templateHint": "Pre-creates the nine standard phases so you edit rather than invent.",
       "blankTitle": "Start blank",
       "blankHint": "Add and name each phase yourself in the steps that follow.",

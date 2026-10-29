@@ -3,7 +3,7 @@
 Status: `POLICY_FROZEN / DESIGN_READY / NOT_IMPLEMENTED`
 
 Business owner: Eng Ahmed Shirie, ACCO Ltd  
-Engineering owners: Backend - Abdulsalam; Frontend - Abdimalik  
+Engineering owner: Abdulsalam (full stack)  
 Prepared: 2026-08-14
 
 This document is the continuation point for the Programme & Progress domain. ACCO has approved

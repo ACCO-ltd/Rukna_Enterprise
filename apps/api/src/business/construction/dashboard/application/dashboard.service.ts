@@ -381,7 +381,7 @@ export class DashboardService {
         href: '/finance/accounting/guide',
         amount: null,
         currency: null,
-        stepsLeft: accountingSetup.cycle.steps.filter((s) => s.status !== 'DONE').length,
+        stepsLeft: accountingSetup.cycle.steps.filter((s) => s.status !== 'DONE' && !s.optional).length,
       });
     }
 

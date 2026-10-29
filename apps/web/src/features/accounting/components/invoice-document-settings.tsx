@@ -31,6 +31,7 @@ import type {
   UpdateInvoiceDocumentSettingsBody,
 } from '../types';
 import { InvoiceSettingsPreview } from './invoice-settings-preview';
+import { LoadError } from '@/components/load-error';
 
 export const MAX_PAYMENT_ACCOUNTS = 8;
 const TAGLINE_MAX = 80;
@@ -178,7 +179,7 @@ export function InvoiceDocumentSettingsPanel() {
   const settings = useInvoiceDocumentSettings();
 
   if (settings.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void settings.refetch()} />;
   }
   if (!settings.data) {
     return <p className="text-sm text-muted-foreground">{t('loading')}</p>;
@@ -359,7 +360,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
                   type="email"
                   value={draft.footerEmail}
                   onChange={(event) => patch({ footerEmail: event.target.value })}
-                  placeholder="info@acco.com"
+                  placeholder="info@company.com"
                   maxLength={FOOTER_LIMITS.email}
                   disabled={disabled}
                   autoComplete="off"
@@ -376,7 +377,7 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
                   startSlot={<Globe className="size-4 text-muted-foreground" aria-hidden="true" />}
                   value={draft.footerWebsite}
                   onChange={(event) => patch({ footerWebsite: event.target.value })}
-                  placeholder="www.acco.com"
+                  placeholder="www.company.com"
                   maxLength={FOOTER_LIMITS.website}
                   disabled={disabled}
                   autoComplete="off"

@@ -97,6 +97,11 @@ export class ClientPrismaRepository {
     return rows[0] ?? null;
   }
 
+  /** Step 5 — every client, for the import's duplicate check. */
+  listForImport(prisma: Db, organizationId: string) {
+    return prisma.client.findMany({ where: { organizationId }, select: { id: true, code: true, name: true, taxNumber: true } });
+  }
+
   findDuplicateCandidates(prisma: Db, organizationId: string, name: string) {
     return prisma.client.findMany({
       where: { organizationId, name: { contains: name.trim(), mode: 'insensitive' } },

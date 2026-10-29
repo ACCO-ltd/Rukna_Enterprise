@@ -1,5 +1,5 @@
 import { ProjectCategory, ProjectStatus } from '@erp/types';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -55,6 +55,9 @@ beforeEach(() => {
   vi.mocked(listProjects).mockReset();
 });
 
+/** The desktop table (the grid also draws phone cards with the same links). */
+const table = async () => within(await screen.findByRole('table'));
+
 describe('ProjectsList', () => {
   it('renders each project with a link to its page', async () => {
     vi.mocked(listProjects).mockResolvedValue([
@@ -63,7 +66,7 @@ describe('ProjectsList', () => {
 
     renderWithProviders(<ProjectsList />);
 
-    const link = await screen.findByRole('link', { name: /Al-Baraka Tower/ });
+    const link = await (await table()).findByRole('link', { name: /Al-Baraka Tower/ });
     expect(link).toHaveAttribute('href', '/projects/1');
   });
 
@@ -76,13 +79,13 @@ describe('ProjectsList', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectsList />);
 
-    await screen.findByRole('link', { name: /Al-Baraka Tower/ });
+    await (await table()).findByRole('link', { name: /Al-Baraka Tower/ });
     await user.type(screen.getByLabelText('Search projects'), 'ACCO');
 
     await waitFor(() => {
-      expect(screen.queryByRole('link', { name: /Hodan Plaza/ })).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('link', { name: /Hodan Plaza/ })).toHaveLength(0);
     });
-    expect(screen.getByRole('link', { name: /Al-Baraka Tower/ })).toBeInTheDocument();
+    expect((await table()).getByRole('link', { name: /Al-Baraka Tower/ })).toBeInTheDocument();
   });
 
   it('filters by status', async () => {
@@ -94,13 +97,15 @@ describe('ProjectsList', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectsList />);
 
-    await screen.findByRole('link', { name: /Active Project/ });
-    await chooseOption(user, screen.getByLabelText('Filter by status'), ProjectStatus.DRAFT);
+    await (await table()).findByRole('link', { name: /Active Project/ });
+    await user.click(screen.getByRole('button', { name: /^Filter/ }));
+    await chooseOption(user, screen.getByRole('combobox', { name: 'Filter by status' }), ProjectStatus.DRAFT);
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('link', { name: /Active Project/ })).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('link', { name: /Active Project/ })).toHaveLength(0);
     });
-    expect(screen.getByRole('link', { name: /Draft Project/ })).toBeInTheDocument();
+    expect((await table()).getByRole('link', { name: /Draft Project/ })).toBeInTheDocument();
   });
 
   it('filters by category, and shows Untyped for legacy projects (PTD1-PTD5)', async () => {
@@ -112,18 +117,18 @@ describe('ProjectsList', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectsList />);
 
-    await screen.findByRole('link', { name: /Commercial Project/ });
-    // The legacy row shows an Untyped chip rather than a fabricated category. "Untyped" also
-    // appears as a filter option, so assert the chip specifically: a <span> badge, not an <option>.
-    const untyped = screen.getAllByText('Untyped').filter((el) => el.tagName === 'SPAN');
-    expect(untyped.length).toBeGreaterThan(0);
+    await (await table()).findByRole('link', { name: /Commercial Project/ });
+    // The legacy row shows an Untyped chip rather than a fabricated category.
+    expect(screen.getAllByText('Untyped').filter((el) => el.tagName === 'SPAN').length).toBeGreaterThan(0);
 
-    await chooseOption(user, screen.getByLabelText('Filter by category'), ProjectCategory.COMMERCIAL);
+    await user.click(screen.getByRole('button', { name: /^Filter/ }));
+    await chooseOption(user, screen.getByRole('combobox', { name: 'Filter by category' }), ProjectCategory.COMMERCIAL);
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('link', { name: /Legacy Project/ })).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('link', { name: /Legacy Project/ })).toHaveLength(0);
     });
-    expect(screen.getByRole('link', { name: /Commercial Project/ })).toBeInTheDocument();
+    expect((await table()).getByRole('link', { name: /Commercial Project/ })).toBeInTheDocument();
   });
 
   it('offers to create a project when there are none at all', async () => {
@@ -132,7 +137,7 @@ describe('ProjectsList', () => {
     renderWithProviders(<ProjectsList />);
 
     expect(await screen.findByText('No projects yet.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'New project' })).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: 'New project' })[0]).toHaveAttribute(
       'href',
       '/projects/new',
     );
@@ -145,13 +150,13 @@ describe('ProjectsList', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectsList />);
 
-    await screen.findByRole('link', { name: /Al-Baraka/ });
+    await (await table()).findByRole('link', { name: /Al-Baraka/ });
     await user.type(screen.getByLabelText('Search projects'), 'nothing matches this');
 
-    expect(await screen.findByText('No projects match your search.')).toBeInTheDocument();
+    expect((await screen.findAllByText('No projects match your search.')).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole('button', { name: 'Clear search' }));
-    expect(await screen.findByRole('link', { name: /Al-Baraka/ })).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    expect(await (await table()).findByRole('link', { name: /Al-Baraka/ })).toBeInTheDocument();
   });
 
   it('offers a retry when the request fails', async () => {
@@ -169,7 +174,7 @@ describe('ProjectsList', () => {
 
     renderWithProviders(<ProjectsList />);
 
-    await screen.findByRole('link', { name: /Project 1/ });
+    await (await table()).findByRole('link', { name: /Project 1/ });
     const status = screen.getAllByRole('status').find((el) => el.textContent?.includes('project'));
     expect(status).toBeDefined();
     expect(status!.textContent).toContain('2 projects');
@@ -186,7 +191,7 @@ describe('ProjectsList', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectsList />);
 
-    await user.click(await screen.findByRole('button', { name: 'Actions for Running Tower' }));
+    await user.click(await (await table()).findByRole('button', { name: 'Actions for Running Tower' }));
     expect(await screen.findByRole('menuitem', { name: 'View project' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Edit project' })).not.toBeInTheDocument();
   });
@@ -198,7 +203,7 @@ describe('ProjectsList', () => {
     const user = userEvent.setup();
     renderWithProviders(<ProjectsList />);
 
-    await user.click(await screen.findByRole('button', { name: 'Actions for Planned Tower' }));
+    await user.click(await (await table()).findByRole('button', { name: 'Actions for Planned Tower' }));
     expect(await screen.findByRole('menuitem', { name: 'Edit project' })).toHaveAttribute(
       'href',
       '/projects/2/edit',

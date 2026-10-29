@@ -15,14 +15,16 @@ import {
   type CommandGroup,
 } from './command-items';
 import { closeCommandMenu, useCommandMenuOpen } from './command-menu-store';
+import { recordHref, useRecordSearch } from './record-search';
+import { formatMoney } from '@/lib/format';
 
 /**
  * The ⌘K command menu — a keyboard-first jump-to-anything palette.
  *
- * Client-side only: it navigates the existing nav map and a registry of primary create
- * actions, both permission-filtered exactly as the sidebar filters itself. There is no
- * record-search group — no search endpoint exists, and the honesty rule (ux-doctrine §4)
- * forbids advertising it.
+ * Records first (Step 2f, ADR-047): `GET /search` returns the invoices, bills, payments, receipts,
+ * journals, projects, clients and suppliers matching the typed text that the caller may open.
+ * Then actions — the registry of create actions, plus, when a client matches, "New sale invoice
+ * for …" and "Record receipt from …" — then the nav map. Everything is permission-filtered.
  *
  * Mounted once in the shell. Opened by the top-bar chip or the global Cmd/Ctrl+K listener,
  * both via `command-menu-store`.
@@ -39,7 +41,7 @@ export function CommandMenu() {
   );
 }
 
-const GROUP_ORDER: CommandGroup[] = ['goTo', 'action'];
+const GROUP_ORDER: CommandGroup[] = ['record', 'action', 'goTo'];
 
 function CommandMenuBody() {
   const t = useTranslations('platform');
@@ -54,7 +56,52 @@ function CommandMenuBody() {
     () => buildCommandEntries({ can, moduleVisible }, (key) => t(key)),
     [can, moduleVisible, t],
   );
-  const results = useMemo(() => filterCommandEntries(entries, query), [entries, query]);
+  const search = useRecordSearch(query);
+  const tSearch = useTranslations('platform.commandMenu.search');
+  const records = useMemo<CommandEntry[]>(() => {
+    const hits = query.trim().length >= 2 ? (search.data?.records ?? []) : [];
+    return hits.map((record) => ({
+      id: `record-${record.kind}-${record.id}`,
+      group: 'record',
+      label: record.title,
+      href: recordHref(record),
+      kindLabel: tSearch(`kind.${record.kind}`),
+      detail: [
+        record.detail,
+        record.amount && record.currencyCode ? formatMoney(record.amount, record.currencyCode, 'en') : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    }));
+  }, [search.data, query, tSearch]);
+  // A matched client (or a record tied to one) offers the two things done for a client most.
+  const contextual = useMemo<CommandEntry[]>(() => {
+    const hits = query.trim().length >= 2 ? (search.data?.records ?? []) : [];
+    const client = hits.find((r) => r.kind === 'CLIENT');
+    if (!client) return [];
+    const out: CommandEntry[] = [];
+    if (can('manage:receivable')) {
+      out.push({
+        id: `ctx-invoice-${client.id}`,
+        group: 'action',
+        label: tSearch('newSaleFor', { name: client.title }),
+        href: `/finance/accounting/invoices/new/sale?clientId=${client.id}`,
+      });
+    }
+    if (can('create:receipt') || can('manage:receivable')) {
+      out.push({
+        id: `ctx-receipt-${client.id}`,
+        group: 'action',
+        label: tSearch('receiptFrom', { name: client.title }),
+        href: `/receipts/new?clientId=${client.id}`,
+      });
+    }
+    return out;
+  }, [search.data, query, can, tSearch]);
+  const results = useMemo(
+    () => [...records, ...contextual, ...filterCommandEntries(entries, query)],
+    [records, contextual, entries, query],
+  );
 
   // The stored index may drift past the end as the result set shrinks; clamp on read rather
   // than in an effect, which avoids a cascading render (and its lint rule) entirely.
@@ -124,6 +171,12 @@ function CommandMenuBody() {
         />
       </div>
 
+      {query.trim().length >= 2 && search.isFetching && records.length === 0 ? (
+        <p className="px-4 pt-3 text-caption text-muted-foreground" role="status">
+          {tSearch('searching')}
+        </p>
+      ) : null}
+
       {/* Results */}
       <ul id="command-menu-list" role="listbox" className="max-h-[52dvh] overflow-y-auto py-2">
         {results.length === 0 ? (
@@ -134,7 +187,13 @@ function CommandMenuBody() {
           grouped.map((section) => (
             <li key={section.group} role="presentation">
               <p className="px-4 pb-1 pt-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">
-                {t(section.group === 'goTo' ? 'commandMenu.goTo' : 'commandMenu.actions')}
+                {t(
+                  section.group === 'goTo'
+                    ? 'commandMenu.goTo'
+                    : section.group === 'record'
+                      ? 'commandMenu.records'
+                      : 'commandMenu.actions',
+                )}
               </p>
               <ul role="presentation">
                 {section.items.map(({ entry, index }) => (
@@ -144,6 +203,7 @@ function CommandMenuBody() {
                     active={index === activeIndex}
                     onSelect={() => activate(entry)}
                     onHover={() => setRawActiveIndex(index)}
+                    query={query}
                   />
                 ))}
               </ul>
@@ -159,17 +219,63 @@ function CommandMenuBody() {
   );
 }
 
+/** The typed text marked inside a label, case-insensitively — what made this row match. */
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  const at = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (at === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="rounded-sm bg-warning-subtle text-foreground">{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </>
+  );
+}
+
 function CommandRow({
   entry,
   active,
   onSelect,
   onHover,
+  query,
 }: {
   entry: CommandEntry;
   active: boolean;
   onSelect: () => void;
   onHover: () => void;
+  query: string;
 }) {
+  if (entry.group === 'record') {
+    return (
+      <li role="presentation">
+        <button
+          type="button"
+          id={entry.id}
+          role="option"
+          aria-selected={active}
+          onClick={onSelect}
+          onMouseMove={onHover}
+          className={cn(
+            'flex w-full items-center gap-3 px-4 py-2 text-start transition-colors',
+            active ? 'bg-brand-accent' : 'hover:bg-muted/60',
+          )}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body-sm font-semibold text-foreground">
+              <Highlight text={entry.label} query={query} />
+            </span>
+            {entry.detail ? (
+              <span className="block truncate text-caption text-muted-foreground">
+                <Highlight text={entry.detail} query={query} />
+              </span>
+            ) : null}
+          </span>
+          {entry.kindLabel ? <span className="shrink-0 text-caption text-muted-foreground">{entry.kindLabel}</span> : null}
+        </button>
+      </li>
+    );
+  }
   return (
     <li role="presentation">
       <button

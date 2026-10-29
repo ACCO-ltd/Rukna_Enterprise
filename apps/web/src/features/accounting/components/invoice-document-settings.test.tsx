@@ -297,8 +297,8 @@ describe('InvoiceDocumentSettingsPanel', () => {
     await user.type(screen.getByLabelText('Email'), 'info@acco');
     await user.type(screen.getByLabelText('Website'), 'not a site');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
-    expect(screen.getByText('Enter an email address like info@acco.com.')).toBeInTheDocument();
-    expect(screen.getByText('Enter a website like www.acco.com.')).toBeInTheDocument();
+    expect(screen.getByText('Enter an email address like info@company.com.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a website like www.company.com.')).toBeInTheDocument();
     expect(mutate).not.toHaveBeenCalled();
     expect(contactProblems({ footerEmail: 'a@b.co', footerWebsite: 'https://acco.com/x' })).toEqual(
       [],

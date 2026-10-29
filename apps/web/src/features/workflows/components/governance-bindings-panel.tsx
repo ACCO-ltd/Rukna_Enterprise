@@ -13,7 +13,6 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Table,
   TableBody,
   TableCell,
@@ -22,19 +21,21 @@ import {
   TableRow,
   TableScroll,
   StatusPill,
+  SkeletonTable,
 } from '@erp/ui';
 
 import { statusTone } from '@/lib/status-registry';
 
 import { useWorkflowBindings } from '../hooks/use-workflow-bindings';
 import type { WorkflowTriggerBinding } from '../types';
+import { LoadError } from '@/components/load-error';
 
 export function GovernanceBindingsPanel() {
   const t = useTranslations('platform.workflows.bindings');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
-  const { data, isPending, isError } = useWorkflowBindings();
+  const { data, isPending, isError, refetch } = useWorkflowBindings();
 
   return (
     <section aria-labelledby="governance-bindings-heading" className="space-y-4">
@@ -46,15 +47,9 @@ export function GovernanceBindingsPanel() {
       </div>
 
       {isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tCommon('loading')}</span>
-          <div
-            className="h-40 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
+        <SkeletonTable columns={4} rows={4} label={tCommon('loading')} />
       ) : isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
       ) : data.length === 0 ? (
         <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">{t('empty')}</p>

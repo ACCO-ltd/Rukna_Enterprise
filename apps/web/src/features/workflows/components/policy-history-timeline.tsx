@@ -1,11 +1,12 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { ActivityTimeline, Alert, type ActivityTimelineEntry } from '@erp/ui';
+import { ActivityTimeline, type ActivityTimelineEntry } from '@erp/ui';
 
 import { formatDateTime } from '@/lib/format';
 import { useApprovalPolicyHistory } from '../hooks/use-approval-policies';
 import { humanizePolicyAction } from '../policy-history';
+import { LoadError } from '@/components/load-error';
 
 /**
  * Read-only governance history for a policy version, on the shared `ActivityTimeline`.
@@ -25,7 +26,7 @@ export function PolicyHistoryTimeline({ policyId }: { policyId: string }) {
   }
 
   if (history.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
+    return <LoadError message={t('loadFailed')} onRetry={() => void history.refetch()} />;
   }
 
   const entries: ActivityTimelineEntry[] = (history.data ?? []).map((entry) => ({

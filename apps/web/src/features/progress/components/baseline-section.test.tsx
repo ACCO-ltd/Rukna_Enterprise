@@ -105,7 +105,7 @@ describe('BaselineSection — governing baseline', () => {
     expect(screen.queryByRole('button', { name: 'Lock baseline' })).not.toBeInTheDocument();
     expect(screen.getByText('Save a planned curve first, then lock it.')).toBeInTheDocument();
     // Saving the curve is the one primary until then.
-    expect(screen.getByRole('button', { name: 'Save planned curve' })).toHaveClass('bg-brand-ink');
+    expect(screen.getByRole('button', { name: 'Save planned curve' })).toHaveClass('bg-brand-primary');
   });
 
   it('shows the governing-baseline card and the re-baseline button (gated approve:project) once one exists', () => {

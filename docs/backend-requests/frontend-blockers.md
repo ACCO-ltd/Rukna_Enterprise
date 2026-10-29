@@ -116,7 +116,7 @@ and A14–A15 during the 2026-08-11 sweep — **[A14](#a14) is blocking and is n
 | [A8](#a8) | **Docs** | Accounting | Every GL account code in §6.13–6.23 is 4-digit and none exists in the seeded 5-digit COA | in doc |
 | [A9](#a9) | Contract | AP | Money is a JSON number on the whole AP write path, against the platform money-as-string rule | in doc |
 | [A10](#a10) | Docs | GL | No `GET /periods`; periods are reachable only embedded in `/fiscal-years` | in doc |
-| [A11](#a11) | **Correctness — bug** | AR | A REVERSED invoice passes the post guard and can be posted again, drawing a new `invoiceNumber` and orphaning the original journal | in doc |
+| [A11](#a11) | ~~Correctness — bug~~ **Fixed 2026-10-27** | AR | A REVERSED invoice passes the post guard and can be posted again, drawing a new `invoiceNumber` and orphaning the original journal | in doc |
 | [A12](#a12) | **Domain** | AR / Finance | One receipt carries two unlinked allocation ledgers — to IPCs and to invoices — with no guard between them | [domain-questions.md](./domain-questions.md) |
 | [A13](#a13) | Gap | AR | `ClientInvoiceRepository` embeds no `client` relation — P16's fix was applied to bills but not to invoices | in doc |
 | [A14](#a14) | **Blocking — bug** | AP | `SupplierBill.purchaseOrderRevisionId` is never written by any code path, so no bill can be matched, the match gate is bypassed, and the commitment ledger never reaches ACTUAL | [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33) |
@@ -125,6 +125,11 @@ and A14–A15 during the 2026-08-11 sweep — **[A14](#a14) is blocking and is n
 <a id="a11"></a>
 ### A11 — a reversed invoice can be posted a second time
 
+> **Fixed 2026-10-27 (Phase 0 H2).** `post()` now posts only `NOT_POSTED` / `FAILED` invoices; a
+> `REVERSED` one is refused with `409 INVOICE_REVERSED`. Reversing releases the invoice's source tag
+> instead, so the stage, certificate or separate charge is billed again by a **replacement** invoice
+> (a stage invoice carrying variation billing lines keeps its tag). `canPost` and the server now agree.
+>
 > *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `client-invoice.service.ts:126,129` gates posting on `documentStatus === 'APPROVED'` and rejects

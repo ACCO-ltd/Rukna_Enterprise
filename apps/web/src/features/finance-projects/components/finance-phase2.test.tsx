@@ -234,7 +234,11 @@ describe('Finance lists — project filter', () => {
     ]);
     renderWithProviders(<ReceiptsList />, { permissions: ['manage:receivable'] });
     await waitFor(() => expect(receiptsApi.listReceipts).toHaveBeenCalledWith(undefined, undefined));
-    await chooseOption(userEvent.setup(), await screen.findByLabelText('Project'), 'p2');
+    // The project filter lives in the Filter panel (ADR-047 list card), applied on Apply.
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /^Filter/ }));
+    await chooseOption(user, await screen.findByLabelText('Project'), 'p2');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(receiptsApi.listReceipts).toHaveBeenCalledWith(undefined, 'p2'));
   });
 

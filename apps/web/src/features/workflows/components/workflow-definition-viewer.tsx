@@ -2,7 +2,22 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, Label, Select, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, StatusPill } from '@erp/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Label,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
+  StatusPill,
+  SkeletonTable,
+} from '@erp/ui';
 
 import { statusTone } from '@/lib/status-registry';
 
@@ -40,10 +55,7 @@ export function WorkflowDefinitionViewer() {
 
       {/* Definition panel */}
       {isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tCommon('loading')}</span>
-          <div className="h-48 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
-        </div>
+        <SkeletonTable columns={3} rows={4} label={tCommon('loading')} />
       ) : isError ? (
         <Alert variant="error" messages={[t('viewer.loadFailed')]}>
           <div className="mt-3">

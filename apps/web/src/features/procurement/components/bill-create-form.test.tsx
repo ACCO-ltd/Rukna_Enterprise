@@ -20,6 +20,7 @@ import type { GoodsReceipt, PurchaseOrder, Supplier, SupplierBill } from '../typ
 const mocks = vi.hoisted(() => ({
   useCreateSupplierBill: vi.fn(),
   useUpdateSupplierBill: vi.fn(),
+  useSaveAndSubmitSupplierBill: vi.fn(),
   useSupplierBill: vi.fn(),
   useSuppliers: vi.fn(),
   // Disabled for bills and payments, which read the payables master.
@@ -188,6 +189,7 @@ const PROFILE = {
 const loaded = <T,>(data: T) => ({ data, isPending: false, isLoading: false, isError: false });
 
 const mutate = vi.fn();
+const submitMutate = vi.fn();
 
 function createState(over: Record<string, unknown> = {}) {
   return { mutate, reset: vi.fn(), isPending: false, isSuccess: false, isError: false, error: null, ...over };
@@ -197,6 +199,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.useCreateSupplierBill.mockReturnValue(createState());
   mocks.useUpdateSupplierBill.mockReturnValue(createState());
+  mocks.useSaveAndSubmitSupplierBill.mockReturnValue(createState({ mutate: submitMutate }));
   mocks.useSupplierBill.mockReturnValue({ data: undefined, isPending: true, isError: false });
   mocks.useSuppliers.mockReturnValue(loaded([SUPPLIER, NO_TERMS]));
   mocks.useSupplierBills.mockReturnValue(loaded([]));
@@ -271,7 +274,7 @@ describe('SupplierBillCreateForm — direct expense', () => {
     const user = userEvent.setup();
     renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);
 
-    await user.click(screen.getByRole('button', { name: 'Save bill' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     expect(mutate).not.toHaveBeenCalled();
     const summary = screen.getByText(/^Fix \d+ fields? before saving$/).closest('[role="alert"]') as HTMLElement;
@@ -297,7 +300,7 @@ describe('SupplierBillCreateForm — direct expense', () => {
     await user.type(byId('bill-line-0-unitPrice'), '400');
     await user.type(byId('bill-line-0-vat'), '0');
 
-    await user.click(screen.getByRole('button', { name: 'Save bill' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate.mock.calls[0]![0]).toEqual({
@@ -318,6 +321,29 @@ describe('SupplierBillCreateForm — direct expense', () => {
       ],
     });
     expect(routerMocks.push).toHaveBeenCalledWith('/finance/accounting/bills/bill-9');
+  });
+
+  it('Save submits too, so a bill the approval rules let through posts (ADR-046 §3)', async () => {
+    const user = userEvent.setup();
+    submitMutate.mockImplementation((_args, options) => options.onSuccess({ id: 'bill-10' }));
+    renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);
+
+    await chooseOption(user, byId('bill-supplier'), 'sup-2');
+    await user.type(byId('bill-invoice-number'), 'INV-78');
+    await chooseOption(user, byId('bill-project'), 'none');
+    await pickDate(user, byId('bill-date'), '2026-09-10');
+    await pickDate(user, byId('bill-due-date'), '2026-10-10');
+    await user.type(byId('bill-line-0-description'), 'Office rent');
+    await chooseOption(user, byId('bill-line-0-profile'), 'OFFICE_EXPENSE');
+    await user.type(byId('bill-line-0-unitPrice'), '400');
+    await user.type(byId('bill-line-0-vat'), '0');
+
+    await user.click(screen.getByRole('button', { name: 'Save bill' }));
+
+    expect(mutate).not.toHaveBeenCalled();
+    expect(submitMutate).toHaveBeenCalledTimes(1);
+    expect(submitMutate.mock.calls[0]![0]).toMatchObject({ id: undefined, payload: { supplierInvoiceNumber: 'INV-78' } });
+    expect(routerMocks.push).toHaveBeenCalledWith('/finance/accounting/bills/bill-10');
   });
 
   it('lets the clerk type a net over qty × price, warns by how much it differs, and saves it', async () => {
@@ -344,7 +370,7 @@ describe('SupplierBillCreateForm — direct expense', () => {
       screen.getByText(/Amount is \$95\.00 more than 200 × \$9\.50 \(\$1,900\.00\)/),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Save bill' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(mutate.mock.calls[0]![0].lines[0]).toMatchObject({ quantity: 200, unitPrice: 9.5, netAmount: 1995 });
   });
 
@@ -493,7 +519,7 @@ describe('SupplierBillCreateForm — against a purchase order', () => {
     await chooseOption(user, byId('bill-line-0-profile'), 'OFFICE_EXPENSE');
     await user.type(byId('bill-line-0-vat'), '0');
 
-    await user.click(screen.getByRole('button', { name: 'Save bill' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate.mock.calls[0]![0]).toEqual({
@@ -605,7 +631,7 @@ describe('SupplierBillEditPage', () => {
     const price = byId('bill-line-0-unitPrice');
     await user.clear(price);
     await user.type(price, '5060');
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     // PATCH, never a second POST.
     expect(mutate).not.toHaveBeenCalled();
@@ -678,7 +704,7 @@ describe('SupplierBillEditPage', () => {
     // Billing what was received: no over-billing note.
     expect(screen.queryByText(/more than received/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(mutate.mock.calls[0]![0]).toEqual({

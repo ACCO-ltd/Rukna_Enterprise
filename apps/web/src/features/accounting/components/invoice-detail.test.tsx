@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   useInvoiceAction: vi.fn(),
   useInvoiceDocumentUrl: vi.fn(),
   useAccounts: vi.fn(),
+  useApprovalSettings: vi.fn(() => ({ data: { invoiceApprovalAbove: null as string | null } })),
   useClients: vi.fn(),
+  useInvoiceCreditNotes: vi.fn(() => ({ data: [] as unknown[] })),
   searchParams: new URLSearchParams(),
 }));
 
@@ -19,7 +21,14 @@ vi.mock('../hooks/use-invoices', () => ({
   useInvoice: mocks.useInvoice,
   useInvoiceAction: mocks.useInvoiceAction,
   useInvoiceDocumentUrl: mocks.useInvoiceDocumentUrl,
+  useInvoiceCreditNotes: mocks.useInvoiceCreditNotes,
+  useCancelInvoice: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   invoiceKeys: { all: ['accounting', 'invoices'] },
+}));
+vi.mock('@/features/write-offs/hooks', () => ({
+  useWriteOffs: () => ({ data: [] }),
+  useRequestWriteOff: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+  useDecideWriteOff: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
 }));
 vi.mock('@/features/communications/hooks', () => ({
   useCommunications: () => ({ isPending: false, isError: false, data: [] }),
@@ -27,7 +36,7 @@ vi.mock('@/features/communications/hooks', () => ({
   useResolveCommunication: () => ({ isPending: false, mutate: vi.fn() }),
   communicationKeys: { all: ['communications'], resource: () => ['communications'] },
 }));
-vi.mock('../hooks/use-accounting', () => ({ useAccounts: mocks.useAccounts }));
+vi.mock('../hooks/use-accounting', () => ({ useAccounts: mocks.useAccounts, useApprovalSettings: mocks.useApprovalSettings }));
 vi.mock('@/features/clients/hooks/use-clients', () => ({ useClients: mocks.useClients }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.searchParams }));
 vi.mock('next/link', () => ({
@@ -81,6 +90,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
 
 beforeEach(() => {
   mocks.searchParams = new URLSearchParams();
+  mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: null } });
   mocks.useAccounts.mockReturnValue({ data: [], isPending: false, isError: false });
   mocks.useClients.mockReturnValue({ data: [], isPending: false, isError: false });
   mocks.useInvoiceAction.mockReturnValue({
@@ -93,7 +103,7 @@ beforeEach(() => {
 });
 
 describe('InvoiceDetail — state-aware title and totals', () => {
-  it('shows the draft title, Approve action, and "Draft total" (never a collectible balance)', () => {
+  it('shows the draft title, the one Issue action (ADR-046 §2), and "Draft total" (never a collectible balance)', () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
@@ -101,10 +111,14 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     });
 
     expect(screen.getByText('Review draft invoice')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve invoice' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Issue invoice' })).toBeInTheDocument();
+    // No separate Approve step any more, and no Post before issue.
+    expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
     expect(screen.getByText('Draft total')).toBeInTheDocument();
     expect(screen.queryByText('Balance due')).not.toBeInTheDocument();
+    // Step 2g — an unposted invoice can be cancelled from its page.
+    expect(screen.getByRole('button', { name: 'Cancel draft' })).toBeInTheDocument();
   });
 
   it('shows "awaiting posting" for an approved, not-yet-posted invoice, with the Post action', () => {
@@ -145,10 +159,52 @@ describe('InvoiceDetail — state-aware title and totals', () => {
 
     expect(screen.getByText('Invoice INV-2026-0042')).toBeInTheDocument();
     expect(screen.getByText('Balance due')).toBeInTheDocument();
+    // A posted invoice is reversed, never cancelled.
+    expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
     expect(screen.queryByText('Draft total')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reverse' })).toBeInTheDocument();
+    // AR-1 — a posted invoice with a balance can be credited from Finance, project or not.
+    expect(screen.getByRole('button', { name: 'Issue credit note' })).toBeInTheDocument();
+    // AR-4 — and written off.
+    expect(screen.getByRole('button', { name: 'Write off' })).toBeInTheDocument();
     // ADR-042 step 4 — something is still owed, so a WhatsApp reminder is offered.
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
+
+  it('lists the credit notes raised against the invoice, with Reverse on a posted one (AR-1)', () => {
+    mocks.useInvoiceCreditNotes.mockReturnValue({
+      data: [
+        {
+          id: 'cn1',
+          creditNoteNumber: 'CN-000003',
+          reason: 'PRICE_ERROR',
+          netAmount: '100.00',
+          vatAmount: '0.00',
+          totalAmount: '100.00',
+          accountingDate: '2026-10-20',
+          postingStatus: 'POSTED',
+          note: null,
+          reversedAt: null,
+          reversalReason: null,
+        },
+      ],
+    });
+    mocks.useInvoice.mockReturnValue({
+      data: invoice({
+        invoiceNumber: 'INV-2026-0042',
+        documentStatus: 'APPROVED',
+        postingStatus: 'POSTED',
+        outstandingAmount: '0.00',
+      }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+
+    expect(screen.getByText('CN-000003')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Reverse' }).length).toBeGreaterThan(0);
+    // Nothing left to credit: no new credit note.
+    expect(screen.queryByRole('button', { name: 'Issue credit note' })).not.toBeInTheDocument();
   });
 
   it('offers a reminder on an opening-balance invoice (no Rukna number)', () => {
@@ -186,6 +242,32 @@ describe('InvoiceDetail — state-aware title and totals', () => {
   });
 });
 
+describe('InvoiceDetail — approval above an amount (ADR-046 §8)', () => {
+  it('offers Approve, not Issue, to someone other than the preparer', () => {
+    mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: '10000.00' } });
+    mocks.useInvoice.mockReturnValue({ data: invoice({ createdBy: 'user-1' }), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByRole('button', { name: 'Approve invoice' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
+  });
+
+  it('tells the preparer someone else must approve it', () => {
+    mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: '10000.00' } });
+    mocks.useInvoice.mockReturnValue({ data: invoice({ createdBy: 'test-user' }), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByText(/need another person’s approval before they are issued/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
+  });
+
+  it('issues directly below the amount', () => {
+    mocks.useApprovalSettings.mockReturnValue({ data: { invoiceApprovalAbove: '50000.00' } });
+    mocks.useInvoice.mockReturnValue({ data: invoice({ createdBy: 'test-user' }), isPending: false, isError: false });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByRole('button', { name: 'Issue invoice' })).toBeInTheDocument();
+  });
+});
+
 describe('InvoiceDetail — permission gating', () => {
   it('hides every lifecycle action for a caller without manage:receivable, on any state', () => {
     mocks.useInvoice.mockReturnValue({
@@ -196,8 +278,9 @@ describe('InvoiceDetail — permission gating', () => {
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
 
-    expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
   });
 });
 

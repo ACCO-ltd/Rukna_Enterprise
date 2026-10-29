@@ -1,12 +1,13 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientStatus } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
 import { chooseOption } from '@/test/choose-option';
 import { listClients } from '@/features/clients/api/clients-api';
-import { listInvoices } from '@/features/accounting/api/invoices-api';
+import { cancelInvoice, listInvoices } from '@/features/accounting/api/invoices-api';
 import type { Account, AccountVersion, ClientInvoice } from '@/features/accounting/types';
 
 import { InvoicesList } from './invoices-list';
@@ -19,6 +20,8 @@ vi.mock('@/features/accounting/api/invoices-api', () => ({
   approveInvoice: vi.fn(),
   postInvoice: vi.fn(),
   reverseInvoice: vi.fn(),
+  cancelInvoice: vi.fn(),
+  listIncomeAccounts: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/features/clients/api/clients-api', () => ({ listClients: vi.fn() }));
@@ -140,6 +143,8 @@ describe('InvoicesList', () => {
     expect(screen.getByRole('menuitem', { name: 'Open PDF' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Copy link' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /New invoice/ })).toBeNull();
+    // A posted invoice is reversed, never cancelled.
+    expect(screen.queryByRole('menuitem', { name: 'Cancel draft' })).toBeNull();
   });
 
   it('renders an invoice with its client name joined from GET /clients', async () => {
@@ -175,18 +180,18 @@ describe('InvoicesList', () => {
     expect(within(table).getByText('Not yet numbered')).toBeInTheDocument();
   });
 
-  it('shows both status axes, because one badge cannot express the pair', async () => {
+  it('shows the one state a reader acts on, derived from both axes and the balance (ADR-047)', async () => {
     vi.mocked(listInvoices).mockResolvedValue([
-      invoice({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' }),
+      invoice({ id: 'a', documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' }),
+      invoice({ id: 'b', documentStatus: 'APPROVED', postingStatus: 'POSTED', totalAmount: '100.00', outstandingAmount: '40.00', dueDate: '2999-01-01' }),
     ]);
 
     renderWithProviders(<InvoicesList />, { withToast: true });
 
-    // Scoped to the table: the status filter renders its own "Approved" option, and an
-    // unscoped query would pass on the dropdown while the badge was missing.
+    // Scoped to the table: the filters render their own option labels.
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('Approved')).toBeInTheDocument();
-    expect(within(table).getByText('Not posted')).toBeInTheDocument();
+    expect(within(table).getByText('To post')).toBeInTheDocument();
+    expect(within(table).getByText('Part paid')).toBeInTheDocument();
   });
 
   it('filters by document status in the browser', async () => {
@@ -311,4 +316,69 @@ describe('PostInvoiceDialog', () => {
     expect(screen.getByRole('button', { name: 'Post to GL' })).toBeDisabled();
   });
 
+});
+
+describe('InvoicesList — cancel a draft with undo (Step 2g)', () => {
+  const draft = () =>
+    invoice({ id: 'd1', invoiceNumber: null, documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', source: { kind: 'MANUAL', label: null, id: null } });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(cancelInvoice).mockReset().mockResolvedValue(draft());
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function cancelFromMenu() {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.mocked(listInvoices).mockResolvedValue([draft()]);
+    renderWithProviders(<InvoicesList />, { withToast: true, permissions: ['manage:receivable'] });
+    const table = await screen.findByRole('table');
+    await user.click(within(table).getByRole('button', { name: /Actions for Not yet numbered/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Cancel draft' }));
+    return user;
+  }
+
+  it('hides the row at once and sends the cancel only when the undo window closes', async () => {
+    await cancelFromMenu();
+    expect(await screen.findByText('Draft invoice cancelled')).toBeInTheDocument();
+    expect(screen.queryByText('Not yet numbered')).toBeNull();
+    expect(cancelInvoice).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+    });
+    expect(cancelInvoice).toHaveBeenCalledWith('d1', undefined);
+  });
+
+  it('brings the row back and sends nothing when Undo is pressed', async () => {
+    const user = await cancelFromMenu();
+    await user.click(await screen.findByRole('button', { name: 'Undo' }));
+    expect(await screen.findByText('Draft restored')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('Not yet numbered')).toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(10000);
+    });
+    expect(cancelInvoice).not.toHaveBeenCalled();
+  });
+
+  it('undoes the latest pending cancel with Z', async () => {
+    const user = await cancelFromMenu();
+    await screen.findByText('Draft invoice cancelled');
+    await user.keyboard('z');
+    expect(await screen.findByText('Draft restored')).toBeInTheDocument();
+    expect(cancelInvoice).not.toHaveBeenCalled();
+  });
+
+  it('puts the row back and says so when the server refuses the cancel', async () => {
+    vi.mocked(cancelInvoice).mockRejectedValue(new Error('boom'));
+    await cancelFromMenu();
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+    });
+    expect(await screen.findByText('Could not cancel the draft')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('Not yet numbered')).toBeInTheDocument();
+  });
 });

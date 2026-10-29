@@ -233,6 +233,35 @@ describe('CommercialWorkspaceService.getWorkspace', () => {
     expect(ws.todo.filter((t) => t.kind === 'READY_TO_INVOICE').map((t) => t.id)).toEqual(['ready:st-past']);
   });
 
+  describe('retention To do row (ADR-046 §5)', () => {
+    const ipcInvoice = (id: string, retention: number, postingStatus = 'POSTED') =>
+      invoiceRow({ id, sourceIpcId: `ipc-${id}`, retentionAmount: new Decimal(retention), postingStatus });
+    const releaseInvoice = (id: string, amount: number, postingStatus = 'POSTED') =>
+      invoiceRow({ id, sourceRetentionContractId: 'c-1', retentionReleasedAmount: new Decimal(amount), postingStatus });
+    async function retentionRow(invoiceRows: unknown[]) {
+      const { service, repo } = build({ invoiceRows });
+      repo.findMainContract.mockResolvedValue({ ...contract, retentionTerms: { retentionReleasedAt: daysAgo(1) } });
+      const ws = await service.getWorkspace(moneyViewer, 'p-1');
+      return ws.todo.find((t) => t.kind === 'RETENTION_TO_INVOICE');
+    }
+
+    it('offers the retention held and not yet released', async () => {
+      expect((await retentionRow([ipcInvoice('a', 5000), ipcInvoice('b', 2500)]))?.amount).toBe('7500.00');
+    });
+
+    it('offers only the top-up once a release has posted, and nothing when all is released', async () => {
+      expect((await retentionRow([ipcInvoice('a', 5000), ipcInvoice('b', 2500), releaseInvoice('r', 5000)]))?.amount).toBe(
+        '2500.00',
+      );
+      expect(await retentionRow([ipcInvoice('a', 5000), releaseInvoice('r', 5000)])).toBeUndefined();
+    });
+
+    it('is withheld while a release draft is open or a certificate invoice holding retention is unposted', async () => {
+      expect(await retentionRow([ipcInvoice('a', 5000), releaseInvoice('r', 5000, 'NOT_POSTED')])).toBeUndefined();
+      expect(await retentionRow([ipcInvoice('a', 5000), ipcInvoice('b', 2500, 'NOT_POSTED')])).toBeUndefined();
+    });
+  });
+
   it('no contract: the live BOQ version to sign against, nothing else', async () => {
     const { service, repo } = build();
     repo.findMainContract.mockResolvedValue(null);

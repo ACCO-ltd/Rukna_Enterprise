@@ -6,6 +6,12 @@ import { AccountsPayableModule } from './accounts-payable/accounts-payable.modul
 import { GeneralLedgerModule } from './general-ledger/general-ledger.module.js';
 import { FinancialPositionModule } from './financial-position/financial-position.module.js';
 import { AccountingSetupModule } from './accounting-setup/accounting-setup.module.js';
+import { FinanceHomeModule } from './finance-home/finance-home.module.js';
+import { FinanceAttachmentsModule } from './finance-attachments/finance-attachments.module.js';
+import { SetupImportModule } from './setup-import/setup-import.module.js';
+import { VatReportModule } from './vat-report/vat-report.module.js';
+import { BankReconciliationModule } from './bank-reconciliation/bank-reconciliation.module.js';
+import { CloseChecklistModule } from './close-checklist/close-checklist.module.js';
 
 @Module({
   imports: [
@@ -16,6 +22,12 @@ import { AccountingSetupModule } from './accounting-setup/accounting-setup.modul
     GeneralLedgerModule,
     FinancialPositionModule,
     AccountingSetupModule,
+    FinanceHomeModule,
+    FinanceAttachmentsModule,
+    SetupImportModule,
+    VatReportModule,
+    BankReconciliationModule,
+    CloseChecklistModule,
   ],
   exports: [
     AccountingCoreModule,

@@ -44,7 +44,7 @@ The owner wants competitive quotations with three properties:
   unitPrice × orderedQuantity`, calls `commandGovernance.evaluateStateTransition(identity,
   'PurchaseOrder', 'DRAFT', 'SUBMITTED', po.id, draftTotal)` and `throwIfGated`
   (`command-governance.service.ts:62-123, 167-177`); re-drive per ADR-015. `approvedBy =
-  consumed?.finalApproverId ?? identity.userId`. The PO bands (`acco-value-bands.ts:54-76`) are
+  consumed?.finalApproverId ?? identity.userId`. The PO bands (`default-value-bands.ts:54-76`) are
   cumulative chains (CD → +Finance Officer → +CFO → +CEO) seeded **inactive**; with no active
   binding the resolver returns no gate and confirm proceeds on permission alone.
 - **SoD.** `SegregationOfDutiesService` (`platform/workflows/application/segregation-of-duties.service.ts`)
@@ -273,7 +273,7 @@ raise-order, which is why §8 makes the selector — not the collector — regis
 - **New governed transition** `QUOTATION_AWARD: AWAITING_DECISION → AWARDED`
   (`WorkflowTransactionType.QUOTATION_AWARD`, registry entry in `policy-transition-registry.ts`,
   `GovernedEntity` `QuotationRequest`), valued at the chosen quote's `enteredTotal`.
-- **Bands = the PO bands.** `accoQuotationAwardBands()` returns `accoPurchaseOrderBands()` verbatim
+- **Bands = the PO bands.** `defaultQuotationAwardBands()` returns `defaultPurchaseOrderBands()` verbatim
   (one source of numbers and chains) bound to the new transition, seeded **inactive** alongside the
   PO bands and activated by the same per-org step (`dev-activate-doa-bands.seed.ts` for dev; the
   owner's go-live step for prod). Activating one without the other is refused by the activation

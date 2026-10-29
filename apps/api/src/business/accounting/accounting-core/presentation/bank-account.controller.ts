@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Delete, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Delete, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS } from '@erp/types';
@@ -7,7 +7,7 @@ import { CurrentUser } from '../../../../common/decorators/current-user.decorato
 import type { RequestIdentity } from '@erp/types';
 import { BankAccountService } from '../application/bank-account.service.js';
 import { BankAccountSignatoryService } from '../application/bank-account-signatory.service.js';
-import { ConfigureBankAccountDto } from './dto/configure-bank-account.dto.js';
+import { BankAccountStatusBody, ConfigureBankAccountDto, UpdateBankAccountBody } from './dto/configure-bank-account.dto.js';
 import { AddSignatoryDto } from './dto/add-signatory.dto.js';
 
 @ApiTags('Bank Accounts')
@@ -38,6 +38,23 @@ export class BankAccountController {
   @ApiOperation({ summary: 'Get bank account details' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.bankAccountService.findById(identity, id);
+  }
+
+  @Patch(':id')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'B-1: correct a bank account’s details or what it is used for (the GL account never changes)' })
+  @ApiResponse({ status: 409, description: 'BANK_ACCOUNT_CLOSED · ACCOUNT_NUMBER_TAKEN' })
+  update(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: UpdateBankAccountBody) {
+    return this.bankAccountService.update(identity, id, dto);
+  }
+
+  @Post(':id/status')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'B-1: suspend, reactivate or close a bank account (close: zero ledger balance, nothing waiting to post; final)' })
+  @ApiResponse({ status: 409, description: 'BANK_ACCOUNT_CLOSED · BANK_ACCOUNT_HAS_BALANCE · BANK_ACCOUNT_HAS_PENDING' })
+  setStatus(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: BankAccountStatusBody) {
+    return this.bankAccountService.setStatus(identity, id, dto.status);
   }
 
   // ─── Signatories (ADR-022 CONST-DOA-005) ───────────────────────────────────────

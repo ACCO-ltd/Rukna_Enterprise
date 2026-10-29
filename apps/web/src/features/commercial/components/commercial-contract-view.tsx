@@ -263,6 +263,9 @@ export function PaymentSchedulePanel({
   const today = workspace.asOf.slice(0, 10);
 
   if (cycle.isPending) return <Skeleton className="h-48 w-full" />;
+  // A certificate-billed (MEASURED_IPC) contract has no payment schedule: there is nothing to show,
+  // which is not a failure to load.
+  if (!cycle.isError && !cycle.data?.paymentSchedule && contract.billingModel !== 'MILESTONE') return null;
   if (cycle.isError || !cycle.data?.paymentSchedule) {
     return <Alert variant="error" messages={[t('scheduleFailed')]} />;
   }

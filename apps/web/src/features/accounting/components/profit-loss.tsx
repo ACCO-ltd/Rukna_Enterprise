@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Card,
   CardHeader,
   CardTitle,
@@ -18,9 +17,10 @@ import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
 import { useProfitLoss } from '../hooks/use-accounting';
 import { exportCsv, reportFilename } from '../lib/export-csv';
-import { ledgerHref } from '../lib/report-links';
+import { ledgerHref, rangeFromParams } from '../lib/report-links';
 import type { ProfitLoss, ProfitLossSection } from '../types';
 import { ReportActions } from './report-actions';
+import { LoadError } from '@/components/load-error';
 
 /** First and last day of the current month — the range a P&L is asked for most often. */
 function currentMonth(): { from: string; to: string } {
@@ -37,8 +37,10 @@ export function ProfitLossReport() {
   const tShared = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const router = useRouter();
+  // Opened from the monthly comparison (or a shared link) with ?from=&to=, it shows that range.
+  const searchParams = useSearchParams();
 
-  const [range, setRange] = useState(currentMonth);
+  const [range, setRange] = useState(() => rangeFromParams(searchParams) ?? currentMonth());
 
   const report = useProfitLoss(range.from, range.to);
 
@@ -86,7 +88,7 @@ export function ProfitLossReport() {
           />
         </div>
       ) : report.isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
       ) : (
         <>
           <p className="text-xs text-muted-foreground">

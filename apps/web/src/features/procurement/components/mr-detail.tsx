@@ -21,7 +21,10 @@ import {
   TableRow,
   TableScroll,
   cn,
+  SkeletonRecord,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -84,17 +87,14 @@ export function MrDetail({ id }: { id: string }) {
 
   if (mr.isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tc('loadFailed')}</span>
-        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
-      </div>
+      <SkeletonRecord label={tc('loading')} />
     );
   }
 
   if (mr.isError || !mr.data) {
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[tc('loadFailed')]} />
+        <LoadError message={tc('loadFailed')} onRetry={() => void mr.refetch()} />
         <Button variant="outline" asChild>
           <Link href="/procurement/requests">{t('backToList')}</Link>
         </Button>

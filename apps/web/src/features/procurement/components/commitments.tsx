@@ -20,7 +20,6 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Coins, HandCoins, Receipt, TrendingUp } from 'lucide-react';
 import {
-  Alert,
   cn,
   Combobox,
   EmptyState,
@@ -30,6 +29,8 @@ import {
   type StatusTone,
 } from '@erp/ui';
 
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { LoadError } from '@/components/load-error';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { MetricStrip } from '@/components/widget/metric-strip';
 import { MONEY_SCALE, fromMinorUnits, sumMinorUnits } from '@/lib/money';
@@ -216,6 +217,7 @@ function documentHref(entry: CommitmentLedgerEntry): string | null {
  */
 export function CommitmentLedger({ initialProjectId }: { initialProjectId?: string }) {
   const t = useTranslations('procurement.commitments.ledger');
+  const tRoot = useTranslations('procurement.commitments');
   const tc = useTranslations('procurement.common');
   const tSource = useTranslations('procurement.commitments.sourceType');
   const { can } = usePermissions();
@@ -328,6 +330,11 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
 
   return (
     <div className="space-y-6">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={tRoot('title')}
+        summary={project ? `${project.code} · ${project.name}` : undefined}
+      />
       <div className="flex flex-wrap items-end gap-4">
         <div className="w-full sm:w-80">
           <label htmlFor="ledger-project" className="mb-1 block text-caption font-medium text-muted-foreground">
@@ -360,7 +367,7 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
       ) : (
         <>
           {summary.isError ? (
-            <Alert variant="error" messages={[tc('loadFailed')]} />
+            <LoadError message={tc('loadFailed')} onRetry={() => void summary.refetch()} />
           ) : (
             <MetricStrip
               aria-label={t('summaryLabel')}
@@ -383,9 +390,15 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
             isError={entries.isError}
             errorMessage={tc('loadFailed')}
             onRetry={() => void entries.refetch()}
-            toolbar={false}
             pagination={{ defaultPageSize: 25 }}
             defaultSort={{ key: 'date', direction: 'desc' }}
+            searchPlaceholder={t('searchPlaceholder')}
+            resultLabel={(count) => t('countLabel', { count })}
+            noMatchMessage={t('noMatches')}
+            exportAs={{
+              fileName: `commitments-${project?.code ?? 'project'}-${view.toLowerCase()}`,
+              sheetName: t('entries'),
+            }}
             emptyState={
               view === 'ALL' ? (
                 <EmptyState variant="inline" title={t('emptyTitle')} description={t('emptyBody')} />

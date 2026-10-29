@@ -23,6 +23,8 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Alert, Select } from '@erp/ui';
 
+import { LoadError } from '@/components/load-error';
+
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import { useCreateSupplier, useSupplierDirectory, useSuppliers } from '../hooks/use-procurement';
@@ -59,7 +61,7 @@ export function SupplierPicker({
   const t = useTranslations('procurement.supplier');
   const tc = useTranslations('procurement.common');
   // `loading` lives in the shared `common` catalogue, not `procurement.common` —
-  // the same split `SetupScreen` uses.
+  // the same split the setup lists use.
   const tCommon = useTranslations('common');
 
   const fromProcurement = source === 'procurement';
@@ -81,7 +83,7 @@ export function SupplierPicker({
   }
 
   if (suppliers.isError) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void suppliers.refetch()} />;
   }
 
   const rows = suppliers.data ?? [];

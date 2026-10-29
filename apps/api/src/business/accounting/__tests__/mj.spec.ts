@@ -8,6 +8,9 @@
  *   MJ-05  Posting moves the trial balance by the journal amount — ONCE
  *   MJ-06  Reversing a posted journal returns the accounts to where they started
  *   MJ-07  A journal cannot be reversed twice
+ *   MJ-08  A rejected journal is corrected by its preparer, returns to DRAFT and is resubmitted
+ *   MJ-09  Only the preparer edits a journal
+ *   MJ-10  A submitted or posted journal cannot be edited
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -173,8 +176,10 @@ it('MJ-05: posting moves the trial balance by the journal amount, once', async (
   const amount = 1234;
 
   const before = await svc.trialBalanceService.generate(env.identity, { asOfDate });
-  const debitBefore = Number(before.totalClosingDebit);
-  const creditBefore = Number(before.totalClosingCredit);
+  // R-1 — closing columns are netted balances; the movement columns are the gross postings a
+  // journal adds to, so they are what must move by its amount, once.
+  const debitBefore = Number(before.totalPeriodDebit);
+  const creditBefore = Number(before.totalPeriodCredit);
 
   const draft = await svc.manualJournalService.create(env.identity, {
     accountingDate: '2025-01-16',
@@ -192,8 +197,8 @@ it('MJ-05: posting moves the trial balance by the journal amount, once', async (
   const after = await svc.trialBalanceService.generate(env.identity, { asOfDate });
 
   // Exactly the journal amount — not twice it.
-  expect(Number(after.totalClosingDebit) - debitBefore).toBeCloseTo(amount, 2);
-  expect(Number(after.totalClosingCredit) - creditBefore).toBeCloseTo(amount, 2);
+  expect(Number(after.totalPeriodDebit) - debitBefore).toBeCloseTo(amount, 2);
+  expect(Number(after.totalPeriodCredit) - creditBefore).toBeCloseTo(amount, 2);
   expect(after.balanced).toBe(true);
 });
 
@@ -292,4 +297,46 @@ it('MJ-07: a journal cannot be reversed twice', async () => {
       reason: 'second reversal via staging id',
     }),
   ).rejects.toThrow(/already reversed/i);
+});
+
+// ─── MJ-08..10 (Phase 0 H2) ──────────────────────────────────────────────────
+const reviewer = () => ({ ...env.identity, userId: 'test-user-reviewer' });
+const journalBody = (amount: number, description: string) => ({
+  accountingDate: '2025-01-15',
+  description,
+  currencyCode: 'USD',
+  lines: [
+    { accountId: env.accounts.revId, debitAmount: amount },
+    { accountId: env.accounts.expId, creditAmount: amount },
+  ],
+});
+
+it('MJ-08: a rejected journal is corrected by its preparer and resubmitted', async () => {
+  const draft = await svc.manualJournalService.create(env.identity, journalBody(300, 'MJ-08 wrong'));
+  await svc.manualJournalService.submit(env.identity, draft.id);
+  await svc.manualJournalService.approve(reviewer(), { journalId: draft.id, approved: false, rejectionReason: 'Wrong amount' });
+
+  const corrected = await svc.manualJournalService.update(env.identity, draft.id, journalBody(350, 'MJ-08 corrected'));
+  expect(corrected.status).toBe('DRAFT');
+  expect(corrected.description).toBe('MJ-08 corrected');
+  expect(corrected.lines).toHaveLength(2);
+  expect(corrected.lines.map((l) => l.debitAmount.toFixed(2)).sort()).toEqual(['0.00', '350.00']);
+
+  const resubmitted = await svc.manualJournalService.submit(env.identity, draft.id);
+  expect(resubmitted.status).toBe('SUBMITTED');
+});
+
+it('MJ-09: only the preparer edits a journal', async () => {
+  const draft = await svc.manualJournalService.create(env.identity, journalBody(100, 'MJ-09'));
+  await expect(svc.manualJournalService.update(reviewer(), draft.id, journalBody(200, 'MJ-09 other'))).rejects.toThrow(
+    /Only the person who prepared this journal/,
+  );
+});
+
+it('MJ-10: a submitted or posted journal cannot be edited', async () => {
+  const draft = await svc.manualJournalService.create(env.identity, journalBody(120, 'MJ-10'));
+  await svc.manualJournalService.submit(env.identity, draft.id);
+  await expect(svc.manualJournalService.update(env.identity, draft.id, journalBody(130, 'MJ-10 late'))).rejects.toThrow(
+    /Only a draft or rejected journal can be edited \(status: SUBMITTED\)/,
+  );
 });

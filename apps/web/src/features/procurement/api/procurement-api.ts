@@ -429,6 +429,11 @@ export function listGoodsReceiptAttachments(grnId: string): Promise<GrnAttachmen
   return apiClient<GrnAttachment[]>(`/procurement/goods-receipts/${grnId}/attachments`);
 }
 
+/** Step 7 — `POST /procurement/goods-receipts/:id/attachments`: the delivery note's photo, before posting. */
+export function attachGoodsReceiptFile(grnId: string, platformFileId: string, purpose: 'DELIVERY_NOTE' | 'OTHER' = 'DELIVERY_NOTE'): Promise<GrnAttachment> {
+  return apiClient<GrnAttachment>(`/procurement/goods-receipts/${grnId}/attachments`, { method: 'POST', body: JSON.stringify({ platformFileId, purpose }) });
+}
+
 /**
  * `POST /procurement/purchase-orders/:id/revise` — a new DRAFT revision.
  *
@@ -690,6 +695,15 @@ export function returnSupplierBill(id: string, reason: string): Promise<Supplier
 }
 
 /** `POST /bills/:id/reject` — SUBMITTED → REJECTED (final), with a required reason. */
+/** AP-2 — `POST /bills/:id/cancel`: drop a DRAFT bill that will never be submitted (reason required). */
+export function cancelSupplierBill(id: string, reason: string): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export function rejectSupplierBill(id: string, reason: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}/reject`, {
     method: 'POST',
@@ -892,7 +906,7 @@ export function createSupplierPayment(
   });
 }
 
-/** `POST /payments/:id/approve` — DRAFT → APPROVED. There is no reject path over HTTP. */
+/** `POST /payments/:id/approve` — DRAFT → APPROVED. */
 export function approveSupplierPayment(id: string): Promise<SupplierPayment> {
   return apiClient<SupplierPayment>(`/payments/${id}/approve`, { method: 'POST' });
 }
@@ -927,6 +941,31 @@ export function postSupplierPayment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * AP-1 — `POST /payments/:id/reject` (someone other than the person who raised it) and
+ * `POST /payments/:id/cancel` (that person). An unposted payment ends; the bills it held get
+ * their balance back. A posted payment is reversed instead (409 PAYMENT_NOT_OPEN).
+ */
+export function endSupplierPayment(id: string, how: 'reject' | 'cancel', reason: string): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}/${how}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * `POST /payments/:id/allocations/:allocationId/reverse` — undo advance applied to a bill later
+ * (Dr Supplier advance / Cr AP); the bill is owed again and the money is unapplied on the payment.
+ */
+export function reverseAdvanceAllocation(paymentId: string, allocationId: string): Promise<unknown> {
+  return apiClient(`/payments/${paymentId}/allocations/${allocationId}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
   });
 }
 
@@ -1018,4 +1057,9 @@ export function createEvidenceAllocation(advanceId: string, payload: CreateEvide
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+/** Step 4 — `GET /payments/:id/document`: the remittance advice of a posted payment (signed URL). */
+export function getSupplierPaymentDocument(id: string): Promise<{ url: string; originalName: string; mimeType: string }> {
+  return apiClient<{ url: string; originalName: string; mimeType: string }>(`/payments/${id}/document`);
 }

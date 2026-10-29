@@ -454,7 +454,7 @@ export class ContractService {
           message:
             'A client contract binds to the current operational BOQ, resolved by the server. ' +
             'The supplied BOQ version does not match the current operational version.',
-          code: 'BOQ_VERSION_MISMATCH',
+          errorCode: 'BOQ_VERSION_MISMATCH',
           details: { supplied: dto.boqVersionId, current: current.operationalVersionId },
         });
       }
@@ -519,7 +519,7 @@ export class ContractService {
           message:
             'Contract value must tie out to the in-contract BOQ total. ' +
             'The BOQ is the priced scope; the contract cannot be set below or away from it.',
-          code: 'TIEOUT_MISMATCH',
+          errorCode: 'TIEOUT_MISMATCH',
           details: {
             boqVersionId,
             tieOutTotal: tieOut.toFixed(2),
@@ -865,7 +865,6 @@ export class ContractService {
         message:
           `Record the date contract ${contract.contractNumber} was signed before activating it ` +
           '(PATCH /contracts/:id/signed-date).',
-        code: 'CONTRACT_SIGNED_DATE_REQUIRED',
         // The global exception filter surfaces `errorCode` as the envelope's `error.code`.
         errorCode: 'CONTRACT_SIGNED_DATE_REQUIRED',
       });

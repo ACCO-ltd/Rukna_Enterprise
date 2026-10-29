@@ -61,7 +61,7 @@ export class AddExtraWorkDto {
   @ApiProperty({
     enum: ['ABSORB', 'VARIATION', 'SEPARATE'],
     description:
-      'Who pays / how (CONST-BOQ-029). ABSORB = ACCO funds from contingency; VARIATION = client-paid, raises contract value (DRAFT VO); SEPARATE = client-paid one-off outside the contract.',
+      'Who pays / how (CONST-BOQ-029). ABSORB = the company funds from contingency; VARIATION = client-paid, raises contract value (DRAFT VO); SEPARATE = client-paid one-off outside the contract.',
   })
   @IsIn(['ABSORB', 'VARIATION', 'SEPARATE'])
   treatment!: 'ABSORB' | 'VARIATION' | 'SEPARATE';

@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { groupNavItems, isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV } from './nav-groups';
 
 describe('STANDALONE_NAV', () => {
-  it('contains only Dashboard as a standalone item', () => {
-    expect(STANDALONE_NAV.map((i) => i.href)).toEqual(['/dashboard']);
+  it('holds Dashboard and the one Approvals inbox, with its count (ADR-049)', () => {
+    expect(STANDALONE_NAV.map((i) => i.href)).toEqual(['/dashboard', '/approvals']);
+    expect(STANDALONE_NAV[1]?.badge).toBe('approvals');
   });
 });
 
@@ -92,7 +93,7 @@ describe('NAV_DOMAINS', () => {
 
     it('is labelled Finance and keeps every existing route', () => {
       expect(finance().labelKey).toBe('finance');
-      expect(finance().href).toBe('/accounting');
+      expect(finance().href).toBe('/finance');
     });
 
     it('leads with Get started and Projects, then the named sections in order', () => {
@@ -106,11 +107,14 @@ describe('NAV_DOMAINS', () => {
         'reports',
         'acctSetup',
       ]);
-      expect(groups[0]!.items.map((i) => i.labelKey)).toEqual(['getStarted', 'financeProjects']);
+      expect(groups[0]!.items.map((i) => i.labelKey)).toEqual(['financeHome', 'getStarted', 'financeProjects']);
       expect(groups.find((g) => g.key === 'banking')!.items.map((i) => i.href)).toEqual([
         '/finance/accounting/bank-accounts',
-        '/finance/accounting/reconciliation',
+        '/finance/accounting/transfers',
+        '/finance/accounting/bank-reconciliation',
       ]);
+      // Step 6 — the subledger-to-GL check is a ledger tool, not bank reconciliation.
+      expect(groups.find((g) => g.key === 'ledger')!.items.map((i) => i.href)).toContain('/finance/accounting/reconciliation');
     });
 
     it('gates Projects on the same permission as GET /finance/projects', () => {
@@ -267,7 +271,7 @@ describe('NAV_DOMAINS', () => {
     it('keeps its items declared here — they feed the command menu and the tab bar', () => {
       // Moving them out of the sidebar must not move them out of the nav model: three
       // consumers read this one list, and a second copy is how they drift apart.
-      expect(admin().items).toHaveLength(7);
+      expect(admin().items).toHaveLength(10);
     });
 
     it('contains users, roles, workflows and audit-logs', () => {
@@ -296,23 +300,29 @@ describe('NAV_DOMAINS', () => {
     it('puts Users and Roles under People', () => {
       const groups = groupNavItems(admin().items);
       const people = groups.find((g) => g.key === 'people');
-      expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles']);
+      expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles', '/admin/roles/matrix']);
     });
 
-    it('puts Districts, Project subtypes and Branding under Organization, keeping their gates', () => {
+    it('puts Districts, Project subtypes, Branding and Templates under Organization, keeping their gates', () => {
       const groups = groupNavItems(admin().items);
       const organization = groups.find((g) => g.key === 'organization');
       expect(organization?.items.map((i) => i.href)).toEqual([
         '/admin/districts',
         '/admin/project-subtypes',
         '/admin/branding',
+        '/admin/templates',
+        '/admin/photo-reader',
       ]);
+      // Step 7 — the photo reader's switch is company configuration (manage:organization).
+      expect(organization?.items[4]?.permissionKey).toBe('manage:organization');
       expect(organization?.items[0]?.permissionKey).toBe('manage:district');
       // The subtype registry is admin/Settings work — gated on manage:project-type, the same
       // permission POST /project-subtypes enforces.
       expect(organization?.items[1]?.permissionKey).toBe('manage:project-type');
       // Invoice branding (Commercial round-3) — gated on manage:organization.
       expect(organization?.items[2]?.permissionKey).toBe('manage:organization');
+      // Company templates (Step 1b, ADR-047) — saving them needs manage:organization.
+      expect(organization?.items[3]?.permissionKey).toBe('manage:organization');
     });
 
     it('puts Policies/Workflows under Approval governance as a single entry (no duplicate deep route)', () => {

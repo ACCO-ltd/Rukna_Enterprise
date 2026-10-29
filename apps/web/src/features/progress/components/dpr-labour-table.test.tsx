@@ -39,7 +39,7 @@ describe('DprLabourTable', () => {
 
     const addRow = screen.getByRole('button', { name: 'Add row' });
     // Secondary (outline), never a primary — and disabled until a trade and headcount are in.
-    expect(addRow).not.toHaveClass('bg-brand-ink');
+    expect(addRow).not.toHaveClass('bg-brand-primary');
     expect(addRow).toBeDisabled();
 
     await chooseOption(user, screen.getByLabelText('Trade'), 'Carpenter');

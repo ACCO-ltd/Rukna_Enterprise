@@ -30,6 +30,15 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
   reverseJournal: vi.fn(),
 }));
 
+// The journals' preparer is user-abcd1234; the signed-in user is set per test.
+const sessionMocks = vi.hoisted(() => ({ useSession: vi.fn(() => ({ user: { id: 'user-abcd1234' } })) }));
+vi.mock('@/features/auth/session/use-session', () => sessionMocks);
+const routerMocks = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => routerMocks, usePathname: () => '/finance/accounting/journals/jrn-1', useSearchParams: () => new URLSearchParams() }));
+vi.mock('@/features/users/hooks/use-users', () => ({
+  useUsers: () => ({ data: [{ id: 'user-preparer', firstName: 'Amina', lastName: 'Ali', email: 'amina@example.com' }], isPending: false, isError: false }),
+}));
+
 vi.mock('next/link', () => ({
   default: ({
     href,
@@ -247,18 +256,31 @@ describe('JournalDetail', () => {
     });
 
     /**
-     * §6.17 draws `REJECTED → DRAFT`, but no endpoint performs that transition and `submit`
-     * accepts a REJECTED journal directly. Offering nothing would strand it.
+     * The server submits only a DRAFT. A rejected journal goes back to its preparer, who corrects
+     * it (`PATCH /journals/:id` returns it to DRAFT) and submits it again.
      */
-    it('lets a rejected journal be resubmitted', async () => {
+    it('sends the preparer of a rejected journal to correct it', async () => {
       vi.mocked(getJournal).mockResolvedValue(
         withStatus('REJECTED', { rejectionReason: 'Wrong account used' }),
       );
 
       render();
 
-      expect(await screen.findByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
+      const correct = await screen.findByRole('link', { name: 'Edit and resubmit' });
+      expect(correct).toHaveAttribute('href', '/finance/accounting/journals/jrn-1/edit');
+      expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
       expect(screen.getByText(/Wrong account used/)).toBeInTheDocument();
+    });
+
+    it('offers no edit to anyone but the preparer', async () => {
+      sessionMocks.useSession.mockReturnValueOnce({ user: { id: 'user-2' } }).mockReturnValue({ user: { id: 'user-2' } });
+      vi.mocked(getJournal).mockResolvedValue(withStatus('REJECTED', { rejectionReason: 'Wrong account used' }));
+
+      render();
+
+      expect(await screen.findByText('No action is available from this status.')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Edit and resubmit' })).not.toBeInTheDocument();
+      sessionMocks.useSession.mockReturnValue({ user: { id: 'user-abcd1234' } });
     });
   });
 
@@ -309,3 +331,12 @@ describe('JournalDetail', () => {
   });
 
 });
+
+describe('JournalDetail — a draft that has been posted (G-1)', () => {
+  it('takes the reader to the numbered entry that now holds its lines', async () => {
+    vi.mocked(getJournal).mockResolvedValue({ ...journal(), status: 'POSTED', lines: [], replacedByJournalEntryId: 'je-posted' } as never);
+    renderWithProviders(<JournalDetail journalId="jrn-1" />);
+    await vi.waitFor(() => expect(routerMocks.replace).toHaveBeenCalledWith('/finance/accounting/journals/je-posted'));
+  });
+});
+

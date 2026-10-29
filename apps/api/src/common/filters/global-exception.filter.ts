@@ -28,7 +28,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exResponse = exception.getResponse() as Record<string, unknown>;
-      errorCode = (exResponse['errorCode'] as string) ?? ERROR_CODES.INTERNAL_ERROR;
+      // A thrown HttpException without its own errorCode still says what kind of failure it was:
+      // a 404 is NOT_FOUND, never INTERNAL_ERROR (AR audit, Step 9).
+      errorCode = (exResponse['errorCode'] as string) ?? codeForStatus(status);
       message = (exResponse['message'] as string) ?? exception.message;
       details = exResponse['details'] as Record<string, unknown> | undefined;
     } else {
@@ -41,5 +43,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     };
 
     response.status(status).json(body);
+  }
+}
+
+function codeForStatus(status: number): string {
+  switch (status) {
+    case HttpStatus.BAD_REQUEST:
+    case HttpStatus.UNPROCESSABLE_ENTITY:
+      return ERROR_CODES.VALIDATION_ERROR;
+    case HttpStatus.UNAUTHORIZED:
+      return ERROR_CODES.UNAUTHORIZED;
+    case HttpStatus.FORBIDDEN:
+      return ERROR_CODES.FORBIDDEN;
+    case HttpStatus.NOT_FOUND:
+      return ERROR_CODES.NOT_FOUND;
+    case HttpStatus.CONFLICT:
+      return ERROR_CODES.CONFLICT;
+    default:
+      return ERROR_CODES.INTERNAL_ERROR;
   }
 }

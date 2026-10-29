@@ -182,15 +182,15 @@ export function FilterChips({ chips, onRemove, onClearAll, labels, className }: 
       {chips.map((chip) => (
         <span
           key={chip.key}
-          className="inline-flex min-h-7 items-center gap-1 rounded-full border border-border bg-surface px-3 text-caption text-muted-foreground"
+          className="inline-flex min-h-7 items-center gap-1 rounded-control bg-brand-accent px-2.5 text-caption text-brand-primary"
         >
           {chip.label}:
-          <span className="font-semibold text-foreground">{chip.value}</span>
+          <span className="font-semibold">{chip.value}</span>
           <button
             type="button"
             onClick={() => onRemove(chip.key)}
             aria-label={labels?.remove?.(chip) ?? `Remove ${chip.label}`}
-            className="-me-1.5 ms-0.5 inline-flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-surface-hover hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+            className="-me-1 ms-0.5 inline-flex size-6 items-center justify-center rounded-full text-brand-primary hover:bg-brand-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
           >
             <X size={12} aria-hidden="true" />
           </button>

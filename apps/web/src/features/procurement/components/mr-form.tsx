@@ -34,6 +34,8 @@ import { FormErrorSummary, type FormFieldError } from '@/components/form-error-s
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjects } from '@/features/projects/hooks/use-projects';
+import type { DocumentReadResult } from '@erp/types';
+
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 
@@ -43,6 +45,11 @@ import {
   useSpendCategories,
   useUoms,
 } from '../hooks/use-procurement';
+import { itemsFromMaterialList } from '../material-list-reading';
+import { isRetryable, newClientRef } from '@/features/outbox/outbox';
+import { useOutbox } from '@/features/outbox/instance';
+import { KeptOnPhone } from '@/features/outbox/kept-on-phone';
+import { ReadablePhoto } from './readable-photo';
 import type { CreateMaterialRequestPayload, MaterialRequestPriority, MaterialRequestScope } from '../types';
 import {
   MrItemsEditor,
@@ -95,6 +102,9 @@ export function MrForm() {
   const summaryRef = useRef<HTMLDivElement>(null);
 
   const create = useCreateMaterialRequest();
+  const outbox = useOutbox();
+  const [clientRef] = useState(() => ({ current: newClientRef() }));
+  const [kept, setKept] = useState(false);
   const projects = useProjects();
   const materials = useMaterials();
   const uoms = useUoms();
@@ -167,24 +177,57 @@ export function MrForm() {
       requestAnimationFrame(() => summaryRef.current?.scrollIntoView({ block: 'start' }));
       return;
     }
-    create.mutate(buildPayload(), {
+    // Step 7 — one reference for this form: a send repeated after a lost reply is the same request.
+    const payload = { ...buildPayload(), clientRef: clientRef.current };
+    const keepForLater = () =>
+      void outbox
+        ?.queue('MATERIAL_REQUEST', t('outboxLabel', { count: payload.lines.length }), payload as never)
+        .then(() => setKept(true));
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      keepForLater();
+      return;
+    }
+    create.mutate(payload, {
       onSuccess: (mr) =>
         router.push(
           fromProjectId && scope === 'PROJECT' && projectId === fromProjectId
             ? `/projects/${projectId}/procurement/requests`
             : `/procurement/requests/${mr.id}`,
         ),
+      onError: (error) => {
+        if (!isRetryable(error)) return;
+        create.reset();
+        keepForLater();
+      },
     });
   }
 
   const leave = () =>
     router.push(fromProjectId ? `/projects/${fromProjectId}/procurement/requests` : '/procurement/requests');
 
+  // Step 7 — a photographed list: its lines replace an untouched first row, or follow the typed ones.
+  const [listPhotoId, setListPhotoId] = useState<string | null>(null);
+  const addReadItems = (reading: DocumentReadResult) => {
+    const read = itemsFromMaterialList(reading, materials.data ?? [], uoms.data ?? [], () => {
+      const key = `item-${nextKey.current}`;
+      nextKey.current += 1;
+      return key;
+    });
+    if (read.length === 0) return;
+    setItems((current) => {
+      const untouched = current.length === 1 && !current[0]!.material && !current[0]!.description && !current[0]!.quantity;
+      return untouched ? read : [...current, ...read];
+    });
+  };
+
   const addItem = () => {
     const key = `item-${nextKey.current}`;
     nextKey.current += 1;
     setItems((current) => [...current, emptyMrItem(key)]);
   };
+
+  // A fresh page load starts a new form, with a new reference, whatever the signal.
+  if (kept) return <KeptOnPhone onAnother={() => window.location.reload()} />;
 
   return (
     <>
@@ -303,6 +346,14 @@ export function MrForm() {
             <h2 id="mr-items-section" className="border-b border-border pb-2 text-body font-semibold text-foreground">
               {t('itemsSection')}
             </h2>
+
+            <ReadablePhoto
+              kind="MATERIAL_LIST"
+              messages="procurement.mr.photo"
+              fileId={listPhotoId}
+              onUploaded={setListPhotoId}
+              onRead={addReadItems}
+            />
 
             <MrItemsEditor
               items={items}

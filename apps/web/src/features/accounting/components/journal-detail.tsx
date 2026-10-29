@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -16,6 +17,8 @@ import {
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { useSession } from '@/features/auth/session/use-session';
+import { useUsers } from '@/features/users/hooks/use-users';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -23,9 +26,10 @@ import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
 import { indexAccounts, lineAccountLabel } from '../account-display';
 import { useAccounts, useJournal, useJournalAction } from '../hooks/use-accounting';
-import { availableActions, entryTotals, formatDifference } from '../journal-entry';
+import { availableActions, canEditJournal, entryTotals, formatDifference } from '../journal-entry';
 import type { JournalAction } from '../journal-entry';
 import { JournalStatusBadge } from './journal-status-badge';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 /** Actions that take a free-text reason the server requires. */
 const REASON_REQUIRED: Partial<Record<JournalAction, true>> = { reject: true, reverse: true };
@@ -40,8 +44,19 @@ export function JournalDetail({ journalId }: { journalId: string }) {
   // posting engine fills them. Not blocking: a line falls back to its id tail.
   const accounts = useAccounts();
   const action = useJournalAction(journalId);
+  const userId = useSession().user?.id ?? null;
 
   const [pending, setPending] = useState<JournalAction | null>(null);
+  const router = useRouter();
+  const users = useUsers();
+
+  // G-1 — posting writes a new numbered entry and leaves this draft behind, empty, pointing at it.
+  // Anyone on the draft's address (the person who just pressed Post, an old link, the inbox) is
+  // taken to the entry that holds the lines.
+  const replacedBy = journal.data?.replacedByJournalEntryId ?? null;
+  useEffect(() => {
+    if (replacedBy && replacedBy !== journalId) router.replace(`/finance/accounting/journals/${replacedBy}`);
+  }, [replacedBy, journalId, router]);
 
   const accountsById = useMemo(() => indexAccounts(accounts.data ?? []), [accounts.data]);
 
@@ -49,7 +64,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
     journal.data ? (journal.data.journalNumber ?? journal.data.id.slice(-8)) : undefined,
   );
 
-  if (journal.isPending) {
+  if (journal.isPending || (replacedBy && replacedBy !== journalId)) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
@@ -75,7 +90,13 @@ export function JournalDetail({ journalId }: { journalId: string }) {
 
   const entry = journal.data;
   const totals = entryTotals(entry);
-  const actions = availableActions(entry.status);
+  const raisedBy = (id: string) => {
+    const u = (users.data ?? []).find((x) => x.id === id);
+    return u ? `${u.firstName} ${u.lastName}`.trim() || u.email : id.slice(-8);
+  };
+  const actions = availableActions(entry.status).filter((a) => a !== 'reverse' || (!entry.reversedBy && !entry.reversalOfJournalEntryId));
+  // The preparer edits a draft, or corrects a rejected journal and resubmits it.
+  const editable = canEditJournal(entry, userId);
 
   function runAction(type: JournalAction, reason: string) {
     switch (type) {
@@ -92,7 +113,16 @@ export function JournalDetail({ journalId }: { journalId: string }) {
           { onSuccess: () => setPending(null) },
         );
       case 'post':
-        return action.mutate({ type: 'post' }, { onSuccess: () => setPending(null) });
+        return action.mutate(
+          { type: 'post' },
+          {
+            onSuccess: (result) => {
+              setPending(null);
+              const posted = (result as { journalEntryId?: string }).journalEntryId;
+              if (posted && posted !== journalId) router.replace(`/finance/accounting/journals/${posted}`);
+            },
+          },
+        );
       case 'reverse':
         return action.mutate(
           {
@@ -169,9 +199,15 @@ export function JournalDetail({ journalId }: { journalId: string }) {
               {formatDate(entry.documentDate, locale)}
             </dd>
           </div>
+          {entry.autoReverseOn ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('autoReverseOn')}</dt>
+              <dd className="mt-0.5 text-sm text-foreground">{formatDate(entry.autoReverseOn, locale)}</dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-xs text-muted-foreground">{t('createdBy')}</dt>
-            <dd className="mt-0.5 text-sm text-foreground">{entry.createdBy.slice(-8)}</dd>
+            <dd className="mt-0.5 text-sm text-foreground">{raisedBy(entry.createdBy)}</dd>
           </div>
         </dl>
       </section>
@@ -254,10 +290,21 @@ export function JournalDetail({ journalId }: { journalId: string }) {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-foreground">{t('actions.heading')}</h2>
 
-        {actions.length === 0 ? (
+        {entry.status === 'REJECTED' && editable ? (
+          <p className="text-sm text-muted-foreground">{t('rejectedHint')}</p>
+        ) : null}
+
+        {actions.length === 0 && !editable ? (
           <p className="text-sm text-muted-foreground">{t('actions.noneAvailable')}</p>
         ) : (
           <div className="flex flex-wrap gap-3">
+            {editable ? (
+              <Button variant={entry.status === 'REJECTED' ? 'default' : 'outline'} asChild>
+                <Link href={`/finance/accounting/journals/${entry.id}/edit`}>
+                  {entry.status === 'REJECTED' ? t('actions.correct') : t('actions.edit')}
+                </Link>
+              </Button>
+            ) : null}
             {actions.map((type) => (
               <Button
                 key={type}
@@ -315,6 +362,8 @@ export function JournalDetail({ journalId }: { journalId: string }) {
           {formatDifference(totals.differenceMinor)}
         </p>
       ) : null}
+
+      <AttachmentsPanel kind="JOURNAL" ownerId={journalId} />
     </div>
   );
 }

@@ -21,6 +21,8 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Alert, Select } from '@erp/ui';
 
+import { LoadError } from '@/components/load-error';
+
 import { usePurchaseOrders } from '../hooks/use-procurement';
 import type { PurchaseOrder } from '../types';
 
@@ -77,7 +79,7 @@ export function PurchaseOrderPicker({
   }
 
   if (orders.isError) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void orders.refetch()} />;
   }
 
   if (rows.length === 0) {

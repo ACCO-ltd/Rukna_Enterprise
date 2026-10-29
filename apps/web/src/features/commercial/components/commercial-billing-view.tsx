@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import type {
@@ -20,7 +21,7 @@ import { canSendReminder } from '@/features/communications/reminder-eligibility'
 import { statusTone } from '@/lib/status-registry';
 import { useAccountingReadiness } from '@/features/finance/hooks/use-accounting-readiness';
 
-import { useCommercialBilling } from '../hooks/use-commercial';
+import { useCommercialBilling, useInvoiceRetention } from '../hooks/use-commercial';
 import { toClientReceivableView, type ClientReceivableView } from '../lib/collection-view-model';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
@@ -247,7 +248,10 @@ function TodoPanel({
   const locale = useLocale() as 'en' | 'ar';
   const { todo, capabilities, financialsVisible } = workspace;
   // Verifying a milestone is manage:project (Progress → Review); others see the wait in words.
-  const canVerify = usePermissions().can('manage:project');
+  const { can } = usePermissions();
+  const canVerify = can('manage:project');
+  // ADR-046 §5 — releasing retention is a contract command (`manage:contract`).
+  const canReleaseRetention = can('manage:contract');
 
   const headingId = useId();
   const billingItems: ActionListItem[] = todo.map((item, index) => {
@@ -271,6 +275,9 @@ function TodoPanel({
         canBill: capabilities.canBill,
         canVerify,
         canRecordPayment: capabilities.canRecordPayment && financialsVisible && receivables.some((row) => row.invoiceId === item.invoiceId && row.canRecordPayment),
+        canReleaseRetention,
+        asOf: workspace.asOf.slice(0, 10),
+        paymentTermsDays: workspace.contract?.paymentTermsDays ?? 30,
         onPrepare,
         onRecordPayment,
       }),
@@ -313,6 +320,8 @@ export function todoTitle(item: CommercialTodoItem, t: Translate): string {
       return t('todo.notSentTitle', { number: item.invoiceNumber ?? '' });
     case 'BLOCKED_STAGE':
       return t('todo.blockedTitle', { stage: stageLabel(item, t) });
+    case 'RETENTION_TO_INVOICE':
+      return t('todo.retentionTitle');
   }
 }
 
@@ -351,6 +360,8 @@ function todoDescription(item: CommercialTodoItem, t: Translate, locale: 'en' | 
                   : '',
             })
           : t('todo.contractNotActive');
+    case 'RETENTION_TO_INVOICE':
+      return item.retention?.released ? t('todo.retentionReleasedBody') : t('todo.retentionFinalBody');
   }
 }
 
@@ -365,6 +376,9 @@ function todoAction(
     canBill: boolean;
     canVerify: boolean;
     canRecordPayment: boolean;
+    canReleaseRetention: boolean;
+    asOf: string;
+    paymentTermsDays: number;
     onPrepare: (installmentId: string) => void;
     onRecordPayment: (invoiceId: string) => void;
   },
@@ -413,7 +427,72 @@ function todoAction(
           {item.blocker === 'MILESTONE_NOT_LINKED' ? t('todo.linkInProgress') : t('todo.verifyInProgress')}
         </Link>
       );
+    case 'RETENTION_TO_INVOICE':
+      // Creates a draft only (Issue posts it), so the ledger does not gate it — like Prepare.
+      if (!ctx.canBill || !item.retention) return null;
+      if (!item.retention.released && !ctx.canReleaseRetention) {
+        return <span className="text-caption text-muted-foreground">{t('todo.retentionNeedsRelease')}</span>;
+      }
+      return (
+        <RetentionInvoiceAction
+          projectId={projectId}
+          retention={item.retention}
+          variant={variant}
+          invoiceHref={ctx.invoiceHref}
+          asOf={ctx.asOf}
+          paymentTermsDays={ctx.paymentTermsDays}
+        />
+      );
   }
+}
+
+/**
+ * ADR-046 §5 — release the retention when needed, raise the release invoice, open it. The draft is
+ * reviewed and issued on the invoice page like any other.
+ */
+function RetentionInvoiceAction({
+  projectId,
+  retention,
+  variant,
+  invoiceHref,
+  asOf,
+  paymentTermsDays,
+}: {
+  projectId: string;
+  retention: { contractId: string; released: boolean };
+  variant: 'default' | 'outline';
+  invoiceHref: InvoiceHrefBuilder;
+  asOf: string;
+  paymentTermsDays: number;
+}) {
+  const t = useTranslations('commercial.billingView');
+  const router = useRouter();
+  const invoice = useInvoiceRetention(projectId);
+  const due = new Date(`${asOf}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() + paymentTermsDays);
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        size="sm"
+        variant={variant}
+        disabled={invoice.isPending}
+        onClick={() =>
+          invoice.mutate(
+            { ...retention, invoiceDate: asOf, dueDate: due.toISOString().slice(0, 10) },
+            { onSuccess: (created) => router.push(invoiceHref(created.id)) },
+          )
+        }
+      >
+        {retention.released ? t('todo.retentionInvoice') : t('todo.retentionReleaseAndInvoice')}
+      </Button>
+      {invoice.isError ? (
+        <span role="alert" className="text-caption text-danger">
+          {invoice.error instanceof Error && invoice.error.message ? invoice.error.message : t('todo.retentionFailed')}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 // ─── Invoices ────────────────────────────────────────────────────────────────
@@ -565,6 +644,8 @@ function sourceLine(row: CommercialInvoiceRow, t: Translate): string {
       return t('invoices.sourceStage', { label });
     case 'IPC':
       return t('invoices.sourceIpc', { label });
+    case 'RETENTION_RELEASE':
+      return t('invoices.sourceRetention', { label });
     default:
       return label;
   }

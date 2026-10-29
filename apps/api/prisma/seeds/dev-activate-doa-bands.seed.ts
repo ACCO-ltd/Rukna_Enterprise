@@ -2,7 +2,7 @@
  * DEV-ONLY — switch ADR-022 CONST-DOA-005 value-threshold routing ON for a dev tenant, and give
  * the seeded admin every band role so the whole approval loop is walkable by one person.
  *
- * ACCO's PO/payment bands are seeded **inactive** by `acco-workflows.seed.ts` (governance never
+ * ACCO's PO/payment bands are seeded **inactive** by `default-workflows.seed.ts` (governance never
  * takes effect until a deliberate activation with real role-holders). This script performs that
  * activation for a dev database so an engineer can watch:
  *
@@ -22,11 +22,11 @@
 import { PrismaClient } from '@prisma/client';
 
 import {
-  accoPurchaseOrderBands,
-  accoQuotationAwardBands,
-  accoSupplierPaymentBands,
-} from '../../src/platform/workflows/seeders/acco-value-bands.js';
-import { accoApprovalChains } from '../../src/platform/workflows/seeders/acco-lifecycle-chains.js';
+  defaultPurchaseOrderBands,
+  defaultQuotationAwardBands,
+  defaultSupplierPaymentBands,
+} from '../../src/platform/workflows/seeders/default-value-bands.js';
+import { defaultApprovalChains } from '../../src/platform/workflows/seeders/default-lifecycle-chains.js';
 
 const prisma = new PrismaClient();
 const ORG_SLUG = process.env.ACCO_ORG_SLUG ?? 'acco';
@@ -36,14 +36,14 @@ const DISABLE = process.argv.includes('--off');
 // and every distinct approver role any of them can demand — derived from the specs so this
 // script never drifts from what was seeded.
 // ADR-044 §7 — the quotation award bands ARE the PO approval, so they switch with the PO bands.
-const PO_BAND_NAMES = accoPurchaseOrderBands().map((b) => b.name);
-const AWARD_BAND_NAMES = accoQuotationAwardBands().map((b) => b.name);
+const PO_BAND_NAMES = defaultPurchaseOrderBands().map((b) => b.name);
+const AWARD_BAND_NAMES = defaultQuotationAwardBands().map((b) => b.name);
 const ALL_BANDS = [
-  ...accoPurchaseOrderBands(),
-  ...accoQuotationAwardBands(),
-  ...accoSupplierPaymentBands(),
+  ...defaultPurchaseOrderBands(),
+  ...defaultQuotationAwardBands(),
+  ...defaultSupplierPaymentBands(),
 ];
-const ALL_CHAINS = accoApprovalChains();
+const ALL_CHAINS = defaultApprovalChains();
 const DEF_NAMES = [...ALL_BANDS.map((b) => b.name), ...ALL_CHAINS.map((c) => c.name)];
 const APPROVER_ROLES = [
   ...new Set([...ALL_BANDS.flatMap((b) => b.steps), ...ALL_CHAINS.flatMap((c) => c.steps)]),

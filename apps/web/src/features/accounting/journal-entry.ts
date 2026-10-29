@@ -27,6 +27,8 @@ export interface JournalLineDraft {
   debit: string;
   credit: string;
   memo: string;
+  /** Carried through an edit unchanged: the editor has no project column yet. */
+  projectId?: string;
 }
 
 export interface JournalDraft {
@@ -35,6 +37,8 @@ export interface JournalDraft {
   description: string;
   currencyCode: string;
   lines: JournalLineDraft[];
+  /** G-2 — an accrual reverses itself on this date when it posts ('' = no). */
+  autoReverseOn?: string;
 }
 
 export function emptyLine(): JournalLineDraft {
@@ -212,12 +216,14 @@ export function toJournalPayload(draft: JournalDraft): CreateJournalPayload {
         ...(debitMinor > 0 ? { debitAmount: debitMinor / 10 ** MONEY_SCALE } : {}),
         ...(creditMinor > 0 ? { creditAmount: creditMinor / 10 ** MONEY_SCALE } : {}),
         ...(line.memo.trim() ? { memo: line.memo.trim() } : {}),
+        ...(line.projectId ? { projectId: line.projectId } : {}),
       };
     });
 
   return {
     accountingDate: draft.accountingDate,
     ...(draft.documentDate.trim() ? { documentDate: draft.documentDate } : {}),
+    ...(draft.autoReverseOn?.trim() ? { autoReverseOn: draft.autoReverseOn } : {}),
     description: draft.description.trim(),
     currencyCode: draft.currencyCode.trim().toUpperCase(),
     lines,
@@ -238,16 +244,15 @@ export type JournalAction = 'submit' | 'approve' | 'reject' | 'post' | 'reverse'
  *
  * Mirrors the `where` clauses in `ManualJournalService`: submit requires DRAFT, approve and
  * reject require SUBMITTED, post requires APPROVED, reverse requires POSTED. A REJECTED
- * journal goes back to the author, and the service accepts `submit` from it — the lifecycle
- * in §6.17 draws `REJECTED → DRAFT`, but no endpoint performs that transition, so resubmitting
- * directly is the only path back.
+ * journal goes back to its preparer, who corrects it (`PATCH /journals/:id` returns it to
+ * DRAFT) and then submits — see `canEditJournal`. It cannot be submitted as it stands.
  */
 export function availableActions(status: JournalStatus): JournalAction[] {
   switch (status) {
     case 'DRAFT':
       return ['submit'];
     case 'REJECTED':
-      return ['submit'];
+      return [];
     case 'SUBMITTED':
       return ['approve', 'reject'];
     case 'APPROVED':
@@ -275,4 +280,37 @@ export function entryTotals(entry: Pick<JournalEntry, 'lines'>): JournalTotals {
       memo: line.description ?? '',
     })),
   );
+}
+
+/**
+ * Whether this user may edit the journal: a DRAFT, or a REJECTED one to correct and resubmit, and
+ * only by its preparer — anyone else editing would become a second preparer who could then approve
+ * it (CONST-DOA-003). Mirrors `ManualJournalService.update`.
+ */
+export function canEditJournal(
+  entry: Pick<JournalEntry, 'status' | 'createdBy'>,
+  userId: string | null,
+): boolean {
+  return (entry.status === 'DRAFT' || entry.status === 'REJECTED') && userId !== null && entry.createdBy === userId;
+}
+
+/** A saved journal as the editor holds it. A zero side reads as empty, the way it was typed. */
+export function draftFromEntry(entry: JournalEntry): JournalDraft {
+  const side = (amount: string) => ((parseMinorUnits(amount, MONEY_SCALE) ?? 0) === 0 ? '' : amount);
+  return {
+    accountingDate: entry.accountingDate.slice(0, 10),
+    documentDate: entry.documentDate ? entry.documentDate.slice(0, 10) : '',
+    autoReverseOn: entry.autoReverseOn ? entry.autoReverseOn.slice(0, 10) : '',
+    description: entry.description,
+    currencyCode: entry.currencyCode,
+    lines: [...entry.lines]
+      .sort((a, b) => a.lineNumber - b.lineNumber)
+      .map((line) => ({
+        accountId: line.accountId,
+        debit: side(line.debitAmount),
+        credit: side(line.creditAmount),
+        memo: line.description ?? '',
+        ...(line.projectId ? { projectId: line.projectId } : {}),
+      })),
+  };
 }

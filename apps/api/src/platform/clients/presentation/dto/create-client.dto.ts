@@ -64,7 +64,7 @@ export class CreateClientDto extends ClientFieldsDto {
   @IsString()
   name!: string;
 
-  @ApiProperty({ type: ContactInputDto, description: 'Required — a client is someone ACCO can reach.' })
+  @ApiProperty({ type: ContactInputDto, description: 'Required — a client is someone the company can reach.' })
   @IsDefined()
   @ValidateNested()
   @Type(() => ContactInputDto)

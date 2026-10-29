@@ -58,14 +58,14 @@ describe('isContraBalance', () => {
 
 describe('subtype list', () => {
   /**
-   * Thirty, verified by diffing this list against the `AccountSubtype` enum in
+   * Thirty-one, verified by diffing this list against the `AccountSubtype` enum in
    * `schema.prisma` — no value missing and none invented. The count is pinned because a
    * subtype absent from the picker is an account nobody can create, and nothing else here
    * would notice.
    */
-  it('covers all 30 schema subtypes with no duplicates', () => {
-    expect(ACCOUNT_SUBTYPES).toHaveLength(30);
-    expect(new Set(ACCOUNT_SUBTYPES).size).toBe(30);
+  it('covers all 32 schema subtypes with no duplicates', () => {
+    expect(ACCOUNT_SUBTYPES).toHaveLength(32);
+    expect(new Set(ACCOUNT_SUBTYPES).size).toBe(32);
   });
 
   /**

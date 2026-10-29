@@ -189,7 +189,7 @@ function StepStart({
 
   function applyTemplate() {
     setError(null);
-    apply.mutate('ACCO_STANDARD_BUILDING', {
+    apply.mutate('STANDARD_BUILDING', {
       onSuccess: () => onDone(),
       onError: (e) => setError(e instanceof ApiError ? e.message : tw('start.applyFailed')),
     });

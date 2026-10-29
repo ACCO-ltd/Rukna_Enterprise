@@ -252,8 +252,8 @@ export class CommunicationService {
   ): Promise<OutboundMessageView[]> {
     if (!Number.isFinite(olderThanMinutes) || olderThanMinutes < 0) {
       throw new BadRequestException({
-        code: 'MESSAGE_INVALID',
-        field: 'olderThanMinutes',
+        errorCode: 'MESSAGE_INVALID',
+        details: { field: 'olderThanMinutes' },
         message: 'olderThanMinutes must be 0 or more',
       });
     }
@@ -372,8 +372,8 @@ export class CommunicationService {
   ): Promise<OutboundMessageView> {
     if (input.outcome !== 'SENT' && input.outcome !== 'FAILED') {
       throw new BadRequestException({
-        code: 'MESSAGE_INVALID',
-        field: 'outcome',
+        errorCode: 'MESSAGE_INVALID',
+        details: { field: 'outcome' },
         message: 'outcome must be SENT or FAILED',
       });
     }
@@ -721,7 +721,7 @@ export class CommunicationService {
 
 function validate(input: SendWhatsAppTemplateInput): void {
   const bad = (field: string, why: string) =>
-    new BadRequestException({ code: 'MESSAGE_INVALID', field, message: why });
+    new BadRequestException({ errorCode: 'MESSAGE_INVALID', message: why, details: { field } });
   if (!E164_PATTERN.test(input.recipient?.trim() ?? ''))
     throw bad('recipient', 'Recipient must be an E.164 number, e.g. +252612345678');
   if (!input.idempotencyKey?.trim() || input.idempotencyKey.length > 200)
@@ -749,7 +749,7 @@ function assertSameIntent(row: OutboundMessage, input: SendWhatsAppTemplateInput
     row.resourceId !== input.resourceId
   ) {
     throw new ConflictException({
-      code: 'IDEMPOTENCY_KEY_REUSED',
+      errorCode: 'IDEMPOTENCY_KEY_REUSED',
       message: 'This idempotency key was already used for a different message.',
     });
   }

@@ -1,9 +1,8 @@
 'use client';
 
 /**
- * The supplier directory (GET /procurement/suppliers) on the shared list pattern.
- *
- * Search and Status run on the server (status default All). Columns: supplier (name + code),
+ * The supplier directory (GET /procurement/suppliers) on the ADR-047 list page: title block,
+ * views, export. The search runs on the server; status and the other filters on the returned set. Columns: supplier (name + code),
  * contact, terms, open orders, what we owe, status. "We owe" follows the server's
  * `moneyVisible` (view:commitment-ledger) — hidden money is an absent column, never $0.
  *
@@ -15,12 +14,29 @@
 
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, EmptyState, FormField, Input, type FilterValues, type ListFilterField } from '@erp/ui';
-import { Plus } from 'lucide-react';
+import {
+  Alert,
+  Avatar,
+  Button,
+  cn,
+  EmptyState,
+  entityTintClass,
+  FormField,
+  Input,
+  type FilterValues,
+  type ListFilterField,
+} from '@erp/ui';
+import { Plus, Truck } from 'lucide-react';
+import type { SavedViewState } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { PlatformDataGrid, type GridColumn, type SortState } from '@/components/platform-data-grid';
+import { todayWireDate } from '@/features/accounting/invoice-overdue';
+import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
+import { useListViewState } from '@/features/saved-views/hooks/use-list-view-state';
 import {
   ACCOUNTING_PERMISSIONS,
   PROCUREMENT_PERMISSIONS,
@@ -36,11 +52,25 @@ import {
   useSupplierDirectory,
   useUpdateSupplier,
 } from '../hooks/use-procurement';
-import type { CatalogueStatusFilter, Supplier, SupplierDirectoryRow, UpdateSupplierPayload } from '../types';
+import type { Supplier, SupplierDirectoryRow, UpdateSupplierPayload } from '../types';
 import { ListRowMenu, errorText } from './list-row-menu';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { CreateForm } from './setup-shell';
-import { useListControls } from './use-list-controls';
+
+const DEFAULT_SORT: SortState = { key: 'supplier', direction: 'asc' };
+
+/** Whether a supplier passes the list's filters (the search ran on the server). */
+export function supplierMatchesFilters(row: SupplierDirectoryRow, filters: FilterValues): boolean {
+  if (filters.status && row.status !== filters.status) return false;
+  if (filters.orders === 'open' && row.openOrderCount === 0) return false;
+  if (
+    filters.owe === 'yes' &&
+    !(row.payableBalances ?? []).some((b) => Number(b.amount) > 0) &&
+    !(Number(row.payableBalance ?? 0) > 0)
+  )
+    return false;
+  return true;
+}
 
 export function SupplierList() {
   const t = useTranslations('procurement.supplier');
@@ -52,23 +82,31 @@ export function SupplierList() {
   const canCreate = can(PROCUREMENT_PERMISSIONS.manageSuppliers);
   // Edit and the status commands gate on the permission their endpoints enforce.
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
+  const router = useRouter();
 
-  const [filters, setFilters] = useState<FilterValues>({});
-  const controls = useListControls();
-  const directory = useSupplierDirectory({
-    ...(filters.status ? { status: filters.status as CatalogueStatusFilter } : {}),
-    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
-  });
+  const view = useListViewState(DEFAULT_SORT, {}, { searchOnServer: true });
+  const { filters } = view;
+  const directory = useSupplierDirectory(
+    view.debouncedSearch ? { search: view.debouncedSearch } : undefined,
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = useSupplier(editingId ?? '');
-  const [pending, setPending] = useState<{ row: SupplierDirectoryRow; action: 'deactivate' | 'reactivate' } | null>(null);
+  const [pending, setPending] = useState<{
+    row: SupplierDirectoryRow;
+    action: 'deactivate' | 'reactivate';
+  } | null>(null);
   const deactivate = useDeactivateSupplier();
   const reactivate = useReactivateSupplier();
   const command = pending?.action === 'reactivate' ? reactivate : deactivate;
 
-  const rows = useMemo(() => directory.data ?? [], [directory.data]);
+  const all = useMemo(() => directory.data ?? [], [directory.data]);
+  const visible = useMemo(
+    () => all.filter((row) => supplierMatchesFilters(row, filters)),
+    [all, filters],
+  );
   const moneyVisible =
-    rows.find((row) => row.moneyVisible !== undefined)?.moneyVisible ?? can(PROCUREMENT_PERMISSIONS.viewCommitments);
+    all.find((row) => row.moneyVisible !== undefined)?.moneyVisible ??
+    can(PROCUREMENT_PERMISSIONS.viewCommitments);
 
   const dash = <span className="text-muted-foreground">{tc('notAvailable')}</span>;
 
@@ -80,10 +118,20 @@ export function SupplierList() {
       sortable: true,
       card: 'title',
       plainValue: (row) => row.name,
+      exportValue: (row) => `${row.name} (${row.code})`,
       render: (row) => (
-        <span className="block min-w-0">
-          <span className="block truncate font-medium text-foreground">{row.name}</span>
-          <span className="block font-mono text-caption text-muted-foreground">{row.code}</span>
+        <span className="flex items-center gap-2.5">
+          <Avatar
+            name={row.name}
+            size="sm"
+            className={cn('rounded-control ring-0', entityTintClass(row.id))}
+          />
+          <span className="block min-w-0">
+            <span className="block max-w-[18rem] truncate font-medium text-foreground">
+              {row.name}
+            </span>
+            <span className="block font-mono text-caption text-muted-foreground">{row.code}</span>
+          </span>
         </span>
       ),
     },
@@ -91,6 +139,7 @@ export function SupplierList() {
       key: 'contact',
       header: tList('columns.contact'),
       card: 'subtitle',
+      plainValue: (row) => row.primaryContact?.name ?? '',
       render: (row) =>
         row.primaryContact ? (
           <span className="block min-w-0">
@@ -152,7 +201,10 @@ export function SupplierList() {
         if (row.payableBalance === null) return dash;
         return (
           <span className="tabular-nums">
-            {formatMoney(row.payableBalance, balances[0]?.currencyCode ?? row.defaultCurrency ?? 'USD')}
+            {formatMoney(
+              row.payableBalance,
+              balances[0]?.currencyCode ?? row.defaultCurrency ?? 'USD',
+            )}
           </span>
         );
       },
@@ -162,6 +214,7 @@ export function SupplierList() {
     key: 'status',
     header: tList('columns.status'),
     card: 'status',
+    plainValue: (row) => tSetup(`statusOption.${row.status}`),
     render: (row) => <ProcurementStatusBadge vocabulary="masterData" status={row.status} />,
   });
 
@@ -170,17 +223,69 @@ export function SupplierList() {
       key: 'status',
       type: 'select',
       label: tSetup('status'),
-      options: (['ACTIVE', 'INACTIVE'] as const).map((value) => ({ value, label: tSetup(`statusOption.${value}`) })),
+      options: (['ACTIVE', 'INACTIVE'] as const).map((value) => ({
+        value,
+        label: tSetup(`statusOption.${value}`),
+      })),
     },
+    {
+      key: 'orders',
+      type: 'select',
+      label: tList('columns.openOrders'),
+      options: [{ value: 'open', label: tList('filters.withOpenOrders') }],
+    },
+    ...(moneyVisible
+      ? [
+          {
+            key: 'owe',
+            type: 'select' as const,
+            label: tList('columns.owe'),
+            options: [{ value: 'yes', label: tList('filters.weOwe') }],
+          },
+        ]
+      : []),
   ];
 
-  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
-  const isFirstUse = !isNarrowed && directory.data !== undefined && rows.length === 0;
-  const view = controls.view(rows, columns);
+  // Views (Step 8). The search is the API's: a count shows only for the search the rows came with.
+  const countFor = (state: SavedViewState): number | undefined =>
+    (state.search ?? '').trim() === view.search.trim()
+      ? all.filter((row) => supplierMatchesFilters(row, state.filters ?? {})).length
+      : undefined;
+  const builtInViews: Omit<BuiltInView, 'count'>[] = [
+    { id: 'all', label: tList('views.all'), state: { sort: DEFAULT_SORT } },
+    {
+      id: 'active',
+      label: tList('views.active'),
+      state: { filters: { status: 'ACTIVE' }, sort: DEFAULT_SORT },
+    },
+    {
+      id: 'openOrders',
+      label: tList('views.openOrders'),
+      state: { filters: { orders: 'open' }, sort: DEFAULT_SORT },
+    },
+    ...(moneyVisible
+      ? [
+          {
+            id: 'weOwe',
+            label: tList('views.weOwe'),
+            state: { filters: { owe: 'yes' }, sort: { key: 'owe', direction: 'desc' as const } },
+          },
+        ]
+      : []),
+  ];
+  const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
+
+  const isNarrowed = Boolean(view.search.trim()) || Object.values(filters).some(Boolean);
+  const isFirstUse = !isNarrowed && directory.data !== undefined && all.length === 0;
+  const activeCount = all.filter((row) => row.status === 'ACTIVE').length;
+  const headerSummary =
+    all.length === 0 || view.search.trim()
+      ? undefined
+      : tList('headerSummary', { count: all.length, active: activeCount });
 
   const createAction = canCreate ? (
     <Button asChild>
-      <Link href="/procurement/suppliers/new">
+      <Link href="/procurement/suppliers/new" data-shortcut-new="">
         <Plus className="size-4" aria-hidden="true" />
         {tList('new')}
       </Link>
@@ -188,10 +293,16 @@ export function SupplierList() {
   ) : undefined;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
+      <ListPageHeader
+        eyebrow={tList('eyebrow')}
+        title={t('title')}
+        summary={headerSummary}
+        actions={createAction}
+      />
       <PlatformDataGrid
         columns={columns}
-        data={view.data}
+        data={visible}
         rowKey={(row) => row.id}
         label={t('title')}
         isLoading={directory.isPending}
@@ -201,13 +312,28 @@ export function SupplierList() {
         searchPlaceholder={tList('searchPlaceholder')}
         resultLabel={(count) => tList('countLabel', { count })}
         noMatchMessage={tList('noMatches')}
-        server={view.server}
+        pagination={{ defaultPageSize: 25 }}
+        columnVisibility
+        listState={view.listState}
+        savedViews={
+          <ListViewsBar
+            listKey="suppliers"
+            builtIns={builtIns}
+            current={view.current}
+            onApply={view.applyView}
+            countFor={countFor}
+            label={tList('views.label')}
+          />
+        }
+        exportAs={{ fileName: `suppliers-${todayWireDate()}`, sheetName: t('title') }}
+        shortcuts={{
+          onNew: canCreate
+            ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
+            : undefined,
+        }}
         filters={filterFields}
         filterValues={filters}
-        onFilterValuesChange={(next) => {
-          setFilters(next);
-          controls.resetPage();
-        }}
+        onFilterValuesChange={view.setFilters}
         rowActions={
           canManage
             ? (row) => (
@@ -215,6 +341,8 @@ export function SupplierList() {
                   label={tc('rowMenu', { number: row.name })}
                   commands={[
                     { key: 'edit', label: t('edit'), onSelect: () => setEditingId(row.id) },
+                    // AP-3 — the supplier's statement of account.
+                    { key: 'statement', label: t('statement'), onSelect: () => router.push(`/finance/accounting/supplier-statement?supplierId=${row.id}`) },
                     row.status === 'ACTIVE'
                       ? {
                           key: 'deactivate',
@@ -232,9 +360,15 @@ export function SupplierList() {
             : undefined
         }
         emptyState={
-          isFirstUse ? <EmptyState title={tList('empty')} description={tList('emptyHint')} action={createAction} /> : undefined
+          isFirstUse ? (
+            <EmptyState
+              icon={<Truck size={20} aria-hidden="true" />}
+              title={tList('empty')}
+              description={tList('emptyHint')}
+              action={createAction}
+            />
+          ) : undefined
         }
-        toolbarActions={createAction}
       />
       {!moneyVisible && !directory.isPending && !directory.isError && !isFirstUse ? (
         <p className="text-caption text-muted-foreground">{tList('moneyHidden')}</p>
@@ -246,9 +380,13 @@ export function SupplierList() {
 
       {pending ? (
         <ConfirmActionDialog
-          title={tList(pending.action === 'deactivate' ? 'deactivateTitle' : 'reactivateTitle', { name: pending.row.name })}
+          title={tList(pending.action === 'deactivate' ? 'deactivateTitle' : 'reactivateTitle', {
+            name: pending.row.name,
+          })}
           description={tList(pending.action === 'deactivate' ? 'deactivateBody' : 'reactivateBody')}
-          confirmLabel={pending.action === 'deactivate' ? tSetup('deactivate') : tSetup('reactivate')}
+          confirmLabel={
+            pending.action === 'deactivate' ? tSetup('deactivate') : tSetup('reactivate')
+          }
           destructive={pending.action === 'deactivate'}
           isPending={command.isPending}
           errorMessage={command.error ? errorText(command.error, tc('loadFailed')) : undefined}
@@ -273,13 +411,7 @@ export function SupplierList() {
  * The `code` is shown read-only because it is the supplier's identity and the endpoint drops
  * it; `status` is absent entirely, owned by a separate flow the endpoint cannot reach.
  */
-export function SupplierEditForm({
-  supplier,
-  onDone,
-}: {
-  supplier: Supplier;
-  onDone: () => void;
-}) {
+export function SupplierEditForm({ supplier, onDone }: { supplier: Supplier; onDone: () => void }) {
   const t = useTranslations('procurement.supplier');
   const tc = useTranslations('procurement.common');
 
@@ -306,7 +438,9 @@ export function SupplierEditForm({
 
     const name = String(form.get('name') ?? '').trim();
     const taxNumber = String(form.get('taxNumber') ?? '').trim();
-    const currency = String(form.get('defaultCurrency') ?? '').trim().toUpperCase();
+    const currency = String(form.get('defaultCurrency') ?? '')
+      .trim()
+      .toUpperCase();
     const termsRaw = String(form.get('paymentTermsDays') ?? '').trim();
     const address = String(form.get('address') ?? '').trim();
 
@@ -318,10 +452,7 @@ export function SupplierEditForm({
 
     const termsProvided = termsRaw !== '';
     const termsNum = termsProvided ? Number(termsRaw) : undefined;
-    if (
-      termsProvided &&
-      (termsNum === undefined || !Number.isInteger(termsNum) || termsNum < 0)
-    ) {
+    if (termsProvided && (termsNum === undefined || !Number.isInteger(termsNum) || termsNum < 0)) {
       errors.terms = t('termsInvalid');
     }
 
@@ -362,9 +493,7 @@ export function SupplierEditForm({
       title={t('editTitle')}
       subtitle={t('editSubtitle')}
     >
-      {fieldErrors.form ? (
-        <Alert variant="error" messages={[fieldErrors.form]} />
-      ) : null}
+      {fieldErrors.form ? <Alert variant="error" messages={[fieldErrors.form]} /> : null}
 
       {/* The identity of the supplier — read-only, because the endpoint drops it. */}
       <FormField htmlFor={ids.code} label={t('codeReadOnly')}>

@@ -8,11 +8,14 @@ import type { Account, ClientInvoice, PostInvoicePayload } from './types';
 /**
  * ─── The journal posting an invoice will write ──────────────────────────────────
  *
- * `client-invoice.service.ts:155-186` builds exactly three lines, and never more:
+ * `ClientInvoiceService.post` builds these lines:
  *
- *   Dr  Accounts Receivable    totalAmount
- *     Cr  Revenue                          subtotal
+ *   Dr  Accounts Receivable    totalAmount              (the amount due)
+ *   Dr  Retention Receivable   retentionAmount          ← IPC invoices holding retention (ADR-046 §5)
+ *   Dr  Client Advance         advanceRecoveryAmount    ← IPC invoices recovering an advance
+ *     Cr  Revenue                          subtotal     ← omitted when 0 (a retention release)
  *     Cr  Output VAT                       vatAmount    ← only when vatAmount > 0
+ *     Cr  Retention Receivable             retentionReleasedAmount  ← a retention release invoice
  *
  * The user is shown this before they confirm, because posting is irreversible except by a
  * reversal journal and an accountant should see which accounts are about to move.
@@ -40,8 +43,8 @@ export interface InvoicePostPlan {
   totalDebit: string;
   totalCredit: string;
   /**
-   * Always true for a well-formed invoice, since `total = subtotal + vat` is enforced at
-   * creation. Surfaced anyway: if it is ever false the invoice row itself is inconsistent, and
+   * Always true for a well-formed invoice, since `total + retention + advance recovery =
+   * subtotal + vat` is enforced at creation. Surfaced anyway: if it is ever false the invoice row itself is inconsistent, and
    * posting a journal the engine will reject is worse than refusing here.
    */
   balanced: boolean;
@@ -64,9 +67,27 @@ export function hasVat(invoice: ClientInvoice): boolean {
  * chart that is perfectly adequate for the invoice in hand.
  */
 export function rolesForInvoice(invoice: ClientInvoice): PostingRole[] {
-  return hasVat(invoice)
-    ? ['AR_CONTROL', 'REVENUE', 'VAT_OUTPUT']
-    : ['AR_CONTROL', 'REVENUE'];
+  // ADR-048 — a hand-typed invoice credits each line's own income account, never the revenue role.
+  const roles: PostingRole[] = invoice.isManual ? ['AR_CONTROL'] : ['AR_CONTROL', 'REVENUE'];
+  if (hasVat(invoice)) roles.push('VAT_OUTPUT');
+  if (retentionMinor(invoice) > 0 || retentionReleasedMinor(invoice) > 0) roles.push('RETENTION_RECEIVABLE');
+  if (advanceRecoveryMinor(invoice) > 0) roles.push('CLIENT_ADVANCE');
+  return roles;
+}
+
+/** ADR-046 §5 — retention an IPC invoice holds back, in minor units (0 on other invoices). */
+function retentionMinor(invoice: ClientInvoice): number {
+  return toMinorUnits(invoice.retentionAmount ?? '0', MONEY_SCALE);
+}
+
+/** ADR-046 §5 — retention a release invoice bills, in minor units (0 on other invoices). */
+function retentionReleasedMinor(invoice: ClientInvoice): number {
+  return toMinorUnits(invoice.retentionReleasedAmount ?? '0', MONEY_SCALE);
+}
+
+/** ADR-046 §5 — advance an IPC invoice recovers, in minor units (0 on other invoices). */
+function advanceRecoveryMinor(invoice: ClientInvoice): number {
+  return toMinorUnits(invoice.advanceRecoveryAmount ?? '0', MONEY_SCALE);
 }
 
 /**
@@ -83,7 +104,7 @@ export function planInvoicePost(
   if (problems.length > 0) return { ok: false, problems };
 
   const ar = resolved.get('AR_CONTROL')!;
-  const revenue = resolved.get('REVENUE')!;
+  const revenue = resolved.get('REVENUE') ?? null;
   const vat = resolved.get('VAT_OUTPUT') ?? null;
 
   const totalMinor = toMinorUnits(invoice.totalAmount, MONEY_SCALE);
@@ -97,13 +118,32 @@ export function planInvoicePost(
       debit: fromMinorUnits(totalMinor, MONEY_SCALE),
       credit: null,
     },
-    {
+  ];
+  // ADR-048 — a hand-typed invoice: one credit per income account, in line order, summed as the
+  // server sums them (EVT-AR-001 for manual invoices).
+  if (invoice.isManual) {
+    const byCode = new Map<string, number>();
+    for (const line of invoice.lines ?? []) {
+      byCode.set(line.revenueAccountCode, (byCode.get(line.revenueAccountCode) ?? 0) + toMinorUnits(line.amount, MONEY_SCALE));
+    }
+    for (const [code, minor] of byCode) {
+      const account = accounts.find((a) => a.code === code);
+      lines.push({
+        accountCode: code,
+        accountName: account ? accountName(account, locale) : code,
+        debit: null,
+        credit: fromMinorUnits(minor, MONEY_SCALE),
+      });
+    }
+  } else if (revenue && subtotalMinor > 0) {
+    // A retention release earns no revenue: no zero-value revenue line, as the server writes it.
+    lines.push({
       accountCode: revenue.code,
       accountName: accountName(revenue, locale),
       debit: null,
       credit: fromMinorUnits(subtotalMinor, MONEY_SCALE),
-    },
-  ];
+    });
+  }
 
   if (vat && vatMinor > 0) {
     lines.push({
@@ -114,18 +154,53 @@ export function planInvoicePost(
     });
   }
 
-  const creditMinor = subtotalMinor + (vat ? vatMinor : 0);
+  // Retention and advance recovery debits sit after the AR line, as the server writes them.
+  const holdBackLines: JournalPreviewLine[] = [];
+  let heldBackMinor = 0;
+  for (const [role, minor] of [
+    ['RETENTION_RECEIVABLE', retentionMinor(invoice)],
+    ['CLIENT_ADVANCE', advanceRecoveryMinor(invoice)],
+  ] as const) {
+    const account = resolved.get(role);
+    if (!account || minor <= 0) continue;
+    heldBackMinor += minor;
+    holdBackLines.push({
+      accountCode: account.code,
+      accountName: accountName(account, locale),
+      debit: fromMinorUnits(minor, MONEY_SCALE),
+      credit: null,
+    });
+  }
+  lines.splice(1, 0, ...holdBackLines);
+
+  // A retention release invoice moves its retention out of Retention Receivable.
+  const releasedMinor = retentionReleasedMinor(invoice);
+  const releasedFrom = resolved.get('RETENTION_RECEIVABLE');
+  if (releasedFrom && releasedMinor > 0) {
+    lines.push({
+      accountCode: releasedFrom.code,
+      accountName: accountName(releasedFrom, locale),
+      debit: null,
+      credit: fromMinorUnits(releasedMinor, MONEY_SCALE),
+    });
+  }
+
+  const debitMinor = totalMinor + heldBackMinor;
+  const revenueMinor = invoice.isManual
+    ? (invoice.lines ?? []).reduce((sum, line) => sum + toMinorUnits(line.amount, MONEY_SCALE), 0)
+    : subtotalMinor;
+  const creditMinor = revenueMinor + (vat ? vatMinor : 0) + (releasedFrom ? releasedMinor : 0);
 
   return {
     ok: true,
     plan: {
       lines,
-      totalDebit: fromMinorUnits(totalMinor, MONEY_SCALE),
+      totalDebit: fromMinorUnits(debitMinor, MONEY_SCALE),
       totalCredit: fromMinorUnits(creditMinor, MONEY_SCALE),
-      balanced: totalMinor === creditMinor,
+      balanced: debitMinor === creditMinor,
       payload: {
         arAccountCode: ar.code,
-        revenueAccountCode: revenue.code,
+        ...(revenue && !invoice.isManual ? { revenueAccountCode: revenue.code } : {}),
         ...(vat ? { vatAccountCode: vat.code } : {}),
       },
     },

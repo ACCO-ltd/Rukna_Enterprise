@@ -41,7 +41,10 @@ export type PostingRole =
   | 'VAT_OUTPUT'
   | 'UNAPPLIED_RECEIPTS'
   | 'AP_CONTROL'
-  | 'SUPPLIER_ADVANCE';
+  | 'SUPPLIER_ADVANCE'
+  // ADR-046 §5 — an IPC invoice's retention and advance recovery.
+  | 'RETENTION_RECEIVABLE'
+  | 'CLIENT_ADVANCE';
 
 /**
  * The `AccountSubtype` value that marks each role.
@@ -56,6 +59,8 @@ const SUBTYPE_FOR: Record<PostingRole, string> = {
   UNAPPLIED_RECEIPTS: 'UNAPPLIED_CLIENT_RECEIPTS',
   AP_CONTROL: 'ACCOUNTS_PAYABLE',
   SUPPLIER_ADVANCE: 'SUPPLIER_ADVANCE',
+  RETENTION_RECEIVABLE: 'RETENTION_RECEIVABLE',
+  CLIENT_ADVANCE: 'CLIENT_ADVANCE_LIABILITY',
 };
 
 /**

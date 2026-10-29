@@ -37,6 +37,7 @@ import {
 } from '@erp/ui';
 import { ArrowRight, ChevronLeft, ChevronRight, CircleCheck, CircleDashed, Expand } from 'lucide-react';
 
+import { ReadPhotoButton } from '@/features/document-reader/read-photo-button';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { accountName } from '@/features/accounting/account-display';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
@@ -345,6 +346,16 @@ function RecordBody({
                 submit();
               }}
             >
+              {/* Step 7 — finance reads the receipt photo (money is read on the finance side only). */}
+              <ReadPhotoButton
+                fileId={photoIdOf(photos[0] ?? {}) ?? null}
+                kind="RECEIPT"
+                onRead={(r) => {
+                  if (r.total) setTotal(r.total);
+                  if (r.documentNumber) setReceiptNo(r.documentNumber);
+                  if (r.date) setDate(r.date);
+                }}
+              />
               <FormField
                 htmlFor="record-total"
                 label={t('total')}

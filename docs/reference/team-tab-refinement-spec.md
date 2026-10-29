@@ -1,6 +1,6 @@
 # Team tab (project members) — refinement spec
 
-Status: **Build-ready (low-risk).** Owners: Frontend — frontend engineer · Backend — Abdulsalam.
+Status: **Build-ready (low-risk).** Owner: Abdulsalam (full stack).
 Source of truth: **ADR-022** (ACCO authority matrix), ADR-009 (Project Access Scope Resolver).
 
 ## Purpose

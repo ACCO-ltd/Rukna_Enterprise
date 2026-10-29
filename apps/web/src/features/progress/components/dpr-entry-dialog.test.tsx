@@ -142,7 +142,7 @@ describe('DprEntryDialog', () => {
     const onClose = vi.fn();
     render(onClose);
 
-    expect(screen.getByRole('button', { name: 'Submit for review' })).toHaveClass('bg-brand-ink');
+    expect(screen.getByRole('button', { name: 'Submit for review' })).toHaveClass('bg-brand-primary');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(onClose).toHaveBeenCalled();
     expect(mocks.submit).not.toHaveBeenCalled();

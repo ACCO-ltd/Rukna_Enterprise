@@ -200,6 +200,8 @@ export interface BillAllocationFacts {
   postingStatus: string;
   paymentId: string;
   paymentDate: Date | string | null;
+  /** AP-1 — the payment's document status: a rejected or cancelled payment holds nothing. */
+  paymentDocumentStatus?: string;
 }
 
 export interface BillPaymentSummary {
@@ -230,7 +232,7 @@ export function summarizeBillPayments(allocations: readonly BillAllocationFacts[
       paidPayments.add(allocation.paymentId);
       const day = allocation.paymentDate ? new Date(allocation.paymentDate).toISOString().slice(0, 10) : null;
       if (day && (!last || day > last)) last = day;
-    } else if (PENDING_ALLOCATION.has(allocation.postingStatus)) {
+    } else if (PENDING_ALLOCATION.has(allocation.postingStatus) && !DEAD_PAYMENT.has(allocation.paymentDocumentStatus ?? '')) {
       pending = pending.plus(amount);
     }
   }

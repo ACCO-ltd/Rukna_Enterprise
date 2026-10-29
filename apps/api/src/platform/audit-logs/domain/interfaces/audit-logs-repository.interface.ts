@@ -1,8 +1,9 @@
-import type { AuditLogEntity } from '../entities/audit-log.entity.js';
+import type { AuditLogPage, AuditLogQuery } from '@erp/types';
 
 export interface IAuditLogsRepository {
   create(data: CreateAuditLogData): Promise<void>;
-  findByOrg(orgId: string, limit?: number): Promise<AuditLogEntity[]>;
+  /** One page of the organisation's trail, newest first, with the filter facets. */
+  findPage(orgId: string, query: Required<Pick<AuditLogQuery, 'page' | 'pageSize'>> & AuditLogQuery): Promise<AuditLogPage>;
 }
 
 export interface CreateAuditLogData {

@@ -199,7 +199,7 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
     // Activate the contract (DRAFT → ACTIVE). issuePackage requires ACTIVE status. D3: activation
     // requires the signed date on record first.
     await expect(contractService.transition(identity, contractId, 'activate')).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'CONTRACT_SIGNED_DATE_REQUIRED' }),
+      response: expect.objectContaining({ errorCode: 'CONTRACT_SIGNED_DATE_REQUIRED' }),
     });
     expect((await prisma.contract.findUniqueOrThrow({ where: { id: contractId } })).status).toBe('DRAFT');
     await contractService.recordSignedDate(identity, contractId, '2026-01-15');

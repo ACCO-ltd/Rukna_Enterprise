@@ -50,8 +50,8 @@ Run each step against the target tenant with `DATABASE_URL` pointing at that ten
       pnpm --filter @erp/api governance:seed        # prisma/seeds/seed-acco-governance.seed.ts
       ```
 
-      This runs `seedAccoWorkflows` (`src/platform/workflows/seeders/acco-workflows.seed.ts`), which
-      builds from `acco-value-bands.ts` and `acco-lifecycle-chains.ts`. Everything is seeded
+      This runs `seedDefaultWorkflows` (`src/platform/workflows/seeders/default-workflows.seed.ts`), which
+      builds from `default-value-bands.ts` and `default-lifecycle-chains.ts`. Everything is seeded
       **inactive**; the ACCO_GOVERNANCE policy version is ACTIVE only so the mandatory SoD rules take
       effect. No transaction routing switches on here.
 
@@ -124,7 +124,7 @@ Run each step against the target tenant with `DATABASE_URL` pointing at that ten
 | Step | Artefact |
 |---|---|
 | 1 | `apps/api/prisma/seeds/sync-governance-publish-authority.seed.ts` → `scripts/governed-roles.ts` |
-| 2 | `pnpm --filter @erp/api governance:seed` → `apps/api/prisma/seeds/seed-acco-governance.seed.ts` → `src/platform/workflows/seeders/acco-workflows.seed.ts` (uses `acco-value-bands.ts`) |
+| 2 | `pnpm --filter @erp/api governance:seed` → `apps/api/prisma/seeds/seed-acco-governance.seed.ts` → `src/platform/workflows/seeders/default-workflows.seed.ts` (uses `default-value-bands.ts`) |
 | 4 | `apps/api/src/platform/workflows/__tests__/governance-acceptance.spec.ts` |
 | 6 | `GOVERNANCE_AUTHORING_ENABLED` — `src/platform/workflows/application/governance-authoring.config.ts`; surfaced on `GET /health` |
 | 0 | [audit-outbox-delivery.md](./audit-outbox-delivery.md) |

@@ -144,6 +144,7 @@ export class SupplierBillDocumentService {
         postingStatus: allocation.postingStatus,
         paymentId: allocation.supplierPaymentId,
         paymentDate: allocation.payment.paymentDate,
+        paymentDocumentStatus: allocation.payment.documentStatus,
       })),
     );
 

@@ -123,7 +123,7 @@ describe('invoice feedback', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Post' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Invoice INV-0042 posted');
+    expect(dialog).toHaveTextContent('Invoice INV-0042 issued');
     expect(dialog).toHaveTextContent(/Record a receipt/);
   });
 });

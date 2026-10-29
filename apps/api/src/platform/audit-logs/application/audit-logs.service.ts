@@ -4,7 +4,7 @@ import type {
   IAuditLogsRepository,
   CreateAuditLogData,
 } from '../domain/interfaces/audit-logs-repository.interface.js';
-import type { AuditLogEntity } from '../domain/entities/audit-log.entity.js';
+import type { AuditLogPage, AuditLogQuery } from '@erp/types';
 
 @Injectable()
 export class AuditLogsService {
@@ -17,7 +17,14 @@ export class AuditLogsService {
     await this.auditLogsRepository.create(data);
   }
 
-  async findByOrg(orgId: string, limit = 50): Promise<AuditLogEntity[]> {
-    return this.auditLogsRepository.findByOrg(orgId, limit);
+  /** One page of the organisation's trail, newest first (Step 8: searchable, filterable, named). */
+  async findPage(orgId: string, query: AuditLogQuery): Promise<AuditLogPage> {
+    return this.auditLogsRepository.findPage(orgId, {
+      ...query,
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? DEFAULT_PAGE_SIZE,
+    });
   }
 }
+
+const DEFAULT_PAGE_SIZE = 50;

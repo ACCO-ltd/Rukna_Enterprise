@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState, useCallback } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -31,9 +31,12 @@ import {
   TableScroll,
 } from '@erp/ui';
 import Link from 'next/link';
-import { ArrowUpDown, Columns3, Search } from 'lucide-react';
+import { ArrowUpDown, Columns3, Download, Rows3, Rows4, Search } from 'lucide-react';
 
 import { useRecentlySavedRows } from '@/lib/mutation-feedback';
+import { setDensityPreference, useDensityPreference } from '@/features/theme/density-store';
+import { exportCsv, type CsvCell } from '@/features/accounting/lib/export-csv';
+import { downloadXlsx } from '@/lib/xlsx-export';
 
 // ─── Column definition ────────────────────────────────────────────────────────
 
@@ -68,6 +71,8 @@ export interface GridColumn<T> {
    * Required for `sortable: true`. Also powers global text search.
    */
   plainValue?: (row: T) => string | number | null | undefined;
+  /** The cell as exported (Step 2b) when it differs from `plainValue` — which also feeds search. */
+  exportValue?: (row: T) => string | number | null | undefined;
   /** Renders the cell's visual content. */
   render: (row: T, ctx: GridRenderContext) => React.ReactNode;
   /**
@@ -115,6 +120,23 @@ export interface ServerListConfig {
   pageSizeOptions?: number[];
 }
 
+/**
+ * Search and sort held by the caller while the grid still filters, sorts and pages `data` in the
+ * browser — so a saved view (Step 2a, ADR-047) can restore them. Ignored when `server` is set.
+ */
+export interface ListStateConfig {
+  search: string;
+  onSearchChange: (next: string) => void;
+  sort: SortState | null;
+  onSortChange: (next: SortState | null) => void;
+  /**
+   * The caller already sent `search` to the API and `data` is what it matched (Step 8): the grid
+   * does not search `data` again — the server matches fields the columns do not show — but still
+   * sorts, groups, pages and exports it in the browser.
+   */
+  searchedUpstream?: boolean;
+}
+
 // ─── Selection ────────────────────────────────────────────────────────────────
 
 export interface SelectionConfig {
@@ -124,6 +146,9 @@ export interface SelectionConfig {
   /** Bulk actions rendered above the table when items are selected. */
   actions: React.ReactNode;
 }
+
+/** The accessible name of a row's checkbox: "Select Omar Nur". Falls back to the row key. */
+export type SelectionRowLabel<T> = (row: T) => string;
 
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
@@ -347,6 +372,8 @@ export interface PlatformDataGridProps<T> {
    * only thing that knows whether that query has resolved.
    */
   savedViews?: React.ReactNode;
+  /** Figures above the list card — summary tiles (Step 2c). */
+  summary?: React.ReactNode;
 
   // ── Toolbar ────────────────────────────────────────────────────────────────
 
@@ -407,11 +434,48 @@ export interface PlatformDataGridProps<T> {
    */
   server?: ServerListConfig;
 
+  /** Caller-held search and sort on a client-side list (see `ListStateConfig`). */
+  listState?: ListStateConfig;
+
+  /**
+   * Offer "Export" (CSV / Excel) of every row the current search, filters and sort keep — not
+   * just the page on screen (Step 2b, ADR-047). Columns export their `plainValue`; a column
+   * without one, or a redacted or hidden column, is left out. `fileName` has no extension.
+   * Client-side lists only: a server list holds one page and would export a misleading part.
+   */
+  exportAs?: { fileName: string; sheetName: string };
+
+  /**
+   * Keyboard shortcuts while no field has focus (Step 2d, ADR-047): `/` search, `J`/`K` next /
+   * previous row (focusing its link, so Enter opens it), `X` select the focused row, `N` new.
+   * Off unless set; one list per screen should own them. `onNew` is the screen's create action.
+   */
+  shortcuts?: { onNew?: () => void; /** Hint word for N, e.g. "quick add" (default "new"). */ newLabel?: string };
+
+  /**
+   * Ways to group the rows (Step 2e, ADR-047 list design) — "Group: Client". Each names how a
+   * row maps to a group. Grouping orders the rows by group (then by the sort) before paging, and
+   * draws a header per group with its count and `totals`. Client-side lists only.
+   */
+  groupOptions?: { key: string; label: string; groupOf: (row: T) => { id: string; label: string } }[];
+
+  /**
+   * Column totals: a footer row under the table and a subtotal in each group header. Keyed by
+   * column key; each sums the rows it is given. Totals cover every row the filters keep, not
+   * just the page.
+   */
+  totals?: { label: (count: number) => string; columns: Record<string, (rows: T[]) => React.ReactNode> };
+
+  /** A quick-add row at the top of the table (ADR-047 list design) — the caller's own form. */
+  quickAdd?: React.ReactNode;
+
   /**
    * Row selection. Only provide when the caller has bulk actions to perform —
    * a checkbox column that does nothing is not useful.
    */
   selection?: SelectionConfig;
+  /** What a row's checkbox names — the row's title ("Omar Nur"), read as "Select Omar Nur". */
+  selectionRowLabel?: SelectionRowLabel<T>;
 
   // ── States ─────────────────────────────────────────────────────────────────
 
@@ -577,6 +641,7 @@ export function PlatformDataGrid<T>({
   rowKey,
   label,
   savedViews,
+  summary,
   footerSummary,
   toolbarFilters,
   toolbarLeft,
@@ -587,6 +652,7 @@ export function PlatformDataGrid<T>({
   columnVisibility: enableColumnVisibility,
   pagination: paginationConfig,
   selection,
+  selectionRowLabel,
   isLoading,
   isError,
   onRetry,
@@ -608,8 +674,15 @@ export function PlatformDataGrid<T>({
   filterValues,
   onFilterValuesChange,
   server,
+  listState,
+  exportAs,
+  shortcuts,
+  groupOptions,
+  totals,
+  quickAdd,
 }: PlatformDataGridProps<T>) {
   const savedRows = useRecentlySavedRows();
+  const density = useDensityPreference();
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
   const searchId = useId();
@@ -619,13 +692,15 @@ export function PlatformDataGrid<T>({
   const [localSearch, setLocalSearch] = useState('');
   const [localSort, setLocalSort] = useState<SortState | null>(defaultSort ?? null);
   const [localPage, setLocalPage] = useState(1);
+  const [groupKey, setGroupKey] = useState<string>('');
   // A server-driven list owns these; the grid only reports changes.
-  const search = server ? server.search : localSearch;
-  const setSearch = (next: string) => (server ? server.onSearchChange(next) : setLocalSearch(next));
-  const sort = server ? server.sort : localSort;
+  const owner = server ?? listState;
+  const search = owner ? owner.search : localSearch;
+  const setSearch = (next: string) => (owner ? owner.onSearchChange(next) : setLocalSearch(next));
+  const sort = owner ? owner.sort : localSort;
   const setSort = (next: SortState | null | ((prev: SortState | null) => SortState | null)) => {
     const resolved = typeof next === 'function' ? next(sort) : next;
-    if (server) server.onSortChange(resolved);
+    if (owner) owner.onSortChange(resolved);
     else setLocalSort(resolved);
   };
   const page = server ? server.page : localPage;
@@ -683,9 +758,10 @@ export function PlatformDataGrid<T>({
   // viewer cannot see would reveal it.
   const readableColumns = useMemo(() => visibleColumns.filter((c) => !c.redacted), [visibleColumns]);
   const isServer = Boolean(server);
+  const searchedUpstream = isServer || Boolean(listState?.searchedUpstream);
   const searched = useMemo(
-    () => (isServer ? data : searchRows(data, search, readableColumns)),
-    [isServer, data, search, readableColumns],
+    () => (searchedUpstream ? data : searchRows(data, search, readableColumns)),
+    [searchedUpstream, data, search, readableColumns],
   );
   const sorted = useMemo(
     () => (isServer ? searched : sortRows(searched, sort, readableColumns)),
@@ -697,11 +773,20 @@ export function PlatformDataGrid<T>({
   const paged = Boolean(paginationConfig || server);
   const totalPages = paged ? Math.max(1, Math.ceil(rowCount / pageSize)) : 1;
   const safePage = Math.min(page, totalPages);
+  // Grouping (Step 2e): group order first, the chosen sort within each group. Stable, so rows
+  // keep their sorted order inside a group.
+  const activeGroup = server ? undefined : groupOptions?.find((g) => g.key === groupKey);
+  const ordered = activeGroup
+    ? [...sorted]
+        .map((row, index) => ({ row, index, group: activeGroup.groupOf(row) }))
+        .sort((a, b) => a.group.label.localeCompare(b.group.label) || a.index - b.index)
+        .map((entry) => entry.row)
+    : sorted;
   const visible = server
     ? sorted
     : paginationConfig
-      ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
-      : sorted;
+      ? ordered.slice((safePage - 1) * pageSize, safePage * pageSize)
+      : ordered;
   const from = paged ? (safePage - 1) * pageSize + 1 : 1;
   const to = server
     ? from + visible.length - 1
@@ -718,6 +803,46 @@ export function PlatformDataGrid<T>({
   // Merge toolbar slots (support both old and new prop names)
   const filtersSlot = toolbarFilters ?? toolbarLeft;
   const actionsSlot = toolbarActions ?? toolbarRight;
+
+  // ── Keyboard shortcuts (Step 2d) ───────────────────────────────────────────
+  // Above the early returns: a hook below them would change the hook count between renders.
+  const tableRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const shortcutsRef = useRef({ shortcuts, selection, visible, rowKey });
+  // The listener reads the latest props through this ref, refreshed after each render.
+  useEffect(() => {
+    shortcutsRef.current = { shortcuts, selection, visible, rowKey };
+  });
+  const shortcutsOn = Boolean(shortcuts);
+  useEffect(() => {
+    if (!shortcutsOn) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]')) return;
+      const { shortcuts: current, selection: sel, visible: rows, rowKey: keyOf } = shortcutsRef.current;
+      const links = Array.from(tableRef.current?.querySelectorAll<HTMLAnchorElement>('a[data-row-link]') ?? []);
+      const at = links.findIndex((link) => link === document.activeElement);
+      const key = event.key.toLowerCase();
+      if (event.key === '/') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      } else if ((key === 'j' || key === 'k') && links.length > 0) {
+        event.preventDefault();
+        const next = at === -1 ? 0 : Math.min(links.length - 1, Math.max(0, at + (key === 'j' ? 1 : -1)));
+        links[next]?.focus();
+      } else if (key === 'x' && sel && at !== -1) {
+        event.preventDefault();
+        const row = rows[at];
+        if (row) sel.onSelect(keyOf(row), !sel.selected.has(keyOf(row)));
+      } else if (key === 'n' && current?.onNew) {
+        event.preventDefault();
+        current.onNew();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [shortcutsOn]);
 
   // ── Loading ────────────────────────────────────────────────────────────────
 
@@ -883,17 +1008,53 @@ export function PlatformDataGrid<T>({
     );
   };
 
+  // ── Group header / totals row (Step 2e) ────────────────────────────────────
+  // The label spans the columns before the first totalled one; totals sit under their columns.
+  // Deliberately a render helper, not a hook — it is used below the early returns.
+  const summaryRow = (rows: T[], label: (count: number) => string, className: string) => {
+    const firstTotal = visibleColumns.findIndex((c) => totals?.columns[c.key]);
+    const span = (firstTotal === -1 ? visibleColumns.length : Math.max(1, firstTotal)) + (hasSelection ? 1 : 0);
+    const rest = firstTotal === -1 ? [] : visibleColumns.slice(Math.max(1, firstTotal));
+    return (
+      <TableRow className={cn('hover:bg-transparent', className)}>
+        <TableCell colSpan={span}>{label(rows.length)}</TableCell>
+        {rest.map((col) => (
+          <TableCell key={col.key} numeric={col.numeric} className="tabular-nums">
+            {totals?.columns[col.key]?.(rows) ?? null}
+          </TableCell>
+        ))}
+        {hasActions ? <TableCell /> : null}
+      </TableRow>
+    );
+  };
+
+  // ── Export (Step 2b) ───────────────────────────────────────────────────────
+
+  const runExport = (format: 'csv' | 'xlsx') => {
+    if (!exportAs) return;
+    const exportColumns = readableColumns.filter((c) => c.exportValue ?? c.plainValue);
+    const headers = exportColumns.map((c) => c.header);
+    const rows: CsvCell[][] = sorted.map((row) => exportColumns.map((c) => (c.exportValue ?? c.plainValue)?.(row) ?? null));
+    if (format === 'csv') exportCsv(`${exportAs.fileName}.csv`, headers, rows);
+    else downloadXlsx(`${exportAs.fileName}.xlsx`, [{ name: exportAs.sheetName, rows: [headers, ...rows] }]);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
-      {/* ── Saved views ─────────────────────────────────────────────────── */}
-      {savedViews}
+      {/* ── Summary above the list (tiles) ──────────────────────────────── */}
+      {summary}
+
+      {/* ── The list card (ADR-047): views, toolbar, chips and rows are ONE surface, so the
+          tabs and filters read as belonging to the table they change. ───────────────── */}
+      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+      {savedViews ? <div className="px-4 pt-1">{savedViews}</div> : null}
 
       {/* ── Toolbar (ADR-035): scoped search · filters · one create ─────── */}
       <div
         hidden={!toolbar}
-        className="flex flex-wrap items-center gap-2 rounded-panel border border-border bg-surface p-3"
+        className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3"
       >
         <div className="relative min-w-0 flex-1 basis-56 sm:max-w-md">
           <Label htmlFor={searchId} className="sr-only">
@@ -905,6 +1066,7 @@ export function PlatformDataGrid<T>({
             className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
+            ref={searchInputRef}
             id={searchId}
             type="search"
             placeholder={searchPlaceholder ?? t('searchPlaceholder')}
@@ -968,11 +1130,73 @@ export function PlatformDataGrid<T>({
             />
           ) : null}
 
+          {groupOptions && groupOptions.length > 0 && !server ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <span className="text-muted-foreground">{t('groupBy')}</span>
+                  <span>{groupOptions.find((g) => g.key === groupKey)?.label ?? t('groupNone')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {[{ key: '', label: t('groupNone') }, ...groupOptions].map((option) => (
+                  <DropdownMenuItem
+                    key={option.key || 'none'}
+                    onSelect={() => {
+                      setGroupKey(option.key);
+                      setPage(1);
+                    }}
+                  >
+                    <span className="flex-1">{option.label}</span>
+                    {option.key === groupKey ? <span aria-hidden="true">✓</span> : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+
+          {exportAs && !server ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-1.5" disabled={sorted.length === 0}>
+                  <Download size={16} aria-hidden="true" />
+                  <span>{t('export')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => runExport('csv')}>{t('exportCsv', { count: sorted.length })}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => runExport('xlsx')}>{t('exportXlsx', { count: sorted.length })}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+
+          {/* Row density (ADR-047 list toolbar) — a per-user display preference, the same one
+              the design gallery sets; compact shows about a third more rows. */}
+          <div className="hidden items-center rounded-control border border-border-strong p-0.5 md:flex" role="group" aria-label={t('density')}>
+            {(['comfortable', 'compact'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={density === option}
+                aria-label={t(option === 'compact' ? 'densityCompact' : 'densityComfortable')}
+                title={t(option === 'compact' ? 'densityCompact' : 'densityComfortable')}
+                onClick={() => setDensityPreference(option)}
+                className={cn(
+                  'flex size-8 items-center justify-center rounded-control text-muted-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+                  density === option ? 'bg-surface-selected text-foreground' : 'hover:bg-surface-hover',
+                )}
+              >
+                {option === 'compact' ? <Rows4 size={16} aria-hidden="true" /> : <Rows3 size={16} aria-hidden="true" />}
+              </button>
+            ))}
+          </div>
+
           {enableColumnVisibility ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label={t('columnVisibility')}>
+                <Button variant="outline" className="gap-1.5">
                   <Columns3 size={16} aria-hidden="true" />
+                  <span>{t('columnVisibility')}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -1015,6 +1239,7 @@ export function PlatformDataGrid<T>({
 
       {/* ── Applied filters — applied only, never the panel's draft ─────── */}
       <FilterChips
+        className="border-b border-border px-4 py-2"
         chips={filterChips}
         onRemove={(key) => applyFilters({ ...appliedFilters, [key]: '' })}
         onClearAll={() => applyFilters({})}
@@ -1026,9 +1251,9 @@ export function PlatformDataGrid<T>({
 
       {/* ── Bulk action bar (when rows selected) ──────────────────────────── */}
       {hasSelection && selection && selection.selected.size > 0 ? (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-subtle px-4 py-2">
+        <div className="flex items-center gap-3 border-b border-border bg-brand-accent px-4 py-2">
           <span className="text-sm font-medium text-foreground">
-            {selection.selected.size} selected
+            {t('selectedCount', { count: selection.selected.size })}
           </span>
           {selection.actions}
         </div>
@@ -1039,7 +1264,7 @@ export function PlatformDataGrid<T>({
           on the page background. The rules that used to separate them were doing the work a
           single container does better, and the count now reads as a property of the table
           under it instead of a sentence stranded above it. */}
-      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+      <div>
         {header ? <div className="border-b border-border px-4 py-3">{header}</div> : null}
         {/* ── Money in view — only for lists that total a column ─────────── */}
         {footerSummary ? (
@@ -1139,6 +1364,8 @@ export function PlatformDataGrid<T>({
         ) : null}
 
         {/* ── Table ────────────────────────────────────────────────────────── */}
+        {/* `contents`: a handle for the shortcuts to find row links, adding no box of its own. */}
+        <div ref={tableRef} className="contents">
         <TableScroll
           aria-label={label}
           // The panel around it already draws the frame; a second border here would read as a
@@ -1154,14 +1381,15 @@ export function PlatformDataGrid<T>({
           }}
         >
           <Table>
-            {/* Navy header band (ADR-035) — the same on every list in the product. */}
-            <TableHeader className="bg-brand-panel">
-              <TableRow className="bg-brand-panel hover:bg-brand-panel">
+            {/* Light header row (ADR-047, replacing ADR-035's navy band): quiet labels over the
+                data, so the figures — not the chrome — carry the weight. */}
+            <TableHeader className="bg-surface-subtle">
+              <TableRow className="border-b border-border bg-surface-subtle hover:bg-surface-subtle">
                 {/* Selection checkbox header */}
                 {hasSelection && selection ? (
-                  <TableHead className="w-10 text-brand-on-panel">
+                  <TableHead className="w-10">
                     <Checkbox
-                      aria-label="Select all"
+                      aria-label={t('selectAll')}
                       checked={
                         visible.length > 0 &&
                         visible.every((row) => selection.selected.has(rowKey(row)))
@@ -1183,8 +1411,9 @@ export function PlatformDataGrid<T>({
                     numeric={col.numeric}
                     aria-sort={col.sortable ? ariaSort(col.key) : undefined}
                     className={cn(
-                      'font-semibold text-brand-on-panel',
-                      col.sticky && 'sticky start-0 z-10 bg-brand-panel',
+                      'font-medium text-muted-foreground',
+                      sort?.key === col.key && 'text-foreground',
+                      col.sticky && 'sticky start-0 z-10 bg-surface-subtle',
                       col.sticky && scrolledX && 'shadow-[1px_0_0_0] shadow-border',
                     )}
                   >
@@ -1193,7 +1422,7 @@ export function PlatformDataGrid<T>({
                         type="button"
                         className={cn(
                           'inline-flex w-full items-center gap-1 text-start',
-                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-on-panel',
+                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
                           col.numeric && 'flex-row-reverse',
                         )}
                         aria-label={sortButtonLabel(col)}
@@ -1217,12 +1446,30 @@ export function PlatformDataGrid<T>({
             </TableHeader>
 
             <TableBody>
+              {quickAdd ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="bg-surface py-2">
+                    {quickAdd}
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {visible.length === 0 ? (
                 <TableEmpty colSpan={colCount}>{filteredEmpty}</TableEmpty>
               ) : (
-                visible.map((row) => {
+                visible.map((row, index) => {
                   const href = rowHref?.(row);
+                  const group = activeGroup?.groupOf(row);
+                  const startsGroup =
+                    group && (index === 0 || activeGroup!.groupOf(visible[index - 1]!).id !== group.id);
                   return (
+                    <Fragment key={rowKey(row)}>
+                    {startsGroup ? (
+                      summaryRow(
+                        ordered.filter((r) => activeGroup!.groupOf(r).id === group.id),
+                        (count) => `${group.label} · ${totals ? totals.label(count) : count}`,
+                        'bg-surface-subtle text-body-sm font-semibold text-muted-foreground',
+                      )
+                    ) : null}
                     <TableRow
                       key={rowKey(row)}
                       data-just-saved={savedRows.has(rowKey(row)) || undefined}
@@ -1236,7 +1483,7 @@ export function PlatformDataGrid<T>({
                       {hasSelection && selection ? (
                         <TableCell className="w-10">
                           <Checkbox
-                            aria-label={`Select ${rowKey(row)}`}
+                            aria-label={t('selectRow', { name: selectionRowLabel?.(row) ?? rowKey(row) })}
                             checked={selection.selected.has(rowKey(row))}
                             onChange={(e) => selection.onSelect(rowKey(row), e.target.checked)}
                           />
@@ -1274,12 +1521,19 @@ export function PlatformDataGrid<T>({
                         <TableCell className="w-12 text-end">{rowActions!(row)}</TableCell>
                       ) : null}
                     </TableRow>
+                    </Fragment>
                   );
                 })
               )}
             </TableBody>
+            {totals && ordered.length > 0 ? (
+              <tfoot>
+                {summaryRow(ordered, totals.label, 'border-t-2 border-border bg-surface text-body-sm font-semibold text-foreground')}
+              </tfoot>
+            ) : null}
           </Table>
         </TableScroll>
+        </div>
 
         {/* ── Footer ─────────────────────────────────────────────────────────
             Paginated lists get the full control bar; an unpaginated one still says how much
@@ -1307,6 +1561,25 @@ export function PlatformDataGrid<T>({
             </p>
           </div>
         ) : null}
+        {shortcuts && visible.length > 0 ? (
+          <p className="hidden border-t border-border bg-surface-subtle px-4 py-2 text-end text-caption text-muted-foreground md:block" aria-hidden="true">
+            <kbd className="rounded border border-border px-1 font-mono">/</kbd> {t('keySearch')} ·{' '}
+            <kbd className="rounded border border-border px-1 font-mono">J</kbd>{' '}
+            <kbd className="rounded border border-border px-1 font-mono">K</kbd> {t('keyMove')} ·{' '}
+            <kbd className="rounded border border-border px-1 font-mono">Enter</kbd> {t('keyOpen')}
+            {selection ? (
+              <>
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">X</kbd> {t('keySelect')}
+              </>
+            ) : null}
+            {shortcuts.onNew ? (
+              <>
+                {' '}· <kbd className="rounded border border-border px-1 font-mono">N</kbd> {shortcuts.newLabel ?? t('keyNew')}
+              </>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
       </section>
     </div>
   );

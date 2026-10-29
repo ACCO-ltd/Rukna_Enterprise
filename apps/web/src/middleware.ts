@@ -40,5 +40,7 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
+  // Step 7 — the installable app's files load before anyone signs in (the browser fetches the
+  // manifest, icons, service worker and offline page on its own), so they skip the sign-in redirect.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api|manifest.webmanifest|sw.js|offline.html|icons/).*)'],
 };

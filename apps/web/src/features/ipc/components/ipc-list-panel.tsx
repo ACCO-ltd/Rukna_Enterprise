@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Badge,
   Button,
   Table,
@@ -15,6 +14,8 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { StatusBadge } from '@/components/status-badge';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -44,7 +45,7 @@ export function IpcListPanel({ applicationId, currency, basePath }: IpcListPanel
   const tList = useTranslations('platform.ipc.list');
   const locale = useLocale() as 'en' | 'ar';
 
-  const { data: certs, isPending, isError } = useIpcs(applicationId);
+  const { data: certs, isPending, isError, refetch } = useIpcs(applicationId);
 
   const [pendingSupersession, setPendingSupersession] = useState<Ipc | null>(null);
 
@@ -55,7 +56,7 @@ export function IpcListPanel({ applicationId, currency, basePath }: IpcListPanel
     <section className="space-y-4">
       <h2 className="text-lg font-semibold text-foreground">{tList('heading')}</h2>
 
-      {isError ? <Alert variant="error" messages={[tList('loadFailed')]} /> : null}
+      {isError ? <LoadError message={tList('loadFailed')} onRetry={() => void refetch()} /> : null}
 
       {isPending ? (
         <div className="h-24 animate-pulse rounded-panel border border-border bg-muted" />

@@ -37,6 +37,7 @@ import { Check, ChevronLeft, ChevronRight, Expand, TriangleAlert } from 'lucide-
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { QUOTATION_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ReadPhotoButton } from '@/features/document-reader/read-photo-button';
 import { useSession } from '@/features/auth/session/use-session';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { WorkflowTransactionType } from '@/features/workflows/types';
@@ -599,6 +600,22 @@ function DecisionBody({ detail }: { detail: QuotationRequestDetail }) {
                       />
                     </FormField>
                     <SaveIndicator state={saveState[quote.id]} />
+                    {canEnter ? (
+                      // Step 7 — read the quote's total from its first photo; it lands as a draft,
+                      // saved like a typed one once the person moves on from the field.
+                      <div className="mt-2">
+                        <ReadPhotoButton
+                          fileId={quote.photos[0]?.fileId ?? null}
+                          kind="QUOTE"
+                          onRead={(r) => {
+                            if (!r.total) return;
+                            setDrafts((d) => ({ ...d, [quote.id]: r.total! }));
+                            setSaveState((st) => without(st, quote.id));
+                            inputRefs.current[index]?.focus();
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 

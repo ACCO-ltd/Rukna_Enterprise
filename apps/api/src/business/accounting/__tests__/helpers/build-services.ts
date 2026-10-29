@@ -48,6 +48,8 @@ import { PeriodManagementService }   from '../../general-ledger/application/peri
 import { YearEndCloseService }       from '../../general-ledger/application/year-end-close.service.js';
 import { TaxCodeService } from '../../accounting-core/application/tax-code.service.js';
 import { TaxCodeRepository } from '../../accounting-core/infrastructure/tax-code.repository.js';
+import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
+import { AccountingConfigurationRepository } from '../../accounting-core/infrastructure/accounting-configuration.repository.js';
 
 export interface AccountingServices {
   prisma: PrismaClient;
@@ -61,6 +63,7 @@ export interface AccountingServices {
   clientInvoiceRepo: ClientInvoiceRepository;
   receiptRepo: PaymentReceiptArRepository;
   clientInvoiceService: ClientInvoiceService;
+  accountingConfig: AccountingConfigurationService;
   customerReceiptService: CustomerReceiptService;
   supplierBillRepo: SupplierBillRepository;
   supplierPaymentRepo: SupplierPaymentRepository;
@@ -76,7 +79,12 @@ export interface AccountingServices {
   yearEndCloseService: YearEndCloseService;
 }
 
-export function buildServices(prisma: PrismaClient): AccountingServices {
+/**
+ * `approvalSettings: true` wires the ADR-046 §8 settings into the bill and payment services, so Save
+ * posts / approves as the organisation's settings say. Off by default: most specs drive the
+ * classic Submit → Approve → Post path step by step.
+ */
+export function buildServices(prisma: PrismaClient, opts: { approvalSettings?: boolean } = {}): AccountingServices {
   // Fake TenancyService — getClient() returns the real test PrismaClient
   const tenancy = { getClient: () => prisma } as unknown as TenancyService;
 
@@ -90,7 +98,10 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
 
   // ADR-022: SoD is exercised in dedicated specs; the shared harness no-ops it so existing
   // fixtures (which reuse a single actor id) are not newly blocked by segregation rules.
-  const sod = { assertAllowed: async () => undefined } as unknown as SegregationOfDutiesService;
+  // The approval-settings mode exercises "a rule stops the auto-approval", so it uses the real one.
+  const sod = opts.approvalSettings
+    ? new SegregationOfDutiesService(tenancy)
+    : ({ assertAllowed: async () => undefined } as unknown as SegregationOfDutiesService);
 
   // Core application services
   const openingBalanceService = new OpeningBalanceService(tenancy, accountRepo, journalRepo, sequenceRepo, postingService);
@@ -114,7 +125,9 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   // the constructor.
   const invoiceDocumentServiceStub = {} as unknown as import('../../accounts-receivable/application/invoice-document.service.js').InvoiceDocumentService;
   const platformFileServiceStub = {} as unknown as import('../../../../platform/files/application/platform-file.service.js').PlatformFileService;
-  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService, invoiceDocumentServiceStub, platformFileServiceStub, new TaxCodeService(tenancy, new TaxCodeRepository()));
+  // ADR-046 §8 — the real settings reader, so DB specs see what an organisation saved.
+  const accountingConfig = new AccountingConfigurationService(tenancy, new AccountingConfigurationRepository());
+  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService, invoiceDocumentServiceStub, platformFileServiceStub, new TaxCodeService(tenancy, new TaxCodeRepository()), undefined, accountingConfig);
   const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingAccountResolver, postingService, sequenceRepo);
 
   // AP
@@ -129,9 +142,9 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
     isActiveSignatory: async () => false,
   } as unknown as import('../../accounting-core/application/bank-account-signatory.service.js').BankAccountSignatoryService;
   const billMatchingService    = new BillMatchingService(tenancy, new BillMatchRepository());
-  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, billMatchingService, commandGovernance, sod);
+  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, billMatchingService, commandGovernance, sod, opts.approvalSettings ? accountingConfig : undefined);
   const noPurchaseOrderService = { autoCloseIfSettled: async () => undefined } as never;
-  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, purchaseAllocationRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod, signatoryService, noPurchaseOrderService);
+  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, purchaseAllocationRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod, signatoryService, noPurchaseOrderService, undefined, undefined, undefined, opts.approvalSettings ? accountingConfig : undefined);
 
   // Phase 3 — GL reports and period management
   const snapshotService        = new SnapshotService(tenancy);
@@ -143,6 +156,7 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const yearEndCloseService     = new YearEndCloseService(tenancy, snapshotService, sequenceRepo, postingService);
 
   return {
+    accountingConfig,
     prisma,
     journalRepo,
     sequenceRepo,

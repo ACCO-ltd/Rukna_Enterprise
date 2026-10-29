@@ -1,3 +1,4 @@
+import type { ManualInvoiceLineDto } from '@erp/types';
 /**
  * Response shapes for the accounting module.
  *
@@ -183,6 +184,12 @@ export interface JournalEntry {
   id: string;
   organizationId: string;
   journalNumber: string | null;
+  /** Set once the journal has been reversed (by hand or automatically). */
+  reversedBy?: string | null;
+  /** G-2 — the accrual's automatic reversal date, if it has one. */
+  autoReverseOn?: string | null;
+  /** G-1 — on a draft that has been posted: the numbered entry that now holds its lines. */
+  replacedByJournalEntryId?: string | null;
   accountingPeriodId: string | null;
   journalCategory: JournalCategory;
   entryPurpose: EntryPurpose;
@@ -219,6 +226,8 @@ export interface JournalEntry {
 export interface CreateJournalPayload {
   accountingDate: string;
   documentDate?: string;
+  /** G-2 — an accrual reverses itself on this date when it posts. */
+  autoReverseOn?: string;
   description: string;
   currencyCode: string;
   lines: Array<{
@@ -477,7 +486,7 @@ export interface ClientInvoice {
   sourceIpcId: string | null;
   /** The source document, resolved to its human reference — never re-derived in the browser. */
   source: {
-    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
+    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'RETENTION_RELEASE' | 'MANUAL' | 'NONE';
     label: string | null;
     id: string | null;
   };
@@ -491,8 +500,20 @@ export interface ClientInvoice {
   taxCodeId?: string | null;
   /** The rate it was raised at, as a PERCENT snapshot ("5", "5.0000", "0"). */
   taxRate?: string | null;
+  /**
+   * ADR-046 §5 — on an IPC invoice, what the client holds back this period. `totalAmount` (amount
+   * due) = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount. "0" on other invoices.
+   */
+  retentionAmount?: string;
+  advanceRecoveryAmount?: string;
+  /** ADR-046 §5 — on a retention release invoice, the retention it bills (subtotal is "0.00"). */
+  retentionReleasedAmount?: string;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
+  /** ADR-048 — a hand-typed invoice for a non-contract sale; its `lines` carry the amount. */
+  isManual?: boolean;
+  /** ADR-048 — the hand-typed lines (detail read only; empty for source invoices). */
+  lines?: ManualInvoiceLineDto[];
   paymentTerms: string | null;
   documentStatus: InvoiceDocStatus;
   postingStatus: PostingStatus;
@@ -541,7 +562,8 @@ export interface GenerateInvoiceFromInstallmentPayload {
  */
 export interface PostInvoicePayload {
   arAccountCode: string;
-  revenueAccountCode: string;
+  /** Omitted for a hand-typed invoice, whose lines name their own income accounts (ADR-048). */
+  revenueAccountCode?: string;
   vatAccountCode?: string;
 }
 
@@ -634,6 +656,19 @@ export interface BankAccount {
   allowsPayments: boolean;
   isReconcilable: boolean;
   status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+  /** B-1 — what the ledger says is in the account (posted lines on its GL account). */
+  bookBalance?: string;
+  /** B-1 — the end date of the latest reconciled statement, or null. */
+  lastReconciledTo?: string | null;
+}
+
+/** B-1 — `PATCH /bank-accounts/:id`. The GL account never changes. */
+export interface UpdateBankAccountBody {
+  accountName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  allowsReceipts?: boolean;
+  allowsPayments?: boolean;
 }
 
 export interface BankAccountSignatory {

@@ -32,7 +32,8 @@ import { useJournal } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
-import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
+import { MONEY_SCALE, fromMinorUnits, toMinorUnits } from '@/lib/money';
+import { useDebitNotes } from '@/features/debit-notes/debit-notes';
 import { statusLabel } from '@/lib/status-registry';
 
 import {
@@ -284,6 +285,7 @@ export function useBillSummary(bill: SupplierBill): TotalsRow[] {
   const tPosting = useTranslations('procurement.postingStatus');
   const locale = useLocale() as 'en';
   const payments = useSupplierBillPayments(bill.id);
+  const debitNotes = useDebitNotes(bill.id, bill.postingStatus === 'POSTED' || bill.postingStatus === 'REVERSED');
   const live = isSettleableBill(bill);
   const paid = payments.data;
   const rows: TotalsRow[] = [
@@ -295,6 +297,13 @@ export function useBillSummary(bill: SupplierBill): TotalsRow[] {
   // Money allocated by payments not yet posted is already off the balance; say where it went.
   if (paid && Number(paid.pendingAmount) > 0) {
     rows.push({ label: t('pendingPayments'), value: <MoneyDisplay value={paid.pendingAmount} /> });
+  }
+  // AP-4 — credits the supplier gave against the bill are off the balance too.
+  const credited = (debitNotes.data ?? [])
+    .filter((n) => n.status === 'POSTED')
+    .reduce((sum, n) => sum + toMinorUnits(n.amount, MONEY_SCALE), 0);
+  if (credited > 0) {
+    rows.push({ label: t('creditedByDebitNotes'), value: <MoneyDisplay value={fromMinorUnits(credited, MONEY_SCALE)} /> });
   }
   return [
     ...rows,

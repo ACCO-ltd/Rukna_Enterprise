@@ -7,6 +7,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module.
 import { ClientInvoiceRepository } from './infrastructure/client-invoice.repository.js';
 import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceService } from './application/client-invoice.service.js';
+import { IpcBillingCheckService } from './application/ipc-billing-check.service.js';
 import { CustomerReceiptService } from './application/customer-receipt.service.js';
 import { InvoiceDocumentService } from './application/invoice-document.service.js';
 import { ReceiptDocumentService } from './application/receipt-document.service.js';
@@ -14,6 +15,14 @@ import { PaymentReceiptDocumentService } from './application/payment-receipt-doc
 import { ReceiptWhatsAppService } from './application/receipt-whatsapp.service.js';
 import { CollectionEventsService } from './application/collection-events.service.js';
 import { CreditNoteService } from './application/credit-note.service.js';
+import { ClientStatementController } from './presentation/client-statement.controller.js';
+import { ClientStatementService } from './application/client-statement.service.js';
+import { ClientStatementRepository } from './infrastructure/client-statement.repository.js';
+import { WriteOffController } from './presentation/write-off.controller.js';
+import { WriteOffService } from './application/write-off.service.js';
+import { ClientRefundController } from './presentation/client-refund.controller.js';
+import { ClientRefundService } from './application/client-refund.service.js';
+import { CreditNoteController } from './presentation/credit-note.controller.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
 import { InvoiceWhatsAppController } from './presentation/invoice-whatsapp.controller.js';
 import { InvoiceWhatsAppService } from './application/invoice-whatsapp.service.js';
@@ -27,6 +36,10 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
 @Module({
   imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule, AuditLogsModule],
   controllers: [
+    ClientRefundController,
+    WriteOffController,
+    ClientStatementController,
+    CreditNoteController,
     ClientInvoiceController,
     CustomerReceiptController,
     InvoiceWhatsAppController,
@@ -34,9 +47,14 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
     InvoiceSettingsPreviewController,
   ],
   providers: [
+    ClientRefundService,
+    WriteOffService,
+    ClientStatementRepository,
+    ClientStatementService,
     ClientInvoiceRepository,
     PaymentReceiptArRepository,
     ClientInvoiceService,
+    IpcBillingCheckService,
     CustomerReceiptService,
     InvoiceDocumentService,
     ReceiptDocumentService,

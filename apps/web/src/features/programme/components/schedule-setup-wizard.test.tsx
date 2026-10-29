@@ -123,7 +123,7 @@ describe('ScheduleSetupWizard', () => {
   it('opens on step 1 with a template and a blank start', () => {
     open();
     expect(screen.getByRole('heading', { name: 'Set up schedule' })).toBeInTheDocument();
-    expect(screen.getByText('ACCO standard building schedule')).toBeInTheDocument();
+    expect(screen.getByText('Company standard building schedule')).toBeInTheDocument();
     expect(screen.getByText('Start blank')).toBeInTheDocument();
   });
 
@@ -132,14 +132,14 @@ describe('ScheduleSetupWizard', () => {
     open();
     expect(screen.getByText(/no longer committed/i)).toBeInTheDocument();
     // No start options are offered without a baseline.
-    expect(screen.queryByText('ACCO standard building schedule')).not.toBeInTheDocument();
+    expect(screen.queryByText('Company standard building schedule')).not.toBeInTheDocument();
   });
 
-  it('applies the ACCO template from step 1', async () => {
+  it('applies the company template from step 1', async () => {
     const user = userEvent.setup();
     open();
-    await user.click(screen.getByText('ACCO standard building schedule'));
-    expect(mocks.applyMutate).toHaveBeenCalledWith('ACCO_STANDARD_BUILDING', expect.anything());
+    await user.click(screen.getByText('Company standard building schedule'));
+    expect(mocks.applyMutate).toHaveBeenCalledWith('STANDARD_BUILDING', expect.anything());
   });
 
   it('disables the template when the project already has work packages', () => {

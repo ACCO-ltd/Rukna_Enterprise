@@ -103,6 +103,11 @@ export class ClientService {
     return this.repo.findAll(this.db(), identity.activeOrganizationId);
   }
 
+  /** Step 5 — id, code, name and tax number of every client, for an import's duplicate check. */
+  listForImport(identity: RequestIdentity) {
+    return this.repo.listForImport(this.db(), identity.activeOrganizationId);
+  }
+
   async findDuplicateCandidates(identity: RequestIdentity, name: string) {
     if (name.trim().length < 3) return [];
     return this.repo.findDuplicateCandidates(this.db(), identity.activeOrganizationId, name);
@@ -325,6 +330,25 @@ export class ClientService {
       return created;
     });
     return this.findOne(identity, client.id);
+  }
+
+  /**
+   * Step 5 — one client from a spreadsheet import, inside the importer's transaction (so a whole
+   * import lands or none of it does). The importer has already applied the shared input rules;
+   * this writes the client and its primary contact and audits it like a hand-made one.
+   */
+  async createInTransaction(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    data: ClientMasterData,
+    contact: ContactData,
+  ): Promise<{ id: string; code: string }> {
+    const created = await this.repo.createClient(tx, identity.activeOrganizationId, data);
+    const primary = await this.repo.createContact(tx, created.id, { ...contact, isPrimary: true });
+    await this.audit(tx, identity, created.id, CLIENT_AUDIT.create, {
+      after: { ...this.pick(created, CLIENT_FIELDS), code: created.code, primaryContact: primary.name, source: 'IMPORT' },
+    });
+    return { id: created.id, code: created.code };
   }
 
   async update(identity: RequestIdentity, id: string, dto: UpdateClientDto): Promise<ClientDetailResponse> {

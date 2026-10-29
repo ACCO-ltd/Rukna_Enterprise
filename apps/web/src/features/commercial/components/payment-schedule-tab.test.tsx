@@ -19,6 +19,16 @@ import {
 // The reused ledger panel drags in the programme + payment-schedule mutation graph; the tab's own
 // behaviour (summary strip, reconcile footer, editor gating) is what these tests cover, so the panel
 // is stubbed to a marker. Its own behaviour is tested in payment-schedule-panel.test.tsx.
+// Step 1b (ADR-047): the company's standard payment plan (here, the Rukna default rows).
+const STANDARD_PLAN = [
+  { name: 'Advance (mobilisation)', percentage: '40', isAdvance: true, dueDate: '' },
+  { name: 'Partition & Plastering', percentage: '30', isAdvance: false, dueDate: '' },
+  { name: 'Installation & Paint', percentage: '20', isAdvance: false, dueDate: '' },
+  { name: 'Inspection & Handover', percentage: '10', isAdvance: false, dueDate: '' },
+];
+vi.mock('@/features/contracts/hooks/use-standard-payment-plan', () => ({
+  useStandardPaymentPlan: () => STANDARD_PLAN,
+}));
 vi.mock('./payment-schedule-panel', () => ({
   PaymentSchedulePanel: () => <div data-testid="schedule-panel" />,
 }));
@@ -239,8 +249,8 @@ describe('PaymentScheduleTab — editor gating (DRAFT vs committed, §5 P2)', ()
   });
 });
 
-describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2)', () => {
-  it('populates the four ACCO rows and reconciles the editor to 100%', async () => {
+describe('PaymentScheduleTab — company standard template quick-fill (§4.2/§5 P2)', () => {
+  it('populates the four standard rows and reconciles the editor to 100%', async () => {
     const user = userEvent.setup();
     stubCycle([installment()]);
     renderWithProviders(
@@ -249,7 +259,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     );
 
     await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
-    await user.click(screen.getByRole('button', { name: 'Use ACCO standard schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Use company standard schedule' }));
 
     // The four house-standard stages, seeded verbatim.
     for (const name of ['Advance (mobilisation)', 'Partition & Plastering', 'Installation & Paint', 'Inspection & Handover']) {
@@ -263,7 +273,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     expect(screen.getByText('Totals 100%')).toBeInTheDocument();
   });
 
-  it('saves the ACCO template through the replace-all route', async () => {
+  it('saves the company template through the replace-all route', async () => {
     const user = userEvent.setup();
     stubCycle([installment()]);
     renderWithProviders(
@@ -272,7 +282,7 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
     );
 
     await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
-    await user.click(screen.getByRole('button', { name: 'Use ACCO standard schedule' }));
+    await user.click(screen.getByRole('button', { name: 'Use company standard schedule' }));
     await user.click(screen.getByRole('button', { name: 'Save schedule' }));
 
     expect(replaceMutate).toHaveBeenCalledTimes(1);

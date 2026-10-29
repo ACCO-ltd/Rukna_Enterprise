@@ -227,7 +227,7 @@ export class WorkflowsService {
   ) {
     this.authoring.assertEnabled();
     if (!isApprovedPolicyTransaction(dto.transactionType) || !isSupportedPolicyTransition(dto.transactionType, dto.fromState, dto.toState)) {
-      throw new BadRequestException('This transaction and lifecycle transition are not approved for ACCO policy authoring');
+      throw new BadRequestException('This transaction and lifecycle transition are not open to policy authoring');
     }
     const result = await this.repo.addRuleToDraft(organizationId, policyId, {
       ruleKey: dto.ruleKey.trim(), transactionType: dto.transactionType,
@@ -244,7 +244,7 @@ export class WorkflowsService {
     const draft = await this.repo.findDraftWithRules(organizationId, policyId);
     const rule = draft?.rules.find((candidate) => candidate.id === ruleId);
     if (!rule?.transactionType || !isApprovedPolicyTransaction(rule.transactionType as WorkflowTransactionType) || !isSupportedPolicyTransition(rule.transactionType as WorkflowTransactionType, dto.fromState, dto.toState)) {
-      throw new BadRequestException('This transaction and lifecycle transition are not approved for ACCO policy authoring');
+      throw new BadRequestException('This transaction and lifecycle transition are not open to policy authoring');
     }
     const result = await this.repo.updateDraftRule(organizationId, policyId, ruleId, actorUserId, dto);
     if (!result) throw new ConflictException('Rules can only be changed in the current draft');

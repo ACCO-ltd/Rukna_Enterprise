@@ -20,6 +20,7 @@ const effectiveIpc = {
   isEffective: true,
   certifiedTotal: '1000.00',
   currency: 'USD',
+  deductions: [] as { deductionType: string; amount: string }[],
   application: {
     contract: {
       id: 'c-1',
@@ -51,10 +52,11 @@ function renderSourceMocks() {
   };
 }
 
-function build(ipc: unknown) {
+function build(ipc: unknown, earlierIpcInvoices: unknown[] = []) {
   const repo = {
     findByIpc: jest.fn(),
     create: jest.fn(),
+    findEarlierIpcInvoices: jest.fn().mockResolvedValue(earlierIpcInvoices),
   };
   const prisma = {
     interimPaymentCertificate: { findFirst: jest.fn().mockResolvedValue(ipc) },
@@ -126,6 +128,62 @@ describe('A5 — IPC-to-invoice idempotency (CONST-COM-006)', () => {
     const { repo, service } = build(null);
     repo.findByIpc.mockResolvedValue(null);
     await expect(service.generateFromIpc(identity, dto)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// ADR-046 §5 — a certificate is cumulative to date; its invoice bills the period, netted.
+describe('ADR-046 §5 — IPC invoice bills the period net of retention', () => {
+  const secondCertificate = {
+    ...effectiveIpc,
+    certifiedTotal: '250000.00',
+    deductions: [{ deductionType: 'RETENTION', amount: '12500.00' }],
+  };
+  const firstInvoice = {
+    id: 'inv-1',
+    certifiedGrossAmount: '100000.00',
+    subtotal: '100000.00',
+    retentionAmount: '5000.00',
+    advanceRecoveryAmount: '0.00',
+    otherDeductionsAmount: '0.00',
+    creditNotes: [],
+  };
+
+  it('bills gross and retention for the period only, with tax on the revenue', async () => {
+    const { repo, service } = build(secondCertificate, [firstInvoice]);
+    repo.findByIpc.mockResolvedValue(null);
+    repo.create.mockResolvedValue({ id: 'inv-2' });
+
+    await service.generateFromIpc(identity, dto);
+
+    const data = repo.create.mock.calls[0][1];
+    expect(data.certifiedGrossAmount.toFixed(2)).toBe('150000.00');
+    expect(data.subtotal.toFixed(2)).toBe('150000.00');
+    expect(data.vatAmount.toFixed(2)).toBe('7500.00'); // 5% of 150,000
+    expect(data.retentionAmount.toFixed(2)).toBe('7500.00'); // 12,500 to date − 5,000 billed
+    expect(data.advanceRecoveryAmount.toFixed(2)).toBe('0.00');
+    expect(data.totalAmount.toFixed(2)).toBe('150000.00'); // 150,000 + 7,500 VAT − 7,500 retention
+  });
+
+  it('refuses a certificate already fully billed, without creating an invoice', async () => {
+    const { repo, service } = build(
+      { ...effectiveIpc, certifiedTotal: '100000.00', deductions: [{ deductionType: 'RETENTION', amount: '5000.00' }] },
+      [firstInvoice],
+    );
+    repo.findByIpc.mockResolvedValue(null);
+
+    await expect(service.generateFromIpc(identity, dto)).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('subtracts posted credit notes from what earlier invoices billed', async () => {
+    const credited = { ...firstInvoice, retentionAmount: '0.00', creditNotes: [{ netAmount: '40000.00' }] };
+    const { repo, service } = build({ ...effectiveIpc, certifiedTotal: '100000.00' }, [credited]);
+    repo.findByIpc.mockResolvedValue(null);
+    repo.create.mockResolvedValue({ id: 'inv-2' });
+
+    await service.generateFromIpc(identity, dto);
+
+    expect(repo.create.mock.calls[0][1].certifiedGrossAmount.toFixed(2)).toBe('40000.00');
   });
 });
 
@@ -413,6 +471,9 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     subtotal: { toString: () => '23092.40' },
     vatAmount: { toString: () => '1154.62' },
     taxRate: { toString: () => '5' },
+    retentionAmount: { toString: () => '0.00' },
+    retentionReleasedAmount: { toString: () => '0.00' },
+    advanceRecoveryAmount: { toString: () => '0.00' },
     totalAmount: { toString: () => '24247.02' },
     paymentTerms: null,
     documentFileId: null,

@@ -39,7 +39,9 @@ import type {
   RunReconciliationPayload,
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
+  UpdateBankAccountBody,
 } from '../types';
+import type { FinanceApprovalSettings } from '@erp/types';
 
 // ─── Chart of accounts ───────────────────────────────────────────────────────────
 
@@ -184,6 +186,24 @@ export function configureBankAccount(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+/** B-1 — correct a bank account's details or what it is used for. */
+export function updateBankAccount(id: string, payload: UpdateBankAccountBody): Promise<BankAccount> {
+  return apiClient<BankAccount>(`/bank-accounts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** B-1 — suspend, reactivate or close (final; needs a zero ledger balance and nothing waiting to post). */
+export function setBankAccountStatus(id: string, status: BankAccount['status']): Promise<BankAccount> {
+  return apiClient<BankAccount>(`/bank-accounts/${id}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
   });
 }
 
@@ -398,6 +418,18 @@ export function createJournal(payload: CreateJournalPayload): Promise<JournalEnt
   });
 }
 
+/**
+ * `PATCH /journals/:id` — same body as create. Replaces the header and every line of a DRAFT, or
+ * corrects a REJECTED journal and returns it to DRAFT for resubmission. Preparer only (403).
+ */
+export function updateJournal(id: string, payload: CreateJournalPayload): Promise<JournalEntry> {
+  return apiClient<JournalEntry>(`/journals/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function submitJournal(id: string): Promise<JournalEntry> {
   return apiClient<JournalEntry>(`/journals/${id}/submit`, { method: 'POST' });
 }
@@ -569,6 +601,15 @@ export function closePeriod(periodId: string): Promise<AccountingPeriod> {
   return apiClient<AccountingPeriod>(`/periods/${periodId}/close`, { method: 'POST' });
 }
 
+/** S-1 — LOCKED → OPEN, with a reason (audited). Nothing was snapshotted, so nothing is invalidated. */
+export function unlockPeriod(periodId: string, reason: string): Promise<AccountingPeriod> {
+  return apiClient<AccountingPeriod>(`/periods/${periodId}/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 /** CLOSED → REOPENED. Invalidates every downstream snapshot. */
 export function reopenPeriod(periodId: string, reason: string): Promise<AccountingPeriod> {
   return apiClient<AccountingPeriod>(`/periods/${periodId}/reopen`, {
@@ -626,4 +667,14 @@ export function previewInvoiceDocumentSettings(
     body: JSON.stringify(body),
     responseType: 'blob',
   });
+}
+
+/** ADR-046 §8 — `GET /accounting/approval-settings`: the optional finance approvals in force. */
+export function getApprovalSettings(): Promise<FinanceApprovalSettings> {
+  return apiClient<FinanceApprovalSettings>('/accounting/approval-settings');
+}
+
+/** ADR-046 §8 — `PUT /accounting/approval-settings` (`manage:accounting`), saved whole and audited. */
+export function updateApprovalSettings(body: FinanceApprovalSettings): Promise<FinanceApprovalSettings> {
+  return apiClient<FinanceApprovalSettings>('/accounting/approval-settings', { method: 'PUT', body: JSON.stringify(body) });
 }

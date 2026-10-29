@@ -49,6 +49,7 @@ import {
   weightedPackagePercent,
 } from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
+import { CompanyTemplatesService } from '../../company-templates/application/company-templates.service.js';
 // The single server-owned money-visibility definition (ADR-029 §8 A-2) — reused, not re-derived, so
 // the Progress signals hide money from exactly the roles the BOQ and Commercial read models do.
 import {
@@ -199,6 +200,8 @@ export class ProgressService {
     // variance engine measures against this once a baseline is approved; before that it reads the
     // live targets. Prisma stays behind the repo (Clean Architecture).
     private readonly baselineRepo: ProgrammeBaselineRepository,
+    // Step 1b (ADR-047): STANDARD_BUILDING applies the company's own copy of the schedule template.
+    private readonly companyTemplates: CompanyTemplatesService,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -1040,7 +1043,10 @@ export class ProgressService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
 
-    const phases = scheduleTemplatePhases(templateKey);
+    const phases =
+      templateKey === 'STANDARD_BUILDING'
+        ? await this.companyTemplates.schedulePhases(identity.activeOrganizationId)
+        : scheduleTemplatePhases(templateKey);
     if (!phases) throw new BadRequestException(`Unknown schedule template '${templateKey}'`);
 
     // Don't silently duplicate: seeding is only for a project that has no phases yet.

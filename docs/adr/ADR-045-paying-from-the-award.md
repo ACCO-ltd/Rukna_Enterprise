@@ -28,7 +28,7 @@ so finance must be able to act in seconds.
 Locked earlier: payments stay canonical in Finance/Accounting (procurement round-2 A4); ADR-022
 SoD (bill approver ≠ payment approver/releaser; vendor maintainer ≠ PO creator/payment processor);
 supplier payment DoA bands ≤ $1k FO / $1k–$10k +CFO / > $10k +CEO, seeded inactive
-(`apps/api/src/platform/workflows/seeders/acco-value-bands.ts:112-128`); source-document dates for
+(`apps/api/src/platform/workflows/seeders/default-value-bands.ts:112-128`); source-document dates for
 every posting, never `new Date()` (feedback-accounting-date-rule).
 
 ### What exists today (verified 2026-10-08 on main `3d3a7c7a`)
@@ -70,7 +70,7 @@ service `apps/api/src/business/accounting/accounts-payable/application/buyer-adv
   remainder is a **supplier advance** (prepayment).
 - `approve` (`:195-232`) — SoD `BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT`, then the DoA gate
   `SupplierPayment DRAFT → APPROVED` valued at `totalAmount`. The bands are seeded on exactly that
-  transition (`acco-workflows.seed.ts:469-475`). *Contradiction (minor):* the policy registry lists
+  transition (`default-workflows.seed.ts:469-475`). *Contradiction (minor):* the policy registry lists
   `SUPPLIER_PAYMENT: ['DRAFT:SUBMITTED']` (`policy-transition-registry.ts:7`), so the in-app policy
   authoring screen offers a transition the service never evaluates. Fixed in passing (P1).
 - `signRelease` (`:240-288`) — dual control: ≥ 2 signatories when the bank account has any.
@@ -87,7 +87,7 @@ the match automatically (`supplier-bill.service.ts:260-296`); approve checks
 `GOODS_RECEIVER_CANNOT_APPROVE_BILL` (`:439-470`); post is EVT-AP-001 Dr Expense / Cr AP on
 `billDate` (`:472-640`).
 
-**SoD/award interplay:** all seven ADR-022 rules are active (`acco-workflows.seed.ts:45-56`). The
+**SoD/award interplay:** all seven ADR-022 rules are active (`default-workflows.seed.ts:45-56`). The
 award registers a new store with `createdBy = selector` (`quotation-award.service.ts:338-350`), so
 the selector is that supplier's vendor maintainer and **cannot create a supplier payment to it**.
 `PO_CREATOR_CANNOT_RECEIVE_GOODS` means the collector who raised the order cannot post its GRN.
@@ -137,7 +137,7 @@ spec) creates, approves and posts a `BuyerAdvance` in one command:
   dual control is not weakened. `BuyerAdvancePaymentMethod` gains `CASH` (handed over from the cash
   box). Currency of the account = the PO's.
 - **DoA:** new governed transition `BuyerAdvance DRAFT → APPROVED`, valued at the advance amount,
-  bound to the **supplier-payment bands** (`accoSupplierPaymentBands()` verbatim, transaction type
+  bound to the **supplier-payment bands** (`defaultSupplierPaymentBands()` verbatim, transaction type
   `SUPPLIER_PAYMENT` — no enum migration, the VariationOrder precedent). Seeded inactive; the
   activation seed activates and deactivates it together with the SupplierPayment bands (one control).
   Bands inactive → no gate. Bands active → the releaser's tap counts as their approval of the current

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, StatusPill } from '@erp/ui';
+import { Alert, Badge, Button, Notice, StatusPill } from '@erp/ui';
 
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -15,10 +15,17 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
 import { fromMinorUnits, isFullyAllocated, isOverAllocated } from '../allocation';
-import { receiptKeys, useOpenReceiptDocument, useReceipt } from '../hooks/use-receipts';
+import { receiptKeys, useOpenReceiptDocument, useReceipt, useReverseReceipt } from '../hooks/use-receipts';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { RefundDialog } from '@/features/refunds/refund-dialog';
+import { RefundsPanel } from '@/features/refunds/refunds-panel';
+import { useRefunds } from '@/features/refunds/refunds';
+import { useApprovalSettings } from '@/features/accounting/hooks/use-accounting';
+import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 import type { ReceiptDetail as ReceiptDetailModel } from '../types';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
 import { PostReceiptDialog } from './post-receipt-dialog';
+import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
 
 export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const t = useTranslations('platform.receipts.detail');
@@ -30,6 +37,11 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const { data: receipt, isPending, isError, error } = useReceipt(receiptId);
   const [posting, setPosting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [reversing, setReversing] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const refunds = useRefunds(receiptId, receipt?.postingStatus === 'POSTED' || receipt?.postingStatus === 'REVERSED');
+  const approvalSettings = useApprovalSettings();
+  const reverse = useReverseReceipt(receiptId);
   const { can } = usePermissions();
   const openDocument = useOpenReceiptDocument();
 
@@ -82,6 +94,16 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
         <Button variant="outline" onClick={() => setSending(true)}>
           {t('sendWhatsApp')}
         </Button>
+        {/* AR-5 — pay back what is held on account (an overpayment, a cancelled job). */}
+        {toMinorUnits(receipt.unallocatedAmount, MONEY_SCALE) > 0 ? (
+          <Button variant="outline" onClick={() => setRefunding(true)}>
+            {t('refundAction')}
+          </Button>
+        ) : null}
+        {/* AR-2 — a bounced cheque or money booked to the wrong client. */}
+        <Button variant="ghost" className="text-danger" onClick={() => setReversing(true)}>
+          {t('reverse.action')}
+        </Button>
       </>
     ) : null;
 
@@ -91,7 +113,10 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
 
       {openDocument.isError ? <Alert variant="error" messages={[t('downloadFailed')]} /> : null}
       {reversed ? (
-        <p className="text-sm text-muted-foreground">{t('documentUnavailableReversed')}</p>
+        <Notice tone="historical" title={t('reverse.reversedTitle', { date: formatDate(receipt.reversedAt ?? null, locale) ?? '' })}>
+          {receipt.reversalReason ? t('reverse.reversedBecause', { reason: receipt.reversalReason }) : null}{' '}
+          {t('documentUnavailableReversed')}
+        </Notice>
       ) : null}
 
       {notPosted ? (
@@ -105,6 +130,19 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
       ) : (
         <ReceiptAllocationsPanel receipt={receipt} />
       )}
+
+      <RefundsPanel receiptId={receipt.id} refunds={refunds.data ?? []} canManage={mayManage} />
+
+      {issued && mayManage ? (
+        <RefundDialog
+          open={refunding}
+          onOpenChange={setRefunding}
+          receiptId={receipt.id}
+          onAccount={receipt.unallocatedAmount}
+          currencyCode={receipt.currencyCode}
+          approvedUpTo={approvalSettings.data?.paymentAutoApproveUpTo ?? null}
+        />
+      ) : null}
 
       {receipt.notes ? (
         <section className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">
@@ -123,6 +161,23 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
         />
       ) : null}
 
+      {reversing ? (
+        <ConfirmActionDialog
+          title={t('reverse.title', { number })}
+          description={t('reverse.body')}
+          confirmLabel={t('reverse.action')}
+          reason={{ required: true, label: t('reverse.reasonLabel'), maxLength: 500 }}
+          destructive
+          isPending={reverse.isPending}
+          errorMessage={reverse.isError ? (reverse.error instanceof ApiError ? reverse.error.message : t('reverse.failed')) : undefined}
+          onConfirm={(reason) => reverse.mutate(reason, { onSuccess: () => setReversing(false) })}
+          onDismiss={() => {
+            reverse.reset();
+            setReversing(false);
+          }}
+        />
+      ) : null}
+
       {posting ? <PostReceiptDialog receipt={receipt} onClose={() => setPosting(false)} /> : null}
 
       {issued && mayManage ? (
@@ -136,6 +191,8 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
           invalidate={[receiptKeys.detail(receipt.id)]}
         />
       ) : null}
+
+      <AttachmentsPanel kind="RECEIPT" ownerId={receipt.id} />
 
       <span className="sr-only">{tReceipts('title')}</span>
     </div>

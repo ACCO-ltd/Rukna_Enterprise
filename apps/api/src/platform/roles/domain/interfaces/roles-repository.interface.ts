@@ -1,6 +1,8 @@
 import type { RoleEntity } from '../entities/role.entity.js';
 
 export interface IRolesRepository {
+  /** Step 3 (roles matrix) — each role's granted permission ids, in one read. */
+  listPermissionGrants(orgId: string): Promise<Array<{ roleId: string; permissionIds: string[] }>>;
   findById(id: string): Promise<RoleEntity | null>;
   findAll(orgId: string): Promise<RoleEntity[]>;
   create(data: CreateRoleData): Promise<RoleEntity>;

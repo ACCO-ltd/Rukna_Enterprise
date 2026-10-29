@@ -48,9 +48,12 @@ describe('resolveModule', () => {
   });
 
   it('gives a module landing route its module', () => {
-    const r = resolveModule('/accounting');
+    // Finance's landing is its Home tab (Step 4), so the route resolves to that item.
+    const r = resolveModule('/finance');
     expect(r?.domain.moduleKey).toBe('accounting');
-    expect(r?.item).toBeUndefined();
+    expect(r?.item?.href).toBe('/finance');
+    // A deeper route resolves to its own tab, never to Home.
+    expect(resolveModule('/finance/accounting/invoices')?.item?.href).toBe('/finance/accounting/invoices');
   });
 });
 
@@ -60,6 +63,7 @@ describe('moduleTabs', () => {
     expect(tabs.map((t) => `${t.kind}:${t.key}`)).toEqual([
       // ADR-043 — Get started (the guided hub) and Projects (the portfolio) are ungrouped, so they
       // lead the tab bar; Banking sits between Payables and the ledger.
+      'link:/finance',
       'link:/finance/accounting/guide',
       'link:/finance/projects',
       'menu:receivables',

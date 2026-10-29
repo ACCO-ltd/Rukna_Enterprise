@@ -6,16 +6,18 @@
  * Lives on the payment detail page rather than as its own screen: an allocation is always
  * "this advance against that bill", and the advance is the thing the user is already looking at.
  *
- * **There is no reverse action here.** `POST /payments/:id/allocations/:allocationId/reverse`
- * exists, but no endpoint returns an allocation id — allocating returns only the journal, the
- * payment payload embeds no allocations, and nothing lists them (A17 / #35). A button that
- * cannot be given its argument is worse than no button, so the panel says the history is
- * unavailable instead of implying one.
+ * AP-6 — the panel opens on what the payment has already settled (`GET /payments/:id` carries its
+ * allocations, each with its bill). Advance applied later can be reversed from its row; an
+ * allocation made when the payment was raised is part of the payment's own journal and is undone
+ * by reversing the payment.
  */
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, MoneyInput, Select } from '@erp/ui';
+import Link from 'next/link';
+import { Alert, Button, FormField, MoneyDisplay, MoneyInput, Select, StatusPill } from '@erp/ui';
+
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 
 import { useAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -31,8 +33,8 @@ import {
   maxAllocatable,
   planAllocation,
 } from '../allocation-actions';
-import { useAllocateAdvance, useSupplierBills } from '../hooks/use-procurement';
-import type { SupplierPayment } from '../types';
+import { useAllocateAdvance, useReverseAdvanceAllocation, useSupplierBills } from '../hooks/use-procurement';
+import type { SupplierPayment, SupplierPaymentAllocationRow } from '../types';
 
 export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
   const t = useTranslations('procurement.allocation');
@@ -50,6 +52,8 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
   const bills = useSupplierBills({ supplierId: payment.supplierId });
   const accounts = useAccounts();
   const allocate = useAllocateAdvance(payment.id);
+  const reverseApplication = useReverseAdvanceAllocation(payment.id);
+  const [reversing, setReversing] = useState<SupplierPaymentAllocationRow | null>(null);
 
   const ids = { bill: useId(), amount: useId() };
 
@@ -100,9 +104,57 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      {/* A17. Stated before the form, because the first thing an accountant will look for is
-          what this payment has already settled — and the answer is that the API cannot say. */}
-      <Alert variant="info" messages={[t('historyUnavailable')]} />
+      {/* What the payment has already settled comes first: it is what an accountant looks for. */}
+      {(payment.allocations ?? []).length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="text-body-sm font-semibold text-foreground">{t('appliedTitle')}</h3>
+          <ul className="divide-y divide-border rounded-control border border-border">
+            {(payment.allocations ?? []).map((a) => {
+              // Applied later from the unapplied balance (own journal), not at the payment's creation.
+              const laterApplication = a.journalEntryId !== null && a.journalEntryId !== payment.postedJournalEntryId;
+              return (
+                <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+                  <span className="min-w-0 text-body-sm">
+                    <Link href={`/finance/accounting/bills/${a.supplierBillId}`} className="font-medium text-brand-primary underline-offset-2 hover:underline">
+                      {a.bill?.billNumber ?? a.bill?.supplierInvoiceNumber ?? t('aBill')}
+                    </Link>
+                    <span className="ms-2 text-caption text-muted-foreground">
+                      {formatDate(a.allocationDate, locale)} · {t(laterApplication ? 'appliedLater' : 'appliedWithPayment')}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    {a.postingStatus === 'REVERSED' ? <StatusPill tone="historical">{t('reversed')}</StatusPill> : null}
+                    <span className={a.postingStatus === 'REVERSED' ? 'text-muted-foreground line-through' : ''}>
+                      <MoneyDisplay value={a.allocatedAmount} />
+                    </span>
+                    {canManage && laterApplication && a.postingStatus === 'POSTED' ? (
+                      <Button size="sm" variant="outline" onClick={() => setReversing(a)}>
+                        {t('reverseApplication')}
+                      </Button>
+                    ) : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {reversing ? (
+        <ConfirmActionDialog
+          title={t('reverseApplicationTitle', { bill: reversing.bill?.billNumber ?? reversing.bill?.supplierInvoiceNumber ?? '' })}
+          description={t('reverseApplicationBody')}
+          confirmLabel={t('reverseApplication')}
+          destructive
+          isPending={reverseApplication.isPending}
+          errorMessage={reverseApplication.error instanceof ApiError ? reverseApplication.error.message : reverseApplication.error ? tc('loadFailed') : undefined}
+          onConfirm={() => reverseApplication.mutate(reversing.id, { onSuccess: () => setReversing(null) })}
+          onDismiss={() => {
+            reverseApplication.reset();
+            setReversing(null);
+          }}
+        />
+      ) : null}
 
       {blocked ? (
         <Alert variant="warning" messages={[t(`blocked.${blocked}`)]} />

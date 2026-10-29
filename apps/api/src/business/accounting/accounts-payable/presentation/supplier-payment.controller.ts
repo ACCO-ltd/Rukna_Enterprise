@@ -16,6 +16,8 @@ import { AllocateAdvanceDto } from './dto/allocate-advance.dto.js';
 import { ReverseSupplierPaymentDto } from './dto/reverse-supplier-payment.dto.js';
 import { ReverseAdvanceAllocationDto } from './dto/reverse-advance-allocation.dto.js';
 import { CreatePurchaseAllocationDto } from './dto/create-purchase-allocation.dto.js';
+import { BillDecisionReasonDto } from './dto/bill-decision-reason.dto.js';
+import { SupplierPaymentDocumentService } from '../application/supplier-payment-document.service.js';
 
 @ApiTags('Supplier Payments')
 @ApiBearerAuth('access-token')
@@ -26,6 +28,7 @@ export class SupplierPaymentController {
   constructor(
     private readonly supplierPaymentService: SupplierPaymentService,
     private readonly projectAccess: ProjectAccessService,
+    private readonly paymentDocuments: SupplierPaymentDocumentService,
   ) {}
 
   @Get()
@@ -43,9 +46,10 @@ export class SupplierPaymentController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Record a supplier payment in DRAFT status' })
+  @ApiOperation({ summary: 'Record a supplier payment: DRAFT, or approved (and posted) on save within the ADR-046 §4 auto-approval limit' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateSupplierPaymentDto) {
-    return this.supplierPaymentService.create(identity, dto);
+    // ADR-046 §4 — within the auto-approval limit, Save approves (and posts) it.
+    return this.supplierPaymentService.record(identity, dto);
   }
 
   @Get(':id')
@@ -55,12 +59,37 @@ export class SupplierPaymentController {
     return this.supplierPaymentService.findById(identity, id);
   }
 
+  @Get(':id/document')
+  @ApiOperation({ summary: 'Step 4: the branded remittance advice PDF of a posted payment — a short-lived signed download URL' })
+  @ApiResponse({ status: 409, description: 'NOT_POSTED | PAYMENT_REVERSED' })
+  getDocument(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.paymentDocuments.getOrGenerateDocument(identity, id);
+  }
+
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Approve payment: DRAFT → APPROVED' })
   approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.supplierPaymentService.approve(identity, id);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'AP-1: reject an unposted payment (not the person who raised it); the bills it held get their balance back' })
+  @ApiResponse({ status: 409, description: 'PAYMENT_NOT_OPEN — posted, rejected or cancelled already' })
+  reject(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: BillDecisionReasonDto) {
+    return this.supplierPaymentService.reject(identity, id, dto.reason);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'AP-1: cancel an unposted payment you raised; the bills it held get their balance back' })
+  @ApiResponse({ status: 409, description: 'PAYMENT_NOT_OPEN — posted, rejected or cancelled already' })
+  cancel(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: BillDecisionReasonDto) {
+    return this.supplierPaymentService.cancel(identity, id, dto.reason);
   }
 
   @Post(':id/release')

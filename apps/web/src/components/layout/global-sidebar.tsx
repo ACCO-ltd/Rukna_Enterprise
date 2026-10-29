@@ -10,7 +10,10 @@ import { ChevronLeft, Layers } from 'lucide-react';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 
-import { isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV, type NavDomain, type NavIconKey } from './nav-groups';
+import { useApprovalsInbox } from '@/features/approvals/hooks';
+
+import { isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV, type NavBadgeKey, type NavDomain, type NavIconKey } from './nav-groups';
+import { NavCount } from './nav-badges';
 import { NavIcon } from './nav-icon';
 import { sidebarCollapseStore } from './sidebar-collapse-store';
 
@@ -51,12 +54,17 @@ export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarP
     isActiveNavItem(pathname, domain.href) ||
     domain.items.some((item) => !item.crossLink && isActiveNavItem(pathname, item.href));
 
-  const rows: Array<{ href: string; labelKey: string; iconKey: NavIconKey; active: boolean }> = [
+  // The Approvals count follows the reader everywhere (ADR-049); the page shares this query.
+  const approvals = useApprovalsInbox({ enabled: Boolean(user) });
+  const counts: Partial<Record<NavBadgeKey, number | undefined>> = { approvals: approvals.data?.count };
+
+  const rows: Array<{ href: string; labelKey: string; iconKey: NavIconKey; active: boolean; badge?: NavBadgeKey }> = [
     ...STANDALONE_NAV.map((item) => ({
       href: item.href,
       labelKey: item.labelKey,
       iconKey: item.iconKey ?? 'grid',
       active: isActiveNavItem(pathname, item.href),
+      badge: item.badge,
     })),
     ...NAV_DOMAINS.filter((domain) => moduleVisible(domain.moduleKey)).map((domain) => ({
       href: domain.href,
@@ -67,16 +75,16 @@ export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarP
   ];
 
   return (
-    <div className="flex h-full flex-col bg-surface text-foreground">
+    <div className="flex h-full flex-col bg-brand-panel text-nav-foreground">
       {/* ── Brand ─────────────────────────────────────────────────────── */}
-      <div className={cn('flex h-14 shrink-0 items-center gap-3 border-b border-border', railClass)}>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-brand-ink text-brand-on-primary">
+      <div className={cn('flex h-14 shrink-0 items-center gap-3 border-b border-nav-border', railClass)}>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-brand-primary text-brand-on-primary">
           <Layers size={16} aria-hidden="true" />
         </span>
         <span className={cn('min-w-0', labelClass)}>
-          <span className="block text-body-sm font-semibold text-foreground">Rukna ERP</span>
+          <span className="block text-body-sm font-semibold text-nav-foreground-active">Rukna ERP</span>
           {user ? (
-            <span className="block truncate text-micro uppercase tracking-wider text-muted-foreground">
+            <span className="block truncate text-micro uppercase tracking-wider text-nav-foreground">
               {user.tenantSlug}
             </span>
           ) : null}
@@ -99,15 +107,34 @@ export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarP
                   onClick={onNavigate}
                   aria-current={row.active ? 'page' : undefined}
                   className={cn(
-                    'flex min-h-11 items-center gap-3 rounded-control text-body-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+                    'flex min-h-11 items-center gap-3 rounded-control text-body-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-nav-accent',
                     railClass,
                     row.active
-                      ? 'bg-surface-selected text-foreground'
-                      : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
+                      ? 'bg-nav-active text-nav-foreground-active'
+                      : 'text-nav-foreground hover:bg-nav-hover hover:text-nav-foreground-active',
                   )}
                 >
-                  <NavIcon iconKey={row.iconKey} className={cn('shrink-0', row.active && 'text-brand-primary')} />
+                  <span className="relative shrink-0">
+                    <NavIcon iconKey={row.iconKey} className={cn(row.active && 'text-nav-accent')} />
+                    {/* On the icon rail the count shrinks to a dot on the icon. */}
+                    {row.badge && counts[row.badge] && docked ? (
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'absolute -end-1 -top-1 size-2 rounded-full bg-nav-accent',
+                          !userCollapsed && 'lg:hidden',
+                        )}
+                      />
+                    ) : null}
+                  </span>
                   <span className={cn('truncate', labelClass)}>{label}</span>
+                  {row.badge ? (
+                    <NavCount
+                      badge={row.badge}
+                      count={counts[row.badge]}
+                      className={cn('ms-auto', docked && (userCollapsed ? 'sr-only' : 'sr-only lg:not-sr-only'))}
+                    />
+                  ) : null}
                 </Link>
                 {/* Rail tooltip — the label the rail hides, on hover and keyboard focus. */}
                 {docked ? (
@@ -129,12 +156,12 @@ export function GlobalSidebar({ variant = 'docked', onNavigate }: GlobalSidebarP
 
       {/* ── Collapse (docked, lg+) ────────────────────────────────────── */}
       {docked ? (
-        <div className="hidden shrink-0 border-t border-border p-2 lg:block">
+        <div className="hidden shrink-0 border-t border-nav-border p-2 lg:block">
           <button
             type="button"
             onClick={() => sidebarCollapseStore.toggle()}
             className={cn(
-              'flex min-h-10 w-full items-center gap-3 rounded-control text-body-sm text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+              'flex min-h-10 w-full items-center gap-3 rounded-control text-body-sm text-nav-foreground transition-colors hover:bg-nav-hover hover:text-nav-foreground-active focus-visible:outline focus-visible:outline-2 focus-visible:outline-nav-accent',
               userCollapsed ? 'justify-center' : 'px-3',
             )}
             aria-label={userCollapsed ? t('shell.expandSidebar') : t('shell.collapseSidebar')}

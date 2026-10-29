@@ -6,8 +6,10 @@ import { useTranslations } from 'next-intl';
 
 import { useAccountingGuide } from '@/features/finance/hooks/use-accounting-guide';
 
-const GUIDE_HREF = '/finance/accounting/guide';
-const READY_HREF = '/finance/accounting/journals';
+// Step 4 — Finance Home is the landing for both: it leads with the setup checklist until the
+// ledger can post, then shows the money.
+const GUIDE_HREF = '/finance';
+const READY_HREF = '/finance';
 
 /**
  * The accounting module's landing decision (flow plan).

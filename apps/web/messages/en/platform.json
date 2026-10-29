@@ -34,6 +34,22 @@
       "newJournal": "New journal",
       "newBill": "New bill",
       "newPayment": "New payment"
+    },
+    "records": "Records",
+    "search": {
+      "searching": "Searching…",
+      "newSaleFor": "New sale invoice for {name}",
+      "receiptFrom": "Record receipt from {name}",
+      "kind": {
+        "INVOICE": "Invoice",
+        "BILL": "Bill",
+        "PAYMENT": "Payment",
+        "RECEIPT": "Receipt",
+        "JOURNAL": "Journal",
+        "PROJECT": "Project",
+        "CLIENT": "Client",
+        "SUPPLIER": "Supplier"
+      }
     }
   },
   "nav": {
@@ -56,6 +72,7 @@
     "districts": "Districts",
     "projectSubtypes": "Project subtypes",
     "branding": "Branding",
+    "templates": "Templates",
     "auditLogs": "Audit logs",
     "settings": "Settings",
     "workflows": "Workflows",
@@ -77,6 +94,9 @@
     "supplierPayments": "Supplier payments",
     "monthlyComparison": "Monthly comparison",
     "cashFlow": "Cash flow",
+    "vatReport": "VAT report",
+    "receivablesAging": "Aging",
+    "payablesAging": "Aging",
     "accountingSetup": "Setup",
     "accountingEntry": "Transactions",
     "financialReports": "Financial reports",
@@ -95,7 +115,10 @@
     "commitments": "Commitments",
     "suppliers": "Suppliers",
     "bankAccounts": "Bank accounts",
-    "reconciliation": "Reconciliation",
+    "reconciliation": "AR/AP tie-out",
+    "bankReconciliation": "Bank reconciliation",
+    "closeChecklist": "Month-end close",
+    "photoReader": "Photo reader",
     "openingBalance": "Opening balance",
     "accountingReports": "Accounting reports",
     "group": {
@@ -115,7 +138,15 @@
     "taxCodes": "Tax",
     "invoiceSettings": "Invoice settings",
     "paymentsNeeded": "Payments needed",
-    "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}"
+    "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}",
+    "approvals": "Approvals",
+    "approvalsCount": "{count, plural, one {# item waits on you} other {# items wait on you}}",
+    "approvalSettings": "Approval rules",
+    "rolesMatrix": "Roles matrix",
+    "financeHome": "Home",
+    "clientStatement": "Client statements",
+    "supplierStatement": "Supplier statements",
+    "bankTransfers": "Transfers"
   },
   "admin": {
     "title": "Administration",
@@ -323,7 +354,8 @@
       "stage": "Stage",
       "manager": "Project manager",
       "programme": "Programme",
-      "contractValue": "Contract value"
+      "contractValue": "Contract value",
+      "client": "Client"
     },
     "countLabel": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
     "empty": "No projects yet.",
@@ -373,7 +405,7 @@
       "subtitle": "Created in Preparation. Complete setup before starting work.",
       "codeLabel": "Project code",
       "codeHint": "Cannot be changed after the project is created.",
-      "codePlaceholder": "ACCO-2026-001",
+      "codePlaceholder": "PRJ-2026-001",
       "nameLabel": "Project name",
       "namePlaceholder": "Al-Baraka Tower Construction",
       "nameArLabel": "Project name (Arabic)",
@@ -876,7 +908,16 @@
         "PROGRAMME_DATES": "Reason for starting without planned dates"
       }
     },
-    "restricted": "Restricted"
+    "restricted": "Restricted",
+    "eyebrow": "Delivery",
+    "headerSummary": "{count, plural, one {# project} other {# projects}} · {active} active",
+    "views": {
+      "label": "Project views",
+      "all": "All",
+      "active": "Active",
+      "completion": "Practical completion",
+      "drafts": "Drafts"
+    }
   },
   "boq": {
     "moneyStrip": {
@@ -1546,7 +1587,7 @@
   },
   "districts": {
     "title": "Districts",
-    "intro": "Districts are the site segment of a project code (e.g. WBR in ACCO-WBR-26-0065). Add the areas you build in; the code is fixed once a project uses it.",
+    "intro": "Districts are the site segment of a project code (e.g. WBR in PRJ-WBR-26-0065). Add the areas you build in; the code is fixed once a project uses it.",
     "addTitle": "Add a district",
     "codeLabel": "Code",
     "nameLabel": "Name",
@@ -1591,6 +1632,54 @@
     "retry": "Try again",
     "saveFailed": "Could not save branding settings.",
     "noPermission": "You do not have permission to manage organization branding."
+  },
+  "templates": {
+    "title": "Templates",
+    "pageIntro": "The standard payment plan and building schedule new contracts and projects start from. Rukna ships a default; edit your company's own copy here.",
+    "loadFailed": "The templates could not be loaded.",
+    "retry": "Try again",
+    "ruknaDefault": "Rukna default",
+    "companyCopy": "Your company's copy",
+    "actions": "Row actions",
+    "moveUp": "Move {name} up",
+    "moveDown": "Move {name} down",
+    "remove": "Remove {name}",
+    "save": "Save template",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "reset": "Reset to Rukna default",
+    "resetTitle": "Reset to the Rukna default?",
+    "resetBody": "Your company's copy is replaced by the Rukna default. Contracts and projects already set up keep what they have.",
+    "resetConfirm": "Reset template",
+    "paymentPlan": {
+      "title": "Payment plan",
+      "sub": "Offered as “Use company standard” when a milestone contract's payment plan is set up. Stages must total 100%.",
+      "stage": "Stage",
+      "percent": "Share",
+      "advance": "Advance",
+      "stageN": "Stage {n}",
+      "stageName": "Stage {n} name",
+      "stagePercent": "{name} share in percent",
+      "isAdvance": "{name} is the advance",
+      "add": "Add stage",
+      "totalOk": "Stages total 100%",
+      "totalOff": "Stages total {total}% — they must total 100%"
+    },
+    "schedule": {
+      "title": "Building schedule",
+      "sub": "Applied by the schedule setup wizard: each phase becomes a work package, numbered in this order.",
+      "code": "Code",
+      "phase": "Phase",
+      "days": "Days",
+      "datesOnly": "Dates only",
+      "phaseN": "Phase {n}",
+      "phaseName": "Phase {n} name",
+      "phaseDays": "{name} duration in days",
+      "isDatesOnly": "{name} is tracked by dates only",
+      "datesOnlyHint": "A dates-only phase (design, mobilisation) has no BOQ scope and is tracked by its dates, not measured quantities.",
+      "add": "Add phase",
+      "total": "{phases} phases · {days} days if run one after another"
+    }
   },
   "users": {
     "title": "Users",
@@ -1709,6 +1798,15 @@
       "role": "Role",
       "status": "Status",
       "language": "Preferred Language"
+    },
+    "eyebrow": "People",
+    "headerSummary": "{count, plural, one {# user} other {# users}} · {active} active",
+    "countLabel": "{count, plural, one {# user} other {# users}}",
+    "views": {
+      "label": "User views",
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
     }
   },
   "roles": {
@@ -1791,18 +1889,75 @@
       "systemHint": "This is a protected system role. Its access can be reviewed but not altered here.",
       "customHint": "Review access impact and maintain accountable ownership.",
       "loadFailed": "Could not load role governance details."
-    }
+    },
+    "matrix": {
+      "title": "Roles matrix",
+      "summary": "{roles} roles · {permissions} permissions",
+      "search": "Search permissions",
+      "area": "Area",
+      "allAreas": "All areas",
+      "hintEdit": "Tick a box to grant a permission to a custom role. System roles are locked.",
+      "hintRead": "Read only. Ask someone who manages roles to change what a role can do.",
+      "colPermission": "Permission",
+      "locked": "System role, locked",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "risk": {
+        "HIGH": "High risk",
+        "CRITICAL": "Critical"
+      },
+      "cellOn": "{role} has {permission}",
+      "cellOff": "{role} does not have {permission}",
+      "noMatches": "No permission matches",
+      "noMatchesHint": "Try another search or area.",
+      "changesLabel": "Unsaved changes",
+      "changes": "{count, plural, one {Unsaved changes to # role} other {Unsaved changes to # roles}}",
+      "discard": "Discard",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "loadFailed": "The roles matrix could not be loaded."
+    },
+    "eyebrow": "People",
+    "headerSummary": "{count, plural, one {# role} other {# roles}} · {custom} custom",
+    "countLabel": "{count, plural, one {# role} other {# roles}}",
+    "filterNoMembers": "Nobody holds it",
+    "views": {
+      "label": "Role views",
+      "all": "All",
+      "custom": "Custom",
+      "system": "System",
+      "unused": "Unused"
+    },
+    "systemRole": "System",
+    "customRole": "Custom",
+    "protected": "Protected"
   },
   "auditLogs": {
     "title": "Audit logs",
     "subtitle": "The record of who changed what, and when.",
-    "empty": "No audit log entries.",
+    "empty": "No audit log entries yet.",
     "loadFailed": "Could not load audit logs.",
-    "retry": "Retry",
     "colTime": "Time",
     "colUser": "User",
     "colAction": "Action",
-    "colResource": "Resource"
+    "colResource": "Resource",
+    "eyebrow": "Evidence",
+    "emptyHint": "Every approval, posting, reversal and change to settings is recorded here as it happens.",
+    "headerSummary": "{count, plural, one {# entry} other {# entries}}",
+    "countLabel": "{count, plural, one {# entry} other {# entries}}",
+    "searchLabel": "Search the audit log",
+    "searchPlaceholder": "Search by person, action, record or reason",
+    "noMatches": "No entries match these filters.",
+    "unknownUser": "Unknown user",
+    "reason": "Reason: {reason}",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "export": "Export",
+    "exportFailed": "The audit log could not be exported. Try again.",
+    "exportCapped": "Exported the newest {limit} of {total} entries. Narrow the dates to export the rest.",
+    "colEmail": "Email",
+    "colReason": "Reason",
+    "colRecord": "Record",
+    "colIp": "IP address"
   },
   "workflows": {
     "title": "Approval workflows",
@@ -2374,7 +2529,7 @@
       "detailsGroup": "Details",
       "detailsGroupHint": "How the client appears on invoices and in search.",
       "contactGroup": "Primary contact",
-      "contactGroupHint": "Who ACCO calls about documents and payments.",
+      "contactGroupHint": "Who your company calls about documents and payments.",
       "contactGroupEditHint": "Where documents are sent. People to call are managed on the client page.",
       "taxId": "Tax ID",
       "taxIdPlaceholder": "e.g. SO123456789",
@@ -2502,7 +2657,8 @@
           "CURRENT": "Current",
           "DUE_SOON": "Due soon",
           "OVERDUE": "Overdue"
-        }
+        },
+        "statement": "Statement"
       },
       "details": {
         "title": "Details",
@@ -2642,7 +2798,7 @@
       "numberAuto": "Assigned on create",
       "numberAutoHint": "The contract number is generated from the project code when you create the contract.",
       "billingModelHint": "How this contract is billed.",
-      "billingDefaultNote": "ACCO's standard. The contract value is billed across the milestones you set below.",
+      "billingDefaultNote": "Your company standard. The contract value is billed across the milestones you set below.",
       "billingAdvancedReveal": "Use a different billing model",
       "billingMeasuredNote": "Measured, time-and-material and hybrid contracts are billed through Applications & Certifications instead of a fixed milestone schedule.",
       "boqGateTitle": "Commit the BOQ first",
@@ -2658,7 +2814,7 @@
         "subtitle": "How the contract value is billed across stages. The first stage is the advance; the rest are milestones. Must total 100%.",
         "empty": "No installments yet. Add the first to define the payment schedule.",
         "add": "Add installment",
-        "useAccoStandard": "Use ACCO standard schedule",
+        "useCompanyStandard": "Use company standard schedule",
         "remove": "Remove",
         "name": "Installment",
         "namePlaceholder": "e.g. Mobilization advance",
@@ -2750,7 +2906,7 @@
         "NET_60": "Net 60 days"
       },
       "schedule": {
-        "hint": "Starts from the ACCO standard schedule. Milestone stages bill only after their programme milestone is verified — you link them in Progress › Plan & setup.",
+        "hint": "Starts from your company standard schedule. Milestone stages bill only after their programme milestone is verified — you link them in Progress › Plan & setup.",
         "name": "Stage",
         "billedOn": "Billed on",
         "dueDate": "Due date",
@@ -3046,8 +3202,6 @@
     "newReceipt": "Record receipt",
     "searchLabel": "Search receipts",
     "searchPlaceholder": "Search reference, client or amount",
-    "filterByClient": "Filter by client",
-    "allClients": "All clients",
     "countLabel": "{count, plural, =0 {No receipts} one {# receipt} other {# receipts}}",
     "empty": "No receipts recorded yet.",
     "emptyHint": "Record money received from a client, then allocate it against certificates.",
@@ -3063,7 +3217,8 @@
       "client": "Client",
       "amount": "Amount",
       "unallocated": "Unallocated",
-      "status": "Status"
+      "status": "Status",
+      "number": "Receipt"
     },
     "create": {
       "title": "Record a receipt",
@@ -3085,7 +3240,23 @@
       "submit": "Record receipt",
       "cancel": "Cancel",
       "failed": "Could not record the receipt.",
-      "loadFailed": "Could not load the client list."
+      "loadFailed": "Could not load the client list.",
+      "bank": "Received into",
+      "bankHint": "The bank account the money arrived in. The payment posts there straight away.",
+      "bankPlaceholder": "Choose a bank account",
+      "bankRequired": "Choose the bank account the money arrived in",
+      "banksLoadFailed": "Could not load the bank accounts.",
+      "applyTitle": "Apply to open invoices",
+      "applyOldestFirst": "Apply oldest first",
+      "invoicesLoadFailed": "Could not load this client’s invoices.",
+      "noOpenInvoices": "This client has no open invoices. The payment will stay unapplied on their account.",
+      "unnumbered": "Unnumbered",
+      "invoiceLine": "Due {due} · {owed} owed",
+      "applyTo": "Amount applied to {ref}",
+      "applySummary": "Applied {applied} · {left} stays unapplied on the client",
+      "overApplied": "Applied {applied} is more than the {amount} received.",
+      "overInvoice": "More is applied to {ref} than it owes.",
+      "submitReceive": "Receive payment"
     },
     "detail": {
       "back": "Back to receipts",
@@ -3112,7 +3283,17 @@
       "whatsappSubtitle": "Receipt {number} goes to the client as a PDF.",
       "documentUnavailableReversed": "This receipt was reversed, so it cannot be downloaded or sent to the client.",
       "blockedNotPosted": "Post the receipt first. Only a posted receipt can be sent to the client.",
-      "blockedReversed": "This receipt was reversed. A reversed receipt must not be sent to the client."
+      "blockedReversed": "This receipt was reversed. A reversed receipt must not be sent to the client.",
+      "reverse": {
+        "action": "Reverse receipt",
+        "title": "Reverse receipt {number}?",
+        "body": "Use this for a bounced cheque or money booked to the wrong client. A reversing entry is posted today, and every invoice this receipt paid owes that amount again. It cannot be undone; record a new receipt if the money arrives.",
+        "reasonLabel": "Why is it reversed?",
+        "failed": "The receipt could not be reversed. Try again.",
+        "reversedTitle": "Reversed {date}",
+        "reversedBecause": "Reason: {reason}."
+      },
+      "refundAction": "Refund"
     },
     "allocations": {
       "heading": "Allocations",
@@ -3166,7 +3347,77 @@
       "reversed": "Reversed"
     },
     "filterByProject": "Project",
-    "allProjects": "All projects"
+    "allProjects": "All projects",
+    "eyebrow": "Receivables",
+    "unnumbered": "Not posted yet",
+    "filterByPosting": "Posting",
+    "postingFilter": {
+      "NOT_POSTED": "Not posted",
+      "POSTED": "Posted",
+      "REVERSED": "Reversed"
+    },
+    "filterByAllocation": "Allocation",
+    "allocationFilter": {
+      "unallocated": "Has unallocated money"
+    },
+    "headerCount": "{count, plural, one {# receipt} other {# receipts}}",
+    "headerSummary": "{count, plural, one {# receipt} other {# receipts}} · {received} received",
+    "views": {
+      "label": "Receipt views",
+      "all": "All",
+      "notPosted": "Not posted",
+      "unallocated": "Unallocated"
+    },
+    "listState": {
+      "NOT_POSTED": "Not posted",
+      "POSTING": "Posting",
+      "POSTING_FAILED": "Posting failed",
+      "UNALLOCATED": "Received · unallocated",
+      "RECEIVED": "Received",
+      "REVERSED": "Reversed"
+    },
+    "refund": {
+      "title": "Refund cash held on account",
+      "heading": "Refunds",
+      "onAccount": "Held on account:",
+      "bank": "Pay from",
+      "bankPlaceholder": "Choose a bank account",
+      "bankRequired": "Choose the bank account the money is paid from.",
+      "amount": "Amount to refund",
+      "amountRequired": "Enter an amount greater than zero.",
+      "amountOverOnAccount": "This is more than the receipt holds on account.",
+      "date": "Refund date",
+      "reference": "Transfer or cheque reference (optional)",
+      "reason": "Why is it paid back?",
+      "reasonRequired": "Say why the money is paid back.",
+      "postsNow": "It posts now: the money leaves the bank and is no longer held on account for the client.",
+      "approvalTitle": "This goes to Approvals first",
+      "approvalBody": "Refunds above {limit} are approved by someone else before they post, like supplier payments.",
+      "cancel": "Cancel",
+      "submit": "Refund",
+      "submitForApproval": "Send for approval",
+      "failed": "That did not go through. Try again.",
+      "unnumbered": "Waiting for approval",
+      "requestedBy": "asked by {name}",
+      "approvedBy": "approved by {name}",
+      "rejectedBecause": "Rejected: {reason}",
+      "reversedBecause": "Reversed: {reason}",
+      "status": {
+        "PENDING_APPROVAL": "Waiting for approval",
+        "POSTED": "Paid",
+        "REJECTED": "Rejected",
+        "REVERSED": "Reversed"
+      },
+      "approve": "Approve",
+      "reject": "Reject",
+      "reverse": "Reverse",
+      "waitingForSomeoneElse": "Someone else approves it",
+      "rejectTitle": "Reject this refund?",
+      "rejectBody": "The money stays on account for the client. Say why.",
+      "reverseTitle": "Reverse refund {ref}?",
+      "reverseBody": "Use this when the transfer never went. A reversing entry is posted today and the money is held on account again.",
+      "reasonPrompt": "Why?"
+    }
   },
   "ipc": {
     "title": "Payment Certificates",
@@ -3247,7 +3498,9 @@
       "effectiveCertWarning": "An effective certificate already exists for this application. Issuing a new one will replace it.",
       "draftRestoredHint": "Your draft has been restored.",
       "issueCta": "Issue Certificate",
-      "supersedeCta": "Issue Replacement Certificate"
+      "supersedeCta": "Issue Replacement Certificate",
+      "notFound": "This application was not found.",
+      "loadFailed": "The application could not be loaded."
     },
     "status": {
       "CERTIFIED": "Certified",
@@ -3385,7 +3638,7 @@
       "description": "Projects and the clients they are built for."
     },
     "accounting": {
-      "description": "Receivables, payables and the general ledger for ACCO Ltd. All amounts in USD."
+      "description": "Receivables, payables and the general ledger."
     },
     "procurement": {
       "description": "Requests, purchase orders, receipts and suppliers."
@@ -3442,6 +3695,64 @@
     "clientDeactivated": "Client deactivated",
     "clientReactivated": "Client reactivated",
     "contactUpdated": "Contact updated",
-    "contactMadePrimary": "Primary contact changed"
+    "contactMadePrimary": "Primary contact changed",
+    "templateSaved": "Template saved",
+    "templateReset": "Template reset to the Rukna default",
+    "roleMatrixSaved": "{count, plural, one {Permissions saved for # role} other {Permissions saved for # roles}}"
+  },
+  "approvals": {
+    "eyebrow": "Your decisions",
+    "title": "Approvals",
+    "summary": "{count, plural, one {# item waits on you} other {# items wait on you}}",
+    "summaryLate": "{count, plural, one {# item waits on you} other {# items wait on you}} · {late} waiting more than 3 days",
+    "summaryNone": "Nothing waits on you",
+    "areasLabel": "Approval areas",
+    "area": {
+      "all": "All",
+      "finance": "Finance",
+      "procurement": "Procurement",
+      "site": "Site"
+    },
+    "kind": {
+      "INVOICE": "Client invoice",
+      "JOURNAL": "Journal",
+      "BILL": "Supplier bill",
+      "PAYMENT": "Supplier payment",
+      "QUOTATION": "Choose a quote",
+      "MATERIAL_REQUEST": "Material request",
+      "PROGRESS_REPORT": "Daily progress report",
+      "WORKFLOW": "Approval step",
+      "WRITE_OFF": "Write-off",
+      "REFUND": "Refund",
+      "TRANSFER": "Transfer"
+    },
+    "colItem": "Waiting for your decision",
+    "colProject": "Project",
+    "colRequestedBy": "Sent by",
+    "colWaiting": "Waiting",
+    "colAmount": "Amount",
+    "today": "Today",
+    "days": "{count, plural, one {# day} other {# days}}",
+    "emptyTitle": "Nothing waits on you",
+    "emptyHint": "Invoices, journals, bills, payments, quotes, material requests and progress reports that need your decision appear here, oldest first.",
+    "noneInArea": "Nothing waits on you in this area.",
+    "countLabel": "{count, plural, one {# item} other {# items}}",
+    "loadFailed": "Your approvals could not be loaded."
+  },
+  "photoReader": {
+    "title": "Photo reader",
+    "pageIntro": "Read photos of delivery notes, receipts, quotes and material lists to fill forms faster.",
+    "loadFailed": "The photo reader settings could not be loaded.",
+    "loading": "Loading the photo reader settings",
+    "saveFailed": "The setting could not be saved.",
+    "notConfiguredTitle": "No reader on this server",
+    "notConfigured": "The server has no photo reader configured. Staff fill forms by hand; everything else works the same.",
+    "switch": "Use the photo reader for this company",
+    "switchHint": "Offers \"Read the photo\" on delivery notes, material requests, receipts and quotes.",
+    "whereTitle": "Where photos go",
+    "where": "When someone reads a photo, it is sent to {provider} (model {model}) to be read. Supplier names, prices and other details in the photo leave this system.",
+    "rule1": "The reader only fills in a form. Nothing is saved until a person checks it and saves.",
+    "rule2": "Only someone who fills that kind of form can read its photo, and only a photo they can already see.",
+    "rule3": "Every reading is logged: who, which photo, which provider and model, and the result."
   }
 }

@@ -19,12 +19,18 @@ import {
   setRolePermissions,
   updateRole,
   getRoleImpact, getRoleAccessReviews, reassignRoleOwner, createRoleAccessReview,
+  getRoleMatrix,
 } from '../api/roles-api';
 
 const roleKeys = {
   all: ['roles'] as const,
   detail: (id: string) => ['roles', id] as const,
 };
+
+/** Step 3 — the roles matrix; shares the `roles` key so any role change refreshes it. */
+export function useRoleMatrix() {
+  return useQuery({ queryKey: [...roleKeys.all, 'matrix'], queryFn: getRoleMatrix });
+}
 
 export function useRoles() {
   return useQuery({ queryKey: roleKeys.all, queryFn: listRoles });
@@ -114,5 +120,25 @@ export function useDeleteRole() {
       },
       flashRow: false,
     },
+  });
+}
+
+/**
+ * Step 3 — save the matrix: each changed role's whole permission set, one role at a time (the same
+ * audited `PUT /roles/:id/permissions` as the role dialog), then one refresh and one message.
+ */
+export function useSaveRoleMatrix() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (changes: Array<{ roleId: string; permissionIds: string[] }>) => {
+      for (const change of changes) {
+        await setRolePermissions(change.roleId, { permissionIds: change.permissionIds });
+      }
+      return changes.length;
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: roleKeys.all });
+    },
+    meta: { successToast: { key: 'platform.feedback.roleMatrixSaved', values: (count) => ({ count: count as number }) } },
   });
 }

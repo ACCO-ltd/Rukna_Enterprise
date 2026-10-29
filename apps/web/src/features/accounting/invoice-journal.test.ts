@@ -210,3 +210,122 @@ describe('planInvoicePost — when the chart cannot answer', () => {
     expect(result.ok).toBe(true);
   });
 });
+
+// ADR-046 §5 — an IPC invoice that holds back retention and recovers an advance. Amount due =
+// subtotal + vat − retention − advance recovery; the two hold-backs are debits of their own.
+describe('planInvoicePost — retention and advance recovery', () => {
+  const withHoldBacks = {
+    subtotal: '150000.00',
+    vatAmount: '0.00',
+    retentionAmount: '7500.00',
+    advanceRecoveryAmount: '15000.00',
+    totalAmount: '127500.00',
+  };
+  const fullChart = () => [
+    ...chart(),
+    account('11100', { name: 'Retention Receivable', accountSubtype: 'RETENTION_RECEIVABLE' }),
+    account('21000', { name: 'Advances received from clients', accountSubtype: 'CLIENT_ADVANCE_LIABILITY' }),
+  ];
+
+  it('needs the retention and client advance accounts only when the invoice holds them back', () => {
+    expect(rolesForInvoice(invoice({ ...withHoldBacks }))).toEqual([
+      'AR_CONTROL', 'REVENUE', 'RETENTION_RECEIVABLE', 'CLIENT_ADVANCE',
+    ]);
+    expect(rolesForInvoice(invoice(zeroVat))).toEqual(['AR_CONTROL', 'REVENUE']);
+  });
+
+  it('debits AR with the amount due and the hold-backs separately, and balances', () => {
+    const result = planInvoicePost(invoice(withHoldBacks), fullChart(), 'en');
+    if (!result.ok) throw new Error('expected a plan');
+
+    expect(result.plan.lines).toEqual([
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '127500.00', credit: null },
+      { accountCode: '11100', accountName: 'Retention Receivable', debit: '7500.00', credit: null },
+      { accountCode: '21000', accountName: 'Advances received from clients', debit: '15000.00', credit: null },
+      { accountCode: '42600', accountName: 'Project Income', debit: null, credit: '150000.00' },
+    ]);
+    expect(result.plan.totalDebit).toBe('150000.00');
+    expect(result.plan.totalCredit).toBe('150000.00');
+    expect(result.plan.balanced).toBe(true);
+  });
+
+  it('refuses when the chart has no retention account', () => {
+    const result = planInvoicePost(invoice(withHoldBacks), chart(), 'en');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problems.map((p) => p.role)).toEqual(['RETENTION_RECEIVABLE', 'CLIENT_ADVANCE']);
+  });
+});
+
+// ADR-046 §5 — the retention release invoice: no revenue, no tax; AR takes the retention back from
+// Retention Receivable.
+describe('planInvoicePost — retention release', () => {
+  const release = {
+    subtotal: '0.00',
+    vatAmount: '0.00',
+    retentionReleasedAmount: '12500.00',
+    totalAmount: '12500.00',
+    source: { kind: 'RETENTION_RELEASE' as const, label: 'CTR-001', id: 'con-1' },
+  };
+  const withRetention = () => [
+    ...chart(),
+    account('11100', { name: 'Retention Receivable', accountSubtype: 'RETENTION_RECEIVABLE' }),
+  ];
+
+  it('debits AR and credits Retention Receivable, with no revenue line', () => {
+    const result = planInvoicePost(invoice(release), withRetention(), 'en');
+    if (!result.ok) throw new Error('expected a plan');
+
+    expect(result.plan.lines).toEqual([
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '12500.00', credit: null },
+      { accountCode: '11100', accountName: 'Retention Receivable', debit: null, credit: '12500.00' },
+    ]);
+    expect(result.plan.balanced).toBe(true);
+  });
+
+  it('refuses when the chart has no retention account', () => {
+    const result = planInvoicePost(invoice(release), chart(), 'en');
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('planInvoicePost — a hand-typed invoice (ADR-048)', () => {
+  const hireChart = () => [
+    ...chart().filter((a) => a.code !== '42600'),
+    account('42100', { name: 'Equipment hire income', accountSubtype: 'OTHER_INCOME' }),
+    account('42200', { name: 'Sale of surplus materials', accountSubtype: 'OTHER_INCOME' }),
+  ];
+  const manual = invoice({
+    isManual: true,
+    source: { kind: 'MANUAL', label: null, id: null },
+    sourceIpcId: null,
+    subtotal: '2120.00',
+    vatAmount: '106.00',
+    totalAmount: '2226.00',
+    lines: [
+      { lineNo: 1, description: 'Excavator hire', quantity: '4', unitPrice: '450.00', amount: '1800.00', revenueAccountCode: '42100' },
+      { lineNo: 2, description: 'Surplus rebar', quantity: '10', unitPrice: '12.00', amount: '120.00', revenueAccountCode: '42200' },
+      { lineNo: 3, description: 'Dump truck hire', quantity: '1', unitPrice: '200.00', amount: '200.00', revenueAccountCode: '42100' },
+    ],
+  });
+
+  it('credits each income account its lines, as the server posts them — never the revenue role', () => {
+    // The chart has no PROJECT_REVENUE account at all, and the plan still resolves.
+    const result = planInvoicePost(manual, hireChart(), 'en');
+    if (!result.ok) throw new Error('expected a plan');
+    expect(result.plan.lines).toEqual([
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '2226.00', credit: null },
+      { accountCode: '42100', accountName: 'Equipment hire income', debit: null, credit: '2000.00' },
+      { accountCode: '42200', accountName: 'Sale of surplus materials', debit: null, credit: '120.00' },
+      { accountCode: '20200', accountName: 'Output VAT Payable', debit: null, credit: '106.00' },
+    ]);
+    expect(result.plan.balanced).toBe(true);
+    expect(result.plan.payload).toEqual({ arAccountCode: '11000', vatAccountCode: '20200' });
+  });
+
+  it('does not ask for a revenue account', () => {
+    expect(rolesForInvoice(manual)).not.toContain('REVENUE');
+  });
+});

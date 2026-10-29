@@ -80,6 +80,14 @@ export class RolesPrismaRepository implements IRolesRepository {
     };
   }
 
+  async listPermissionGrants(orgId: string): Promise<Array<{ roleId: string; permissionIds: string[] }>> {
+    const roles = await this.tenancyService.getClient().role.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, rolePermissions: { select: { permissionId: true } } },
+    });
+    return roles.map((role) => ({ roleId: role.id, permissionIds: role.rolePermissions.map((rp) => rp.permissionId) }));
+  }
+
   async listSummaries(orgId: string): Promise<RoleSummaryRecord[]> {
     const prisma = this.tenancyService.getClient();
     const roles = await prisma.role.findMany({

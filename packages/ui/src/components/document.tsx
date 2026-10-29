@@ -62,7 +62,9 @@ export function LifecycleStepper({
       </p>
       <ol className="hidden items-center gap-2 sm:flex" aria-label={currentLabel}>
         {steps.map((step, i) => {
-          const done = terminal ? true : i < index;
+          // A terminal state (Reversed, Rejected, Cancelled) keeps the steps actually reached: a
+          // rejected bill was submitted, never approved.
+          const done = terminal ? i <= index : i < index;
           const isCurrent = !terminal && i === index;
           return (
             <li key={step.key} className="flex items-center gap-2">

@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Docked sidebar — icon rail from md, labelled column from lg ──── */}
       <aside
-        className="fixed inset-y-0 start-0 z-40 hidden w-16 border-e border-border bg-surface transition-[width] duration-300 ease-out md:flex md:flex-col lg:w-[var(--sidebar-width)]"
+        className="fixed inset-y-0 start-0 z-40 hidden w-16 border-e border-nav-border bg-brand-panel transition-[width] duration-300 ease-out md:flex md:flex-col lg:w-[var(--sidebar-width)]"
         aria-label={t('primaryNavLabel')}
       >
         <GlobalSidebar />
@@ -74,16 +74,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={close}
           />
           <div
-            className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-surface-elevated shadow-[var(--shadow-overlay)]"
+            className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-brand-panel shadow-[var(--shadow-overlay)]"
             role="dialog"
             aria-modal="true"
             aria-label={t('primaryNavLabel')}
           >
-            <div className="flex h-14 shrink-0 items-center justify-end border-b border-border px-3">
+            <div className="flex h-14 shrink-0 items-center justify-end border-b border-nav-border px-3">
               <button
                 type="button"
                 onClick={close}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+                className="flex size-11 items-center justify-center rounded-control text-nav-foreground hover:bg-nav-hover hover:text-nav-foreground-active focus-visible:outline focus-visible:outline-2 focus-visible:outline-nav-accent"
                 aria-label={t('closeMenu')}
               >
                 <X size={16} aria-hidden="true" />

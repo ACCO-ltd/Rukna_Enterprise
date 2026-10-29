@@ -218,6 +218,7 @@ export class SupplierBillRepository {
         billNumber,
         postedAt: new Date(),
         postedBy,
+        lastPostingErrorCode: null,
       },
     });
   }

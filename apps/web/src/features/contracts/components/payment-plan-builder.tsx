@@ -14,7 +14,8 @@ import { Button, cn } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 
-import { ACCO_STANDARD_PLAN, PlanRowFields } from './payment-plan-fields';
+import { PlanRowFields } from './payment-plan-fields';
+import { useStandardPaymentPlan } from '../hooks/use-standard-payment-plan';
 import {
   EMPTY_PAYMENT_PLAN_ROW,
   installmentAmount,
@@ -48,7 +49,7 @@ export function PaymentPlanBuilder({
   targetPercent,
   frozenPercent = 0,
   allowAdvance,
-  showAccoStandard,
+  showCompanyStandard,
 }: {
   control: Control<ContractFormValues>;
   register: UseFormRegister<ContractFormValues>;
@@ -65,10 +66,11 @@ export function PaymentPlanBuilder({
   frozenPercent?: number;
   /** Whether the advance may be designated on this plan (false on a frozen ACTIVE re-profile). */
   allowAdvance: boolean;
-  /** Offer the ACCO 40/30/20/10 one-click fill (create / DRAFT only — it is a full 100% plan). */
-  showAccoStandard: boolean;
+  /** Offer the company-standard one-click fill (create / DRAFT only — it is a full 100% plan). */
+  showCompanyStandard: boolean;
 }) {
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'paymentPlan' });
+  const standardPlan = useStandardPaymentPlan();
   const rows = useWatch({ control, name: 'paymentPlan' }) ?? [];
 
   // The advance is a single choice across the plan: designating one stage clears the flag on every
@@ -135,14 +137,14 @@ export function PaymentPlanBuilder({
           >
             <Plus size={16} aria-hidden="true" /> {t('plan.add')}
           </Button>
-          {showAccoStandard ? (
+          {showCompanyStandard && standardPlan ? (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => replace(ACCO_STANDARD_PLAN.map((row) => ({ ...row })))}
+              onClick={() => replace(standardPlan.map((row) => ({ ...row })))}
             >
-              {t('plan.useAccoStandard')}
+              {t('plan.useCompanyStandard')}
             </Button>
           ) : null}
         </div>

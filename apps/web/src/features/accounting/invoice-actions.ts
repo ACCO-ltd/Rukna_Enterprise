@@ -42,6 +42,15 @@ export function canApprove(invoice: ClientInvoice): boolean {
 }
 
 /**
+ * ADR-046 §2 — a draft is issued in one action (approve + post, one server transaction). The
+ * separate Approve step is gone from the invoice page; an invoice approved before this change
+ * still posts with `canPost`.
+ */
+export function canIssue(invoice: ClientInvoice): boolean {
+  return invoice.documentStatus === 'DRAFT' && invoice.postingStatus === 'NOT_POSTED';
+}
+
+/**
  * Posting statuses from which posting is safe.
  *
  * NOT_POSTED is the first attempt. FAILED is a retry: the engine records `lastPostingErrorCode`
@@ -53,21 +62,10 @@ export function canApprove(invoice: ClientInvoice): boolean {
 const POSTABLE_STATUSES: readonly ClientInvoice['postingStatus'][] = ['NOT_POSTED', 'FAILED'];
 
 /**
- * `client-invoice.service.ts:126,129` — the server requires documentStatus APPROVED and answers
- * 409 only when postingStatus is already POSTED.
- *
- * ⚠ **This gate is deliberately stricter than the server**, in the same way `canPostBill` is
- * for supplier bills (P15). Reversing an invoice leaves `documentStatus: 'APPROVED'` and
- * `postingStatus: 'REVERSED'`, which passes the server's guard — so the API will re-post a
- * reversed invoice. `client-invoice.repository.ts:84-93` then overwrites `invoiceNumber` with a
- * fresh number from the sequence and replaces `postedJournalEntryId`, orphaning the original
- * journal while `reversalJournalEntryId` still points at the reversal of it. The audit trail
- * breaks and a number already sent to a client silently changes.
- *
- * OPENING_BALANCE is excluded for the same class of reason: a migrated invoice's GL effect is
- * already carried by the aggregate opening journal, so posting it would double-count.
- *
- * Do not relax this to match the server. Raised for Abdulsalam alongside the AR findings.
+ * The server posts an APPROVED invoice only while it is NOT_POSTED or FAILED (A11, fixed
+ * 2026-10-27). A REVERSED invoice is refused (`409 INVOICE_REVERSED`): its source is billed again
+ * by a replacement invoice. OPENING_BALANCE is excluded too: a migrated invoice's GL effect is
+ * already carried by the aggregate opening journal. This gate and the server now agree.
  */
 export function canPost(invoice: ClientInvoice): boolean {
   return (

@@ -9,6 +9,7 @@ import { QueryProvider } from '@/providers/query-provider';
 import { ToastProvider } from '@/providers/toast-provider';
 import { themeInitializationScript } from '@/features/theme/theme-script';
 import { ThemeRuntime } from '@/features/theme/theme-runtime';
+import { ServiceWorker } from '@/components/service-worker';
 
 /**
  * The product's only typeface.
@@ -25,6 +26,9 @@ const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-int
 export const metadata: Metadata = {
   title: 'Rukna ERP',
   description: 'Enterprise Resource Planning Platform',
+  // Step 7 — installable on phones (the manifest is app/manifest.ts).
+  appleWebApp: { capable: true, title: 'Rukna', statusBarStyle: 'default' },
+  icons: { icon: '/favicon.ico', apple: '/icons/apple-touch-icon.png' },
 };
 
 /**
@@ -50,6 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body className="min-h-full">
         <ThemeRuntime />
+        <ServiceWorker />
         <NextIntlClientProvider messages={messages}>
           {/* Radix primitives read direction from context, not the DOM; the app is LTR-only. */}
           <DirectionProvider dir="ltr">

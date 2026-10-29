@@ -22,7 +22,7 @@
  * ─── Why this exists ─────────────────────────────────────────────────────────────
  *
  * The repository has no domain seed data — `tenant:provision` creates a tenant and an
- * admin, and `acco-workflows.seed.ts` configures workflow bindings, but nothing creates
+ * admin, and `default-workflows.seed.ts` configures workflow bindings, but nothing creates
  * a project or a contract. Reaching an IPC screen by hand means a dozen requests through
  * the Scalar UI, repeated after every database reset. Screens built without data get built
  * blind.
@@ -54,7 +54,7 @@
  *     into an OPEN period;
  *   • the district registry (prisma/seeds/districts.seed.ts) — a project code needs a district;
  *   • an ACTIVE workflow binding for the IPA submit transition. `InterimPaymentApplication`
- *     DRAFT → PENDING_INTERNAL_APPROVAL is a REQUIRED governed transition (acco-workflows.seed.ts);
+ *     DRAFT → PENDING_INTERNAL_APPROVAL is a REQUIRED governed transition (default-workflows.seed.ts);
  *     provisioning seeds that requirement policy but NO matching binding, so the transition 422s
  *     ("Workflow configuration required") until the IPA approval chain is wired and activated for
  *     the tenant. A lone admin cannot self-approve it (SoD blocks a system admin from approving a
@@ -406,7 +406,7 @@ async function main() {
   ok(`${retention.toFixed(2)} USD on a ${gross.toFixed(2)} basis`);
 
   // The first IPA transition (DRAFT → PENDING_INTERNAL_APPROVAL) is governed by a REQUIRED
-  // WorkflowRequirementPolicy (acco-workflows.seed.ts): with no ACTIVE trigger binding for it, the
+  // WorkflowRequirementPolicy (default-workflows.seed.ts): with no ACTIVE trigger binding for it, the
   // API returns 422 "Workflow configuration required". A freshly-provisioned tenant seeds this
   // policy but no matching IPA binding, and a lone admin cannot self-approve (SoD blocks it), so
   // the IPA chain must be wired + activated in the tenant before this seeder can submit an IPA.

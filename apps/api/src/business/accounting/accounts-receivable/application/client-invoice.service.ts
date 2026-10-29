@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
-} from '@nestjs/common';
+  Optional, ForbiddenException } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -13,7 +13,12 @@ type TenantPrisma = Omit<
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >;
 import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
-import type { RequestIdentity, ClientInvoiceSourceKind } from '@erp/types';
+import type {
+  RequestIdentity,
+  ClientInvoiceSourceKind,
+  ManualInvoiceInput,
+  ManualInvoiceLineDto,
+} from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -24,9 +29,11 @@ import {
   PostingAccountResolver,
   type ResolvedAccount,
 } from '../../accounting-core/application/posting-account-resolver.service.js';
+import { priceManualLines } from '../domain/manual-invoice.policy.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { InvoiceDocumentService } from './invoice-document.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import {
   installmentBillingBlocker,
   installmentBillingBlockerMessage,
@@ -39,7 +46,16 @@ import {
   type InvoiceDocumentSnapshot,
 } from '../../accounting-core/infrastructure/invoice-document-policy.repository.js';
 import { buildInvoiceLines } from './document-pdf/invoice-view-model.js';
+import {
+  billedToDate,
+  ipcInvoicePeriod,
+  IpcInvoicePeriodError,
+  type IpcAmounts,
+  type IpcInvoicePeriod,
+} from '../domain/ipc-invoice-period.policy.js';
 import { loadInvoiceLineSource, loadInvoiceProject } from './document-pdf/invoice-document-data.js';
+import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
+import { DEFAULT_APPROVAL_SETTINGS, invoiceNeedsApproval } from '../../accounting-core/domain/approval-settings.js';
 
 /** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
 interface OrgBrandingSnapshot {
@@ -76,6 +92,14 @@ export interface GenerateInvoiceFromIpcDto {
    * Any other code than the default needs `manage:accounting`.
    */
   taxCodeId?: string;
+}
+
+/** ADR-046 §5 — the retention release invoice: no amounts, they come from the contract's invoices. */
+export interface GenerateInvoiceFromRetentionReleaseDto {
+  contractId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
 }
 
 export interface GenerateInvoiceFromInstallmentDto {
@@ -155,6 +179,9 @@ function resolveInvoiceSource(inv: {
   } | null;
   sourceBoqNodeId: string | null;
   sourceBoqNode: { id: string; code: string; description: string } | null;
+  sourceRetentionContractId?: string | null;
+  sourceRetentionContract?: { id: string; contractNumber: string } | null;
+  isManual?: boolean;
 }): { kind: ClientInvoiceSourceKind; label: string | null; id: string | null } {
   if (inv.sourceInstallmentId) {
     return {
@@ -179,6 +206,14 @@ function resolveInvoiceSource(inv: {
       id: inv.sourceBoqNodeId,
     };
   }
+  if (inv.sourceRetentionContractId) {
+    return {
+      kind: 'RETENTION_RELEASE',
+      label: inv.sourceRetentionContract?.contractNumber ?? null,
+      id: inv.sourceRetentionContractId,
+    };
+  }
+  if (inv.isManual) return { kind: 'MANUAL', label: null, id: null };
   return { kind: 'NONE', label: null, id: null };
 }
 
@@ -188,14 +223,15 @@ function resolveInvoiceSource(inv: {
  */
 function toInvoiceWithSource<T extends Parameters<typeof resolveInvoiceSource>[0]>(
   invoice: T,
-): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+): Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode' | 'sourceRetentionContract'> & {
   source: ReturnType<typeof resolveInvoiceSource>;
 } {
   const rest: Record<string, unknown> = { ...invoice, source: resolveInvoiceSource(invoice) };
   delete rest.sourceInstallment;
   delete rest.sourceIpc;
   delete rest.sourceBoqNode;
-  return rest as Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode'> & {
+  delete rest.sourceRetentionContract;
+  return rest as Omit<T, 'sourceInstallment' | 'sourceIpc' | 'sourceBoqNode' | 'sourceRetentionContract'> & {
     source: ReturnType<typeof resolveInvoiceSource>;
   };
 }
@@ -226,7 +262,36 @@ export class ClientInvoiceService {
     private readonly documentService: InvoiceDocumentService,
     private readonly files: PlatformFileService,
     private readonly taxCodes: TaxCodeService,
+    @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
+    @Optional() private readonly accountingConfig?: AccountingConfigurationService,
   ) {}
+
+  /** ADR-046 §8 — the organisation's optional approvals (defaults when none is wired, e.g. in tests). */
+  private approvalSettings(organizationId: string) {
+    return this.accountingConfig?.getApprovalSettings(organizationId) ?? Promise.resolve(DEFAULT_APPROVAL_SETTINGS);
+  }
+
+  /**
+   * ADR-046 §2/§8 — a draft at or above the organisation's invoice approval amount is not issued
+   * until someone approves it. Every issue path calls this before approving a draft itself: the
+   * invoice page's Issue and the contract billing package.
+   */
+  async assertIssuableWithoutApproval(
+    identity: RequestIdentity,
+    invoice: { id: string; documentStatus: string },
+    tx?: Prisma.TransactionClient,
+  ) {
+    if (invoice.documentStatus !== 'DRAFT') return;
+    const settings = await this.approvalSettings(identity.activeOrganizationId);
+    if (settings.invoiceApprovalAbove === null) return;
+    const row = await this.repo.findById((tx ?? this.tenancyService.getClient()) as TenantPrisma, identity.activeOrganizationId, invoice.id);
+    if (row && invoiceNeedsApproval(settings, new Decimal(row.totalAmount.toString()))) {
+      throw new ConflictException({
+        errorCode: 'INVOICE_APPROVAL_REQUIRED',
+        message: `Invoices of ${settings.invoiceApprovalAbove!.toFixed(2)} or more need approval before they are issued. Ask an approver to approve it.`,
+      });
+    }
+  }
 
   /**
    * ADR-041 — the code, rate and amounts an invoice is raised at. Resolved after each path's
@@ -294,20 +359,68 @@ export class ClientInvoiceService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const existing = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
-    if (existing) return existing;
+    // H2 — a draft cancelled before cancelling released `sourceIpcId` still holds the certificate:
+    // it billed nothing, so it gives the tag up and a new invoice is raised.
+    if (existing?.documentStatus === 'CANCELLED') {
+      await prisma.clientInvoice.update({ where: { id: existing.id }, data: { sourceIpcId: null } });
+    } else if (existing) {
+      return existing;
+    }
 
     const ipc = await prisma.interimPaymentCertificate.findFirst({
       where: { id: dto.ipcId, organizationId: orgId },
       include: {
         application: { include: { contract: { include: { client: true } } } },
+        deductions: { select: { deductionType: true, amount: true } },
       },
     });
     if (!ipc) throw new NotFoundException(`IPC ${dto.ipcId} not found`);
     if (!ipc.isEffective) throw new BadRequestException(`IPC ${dto.ipcId} is not effective yet`);
 
     const contract = ipc.application.contract;
-    const subtotal = new Decimal(ipc.certifiedTotal.toString());
+
+    // ADR-046 §5 — the certificate is cumulative to date; bill only what earlier IPC invoices on
+    // this contract have not already billed, with retention and advance recovery netted.
+    const earlier = await this.repo.findEarlierIpcInvoices(prisma, orgId, contract.id);
+    let period: IpcInvoicePeriod;
+    try {
+      period = ipcInvoicePeriod(
+        certificateToDate(ipc.certifiedTotal, ipc.deductions),
+        billedToDate(
+          earlier.map((inv) => ({
+            certifiedGrossAmount:
+              inv.certifiedGrossAmount === null ? null : new Decimal(inv.certifiedGrossAmount.toString()),
+            subtotal: new Decimal(inv.subtotal.toString()),
+            retentionAmount: new Decimal(inv.retentionAmount.toString()),
+            advanceRecoveryAmount: new Decimal(inv.advanceRecoveryAmount.toString()),
+            otherDeductionsAmount: new Decimal(inv.otherDeductionsAmount.toString()),
+            creditedNet: inv.creditNotes.reduce(
+              (sum, cn) => sum.plus(cn.netAmount.toString()),
+              new Decimal(0),
+            ),
+          })),
+        ),
+      );
+    } catch (err) {
+      if (err instanceof IpcInvoicePeriodError) {
+        throw new BadRequestException({ errorCode: err.code, message: err.message });
+      }
+      throw err;
+    }
+
+    const subtotal = period.revenue;
     const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
+    // Amount due = revenue + tax − what the client holds back this period.
+    const amountDue = tax.totalAmount.minus(period.retention).minus(period.advanceRecovery);
+    if (!amountDue.gt(0)) {
+      throw new BadRequestException({
+        errorCode: 'IPC_AMOUNT_DUE_NOT_POSITIVE',
+        message:
+          `Retention (${period.retention.toFixed(2)}) and advance recovery ` +
+          `(${period.advanceRecovery.toFixed(2)}) leave nothing due on this period's ` +
+          `${tax.totalAmount.toFixed(2)}. Review the certificate's deductions.`,
+      });
+    }
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -322,9 +435,13 @@ export class ClientInvoiceService {
         currencyCode: ipc.currency,
         subtotal,
         vatAmount: tax.vatAmount,
-        totalAmount: tax.totalAmount,
+        totalAmount: amountDue,
         taxCodeId: tax.taxCodeId,
         taxRate: tax.taxRate,
+        certifiedGrossAmount: period.gross,
+        retentionAmount: period.retention,
+        advanceRecoveryAmount: period.advanceRecovery,
+        otherDeductionsAmount: period.other,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -347,6 +464,103 @@ export class ClientInvoiceService {
         if (winner) return winner;
       }
       throw err;
+    }
+  }
+
+  /**
+   * ADR-046 §5 — a retention release invoice: bills the retention a contract's IPC invoices held
+   * back, less what earlier release invoices already billed, once the contract's retention has been
+   * released (`POST /contracts/:id/retention/release`).
+   *
+   * It earns no revenue and carries no tax — both were recognised when each IPC invoice was raised —
+   * so subtotal and VAT are zero and the amount due is the retention released. Posting moves it from
+   * Retention Receivable to Accounts Receivable, and re-checks the amount (see `post`).
+   *
+   * Billing held − released (rather than one invoice per contract) lets a reversed release be raised
+   * again and bills retention certified after a release with a top-up. An open draft that still
+   * matches is returned (idempotent); a draft that no longer matches is refused, to be cancelled.
+   */
+  async generateFromRetentionRelease(identity: RequestIdentity, dto: GenerateInvoiceFromRetentionReleaseDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const contract = await prisma.contract.findFirst({
+      where: { id: dto.contractId, organizationId: orgId },
+      include: { client: true, retentionTerms: true },
+    });
+    if (!contract) throw new NotFoundException(`Contract ${dto.contractId} not found`);
+    if (!contract.retentionTerms?.retentionReleasedAt) {
+      throw new BadRequestException({
+        errorCode: 'RETENTION_NOT_RELEASED',
+        message: 'Release the contract’s retention before invoicing it.',
+      });
+    }
+
+    const position = await this.repo.findRetentionPosition(prisma, orgId, contract.id);
+    this.assertRetentionReleasable(position);
+    if (position.openDraft) {
+      if (new Decimal(position.openDraft.retentionReleasedAmount.toString()).equals(position.due)) {
+        return position.openDraft;
+      }
+      throw new BadRequestException({
+        errorCode: 'RETENTION_DRAFT_STALE',
+        message:
+          `A retention release draft for ${position.openDraft.retentionReleasedAmount.toString()} is open, but ` +
+          `${position.due.toFixed(2)} is now due. Cancel the draft and raise the release again.`,
+      });
+    }
+    const amount = position.due;
+
+    // Zero subtotal: the tax code is still recorded (ADR-041) at a nil rate, so no document prints a
+    // "Sales Tax (5%) 0.00" line under the released amount.
+    const tax = await this.taxFor(prisma, identity, undefined, dto.invoiceDate, new Decimal(0));
+    const org = await this.snapshotOrgBranding(prisma, orgId);
+    return this.repo.create(prisma, {
+      organizationId: orgId,
+      clientId: contract.clientId,
+      sourceRetentionContractId: contract.id,
+      projectId: contract.projectId,
+      contractId: contract.id,
+      invoiceDate: new Date(dto.invoiceDate),
+      dueDate: new Date(dto.dueDate),
+      currencyCode: contract.currency,
+      subtotal: new Decimal(0),
+      vatAmount: new Decimal(0),
+      totalAmount: amount,
+      taxCodeId: tax.taxCodeId,
+      taxRate: new Decimal(0),
+      retentionReleasedAmount: amount,
+      paymentTerms: dto.paymentTerms,
+      billingAddressSnapshot: {
+        client: {
+          name: contract.client.name,
+          address: contract.client.address,
+          taxNumber: contract.client.taxNumber,
+          city: contract.client.city,
+          countryCode: contract.client.countryCode,
+        },
+        description: `Release of retention — contract ${contract.contractNumber}`,
+        org,
+      },
+      createdBy: userId,
+    });
+  }
+
+  /** ADR-046 §5 — the refusals shared by raising and posting a retention release invoice. */
+  private assertRetentionReleasable(position: { due: Decimal; pendingWithRetention: number }) {
+    if (position.pendingWithRetention > 0) {
+      throw new BadRequestException({
+        errorCode: 'RETENTION_INVOICES_UNPOSTED',
+        message:
+          `${position.pendingWithRetention} certificate invoice(s) on this contract still hold retention and are ` +
+          'not posted. Post or cancel them first, so the release bills all the retention held.',
+      });
+    }
+    if (!position.due.gt(0)) {
+      throw new BadRequestException({
+        errorCode: 'RETENTION_NOTHING_HELD',
+        message: 'No retention is held on this contract beyond what was already released and invoiced.',
+      });
     }
   }
 
@@ -557,6 +771,169 @@ export class ClientInvoiceService {
   }
 
   /**
+   * ADR-048 — a hand-typed DRAFT invoice for a sale outside any construction contract (equipment
+   * hire, surplus materials, services). Its subtotal is the sum of its priced lines; tax follows the
+   * same tax-code rule as every invoice (ADR-041). It never carries a project, contract or source
+   * tag, so contract billing stays source-only (ADR-037). Same lifecycle afterwards: approve → post.
+   */
+  async createManual(identity: RequestIdentity, dto: ManualInvoiceInput) {
+    const prisma = this.tenancyService.getClient();
+    const prepared = await this.prepareManual(prisma, identity, dto);
+    const invoice = await this.repo.createManual(prisma, prepared.header, prepared.lines);
+    return this.findById(identity, invoice.id);
+  }
+
+  /**
+   * Cancel an invoice that was never posted (Step 2g) — a wrong draft no longer sits on the list for
+   * good. Its source is freed, so the certificate, separate charge or retention release can be billed
+   * again; a hand-typed invoice simply ends. Audited. A stage invoice is refused here: its package
+   * and variation billing are released by the contract's Billing tab (Commercial → Delete draft),
+   * which accounting may not call into (ARCH-BOUNDARY-001).
+   */
+  async cancelDraft(identity: RequestIdentity, invoiceId: string, reason?: string) {
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const invoice = await this.repo.findById(prisma, orgId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (invoice.documentStatus === 'CANCELLED') {
+      throw new ConflictException({ errorCode: 'INVOICE_CANCELLED', message: 'This invoice is already cancelled.' });
+    }
+    if (invoice.postingStatus !== 'NOT_POSTED' && invoice.postingStatus !== 'FAILED') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_ALREADY_POSTED',
+        message: 'This invoice is in the ledger. Reverse it, or raise a credit note, instead of cancelling.',
+      });
+    }
+    if (invoice.sourceInstallmentId || (await this.repo.hasVariationBilling(prisma, orgId, invoice.id, null))) {
+      throw new BadRequestException({
+        errorCode: 'STAGE_DRAFT_USE_COMMERCIAL',
+        message: "A stage invoice is part of its contract's billing package. Delete the draft from the contract's Billing tab.",
+      });
+    }
+    const why = reason?.trim() || 'Draft cancelled';
+    await prisma.$transaction(async (tx) => {
+      const cancelled = await this.repo.cancelDraft(tx as never, orgId, invoice.id, identity.userId, why);
+      if (cancelled !== 1) {
+        throw new ConflictException('The invoice changed while it was being cancelled; reload and try again.');
+      }
+      await this.auditOutbox?.record(tx as never, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'ClientInvoice',
+        resourceId: invoice.id,
+        sourceCommand: 'clientInvoice.cancelDraft',
+        eventType: 'CLIENT_INVOICE_CANCELLED',
+        idempotencyKey: `client-invoice-cancel:${invoice.id}`,
+        before: {
+          documentStatus: invoice.documentStatus,
+          sourceIpcId: invoice.sourceIpcId,
+          sourceBoqNodeId: invoice.sourceBoqNodeId,
+          sourceRetentionContractId: invoice.sourceRetentionContractId,
+          isManual: invoice.isManual,
+        },
+        after: { documentStatus: 'CANCELLED' },
+        reason: why,
+      });
+    });
+    return this.findById(identity, invoice.id);
+  }
+
+  /** ADR-048 — the income accounts a hand-typed line may credit (`OTHER_INCOME` ones first). */
+  async listIncomeAccounts(identity: RequestIdentity) {
+    const accounts = await this.repo.listIncomeAccounts(this.tenancyService.getClient(), identity.activeOrganizationId);
+    return [...accounts].sort((a, b) => Number(b.subtype === 'OTHER_INCOME') - Number(a.subtype === 'OTHER_INCOME'));
+  }
+
+  /** ADR-048 — rewrite a DRAFT hand-typed invoice: header and the whole line set. */
+  async updateManual(identity: RequestIdentity, invoiceId: string, dto: ManualInvoiceInput) {
+    const prisma = this.tenancyService.getClient();
+    const existing = await this.repo.findById(prisma, identity.activeOrganizationId, invoiceId);
+    if (!existing) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (!existing.isManual) {
+      throw new BadRequestException({
+        errorCode: 'INVOICE_NOT_MANUAL',
+        message: 'Only a hand-typed invoice can be edited. Contract invoices follow their source.',
+      });
+    }
+    if (existing.documentStatus !== 'DRAFT') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_NOT_DRAFT',
+        message: 'Only a draft invoice can be edited. Cancel or reverse it and raise a new one.',
+      });
+    }
+    const prepared = await this.prepareManual(prisma, identity, dto);
+    await prisma.$transaction((tx) =>
+      this.repo.replaceManual(tx as never, invoiceId, prepared.header, identity.activeOrganizationId, prepared.lines),
+    );
+    return this.findById(identity, invoiceId);
+  }
+
+  private async prepareManual(
+    prisma: ReturnType<TenancyService['getClient']>,
+    identity: RequestIdentity,
+    dto: ManualInvoiceInput,
+  ) {
+    const orgId = identity.activeOrganizationId;
+    const priced = priceManualLines(dto.lines);
+    const problems = [...priced.problems];
+    if (!/^[A-Z]{3}$/.test(dto.currencyCode)) problems.push('Choose a three-letter currency code.');
+    if (dto.dueDate < dto.invoiceDate) problems.push('The due date cannot be before the invoice date.');
+
+    const client = await this.repo.findClientForInvoice(prisma, orgId, dto.clientId);
+    if (!client) problems.push('Choose a client.');
+    else if (client.status !== 'ACTIVE') problems.push(`${client.name} is not active, so it cannot be invoiced.`);
+
+    const codes = [...new Set(priced.lines.map((l) => l.revenueAccountCode))];
+    const accounts = codes.length > 0 ? await this.repo.findIncomeAccountsByCode(prisma, orgId, codes) : new Map();
+    for (const code of codes) {
+      if (!accounts.has(code)) problems.push(`${code} is not an active income account that accepts postings.`);
+    }
+
+    if (problems.length > 0) {
+      throw new BadRequestException({ errorCode: 'MANUAL_INVOICE_INVALID', message: problems.join(' '), details: { problems } });
+    }
+
+    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, priced.subtotal);
+    const org = await this.snapshotOrgBranding(prisma as never, orgId);
+    return {
+      header: {
+        organizationId: orgId,
+        clientId: client!.id,
+        invoiceDate: new Date(dto.invoiceDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: dto.currencyCode,
+        subtotal: priced.subtotal,
+        vatAmount: tax.vatAmount,
+        totalAmount: tax.totalAmount,
+        taxCodeId: tax.taxCodeId,
+        taxRate: tax.taxRate,
+        paymentTerms: dto.paymentTerms,
+        billingAddressSnapshot: {
+          client: {
+            name: client!.name,
+            address: client!.address,
+            taxNumber: client!.taxNumber,
+            city: client!.city,
+            countryCode: client!.countryCode,
+          },
+          description: priced.lines[0]!.description,
+          org,
+        },
+        createdBy: identity.userId,
+      },
+      lines: priced.lines.map((l) => ({
+        lineNo: l.lineNo,
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+        revenueAccountId: accounts.get(l.revenueAccountCode)!,
+      })),
+    };
+  }
+
+  /**
    * ADR-030 CONST-COM-028 (Commercial redesign P1) — compose a variation's OWN standalone DRAFT
    * ClientInvoice from primitives.
    *
@@ -666,6 +1043,17 @@ export class ClientInvoiceService {
     if (invoice.documentStatus !== 'DRAFT') {
       throw new BadRequestException(`Invoice is already ${invoice.documentStatus}`);
     }
+    // ADR-046 §8 — an approval the setting asks for is a second person's: the preparer cannot give
+    // it. Issue's own internal approval only runs when no approval is required.
+    if (!externalTx && invoice.createdBy === userId) {
+      const settings = await this.approvalSettings(orgId);
+      if (invoiceNeedsApproval(settings, new Decimal(invoice.totalAmount.toString()))) {
+        throw new ForbiddenException({
+          errorCode: 'INVOICE_APPROVER_IS_PREPARER',
+          message: 'You prepared this invoice, so someone else must approve it.',
+        });
+      }
+    }
 
     return this.repo.approve(prisma, invoiceId, userId);
   }
@@ -691,6 +1079,18 @@ export class ClientInvoiceService {
     if (invoice.postingStatus === 'POSTED') {
       throw new ConflictException(`Invoice ${dto.invoiceId} is already posted`);
     }
+    // A11 — only an unposted (or failed) invoice posts. A reversed invoice is finished: posting it
+    // again would draw a new number over the old one and orphan its journal — bill the source again
+    // with a replacement invoice instead. An opening-balance invoice is already in the opening journal.
+    if (invoice.postingStatus === 'REVERSED') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_REVERSED',
+        message: `Invoice ${invoice.invoiceNumber ?? dto.invoiceId} was reversed and cannot be posted again. Raise a replacement invoice.`,
+      });
+    }
+    if (invoice.postingStatus !== 'NOT_POSTED' && invoice.postingStatus !== 'FAILED') {
+      throw new ConflictException(`Invoice ${dto.invoiceId} cannot be posted (status: ${invoice.postingStatus})`);
+    }
     // Strict CONST-COM-011 at the point of posting: a stage invoice drafted before the rule (or
     // whose milestone was unlinked since) must not reach the ledger without site-verified evidence.
     // Covers the invoice screen's Post and the billing package, which posts through here.
@@ -711,6 +1111,27 @@ export class ClientInvoiceService {
       }
     }
 
+    // ADR-046 §5 — a retention release invoice is re-checked when it posts: certificate invoices may
+    // have posted, been reversed or been released since the draft was raised. It may bill no more
+    // than the retention still held and not yet released, or Retention Receivable would go negative.
+    if (invoice.sourceRetentionContractId) {
+      const position = await this.repo.findRetentionPosition(
+        readPrisma,
+        orgId,
+        invoice.sourceRetentionContractId,
+        invoice.id,
+      );
+      if (new Decimal(invoice.retentionReleasedAmount.toString()).gt(position.due)) {
+        throw new BadRequestException({
+          errorCode: 'RETENTION_RELEASE_STALE',
+          message:
+            `This release bills ${invoice.retentionReleasedAmount.toString()} but only ${position.due.toFixed(2)} ` +
+            'of retention is held and not yet released. Cancel it and raise the release again.',
+        });
+      }
+      this.assertRetentionReleasable(position);
+    }
+
     // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
     // DTO still works as an explicit override (backward-compatible) but is no longer required.
     const arAccount = await this.resolver.resolveByCodeOrRole(
@@ -719,12 +1140,23 @@ export class ClientInvoiceService {
       dto.arAccountCode,
       'ACCOUNTS_RECEIVABLE',
     );
-    const revAccount = await this.resolver.resolveByCodeOrRole(
-      outerPrisma,
-      orgId,
-      dto.revenueAccountCode,
-      'PROJECT_REVENUE',
-    );
+    // ADR-048 — a hand-typed invoice credits each line's own income account. Its lines must still
+    // add up to the subtotal it was approved at; anything else is refused rather than posted.
+    const manualLines = invoice.isManual ? await this.repo.findManualLines(readPrisma, orgId, invoice.id) : [];
+    if (invoice.isManual) {
+      const linesTotal = manualLines.reduce((sum, l) => sum.plus(l.amount.toString()), new Decimal(0));
+      if (manualLines.length === 0 || !linesTotal.eq(invoice.subtotal.toString())) {
+        throw new ConflictException({
+          errorCode: 'MANUAL_LINES_MISMATCH',
+          message: 'This invoice\'s lines do not add up to its subtotal. Open the draft and save it again.',
+        });
+      }
+    }
+    // A retention release invoice earns no revenue, so it needs no revenue account; a hand-typed one
+    // names an account per line.
+    const revAccount = !invoice.isManual && new Decimal(invoice.subtotal.toString()).gt(0)
+      ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE')
+      : null;
 
     let vatAccount: ResolvedAccount | null = null;
     if (new Decimal(invoice.vatAmount.toString()).gt(0)) {
@@ -736,6 +1168,27 @@ export class ClientInvoiceService {
       );
     }
 
+    // ADR-046 §5 — what an IPC invoice holds back this period is an asset (retention) or clears the
+    // client's advance, never lost: the AR debit is the amount due, and these debits make up the
+    // difference to revenue + tax. Resolved only when present, so a chart without a retention
+    // account (ADR-040: ACCO uses none) posts every other invoice unchanged.
+    const retentionAmount = new Decimal(invoice.retentionAmount.toString());
+    const advanceRecoveryAmount = new Decimal(invoice.advanceRecoveryAmount.toString());
+    const retentionAccount = retentionAmount.gt(0)
+      ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'RETENTION_RECEIVABLE')
+      : null;
+    const clientAdvanceAccount = advanceRecoveryAmount.gt(0)
+      ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'CLIENT_ADVANCE_LIABILITY')
+      : null;
+    // ADR-046 §5 — a retention release invoice moves the released retention out of Retention
+    // Receivable into AR; it shares the retention account resolution above.
+    const retentionReleasedAmount = new Decimal(invoice.retentionReleasedAmount.toString());
+    const releasedFromAccount =
+      retentionReleasedAmount.gt(0)
+        ? (retentionAccount ??
+          (await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, undefined, 'RETENTION_RECEIVABLE')))
+        : null;
+
     await this.sequenceRepo.ensureSequence(outerPrisma as never, orgId, 'CLIENT_INVOICE', 'INV-');
 
     const runPost = async (activeTx: Prisma.TransactionClient) => {
@@ -743,29 +1196,81 @@ export class ClientInvoiceService {
       const vatAmount = new Decimal(invoice.vatAmount.toString());
       const totalAmount = new Decimal(invoice.totalAmount.toString());
 
+      // Step 6 (fix forward, owner decision 2026-10-28): every line of the invoice carries the
+      // invoice's client, project and contract, so the ledger answers "by client" and "by project"
+      // for any account, not only revenue. Posted history is left as it is.
+      const tags = {
+        clientId: invoice.clientId,
+        projectId: invoice.projectId ?? undefined,
+        contractId: invoice.contractId ?? undefined,
+      };
       const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
         {
           accountId: arAccount.id,
           debitAmount: totalAmount,
           creditAmount: new Decimal(0),
           sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
-          clientId: invoice.clientId,
-          contractId: invoice.contractId ?? undefined,
+          ...tags,
         },
-        {
+      ];
+      // ADR-048 — one credit per income account, summed across the lines that use it.
+      if (invoice.isManual) {
+        const byAccount = new Map<string, Decimal>();
+        for (const line of manualLines) {
+          byAccount.set(line.revenueAccountId, (byAccount.get(line.revenueAccountId) ?? new Decimal(0)).plus(line.amount.toString()));
+        }
+        for (const [accountId, amount] of byAccount) {
+          lines.push({ accountId, debitAmount: new Decimal(0), creditAmount: amount, ...tags });
+        }
+      }
+      // A retention release invoice earns no revenue: no zero-value revenue line.
+      if (revAccount && subtotal.gt(0)) {
+        lines.push({
           accountId: revAccount.id,
           debitAmount: new Decimal(0),
           creditAmount: subtotal,
-          projectId: invoice.projectId ?? undefined,
-          contractId: invoice.contractId ?? undefined,
-        },
-      ];
+          ...tags,
+        });
+      }
 
       if (vatAccount && vatAmount.gt(0)) {
         lines.push({
           accountId: (vatAccount as AccountWithCurrentVersion).id,
           debitAmount: new Decimal(0),
           creditAmount: vatAmount,
+          ...tags,
+          taxCodeId: invoice.taxCodeId ?? undefined,
+        });
+      }
+
+      if (releasedFromAccount) {
+        lines.push({
+          accountId: releasedFromAccount.id,
+          debitAmount: new Decimal(0),
+          creditAmount: retentionReleasedAmount,
+          clientId: invoice.clientId,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
+        });
+      }
+      if (retentionAccount) {
+        lines.push({
+          accountId: retentionAccount.id,
+          debitAmount: retentionAmount,
+          creditAmount: new Decimal(0),
+          clientId: invoice.clientId,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
+        });
+      }
+      if (clientAdvanceAccount) {
+        lines.push({
+          accountId: clientAdvanceAccount.id,
+          debitAmount: advanceRecoveryAmount,
+          creditAmount: new Decimal(0),
+          clientId: invoice.clientId,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
         });
       }
 
@@ -823,6 +1328,34 @@ export class ClientInvoiceService {
   }
 
   /**
+   * ADR-046 §2 — Issue: one action from draft to a numbered, posted invoice. Refreshes the printed
+   * company details, approves a draft and posts it (EVT-AR-001) in one transaction, so a refusal
+   * at posting (period closed, account missing, stale retention) leaves the draft untouched. An
+   * invoice already approved (before this change) issues by posting alone.
+   */
+  async issue(identity: RequestIdentity, invoiceId: string, dto: Omit<PostInvoiceDto, 'invoiceId'> = {}) {
+    const prisma = this.tenancyService.getClient();
+    const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (invoice.documentStatus === 'CANCELLED') {
+      throw new ConflictException({ errorCode: 'INVOICE_CANCELLED', message: 'This invoice was cancelled and cannot be issued.' });
+    }
+    if (invoice.postingStatus === 'POSTED') {
+      throw new ConflictException({
+        errorCode: 'INVOICE_ALREADY_POSTED',
+        message: `Invoice ${invoice.invoiceNumber ?? invoiceId} is already issued.`,
+      });
+    }
+    await this.assertIssuableWithoutApproval(identity, invoice);
+    await prisma.$transaction(async (tx) => {
+      await this.refreshBrandingSnapshot(identity, invoiceId, tx);
+      if (invoice.documentStatus === 'DRAFT') await this.approve(identity, invoiceId, tx);
+      await this.post(identity, { ...dto, invoiceId }, tx);
+    });
+    return this.findById(identity, invoiceId);
+  }
+
+  /**
    * Reverse a posted ClientInvoice.
    * EVT-AR-002: Dr Revenue + Dr VAT (if any) / Cr AR — the mirror of EVT-AR-001.
    * Guard: invoice must have zero active (POSTED) receipt allocations.
@@ -874,6 +1407,31 @@ export class ClientInvoiceService {
       throw new BadRequestException(`Invoice ${invoiceId} has no posted journal to reverse`);
     }
 
+    // ADR-046 §5 — retention already invoiced to the client cannot be taken back by reversing the
+    // certificate invoice that held it: Retention Receivable would go negative. Reverse the release
+    // invoice first (the release can then be raised again for what remains held).
+    const heldHere = new Decimal(invoice.retentionAmount.toString());
+    if (invoice.sourceIpcId && invoice.contractId && heldHere.gt(0)) {
+      const position = await this.repo.findRetentionPosition(prisma, orgId, invoice.contractId);
+      if (position.released.gt(position.held.minus(heldHere))) {
+        throw new BadRequestException({
+          errorCode: 'RETENTION_ALREADY_RELEASED',
+          message:
+            `This invoice holds ${heldHere.toFixed(2)} of retention that a posted retention release invoice ` +
+            'has already billed. Reverse the release invoice first.',
+        });
+      }
+    }
+
+    // H2 — a reversed invoice billed nothing, so its source (stage, certificate, separate charge)
+    // can be billed again: the unique source tag is released, exactly as cancelling a draft
+    // releases it. The description keeps the source on the invoice and the audit event records the
+    // tag. A stage invoice carrying variation billing lines keeps its tag: those lines are undone by
+    // a credit note in the variation workflow, not by re-billing the stage.
+    const releaseSource =
+      (invoice.sourceInstallmentId !== null || invoice.sourceIpcId !== null || invoice.sourceBoqNodeId !== null) &&
+      !(await this.repo.hasVariationBilling(prisma, orgId, invoice.id, invoice.sourceInstallmentId));
+
     // Load original journal lines
     const originalJournal = await prisma.journalEntry.findUniqueOrThrow({
       where: { id: invoice.postedJournalEntryId },
@@ -909,6 +1467,7 @@ export class ClientInvoiceService {
             // project revenue (and the project P&L) kept a reversed invoice.
             projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
+            taxCodeId: l.taxCodeId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
         },
@@ -922,8 +1481,29 @@ export class ClientInvoiceService {
           reversalJournalEntryId: reversalResult.journalEntryId,
           reversedBy: userId,
           reversedAt: new Date(),
+          ...(releaseSource ? { sourceInstallmentId: null, sourceIpcId: null, sourceBoqNodeId: null } : {}),
         },
       });
+      if (this.auditOutbox) {
+        await this.auditOutbox.record(tx as never, {
+          organizationId: orgId,
+          actorUserId: userId,
+          action: 'REVERSE',
+          resourceType: 'ClientInvoice',
+          resourceId: invoiceId,
+          sourceCommand: 'client-invoice.reverse',
+          eventType: 'CLIENT_INVOICE_REVERSED',
+          idempotencyKey: `client-invoice-${invoiceId}-REVERSED`,
+          before: {
+            postingStatus: 'POSTED',
+            sourceInstallmentId: invoice.sourceInstallmentId,
+            sourceIpcId: invoice.sourceIpcId,
+            sourceBoqNodeId: invoice.sourceBoqNodeId,
+          },
+          after: { postingStatus: 'REVERSED', sourceReleased: releaseSource },
+          reason: opts.reason,
+        });
+      }
 
       return reversalResult;
     });
@@ -945,7 +1525,17 @@ export class ClientInvoiceService {
     const prisma = this.tenancyService.getClient();
     const invoice = await this.repo.findByIdWithSource(prisma, identity.activeOrganizationId, id);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
-    return toInvoiceWithSource(invoice);
+    const lines: ManualInvoiceLineDto[] = invoice.isManual
+      ? (await this.repo.findManualLines(prisma, identity.activeOrganizationId, id)).map((l) => ({
+          lineNo: l.lineNo,
+          description: l.description,
+          quantity: l.quantity.toString(),
+          unitPrice: l.unitPrice.toFixed(2),
+          amount: l.amount.toFixed(2),
+          revenueAccountCode: l.revenueAccount.code,
+        }))
+      : [];
+    return { ...toInvoiceWithSource(invoice), lines };
   }
 
   /**
@@ -1034,10 +1624,16 @@ export class ClientInvoiceService {
       snapshot.separateCharge ??
       `Invoice ${invoice.invoiceNumber ?? id}`;
 
+    // ADR-046 §5 — a retention release invoice has no revenue (subtotal 0): its document shows the
+    // retention released as its one line and subtotal, so the client reads amount = total due.
+    const documentSubtotal = new Decimal(invoice.subtotal.toString()).plus(
+      invoice.retentionReleasedAmount.toString(),
+    );
+
     const [logo, project, lineSource] = await Promise.all([
       org ? this.files.readBytesForRendering(org.logoFileId) : null,
       loadInvoiceProject(prisma, invoice.organizationId, invoice.projectId),
-      loadInvoiceLineSource(prisma, invoice, description),
+      loadInvoiceLineSource(prisma, { ...invoice, subtotal: documentSubtotal.toFixed(2) }, description),
     ]);
 
     const pdf = await this.documentService.render({
@@ -1046,9 +1642,11 @@ export class ClientInvoiceService {
       dueDate: invoice.dueDate,
       paymentTerms: invoice.paymentTerms,
       currencyCode: invoice.currencyCode,
-      subtotal: invoice.subtotal.toString(),
+      subtotal: documentSubtotal.toFixed(2),
       vatAmount: invoice.vatAmount.toString(),
       taxRatePercent: invoice.taxRate.toString(),
+      retentionAmount: invoice.retentionAmount.toString(),
+      advanceRecoveryAmount: invoice.advanceRecoveryAmount.toString(),
       totalAmount: invoice.totalAmount.toString(),
       client: {
         name: client?.name ?? snapshot.clientName ?? 'Client',
@@ -1058,7 +1656,15 @@ export class ClientInvoiceService {
         taxNumber: client?.taxNumber ?? null,
       },
       project,
-      lines: buildInvoiceLines(lineSource),
+      lines: invoice.isManual
+        ? (await this.repo.findManualLines(prisma, invoice.organizationId, invoice.id)).map((l) => ({
+            title: l.description,
+            detail: null,
+            quantity: l.quantity.toString(),
+            unitPrice: l.unitPrice.toFixed(2),
+            amount: l.amount.toFixed(2),
+          }))
+        : buildInvoiceLines(lineSource),
       paymentAccounts: invoiceDocument?.paymentAccounts ?? [],
       notes: invoiceDocument?.notes ?? null,
       showBankDetails: invoiceDocument?.showBankDetails ?? false,
@@ -1098,4 +1704,28 @@ export class ClientInvoiceService {
 
     return file.id;
   }
+}
+
+/**
+ * ADR-046 §5 — a certificate's figures to date: gross and its deductions split the way the IPC
+ * reconciliation policy splits them (RETENTION, ADVANCE_RECOVERY, everything else).
+ */
+function certificateToDate(
+  certifiedTotal: { toString(): string },
+  deductions: readonly { deductionType: string; amount: { toString(): string } }[],
+): IpcAmounts {
+  const toDate: IpcAmounts = {
+    gross: new Decimal(certifiedTotal.toString()),
+    retention: new Decimal(0),
+    advanceRecovery: new Decimal(0),
+    other: new Decimal(0),
+  };
+  for (const ded of deductions) {
+    const amount = new Decimal(ded.amount.toString());
+    if (ded.deductionType === 'RETENTION') toDate.retention = toDate.retention.plus(amount);
+    else if (ded.deductionType === 'ADVANCE_RECOVERY') {
+      toDate.advanceRecovery = toDate.advanceRecovery.plus(amount);
+    } else toDate.other = toDate.other.plus(amount);
+  }
+  return toDate;
 }

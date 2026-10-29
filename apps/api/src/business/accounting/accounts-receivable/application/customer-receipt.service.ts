@@ -123,6 +123,8 @@ export class CustomerReceiptService {
           debitAmount: totalAmount,
           creditAmount: new Decimal(0),
           sourceSubledgerType: 'BANK',
+          // Step 6 (fix forward): the bank line names who paid, like the AR line it balances.
+          clientId: receipt.clientId,
         },
       ];
 
@@ -271,17 +273,40 @@ export class CustomerReceiptService {
       prisma, orgId, dto.unappliedAccountCode, 'UNAPPLIED_CLIENT_RECEIPTS',
     );
 
+    // The application happens when both source documents exist: the later of the invoice date and
+    // the receipt's accounting date (never the clock) — the AR mirror of ADR-045 review H2. Dating
+    // it on the receipt alone put an application to an invoice raised months later into the
+    // (possibly closed) receipt month, so it could never post.
+    const applicationDay =
+      invoice.invoiceDate.getTime() > receipt.accountingDate.getTime()
+        ? invoice.invoiceDate
+        : receipt.accountingDate;
+
     return prisma.$transaction(async (tx) => {
+      // The allocation row is created first so its id keys the GL journal. Keying the journal on
+      // the receipt→invoice pair made a second allocation of the same pair (or a re-allocation
+      // after a reversal) hit the posting idempotency guard: the guard returned the first journal
+      // while the balances below were drawn down again, so the subledger drifted from the GL.
+      const allocation = await this.receiptRepo.createAllocation(tx as never, {
+        organizationId: orgId,
+        paymentReceiptId: receipt.id,
+        clientInvoiceId: invoice.id,
+        allocatedAmount: amount,
+        allocationDate: applicationDay,
+        postingStatus: 'POSTED',
+        createdBy: userId,
+      });
+
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: receipt.accountingDate,
-          documentDate: receipt.receiptDate,
+          accountingDate: applicationDay,
+          documentDate: applicationDay,
           description: `Receipt Allocation — Receipt ${receipt.id} → Invoice ${invoice.id}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-005',
           sourceDocumentType: 'PAYMENT_RECEIPT',
-          sourceDocumentId: `${receipt.id}-alloc-${invoice.id}`,
+          sourceDocumentId: `${receipt.id}-alloc-${allocation.id}`,
           journalCategory: 'ACCOUNTS_RECEIVABLE',
           entryPurpose: 'NORMAL',
           postingOrigin: 'SYSTEM_AR',
@@ -308,18 +333,8 @@ export class CustomerReceiptService {
       // All subledger side-effects run on `tx` (not the outer `prisma` client) so they commit or
       // roll back with the GL journal above. Writing them on `prisma` left the allocation row,
       // receipt balances, and invoice outstanding committed independently of a rolled-back journal
-      // — the same defect fixed for the receipt-post path in 4eb64e1. The allocation is dated on the
-      // source receipt's accountingDate (never `new Date()`), per the accounting-date rule.
-      await this.receiptRepo.createAllocation(tx as never, {
-        organizationId: orgId,
-        paymentReceiptId: receipt.id,
-        clientInvoiceId: invoice.id,
-        allocatedAmount: amount,
-        allocationDate: receipt.accountingDate,
-        journalEntryId: postResult.journalEntryId,
-        postingStatus: 'POSTED',
-        createdBy: userId,
-      });
+      // — the same defect fixed for the receipt-post path in 4eb64e1.
+      await this.receiptRepo.linkAllocationJournal(tx as never, allocation.id, postResult.journalEntryId);
 
       // Guarded atomic decrements: the `gte` predicate + decrement execute as one row-locked
       // statement, so two concurrent allocations of the same receipt (or against the same invoice)
@@ -364,9 +379,16 @@ export class CustomerReceiptService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const receipt = await this.receiptRepo.findById(prisma, orgId, receiptId);
-    if (!receipt) throw new NotFoundException(`PaymentReceipt ${receiptId} not found`);
+    if (!receipt) throw new NotFoundException({ errorCode: 'RECEIPT_NOT_FOUND', message: `Receipt ${receiptId} not found` });
     if (receipt.postingStatus !== 'POSTED') {
-      throw new BadRequestException(`Only POSTED receipts can be reversed (status: ${receipt.postingStatus})`);
+      throw new BadRequestException({
+        errorCode: 'RECEIPT_NOT_POSTED',
+        message: `Only a posted receipt can be reversed (status: ${receipt.postingStatus}).`,
+      });
+    }
+    const reason = opts.reason?.trim() ?? '';
+    if (reason.length < 3) {
+      throw new BadRequestException({ errorCode: 'REVERSAL_REASON_REQUIRED', message: 'Say why the receipt is reversed.' });
     }
 
     // Guard: subsequent allocations (EVT-AR-005) must be reversed first
@@ -378,9 +400,20 @@ export class CustomerReceiptService {
       },
     });
     if (subsequentAllocs > 0) {
-      throw new BadRequestException(
-        `Receipt ${receiptId} has ${subsequentAllocs} subsequent allocation(s) that must be reversed first.`,
-      );
+      throw new BadRequestException({
+        errorCode: 'RECEIPT_HAS_LATER_ALLOCATIONS',
+        message: `This receipt was applied to invoices after it was posted (${subsequentAllocs}). Undo those applications first, then reverse the receipt.`,
+        details: { count: subsequentAllocs },
+      });
+    }
+
+    // AR-5 — cash already paid back from this receipt left the bank; undo the refund first.
+    const postedRefunds = await prisma.clientRefund.count({ where: { receiptId, status: 'POSTED' } });
+    if (postedRefunds > 0) {
+      throw new BadRequestException({
+        errorCode: 'RECEIPT_HAS_REFUNDS',
+        message: 'Money from this receipt was paid back to the client. Reverse the refund first, then the receipt.',
+      });
     }
 
     if (!receipt.postedJournalEntryId) {
@@ -400,7 +433,7 @@ export class CustomerReceiptService {
           organizationId: orgId,
           accountingDate: reversalDate,
           documentDate: reversalDate,
-          description: `Reversal of Receipt ${receiptId}: ${opts.reason}`,
+          description: `Reversal of receipt ${receipt.receiptNumber ?? receiptId}: ${reason}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-004',
           sourceDocumentType: 'PAYMENT_RECEIPT',
@@ -448,6 +481,10 @@ export class CustomerReceiptService {
           postingStatus: 'REVERSED',
           allocatedAmount: new Decimal(0),
           unallocatedAmount: new Decimal(0),
+          reversedAt: new Date(),
+          reversedBy: userId,
+          reversalReason: reason,
+          reversalJournalEntryId: reversalResult.journalEntryId,
         },
       });
 
@@ -496,11 +533,11 @@ export class CustomerReceiptService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          // Reversal mirrors the source allocation's period (receipt.accountingDate), never today's
+          // Reversal mirrors the source allocation's period (its allocationDate), never today's
           // date — a `new Date()` here mis-periods AR and can be rejected outright when the current
           // period is closed. Enforces feedback-accounting-date-rule.
-          accountingDate: receipt.accountingDate,
-          documentDate: receipt.receiptDate,
+          accountingDate: alloc.allocationDate,
+          documentDate: alloc.allocationDate,
           description: `Allocation Reversal — Allocation ${allocationId}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-006',
@@ -622,7 +659,7 @@ export class CustomerReceiptService {
 
     // 2. GL journal lines (EVT-AR-003)
     const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
-      { accountId: bankGl.id, debitAmount: totalAmount, creditAmount: ZERO, sourceSubledgerType: 'BANK' },
+      { accountId: bankGl.id, debitAmount: totalAmount, creditAmount: ZERO, sourceSubledgerType: 'BANK', clientId: dto.clientId },
     ];
     if (allocatedAmount.gt(ZERO)) {
       lines.push({
@@ -699,6 +736,100 @@ export class CustomerReceiptService {
     }
 
     return { receiptId: receipt.id, journalEntryId: postResult.journalEntryId };
+  }
+
+  /**
+   * ADR-046 §6 — Receive payment: the money lands straight in the chosen bank account. Records,
+   * posts (EVT-AR-003, Dr that bank's GL account) and applies the receipt in one transaction — no
+   * holding account, no separate Post step. Each allocation must be a posted invoice of this
+   * client, in the receipt's currency, within its outstanding balance (CONST: allocation guards).
+   */
+  async receive(
+    identity: RequestIdentity,
+    dto: {
+      clientId: string;
+      bankAccountId: string;
+      receiptDate: string;
+      amount: string;
+      currency: string;
+      paymentMethod?: string;
+      reference?: string;
+      notes?: string;
+      allocations?: Array<{ clientInvoiceId: string; amount: number }>;
+    },
+  ) {
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const ZERO = new Decimal(0);
+    const allocations = dto.allocations ?? [];
+
+    const total = new Decimal(dto.amount);
+    if (total.lte(ZERO)) throw new BadRequestException('The payment amount must be above 0.');
+
+    const client = await prisma.client.findFirst({ where: { id: dto.clientId, organizationId: orgId }, select: { id: true } });
+    if (!client) throw new NotFoundException(`Client ${dto.clientId} not found`);
+
+    const bank = await prisma.bankAccount.findFirst({
+      where: { id: dto.bankAccountId, organizationId: orgId },
+      include: { glAccount: { select: { code: true } } },
+    });
+    if (!bank) throw new NotFoundException(`Bank account ${dto.bankAccountId} not found`);
+    if (bank.status !== 'ACTIVE' || !bank.allowsReceipts) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_RECEIVING', message: `${bank.accountName} does not accept receipts.` });
+    }
+    if (bank.currencyCode !== dto.currency) {
+      throw new BadRequestException({
+        errorCode: 'CURRENCY_MISMATCH',
+        message: `${bank.accountName} holds ${bank.currencyCode}; this payment is ${dto.currency}.`,
+      });
+    }
+
+    const ids = allocations.map((a) => a.clientInvoiceId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('An invoice is listed twice; combine its amounts into one line.');
+    }
+    const applied = allocations.reduce((sum, a) => sum.plus(new Decimal(a.amount)), ZERO);
+    if (applied.gt(total)) {
+      throw new BadRequestException(`Applied ${applied.toFixed(2)} is more than the payment of ${total.toFixed(2)}.`);
+    }
+    const invoices = ids.length
+      ? await prisma.clientInvoice.findMany({
+          where: { organizationId: orgId, id: { in: ids } },
+          select: { id: true, invoiceNumber: true, clientId: true, postingStatus: true, outstandingAmount: true, currencyCode: true },
+        })
+      : [];
+    for (const a of allocations) {
+      const inv = invoices.find((i) => i.id === a.clientInvoiceId);
+      if (!inv) throw new NotFoundException(`Invoice ${a.clientInvoiceId} not found`);
+      const ref = inv.invoiceNumber ?? inv.id;
+      if (inv.clientId !== dto.clientId) {
+        throw new BadRequestException({ errorCode: 'ALLOCATION_CLIENT_MISMATCH', message: `Invoice ${ref} belongs to a different client.` });
+      }
+      if (inv.postingStatus !== 'POSTED') throw new BadRequestException(`Invoice ${ref} is not issued yet.`);
+      if (inv.currencyCode !== dto.currency) {
+        throw new BadRequestException({ errorCode: 'CURRENCY_MISMATCH', message: `Invoice ${ref} is in ${inv.currencyCode}; this payment is ${dto.currency}.` });
+      }
+      const outstanding = new Decimal(inv.outstandingAmount.toString());
+      if (new Decimal(a.amount).gt(outstanding)) {
+        throw new BadRequestException(`Invoice ${ref} has ${outstanding.toFixed(2)} outstanding; ${a.amount} cannot be applied.`);
+      }
+    }
+
+    const { receiptId } = await prisma.$transaction(async (tx) => {
+      const result = await this.createAndPost(
+        identity,
+        { ...dto, bankAccountCode: bank.glAccount.code, allocations },
+        tx,
+      );
+      // The invoices' outstanding balances moved inside the same transaction; a concurrent receipt
+      // that already settled one would drive it below zero, so re-check before committing.
+      if (ids.length) {
+        const overdrawn = await tx.clientInvoice.count({ where: { id: { in: ids }, outstandingAmount: { lt: 0 } } });
+        if (overdrawn > 0) throw new ConflictException('An invoice was paid while this payment was being recorded. Reload and try again.');
+      }
+      return result;
+    });
+    return this.findById(identity, receiptId);
   }
 
   // ACC-SET-001 BE-2: receipt creation moved here from the retired finance module. No separate
