@@ -58,7 +58,8 @@
     "rowMenu": "Actions for {number}",
     "open": "Open",
     "overhead": "Company overhead",
-    "moreProjects": "+{count} more"
+    "moreProjects": "+{count} more",
+    "saveFailed": "That did not go through. Try again."
   },
   "lineType": {
     "MATERIAL": "Material",

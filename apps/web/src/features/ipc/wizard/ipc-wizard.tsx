@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, cn } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
+import {
+  Alert,
+  cn,
+  SkeletonForm,
+} from '@erp/ui';
 
 import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { useIpa } from '@/features/ipa/hooks/use-ipa';
@@ -238,19 +244,21 @@ export function IpcWizard({ contractId, ipaId, basePath }: IpcWizardProps) {
   const tCommon = useTranslations('common');
   if (ipa.isPending || contract.isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
-      </div>
+      <SkeletonForm label={tCommon('loading')} />
     );
   }
 
   if (ipa.isError || contract.isError) {
     const notFound = ipa.error instanceof ApiError && ipa.error.status === 404;
-    return (
-      <Alert
-        variant="error"
-        messages={[notFound ? 'Application not found.' : 'Failed to load data.']}
+    return notFound ? (
+      <Alert variant="error" messages={[t('notFound')]} />
+    ) : (
+      <LoadError
+        message={t('loadFailed')}
+        onRetry={() => {
+          if (ipa.isError) void ipa.refetch();
+          if (contract.isError) void contract.refetch();
+        }}
       />
     );
   }

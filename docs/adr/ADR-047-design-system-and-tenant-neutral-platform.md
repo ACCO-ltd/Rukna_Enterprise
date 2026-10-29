@@ -1,7 +1,7 @@
 # ADR-047 — Rukna design system, tenant-neutral platform, and the 2026-10-27 grill decisions
 
 **Status:** Accepted. Abdulsalam (product owner and sole engineer) and Eng Ahmed answered the grill
-questions on 2026-10-27. §1–§3 are built (2026-10-28); §4 records decisions for later steps.
+questions on 2026-10-27. §1–§3 are built (2026-10-28), §3b rolled out (2026-10-29); §4 records decisions for later steps.
 
 ## Context
 
@@ -112,6 +112,28 @@ These replace earlier rules, so they are listed explicitly:
   only when the window closes, so Undo never needs a server rollback. Leaving the page sends what
   is pending. Never used for posting, payments, or anything another person waits on; those keep
   a confirm dialog.
+
+### 3b. Rollout to Projects, Procurement and Administration (built: Step 8, 2026-10-29)
+
+- **Lists:** material requests, purchase orders, goods receipts, suppliers, buyer advances, projects,
+  users and roles use the §3a list page: title block with a summary line, built-in and saved views
+  with live counts, the shared Filter panel, groups, totals and export. Clients and suppliers carry
+  their tinted avatar; people carry a plain initials avatar.
+- **Server search stays where it matches more than the columns show** (the procurement lists search
+  line descriptions): `useListViewState(…, { searchOnServer: true })` sends the search to the API
+  and the grid's `searchedUpstream` does not search the returned rows again, while filters, views,
+  sort, groups, paging and export still run on them. A view's count is shown only while its
+  search (and any API-side filter) is the one the rows were fetched with.
+- **One state per row** extends to buyer advances (with buyer, settled, to post, …).
+- **Totals never show $0 for "nothing to add up"** — a column with no figure on any row totals "—".
+- **Audit logs** are a server-mode list (`GET /audit-logs` pages, searches, filters and names the
+  person) with an export that reads the whole filtered trail, not the page on screen.
+- **Failed loads and loading:** every failed load in these modules offers Try again on the query
+  that failed; whole-page placeholders are the matching skeleton.
+- **Message keys:** `src/i18n/used-keys.test.ts` fails CI when the code asks for a key the English
+  catalogue lacks (Step 8 found five that rendered as dotted paths in production).
+- **Setup screens** (units, materials, categories) keep no title block — the module header names
+  them (ADR-035) — but gain export.
 
 ## 4. Grill decisions for later steps (not yet built)
 

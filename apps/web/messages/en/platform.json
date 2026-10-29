@@ -3442,7 +3442,9 @@
       "effectiveCertWarning": "An effective certificate already exists for this application. Issuing a new one will replace it.",
       "draftRestoredHint": "Your draft has been restored.",
       "issueCta": "Issue Certificate",
-      "supersedeCta": "Issue Replacement Certificate"
+      "supersedeCta": "Issue Replacement Certificate",
+      "notFound": "This application was not found.",
+      "loadFailed": "The application could not be loaded."
     },
     "status": {
       "CERTIFIED": "Certified",

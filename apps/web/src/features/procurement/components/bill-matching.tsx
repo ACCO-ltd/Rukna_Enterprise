@@ -45,6 +45,7 @@ import {
 } from '@erp/ui';
 
 import { LoadError } from '@/components/load-error';
+import { ApiError } from '@/lib/api-client';
 
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -396,7 +397,7 @@ function RerunMatchButton({ billId }: { billId: string }) {
 
             {rerun.isError ? (
               <div className="mt-4">
-                <Alert variant="error" messages={[tc('loadFailed')]} />
+                <Alert variant="error" messages={[errorText(rerun.error, tc('saveFailed'))]} />
               </div>
             ) : null}
 
@@ -627,7 +628,7 @@ export function ResolveExceptionDialog({
           />
         </FormField>
 
-        {resolve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+        {resolve.isError ? <Alert variant="error" messages={[errorText(resolve.error, tc('saveFailed'))]} /> : null}
       </FormDialogBody>
 
       <FormDialogFooter>
@@ -642,4 +643,9 @@ export function ResolveExceptionDialog({
       </FormDialogFooter>
     </FormDialog>
   );
+}
+
+/** The server's own refusal when it sent one ("already resolved"), else the generic failure. */
+function errorText(error: unknown, fallback: string): string {
+  return error instanceof ApiError && error.message ? error.message : fallback;
 }

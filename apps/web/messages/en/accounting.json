@@ -13,7 +13,9 @@
     "code": "Code",
     "name": "Name",
     "amount": "Amount",
-    "noResults": "Nothing to show for this selection."
+    "noResults": "Nothing to show for this selection.",
+    "fromDate": "From",
+    "toDate": "To"
   },
   "reportActions": {
     "exportCsv": "Export CSV",
