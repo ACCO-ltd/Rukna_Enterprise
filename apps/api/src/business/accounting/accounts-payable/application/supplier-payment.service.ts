@@ -905,6 +905,16 @@ export class SupplierPaymentService {
       );
     }
 
+    // AP-5 — part of the unapplied money came back from the supplier; reversing the payment would
+    // put the whole of it back on the advance account. Reverse the refunds first.
+    const refunds = await prisma.supplierRefund.count({ where: { supplierPaymentId: paymentId, status: 'POSTED' } });
+    if (refunds > 0) {
+      throw new BadRequestException({
+        errorCode: 'PAYMENT_HAS_REFUNDS',
+        message: `Payment ${paymentId} has ${refunds} posted supplier refund(s). Reverse those first.`,
+      });
+    }
+
     if (!payment.postedJournalEntryId) {
       throw new BadRequestException(`Payment ${paymentId} has no posted journal to reverse`);
     }

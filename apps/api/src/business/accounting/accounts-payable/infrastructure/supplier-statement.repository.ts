@@ -79,6 +79,14 @@ export class SupplierStatementRepository {
     });
   }
 
+  /** AP-5 — refunds the supplier paid back (posted, or posted then reversed). */
+  findRefunds(prisma: TenantPrisma, organizationId: string, supplierId: string) {
+    return prisma.supplierRefund.findMany({
+      where: { organizationId, supplierId },
+      select: { id: true, supplierPaymentId: true, refundNumber: true, reference: true, refundDate: true, amount: true, status: true, reversalJournalEntryId: true, reversedAt: true },
+    });
+  }
+
   /** Accounting dates of journals by id (reversals are dated by their journal). */
   async journalDates(prisma: TenantPrisma, ids: string[]): Promise<Map<string, Date>> {
     if (ids.length === 0) return new Map();

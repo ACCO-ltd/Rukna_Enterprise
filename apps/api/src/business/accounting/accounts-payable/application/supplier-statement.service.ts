@@ -11,8 +11,8 @@ import { SupplierStatementRepository } from '../infrastructure/supplier-statemen
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * AP-3 — a supplier's statement of account for a period: every bill, payment, debit note and
- * buyer-cash settlement (and each one's reversal) across all projects, with opening, running and closing
+ * AP-3 — a supplier's statement of account for a period: every bill, payment, debit note,
+ * refund and buyer-cash settlement (and each one's reversal) across all projects, with opening, running and closing
  * balances. The balance is what the organisation owes (credit-normal, like the AP account), so
  * today's closing balance equals what is owed on open bills less payments not yet applied —
  * the figure to agree with the statement the supplier sends.
@@ -37,15 +37,16 @@ export class SupplierStatementService {
     const supplier = await this.repo.findSupplier(prisma, orgId, supplierId);
     if (!supplier) throw new NotFoundException({ errorCode: 'SUPPLIER_NOT_FOUND', message: `Supplier ${supplierId} not found` });
 
-    const [bills, payments, buyerCash, pending, debitNotes] = await Promise.all([
+    const [bills, payments, buyerCash, pending, debitNotes, refunds] = await Promise.all([
       this.repo.findBills(prisma, orgId, supplierId),
       this.repo.findPayments(prisma, orgId, supplierId),
       this.repo.findBuyerCash(prisma, orgId, supplierId),
       this.repo.pendingPaymentsTotal(prisma, orgId, supplierId),
       this.repo.findDebitNotes(prisma, orgId, supplierId),
+      this.repo.findRefunds(prisma, orgId, supplierId),
     ]);
     const [journalDates, paymentReversals, holds] = await Promise.all([
-      this.repo.journalDates(prisma, [...bills.map((b) => b.reversalJournalEntryId), ...buyerCash.map((c) => c.reversalJournalEntryId), ...debitNotes.map((n) => n.reversalJournalEntryId)].filter((id): id is string => Boolean(id))),
+      this.repo.journalDates(prisma, [...bills.map((b) => b.reversalJournalEntryId), ...buyerCash.map((c) => c.reversalJournalEntryId), ...debitNotes.map((n) => n.reversalJournalEntryId), ...refunds.map((r) => r.reversalJournalEntryId)].filter((id): id is string => Boolean(id))),
       this.repo.paymentReversalDates(prisma, orgId, payments.filter((p) => p.postingStatus === 'REVERSED').map((p) => p.id)),
       pendingPaymentHolds(prisma, orgId, bills.map((b) => b.id)),
     ]);
@@ -92,6 +93,16 @@ export class SupplierStatementService {
       if (n.status === 'REVERSED') {
         const back = reversalDate(n.reversalJournalEntryId, n.reversedAt);
         if (back) movements.push({ date: back, kind: 'DEBIT_NOTE_REVERSAL', documentId: n.supplierBillId, reference: n.debitNoteNumber, description, debit: zero, credit: amount, sequence: 7 });
+      }
+    }
+
+    // AP-5 — money the supplier paid back: they no longer hold it, so what is owed rises again.
+    for (const r of refunds) {
+      const amount = new Decimal(r.amount.toString());
+      movements.push({ date: r.refundDate, kind: 'REFUND', documentId: r.supplierPaymentId, reference: r.refundNumber, description: r.reference, debit: zero, credit: amount, sequence: 8 });
+      if (r.status === 'REVERSED') {
+        const back = reversalDate(r.reversalJournalEntryId, r.reversedAt);
+        if (back) movements.push({ date: back, kind: 'REFUND_REVERSAL', documentId: r.supplierPaymentId, reference: r.refundNumber, description: r.reference, debit: amount, credit: zero, sequence: 9 });
       }
     }
 

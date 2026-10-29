@@ -12,7 +12,7 @@
  * `useBankAccounts` are called here rather than only in the form.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -60,6 +60,8 @@ import { AllocationPanel } from './allocation-panel';
 import { PaymentActionBar } from './payment-actions-bar';
 import { PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 import { AttachmentsPanel } from '@/features/finance-attachments/attachments-panel';
+import { SupplierRefundDialog } from '@/features/supplier-refunds/supplier-refund-dialog';
+import { SupplierRefundsPanel } from '@/features/supplier-refunds/supplier-refunds-panel';
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
@@ -408,8 +410,11 @@ export function paymentMatchesFilters(payment: SupplierPayment, filters: FilterV
 export function SupplierPaymentDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.payments');
   const tc = useTranslations('procurement.common');
+  const tRefund = useTranslations('procurement.supplierRefund');
   const locale = useLocale() as 'en' | 'ar';
 
+  const { can } = usePermissions();
+  const [refundOpen, setRefundOpen] = useState(false);
   const query = useSupplierPayment(id);
   const suppliers = useSuppliers();
   const bankAccounts = useBankAccounts();
@@ -453,7 +458,22 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
         </Notice>
       ) : null}
       {ended ? null : <PaymentActionBar payment={payment} />}
-      {payment.postingStatus === 'POSTED' && payment.paymentNumber ? <RemittanceButton paymentId={payment.id} /> : null}
+      <div className="flex flex-wrap gap-2">
+        {payment.postingStatus === 'POSTED' && payment.paymentNumber ? <RemittanceButton paymentId={payment.id} /> : null}
+        {/* AP-5 — the supplier paid back money this payment holds unapplied. */}
+        {payment.postingStatus === 'POSTED' && Number(payment.unallocatedAmount) > 0 && can(ACCOUNTING_PERMISSIONS.managePayables) ? (
+          <Button type="button" variant="outline" onClick={() => setRefundOpen(true)}>
+            {tRefund('action')}
+          </Button>
+        ) : null}
+      </div>
+      <SupplierRefundDialog
+        open={refundOpen}
+        onOpenChange={setRefundOpen}
+        paymentId={payment.id}
+        unapplied={payment.unallocatedAmount}
+        currencyCode={payment.currencyCode}
+      />
 
       <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-3">
         <Field
@@ -493,6 +513,8 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
       </dl>
 
       {ended ? null : <AllocationPanel payment={payment} />}
+
+      <SupplierRefundsPanel paymentId={payment.id} canManage={can(ACCOUNTING_PERMISSIONS.managePayables)} />
 
       <AttachmentsPanel kind="PAYMENT" ownerId={payment.id} />
     </div>

@@ -3560,6 +3560,7 @@ model SupplierPayment {
   allocations          SupplierPaymentAllocation[]
   releaseSignatures    PaymentReleaseSignature[]
   purchaseAllocations  SupplierPaymentPurchaseAllocation[]
+  supplierRefunds      SupplierRefund[]
 
   @@index([organizationId, postingStatus])
   @@index([supplierId])
@@ -3570,6 +3571,45 @@ model SupplierPayment {
 
 // ADR-022 CONST-DOA-005 — one signatory's signature releasing a supplier payment. Two distinct
 // signatures (from active signatories of the payment's bank account) flip it to RELEASED.
+/// AP-5 — money paid ahead to a supplier (a payment's unapplied balance, held as a supplier
+/// advance) that the supplier paid back. Money comes in, so it posts at once: Dr the receiving bank
+/// / Cr Supplier advance (the account the payment debited), and the payment holds that much less
+/// unapplied. Reversible (a bounced refund); never deleted.
+model SupplierRefund {
+  id                     String               @id @default(cuid())
+  organizationId         String               @map("organization_id")
+  supplierId             String               @map("supplier_id")
+  supplierPaymentId      String               @map("supplier_payment_id")
+  bankAccountId          String               @map("bank_account_id")
+  refundNumber           String?              @map("refund_number") @db.VarChar(30)
+  refundDate             DateTime             @map("refund_date") @db.Date
+  amount                 Decimal              @db.Decimal(18, 2)
+  currencyCode           String               @map("currency_code") @db.VarChar(3)
+  reference              String?              @db.VarChar(100)
+  reason                 String
+  status                 SupplierRefundStatus @default(POSTED)
+  postedJournalEntryId   String?              @map("posted_journal_entry_id")
+  reversalJournalEntryId String?              @map("reversal_journal_entry_id")
+  reversedAt             DateTime?            @map("reversed_at")
+  reversedBy             String?              @map("reversed_by")
+  reversalReason         String?              @map("reversal_reason")
+  createdBy              String               @map("created_by")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  payment SupplierPayment @relation(fields: [supplierPaymentId], references: [id])
+
+  @@unique([organizationId, refundNumber])
+  @@index([organizationId, supplierId])
+  @@index([supplierPaymentId])
+  @@map("supplier_refunds")
+}
+
+enum SupplierRefundStatus {
+  POSTED
+  REVERSED
+}
+
 model PaymentReleaseSignature {
   id                String   @id @default(cuid())
   supplierPaymentId String   @map("supplier_payment_id")
@@ -4743,6 +4783,8 @@ enum DocumentType {
   CLIENT_REFUND
   // AP-4 — DN- numbers for supplier debit notes.
   SUPPLIER_DEBIT_NOTE
+  // AP-5 — SR- numbers for refunds received from suppliers.
+  SUPPLIER_REFUND
 }
 
 enum SequenceStatus {
@@ -4852,6 +4894,8 @@ enum SourceDocType {
   CLIENT_REFUND
   // AP-4 — a credit received from a supplier against a posted bill, and its reversal.
   SUPPLIER_DEBIT_NOTE
+  // AP-5 — money paid ahead that a supplier paid back, and its reversal.
+  SUPPLIER_REFUND
 }
 
 enum AttemptOutcome {

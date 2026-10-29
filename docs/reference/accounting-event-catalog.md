@@ -881,6 +881,18 @@ with a posted debit note cannot be reversed (`400 BILL_HAS_DEBIT_NOTES`).
 Project cost reconciliation counts SUPPLIER_DEBIT_NOTE journals with SUPPLIER_BILL as procurement cost
 (REC-07), so the commitment ledger and the GL keep telling the same story.
 
+### EVT-AP-014 / EVT-AP-015 — Supplier refund and its reversal (AP-5)
+
+Money paid ahead to a supplier (the unapplied part of a POSTED payment, held as a supplier advance)
+that the supplier paid back. `sourceDocumentType = SUPPLIER_REFUND`. Money comes in, so it posts at
+once, capped at what the payment holds unapplied (`400 REFUND_EXCEEDS_UNAPPLIED`). A payment with a
+posted refund cannot be reversed (`400 PAYMENT_HAS_REFUNDS`).
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-AP-014 `SUPPLIER_REFUND_POSTED` | refund recorded | Dr the receiving bank's GL (BANK subledger) / Cr Supplier advance — the account the payment debited — both tagged with the supplier; payment `unallocatedAmount` reduced | `refundDate` | refund id | CASH_AND_BANK / SYSTEM_CASH |
+| EVT-AP-015 (reversal of 014) | refund reversed (e.g. the transfer bounced) | exact mirror of EVT-AP-014; payment `unallocatedAmount` restored | `reversalDate` | `reversal-<refund id>` | CASH_AND_BANK / SYSTEM_CASH, REVERSAL |
+
 Fixture (S2 → S6, PO 1,000.00): EVT-AP-007 Dr 13100 1,000 / Cr 10900 1,000 (08 Oct) → bill
 EVT-AP-001 Dr expense 980 / Cr AP 980 (08 Oct) → EVT-AP-008 Dr AP 980 / Cr 13100 980 (08 Oct) →
 EVT-AP-009 Dr 10900 20 / Cr 13100 20 (09 Oct). Net: 13100 = 0, AP = 0, cash −980, expense +980.

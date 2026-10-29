@@ -1998,7 +1998,8 @@
     "paymentRejected": "Payment rejected — its bills are open again",
     "paymentCancelled": "Payment cancelled — its bills are open again",
     "billCancelled": "Draft bill cancelled",
-    "debitNoteRecorded": "Debit note recorded — the bill balance is lower"
+    "debitNoteRecorded": "Debit note recorded — the bill balance is lower",
+    "supplierRefundRecorded": "Refund recorded — the money is in the bank"
   },
   "setup": {
     "status": "Status",
@@ -3027,5 +3028,35 @@
     "reverseTitle": "Reverse debit note {ref}?",
     "reverseBody": "The credit comes off the bill again and its balance goes back up. The note stays on record.",
     "reasonPrompt": "Why"
+  },
+  "supplierRefund": {
+    "title": "Supplier paid money back",
+    "heading": "Paid back by the supplier",
+    "unapplied": "This payment holds unapplied:",
+    "bank": "Received into",
+    "bankPlaceholder": "Choose a bank account",
+    "bankRequired": "Choose the bank account the money came into.",
+    "amount": "Amount received",
+    "amountRequired": "Enter the amount received.",
+    "amountOverUnapplied": "That is more than this payment holds unapplied.",
+    "reason": "Why the supplier paid this back",
+    "reasonHint": "An order cancelled, an overpayment.",
+    "reasonRequired": "Say why the supplier paid this back.",
+    "reference": "Supplier’s transfer reference",
+    "date": "Date received",
+    "postsNow": "It posts at once: the money goes into the bank and comes off what this supplier holds for you.",
+    "cancel": "Cancel",
+    "submit": "Record refund",
+    "failed": "The refund could not be saved.",
+    "reversedBecause": "Reversed: {reason}",
+    "status": {
+      "POSTED": "Posted",
+      "REVERSED": "Reversed"
+    },
+    "reverse": "Reverse",
+    "reverseTitle": "Reverse refund {ref}?",
+    "reverseBody": "The money comes out of the bank again and is held unapplied on this payment. The refund stays on record.",
+    "reasonPrompt": "Why",
+    "action": "Supplier paid back"
   }
 }

@@ -70,3 +70,24 @@ export interface SupplierDebitNoteView {
   reversedAt: string | null;
   reversalReason: string | null;
 }
+
+/**
+ * AP-5 — money paid ahead that a supplier paid back (`GET/POST /payments/:paymentId/refunds`,
+ * `POST /supplier-refunds/:id/reverse`). Posts at once; SR-000001 once posted.
+ */
+export interface SupplierRefundView {
+  id: string;
+  paymentId: string;
+  bankAccountId: string;
+  refundNumber: string | null;
+  refundDate: string;
+  amount: string;
+  /** The supplier's transfer reference. */
+  reference: string | null;
+  reason: string;
+  status: 'POSTED' | 'REVERSED';
+  createdBy: string;
+  createdAt: string;
+  reversedAt: string | null;
+  reversalReason: string | null;
+}

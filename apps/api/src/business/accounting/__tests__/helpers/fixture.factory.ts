@@ -372,6 +372,7 @@ export class AccountingFixtureFactory {
     await prisma.$executeRaw`DELETE FROM supplier_debit_notes WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_bills WHERE organization_id = ${orgId}`;
 
+    await prisma.$executeRaw`DELETE FROM supplier_refunds WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_payments WHERE organization_id = ${orgId}`;
 
     await prisma.$executeRaw`DELETE FROM payment_receipts WHERE organization_id = ${orgId}`;
