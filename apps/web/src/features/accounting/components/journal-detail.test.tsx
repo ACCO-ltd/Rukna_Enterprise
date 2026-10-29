@@ -33,6 +33,11 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
 // The journals' preparer is user-abcd1234; the signed-in user is set per test.
 const sessionMocks = vi.hoisted(() => ({ useSession: vi.fn(() => ({ user: { id: 'user-abcd1234' } })) }));
 vi.mock('@/features/auth/session/use-session', () => sessionMocks);
+const routerMocks = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => routerMocks, usePathname: () => '/finance/accounting/journals/jrn-1', useSearchParams: () => new URLSearchParams() }));
+vi.mock('@/features/users/hooks/use-users', () => ({
+  useUsers: () => ({ data: [{ id: 'user-preparer', firstName: 'Amina', lastName: 'Ali', email: 'amina@example.com' }], isPending: false, isError: false }),
+}));
 
 vi.mock('next/link', () => ({
   default: ({
@@ -326,3 +331,12 @@ describe('JournalDetail', () => {
   });
 
 });
+
+describe('JournalDetail — a draft that has been posted (G-1)', () => {
+  it('takes the reader to the numbered entry that now holds its lines', async () => {
+    vi.mocked(getJournal).mockResolvedValue({ ...journal(), status: 'POSTED', lines: [], replacedByJournalEntryId: 'je-posted' } as never);
+    renderWithProviders(<JournalDetail journalId="jrn-1" />);
+    await vi.waitFor(() => expect(routerMocks.replace).toHaveBeenCalledWith('/finance/accounting/journals/je-posted'));
+  });
+});
+

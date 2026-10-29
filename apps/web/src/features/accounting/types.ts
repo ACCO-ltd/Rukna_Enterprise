@@ -184,6 +184,8 @@ export interface JournalEntry {
   id: string;
   organizationId: string;
   journalNumber: string | null;
+  /** G-1 — on a draft that has been posted: the numbered entry that now holds its lines. */
+  replacedByJournalEntryId?: string | null;
   accountingPeriodId: string | null;
   journalCategory: JournalCategory;
   entryPurpose: EntryPurpose;
