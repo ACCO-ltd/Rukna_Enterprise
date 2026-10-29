@@ -476,12 +476,21 @@ function UnpaidInvoicesPanel({
       padded={false}
       action={
         canSeeAll ? (
-          <Link
-            href={`/finance/accounting/invoices?clientId=${clientId}`}
-            className="text-body-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-          >
-            {t('invoices.all')}
-          </Link>
+          <span className="flex flex-wrap gap-4">
+            {/* AR-3 — the client's statement of account. */}
+            <Link
+              href={`/finance/accounting/statement?clientId=${clientId}`}
+              className="text-body-sm font-medium text-brand-primary underline-offset-2 hover:underline"
+            >
+              {t('invoices.statement')}
+            </Link>
+            <Link
+              href={`/finance/accounting/invoices?clientId=${clientId}`}
+              className="text-body-sm font-medium text-brand-primary underline-offset-2 hover:underline"
+            >
+              {t('invoices.all')}
+            </Link>
+          </span>
         ) : undefined
       }
     >

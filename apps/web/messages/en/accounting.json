@@ -1648,5 +1648,51 @@
     "saving": "Saving…",
     "discard": "Discard changes",
     "saveFailed": "The approval rules could not be saved."
+  },
+  "statement": {
+    "eyebrow": "Receivables",
+    "title": "Client statement",
+    "subtitle": "Everything a client was charged, paid and credited in a period, with the balance they owe.",
+    "summary": "{client} · {from} to {to}",
+    "client": "Client",
+    "clientPlaceholder": "Choose a client",
+    "clientSearch": "Search clients",
+    "clientEmpty": "No client matches.",
+    "period": "Period",
+    "pickTitle": "Choose a client",
+    "pickBody": "The statement lists every invoice, credit note and payment for the client across all projects, with a running balance.",
+    "loading": "Loading the statement",
+    "loadFailed": "The statement could not be loaded.",
+    "opening": "Opening balance",
+    "closing": "Closing balance",
+    "charged": "Charged",
+    "paid": "Paid and credited",
+    "onAccount": "Includes {amount} paid in advance, held on account",
+    "colDate": "Date",
+    "colDocument": "Document",
+    "colKind": "Type",
+    "colDetails": "Details",
+    "colCharged": "Charged",
+    "colPaid": "Paid / credited",
+    "colBalance": "Balance",
+    "nothingInPeriod": "Nothing was charged, paid or credited in this period.",
+    "agingTitle": "Open invoices today, by days past due",
+    "aging": {
+      "current": "Not yet due",
+      "d1_30": "1–30 days",
+      "d31_60": "31–60 days",
+      "d61_90": "61–90 days",
+      "d90_plus": "Over 90 days"
+    },
+    "kinds": {
+      "OPENING_BALANCE": "Opening balance",
+      "INVOICE": "Invoice",
+      "INVOICE_REVERSAL": "Invoice reversed",
+      "CREDIT_NOTE": "Credit note",
+      "CREDIT_NOTE_REVERSAL": "Credit note reversed",
+      "RECEIPT": "Payment",
+      "RECEIPT_REVERSAL": "Payment reversed"
+    },
+    "action": "Statement"
   }
 }

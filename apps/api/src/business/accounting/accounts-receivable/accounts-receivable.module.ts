@@ -15,6 +15,9 @@ import { PaymentReceiptDocumentService } from './application/payment-receipt-doc
 import { ReceiptWhatsAppService } from './application/receipt-whatsapp.service.js';
 import { CollectionEventsService } from './application/collection-events.service.js';
 import { CreditNoteService } from './application/credit-note.service.js';
+import { ClientStatementController } from './presentation/client-statement.controller.js';
+import { ClientStatementService } from './application/client-statement.service.js';
+import { ClientStatementRepository } from './infrastructure/client-statement.repository.js';
 import { CreditNoteController } from './presentation/credit-note.controller.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
 import { InvoiceWhatsAppController } from './presentation/invoice-whatsapp.controller.js';
@@ -29,6 +32,7 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
 @Module({
   imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule, AuditLogsModule],
   controllers: [
+    ClientStatementController,
     CreditNoteController,
     ClientInvoiceController,
     CustomerReceiptController,
@@ -37,6 +41,8 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
     InvoiceSettingsPreviewController,
   ],
   providers: [
+    ClientStatementRepository,
+    ClientStatementService,
     ClientInvoiceRepository,
     PaymentReceiptArRepository,
     ClientInvoiceService,

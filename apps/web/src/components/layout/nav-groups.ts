@@ -145,6 +145,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt', groupKey: 'receivables' },
       // Step 6 — what clients owe, by days past due.
       { href: '/finance/accounting/aging/receivables', labelKey: 'receivablesAging', iconKey: 'clock', groupKey: 'receivables' },
+      // AR-3 — a client's statement of account, across every project and sale.
+      { href: '/finance/accounting/statement', labelKey: 'clientStatement', iconKey: 'file-text', groupKey: 'receivables' },
       // Payables
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', groupKey: 'payables' },
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },

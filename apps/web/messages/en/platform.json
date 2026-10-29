@@ -143,7 +143,8 @@
     "approvalsCount": "{count, plural, one {# item waits on you} other {# items wait on you}}",
     "approvalSettings": "Approval rules",
     "rolesMatrix": "Roles matrix",
-    "financeHome": "Home"
+    "financeHome": "Home",
+    "clientStatement": "Client statements"
   },
   "admin": {
     "title": "Administration",
@@ -2654,7 +2655,8 @@
           "CURRENT": "Current",
           "DUE_SOON": "Due soon",
           "OVERDUE": "Overdue"
-        }
+        },
+        "statement": "Statement"
       },
       "details": {
         "title": "Details",
