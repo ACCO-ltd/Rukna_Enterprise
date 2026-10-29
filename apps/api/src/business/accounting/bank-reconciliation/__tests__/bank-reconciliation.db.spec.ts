@@ -130,3 +130,15 @@ it('BR-03: matching guards', async () => {
   await rec.remove(env.identity, w.statement.id);
   expect(await prisma.bankStatement.count({ where: { id: w.statement.id } })).toBe(0);
 });
+
+it('BR-04: statements follow each other — no overlap, and each opens where the last one closed (B-3)', async () => {
+  const next = (periodStart: string, openingBalance: string) => ({
+    bankAccountId: env.bankAccountId, periodStart, statementDate: plus(28), openingBalance,
+    closingBalance: (Number(openingBalance) - 200).toFixed(2),
+    lines: [{ transactionDate: plus(27), description: 'Cheque 1001', amount: '-200.00' }],
+  });
+  await expect(rec.import(env.identity, next(plus(20), '685.00'))).rejects.toMatchObject({ response: { errorCode: 'STATEMENT_PERIOD_OVERLAPS' } });
+  await expect(rec.import(env.identity, next(plus(26), '700.00'))).rejects.toMatchObject({ response: { errorCode: 'OPENING_BALANCE_BREAK', details: { expectedOpening: '685.00' } } });
+  const ok = await rec.import(env.identity, next(plus(26), '685.00'));
+  await rec.remove(env.identity, ok.statement.id);
+});

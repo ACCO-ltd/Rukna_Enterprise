@@ -61,6 +61,15 @@ export class BankStatementRepository {
     });
   }
 
+  /** B-3 — the account's latest imported statement (open or reconciled): the next one follows it. */
+  latest(db: Db, organizationId: string, bankAccountId: string) {
+    return db.bankStatement.findFirst({
+      where: { organizationId, bankAccountId },
+      orderBy: { statementDate: 'desc' },
+      select: { statementDate: true, closingBalance: true },
+    });
+  }
+
   /** Where reconciliation of the account began: the earliest imported statement's start. */
   async firstPeriodStart(db: Db, organizationId: string, bankAccountId: string): Promise<Date | null> {
     const first = await db.bankStatement.findFirst({ where: { organizationId, bankAccountId }, orderBy: { periodStart: 'asc' }, select: { periodStart: true } });

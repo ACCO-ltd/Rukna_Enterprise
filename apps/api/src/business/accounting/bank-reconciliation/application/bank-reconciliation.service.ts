@@ -132,6 +132,24 @@ export class BankReconciliationService {
       });
     }
 
+    // B-3 — statements follow each other: no overlapping period, and each opens where the last one
+    // closed. A break means a statement is missing or the balances were keyed wrong; either way
+    // reconciling it would hide the gap.
+    const last = await this.repo.latest(db, orgId, bank.id);
+    if (last) {
+      const lastDay = last.statementDate.toISOString().slice(0, 10);
+      const lastClosing = new Decimal(last.closingBalance.toString());
+      if (dto.periodStart <= lastDay) {
+        throw bad('STATEMENT_PERIOD_OVERLAPS', `The last statement for this account runs to ${lastDay}; this one must start after it.`, { lastStatementDate: lastDay });
+      }
+      if (!opening.eq(lastClosing)) {
+        throw bad('OPENING_BALANCE_BREAK', `The last statement closed at ${lastClosing.toFixed(2)} on ${lastDay}; this one opens at ${opening.toFixed(2)}. Import the statement in between, or check the opening balance.`, {
+          expectedOpening: lastClosing.toFixed(2),
+          lastStatementDate: lastDay,
+        });
+      }
+    }
+
     const created = await db.$transaction(async (tx) => {
       const statement = await this.repo.create(tx, {
         organizationId: orgId,

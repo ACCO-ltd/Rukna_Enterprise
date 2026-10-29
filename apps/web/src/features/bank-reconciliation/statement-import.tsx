@@ -42,16 +42,17 @@ export function StatementImport() {
   const [opening, setOpening] = useState('');
   const [closing, setClosing] = useState('');
 
-  // The last reconciled closing balance is the natural opening balance of the next statement.
+  // The last statement's closing balance is the next one's opening (B-3: the server insists on it).
   const previous = useQuery({
     queryKey: [...statementKeys.list(), bankAccountId],
     queryFn: () => bankStatementsApi.list(bankAccountId),
     enabled: Boolean(bankAccountId),
   });
-  const lastClosing = previous.data?.find((s) => s.status === 'RECONCILED')?.closingBalance ?? null;
+  const lastClosing =
+    [...(previous.data ?? [])].sort((a, b) => b.statementDate.localeCompare(a.statementDate))[0]?.closingBalance ?? null;
 
   const read = useMemo(() => (sheet && columnsReady(columns) ? readStatement(sheet.rows, columns, order) : null), [sheet, columns, order]);
-  // Left blank, the opening balance is the last reconciled statement's closing balance.
+  // Left blank, the opening balance is the last statement's closing balance.
   const openingText = opening || lastClosing || '';
   const openingMinor = parseMinorUnits(openingText.replace(/,/g, ''), MONEY_SCALE);
   const closingMinor = parseMinorUnits(closing.replace(/,/g, ''), MONEY_SCALE);
