@@ -248,7 +248,20 @@
       "deactivateTitle": "Deactivate {name}?",
       "deactivateBody": "It can no longer be picked on new orders, bills or payments. Existing documents are unaffected.",
       "reactivateTitle": "Reactivate {name}?",
-      "reactivateBody": "It can be picked on new orders, bills and payments again."
+      "reactivateBody": "It can be picked on new orders, bills and payments again.",
+      "eyebrow": "Purchasing",
+      "headerSummary": "{count, plural, one {# supplier} other {# suppliers}} · {active} active",
+      "filters": {
+        "withOpenOrders": "With open orders",
+        "weOwe": "We owe them"
+      },
+      "views": {
+        "label": "Supplier views",
+        "all": "All",
+        "active": "Active",
+        "openOrders": "Open orders",
+        "weOwe": "We owe"
+      }
     }
   },
   "material": {
@@ -336,7 +349,21 @@
       },
       "filters": {
         "status": "Status",
-        "requestedFor": "Requested for"
+        "requestedFor": "Requested for",
+        "urgent": "Urgent",
+        "urgentOpen": "Urgent, still open"
+      },
+      "eyebrow": "Purchasing",
+      "headerSummary": "{count, plural, one {# request} other {# requests}} · {open} still open",
+      "groupFor": "Requested for",
+      "groupStatus": "Status",
+      "views": {
+        "label": "Material request views",
+        "all": "All",
+        "toApprove": "To approve",
+        "toOrder": "To order",
+        "urgent": "Urgent",
+        "drafts": "Drafts"
       }
     },
     "create": {
@@ -523,7 +550,8 @@
         "ordered": "Ordered",
         "delivery": "Delivery",
         "total": "Total",
-        "status": "Status"
+        "status": "Status",
+        "supplier": "Supplier"
       },
       "delivery": {
         "NOT_RECEIVED": "Not received",
@@ -533,7 +561,18 @@
       "filters": {
         "status": "Status",
         "project": "Project",
-        "supplier": "Supplier"
+        "supplier": "Supplier",
+        "delivery": "Delivery"
+      },
+      "eyebrow": "Purchasing",
+      "headerSummary": "{count, plural, one {# order} other {# orders}} · {open} open, worth {value}",
+      "headerCount": "{count, plural, one {# order} other {# orders}} · {open} open",
+      "views": {
+        "label": "Purchase order views",
+        "all": "All",
+        "awaiting": "Awaiting delivery",
+        "partly": "Part received",
+        "drafts": "Drafts"
       }
     }
   },
@@ -678,10 +717,20 @@
         "project": "Project",
         "delivered": "Delivered",
         "deliveryNote": "Delivery note",
-        "status": "Status"
+        "status": "Status",
+        "supplier": "Supplier"
       },
       "filters": {
         "status": "Status"
+      },
+      "eyebrow": "Purchasing",
+      "headerSummary": "{count, plural, one {# receipt} other {# receipts}}",
+      "headerSummaryExceptions": "{count, plural, one {# receipt} other {# receipts}} · {exceptions, plural, one {# waiting on an exception} other {# waiting on exceptions}}",
+      "views": {
+        "label": "Goods receipt views",
+        "all": "All",
+        "exceptions": "Exceptions",
+        "drafts": "Drafts"
       }
     }
   },
@@ -1271,7 +1320,11 @@
       "stageEmptyTitle": "Nothing at this stage",
       "stageEmptyBody": "No entries for this project are at this stage yet. Choose All to see every entry.",
       "hiddenTitle": "Cost figures are hidden for your role",
-      "hiddenBody": "Ask someone with access to the commitment ledger for the project's cost position."
+      "hiddenBody": "Ask someone with access to the commitment ledger for the project's cost position.",
+      "eyebrow": "Cost control",
+      "searchPlaceholder": "Search by document, supplier or BOQ item",
+      "countLabel": "{count, plural, one {# entry} other {# entries}}",
+      "noMatches": "No entry matches this search."
     }
   },
   "project": {
@@ -1849,7 +1902,27 @@
       "cancelled": "Cancelled",
       "reversed": "Reversed"
     },
-    "financeOnly": "Finance manages buyer advances. You see the cash released to you on each quote request."
+    "financeOnly": "Finance manages buyer advances. You see the cash released to you on each quote request.",
+    "eyebrow": "Payables",
+    "colStatus": "Status",
+    "headerSummary": "{count, plural, one {# advance} other {# advances}} · {held} still with buyers",
+    "headerCount": "{count, plural, one {# advance} other {# advances}}",
+    "listState": {
+      "WAITING": "Waiting for approval",
+      "TO_POST": "To post",
+      "FAILED": "Posting failed",
+      "OPEN": "With buyer",
+      "SETTLED": "Settled",
+      "REVERSED": "Reversed",
+      "CANCELLED": "Cancelled"
+    },
+    "views": {
+      "label": "Buyer advance views",
+      "all": "All",
+      "open": "With buyers",
+      "waiting": "Waiting for approval",
+      "toPost": "To post"
+    }
   },
   "feedback": {
     "supplierCreated": "Supplier {name} created",
@@ -2077,7 +2150,8 @@
       "searchPlaceholder": "Search by request or project",
       "noMatches": "Nothing matches.",
       "openRequests": "Material requests",
-      "overhead": "Company overhead"
+      "overhead": "Company overhead",
+      "eyebrow": "Purchasing"
     },
     "capture": {
       "back": "Quotes",
@@ -2178,7 +2252,8 @@
       "countLabel": "{count, plural, one {# request} other {# requests}}",
       "noMatches": "Nothing matches.",
       "moneyHidden": "Estimates are hidden for your role.",
-      "pendingApproval": "Waiting for approval"
+      "pendingApproval": "Waiting for approval",
+      "eyebrow": "Payables"
     },
     "decision": {
       "back": "Quotes to choose",

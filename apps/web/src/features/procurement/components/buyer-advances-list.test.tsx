@@ -51,8 +51,11 @@ describe('BuyerAdvancesList', () => {
     const grid = within(await screen.findByRole('table'));
     expect(grid.getByRole('link', { name: 'PO-2026-0007' })).toHaveAttribute('href', '/procurement/orders/po1');
     expect(grid.getByText('Bakaal Steel')).toBeInTheDocument();
-    expect(grid.getByText('$500.00')).toBeInTheDocument();
-    expect(grid.getByText('Cash to Omar')).toBeInTheDocument();
+    const row = within(grid.getByText('Cash to Omar').closest('tr')!);
+    expect(row.getByText('$500.00')).toBeInTheDocument();
+    expect(row.getByText('With buyer')).toBeInTheDocument();
+    // Title block: what buyers still hold.
+    expect(screen.getByText('1 advance · $200.00 still with buyers')).toBeInTheDocument();
   });
 
   it('labels an advance posted before buyer cash reached the ledger (ADR-045 legacy)', async () => {
@@ -112,9 +115,9 @@ describe('BuyerAdvancesList', () => {
     });
     renderWithProviders(<BuyerAdvancesList />, { permissions: ['view:procurement', 'manage:payable'] });
     const grid = within(await screen.findByRole('table'));
-    expect(grid.getByText('Cancelled')).toBeInTheDocument();
-    // The amount is shown once (the advance); the outstanding cell holds nothing.
-    expect(grid.getAllByText('$900.00')).toHaveLength(1);
+    const row = within(grid.getByText('Cancelled').closest('tr')!);
+    // The amount is shown once on the row (the advance); the outstanding cell holds nothing.
+    expect(row.getAllByText('$900.00')).toHaveLength(1);
     expect(grid.getAllByText('—').length).toBeGreaterThan(0);
     expect(grid.queryByText('Not posted')).not.toBeInTheDocument();
   });

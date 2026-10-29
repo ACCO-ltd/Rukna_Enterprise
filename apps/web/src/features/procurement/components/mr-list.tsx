@@ -4,19 +4,23 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button, EmptyState, type FilterValues, type ListFilterField } from '@erp/ui';
-import { Plus } from 'lucide-react';
+import { ClipboardList, Plus } from 'lucide-react';
+import type { SavedViewState } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { PlatformDataGrid, type GridColumn, type SortState } from '@/components/platform-data-grid';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjectFilter } from '@/features/projects/hooks/use-project-filter';
 import { useProjects } from '@/features/projects/hooks/use-projects';
+import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
+import { useListViewState } from '@/features/saved-views/hooks/use-list-view-state';
+import { todayWireDate } from '@/features/accounting/invoice-overdue';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useCancelMaterialRequest, useMaterialRequests } from '../hooks/use-procurement';
 import type { MaterialRequest, MaterialRequestStatus } from '../types';
 import { ListRowMenu, errorText } from './list-row-menu';
-import { useListControls } from './use-list-controls';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 const STATUSES: MaterialRequestStatus[] = [
@@ -37,14 +41,26 @@ const OPEN_STATUSES: ReadonlySet<MaterialRequestStatus> = new Set([
   'PARTIALLY_ORDERED',
 ]);
 
-/** The "Requested for" filter's overhead choice — the API's `requestedFor=overhead`. */
+const DEFAULT_SORT: SortState = { key: 'request', direction: 'desc' };
+
+/** The "Requested for" filter's overhead choice. */
 export const OVERHEAD_FILTER = 'overhead';
 
+/** Whether a request passes the list's filters (the search ran on the server). */
+export function mrMatchesFilters(mr: MaterialRequest, filters: FilterValues): boolean {
+  if (filters.status && mr.status !== filters.status) return false;
+  if (filters.for === OVERHEAD_FILTER && mr.requestScope !== 'ORGANIZATION') return false;
+  if (filters.for && filters.for !== OVERHEAD_FILTER && mr.projectId !== filters.for) return false;
+  if (filters.urgent === 'open' && !(mr.priority === 'URGENT' && OPEN_STATUSES.has(mr.status)))
+    return false;
+  return true;
+}
+
 /**
- * Material request list (shared list pattern, clients-list reference).
+ * Material request list (ADR-047 list page: title block, views, groups, export).
  *
- * Search, Status and "Requested for" run on the server (`search`, `status`, `requestedFor` = a
- * project id or `overhead`); sort and paging are local. The estimate is the server's
+ * The search runs on the server (`search` matches line descriptions the columns do not show);
+ * filters, views, sort, groups, paging and export run on the returned set. The estimate is the server's
  * `estimatedTotal` and follows its `moneyVisible` verdict (else `view:commitment-ledger`):
  * hidden money is an absent column, never $0.
  */
@@ -57,22 +73,23 @@ export function MrList() {
   const mayCreate = can(PROCUREMENT_PERMISSIONS.createRequest);
 
   const projectFilter = useProjectFilter();
-  const [filters, setFilters] = useState<FilterValues>((): FilterValues =>
+  const view = useListViewState(
+    DEFAULT_SORT,
     projectFilter.initialProjectId ? { for: projectFilter.initialProjectId } : {},
+    { searchOnServer: true },
   );
-  const controls = useListControls();
-  const requests = useMaterialRequests({
-    ...(filters.status ? { status: filters.status as MaterialRequestStatus } : {}),
-    ...(filters.for ? { requestedFor: filters.for } : {}),
-    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
-  });
+  const { filters } = view;
+  const requests = useMaterialRequests(
+    view.debouncedSearch ? { search: view.debouncedSearch } : undefined,
+  );
   const projects = useProjects();
   const cancel = useCancelMaterialRequest();
   const [cancelling, setCancelling] = useState<MaterialRequest | null>(null);
 
-  const rows = useMemo(() => requests.data ?? [], [requests.data]);
+  const all = useMemo(() => requests.data ?? [], [requests.data]);
+  const visible = useMemo(() => all.filter((mr) => mrMatchesFilters(mr, filters)), [all, filters]);
   const moneyVisible =
-    rows.find((mr) => mr.moneyVisible !== undefined)?.moneyVisible ??
+    all.find((mr) => mr.moneyVisible !== undefined)?.moneyVisible ??
     can(PROCUREMENT_PERMISSIONS.viewCommitments);
 
   const projectName = (mr: MaterialRequest): string | null =>
@@ -148,7 +165,9 @@ export function MrList() {
         mr.estimatedTotal == null ? (
           <span className="text-muted-foreground">{tc('notAvailable')}</span>
         ) : (
-          <span className="tabular-nums">{formatMoney(mr.estimatedTotal, mr.currencyCode ?? 'USD')}</span>
+          <span className="tabular-nums">
+            {formatMoney(mr.estimatedTotal, mr.currencyCode ?? 'USD')}
+          </span>
         ),
     });
   }
@@ -156,6 +175,7 @@ export function MrList() {
     key: 'status',
     header: t('columns.status'),
     card: 'status',
+    plainValue: (mr) => tStatus(mr.status),
     render: (mr) => <ProcurementStatusBadge vocabulary="materialRequest" status={mr.status} />,
   });
 
@@ -172,15 +192,56 @@ export function MrList() {
       label: t('filters.requestedFor'),
       options: [{ value: OVERHEAD_FILTER, label: tc('overhead') }, ...projectFilter.options],
     },
+    {
+      key: 'urgent',
+      type: 'select',
+      label: t('filters.urgent'),
+      options: [{ value: 'open', label: t('filters.urgentOpen') }],
+    },
   ];
 
-  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
-  const view = controls.view(rows, columns);
-  const isFirstUse = !isNarrowed && requests.data !== undefined && rows.length === 0;
+  // Views (Step 8, ADR-047). The search ran on the server, so a view's count is shown only while
+  // its search is the one the rows were fetched with.
+  const countFor = (state: SavedViewState): number | undefined =>
+    (state.search ?? '').trim() === view.search.trim()
+      ? all.filter((mr) => mrMatchesFilters(mr, state.filters ?? {})).length
+      : undefined;
+  const builtInViews: Omit<BuiltInView, 'count'>[] = [
+    { id: 'all', label: t('views.all'), state: { sort: DEFAULT_SORT } },
+    {
+      id: 'toApprove',
+      label: t('views.toApprove'),
+      state: { filters: { status: 'SUBMITTED' }, sort: DEFAULT_SORT },
+    },
+    {
+      id: 'toOrder',
+      label: t('views.toOrder'),
+      state: { filters: { status: 'APPROVED' }, sort: DEFAULT_SORT },
+    },
+    {
+      id: 'urgent',
+      label: t('views.urgent'),
+      state: { filters: { urgent: 'open' }, sort: { key: 'neededBy', direction: 'asc' } },
+    },
+    {
+      id: 'drafts',
+      label: t('views.drafts'),
+      state: { filters: { status: 'DRAFT' }, sort: DEFAULT_SORT },
+    },
+  ];
+  const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
+
+  const isNarrowed = Boolean(view.search.trim()) || Object.values(filters).some(Boolean);
+  const isFirstUse = !isNarrowed && requests.data !== undefined && all.length === 0;
+  const openCount = all.filter((mr) => OPEN_STATUSES.has(mr.status)).length;
+  const headerSummary =
+    all.length === 0 || view.search.trim()
+      ? undefined
+      : t('headerSummary', { count: all.length, open: openCount });
 
   const createAction = mayCreate ? (
     <Button asChild>
-      <Link href="/procurement/requests/new">
+      <Link href="/procurement/requests/new" data-shortcut-new="">
         <Plus className="size-4" aria-hidden="true" />
         {t('new')}
       </Link>
@@ -188,10 +249,16 @@ export function MrList() {
   ) : undefined;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={tMr('title')}
+        summary={headerSummary}
+        actions={createAction}
+      />
       <PlatformDataGrid
         columns={columns}
-        data={view.data}
+        data={visible}
         rowKey={(mr) => mr.id}
         label={tMr('title')}
         isLoading={requests.isPending}
@@ -203,13 +270,40 @@ export function MrList() {
         searchPlaceholder={t('searchPlaceholder')}
         resultLabel={(count) => t('countLabel', { count })}
         noMatchMessage={t('noMatches')}
-        server={view.server}
+        pagination={{ defaultPageSize: 25 }}
+        columnVisibility
+        listState={view.listState}
+        savedViews={
+          <ListViewsBar
+            listKey="material-requests"
+            builtIns={builtIns}
+            current={view.current}
+            onApply={view.applyView}
+            countFor={countFor}
+            label={t('views.label')}
+          />
+        }
+        groupOptions={[
+          {
+            key: 'for',
+            label: t('groupFor'),
+            groupOf: (mr) => ({ id: mr.projectId ?? OVERHEAD_FILTER, label: forLabel(mr) }),
+          },
+          {
+            key: 'status',
+            label: t('groupStatus'),
+            groupOf: (mr) => ({ id: mr.status, label: tStatus(mr.status) }),
+          },
+        ]}
+        exportAs={{ fileName: `material-requests-${todayWireDate()}`, sheetName: tMr('title') }}
+        shortcuts={{
+          onNew: mayCreate
+            ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
+            : undefined,
+        }}
         filters={filterFields}
         filterValues={filters}
-        onFilterValuesChange={(next) => {
-          setFilters(next);
-          controls.resetPage();
-        }}
+        onFilterValuesChange={view.setFilters}
         rowActions={(mr) => (
           <ListRowMenu
             label={tc('rowMenu', { number: mr.mrNumber })}
@@ -217,7 +311,13 @@ export function MrList() {
             openLabel={tc('open')}
             commands={
               mayCreate && mr.status === 'DRAFT'
-                ? [{ key: 'cancel', label: tMr('cancelRequest'), onSelect: () => setCancelling(mr) }]
+                ? [
+                    {
+                      key: 'cancel',
+                      label: tMr('cancelRequest'),
+                      onSelect: () => setCancelling(mr),
+                    },
+                  ]
                 : []
             }
           />
@@ -225,15 +325,18 @@ export function MrList() {
         // First use only — a filter that empties the list gets the grid's filtered-empty state.
         emptyState={
           isFirstUse ? (
-            <EmptyState title={t('empty')} description={t('emptyHint')} action={createAction} />
+            <EmptyState
+              icon={<ClipboardList size={20} aria-hidden="true" />}
+              title={t('empty')}
+              description={t('emptyHint')}
+              action={createAction}
+            />
           ) : undefined
         }
-        toolbarActions={createAction}
       />
       {!moneyVisible && !requests.isPending && !requests.isError && !isFirstUse ? (
         <p className="text-caption text-muted-foreground">{t('moneyHidden')}</p>
       ) : null}
-
       {cancelling ? (
         <ConfirmActionDialog
           title={tMr('cancelTitle', { number: cancelling.mrNumber })}

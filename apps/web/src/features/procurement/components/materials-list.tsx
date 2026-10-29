@@ -113,6 +113,7 @@ export function MaterialsList() {
 
   return (
     <CatalogueListScreen<Material>
+      exportName="materials"
       label={t('title')}
       rows={materials.data ?? []}
       isPending={materials.isPending}

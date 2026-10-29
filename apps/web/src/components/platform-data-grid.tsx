@@ -129,6 +129,12 @@ export interface ListStateConfig {
   onSearchChange: (next: string) => void;
   sort: SortState | null;
   onSortChange: (next: SortState | null) => void;
+  /**
+   * The caller already sent `search` to the API and `data` is what it matched (Step 8): the grid
+   * does not search `data` again — the server matches fields the columns do not show — but still
+   * sorts, groups, pages and exports it in the browser.
+   */
+  searchedUpstream?: boolean;
 }
 
 // ─── Selection ────────────────────────────────────────────────────────────────
@@ -746,9 +752,10 @@ export function PlatformDataGrid<T>({
   // viewer cannot see would reveal it.
   const readableColumns = useMemo(() => visibleColumns.filter((c) => !c.redacted), [visibleColumns]);
   const isServer = Boolean(server);
+  const searchedUpstream = isServer || Boolean(listState?.searchedUpstream);
   const searched = useMemo(
-    () => (isServer ? data : searchRows(data, search, readableColumns)),
-    [isServer, data, search, readableColumns],
+    () => (searchedUpstream ? data : searchRows(data, search, readableColumns)),
+    [searchedUpstream, data, search, readableColumns],
   );
   const sorted = useMemo(
     () => (isServer ? searched : sortRows(searched, sort, readableColumns)),
@@ -1169,7 +1176,7 @@ export function PlatformDataGrid<T>({
                 title={t(option === 'compact' ? 'densityCompact' : 'densityComfortable')}
                 onClick={() => setDensityPreference(option)}
                 className={cn(
-                  'flex size-8 items-center justify-center rounded-sm text-muted-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+                  'flex size-8 items-center justify-center rounded-control text-muted-foreground transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
                   density === option ? 'bg-surface-selected text-foreground' : 'hover:bg-surface-hover',
                 )}
               >

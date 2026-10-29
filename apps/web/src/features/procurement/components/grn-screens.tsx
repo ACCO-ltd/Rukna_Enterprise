@@ -14,10 +14,13 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  Avatar,
   Button,
+  cn,
   Combobox,
   DatePicker,
   EmptyState,
+  entityTintClass,
   FormActionBar,
   FormField,
   Input,
@@ -33,11 +36,15 @@ import {
   type FilterValues,
   type ListFilterField,
 } from '@erp/ui';
-import { ChevronLeft, Plus } from 'lucide-react';
+import { ChevronLeft, PackageCheck, Plus } from 'lucide-react';
+import type { SavedViewState } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { PlatformDataGrid, type GridColumn, type SortState } from '@/components/platform-data-grid';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
+import { useListViewState } from '@/features/saved-views/hooks/use-list-view-state';
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
@@ -76,7 +83,6 @@ import {
 import { ReadablePhoto } from './readable-photo';
 import { ClassificationChips } from './classification-chips';
 import { ListRowMenu, errorText } from './list-row-menu';
-import { useListControls } from './use-list-controls';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { QuantitySplit } from './material-picker';
 
@@ -84,8 +90,18 @@ import { QuantitySplit } from './material-picker';
 
 const GRN_STATUSES: GoodsReceiptStatus[] = ['DRAFT', 'EXCEPTION_PENDING', 'POSTED', 'CANCELLED'];
 
+const DEFAULT_GRN_SORT: SortState = { key: 'delivered', direction: 'desc' };
+
+/** Whether a receipt passes the list's filters (the search ran on the server). */
+export function grnMatchesFilters(grn: GoodsReceipt, filters: FilterValues): boolean {
+  if (filters.status && grn.status !== filters.status) return false;
+  if (filters.supplier && grn.supplierId !== filters.supplier) return false;
+  return true;
+}
+
 /**
- * Goods receipt list (shared list pattern, clients-list reference).
+ * Goods receipt list (ADR-047 list page: title block, views, groups, export; the search runs on
+ * the server, everything else on the returned set).
  *
  * Search and Status run on the server; sort and paging are local. Supplier, purchase order,
  * project and who delivered come with each row of the list read.
@@ -98,16 +114,28 @@ export function GrnList() {
   const { can } = usePermissions();
   const mayReceive = can(PROCUREMENT_PERMISSIONS.createReceipt);
 
-  const [filters, setFilters] = useState<FilterValues>({});
-  const controls = useListControls();
-  const receipts = useGoodsReceipts({
-    ...(filters.status ? { status: filters.status as GoodsReceiptStatus } : {}),
-    ...(controls.debouncedSearch ? { search: controls.debouncedSearch } : {}),
-  });
+  const view = useListViewState(DEFAULT_GRN_SORT, {}, { searchOnServer: true });
+  const { filters } = view;
+  const receipts = useGoodsReceipts(
+    view.debouncedSearch ? { search: view.debouncedSearch } : undefined,
+  );
   const cancel = useCancelGoodsReceipt();
   const [cancelling, setCancelling] = useState<GoodsReceipt | null>(null);
 
   const all = useMemo(() => receipts.data ?? [], [receipts.data]);
+  const visible = useMemo(
+    () => all.filter((grn) => grnMatchesFilters(grn, filters)),
+    [all, filters],
+  );
+  // Supplier options come from the receipts themselves — never an option that can only empty the list.
+  const supplierOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const grn of all)
+      if (grn.supplier && !seen.has(grn.supplierId)) seen.set(grn.supplierId, grn.supplier.name);
+    return [...seen]
+      .map(([value, label]) => ({ value, label }))
+      .sort((x, y) => x.label.localeCompare(y.label));
+  }, [all]);
 
   const poNumberOf = (grn: GoodsReceipt): string | null =>
     grn.purchaseOrder?.number ?? grn.purchaseOrder?.poNumber ?? null;
@@ -122,16 +150,32 @@ export function GrnList() {
       sticky: true,
       sortable: true,
       card: 'title',
-      plainValue: (grn) => `${grn.grnNumber} ${supplierOf(grn) ?? ''}`,
+      plainValue: (grn) => grn.grnNumber,
       // The grid wraps this cell in the row's one link.
       render: (grn) => (
-        <span className="block min-w-0">
-          <span className="block font-semibold text-brand-primary">{grn.grnNumber}</span>
-          <span className="block max-w-[18rem] truncate text-caption font-normal text-muted-foreground">
-            {supplierOf(grn) ?? tc('notAvailable')}
-          </span>
+        <span className="block font-mono text-body-sm font-semibold text-brand-primary">
+          {grn.grnNumber}
         </span>
       ),
+    },
+    {
+      key: 'supplier',
+      header: t('columns.supplier'),
+      sortable: true,
+      plainValue: (grn) => supplierOf(grn) ?? '',
+      render: (grn) =>
+        grn.supplier ? (
+          <span className="flex items-center gap-2.5">
+            <Avatar
+              name={grn.supplier.name}
+              size="sm"
+              className={cn('rounded-control ring-0', entityTintClass(grn.supplierId))}
+            />
+            <span className="block max-w-[16rem] truncate font-medium">{grn.supplier.name}</span>
+          </span>
+        ) : (
+          dash
+        ),
     },
     {
       key: 'purchaseOrder',
@@ -180,9 +224,13 @@ export function GrnList() {
       plainValue: (grn) => grn.deliveryDate,
       render: (grn, ctx) => (
         <span className="block">
-          <span className="block">{formatDate(grn.deliveryDate, ctx.locale) ?? tc('notAvailable')}</span>
+          <span className="block">
+            {formatDate(grn.deliveryDate, ctx.locale) ?? tc('notAvailable')}
+          </span>
           {grn.deliveredBy ? (
-            <span className="block text-caption text-muted-foreground">{t('by', { name: grn.deliveredBy.name })}</span>
+            <span className="block text-caption text-muted-foreground">
+              {t('by', { name: grn.deliveredBy.name })}
+            </span>
           ) : null}
         </span>
       ),
@@ -198,6 +246,7 @@ export function GrnList() {
       key: 'status',
       header: t('columns.status'),
       card: 'status',
+      plainValue: (grn) => tStatus(grn.status),
       render: (grn) => <ProcurementStatusBadge vocabulary="grn" status={grn.status} />,
     },
   ];
@@ -209,14 +258,41 @@ export function GrnList() {
       label: t('filters.status'),
       options: GRN_STATUSES.map((value) => ({ value, label: tStatus(value) })),
     },
+    { key: 'supplier', type: 'select', label: t('columns.supplier'), options: supplierOptions },
   ];
 
-  const isNarrowed = Boolean(controls.search) || Object.values(filters).some(Boolean);
-  const view = controls.view(all, columns);
+  // Views (Step 8). The search is the API's: a count shows only for the search the rows came with.
+  const countFor = (state: SavedViewState): number | undefined =>
+    (state.search ?? '').trim() === view.search.trim()
+      ? all.filter((grn) => grnMatchesFilters(grn, state.filters ?? {})).length
+      : undefined;
+  const builtInViews: Omit<BuiltInView, 'count'>[] = [
+    { id: 'all', label: t('views.all'), state: { sort: DEFAULT_GRN_SORT } },
+    {
+      id: 'exceptions',
+      label: t('views.exceptions'),
+      state: { filters: { status: 'EXCEPTION_PENDING' }, sort: DEFAULT_GRN_SORT },
+    },
+    {
+      id: 'drafts',
+      label: t('views.drafts'),
+      state: { filters: { status: 'DRAFT' }, sort: DEFAULT_GRN_SORT },
+    },
+  ];
+  const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
+
+  const isNarrowed = Boolean(view.search.trim()) || Object.values(filters).some(Boolean);
+  const exceptionCount = all.filter((grn) => grn.status === 'EXCEPTION_PENDING').length;
+  const headerSummary =
+    all.length === 0 || view.search.trim()
+      ? undefined
+      : exceptionCount > 0
+        ? t('headerSummaryExceptions', { count: all.length, exceptions: exceptionCount })
+        : t('headerSummary', { count: all.length });
 
   const createAction = mayReceive ? (
     <Button asChild>
-      <Link href="/procurement/grn/new">
+      <Link href="/procurement/grn/new" data-shortcut-new="">
         <Plus className="size-4" aria-hidden="true" />
         {t('new')}
       </Link>
@@ -224,10 +300,16 @@ export function GrnList() {
   ) : undefined;
 
   return (
-    <>
+    <div className="space-y-5">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={tGrn('title')}
+        summary={headerSummary}
+        actions={createAction}
+      />
       <PlatformDataGrid
         columns={columns}
-        data={view.data}
+        data={visible}
         rowKey={(grn) => grn.id}
         label={tGrn('title')}
         isLoading={receipts.isPending}
@@ -239,13 +321,51 @@ export function GrnList() {
         searchPlaceholder={t('searchPlaceholder')}
         resultLabel={(count) => t('countLabel', { count })}
         noMatchMessage={t('noMatches')}
-        server={view.server}
+        pagination={{ defaultPageSize: 25 }}
+        columnVisibility
+        listState={view.listState}
+        savedViews={
+          <ListViewsBar
+            listKey="goods-receipts"
+            builtIns={builtIns}
+            current={view.current}
+            onApply={view.applyView}
+            countFor={countFor}
+            label={t('views.label')}
+          />
+        }
+        groupOptions={[
+          {
+            key: 'supplier',
+            label: t('columns.supplier'),
+            groupOf: (grn) => ({
+              id: grn.supplierId,
+              label: supplierOf(grn) ?? tc('notAvailable'),
+            }),
+          },
+          {
+            key: 'project',
+            label: t('columns.project'),
+            groupOf: (grn) => ({
+              id: grn.project?.id ?? '',
+              label: grn.project?.name ?? tc('notAvailable'),
+            }),
+          },
+          {
+            key: 'status',
+            label: t('columns.status'),
+            groupOf: (grn) => ({ id: grn.status, label: tStatus(grn.status) }),
+          },
+        ]}
+        exportAs={{ fileName: `goods-receipts-${today()}`, sheetName: tGrn('title') }}
+        shortcuts={{
+          onNew: mayReceive
+            ? () => document.querySelector<HTMLAnchorElement>('a[data-shortcut-new]')?.click()
+            : undefined,
+        }}
         filters={filterFields}
         filterValues={filters}
-        onFilterValuesChange={(next) => {
-          setFilters(next);
-          controls.resetPage();
-        }}
+        onFilterValuesChange={view.setFilters}
         rowActions={(grn) => (
           <ListRowMenu
             label={tc('rowMenu', { number: grn.grnNumber })}
@@ -253,7 +373,13 @@ export function GrnList() {
             openLabel={tc('open')}
             commands={
               mayReceive && grn.status === 'DRAFT'
-                ? [{ key: 'cancel', label: tGrn('cancelReceipt'), onSelect: () => setCancelling(grn) }]
+                ? [
+                    {
+                      key: 'cancel',
+                      label: tGrn('cancelReceipt'),
+                      onSelect: () => setCancelling(grn),
+                    },
+                  ]
                 : []
             }
           />
@@ -261,10 +387,14 @@ export function GrnList() {
         // First use only — a filter that empties the list gets the grid's filtered-empty state.
         emptyState={
           !isNarrowed && receipts.data !== undefined && all.length === 0 ? (
-            <EmptyState title={t('empty')} description={t('emptyHint')} action={createAction} />
+            <EmptyState
+              icon={<PackageCheck size={20} aria-hidden="true" />}
+              title={t('empty')}
+              description={t('emptyHint')}
+              action={createAction}
+            />
           ) : undefined
         }
-        toolbarActions={createAction}
       />
 
       {cancelling ? (
@@ -282,7 +412,7 @@ export function GrnList() {
           }}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -371,15 +501,24 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const unitPrices = useMemo(
     () =>
       Object.fromEntries(
-        (activeRevision(order.data?.revisions ?? [])?.lines ?? []).map((line) => [line.id, line.unitPrice]),
+        (activeRevision(order.data?.revisions ?? [])?.lines ?? []).map((line) => [
+          line.id,
+          line.unitPrice,
+        ]),
       ) as Record<string, string>,
     [order.data],
   );
 
-  const prefilled = useMemo(() => (selected ? grnLinesFromReceivable(selected.lines) : null), [selected]);
+  const prefilled = useMemo(
+    () => (selected ? grnLinesFromReceivable(selected.lines) : null),
+    [selected],
+  );
   const lines = edited ?? prefilled;
 
-  const projectName = selected && selected.projects.length > 0 ? selected.projects.map((p) => p.name).join(', ') : null;
+  const projectName =
+    selected && selected.projects.length > 0
+      ? selected.projects.map((p) => p.name).join(', ')
+      : null;
   const supplierName = selected?.supplier.name ?? tc('notAvailable');
 
   const poOptions = useMemo(
@@ -405,15 +544,27 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const lineErrors = (lines ?? []).map(grnLineErrors);
   const summaryErrors: FormFieldError[] = [];
   if (!purchaseOrderId) {
-    summaryErrors.push({ label: t('purchaseOrder'), fieldId: 'grn-po', message: tErr('purchaseOrder') });
+    summaryErrors.push({
+      label: t('purchaseOrder'),
+      fieldId: 'grn-po',
+      message: tErr('purchaseOrder'),
+    });
   }
   lineErrors.forEach((errors, i) => {
     const label = t('lineTitle', { n: i + 1 });
     if (errors.rejected) {
-      summaryErrors.push({ label, fieldId: grnLineControlId('rejected', i), message: tErr(errors.rejected) });
+      summaryErrors.push({
+        label,
+        fieldId: grnLineControlId('rejected', i),
+        message: tErr(errors.rejected),
+      });
     }
     if (errors.reason) {
-      summaryErrors.push({ label, fieldId: grnLineControlId('reason', i), message: tErr(errors.reason) });
+      summaryErrors.push({
+        label,
+        fieldId: grnLineControlId('reason', i),
+        message: tErr(errors.reason),
+      });
     }
   });
   if (lines && lines.length > 0 && submittable.length === 0) {
@@ -425,7 +576,10 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   }
   const showSummary = (showErrors && summaryErrors.length > 0) || receiveError !== null;
 
-  const dirty = Boolean(purchaseOrderId && purchaseOrderId !== initialPoId) || edited !== null || deliveryNoteRef.trim() !== '';
+  const dirty =
+    Boolean(purchaseOrderId && purchaseOrderId !== initialPoId) ||
+    edited !== null ||
+    deliveryNoteRef.trim() !== '';
   const leave = () => router.push('/procurement/grn');
 
   function handleSubmit(event: FormEvent) {
@@ -450,7 +604,15 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     const keepForLater = async () => {
       const po = orders.find((o) => o.id === purchaseOrderId)?.poNumber ?? '';
       await outbox?.queue('GOODS_RECEIPT', t('outboxLabel', { po }), payload as never, {
-        ...(localPhoto ? { photo: { blob: localPhoto, name: localPhoto.name, ...(photoFileId ? { fileId: photoFileId } : {}) } } : {}),
+        ...(localPhoto
+          ? {
+              photo: {
+                blob: localPhoto,
+                name: localPhoto.name,
+                ...(photoFileId ? { fileId: photoFileId } : {}),
+              },
+            }
+          : {}),
         ...(createdIdRef.current ? { recordId: createdIdRef.current } : {}),
       });
       setKept(true);
@@ -499,7 +661,22 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     } finally {
       setBusy(false);
     }
-  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef, lines, tc, photoFileId, localPhoto, outbox, orders, t, clientRef]);
+  }, [
+    create,
+    post,
+    router,
+    purchaseOrderId,
+    deliveryDate,
+    deliveryNoteRef,
+    lines,
+    tc,
+    photoFileId,
+    localPhoto,
+    outbox,
+    orders,
+    t,
+    clientRef,
+  ]);
 
   // ── States before the form ─────────────────────────────────────────────────────
   if (kept) return <KeptOnPhone />;
@@ -533,10 +710,17 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
 
   const acceptedMinor =
     moneyVisible && lines && order.data
-      ? acceptedValueMinor(lines.map((line) => ({ ...line, unitPrice: unitPrices[line.purchaseOrderLineId] ?? null })))
+      ? acceptedValueMinor(
+          lines.map((line) => ({
+            ...line,
+            unitPrice: unitPrices[line.purchaseOrderLineId] ?? null,
+          })),
+        )
       : 0;
   const pendingException =
-    selected?.receiptException && selected.receiptException.status !== 'REJECTED' ? selected.receiptException : null;
+    selected?.receiptException && selected.receiptException.status !== 'REJECTED'
+      ? selected.receiptException
+      : null;
 
   return (
     <>
@@ -550,7 +734,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
             )
           }
           discard={
-            <Button type="button" variant="ghost" onClick={() => (dirty ? setConfirmLeave(true) : leave())}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => (dirty ? setConfirmLeave(true) : leave())}
+            >
               {t('discard')}
             </Button>
           }
@@ -569,7 +757,10 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
           </div>
 
           <section aria-labelledby="grn-delivery" className="space-y-4">
-            <h2 id="grn-delivery" className="border-b border-border pb-2 text-body font-semibold text-foreground">
+            <h2
+              id="grn-delivery"
+              className="border-b border-border pb-2 text-body font-semibold text-foreground"
+            >
               {t('deliverySection')}
             </h2>
             <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
@@ -601,7 +792,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
               </FormField>
 
               <FormField htmlFor="grn-date" label={t('deliveredOn')} required>
-                <DatePicker id="grn-date" value={deliveryDate} onChange={(value) => setDeliveryDate(value)} />
+                <DatePicker
+                  id="grn-date"
+                  value={deliveryDate}
+                  onChange={(value) => setDeliveryDate(value)}
+                />
               </FormField>
 
               <FormField
@@ -609,7 +804,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
                 label={`${t('deliveryNote')} (${t('optional')})`}
                 hint={t('deliveryNoteHint')}
               >
-                <Input id="grn-note" value={deliveryNoteRef} onChange={(e) => setDeliveryNoteRef(e.target.value)} />
+                <Input
+                  id="grn-note"
+                  value={deliveryNoteRef}
+                  onChange={(e) => setDeliveryNoteRef(e.target.value)}
+                />
               </FormField>
 
               {selected && !blocked && lines ? (
@@ -624,16 +823,29 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
                       const applied = applyDeliveryReading(lines, reading);
                       setEdited(applied.lines);
                       setUnmatchedRead(applied.unmatched);
-                      if (reading.documentNumber && !deliveryNoteRef.trim()) setDeliveryNoteRef(reading.documentNumber);
+                      if (reading.documentNumber && !deliveryNoteRef.trim())
+                        setDeliveryNoteRef(reading.documentNumber);
                       if (reading.date) setDeliveryDate(reading.date);
                     }}
                   />
                   {unmatchedRead.length > 0 ? (
-                    <Notice tone="attention" title={t('photo.unmatchedTitle', { count: unmatchedRead.length })} className="mt-2">
-                      <ul className="list-disc ps-5">{unmatchedRead.map((u) => <li key={u}>{u}</li>)}</ul>
+                    <Notice
+                      tone="attention"
+                      title={t('photo.unmatchedTitle', { count: unmatchedRead.length })}
+                      className="mt-2"
+                    >
+                      <ul className="list-disc ps-5">
+                        {unmatchedRead.map((u) => (
+                          <li key={u}>{u}</li>
+                        ))}
+                      </ul>
                     </Notice>
                   ) : null}
-                  {attachFailed ? <Notice tone="attention" className="mt-2">{t('photo.attachFailed')}</Notice> : null}
+                  {attachFailed ? (
+                    <Notice tone="attention" className="mt-2">
+                      {t('photo.attachFailed')}
+                    </Notice>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -645,7 +857,11 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
               title={t('sod.title')}
               action={
                 pendingException ? undefined : (
-                  <Button type="button" variant="outline" onClick={() => setRequestingException(true)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setRequestingException(true)}
+                  >
                     {t('sod.request')}
                   </Button>
                 )
@@ -662,7 +878,9 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
                 <p className="text-caption text-muted-foreground">{t('arrivedHint')}</p>
               </div>
 
-              {lines ? <GrnLineEditor lines={lines} onChange={setEdited} showErrors={showErrors} /> : null}
+              {lines ? (
+                <GrnLineEditor lines={lines} onChange={setEdited} showErrors={showErrors} />
+              ) : null}
 
               {moneyVisible && lines && acceptedMinor > 0 ? (
                 <p className="text-body-sm text-muted-foreground" aria-live="polite">
@@ -698,7 +916,9 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
           confirmLabel={t('sod.submit')}
           reason={{ required: true, label: t('sod.reasonLabel') }}
           isPending={requestException.isPending}
-          errorMessage={requestException.error ? errorText(requestException.error, tc('loadFailed')) : undefined}
+          errorMessage={
+            requestException.error ? errorText(requestException.error, tc('loadFailed')) : undefined
+          }
           onConfirm={(reason) =>
             requestException.mutate(
               { purchaseOrderId: selected.id, reason: reason.trim() },
@@ -747,7 +967,10 @@ export function GrnDetail({ id }: { id: string }) {
   if (grn.isPending) {
     return (
       <div role="status" aria-live="polite">
-        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
+        <div
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
+          aria-hidden="true"
+        />
       </div>
     );
   }
@@ -828,9 +1051,7 @@ export function GrnDetail({ id }: { id: string }) {
         />
       ) : null}
 
-      {receipt.status === 'POSTED' ? (
-        <Alert variant="info" messages={[t('postedNotice')]} />
-      ) : null}
+      {receipt.status === 'POSTED' ? <Alert variant="info" messages={[t('postedNotice')]} /> : null}
 
       {receipt.overReceiptFlag ? (
         <Alert variant="warning" title={t('overReceiptTitle')} messages={[t('overReceiptBody')]} />
@@ -895,7 +1116,10 @@ export function GrnDetail({ id }: { id: string }) {
                       shown here rather than a faked one. Tracked as a backend follow-up (see
                       the report / no. 150): the GR line read model needs the PO line's
                       project/boqNode for this chip to light up. Only the type chip renders. */}
-                  <ClassificationChips className="mt-1.5 flex flex-wrap items-center gap-1.5" lineType={line.lineType} />
+                  <ClassificationChips
+                    className="mt-1.5 flex flex-wrap items-center gap-1.5"
+                    lineType={line.lineType}
+                  />
                 </TableCell>
                 <TableCell className="text-end tabular-nums">
                   {formatNumber(line.orderedQuantity, locale)}
@@ -966,9 +1190,7 @@ export function GrnDetail({ id }: { id: string }) {
 function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium text-muted-foreground">
-        {label}
-      </dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 truncate text-sm text-foreground">{value}</dd>
     </div>
   );

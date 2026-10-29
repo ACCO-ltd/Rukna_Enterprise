@@ -59,7 +59,7 @@ export function SupplierPicker({
   const t = useTranslations('procurement.supplier');
   const tc = useTranslations('procurement.common');
   // `loading` lives in the shared `common` catalogue, not `procurement.common` —
-  // the same split `SetupScreen` uses.
+  // the same split the setup lists use.
   const tCommon = useTranslations('common');
 
   const fromProcurement = source === 'procurement';

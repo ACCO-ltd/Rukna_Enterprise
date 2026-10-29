@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { EmptyState } from '@erp/ui';
 
+import { ListPageHeader } from '@/components/layout/list-page-header';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatMoney } from '@/lib/format';
 
@@ -96,8 +97,8 @@ export function QuotesInbox() {
   }
 
   return (
-    <div className="space-y-3">
-      <p className="max-w-prose text-body-sm text-muted-foreground">{t('subtitle')}</p>
+    <div className="space-y-5">
+      <ListPageHeader eyebrow={t('eyebrow')} title={t('title')} summary={t('subtitle')} />
       <PlatformDataGrid
         columns={columns}
         data={data}

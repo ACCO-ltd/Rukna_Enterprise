@@ -99,6 +99,7 @@ export function CategoryTree({
 
   return (
     <CatalogueListScreen<CategoryRow>
+      exportName={namespace === 'materialCategory' ? 'material-categories' : 'spend-categories'}
       label={t('title')}
       rows={rows}
       isPending={isPending}

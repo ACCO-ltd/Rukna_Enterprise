@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button, EmptyState, cn } from '@erp/ui';
 
+import { ListPageHeader } from '@/components/layout/list-page-header';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatMoney } from '@/lib/format';
 
@@ -115,7 +116,7 @@ export function QuotesList() {
 
   return (
     <div className="space-y-4">
-      <p className="max-w-prose text-body-sm text-muted-foreground">{t('subtitle')}</p>
+      <ListPageHeader eyebrow={t('eyebrow')} title={t('title')} summary={t('subtitle')} />
 
       <div role="group" aria-label={t('queueLabel')} className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         {QUEUES.map((value) => (

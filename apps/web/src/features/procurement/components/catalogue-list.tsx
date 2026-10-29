@@ -79,6 +79,7 @@ export function CatalogueListScreen<T extends { id: string; code: string; status
   retire,
   reactivate,
   tree = false,
+  exportName,
 }: {
   label: string;
   rows: T[];
@@ -102,6 +103,8 @@ export function CatalogueListScreen<T extends { id: string; code: string; status
   reactivate: RowCommand<T>;
   /** A category tree: rows stay in parent → child order, so nothing sorts. */
   tree?: boolean;
+  /** Export file name, without extension: "units-of-measure". */
+  exportName: string;
 }) {
   const t = useTranslations('procurement.setup');
   const tc = useTranslations('procurement.common');
@@ -139,6 +142,7 @@ export function CatalogueListScreen<T extends { id: string; code: string; status
         noMatchMessage={t('noMatches')}
         pagination={{ defaultPageSize: 25 }}
         sortControl={!tree}
+        exportAs={{ fileName: exportName, sheetName: label }}
         filters={filterFields}
         filterValues={filterValues}
         onFilterValuesChange={onFilterValuesChange}
