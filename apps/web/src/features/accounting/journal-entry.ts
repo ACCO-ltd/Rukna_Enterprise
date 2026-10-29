@@ -37,6 +37,8 @@ export interface JournalDraft {
   description: string;
   currencyCode: string;
   lines: JournalLineDraft[];
+  /** G-2 — an accrual reverses itself on this date when it posts ('' = no). */
+  autoReverseOn?: string;
 }
 
 export function emptyLine(): JournalLineDraft {
@@ -221,6 +223,7 @@ export function toJournalPayload(draft: JournalDraft): CreateJournalPayload {
   return {
     accountingDate: draft.accountingDate,
     ...(draft.documentDate.trim() ? { documentDate: draft.documentDate } : {}),
+    ...(draft.autoReverseOn?.trim() ? { autoReverseOn: draft.autoReverseOn } : {}),
     description: draft.description.trim(),
     currencyCode: draft.currencyCode.trim().toUpperCase(),
     lines,
@@ -297,6 +300,7 @@ export function draftFromEntry(entry: JournalEntry): JournalDraft {
   return {
     accountingDate: entry.accountingDate.slice(0, 10),
     documentDate: entry.documentDate ? entry.documentDate.slice(0, 10) : '',
+    autoReverseOn: entry.autoReverseOn ? entry.autoReverseOn.slice(0, 10) : '',
     description: entry.description,
     currencyCode: entry.currencyCode,
     lines: [...entry.lines]

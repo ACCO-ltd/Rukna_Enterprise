@@ -94,7 +94,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
     const u = (users.data ?? []).find((x) => x.id === id);
     return u ? `${u.firstName} ${u.lastName}`.trim() || u.email : id.slice(-8);
   };
-  const actions = availableActions(entry.status);
+  const actions = availableActions(entry.status).filter((a) => a !== 'reverse' || (!entry.reversedBy && !entry.reversalOfJournalEntryId));
   // The preparer edits a draft, or corrects a rejected journal and resubmits it.
   const editable = canEditJournal(entry, userId);
 
@@ -199,6 +199,12 @@ export function JournalDetail({ journalId }: { journalId: string }) {
               {formatDate(entry.documentDate, locale)}
             </dd>
           </div>
+          {entry.autoReverseOn ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('autoReverseOn')}</dt>
+              <dd className="mt-0.5 text-sm text-foreground">{formatDate(entry.autoReverseOn, locale)}</dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-xs text-muted-foreground">{t('createdBy')}</dt>
             <dd className="mt-0.5 text-sm text-foreground">{raisedBy(entry.createdBy)}</dd>

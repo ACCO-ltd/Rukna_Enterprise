@@ -52,6 +52,10 @@ export class CreateManualJournalDto {
   @IsString() @IsNotEmpty() @MaxLength(3)
   currencyCode!: string;
 
+  @ApiPropertyOptional({ example: '2025-02-01', description: 'G-2: an accrual reverses itself on this date (after the accounting date) when it posts' })
+  @IsDateString() @IsOptional()
+  autoReverseOn?: string;
+
   @ApiProperty({ type: [ManualJournalLineDto] })
   @IsArray() @ArrayMinSize(2) @ValidateNested({ each: true }) @Type(() => ManualJournalLineDto)
   lines!: ManualJournalLineDto[];

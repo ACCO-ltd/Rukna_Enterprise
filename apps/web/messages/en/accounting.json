@@ -522,7 +522,10 @@
     "correctIntro": "Saving returns the journal to draft. Submit it again from the journal when it is right.",
     "rejectedBecause": "Rejected: {reason}",
     "saveChanges": "Save changes",
-    "backToJournal": "Back to journal"
+    "backToJournal": "Back to journal",
+    "autoReverseLabel": "Reverse automatically on",
+    "autoReverseHint": "For an accrual: the journal reverses itself on this date, usually the first day of next month. Leave empty for a normal journal.",
+    "autoReverseAfter": "Pick a date after the accounting date."
   },
   "journalDetail": {
     "back": "Back to journals",
@@ -572,7 +575,8 @@
     },
     "rejectedHint": "Correct the journal, then submit it again.",
     "notEditable": "Only the person who prepared this journal can edit it, and only while it is a draft or rejected.",
-    "backToJournal": "Back to journal"
+    "backToJournal": "Back to journal",
+    "autoReverseOn": "Reverses automatically on"
   },
   "trialBalance": {
     "title": "Trial Balance",

@@ -229,6 +229,11 @@ describe('toJournalPayload', () => {
     expect(payload.lines).toHaveLength(2);
   });
 
+  it('sends autoReverseOn only when an accrual reversal date is set (G-2)', () => {
+    expect(toJournalPayload(draft())).not.toHaveProperty('autoReverseOn');
+    expect(toJournalPayload(draft({ autoReverseOn: '2026-11-01' })).autoReverseOn).toBe('2026-11-01');
+  });
+
   it('omits documentDate when it was left blank', () => {
     // The server defaults it to the accounting date; sending "" would be a 400.
     expect(toJournalPayload(draft())).not.toHaveProperty('documentDate');
@@ -321,6 +326,7 @@ describe('draftFromEntry', () => {
     expect(draft).toEqual({
       accountingDate: '2026-10-15',
       documentDate: '2026-10-14',
+      autoReverseOn: '',
       description: 'October accrual',
       currencyCode: 'USD',
       lines: [

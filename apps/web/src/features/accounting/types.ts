@@ -184,6 +184,10 @@ export interface JournalEntry {
   id: string;
   organizationId: string;
   journalNumber: string | null;
+  /** Set once the journal has been reversed (by hand or automatically). */
+  reversedBy?: string | null;
+  /** G-2 — the accrual's automatic reversal date, if it has one. */
+  autoReverseOn?: string | null;
   /** G-1 — on a draft that has been posted: the numbered entry that now holds its lines. */
   replacedByJournalEntryId?: string | null;
   accountingPeriodId: string | null;
@@ -222,6 +226,8 @@ export interface JournalEntry {
 export interface CreateJournalPayload {
   accountingDate: string;
   documentDate?: string;
+  /** G-2 — an accrual reverses itself on this date when it posts. */
+  autoReverseOn?: string;
   description: string;
   currencyCode: string;
   lines: Array<{

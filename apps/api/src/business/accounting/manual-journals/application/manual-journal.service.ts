@@ -44,6 +44,8 @@ export interface CreateManualJournalDto {
   description: string;
   currencyCode: string;
   lines: ManualJournalLineDto[];
+  /** G-2 — an accrual reverses itself on this date when it posts. */
+  autoReverseOn?: string;
 }
 
 export interface SubmitManualJournalDto {
@@ -64,6 +66,18 @@ export interface ReverseManualJournalDto {
   journalId: string;
   reversalDate: string;
   reason: string;
+}
+
+/** G-2 — an automatic reversal must fall after the journal it reverses. */
+function autoReverseDate(dto: CreateManualJournalDto): Date | null {
+  if (!dto.autoReverseOn) return null;
+  if (dto.autoReverseOn.slice(0, 10) <= dto.accountingDate.slice(0, 10)) {
+    throw new BadRequestException({
+      errorCode: 'AUTO_REVERSE_DATE_INVALID',
+      message: 'The automatic reversal must be dated after the journal — usually the first day of the next month.',
+    });
+  }
+  return new Date(dto.autoReverseOn.slice(0, 10) + 'T00:00:00.000Z');
 }
 
 /** A draft journal line as typed; account snapshots are taken when the journal posts. */
@@ -113,6 +127,7 @@ export class ManualJournalService {
         accountingDate: new Date(dto.accountingDate),
         description: dto.description,
         currencyCode: dto.currencyCode,
+        autoReverseOn: autoReverseDate(dto),
         sourceDocumentType: 'MANUAL_JOURNAL',
         sourceDocumentId: `draft-${Date.now()}`,
         accountingEventId: null,
@@ -160,6 +175,7 @@ export class ManualJournalService {
           accountingDate: new Date(dto.accountingDate),
           description: dto.description,
           currencyCode: dto.currencyCode,
+          autoReverseOn: autoReverseDate(dto),
         },
       });
       if (claimed.count !== 1) throw new ConflictException('The journal changed while it was being edited; reload and retry.');
@@ -354,6 +370,41 @@ export class ManualJournalService {
         where: { id: result.journalEntryId },
         data: { submittedBy: journal.submittedBy, submittedAt: journal.submittedAt },
       });
+
+      // G-2 — an accrual reverses itself: the mirror posts now, dated the reversal day, in the same
+      // transaction (both post or neither does). Its period must be open, like any posting.
+      if (journal.autoReverseOn) {
+        const reversal = await this.postingPort.post(
+          {
+            organizationId: orgId,
+            accountingDate: journal.autoReverseOn,
+            documentDate: journal.autoReverseOn,
+            description: `Automatic reversal of ${result.journalNumber}: ${journal.description}`,
+            currencyCode: journal.currencyCode,
+            eventType: `MANUAL-REVERSAL-${result.journalEntryId}`,
+            sourceDocumentType: 'MANUAL_JOURNAL',
+            sourceDocumentId: `reversal-${result.journalEntryId}`,
+            journalCategory: journal.journalCategory,
+            entryPurpose: 'REVERSAL',
+            postingOrigin: 'MANUAL',
+            reversalOfJournalEntryId: result.journalEntryId,
+            createdBy: userId,
+            approvedBy: journal.approvedBy ?? undefined,
+            lines: lines.map((line) => ({
+              ...line,
+              debitAmount: line.creditAmount,
+              creditAmount: line.debitAmount,
+              memo: `Reversal: ${line.memo ?? ''}`,
+            })),
+          },
+          tx as never,
+        );
+        await tx.journalEntry.update({
+          where: { id: result.journalEntryId },
+          data: { autoReverseOn: journal.autoReverseOn, reversedBy: userId, reversalReason: 'Automatic reversal (accrual)' },
+        });
+        return { ...result, autoReversal: reversal };
+      }
 
       return result;
     });

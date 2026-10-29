@@ -344,6 +344,20 @@ export function JournalForm({ journal }: { journal?: JournalEntry } = {}) {
             />
           </FormField>
 
+          {/* G-2 — an accrual that reverses itself, usually on the first day of the next month. */}
+          <FormField
+            htmlFor="journal-auto-reverse"
+            label={t('autoReverseLabel')}
+            hint={t('autoReverseHint')}
+            error={draft.autoReverseOn && draft.autoReverseOn <= draft.accountingDate ? t('autoReverseAfter') : undefined}
+          >
+            <DatePicker
+              id="journal-auto-reverse"
+              value={draft.autoReverseOn ?? ''}
+              onChange={(value) => setDraft((d) => ({ ...d, autoReverseOn: value }))}
+            />
+          </FormField>
+
           <FormField
             htmlFor="journal-description"
             label={t('descriptionLabel')}
