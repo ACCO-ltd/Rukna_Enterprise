@@ -757,8 +757,12 @@
       "rebuildTitle": "Rebuild this period’s snapshot?",
       "rebuildBody": "The frozen balances are recomputed from the posted entries. Reports covering this period will change if they had drifted.",
       "closeYearTitle": "Close this fiscal year?",
-      "closeYearBody": "The closing journal is posted, every profit and loss account is zeroed into retained earnings, and the year is marked closed. This is the last accounting action of the year."
-    }
+      "closeYearBody": "The closing journal is posted, every profit and loss account is zeroed into retained earnings, and the year is marked closed. This is the last accounting action of the year.",
+      "unlockTitle": "Unlock this period?",
+      "unlockBody": "It goes back to open and accepts ordinary journals again. Say why — the reason is kept on the record."
+    },
+    "unlock": "Unlock",
+    "lockWarning": "Before it can close, these need clearing: {blockers}."
   },
   "invoices": {
     "title": "Client Invoices",
@@ -1179,8 +1183,8 @@
     "subtitle": "Brings an existing set of books onto this system as its opening position.",
     "onceTitle": "This runs once",
     "onceBody": "The migration posts a single opening journal and cannot be run again — a second attempt is refused until the first is reversed. Everything below is checked before the button becomes available.",
-    "scopeTitle": "Trial balance only",
-    "scopeBody": "Open customer invoices and supplier bills can also be imported by this endpoint, but not from this screen — each row needs a client or supplier chosen individually. Because the migration runs only once, importing the trial balance now means those documents cannot be added later without reversing it.",
+    "scopeTitle": "Open invoices and bills first, then the trial balance",
+    "scopeBody": "Bring in what clients and suppliers still owe first, with the client and supplier import (Excel) under Get started. Then post the trial balance here: its receivables and payables lines must equal those open documents, so the ledger and the documents agree from day one. Once the trial balance is posted, opening documents can no longer be imported.",
     "step1": "1. Cutover details",
     "step2": "2. Trial balance",
     "cutoverDate": "Cutover date",
@@ -1294,7 +1298,7 @@
     "invoiceSettingsSaved": "Invoice settings saved",
     "journalSaved": "{ref, select, none {Journal saved as a draft} other {Journal {ref} saved}}",
     "journalAction": "{action, select, submit {Journal submitted for approval} approve {Journal approved} post {{ref, select, none {Journal posted} other {Journal {ref} posted}}} reverse {Journal reversed} other {Journal updated}}",
-    "periodAction": "{action, select, lock {Period {name} locked} reopen {Period {name} reopened} rebuild {Period snapshot rebuilt} other {Period updated}}",
+    "periodAction": "{action, select, lock {Period {name} locked} unlock {Period unlocked — it accepts postings again} reopen {Period {name} reopened} rebuild {Period snapshot rebuilt} other {Period updated}}",
     "periodClosedTitle": "{kind, select, year {Fiscal year closed} other {Period {name} closed}}",
     "periodClosedBody": "{kind, select, year {The closing journal moved every profit and loss balance into retained earnings. The next year starts from these balances.} other {Its balances are now snapshotted and it accepts no further postings. Reports for the period read from the snapshot.}}",
     "invoiceGenerated": "Draft invoice generated",
@@ -1685,7 +1689,7 @@
     "toleratedSwitch": "Post bills that match their purchase order within tolerance",
     "toleratedHint": "Off: only an exact match posts on save; a tolerated difference waits for approval.",
     "paymentsTitle": "Supplier payments",
-    "paymentsDescription": "Bank signatory release and the approval bands above this limit always apply.",
+    "paymentsDescription": "Bank signatory release and the approval bands above this limit always apply. Client refunds and transfers between your own accounts follow the same limit: above it, a second person approves.",
     "paymentSwitch": "Approve small payments as they are saved",
     "paymentSwitchHint": "A payment that settles a bill the same person approved still needs someone else.",
     "paymentUpTo": "Payments up to",

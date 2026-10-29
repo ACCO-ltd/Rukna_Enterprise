@@ -176,8 +176,10 @@ it('MJ-05: posting moves the trial balance by the journal amount, once', async (
   const amount = 1234;
 
   const before = await svc.trialBalanceService.generate(env.identity, { asOfDate });
-  const debitBefore = Number(before.totalClosingDebit);
-  const creditBefore = Number(before.totalClosingCredit);
+  // R-1 — closing columns are netted balances; the movement columns are the gross postings a
+  // journal adds to, so they are what must move by its amount, once.
+  const debitBefore = Number(before.totalPeriodDebit);
+  const creditBefore = Number(before.totalPeriodCredit);
 
   const draft = await svc.manualJournalService.create(env.identity, {
     accountingDate: '2025-01-16',
@@ -195,8 +197,8 @@ it('MJ-05: posting moves the trial balance by the journal amount, once', async (
   const after = await svc.trialBalanceService.generate(env.identity, { asOfDate });
 
   // Exactly the journal amount — not twice it.
-  expect(Number(after.totalClosingDebit) - debitBefore).toBeCloseTo(amount, 2);
-  expect(Number(after.totalClosingCredit) - creditBefore).toBeCloseTo(amount, 2);
+  expect(Number(after.totalPeriodDebit) - debitBefore).toBeCloseTo(amount, 2);
+  expect(Number(after.totalPeriodCredit) - creditBefore).toBeCloseTo(amount, 2);
   expect(after.balanced).toBe(true);
 });
 

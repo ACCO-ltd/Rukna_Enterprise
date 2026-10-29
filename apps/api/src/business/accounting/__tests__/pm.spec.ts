@@ -694,3 +694,21 @@ it('PM-13: AR posted after the period end does not fail the close tie-out', asyn
     await AccountingFixtureFactory.cleanup(prisma, freshEnv.orgId);
   }
 });
+
+// ─── PM-UNLOCK (S-1) ──────────────────────────────────────────────────────────
+it('PM-UNLOCK: a locked period can be unlocked with a reason; an open one cannot (S-1)', async () => {
+  const freshEnv = await AccountingFixtureFactory.create(prisma);
+  const freshSvc = buildServices(prisma);
+  try {
+    await freshSvc.periodManagementService.lockPeriod(freshEnv.identity, freshEnv.periods.openId);
+    await expect(freshSvc.periodManagementService.unlockPeriod(freshEnv.identity, { periodId: freshEnv.periods.openId, reason: ' ' }))
+      .rejects.toThrow(/reason/);
+    const result = await freshSvc.periodManagementService.unlockPeriod(freshEnv.identity, { periodId: freshEnv.periods.openId, reason: 'A late supplier bill' });
+    expect(result).toMatchObject({ previousStatus: 'LOCKED', newStatus: 'OPEN' });
+    expect((await prisma.accountingPeriod.findUnique({ where: { id: freshEnv.periods.openId } }))?.status).toBe('OPEN');
+    await expect(freshSvc.periodManagementService.unlockPeriod(freshEnv.identity, { periodId: freshEnv.periods.openId, reason: 'again' }))
+      .rejects.toThrow(/Only a LOCKED period/);
+  } finally {
+    await AccountingFixtureFactory.cleanup(prisma, freshEnv.orgId);
+  }
+});

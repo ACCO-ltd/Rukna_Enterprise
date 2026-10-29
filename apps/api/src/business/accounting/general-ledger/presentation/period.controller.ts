@@ -53,6 +53,15 @@ export class PeriodController {
     return this.periodManagementService.closePeriod(identity, id);
   }
 
+  @Post(':id/unlock')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', description: 'Period ID' })
+  @ApiOperation({ summary: 'S-1: unlock a LOCKED period (LOCKED → OPEN) with a reason; audited' })
+  @ApiResponse({ status: 400, description: 'Period is not LOCKED, or no reason' })
+  unlock(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ReopenPeriodDto) {
+    return this.periodManagementService.unlockPeriod(identity, { periodId: id, ...dto });
+  }
+
   @Post(':id/reopen')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', description: 'Period ID' })

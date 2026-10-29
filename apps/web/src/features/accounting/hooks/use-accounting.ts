@@ -19,6 +19,7 @@ import {
   lockPeriod,
   rebuildSnapshot,
   reopenPeriod,
+  unlockPeriod,
   runOpeningBalance,
   runReconciliation,
   updateAccount,
@@ -622,6 +623,7 @@ export type PeriodActionRequest =
   | { type: 'lock'; periodId: string }
   | { type: 'close'; periodId: string }
   | { type: 'reopen'; periodId: string; reason: string }
+  | { type: 'unlock'; periodId: string; reason: string }
   | { type: 'rebuild'; periodId: string }
   | { type: 'close-year'; fiscalYearId: string };
 
@@ -646,6 +648,8 @@ export function usePeriodAction() {
           return closePeriod(action.periodId);
         case 'reopen':
           return reopenPeriod(action.periodId, action.reason);
+        case 'unlock':
+          return unlockPeriod(action.periodId, action.reason);
         case 'rebuild':
           return rebuildSnapshot(action.periodId);
         case 'close-year':

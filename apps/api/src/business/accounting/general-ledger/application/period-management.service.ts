@@ -140,6 +140,42 @@ export class PeriodManagementService {
   }
 
   /**
+   * S-1 — LOCKED → OPEN. A lock that turns out premature (a late bill, a correction found before
+   * the close) was a dead end: only a CLOSED period could be reopened, and a locked period that
+   * could not close stayed stuck. Unlocking needs a written reason and is audited, like a reopen;
+   * nothing was snapshotted, so nothing is invalidated.
+   */
+  async unlockPeriod(identity: RequestIdentity, dto: ReopenPeriodDto): Promise<PeriodTransitionResult> {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+    const reason = (dto.reason ?? '').trim();
+    if (!reason) throw new BadRequestException('A reason is required to unlock a period');
+    const period = await prisma.accountingPeriod.findFirst({ where: { id: dto.periodId, organizationId: orgId } });
+    if (!period) throw new NotFoundException(`Period ${dto.periodId} not found`);
+    if (period.status !== 'LOCKED') {
+      throw new BadRequestException(`Only a LOCKED period can be unlocked (current: ${period.status})`);
+    }
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.accountingPeriod.updateMany({ where: { id: period.id, status: 'LOCKED' }, data: { status: 'OPEN' } });
+      if (count !== 1) throw new BadRequestException('The period changed a moment ago — reload it.');
+      await this.auditOutbox?.record(tx as never, {
+        organizationId: orgId,
+        actorUserId: userId,
+        action: 'UNLOCK',
+        resourceType: 'AccountingPeriod',
+        resourceId: period.id,
+        sourceCommand: 'period.unlock',
+        eventType: 'ACCOUNTING_PERIOD_UNLOCKED',
+        idempotencyKey: `period-unlock:${period.id}:${Date.now()}`,
+        before: { status: 'LOCKED' },
+        after: { status: 'OPEN' },
+        reason,
+      });
+    });
+    return { periodId: period.id, previousStatus: 'LOCKED', newStatus: 'OPEN' };
+  }
+
+  /**
    * CLOSED → REOPENED
    * Exceptional CFO action. Invalidates snapshots for all subsequent periods.
    */
@@ -219,9 +255,9 @@ export class PeriodManagementService {
     });
     if (!period) throw new NotFoundException(`Period ${periodId} not found`);
 
-    if (period.status === 'OPEN' || period.status === 'REOPENED') {
-      return this.checkLockGate(prisma, orgId, period);
-    }
+    // S-1 — an open period's gate names everything that will stand in the way of closing it, not
+    // only what blocks the lock: finding the payables difference only when the close fails, after
+    // the month was locked, left it stuck.
     return this.checkCloseGate(prisma, orgId, period);
   }
 

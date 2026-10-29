@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Inject,
 } from '@nestjs/common';
+import { pendingPaymentHoldsTotal } from '../../accounts-payable/infrastructure/pending-payment-holds.repository.js';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -255,7 +256,8 @@ export class OpeningBalanceService {
           where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
           _sum: { outstandingAmount: true },
         });
-        const apSubledger = new Decimal(apAgg._sum.outstandingAmount?.toString() ?? '0');
+        // AP-1 — a bill held by an unposted payment is still owed (as in the AP tie-out).
+        const apSubledger = new Decimal(apAgg._sum.outstandingAmount?.toString() ?? '0').plus(await pendingPaymentHoldsTotal(tx as never, orgId));
         const apVariance = apGlBalance.minus(apSubledger).abs();
         reconciliation.push({
           label: `Accounts Payable (${dto.apAccountCode})`,

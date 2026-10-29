@@ -601,6 +601,15 @@ export function closePeriod(periodId: string): Promise<AccountingPeriod> {
   return apiClient<AccountingPeriod>(`/periods/${periodId}/close`, { method: 'POST' });
 }
 
+/** S-1 — LOCKED → OPEN, with a reason (audited). Nothing was snapshotted, so nothing is invalidated. */
+export function unlockPeriod(periodId: string, reason: string): Promise<AccountingPeriod> {
+  return apiClient<AccountingPeriod>(`/periods/${periodId}/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 /** CLOSED → REOPENED. Invalidates every downstream snapshot. */
 export function reopenPeriod(periodId: string, reason: string): Promise<AccountingPeriod> {
   return apiClient<AccountingPeriod>(`/periods/${periodId}/reopen`, {
