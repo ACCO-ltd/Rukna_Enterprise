@@ -36,6 +36,8 @@ import {
   type FilterValues,
   type ListFilterField,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { ChevronLeft, PackageCheck, Plus } from 'lucide-react';
 import type { SavedViewState } from '@erp/types';
 
@@ -965,18 +967,11 @@ export function GrnDetail({ id }: { id: string }) {
   const approveException = useApproveGoodsReceiptException();
 
   if (grn.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
+    return <SkeletonRecord label={tc('loading')} />;
   }
 
   if (grn.isError || !grn.data) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void grn.refetch()} />;
   }
 
   const receipt: GoodsReceipt = grn.data;

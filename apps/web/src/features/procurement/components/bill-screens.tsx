@@ -41,6 +41,8 @@ import {
   SummaryRail,
   TotalsBlock,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { Plus, Receipt } from 'lucide-react';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -536,7 +538,7 @@ export function SupplierBillDetail({
   }
 
   if (query.isError || !query.data) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void query.refetch()} />;
   }
 
   if (

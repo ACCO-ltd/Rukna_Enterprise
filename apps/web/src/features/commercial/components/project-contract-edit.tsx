@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, SkeletonForm } from '@erp/ui';
 
 import { ContractEdit } from '@/features/contracts/components/contract-edit';
 
@@ -26,15 +26,7 @@ export function ProjectContractEdit({ projectId }: { projectId: string }) {
   const backHref = `/projects/${projectId}/commercial/contract`;
 
   if (summary.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-96 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
+    return <SkeletonForm label={tCommon('loading')} />;
   }
 
   if (summary.isError) {

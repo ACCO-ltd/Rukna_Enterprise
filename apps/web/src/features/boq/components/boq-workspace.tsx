@@ -4,7 +4,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { ClipboardList, Download, FileSpreadsheet, Plus } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, EmptyState, Notice, Skeleton, useToast } from '@erp/ui';
+import { Button, EmptyState, Notice, Skeleton, useToast } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { ApiError } from '@/lib/api-client';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -137,7 +139,10 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   if (workspaceQuery.isError) {
     return (
-      <Alert variant="error" title={t('loadFailed')} messages={[errorText(workspaceQuery.error, t('loadFailedHint'))]} />
+      <LoadError
+        message={errorText(workspaceQuery.error, t('loadFailed'))}
+        onRetry={() => void workspaceQuery.refetch()}
+      />
     );
   }
 
@@ -329,7 +334,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         {treeQuery.isPending ? (
           <Skeleton className="h-96 w-full" />
         ) : treeQuery.isError ? (
-          <Alert variant="error" messages={[errorText(treeQuery.error, t('loadFailed'))]} />
+          <LoadError message={errorText(treeQuery.error, t('loadFailed'))} onRetry={() => void treeQuery.refetch()} />
         ) : (
           <BoqGrid
             rows={rows}

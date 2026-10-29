@@ -44,6 +44,8 @@ import {
   Textarea,
 } from '@erp/ui';
 
+import { LoadError } from '@/components/load-error';
+
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
@@ -113,7 +115,7 @@ export function BillMatchSummary({ bill }: { bill: SupplierBill }) {
   }
 
   if (match.isError) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void match.refetch()} />;
   }
 
   const result = match.data ?? null;

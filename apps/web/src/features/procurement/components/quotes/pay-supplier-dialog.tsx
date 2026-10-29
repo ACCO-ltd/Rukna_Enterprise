@@ -31,6 +31,8 @@ import {
   Skeleton,
 } from '@erp/ui';
 
+import { LoadError } from '@/components/load-error';
+
 import { formatMoney } from '@/lib/format';
 
 import { useIdempotencyKey, usePayDraft, usePayFromAward, useSubmitOnce } from '../../hooks/use-quotation-payment';
@@ -87,7 +89,7 @@ export function PaySupplierDialog(props: PaySupplierDialogProps) {
       ) : draft.isError || !draft.data ? (
         <>
           <FormDialogBody>
-            <Alert variant="error" messages={[tRelease('loadFailed')]} />
+            <LoadError message={tRelease('loadFailed')} onRetry={() => void draft.refetch()} />
           </FormDialogBody>
           <FormDialogFooter>
             <Button type="button" variant="outline" className="min-h-11" onClick={() => void draft.refetch()}>

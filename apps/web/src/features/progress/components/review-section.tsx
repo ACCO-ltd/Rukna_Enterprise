@@ -25,6 +25,8 @@ import {
   TableScroll,
   Textarea,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { ChevronDown, ChevronRight, ClipboardCheck, Flag } from 'lucide-react';
 
 import { QueueList, joinQueueMeta } from '@/components/queue-list';
@@ -111,7 +113,7 @@ function ReportReview({ projectId, onConflict }: { projectId: string; onConflict
     return <Skeleton className="h-64 w-full rounded-panel" aria-hidden="true" />;
   }
   if (dprs.isError) {
-    return <Alert variant="error" messages={[t('states.loadFailed')]} />;
+    return <LoadError message={t('states.loadFailed')} onRetry={() => void dprs.refetch()} />;
   }
 
   function onDone(kind: 'approved' | 'returned', report: DailyProgressReportResponse) {
@@ -277,7 +279,7 @@ function ReportPanel({
         {detail.isPending ? (
           <Skeleton className="h-40 w-full rounded-panel" aria-hidden="true" />
         ) : detail.isError || !d ? (
-          <Alert variant="error" messages={[t('states.loadFailed')]} />
+          <LoadError message={t('states.loadFailed')} onRetry={() => void detail.refetch()} />
         ) : (
           <>
             <section aria-label={t('review.quantities')} className="space-y-2">
@@ -480,7 +482,7 @@ function MilestonesReady({ projectId }: { projectId: string }) {
       {milestones.isPending ? (
         <Skeleton className="h-20 w-full rounded-panel" aria-hidden="true" />
       ) : milestones.isError ? (
-        <Alert variant="error" messages={[t('states.loadFailed')]} />
+        <LoadError message={t('states.loadFailed')} onRetry={() => void milestones.refetch()} />
       ) : (
         <>
           {ready.length === 0 ? (

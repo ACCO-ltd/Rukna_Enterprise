@@ -16,7 +16,6 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Avatar,
   Button,
   cn,
@@ -26,7 +25,10 @@ import {
   type FilterValues,
   type ListFilterField,
   MoneyDisplay,
+  SkeletonRecord,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { Banknote, Plus } from 'lucide-react';
 
 import {
@@ -415,17 +417,12 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
 
   if (query.isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
+      <SkeletonRecord label={tc('loading')} />
     );
   }
 
   if (query.isError || !query.data) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void query.refetch()} />;
   }
 
   const payment: SupplierPayment = query.data;

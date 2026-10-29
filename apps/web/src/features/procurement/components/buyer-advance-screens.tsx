@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
-  Alert,
   Avatar,
   Badge,
   Button,
@@ -24,7 +23,10 @@ import {
   TableRow,
   TableScroll,
   type StatusTone,
+  SkeletonRecord,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { Wallet } from 'lucide-react';
 import type { SavedViewState } from '@erp/types';
 
@@ -475,18 +477,11 @@ export function BuyerAdvanceDetail({ id }: { id: string }) {
   const reverse = useReverseBuyerAdvance(advance?.quotationRequestId ?? null);
 
   if (query.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
+    return <SkeletonRecord label={tc('loading')} />;
   }
 
   if (query.isError || !advance) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return <LoadError message={tc('loadFailed')} onRetry={() => void query.refetch()} />;
   }
 
   const canPost = advance.postingStatus === 'NOT_POSTED';

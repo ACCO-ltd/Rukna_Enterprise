@@ -27,6 +27,8 @@ import {
   useToast,
 } from '@erp/ui';
 
+import { LoadError } from '@/components/load-error';
+
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatNumber } from '@/lib/format';
 
@@ -145,7 +147,7 @@ function DialogInner({ projectId, dprId, onClose }: { projectId: string; dprId: 
             {dpr.isPending ? (
               <Skeleton className="h-48 w-full rounded-panel" aria-hidden="true" />
             ) : (
-              <Alert variant="error" messages={[t('states.loadFailed')]} />
+              <LoadError message={t('states.loadFailed')} onRetry={() => void dpr.refetch()} />
             )}
           </FormDialogBody>
           <CloseFooter label={tCommon('close')} />

@@ -11,7 +11,10 @@ import {
   DefinitionRow,
   MoneyDisplay,
   StatusPill,
+  SkeletonRecord,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { renderNextLink } from '@/components/render-next-link';
 import { ApiError } from '@/lib/api-client';
@@ -36,18 +39,12 @@ export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
-  const { data: project, isPending, isError, error } = useProject(id);
+  const { data: project, isPending, isError, error, refetch } = useProject(id);
   const summary = useProjectWorkspaceSummary(id);
 
   if (isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
+      <SkeletonRecord label={tCommon('loading')} />
     );
   }
 
@@ -55,7 +52,11 @@ export function ProjectDetail({ id }: { id: string }) {
     const notFound = error instanceof ApiError && (error.status === 404 || error.status === 403);
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
+        {notFound ? (
+          <Alert variant="error" messages={[t('notFound')]} />
+        ) : (
+          <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
+        )}
         <Button variant="outline" asChild>
           <Link href="/projects">{t('backToList')}</Link>
         </Button>

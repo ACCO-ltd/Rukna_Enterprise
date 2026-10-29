@@ -25,6 +25,8 @@ import {
   type FormSaveState,
 } from '@erp/ui';
 
+import { LoadError } from '@/components/load-error';
+
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { FormActions } from '@/components/form-actions';
 import { FormErrorSummary } from '@/components/form-error-summary';
@@ -129,7 +131,12 @@ function ProjectCreateForm() {
   const searchParams = useSearchParams();
   const { can } = usePermissions();
   const [addingClient, setAddingClient] = useState(false);
-  const { data: clients = [], isPending: clientsPending, isError: clientsFailed } = useClients();
+  const {
+    data: clients = [],
+    isPending: clientsPending,
+    isError: clientsFailed,
+    refetch: refetchClients,
+  } = useClients();
 
   const lockedClientId = searchParams.get('clientId') ?? '';
   const isClientLocked = lockedClientId.length > 0;
@@ -316,7 +323,9 @@ function ProjectCreateForm() {
         />
 
         <div className="space-y-8">
-          {clientsFailed ? <Alert variant="error" messages={[t('clientsLoadFailed')]} /> : null}
+          {clientsFailed ? (
+            <LoadError message={t('clientsLoadFailed')} onRetry={() => void refetchClients()} />
+          ) : null}
           {/* The locked client is inactive: it cannot take a new project. */}
           {isLockedClientInactive ? (
             <Alert variant="warning" messages={[t('clientInactiveWarning')]} />

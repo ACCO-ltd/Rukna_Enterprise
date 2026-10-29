@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ContractStatus } from '@erp/types';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, SkeletonForm } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -36,7 +38,7 @@ export function ContractEdit({
 }) {
   const t = useTranslations('platform.contracts.detail');
   const tCommon = useTranslations('common');
-  const { data: contract, isPending, isError, error } = useContract(id);
+  const { data: contract, isPending, isError, error, refetch } = useContract(id);
 
   // Inside the workspace the recovery back-links return to Contract & Security; the legacy
   // standalone entry (no projectId) still falls back to the retired detail route, which itself
@@ -47,13 +49,7 @@ export function ContractEdit({
 
   if (isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-96 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
+      <SkeletonForm label={tCommon('loading')} />
     );
   }
 
@@ -61,7 +57,11 @@ export function ContractEdit({
     const notFound = error instanceof ApiError && (error.status === 404 || error.status === 403);
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
+        {notFound ? (
+          <Alert variant="error" messages={[t('notFound')]} />
+        ) : (
+          <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
+        )}
         <Button variant="outline" asChild>
           <Link href={projectId ? backHref : '/contracts'}>{t('back')}</Link>
         </Button>

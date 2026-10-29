@@ -21,6 +21,8 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { StepSection } from '@/components/step-section';
@@ -98,7 +100,14 @@ export function SetupView({ projectId }: { projectId: string }) {
   }
 
   if (failed || !rollup.data) {
-    return <Alert variant="error" messages={[t('setup.loadFailed')]} />;
+    return (
+      <LoadError
+        message={t('setup.loadFailed')}
+        onRetry={() => {
+          for (const q of [workspace, rollup, workPackages, baseline, milestones]) if (q.isError) void q.refetch();
+        }}
+      />
+    );
   }
 
   const facts = setup.facts;

@@ -27,6 +27,8 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { Ellipsis } from 'lucide-react';
 
 import { MetricStrip, type Metric } from '@/components/widget/metric-strip';
@@ -106,7 +108,7 @@ export function PerformanceView({ projectId }: { projectId: string }) {
     );
   }
   if (rollup.isError || !rollup.data) {
-    return <Alert variant="error" messages={[t('states.loadFailed')]} />;
+    return <LoadError message={t('states.loadFailed')} onRetry={() => void rollup.refetch()} />;
   }
 
   const physical = rollup.data.physicalPercent;
@@ -249,7 +251,7 @@ function CurvePanel({
         {curve.isPending ? (
           <Skeleton className="h-56 w-full" aria-hidden="true" />
         ) : curve.isError ? (
-          <Alert variant="error" messages={[t('states.loadFailed')]} />
+          <LoadError message={t('states.loadFailed')} onRetry={() => void curve.refetch()} />
         ) : actual.length === 0 && plannedPoints.length === 0 ? (
           <p className="text-body-sm text-muted-foreground">{t('performance.curveEmpty')}</p>
         ) : (

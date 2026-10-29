@@ -51,6 +51,8 @@ import {
   TotalsBlock,
   type LineColumn,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { ArrowLeft, ClipboardCheck, Receipt } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -198,7 +200,7 @@ export function SupplierBillEditPage({ id }: { id: string }) {
     return (
       <>
         <ModuleTrail label={t('editTitle')} />
-        <Alert variant="error" messages={[tc('loadFailed')]} />
+        <LoadError message={tc('loadFailed')} onRetry={() => void query.refetch()} />
       </>
     );
   }

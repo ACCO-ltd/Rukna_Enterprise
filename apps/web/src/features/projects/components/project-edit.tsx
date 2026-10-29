@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { ProjectStatus } from '@erp/types';
 import { useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, SkeletonForm } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -20,14 +22,11 @@ import { ProjectForm } from './project-form';
 export function ProjectEdit({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
   const tCommon = useTranslations('common');
-  const { data: project, isPending, isError, error } = useProject(id);
+  const { data: project, isPending, isError, error, refetch } = useProject(id);
 
   if (isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-96 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
-      </div>
+      <SkeletonForm label={tCommon('loading')} />
     );
   }
 
@@ -36,7 +35,11 @@ export function ProjectEdit({ id }: { id: string }) {
 
     return (
       <div className="space-y-4">
-        <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
+        {notFound ? (
+          <Alert variant="error" messages={[t('notFound')]} />
+        ) : (
+          <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
+        )}
         <Button variant="outline" asChild>
           <Link href="/projects">{t('backToList')}</Link>
         </Button>

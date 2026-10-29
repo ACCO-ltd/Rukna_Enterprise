@@ -22,6 +22,8 @@ import {
   Switch,
   cn,
 } from '@erp/ui';
+
+import { LoadError } from '@/components/load-error';
 import { ChevronLeft } from 'lucide-react';
 
 import { useModuleTrail } from '@/components/layout/module-chrome';
@@ -58,7 +60,13 @@ export function OrderAdjustScreen({ id }: { id: string }) {
   if (detail.isError || draft.isError || !detail.data || !draft.data) {
     return (
       <div className="mx-auto w-full max-w-2xl space-y-4">
-        <Alert variant="error" messages={[tq('loadFailed')]} />
+        <LoadError
+          message={tq('loadFailed')}
+          onRetry={() => {
+            if (detail.isError) void detail.refetch();
+            if (draft.isError) void draft.refetch();
+          }}
+        />
         <Button
           variant="outline"
           className="min-h-11"

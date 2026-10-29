@@ -434,7 +434,7 @@ function AddMemberForm({
       }}
     >
       <FormDialogBody className="space-y-4">
-        {users.isError ? <Alert variant="error" messages={[t('usersLoadFailed')]} /> : null}
+        {users.isError ? <LoadError message={t('usersLoadFailed')} onRetry={() => void users.refetch()} /> : null}
         {!users.isPending && !users.isError && candidates.length === 0 ? (
           <Alert variant="info" messages={[t('everyoneAdded')]} />
         ) : null}
