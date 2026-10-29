@@ -38,6 +38,12 @@ export interface TrialBalanceQueryDto {
   periodId?: string;
 }
 
+/** A balance on one side: debit when debits exceed credits, else credit. */
+function net(debit: Decimal, credit: Decimal): { debit: Decimal; credit: Decimal } {
+  const diff = debit.minus(credit);
+  return diff.gte(0) ? { debit: diff, credit: new Decimal(0) } : { debit: new Decimal(0), credit: diff.negated() };
+}
+
 @Injectable()
 export class TrialBalanceService {
   constructor(
@@ -121,10 +127,17 @@ export class TrialBalanceService {
       const bal = balanceMap.get(account.id);
       if (!bal) continue;
 
-      const closingDebit = bal.openingDebit.plus(bal.periodDebit);
-      const closingCredit = bal.openingCredit.plus(bal.periodCredit);
+      // R-1 — opening and closing are balances: netted onto one side, as a trial balance reads.
+      // (They were the gross debits and credits ever posted, so a bank account with 1,700 in and
+      // 1,158 out read 1,700 Dr and 1,158 Cr instead of 542 Dr, and the totals were inflated.)
+      // The period columns stay gross: they are the movement.
+      const opening = net(bal.openingDebit, bal.openingCredit);
+      const closing = net(bal.openingDebit.plus(bal.periodDebit), bal.openingCredit.plus(bal.periodCredit));
+      const closingDebit = closing.debit;
+      const closingCredit = closing.credit;
 
-      if (!dto.includeZeroBalance && closingDebit.isZero() && closingCredit.isZero()) continue;
+      // Hidden unless asked: an account with nothing left on it and no movement in the period.
+      if (!dto.includeZeroBalance && closingDebit.isZero() && closingCredit.isZero() && bal.periodDebit.isZero() && bal.periodCredit.isZero()) continue;
 
       const version = account.versions[0];
 
@@ -134,16 +147,16 @@ export class TrialBalanceService {
         accountName: version?.name ?? account.code,
         accountClass: version?.accountClass ?? '',
         accountSubtype: version?.accountSubtype ?? '',
-        openingDebit: bal.openingDebit.toFixed(2),
-        openingCredit: bal.openingCredit.toFixed(2),
+        openingDebit: opening.debit.toFixed(2),
+        openingCredit: opening.credit.toFixed(2),
         periodDebit: bal.periodDebit.toFixed(2),
         periodCredit: bal.periodCredit.toFixed(2),
         closingDebit: closingDebit.toFixed(2),
         closingCredit: closingCredit.toFixed(2),
       });
 
-      totalOpeningDebit = totalOpeningDebit.plus(bal.openingDebit);
-      totalOpeningCredit = totalOpeningCredit.plus(bal.openingCredit);
+      totalOpeningDebit = totalOpeningDebit.plus(opening.debit);
+      totalOpeningCredit = totalOpeningCredit.plus(opening.credit);
       totalPeriodDebit = totalPeriodDebit.plus(bal.periodDebit);
       totalPeriodCredit = totalPeriodCredit.plus(bal.periodCredit);
       totalClosingDebit = totalClosingDebit.plus(closingDebit);

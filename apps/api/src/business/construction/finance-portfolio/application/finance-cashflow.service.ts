@@ -28,7 +28,8 @@ import {
   expectedCommitmentPayDate,
   type CashflowItem,
 } from '../domain/cashflow-forecast.policy.js';
-import { findBillsToPay } from '../infrastructure/bills-to-pay.query.js';
+import { findBillsToPay, findOpenPostedBills } from '../infrastructure/bills-to-pay.query.js';
+import { findUnprojectedOpenInvoices } from '../infrastructure/unprojected-receivables.query.js';
 import {
   findOpeningPayables,
   findOpeningReceivables,
@@ -39,7 +40,8 @@ import {
 export const CASHFLOW_BASIS: Record<CashflowLineType, string> = {
   fromInvoices:
     'Outstanding balance of issued (posted) client invoices — the same outstanding figure as Finance → Projects — ' +
-    'expected on each invoice’s due date. Invoices already past due are shown under “Overdue / now”.',
+    'expected on each invoice’s due date. Invoices already past due are shown under “Overdue / now”. Company-wide ' +
+    '(for someone who sees every project) it also counts invoices coded to no project, such as hand-typed sales.',
   fromUnbilledStages:
     'Payment-schedule stages of active client contracts that are not yet invoiced (a prepared draft counts as not ' +
     'invoiced), at the stage’s share of the base contract value. Expected bill date: the linked milestone’s forecast ' +
@@ -48,7 +50,8 @@ export const CASHFLOW_BASIS: Record<CashflowLineType, string> = {
     'Stages with no date are “Undated”.',
   fromSupplierBills:
     'Outstanding balance of posted supplier bills coded to the project — the same bills as “To pay” — expected on each ' +
-    'bill’s due date. Bills already past due are shown under “Overdue / now”.',
+    'bill’s due date. Bills already past due are shown under “Overdue / now”. Company-wide (for someone who sees ' +
+    'every project) it also counts bills coded to no project — office rent, overheads.',
   fromOpenCommitments:
     'Purchase-order value ordered or received but not yet billed (commitment ledger committed + accrued, per order). ' +
     'Expected payment: the order’s expected delivery date + the supplier’s payment terms; either missing → “Undated”.',
@@ -63,8 +66,8 @@ export const CASHFLOW_BASIS: Record<CashflowLineType, string> = {
 
 export const CASHFLOW_EXCLUSIONS: string[] = [
   'The cash already in the bank — cumulative net starts from zero, not from today’s bank balance.',
-  'Invoices, bills and orders issued in Rukna that are not coded to a project (opening balances are included in the ' +
-    'company-wide forecast even without a project; a project’s forecast shows only those coded to it).',
+  'Orders not coded to a project, and — in a project’s forecast, or for someone limited to some projects — invoices ' +
+    'and bills not coded to a project (the company-wide forecast for someone who sees every project includes them).',
   'Variations billed as separate charges until they are invoiced, and tax an invoice adds on top of a stage amount.',
   'Stages of contracts that are not active yet.',
 ];
@@ -131,13 +134,15 @@ export class FinanceCashflowService {
         ? { kind: 'PROJECTS', projectIds: ids }
         : { kind: 'ALL' };
 
-    const [contracts, receivables, bills, ledger, obReceivables, obPayables] = await Promise.all([
+    const [contracts, receivables, bills, ledger, obReceivables, obPayables, unprojectedInvoices] = await Promise.all([
       ids.length ? this.commercialRepo.findMainContractsByProject(prisma, orgId, ids) : Promise.resolve(new Map()),
       this.commercialRepo.findPostedReceivablesByProject(prisma, orgId, ids),
-      findBillsToPay(prisma, orgId, ids),
+      // R-2 — company-wide, every open bill counts, coded to a project or not (overheads are cash too).
+      obScope.kind === 'ALL' ? findOpenPostedBills(prisma, orgId, null) : findBillsToPay(prisma, orgId, ids),
       this.procurementRepo.groupByProjectPurchaseOrderAndStage(prisma, orgId, ids),
       findOpeningReceivables(prisma, orgId, obScope),
       findOpeningPayables(prisma, orgId, obScope),
+      obScope.kind === 'ALL' ? findUnprojectedOpenInvoices(prisma, orgId) : Promise.resolve([]),
     ]);
     const activeContracts = [...contracts.values()].filter((c) => c.status === 'ACTIVE');
     const contractById = new Map(activeContracts.map((c) => [c.id, c]));
@@ -156,6 +161,11 @@ export class FinanceCashflowService {
         if (inv.outstandingAmount.isZero()) continue;
         items.push({ line: 'fromInvoices', currency: inv.currencyCode, amount: inv.outstandingAmount, date: inv.dueDate });
       }
+    }
+
+    // R-2 — company-wide: issued invoices that belong to no project (an invoice with no due date is due on its date).
+    for (const inv of unprojectedInvoices) {
+      items.push({ line: 'fromInvoices', currency: inv.currencyCode, amount: new Decimal(inv.outstandingAmount.toString()), date: inv.dueDate ?? inv.invoiceDate });
     }
 
     // ── Inflows: stages not yet invoiced, on bill date + contract terms ─────────────────

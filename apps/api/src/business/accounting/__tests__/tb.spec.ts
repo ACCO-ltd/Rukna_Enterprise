@@ -224,3 +224,38 @@ it('TB-06: for every line, opening + periodDebit = closingDebit and opening + pe
     expect(Number(line.closingCredit)).toBeCloseTo(expectedClosingCredit, 2);
   }
 });
+
+// ─── TB-NET (R-1) ─────────────────────────────────────────────────────────────
+it('TB-NET: closing is a balance on one side, not the gross debits and credits (R-1)', async () => {
+  // 1000 in (seed) then 300 out of the bank: the bank holds 700 Dr.
+  await prisma.$transaction((tx) =>
+    svc.postingService.post(
+      {
+        organizationId: env.orgId,
+        accountingDate: new Date('2025-01-20'),
+        documentDate: new Date('2025-01-20'),
+        description: 'TB-NET — money out',
+        currencyCode: 'USD',
+        eventType: 'EVT-TB-NET',
+        sourceDocumentType: 'MANUAL_JOURNAL',
+        sourceDocumentId: `tb-net-${Date.now()}`,
+        journalCategory: 'GENERAL',
+        entryPurpose: 'NORMAL',
+        postingOrigin: 'MANUAL',
+        createdBy: env.identity.userId,
+        lines: [
+          { accountId: env.accounts.expId, debitAmount: new Decimal('300'), creditAmount: new Decimal(0) },
+          { accountId: env.accounts.bankId, debitAmount: new Decimal(0), creditAmount: new Decimal('300') },
+        ],
+      },
+      tx as never,
+    ),
+  );
+  const result = await svc.trialBalanceService.generate(env.identity, { asOfDate: '2025-01-31' });
+  const bank = result.lines.find((l) => l.accountId === env.accounts.bankId)!;
+  expect(bank.closingDebit).toBe('700.00');
+  expect(bank.closingCredit).toBe('0.00');
+  expect(bank.periodDebit).toBe('1000.00');
+  expect(bank.periodCredit).toBe('300.00');
+  expect(result.balanced).toBe(true);
+});

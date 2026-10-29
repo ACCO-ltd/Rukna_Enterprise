@@ -444,4 +444,18 @@ describe('FinanceCashflowService — GET /finance/cashflow (ADR-043 Phase 4)', (
     expect(usd(forecast.currencies).totals.net).toBeNull();
     expect(usd(forecast.currencies).counts.fromInvoices).toBe(2);
   });
+
+  it('company-wide, for someone who sees every project, counts invoices and bills coded to no project (R-2)', async () => {
+    const before = usd((await cashflow.forecast(finance)).currencies);
+    const projectBefore = usd((await cashflow.forecast(finance, { projectId: projA })).currencies);
+    await makeInvoice(null, null, { total: 2_700, outstanding: 2_700, dueDate: dateIn(10) }); // a hand-typed sale
+    await makeBill({ header: null, lines: [null], outstanding: 1_250, dueDate: dateIn(10) }); // office rent
+    const after = usd((await cashflow.forecast(finance)).currencies);
+    expect(Number(after.totals.inflows.fromInvoices) - Number(before.totals.inflows.fromInvoices)).toBe(2700);
+    expect(Number(after.totals.outflows.fromSupplierBills) - Number(before.totals.outflows.fromSupplierBills)).toBe(1250);
+    // A project's forecast never takes them.
+    const projectAfter = usd((await cashflow.forecast(finance, { projectId: projA })).currencies);
+    expect(projectAfter.totals.inflows.fromInvoices).toBe(projectBefore.totals.inflows.fromInvoices);
+    expect(projectAfter.totals.outflows.fromSupplierBills).toBe(projectBefore.totals.outflows.fromSupplierBills);
+  });
 });
