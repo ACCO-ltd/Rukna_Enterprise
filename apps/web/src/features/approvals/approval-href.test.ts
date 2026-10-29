@@ -26,6 +26,7 @@ describe('approvalHref', () => {
     expect(approvalHref(item({ kind: 'MATERIAL_REQUEST' }))).toBe('/procurement/requests/x1');
     expect(approvalHref(item({ kind: 'PROGRESS_REPORT', projectId: 'p1' }))).toBe('/projects/p1/progress/review');
     expect(approvalHref(item({ kind: 'WORKFLOW', transactionType: 'PURCHASE_ORDER' }))).toBe('/procurement/orders/x1');
+    expect(approvalHref(item({ kind: 'TRANSFER' }))).toBe('/finance/accounting/transfers?highlight=x1');
   });
 
   it('gives no link when the page needs more than the id', () => {

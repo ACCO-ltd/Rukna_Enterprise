@@ -39,9 +39,13 @@ import { InvoiceDocumentSettingsController } from './presentation/invoice-docume
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { ApprovalSettingsController } from './presentation/approval-settings.controller.js';
 
+import { BankTransferController } from './presentation/bank-transfer.controller.js';
+import { BankTransferService } from './application/bank-transfer.service.js';
+
 @Module({
   imports: [TenancyModule, AuditLogsModule],
   controllers: [
+    BankTransferController,
     ApprovalSettingsController,
     AccountController,
     AccountingReadinessController,
@@ -54,6 +58,7 @@ import { ApprovalSettingsController } from './presentation/approval-settings.con
     InvoiceDocumentSettingsController,
   ],
   providers: [
+    BankTransferService,
     // Repositories
     AccountingConfigurationRepository,
     FiscalYearRepository,

@@ -40,6 +40,7 @@ function build(overrides: Record<string, unknown> = {}, rules = ALL_RULES) {
     invoicesAwaitingApproval: jest.fn().mockResolvedValue([]),
     writeOffsAwaitingApproval: jest.fn().mockResolvedValue([]),
     refundsAwaitingApproval: jest.fn().mockResolvedValue([]),
+    transfersAwaitingApproval: jest.fn().mockResolvedValue([]),
     submittedJournals: jest.fn().mockResolvedValue([]),
     submittedBills: jest.fn().mockResolvedValue([]),
     goodsReceivers: jest.fn().mockResolvedValue(new Map()),

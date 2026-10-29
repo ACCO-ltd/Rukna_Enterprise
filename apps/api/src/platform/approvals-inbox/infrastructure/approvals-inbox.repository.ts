@@ -63,6 +63,22 @@ export class ApprovalsInboxRepository {
     });
   }
 
+  /** B-2 — transfers between own accounts above the payment limit, with the two account names. */
+  async transfersAwaitingApproval(prisma: TenantPrisma, organizationId: string) {
+    const rows = await prisma.bankTransfer.findMany({
+      where: { organizationId, status: 'PENDING_APPROVAL' },
+      orderBy: { requestedAt: 'asc' },
+      take: LIMIT,
+      select: { id: true, fromBankAccountId: true, toBankAccountId: true, amount: true, currencyCode: true, memo: true, reference: true, requestedBy: true, requestedAt: true },
+    });
+    const accounts = await prisma.bankAccount.findMany({
+      where: { id: { in: [...new Set(rows.flatMap((r) => [r.fromBankAccountId, r.toBankAccountId]))] } },
+      select: { id: true, accountName: true },
+    });
+    const name = new Map<string, string>(accounts.map((a) => [a.id, a.accountName] as const));
+    return rows.map((r) => ({ ...r, from: name.get(r.fromBankAccountId) ?? '—', to: name.get(r.toBankAccountId) ?? '—' }));
+  }
+
   /** AR-5 — refunds above the payment limit, waiting for a second person. */
   refundsAwaitingApproval(prisma: TenantPrisma, organizationId: string) {
     return prisma.clientRefund.findMany({

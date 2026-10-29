@@ -3610,6 +3610,51 @@ enum SupplierRefundStatus {
   REVERSED
 }
 
+/// B-2 — money moved between two of the organisation's own accounts (bank to cash box, a float
+/// top-up, bank to bank). Dr the receiving account's GL / Cr the sending account's GL. Money leaves
+/// an account, so it follows the payment rule: up to the payment limit it posts at once; above it
+/// a second person approves. Reversible; never deleted.
+model BankTransfer {
+  id                     String             @id @default(cuid())
+  organizationId         String             @map("organization_id")
+  transferNumber         String?            @map("transfer_number") @db.VarChar(30)
+  fromBankAccountId      String             @map("from_bank_account_id")
+  toBankAccountId        String             @map("to_bank_account_id")
+  amount                 Decimal            @db.Decimal(18, 2)
+  currencyCode           String             @map("currency_code") @db.VarChar(3)
+  transferDate           DateTime           @map("transfer_date") @db.Date
+  reference              String?            @db.VarChar(100)
+  memo                   String?
+  status                 BankTransferStatus @default(PENDING_APPROVAL)
+  requestedBy            String             @map("requested_by")
+  requestedAt            DateTime           @default(now()) @map("requested_at")
+  approvedBy             String?            @map("approved_by")
+  approvedAt             DateTime?          @map("approved_at")
+  rejectedBy             String?            @map("rejected_by")
+  rejectedAt             DateTime?          @map("rejected_at")
+  rejectionReason        String?            @map("rejection_reason")
+  postedJournalEntryId   String?            @map("posted_journal_entry_id")
+  postedAt               DateTime?          @map("posted_at")
+  reversalJournalEntryId String?            @map("reversal_journal_entry_id")
+  reversedBy             String?            @map("reversed_by")
+  reversedAt             DateTime?          @map("reversed_at")
+  reversalReason         String?            @map("reversal_reason")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  @@unique([organizationId, transferNumber])
+  @@index([organizationId, status])
+  @@index([fromBankAccountId])
+  @@index([toBankAccountId])
+  @@map("bank_transfers")
+}
+
+enum BankTransferStatus {
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
 model PaymentReleaseSignature {
   id                String   @id @default(cuid())
   supplierPaymentId String   @map("supplier_payment_id")
@@ -4785,6 +4830,8 @@ enum DocumentType {
   SUPPLIER_DEBIT_NOTE
   // AP-5 — SR- numbers for refunds received from suppliers.
   SUPPLIER_REFUND
+  // B-2 — TR- numbers for transfers between the organisation's own accounts.
+  BANK_TRANSFER
 }
 
 enum SequenceStatus {
@@ -4896,6 +4943,8 @@ enum SourceDocType {
   SUPPLIER_DEBIT_NOTE
   // AP-5 — money paid ahead that a supplier paid back, and its reversal.
   SUPPLIER_REFUND
+  // B-2 — money moved between the organisation's own bank, cash and float accounts.
+  BANK_TRANSFER
 }
 
 enum AttemptOutcome {

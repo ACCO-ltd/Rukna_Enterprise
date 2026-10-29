@@ -1217,3 +1217,17 @@ An `eventVersion` increment requires: (a) a new `PostingRuleVersion` with update
 | EVT-FA-001–010 | Fixed Assets |
 | EVT-BNK-001–010 | Bank Reconciliation |
 | EVT-CLO-002–010 | Period and Year-end Close extensions |
+
+### EVT-CB-001 / EVT-CB-002 — Transfer between own accounts and its reversal (B-2)
+
+Money moved between two of the organisation's own accounts (bank to cash box, a float top-up, bank
+to bank). `sourceDocumentType = BANK_TRANSFER`. Money leaves an account, so it follows the payment
+rule: up to `paymentAutoApproveUpTo` it posts at once; above it, it waits (`PENDING_APPROVAL`) for
+someone other than the requester (`403 TRANSFER_SELF_APPROVAL`). Both accounts are re-checked when
+it posts: the sender ACTIVE and paying out, the receiver ACTIVE and taking money in, one currency.
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-CB-001 `BANK_TRANSFER_POSTED` | transfer posted (at once, or on approval) | Dr the receiving account's GL / Cr the sending account's GL, both BANK subledger | `transferDate` | transfer id | CASH_AND_BANK / SYSTEM_CASH |
+| EVT-CB-002 (reversal of 001) | transfer reversed (it never happened at the bank) | exact mirror of EVT-CB-001 | `reversalDate` | `reversal-<transfer id>` | CASH_AND_BANK / SYSTEM_CASH, REVERSAL |
+

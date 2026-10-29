@@ -13,6 +13,7 @@ export type ApprovalItemKind =
   | 'PROGRESS_REPORT'
   | 'WRITE_OFF'
   | 'REFUND'
+  | 'TRANSFER'
   | 'WORKFLOW';
 
 export interface ApprovalItem {

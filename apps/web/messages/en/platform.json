@@ -145,7 +145,8 @@
     "rolesMatrix": "Roles matrix",
     "financeHome": "Home",
     "clientStatement": "Client statements",
-    "supplierStatement": "Supplier statements"
+    "supplierStatement": "Supplier statements",
+    "bankTransfers": "Transfers"
   },
   "admin": {
     "title": "Administration",
@@ -3722,7 +3723,8 @@
       "PROGRESS_REPORT": "Daily progress report",
       "WORKFLOW": "Approval step",
       "WRITE_OFF": "Write-off",
-      "REFUND": "Refund"
+      "REFUND": "Refund",
+      "TRANSFER": "Transfer"
     },
     "colItem": "Waiting for your decision",
     "colProject": "Project",

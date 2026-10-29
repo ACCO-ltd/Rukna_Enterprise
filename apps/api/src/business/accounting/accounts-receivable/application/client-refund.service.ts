@@ -81,9 +81,6 @@ export class ClientRefundService {
     if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
       throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
     }
-    if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
-      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} does not make payments.` });
-    }
     if (bank.currencyCode !== receipt.currencyCode) {
       throw new BadRequestException({ errorCode: 'CURRENCY_MISMATCH', message: 'The bank account and the receipt are in different currencies.' });
     }

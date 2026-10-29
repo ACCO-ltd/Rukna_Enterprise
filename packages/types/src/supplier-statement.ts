@@ -91,3 +91,28 @@ export interface SupplierRefundView {
   reversedAt: string | null;
   reversalReason: string | null;
 }
+
+/**
+ * B-2 — money moved between two of the organisation's own accounts (`/bank-transfers`). Up to the
+ * payment limit it posts at once; above it, it waits (`PENDING_APPROVAL`) for a second person.
+ */
+export interface BankTransferView {
+  id: string;
+  /** TR-000001 once posted. */
+  transferNumber: string | null;
+  fromBankAccountId: string;
+  fromAccountName: string;
+  toBankAccountId: string;
+  toAccountName: string;
+  amount: string;
+  currencyCode: string;
+  transferDate: string;
+  reference: string | null;
+  memo: string | null;
+  status: 'PENDING_APPROVAL' | 'POSTED' | 'REJECTED' | 'REVERSED';
+  requestedBy: string;
+  requestedByName: string | null;
+  approvedByName: string | null;
+  rejectionReason: string | null;
+  reversalReason: string | null;
+}

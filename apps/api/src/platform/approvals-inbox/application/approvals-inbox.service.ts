@@ -42,10 +42,11 @@ export class ApprovalsInboxService {
     const barred = (context: Omit<Parameters<SegregationOfDutiesService['violation']>[1], 'organizationId' | 'actorUserId'>) =>
       this.sod.violation(codes, { organizationId: org, actorUserId: me, ...context }) !== null;
 
-    const [invoices, writeOffs, refunds, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
+    const [invoices, writeOffs, refunds, transfers, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
       has(PERMISSIONS.receivablesManage) ? this.repo.invoicesAwaitingApproval(prisma, org, projects) : [],
       has(PERMISSIONS.receivablesManage) ? this.repo.writeOffsAwaitingApproval(prisma, org) : [],
       has(PERMISSIONS.receivablesManage) ? this.repo.refundsAwaitingApproval(prisma, org) : [],
+      has(PERMISSIONS.accountingManage) ? this.repo.transfersAwaitingApproval(prisma, org) : [],
       has(PERMISSIONS.journalsManage) ? this.repo.submittedJournals(prisma, org) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.submittedBills(prisma, org, projects) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.draftPayments(prisma, org) : [],
@@ -113,6 +114,22 @@ export class ApprovalsInboxService {
         currencyCode: r.receipt.currencyCode,
         waitingSince: iso(r.requestedAt),
         requestedBy: r.requestedBy,
+      });
+    }
+
+    // B-2 — transfers between own accounts above the payment limit: a second person decides.
+    for (const t of transfers) {
+      if (t.requestedBy === me) continue;
+      drafts.push({
+        ...base,
+        kind: 'TRANSFER',
+        id: t.id,
+        title: `${t.from} → ${t.to}`,
+        detail: t.memo ?? t.reference,
+        amount: t.amount.toFixed(2),
+        currencyCode: t.currencyCode,
+        waitingSince: iso(t.requestedAt),
+        requestedBy: t.requestedBy,
       });
     }
 

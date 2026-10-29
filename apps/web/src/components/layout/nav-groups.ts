@@ -160,6 +160,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/supplier-statement', labelKey: 'supplierStatement', iconKey: 'file-text', groupKey: 'payables' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
+      // B-2 — money moved between the organisation's own accounts.
+      { href: '/finance/accounting/transfers', labelKey: 'bankTransfers', iconKey: 'wallet', groupKey: 'banking' },
       // Step 6 — statement-to-ledger matching. The older subledger-to-GL check keeps its route, now
       // named for what it is.
       { href: '/finance/accounting/bank-reconciliation', labelKey: 'bankReconciliation', iconKey: 'check-circle', groupKey: 'banking' },

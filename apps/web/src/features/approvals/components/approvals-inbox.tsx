@@ -21,6 +21,7 @@ const AREA_OF: Record<ApprovalItemKind, Exclude<Area, 'all'>> = {
   PAYMENT: 'finance',
   WRITE_OFF: 'finance',
   REFUND: 'finance',
+  TRANSFER: 'finance',
   QUOTATION: 'finance',
   MATERIAL_REQUEST: 'procurement',
   WORKFLOW: 'procurement',
