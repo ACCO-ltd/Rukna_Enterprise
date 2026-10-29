@@ -1189,7 +1189,6 @@
   "allocation": {
     "title": "Apply this advance",
     "subtitle": "Settles a posted bill from the unallocated balance of this payment, writing Dr Accounts Payable / Cr Supplier Advance.",
-    "historyUnavailable": "Allocations already applied cannot be listed, and cannot be reversed from here — the API returns no allocation identifier (issue #35). Reversing the whole payment is the only correction available.",
     "bill": "Bill to settle",
     "billHint": "Only posted bills for this supplier, in this currency, with an outstanding balance are listed.",
     "amount": "Amount to apply",
@@ -1208,7 +1207,15 @@
       "not-positive": "Enter an amount greater than zero.",
       "exceeds-unallocated": "That is more than this payment has left unallocated.",
       "exceeds-bill": "That is more than the bill still owes. Choose a smaller amount."
-    }
+    },
+    "appliedTitle": "What this payment settled",
+    "aBill": "Bill",
+    "appliedLater": "applied from the advance",
+    "appliedWithPayment": "paid with the payment",
+    "reversed": "Reversed",
+    "reverseApplication": "Reverse",
+    "reverseApplicationTitle": "Reverse what was applied to {bill}?",
+    "reverseApplicationBody": "The bill is owed again and the money goes back to this payment’s unapplied balance."
   },
   "matching": {
     "title": "Matching",
@@ -1999,7 +2006,8 @@
     "paymentCancelled": "Payment cancelled — its bills are open again",
     "billCancelled": "Draft bill cancelled",
     "debitNoteRecorded": "Debit note recorded — the bill balance is lower",
-    "supplierRefundRecorded": "Refund recorded — the money is in the bank"
+    "supplierRefundRecorded": "Refund recorded — the money is in the bank",
+    "advanceApplicationReversed": "Application reversed — the bill is owed again"
   },
   "setup": {
     "status": "Status",

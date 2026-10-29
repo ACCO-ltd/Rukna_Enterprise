@@ -37,7 +37,8 @@ export class SupplierPaymentRepository {
     return prisma.supplierPayment.findFirst({
       where: { id, organizationId },
       include: {
-        allocations: { orderBy: { createdAt: 'asc' } },
+        // AP-6 — with the bill's number, so the payment page can say what it settled.
+        allocations: { orderBy: { createdAt: 'asc' }, include: { bill: { select: { billNumber: true, supplierInvoiceNumber: true } } } },
         releaseSignatures: { orderBy: { signedAt: 'asc' } },
       },
     });

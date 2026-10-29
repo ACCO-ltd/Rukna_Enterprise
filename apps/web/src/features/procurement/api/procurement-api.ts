@@ -957,6 +957,18 @@ export function endSupplierPayment(id: string, how: 'reject' | 'cancel', reason:
   });
 }
 
+/**
+ * `POST /payments/:id/allocations/:allocationId/reverse` — undo advance applied to a bill later
+ * (Dr Supplier advance / Cr AP); the bill is owed again and the money is unapplied on the payment.
+ */
+export function reverseAdvanceAllocation(paymentId: string, allocationId: string): Promise<unknown> {
+  return apiClient(`/payments/${paymentId}/allocations/${allocationId}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+}
+
 /** `POST /payments/:id/reverse` — refused while any advance allocation is still POSTED. */
 export function reverseSupplierPayment(
   id: string,

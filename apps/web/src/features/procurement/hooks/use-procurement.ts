@@ -95,6 +95,7 @@ import {
   reverseSupplierBill,
   reverseSupplierPayment,
   endSupplierPayment,
+  reverseAdvanceAllocation,
   revisePurchaseOrder,
   resolveMatchException,
   runBillMatch,
@@ -1190,6 +1191,21 @@ export function useAllocateAdvance(paymentId: string) {
   return useMutation({
     mutationFn: (payload: AllocateAdvancePayload) => allocateAdvance(paymentId, payload),
     meta: { successToast: 'procurement.feedback.advanceApplied', flashRow: false },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: procurementKeys.payment(paymentId) });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+      void qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
+    },
+  });
+}
+
+/** AP-6 — undo advance applied to a bill; the same four records move back. */
+export function useReverseAdvanceAllocation(paymentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (allocationId: string) => reverseAdvanceAllocation(paymentId, allocationId),
+    meta: { successToast: 'procurement.feedback.advanceApplicationReversed', flashRow: false },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: procurementKeys.payment(paymentId) });
       void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });

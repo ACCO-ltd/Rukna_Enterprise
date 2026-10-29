@@ -84,6 +84,8 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
   }
 
   const approveReason = paymentBlockReason(payment, 'approve', underDualControl);
+  // AP-6 — once posted (or reversed) the approval line is history: show only what can still be done.
+  const settled = payment.postingStatus === 'POSTED' || payment.postingStatus === 'REVERSED';
 
   // A release can fail three ways the user must be told apart: not a signatory / SoD conflict
   // (403), already signed (409), and everything else. The message names which.
@@ -101,7 +103,7 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
           server opens an approval instead of transitioning, and the panel + "Complete" re-drive
           carry it through. When approve is not available it stays on screen, disabled with its
           reason, matching the rest of the bar. */}
-      {allowed.includes('approve') ? (
+      {settled ? null : allowed.includes('approve') ? (
         <GatedActionButton
           command={() => approve.mutateAsync(payment.id)}
           transactionType={WorkflowTransactionType.SUPPLIER_PAYMENT}
@@ -128,6 +130,7 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
           // Release only appears where dual control is in force — otherwise it is not part of
           // this payment's lifecycle at all and a disabled button would be noise.
           if (action === 'release' && !underDualControl) return null;
+          if (settled && (action !== 'reverse' || payment.postingStatus !== 'POSTED')) return null;
           const reason = paymentBlockReason(payment, action, underDualControl);
           return (
             <Button

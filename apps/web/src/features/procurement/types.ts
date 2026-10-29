@@ -945,6 +945,17 @@ export type PaymentDocumentStatus = 'DRAFT' | 'APPROVED' | 'RELEASED' | 'REJECTE
  * reading "Get supplier payment with allocations" — **no allocations**. Names are resolved by
  * joining against the supplier and bank-account lists the screens already hold.
  */
+export interface SupplierPaymentAllocationRow {
+  id: string;
+  supplierBillId: string;
+  allocatedAmount: Money;
+  allocationDate: ApiDate;
+  postingStatus: BillPostingStatus;
+  /** The payment's own journal for an allocation made when it was raised; its own journal for advance applied later. */
+  journalEntryId: string | null;
+  bill?: { billNumber: string | null; supplierInvoiceNumber: string };
+}
+
 export interface SupplierPayment {
   /** ADR-046 §4 — on a create response: approved on save (within the auto-approval limit). */
   approvedOnSave?: boolean;
@@ -978,6 +989,8 @@ export interface SupplierPayment {
   postingStatus: BillPostingStatus;
   postedJournalEntryId: string | null;
   createdBy?: string;
+  /** AP-6 — the bills this payment settled: at creation, and advance applied later. */
+  allocations?: SupplierPaymentAllocationRow[];
   /** AP-1 — set when an unposted payment was rejected (by someone else) or cancelled (by its raiser). */
   rejectedAt?: ApiDate | null;
   rejectionReason?: string | null;
