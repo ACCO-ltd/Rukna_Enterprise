@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, StatusPill } from '@erp/ui';
+import { Alert, Badge, Button, Notice, StatusPill } from '@erp/ui';
 
 import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -15,7 +15,8 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { statusTone } from '@/lib/status-registry';
 
 import { fromMinorUnits, isFullyAllocated, isOverAllocated } from '../allocation';
-import { receiptKeys, useOpenReceiptDocument, useReceipt } from '../hooks/use-receipts';
+import { receiptKeys, useOpenReceiptDocument, useReceipt, useReverseReceipt } from '../hooks/use-receipts';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import type { ReceiptDetail as ReceiptDetailModel } from '../types';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
 import { PostReceiptDialog } from './post-receipt-dialog';
@@ -31,6 +32,8 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const { data: receipt, isPending, isError, error } = useReceipt(receiptId);
   const [posting, setPosting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [reversing, setReversing] = useState(false);
+  const reverse = useReverseReceipt(receiptId);
   const { can } = usePermissions();
   const openDocument = useOpenReceiptDocument();
 
@@ -83,6 +86,10 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
         <Button variant="outline" onClick={() => setSending(true)}>
           {t('sendWhatsApp')}
         </Button>
+        {/* AR-2 — a bounced cheque or money booked to the wrong client. */}
+        <Button variant="ghost" className="text-danger" onClick={() => setReversing(true)}>
+          {t('reverse.action')}
+        </Button>
       </>
     ) : null;
 
@@ -92,7 +99,10 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
 
       {openDocument.isError ? <Alert variant="error" messages={[t('downloadFailed')]} /> : null}
       {reversed ? (
-        <p className="text-sm text-muted-foreground">{t('documentUnavailableReversed')}</p>
+        <Notice tone="historical" title={t('reverse.reversedTitle', { date: formatDate(receipt.reversedAt ?? null, locale) ?? '' })}>
+          {receipt.reversalReason ? t('reverse.reversedBecause', { reason: receipt.reversalReason }) : null}{' '}
+          {t('documentUnavailableReversed')}
+        </Notice>
       ) : null}
 
       {notPosted ? (
@@ -121,6 +131,23 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
           canResolve
           hideWhenEmpty
           invalidateOnResolve={[receiptKeys.detail(receipt.id)]}
+        />
+      ) : null}
+
+      {reversing ? (
+        <ConfirmActionDialog
+          title={t('reverse.title', { number })}
+          description={t('reverse.body')}
+          confirmLabel={t('reverse.action')}
+          reason={{ required: true, label: t('reverse.reasonLabel'), maxLength: 500 }}
+          destructive
+          isPending={reverse.isPending}
+          errorMessage={reverse.isError ? (reverse.error instanceof ApiError ? reverse.error.message : t('reverse.failed')) : undefined}
+          onConfirm={(reason) => reverse.mutate(reason, { onSuccess: () => setReversing(false) })}
+          onDismiss={() => {
+            reverse.reset();
+            setReversing(false);
+          }}
         />
       ) : null}
 

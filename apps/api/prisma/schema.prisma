@@ -3206,6 +3206,12 @@ model PaymentReceipt {
   postedJournalEntryId String?          @map("posted_journal_entry_id")
   postedAt             DateTime?        @map("posted_at")
   postedBy             String?          @map("posted_by")
+  // AR-2 — a posted receipt reversed (a bounced cheque, money booked to the wrong client): when, by
+  // whom, why, and the mirror journal. postingStatus becomes REVERSED.
+  reversedAt             DateTime?      @map("reversed_at")
+  reversedBy             String?        @map("reversed_by")
+  reversalReason         String?        @map("reversal_reason")
+  reversalJournalEntryId String?        @map("reversal_journal_entry_id")
   lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
   lastPostingErrorCode String?          @map("last_posting_error_code")
   migrationBatchId     String?          @map("migration_batch_id")

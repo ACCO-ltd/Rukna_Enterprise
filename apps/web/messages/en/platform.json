@@ -3279,7 +3279,16 @@
       "whatsappSubtitle": "Receipt {number} goes to the client as a PDF.",
       "documentUnavailableReversed": "This receipt was reversed, so it cannot be downloaded or sent to the client.",
       "blockedNotPosted": "Post the receipt first. Only a posted receipt can be sent to the client.",
-      "blockedReversed": "This receipt was reversed. A reversed receipt must not be sent to the client."
+      "blockedReversed": "This receipt was reversed. A reversed receipt must not be sent to the client.",
+      "reverse": {
+        "action": "Reverse receipt",
+        "title": "Reverse receipt {number}?",
+        "body": "Use this for a bounced cheque or money booked to the wrong client. A reversing entry is posted today, and every invoice this receipt paid owes that amount again. It cannot be undone; record a new receipt if the money arrives.",
+        "reasonLabel": "Why is it reversed?",
+        "failed": "The receipt could not be reversed. Try again.",
+        "reversedTitle": "Reversed {date}",
+        "reversedBecause": "Reason: {reason}."
+      }
     },
     "allocations": {
       "heading": "Allocations",

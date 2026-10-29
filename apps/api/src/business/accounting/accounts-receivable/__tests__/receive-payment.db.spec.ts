@@ -5,6 +5,8 @@
  *   RP-02  money beyond what is applied stays unapplied on the client (Cr Unapplied)
  *   RP-03  refused, before anything is written: another client's invoice, an unissued invoice,
  *          more than an invoice owes, a bank account in another currency
+ *   RP-04  AR-2: reversing a receipt (bounced cheque) records when, who and why, posts the mirror,
+ *          and the invoice owes again; it needs a reason and refuses after later applications
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -109,4 +111,22 @@ it('RP-03: refuses, before writing anything, what the payment cannot settle', as
   await expect(receive({ currency: 'EUR', allocations: [] })).rejects.toMatchObject({ response: { errorCode: 'CURRENCY_MISMATCH' } });
 
   expect(await prisma.paymentReceipt.count({ where: { organizationId: env.orgId } })).toBe(before);
+});
+
+it('RP-04: reversing a receipt records why, mirrors the journal, and the invoice owes again', async () => {
+  const before = (await prisma.clientInvoice.findUniqueOrThrow({ where: { id: issuedId } })).outstandingAmount.toFixed(2);
+  const receipt = await receive({ amount: '30.00', allocations: [{ clientInvoiceId: issuedId, amount: 30 }] });
+  await expect(
+    svc.customerReceiptService.reverse(env.identity, receipt.id, { reversalDate: day(), reason: ' ' }),
+  ).rejects.toMatchObject({ response: { errorCode: 'REVERSAL_REASON_REQUIRED' } });
+
+  await svc.customerReceiptService.reverse(env.identity, receipt.id, { reversalDate: day(), reason: 'Cheque bounced' });
+  const after = await prisma.paymentReceipt.findUniqueOrThrow({ where: { id: receipt.id } });
+  expect(after.postingStatus).toBe('REVERSED');
+  expect(after.reversalReason).toBe('Cheque bounced');
+  expect(after.reversedBy).toBe(env.identity.userId);
+  expect(after.reversedAt).not.toBeNull();
+  const mirror = await prisma.journalLine.findMany({ where: { journalEntryId: after.reversalJournalEntryId! } });
+  expect(mirror.find((l) => l.accountId === env.accounts.bankId)?.creditAmount.toFixed(2)).toBe('30.00');
+  expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: issuedId } })).outstandingAmount.toFixed(2)).toBe(before);
 });

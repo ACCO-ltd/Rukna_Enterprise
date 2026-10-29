@@ -1281,7 +1281,8 @@
     "invoiceSaved": "Invoice saved",
     "invoiceDraftCreated": "Draft invoice created",
     "paymentReceived": "Payment received and posted",
-    "approvalSettingsSaved": "Approval rules saved"
+    "approvalSettingsSaved": "Approval rules saved",
+    "receiptReversed": "Receipt reversed. The invoices it paid owe again."
   },
   "setup": {
     "title": "Set up accounting",

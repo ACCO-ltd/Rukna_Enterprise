@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getPreview: vi.fn(),
   send: vi.fn(),
   useCommunications: vi.fn(),
+  reverse: vi.fn(),
 }));
 
 vi.mock('../hooks/use-receipts', () => ({
@@ -22,6 +23,7 @@ vi.mock('../hooks/use-receipts', () => ({
     isPending: false,
     isError: false,
   }),
+  useReverseReceipt: () => ({ mutate: mocks.reverse, reset: vi.fn(), isPending: false, isError: false, error: null }),
   receiptKeys: { all: ['receipts'], detail: (id: string) => ['receipts', 'detail', id] },
 }));
 vi.mock('./receipt-allocations-panel', async (importOriginal) => ({
@@ -202,5 +204,38 @@ describe('ReceiptDetail — receipt PDF and WhatsApp', () => {
   it('lists the receipt’s messages for payment_receipt', () => {
     show(receipt());
     expect(mocks.useCommunications).toHaveBeenCalledWith('payment_receipt', 'rcp-1');
+  });
+});
+
+describe('ReceiptDetail — reversing a receipt (AR-2)', () => {
+  beforeEach(() => {
+    mocks.useCommunications.mockReturnValue({ isPending: false, isError: false, data: [] });
+  });
+
+  it('reverses a posted receipt only with a reason', async () => {
+    const user = userEvent.setup();
+    mocks.useReceipt.mockReturnValue({ data: receipt(), isPending: false, isError: false, error: null });
+    renderWithProviders(<ReceiptDetail receiptId="rcp-1" />, { permissions: ['manage:receivable'] });
+
+    await user.click(screen.getByRole('button', { name: 'Reverse receipt' }));
+    expect(screen.getByText('Reverse receipt RCP-000017?')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Reverse receipt' }).at(-1)!);
+    expect(mocks.reverse).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText(/Why is it reversed/), 'Cheque bounced');
+    await user.click(screen.getAllByRole('button', { name: 'Reverse receipt' }).at(-1)!);
+    expect(mocks.reverse).toHaveBeenCalledWith('Cheque bounced', expect.anything());
+  });
+
+  it('says when and why a reversed receipt was reversed, and offers no Reverse', () => {
+    mocks.useReceipt.mockReturnValue({
+      data: receipt({ postingStatus: 'REVERSED', reversedAt: '2026-10-20T08:00:00.000Z', reversalReason: 'Cheque bounced' }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderWithProviders(<ReceiptDetail receiptId="rcp-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByText(/Reversed Oct 20, 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Reason: Cheque bounced/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reverse receipt' })).not.toBeInTheDocument();
   });
 });

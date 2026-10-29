@@ -379,9 +379,16 @@ export class CustomerReceiptService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const receipt = await this.receiptRepo.findById(prisma, orgId, receiptId);
-    if (!receipt) throw new NotFoundException(`PaymentReceipt ${receiptId} not found`);
+    if (!receipt) throw new NotFoundException({ errorCode: 'RECEIPT_NOT_FOUND', message: `Receipt ${receiptId} not found` });
     if (receipt.postingStatus !== 'POSTED') {
-      throw new BadRequestException(`Only POSTED receipts can be reversed (status: ${receipt.postingStatus})`);
+      throw new BadRequestException({
+        errorCode: 'RECEIPT_NOT_POSTED',
+        message: `Only a posted receipt can be reversed (status: ${receipt.postingStatus}).`,
+      });
+    }
+    const reason = opts.reason?.trim() ?? '';
+    if (reason.length < 3) {
+      throw new BadRequestException({ errorCode: 'REVERSAL_REASON_REQUIRED', message: 'Say why the receipt is reversed.' });
     }
 
     // Guard: subsequent allocations (EVT-AR-005) must be reversed first
@@ -393,9 +400,11 @@ export class CustomerReceiptService {
       },
     });
     if (subsequentAllocs > 0) {
-      throw new BadRequestException(
-        `Receipt ${receiptId} has ${subsequentAllocs} subsequent allocation(s) that must be reversed first.`,
-      );
+      throw new BadRequestException({
+        errorCode: 'RECEIPT_HAS_LATER_ALLOCATIONS',
+        message: `This receipt was applied to invoices after it was posted (${subsequentAllocs}). Undo those applications first, then reverse the receipt.`,
+        details: { count: subsequentAllocs },
+      });
     }
 
     if (!receipt.postedJournalEntryId) {
@@ -415,7 +424,7 @@ export class CustomerReceiptService {
           organizationId: orgId,
           accountingDate: reversalDate,
           documentDate: reversalDate,
-          description: `Reversal of Receipt ${receiptId}: ${opts.reason}`,
+          description: `Reversal of receipt ${receipt.receiptNumber ?? receiptId}: ${reason}`,
           currencyCode: receipt.currencyCode,
           eventType: 'EVT-AR-004',
           sourceDocumentType: 'PAYMENT_RECEIPT',
@@ -463,6 +472,10 @@ export class CustomerReceiptService {
           postingStatus: 'REVERSED',
           allocatedAmount: new Decimal(0),
           unallocatedAmount: new Decimal(0),
+          reversedAt: new Date(),
+          reversedBy: userId,
+          reversalReason: reason,
+          reversalJournalEntryId: reversalResult.journalEntryId,
         },
       });
 

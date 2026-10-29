@@ -16,6 +16,7 @@ import {
   type PostReceiptPayload,
   receivePayment,
   type ReceivePaymentPayload,
+  reverseReceipt,
 } from '../api/receipts-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 import { openSignedDocument } from '@/lib/open-signed-document';
@@ -123,6 +124,15 @@ export function useReverseAllocation(receiptId: string) {
     receiptId,
     (allocationId: string) => reverseAllocation(receiptId, allocationId),
     { successToast: 'accounting.feedback.allocationReversed', flashRow: false },
+  );
+}
+
+/** AR-2 — reverse a posted receipt; the invoices it paid owe again. */
+export function useReverseReceipt(receiptId: string) {
+  return useReceiptStateMutation(
+    receiptId,
+    (reason: string) => reverseReceipt(receiptId, { reversalDate: new Date().toISOString().slice(0, 10), reason }),
+    { successToast: 'accounting.feedback.receiptReversed', flashRow: false },
   );
 }
 

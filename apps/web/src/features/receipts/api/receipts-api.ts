@@ -120,6 +120,18 @@ export function reverseAllocation(receiptId: string, allocationId: string): Prom
 }
 
 /**
+ * `POST /customer-receipts/:id/reverse` — AR-2: undo a posted receipt (a bounced cheque, money
+ * booked to the wrong client). A mirror journal on the reversal date; the invoices it paid owe
+ * again. Refused while the receipt has applications made after posting (undo those first).
+ */
+export function reverseReceipt(receiptId: string, payload: { reversalDate: string; reason: string }): Promise<void> {
+  return apiClient<void>(`/customer-receipts/${receiptId}/reverse`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * `GET /customer-receipts/:id/document` — the branded receipt PDF's short-lived signed download
  * URL, rendered on first request. Only a POSTED, numbered, non-reversed receipt has one (409
  * NOT_POSTED / RECEIPT_REVERSED otherwise). Fetch fresh on every open — the URL expires.
