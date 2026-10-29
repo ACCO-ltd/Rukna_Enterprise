@@ -4,6 +4,7 @@ import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { AccountRepository } from '../infrastructure/account.repository.js';
 import { JournalRepository } from '../infrastructure/journal.repository.js';
+import { pendingPaymentHoldsTotal } from '../../accounts-payable/infrastructure/pending-payment-holds.repository.js';
 
 export interface ControlAccountCheck {
   accountCode: string;
@@ -95,7 +96,9 @@ export class ReconciliationService {
         },
         _sum: { outstandingAmount: true },
       });
-      const apSubledger = new Decimal(apAgg._sum.outstandingAmount?.toString() ?? '0');
+      // AP-1 — a bill held by an unposted payment is still owed: the ledger moves when it posts.
+      const apSubledger = new Decimal(apAgg._sum.outstandingAmount?.toString() ?? '0')
+        .plus(await pendingPaymentHoldsTotal(prisma as never, orgId));
       const apVariance = apGlBalance.minus(apSubledger).abs();
 
       const currentVersion = apAccount.versions[0];

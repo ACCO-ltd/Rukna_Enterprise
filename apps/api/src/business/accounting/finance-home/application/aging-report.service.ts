@@ -13,6 +13,7 @@ import {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { AGING_ORDER, agingBucket, daysPastDue } from '../domain/aging.js';
 import { FinanceHomeRepository } from '../infrastructure/finance-home.repository.js';
+import { pendingPaymentHolds } from '../../accounts-payable/infrastructure/pending-payment-holds.repository.js';
 
 const ZERO = new Decimal(0);
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -48,11 +49,7 @@ export class AgingReportService {
           // An invoice without a due date is due on its date (the Finance Home rule).
           document: { id: inv.id, number: inv.invoiceNumber, date: day(inv.invoiceDate), due: inv.dueDate ?? inv.invoiceDate, opening: inv.postingStatus === 'OPENING_BALANCE' },
         }))
-      : (await this.repo.agingBills(prisma, org)).map((bill) => ({
-          party: bill.supplier,
-          outstanding: new Decimal(bill.outstandingAmount.toString()),
-          document: { id: bill.id, number: bill.billNumber ?? bill.supplierInvoiceNumber, date: day(bill.billDate), due: bill.dueDate, opening: bill.postingStatus === 'OPENING_BALANCE' },
-        }));
+      : await this.billItems(prisma, org);
 
     const emptyBuckets = () => new Map<AgingBucketKey, Decimal>(AGING_ORDER.map((k) => [k, ZERO]));
     const totals = emptyBuckets();
@@ -86,6 +83,22 @@ export class AgingReportService {
       }));
     const total = [...totals.values()].reduce((s, v) => s.plus(v), ZERO);
     return { side, asOf: day(now), totals: asRecord(totals), total: total.toFixed(2), rows };
+  }
+
+  /**
+   * Open bills, each at what is still owed on it: its outstanding balance plus what unposted
+   * payments hold on it (AP-1) — the ledger has not moved for those yet, so neither does the aging.
+   */
+  private async billItems(prisma: ReturnType<TenancyService['getClient']>, org: string): Promise<OpenItem[]> {
+    const bills = await this.repo.agingBills(prisma, org);
+    const holds = await pendingPaymentHolds(prisma as never, org, bills.map((b) => b.id));
+    return bills
+      .map((bill) => ({
+        party: bill.supplier,
+        outstanding: new Decimal(bill.outstandingAmount.toString()).plus(holds.get(bill.id) ?? ZERO),
+        document: { id: bill.id, number: bill.billNumber ?? bill.supplierInvoiceNumber, date: day(bill.billDate), due: bill.dueDate, opening: bill.postingStatus === 'OPENING_BALANCE' },
+      }))
+      .filter((item) => item.outstanding.gt(0));
   }
 
   private assertMayRead(identity: RequestIdentity, side: AgingSide): void {

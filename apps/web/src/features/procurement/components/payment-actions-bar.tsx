@@ -26,15 +26,18 @@ import { ApiError } from '@/lib/api-client';
 import { useAccounts, useBankAccounts, useSignatories } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
+import { useSession } from '@/features/auth/session/use-session';
 
 import {
   useApproveSupplierPayment,
+  useEndSupplierPayment,
   usePostSupplierPayment,
   useReleaseSupplierPayment,
   useReverseSupplierPayment,
 } from '../hooks/use-procurement';
 import {
   availablePaymentActions,
+  canEndPayment,
   paymentBlockReason,
   planPaymentPost,
   type PaymentAction,
@@ -51,7 +54,8 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
 
-  const [pending, setPending] = useState<PaymentAction | null>(null);
+  const [pending, setPending] = useState<PaymentAction | 'end' | null>(null);
+  const session = useSession();
 
   const accounts = useAccounts();
   const bankAccounts = useBankAccounts();
@@ -64,6 +68,10 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
   const release = useReleaseSupplierPayment();
   const post = usePostSupplierPayment();
   const reverse = useReverseSupplierPayment();
+  // AP-1 — the person who raised an unposted payment cancels it; anyone else rejects it.
+  const raisedByMe = Boolean(payment.createdBy) && payment.createdBy === session.user?.id;
+  const endHow: 'reject' | 'cancel' = raisedByMe ? 'cancel' : 'reject';
+  const end = useEndSupplierPayment(endHow);
 
   if (!can(ACCOUNTING_PERMISSIONS.managePayables)) return null;
 
@@ -134,7 +142,25 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
             </Button>
           );
         })}
+        {canEndPayment(payment) ? (
+          <Button type="button" variant="outline" onClick={() => setPending('end')}>
+            {t(endHow === 'cancel' ? 'cancelPayment' : 'rejectPayment')}
+          </Button>
+        ) : null}
       </div>
+
+      {pending === 'end' ? (
+        <ConfirmActionDialog
+          title={t(endHow === 'cancel' ? 'cancelTitle' : 'rejectTitle')}
+          description={t('endBody')}
+          confirmLabel={t(endHow === 'cancel' ? 'cancelPayment' : 'rejectPayment')}
+          reason={{ label: t('endReason'), required: true }}
+          isPending={end.isPending}
+          errorMessage={end.isError ? (end.error instanceof ApiError ? end.error.message : tc('loadFailed')) : undefined}
+          onConfirm={(reason) => end.mutate({ id: payment.id, reason }, { onSuccess: () => { end.reset(); setPending(null); } })}
+          onDismiss={() => { end.reset(); setPending(null); }}
+        />
+      ) : null}
 
       {pending === 'release' ? (
         <ConfirmActionDialog

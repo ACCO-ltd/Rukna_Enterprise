@@ -79,6 +79,14 @@ export function canReverse(payment: SupplierPayment): boolean {
   return payment.postingStatus === 'POSTED';
 }
 
+/**
+ * AP-1 — an unposted payment can still be rejected (by someone other than its raiser) or
+ * cancelled (by its raiser): raised, approved or released, and not posted.
+ */
+export function canEndPayment(payment: SupplierPayment): boolean {
+  return ['DRAFT', 'APPROVED', 'RELEASED'].includes(payment.documentStatus) && POSTABLE_STATUSES.includes(payment.postingStatus);
+}
+
 export function availablePaymentActions(
   payment: SupplierPayment,
   underDualControl: boolean,

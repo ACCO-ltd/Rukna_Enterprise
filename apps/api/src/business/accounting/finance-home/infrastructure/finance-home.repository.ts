@@ -76,7 +76,11 @@ export class FinanceHomeRepository {
         organizationId,
         postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
         documentStatus: { notIn: ['CANCELLED', 'REJECTED'] },
-        outstandingAmount: { gt: 0 },
+        // AP-1 — a bill an unposted payment holds in full is still owed until that payment posts.
+        OR: [
+          { outstandingAmount: { gt: 0 } },
+          { allocations: { some: { postingStatus: 'NOT_POSTED', payment: { documentStatus: { notIn: ['REJECTED', 'CANCELLED'] }, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } } } } },
+        ],
       },
       select: {
         id: true, billNumber: true, supplierInvoiceNumber: true, billDate: true, dueDate: true, outstandingAmount: true, postingStatus: true,

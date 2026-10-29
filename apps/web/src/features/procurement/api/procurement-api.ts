@@ -897,7 +897,7 @@ export function createSupplierPayment(
   });
 }
 
-/** `POST /payments/:id/approve` — DRAFT → APPROVED. There is no reject path over HTTP. */
+/** `POST /payments/:id/approve` — DRAFT → APPROVED. */
 export function approveSupplierPayment(id: string): Promise<SupplierPayment> {
   return apiClient<SupplierPayment>(`/payments/${id}/approve`, { method: 'POST' });
 }
@@ -932,6 +932,19 @@ export function postSupplierPayment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * AP-1 — `POST /payments/:id/reject` (someone other than the person who raised it) and
+ * `POST /payments/:id/cancel` (that person). An unposted payment ends; the bills it held get
+ * their balance back. A posted payment is reversed instead (409 PAYMENT_NOT_OPEN).
+ */
+export function endSupplierPayment(id: string, how: 'reject' | 'cancel', reason: string): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}/${how}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
   });
 }
 

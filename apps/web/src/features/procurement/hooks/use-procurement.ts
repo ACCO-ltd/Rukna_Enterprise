@@ -93,6 +93,7 @@ import {
   returnSupplierBill,
   reverseSupplierBill,
   reverseSupplierPayment,
+  endSupplierPayment,
   revisePurchaseOrder,
   resolveMatchException,
   runBillMatch,
@@ -1150,6 +1151,14 @@ export function usePostSupplierPayment() {
   return usePaymentMutation((args: { id: string; payload: PostSupplierPaymentPayload }) =>
     postSupplierPayment(args.id, args.payload),
     'procurement.feedback.paymentPosted',
+  );
+}
+
+/** AP-1 — reject or cancel an unposted payment; its bills get their balance back. */
+export function useEndSupplierPayment(how: 'reject' | 'cancel') {
+  return usePaymentMutation((args: { id: string; reason: string }) =>
+    endSupplierPayment(args.id, how, args.reason),
+    how === 'reject' ? 'procurement.feedback.paymentRejected' : 'procurement.feedback.paymentCancelled',
   );
 }
 

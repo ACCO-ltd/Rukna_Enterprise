@@ -3489,6 +3489,14 @@ model SupplierPayment {
   createdBy            String           @map("created_by")
   approvedBy           String?          @map("approved_by")
   approvedAt           DateTime?        @map("approved_at")
+  // AP-1 — an unposted payment that will not be made: REJECTED by someone other than the person
+  // who raised it, or CANCELLED by that person. Either way the bills it held are released.
+  rejectedAt           DateTime?        @map("rejected_at")
+  rejectedBy           String?          @map("rejected_by")
+  rejectionReason      String?          @map("rejection_reason")
+  cancelledAt          DateTime?        @map("cancelled_at")
+  cancelledBy          String?          @map("cancelled_by")
+  cancellationReason   String?          @map("cancellation_reason")
   /// ADR-045 — client key of "Pay supplier" from an award (partial unique per org, see migration).
   idempotencyKey       String?          @map("idempotency_key") @db.VarChar(100)
   /// ADR-045 — the quotation request this payment was made from (SUPPLIER_PAID notification).

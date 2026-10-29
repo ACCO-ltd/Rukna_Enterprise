@@ -8,6 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SnapshotService } from './snapshot.service.js';
+import { pendingPaymentHoldsTotal } from '../../accounts-payable/infrastructure/pending-payment-holds.repository.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 
 export interface PeriodTransitionResult {
@@ -391,7 +392,9 @@ export class PeriodManagementService {
       where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
       _sum: { outstandingAmount: true },
     });
-    const subledgerBalance = new Decimal(subledgerAgg._sum.outstandingAmount?.toString() ?? '0');
+    // AP-1 — a bill held by an unposted payment is still owed until that payment posts.
+    const subledgerBalance = new Decimal(subledgerAgg._sum.outstandingAmount?.toString() ?? '0')
+      .plus(await pendingPaymentHoldsTotal(prisma, orgId));
 
     const variance = glBalance.minus(subledgerBalance).abs();
     if (variance.gt('0.01')) {

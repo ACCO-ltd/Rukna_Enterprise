@@ -25,6 +25,7 @@ import {
   type FilterValues,
   type ListFilterField,
   MoneyDisplay,
+  Notice,
   SkeletonRecord,
 } from '@erp/ui';
 
@@ -428,6 +429,8 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
   const payment: SupplierPayment = query.data;
   const supplier = (suppliers.data ?? []).find((s) => s.id === payment.supplierId);
   const bank = (bankAccounts.data ?? []).find((b) => b.id === payment.bankAccountId);
+  // AP-1 — a rejected or cancelled payment is a closed record: nothing left to act on.
+  const ended = payment.documentStatus === 'REJECTED' || payment.documentStatus === 'CANCELLED';
 
   return (
     <div className="space-y-6">
@@ -444,7 +447,12 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
         </div>
       </div>
 
-      <PaymentActionBar payment={payment} />
+      {ended ? (
+        <Notice tone="historical" title={t(payment.documentStatus === 'REJECTED' ? 'rejectedNotice' : 'cancelledNotice')}>
+          {payment.rejectionReason ?? payment.cancellationReason ?? ''}
+        </Notice>
+      ) : null}
+      {ended ? null : <PaymentActionBar payment={payment} />}
       {payment.postingStatus === 'POSTED' && payment.paymentNumber ? <RemittanceButton paymentId={payment.id} /> : null}
 
       <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-3">
@@ -484,7 +492,7 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
         <Field label={tc('notes')} value={payment.notes ?? tc('notAvailable')} />
       </dl>
 
-      <AllocationPanel payment={payment} />
+      {ended ? null : <AllocationPanel payment={payment} />}
 
       <AttachmentsPanel kind="PAYMENT" ownerId={payment.id} />
     </div>

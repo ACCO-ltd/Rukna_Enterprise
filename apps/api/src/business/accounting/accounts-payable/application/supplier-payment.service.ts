@@ -95,6 +95,10 @@ export interface CreatePurchaseAllocationDto {
   notes?: string;
 }
 
+/** AP-1 — the states in which a payment can still be rejected or cancelled. */
+const LIVE_UNPOSTED_DOC: readonly string[] = ['DRAFT', 'APPROVED', 'RELEASED'];
+const UNPOSTED: readonly string[] = ['NOT_POSTED', 'FAILED'];
+
 @Injectable()
 export class SupplierPaymentService {
   constructor(
@@ -420,6 +424,85 @@ export class SupplierPaymentService {
       }
       return after;
     });
+  }
+
+  /**
+   * AP-1 — an unposted payment that will not be made. Raising a payment reserves the bills it
+   * settles (A16: their `outstandingAmount` drops at create, so nobody pays them twice), and until
+   * now nothing could release that reservation. Rejecting (an approver, never the person who raised
+   * it — the bill rule) or cancelling (the person who raised it) ends the payment: the bills get
+   * their balance back, any open approval is voided, and the payment stays on record with the reason.
+   * A posted payment is undone by reversal, not here.
+   */
+  async reject(identity: RequestIdentity, paymentId: string, reason: string) {
+    return this.end(identity, paymentId, reason, 'REJECTED');
+  }
+
+  async cancel(identity: RequestIdentity, paymentId: string, reason: string) {
+    return this.end(identity, paymentId, reason, 'CANCELLED');
+  }
+
+  private async end(identity: RequestIdentity, paymentId: string, reason: string, to: 'REJECTED' | 'CANCELLED') {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+    const payment = await this.paymentRepo.findById(prisma, orgId, paymentId);
+    if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
+    if (!LIVE_UNPOSTED_DOC.includes(payment.documentStatus) || !UNPOSTED.includes(payment.postingStatus)) {
+      throw new ConflictException({
+        errorCode: 'PAYMENT_NOT_OPEN',
+        message: payment.postingStatus === 'POSTED'
+          ? 'This payment is posted — reverse it instead.'
+          : `This payment is already ${payment.documentStatus.toLowerCase()}.`,
+      });
+    }
+    if (to === 'REJECTED' && payment.createdBy === userId) {
+      throw new ForbiddenException({ errorCode: 'FORBIDDEN', message: 'You raised this payment, so someone else must reject it. You can cancel it instead.' });
+    }
+    if (to === 'CANCELLED' && payment.createdBy !== userId) {
+      throw new ForbiddenException({ errorCode: 'FORBIDDEN', message: 'Only the person who raised this payment can cancel it. Reject it instead.' });
+    }
+    const why = (reason ?? '').trim();
+    if (!why) throw new BadRequestException({ errorCode: 'REASON_REQUIRED', message: 'Say why the payment will not be made.' });
+
+    const after = await prisma.$transaction(async (tx) => {
+      const stamp = to === 'REJECTED'
+        ? { rejectedAt: new Date(), rejectedBy: userId, rejectionReason: why }
+        : { cancelledAt: new Date(), cancelledBy: userId, cancellationReason: why };
+      // Guarded on the read state: a payment posted a moment ago must never also release its bills.
+      const { count } = await tx.supplierPayment.updateMany({
+        where: { id: paymentId, documentStatus: payment.documentStatus, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } },
+        data: { documentStatus: to, ...stamp },
+      });
+      if (count !== 1) throw new ConflictException('The payment changed a moment ago — reload it and try again.');
+      const held = await tx.supplierPaymentAllocation.findMany({
+        where: { supplierPaymentId: paymentId, postingStatus: 'NOT_POSTED' },
+        select: { supplierBillId: true, allocatedAmount: true },
+      });
+      for (const alloc of held) {
+        await tx.supplierBill.update({
+          where: { id: alloc.supplierBillId },
+          data: { outstandingAmount: { increment: alloc.allocatedAmount } },
+        });
+      }
+      const row = await tx.supplierPayment.findUniqueOrThrow({ where: { id: paymentId } });
+      if (this.auditOutbox) {
+        await this.auditOutbox.record(tx, {
+          organizationId: orgId,
+          actorUserId: userId,
+          action: to === 'REJECTED' ? 'REJECT' : 'CANCEL',
+          resourceType: 'SupplierPayment',
+          resourceId: paymentId,
+          sourceCommand: to === 'REJECTED' ? 'supplier-payment.reject' : 'supplier-payment.cancel',
+          eventType: to === 'REJECTED' ? 'SUPPLIER_PAYMENT_REJECTED' : 'SUPPLIER_PAYMENT_CANCELLED',
+          idempotencyKey: `supplier-payment-${paymentId}-${to}`,
+          before: { documentStatus: payment.documentStatus },
+          after: { documentStatus: to, reason: why, billsReleased: held.length },
+        });
+      }
+      await this.commandGovernance.voidOpenApprovalIn(tx, WorkflowTransactionType.SUPPLIER_PAYMENT, paymentId);
+      return row;
+    });
+    return after;
   }
 
   /**

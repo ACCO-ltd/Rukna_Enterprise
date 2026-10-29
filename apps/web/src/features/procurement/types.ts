@@ -974,6 +974,12 @@ export interface SupplierPayment {
   documentStatus: PaymentDocumentStatus;
   postingStatus: BillPostingStatus;
   postedJournalEntryId: string | null;
+  createdBy?: string;
+  /** AP-1 — set when an unposted payment was rejected (by someone else) or cancelled (by its raiser). */
+  rejectedAt?: ApiDate | null;
+  rejectionReason?: string | null;
+  cancelledAt?: ApiDate | null;
+  cancellationReason?: string | null;
 }
 
 /**

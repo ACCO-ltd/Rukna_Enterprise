@@ -103,14 +103,17 @@ export class SupplierPaymentRepository {
     paymentNumber: string,
     postedBy: string,
   ) {
+    // AP-1 — guarded: a payment rejected or cancelled while it was being posted must not post
+    // (the update finds no row and the posting transaction rolls back).
     return prisma.supplierPayment.update({
-      where: { id },
+      where: { id, documentStatus: { in: ['APPROVED', 'RELEASED'] } },
       data: {
         postingStatus: 'POSTED',
         postedJournalEntryId: journalEntryId,
         paymentNumber,
         postedAt: new Date(),
         postedBy,
+        lastPostingErrorCode: null,
       },
     });
   }
