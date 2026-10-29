@@ -351,7 +351,8 @@
       "stage": "Stage",
       "manager": "Project manager",
       "programme": "Programme",
-      "contractValue": "Contract value"
+      "contractValue": "Contract value",
+      "client": "Client"
     },
     "countLabel": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
     "empty": "No projects yet.",
@@ -904,7 +905,16 @@
         "PROGRAMME_DATES": "Reason for starting without planned dates"
       }
     },
-    "restricted": "Restricted"
+    "restricted": "Restricted",
+    "eyebrow": "Delivery",
+    "headerSummary": "{count, plural, one {# project} other {# projects}} · {active} active",
+    "views": {
+      "label": "Project views",
+      "all": "All",
+      "active": "Active",
+      "completion": "Practical completion",
+      "drafts": "Drafts"
+    }
   },
   "boq": {
     "moneyStrip": {
