@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   payments: undefined as BillPayments | undefined,
 }));
 
+vi.mock('@/features/debit-notes/debit-notes', () => ({ useDebitNotes: () => ({ data: [], isPending: false }) }));
 vi.mock('../hooks/use-procurement', () => ({
   useSupplierBillApprovals: () => ({ isPending: false, isError: false, data: mocks.approvals }),
   useSupplierBillActivity: () => ({ isPending: false, isError: false, data: mocks.activity }),

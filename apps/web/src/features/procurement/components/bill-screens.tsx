@@ -74,6 +74,7 @@ import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
 import { BillEligibilityPanel } from './bill-eligibility-panel';
+import { DebitNotesPanel } from '@/features/debit-notes/debit-notes-panel';
 import { BillEvidence } from './bill-evidence';
 import {
   BillActivityTab,
@@ -564,6 +565,7 @@ function SupplierBillDocument({
   bill: SupplierBill;
   back?: { href: string; label: string };
 }) {
+  const { can } = usePermissions();
   const t = useTranslations('procurement.bills');
   const tMatch = useTranslations('procurement.matching');
   const facts = useBillFacts(bill);
@@ -584,6 +586,7 @@ function SupplierBillDocument({
       {bill.documentStatus === 'CANCELLED' || bill.documentStatus === 'REJECTED' ? null : (
         <BillEligibilityPanel className="mb-6" billId={bill.id} currencyCode={bill.currencyCode} />
       )}
+      <DebitNotesPanel billId={bill.id} canManage={can(ACCOUNTING_PERMISSIONS.managePayables)} />
 
       <DocumentTabs
         label={t('sectionsLabel')}

@@ -1047,7 +1047,9 @@
     "cancelDraft": "Cancel draft",
     "cancelTitle": "Cancel {bill}?",
     "cancelBody": "The draft is never submitted or posted. It stays on record with your reason, and its supplier invoice number can be used again.",
-    "cancelReason": "Why"
+    "cancelReason": "Why",
+    "recordDebitNote": "Record debit note",
+    "creditedByDebitNotes": "Credited by debit notes"
   },
   "payments": {
     "title": "Supplier payments",
@@ -1995,7 +1997,8 @@
     "supplierReactivated": "{name} reactivated",
     "paymentRejected": "Payment rejected — its bills are open again",
     "paymentCancelled": "Payment cancelled — its bills are open again",
-    "billCancelled": "Draft bill cancelled"
+    "billCancelled": "Draft bill cancelled",
+    "debitNoteRecorded": "Debit note recorded — the bill balance is lower"
   },
   "setup": {
     "status": "Status",
@@ -2996,5 +2999,33 @@
     "keptBody": "It could not reach the server just now, so it waits here and is sent by itself when the connection is back. You can see it on the site home.",
     "keptHome": "Site home",
     "keptAnother": "Start another"
+  },
+  "debitNote": {
+    "title": "Record a debit note",
+    "heading": "Debit notes",
+    "leftToPay": "Left to pay on this bill:",
+    "amount": "Credit amount",
+    "amountRequired": "Enter the credit amount.",
+    "amountOverBalance": "That is more than is left to pay on this bill.",
+    "reason": "What the credit is for",
+    "reasonHint": "Goods returned, an overcharge, a discount agreed after the bill.",
+    "reasonRequired": "Say what the credit is for.",
+    "reference": "Supplier’s credit note number",
+    "referenceHint": "Optional — the number on the supplier’s own credit note.",
+    "date": "Date",
+    "postsNow": "It posts at once and lowers what is left to pay. The cost comes off this bill’s own cost lines and project.",
+    "cancel": "Cancel",
+    "submit": "Record debit note",
+    "failed": "The debit note could not be saved.",
+    "supplierRef": "supplier ref {ref}",
+    "reversedBecause": "Reversed: {reason}",
+    "status": {
+      "POSTED": "Posted",
+      "REVERSED": "Reversed"
+    },
+    "reverse": "Reverse",
+    "reverseTitle": "Reverse debit note {ref}?",
+    "reverseBody": "The credit comes off the bill again and its balance goes back up. The note stays on record.",
+    "reasonPrompt": "Why"
   }
 }

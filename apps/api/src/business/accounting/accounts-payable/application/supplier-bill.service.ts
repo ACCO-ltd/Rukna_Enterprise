@@ -774,6 +774,16 @@ export class SupplierBillService {
       );
     }
 
+    // AP-4 — a posted debit note credited part of this bill back; reversing the bill under it would
+    // credit that part twice. Reverse the debit notes first.
+    const debitNotes = await prisma.supplierDebitNote.count({ where: { supplierBillId: billId, status: 'POSTED' } });
+    if (debitNotes > 0) {
+      throw new BadRequestException({
+        errorCode: 'BILL_HAS_DEBIT_NOTES',
+        message: `Cannot reverse bill ${billId} — it has ${debitNotes} posted debit note(s). Reverse those first.`,
+      });
+    }
+
     if (!bill.postedJournalEntryId) {
       throw new BadRequestException(`Bill ${billId} has no posted journal to reverse`);
     }

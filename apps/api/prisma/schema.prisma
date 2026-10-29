@@ -3407,6 +3407,7 @@ model SupplierBill {
   advanceEvidenceAllocations BuyerAdvanceEvidenceAllocation[]
   // ADR-045 — the store receipt/invoice this bill was recorded from.
   storeDocument              StoreDocument?
+  debitNotes                 SupplierDebitNote[]
 
   // One LIVE bill per supplier invoice number (ADR-037 amendment, 2026-09-27): a partial unique
   // index in migration 20260927120000 — `WHERE document_status NOT IN ('REJECTED','CANCELLED')` —
@@ -3425,6 +3426,46 @@ model SupplierBill {
 //   vatAmount stored for audit trail only.
 //   grossAmount (= netAmount + vatAmount) posts to expense/inventory.
 //   No separate GL VAT debit line.
+/// AP-4 — a credit the supplier gives against a posted bill: goods sent back, an overcharge, a
+/// discount agreed after the bill. Posts at once — it lowers what is owed and no money moves —
+/// Dr Accounts payable / Cr the bill's own cost lines in proportion, with the bill's project and
+/// cost dimensions, and lowers the bill's ACTUAL cost in the commitment ledger the same way. The
+/// bill's balance falls; the note can be reversed (the balance comes back). Never deleted.
+model SupplierDebitNote {
+  id                     String                  @id @default(cuid())
+  organizationId         String                  @map("organization_id")
+  supplierId             String                  @map("supplier_id")
+  supplierBillId         String                  @map("supplier_bill_id")
+  debitNoteNumber        String?                 @map("debit_note_number") @db.VarChar(30)
+  /// The supplier's own credit note number, when they sent one.
+  supplierReference      String?                 @map("supplier_reference") @db.VarChar(100)
+  reason                 String
+  accountingDate         DateTime                @map("accounting_date") @db.Date
+  amount                 Decimal                 @db.Decimal(18, 2)
+  currencyCode           String                  @map("currency_code") @db.VarChar(3)
+  status                 SupplierDebitNoteStatus @default(POSTED)
+  postedJournalEntryId   String?                 @map("posted_journal_entry_id")
+  reversalJournalEntryId String?                 @map("reversal_journal_entry_id")
+  reversedAt             DateTime?               @map("reversed_at")
+  reversedBy             String?                 @map("reversed_by")
+  reversalReason         String?                 @map("reversal_reason")
+  createdBy              String                  @map("created_by")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+
+  bill SupplierBill @relation(fields: [supplierBillId], references: [id])
+
+  @@unique([organizationId, debitNoteNumber])
+  @@index([organizationId, supplierId])
+  @@index([supplierBillId])
+  @@map("supplier_debit_notes")
+}
+
+enum SupplierDebitNoteStatus {
+  POSTED
+  REVERSED
+}
+
 model SupplierBillLine {
   id                  String              @id @default(cuid())
   supplierBillId      String              @map("supplier_bill_id")
@@ -4700,6 +4741,8 @@ enum DocumentType {
   RECEIVABLE_WRITE_OFF
   // AR-5 — RF- numbers for refunds of client cash held on account.
   CLIENT_REFUND
+  // AP-4 — DN- numbers for supplier debit notes.
+  SUPPLIER_DEBIT_NOTE
 }
 
 enum SequenceStatus {
@@ -4807,6 +4850,8 @@ enum SourceDocType {
   RECEIVABLE_WRITE_OFF
   // AR-5 — client cash held on account paid back, and its reversal.
   CLIENT_REFUND
+  // AP-4 — a credit received from a supplier against a posted bill, and its reversal.
+  SUPPLIER_DEBIT_NOTE
 }
 
 enum AttemptOutcome {
@@ -5910,6 +5955,8 @@ enum CommitmentSourceDocType {
   BILL_REVERSAL
   OVER_RECEIPT_ADJUSTMENT
   EXCEPTION_APPROVAL
+  // AP-4 — a supplier debit note lowers the bill's ACTUAL cost (and its reversal raises it again).
+  SUPPLIER_DEBIT_NOTE
 }
 
 enum ToleranceScopeType {

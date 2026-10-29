@@ -235,7 +235,10 @@ export class ProjectFinancialPositionRepository {
       const net = new Decimal((row._sum.debitAmount ?? 0).toString()).minus(
         new Decimal((row._sum.creditAmount ?? 0).toString()),
       );
-      if (sourceById.get(row.journalEntryId) === 'SUPPLIER_BILL') {
+      // AP-4 — a supplier debit note takes back procurement cost (and the commitment ledger's
+      // ACTUAL with it), so it counts with the bills.
+      const source = sourceById.get(row.journalEntryId);
+      if (source === 'SUPPLIER_BILL' || source === 'SUPPLIER_DEBIT_NOTE') {
         fromSupplierBills = fromSupplierBills.plus(net);
       } else {
         fromOtherSources = fromOtherSources.plus(net);

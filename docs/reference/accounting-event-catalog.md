@@ -866,6 +866,21 @@ carries the award's `projectId`. Accounting dates are source-document dates, nev
 Legacy advances (POSTED before ADR-045, no journal) are never re-posted: their returns and evidence
 links are recorded without a journal, and finance clears their balance by manual journal if needed.
 
+### EVT-AP-012 / EVT-AP-013 — Supplier debit note and its reversal (AP-4)
+
+A credit the supplier gives against a POSTED bill (goods returned, an overcharge, a discount agreed
+later). `sourceDocumentType = SUPPLIER_DEBIT_NOTE`. Posts at once — it lowers what is owed and no
+money moves — capped at what is left to pay on the bill (`400 DEBIT_NOTE_EXCEEDS_BALANCE`). A bill
+with a posted debit note cannot be reversed (`400 BILL_HAS_DEBIT_NOTES`).
+
+| Event | When | Journal | Accounting date | Source id | Category / origin |
+|---|---|---|---|---|---|
+| EVT-AP-012 `SUPPLIER_DEBIT_NOTE_POSTED` | debit note recorded | Dr AP (the account the bill credited; AP subledger) / Cr the bill journal's own cost lines, split by weight, each keeping its project, department, cost centre, BOQ node and spend category; bill `outstandingAmount` reduced; a PO bill's commitment-ledger ACTUAL lowered in proportion on the same cost-targets (`SUPPLIER_DEBIT_NOTE`) | the note's date | note id | ACCOUNTS_PAYABLE / SYSTEM_AP |
+| EVT-AP-013 (reversal of 012) | debit note reversed | exact mirror of EVT-AP-012; bill outstanding and ACTUAL restored | `reversalDate` | `reversal-<note id>` | ACCOUNTS_PAYABLE / SYSTEM_AP, REVERSAL |
+
+Project cost reconciliation counts SUPPLIER_DEBIT_NOTE journals with SUPPLIER_BILL as procurement cost
+(REC-07), so the commitment ledger and the GL keep telling the same story.
+
 Fixture (S2 → S6, PO 1,000.00): EVT-AP-007 Dr 13100 1,000 / Cr 10900 1,000 (08 Oct) → bill
 EVT-AP-001 Dr expense 980 / Cr AP 980 (08 Oct) → EVT-AP-008 Dr AP 980 / Cr 13100 980 (08 Oct) →
 EVT-AP-009 Dr 10900 20 / Cr 13100 20 (09 Oct). Net: 13100 = 0, AP = 0, cash −980, expense +980.

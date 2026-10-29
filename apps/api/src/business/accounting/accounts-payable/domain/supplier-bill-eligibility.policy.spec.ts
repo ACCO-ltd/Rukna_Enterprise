@@ -427,3 +427,14 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
     expect(bank.signaturesRequired).toBe(2);
   });
 });
+
+describe('summarizeBillPayments — a rejected or cancelled payment (AP-1)', () => {
+  it('holds nothing: only live unposted payments count as pending', () => {
+    const s = summarizeBillPayments([
+      { allocatedAmount: '600.00', postingStatus: 'NOT_POSTED', paymentId: 'p1', paymentDate: null, paymentDocumentStatus: 'CANCELLED' },
+      { allocatedAmount: '50.00', postingStatus: 'NOT_POSTED', paymentId: 'p2', paymentDate: null, paymentDocumentStatus: 'REJECTED' },
+      { allocatedAmount: '25.00', postingStatus: 'NOT_POSTED', paymentId: 'p3', paymentDate: null, paymentDocumentStatus: 'DRAFT' },
+    ]);
+    expect(s.pending.toFixed(2)).toBe('25.00');
+  });
+});

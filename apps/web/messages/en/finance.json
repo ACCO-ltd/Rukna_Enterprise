@@ -259,7 +259,8 @@
       "BUYER_ADVANCE": "Buyer cash advance",
       "BANK_STATEMENT": "Bank statement",
       "RECEIVABLE_WRITE_OFF": "Write-off",
-      "CLIENT_REFUND": "Client refund"
+      "CLIENT_REFUND": "Client refund",
+      "SUPPLIER_DEBIT_NOTE": "Supplier debit note"
     },
     "empty": "No posted entries carry this project in this range.",
     "noMatches": "No entries on this page match your search.",

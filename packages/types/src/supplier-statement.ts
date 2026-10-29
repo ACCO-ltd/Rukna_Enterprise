@@ -50,3 +50,23 @@ export interface SupplierStatement {
   /** Today: payments raised but not yet posted, which will settle open bills when they post. */
   pendingPayments: string;
 }
+
+/**
+ * AP-4 — a credit the supplier gave against a posted bill (`GET/POST /bills/:billId/debit-notes`,
+ * `POST /supplier-debit-notes/:id/reverse`). Posts at once; DN-000001 once posted.
+ */
+export interface SupplierDebitNoteView {
+  id: string;
+  billId: string;
+  debitNoteNumber: string | null;
+  /** The supplier's own credit note number, when they sent one. */
+  supplierReference: string | null;
+  reason: string;
+  accountingDate: string;
+  amount: string;
+  status: 'POSTED' | 'REVERSED';
+  createdBy: string;
+  createdAt: string;
+  reversedAt: string | null;
+  reversalReason: string | null;
+}

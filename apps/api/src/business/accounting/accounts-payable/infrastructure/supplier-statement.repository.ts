@@ -68,6 +68,17 @@ export class SupplierStatementRepository {
     });
   }
 
+  /** AP-4 — posted (or posted then reversed) debit notes. */
+  findDebitNotes(prisma: TenantPrisma, organizationId: string, supplierId: string) {
+    return prisma.supplierDebitNote.findMany({
+      where: { organizationId, supplierId },
+      select: {
+        id: true, supplierBillId: true, debitNoteNumber: true, supplierReference: true, accountingDate: true, amount: true,
+        status: true, reversalJournalEntryId: true, reversedAt: true, bill: { select: { billNumber: true, supplierInvoiceNumber: true } },
+      },
+    });
+  }
+
   /** Accounting dates of journals by id (reversals are dated by their journal). */
   async journalDates(prisma: TenantPrisma, ids: string[]): Promise<Map<string, Date>> {
     if (ids.length === 0) return new Map();

@@ -25,6 +25,8 @@ import { SupplierService } from './application/supplier.service.js';
 import { SupplierBillController } from './presentation/supplier-bill.controller.js';
 import { SupplierPaymentController } from './presentation/supplier-payment.controller.js';
 import { SupplierController } from './presentation/supplier.controller.js';
+import { SupplierDebitNoteController } from './presentation/supplier-debit-note.controller.js';
+import { SupplierDebitNoteService } from './application/supplier-debit-note.service.js';
 import { SupplierStatementController } from './presentation/supplier-statement.controller.js';
 import { SupplierStatementService } from './application/supplier-statement.service.js';
 import { SupplierStatementRepository } from './infrastructure/supplier-statement.repository.js';
@@ -54,6 +56,7 @@ import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-pay
     SupplierPaymentController,
     SupplierController,
     SupplierStatementController,
+    SupplierDebitNoteController,
     PostingProfileController,
     BuyerAdvanceController,
     AwardPaymentController,
@@ -75,6 +78,7 @@ import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-pay
     SupplierPaymentService,
     SupplierService,
     SupplierStatementService,
+    SupplierDebitNoteService,
     SupplierStatementRepository,
     BuyerAdvanceService,
     AwardSupplierPaymentService,
