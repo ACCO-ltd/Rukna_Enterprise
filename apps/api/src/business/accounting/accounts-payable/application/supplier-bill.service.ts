@@ -482,6 +482,30 @@ export class SupplierBillService {
     }
   }
 
+  /**
+   * AP-2 — drop a DRAFT bill (new, or returned for correction) that will never be submitted: a
+   * duplicate, the wrong supplier, an invoice the supplier withdrew. Nothing was posted, so no
+   * second person is needed; the bill stays on record as CANCELLED with the reason and frees its
+   * supplier invoice number. A submitted bill is returned or rejected instead.
+   */
+  async cancel(identity: RequestIdentity, billId: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'DRAFT');
+    const why = requireReason(reason);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await tx.supplierBillMatch.deleteMany({ where: { supplierBillId: bill.id } });
+        return tx.supplierBill.update({
+          where: { id: bill.id, documentStatus: 'DRAFT' },
+          data: { documentStatus: 'CANCELLED', cancelledAt: new Date(), cancelledBy: identity.userId, cancellationReason: why },
+        });
+      });
+    } catch (err) {
+      if (isStaleTransition(err)) throw staleTransition('a draft');
+      throw err;
+    }
+  }
+
   async approve(identity: RequestIdentity, billId: string) {
     const prisma = this.tenancyService.getClient();
     const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');

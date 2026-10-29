@@ -3391,6 +3391,11 @@ model SupplierBill {
   rejectedAt                DateTime?       @map("rejected_at")
   rejectedBy                String?         @map("rejected_by")
   rejectionReason           String?         @map("rejection_reason")
+  // AP-2 — a draft dropped before it was ever submitted (a duplicate, a wrong supplier). Frees the
+  // supplier invoice number like a rejection does.
+  cancelledAt               DateTime?       @map("cancelled_at")
+  cancelledBy               String?         @map("cancelled_by")
+  cancellationReason        String?         @map("cancellation_reason")
   approvedAt                DateTime?       @map("approved_at")
   createdAt                 DateTime        @default(now()) @map("created_at")
   updatedAt                 DateTime        @updatedAt @map("updated_at")

@@ -655,6 +655,9 @@ export interface SupplierBill {
   rejectedAt?: string | null;
   rejectedBy?: string | null;
   rejectionReason?: string | null;
+  /** AP-2 — a draft dropped before it was submitted. */
+  cancelledAt?: ApiDate | null;
+  cancellationReason?: string | null;
   /** Who entered the bill. The detail returns the whole row; they may not reject it themselves. */
   createdBy?: string;
   /** Present on detail only — `findAll` includes no lines. */

@@ -695,6 +695,15 @@ export function returnSupplierBill(id: string, reason: string): Promise<Supplier
 }
 
 /** `POST /bills/:id/reject` — SUBMITTED → REJECTED (final), with a required reason. */
+/** AP-2 — `POST /bills/:id/cancel`: drop a DRAFT bill that will never be submitted (reason required). */
+export function cancelSupplierBill(id: string, reason: string): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export function rejectSupplierBill(id: string, reason: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}/reject`, {
     method: 'POST',

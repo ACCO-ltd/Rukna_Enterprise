@@ -941,7 +941,8 @@
       "reviewMatch": "Review match",
       "returnedTitle": "Returned for correction on {date}",
       "rejectedTitle": "Rejected on {date}",
-      "returnedWhileEditing": "Returned for correction — fix this before submitting again"
+      "returnedWhileEditing": "Returned for correction — fix this before submitting again",
+      "cancelledTitle": "Cancelled on {date}"
     },
     "purchaseOrder": "Purchase order",
     "goodsReceipt": "Goods receipt",
@@ -1041,7 +1042,11 @@
       "REVERSED": "Reversed"
     },
     "groupSupplier": "Supplier",
-    "groupStatus": "Status"
+    "groupStatus": "Status",
+    "cancelDraft": "Cancel draft",
+    "cancelTitle": "Cancel {bill}?",
+    "cancelBody": "The draft is never submitted or posted. It stays on record with your reason, and its supplier invoice number can be used again.",
+    "cancelReason": "Why"
   },
   "payments": {
     "title": "Supplier payments",
@@ -1988,7 +1993,8 @@
     "supplierDeactivated": "{name} deactivated",
     "supplierReactivated": "{name} reactivated",
     "paymentRejected": "Payment rejected — its bills are open again",
-    "paymentCancelled": "Payment cancelled — its bills are open again"
+    "paymentCancelled": "Payment cancelled — its bills are open again",
+    "billCancelled": "Draft bill cancelled"
   },
   "setup": {
     "status": "Status",

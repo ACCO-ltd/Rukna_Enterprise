@@ -581,7 +581,9 @@ function SupplierBillDocument({
       rail={<SummaryRail title={t('summaryTitle')} rows={summary} />}
     >
       {/* ADR-043 Phase 2: what stands between this bill and payment, step by step. */}
-      <BillEligibilityPanel className="mb-6" billId={bill.id} currencyCode={bill.currencyCode} />
+      {bill.documentStatus === 'CANCELLED' || bill.documentStatus === 'REJECTED' ? null : (
+        <BillEligibilityPanel className="mb-6" billId={bill.id} currencyCode={bill.currencyCode} />
+      )}
 
       <DocumentTabs
         label={t('sectionsLabel')}

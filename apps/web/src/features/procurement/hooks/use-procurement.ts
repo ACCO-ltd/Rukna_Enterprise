@@ -90,6 +90,7 @@ import {
   postSupplierBill,
   postSupplierPayment,
   rejectSupplierBill,
+  cancelSupplierBill,
   returnSupplierBill,
   reverseSupplierBill,
   reverseSupplierPayment,
@@ -1011,6 +1012,13 @@ export function useReturnSupplierBill() {
   return useBillMutation((args: { id: string; reason: string }) =>
     returnSupplierBill(args.id, args.reason),
     'procurement.feedback.billReturned',
+  );
+}
+
+export function useCancelSupplierBill() {
+  return useBillMutation((args: { id: string; reason: string }) =>
+    cancelSupplierBill(args.id, args.reason),
+    'procurement.feedback.billCancelled',
   );
 }
 

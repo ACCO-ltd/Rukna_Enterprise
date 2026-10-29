@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   useSubmitSupplierBill: vi.fn(),
   useReturnSupplierBill: vi.fn(),
   useRejectSupplierBill: vi.fn(),
+  useCancelSupplierBill: vi.fn(),
   useBillMatch: vi.fn(),
   useResolveMatchException: vi.fn(),
   useRunBillMatch: vi.fn(),
@@ -315,5 +316,22 @@ describe('BillDocumentHeader — a refused post', () => {
     expect(
       await screen.findByText('Posting profile PROJECT_REVENUE is not an expense profile'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('BillDocumentHeader — cancel a draft (AP-2)', () => {
+  it('offers Cancel draft only on a DRAFT bill', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BillDocumentHeader bill={{ ...SUBMITTED, documentStatus: 'DRAFT' }} />, { permissions: MANAGER });
+    await openKebab(user);
+    expect(screen.getByRole('menuitem', { name: 'Cancel draft' })).toBeInTheDocument();
+  });
+
+  it('shows why a cancelled bill was dropped', () => {
+    renderWithProviders(
+      <BillDocumentHeader bill={{ ...SUBMITTED, documentStatus: 'CANCELLED', cancelledAt: '2026-10-29T00:00:00.000Z', cancellationReason: 'Entered twice' }} />,
+      { permissions: MANAGER },
+    );
+    expect(screen.getByText('Entered twice')).toBeInTheDocument();
   });
 });
