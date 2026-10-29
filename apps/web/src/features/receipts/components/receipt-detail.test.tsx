@@ -26,6 +26,16 @@ vi.mock('../hooks/use-receipts', () => ({
   useReverseReceipt: () => ({ mutate: mocks.reverse, reset: vi.fn(), isPending: false, isError: false, error: null }),
   receiptKeys: { all: ['receipts'], detail: (id: string) => ['receipts', 'detail', id] },
 }));
+vi.mock('@/features/refunds/refunds', () => ({
+  useRefunds: () => ({ data: [] }),
+  useRequestRefund: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+  useDecideRefund: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+}));
+vi.mock('@/features/accounting/hooks/use-accounting', async (original) => ({
+  ...(await original<object>()),
+  useApprovalSettings: () => ({ data: { paymentAutoApproveUpTo: '1000.00' } }),
+  useBankAccounts: () => ({ data: [] }),
+}));
 vi.mock('./receipt-allocations-panel', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./receipt-allocations-panel')>()),
   ReceiptAllocationsPanel: () => null,
@@ -204,6 +214,19 @@ describe('ReceiptDetail — receipt PDF and WhatsApp', () => {
   it('lists the receipt’s messages for payment_receipt', () => {
     show(receipt());
     expect(mocks.useCommunications).toHaveBeenCalledWith('payment_receipt', 'rcp-1');
+  });
+});
+
+describe('ReceiptDetail — refunds (AR-5)', () => {
+  it('offers Refund only while the receipt holds cash on account', () => {
+    mocks.useCommunications.mockReturnValue({ isPending: false, isError: false, data: [] });
+    mocks.useReceipt.mockReturnValue({ data: receipt({ unallocatedAmount: '250.00', allocatedAmount: '4750.00' }), isPending: false, isError: false, error: null });
+    const { unmount } = renderWithProviders(<ReceiptDetail receiptId="rcp-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.getByRole('button', { name: 'Refund' })).toBeInTheDocument();
+    unmount();
+    mocks.useReceipt.mockReturnValue({ data: receipt(), isPending: false, isError: false, error: null });
+    renderWithProviders(<ReceiptDetail receiptId="rcp-1" />, { permissions: ['manage:receivable'] });
+    expect(screen.queryByRole('button', { name: 'Refund' })).not.toBeInTheDocument();
   });
 });
 

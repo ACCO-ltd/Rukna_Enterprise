@@ -407,6 +407,15 @@ export class CustomerReceiptService {
       });
     }
 
+    // AR-5 — cash already paid back from this receipt left the bank; undo the refund first.
+    const postedRefunds = await prisma.clientRefund.count({ where: { receiptId, status: 'POSTED' } });
+    if (postedRefunds > 0) {
+      throw new BadRequestException({
+        errorCode: 'RECEIPT_HAS_REFUNDS',
+        message: 'Money from this receipt was paid back to the client. Reverse the refund first, then the receipt.',
+      });
+    }
+
     if (!receipt.postedJournalEntryId) {
       throw new BadRequestException(`Receipt ${receiptId} has no posted journal to reverse`);
     }

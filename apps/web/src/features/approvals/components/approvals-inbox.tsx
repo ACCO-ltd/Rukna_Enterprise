@@ -20,6 +20,7 @@ const AREA_OF: Record<ApprovalItemKind, Exclude<Area, 'all'>> = {
   BILL: 'finance',
   PAYMENT: 'finance',
   WRITE_OFF: 'finance',
+  REFUND: 'finance',
   QUOTATION: 'finance',
   MATERIAL_REQUEST: 'procurement',
   WORKFLOW: 'procurement',

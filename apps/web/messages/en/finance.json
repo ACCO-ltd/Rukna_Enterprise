@@ -257,7 +257,9 @@
       "YEAR_END_CLOSE": "Year-end close",
       "CREDIT_NOTE": "Credit note",
       "BUYER_ADVANCE": "Buyer cash advance",
-      "BANK_STATEMENT": "Bank statement"
+      "BANK_STATEMENT": "Bank statement",
+      "RECEIVABLE_WRITE_OFF": "Write-off",
+      "CLIENT_REFUND": "Client refund"
     },
     "empty": "No posted entries carry this project in this range.",
     "noMatches": "No entries on this page match your search.",

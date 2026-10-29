@@ -1698,7 +1698,9 @@
       "RECEIPT": "Payment",
       "RECEIPT_REVERSAL": "Payment reversed",
       "WRITE_OFF": "Written off",
-      "WRITE_OFF_REVERSAL": "Write-off reversed"
+      "WRITE_OFF_REVERSAL": "Write-off reversed",
+      "REFUND": "Refund paid",
+      "REFUND_REVERSAL": "Refund reversed"
     },
     "action": "Statement"
   },

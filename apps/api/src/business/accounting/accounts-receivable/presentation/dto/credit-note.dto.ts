@@ -64,3 +64,30 @@ export class RejectWriteOffDto {
   @MaxLength(500)
   reason!: string;
 }
+
+/** AR-5 — pay back cash a receipt holds on account. */
+export class RequestRefundDto {
+  @ApiProperty()
+  @IsString()
+  bankAccountId!: string;
+
+  @ApiProperty({ description: 'Decimal string' })
+  @Matches(/^(?!0+(\.0+)?$)\d{1,15}(\.\d{1,2})?$/, { message: 'amount must be a positive amount with at most 2 decimals' })
+  amount!: string;
+
+  @ApiProperty({ description: 'YYYY-MM-DD' })
+  @IsDateString()
+  refundDate!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+
+  @ApiPropertyOptional({ description: 'Bank transfer or cheque reference' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  reference?: string;
+}

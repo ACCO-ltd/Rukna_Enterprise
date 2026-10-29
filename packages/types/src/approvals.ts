@@ -12,6 +12,7 @@ export type ApprovalItemKind =
   | 'MATERIAL_REQUEST'
   | 'PROGRESS_REPORT'
   | 'WRITE_OFF'
+  | 'REFUND'
   | 'WORKFLOW';
 
 export interface ApprovalItem {
@@ -33,7 +34,7 @@ export interface ApprovalItem {
   projectName: string | null;
   /** WORKFLOW only: the governed document's transaction type (PURCHASE_ORDER, VARIATION, …). */
   transactionType: string | null;
-  /** WRITE_OFF: the invoice whose page holds the decision. */
+  /** WRITE_OFF: the invoice whose page holds the decision; REFUND: the receipt. */
   parentId?: string | null;
 }
 

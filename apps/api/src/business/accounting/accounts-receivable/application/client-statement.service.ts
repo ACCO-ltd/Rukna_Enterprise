@@ -36,17 +36,19 @@ export class ClientStatementService {
     const client = await this.repo.findClient(prisma, orgId, clientId);
     if (!client) throw new NotFoundException({ errorCode: 'CLIENT_NOT_FOUND', message: `Client ${clientId} not found` });
 
-    const [invoices, creditNotes, receipts, writeOffs] = await Promise.all([
+    const [invoices, creditNotes, receipts, writeOffs, refunds] = await Promise.all([
       this.repo.findInvoices(prisma, orgId, clientId),
       this.repo.findCreditNotes(prisma, orgId, clientId),
       this.repo.findReceipts(prisma, orgId, clientId),
       this.repo.findWriteOffs(prisma, orgId, clientId),
+      this.repo.findRefunds(prisma, orgId, clientId),
     ]);
     const reversalJournalIds = [
       ...invoices.map((i) => i.reversalJournalEntryId),
       ...creditNotes.map((c) => c.reversalJournalEntryId),
       ...receipts.map((r) => r.reversalJournalEntryId),
       ...writeOffs.map((w) => w.reversalJournalEntryId),
+      ...refunds.map((r) => r.reversalJournalEntryId),
     ].filter((id): id is string => Boolean(id));
     const [journalDates, legacyReceiptReversals, projectNames] = await Promise.all([
       this.repo.journalDates(prisma, reversalJournalIds),
@@ -105,6 +107,16 @@ export class ClientStatementService {
       if (w.status === 'REVERSED') {
         const date = reversalDate(w.reversalJournalEntryId, w.reversedAt);
         if (date) movements.push({ date, kind: 'WRITE_OFF_REVERSAL', documentId: w.invoiceId, reference: w.writeOffNumber, description, debit: amount, credit: zero, sequence: 7 });
+      }
+    }
+
+    // AR-5 — cash paid back raises the balance again (the client no longer holds it with us).
+    for (const rf of refunds) {
+      const amount = new Decimal(rf.amount.toString());
+      movements.push({ date: rf.refundDate, kind: 'REFUND', documentId: rf.receiptId, reference: rf.refundNumber, description: rf.reference, debit: amount, credit: zero, sequence: 8 });
+      if (rf.status === 'REVERSED') {
+        const date = reversalDate(rf.reversalJournalEntryId, rf.reversedAt);
+        if (date) movements.push({ date, kind: 'REFUND_REVERSAL', documentId: rf.receiptId, reference: rf.refundNumber, description: rf.reference, debit: zero, credit: amount, sequence: 9 });
       }
     }
 

@@ -17,6 +17,11 @@ import { statusTone } from '@/lib/status-registry';
 import { fromMinorUnits, isFullyAllocated, isOverAllocated } from '../allocation';
 import { receiptKeys, useOpenReceiptDocument, useReceipt, useReverseReceipt } from '../hooks/use-receipts';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { RefundDialog } from '@/features/refunds/refund-dialog';
+import { RefundsPanel } from '@/features/refunds/refunds-panel';
+import { useRefunds } from '@/features/refunds/refunds';
+import { useApprovalSettings } from '@/features/accounting/hooks/use-accounting';
+import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 import type { ReceiptDetail as ReceiptDetailModel } from '../types';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
 import { PostReceiptDialog } from './post-receipt-dialog';
@@ -33,6 +38,9 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const [posting, setPosting] = useState(false);
   const [sending, setSending] = useState(false);
   const [reversing, setReversing] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const refunds = useRefunds(receiptId, receipt?.postingStatus === 'POSTED' || receipt?.postingStatus === 'REVERSED');
+  const approvalSettings = useApprovalSettings();
   const reverse = useReverseReceipt(receiptId);
   const { can } = usePermissions();
   const openDocument = useOpenReceiptDocument();
@@ -86,6 +94,12 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
         <Button variant="outline" onClick={() => setSending(true)}>
           {t('sendWhatsApp')}
         </Button>
+        {/* AR-5 — pay back what is held on account (an overpayment, a cancelled job). */}
+        {toMinorUnits(receipt.unallocatedAmount, MONEY_SCALE) > 0 ? (
+          <Button variant="outline" onClick={() => setRefunding(true)}>
+            {t('refundAction')}
+          </Button>
+        ) : null}
         {/* AR-2 — a bounced cheque or money booked to the wrong client. */}
         <Button variant="ghost" className="text-danger" onClick={() => setReversing(true)}>
           {t('reverse.action')}
@@ -116,6 +130,19 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
       ) : (
         <ReceiptAllocationsPanel receipt={receipt} />
       )}
+
+      <RefundsPanel receiptId={receipt.id} refunds={refunds.data ?? []} canManage={mayManage} />
+
+      {issued && mayManage ? (
+        <RefundDialog
+          open={refunding}
+          onOpenChange={setRefunding}
+          receiptId={receipt.id}
+          onAccount={receipt.unallocatedAmount}
+          currencyCode={receipt.currencyCode}
+          approvedUpTo={approvalSettings.data?.paymentAutoApproveUpTo ?? null}
+        />
+      ) : null}
 
       {receipt.notes ? (
         <section className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">

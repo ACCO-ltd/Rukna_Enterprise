@@ -45,7 +45,8 @@ function thisYear(now = new Date()) {
 }
 
 function documentHref(line: ClientStatementLine): string | null {
-  if (line.kind === 'RECEIPT' || line.kind === 'RECEIPT_REVERSAL') return `/receipts/${line.documentId}`;
+  if (line.kind === 'RECEIPT' || line.kind === 'RECEIPT_REVERSAL' || line.kind === 'REFUND' || line.kind === 'REFUND_REVERSAL')
+    return `/receipts/${line.documentId}`;
   return `/finance/accounting/invoices/${line.documentId}`;
 }
 

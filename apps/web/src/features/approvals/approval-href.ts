@@ -32,6 +32,9 @@ export function approvalHref(item: ApprovalItem): string | null {
     case 'WRITE_OFF':
       // AR-4 — decided on its invoice's page.
       return item.parentId ? `/finance/accounting/invoices/${item.parentId}` : null;
+    case 'REFUND':
+      // AR-5 — decided on its receipt's page.
+      return item.parentId ? `/receipts/${item.parentId}` : null;
     case 'PROGRESS_REPORT':
       return item.projectId ? `/projects/${item.projectId}/progress/review` : null;
     case 'WORKFLOW':

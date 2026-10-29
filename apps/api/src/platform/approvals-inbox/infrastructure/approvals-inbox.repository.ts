@@ -63,6 +63,24 @@ export class ApprovalsInboxRepository {
     });
   }
 
+  /** AR-5 — refunds above the payment limit, waiting for a second person. */
+  refundsAwaitingApproval(prisma: TenantPrisma, organizationId: string) {
+    return prisma.clientRefund.findMany({
+      where: { organizationId, status: 'PENDING_APPROVAL' },
+      orderBy: { requestedAt: 'asc' },
+      take: LIMIT,
+      select: {
+        id: true,
+        receiptId: true,
+        amount: true,
+        reason: true,
+        requestedBy: true,
+        requestedAt: true,
+        receipt: { select: { receiptNumber: true, currencyCode: true, client: { select: { name: true } } } },
+      },
+    });
+  }
+
   submittedJournals(prisma: TenantPrisma, organizationId: string) {
     return prisma.journalEntry.findMany({
       where: { organizationId, status: 'SUBMITTED' },

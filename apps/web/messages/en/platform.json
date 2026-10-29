@@ -3290,7 +3290,8 @@
         "failed": "The receipt could not be reversed. Try again.",
         "reversedTitle": "Reversed {date}",
         "reversedBecause": "Reason: {reason}."
-      }
+      },
+      "refundAction": "Refund"
     },
     "allocations": {
       "heading": "Allocations",
@@ -3372,6 +3373,48 @@
       "UNALLOCATED": "Received · unallocated",
       "RECEIVED": "Received",
       "REVERSED": "Reversed"
+    },
+    "refund": {
+      "title": "Refund cash held on account",
+      "heading": "Refunds",
+      "onAccount": "Held on account:",
+      "bank": "Pay from",
+      "bankPlaceholder": "Choose a bank account",
+      "bankRequired": "Choose the bank account the money is paid from.",
+      "amount": "Amount to refund",
+      "amountRequired": "Enter an amount greater than zero.",
+      "amountOverOnAccount": "This is more than the receipt holds on account.",
+      "date": "Refund date",
+      "reference": "Transfer or cheque reference (optional)",
+      "reason": "Why is it paid back?",
+      "reasonRequired": "Say why the money is paid back.",
+      "postsNow": "It posts now: the money leaves the bank and is no longer held on account for the client.",
+      "approvalTitle": "This goes to Approvals first",
+      "approvalBody": "Refunds above {limit} are approved by someone else before they post, like supplier payments.",
+      "cancel": "Cancel",
+      "submit": "Refund",
+      "submitForApproval": "Send for approval",
+      "failed": "That did not go through. Try again.",
+      "unnumbered": "Waiting for approval",
+      "requestedBy": "asked by {name}",
+      "approvedBy": "approved by {name}",
+      "rejectedBecause": "Rejected: {reason}",
+      "reversedBecause": "Reversed: {reason}",
+      "status": {
+        "PENDING_APPROVAL": "Waiting for approval",
+        "POSTED": "Paid",
+        "REJECTED": "Rejected",
+        "REVERSED": "Reversed"
+      },
+      "approve": "Approve",
+      "reject": "Reject",
+      "reverse": "Reverse",
+      "waitingForSomeoneElse": "Someone else approves it",
+      "rejectTitle": "Reject this refund?",
+      "rejectBody": "The money stays on account for the client. Say why.",
+      "reverseTitle": "Reverse refund {ref}?",
+      "reverseBody": "Use this when the transfer never went. A reversing entry is posted today and the money is held on account again.",
+      "reasonPrompt": "Why?"
     }
   },
   "ipc": {
@@ -3677,7 +3720,8 @@
       "MATERIAL_REQUEST": "Material request",
       "PROGRESS_REPORT": "Daily progress report",
       "WORKFLOW": "Approval step",
-      "WRITE_OFF": "Write-off"
+      "WRITE_OFF": "Write-off",
+      "REFUND": "Refund"
     },
     "colItem": "Waiting for your decision",
     "colProject": "Project",

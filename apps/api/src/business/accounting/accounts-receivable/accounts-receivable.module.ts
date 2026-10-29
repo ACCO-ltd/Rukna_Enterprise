@@ -20,6 +20,8 @@ import { ClientStatementService } from './application/client-statement.service.j
 import { ClientStatementRepository } from './infrastructure/client-statement.repository.js';
 import { WriteOffController } from './presentation/write-off.controller.js';
 import { WriteOffService } from './application/write-off.service.js';
+import { ClientRefundController } from './presentation/client-refund.controller.js';
+import { ClientRefundService } from './application/client-refund.service.js';
 import { CreditNoteController } from './presentation/credit-note.controller.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
 import { InvoiceWhatsAppController } from './presentation/invoice-whatsapp.controller.js';
@@ -34,6 +36,7 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
 @Module({
   imports: [TenancyModule, AccountingCoreModule, FilesModule, CommunicationModule, AuditLogsModule],
   controllers: [
+    ClientRefundController,
     WriteOffController,
     ClientStatementController,
     CreditNoteController,
@@ -44,6 +47,7 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
     InvoiceSettingsPreviewController,
   ],
   providers: [
+    ClientRefundService,
     WriteOffService,
     ClientStatementRepository,
     ClientStatementService,

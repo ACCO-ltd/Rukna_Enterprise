@@ -3146,6 +3146,53 @@ model ReceivableWriteOff {
   @@map("receivable_write_offs")
 }
 
+/// AR-5 — cash a client paid in advance or overpaid (held on account on a receipt) paid back from
+/// a bank account: Dr Unapplied client receipts / Cr the bank. Above the organisation's payment
+/// limit it waits for a second person; posted, it can be reversed (the cash is on account again).
+model ClientRefund {
+  id                     String             @id @default(cuid())
+  organizationId         String             @map("organization_id")
+  clientId               String             @map("client_id")
+  receiptId              String             @map("receipt_id")
+  bankAccountId          String             @map("bank_account_id")
+  refundNumber           String?            @map("refund_number") @db.VarChar(30)
+  amount                 Decimal            @db.Decimal(18, 2)
+  refundDate             DateTime           @map("refund_date") @db.Date
+  reference              String?
+  reason                 String
+  status                 ClientRefundStatus
+  requestedBy            String             @map("requested_by")
+  requestedAt            DateTime           @default(now()) @map("requested_at")
+  approvedBy             String?            @map("approved_by")
+  approvedAt             DateTime?          @map("approved_at")
+  rejectedBy             String?            @map("rejected_by")
+  rejectedAt             DateTime?          @map("rejected_at")
+  rejectionReason        String?            @map("rejection_reason")
+  postedJournalEntryId   String?            @map("posted_journal_entry_id")
+  postedAt               DateTime?          @map("posted_at")
+  reversedBy             String?            @map("reversed_by")
+  reversedAt             DateTime?          @map("reversed_at")
+  reversalReason         String?            @map("reversal_reason")
+  reversalJournalEntryId String?            @map("reversal_journal_entry_id")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  receipt PaymentReceipt @relation(fields: [receiptId], references: [id])
+
+  @@unique([organizationId, refundNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
+  @@index([receiptId])
+  @@map("client_refunds")
+}
+
+enum ClientRefundStatus {
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
+}
+
 enum ReceivableWriteOffReason {
   BAD_DEBT
   SMALL_BALANCE
@@ -3289,6 +3336,7 @@ model PaymentReceipt {
   documentFile      PlatformFile?             @relation("PaymentReceiptDocument", fields: [documentFileId], references: [id])
   // Accounting subledger (receipt ↔ ClientInvoice) — the sole allocation ledger (ACC-SET-001).
   clientAllocations ClientReceiptAllocation[]
+  refunds           ClientRefund[]
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, clientId])
@@ -4637,6 +4685,8 @@ enum DocumentType {
   CREDIT_NOTE
   // AR-4 — WO- numbers for receivable write-offs.
   RECEIVABLE_WRITE_OFF
+  // AR-5 — RF- numbers for refunds of client cash held on account.
+  CLIENT_REFUND
 }
 
 enum SequenceStatus {
@@ -4742,6 +4792,8 @@ enum SourceDocType {
   BANK_STATEMENT
   // AR-4 — a client balance written off (bad debt or a small leftover), and its reversal.
   RECEIVABLE_WRITE_OFF
+  // AR-5 — client cash held on account paid back, and its reversal.
+  CLIENT_REFUND
 }
 
 enum AttemptOutcome {

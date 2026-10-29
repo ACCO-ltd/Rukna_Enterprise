@@ -466,7 +466,7 @@ it('AL-11: cannot reverse a receipt that has subsequent (post-payment) allocatio
       reversalDate: '2025-01-26',
       reason:       'AL-11 test',
     }),
-  ).rejects.toThrow(/subsequent|allocation.*must be reversed|has \d+ subsequent/i);
+  ).rejects.toThrow(/applied to invoices after it was posted/i);
 });
 
 // ─── AL-13 ────────────────────────────────────────────────────────────────────

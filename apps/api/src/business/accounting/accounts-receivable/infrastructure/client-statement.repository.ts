@@ -86,6 +86,14 @@ export class ClientStatementRepository {
     });
   }
 
+  /** AR-5 — posted (or posted then reversed) refunds of cash on account. */
+  findRefunds(prisma: TenantPrisma, organizationId: string, clientId: string) {
+    return prisma.clientRefund.findMany({
+      where: { organizationId, clientId, status: { in: ['POSTED', 'REVERSED'] } },
+      select: { id: true, receiptId: true, refundNumber: true, refundDate: true, amount: true, status: true, reference: true, reversalJournalEntryId: true, reversedAt: true },
+    });
+  }
+
   /** Accounting dates of journals by id (reversals are dated by their journal). */
   async journalDates(prisma: TenantPrisma, ids: string[]): Promise<Map<string, Date>> {
     if (ids.length === 0) return new Map();

@@ -13,7 +13,9 @@ export type ClientStatementLineKind =
   | 'RECEIPT'
   | 'RECEIPT_REVERSAL'
   | 'WRITE_OFF'
-  | 'WRITE_OFF_REVERSAL';
+  | 'WRITE_OFF_REVERSAL'
+  | 'REFUND'
+  | 'REFUND_REVERSAL';
 
 export interface ClientStatementLine {
   date: string;
@@ -67,4 +69,27 @@ export interface ReceivableWriteOffView {
   rejectionReason: string | null;
   reversalReason: string | null;
   reversedAt: string | null;
+}
+
+/**
+ * AR-5 — client cash held on account paid back from a bank account. Follows the payment rule: up
+ * to the payment limit it posts at once; above it, it waits for a second person.
+ */
+export interface ClientRefundView {
+  id: string;
+  receiptId: string;
+  receiptNumber: string | null;
+  bankAccountId: string;
+  /** RF-000001 once posted. */
+  refundNumber: string | null;
+  amount: string;
+  refundDate: string;
+  reference: string | null;
+  reason: string;
+  status: 'PENDING_APPROVAL' | 'POSTED' | 'REJECTED' | 'REVERSED';
+  requestedBy: string;
+  requestedByName: string | null;
+  approvedByName: string | null;
+  rejectionReason: string | null;
+  reversalReason: string | null;
 }

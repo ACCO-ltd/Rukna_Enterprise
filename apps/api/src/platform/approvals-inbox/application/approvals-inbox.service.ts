@@ -42,9 +42,10 @@ export class ApprovalsInboxService {
     const barred = (context: Omit<Parameters<SegregationOfDutiesService['violation']>[1], 'organizationId' | 'actorUserId'>) =>
       this.sod.violation(codes, { organizationId: org, actorUserId: me, ...context }) !== null;
 
-    const [invoices, writeOffs, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
+    const [invoices, writeOffs, refunds, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
       has(PERMISSIONS.receivablesManage) ? this.repo.invoicesAwaitingApproval(prisma, org, projects) : [],
       has(PERMISSIONS.receivablesManage) ? this.repo.writeOffsAwaitingApproval(prisma, org) : [],
+      has(PERMISSIONS.receivablesManage) ? this.repo.refundsAwaitingApproval(prisma, org) : [],
       has(PERMISSIONS.journalsManage) ? this.repo.submittedJournals(prisma, org) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.submittedBills(prisma, org, projects) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.draftPayments(prisma, org) : [],
@@ -95,6 +96,23 @@ export class ApprovalsInboxService {
         waitingSince: iso(w.requestedAt),
         requestedBy: w.requestedBy,
         projectId: w.invoice.projectId,
+      });
+    }
+
+    // AR-5 — refunds above the payment limit: money leaves the bank, so a second person decides.
+    for (const r of refunds) {
+      if (r.requestedBy === me) continue;
+      drafts.push({
+        ...base,
+        kind: 'REFUND',
+        id: r.id,
+        parentId: r.receiptId,
+        title: r.receipt.client.name,
+        detail: `${r.receipt.receiptNumber ?? 'Receipt'} · ${r.reason}`,
+        amount: r.amount.toFixed(2),
+        currencyCode: r.receipt.currencyCode,
+        waitingSince: iso(r.requestedAt),
+        requestedBy: r.requestedBy,
       });
     }
 
