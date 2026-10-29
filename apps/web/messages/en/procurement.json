@@ -263,7 +263,8 @@
         "openOrders": "Open orders",
         "weOwe": "We owe"
       }
-    }
+    },
+    "statement": "Statement"
   },
   "material": {
     "title": "Materials",

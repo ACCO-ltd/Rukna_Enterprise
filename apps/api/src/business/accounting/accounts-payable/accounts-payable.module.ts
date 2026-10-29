@@ -25,6 +25,9 @@ import { SupplierService } from './application/supplier.service.js';
 import { SupplierBillController } from './presentation/supplier-bill.controller.js';
 import { SupplierPaymentController } from './presentation/supplier-payment.controller.js';
 import { SupplierController } from './presentation/supplier.controller.js';
+import { SupplierStatementController } from './presentation/supplier-statement.controller.js';
+import { SupplierStatementService } from './application/supplier-statement.service.js';
+import { SupplierStatementRepository } from './infrastructure/supplier-statement.repository.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
 import { PostingProfileRepository } from './infrastructure/posting-profile.repository.js';
 import { PostingProfileService } from './application/posting-profile.service.js';
@@ -50,6 +53,7 @@ import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-pay
     SupplierBillController,
     SupplierPaymentController,
     SupplierController,
+    SupplierStatementController,
     PostingProfileController,
     BuyerAdvanceController,
     AwardPaymentController,
@@ -70,6 +74,8 @@ import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-pay
     SupplierBillDocumentService,
     SupplierPaymentService,
     SupplierService,
+    SupplierStatementService,
+    SupplierStatementRepository,
     BuyerAdvanceService,
     AwardSupplierPaymentService,
     StoreDocumentSettlementService,

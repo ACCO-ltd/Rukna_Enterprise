@@ -144,7 +144,8 @@
     "approvalSettings": "Approval rules",
     "rolesMatrix": "Roles matrix",
     "financeHome": "Home",
-    "clientStatement": "Client statements"
+    "clientStatement": "Client statements",
+    "supplierStatement": "Supplier statements"
   },
   "admin": {
     "title": "Administration",

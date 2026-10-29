@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { ClientStatement, RequestIdentity } from '@erp/types';
+import type { ClientStatement, ClientStatementLineKind, RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ageOpenItems, buildStatementLines, type StatementMovement } from '../domain/client-statement.js';
@@ -63,7 +63,7 @@ export class ClientStatementService {
       (journalId ? journalDates.get(journalId) : undefined) ?? fallback ?? null;
 
     const zero = new Decimal(0);
-    const movements: StatementMovement[] = [];
+    const movements: StatementMovement<Exclude<ClientStatementLineKind, 'OPENING_BALANCE'>>[] = [];
     for (const inv of invoices) {
       const amount = new Decimal(inv.totalAmount.toString());
       const description = inv.projectId ? (projectNames.get(inv.projectId) ?? null) : null;

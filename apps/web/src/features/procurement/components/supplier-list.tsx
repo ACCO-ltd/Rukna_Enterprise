@@ -14,6 +14,7 @@
 
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -81,6 +82,7 @@ export function SupplierList() {
   const canCreate = can(PROCUREMENT_PERMISSIONS.manageSuppliers);
   // Edit and the status commands gate on the permission their endpoints enforce.
   const canManage = can(ACCOUNTING_PERMISSIONS.managePayables);
+  const router = useRouter();
 
   const view = useListViewState(DEFAULT_SORT, {}, { searchOnServer: true });
   const { filters } = view;
@@ -339,6 +341,8 @@ export function SupplierList() {
                   label={tc('rowMenu', { number: row.name })}
                   commands={[
                     { key: 'edit', label: t('edit'), onSelect: () => setEditingId(row.id) },
+                    // AP-3 — the supplier's statement of account.
+                    { key: 'statement', label: t('statement'), onSelect: () => router.push(`/finance/accounting/supplier-statement?supplierId=${row.id}`) },
                     row.status === 'ACTIVE'
                       ? {
                           key: 'deactivate',

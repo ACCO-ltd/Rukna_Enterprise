@@ -156,6 +156,8 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/payments-needed', labelKey: 'paymentsNeeded', iconKey: 'wallet', groupKey: 'payables', permissionKey: 'manage:payable', badge: 'paymentsNeeded' },
       // Step 6 — what is owed to suppliers, by days past due.
       { href: '/finance/accounting/aging/payables', labelKey: 'payablesAging', iconKey: 'clock', groupKey: 'payables' },
+      // AP-3 — a supplier's account, to agree with the statement the supplier sends.
+      { href: '/finance/accounting/supplier-statement', labelKey: 'supplierStatement', iconKey: 'file-text', groupKey: 'payables' },
       // Banking
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'banking' },
       // Step 6 — statement-to-ledger matching. The older subledger-to-GL check keeps its route, now

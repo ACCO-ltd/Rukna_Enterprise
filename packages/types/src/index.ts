@@ -27,3 +27,4 @@ export * from './bank-reconciliation';
 export * from './document-reader';
 export * from './audit-logs';
 export * from './client-statement';
+export * from './supplier-statement';
