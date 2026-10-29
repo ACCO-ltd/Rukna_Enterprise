@@ -303,7 +303,7 @@ describe('ProjectInvoicePage — the invoice as a document inside the project', 
       await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reverse' }));
 
       await waitFor(() =>
-        expect(vi.mocked(invoiceApi.reverseInvoiceCreditNote)).toHaveBeenCalledWith('p1', 'inv-1', 'cn-1', {
+        expect(vi.mocked(invoiceApi.reverseInvoiceCreditNote)).toHaveBeenCalledWith('inv-1', 'cn-1', {
           reversalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
           reason: 'Credited the wrong invoice',
         }),

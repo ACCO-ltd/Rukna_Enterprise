@@ -1127,7 +1127,8 @@
       "description": "Issuing gives the invoice its number and writes the entry below to the ledger. It can only be undone by a reversal.",
       "confirm": "Issue invoice"
     },
-    "needsApproval": "Invoices of {amount} or more need another person’s approval before they are issued."
+    "needsApproval": "Invoices of {amount} or more need another person’s approval before they are issued.",
+    "creditNote": "Issue credit note"
   },
   "openingBalance": {
     "title": "Opening Balance Migration",

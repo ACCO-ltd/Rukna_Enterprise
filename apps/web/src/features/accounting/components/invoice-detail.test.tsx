@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   useAccounts: vi.fn(),
   useApprovalSettings: vi.fn(() => ({ data: { invoiceApprovalAbove: null as string | null } })),
   useClients: vi.fn(),
+  useInvoiceCreditNotes: vi.fn(() => ({ data: [] as unknown[] })),
   searchParams: new URLSearchParams(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock('../hooks/use-invoices', () => ({
   useInvoice: mocks.useInvoice,
   useInvoiceAction: mocks.useInvoiceAction,
   useInvoiceDocumentUrl: mocks.useInvoiceDocumentUrl,
+  useInvoiceCreditNotes: mocks.useInvoiceCreditNotes,
   useCancelInvoice: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   invoiceKeys: { all: ['accounting', 'invoices'] },
 }));
@@ -156,8 +158,46 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
     expect(screen.queryByText('Draft total')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reverse' })).toBeInTheDocument();
+    // AR-1 — a posted invoice with a balance can be credited from Finance, project or not.
+    expect(screen.getByRole('button', { name: 'Issue credit note' })).toBeInTheDocument();
     // ADR-042 step 4 — something is still owed, so a WhatsApp reminder is offered.
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
+
+  it('lists the credit notes raised against the invoice, with Reverse on a posted one (AR-1)', () => {
+    mocks.useInvoiceCreditNotes.mockReturnValue({
+      data: [
+        {
+          id: 'cn1',
+          creditNoteNumber: 'CN-000003',
+          reason: 'PRICE_ERROR',
+          netAmount: '100.00',
+          vatAmount: '0.00',
+          totalAmount: '100.00',
+          accountingDate: '2026-10-20',
+          postingStatus: 'POSTED',
+          note: null,
+          reversedAt: null,
+          reversalReason: null,
+        },
+      ],
+    });
+    mocks.useInvoice.mockReturnValue({
+      data: invoice({
+        invoiceNumber: 'INV-2026-0042',
+        documentStatus: 'APPROVED',
+        postingStatus: 'POSTED',
+        outstandingAmount: '0.00',
+      }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+
+    expect(screen.getByText('CN-000003')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Reverse' }).length).toBeGreaterThan(0);
+    // Nothing left to credit: no new credit note.
+    expect(screen.queryByRole('button', { name: 'Issue credit note' })).not.toBeInTheDocument();
   });
 
   it('offers a reminder on an opening-balance invoice (no Rukna number)', () => {

@@ -39,6 +39,8 @@ export interface CreateCreditNoteDto {
 
 export interface PostCreditNoteDto {
   creditNoteId: string;
+  /** When given, the credit note must belong to this invoice (the Finance route names both). */
+  invoiceId?: string;
   arAccountCode?: string;
   revenueAccountCode?: string;
   vatAccountCode?: string;
@@ -53,6 +55,35 @@ export class CreditNoteService {
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
   ) {}
+
+  // ─── listForInvoice ─────────────────────────────────────────────────────────
+
+  /** AR-1 — the credit notes raised against an invoice, oldest first. */
+  async listForInvoice(identity: RequestIdentity, invoiceId: string) {
+    const prisma = this.tenancyService.getClient() as TenantPrisma;
+    const orgId = identity.activeOrganizationId;
+    const invoice = await prisma.clientInvoice.findFirst({ where: { id: invoiceId, organizationId: orgId }, select: { id: true } });
+    if (!invoice) throw new NotFoundException({ errorCode: 'INVOICE_NOT_FOUND', message: `Invoice ${invoiceId} not found` });
+    const rows = await prisma.creditNote.findMany({
+      where: { invoiceId, organizationId: orgId },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((cn) => ({
+      id: cn.id,
+      creditNoteNumber: cn.creditNoteNumber,
+      reason: cn.reason,
+      netAmount: cn.netAmount.toFixed(2),
+      vatAmount: cn.vatAmount.toFixed(2),
+      totalAmount: cn.totalAmount.toFixed(2),
+      accountingDate: cn.accountingDate.toISOString().slice(0, 10),
+      postingStatus: cn.postingStatus,
+      note: cn.note,
+      reversedAt: cn.reversedAt ? cn.reversedAt.toISOString() : null,
+      reversalReason: cn.reversalReason,
+      postedJournalEntryId: cn.postedJournalEntryId,
+      reversalJournalEntryId: cn.reversalJournalEntryId,
+    }));
+  }
 
   // ─── createCreditNote ──────────────────────────────────────────────────────
 
@@ -184,7 +215,9 @@ export class CreditNoteService {
     const creditNote = await outerPrisma.creditNote.findFirst({
       where: { id: dto.creditNoteId, organizationId: orgId },
     });
-    if (!creditNote) throw new NotFoundException(`CreditNote ${dto.creditNoteId} not found`);
+    if (!creditNote || (dto.invoiceId && creditNote.invoiceId !== dto.invoiceId)) {
+      throw new NotFoundException({ errorCode: 'CREDIT_NOTE_NOT_FOUND', message: `Credit note ${dto.creditNoteId} not found` });
+    }
 
     if (creditNote.postingStatus === 'POSTED') {
       throw new ConflictException(`CreditNote ${dto.creditNoteId} is already posted`);
@@ -202,14 +235,31 @@ export class CreditNoteService {
       dto.arAccountCode,
       'ACCOUNTS_RECEIVABLE',
     );
-    const revAccount = await this.resolver.resolveByCodeOrRole(
-      outerPrisma as never,
-      orgId,
-      dto.revenueAccountCode,
-      'PROJECT_REVENUE',
-    );
-
     const netAmount = new Decimal(creditNote.netAmount.toString());
+
+    // Revenue comes back off the account(s) the invoice recognised it on (AR-1). A hand-typed
+    // invoice names an income account per line, so with no account given the credit is split
+    // across those accounts in proportion to the line amounts. Only an invoice without lines (a
+    // certificate, a stage payment) falls back to the project revenue role.
+    const invoiceLines = await outerPrisma.clientInvoiceLine.findMany({
+      where: { invoiceId: creditNote.invoiceId },
+      select: { amount: true, revenueAccountId: true },
+    });
+    const revenueSplit: Array<{ accountId: string; amount: Decimal }> =
+      dto.revenueAccountCode || invoiceLines.length === 0
+        ? [
+            {
+              accountId: (
+                await this.resolver.resolveByCodeOrRole(outerPrisma as never, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE')
+              ).id,
+              amount: netAmount,
+            },
+          ]
+        : splitByWeight(
+            netAmount,
+            invoiceLines.map((l) => ({ key: l.revenueAccountId, weight: new Decimal(l.amount.toString()) })),
+          ).map((b) => ({ accountId: b.key, amount: b.amount }));
+
     const vatAmount = new Decimal(creditNote.vatAmount.toString());
     const totalAmount = new Decimal(creditNote.totalAmount.toString());
 
@@ -314,9 +364,9 @@ export class CreditNoteService {
         projectId: invoice?.projectId ?? undefined,
         contractId: invoice?.contractId ?? undefined,
       };
-      const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
-        { accountId: revAccount.id, debitAmount: netAmount, creditAmount: new Decimal(0), ...tags },
-      ];
+      const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = revenueSplit
+        .filter((r) => r.amount.gt(0))
+        .map((r) => ({ accountId: r.accountId, debitAmount: r.amount, creditAmount: new Decimal(0), ...tags }));
 
       if (vatAccount && vatAmount.gt(0)) {
         lines.push({
@@ -475,4 +525,21 @@ export class CreditNoteService {
       return reversed;
     });
   }
+}
+
+/**
+ * Splits `total` across keys in proportion to their weights, to the cent, merging repeated keys.
+ * The rounding remainder goes to the largest bucket, so the parts always add up to `total`.
+ */
+export function splitByWeight(total: Decimal, items: Array<{ key: string; weight: Decimal }>): Array<{ key: string; amount: Decimal }> {
+  const merged = new Map<string, Decimal>();
+  for (const item of items) merged.set(item.key, (merged.get(item.key) ?? new Decimal(0)).plus(item.weight));
+  const entries = [...merged].filter(([, w]) => w.gt(0));
+  const sum = entries.reduce((acc, [, w]) => acc.plus(w), new Decimal(0));
+  if (entries.length === 0 || sum.isZero()) return [];
+  const parts = entries.map(([key, w]) => ({ key, amount: total.mul(w).div(sum).toDecimalPlaces(2, Decimal.ROUND_DOWN) }));
+  const remainder = total.minus(parts.reduce((acc, p) => acc.plus(p.amount), new Decimal(0)));
+  const largest = parts.reduce((best, p, i) => (entries[i]![1].gt(entries[best]![1]) ? i : best), 0);
+  parts[largest]!.amount = parts[largest]!.amount.plus(remainder);
+  return parts;
 }

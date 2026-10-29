@@ -155,9 +155,9 @@ export function useIssueCreditNote(projectId: string, invoiceId: string) {
     { payload: CreateInvoiceCreditNotePayload; existingId?: string | null }
   >({
     mutationFn: async ({ payload, existingId }) => {
-      const id = existingId ?? (await createInvoiceCreditNote(projectId, invoiceId, payload)).id;
+      const id = existingId ?? (await createInvoiceCreditNote(invoiceId, payload)).id;
       try {
-        const posted = await postInvoiceCreditNote(projectId, invoiceId, id);
+        const posted = await postInvoiceCreditNote(invoiceId, id);
         return { id, creditNoteNumber: posted.creditNoteNumber ?? null };
       } catch (err) {
         const error = (err instanceof Error ? err : new Error(String(err))) as Error & {
@@ -186,7 +186,7 @@ export function useReverseCreditNote(projectId: string, invoiceId: string) {
   const invalidate = useInvalidateInvoice(projectId);
   return useMutation({
     mutationFn: ({ creditNoteId, reason }: { creditNoteId: string; reason: string }) =>
-      reverseInvoiceCreditNote(projectId, invoiceId, creditNoteId, {
+      reverseInvoiceCreditNote(invoiceId, creditNoteId, {
         reversalDate: new Date().toISOString().slice(0, 10),
         reason,
       }),

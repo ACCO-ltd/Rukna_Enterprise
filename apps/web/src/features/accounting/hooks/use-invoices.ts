@@ -1,5 +1,6 @@
 'use client';
 
+import { listInvoiceCreditNotes } from '@/features/commercial/api/commercial-invoice-api';
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
@@ -36,7 +37,17 @@ export const invoiceKeys = {
   list: (filters: { clientId?: string; projectId?: string } = {}) =>
     [...invoiceKeys.all, 'list', filters.clientId ?? 'all', filters.projectId ?? 'all'] as const,
   detail: (id: string) => [...invoiceKeys.all, 'detail', id] as const,
+  creditNotes: (id: string) => [...invoiceKeys.all, 'credit-notes', id] as const,
 };
+
+/** AR-1 — the credit notes raised against an invoice (any invoice, project or not). */
+export function useInvoiceCreditNotes(invoiceId: string, enabled = true) {
+  return useQuery({
+    queryKey: invoiceKeys.creditNotes(invoiceId),
+    queryFn: () => listInvoiceCreditNotes(invoiceId),
+    enabled: enabled && Boolean(invoiceId),
+  });
+}
 
 export function useInvoices(
   filters: { clientId?: string; projectId?: string } = {},

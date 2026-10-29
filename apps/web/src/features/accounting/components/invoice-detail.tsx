@@ -23,7 +23,9 @@ import { canSendReminder, daysOverdue } from '@/features/communications/reminder
 
 import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
-import { invoiceKeys, useCancelInvoice, useInvoice, useInvoiceAction } from '../hooks/use-invoices';
+import { invoiceKeys, useCancelInvoice, useInvoice, useInvoiceAction, useInvoiceCreditNotes } from '../hooks/use-invoices';
+import { CreditNoteDialog } from '@/features/commercial/components/credit-note-dialog';
+import { InvoiceCreditNotes } from '@/features/commercial/components/invoice-credit-notes';
 import {
   canIssue,
   canPost,
@@ -78,6 +80,8 @@ export function InvoiceDetail({
   const { user } = useSession();
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
+  const [creditOpen, setCreditOpen] = useState(false);
+  const creditNotes = useInvoiceCreditNotes(invoiceId, invoice.data?.postingStatus === 'POSTED' || invoice.data?.postingStatus === 'REVERSED');
 
   useModuleTrail(invoice.data ? (invoice.data.invoiceNumber ?? t('unnumbered')) : undefined);
 
@@ -118,6 +122,8 @@ export function InvoiceDetail({
     Boolean(data.invoiceNumber);
   // ADR-042 step 4 — a manual payment / overdue reminder while something is still outstanding.
   const remindable = canSendReminder(data);
+  // AR-1 — a posted invoice with a balance can be credited (the server caps it at the balance).
+  const canCredit = issued && toMinorUnits(data.outstandingAmount, MONEY_SCALE) > 0;
   // Post needs a ready ledger. When it is not, the action is withheld and the notice below the
   // header says why and where to fix it — never a button that fails and rolls back (A7).
   const ledgerBlocked = ledgerBlockedState;
@@ -210,6 +216,14 @@ export function InvoiceDetail({
                 </Button>
               ) : null}
 
+              {/* AR-1 — the way to correct an issued invoice short of reversing it: any posted
+                  invoice with a balance, project or not. */}
+              {canCredit ? (
+                <Button variant="outline" onClick={() => setCreditOpen(true)}>
+                  {t('creditNote')}
+                </Button>
+              ) : null}
+
               {canReverse(data) ? (
                 <Button variant="outline" onClick={() => setDialog('reverse')}>
                   {t('reverse')}
@@ -233,7 +247,26 @@ export function InvoiceDetail({
 
       {data.isManual && data.lines && data.lines.length > 0 ? <ManualLinesTable invoice={data} locale={locale} /> : null}
 
+      <InvoiceCreditNotes
+        projectId={data.projectId ?? ''}
+        invoiceId={data.id}
+        creditNotes={creditNotes.data ?? []}
+        hidden={false}
+        canReverse={mayManage}
+      />
+
       <AttachmentsPanel kind="INVOICE" ownerId={data.id} />
+
+      {canCredit ? (
+        <CreditNoteDialog
+          open={creditOpen}
+          onOpenChange={setCreditOpen}
+          projectId={data.projectId ?? ''}
+          invoiceId={data.id}
+          invoiceNumber={data.invoiceNumber}
+          balanceDue={data.outstandingAmount}
+        />
+      ) : null}
 
       {state === 'DRAFT' ? (
         <p className="text-caption text-muted-foreground">{t('approveHint')}</p>

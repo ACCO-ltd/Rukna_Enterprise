@@ -55,6 +55,10 @@ function buildPrisma(overrides: Partial<{
     clientInvoice: {
       findFirst: jest.fn().mockResolvedValue(invoiceReturnValue),
     },
+    // An invoice without lines (a certificate) credits the project revenue role.
+    clientInvoiceLine: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     creditNote: {
       aggregate: jest.fn()
         .mockResolvedValueOnce(overrides.creditNoteAggregate ?? { _sum: { totalAmount: null } })

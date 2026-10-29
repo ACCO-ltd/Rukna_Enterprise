@@ -59,11 +59,10 @@ describe('CreditNoteDialog — the only correction once an invoice is issued', (
 
     await waitFor(() => expect(onIssued).toHaveBeenCalledWith('CN-0001'));
     expect(invoiceApi.createInvoiceCreditNote).toHaveBeenCalledWith(
-      'p1',
       'inv-1',
       expect.objectContaining({ reason: 'PRICE_ERROR', netAmount: '200.00' }),
     );
-    expect(invoiceApi.postInvoiceCreditNote).toHaveBeenCalledWith('p1', 'inv-1', 'cn-1');
+    expect(invoiceApi.postInvoiceCreditNote).toHaveBeenCalledWith('inv-1', 'cn-1');
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
