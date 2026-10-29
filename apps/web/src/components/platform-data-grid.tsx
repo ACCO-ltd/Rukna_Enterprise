@@ -147,6 +147,9 @@ export interface SelectionConfig {
   actions: React.ReactNode;
 }
 
+/** The accessible name of a row's checkbox: "Select Omar Nur". Falls back to the row key. */
+export type SelectionRowLabel<T> = (row: T) => string;
+
 // ─── Sort ─────────────────────────────────────────────────────────────────────
 
 type SortDirection = 'asc' | 'desc';
@@ -471,6 +474,8 @@ export interface PlatformDataGridProps<T> {
    * a checkbox column that does nothing is not useful.
    */
   selection?: SelectionConfig;
+  /** What a row's checkbox names — the row's title ("Omar Nur"), read as "Select Omar Nur". */
+  selectionRowLabel?: SelectionRowLabel<T>;
 
   // ── States ─────────────────────────────────────────────────────────────────
 
@@ -647,6 +652,7 @@ export function PlatformDataGrid<T>({
   columnVisibility: enableColumnVisibility,
   pagination: paginationConfig,
   selection,
+  selectionRowLabel,
   isLoading,
   isError,
   onRetry,
@@ -1247,7 +1253,7 @@ export function PlatformDataGrid<T>({
       {hasSelection && selection && selection.selected.size > 0 ? (
         <div className="flex items-center gap-3 border-b border-border bg-brand-accent px-4 py-2">
           <span className="text-sm font-medium text-foreground">
-            {selection.selected.size} selected
+            {t('selectedCount', { count: selection.selected.size })}
           </span>
           {selection.actions}
         </div>
@@ -1383,7 +1389,7 @@ export function PlatformDataGrid<T>({
                 {hasSelection && selection ? (
                   <TableHead className="w-10">
                     <Checkbox
-                      aria-label="Select all"
+                      aria-label={t('selectAll')}
                       checked={
                         visible.length > 0 &&
                         visible.every((row) => selection.selected.has(rowKey(row)))
@@ -1477,7 +1483,7 @@ export function PlatformDataGrid<T>({
                       {hasSelection && selection ? (
                         <TableCell className="w-10">
                           <Checkbox
-                            aria-label={`Select ${rowKey(row)}`}
+                            aria-label={t('selectRow', { name: selectionRowLabel?.(row) ?? rowKey(row) })}
                             checked={selection.selected.has(rowKey(row))}
                             onChange={(e) => selection.onSelect(rowKey(row), e.target.checked)}
                           />

@@ -25,6 +25,7 @@ import {
   TableScroll,
   Textarea,
   StatusPill,
+  SkeletonTable,
 } from '@erp/ui';
 
 import { statusTone } from '@/lib/status-registry';
@@ -118,7 +119,7 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
     >
       <div className="space-y-4">
         {isPending ? (
-          <div className="h-32 animate-pulse rounded-panel border border-border bg-muted" />
+          <SkeletonTable columns={5} rows={3} label={tCommon('loading')} />
         ) : isError ? (
           <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
         ) : data.length === 0 ? (

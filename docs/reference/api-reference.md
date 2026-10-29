@@ -339,7 +339,7 @@ to the default. `GET` needs `view:project`; the writes need `manage:organization
 | `GET` | `/roles` | List roles for the authenticated org |
 | `GET` | `/roles/matrix` | Step 3. `view:role`. `{ roles: (RoleSummary & { permissionIds: string[] })[] }`: every role with the permission ids it grants, in one read, for the roles matrix. Saving uses `PUT /roles/:id/permissions` per changed role. |
 | `GET` | `/permissions` | List all platform permissions |
-| `GET` | `/audit-logs` | List audit log entries |
+| `GET` | `/audit-logs` | Step 8. `view:audit-logs`. Query `search` (action, resource, record id, reason, person's name or email), `resource`, `userId`, `from`/`to` (inclusive YYYY-MM-DD), `page`, `pageSize` (default 50, max 100). Returns `AuditLogPage` `{ items: [{ id, createdAt, action, resource, resourceId, reason, ipAddress, user: { id, name, email } \| null }], total, page, pageSize, facets: { resources, users } }`, newest first. (Was a bare array capped at the latest 50, with no names.) |
 
 ---
 

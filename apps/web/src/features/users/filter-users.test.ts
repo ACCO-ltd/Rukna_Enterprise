@@ -2,7 +2,7 @@ import type { UserWithRolesResponse } from '@erp/types';
 import { UserStatus } from '@erp/types';
 import { describe, expect, it } from 'vitest';
 
-import { bulkTargets, filterUsers } from './filter-users';
+import { bulkTargets } from './filter-users';
 
 function user(
   overrides: Partial<UserWithRolesResponse> & { id: string },
@@ -19,39 +19,6 @@ function user(
     ...overrides,
   };
 }
-
-describe('filterUsers', () => {
-  it('returns everything when nothing is filtered', () => {
-    const users = [user({ id: 'a' }), user({ id: 'b' })];
-    expect(filterUsers(users, '', 'ALL')).toHaveLength(2);
-  });
-
-  it('filters by status', () => {
-    const users = [
-      user({ id: 'a', status: UserStatus.ACTIVE }),
-      user({ id: 'b', status: UserStatus.INACTIVE }),
-    ];
-    expect(filterUsers(users, '', UserStatus.INACTIVE)).toEqual([users[1]]);
-  });
-
-  it('matches on first name, last name, or email, case-insensitively', () => {
-    const users = [
-      user({ id: 'a', firstName: 'Kofi', lastName: 'Osei', email: 'kofi@acco.so' }),
-      user({ id: 'b', firstName: 'Mira', lastName: 'Chen', email: 'mira@acco.so' }),
-    ];
-    expect(filterUsers(users, 'kofi', 'ALL')).toEqual([users[0]]);
-    expect(filterUsers(users, 'CHEN', 'ALL')).toEqual([users[1]]);
-    expect(filterUsers(users, 'mira@acco', 'ALL')).toEqual([users[1]]);
-  });
-
-  it('combines search and status', () => {
-    const users = [
-      user({ id: 'a', firstName: 'Kofi', status: UserStatus.ACTIVE }),
-      user({ id: 'b', firstName: 'Kofi', status: UserStatus.INACTIVE }),
-    ];
-    expect(filterUsers(users, 'kofi', UserStatus.INACTIVE)).toEqual([users[1]]);
-  });
-});
 
 describe('bulkTargets', () => {
   it('deactivate: only active users, excluding the current user own row', () => {

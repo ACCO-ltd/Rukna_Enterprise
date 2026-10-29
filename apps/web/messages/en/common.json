@@ -118,7 +118,10 @@
     "groupNone": "None",
     "density": "Row density",
     "densityComfortable": "Comfortable rows",
-    "densityCompact": "Compact rows"
+    "densityCompact": "Compact rows",
+    "selectedCount": "{count, plural, one {# selected} other {# selected}}",
+    "selectAll": "Select all rows on this page",
+    "selectRow": "Select {name}"
   },
   "emptyState": {
     "noData": "No items yet",

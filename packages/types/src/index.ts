@@ -25,3 +25,4 @@ export * from './finance-attachments';
 export * from './setup-import';
 export * from './bank-reconciliation';
 export * from './document-reader';
+export * from './audit-logs';

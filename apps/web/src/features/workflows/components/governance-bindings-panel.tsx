@@ -21,6 +21,7 @@ import {
   TableRow,
   TableScroll,
   StatusPill,
+  SkeletonTable,
 } from '@erp/ui';
 
 import { statusTone } from '@/lib/status-registry';
@@ -46,13 +47,7 @@ export function GovernanceBindingsPanel() {
       </div>
 
       {isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tCommon('loading')}</span>
-          <div
-            className="h-40 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
+        <SkeletonTable columns={4} rows={4} label={tCommon('loading')} />
       ) : isError ? (
         <LoadError message={t('loadFailed')} onRetry={() => void refetch()} />
       ) : data.length === 0 ? (

@@ -1795,6 +1795,15 @@
       "role": "Role",
       "status": "Status",
       "language": "Preferred Language"
+    },
+    "eyebrow": "People",
+    "headerSummary": "{count, plural, one {# user} other {# users}} · {active} active",
+    "countLabel": "{count, plural, one {# user} other {# users}}",
+    "views": {
+      "label": "User views",
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive"
     }
   },
   "roles": {
@@ -1903,18 +1912,49 @@
       "save": "Save changes",
       "saving": "Saving…",
       "loadFailed": "The roles matrix could not be loaded."
-    }
+    },
+    "eyebrow": "People",
+    "headerSummary": "{count, plural, one {# role} other {# roles}} · {custom} custom",
+    "countLabel": "{count, plural, one {# role} other {# roles}}",
+    "filterNoMembers": "Nobody holds it",
+    "views": {
+      "label": "Role views",
+      "all": "All",
+      "custom": "Custom",
+      "system": "System",
+      "unused": "Unused"
+    },
+    "systemRole": "System",
+    "customRole": "Custom",
+    "protected": "Protected"
   },
   "auditLogs": {
     "title": "Audit logs",
     "subtitle": "The record of who changed what, and when.",
-    "empty": "No audit log entries.",
+    "empty": "No audit log entries yet.",
     "loadFailed": "Could not load audit logs.",
-    "retry": "Retry",
     "colTime": "Time",
     "colUser": "User",
     "colAction": "Action",
-    "colResource": "Resource"
+    "colResource": "Resource",
+    "eyebrow": "Evidence",
+    "emptyHint": "Every approval, posting, reversal and change to settings is recorded here as it happens.",
+    "headerSummary": "{count, plural, one {# entry} other {# entries}}",
+    "countLabel": "{count, plural, one {# entry} other {# entries}}",
+    "searchLabel": "Search the audit log",
+    "searchPlaceholder": "Search by person, action, record or reason",
+    "noMatches": "No entries match these filters.",
+    "unknownUser": "Unknown user",
+    "reason": "Reason: {reason}",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "export": "Export",
+    "exportFailed": "The audit log could not be exported. Try again.",
+    "exportCapped": "Exported the newest {limit} of {total} entries. Narrow the dates to export the rest.",
+    "colEmail": "Email",
+    "colReason": "Reason",
+    "colRecord": "Record",
+    "colIp": "IP address"
   },
   "workflows": {
     "title": "Approval workflows",

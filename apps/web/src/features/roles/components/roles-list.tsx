@@ -1,59 +1,63 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
-  Alert,
   Badge,
   Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  FilterBar,
-  FilterField,
-  Input,
+  EmptyState,
+  type FilterValues,
+  type ListFilterField,
   OverflowGlyph,
   RowActions,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
 } from '@erp/ui';
+import { Plus, ShieldCheck } from 'lucide-react';
 
-import type { RoleSummary } from '@erp/types';
+import type { RoleSummary, SavedViewState } from '@erp/types';
 import { PERMISSIONS } from '@erp/types';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useUsers } from '@/features/users/hooks/use-users';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import {
+  PlatformDataGrid,
+  searchRows,
+  type GridColumn,
+  type SortState,
+} from '@/components/platform-data-grid';
+import { ListViewsBar, type BuiltInView } from '@/features/saved-views/components/list-views-bar';
+import { useListViewState } from '@/features/saved-views/hooks/use-list-view-state';
 import { ApiError } from '@/lib/api-client';
-import { AdminPanel } from '@/features/admin/components/admin-panel';
 
 import { useDeleteRole, useRoles } from '../hooks/use-roles';
-import { filterRoles, type RoleKindFilter } from '../filter-roles';
-import {
-  CreateRoleDialog,
-  EditRoleDialog,
-  ManagePermissionsDialog,
-} from './role-form-dialogs';
+import { CreateRoleDialog, EditRoleDialog, ManagePermissionsDialog } from './role-form-dialogs';
 import { RoleGovernanceDialog } from './role-governance-dialog';
 
 type ActiveDialog = 'edit' | 'permissions' | 'governance';
 
+const DEFAULT_SORT: SortState = { key: 'name', direction: 'asc' };
+
+/** Whether a role passes the list's filters. */
+export function roleMatchesFilters(role: RoleSummary, filters: FilterValues): boolean {
+  if (filters.kind && role.kind !== filters.kind) return false;
+  if (filters.members === 'none' && role.memberCount > 0) return false;
+  return true;
+}
+
+/**
+ * Administration → Roles (ADR-047 list page). There is deliberately no bulk selection on roles:
+ * deletion is a single, consequence-heavy act. SYSTEM roles are protected — review only.
+ */
 export function RolesList() {
   const t = useTranslations('platform.roles');
-  const tCommon = useTranslations('common');
   const { can } = usePermissions();
   const canManage = can(PERMISSIONS.rolesManage);
-  const searchId = useId();
-  const kindFilterId = useId();
 
-  const { data, isPending, isError, refetch, isFetching } = useRoles();
+  const { data, isPending, isError, refetch } = useRoles();
   const users = useUsers();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -61,15 +65,20 @@ export function RolesList() {
   const [dialog, setDialog] = useState<ActiveDialog | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RoleSummary | null>(null);
 
-  const [query, setQuery] = useState('');
-  const [kindFilter, setKindFilter] = useState<RoleKindFilter>('ALL');
-
+  const view = useListViewState(DEFAULT_SORT);
+  const { filters } = view;
   const remove = useDeleteRole();
 
+  const all = useMemo(() => data ?? [], [data]);
   const rows = useMemo(
-    () => filterRoles(data ?? [], query, kindFilter),
-    [data, query, kindFilter],
+    () => all.filter((role) => roleMatchesFilters(role, filters)),
+    [all, filters],
   );
+  const ownerEmail = (role: RoleSummary) =>
+    users.data?.find((u) => u.id === role.ownerUserId)?.email ?? t('unassigned');
+  // The template is named, never shown as an id.
+  const templateName = (role: RoleSummary) =>
+    role.templateRoleId ? (all.find((r) => r.id === role.templateRoleId)?.name ?? null) : null;
 
   function openDialog(next: ActiveDialog, role: RoleSummary) {
     setTarget(role);
@@ -99,232 +108,257 @@ export function RolesList() {
         ? t('deleteFailed')
         : undefined;
 
-  if (isPending) {
-    return (
-      <AdminPanel title={t('title')} description={t('subtitle')}>
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tCommon('loading')}</span>
-          <div
-            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
-      </AdminPanel>
-    );
-  }
+  const columns: GridColumn<RoleSummary>[] = [
+    {
+      key: 'name',
+      header: t('colName'),
+      sticky: true,
+      sortable: true,
+      card: 'title',
+      plainValue: (role) => `${role.name} ${role.purpose ?? role.description ?? ''}`,
+      exportValue: (role) => role.name,
+      render: (role) => (
+        <span className="flex items-center gap-2">
+          <span className="font-medium text-foreground">{role.name}</span>
+          <Badge tone="neutral">{role.kind === 'SYSTEM' ? t('systemRole') : t('customRole')}</Badge>
+        </span>
+      ),
+    },
+    {
+      key: 'governance',
+      header: t('colGovernance'),
+      card: 'subtitle',
+      plainValue: (role) => role.purpose ?? role.description ?? '',
+      exportValue: (role) => [role.purpose ?? role.description ?? '', ownerEmail(role)].join(' · '),
+      render: (role) => (
+        <span className="block text-muted-foreground">
+          <span className="block max-w-[28rem]">
+            {role.purpose ?? role.description ?? t('noDescription')}
+          </span>
+          <span className="mt-1 block text-caption">
+            {t('ownerLabel')}: {ownerEmail(role)}
+          </span>
+          {templateName(role) ? (
+            <span className="block text-caption">
+              {t('templateLabel')}: {templateName(role)}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'permissions',
+      header: t('colPermissions'),
+      numeric: true,
+      sortable: true,
+      plainValue: (role) => role.permissionCount,
+      render: (role) => (
+        <span className="tabular-nums text-muted-foreground">{role.permissionCount}</span>
+      ),
+    },
+    {
+      key: 'members',
+      header: t('colMembers'),
+      numeric: true,
+      sortable: true,
+      card: 'meta',
+      plainValue: (role) => role.memberCount,
+      render: (role) => (
+        <span className="tabular-nums text-muted-foreground">{role.memberCount}</span>
+      ),
+    },
+  ];
 
-  if (isError) {
-    return (
-      <AdminPanel title={t('title')} description={t('subtitle')}>
-        <Alert variant="error" messages={[t('loadFailed')]}>
-          <div className="mt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void refetch();
-              }}
-              disabled={isFetching}
-            >
-              {t('retry')}
-            </Button>
-          </div>
-        </Alert>
-      </AdminPanel>
-    );
-  }
+  const filterFields: ListFilterField[] = [
+    {
+      key: 'kind',
+      type: 'select',
+      label: t('filterKind'),
+      options: [
+        { value: 'SYSTEM', label: t('filterSystem') },
+        { value: 'CUSTOM', label: t('filterCustom') },
+      ],
+    },
+    {
+      key: 'members',
+      type: 'select',
+      label: t('colMembers'),
+      options: [{ value: 'none', label: t('filterNoMembers') }],
+    },
+  ];
 
-  const columnCount = 4 + (canManage ? 1 : 0);
+  const countFor = (state: SavedViewState): number =>
+    searchRows(
+      all.filter((role) => roleMatchesFilters(role, state.filters ?? {})),
+      state.search ?? '',
+      columns,
+    ).length;
+  const builtInViews: Omit<BuiltInView, 'count'>[] = [
+    { id: 'all', label: t('views.all'), state: { sort: DEFAULT_SORT } },
+    {
+      id: 'custom',
+      label: t('views.custom'),
+      state: { filters: { kind: 'CUSTOM' }, sort: DEFAULT_SORT },
+    },
+    {
+      id: 'system',
+      label: t('views.system'),
+      state: { filters: { kind: 'SYSTEM' }, sort: DEFAULT_SORT },
+    },
+    {
+      id: 'unused',
+      label: t('views.unused'),
+      state: { filters: { members: 'none' }, sort: DEFAULT_SORT },
+    },
+  ];
+  const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
+
+  const customCount = all.filter((role) => role.kind === 'CUSTOM').length;
+  const headerSummary =
+    all.length === 0 ? undefined : t('headerSummary', { count: all.length, custom: customCount });
+
+  const createAction = canManage ? (
+    <Button type="button" onClick={() => setCreateOpen(true)}>
+      <Plus className="size-4" aria-hidden="true" />
+      {t('addRole')}
+    </Button>
+  ) : undefined;
 
   return (
-    <AdminPanel
-      title={t('title')}
-      description={t('subtitle')}
-      actions={
-        canManage ? (
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            {t('addRole')}
-          </Button>
-        ) : null
-      }
-    >
-      <div className="space-y-6">
-        {data.length === 0 ? (
-          <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-            <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-          </div>
-        ) : (
-          <>
-            <FilterBar>
-              <FilterField id={searchId} label={t('searchLabel')} hideLabel grow>
-                <Input
-                  id={searchId}
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t('searchPlaceholder')}
-                  autoComplete="off"
-                />
-              </FilterField>
-              <FilterField id={kindFilterId} label={t('filterKind')}>
-                <Select
-                  id={kindFilterId}
-                  value={kindFilter}
-                  onChange={(next) => setKindFilter(next as RoleKindFilter)}
-                >
-                  <option value="ALL">{t('filterAll')}</option>
-                  <option value="SYSTEM">{t('filterSystem')}</option>
-                  <option value="CUSTOM">{t('filterCustom')}</option>
-                </Select>
-              </FilterField>
-            </FilterBar>
+    <div className="space-y-5">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={t('title')}
+        summary={headerSummary ?? t('subtitle')}
+        actions={createAction}
+      />
+      <PlatformDataGrid
+        columns={columns}
+        data={rows}
+        rowKey={(role) => role.id}
+        label={t('title')}
+        isLoading={isPending}
+        isError={isError}
+        onRetry={() => void refetch()}
+        errorMessage={t('loadFailed')}
+        searchLabel={t('searchLabel')}
+        searchPlaceholder={t('searchPlaceholder')}
+        noMatchMessage={t('noMatches')}
+        resultLabel={(count) => t('countLabel', { count })}
+        pagination={{ defaultPageSize: 25 }}
+        columnVisibility
+        listState={view.listState}
+        savedViews={
+          <ListViewsBar
+            listKey="roles"
+            builtIns={builtIns}
+            current={view.current}
+            onApply={view.applyView}
+            countFor={countFor}
+            label={t('views.label')}
+          />
+        }
+        exportAs={{ fileName: 'roles', sheetName: t('title') }}
+        shortcuts={{ onNew: canManage ? () => setCreateOpen(true) : undefined }}
+        filters={filterFields}
+        filterValues={filters}
+        onFilterValuesChange={view.setFilters}
+        emptyState={
+          all.length === 0 ? (
+            <EmptyState
+              icon={<ShieldCheck size={20} aria-hidden="true" />}
+              title={t('empty')}
+              description={t('emptyHint')}
+              action={createAction}
+            />
+          ) : undefined
+        }
+        rowActions={
+          canManage
+            ? (role) =>
+                role.kind === 'CUSTOM' ? (
+                  <RowActions
+                    overflow={
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('rowMenuLabel', { name: role.name })}
+                          >
+                            <OverflowGlyph />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => openDialog('governance', role)}>
+                            {t('actions.viewImpact')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => openDialog('edit', role)}>
+                            {t('actions.edit')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => openDialog('permissions', role)}>
+                            {t('actions.managePermissions')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            destructive
+                            onSelect={() => {
+                              remove.reset();
+                              setDeleteTarget(role);
+                            }}
+                          >
+                            {t('actions.delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }
+                  />
+                ) : (
+                  // SYSTEM roles are protected: review only, no edit/delete.
+                  <Button variant="ghost" size="sm" onClick={() => openDialog('governance', role)}>
+                    {t('protected')}
+                  </Button>
+                )
+            : undefined
+        }
+      />
 
-            <TableScroll aria-label={t('title')}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('colName')}</TableHead>
-                    <TableHead>{t('colGovernance')}</TableHead>
-                    <TableHead numeric>{t('colPermissions')}</TableHead>
-                    <TableHead numeric>{t('colMembers')}</TableHead>
-                    {canManage ? (
-                      <TableHead className="text-end">{t('colActions')}</TableHead>
-                    ) : null}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.length === 0 ? (
-                    <TableEmpty colSpan={columnCount}>{t('noMatches')}</TableEmpty>
-                  ) : (
-                    rows.map((role) => (
-                      <TableRow key={role.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">{role.name}</span>
-                            <Badge tone="neutral">
-                              {role.kind === 'SYSTEM' ? t('systemRole') : t('customRole')}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          <div>{role.purpose ?? role.description ?? t('noDescription')}</div>
-                          <div className="mt-1 text-xs">
-                            {t('ownerLabel')}:{' '}
-                            {users.data?.find((u) => u.id === role.ownerUserId)?.email ??
-                              t('unassigned')}
-                          </div>
-                          {role.templateRoleId ? (
-                            <div className="text-xs">
-                              {t('templateLabel')}: {role.templateRoleId}
-                            </div>
-                          ) : null}
-                        </TableCell>
-                        <TableCell numeric className="text-muted-foreground">
-                          {role.permissionCount}
-                        </TableCell>
-                        <TableCell numeric className="text-muted-foreground">
-                          {role.memberCount}
-                        </TableCell>
-                        {canManage ? (
-                          <TableCell className="text-end">
-                            {role.kind === 'CUSTOM' ? (
-                              <RowActions
-                                overflow={
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        aria-label={t('rowMenuLabel', { name: role.name })}
-                                      >
-                                        <OverflowGlyph />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onSelect={() => openDialog('governance', role)}>
-                                        {t('actions.viewImpact')}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onSelect={() => openDialog('edit', role)}>
-                                        {t('actions.edit')}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onSelect={() => openDialog('permissions', role)}
-                                      >
-                                        {t('actions.managePermissions')}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        destructive
-                                        onSelect={() => {
-                                          remove.reset();
-                                          setDeleteTarget(role);
-                                        }}
-                                      >
-                                        {t('actions.delete')}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                }
-                              />
-                            ) : (
-                              // SYSTEM roles are protected: review only, no edit/delete.
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => openDialog('governance', role)}
-                              >
-                                {t('protected')}
-                              </Button>
-                            )}
-                          </TableCell>
-                        ) : null}
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableScroll>
-          </>
-        )}
-
-        {canManage ? (
-          <>
-            <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} />
-            <EditRoleDialog
-              role={dialog === 'edit' ? target : null}
-              onOpenChange={(open) => {
-                if (!open) closeDialog();
+      {canManage ? (
+        <>
+          <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} />
+          <EditRoleDialog
+            role={dialog === 'edit' ? target : null}
+            onOpenChange={(open) => {
+              if (!open) closeDialog();
+            }}
+          />
+          <ManagePermissionsDialog
+            role={dialog === 'permissions' ? target : null}
+            onOpenChange={(open) => {
+              if (!open) closeDialog();
+            }}
+          />
+          <RoleGovernanceDialog
+            role={dialog === 'governance' ? target : null}
+            onOpenChange={(open) => {
+              if (!open) closeDialog();
+            }}
+          />
+          {deleteTarget ? (
+            <ConfirmActionDialog
+              title={t('deleteTitle', { name: deleteTarget.name })}
+              description={t('deleteBody')}
+              confirmLabel={t('actions.delete')}
+              isPending={remove.isPending}
+              errorMessage={deleteError}
+              onConfirm={confirmDelete}
+              onDismiss={() => {
+                setDeleteTarget(null);
+                remove.reset();
               }}
             />
-            <ManagePermissionsDialog
-              role={dialog === 'permissions' ? target : null}
-              onOpenChange={(open) => {
-                if (!open) closeDialog();
-              }}
-            />
-            <RoleGovernanceDialog
-              role={dialog === 'governance' ? target : null}
-              onOpenChange={(open) => {
-                if (!open) closeDialog();
-              }}
-            />
-            {deleteTarget ? (
-              <ConfirmActionDialog
-                title={t('deleteTitle', { name: deleteTarget.name })}
-                description={t('deleteBody')}
-                confirmLabel={t('actions.delete')}
-                isPending={remove.isPending}
-                errorMessage={deleteError}
-                onConfirm={confirmDelete}
-                onDismiss={() => {
-                  setDeleteTarget(null);
-                  remove.reset();
-                }}
-              />
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </AdminPanel>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 }

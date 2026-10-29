@@ -16,6 +16,7 @@ import {
   TableRow,
   TableScroll,
   StatusPill,
+  SkeletonTable,
 } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
@@ -58,10 +59,7 @@ export function DistrictsManager() {
 
   if (isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
-      </div>
+      <SkeletonTable columns={4} label={tCommon('loading')} />
     );
   }
 
