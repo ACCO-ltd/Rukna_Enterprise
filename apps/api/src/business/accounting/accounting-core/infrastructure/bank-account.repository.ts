@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, BankAccount } from '@prisma/client';
+import type { PrismaClient, BankAccount, BankAccountStatus } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -47,6 +48,56 @@ export class BankAccountRepository {
   ) {
     return prisma.bankAccount.create({
       data: { ...data, status: 'ACTIVE' },
+    });
+  }
+
+  /** B-1 — each GL account's posted balance (debit − credit). */
+  async bookBalances(prisma: TenantPrisma, organizationId: string, glAccountIds: string[]): Promise<Map<string, Decimal>> {
+    if (glAccountIds.length === 0) return new Map();
+    const rows = await prisma.journalLine.groupBy({
+      by: ['accountId'],
+      where: { accountId: { in: glAccountIds }, entry: { organizationId, status: 'POSTED' } },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+    return new Map(rows.map((r) => [
+      r.accountId,
+      new Decimal(r._sum.debitAmount?.toString() ?? '0').minus(new Decimal(r._sum.creditAmount?.toString() ?? '0')),
+    ]));
+  }
+
+  /** B-1 — the end date of each account's latest reconciled statement. */
+  async lastReconciled(prisma: TenantPrisma, organizationId: string): Promise<Map<string, Date>> {
+    const rows = await prisma.bankStatement.groupBy({
+      by: ['bankAccountId'],
+      where: { organizationId, status: 'RECONCILED' },
+      _max: { statementDate: true },
+    });
+    return new Map(rows.filter((r) => r._max.statementDate).map((r) => [r.bankAccountId, r._max.statementDate!]));
+  }
+
+  /** B-1 — documents raised on the account that have not posted yet (they would post to a closed account). */
+  async unpostedDocuments(prisma: TenantPrisma, organizationId: string, bankAccountId: string): Promise<number> {
+    const [payments, receipts] = await Promise.all([
+      prisma.supplierPayment.count({
+        where: { organizationId, bankAccountId, postingStatus: { in: ['NOT_POSTED', 'FAILED'] }, documentStatus: { notIn: ['REJECTED', 'CANCELLED'] } },
+      }),
+      prisma.paymentReceipt.count({ where: { organizationId, bankAccountId, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } } }),
+    ]);
+    return payments + receipts;
+  }
+
+  update(
+    prisma: TenantPrisma,
+    id: string,
+    data: Partial<{ accountName: string; bankName: string; accountNumber: string; allowsReceipts: boolean; allowsPayments: boolean }>,
+  ) {
+    return prisma.bankAccount.update({ where: { id }, data });
+  }
+
+  setStatus(prisma: TenantPrisma, id: string, status: BankAccountStatus) {
+    return prisma.bankAccount.update({
+      where: { id },
+      data: { status, closedAt: status === 'CLOSED' ? new Date() : null },
     });
   }
 }

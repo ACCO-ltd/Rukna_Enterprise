@@ -79,6 +79,9 @@ export class ClientRefundService {
     const bank = await prisma.bankAccount.findFirst({ where: { id: input.bankAccountId, organizationId: orgId } });
     if (!bank) throw new NotFoundException({ errorCode: 'BANK_ACCOUNT_NOT_FOUND', message: `Bank account ${input.bankAccountId} not found` });
     if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
+    }
+    if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
       throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} does not make payments.` });
     }
     if (bank.currencyCode !== receipt.currencyCode) {

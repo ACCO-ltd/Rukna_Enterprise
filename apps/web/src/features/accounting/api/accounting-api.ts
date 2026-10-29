@@ -39,6 +39,7 @@ import type {
   RunReconciliationPayload,
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
+  UpdateBankAccountBody,
 } from '../types';
 import type { FinanceApprovalSettings } from '@erp/types';
 
@@ -185,6 +186,24 @@ export function configureBankAccount(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+/** B-1 — correct a bank account's details or what it is used for. */
+export function updateBankAccount(id: string, payload: UpdateBankAccountBody): Promise<BankAccount> {
+  return apiClient<BankAccount>(`/bank-accounts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** B-1 — suspend, reactivate or close (final; needs a zero ledger balance and nothing waiting to post). */
+export function setBankAccountStatus(id: string, status: BankAccount['status']): Promise<BankAccount> {
+  return apiClient<BankAccount>(`/bank-accounts/${id}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
   });
 }
 

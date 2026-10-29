@@ -21,9 +21,12 @@ const mocks = vi.hoisted(() => ({
   useSignatories: vi.fn(),
   useAddSignatory: vi.fn(),
   useRemoveSignatory: vi.fn(),
+  useSetBankAccountStatus: vi.fn(),
+  useUpdateBankAccount: vi.fn(),
 }));
 
 vi.mock('../hooks/use-accounting', () => mocks);
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => '/finance/accounting/bank-accounts', useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/features/users/hooks/use-users', () => ({
   useUsers: () => ({
     data: [{ id: 'u1', firstName: 'Amina', lastName: 'Ali', email: 'amina@acco.com' }],
@@ -83,6 +86,8 @@ const mutate = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.useSetBankAccountStatus.mockReturnValue({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null });
+  mocks.useUpdateBankAccount.mockReturnValue({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null });
   mocks.useBankAccounts.mockReturnValue({ data: [BANK], isPending: false, isError: false });
   mocks.useAccounts.mockReturnValue({
     data: [CASH, RECEIVABLE],
@@ -120,10 +125,20 @@ describe('BankAccounts list', () => {
     expect(screen.queryByText('000123454821')).not.toBeInTheDocument();
   });
 
-  it('says plainly that an account cannot be edited or closed here', () => {
+  it('shows the ledger balance and says when an account was never reconciled (B-1)', () => {
+    mocks.useBankAccounts.mockReturnValue({ data: [{ ...BANK, bookBalance: '1250.00', lastReconciledTo: null }], isPending: false, isError: false });
     renderWithProviders(<BankAccounts />);
 
-    expect(screen.getByText(/cannot be edited, suspended or closed/i)).toBeInTheDocument();
+    expect(screen.getAllByText('$1,250.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Never').length).toBeGreaterThan(0);
+  });
+
+  it('says "Not recorded" instead of masking a placeholder number (B-1)', () => {
+    mocks.useBankAccounts.mockReturnValue({ data: [{ ...BANK, accountNumber: 'Not recorded (10100)' }], isPending: false, isError: false });
+    renderWithProviders(<BankAccounts />);
+
+    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
+    expect(screen.queryByText('****100)')).not.toBeInTheDocument();
   });
 
   it('explains an empty list rather than showing a bare table', () => {

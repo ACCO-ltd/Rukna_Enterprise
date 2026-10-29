@@ -8,6 +8,8 @@ import {
   closeFiscalYear,
   closePeriod,
   configureBankAccount,
+  setBankAccountStatus,
+  updateBankAccount,
   createAccount,
   importChartOfAccounts,
   createFiscalYear,
@@ -93,6 +95,7 @@ import type {
   TrialBalance,
   InvoiceDocumentSettings,
   UpdateInvoiceDocumentSettingsBody,
+  UpdateBankAccountBody,
 } from '../types';
 import { ApiError } from '@/lib/api-client';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
@@ -286,6 +289,26 @@ export function useCreateFiscalYear() {
  * the newly-mapped one has to disappear from it — otherwise the next attempt offers an account
  * that now answers 409.
  */
+/** B-1 — edit a bank account's details. */
+export function useUpdateBankAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; payload: UpdateBankAccountBody }) => updateBankAccount(args.id, args.payload),
+    meta: { successToast: 'accounting.feedback.bankAccountUpdated' },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() }),
+  });
+}
+
+/** B-1 — suspend, reactivate or close a bank account. */
+export function useSetBankAccountStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; status: BankAccount['status'] }) => setBankAccountStatus(args.id, args.status),
+    meta: { successToast: 'accounting.feedback.bankAccountStatusChanged' },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() }),
+  });
+}
+
 export function useConfigureBankAccount() {
   const qc = useQueryClient();
   return useMutation({

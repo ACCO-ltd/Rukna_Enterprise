@@ -193,9 +193,13 @@ export class SupplierPaymentService {
   ): Promise<{ id: string; code: string }> {
     const bank = await prisma.bankAccount.findFirst({
       where: { id: bankAccountId, organizationId: orgId },
-      select: { glAccount: { select: { id: true, code: true } } },
+      select: { accountName: true, status: true, allowsPayments: true, glAccount: { select: { id: true, code: true } } },
     });
     if (!bank) throw new NotFoundException(`BankAccount ${bankAccountId} not found`);
+    // B-1 — an account suspended or closed after the payment was raised no longer pays out.
+    if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
+    }
     if (suppliedCode && suppliedCode !== bank.glAccount.code) {
       throw new ConflictException({
         errorCode: 'BANK_GL_MISMATCH',
@@ -218,6 +222,20 @@ export class SupplierPaymentService {
     const totalAmount = new Decimal(dto.totalAmount);
     if (allocatedAmount.gt(totalAmount)) {
       throw new BadRequestException(`Total allocations exceed payment amount`);
+    }
+
+    // B-1 — money leaves from an account that is open and pays out, in the payment's currency.
+    // (The create path validated no bank account at all — A16.)
+    const bank = await prisma.bankAccount.findFirst({
+      where: { id: dto.bankAccountId, organizationId: orgId },
+      select: { accountName: true, status: true, allowsPayments: true, currencyCode: true },
+    });
+    if (!bank) throw new NotFoundException({ errorCode: 'BANK_ACCOUNT_NOT_FOUND', message: 'Bank account not found.' });
+    if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
+      throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
+    }
+    if (bank.currencyCode !== dto.currencyCode) {
+      throw new BadRequestException({ errorCode: 'CURRENCY_MISMATCH', message: `${bank.accountName} is in ${bank.currencyCode}, the payment in ${dto.currencyCode}.` });
     }
 
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also process a payment to that vendor.

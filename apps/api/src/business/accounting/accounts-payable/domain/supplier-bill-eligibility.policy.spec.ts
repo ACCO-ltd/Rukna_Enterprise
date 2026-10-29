@@ -362,6 +362,7 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
     };
     const prisma = {
       supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'someone' }) },
+      bankAccount: { findFirst: jest.fn().mockResolvedValue({ accountName: 'Bank', status: 'ACTIVE', allowsPayments: true, currencyCode: 'USD', glAccount: { id: 'acct-10200', code: '10200' } }) },
       $transaction: (fn: (t: unknown) => unknown) => fn(tx),
     };
     const billRepo = { findById: jest.fn().mockResolvedValue(bill), updateOutstandingAmount: jest.fn() };

@@ -278,7 +278,6 @@
       "SUSPENDED": "Suspended",
       "CLOSED": "Closed"
     },
-    "readOnlyNote": "A bank account cannot be edited, suspended or closed from here — the API offers no endpoint for it.",
     "create": {
       "new": "New Bank Account",
       "title": "Configure a bank account",
@@ -352,6 +351,45 @@
       "evcProvider": "EVC Plus",
       "explain": "Buyer cash for purchases is handed out only from an account with no signatories — a cash box or an EVC float. Accounts with signatories stay for supplier payments.",
       "formHint": "Keep this account without signatories, so finance can hand out buyer cash at once. Check the ledger account and the number, then save."
+    },
+    "colBalance": "In the ledger",
+    "colReconciled": "Reconciled to",
+    "neverReconciled": "Never",
+    "numberNotRecorded": "Not recorded",
+    "rowMenu": "Actions for {name}",
+    "transactions": "Transactions",
+    "editAction": "Edit",
+    "suspend": "Suspend",
+    "reactivate": "Reactivate",
+    "close": "Close account",
+    "statusTitle": {
+      "SUSPENDED": "Suspend {name}?",
+      "ACTIVE": "Reactivate {name}?",
+      "CLOSED": "Close {name}?"
+    },
+    "statusBody": {
+      "SUSPENDED": "Nothing new can be paid from or into it until it is reactivated. What is already posted stays.",
+      "ACTIVE": "It can be used for payments and receipts again, as its settings allow.",
+      "CLOSED": "Closing is final. The ledger balance must be zero and nothing raised on it may still be waiting to post. Its history stays."
+    },
+    "statusConfirm": {
+      "SUSPENDED": "Suspend",
+      "ACTIVE": "Reactivate",
+      "CLOSED": "Close account"
+    },
+    "edit": {
+      "title": "Edit bank account",
+      "accountName": "Account name",
+      "bankName": "Bank",
+      "accountNumber": "Account number",
+      "numberMissingHint": "No number was recorded when the account was set up.",
+      "allowsReceipts": "Takes money in (receipts)",
+      "allowsPayments": "Pays money out (payments)",
+      "glNote": "The ledger account it posts to cannot change.",
+      "required": "Required.",
+      "failed": "The bank account could not be saved.",
+      "cancel": "Cancel",
+      "save": "Save"
     }
   },
   "reconciliation": {
@@ -1283,7 +1321,9 @@
     "invoiceDraftCreated": "Draft invoice created",
     "paymentReceived": "Payment received and posted",
     "approvalSettingsSaved": "Approval rules saved",
-    "receiptReversed": "Receipt reversed. The invoices it paid owe again."
+    "receiptReversed": "Receipt reversed. The invoices it paid owe again.",
+    "bankAccountUpdated": "Bank account saved",
+    "bankAccountStatusChanged": "Bank account updated"
   },
   "setup": {
     "title": "Set up accounting",

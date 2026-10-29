@@ -648,6 +648,19 @@ export interface BankAccount {
   allowsPayments: boolean;
   isReconcilable: boolean;
   status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+  /** B-1 — what the ledger says is in the account (posted lines on its GL account). */
+  bookBalance?: string;
+  /** B-1 — the end date of the latest reconciled statement, or null. */
+  lastReconciledTo?: string | null;
+}
+
+/** B-1 — `PATCH /bank-accounts/:id`. The GL account never changes. */
+export interface UpdateBankAccountBody {
+  accountName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  allowsReceipts?: boolean;
+  allowsPayments?: boolean;
 }
 
 export interface BankAccountSignatory {

@@ -21,6 +21,7 @@ describe('Accounting SoD wiring (ADR-022)', () => {
     const sod = denyingSod();
     const prisma = {
       supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice' }) },
+      bankAccount: { findFirst: jest.fn().mockResolvedValue({ accountName: 'Bank', status: 'ACTIVE', allowsPayments: true, currencyCode: 'USD', glAccount: { id: 'acct-10200', code: '10200' } }) },
     };
     const svc = new SupplierPaymentService(
       { getClient: () => prisma } as never,
