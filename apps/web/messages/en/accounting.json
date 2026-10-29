@@ -206,7 +206,8 @@
       "done": "Close"
     },
     "emptyAdminOnly": "An administrator has to set up accounting.",
-    "setUp": "Set up accounting"
+    "setUp": "Set up accounting",
+    "colBalance": "Balance today"
   },
   "periods": {
     "title": "Fiscal Periods",
