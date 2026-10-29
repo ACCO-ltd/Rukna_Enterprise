@@ -35,3 +35,32 @@ export class ReverseCreditNoteRequestDto {
   @MaxLength(500)
   reason!: string;
 }
+
+/** AR-4 — write off part or all of an invoice's open balance. */
+export class RequestWriteOffDto {
+  @ApiProperty({ description: 'Decimal string, e.g. "3.50"' })
+  @Matches(/^(?!0+(\.0+)?$)\d{1,15}(\.\d{1,2})?$/, { message: 'amount must be a positive amount with at most 2 decimals' })
+  amount!: string;
+
+  @ApiProperty({ enum: ['BAD_DEBT', 'SMALL_BALANCE'] })
+  @IsIn(['BAD_DEBT', 'SMALL_BALANCE'])
+  reason!: 'BAD_DEBT' | 'SMALL_BALANCE';
+
+  @ApiProperty({ description: 'YYYY-MM-DD' })
+  @IsDateString()
+  accountingDate!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+export class RejectWriteOffDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}

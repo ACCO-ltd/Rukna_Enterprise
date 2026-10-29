@@ -11,7 +11,9 @@ export type ClientStatementLineKind =
   | 'CREDIT_NOTE'
   | 'CREDIT_NOTE_REVERSAL'
   | 'RECEIPT'
-  | 'RECEIPT_REVERSAL';
+  | 'RECEIPT_REVERSAL'
+  | 'WRITE_OFF'
+  | 'WRITE_OFF_REVERSAL';
 
 export interface ClientStatementLine {
   date: string;
@@ -41,4 +43,28 @@ export interface ClientStatement {
   /** Today, not as at `to`: open invoice balances by days past due, and cash held on account. */
   aging: { current: string; d1_30: string; d31_60: string; d61_90: string; d90_plus: string };
   onAccount: string;
+}
+
+/**
+ * AR-4 — a client balance written off (bad debt or a small leftover). Up to the organisation's
+ * limit it posts at once; above it, it waits (`PENDING_APPROVAL`) for a second person.
+ */
+export interface ReceivableWriteOffView {
+  id: string;
+  invoiceId: string;
+  /** WO-000001 once posted. */
+  writeOffNumber: string | null;
+  reason: 'BAD_DEBT' | 'SMALL_BALANCE';
+  note: string | null;
+  amount: string;
+  accountingDate: string;
+  status: 'PENDING_APPROVAL' | 'POSTED' | 'REJECTED' | 'REVERSED';
+  requestedBy: string;
+  requestedByName: string | null;
+  requestedAt: string;
+  approvedByName: string | null;
+  rejectedByName: string | null;
+  rejectionReason: string | null;
+  reversalReason: string | null;
+  reversedAt: string | null;
 }

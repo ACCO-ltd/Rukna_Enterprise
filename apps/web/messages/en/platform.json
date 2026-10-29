@@ -3676,7 +3676,8 @@
       "QUOTATION": "Choose a quote",
       "MATERIAL_REQUEST": "Material request",
       "PROGRESS_REPORT": "Daily progress report",
-      "WORKFLOW": "Approval step"
+      "WORKFLOW": "Approval step",
+      "WRITE_OFF": "Write-off"
     },
     "colItem": "Waiting for your decision",
     "colProject": "Project",

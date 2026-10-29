@@ -25,6 +25,11 @@ vi.mock('../hooks/use-invoices', () => ({
   useCancelInvoice: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   invoiceKeys: { all: ['accounting', 'invoices'] },
 }));
+vi.mock('@/features/write-offs/hooks', () => ({
+  useWriteOffs: () => ({ data: [] }),
+  useRequestWriteOff: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+  useDecideWriteOff: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+}));
 vi.mock('@/features/communications/hooks', () => ({
   useCommunications: () => ({ isPending: false, isError: false, data: [] }),
   useCommunicationsFor: () => ({ isPending: false, isError: false, data: [] }),
@@ -160,6 +165,8 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.getByRole('button', { name: 'Reverse' })).toBeInTheDocument();
     // AR-1 — a posted invoice with a balance can be credited from Finance, project or not.
     expect(screen.getByRole('button', { name: 'Issue credit note' })).toBeInTheDocument();
+    // AR-4 — and written off.
+    expect(screen.getByRole('button', { name: 'Write off' })).toBeInTheDocument();
     // ADR-042 step 4 — something is still owed, so a WhatsApp reminder is offered.
     expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
   });

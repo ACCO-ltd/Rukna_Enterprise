@@ -68,6 +68,24 @@ export class ClientStatementRepository {
     });
   }
 
+  /** AR-4 — posted (or posted then reversed) write-offs. */
+  findWriteOffs(prisma: TenantPrisma, organizationId: string, clientId: string) {
+    return prisma.receivableWriteOff.findMany({
+      where: { organizationId, clientId, status: { in: ['POSTED', 'REVERSED'] } },
+      select: {
+        id: true,
+        invoiceId: true,
+        writeOffNumber: true,
+        accountingDate: true,
+        amount: true,
+        status: true,
+        reversalJournalEntryId: true,
+        reversedAt: true,
+        invoice: { select: { invoiceNumber: true } },
+      },
+    });
+  }
+
   /** Accounting dates of journals by id (reversals are dated by their journal). */
   async journalDates(prisma: TenantPrisma, ids: string[]): Promise<Map<string, Date>> {
     if (ids.length === 0) return new Map();

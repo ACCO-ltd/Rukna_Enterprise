@@ -45,6 +45,24 @@ export class ApprovalsInboxRepository {
     });
   }
 
+  /** AR-4 — write-offs above the organisation's limit, waiting for a second person. */
+  writeOffsAwaitingApproval(prisma: TenantPrisma, organizationId: string) {
+    return prisma.receivableWriteOff.findMany({
+      where: { organizationId, status: 'PENDING_APPROVAL' },
+      orderBy: { requestedAt: 'asc' },
+      take: LIMIT,
+      select: {
+        id: true,
+        invoiceId: true,
+        amount: true,
+        reason: true,
+        requestedBy: true,
+        requestedAt: true,
+        invoice: { select: { invoiceNumber: true, currencyCode: true, projectId: true, client: { select: { name: true } } } },
+      },
+    });
+  }
+
   submittedJournals(prisma: TenantPrisma, organizationId: string) {
     return prisma.journalEntry.findMany({
       where: { organizationId, status: 'SUBMITTED' },

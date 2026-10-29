@@ -32,6 +32,7 @@ interface Draft {
   autoPostToleratedBills: boolean;
   paymentOn: boolean;
   paymentUpTo: string;
+  writeOffAbove: string;
 }
 
 const toDraft = (s: FinanceApprovalSettings): Draft => ({
@@ -42,6 +43,7 @@ const toDraft = (s: FinanceApprovalSettings): Draft => ({
   autoPostToleratedBills: s.autoPostToleratedBills,
   paymentOn: Number(s.paymentAutoApproveUpTo) > 0,
   paymentUpTo: Number(s.paymentAutoApproveUpTo) > 0 ? s.paymentAutoApproveUpTo : '1000.00',
+  writeOffAbove: s.writeOffApprovalAbove ?? '50.00',
 });
 
 const amountOk = (v: string) => /^\d+(\.\d{1,2})?$/.test(v.trim());
@@ -61,18 +63,20 @@ function ApprovalSettingsForm({ saved }: { saved: FinanceApprovalSettings }) {
     invoice: draft.invoiceOn && !amountOk(draft.invoiceAbove) ? t('amountInvalid') : undefined,
     bill: draft.billOn && !amountOk(draft.billAbove) ? t('amountInvalid') : undefined,
     payment: draft.paymentOn && !amountOk(draft.paymentUpTo) ? t('amountInvalid') : undefined,
+    writeOff: !amountOk(draft.writeOffAbove) ? t('amountInvalid') : undefined,
   };
   const shown = (e: string | undefined) => (attempted ? e : undefined);
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     setAttempted(true);
-    if (errors.invoice || errors.bill || errors.payment) return;
+    if (errors.invoice || errors.bill || errors.payment || errors.writeOff) return;
     save.mutate({
       invoiceApprovalAbove: draft.invoiceOn ? draft.invoiceAbove.trim() : null,
       billApprovalAbove: draft.billOn ? draft.billAbove.trim() : null,
       autoPostToleratedBills: draft.autoPostToleratedBills,
       paymentAutoApproveUpTo: draft.paymentOn ? draft.paymentUpTo.trim() : '0',
+      writeOffApprovalAbove: draft.writeOffAbove.trim(),
     });
   }
 
@@ -119,6 +123,13 @@ function ApprovalSettingsForm({ saved }: { saved: FinanceApprovalSettings }) {
             <MoneyInput id="approval-payment-up-to" value={draft.paymentUpTo} disabled={disabled} onValueChange={(paymentUpTo) => patch({ paymentUpTo })} />
           </FormField>
         ) : null}
+      </FormGroup>
+
+      {/* AR-4 — write-offs above this wait for a second person; 0 sends every one. */}
+      <FormGroup title={t('writeOffsTitle')} description={t('writeOffsDescription')}>
+        <FormField htmlFor="approval-write-off-above" label={t('writeOffAbove')} hint={t('writeOffAboveHint')} error={shown(errors.writeOff)}>
+          <MoneyInput id="approval-write-off-above" value={draft.writeOffAbove} disabled={disabled} onValueChange={(writeOffAbove) => patch({ writeOffAbove })} />
+        </FormField>
       </FormGroup>
 
       {mayManage ? (

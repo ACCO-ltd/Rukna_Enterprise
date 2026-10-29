@@ -36,15 +36,17 @@ export class ClientStatementService {
     const client = await this.repo.findClient(prisma, orgId, clientId);
     if (!client) throw new NotFoundException({ errorCode: 'CLIENT_NOT_FOUND', message: `Client ${clientId} not found` });
 
-    const [invoices, creditNotes, receipts] = await Promise.all([
+    const [invoices, creditNotes, receipts, writeOffs] = await Promise.all([
       this.repo.findInvoices(prisma, orgId, clientId),
       this.repo.findCreditNotes(prisma, orgId, clientId),
       this.repo.findReceipts(prisma, orgId, clientId),
+      this.repo.findWriteOffs(prisma, orgId, clientId),
     ]);
     const reversalJournalIds = [
       ...invoices.map((i) => i.reversalJournalEntryId),
       ...creditNotes.map((c) => c.reversalJournalEntryId),
       ...receipts.map((r) => r.reversalJournalEntryId),
+      ...writeOffs.map((w) => w.reversalJournalEntryId),
     ].filter((id): id is string => Boolean(id));
     const [journalDates, legacyReceiptReversals, projectNames] = await Promise.all([
       this.repo.journalDates(prisma, reversalJournalIds),
@@ -93,6 +95,16 @@ export class ClientStatementService {
       if (r.postingStatus === 'REVERSED') {
         const date = reversalDate(r.reversalJournalEntryId, null) ?? legacyReceiptReversals.get(r.id) ?? r.reversedAt;
         if (date) movements.push({ date, kind: 'RECEIPT_REVERSAL', documentId: r.id, reference: r.receiptNumber, description: r.reference, debit: amount, credit: zero, sequence: 5 });
+      }
+    }
+
+    for (const w of writeOffs) {
+      const amount = new Decimal(w.amount.toString());
+      const description = w.invoice.invoiceNumber;
+      movements.push({ date: w.accountingDate, kind: 'WRITE_OFF', documentId: w.invoiceId, reference: w.writeOffNumber, description, debit: zero, credit: amount, sequence: 6 });
+      if (w.status === 'REVERSED') {
+        const date = reversalDate(w.reversalJournalEntryId, w.reversedAt);
+        if (date) movements.push({ date, kind: 'WRITE_OFF_REVERSAL', documentId: w.invoiceId, reference: w.writeOffNumber, description, debit: amount, credit: zero, sequence: 7 });
       }
     }
 

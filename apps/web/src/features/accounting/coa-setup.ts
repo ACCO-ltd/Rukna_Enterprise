@@ -109,6 +109,7 @@ export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
       'ADMINISTRATIVE_EXPENSE',
       'DEPRECIATION_EXPENSE',
       'FINANCE_COST',
+      'BAD_DEBT_EXPENSE',
       'OTHER_EXPENSE',
     ],
   },

@@ -63,9 +63,9 @@ describe('subtype list', () => {
    * subtype absent from the picker is an account nobody can create, and nothing else here
    * would notice.
    */
-  it('covers all 31 schema subtypes with no duplicates', () => {
-    expect(ACCOUNT_SUBTYPES).toHaveLength(31);
-    expect(new Set(ACCOUNT_SUBTYPES).size).toBe(31);
+  it('covers all 32 schema subtypes with no duplicates', () => {
+    expect(ACCOUNT_SUBTYPES).toHaveLength(32);
+    expect(new Set(ACCOUNT_SUBTYPES).size).toBe(32);
   });
 
   /**

@@ -19,4 +19,8 @@ export class UpdateApprovalSettingsDto implements FinanceApprovalSettings {
   @ApiProperty({ example: '1000.00', description: 'Payments up to this are approved on Save; "0" = never' })
   @IsString() @MaxLength(20)
   paymentAutoApproveUpTo!: string;
+
+  @ApiProperty({ required: false, example: '50.00', description: 'AR-4 — write-offs above this need a second person; "0" = every one. Kept when omitted.' })
+  @IsOptional() @IsString() @MaxLength(20)
+  writeOffApprovalAbove?: string;
 }

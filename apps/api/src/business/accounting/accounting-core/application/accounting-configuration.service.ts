@@ -32,6 +32,7 @@ export class AccountingConfigurationService {
       billApprovalAbove: policy.billApprovalAbove,
       autoPostToleratedBills: policy.autoPostToleratedBills,
       paymentAutoApproveUpTo: policy.paymentAutoApproveUpTo,
+      writeOffApprovalAbove: policy.writeOffApprovalAbove,
     };
   }
 
@@ -47,14 +48,16 @@ export class AccountingConfigurationService {
       billApprovalAbove: raw.billApprovalAbove ?? null,
       autoPostToleratedBills: raw.autoPostToleratedBills,
       paymentAutoApproveUpTo: raw.paymentAutoApproveUpTo,
+      ...(raw.writeOffApprovalAbove !== undefined ? { writeOffApprovalAbove: raw.writeOffApprovalAbove } : {}),
     };
     const problems = approvalSettingsProblems(input);
     if (problems.length > 0) {
       throw new BadRequestException({ errorCode: 'APPROVAL_SETTINGS_INVALID', message: problems.join(' '), details: { problems } });
     }
     const orgId = identity.activeOrganizationId;
-    const before = toApprovalSettingsDto(await this.getApprovalSettings(orgId));
-    const next = toApprovalSettings(input);
+    const current = await this.getApprovalSettings(orgId);
+    const before = toApprovalSettingsDto(current);
+    const next = toApprovalSettings(input, current);
     const prisma = this.tenancyService.getClient();
     await prisma.$transaction(async (tx) => {
       await this.repo.upsertApprovalSettings(tx as never, orgId, { ...next, updatedBy: identity.userId });

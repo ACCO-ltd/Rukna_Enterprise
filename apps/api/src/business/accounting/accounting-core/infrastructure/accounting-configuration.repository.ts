@@ -101,6 +101,7 @@ export class AccountingConfigurationRepository {
       billApprovalAbove: Decimal | null;
       autoPostToleratedBills: boolean;
       paymentAutoApproveUpTo: Decimal;
+      writeOffApprovalAbove: Decimal;
       updatedBy: string;
     },
   ) {

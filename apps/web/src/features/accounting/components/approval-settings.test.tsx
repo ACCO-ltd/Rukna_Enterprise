@@ -33,6 +33,8 @@ describe('ApprovalSettingsPanel (ADR-046 §8)', () => {
       billApprovalAbove: null,
       autoPostToleratedBills: false,
       paymentAutoApproveUpTo: '1000.00',
+      // AR-4 — absent from an older server's answer, so the default is sent back.
+      writeOffApprovalAbove: '50.00',
     });
   });
 

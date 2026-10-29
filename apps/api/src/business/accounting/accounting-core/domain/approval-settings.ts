@@ -11,16 +11,21 @@ export interface ApprovalSettings {
   billApprovalAbove: Decimal | null;
   autoPostToleratedBills: boolean;
   paymentAutoApproveUpTo: Decimal;
+  writeOffApprovalAbove: Decimal;
 }
 
 /** ADR-022's lowest payment band (Finance Officer authority, ≤ $1,000). */
 export const DEFAULT_PAYMENT_AUTO_APPROVE_UP_TO = new Decimal(1000);
+
+/** AR-4 — owner decision 2026-10-29: write-offs up to $50 post at once. */
+export const DEFAULT_WRITE_OFF_APPROVAL_ABOVE = new Decimal(50);
 
 export const DEFAULT_APPROVAL_SETTINGS: ApprovalSettings = {
   invoiceApprovalAbove: null,
   billApprovalAbove: null,
   autoPostToleratedBills: false,
   paymentAutoApproveUpTo: DEFAULT_PAYMENT_AUTO_APPROVE_UP_TO,
+  writeOffApprovalAbove: DEFAULT_WRITE_OFF_APPROVAL_ABOVE,
 };
 
 const MAX_AMOUNT = new Decimal('999999999999.99');
@@ -42,11 +47,16 @@ export function approvalSettingsProblems(input: FinanceApprovalSettings): string
   amount('The invoice approval amount', input.invoiceApprovalAbove, true);
   amount('The bill approval amount', input.billApprovalAbove, true);
   amount('The payment auto-approval limit', input.paymentAutoApproveUpTo, false);
+  if (input.writeOffApprovalAbove !== undefined) amount('The write-off approval amount', input.writeOffApprovalAbove, false);
   return problems;
 }
 
-export function toApprovalSettings(input: FinanceApprovalSettings): ApprovalSettings {
+export function toApprovalSettings(input: FinanceApprovalSettings, current?: ApprovalSettings): ApprovalSettings {
   return {
+    writeOffApprovalAbove:
+      input.writeOffApprovalAbove !== undefined
+        ? new Decimal(input.writeOffApprovalAbove)
+        : (current?.writeOffApprovalAbove ?? DEFAULT_WRITE_OFF_APPROVAL_ABOVE),
     invoiceApprovalAbove: input.invoiceApprovalAbove === null ? null : new Decimal(input.invoiceApprovalAbove),
     billApprovalAbove: input.billApprovalAbove === null ? null : new Decimal(input.billApprovalAbove),
     autoPostToleratedBills: input.autoPostToleratedBills,
@@ -60,7 +70,13 @@ export function toApprovalSettingsDto(settings: ApprovalSettings): FinanceApprov
     billApprovalAbove: settings.billApprovalAbove?.toFixed(2) ?? null,
     autoPostToleratedBills: settings.autoPostToleratedBills,
     paymentAutoApproveUpTo: settings.paymentAutoApproveUpTo.toFixed(2),
+    writeOffApprovalAbove: settings.writeOffApprovalAbove.toFixed(2),
   };
+}
+
+/** AR-4 — does this write-off wait for a second person? Above the limit; a 0 limit sends every one. */
+export function writeOffNeedsApproval(settings: ApprovalSettings, amount: Decimal): boolean {
+  return amount.gt(settings.writeOffApprovalAbove);
 }
 
 /** §2 — does issuing this invoice need an Approve click first? */

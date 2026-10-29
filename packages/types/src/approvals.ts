@@ -11,6 +11,7 @@ export type ApprovalItemKind =
   | 'QUOTATION'
   | 'MATERIAL_REQUEST'
   | 'PROGRESS_REPORT'
+  | 'WRITE_OFF'
   | 'WORKFLOW';
 
 export interface ApprovalItem {
@@ -32,6 +33,8 @@ export interface ApprovalItem {
   projectName: string | null;
   /** WORKFLOW only: the governed document's transaction type (PURCHASE_ORDER, VARIATION, …). */
   transactionType: string | null;
+  /** WRITE_OFF: the invoice whose page holds the decision. */
+  parentId?: string | null;
 }
 
 export interface ApprovalInbox {
@@ -52,4 +55,9 @@ export interface FinanceApprovalSettings {
   autoPostToleratedBills: boolean;
   /** §4 — a supplier payment up to this amount is approved on Save; "0.00" = never. */
   paymentAutoApproveUpTo: string;
+  /**
+   * AR-4 — a write-off up to this amount posts at once; above it a second person approves it.
+   * "0.00" = every write-off needs approval. Default "50.00". Optional on save (kept when omitted).
+   */
+  writeOffApprovalAbove?: string;
 }

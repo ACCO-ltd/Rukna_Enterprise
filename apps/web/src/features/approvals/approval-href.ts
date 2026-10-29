@@ -29,6 +29,9 @@ export function approvalHref(item: ApprovalItem): string | null {
       return `/finance/quotes/${item.id}`;
     case 'MATERIAL_REQUEST':
       return `/procurement/requests/${item.id}`;
+    case 'WRITE_OFF':
+      // AR-4 — decided on its invoice's page.
+      return item.parentId ? `/finance/accounting/invoices/${item.parentId}` : null;
     case 'PROGRESS_REPORT':
       return item.projectId ? `/projects/${item.projectId}/progress/review` : null;
     case 'WORKFLOW':

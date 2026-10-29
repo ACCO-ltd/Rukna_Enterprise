@@ -42,8 +42,9 @@ export class ApprovalsInboxService {
     const barred = (context: Omit<Parameters<SegregationOfDutiesService['violation']>[1], 'organizationId' | 'actorUserId'>) =>
       this.sod.violation(codes, { organizationId: org, actorUserId: me, ...context }) !== null;
 
-    const [invoices, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
+    const [invoices, writeOffs, journals, bills, payments, quotations, requests, reports, steps] = await Promise.all([
       has(PERMISSIONS.receivablesManage) ? this.repo.invoicesAwaitingApproval(prisma, org, projects) : [],
+      has(PERMISSIONS.receivablesManage) ? this.repo.writeOffsAwaitingApproval(prisma, org) : [],
       has(PERMISSIONS.journalsManage) ? this.repo.submittedJournals(prisma, org) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.submittedBills(prisma, org, projects) : [],
       has(PERMISSIONS.payablesManage) ? this.repo.draftPayments(prisma, org) : [],
@@ -76,6 +77,24 @@ export class ApprovalsInboxService {
         waitingSince: iso(inv.createdAt),
         requestedBy: inv.createdBy,
         projectId: inv.projectId,
+      });
+    }
+
+    // AR-4 — write-offs above the limit: a second person decides, never the one who asked.
+    for (const w of writeOffs) {
+      if (w.requestedBy === me) continue;
+      drafts.push({
+        ...base,
+        kind: 'WRITE_OFF',
+        id: w.id,
+        parentId: w.invoiceId,
+        title: w.invoice.client.name,
+        detail: `${w.invoice.invoiceNumber ?? 'Opening balance'} · ${w.reason === 'BAD_DEBT' ? 'Bad debt' : 'Small balance'}`,
+        amount: w.amount.toFixed(2),
+        currencyCode: w.invoice.currencyCode,
+        waitingSince: iso(w.requestedAt),
+        requestedBy: w.requestedBy,
+        projectId: w.invoice.projectId,
       });
     }
 

@@ -2985,6 +2985,7 @@ model ClientInvoice {
   promises          InvoicePaymentPromise[]
   disputes          InvoiceDispute[]
   creditNotes       CreditNote[]
+  writeOffs         ReceivableWriteOff[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
@@ -3104,6 +3105,57 @@ model InvoiceDispute {
 
   @@index([organizationId, invoiceId])
   @@map("invoice_disputes")
+}
+
+/// AR-4 — part or all of an invoice's balance written off: a bad debt, or a small leftover (bank
+/// charges, rounding). Dr Bad debts / Cr Accounts receivable. Above the organisation's limit it
+/// waits for a second person's approval; posted, it can be reversed (the balance comes back).
+model ReceivableWriteOff {
+  id                     String               @id @default(cuid())
+  organizationId         String               @map("organization_id")
+  invoiceId              String               @map("invoice_id")
+  clientId               String               @map("client_id")
+  writeOffNumber         String?              @map("write_off_number") @db.VarChar(30)
+  reason                 ReceivableWriteOffReason
+  note                   String?
+  amount                 Decimal              @db.Decimal(18, 2)
+  accountingDate         DateTime             @map("accounting_date") @db.Date
+  status                 ReceivableWriteOffStatus
+  requestedBy            String               @map("requested_by")
+  requestedAt            DateTime             @default(now()) @map("requested_at")
+  approvedBy             String?              @map("approved_by")
+  approvedAt             DateTime?            @map("approved_at")
+  rejectedBy             String?              @map("rejected_by")
+  rejectedAt             DateTime?            @map("rejected_at")
+  rejectionReason        String?              @map("rejection_reason")
+  postedJournalEntryId   String?              @map("posted_journal_entry_id")
+  postedAt               DateTime?            @map("posted_at")
+  reversedBy             String?              @map("reversed_by")
+  reversedAt             DateTime?            @map("reversed_at")
+  reversalReason         String?              @map("reversal_reason")
+  reversalJournalEntryId String?              @map("reversal_journal_entry_id")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  invoice ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([organizationId, writeOffNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
+  @@index([invoiceId])
+  @@map("receivable_write_offs")
+}
+
+enum ReceivableWriteOffReason {
+  BAD_DEBT
+  SMALL_BALANCE
+}
+
+enum ReceivableWriteOffStatus {
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  REVERSED
 }
 
 model CreditNote {
@@ -3926,6 +3978,9 @@ model PostingPolicy {
   autoPostToleratedBills        Boolean  @default(false) @map("auto_post_tolerated_bills")
   /// §4 — a supplier payment up to this amount is approved on Save. 0 = every payment needs Approve.
   paymentAutoApproveUpTo        Decimal  @default(1000) @map("payment_auto_approve_up_to") @db.Decimal(18, 2)
+  /// AR-4 — a write-off up to this amount posts at once; above it a second person approves it in
+  /// Approvals. 0 = every write-off needs approval. Owner decision 2026-10-29: default 50.
+  writeOffApprovalAbove         Decimal  @default(50) @map("write_off_approval_above") @db.Decimal(18, 2)
   updatedBy                     String   @map("updated_by")
   updatedAt                     DateTime @updatedAt @map("updated_at")
 
@@ -4475,6 +4530,8 @@ enum AccountSubtype {
   ADMINISTRATIVE_EXPENSE
   DEPRECIATION_EXPENSE
   FINANCE_COST
+  // AR-4 — where a receivable written off is expensed.
+  BAD_DEBT_EXPENSE
   OTHER_EXPENSE
 }
 
@@ -4578,6 +4635,8 @@ enum DocumentType {
   SUPPLIER_PAYMENT
   JOURNAL_ENTRY
   CREDIT_NOTE
+  // AR-4 — WO- numbers for receivable write-offs.
+  RECEIVABLE_WRITE_OFF
 }
 
 enum SequenceStatus {
@@ -4681,6 +4740,8 @@ enum SourceDocType {
   BUYER_ADVANCE
   // Step 6 — a bank charge or interest posted from a statement line during reconciliation.
   BANK_STATEMENT
+  // AR-4 — a client balance written off (bad debt or a small leftover), and its reversal.
+  RECEIVABLE_WRITE_OFF
 }
 
 enum AttemptOutcome {

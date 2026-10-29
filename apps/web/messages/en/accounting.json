@@ -127,7 +127,8 @@
         "ADMINISTRATIVE_EXPENSE": "Administrative expense",
         "DEPRECIATION_EXPENSE": "Depreciation expense",
         "FINANCE_COST": "Finance cost",
-        "OTHER_EXPENSE": "Other expense"
+        "OTHER_EXPENSE": "Other expense",
+        "BAD_DEBT_EXPENSE": "Bad debts"
       },
       "normalBalance": "Normal balance",
       "normalBalanceHint": "Set from the account class. Change it only for a contra account.",
@@ -1647,7 +1648,11 @@
     "save": "Save rules",
     "saving": "Saving…",
     "discard": "Discard changes",
-    "saveFailed": "The approval rules could not be saved."
+    "saveFailed": "The approval rules could not be saved.",
+    "writeOffsTitle": "Write-offs",
+    "writeOffsDescription": "A balance a client will not pay is written off to Bad debts. Small ones post at once; larger ones are approved by a second person.",
+    "writeOffAbove": "Needs approval above",
+    "writeOffAboveHint": "Enter 0 to send every write-off for approval."
   },
   "statement": {
     "eyebrow": "Receivables",
@@ -1691,8 +1696,58 @@
       "CREDIT_NOTE": "Credit note",
       "CREDIT_NOTE_REVERSAL": "Credit note reversed",
       "RECEIPT": "Payment",
-      "RECEIPT_REVERSAL": "Payment reversed"
+      "RECEIPT_REVERSAL": "Payment reversed",
+      "WRITE_OFF": "Written off",
+      "WRITE_OFF_REVERSAL": "Write-off reversed"
     },
     "action": "Statement"
+  },
+  "writeOff": {
+    "action": "Write off",
+    "title": "Write off a balance",
+    "heading": "Write-offs",
+    "balance": "Still owed:",
+    "reasonLabel": "Why is it written off?",
+    "reason": {
+      "SMALL_BALANCE": "Small balance",
+      "BAD_DEBT": "Bad debt"
+    },
+    "reasonHint": {
+      "SMALL_BALANCE": "A leftover not worth collecting — bank charges, rounding.",
+      "BAD_DEBT": "The client will not pay: insolvent, disputed beyond recovery, or untraceable."
+    },
+    "reasonRequired": "Choose why it is written off.",
+    "amount": "Amount to write off",
+    "amountRequired": "Enter an amount greater than zero.",
+    "amountOverBalance": "This is more than the invoice still owes.",
+    "date": "Date",
+    "note": "Note (optional)",
+    "cancel": "Cancel",
+    "submit": "Write off",
+    "submitForApproval": "Send for approval",
+    "postsNow": "It posts now: the amount moves to Bad debts and the invoice owes that much less.",
+    "approvalTitle": "This goes to Approvals first",
+    "approvalBody": "Write-offs above {limit} are approved by someone else before they post.",
+    "failed": "That did not go through. Try again.",
+    "unnumbered": "Waiting for approval",
+    "requestedBy": "Asked by {name}",
+    "approvedBy": "approved by {name}",
+    "rejectedBecause": "Rejected: {reason}",
+    "reversedBecause": "Reversed: {reason}",
+    "status": {
+      "PENDING_APPROVAL": "Waiting for approval",
+      "POSTED": "Written off",
+      "REJECTED": "Rejected",
+      "REVERSED": "Reversed"
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "reverse": "Reverse",
+    "waitingForSomeoneElse": "Someone else approves it",
+    "rejectTitle": "Reject this write-off?",
+    "rejectBody": "The balance stays on the invoice. Say why, so the person who asked knows what to do next.",
+    "reverseTitle": "Reverse write-off {ref}?",
+    "reverseBody": "Use this when the client pays after all. A reversing entry is posted today and the invoice owes the amount again.",
+    "reasonPrompt": "Why?"
   }
 }

@@ -25,6 +25,9 @@ import { formatRatePercent } from '../tax-codes';
 import { useAccounts } from '../hooks/use-accounting';
 import { invoiceKeys, useCancelInvoice, useInvoice, useInvoiceAction, useInvoiceCreditNotes } from '../hooks/use-invoices';
 import { CreditNoteDialog } from '@/features/commercial/components/credit-note-dialog';
+import { WriteOffDialog } from '@/features/write-offs/write-off-dialog';
+import { WriteOffsPanel } from '@/features/write-offs/write-offs-panel';
+import { useWriteOffs } from '@/features/write-offs/hooks';
 import { InvoiceCreditNotes } from '@/features/commercial/components/invoice-credit-notes';
 import {
   canIssue,
@@ -64,6 +67,7 @@ export function InvoiceDetail({
 }) {
   const t = useTranslations('accounting.invoices');
   const tCommon = useTranslations('common');
+  const tWriteOff = useTranslations('accounting.writeOff');
   const tLifecycle = useTranslations('common.lifecycleErrors');
   const tReminder = useTranslations('common.messaging.reminder');
   const locale = useLocale() as 'en' | 'ar';
@@ -81,6 +85,8 @@ export function InvoiceDetail({
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
   const [creditOpen, setCreditOpen] = useState(false);
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const writeOffs = useWriteOffs(invoiceId, invoice.data?.postingStatus === 'POSTED' || invoice.data?.postingStatus === 'OPENING_BALANCE');
   const creditNotes = useInvoiceCreditNotes(invoiceId, invoice.data?.postingStatus === 'POSTED' || invoice.data?.postingStatus === 'REVERSED');
 
   useModuleTrail(invoice.data ? (invoice.data.invoiceNumber ?? t('unnumbered')) : undefined);
@@ -124,6 +130,11 @@ export function InvoiceDetail({
   const remindable = canSendReminder(data);
   // AR-1 — a posted invoice with a balance can be credited (the server caps it at the balance).
   const canCredit = issued && toMinorUnits(data.outstandingAmount, MONEY_SCALE) > 0;
+  // AR-4 — an issued invoice or an opening balance that still owes can be written off.
+  const canWriteOff =
+    (data.postingStatus === 'POSTED' || data.postingStatus === 'OPENING_BALANCE') &&
+    data.documentStatus !== 'CANCELLED' &&
+    toMinorUnits(data.outstandingAmount, MONEY_SCALE) > 0;
   // Post needs a ready ledger. When it is not, the action is withheld and the notice below the
   // header says why and where to fix it — never a button that fails and rolls back (A7).
   const ledgerBlocked = ledgerBlockedState;
@@ -224,6 +235,13 @@ export function InvoiceDetail({
                 </Button>
               ) : null}
 
+              {/* AR-4 — what the client will not pay: posts now up to the limit, else Approvals. */}
+              {canWriteOff ? (
+                <Button variant="outline" onClick={() => setWriteOffOpen(true)}>
+                  {tWriteOff('action')}
+                </Button>
+              ) : null}
+
               {canReverse(data) ? (
                 <Button variant="outline" onClick={() => setDialog('reverse')}>
                   {t('reverse')}
@@ -255,7 +273,19 @@ export function InvoiceDetail({
         canReverse={mayManage}
       />
 
+      <WriteOffsPanel writeOffs={writeOffs.data ?? []} canManage={mayManage} />
+
       <AttachmentsPanel kind="INVOICE" ownerId={data.id} />
+
+      {canWriteOff ? (
+        <WriteOffDialog
+          open={writeOffOpen}
+          onOpenChange={setWriteOffOpen}
+          invoiceId={data.id}
+          balance={data.outstandingAmount}
+          approvalAbove={approvalSettings.data?.writeOffApprovalAbove ?? null}
+        />
+      ) : null}
 
       {canCredit ? (
         <CreditNoteDialog

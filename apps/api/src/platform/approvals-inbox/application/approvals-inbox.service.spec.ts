@@ -38,6 +38,7 @@ const journal = (id: string, createdBy: string, submittedAt: string) => ({
 function build(overrides: Record<string, unknown> = {}, rules = ALL_RULES) {
   const repo = {
     invoicesAwaitingApproval: jest.fn().mockResolvedValue([]),
+    writeOffsAwaitingApproval: jest.fn().mockResolvedValue([]),
     submittedJournals: jest.fn().mockResolvedValue([]),
     submittedBills: jest.fn().mockResolvedValue([]),
     goodsReceivers: jest.fn().mockResolvedValue(new Map()),
@@ -167,5 +168,21 @@ describe('ApprovalsInboxService (Step 3, ADR-049)', () => {
     const res = await service.inbox(who([PERMISSIONS.receivablesManage]));
     expect(res.items.map((i) => i.id)).toEqual(['inv-theirs']);
     expect(res.items[0]).toMatchObject({ kind: 'INVOICE', title: 'Water Agency', amount: '12000.00' });
+  });
+
+  it('lists a write-off above the limit for a second person, opening its invoice (AR-4)', async () => {
+    const pending = (id: string, requestedBy: string) => ({
+      id,
+      invoiceId: 'inv-9',
+      amount: new Decimal('600'),
+      reason: 'BAD_DEBT',
+      requestedBy,
+      requestedAt: new Date('2026-10-22'),
+      invoice: { invoiceNumber: 'INV-000009', currencyCode: 'USD', projectId: null, client: { name: 'Water Agency' } },
+    });
+    const { service } = build({ writeOffsAwaitingApproval: jest.fn().mockResolvedValue([pending('wo-mine', 'me'), pending('wo-theirs', 'amina')]) });
+    const res = await service.inbox(who([PERMISSIONS.receivablesManage]));
+    expect(res.items.map((i) => i.id)).toEqual(['wo-theirs']);
+    expect(res.items[0]).toMatchObject({ kind: 'WRITE_OFF', parentId: 'inv-9', detail: 'INV-000009 · Bad debt', amount: '600.00' });
   });
 });

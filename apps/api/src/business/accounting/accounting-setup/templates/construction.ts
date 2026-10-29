@@ -236,6 +236,8 @@ const STATIC_ACCOUNTS: TemplateAccount[] = [
     ['66100', 'Bank charges'],
     ['66200', 'Interest expense'],
   ]),
+  // AR-4 — client balances written off.
+  row('67000', 'Bad debts', 'EXPENSE', 'BAD_DEBT_EXPENSE'),
   row('69000', 'Other expenses', 'EXPENSE', 'OTHER_EXPENSE'),
 ];
 
