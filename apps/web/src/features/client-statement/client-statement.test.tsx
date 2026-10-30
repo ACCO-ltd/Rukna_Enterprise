@@ -55,8 +55,25 @@ const STATEMENT: ClientStatementData = {
   onAccount: '0.00',
 };
 
+const PREVIEW = {
+  templateConfigured: true,
+  whatsappConfigured: true,
+  recipients: [{ contactId: 'k1', name: 'Hodan', role: null, number: '+252615555555', isPrimary: true, source: 'whatsapp' }],
+  defaultRecipient: '+252615555555',
+  message: 'Hello Hargeisa Water Agency, please find attached your statement of account from ACCO Ltd as of 31 Oct 2026.',
+  filename: 'Statement-HWA-2026-10-31.pdf',
+  sendable: true,
+  blockedReason: null,
+};
+
 beforeEach(() => {
-  api.apiClient.mockReset().mockResolvedValue(STATEMENT);
+  // Each endpoint answers with its own shape: the statement, its PDF, the WhatsApp preview, the messages.
+  api.apiClient.mockReset().mockImplementation((url: string) => {
+    if (url.startsWith('/communications')) return Promise.resolve([]);
+    if (url.includes('/statement/document')) return Promise.resolve(new Blob(['%PDF'], { type: 'application/pdf' }));
+    if (url.includes('/statement/whatsapp/preview')) return Promise.resolve(PREVIEW);
+    return Promise.resolve(STATEMENT);
+  });
 });
 
 describe('ClientStatement', () => {
@@ -98,6 +115,26 @@ describe('ClientStatement', () => {
     expect(panel.getByRole('link', { name: 'INV-000005' })).toHaveAttribute('href', '/finance/accounting/invoices/inv-1');
     expect(panel.getByRole('link', { name: 'RCP-000012' })).toHaveAttribute('href', '/receipts/rcp-1');
     expect(panel.getAllByText('$400.00').length).toBeGreaterThan(0);
+  });
+
+  it('downloads the branded statement PDF for the period', async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn(() => 'blob:statement');
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+    renderWithProviders(<ClientStatement />);
+    await user.click(await screen.findByRole('button', { name: 'PDF' }));
+    expect(api.apiClient).toHaveBeenCalledWith('/finance/clients/c1/statement/document?from=2026-01-01&to=2026-10-31', { responseType: 'blob' });
+    expect(createObjectURL).toHaveBeenCalled();
+  });
+
+  it('sends the statement on WhatsApp after showing the exact message', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClientStatement />, { withToast: true });
+    await user.click(await screen.findByRole('button', { name: 'Send on WhatsApp' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('Send statement on WhatsApp')).toBeInTheDocument();
+    expect(await dialog.findByText('Statement-HWA-2026-10-31.pdf')).toBeInTheDocument();
+    expect(api.apiClient).toHaveBeenCalledWith('/finance/clients/c1/statement/whatsapp/preview?from=2026-01-01&to=2026-10-31');
   });
 
   it('asks for a client before loading anything', () => {

@@ -88,6 +88,24 @@ Amounts are sent already formatted with their currency (e.g. `USD 12,500.00`), d
 
 ---
 
+## 4b. Statement of account: `rukna_statement` (ST-6, 2026-10-30)
+
+- **Env:** `WHATSAPP_TEMPLATE_STATEMENT=rukna_statement` (unset = the Send button explains it is not set up).
+- **Header:** DOCUMENT (the statement PDF).
+- **Body:**
+
+  > Hello {{1}}, please find attached your statement of account from {{4}} as of {{3}}. The balance
+  > due is {{2}}. If anything on it does not match your records, reply to this message.
+
+| Variable | Meaning | Sample |
+|---|---|---|
+| {{1}} | Client name | Hodan Construction Ltd |
+| {{2}} | Balance due (open invoices less paid in advance) | USD 452,917.00 |
+| {{3}} | Statement date | 30 Oct 2026 |
+| {{4}} | Company name | ACCO Ltd |
+
+Category UTILITY, language English (`en`), like the four above.
+
 ## Notes for the owner
 
 - Meta rejects UTILITY templates that read as promotional; keep the wording factual.

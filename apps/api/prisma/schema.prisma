@@ -6173,6 +6173,8 @@ enum MessagePurpose {
   RECEIPT
   PAYMENT_REMINDER
   OVERDUE_REMINDER
+  /// ST-6 — the client's statement of account (PDF), sent from Client statements.
+  STATEMENT
   /// ADR-044 phase 2 — staff alerts for competitive quotations (background-sent).
   QUOTE_READY
   QUOTE_REMINDER

@@ -1897,7 +1897,12 @@
     "notDue": "Not yet due",
     "openTotal": "Open invoices",
     "lessOnAccount": "Less held on account",
-    "periodLine": "{from} to {to}: opened at {opening}, charged {charged}, paid and credited {paid}, closed at {closing}."
+    "periodLine": "{from} to {to}: opened at {opening}, charged {charged}, paid and credited {paid}, closed at {closing}.",
+    "sendWhatsApp": "Send on WhatsApp",
+    "pdf": "PDF",
+    "pdfFailed": "The statement PDF could not be made. Try again.",
+    "whatsappTitle": "Send statement on WhatsApp",
+    "whatsappSubtitle": "The statement for {client} as of {date} goes to the client as a PDF."
   },
   "writeOff": {
     "action": "Write off",

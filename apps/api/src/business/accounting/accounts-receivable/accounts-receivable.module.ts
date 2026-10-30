@@ -17,6 +17,9 @@ import { CollectionEventsService } from './application/collection-events.service
 import { CreditNoteService } from './application/credit-note.service.js';
 import { ClientStatementController } from './presentation/client-statement.controller.js';
 import { ClientStatementService } from './application/client-statement.service.js';
+import { StatementDocumentService } from './application/statement-document.service.js';
+import { ClientStatementDocumentService } from './application/client-statement-document.service.js';
+import { ClientStatementWhatsAppService } from './application/client-statement-whatsapp.service.js';
 import { ClientStatementRepository } from './infrastructure/client-statement.repository.js';
 import { WriteOffController } from './presentation/write-off.controller.js';
 import { WriteOffService } from './application/write-off.service.js';
@@ -51,6 +54,9 @@ import { InvoiceSettingsPreviewService } from './application/invoice-settings-pr
     WriteOffService,
     ClientStatementRepository,
     ClientStatementService,
+    StatementDocumentService,
+    ClientStatementDocumentService,
+    ClientStatementWhatsAppService,
     ClientInvoiceRepository,
     PaymentReceiptArRepository,
     ClientInvoiceService,

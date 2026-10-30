@@ -13,7 +13,9 @@ export type CommunicationResourceType =
   | 'client_invoice'
   /** Payment / overdue reminders for an invoice (resourceId = the invoice id). */
   | 'client_invoice_reminder'
-  | 'payment_receipt';
+  | 'payment_receipt'
+  /** ST-6 — statements sent to a client (resourceId = the client id). */
+  | 'client_statement';
 
 /** Messages Rukna sent about one record, newest first. */
 export function listCommunications(
@@ -61,6 +63,23 @@ export function sendReceiptWhatsApp(
   body: WhatsAppSendRequest,
 ): Promise<OutboundMessageView> {
   return apiClient<OutboundMessageView>(`/customer-receipts/${receiptId}/whatsapp`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** ST-6 — the statement for a client and period, as the WhatsApp send would deliver it. */
+export function getStatementWhatsAppPreview(clientId: string, from: string, to: string): Promise<WhatsAppSendPreview> {
+  return apiClient<WhatsAppSendPreview>(`/finance/clients/${clientId}/statement/whatsapp/preview?from=${from}&to=${to}`);
+}
+
+export function sendStatementWhatsApp(
+  clientId: string,
+  from: string,
+  to: string,
+  body: WhatsAppSendRequest,
+): Promise<OutboundMessageView> {
+  return apiClient<OutboundMessageView>(`/finance/clients/${clientId}/statement/whatsapp?from=${from}&to=${to}`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
