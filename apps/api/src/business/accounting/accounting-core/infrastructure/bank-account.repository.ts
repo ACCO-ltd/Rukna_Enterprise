@@ -76,15 +76,42 @@ export class BankAccountRepository {
     return new Map(rows.filter((r) => r._max.statementDate).map((r) => [r.bankAccountId, r._max.statementDate!]));
   }
 
-  /** B-1 — documents raised on the account that have not posted yet (they would post to a closed account). */
+  /** B-1 — the closing balance of each account's latest reconciled statement: what the bank said. */
+  async lastStatementBalances(prisma: TenantPrisma, organizationId: string): Promise<Map<string, Decimal>> {
+    const rows = await prisma.bankStatement.findMany({
+      where: { organizationId, status: 'RECONCILED' },
+      orderBy: { statementDate: 'desc' },
+      distinct: ['bankAccountId'],
+      select: { bankAccountId: true, closingBalance: true },
+    });
+    return new Map(rows.map((r) => [r.bankAccountId, new Decimal(r.closingBalance.toString())]));
+  }
+
+  findByAccountNumber(prisma: TenantPrisma, organizationId: string, accountNumber: string) {
+    return prisma.bankAccount.findFirst({
+      where: { organizationId, accountNumber: { equals: accountNumber, mode: 'insensitive' } },
+      select: { id: true, accountName: true },
+    });
+  }
+
+  /**
+   * B-1 — documents raised on the account that have not posted yet (they would post to a closed
+   * account): payments, receipts, buyer cash handed out, and transfers in or out waiting for approval.
+   */
   async unpostedDocuments(prisma: TenantPrisma, organizationId: string, bankAccountId: string): Promise<number> {
-    const [payments, receipts] = await Promise.all([
+    const [payments, receipts, buyerCash, transfers] = await Promise.all([
       prisma.supplierPayment.count({
         where: { organizationId, bankAccountId, postingStatus: { in: ['NOT_POSTED', 'FAILED'] }, documentStatus: { notIn: ['REJECTED', 'CANCELLED'] } },
       }),
       prisma.paymentReceipt.count({ where: { organizationId, bankAccountId, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } } }),
+      prisma.buyerAdvance.count({
+        where: { organizationId, disbursementBankAccountId: bankAccountId, postingStatus: { in: ['NOT_POSTED', 'FAILED'] }, documentStatus: { notIn: ['REJECTED', 'CANCELLED'] } },
+      }),
+      prisma.bankTransfer.count({
+        where: { organizationId, status: 'PENDING_APPROVAL', OR: [{ fromBankAccountId: bankAccountId }, { toBankAccountId: bankAccountId }] },
+      }),
     ]);
-    return payments + receipts;
+    return payments + receipts + buyerCash + transfers;
   }
 
   update(

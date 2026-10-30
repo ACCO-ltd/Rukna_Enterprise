@@ -970,7 +970,7 @@
     "loadFailed": "The statements could not be loaded.",
     "loading": "Loading statements",
     "emptyTitle": "No statements yet",
-    "empty": "Import your bank's statement export to start reconciling it with the ledger.",
+    "empty": "Import the statement your bank sends to check it against the books.",
     "colAccount": "Bank account",
     "colPeriod": "Period",
     "colClosing": "Closing balance",
@@ -1087,8 +1087,26 @@
         "MATCHED": "Matched",
         "POSTED": "Posted from here"
       },
-      "match": "Match"
-    }
+      "match": "Match",
+      "undo": "Undo",
+      "undoTitle": "Undo this posting?",
+      "undoBody": "The journal posted for {amount} is reversed on the same day and the line is open again, to match or post to another account.",
+      "earlierOpenTitle": "An earlier statement is still open",
+      "earlierOpenBody": "Reconcile the statement to {date} first. Statements are reconciled in order.",
+      "broughtForwardTitle": "Before reconciliation began",
+      "cancelledTitle": "Recorded and reversed",
+      "cancelledNote": "Each entry here was reversed and the bank never saw either side, so they cancel out."
+    },
+    "card": {
+      "open": "{count, plural, one {# statement open} other {# statements open}}",
+      "upToDate": "Up to date",
+      "never": "Not started",
+      "reconciledTo": "Reconciled to {date} at {amount}",
+      "booksSay": "Not reconciled yet. The books show {amount}.",
+      "statements": "Statements"
+    },
+    "forAccount": "Statements of {name}",
+    "clearAccount": "Show every account"
   },
   "close": {
     "title": "Close {period}",
@@ -1137,7 +1155,7 @@
     "loading": "Loading transfers",
     "loadFailed": "Transfers could not be loaded.",
     "emptyTitle": "No transfers yet",
-    "empty": "Move money between your bank, cash box and float accounts here; each transfer posts to both accounts at once.",
+    "empty": "Move money between your bank accounts, cash boxes and mobile-money wallets.",
     "colTransfer": "Transfer",
     "colAccounts": "From → to",
     "colAmount": "Amount",
@@ -1180,6 +1198,25 @@
     "postsNow": "It posts at once: the money leaves one account and arrives in the other.",
     "cancel": "Cancel",
     "submit": "Transfer",
-    "submitForApproval": "Send for approval"
+    "submitForApproval": "Send for approval",
+    "views": {
+      "all": "All",
+      "waiting": "Waiting for approval",
+      "posted": "Posted",
+      "undone": "Reversed or rejected"
+    },
+    "viewsLabel": "Show",
+    "noneInView": "No transfers here.",
+    "tiles": {
+      "thisMonth": "Moved this month",
+      "waiting": "Waiting for approval",
+      "count": "{count, plural, one {# transfer} other {# transfers}}"
+    },
+    "forAccount": "Transfers of {name}",
+    "clearAccount": "Show every account",
+    "holds": "Holds {amount} in the books.",
+    "overdrawnTitle": "Not enough in the account",
+    "overdrawnBody": "After this transfer the books would show {after} in {name}. Check the amount, or record the money that came in first.",
+    "notMade": "Not made"
   }
 }

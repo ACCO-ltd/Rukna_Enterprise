@@ -5,7 +5,9 @@ import { TransfersList } from '@/features/bank-transfers/transfers-list';
 export default function TransfersPage() {
   return (
     <Suspense>
-      <TransfersList />
+      <div className="w-full min-w-0 max-w-6xl">
+        <TransfersList />
+      </div>
     </Suspense>
   );
 }

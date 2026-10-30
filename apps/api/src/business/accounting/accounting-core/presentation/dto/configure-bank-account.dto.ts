@@ -17,9 +17,9 @@ export class ConfigureBankAccountDto {
   @IsString() @IsNotEmpty() @MaxLength(50)
   accountNumber!: string;
 
-  @ApiProperty({ example: 'USD' })
-  @IsString() @IsNotEmpty() @MaxLength(3)
-  currencyCode!: string;
+  @ApiPropertyOptional({ example: 'USD', description: 'BK-1: USD only (the default)' })
+  @IsOptional() @IsString() @MaxLength(3)
+  currencyCode?: string;
 
   @ApiProperty({ example: 'BNK-001', description: 'GL account code for this bank account' })
   @IsString() @IsNotEmpty() @MaxLength(30)

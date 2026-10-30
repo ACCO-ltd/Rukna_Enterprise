@@ -1,5 +1,11 @@
+import { Suspense } from 'react';
+
 import { StatementsList } from '@/features/bank-reconciliation/statements-list';
 
 export default function BankReconciliationPage() {
-  return <StatementsList />;
+  return (
+    <Suspense>
+      <StatementsList />
+    </Suspense>
+  );
 }
