@@ -19,6 +19,12 @@ import { getAgingReport } from './api';
 
 const BUCKETS: readonly AgingBucketKey[] = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'];
 const LATE: readonly AgingBucketKey[] = ['d1_30', 'd31_60', 'd61_90', 'd90_plus'];
+/** Where each side's party statement lives; the party id follows. */
+const STATEMENT_HREF: Record<AgingSide, string> = {
+  receivables: '/finance/accounting/statement?clientId',
+  payables: '/finance/accounting/supplier-statement?supplierId',
+};
+
 const DOCUMENT_HREF: Record<AgingSide, string> = {
   receivables: '/finance/accounting/invoices',
   payables: '/finance/accounting/bills',
@@ -49,7 +55,7 @@ export function AgingReport({ side }: { side: AgingSide }) {
   const [sendTo, setSendTo] = useState<AgingPartyRow | null>(null);
   const report = useQuery({
     queryKey: ['finance', 'aging', side, asOf],
-    queryFn: () => getAgingReport(side, receivables && asOf !== today ? asOf : undefined),
+    queryFn: () => getAgingReport(side, asOf !== today ? asOf : undefined),
   });
 
   const toggle = (id: string) =>
@@ -79,14 +85,18 @@ export function AgingReport({ side }: { side: AgingSide }) {
         t('colCode'),
         ...BUCKETS.map((b) => tBucket(b)),
         t('colTotal'),
-        ...(receivables ? [t('colOnAccount'), t('colNet'), t('colRetention')] : []),
+        t('colOnAccount'),
+        t('colNet'),
+        ...(receivables ? [t('colRetention')] : []),
       ],
       rows.map((r) => [
         r.partyName,
         r.partyCode,
         ...BUCKETS.map((b) => Number(r.buckets[b])),
         Number(r.total),
-        ...(receivables ? [Number(r.onAccount ?? 0), Number(r.netBalance ?? r.total), Number(r.retentionHeld ?? 0)] : []),
+        Number(r.onAccount ?? 0),
+        Number(r.netBalance ?? r.total),
+        ...(receivables ? [Number(r.retentionHeld ?? 0)] : []),
       ]),
     );
 
@@ -128,11 +138,9 @@ export function AgingReport({ side }: { side: AgingSide }) {
           <FilterField id="aging-search" label={t('search')} grow>
             <Input id="aging-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t(`${side}.searchPlaceholder`)} />
           </FilterField>
-          {receivables ? (
-            <FilterField id="aging-as-of" label={t('asOf')}>
-              <DatePicker id="aging-as-of" value={asOf} max={today} onChange={(v) => v && setAsOf(v)} />
-            </FilterField>
-          ) : null}
+          <FilterField id="aging-as-of" label={t('asOf')}>
+            <DatePicker id="aging-as-of" value={asOf} max={today} onChange={(v) => v && setAsOf(v)} />
+          </FilterField>
           <FilterField id="aging-late" label={t('show')}>
             <CheckboxField id="aging-late" label={t('lateOnly')} checked={lateOnly} onChange={(e) => setLateOnly(e.target.checked)} />
           </FilterField>
@@ -147,11 +155,11 @@ export function AgingReport({ side }: { side: AgingSide }) {
         <EmptyState title={t(`${side}.emptyTitle`)} description={t(`${side}.empty`)} />
       ) : (
         <>
-          <div className={cn('grid gap-3 sm:grid-cols-2', receivables ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label={t(`${side}.tileTotal`)} value={usd(data.total)} />
             <StatTile label={t('tileLate')} value={usd(lateTotal)} note={shareText(lateTotal)} />
             <StatTile label={t('tile90')} value={usd(data.totals.d90_plus)} note={shareText(data.totals.d90_plus)} />
-            {receivables ? <StatTile label={t('tileNet')} value={usd(data.netTotal ?? data.total)} note={!isZero(data.onAccount) ? t('lessOnAccount', { amount: usd(data.onAccount!) }) : undefined} /> : null}
+            <StatTile label={t('tileNet')} value={usd(data.netTotal ?? data.total)} note={!isZero(data.onAccount) ? t('lessOnAccount', { amount: usd(data.onAccount!) }) : undefined} />
           </div>
 
           {data.ledger ? (
@@ -196,20 +204,16 @@ export function AgingReport({ side }: { side: AgingSide }) {
                       <th key={b} scope="col" className="px-3 py-2 text-end font-medium">{tBucket(b)}</th>
                     ))}
                     <th scope="col" className="px-3 py-2 text-end font-medium">{t('colTotal')}</th>
-                    {receivables ? (
-                      <>
-                        <th scope="col" className="px-3 py-2 text-end font-medium">{t('colOnAccount')}</th>
-                        <th scope="col" className="px-3 py-2 text-end font-medium">{t('colNet')}</th>
-                      </>
-                    ) : null}
+                    <th scope="col" className="px-3 py-2 text-end font-medium">{t('colOnAccount')}</th>
+                    <th scope="col" className="px-3 py-2 text-end font-medium">{t('colNet')}</th>
                     {anyRetention ? <th scope="col" className="px-3 py-2 text-end font-medium">{t('colRetention')}</th> : null}
-                    {receivables ? <th scope="col" className="px-3 py-2 print:hidden"><span className="sr-only">{t('colActions')}</span></th> : null}
+                    <th scope="col" className="px-3 py-2 print:hidden"><span className="sr-only">{t('colActions')}</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => {
                     const expanded = open.has(row.partyId);
-                    const columns = BUCKETS.length + 2 + (receivables ? 3 : 0) + (anyRetention ? 1 : 0);
+                    const columns = BUCKETS.length + 5 + (anyRetention ? 1 : 0);
                     return (
                       <Fragment key={row.partyId}>
                         <tr className="border-b border-border">
@@ -238,23 +242,18 @@ export function AgingReport({ side }: { side: AgingSide }) {
                             </td>
                           ))}
                           <td className="px-3 py-2 text-end font-semibold tabular-nums">{usd(row.total)}</td>
-                          {receivables ? (
-                            <>
-                              <td className="px-3 py-2 text-end tabular-nums text-muted-foreground">
-                                {isZero(row.onAccount) ? '—' : `−${usd(row.onAccount!)}`}
-                              </td>
-                              <td className="px-3 py-2 text-end font-semibold tabular-nums">{usd(row.netBalance ?? row.total)}</td>
-                            </>
-                          ) : null}
+                          <td className="px-3 py-2 text-end tabular-nums text-muted-foreground">
+                            {isZero(row.onAccount) ? '—' : `−${usd(row.onAccount!)}`}
+                          </td>
+                          <td className="px-3 py-2 text-end font-semibold tabular-nums">{usd(row.netBalance ?? row.total)}</td>
                           {anyRetention ? (
                             <td className="px-3 py-2 text-end tabular-nums text-muted-foreground">{isZero(row.retentionHeld) ? '—' : usd(row.retentionHeld!)}</td>
                           ) : null}
-                          {receivables ? (
                             <td className="px-3 py-1 text-end print:hidden">
                               <span className="inline-flex gap-1">
                                 <Button variant="ghost" size="sm" asChild>
                                   <Link
-                                    href={`/finance/accounting/statement?clientId=${row.partyId}&from=${data.asOf.slice(0, 4)}-01-01&to=${data.asOf}`}
+                                    href={`${STATEMENT_HREF[side]}=${row.partyId}&from=${data.asOf.slice(0, 4)}-01-01&to=${data.asOf}`}
                                     aria-label={t('statementOf', { name: row.partyName })}
                                   >
                                     <FileText size={14} aria-hidden="true" />
@@ -266,7 +265,6 @@ export function AgingReport({ side }: { side: AgingSide }) {
                                 </Button>
                               </span>
                             </td>
-                          ) : null}
                         </tr>
                         {expanded ? (
                           <tr className="border-b border-border bg-surface-subtle">
@@ -303,21 +301,17 @@ export function AgingReport({ side }: { side: AgingSide }) {
                       <td key={b} className="px-3 py-2 text-end tabular-nums">{usd(sumOf(rows.map((r) => r.buckets[b])))}</td>
                     ))}
                     <td className="px-3 py-2 text-end tabular-nums">{usd(sumOf(rows.map((r) => r.total)))}</td>
-                    {receivables ? (
-                      <>
-                        <td className="px-3 py-2 text-end tabular-nums">−{usd(sumOf(rows.map((r) => r.onAccount ?? '0')))}</td>
-                        <td className="px-3 py-2 text-end tabular-nums">{usd(sumOf(rows.map((r) => r.netBalance ?? r.total)))}</td>
-                      </>
-                    ) : null}
+                    <td className="px-3 py-2 text-end tabular-nums">−{usd(sumOf(rows.map((r) => r.onAccount ?? '0')))}</td>
+                    <td className="px-3 py-2 text-end tabular-nums">{usd(sumOf(rows.map((r) => r.netBalance ?? r.total)))}</td>
                     {anyRetention ? <td className="px-3 py-2 text-end tabular-nums">{usd(sumOf(rows.map((r) => r.retentionHeld ?? '0')))}</td> : null}
-                    {receivables ? <td className="print:hidden" /> : null}
+                    <td className="print:hidden" />
                   </tr>
                   <tr className="text-caption text-muted-foreground">
                     <th scope="row" className="px-4 pb-2 text-start font-normal">{t('shareRow')}</th>
                     {BUCKETS.map((b) => (
                       <td key={b} className="px-3 pb-2 text-end tabular-nums">{share(data.totals[b])}%</td>
                     ))}
-                    <td colSpan={1 + (receivables ? 3 : 0) + (anyRetention ? 1 : 0)} />
+                    <td colSpan={4 + (anyRetention ? 1 : 0)} />
                   </tr>
                 </tfoot>
               </table>
@@ -328,11 +322,11 @@ export function AgingReport({ side }: { side: AgingSide }) {
             <StatementWhatsAppDialog
               open
               onClose={() => setSendTo(null)}
-              clientId={sendTo.partyId}
+              {...(receivables ? { clientId: sendTo.partyId } : { supplierId: sendTo.partyId })}
               from={`${data.asOf.slice(0, 4)}-01-01`}
               to={data.asOf}
-              title={t('whatsappTitle')}
-              subtitle={t('whatsappSubtitle', { name: sendTo.partyName, date: formatDate(data.asOf) ?? data.asOf })}
+              title={t(receivables ? 'whatsappTitle' : 'payables.whatsappTitle')}
+              subtitle={t(receivables ? 'whatsappSubtitle' : 'payables.whatsappSubtitle', { name: sendTo.partyName, date: formatDate(data.asOf) ?? data.asOf })}
             />
           ) : null}
         </>

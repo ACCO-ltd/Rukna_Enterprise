@@ -10,7 +10,28 @@ type TenantPrisma = PrismaClient;
 @Injectable()
 export class SupplierStatementRepository {
   findSupplier(prisma: TenantPrisma, organizationId: string, supplierId: string) {
-    return prisma.supplier.findFirst({ where: { id: supplierId, organizationId }, select: { id: true, name: true, code: true } });
+    return prisma.supplier.findFirst({ where: { id: supplierId, organizationId }, select: { id: true, name: true, code: true, address: true } });
+  }
+
+  /** SS-2 — who the statement is from. */
+  findOrganizationName(prisma: TenantPrisma, organizationId: string) {
+    return prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+  }
+
+  /** SS-2 — what the statement PDF is branded with (the invoice document's identity). */
+  findBranding(prisma: TenantPrisma, organizationId: string) {
+    return prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, legalAddress: true, taxRegistrationNumber: true, brandColorHex: true, invoiceTemplate: true, logoFileId: true },
+    });
+  }
+
+  /** SS-3 — who the statement can be sent to on WhatsApp. */
+  findSupplierContacts(prisma: TenantPrisma, organizationId: string, supplierId: string) {
+    return prisma.supplier.findFirst({
+      where: { id: supplierId, organizationId },
+      select: { id: true, name: true, contacts: { select: { id: true, name: true, role: true, phone: true, isPrimary: true } } },
+    });
   }
 
   /** Every bill that ever reached the payables book (posted, reversed, or carried in). */

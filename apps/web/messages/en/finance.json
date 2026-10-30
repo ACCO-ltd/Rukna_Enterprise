@@ -894,7 +894,9 @@
       "searchPlaceholder": "Supplier name or code",
       "ledgerAgrees": "Agrees with Accounts payable in the ledger ({amount}).",
       "ledgerDiffers": "Accounts payable in the ledger shows {amount}; the open bills differ by {difference}.",
-      "tileTotal": "Open bills"
+      "tileTotal": "Open bills",
+      "whatsappTitle": "Send statement to the supplier",
+      "whatsappSubtitle": "Our record of {name} up to {date} goes to the supplier as a PDF."
     },
     "loading": "Loading the aging report",
     "summaryAsOf": "{total} open at the end of {date}",

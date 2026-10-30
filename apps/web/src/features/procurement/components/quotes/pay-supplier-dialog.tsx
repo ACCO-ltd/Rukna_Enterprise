@@ -57,6 +57,8 @@ export interface PaySupplierDialogProps {
   onAwaiting: (awaiting: 'APPROVAL' | 'RELEASE_SIGNATURES', approvalInstanceId: string | null) => void;
 }
 
+const KIND_FOR_METHOD = { BANK: 'BANK', MOBILE_MONEY: 'MOBILE_WALLET', CASH: 'CASH' } as const;
+
 export function PaySupplierDialog(props: PaySupplierDialogProps) {
   const t = useTranslations('procurement.quotes.payment.pay');
   const tRelease = useTranslations('procurement.quotes.payment.release');
@@ -141,7 +143,18 @@ function PayForm({
   const [paymentDate, setDate] = useState(wireDay(draft.defaultPaymentDate) || todayInMogadishu());
   const [touched, setTouched] = useState(false);
 
-  const account = draft.accounts.find((a) => a.bankAccountId === bankAccountId) ?? null;
+  // PN-2 — cash from a cash box, mobile money from a wallet, a bank payment from a bank account; an
+  // account whose kind is not set stays offered.
+  const fits = (a: (typeof draft.accounts)[number], m: SupplierPaymentMethod | '') =>
+    !a.kind || !m || a.kind === KIND_FOR_METHOD[m];
+  const offered = draft.accounts.filter((a) => fits(a, method));
+  const account = offered.find((a) => a.bankAccountId === bankAccountId) ?? null;
+  const chooseMethod = (next: SupplierPaymentMethod) => {
+    setMethod(next);
+    if (!draft.accounts.some((a) => a.bankAccountId === bankAccountId && fits(a, next))) {
+      setAccount(draft.accounts.find((a) => fits(a, next))?.bankAccountId ?? '');
+    }
+  };
   const cap = capFor(target);
   const problem = amountProblem(amount, cap);
   const blockers = blockerCodes(draft.blockers).filter(
@@ -252,7 +265,8 @@ function PayForm({
 
         <FormField htmlFor="pay-from" label={t('from')}>
           <Select id="pay-from" value={bankAccountId} onChange={setAccount}>
-            {draft.accounts.map((a) => (
+            {offered.length === 0 ? <option value="">{t('noAccountForMethod')}</option> : null}
+            {offered.map((a) => (
               <option key={a.bankAccountId} value={a.bankAccountId}>
                 {a.underDualControl ? t('dualControl', { name: a.name }) : a.name}
               </option>
@@ -265,7 +279,7 @@ function PayForm({
             label={t('method')}
             name="pay-method"
             value={method}
-            onChange={setMethod}
+            onChange={chooseMethod}
             options={draft.methods.map((m) => ({ value: m, label: tMethod(m) }))}
           />
         ) : null}

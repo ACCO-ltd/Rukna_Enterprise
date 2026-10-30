@@ -50,7 +50,7 @@ export function QuotationStatusPill({ status }: { status: QuotationRequestStatus
   return <StatusPill tone={statusTone(status, 'quotationRequest')}>{t(status)}</StatusPill>;
 }
 
-/** "4 h 10 m" — working time as the server measured it. */
+/** "4 h 10 min" — working time as the server measured it. */
 export function useDurationText(): (minutes: number | null | undefined) => string {
   const t = useTranslations('procurement.quotes.waiting');
   return (minutes) => t('duration', durationParts(minutes));

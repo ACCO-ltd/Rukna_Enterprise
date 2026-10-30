@@ -112,8 +112,35 @@ export class SupplierStatementService {
       .filter((p) => p.postingStatus !== 'REVERSED')
       .reduce((sum, p) => sum.plus(p.unallocatedAmount.toString()), new Decimal(0));
 
+    // SS-1 — today's open bills, oldest due first, each with what has settled it so far.
+    const todayDate = new Date(`${today}T00:00:00.000Z`);
+    const open = openBills
+      .map((b) => {
+        const balance = new Decimal(b.outstandingAmount.toString()).plus(holds.get(b.id) ?? zero);
+        const total = new Decimal(b.totalAmount.toString());
+        return {
+          billId: b.id,
+          number: b.billNumber ?? b.supplierInvoiceNumber,
+          supplierInvoiceNumber: b.supplierInvoiceNumber,
+          billDate: b.billDate.toISOString().slice(0, 10),
+          dueDate: b.dueDate.toISOString().slice(0, 10),
+          total: total.toFixed(2),
+          settled: Decimal.max(total.minus(balance), zero).toFixed(2),
+          balance: balance.toFixed(2),
+          daysOverdue: Math.max(0, Math.floor((todayDate.getTime() - b.dueDate.getTime()) / 86_400_000)),
+          opening: b.postingStatus === 'OPENING_BALANCE',
+          _balance: balance,
+        };
+      })
+      .filter((b) => b._balance.gt(0))
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+      .map(({ _balance, ...b }) => b);
+    const organization = await this.repo.findOrganizationName(prisma, orgId);
+
     return {
-      supplier: { id: supplier.id, name: supplier.name, code: supplier.code },
+      supplier: { id: supplier.id, name: supplier.name, code: supplier.code, address: supplier.address ?? null },
+      organization,
+      openBills: open,
       from,
       to,
       openingBalance: placed.opening.toFixed(2),

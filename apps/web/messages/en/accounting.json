@@ -2000,6 +2000,22 @@
       "REFUND": "Refund received",
       "REFUND_REVERSAL": "Refund reversed"
     },
-    "action": "Statement"
+    "action": "Statement",
+    "pdf": "PDF",
+    "pdfFailed": "The PDF could not be made. Try again.",
+    "sendWhatsApp": "Send on WhatsApp",
+    "openTitle": "Bills still owed",
+    "openNone": "Nothing is owed: every bill is paid.",
+    "colBill": "Bill",
+    "colTheirInvoice": "Their invoice",
+    "colDue": "Due",
+    "colTotal": "Total",
+    "colSettled": "Paid / credited",
+    "colOwed": "Owed",
+    "openingBill": "Opening balance",
+    "daysLate": "{days, plural, one {# day late} other {# days late}}",
+    "activityTitle": "Activity {from} – {to}",
+    "whatsappTitle": "Send statement to the supplier",
+    "whatsappSubtitle": "Our record of {supplier} up to {date} goes as a PDF, so they can check it against theirs."
   }
 }

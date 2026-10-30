@@ -76,7 +76,7 @@ describe('AgingReport (Step 6)', () => {
     expect(within(table).getAllByRole('row').at(-2)).toHaveTextContent('Total');
     expect(within(table).getAllByRole('row').at(-1)).toHaveTextContent('Share of total');
 
-    await user.click(within(horn).getByRole('button', { name: /Horn Cement/ }));
+    await user.click(within(horn).getByRole('button', { name: /^Horn Cement/ }));
     const docs = screen.getByRole('list', { name: 'Open documents of Horn Cement' });
     expect(within(docs).getByRole('link', { name: 'OPEN-1' })).toHaveAttribute('href', '/finance/accounting/bills/b1');
     expect(docs).toHaveTextContent('120 days late · opening balance');

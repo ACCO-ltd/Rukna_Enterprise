@@ -30,6 +30,8 @@ interface OpenItem {
  * by days past due, with the documents behind each figure. Built on the same buckets and the same
  * "open" rule as Finance Home, so the two never disagree today.
  *
+ * AA (2026-10-30): payables too — as of any past day, with each supplier's money paid ahead.
+ *
  * AG (2026-10-30), receivables: as of any past day (each invoice's balance rebuilt to that day,
  * AG-1); money each client holds on account and the net they owe, as their statement shows it
  * (AG-2); retention held (AG-3); and both sides say whether the total agrees with the control
@@ -52,13 +54,10 @@ export class AgingReportService {
       throw new BadRequestException({ errorCode: 'AS_OF_INVALID', message: 'Choose a day up to today (YYYY-MM-DD).' });
     }
     const historical = asOfDay < todayIso;
-    if (historical && side === 'payables') {
-      throw new BadRequestException({ errorCode: 'AS_OF_NOT_SUPPORTED', message: 'The payables aging is shown as of today only.' });
-    }
     const now = new Date(`${asOfDay}T00:00:00.000Z`);
 
-    const book = side === 'receivables' ? await this.receivables(prisma, org, now, historical) : null;
-    const items: OpenItem[] = book ? book.items : await this.billItems(prisma, org);
+    const book = side === 'receivables' ? await this.receivables(prisma, org, now, historical) : await this.payables(prisma, org, now, historical);
+    const items: OpenItem[] = book.items;
 
     const emptyBuckets = () => new Map<AgingBucketKey, Decimal>(AGING_ORDER.map((k) => [k, ZERO]));
     const totals = emptyBuckets();
@@ -77,8 +76,8 @@ export class AgingReportService {
       totals.set(bucket, totals.get(bucket)!.plus(item.outstanding));
     }
 
-    // AG-2 — a client with money on account and nothing open still has a row (they are owed it).
-    for (const [clientId, extra] of book?.byClient ?? []) {
+    // AG-2 — a party with money on account and nothing open still has a row.
+    for (const [clientId, extra] of book.byClient) {
       if (!parties.has(clientId) && extra.onAccount.gt(0)) {
         parties.set(clientId, { party: extra.party, buckets: emptyBuckets(), total: ZERO, oldest: 0, documents: [] });
       }
@@ -89,7 +88,7 @@ export class AgingReportService {
     const rows: AgingPartyRow[] = [...parties.values()]
       .sort((a, b) => b.total.comparedTo(a.total) || a.party.name.localeCompare(b.party.name))
       .map((r) => {
-        const extra = book?.byClient.get(r.party.id);
+        const extra = book.byClient.get(r.party.id);
         return {
           partyId: r.party.id,
           partyCode: r.party.code,
@@ -98,13 +97,9 @@ export class AgingReportService {
           total: r.total.toFixed(2),
           oldestDaysLate: r.oldest,
           documents: r.documents.sort((a, b) => b.daysLate - a.daysLate || a.dueDate.localeCompare(b.dueDate)),
-          ...(book
-            ? {
-                onAccount: (extra?.onAccount ?? ZERO).toFixed(2),
-                netBalance: r.total.minus(extra?.onAccount ?? ZERO).toFixed(2),
-                retentionHeld: (extra?.retention ?? ZERO).toFixed(2),
-              }
-            : {}),
+          onAccount: (extra?.onAccount ?? ZERO).toFixed(2),
+          netBalance: r.total.minus(extra?.onAccount ?? ZERO).toFixed(2),
+          ...(side === 'receivables' ? { retentionHeld: (extra?.retention ?? ZERO).toFixed(2) } : {}),
         };
       });
     const total = [...totals.values()].reduce((s, v) => s.plus(v), ZERO);
@@ -128,13 +123,9 @@ export class AgingReportService {
       totals: asRecord(totals),
       total: total.toFixed(2),
       rows,
-      ...(book
-        ? {
-            onAccount: onAccount.toFixed(2),
-            netTotal: total.minus(onAccount).toFixed(2),
-            retentionHeld: rows.reduce((s, r) => s.plus(r.retentionHeld ?? '0'), ZERO).toFixed(2),
-          }
-        : {}),
+      onAccount: onAccount.toFixed(2),
+      netTotal: total.minus(onAccount).toFixed(2),
+      ...(side === 'receivables' ? { retentionHeld: rows.reduce((s, r) => s.plus(r.retentionHeld ?? '0'), ZERO).toFixed(2) } : {}),
       ledger,
     };
   }
@@ -212,19 +203,76 @@ export class AgingReportService {
   }
 
   /**
-   * Open bills, each at what is still owed on it: its outstanding balance plus what unposted
-   * payments hold on it (AP-1) — the ledger has not moved for those yet, so neither does the aging.
+   * AA — the payables on a day, built like the receivables (AG-1): each bill at what was still owed
+   * on it at the end of that day, from the payments applied, debit notes and buyer cash applied and
+   * their reversals; and each supplier's money paid ahead (payments not yet applied to a bill, less
+   * what they paid back). Today a bill also counts what unposted payments hold on it (AP-1) — the
+   * ledger has not moved for those yet, so neither does the aging.
    */
-  private async billItems(prisma: ReturnType<TenancyService['getClient']>, org: string): Promise<OpenItem[]> {
-    const bills = await this.repo.agingBills(prisma, org);
-    const holds = await pendingPaymentHolds(prisma as never, org, bills.map((b) => b.id));
-    return bills
-      .map((bill) => ({
+  private async payables(prisma: ReturnType<TenancyService['getClient']>, org: string, asOf: Date, historical: boolean) {
+    const book = await this.repo.payablesBook(prisma, org);
+    const journalDay = (id: string | null) => (id ? book.journalDates.get(id) : undefined);
+    const reversedOn = (journalId: string | null, fallback: Date | null, reversed: boolean, date: Date) =>
+      reversed ? (journalDay(journalId) ?? fallback ?? date) : null;
+    const dec = (v: { toString(): string }) => new Decimal(v.toString());
+    const holds = await pendingPaymentHolds(prisma as never, org, book.bills.map((b) => b.id));
+
+    const billMoves = new Map<string, DatedMovement[]>();
+    const paymentMoves = new Map<string, DatedMovement[]>();
+    const push = (map: Map<string, DatedMovement[]>, id: string, m: DatedMovement) => map.set(id, [...(map.get(id) ?? []), m]);
+    for (const a of book.allocations) {
+      // Dated as its journal: the payment's own for what it paid when raised, its own for advance applied later.
+      const date = journalDay(a.journalEntryId) ?? a.allocationDate;
+      const m = { amount: dec(a.allocatedAmount), date, reversedOn: reversedOn(a.reversalJournalEntryId, null, a.postingStatus === 'REVERSED', date) };
+      push(billMoves, a.supplierBillId, m);
+      push(paymentMoves, a.supplierPaymentId, m);
+    }
+    for (const n of book.debitNotes) {
+      push(billMoves, n.supplierBillId, { amount: dec(n.amount), date: n.accountingDate, reversedOn: reversedOn(n.reversalJournalEntryId, n.reversedAt, n.status === 'REVERSED', n.accountingDate) });
+    }
+    for (const c of book.buyerCash) {
+      const date = journalDay(c.journalEntryId) ?? c.allocationDate ?? asOf;
+      push(billMoves, c.supplierBillId, { amount: dec(c.allocatedAmount), date, reversedOn: reversedOn(c.reversalJournalEntryId, c.reversedAt, c.postingStatus === 'REVERSED', date) });
+    }
+    for (const r of book.refunds) {
+      push(paymentMoves, r.supplierPaymentId, { amount: dec(r.amount), date: r.refundDate, reversedOn: reversedOn(r.reversalJournalEntryId, r.reversedAt, r.status === 'REVERSED', r.refundDate) });
+    }
+
+    const byClient = new Map<string, { party: OpenItem['party']; onAccount: Decimal; retention: Decimal }>();
+    const items: OpenItem[] = [];
+    for (const bill of book.bills) {
+      const doc = {
+        total: dec(bill.totalAmount),
+        openNow: dec(bill.outstandingAmount).plus(holds.get(bill.id) ?? ZERO),
+        postedOn: bill.billDate,
+        reversedOn: reversedOn(bill.reversalJournalEntryId, bill.reversedAt, bill.postingStatus === 'REVERSED', bill.billDate),
+        movements: billMoves.get(bill.id) ?? [],
+      };
+      if (!existedOn(doc, asOf)) continue;
+      const open = historical ? balanceOn(doc, asOf)! : bill.postingStatus === 'REVERSED' ? ZERO : doc.openNow;
+      if (!open.gt(0)) continue;
+      items.push({
         party: bill.supplier,
-        outstanding: new Decimal(bill.outstandingAmount.toString()).plus(holds.get(bill.id) ?? ZERO),
+        outstanding: open,
         document: { id: bill.id, number: bill.billNumber ?? bill.supplierInvoiceNumber, date: day(bill.billDate), due: bill.dueDate, opening: bill.postingStatus === 'OPENING_BALANCE' },
-      }))
-      .filter((item) => item.outstanding.gt(0));
+      });
+    }
+    for (const p of book.payments) {
+      const doc = {
+        total: dec(p.totalAmount),
+        openNow: dec(p.unallocatedAmount),
+        postedOn: p.accountingDate,
+        reversedOn: reversedOn(p.reversalJournalEntryId, p.reversedAt, p.postingStatus === 'REVERSED', p.accountingDate),
+        movements: paymentMoves.get(p.id) ?? [],
+      };
+      if (!existedOn(doc, asOf)) continue;
+      const held = historical ? balanceOn(doc, asOf)! : p.postingStatus === 'REVERSED' ? ZERO : doc.openNow;
+      if (!held.gt(0)) continue;
+      const row = byClient.get(p.supplier.id) ?? { party: p.supplier, onAccount: ZERO, retention: ZERO };
+      row.onAccount = row.onAccount.plus(held);
+      byClient.set(p.supplier.id, row);
+    }
+    return { items, byClient };
   }
 
   private assertMayRead(identity: RequestIdentity, side: AgingSide): void {

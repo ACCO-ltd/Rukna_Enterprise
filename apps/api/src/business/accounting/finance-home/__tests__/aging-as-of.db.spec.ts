@@ -6,7 +6,7 @@
  *   AG-02  money a client paid ahead shows on account, and the net equals what they owe
  *   AG-03  a bounced payment counts while it stood, and the invoice owes again after
  *   AG-04  the aging total agrees with the AR control account on the same day
- *   AG-05  a future day is refused; the payables aging is today only
+ *   AG-05  a future day is refused (the payables side has its own spec, AA)
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -97,10 +97,7 @@ it('AG-04: the aging total agrees with the AR control account on the same day', 
   }
 });
 
-it('AG-05: a future day is refused; the payables aging is today only', async () => {
+it('AG-05: a future day is refused', async () => {
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
   await expect(report(tomorrow)).rejects.toMatchObject({ response: { errorCode: 'AS_OF_INVALID' } });
-  await expect(aging.report({ ...env.identity, permissions: [PERMISSIONS.payablesManage] }, 'payables', day(3))).rejects.toMatchObject({
-    response: { errorCode: 'AS_OF_NOT_SUPPORTED' },
-  });
 });

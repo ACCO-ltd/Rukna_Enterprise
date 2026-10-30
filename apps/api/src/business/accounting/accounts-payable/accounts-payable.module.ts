@@ -31,6 +31,9 @@ import { SupplierRefundController } from './presentation/supplier-refund.control
 import { SupplierRefundService } from './application/supplier-refund.service.js';
 import { SupplierStatementController } from './presentation/supplier-statement.controller.js';
 import { SupplierStatementService } from './application/supplier-statement.service.js';
+import { SupplierStatementDocumentService } from './application/supplier-statement-document.service.js';
+import { SupplierStatementWhatsAppService } from './application/supplier-statement-whatsapp.service.js';
+import { CommunicationModule } from '../../../platform/messaging/communication.module.js';
 import { SupplierStatementRepository } from './infrastructure/supplier-statement.repository.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
 import { PostingProfileRepository } from './infrastructure/posting-profile.repository.js';
@@ -45,6 +48,7 @@ import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-pay
     TenancyModule,
     AccountingCoreModule,
     FilesModule,
+    CommunicationModule,
     CommitmentLedgerModule,
     BillMatchingModule,
     WorkflowsModule,
@@ -81,6 +85,8 @@ import { SupplierPaymentDocumentRepository } from './infrastructure/supplier-pay
     SupplierPaymentService,
     SupplierService,
     SupplierStatementService,
+    SupplierStatementDocumentService,
+    SupplierStatementWhatsAppService,
     SupplierDebitNoteService,
     SupplierRefundService,
     SupplierStatementRepository,

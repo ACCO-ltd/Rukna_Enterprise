@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "MessagePurpose" ADD VALUE 'SUPPLIER_STATEMENT';

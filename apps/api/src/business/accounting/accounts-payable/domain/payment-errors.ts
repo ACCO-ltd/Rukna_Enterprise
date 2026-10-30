@@ -14,6 +14,7 @@ const MESSAGES: Record<string, string> = {
   ACCOUNT_REQUIRES_DUAL_CONTROL:
     'This account needs two bank signatories, which a buyer at the counter cannot wait for. Choose the cash box or a mobile-money float.',
   ACCOUNT_NOT_USABLE: 'This account is closed or does not allow payments.',
+  ACCOUNT_WRONG_KIND: 'This method is paid from another kind of account: cash from a cash box, mobile money from a wallet, a bank payment from a bank account.',
   CURRENCY_MISMATCH: 'The account is in another currency than the order.',
   'POSTING_ACCOUNT_NOT_CONFIGURED:STAFF_ADVANCE':
     'Set up the STAFF_ADVANCE posting profile (Staff advances account) before releasing buyer cash.',

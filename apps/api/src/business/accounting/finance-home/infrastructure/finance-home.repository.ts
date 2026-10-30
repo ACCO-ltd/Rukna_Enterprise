@@ -139,24 +139,56 @@ export class FinanceHomeRepository {
     return { debit: sum._sum.debitAmount, credit: sum._sum.creditAmount };
   }
 
-  /** Step 6 — every open bill with its supplier, for the payables aging report. */
-  agingBills(prisma: TenantPrisma, organizationId: string) {
-    return prisma.supplierBill.findMany({
-      where: {
-        organizationId,
-        postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
-        documentStatus: { notIn: ['CANCELLED', 'REJECTED'] },
-        // AP-1 — a bill an unposted payment holds in full is still owed until that payment posts.
-        OR: [
-          { outstandingAmount: { gt: 0 } },
-          { allocations: { some: { postingStatus: 'NOT_POSTED', payment: { documentStatus: { notIn: ['REJECTED', 'CANCELLED'] }, postingStatus: { in: ['NOT_POSTED', 'FAILED'] } } } } },
-        ],
-      },
-      select: {
-        id: true, billNumber: true, supplierInvoiceNumber: true, billDate: true, dueDate: true, outstandingAmount: true, postingStatus: true,
-        supplier: { select: { id: true, code: true, name: true } },
-      },
-    });
+  /**
+   * AA — everything the payables aging is drawn from, so it can be rebuilt as of a past day: every
+   * bill that reached the book, the movements that settled them (payments applied, debit notes,
+   * buyer cash applied), every posted payment with its refunds (money held as an advance), and the
+   * dates of the journals behind them.
+   */
+  async payablesBook(prisma: TenantPrisma, organizationId: string) {
+    const live = { in: ['POSTED', 'REVERSED', 'OPENING_BALANCE'] as ('POSTED' | 'REVERSED' | 'OPENING_BALANCE')[] };
+    const [bills, allocations, debitNotes, buyerCash, payments, refunds] = await Promise.all([
+      prisma.supplierBill.findMany({
+        where: { organizationId, postingStatus: live, documentStatus: { notIn: ['CANCELLED', 'REJECTED'] } },
+        select: {
+          id: true, billNumber: true, supplierInvoiceNumber: true, billDate: true, dueDate: true, totalAmount: true, outstandingAmount: true,
+          postingStatus: true, reversalJournalEntryId: true, reversedAt: true,
+          supplier: { select: { id: true, code: true, name: true } },
+        },
+      }),
+      prisma.supplierPaymentAllocation.findMany({
+        where: { organizationId, postingStatus: { in: ['POSTED', 'REVERSED'] } },
+        select: { supplierBillId: true, supplierPaymentId: true, allocatedAmount: true, allocationDate: true, journalEntryId: true, postingStatus: true, reversalJournalEntryId: true },
+      }),
+      prisma.supplierDebitNote.findMany({
+        where: { organizationId, status: { in: ['POSTED', 'REVERSED'] } },
+        select: { supplierBillId: true, amount: true, accountingDate: true, status: true, reversalJournalEntryId: true, reversedAt: true },
+      }),
+      prisma.buyerAdvanceEvidenceAllocation.findMany({
+        where: { organizationId, postingStatus: { in: ['POSTED', 'REVERSED'] } },
+        select: { supplierBillId: true, allocatedAmount: true, allocationDate: true, journalEntryId: true, postingStatus: true, reversalJournalEntryId: true, reversedAt: true },
+      }),
+      prisma.supplierPayment.findMany({
+        where: { organizationId, postingStatus: { in: ['POSTED', 'REVERSED'] } },
+        select: {
+          id: true, totalAmount: true, unallocatedAmount: true, accountingDate: true, postingStatus: true, reversalJournalEntryId: true, reversedAt: true,
+          supplier: { select: { id: true, code: true, name: true } },
+        },
+      }),
+      prisma.supplierRefund.findMany({
+        where: { organizationId, status: { in: ['POSTED', 'REVERSED'] } },
+        select: { supplierPaymentId: true, amount: true, refundDate: true, status: true, reversalJournalEntryId: true, reversedAt: true },
+      }),
+    ]);
+    const journalIds = [
+      ...[...bills, ...debitNotes, ...payments, ...refunds].map((r) => r.reversalJournalEntryId),
+      ...allocations.flatMap((a) => [a.journalEntryId, a.reversalJournalEntryId]),
+      ...buyerCash.flatMap((a) => [a.journalEntryId, a.reversalJournalEntryId]),
+    ].filter((id): id is string => Boolean(id));
+    const journals = journalIds.length
+      ? await prisma.journalEntry.findMany({ where: { id: { in: [...new Set(journalIds)] } }, select: { id: true, accountingDate: true } })
+      : [];
+    return { bills, allocations, debitNotes, buyerCash, payments, refunds, journalDates: new Map(journals.map((j) => [j.id, j.accountingDate])) };
   }
 
   async invoicedBetween(prisma: TenantPrisma, organizationId: string, from: Date, to: Date) {

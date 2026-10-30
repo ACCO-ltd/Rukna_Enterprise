@@ -169,6 +169,8 @@ export class QuotationListService {
     // ADR-045 — pay: the order is not fully funded; settle: a receipt waits to be recorded or cash is
     // still with the buyer. Oldest waiting first, with the age in working minutes.
     const paymentAge = new Map<string, number>();
+    // PN-1 — who is paid and how much is still owed on the order, so the queue reads at a glance.
+    const paymentFacts = new Map<string, { supplierName: string | null; remaining: Decimal }>();
     if (queue === 'pay' || queue === 'settle') {
       const kept: typeof candidates = [];
       const since = new Map<string, Date>();
@@ -178,6 +180,7 @@ export class QuotationListService {
         const inQueue = queue === 'pay' ? facts.unfunded : facts.settleSince !== null;
         if (!inQueue) continue;
         kept.push(c);
+        paymentFacts.set(c.id, { supplierName: facts.supplierName, remaining: facts.remaining });
         since.set(c.id, (queue === 'pay' ? facts.orderedSince : facts.settleSince) ?? new Date());
       }
       kept.sort((x, y) => since.get(x.id)!.getTime() - since.get(y.id)!.getTime());
@@ -227,6 +230,12 @@ export class QuotationListService {
           lowestTotal: moneyOrNull(visible, lowestTotal),
           awardedTotal: moneyOrNull(visible, dec(r.awardedTotal)),
           ...(paymentAge.has(r.id) ? { paymentWaitingWorkingMinutes: paymentAge.get(r.id)! } : {}),
+          ...(paymentFacts.has(r.id)
+            ? {
+                payee: paymentFacts.get(r.id)!.supplierName,
+                remainingToPay: moneyOrNull(visible, paymentFacts.get(r.id)!.remaining),
+              }
+            : {}),
           moneyVisible: visible,
         };
       }),
@@ -244,7 +253,7 @@ export class QuotationListService {
   private async paymentQueueFacts(prisma: ReturnType<TenancyService['getClient']>, orgId: string, requestId: string) {
     const request = await prisma.quotationRequest.findUnique({
       where: { id: requestId },
-      select: { purchaseOrderId: true, purchaseOrder: { select: { updatedAt: true } } },
+      select: { purchaseOrderId: true, purchaseOrder: { select: { updatedAt: true, supplier: { select: { name: true } } } } },
     });
     if (!request?.purchaseOrderId) return null;
     const ap = new AwardPaymentRepository();
@@ -272,6 +281,8 @@ export class QuotationListService {
     const settleSince = submitted?.createdAt ?? withBuyer?.postedAt ?? null;
     return {
       unfunded: position.remaining.greaterThan(0),
+      remaining: position.remaining,
+      supplierName: request.purchaseOrder?.supplier?.name ?? null,
       orderedSince: request.purchaseOrder?.updatedAt ?? null,
       settleSince,
     };
