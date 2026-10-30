@@ -69,6 +69,76 @@ export class FinanceHomeRepository {
     });
   }
 
+  /**
+   * AG — everything the receivables aging is drawn from: every invoice that reached the book, the
+   * movements against them (payments applied, credit notes, write-offs), every receipt with its
+   * refunds, and the dates of the journals that reversed any of them.
+   */
+  async receivablesBook(prisma: TenantPrisma, organizationId: string) {
+    const live = { in: ['POSTED', 'REVERSED', 'OPENING_BALANCE'] as ('POSTED' | 'REVERSED' | 'OPENING_BALANCE')[] };
+    const [invoices, allocations, creditNotes, writeOffs, receipts, refunds] = await Promise.all([
+      prisma.clientInvoice.findMany({
+        where: { organizationId, postingStatus: live, documentStatus: { not: 'CANCELLED' } },
+        select: {
+          id: true, invoiceNumber: true, invoiceDate: true, dueDate: true, totalAmount: true, outstandingAmount: true,
+          postingStatus: true, reversalJournalEntryId: true, reversedAt: true, retentionAmount: true, retentionReleasedAmount: true,
+          client: { select: { id: true, code: true, name: true } },
+        },
+      }),
+      prisma.clientReceiptAllocation.findMany({
+        where: { organizationId, postingStatus: { in: ['POSTED', 'REVERSED'] } },
+        select: { clientInvoiceId: true, paymentReceiptId: true, allocatedAmount: true, allocationDate: true, postingStatus: true, reversalJournalEntryId: true },
+      }),
+      prisma.creditNote.findMany({
+        where: { organizationId, postingStatus: { in: ['POSTED', 'REVERSED'] } },
+        select: { invoiceId: true, totalAmount: true, accountingDate: true, postingStatus: true, reversalJournalEntryId: true, reversedAt: true },
+      }),
+      prisma.receivableWriteOff.findMany({
+        where: { organizationId, status: { in: ['POSTED', 'REVERSED'] } },
+        select: { invoiceId: true, amount: true, accountingDate: true, status: true, reversalJournalEntryId: true, reversedAt: true },
+      }),
+      prisma.paymentReceipt.findMany({
+        where: { organizationId, postingStatus: live },
+        select: {
+          id: true, totalAmount: true, unallocatedAmount: true, accountingDate: true, postingStatus: true, reversalJournalEntryId: true, reversedAt: true,
+          client: { select: { id: true, code: true, name: true } },
+        },
+      }),
+      prisma.clientRefund.findMany({
+        where: { organizationId, status: { in: ['POSTED', 'REVERSED'] } },
+        select: { receiptId: true, amount: true, refundDate: true, status: true, reversalJournalEntryId: true, reversedAt: true },
+      }),
+    ]);
+    const reversalIds = [...invoices, ...allocations, ...creditNotes, ...writeOffs, ...receipts, ...refunds]
+      .map((r) => r.reversalJournalEntryId)
+      .filter((id): id is string => Boolean(id));
+    const journals = reversalIds.length
+      ? await prisma.journalEntry.findMany({ where: { id: { in: reversalIds } }, select: { id: true, accountingDate: true } })
+      : [];
+    return { invoices, allocations, creditNotes, writeOffs, receipts, refunds, journalDates: new Map(journals.map((j) => [j.id, j.accountingDate])) };
+  }
+
+  /**
+   * AG-4 — a control account's balance at the end of a day, from the ledger: every posted line on
+   * the accounts of that subtype (debit − credit). Reversals are journals of their own, so they
+   * count on their own dates.
+   */
+  async controlBalance(prisma: TenantPrisma, organizationId: string, subtype: 'ACCOUNTS_RECEIVABLE' | 'ACCOUNTS_PAYABLE', asOf: Date) {
+    const accounts = await prisma.account.findMany({
+      where: { organizationId, versions: { some: { accountSubtype: subtype } } },
+      select: { id: true },
+    });
+    if (accounts.length === 0) return null;
+    const sum = await prisma.journalLine.aggregate({
+      where: {
+        accountId: { in: accounts.map((a) => a.id) },
+        entry: { organizationId, status: { in: ['POSTED', 'REVERSED'] }, accountingDate: { lte: asOf } },
+      },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+    return { debit: sum._sum.debitAmount, credit: sum._sum.creditAmount };
+  }
+
   /** Step 6 — every open bill with its supplier, for the payables aging report. */
   agingBills(prisma: TenantPrisma, organizationId: string) {
     return prisma.supplierBill.findMany({

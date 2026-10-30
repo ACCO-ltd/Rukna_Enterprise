@@ -1,5 +1,5 @@
-import { Controller, Get, Param, ParseEnumPipe, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, ParseEnumPipe, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type AgingSide, type RequestIdentity } from '@erp/types';
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
@@ -35,10 +35,12 @@ export class AgingReportController {
   @Get(':side')
   @RequireAnyPermission(PERMISSIONS.accountingView, PERMISSIONS.accountingManage, PERMISSIONS.receivablesManage, PERMISSIONS.payablesManage)
   @ApiOperation({ summary: 'Open invoices or bills by party and days past due, with the documents behind each figure' })
+  @ApiQuery({ name: 'asOf', required: false, description: 'AG-1: YYYY-MM-DD up to today (receivables only); default today' })
   report(
     @CurrentUser() identity: RequestIdentity,
     @Param('side', new ParseEnumPipe({ receivables: 'receivables', payables: 'payables' })) side: AgingSide,
+    @Query('asOf') asOf?: string,
   ) {
-    return this.service.report(identity, side);
+    return this.service.report(identity, side, asOf);
   }
 }
