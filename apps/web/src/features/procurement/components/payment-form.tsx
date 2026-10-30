@@ -67,7 +67,15 @@ interface ApplyState {
   amount: string;
 }
 
-export function SupplierPaymentForm() {
+/**
+ * `prefill` opens the form for one bill (SB-2's Pay bill): its supplier chosen, the bill ticked
+ * and the amount set to what it still owes. Everything stays editable.
+ */
+export function SupplierPaymentForm({
+  prefill,
+}: {
+  prefill?: { supplierId: string; billId?: string; amount?: string };
+} = {}) {
   const t = useTranslations('procurement.payments');
   const tc = useTranslations('procurement.common');
   const locale = useLocale() as 'en' | 'ar';
@@ -75,13 +83,13 @@ export function SupplierPaymentForm() {
   useModuleTrail(t('createTitle'));
   const { can } = usePermissions();
 
-  const [supplierId, setSupplierId] = useState('');
+  const [supplierId, setSupplierId] = useState(prefill?.supplierId ?? '');
   const [bankAccountId, setBankAccountId] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [accountingDate, setAccountingDate] = useState('');
   // Single-currency platform (ADR-024): USD is implicit, never entered.
   const currencyCode = 'USD';
-  const [totalAmount, setTotalAmount] = useState('');
+  const [totalAmount, setTotalAmount] = useState(prefill?.amount ?? '');
   const [paymentMethod, setPaymentMethod] = useState<string>('BANK_TRANSFER');
   const [bankReference, setBankReference] = useState('');
   const [notes, setNotes] = useState('');
@@ -93,7 +101,9 @@ export function SupplierPaymentForm() {
   const [showErrors, setShowErrors] = useState(false);
 
   // Keyed by bill id. A bill with no entry is unchecked with no amount.
-  const [apply, setApply] = useState<Record<string, ApplyState>>({});
+  const [apply, setApply] = useState<Record<string, ApplyState>>(
+    prefill?.billId && prefill.amount ? { [prefill.billId]: { checked: true, amount: prefill.amount } } : {},
+  );
 
   const create = useCreateSupplierPayment();
   const bankAccounts = useBankAccounts();

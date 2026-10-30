@@ -37,7 +37,7 @@ function build(
     supplierBillMatch,
     supplierBillLine,
     journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
-    postingProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+    supplier: { findFirst: jest.fn().mockResolvedValue({ status: 'ACTIVE' }) },
     $transaction: jest.fn().mockImplementation((cb: (tx: unknown) => unknown) => cb(prisma)),
   };
   const repo = {
@@ -59,6 +59,7 @@ function build(
     governance as never,
     {} as never,
   );
+  jest.spyOn(svc as never, 'resolveExpenseProfileAccount').mockResolvedValue('acc1' as never);
   return { svc, prisma, repo, governance };
 }
 

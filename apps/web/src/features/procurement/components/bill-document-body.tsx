@@ -28,7 +28,7 @@ import {
   type TotalsRow,
 } from '@erp/ui';
 
-import { useJournal } from '@/features/accounting/hooks/use-accounting';
+import { useJournal, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format';
@@ -118,9 +118,16 @@ export function BillLinesTab({ bill }: { bill: SupplierBill }) {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
   const lines = bill.lines ?? [];
+  // The expense account each profile posts to, by name — a code alone means nothing to a reader.
+  const profiles = usePostingProfiles();
+  const accountOf = (code: string) => profiles.data?.find((p) => p.code === code)?.currentAccount?.name ?? null;
 
   if (lines.length === 0) {
-    return <p className="py-6 text-body-sm text-muted-foreground">{t('noLines')}</p>;
+    return (
+      <p className="px-5 py-6 text-body-sm text-muted-foreground">
+        {bill.postingStatus === 'OPENING_BALANCE' ? t('noLinesOpening') : t('noLines')}
+      </p>
+    );
   }
 
   return (
@@ -147,8 +154,11 @@ export function BillLinesTab({ bill }: { bill: SupplierBill }) {
                 />
                 <NetVarianceNote line={line} />
               </TableCell>
-              <TableCell className="font-mono text-caption text-muted-foreground">
-                {line.expenseProfileCode}
+              <TableCell>
+                {accountOf(line.expenseProfileCode) ? (
+                  <span className="block text-body-sm">{accountOf(line.expenseProfileCode)}</span>
+                ) : null}
+                <span className="block font-mono text-caption text-muted-foreground">{line.expenseProfileCode}</span>
               </TableCell>
               <TableCell numeric>{formatNumber(line.quantity) ?? '—'}</TableCell>
               <TableCell numeric>

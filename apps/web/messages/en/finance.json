@@ -553,7 +553,7 @@
   },
   "eligibility": {
     "bill": {
-      "title": "Why can't I pay this?",
+      "title": "This bill is on hold",
       "readyToPay": "Ready to pay — {amount} not yet covered by a payment.",
       "readyToPost": "Ready to post. Once posted, it can be paid.",
       "paidInFull": "Paid in full.",
@@ -562,7 +562,9 @@
       "signatures": "A payment needs {count, plural, one {# bank signature} other {# bank signatures}} to be released.",
       "loading": "Checking whether this bill can be paid",
       "loadFailed": "Could not check whether this bill can be paid.",
-      "retry": "Try again"
+      "retry": "Try again",
+      "heldBy": "{reason}. To be cleared by {owner}.",
+      "showSteps": "Show every step"
     },
     "stage": {
       "blocked": "{reason} — owner: {owner}",
