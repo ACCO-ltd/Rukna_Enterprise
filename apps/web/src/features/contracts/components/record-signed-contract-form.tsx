@@ -94,8 +94,12 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     if (!standardPlan || seeded) return;
-    setSeeded(true);
+    // Seed the stages once from the company's standard plan when the query resolves, then mark
+    // seeded so the user's later edits — including clearing every stage — are never overwritten.
+    // Syncing async external data into local state is the case this rule deliberately allows.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStages((current) => (current.length === 0 ? standardPlan.map(stageFromTemplate) : current));
+    setSeeded(true);
   }, [standardPlan, seeded]);
   const [file, setFile] = useState<File | null>(null);
   const [attempted, setAttempted] = useState(false);
