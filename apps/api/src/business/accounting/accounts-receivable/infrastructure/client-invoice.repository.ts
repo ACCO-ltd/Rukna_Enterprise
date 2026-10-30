@@ -23,6 +23,9 @@ export interface CreateClientInvoiceData {
   taxCodeId: string;
   taxRate: Decimal;
   paymentTerms?: string;
+  /** A hand-typed invoice's client PO / job number and note to the client (ADR-048); null = none. */
+  clientReference?: string | null;
+  notes?: string | null;
   billingAddressSnapshot: object;
   createdBy: string;
   /** ADR-046 §5 — the period breakdown of an IPC invoice (omitted by every other source). */
@@ -509,6 +512,8 @@ export class ClientInvoiceRepository {
         taxRate: data.taxRate,
         outstandingAmount: data.totalAmount,
         paymentTerms: data.paymentTerms ?? null,
+        clientReference: data.clientReference ?? null,
+        notes: data.notes ?? null,
         billingAddressSnapshot: data.billingAddressSnapshot,
         documentStatus: 'DRAFT',
         postingStatus: 'NOT_POSTED',
@@ -526,7 +531,7 @@ export class ClientInvoiceRepository {
     invoiceId: string,
     header: Pick<
       CreateClientInvoiceData,
-      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'vatAmount' | 'totalAmount' | 'taxCodeId' | 'taxRate' | 'paymentTerms' | 'billingAddressSnapshot'
+      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'vatAmount' | 'totalAmount' | 'taxCodeId' | 'taxRate' | 'paymentTerms' | 'clientReference' | 'notes' | 'billingAddressSnapshot'
     >,
     organizationId: string,
     lines: ManualInvoiceLineData[],
@@ -546,7 +551,11 @@ export class ClientInvoiceRepository {
         taxCodeId: header.taxCodeId,
         taxRate: header.taxRate,
         paymentTerms: header.paymentTerms ?? null,
+        clientReference: header.clientReference ?? null,
+        notes: header.notes ?? null,
         billingAddressSnapshot: header.billingAddressSnapshot,
+        // A PDF previewed before this edit shows the old draft: drop it so the next view renders anew.
+        documentFileId: null,
         revision: { increment: 1 },
         lines: { create: lines.map((l) => ({ ...l, organizationId, currencyCode: header.currencyCode })) },
       },

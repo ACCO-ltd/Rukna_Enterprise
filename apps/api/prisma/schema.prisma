@@ -2933,6 +2933,10 @@ model ClientInvoice {
   // project, contract or source tag — contract billing stays source-only (ADR-037).
   isManual               Boolean          @default(false) @map("is_manual")
   paymentTerms           String?          @map("payment_terms")
+  // The client's own reference for this bill — their purchase order or job number — printed on the
+  // invoice as "Your Ref." so their accounts team can match it. Free text; null when none was given.
+  clientReference        String?          @map("client_reference") @db.VarChar(100)
+  // A note to the client printed on this invoice alone, above the organisation's standard notes.
   notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
   // The rendered branded PDF (Commercial round-3) — generated lazily on first request for the

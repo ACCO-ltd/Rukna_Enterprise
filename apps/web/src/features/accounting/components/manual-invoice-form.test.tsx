@@ -71,6 +71,8 @@ describe('ManualInvoiceForm (ADR-048)', () => {
     await fillLine(user, 1, 'Excavator hire', '3', '450');
     await user.click(screen.getByRole('button', { name: 'Add line' }));
     await fillLine(user, 2, 'Surplus rebar', '2.5', '10.01');
+    await user.type(screen.getByLabelText('PO / reference'), ' PO-4471 ');
+    await user.type(screen.getByLabelText('Note to client'), 'Hire for site B.');
 
     // 1350 + 25.03 (25.025 rounds half-up) = 1375.03; 5% tax = 68.75.
     const totals = screen.getByText('Total due').closest('dl')!;
@@ -84,6 +86,8 @@ describe('ManualInvoiceForm (ADR-048)', () => {
         clientId: 'c1',
         currencyCode: 'USD',
         paymentTerms: 'Net 15',
+        clientReference: 'PO-4471',
+        notes: 'Hire for site B.',
         lines: [
           { description: 'Excavator hire', quantity: '3', unitPrice: '450', revenueAccountCode: '42100' },
           { description: 'Surplus rebar', quantity: '2.5', unitPrice: '10.01', revenueAccountCode: '42100' },

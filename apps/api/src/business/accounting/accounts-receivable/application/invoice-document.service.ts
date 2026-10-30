@@ -71,6 +71,7 @@ export function InvoiceDocument({ input }: { input: InvoiceDocumentInput }) {
         View,
         { wrap: false },
         totalsBlock(s, vm.totals, vm.total),
+        message(vm),
         optionalSections(s, vm),
         signature(s, vm),
       ),
@@ -117,6 +118,16 @@ function lineTable(s: KitStyles, vm: InvoiceViewModel) {
         ),
       ),
     ),
+  );
+}
+
+/** The invoice's own note to the client: plain lines under the totals, no heading. */
+function message(vm: InvoiceViewModel) {
+  if (vm.message.length === 0) return null;
+  return h(
+    View,
+    { style: { marginBottom: 10 } },
+    ...vm.message.map((line, i) => h(Text, { style: { fontSize: 9, color: '#14213D', marginBottom: 1 }, key: `m${i}` }, line)),
   );
 }
 

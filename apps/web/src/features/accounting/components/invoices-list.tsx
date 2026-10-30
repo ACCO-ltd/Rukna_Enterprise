@@ -203,7 +203,8 @@ export function InvoicesList() {
       sticky: true,
       sortable: true,
       card: 'title',
-      plainValue: (inv) => `${inv.invoiceNumber ?? ''} ${sourceText(inv)}`,
+      // The client's PO / reference is searchable too: their accounts team quotes it when they call.
+      plainValue: (inv) => `${inv.invoiceNumber ?? ''} ${sourceText(inv)} ${inv.clientReference ?? ''}`,
       exportValue: (inv) => `${inv.invoiceNumber ?? t('unnumbered')} (${sourceText(inv)})`,
       // The invoice number is the row's one link (the grid wraps this cell); the source says
       // what was billed — a certificate, a milestone, a separate charge.

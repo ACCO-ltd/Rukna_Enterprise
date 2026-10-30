@@ -20,6 +20,7 @@ import {
   QuantityInput,
   Select,
   SideSheet,
+  Textarea,
 } from '@erp/ui';
 import type { ManualInvoiceInput, ManualInvoiceLineInput } from '@erp/types';
 
@@ -113,6 +114,8 @@ export function ManualInvoiceForm({
   const [invoiceDate, setInvoiceDate] = useState(invoice?.invoiceDate.slice(0, 10) ?? today);
   const [terms, setTerms] = useState<TermsKey>(termsFromLabel(invoice?.paymentTerms ?? null));
   const [customDue, setCustomDue] = useState(invoice?.dueDate?.slice(0, 10) ?? defaultDueDate(today, 15));
+  const [reference, setReference] = useState(invoice?.clientReference ?? '');
+  const [note, setNote] = useState(invoice?.notes ?? '');
   const currency = CURRENCY;
   const defaultAccount = accounts.data?.[0]?.code ?? '';
   const [lines, setLines] = useState<LineDraft[]>(() =>
@@ -175,7 +178,7 @@ export function ManualInvoiceForm({
   const shownFor = (fieldId: string) => shownErrors.find((e) => e.fieldId === fieldId)?.message;
 
   // Unsaved changes: anything different from what the form opened with.
-  const snapshot = JSON.stringify({ clientId, invoiceDate, terms, customDue, lines: lines.map((l) => [l.description, l.quantity, l.unitPrice, l.revenueAccountCode]) });
+  const snapshot = JSON.stringify({ clientId, invoiceDate, terms, customDue, reference, note, lines: lines.map((l) => [l.description, l.quantity, l.unitPrice, l.revenueAccountCode]) });
   const [initialSnapshot] = useState(snapshot);
   const dirty = snapshot !== initialSnapshot;
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -209,6 +212,8 @@ export function ManualInvoiceForm({
       dueDate,
       currencyCode: currency,
       paymentTerms: t(`terms.${terms}`),
+      clientReference: reference.trim(),
+      notes: note.trim(),
       ...taxCodeBody(tax),
       lines: lines.map((l) => ({
         description: l.description.trim(),
@@ -419,6 +424,16 @@ export function ManualInvoiceForm({
                 {[client.code, client.taxNumber ? t('taxNumber', { number: client.taxNumber }) : null].filter(Boolean).join(' · ')}
               </p>
             ) : null}
+            <FormField htmlFor="manual-reference" label={t('reference')}>
+              <Input
+                id="manual-reference"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                maxLength={100}
+                placeholder={t('referencePlaceholder')}
+                autoComplete="off"
+              />
+            </FormField>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -480,8 +495,18 @@ export function ManualInvoiceForm({
           />
 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="w-full lg:max-w-sm">
+          <div className="w-full space-y-4 lg:max-w-sm">
             <InvoiceTaxField choice={tax} id="manual-tax" disabled={save.isPending} />
+            <FormField htmlFor="manual-note" label={t('note')}>
+              <Textarea
+                id="manual-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={1000}
+                rows={3}
+                placeholder={t('notePlaceholder')}
+              />
+            </FormField>
           </div>
           <dl className="w-full space-y-1.5 text-body-sm lg:max-w-xs">
             <div className="flex justify-between">
