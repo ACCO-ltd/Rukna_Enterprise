@@ -7,6 +7,7 @@
  *   MI-04  reversing mirrors those lines
  *   MI-05  a header, expense or unknown account is refused, with every problem listed
  *   MI-06  the source reads MANUAL and the detail carries its lines
+ *   MI-11  CI-1: a currency other than USD is refused (ADR-024 ACC-CUR-001)
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -225,4 +226,14 @@ it('MI-10 (ADR-046 §8): above the approval amount, Issue waits for a second per
       invoiceApprovalAbove: null, billApprovalAbove: null, autoPostToleratedBills: false, paymentAutoApproveUpTo: '1000.00',
     });
   }
+});
+
+it('MI-11 (CI-1): an invoice in another currency than USD is refused', async () => {
+  const err = (await svc.clientInvoiceService
+    .createManual(env.identity, {
+      ...input([{ description: 'Pump hire', quantity: '1', unitPrice: '10.00', revenueAccountCode: '42100' }]),
+      currencyCode: 'EUR',
+    })
+    .catch((e: { getResponse: () => unknown }) => e.getResponse())) as { details: { problems: string[] } };
+  expect(err.details.problems).toEqual(['Invoices are raised in US dollars (USD) only.']);
 });
