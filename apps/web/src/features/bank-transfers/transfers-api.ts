@@ -17,9 +17,12 @@ export interface RequestTransferPayload {
 
 export const transferKeys = { all: ['finance', 'bank-transfers'] as const };
 
-/** B-2 — `GET /bank-transfers`, newest first. */
-export function useBankTransfers() {
-  return useQuery({ queryKey: transferKeys.all, queryFn: () => apiClient<BankTransferView[]>('/bank-transfers') });
+/** B-2 — `GET /bank-transfers`, newest first; one account's transfers in or out when given. */
+export function useBankTransfers(bankAccountId?: string) {
+  return useQuery({
+    queryKey: bankAccountId ? [...transferKeys.all, bankAccountId] : transferKeys.all,
+    queryFn: () => apiClient<BankTransferView[]>(bankAccountId ? `/bank-transfers?bankAccountId=${encodeURIComponent(bankAccountId)}` : '/bank-transfers'),
+  });
 }
 
 /** Every transfer command moves account balances: refresh transfers, accounts and the inbox. */

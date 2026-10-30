@@ -18,25 +18,26 @@ import {
 } from '@erp/ui';
 
 import { useApprovalSettings, useBankAccounts } from '@/features/accounting/hooks/use-accounting';
+import { todayWireDate as today } from '@/features/accounting/invoice-overdue';
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits, parseMinorUnits, toMinorUnits } from '@/lib/money';
 
+import { overdrawnBy } from './transfer-views';
 import { useRequestTransfer } from './transfers-api';
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * B-2 — move money between two of the organisation's own accounts. Up to the payment limit it
  * posts at once; above it, it waits for a second person — the dialog says which before sending.
  * A `FormDialog` (ADR-039).
  */
-export function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function TransferDialog({ open, onOpenChange, initialFrom }: { open: boolean; onOpenChange: (open: boolean) => void; initialFrom?: string }) {
   const t = useTranslations('finance.transfers');
   const banks = useBankAccounts();
   const settings = useApprovalSettings();
   const mutation = useRequestTransfer();
-  const [from, setFrom] = useState('');
+  const [from, setFrom] = useState(initialFrom ?? '');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(today);
@@ -50,7 +51,7 @@ export function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const receivers = active.filter((b) => b.allowsReceipts && b.id !== from && (!sender || b.currencyCode === sender.currencyCode));
 
   const reset = () => {
-    setFrom(''); setTo(''); setAmount(''); setDate(today()); setReference(''); setMemo(''); setAttempted(false);
+    setFrom(initialFrom ?? ''); setTo(''); setAmount(''); setDate(today()); setReference(''); setMemo(''); setAttempted(false);
     mutation.reset();
   };
   const handleOpenChange = (next: boolean) => {
@@ -62,6 +63,7 @@ export function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const minor = parseMinorUnits(amount, MONEY_SCALE);
   const limit = settings.data?.paymentAutoApproveUpTo ?? null;
   const goesToApproval = limit !== null && minor !== null && minor > toMinorUnits(limit, MONEY_SCALE);
+  const overdrawn = overdrawnBy(sender?.bookBalance, minor);
   const errors = {
     from: attempted && !from ? t('fromRequired') : undefined,
     to: attempted && !to ? t('toRequired') : undefined,
@@ -85,21 +87,29 @@ export function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <Select id="tr-from" value={from} onChange={(v) => { setFrom(v); if (v === to) setTo(''); }} placeholder={t('pick')}>
             <option value="">{t('pick')}</option>
             {senders.map((b) => (
-              <option key={b.id} value={b.id}>{b.bankName} · {b.accountName}{b.bookBalance ? ` (${formatMoney(b.bookBalance, b.currencyCode) ?? b.bookBalance})` : ''}</option>
+              <option key={b.id} value={b.id}>{b.accountName} · {b.bankName}</option>
             ))}
           </Select>
+          {sender?.bookBalance !== undefined ? (
+            <p className="text-caption text-muted-foreground">{t('holds', { amount: formatMoney(sender.bookBalance, 'USD') ?? sender.bookBalance })}</p>
+          ) : null}
         </FormField>
         <FormField htmlFor="tr-to" label={t('to')} error={errors.to} required>
           <Select id="tr-to" value={to} onChange={setTo} placeholder={t('pick')}>
             <option value="">{t('pick')}</option>
             {receivers.map((b) => (
-              <option key={b.id} value={b.id}>{b.bankName} · {b.accountName}</option>
+              <option key={b.id} value={b.id}>{b.accountName} · {b.bankName}</option>
             ))}
           </Select>
         </FormField>
         <FormField htmlFor="tr-amount" label={t('amount')} error={errors.amount} required>
           <MoneyInput id="tr-amount" value={amount} onValueChange={setAmount} required />
         </FormField>
+        {overdrawn ? (
+          <Notice tone="attention" title={t('overdrawnTitle')}>
+            {t('overdrawnBody', { name: sender?.accountName ?? '', after: formatMoney(overdrawn, 'USD') ?? overdrawn })}
+          </Notice>
+        ) : null}
         <FormField htmlFor="tr-date" label={t('date')}>
           <DatePicker id="tr-date" value={date} onChange={setDate} />
         </FormField>
@@ -111,9 +121,7 @@ export function TransferDialog({ open, onOpenChange }: { open: boolean; onOpenCh
         </FormField>
         {goesToApproval ? (
           <Notice tone="attention" title={t('approvalTitle')}>{t('approvalBody', { limit: formatMoney(limit, 'USD') ?? limit })}</Notice>
-        ) : (
-          <p className="text-caption text-muted-foreground">{t('postsNow')}</p>
-        )}
+        ) : null}
       </FormDialogBody>
       <FormDialogFooter>
         <FormDialogClose asChild>

@@ -59,7 +59,7 @@ export class BankStatementController {
   @Post(':id/lines/:lineId/unmatch')
   @HttpCode(200)
   @RequirePermissions(PERMISSIONS.accountingManage)
-  @ApiOperation({ summary: 'Undo a match (a posted line is undone by reversing its journal)' })
+  @ApiOperation({ summary: 'Undo a match (a posted line is undone with /undo)' })
   unmatch(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Param('lineId') lineId: string) {
     return this.service.unmatch(identity, id, lineId);
   }
@@ -70,6 +70,14 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Post a charge or interest from the line: the bank against the chosen account' })
   postLine(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Param('lineId') lineId: string, @Body() dto: PostStatementLineDto) {
     return this.service.postLine(identity, id, lineId, dto);
+  }
+
+  @Post(':id/lines/:lineId/undo')
+  @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.accountingManage)
+  @ApiOperation({ summary: 'BR-3: undo a line posted from the statement: its journal is mirrored on the same day and the line unmatched' })
+  undoPost(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.service.undoPost(identity, id, lineId);
   }
 
   @Post(':id/reconcile')

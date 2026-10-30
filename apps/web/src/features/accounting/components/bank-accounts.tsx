@@ -1,22 +1,23 @@
 'use client';
 
 /**
- * Bank accounts (tenant bootstrap, tier 3).
- *
- * `GET /bank-accounts` has been consumed since AP Tier C — the payment form picks from it —
- * but nothing listed or created one, so the only bank accounts that ever existed were the two
- * the seed makes. An organisation banking anywhere else could not record a payment.
- *
- * A bank account is a thin record over a GL account: `glAccountId` is `@unique`, so each cash
- * account in the chart maps to exactly one, and the mapping is what lets a payment name both a
- * bank to draw on and a GL line to credit.
+ * Bank and cash accounts (BK). Every bank account, cash box and mobile-money wallet with what the
+ * books say it holds and what the bank said when it was last reconciled; each opens to its own
+ * page. A bank account is a thin record over a GL account: `glAccountId` is `@unique`, so each
+ * cash account in the chart maps to exactly one.
  */
 
 import { useId, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { ChevronDown, Plus } from 'lucide-react';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  StatTile,
   Alert,
-  Badge,
   Button,
   CheckboxField,
   Combobox,
@@ -43,7 +44,8 @@ import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissi
 import { useUsers } from '@/features/users/hooks/use-users';
 import { ApiError } from '@/lib/api-client';
 import { statusTone } from '@/lib/status-registry';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
+import { ListPageHeader } from '@/components/layout/list-page-header';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ListRowMenu } from '@/features/procurement/components/list-row-menu';
 import { useRouter } from 'next/navigation';
@@ -51,6 +53,7 @@ import { MoneyDisplay } from '@erp/ui';
 import { EditBankAccountDialog, accountNumberRecorded } from './bank-account-edit';
 
 import { accountName } from '../account-display';
+import { BANK_ACCOUNT_HREF, heldByKind, maskedAccountNumber } from '../bank-account-figures';
 import {
   bankAccountProblems,
   cashAccountPreset,
@@ -77,7 +80,6 @@ import { LoadError } from '@/components/load-error';
 
 export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | null } = {}) {
   const t = useTranslations('accounting.bankAccounts');
-  const tCommon = useTranslations('common');
   const tKind = useTranslations('accounting.bankAccounts.kind');
   const { can } = usePermissions();
 
@@ -88,99 +90,76 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
   const [creating, setCreating] = useState<CashAccountPreset | 'blank' | null>(
     mayCreate && preset ? preset : null,
   );
-  const [signatoryBank, setSignatoryBank] = useState<BankAccount | null>(null);
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [statusChange, setStatusChange] = useState<{ bank: BankAccount; to: BankAccount['status'] } | null>(null);
-  const setStatus = useSetBankAccountStatus();
   const router = useRouter();
+
+  const rows = banks.data ?? [];
+  const held = heldByKind(rows);
+  const usd = (value: string) => formatMoney(value, 'USD') ?? value;
 
   const columns: GridColumn<BankAccount>[] = [
     {
-      key: 'bank',
-      header: t('colBank'),
-      sticky: true,
-      sortable: true,
-      plainValue: (bank) => bank.bankName,
-      render: (bank) => <span className="text-sm text-foreground">{bank.bankName}</span>,
-    },
-    {
       key: 'account',
       header: t('colAccount'),
+      sticky: true,
       sortable: true,
+      card: 'title',
       plainValue: (bank) => bank.accountName,
-      render: (bank) => <span className="text-sm text-foreground">{bank.accountName}</span>,
+      render: (bank) => {
+        const masked = maskedAccountNumber(bank.accountNumber, accountNumberRecorded);
+        return (
+          <span className="block min-w-0">
+            <Link href={BANK_ACCOUNT_HREF(bank.id)} className="font-medium text-foreground hover:text-brand-primary hover:underline">
+              {bank.accountName}
+            </Link>
+            <span className="block text-caption text-muted-foreground">
+              {[bank.bankName, masked].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+        );
+      },
     },
     {
-      key: 'number',
-      header: t('colNumber'),
-      render: (bank) => (
-        // Masked to the last four. A full account number on a list screen is a detail
-        // nobody needs at a glance and everybody can screenshot.
-        accountNumberRecorded(bank.accountNumber) ? (
-          <span className="font-mono text-xs text-muted-foreground">
-            ****{bank.accountNumber.slice(-4)}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">{t('numberNotRecorded')}</span>
-        )
-      ),
+      key: 'kind',
+      header: t('colKind'),
+      sortable: true,
+      card: 'meta',
+      plainValue: (bank) => tKind(bank.kind ?? 'BANK'),
+      render: (bank) => <span className="text-body-sm text-muted-foreground">{tKind(bank.kind ?? 'BANK')}</span>,
     },
-    // B-1 — what the ledger says is in it, and how far it has been checked against the bank.
+    // B-1 — what the ledger says is in it, and what the bank said when it was last reconciled.
     {
       key: 'balance',
       header: t('colBalance'),
       numeric: true,
+      sortable: true,
+      card: 'amount',
+      plainValue: (bank) => Number(bank.bookBalance ?? 0),
       render: (bank) => <MoneyDisplay value={bank.bookBalance ?? null} />,
     },
     {
       key: 'reconciled',
       header: t('colReconciled'),
-      render: (bank) => (
-        <span className="text-xs text-muted-foreground">
-          {bank.lastReconciledTo ? formatDate(bank.lastReconciledTo) : t('neverReconciled')}
-        </span>
-      ),
-    },
-    {
-      key: 'use',
-      header: t('colUse'),
-      render: (bank) => (
-        <span className="flex flex-wrap gap-1">
-          {bank.kind && bank.kind !== 'BANK' ? <Badge tone="info">{tKind(bank.kind)}</Badge> : null}
-          {bank.allowsReceipts ? <Badge tone="neutral">{t('receipts')}</Badge> : null}
-          {bank.allowsPayments ? <Badge tone="neutral">{t('payments')}</Badge> : null}
-          {!bank.allowsReceipts && !bank.allowsPayments ? (
-            <Badge tone="attention">{t('neither')}</Badge>
-          ) : null}
-        </span>
-      ),
+      render: (bank) =>
+        bank.lastReconciledTo ? (
+          <span className="block text-body-sm">
+            <span className="tabular-nums">{usd(bank.lastStatementBalance ?? '0')}</span>
+            <span className="block text-caption text-muted-foreground">{t('onDate', { date: formatDate(bank.lastReconciledTo) ?? '' })}</span>
+          </span>
+        ) : (
+          <span className="text-caption text-muted-foreground">{t('neverReconciled')}</span>
+        ),
     },
     {
       key: 'status',
       header: t('colStatus'),
+      card: 'status',
       render: (bank) => (
         <StatusPill tone={statusTone(bank.status, 'masterData')}>
           {t(`status.${bank.status}`)}
         </StatusPill>
       ),
-    },
-    {
-      key: 'signatories',
-      header: '',
-      render: (bank) =>
-        bank.allowsPayments ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSignatoryBank(bank);
-            }}
-          >
-            {t('signatories.button')}
-          </Button>
-        ) : null,
     },
     {
       key: 'menu',
@@ -189,7 +168,11 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
         <ListRowMenu
           label={t('rowMenu', { name: bank.accountName })}
           commands={[
-            { key: 'transactions', label: t('transactions'), onSelect: () => router.push(`/finance/accounting/ledger?accountId=${bank.glAccountId}`) },
+            { key: 'open', label: t('open'), onSelect: () => router.push(BANK_ACCOUNT_HREF(bank.id)) },
+            ...(bank.status === 'ACTIVE' && bank.allowsPayments
+              ? [{ key: 'transfer', label: t('transferMoney'), onSelect: () => router.push(`/finance/accounting/transfers?new=1&from=${bank.id}`) }]
+              : []),
+            { key: 'reconcile', label: t('reconcile'), onSelect: () => router.push(`/finance/accounting/bank-reconciliation?account=${bank.id}`) },
             ...(mayCreate && bank.status !== 'CLOSED'
               ? [
                   { key: 'edit', label: t('editAction'), onSelect: () => setEditing(bank) },
@@ -205,22 +188,24 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
     },
   ];
 
-  const createAction = mayCreate ? (
-    <span className="flex flex-wrap gap-2">
-      <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreating('cash-box')}>
-        {t('cashPreset.addCashBox')}
-      </Button>
-      <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreating('evc-float')}>
-        {t('cashPreset.addEvc')}
-      </Button>
-      <Button type="button" className="min-h-11" onClick={() => setCreating('blank')}>
-        {t('create.new')}
-      </Button>
-    </span>
-  ) : null;
+  const createAction = mayCreate ? <NewAccountMenu onPick={setCreating} /> : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      <ListPageHeader
+        title={t('pageTitle')}
+        summary={rows.length > 0 ? t('summary', { total: usd(held.total), count: held.count }) : undefined}
+        actions={createAction}
+      />
+
+      {rows.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile label={t('tiles.total')} value={usd(held.total)} note={t('tiles.accounts', { count: held.count })} />
+          <StatTile label={t('tiles.BANK')} value={usd(held.BANK)} />
+          <StatTile label={t('tiles.CASH')} value={usd(held.CASH)} />
+          <StatTile label={t('tiles.MOBILE_WALLET')} value={usd(held.MOBILE_WALLET)} />
+        </div>
+      ) : null}
 
       {creating ? (
         <ConfigureBankAccountForm
@@ -230,70 +215,102 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
         />
       ) : null}
 
-      <p className="max-w-prose text-body-sm text-muted-foreground">{t('cashPreset.explain')}</p>
-
       <PlatformDataGrid
         columns={columns}
-        data={banks.data ?? []}
+        data={rows}
         rowKey={(bank) => bank.id}
-        label={t('title')}
+        label={t('pageTitle')}
         isLoading={banks.isPending}
         isError={banks.isError}
         errorMessage={t('loadFailed')}
+        searchPlaceholder={t('search')}
         emptyState={
-          (banks.data?.length ?? 0) === 0 ? (
+          rows.length === 0 ? (
             <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-                {t('emptyHint')}
-              </p>
+              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">{t('emptyHint')}</p>
               {createAction ? <div className="mt-4 flex justify-center">{createAction}</div> : null}
             </div>
           ) : undefined
         }
-        pagination={{ defaultPageSize: 25 }}
-        toolbarActions={createAction}
+        totals={{
+          label: (count) => t('totalRow', { count }),
+          columns: { balance: (list) => <MoneyDisplay value={heldByKind(list).total} /> },
+        }}
       />
 
       {editing ? <EditBankAccountDialog bank={editing} onClose={() => setEditing(null)} /> : null}
-
-      {statusChange ? (
-        <ConfirmActionDialog
-          title={t(`statusTitle.${statusChange.to}`, { name: statusChange.bank.accountName })}
-          description={t(`statusBody.${statusChange.to}`)}
-          confirmLabel={t(`statusConfirm.${statusChange.to}`)}
-          destructive={statusChange.to === 'CLOSED'}
-          isPending={setStatus.isPending}
-          errorMessage={setStatus.isError ? (setStatus.error instanceof ApiError ? setStatus.error.message : t('loadFailed')) : undefined}
-          onConfirm={() => setStatus.mutate({ id: statusChange.bank.id, status: statusChange.to }, { onSuccess: () => setStatusChange(null) })}
-          onDismiss={() => {
-            setStatus.reset();
-            setStatusChange(null);
-          }}
-        />
-      ) : null}
-
-      {/* ADR-039: a FormDialog (md). Adding and removing act at once, so the footer only closes. */}
-      <FormDialog
-        open={signatoryBank !== null}
-        onOpenChange={(open) => { if (!open) setSignatoryBank(null); }}
-        size="md"
-        title={t('signatories.title')}
-        subtitle={signatoryBank?.accountName ?? ''}
-        closeLabel={tCommon('close')}
-      >
-        <FormDialogBody>
-          {signatoryBank && <SignatoriesPanel bank={signatoryBank} />}
-        </FormDialogBody>
-        <FormDialogFooter>
-          <FormDialogClose asChild>
-            <Button type="button" variant="outline">
-              {tCommon('close')}
-            </Button>
-          </FormDialogClose>
-        </FormDialogFooter>
-      </FormDialog>
+      {statusChange ? <BankAccountStatusDialog bank={statusChange.bank} to={statusChange.to} onDone={() => setStatusChange(null)} /> : null}
     </div>
+  );
+}
+
+/** One "New account" button that asks which kind: a bank account, a cash box or an EVC float. */
+export function NewAccountMenu({ onPick }: { onPick: (kind: CashAccountPreset | 'blank') => void }) {
+  const t = useTranslations('accounting.bankAccounts');
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" className="min-h-11">
+          <Plus size={16} aria-hidden="true" />
+          {t('create.new')}
+          <ChevronDown size={16} aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => onPick('blank')}>{t('kind.BANK')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onPick('cash-box')}>{t('kind.CASH')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onPick('evc-float')}>{t('cashPreset.addEvc')}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Suspend, reactivate or close an account, saying what each means first. */
+export function BankAccountStatusDialog({ bank, to, onDone }: { bank: BankAccount; to: BankAccount['status']; onDone: () => void }) {
+  const t = useTranslations('accounting.bankAccounts');
+  const setStatus = useSetBankAccountStatus();
+  return (
+    <ConfirmActionDialog
+      title={t(`statusTitle.${to}`, { name: bank.accountName })}
+      description={t(`statusBody.${to}`)}
+      confirmLabel={t(`statusConfirm.${to}`)}
+      destructive={to === 'CLOSED'}
+      isPending={setStatus.isPending}
+      errorMessage={setStatus.isError ? (setStatus.error instanceof ApiError ? setStatus.error.message : t('loadFailed')) : undefined}
+      onConfirm={() => setStatus.mutate({ id: bank.id, status: to }, { onSuccess: onDone })}
+      onDismiss={() => {
+        setStatus.reset();
+        onDone();
+      }}
+    />
+  );
+}
+
+/** The account's signatories, managed in a dialog (ADR-039 FormDialog, md). */
+export function SignatoriesDialog({ bank, onClose }: { bank: BankAccount; onClose: () => void }) {
+  const t = useTranslations('accounting.bankAccounts');
+  const tCommon = useTranslations('common');
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      size="md"
+      title={t('signatories.title')}
+      subtitle={bank.accountName}
+      closeLabel={tCommon('close')}
+    >
+      <FormDialogBody>
+        <SignatoriesPanel bank={bank} />
+      </FormDialogBody>
+      <FormDialogFooter>
+        <FormDialogClose asChild>
+          <Button type="button" variant="outline">
+            {tCommon('close')}
+          </Button>
+        </FormDialogClose>
+      </FormDialogFooter>
+    </FormDialog>
   );
 }
 
@@ -445,7 +462,7 @@ function SignatoriesPanel({ bank }: { bank: BankAccount }) {
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
 /** A `FormDialog` (ADR-039), size `md`. The caller mounts it to open it. */
-function ConfigureBankAccountForm({
+export function ConfigureBankAccountForm({
   title,
   preset = null,
   onDone,

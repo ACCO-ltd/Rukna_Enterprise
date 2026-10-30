@@ -17,11 +17,11 @@ import { ACCOUNTING_POSTING_PORT, type IAccountingPostingPort } from './ports/ac
 import { AccountingConfigurationService } from './accounting-configuration.service.js';
 import { DocumentSequenceRepository } from '../infrastructure/document-sequence.repository.js';
 import { DEFAULT_APPROVAL_SETTINGS, paymentApprovedOnSave } from '../domain/approval-settings.js';
+import { parseDateOnly } from '../domain/calendar-day.js';
 
 type TenantPrisma = PrismaClient;
 
 const AMOUNT = /^(?!0+(\.0+)?$)\d{1,15}(\.\d{1,2})?$/;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface RequestTransferInput {
   fromBankAccountId: string;
@@ -68,8 +68,9 @@ export class BankTransferService {
     if (!AMOUNT.test(input.amount ?? '')) {
       throw new BadRequestException({ errorCode: 'TRANSFER_AMOUNT_INVALID', message: 'Give a positive amount with at most two decimals.' });
     }
-    if (!ISO_DATE.test(input.transferDate ?? '')) {
-      throw new BadRequestException({ errorCode: 'TRANSFER_DATE_INVALID', message: 'Give the date as YYYY-MM-DD.' });
+    const transferDate = parseDateOnly(input.transferDate);
+    if (!transferDate || input.transferDate.length !== 10) {
+      throw new BadRequestException({ errorCode: 'TRANSFER_DATE_INVALID', message: 'Give a real date as YYYY-MM-DD.' });
     }
     if (input.fromBankAccountId === input.toBankAccountId) {
       throw new BadRequestException({ errorCode: 'TRANSFER_SAME_ACCOUNT', message: 'Choose two different accounts.' });
@@ -84,7 +85,7 @@ export class BankTransferService {
         toBankAccountId: to.id,
         amount,
         currencyCode: from.currencyCode,
-        transferDate: new Date(`${input.transferDate}T00:00:00.000Z`),
+        transferDate,
         reference: input.reference?.trim() || null,
         memo: input.memo?.trim() || null,
         requestedBy: identity.userId,
@@ -137,11 +138,16 @@ export class BankTransferService {
     }
     const reason = (input.reason ?? '').trim();
     if (!reason) throw new BadRequestException({ errorCode: 'REASON_REQUIRED', message: 'Say why the transfer is reversed.' });
-    if (!ISO_DATE.test(input.reversalDate ?? '')) {
-      throw new BadRequestException({ errorCode: 'TRANSFER_DATE_INVALID', message: 'Give the date as YYYY-MM-DD.' });
+    const reversalDate = parseDateOnly(input.reversalDate);
+    if (!reversalDate || input.reversalDate.length !== 10) {
+      throw new BadRequestException({ errorCode: 'TRANSFER_DATE_INVALID', message: 'Give a real date as YYYY-MM-DD.' });
+    }
+    // TR-2 — undoing a transfer cannot predate it: the money would leave before it arrived.
+    if (reversalDate < transfer.transferDate) {
+      const day = transfer.transferDate.toISOString().slice(0, 10);
+      throw new BadRequestException({ errorCode: 'REVERSAL_BEFORE_TRANSFER', message: `The reversal date cannot be before the transfer date (${day}).` });
     }
     const original = await prisma.journalEntry.findUniqueOrThrow({ where: { id: transfer.postedJournalEntryId }, include: { lines: true } });
-    const reversalDate = new Date(`${input.reversalDate}T00:00:00.000Z`);
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.bankTransfer.updateMany({
         where: { id, status: 'POSTED' },
@@ -276,7 +282,7 @@ export class BankTransferService {
   private async views(rows: BankTransfer[]): Promise<BankTransferView[]> {
     const prisma = this.prisma();
     const accountIds = [...new Set(rows.flatMap((r) => [r.fromBankAccountId, r.toBankAccountId]))];
-    const userIds = [...new Set(rows.flatMap((r) => [r.requestedBy, r.approvedBy].filter((x): x is string => Boolean(x))))];
+    const userIds = [...new Set(rows.flatMap((r) => [r.requestedBy, r.approvedBy, r.reversedBy].filter((x): x is string => Boolean(x))))];
     const [accounts, users] = await Promise.all([
       prisma.bankAccount.findMany({ where: { id: { in: accountIds } }, select: { id: true, accountName: true } }),
       prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, firstName: true, lastName: true } }),
@@ -301,6 +307,12 @@ export class BankTransferService {
       approvedByName: r.approvedBy ? (name.get(r.approvedBy) ?? null) : null,
       rejectionReason: r.rejectionReason,
       reversalReason: r.reversalReason,
+      journalEntryId: r.postedJournalEntryId,
+      reversalJournalEntryId: r.reversalJournalEntryId,
+      requestedAt: r.requestedAt.toISOString(),
+      postedAt: r.postedAt?.toISOString() ?? null,
+      reversedAt: r.reversedAt?.toISOString() ?? null,
+      reversedByName: r.reversedBy ? (name.get(r.reversedBy) ?? null) : null,
     }));
   }
 }

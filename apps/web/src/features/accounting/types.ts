@@ -678,6 +678,8 @@ export interface PostingProfile {
 export interface BankAccount {
   id: string;
   glAccountId: string;
+  /** The ledger account it posts to (its code is shown on the account page). */
+  glAccount?: { id: string; code: string } | null;
   bankName: string;
   accountName: string;
   accountNumber: string;
@@ -696,6 +698,8 @@ export interface BankAccount {
   bookBalance?: string;
   /** B-1 — the end date of the latest reconciled statement, or null. */
   lastReconciledTo?: string | null;
+  /** BK — what the bank said at that date: the latest reconciled statement's closing balance. */
+  lastStatementBalance?: string | null;
 }
 
 /** B-1 — `PATCH /bank-accounts/:id`. The GL account never changes. */

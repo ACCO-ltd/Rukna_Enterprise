@@ -9,7 +9,7 @@ export default async function BankAccountsPage({
 }) {
   const { preset } = await searchParams;
   return (
-    <div className="w-full max-w-5xl">
+    <div className="w-full max-w-6xl">
       <BankAccounts preset={isCashAccountPreset(preset) ? preset : null} />
     </div>
   );

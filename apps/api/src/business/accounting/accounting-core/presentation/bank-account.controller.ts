@@ -37,7 +37,7 @@ export class BankAccountController {
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Get bank account details' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.bankAccountService.findById(identity, id);
+    return this.bankAccountService.view(identity, id);
   }
 
   @Patch(':id')

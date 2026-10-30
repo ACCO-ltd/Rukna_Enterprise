@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+export { parseDateOnly } from '../../accounting-core/domain/calendar-day.js';
 
 /**
  * ADR-045 — refusals of the award-payment commands carry a machine code in `details.code` (and,
@@ -68,15 +69,6 @@ export function parseMoney(value: string | number | undefined | null): string | 
   if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
   if (Number(text) <= 0) return null;
   return text;
-}
-
-/** A YYYY-MM-DD (or ISO) date → that calendar day at UTC midnight (`@db.Date`), or null. */
-export function parseDateOnly(value: string | undefined | null): Date | null {
-  if (!value) return null;
-  const day = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
-  const d = new Date(`${day}T00:00:00.000Z`);
-  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== day ? null : d;
 }
 
 /** Today in Africa/Mogadishu (UTC+3, no DST) as a calendar day — the prefill, never a posting date by itself. */

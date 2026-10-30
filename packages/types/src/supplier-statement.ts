@@ -136,4 +136,12 @@ export interface BankTransferView {
   approvedByName: string | null;
   rejectionReason: string | null;
   reversalReason: string | null;
+  /** TR — the posted journal and, once reversed, its mirror (to open them from the transfer). */
+  journalEntryId: string | null;
+  reversalJournalEntryId: string | null;
+  /** When it was asked for, and (posted) when it posted; (reversed) when and by whom. */
+  requestedAt: string;
+  postedAt: string | null;
+  reversedAt: string | null;
+  reversedByName: string | null;
 }

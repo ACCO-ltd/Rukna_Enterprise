@@ -1,6 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
-import { reconcile, statementAddsUp, suggestMatches } from './matching';
+import { cancelledOutLines, reconcile, statementAddsUp, suggestMatches } from './matching';
 
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 const n = (v: string) => new Decimal(v);
@@ -42,5 +42,21 @@ describe('bank reconciliation rules (Step 6)', () => {
     expect(r.adjustedLedger.toFixed(2)).toBe('1150.00');
     expect(r.balanced).toBe(true);
     expect(reconcile({ ledgerBalance: n('950'), uncleared: [], statementClosing: n('940') }).difference.toFixed(2)).toBe('-10.00');
+  });
+});
+
+describe('cancelledOutLines (BR-4)', () => {
+  const d = (v: string) => new Decimal(v);
+  it('pairs a line with the line of the journal that reversed it', () => {
+    const out = cancelledOutLines([
+      { id: 'a', journalEntryId: 'J1', reversalOfJournalEntryId: null, amount: d('-250') },
+      { id: 'b', journalEntryId: 'J2', reversalOfJournalEntryId: 'J1', amount: d('250') },
+      { id: 'c', journalEntryId: 'J3', reversalOfJournalEntryId: null, amount: d('-250') },
+    ]);
+    expect([...out].sort()).toEqual(['a', 'b']);
+  });
+
+  it('leaves a reversal alone when the original has already cleared (it is not in the list)', () => {
+    expect(cancelledOutLines([{ id: 'b', journalEntryId: 'J2', reversalOfJournalEntryId: 'J1', amount: d('250') }]).size).toBe(0);
   });
 });

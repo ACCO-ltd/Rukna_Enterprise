@@ -11,7 +11,7 @@ const LEDGER_SELECT = {
   debitAmount: true,
   creditAmount: true,
   description: true,
-  entry: { select: { id: true, journalNumber: true, accountingDate: true } },
+  entry: { select: { id: true, journalNumber: true, accountingDate: true, reversalOfJournalEntryId: true } },
 } as const;
 
 /** Step 6 — the reads and writes of bank reconciliation. */
@@ -114,11 +114,46 @@ export class BankStatementRepository {
     });
   }
 
-  setMatch(tx: Prisma.TransactionClient, lineId: string, data: {
+  /**
+   * Moves a statement line from the status it was read in (`from`) to its new one. 0 when someone
+   * else changed it in between.
+   */
+  async setMatch(tx: Prisma.TransactionClient, lineId: string, from: 'UNMATCHED' | 'MATCHED' | 'POSTED', data: {
     matchStatus: 'UNMATCHED' | 'MATCHED' | 'POSTED'; matchedJournalLineId: string | null;
     adjustmentJournalEntryId?: string | null; matchedAt: Date | null; matchedBy: string | null;
-  }) {
-    return tx.bankStatementLine.update({ where: { id: lineId }, data });
+  }): Promise<number> {
+    const { count } = await tx.bankStatementLine.updateMany({ where: { id: lineId, matchStatus: from }, data });
+    return count;
+  }
+
+  /** BR-2 — an earlier statement of the account that is still open. */
+  earlierOpen(db: Db, organizationId: string, bankAccountId: string, before: Date) {
+    return db.bankStatement.findFirst({
+      where: { organizationId, bankAccountId, status: 'OPEN', statementDate: { lt: before } },
+      orderBy: { statementDate: 'asc' },
+      select: { statementDate: true },
+    });
+  }
+
+  /** BR-2 — a later statement of the account (open or reconciled). */
+  later(db: Db, organizationId: string, bankAccountId: string, after: Date) {
+    return db.bankStatement.findFirst({
+      where: { organizationId, bankAccountId, statementDate: { gt: after } },
+      orderBy: { statementDate: 'asc' },
+      select: { statementDate: true },
+    });
+  }
+
+  /** BR-3 — how many journals have been posted from a statement line (each undo allows another). */
+  postingsFromLine(db: Db, organizationId: string, lineId: string) {
+    return db.journalEntry.count({
+      where: { organizationId, sourceDocumentType: 'BANK_STATEMENT', accountingEventId: 'EVT-BNK-001', sourceDocumentId: { startsWith: lineId } },
+    });
+  }
+
+  /** BR-3 — the journal posted from a statement line, with its lines, to post its mirror. */
+  journal(db: Db, id: string) {
+    return db.journalEntry.findUnique({ where: { id }, include: { lines: true } });
   }
 
   markReconciled(tx: Prisma.TransactionClient, id: string, userId: string) {

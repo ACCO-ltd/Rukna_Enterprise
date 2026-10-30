@@ -5,12 +5,13 @@ import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { BankAccountRepository } from '../infrastructure/bank-account.repository.js';
 import { AccountRepository } from '../infrastructure/account.repository.js';
+import { BANK_ACCOUNT_CURRENCY, bankAccountFieldsProblem } from '../domain/bank-account-rules.js';
 
 export interface ConfigureBankAccountDto {
   accountName: string;
   bankName: string;
   accountNumber: string;
-  currencyCode: string;
+  currencyCode?: string;
   glAccountCode: string;
   kind?: BankAccountKind;
   allowsReceipts: boolean;
@@ -37,41 +38,61 @@ export class BankAccountService {
     private readonly accountRepo: AccountRepository,
   ) {}
 
+  /**
+   * BK-1 — a new account over a cash-and-bank GL account that is open for posting and not yet
+   * linked to another account. USD only; the account number is unique in the organisation.
+   */
   async configure(identity: RequestIdentity, dto: ConfigureBankAccountDto) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
-    const glAccount = await this.accountRepo.findByCode(prisma, orgId, dto.glAccountCode);
-    if (!glAccount) {
-      throw new NotFoundException(`GL account ${dto.glAccountCode} not found — create it in the COA first`);
+    const problem = bankAccountFieldsProblem(dto);
+    if (problem) {
+      throw new BadRequestException({ errorCode: problem.errorCode, message: problem.message, ...(problem.field ? { field: problem.field, details: { field: problem.field } } : {}) });
     }
+    const accountName = dto.accountName.trim();
+    const accountNumber = dto.accountNumber.trim();
 
+    const glAccount = await this.accountRepo.findByCode(prisma, orgId, (dto.glAccountCode ?? '').trim());
+    if (!glAccount) {
+      throw new NotFoundException({ errorCode: 'GL_ACCOUNT_NOT_FOUND', message: `There is no account ${dto.glAccountCode} in the chart of accounts.`, details: { field: 'glAccountCode' } });
+    }
     const currentVersion = glAccount.versions[0];
     if (!currentVersion || currentVersion.accountSubtype !== 'CASH_AND_BANK') {
-      throw new BadRequestException(
-        `GL account ${dto.glAccountCode} must have subtype CASH_AND_BANK, got ${currentVersion?.accountSubtype ?? 'none'}`,
-      );
+      throw new BadRequestException({ errorCode: 'GL_ACCOUNT_NOT_CASH', message: `${glAccount.code} is not a cash and bank account in the chart.`, details: { field: 'glAccountCode' } });
+    }
+    if (glAccount.status !== 'ACTIVE' || !currentVersion.isPostingAllowed) {
+      throw new BadRequestException({ errorCode: 'GL_ACCOUNT_NOT_POSTABLE', message: `${glAccount.code} ${currentVersion.name} is inactive or a heading, so nothing can post to it.`, details: { field: 'glAccountCode' } });
     }
 
     const existing = await this.repo.findByGlAccount(prisma, orgId, glAccount.id);
     if (existing) {
-      throw new ConflictException(
-        `GL account ${dto.glAccountCode} is already mapped to bank account "${existing.accountName}"`,
-      );
+      throw new ConflictException({ errorCode: 'GL_ACCOUNT_ALREADY_LINKED', message: `${glAccount.code} is already used by "${existing.accountName}".`, details: { field: 'glAccountCode' } });
+    }
+    const sameNumber = await this.repo.findByAccountNumber(prisma, orgId, accountNumber);
+    if (sameNumber) {
+      throw new ConflictException({ errorCode: 'ACCOUNT_NUMBER_TAKEN', message: `"${sameNumber.accountName}" already has account number ${accountNumber}.`, details: { field: 'accountNumber' } });
     }
 
-    return this.repo.create(prisma, {
-      organizationId: orgId,
-      accountName: dto.accountName,
-      bankName: dto.bankName,
-      accountNumber: dto.accountNumber,
-      currencyCode: dto.currencyCode,
-      glAccountId: glAccount.id,
-      kind: dto.kind ?? 'BANK',
-      allowsReceipts: dto.allowsReceipts,
-      allowsPayments: dto.allowsPayments,
-      createdBy: userId,
-    });
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        accountName,
+        bankName: dto.bankName.trim(),
+        accountNumber,
+        currencyCode: BANK_ACCOUNT_CURRENCY,
+        glAccountId: glAccount.id,
+        kind: dto.kind ?? 'BANK',
+        allowsReceipts: dto.allowsReceipts,
+        allowsPayments: dto.allowsPayments,
+        createdBy: userId,
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException({ errorCode: 'ACCOUNT_NUMBER_TAKEN', message: 'Another account already has that number, or uses that ledger account.' });
+      }
+      throw err;
+    }
   }
 
   /**
@@ -82,14 +103,32 @@ export class BankAccountService {
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
     const accounts = await this.repo.findAll(prisma, orgId);
-    const [balances, reconciled] = await Promise.all([
+    return this.withFigures(prisma, orgId, accounts);
+  }
+
+  /** BK — one account with the same figures as the list: the account page. */
+  async view(identity: RequestIdentity, id: string) {
+    const prisma = this.tenancyService.getClient();
+    const account = await this.findById(identity, id);
+    const [withFigures] = await this.withFigures(prisma, identity.activeOrganizationId, [account]);
+    return withFigures!;
+  }
+
+  /**
+   * What the ledger says is in each account (`bookBalance`), how far it has been checked against
+   * the bank (`lastReconciledTo`) and what the bank said then (`lastStatementBalance`).
+   */
+  private async withFigures<T extends { id: string; glAccountId: string }>(prisma: ReturnType<TenancyService['getClient']>, orgId: string, accounts: T[]) {
+    const [balances, reconciled, statementBalances] = await Promise.all([
       this.repo.bookBalances(prisma, orgId, accounts.map((a) => a.glAccountId)),
       this.repo.lastReconciled(prisma, orgId),
+      this.repo.lastStatementBalances(prisma, orgId),
     ]);
     return accounts.map((a) => ({
       ...a,
       bookBalance: (balances.get(a.glAccountId) ?? new Decimal(0)).toFixed(2),
       lastReconciledTo: reconciled.get(a.id)?.toISOString().slice(0, 10) ?? null,
+      lastStatementBalance: statementBalances.get(a.id)?.toFixed(2) ?? null,
     }));
   }
 
@@ -147,7 +186,7 @@ export class BankAccountService {
       if (waiting > 0) {
         throw new ConflictException({
           errorCode: 'BANK_ACCOUNT_HAS_PENDING',
-          message: `${waiting} payment(s) or receipt(s) raised on this account have not posted yet. Post or cancel them first.`,
+          message: `${waiting} payment(s), receipt(s) or transfer(s) on this account have not posted yet. Post, reject or cancel them first.`,
           details: { pending: waiting },
         });
       }
@@ -158,7 +197,7 @@ export class BankAccountService {
   async findById(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
     const account = await this.repo.findById(prisma, identity.activeOrganizationId, id);
-    if (!account) throw new NotFoundException(`Bank account ${id} not found`);
+    if (!account) throw new NotFoundException({ errorCode: 'BANK_ACCOUNT_NOT_FOUND', message: `Bank account ${id} not found` });
     return account;
   }
 }
