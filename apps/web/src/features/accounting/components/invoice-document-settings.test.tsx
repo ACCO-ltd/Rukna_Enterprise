@@ -28,6 +28,9 @@ vi.mock('../hooks/use-accounting', () => ({
   useInvoiceSettingsPreview: mocks.useInvoiceSettingsPreview,
 }));
 
+// Its own card with its own data and tests (invoice-numbering-settings.test.tsx).
+vi.mock('./invoice-numbering-settings', () => ({ InvoiceNumberingSettings: () => null }));
+
 const SETTINGS: InvoiceDocumentSettings = {
   paymentAccounts: [],
   notes: null,

@@ -2834,13 +2834,38 @@ model DocumentNumberSequence {
   prefix          String           @db.VarChar(10)
   nextNumber      Int              @default(1) @map("next_number")
   paddingLength   Int              @default(6) @map("padding_length")
+  // CI-8 — when the count restarts. NEVER keeps one running count in `nextNumber` (INV-000124);
+  // YEARLY / MONTHLY / DAILY put the document date in the number (INV-2026-0001) and count each
+  // period on its own row in `document_number_period_counters`.
+  resetPolicy     NumberResetPolicy @default(NEVER) @map("reset_policy")
   // Optimistic concurrency — checked before update
   version         Int              @default(1)
   status          SequenceStatus   @default(ACTIVE)
   createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at")
+
+  periodCounters DocumentNumberPeriodCounter[]
 
   @@unique([organizationId, documentType, journalCategory])
   @@map("document_number_sequences")
+}
+
+/// CI-8 — the next number of one period ("2026", "2026-10", "2026-10-30") of a sequence that
+/// restarts. Claimed under the sequence row's lock, so the count is gapless within the period.
+model DocumentNumberPeriodCounter {
+  id             String                 @id @default(cuid())
+  organizationId String                 @map("organization_id")
+  sequenceId     String                 @map("sequence_id")
+  periodKey      String                 @map("period_key") @db.VarChar(10)
+  nextNumber     Int                    @default(1) @map("next_number")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  sequence DocumentNumberSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@unique([sequenceId, periodKey])
+  @@index([organizationId])
+  @@map("document_number_period_counters")
 }
 
 // ─── AR Subledger ─────────────────────────────────────────────────────────────
@@ -4843,6 +4868,14 @@ enum DocumentType {
 enum SequenceStatus {
   ACTIVE
   INACTIVE
+}
+
+/// CI-8 — when a document number's count restarts (and which date part the number carries).
+enum NumberResetPolicy {
+  NEVER
+  YEARLY
+  MONTHLY
+  DAILY
 }
 
 enum JournalCategory {

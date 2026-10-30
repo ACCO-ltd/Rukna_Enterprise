@@ -807,6 +807,23 @@ export interface InvoicePaymentAccount {
 }
 
 /** `GET /invoice-document-settings` — what the client invoice PDF prints beyond the invoice. */
+/** CI-8 — when the invoice count restarts, and so which date part the number carries. */
+export type NumberResetPolicy = 'NEVER' | 'YEARLY' | 'MONTHLY' | 'DAILY';
+
+/** CI-8 — `GET /invoice-numbering`. */
+export interface InvoiceNumbering {
+  prefix: string;
+  resetPolicy: NumberResetPolicy;
+  paddingLength: number;
+  /** The count the next invoice dated today takes. */
+  nextNumber: number;
+  /** That invoice's number, e.g. "INV-2026-0001". */
+  nextInvoiceNumber: string;
+  updatedAt: string | null;
+}
+
+export type UpdateInvoiceNumberingBody = Pick<InvoiceNumbering, 'prefix' | 'resetPolicy' | 'paddingLength' | 'nextNumber'>;
+
 export interface InvoiceDocumentSettings {
   paymentAccounts: InvoicePaymentAccount[];
   /** The organisation's own notes, one per line; null while the defaults apply. */

@@ -1359,6 +1359,7 @@
     "signatoryAdded": "Signatory added",
     "signatoryRemoved": "Signatory removed",
     "invoiceSettingsSaved": "Invoice settings saved",
+    "invoiceNumberingSaved": "Invoice numbering saved",
     "journalSaved": "{ref, select, none {Journal saved as a draft} other {Journal {ref} saved}}",
     "journalAction": "{action, select, submit {Journal submitted for approval} approve {Journal approved} post {{ref, select, none {Journal posted} other {Journal {ref} posted}}} reverse {Journal reversed} other {Journal updated}}",
     "periodAction": "{action, select, lock {Period {name} locked} unlock {Period unlocked — it accepts postings again} reopen {Period {name} reopened} rebuild {Period snapshot rebuilt} other {Period updated}}",
@@ -1669,6 +1670,31 @@
       },
       "failed": "Could not create the tax code."
     }
+  },
+  "invoiceNumbering": {
+    "title": "Invoice numbering",
+    "next": "Next invoice:",
+    "format": "Number format",
+    "policy": {
+      "NEVER": "Running number",
+      "YEARLY": "Yearly",
+      "MONTHLY": "Monthly",
+      "DAILY": "Daily"
+    },
+    "prefix": "Prefix",
+    "digits": "Digits",
+    "nextNumber": "Next number",
+    "nextNumberIn": {
+      "YEARLY": "Next number this year",
+      "MONTHLY": "Next number this month",
+      "DAILY": "Next number today"
+    },
+    "nextInvalid": "Enter a whole number of 1 or more.",
+    "dateNote": "The date in the number is the invoice date, and the count starts again at 1 each period.",
+    "save": "Save numbering",
+    "saving": "Saving…",
+    "saveFailed": "Could not save the invoice numbering.",
+    "loadFailed": "Could not load the invoice numbering."
   },
   "invoiceSettings": {
     "title": "Invoice settings",

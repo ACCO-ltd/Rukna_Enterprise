@@ -40,6 +40,8 @@ import type {
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
   UpdateBankAccountBody,
+  InvoiceNumbering,
+  UpdateInvoiceNumberingBody,
 } from '../types';
 import type { FinanceApprovalSettings } from '@erp/types';
 
@@ -635,6 +637,20 @@ export function rebuildSnapshot(periodId: string): Promise<unknown> {
 /** Year-end: posts the closing journal, zeroes the P&L into retained earnings, closes the FY. */
 export function closeFiscalYear(fiscalYearId: string): Promise<unknown> {
   return apiClient<unknown>(`/periods/fiscal-year/${fiscalYearId}/close`, { method: 'POST' });
+}
+
+/** CI-8 — `GET /invoice-numbering`: the invoice number format and the next number. */
+export function getInvoiceNumbering(): Promise<InvoiceNumbering> {
+  return apiClient<InvoiceNumbering>('/invoice-numbering');
+}
+
+/** CI-8 — `PUT /invoice-numbering`: `manage:accounting`; 400 `INVOICE_NUMBERING_INVALID`. */
+export function updateInvoiceNumbering(body: UpdateInvoiceNumberingBody): Promise<InvoiceNumbering> {
+  return apiClient<InvoiceNumbering>('/invoice-numbering', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 /** `GET /invoice-document-settings` — bank account, notes and signatory for the invoice PDF. */
