@@ -19,6 +19,7 @@ import { ReverseReceiptDto } from './dto/reverse-receipt.dto.js';
 import { ReverseAllocationDto } from './dto/reverse-allocation.dto.js';
 import { SendReceiptWhatsAppDto } from './dto/send-receipt-whatsapp.dto.js';
 import { ReceivePaymentDto } from './dto/receive-payment.dto.js';
+import { CancelReceiptDto } from './dto/cancel-receipt.dto.js';
 
 @ApiTags('Customer Receipts')
 @ApiBearerAuth('access-token')
@@ -150,18 +151,27 @@ export class CustomerReceiptController {
   @ApiOperation({ summary: 'Reverse a specific receipt allocation' })
   reverseAllocation(
     @CurrentUser() identity: RequestIdentity,
-    @Param('id') _receiptId: string,
+    @Param('id') receiptId: string,
     @Param('allocationId') allocationId: string,
     @Body() dto: ReverseAllocationDto,
   ) {
-    return this.customerReceiptService.reverseAllocation(identity, allocationId, dto);
+    return this.customerReceiptService.reverseAllocation(identity, allocationId, dto, receiptId);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'RC-5: cancel a receipt that was recorded but never posted (kept, marked CANCELLED, with the reason)' })
+  @ApiResponse({ status: 409, description: 'RECEIPT_NOT_CANCELLABLE — posted (reverse it instead) or already cancelled' })
+  cancel(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: CancelReceiptDto) {
+    return this.customerReceiptService.cancel(identity, id, dto.reason);
   }
 
   @Post(':id/reverse')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Reverse a posted receipt (no subsequent allocations allowed)' })
-  @ApiResponse({ status: 400, description: 'Receipt has subsequent allocations — reverse them first' })
+  @ApiResponse({ status: 400, description: 'RECEIPT_HAS_LATER_ALLOCATIONS · RECEIPT_HAS_REFUNDS · REVERSAL_BEFORE_RECEIPT' })
   reverse(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,

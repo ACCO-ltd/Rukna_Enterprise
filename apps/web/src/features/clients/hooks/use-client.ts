@@ -33,6 +33,8 @@ export function useClient(id: string): UseQueryResult<ClientDetail, Error> {
   return useQuery({
     queryKey: clientKeys.detail(id),
     queryFn: () => getClient(id),
+    // A page can ask before it knows the client (the record it hangs off is still loading).
+    enabled: Boolean(id),
   });
 }
 

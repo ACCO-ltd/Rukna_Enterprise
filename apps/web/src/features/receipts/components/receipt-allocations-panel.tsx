@@ -2,330 +2,156 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
-  Badge,
   Button,
+  cn,
   FormDialog,
   FormDialogBody,
   FormDialogClose,
   FormDialogFooter,
-  FormField,
-  MoneyInput,
-  Select,
+  RecordPanel,
+  StatusPill,
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useInvoices } from '@/features/accounting/hooks/use-invoices';
+import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
-import { toDecimalString } from '@/features/contracts/contract-form-payload';
 
-import {
-  allocationProblem,
-  fromMinorUnits,
-  invoicesForClient,
-  toMinorUnits,
-  unallocatedMinor,
-} from '../allocation';
-import { useAllocateToInvoice, useReverseAllocation } from '../hooks/use-receipts';
-import type { ReceiptDetail, ReceiptAllocation } from '../types';
+import { invoicesForClient, unallocatedMinor } from '../allocation';
+import { useApplyOnAccount, useReverseAllocation } from '../hooks/use-receipts';
+import type { ReceiptAllocation, ReceiptDetail } from '../types';
+import { ApplyInvoicesTable, useApplySplit } from './apply-invoices-table';
 
 const INVOICE_HREF = (id: string) => `/finance/accounting/invoices/${id}`;
 
-export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail }) {
+/**
+ * The invoices a receipt paid. An application made when the receipt posted is undone only by
+ * reversing the receipt (the server refuses it alone), so only later ones offer Undo.
+ */
+export function ReceiptAllocationsPanel({ receipt, canManage }: { receipt: ReceiptDetail; canManage: boolean }) {
   const t = useTranslations('platform.receipts.allocations');
   const locale = useLocale() as 'en' | 'ar';
-  const [isAllocating, setIsAllocating] = useState(false);
-  const [pendingReversal, setPendingReversal] = useState<ReceiptAllocation | null>(null);
-
-  const reverse = useReverseAllocation(receipt.id);
-  const remainingMinor = unallocatedMinor(receipt);
-
-  // Invoice references for the rows — an allocation carries only `clientInvoiceId`, so the
-  // client's invoices (already fetched for the picker; TanStack shares the cache) label them.
-  const invoices = useInvoices({ clientId: receipt.clientId });
-  const invoiceById = useMemo(
-    () =>
-      new Map(
-        (invoices.data ?? []).map((inv) => [
-          inv.id,
-          inv.invoiceNumber ?? `#${inv.id.slice(-8)}`,
-        ]),
-      ),
-    [invoices.data],
-  );
+  const [pendingUndo, setPendingUndo] = useState<ReceiptAllocation | null>(null);
+  const undo = useReverseAllocation(receipt.id);
+  const money = (value: string) => formatMoney(value, receipt.currencyCode, locale);
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
-        {remainingMinor > 0 ? (
-          <Button size="sm" onClick={() => setIsAllocating(true)}>
-            {t('add')}
-          </Button>
-        ) : null}
-      </div>
-
+    <RecordPanel title={t('heading')} padded={false}>
       {receipt.allocations.length === 0 ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-8 text-center">
-          <p className="text-sm font-medium text-foreground">{t('none')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('noneHint')}</p>
-        </div>
+        <p className="px-5 py-6 text-body-sm text-muted-foreground">{t('none')}</p>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface shadow-e2">
-          {receipt.allocations.map((allocation) => {
-            const reversed = allocation.postingStatus === 'REVERSED';
-            return (
-              <li
-                key={allocation.id}
-                className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">
+        <table className="w-full text-body-sm">
+          <thead className="border-b border-border bg-muted text-caption text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-5 py-2 text-start font-medium">{t('invoice')}</th>
+              <th scope="col" className="hidden px-3 py-2 text-start font-medium sm:table-cell">{t('applied')}</th>
+              <th scope="col" className="px-3 py-2 text-end font-medium">{t('amount')}</th>
+              {canManage ? <th scope="col" className="w-24 px-5 py-2"><span className="sr-only">{t('actions')}</span></th> : null}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {receipt.allocations.map((a) => {
+              const undone = a.postingStatus === 'REVERSED';
+              return (
+                <tr key={a.id} className={cn(undone && 'text-muted-foreground')}>
+                  <td className="px-5 py-3">
                     <Link
-                      href={INVOICE_HREF(allocation.clientInvoiceId)}
-                      className="underline-offset-4 hover:underline"
+                      href={INVOICE_HREF(a.clientInvoiceId)}
+                      className={cn('font-mono font-medium text-brand-primary hover:underline', undone && 'line-through')}
                     >
-                      {invoiceById.get(allocation.clientInvoiceId) ??
-                        allocation.clientInvoiceId.slice(-8)}
+                      {a.invoiceNumber ?? t('unnumbered')}
                     </Link>
-                    {reversed ? (
-                      <Badge tone="attention" className="ms-2">
-                        {t('reversed')}
-                      </Badge>
-                    ) : null}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(allocation.allocationDate, locale)}
-                  </p>
-                </div>
-                <p className="text-sm font-semibold text-foreground">
-                  <bdi>{formatMoney(allocation.allocatedAmount, receipt.currencyCode, locale)}</bdi>
-                </p>
-                {!reversed ? (
-                  <Button variant="ghost" size="sm" onClick={() => setPendingReversal(allocation)}>
-                    {t('reverse')}
-                  </Button>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                    {undone ? <StatusPill tone="historical" className="ms-2">{t('undone')}</StatusPill> : null}
+                    <span className="block text-caption text-muted-foreground sm:hidden">{formatDate(a.allocationDate, locale)}</span>
+                  </td>
+                  <td className="hidden px-3 py-3 text-muted-foreground sm:table-cell">
+                    {formatDate(a.allocationDate, locale)}
+                    {a.atPosting ? null : <span className="ms-1">· {t('later')}</span>}
+                  </td>
+                  <td className={cn('px-3 py-3 text-end font-medium tabular-nums', undone && 'line-through')}>
+                    <bdi>{money(a.allocatedAmount)}</bdi>
+                  </td>
+                  {canManage ? (
+                    <td className="px-5 py-3 text-end">
+                      {!undone && !a.atPosting && receipt.postingStatus === 'POSTED' ? (
+                        <Button variant="ghost" size="sm" onClick={() => setPendingUndo(a)}>
+                          {t('undo')}
+                        </Button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
 
-      {isAllocating ? (
-        <AllocateDialog receipt={receipt} onClose={() => setIsAllocating(false)} />
-      ) : null}
-
-      {pendingReversal ? (
+      {pendingUndo ? (
         <ConfirmActionDialog
-          title={t('reverseTitle')}
-          description={t('reverseBody')}
-          confirmLabel={t('reverse')}
-          isPending={reverse.isPending}
-          errorMessage={reverse.isError ? t('reverseFailed') : undefined}
-          onConfirm={() => {
-            reverse.mutate(pendingReversal.id, {
-              onSuccess: () => setPendingReversal(null),
-            });
-          }}
+          title={t('undoTitle', { ref: pendingUndo.invoiceNumber ?? t('unnumbered') })}
+          description={t('undoBody')}
+          confirmLabel={t('undo')}
+          isPending={undo.isPending}
+          errorMessage={undo.isError ? (undo.error instanceof ApiError ? undo.error.message : t('undoFailed')) : undefined}
+          onConfirm={() => undo.mutate(pendingUndo.id, { onSuccess: () => setPendingUndo(null) })}
           onDismiss={() => {
-            reverse.reset();
-            setPendingReversal(null);
+            undo.reset();
+            setPendingUndo(null);
           }}
         />
       ) : null}
-    </section>
+    </RecordPanel>
   );
 }
 
-interface AllocateFormValues {
-  clientInvoiceId: string;
-  amount: string;
-}
-
-/** Allocate the receipt to an invoice — a `FormDialog` (ADR-039), size `md`. */
-function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose: () => void }) {
+/** Applies money the receipt holds on account to the client's open invoices, oldest due first. */
+export function ApplyOnAccountDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose: () => void }) {
   const t = useTranslations('platform.receipts.allocations');
+  const tApply = useTranslations('platform.receipts.apply');
   const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
 
-  const allocate = useAllocateToInvoice(receipt.id);
+  const apply = useApplyOnAccount(receipt.id);
   const invoices = useInvoices({ clientId: receipt.clientId });
-  const isLoading = invoices.isPending;
-
-  const options = useMemo(
-    () => invoicesForClient(invoices.data ?? [], receipt.clientId),
-    [invoices.data, receipt.clientId],
-  );
-
-  const remainingMinor = unallocatedMinor(receipt);
-
-  const {
-    control,
-    register,
-    handleSubmit,
-    setValue,
-    formState: { errors, isDirty },
-  } = useForm<AllocateFormValues>({
-    defaultValues: { clientInvoiceId: '', amount: '' },
-  });
-
-  const selectedId = useWatch({ control, name: 'clientInvoiceId' });
-  const selected = options.find((o) => o.invoice.id === selectedId) ?? null;
-
-  // Cap the "allocate the full balance" shortcut at whichever is smaller: the receipt's
-  // unallocated balance or the invoice's outstanding.
-  const capMinor = selected ? Math.min(remainingMinor, selected.outstandingMinor) : remainingMinor;
-
-  const onSubmit = (values: AllocateFormValues) => {
-    allocate.mutate(
-      {
-        clientInvoiceId: values.clientInvoiceId,
-        amount: Number(toDecimalString(values.amount)),
-      },
-      { onSuccess: onClose },
-    );
-  };
+  const options = useMemo(() => invoicesForClient(invoices.data ?? [], receipt.clientId), [invoices.data, receipt.clientId]);
+  const onAccountMinor = unallocatedMinor(receipt);
+  const split = useApplySplit(options, onAccountMinor);
+  const blocked = split.appliedMinor === 0 || split.appliedMinor > onAccountMinor || split.overInvoice !== null;
 
   return (
     <FormDialog
       open
       onOpenChange={(next) => !next && onClose()}
-      title={t('add')}
-      subtitle={t('dialogSubtitle')}
-      size="md"
-      dirty={isDirty}
-      busy={allocate.isPending}
-      onSubmit={(e) => {
-        void handleSubmit(onSubmit)(e);
-      }}
+      title={t('applyTitle')}
+      size="lg"
+      dirty={split.manual}
+      busy={apply.isPending}
     >
       <FormDialogBody className="space-y-4">
-        {allocate.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
-        {!isLoading && options.length === 0 ? (
-          <Alert variant="info" messages={[t('noInvoices')]} />
+        {apply.isError ? (
+          <Alert variant="error" messages={[apply.error instanceof ApiError ? apply.error.message : t('failed')]} />
         ) : null}
-
-        <FormField
-          htmlFor="allocation-invoice"
-          label={t('invoice')}
-          error={errors.clientInvoiceId?.message}
-        >
-          <Controller
-            control={control}
-            name="clientInvoiceId"
-            rules={{ required: t('invoiceRequired') }}
-            render={({ field }) => (
-              <Select
-                id="allocation-invoice"
-                disabled={isLoading || options.length === 0}
-                value={field.value}
-                onChange={field.onChange}
-              >
-                <option value="">
-                  {isLoading ? tCommon('loading') : t('invoicePlaceholder')}
-                </option>
-                {options.map(({ invoice, outstandingMinor }) => (
-                  <option key={invoice.id} value={invoice.id}>
-                    {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
-                    {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          />
-        </FormField>
-
-        <FormField htmlFor="allocation-amount" label={t('amount')} error={errors.amount?.message}>
-          <Controller
-            name="amount"
-            control={control}
-            rules={{
-              validate: (v) => {
-                const problem = allocationProblem(v, remainingMinor, selected?.outstandingMinor);
-                return problem === null || t(problem);
-              },
-            }}
-            render={({ field }) => (
-              <MoneyInput
-                id="allocation-amount"
-                aria-describedby="allocation-remaining"
-                aria-invalid={Boolean(errors.amount)}
-                value={field.value}
-                onValueChange={field.onChange}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                name={field.name}
-              />
-            )}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p id="allocation-remaining" className="text-xs text-muted-foreground">
-              <bdi>
-                {t('remaining', {
-                  amount:
-                    formatMoney(fromMinorUnits(remainingMinor), receipt.currencyCode, locale) ?? '',
-                })}
-              </bdi>
-              {selected ? (
-                <>
-                  {' · '}
-                  <bdi>
-                    {t('outstanding', {
-                      amount:
-                        formatMoney(
-                          fromMinorUnits(selected.outstandingMinor),
-                          receipt.currencyCode,
-                          locale,
-                        ) ?? '',
-                    })}
-                  </bdi>
-                </>
-              ) : null}
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!selected}
-              onClick={() => {
-                setValue('amount', fromMinorUnits(capMinor), { shouldValidate: true });
-              }}
-            >
-              {t('allocateAll')}
-            </Button>
-          </div>
-        </FormField>
-
+        <ApplyInvoicesTable options={options} split={split} amountMinor={onAccountMinor} amountLabel={tApply('heldOnAccount')} />
       </FormDialogBody>
-
       <FormDialogFooter>
         <FormDialogClose asChild>
-          <Button type="button" variant="outline" disabled={allocate.isPending}>
+          <Button type="button" variant="outline" disabled={apply.isPending}>
             {tCommon('cancel')}
           </Button>
         </FormDialogClose>
         <Button
-          type="submit"
-          loading={allocate.isPending}
-          loadingText={tCommon('loading')}
-          disabled={options.length === 0}
+          type="button"
+          disabled={blocked}
+          loading={apply.isPending}
+          loadingText={t('applying')}
+          onClick={() => apply.mutate(split.allocations(), { onSuccess: onClose })}
         >
-          {t('save')}
+          {t('apply')}
         </Button>
       </FormDialogFooter>
     </FormDialog>
   );
-}
-
-/** Exported for the detail header, which shows the same figures above the panel. */
-export function receiptTotals(receipt: ReceiptDetail) {
-  return {
-    total: toMinorUnits(receipt.totalAmount),
-    allocated: toMinorUnits(receipt.allocatedAmount),
-    remaining: toMinorUnits(receipt.unallocatedAmount),
-  };
 }

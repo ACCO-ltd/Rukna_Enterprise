@@ -18,8 +18,8 @@ vi.mock('@/features/accounting/hooks/use-accounting', () => ({
     isPending: false,
     isError: false,
     data: [
-      { id: 'b1', bankName: 'Premier Bank', accountName: 'Operating', status: 'ACTIVE', allowsReceipts: true },
-      { id: 'b2', bankName: 'Old Bank', accountName: 'Closed', status: 'CLOSED', allowsReceipts: true },
+      { id: 'b1', bankName: 'Premier Bank', accountName: 'Operating', accountNumber: '0001234', status: 'ACTIVE', allowsReceipts: true },
+      { id: 'b2', bankName: 'Old Bank', accountName: 'Closed', accountNumber: '0009999', status: 'CLOSED', allowsReceipts: true },
     ],
   }),
 }));
@@ -53,9 +53,11 @@ describe('ReceiptForm — Receive payment (ADR-046 §6)', () => {
     await user.type(screen.getByLabelText('Amount'), '1500');
 
     // The unissued draft is not offered; the oldest invoice is settled first.
-    expect(screen.getByLabelText('Amount applied to INV-000001')).toHaveValue('300.00');
-    expect(screen.getByLabelText('Amount applied to INV-000002')).toHaveValue('1,000.00');
-    expect(screen.getByText('Applied $1,300.00 · $200.00 stays unapplied on the client')).toBeInTheDocument();
+    expect(screen.getByLabelText('Payment on INV-000001')).toHaveValue('300.00');
+    expect(screen.getByLabelText('Payment on INV-000002')).toHaveValue('1,000.00');
+    expect(screen.getByText('Applied to invoices').nextSibling).toHaveTextContent('$1,300.00');
+    expect(screen.getByText('On account').nextSibling).toHaveTextContent('$200.00');
+    await chooseOption(user, screen.getByLabelText('Payment method'), 'CHEQUE');
 
     await user.click(screen.getByRole('button', { name: 'Receive payment' }));
     await waitFor(() => expect(receivePayment).toHaveBeenCalled());
@@ -64,6 +66,7 @@ describe('ReceiptForm — Receive payment (ADR-046 §6)', () => {
       bankAccountId: 'b1',
       amount: '1500.00',
       currency: 'USD',
+      paymentMethod: 'CHEQUE',
       allocations: [
         { clientInvoiceId: 'i1', amount: 300 },
         { clientInvoiceId: 'i2', amount: 1000 },
@@ -78,8 +81,8 @@ describe('ReceiptForm — Receive payment (ADR-046 §6)', () => {
     renderWithProviders(<ReceiptForm />, { permissions: ['manage:receivable'] });
 
     expect(screen.getByLabelText('Amount')).toHaveValue('1,000.00');
-    expect(screen.getByLabelText('Amount applied to INV-000002')).toHaveValue('1,000.00');
-    expect(screen.getByLabelText('Amount applied to INV-000001')).toHaveValue('0.00');
+    expect(screen.getByLabelText('Payment on INV-000002')).toHaveValue('1,000.00');
+    expect(screen.getByLabelText('Payment on INV-000001')).toHaveValue('0.00');
 
     await chooseOption(user, screen.getByLabelText('Received into'), 'b1');
     await user.click(screen.getByRole('button', { name: 'Receive payment' }));
@@ -92,11 +95,30 @@ describe('ReceiptForm — Receive payment (ADR-046 §6)', () => {
     renderWithProviders(<ReceiptForm />, { permissions: ['manage:receivable'] });
     await chooseOption(user, screen.getByLabelText('Received into'), 'b1');
     await user.type(screen.getByLabelText('Amount'), '100');
-    const line = screen.getByLabelText('Amount applied to INV-000002');
+    const line = screen.getByLabelText('Payment on INV-000002');
     await user.clear(line);
     await user.type(line, '50');
-    expect(screen.getByRole('alert')).toHaveTextContent('Applied $150.00 is more than the $100.00 received.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Applied $150.00 is more than $100.00.');
     await user.click(screen.getByRole('button', { name: 'Receive payment' }));
     expect(receivePayment).not.toHaveBeenCalled();
+  });
+
+  it('the only bank account taking receipts is chosen; ticking an invoice raises the amount to match', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ReceiptForm />, { permissions: ['manage:receivable'] });
+    await waitFor(() => expect(screen.getByLabelText('Received into')).toHaveTextContent(/Premier Bank/));
+
+    await user.click(screen.getByRole('checkbox', { name: 'Pay INV-000002 in full' }));
+    expect(screen.getByLabelText('Amount')).toHaveValue('1,000.00');
+    expect(screen.getByLabelText('Payment on INV-000002')).toHaveValue('1,000.00');
+    expect(screen.getByLabelText('Payment on INV-000001')).toHaveValue('0.00');
+
+    await user.click(screen.getByRole('button', { name: 'Receive payment' }));
+    await waitFor(() => expect(receivePayment).toHaveBeenCalled());
+    expect(receivePayment.mock.calls[0]![0]).toMatchObject({
+      bankAccountId: 'b1',
+      amount: '1000.00',
+      allocations: [{ clientInvoiceId: 'i2', amount: 1000 }],
+    });
   });
 });

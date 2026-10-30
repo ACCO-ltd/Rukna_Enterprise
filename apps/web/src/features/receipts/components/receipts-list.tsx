@@ -32,13 +32,28 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { fromMinorUnits, toMinorUnits } from '@/lib/money';
 
 import { useReceipts } from '../hooks/use-receipts';
-import { RECEIPT_LIST_STATE_TONE, receiptListState } from '../receipt-list-state';
+import { isReceiptPaymentMethod } from '../payment-methods';
+import { RECEIPT_LIST_STATE_TONE, receiptListState, type ReceiptListState } from '../receipt-list-state';
 import type { Receipt } from '../types';
 
 const DEFAULT_RECEIPT_SORT: SortState = { key: 'date', direction: 'desc' };
 
+/** The one Status filter: what is left to do with a receipt, in the order the work happens. */
+const STATUS_FILTER = ['NOT_POSTED', 'UNALLOCATED', 'RECEIVED', 'CLOSED'] as const;
+const STATUS_GROUP: Record<ReceiptListState, (typeof STATUS_FILTER)[number] | null> = {
+  NOT_POSTED: 'NOT_POSTED',
+  POSTING: 'NOT_POSTED',
+  POSTING_FAILED: 'NOT_POSTED',
+  UNALLOCATED: 'UNALLOCATED',
+  RECEIVED: 'RECEIVED',
+  REVERSED: 'CLOSED',
+  CANCELLED: 'CLOSED',
+};
+
 /** Whether a receipt passes the browser-side filters (`client` and `project` go to the API). */
 export function receiptMatchesFilters(receipt: Receipt, filters: FilterValues): boolean {
+  if (filters.status && STATUS_GROUP[receiptListState(receipt)] !== filters.status) return false;
+  // Views saved before the Status filter (2026-10-30) keep working.
   if (filters.posting && receipt.postingStatus !== filters.posting) return false;
   if (filters.allocation === 'unallocated' && toMinorUnits(receipt.unallocatedAmount, 2) <= 0)
     return false;
@@ -52,6 +67,7 @@ export function ReceiptsList({
   projectId?: string;
 } = {}) {
   const t = useTranslations('platform.receipts');
+  const tMethod = useTranslations('platform.receipts.method');
   const locale = useLocale() as 'en' | 'ar';
   const today = todayWireDate();
 
@@ -89,19 +105,10 @@ export function ReceiptsList({
       options: (clients.data ?? []).map((client) => ({ value: client.id, label: client.name })),
     },
     {
-      key: 'posting',
+      key: 'status',
       type: 'select',
-      label: t('filterByPosting'),
-      options: (['NOT_POSTED', 'POSTED', 'REVERSED'] as const).map((s) => ({
-        value: s,
-        label: t(`postingFilter.${s}`),
-      })),
-    },
-    {
-      key: 'allocation',
-      type: 'select',
-      label: t('filterByAllocation'),
-      options: [{ value: 'unallocated', label: t('allocationFilter.unallocated') }],
+      label: t('columns.status'),
+      options: STATUS_FILTER.map((s) => ({ value: s, label: t(`statusFilter.${s}`) })),
     },
     ...(projectId
       ? []
@@ -122,7 +129,8 @@ export function ReceiptsList({
       sticky: true,
       sortable: true,
       plainValue: (receipt) => `${receipt.receiptNumber ?? ''} ${receipt.reference ?? ''}`.trim(),
-      exportValue: (receipt) => receipt.receiptNumber ?? t('unnumbered'),
+      exportValue: (receipt) =>
+        receipt.receiptNumber ?? (receipt.documentStatus === 'CANCELLED' ? t('listState.CANCELLED') : t('unnumbered')),
       render: (receipt) => (
         <span className="block">
           <span
@@ -131,11 +139,11 @@ export function ReceiptsList({
               receipt.receiptNumber ? 'font-mono' : 'italic',
             )}
           >
-            {receipt.receiptNumber ?? t('unnumbered')}
+            {receipt.receiptNumber ?? (receipt.documentStatus === 'CANCELLED' ? t('listState.CANCELLED') : t('unnumbered'))}
           </span>
-          <span className="block text-caption text-muted-foreground">
-            {receipt.reference ?? t('noReference')}
-          </span>
+          {receipt.reference ? (
+            <span className="block max-w-[12rem] truncate text-caption text-muted-foreground">{receipt.reference}</span>
+          ) : null}
         </span>
       ),
     },
@@ -172,6 +180,24 @@ export function ReceiptsList({
       ),
     },
     {
+      key: 'into',
+      header: t('columns.into'),
+      plainValue: (receipt) =>
+        [receipt.bankAccount?.accountName, isReceiptPaymentMethod(receipt.paymentMethod) ? tMethod(receipt.paymentMethod) : receipt.paymentMethod]
+          .filter(Boolean)
+          .join(' · '),
+      render: (receipt) => (
+        <span className="block min-w-0">
+          <span className="block max-w-[14rem] truncate">{receipt.bankAccount?.accountName ?? '—'}</span>
+          {receipt.paymentMethod ? (
+            <span className="block text-caption text-muted-foreground">
+              {isReceiptPaymentMethod(receipt.paymentMethod) ? tMethod(receipt.paymentMethod) : receipt.paymentMethod}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
       key: 'amount',
       header: t('columns.amount'),
       numeric: true,
@@ -188,8 +214,12 @@ export function ReceiptsList({
       header: t('columns.unallocated'),
       numeric: true,
       sortable: true,
-      plainValue: (receipt) => Number(receipt.unallocatedAmount),
-      render: (receipt) => (
+      // Only a posted receipt holds money on account; before posting (or cancelled) nothing is held.
+      plainValue: (receipt) => (receipt.postingStatus === 'POSTED' ? Number(receipt.unallocatedAmount) : 0),
+      render: (receipt) =>
+        receipt.postingStatus !== 'POSTED' ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
         <bdi
           className={
             toMinorUnits(receipt.unallocatedAmount, 2) > 0
@@ -199,7 +229,7 @@ export function ReceiptsList({
         >
           {formatMoney(receipt.unallocatedAmount, receipt.currencyCode, locale)}
         </bdi>
-      ),
+        ),
     },
     {
       key: 'status',
@@ -230,12 +260,12 @@ export function ReceiptsList({
     {
       id: 'notPosted',
       label: t('views.notPosted'),
-      state: { filters: { posting: 'NOT_POSTED' }, sort: DEFAULT_RECEIPT_SORT },
+      state: { filters: { status: 'NOT_POSTED' }, sort: DEFAULT_RECEIPT_SORT },
     },
     {
       id: 'unallocated',
       label: t('views.unallocated'),
-      state: { filters: { allocation: 'unallocated' }, sort: DEFAULT_RECEIPT_SORT },
+      state: { filters: { status: 'UNALLOCATED' }, sort: DEFAULT_RECEIPT_SORT },
     },
   ];
   const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
@@ -255,20 +285,17 @@ export function ReceiptsList({
     </Button>
   );
 
-  const currencies = new Set(all.map((receipt) => receipt.currencyCode));
-  const receivedMinor = all
-    .filter((receipt) => receipt.postingStatus === 'POSTED')
-    .reduce((sum, receipt) => sum + toMinorUnits(receipt.totalAmount, 2), 0);
+  // Received counts posted receipts only; on account is what they still hold for the client.
+  const postedRows = all.filter((receipt) => receipt.postingStatus === 'POSTED');
+  const receivedMinor = postedRows.reduce((sum, receipt) => sum + toMinorUnits(receipt.totalAmount, 2), 0);
+  const onAccountMinor = postedRows.reduce((sum, receipt) => sum + toMinorUnits(receipt.unallocatedAmount, 2), 0);
+  const usd = (minor: number) => formatMoney(fromMinorUnits(minor, 2), 'USD', locale) ?? '—';
   const headerSummary =
     all.length === 0
       ? undefined
-      : currencies.size === 1
-        ? t('headerSummary', {
-            count: all.length,
-            received:
-              formatMoney(fromMinorUnits(receivedMinor, 2), [...currencies][0], locale) ?? '—',
-          })
-        : t('headerCount', { count: all.length });
+      : onAccountMinor > 0
+        ? t('headerSummaryOnAccount', { count: all.length, received: usd(receivedMinor), onAccount: usd(onAccountMinor) })
+        : t('headerSummary', { count: all.length, received: usd(receivedMinor) });
 
   const grid = (
     <PlatformDataGrid
