@@ -69,7 +69,7 @@ interface ModuleHeaderProps {
 export function ModuleHeader({ title, crumbs, description, children }: ModuleHeaderProps) {
   const t = useTranslations('platform.shell');
   return (
-    <header className="mb-6 rounded-panel border border-border bg-surface px-4 pt-4 sm:px-6 sm:pt-5">
+    <header className="mb-6 rounded-panel border border-border bg-surface px-4 pt-4 sm:px-6 sm:pt-5 print:hidden">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="text-h1 font-semibold tracking-tight text-foreground">{title}</h1>
         {crumbs.length > 0 ? (
