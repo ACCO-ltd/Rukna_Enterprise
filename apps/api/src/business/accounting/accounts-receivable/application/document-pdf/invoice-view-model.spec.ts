@@ -23,6 +23,18 @@ describe('buildInvoiceViewModel — the minimal layout', () => {
     ]);
   });
 
+  it("adds the client's reference to the header and prints the invoice's own note, line by line", () => {
+    const withRef = buildInvoiceViewModel({
+      ...minimalInvoiceFixture,
+      clientReference: ' PO-4471 ',
+      message: 'Crane hire for site B.\n\nWeek 42.',
+    });
+    expect(withRef.meta.at(-1)).toEqual({ label: 'Your Ref.', value: 'PO-4471' });
+    expect(withRef.message).toEqual(['Crane hire for site B.', 'Week 42.']);
+    expect(vm.meta.map((m) => m.label)).not.toContain('Your Ref.');
+    expect(vm.message).toEqual([]);
+  });
+
   it('omits the due date and terms when the invoice has neither, and prints DRAFT unnumbered', () => {
     const draft = buildInvoiceViewModel({ ...minimalInvoiceFixture, invoiceNumber: null, dueDate: null, paymentTerms: null });
     expect(draft.meta.map((m) => m.label)).toEqual(['Invoice No.', 'Invoice Date']);

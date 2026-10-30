@@ -8,6 +8,7 @@
  *   MI-05  a header, expense or unknown account is refused, with every problem listed
  *   MI-06  the source reads MANUAL and the detail carries its lines
  *   MI-11  CI-1: a currency other than USD is refused (ADR-024 ACC-CUR-001)
+ *   MI-12  the client's PO / reference and a note to the client are kept, trimmed, and editable
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -236,4 +237,21 @@ it('MI-11 (CI-1): an invoice in another currency than USD is refused', async () 
     })
     .catch((e: { getResponse: () => unknown }) => e.getResponse())) as { details: { problems: string[] } };
   expect(err.details.problems).toEqual(['Invoices are raised in US dollars (USD) only.']);
+});
+
+it("MI-12: the client's PO / reference and the note to the client are kept, trimmed and editable", async () => {
+  const line = [{ description: 'Pump hire', quantity: '1', unitPrice: '10.00', revenueAccountCode: '42100' }];
+  const draft = await svc.clientInvoiceService.createManual(env.identity, {
+    ...input(line),
+    clientReference: '  PO-4471 ',
+    notes: ' Pump hire for site B. ',
+  });
+  expect(draft).toMatchObject({ clientReference: 'PO-4471', notes: 'Pump hire for site B.' });
+
+  const edited = await svc.clientInvoiceService.updateManual(env.identity, draft.id, {
+    ...input(line),
+    clientReference: '   ',
+    notes: '',
+  });
+  expect(edited).toMatchObject({ clientReference: null, notes: null });
 });

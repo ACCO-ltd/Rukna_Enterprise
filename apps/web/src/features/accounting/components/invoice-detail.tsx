@@ -576,6 +576,7 @@ function InvoiceSheet({
         { label: t('invoiceDate'), value: formatDate(invoice.invoiceDate, locale) ?? '—' },
         { label: t('dueDate'), value: formatDate(invoice.dueDate, locale) ?? '—' },
         ...(invoice.paymentTerms ? [{ label: t('terms'), value: invoice.paymentTerms }] : []),
+        ...(invoice.clientReference ? [{ label: t('yourRef'), value: invoice.clientReference }] : []),
         ...(projectName ? [{ label: t('project'), value: projectName }] : []),
       ]}
       columns={{ description: t('description'), amount: t('amount', { currency: invoice.currencyCode }) }}
@@ -611,16 +612,23 @@ function InvoiceSheet({
       ]}
       total={{ label: t('total'), value: money(model.totalMinor) }}
       note={
-        settlement.live && settlement.balanceMinor !== settlement.totalMinor ? (
-          <dl className="ms-auto w-full max-w-xs space-y-1 text-body-sm">
-            {settlement.paidMinor > 0 ? <SheetRow label={t('paid')} value={`−${money(settlement.paidMinor)}`} /> : null}
-            {settlement.creditedMinor > 0 ? <SheetRow label={t('credited')} value={`−${money(settlement.creditedMinor)}`} /> : null}
-            {settlement.writtenOffMinor > 0 ? <SheetRow label={t('writtenOff')} value={`−${money(settlement.writtenOffMinor)}`} /> : null}
-            <div className="flex justify-between border-t border-brand-panel/30 pt-1 font-semibold">
-              <dt>{t('balanceDue')}</dt>
-              <dd className="tabular-nums">{money(settlement.balanceMinor)}</dd>
-            </div>
-          </dl>
+        invoice.notes || (settlement.live && settlement.balanceMinor !== settlement.totalMinor) ? (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            {invoice.notes ? (
+              <p className="max-w-md whitespace-pre-line text-body-sm text-foreground">{invoice.notes}</p>
+            ) : null}
+            {settlement.live && settlement.balanceMinor !== settlement.totalMinor ? (
+              <dl className="ms-auto w-full max-w-xs space-y-1 text-body-sm">
+                {settlement.paidMinor > 0 ? <SheetRow label={t('paid')} value={`−${money(settlement.paidMinor)}`} /> : null}
+                {settlement.creditedMinor > 0 ? <SheetRow label={t('credited')} value={`−${money(settlement.creditedMinor)}`} /> : null}
+                {settlement.writtenOffMinor > 0 ? <SheetRow label={t('writtenOff')} value={`−${money(settlement.writtenOffMinor)}`} /> : null}
+                <div className="flex justify-between border-t border-brand-panel/30 pt-1 font-semibold">
+                  <dt>{t('balanceDue')}</dt>
+                  <dd className="tabular-nums">{money(settlement.balanceMinor)}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
         ) : undefined
       }
       watermark={invoice.documentStatus === 'DRAFT' ? t('watermarkDraft') : invoice.documentStatus === 'CANCELLED' || invoice.postingStatus === 'REVERSED' ? t('watermarkVoid') : settlement.live && settlement.balanceMinor === 0 ? t('watermarkPaid') : undefined}

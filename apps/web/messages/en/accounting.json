@@ -907,7 +907,7 @@
     "colDueDate": "Due date",
     "colBalanceDue": "Balance due",
     "overdue": "Overdue",
-    "searchPlaceholder": "Search invoices, clients, sources",
+    "searchPlaceholder": "Search invoices, clients, PO / reference",
     "rowMenu": "Actions for {number}",
     "rowOpen": "Open",
     "rowOpenPdf": "Open PDF",
@@ -1127,6 +1127,10 @@
       "lineTitleNamed": "Line {n} — {name}",
       "pickersLoadFailed": "Clients or income accounts could not be loaded, so the invoice cannot be finished yet.",
       "billTo": "Bill to",
+      "reference": "PO / reference",
+      "referencePlaceholder": "The client's PO or job number",
+      "note": "Note to client",
+      "notePlaceholder": "Printed on the invoice",
       "saveAndIssue": "Save and issue"
     },
     "quickAdd": {
@@ -1203,6 +1207,7 @@
         "invoiceDate": "Invoice date",
         "dueDate": "Due date",
         "terms": "Terms",
+        "yourRef": "Your ref.",
         "project": "Project",
         "description": "Description",
         "amount": "Amount ({currency})",

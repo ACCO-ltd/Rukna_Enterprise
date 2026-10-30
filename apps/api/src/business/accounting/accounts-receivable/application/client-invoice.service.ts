@@ -919,6 +919,8 @@ export class ClientInvoiceService {
         taxCodeId: tax.taxCodeId,
         taxRate: tax.taxRate,
         paymentTerms: dto.paymentTerms,
+        clientReference: dto.clientReference?.trim() || null,
+        notes: dto.notes?.trim() || null,
         billingAddressSnapshot: {
           client: {
             name: client!.name,
@@ -1677,6 +1679,8 @@ export class ClientInvoiceService {
       invoiceDate: invoice.invoiceDate,
       dueDate: invoice.dueDate,
       paymentTerms: invoice.paymentTerms,
+      clientReference: invoice.clientReference,
+      message: invoice.notes,
       currencyCode: invoice.currencyCode,
       subtotal: documentSubtotal.toFixed(2),
       vatAmount: invoice.vatAmount.toString(),

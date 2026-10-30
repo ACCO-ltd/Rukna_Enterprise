@@ -111,6 +111,18 @@ beforeEach(() => {
 });
 
 describe('InvoiceDetail — state-aware title and totals', () => {
+  it("prints the client's PO / reference and the note to the client on the invoice", () => {
+    mocks.useInvoice.mockReturnValue({
+      data: invoice({ clientReference: 'PO-4471', notes: 'Crane hire for site B.' }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />);
+    expect(screen.getByText('Your ref.')).toBeInTheDocument();
+    expect(screen.getByText('PO-4471')).toBeInTheDocument();
+    expect(screen.getByText('Crane hire for site B.')).toBeInTheDocument();
+  });
+
   it('shows the draft title, the one Issue action (ADR-046 §2), and "Draft total" (never a collectible balance)', async () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
 

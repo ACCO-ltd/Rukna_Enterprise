@@ -533,6 +533,10 @@ export interface ClientInvoice {
   /** ADR-048 — the hand-typed lines (detail read only; empty for source invoices). */
   lines?: ManualInvoiceLineDto[];
   paymentTerms: string | null;
+  /** The client's purchase order or job number, printed as "Your Ref."; null for none. */
+  clientReference?: string | null;
+  /** A note to the client printed on this invoice; null for none. */
+  notes?: string | null;
   documentStatus: InvoiceDocStatus;
   postingStatus: PostingStatus;
   postedJournalEntryId: string | null;

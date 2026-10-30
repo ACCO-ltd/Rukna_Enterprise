@@ -54,6 +54,10 @@ export interface InvoiceDocumentInput {
   /** Null for separate-charge draft invoices where payment terms have not been set yet. */
   dueDate: Date | null;
   paymentTerms: string | null;
+  /** The client's purchase order or job number, printed as "Your Ref."; absent or null for none. */
+  clientReference?: string | null;
+  /** A note to the client on this invoice alone, printed above the standard notes; absent or null for none. */
+  message?: string | null;
   currencyCode: string;
   /** Decimal strings. */
   subtotal: string;
@@ -117,6 +121,8 @@ export interface InvoiceViewModel {
     rows: Array<{ bank: string; accountNumber: string }>;
     reference: KeyValue;
   } | null;
+  /** This invoice's own note to the client, line by line; empty for none. Printed whatever the settings. */
+  message: string[];
   /** Empty unless the settings turn the section on. */
   notes: string[];
   signature: { name: string | null; title: string | null; company: string; date: string };
@@ -134,6 +140,8 @@ export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewM
   ];
   if (input.dueDate) meta.push({ label: 'Due Date', value: formatDate(input.dueDate) });
   if (terms) meta.push({ label: 'Payment Terms', value: terms.label });
+  const reference = input.clientReference?.trim();
+  if (reference) meta.push({ label: 'Your Ref.', value: reference });
 
   const lines: InvoiceLineView[] = (input.lines.length > 0 ? input.lines : [fallbackLine(input)]).map((line, i) => ({
     index: String(i + 1),
@@ -170,6 +178,7 @@ export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewM
     ],
     total: { label: 'Total Due', value: money(input.totalAmount) },
     payment: input.showBankDetails ? paymentCard(input) : null,
+    message: splitLines(input.message ?? null),
     notes: input.showNotes ? invoiceNotes(input.notes, terms?.days ?? null) : [],
     signature: {
       name: signatoryName,

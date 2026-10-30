@@ -65,6 +65,18 @@ export class ManualInvoiceDto {
   @MaxLength(100)
   paymentTerms?: string;
 
+  @ApiPropertyOptional({ example: 'PO-4471', description: "The client's purchase order or job number" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  clientReference?: string;
+
+  @ApiPropertyOptional({ example: 'Crane hire for site B, week 42.', description: 'A note to the client printed on the invoice' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+
   @ApiProperty({ type: [ManualInvoiceLineDto] })
   @IsArray()
   @ArrayMinSize(1)
