@@ -25,6 +25,27 @@ export class ClientStatementRepository {
     });
   }
 
+  /** ST-6 — what the statement PDF is branded with (the invoice document's identity). */
+  findBranding(prisma: TenantPrisma, organizationId: string) {
+    return prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, legalAddress: true, taxRegistrationNumber: true, brandColorHex: true, invoiceTemplate: true, logoFileId: true },
+    });
+  }
+
+  /** ST-6 — who a statement can be sent to on WhatsApp. */
+  findClientContacts(prisma: TenantPrisma, organizationId: string, clientId: string) {
+    return prisma.client.findFirst({
+      where: { id: clientId, organizationId },
+      select: {
+        id: true,
+        name: true,
+        countryCode: true,
+        contacts: { select: { id: true, name: true, role: true, phone: true, whatsappPhone: true, isPrimary: true } },
+      },
+    });
+  }
+
   /** ST-4 — the client's contracts, with their current value (base + adopted variations). */
   findContracts(prisma: TenantPrisma, organizationId: string, clientId: string) {
     return prisma.contract.findMany({

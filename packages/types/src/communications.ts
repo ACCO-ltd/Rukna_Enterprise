@@ -12,6 +12,8 @@ export type MessagePurpose =
   | 'RECEIPT'
   | 'PAYMENT_REMINDER'
   | 'OVERDUE_REMINDER'
+  // ST-6 — the client's statement of account (PDF).
+  | 'STATEMENT'
   // ADR-044 phase 2 — WhatsApp alerts to staff about competitive quotations (sent in the background).
   | 'QUOTE_READY'
   | 'QUOTE_REMINDER'

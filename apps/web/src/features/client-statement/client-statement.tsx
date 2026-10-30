@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import {
+  Alert,
+  Button,
   cn,
   Combobox,
   DateRangePicker,
@@ -14,7 +16,7 @@ import {
   SkeletonTable,
   StatTile,
 } from '@erp/ui';
-import { FileText } from 'lucide-react';
+import { Download, FileText, MessageCircle } from 'lucide-react';
 import type { ClientStatement as ClientStatementData } from '@erp/types';
 
 import { LoadError } from '@/components/load-error';
@@ -22,6 +24,8 @@ import { ListPageHeader } from '@/components/layout/list-page-header';
 import { ReportActions } from '@/features/accounting/components/report-actions';
 import { exportCsv, reportFilename } from '@/features/accounting/lib/export-csv';
 import { useClients } from '@/features/clients/hooks/use-clients';
+import { MessageHistory } from '@/features/communications/components/message-history';
+import { StatementWhatsAppDialog } from '@/features/communications/components/statement-whatsapp-dialog';
 import { apiClient } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 
@@ -29,6 +33,21 @@ import { AccountsTable, ActivityTable, OpenInvoicesTable, usd } from './statemen
 
 const TABS = ['accounts', 'open', 'activity'] as const;
 type Tab = (typeof TABS)[number];
+
+/** ST-6 — `GET /finance/clients/:clientId/statement/document`: the branded statement PDF. */
+export function getClientStatementPdf(clientId: string, from: string, to: string): Promise<Blob> {
+  return apiClient<Blob>(`/finance/clients/${clientId}/statement/document?from=${from}&to=${to}`, { responseType: 'blob' });
+}
+
+/** Saves the PDF under the name the client will see on WhatsApp. */
+function savePdf(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 /** AR-3 — `GET /finance/clients/:clientId/statement?from&to`. */
 export function getClientStatement(clientId: string, from: string, to: string): Promise<ClientStatementData> {
@@ -53,6 +72,7 @@ export function ClientStatement() {
   const clients = useClients();
   const [clientId, setClientId] = useState(params?.get('clientId') ?? '');
   const [tab, setTab] = useState<Tab>('accounts');
+  const [sending, setSending] = useState(false);
   const [range, setRange] = useState(() => {
     const fallback = thisYear();
     return { from: params?.get('from') ?? fallback.from, to: params?.get('to') ?? fallback.to };
@@ -61,6 +81,12 @@ export function ClientStatement() {
     queryKey: ['finance', 'client-statement', clientId, range.from, range.to],
     queryFn: () => getClientStatement(clientId, range.from, range.to),
     enabled: Boolean(clientId),
+  });
+  const pdf = useMutation({
+    mutationFn: async (data: ClientStatementData) => {
+      const blob = await getClientStatementPdf(data.client.id, data.from, data.to);
+      savePdf(blob, `Statement-${(data.client.code ?? data.client.name).replace(/[^A-Za-z0-9-]+/g, '-')}-${data.asOf}.pdf`);
+    },
   });
   const clientOptions = useMemo(
     () => (clients.data ?? []).map((c) => ({ value: c.id, label: c.name, hint: c.code ?? undefined })),
@@ -139,7 +165,21 @@ export function ClientStatement() {
         eyebrow={t('eyebrow')}
         title={t('title')}
         summary={data ? t('summaryAsOf', { client: data.client.name, date: formatDate(data.asOf) ?? data.asOf }) : undefined}
-        actions={data ? <ReportActions onExport={() => download(data)} /> : undefined}
+        actions={
+          data ? (
+            <div className="flex flex-wrap items-center gap-2 print:hidden">
+              <Button type="button" size="sm" onClick={() => setSending(true)} className="gap-1.5">
+                <MessageCircle size={16} aria-hidden="true" />
+                {t('sendWhatsApp')}
+              </Button>
+              <Button type="button" variant="outline" size="sm" loading={pdf.isPending} onClick={() => pdf.mutate(data)} className="gap-1.5">
+                <Download size={16} aria-hidden="true" />
+                {t('pdf')}
+              </Button>
+              <ReportActions onExport={() => download(data)} />
+            </div>
+          ) : undefined
+        }
       />
 
       <div className="print:hidden">
@@ -166,6 +206,8 @@ export function ClientStatement() {
           </FilterField>
         </FilterBar>
       </div>
+
+      {pdf.isError ? <Alert variant="error" messages={[t('pdfFailed')]} /> : null}
 
       {!clientId ? (
         <EmptyState icon={<FileText size={20} aria-hidden="true" />} title={t('pickTitle')} description={t('pickBody')} />
@@ -238,6 +280,20 @@ export function ClientStatement() {
               {key === 'accounts' ? <AccountsTable data={data} /> : key === 'open' ? <OpenInvoicesTable data={data} /> : <ActivityTable data={data} />}
             </section>
           ))}
+
+          <div className="print:hidden">
+            <MessageHistory resourceType="client_statement" resourceId={data.client.id} canResolve hideWhenEmpty />
+          </div>
+
+          <StatementWhatsAppDialog
+            open={sending}
+            onClose={() => setSending(false)}
+            clientId={data.client.id}
+            from={data.from}
+            to={data.to}
+            title={t('whatsappTitle')}
+            subtitle={t('whatsappSubtitle', { client: data.client.name, date: formatDate(data.asOf) ?? data.asOf })}
+          />
         </>
       )}
     </div>
