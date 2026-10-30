@@ -98,10 +98,10 @@ function eligibility(over: Partial<SupplierBillEligibility> = {}): SupplierBillE
   };
 }
 
-describe('BillEligibilityPanel — "Why can\'t I pay this?"', () => {
-  it('lists every step with its status, owner and plain-words reason, and the server verdict', async () => {
+describe('BillEligibilityPanel — shown only while the bill is held (SB-2)', () => {
+  it('names the block and its owner, with every step folded under it with its status, owner and plain-words reason, and the server verdict', async () => {
     procApi.getSupplierBillEligibility.mockResolvedValue(eligibility());
-    renderWithProviders(<BillEligibilityPanel billId="b1" currencyCode="USD" />, { permissions: ['manage:payable'] });
+    renderWithProviders(<BillEligibilityPanel billId="b1" />, { permissions: ['manage:payable'] });
 
     const list = await screen.findByRole('list', { name: 'Steps' });
     const items = within(list).getAllByRole('listitem');
@@ -118,16 +118,25 @@ describe('BillEligibilityPanel — "Why can\'t I pay this?"', () => {
     expect(items[4]).toHaveTextContent('1 of 2 signatures');
 
     expect(
-      screen.getByText('3-way match exception — Procurement must resolve it or an approver must accept it — owner: Procurement'),
+      screen.getByText('3-way match exception — Procurement must resolve it or an approver must accept it. To be cleared by Procurement.'),
     ).toBeInTheDocument();
+    expect(screen.getByText('This bill is on hold')).toBeInTheDocument();
     expect(screen.getByText('A payment needs 2 bank signatures to be released.')).toBeInTheDocument();
     expect(procApi.getSupplierBillEligibility).toHaveBeenCalledWith('b1');
   });
 
-  it('says a payable bill is ready to pay, with what is outstanding', async () => {
+  it('shows nothing for a bill that is ready to pay, or only waiting for approval', async () => {
     procApi.getSupplierBillEligibility.mockResolvedValue(eligibility({ canPay: true, blockedReason: null, steps: [] }));
-    renderWithProviders(<BillEligibilityPanel billId="b1" currencyCode="USD" />, { permissions: ['manage:payable'] });
-    expect(await screen.findByText(/^Ready to pay — .*1,200\.00 not yet covered by a payment\.$/)).toBeInTheDocument();
+    const ready = renderWithProviders(<BillEligibilityPanel billId="b1" />, { permissions: ['manage:payable'] });
+    await waitFor(() => expect(procApi.getSupplierBillEligibility).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(ready.container.querySelector('[data-bill-eligibility]')).toBeNull();
+    ready.unmount();
+    procApi.getSupplierBillEligibility.mockResolvedValue(eligibility({ blockedReason: 'BILL_AWAITING_APPROVAL' }));
+    const waiting = renderWithProviders(<BillEligibilityPanel billId="b2" />, { permissions: ['manage:payable'] });
+    await waitFor(() => expect(procApi.getSupplierBillEligibility).toHaveBeenCalledWith('b2'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(waiting.container.querySelector('[data-bill-eligibility]')).toBeNull();
   });
 
   it('renders nothing and never calls the API without manage:payable', () => {

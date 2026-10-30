@@ -630,9 +630,7 @@ export function SupplierBillCreateForm({
               {tBills('eyebrow')}
             </p>
             <h2 className="mt-1 text-display font-semibold tracking-tight text-foreground">{title}</h2>
-            <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">
-              {editing ? t('editIntro') : t('intro')}
-            </p>
+            {editing ? <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{t('editIntro')}</p> : null}
           </div>
 
           {/* The clerk correcting a returned bill needs the reason in front of them, not a click
@@ -670,7 +668,7 @@ export function SupplierBillCreateForm({
             ]}
           />
 
-          <FormGroup title={t('detailsTitle')} description={t('detailsDescription')}>
+          <FormGroup title={t('detailsTitle')}>
             <FormField htmlFor={IDS.supplier} label={t('supplier')} required error={shownHeader('supplier')}>
               <SupplierPicker id={IDS.supplier} value={supplierId} onChange={handleSupplierChange} required />
             </FormField>
@@ -724,7 +722,7 @@ export function SupplierBillCreateForm({
             )}
           </FormGroup>
 
-          <FormGroup title={t('datesTitle')} description={t('datesDescription')}>
+          <FormGroup title={t('datesTitle')}>
             <FormField htmlFor={IDS.billDate} label={t('billDate')} required error={shownHeader('billDate')}>
               <DatePicker id={IDS.billDate} value={billDate} onChange={handleBillDateChange} />
             </FormField>
@@ -751,9 +749,7 @@ export function SupplierBillCreateForm({
               <h2 id="bill-lines-heading" className="text-body font-semibold text-foreground">
                 {t('linesTitle')}
               </h2>
-              <p className="text-caption text-muted-foreground">
-                {kind === 'po' ? t('linesPoDescription') : t('linesDirectDescription')}
-              </p>
+              {kind === 'po' ? <p className="text-caption text-muted-foreground">{t('linesPoDescription')}</p> : null}
             </div>
 
             {kind === 'po' ? (
@@ -807,9 +803,9 @@ export function SupplierBillCreateForm({
             )}
           </section>
 
-          <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_20rem]">
-            <p className="text-caption text-muted-foreground md:pt-1">{t('totalsNote')}</p>
+          <div className="flex justify-end">
             <TotalsBlock
+              className="w-full max-w-xs"
               rows={[
                 { label: tBills('subtotal'), value: money(totals.subtotal) },
                 { label: tBills('vat'), value: money(totals.vat) },

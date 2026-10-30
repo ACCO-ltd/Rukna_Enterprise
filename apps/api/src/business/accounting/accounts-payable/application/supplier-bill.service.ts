@@ -36,6 +36,7 @@ import {
 } from '../domain/supplier-bill-eligibility.policy.js';
 import { AccountingConfigurationService } from '../../accounting-core/application/accounting-configuration.service.js';
 import { billPostsOnSave } from '../../accounting-core/domain/approval-settings.js';
+import { billProblem, reversalDateProblem } from '../domain/supplier-bill-rules.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -175,7 +176,23 @@ export class SupplierBillService {
     prisma: ReturnType<TenancyService['getClient']>,
     orgId: string,
     dto: CreateSupplierBillDto,
+    currentSupplierId?: string,
   ) {
+    const problem = billProblem(dto);
+    if (problem) throw new BadRequestException(problem);
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: dto.supplierId, organizationId: orgId },
+      select: { status: true },
+    });
+    if (!supplier) throw new NotFoundException({ errorCode: 'SUPPLIER_NOT_FOUND', message: 'That supplier was not found.' });
+    // An inactive supplier takes no new bills; a draft already theirs can still be corrected.
+    if (supplier.status !== 'ACTIVE' && dto.supplierId !== currentSupplierId) {
+      throw new BadRequestException({
+        errorCode: 'SUPPLIER_INACTIVE',
+        message: 'This supplier is inactive. Make them active again before recording a bill.',
+      });
+    }
+
     // A non-PO bill is the only path where cost coding is keyed by hand, so it is validated
     // by the same rule a purchase order is: a BOQ node needs its project, and a project needs
     // a target (a BOQ node, or a spend category for project-level cost). A PO-backed bill
@@ -198,11 +215,11 @@ export class SupplierBillService {
 
     // M1 (ADR-040 review): a bill line debits its profile's account, so a profile that resolves
     // to anything but a cost or expense account (e.g. INC_42100, PROJECT_REVENUE) would silently
-    // understate revenue. Refused here when the profile resolves; an unknown profile is still
-    // reported at post, as before.
+    // understate revenue. SB-1: an unknown profile, or one with no version on the bill date, is
+    // refused here too, rather than saving a bill that can never post.
     const billDate = new Date(dto.billDate);
     for (const code of new Set(dto.lines.map((l) => l.expenseProfileCode))) {
-      await this.resolveExpenseProfileAccount(prisma, orgId, code, billDate, { required: false });
+      await this.resolveExpenseProfileAccount(prisma, orgId, code, billDate, { required: true });
     }
 
     const lines = dto.lines.map((line, idx) => {
@@ -361,7 +378,7 @@ export class SupplierBillService {
     }
 
     const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
-      await this.prepareBill(prisma, orgId, dto);
+      await this.prepareBill(prisma, orgId, dto, bill.supplierId);
 
     const existing = await this.repo.findBySupplierInvoiceNumber(
       prisma,
@@ -751,6 +768,9 @@ export class SupplierBillService {
     if (bill.reversalJournalEntryId) {
       throw new ConflictException(`Bill ${billId} is already reversed`);
     }
+    const reason = requireReason(opts.reason);
+    const dateProblem = reversalDateProblem(bill.billDate, opts.reversalDate);
+    if (dateProblem) throw new BadRequestException(dateProblem);
 
     // (Pre-checked here for a clear message; re-checked under the bill lock in the transaction.)
     // Item 3 (review) — a payment still pending against the bill (allocated, not yet posted, and
@@ -815,7 +835,7 @@ export class SupplierBillService {
           organizationId: orgId,
           accountingDate: reversalDate,
           documentDate: reversalDate,
-          description: `Reversal of Bill ${bill.billNumber ?? billId}: ${opts.reason}`,
+          description: `Reversal of Bill ${bill.billNumber ?? billId}: ${reason}`,
           currencyCode: bill.currencyCode,
           eventType: 'EVT-AP-002',
           sourceDocumentType: 'SUPPLIER_BILL',
@@ -983,7 +1003,10 @@ export class SupplierBillService {
     });
     if (!profile) {
       if (!opts.required) return null;
-      throw new BadRequestException(`Posting profile "${code}" not found — configure it in the COA`);
+      throw new BadRequestException({
+        errorCode: 'POSTING_PROFILE_NOT_FOUND',
+        message: `Expense profile "${code}" does not exist. Choose another, or add it under Setup → Posting profiles.`,
+      });
     }
     const version = await client.postingProfileVersion.findFirst({
       where: {
@@ -995,9 +1018,10 @@ export class SupplierBillService {
     });
     if (!version) {
       if (!opts.required) return null;
-      throw new BadRequestException(
-        `No active version for posting profile ${code} on ${date.toISOString().slice(0, 10)}`,
-      );
+      throw new BadRequestException({
+        errorCode: 'POSTING_PROFILE_NOT_IN_FORCE',
+        message: `Expense profile "${code}" is not in force on ${date.toISOString().slice(0, 10)}.`,
+      });
     }
     const account = await this.accountRepo.findById(client, orgId, version.accountId);
     const accountClass = account?.versions[0]?.accountClass;

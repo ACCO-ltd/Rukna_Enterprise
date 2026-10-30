@@ -10,6 +10,7 @@ export type BillListState =
   | 'DRAFT'
   | 'AWAITING_APPROVAL'
   | 'RETURNED'
+  | 'REJECTED'
   | 'TO_POST'
   | 'POSTING'
   | 'POSTING_FAILED'
@@ -20,7 +21,8 @@ export type BillListState =
   | 'CANCELLED'
   | 'REVERSED';
 
-type BillFields = Pick<SupplierBill, 'documentStatus' | 'postingStatus' | 'dueDate' | 'totalAmount' | 'outstandingAmount'>;
+type BillFields = Pick<SupplierBill, 'documentStatus' | 'postingStatus' | 'dueDate' | 'totalAmount' | 'outstandingAmount'> &
+  Partial<Pick<SupplierBill, 'returnedAt'>>;
 
 /** In the ledger (posted, or carried in as an opening balance), past due, money still owed. */
 export function isBillOverdue(bill: BillFields, today: string): boolean {
@@ -32,9 +34,9 @@ export function isBillOverdue(bill: BillFields, today: string): boolean {
 export function billListState(bill: BillFields, today: string): BillListState {
   if (bill.documentStatus === 'CANCELLED') return 'CANCELLED';
   if (bill.postingStatus === 'REVERSED') return 'REVERSED';
-  if (bill.documentStatus === 'DRAFT') return 'DRAFT';
+  if (bill.documentStatus === 'DRAFT') return bill.returnedAt ? 'RETURNED' : 'DRAFT';
   if (bill.documentStatus === 'SUBMITTED') return 'AWAITING_APPROVAL';
-  if (bill.documentStatus === 'REJECTED') return 'RETURNED';
+  if (bill.documentStatus === 'REJECTED') return 'REJECTED';
   if (bill.postingStatus === 'FAILED') return 'POSTING_FAILED';
   if (bill.postingStatus === 'PENDING') return 'POSTING';
   if (bill.postingStatus !== 'POSTED' && bill.postingStatus !== 'OPENING_BALANCE') return 'TO_POST';
@@ -51,6 +53,7 @@ export const BILL_LIST_STATE_TONE: Record<
   DRAFT: 'neutral',
   AWAITING_APPROVAL: 'progress',
   RETURNED: 'attention',
+  REJECTED: 'danger',
   TO_POST: 'progress',
   POSTING: 'progress',
   POSTING_FAILED: 'danger',

@@ -642,6 +642,7 @@ export interface SupplierBill {
   reversalJournalEntryId?: string | null;
   reversedAt?: string | null;
   approvedAt?: string | null;
+  createdAt?: string | null;
   /** Human numbers of the posting and reversal journals — detail only (ADR-036). */
   postedJournalNumber?: string | null;
   reversalJournalNumber?: string | null;

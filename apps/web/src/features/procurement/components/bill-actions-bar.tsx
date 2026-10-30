@@ -1,34 +1,39 @@
 'use client';
 
 /**
- * The top of a supplier bill (ADR-035): the sticky DocumentActionBar, the DocumentIdentity with
- * its three labelled status axes, and at most one Notice — plus the confirmations its commands
- * open.
+ * The frame of a supplier bill (SB-2): the record header — number, one status, supplier, due
+ * date and the balance due — with its commands, at most one notice, then the body and the rail
+ * the caller passes; plus the confirmations its commands open.
  *
  * Every command is confirmed, because none can be undone from the UI — a rejected bill is final,
  * and the only exit from a posted bill is a reversal that writes a second journal. Return and
  * reject (ADR-037 amendment) and reverse each ask for a reason, which the history keeps.
  *
  * Commands follow backend state and permissions: the one valid next step is the primary
- * button; Edit (a draft), Return for correction and Reject (a submitted bill) and Reverse sit
- * in the kebab, destructive ones last; and anything unavailable is not rendered. A blocked post is
- * explained in words by the Notice rather than by a greyed-out button.
+ * button, and Pay bill sits beside it while money is owed; Edit, Return for correction, Reject,
+ * Cancel and Reverse sit under More, destructive ones last; anything unavailable is not rendered.
+ * A blocked post is explained in words by the notice rather than by a greyed-out button.
  */
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Button,
-  DocumentActionBar,
-  DocumentIdentity,
-  type DefinitionFact,
-  LifecycleStepper,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Notice,
+  RecordHeader,
+  RecordLayout,
+  StatusPill,
   type DocumentCommand,
 } from '@erp/ui';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronDown, ChevronLeft } from 'lucide-react';
 
 import { WorkflowTransactionType } from '@erp/types';
 
@@ -42,12 +47,13 @@ import { GatedActionButton } from '@/features/workflows/components/gated-action-
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
+import { todayWireDate } from '@/features/accounting/invoice-overdue';
+
 import {
   availableBillActions,
-  BILL_STAGES,
-  billLifecycle,
   billNotice,
   canEditBill,
+  isSettleableBill,
   planBillPost,
   primaryBillAction,
   type BillAction,
@@ -61,10 +67,12 @@ import {
   useReturnSupplierBill,
   useReverseSupplierBill,
   useSubmitSupplierBill,
+  useSupplierBillEligibility,
 } from '../hooks/use-procurement';
+import { BILL_LIST_STATE_TONE, billDaysLate, billListState } from '../bill-list-state';
 import type { PostSupplierBillPayload, SupplierBill } from '../types';
+import { HELD } from './bill-eligibility-panel';
 import { ResolveExceptionDialog } from './bill-matching';
-import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
 /** The server's words for a refused command (e.g. the bill changed state meanwhile), else a fallback. */
 function commandError(error: unknown, fallback: string): string | undefined {
@@ -74,7 +82,6 @@ function commandError(error: unknown, fallback: string): string | undefined {
 
 export function BillDocumentHeader({
   bill,
-  facts,
   rail,
   back,
   children,
@@ -85,8 +92,6 @@ export function BillDocumentHeader({
    * own tab so a bill opened inside a project returns there (flow plan PR 4).
    */
   back?: { href: string; label: string };
-  /** Facts under the identity — see `useBillFacts`. */
-  facts?: DefinitionFact[];
   /** The summary rail, beside the body from `lg`, under it below. */
   rail?: React.ReactNode;
   /** The document body — tabs and totals. */
@@ -94,8 +99,6 @@ export function BillDocumentHeader({
 }) {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
-  const tStatus = useTranslations('procurement.status');
-  const tPosting = useTranslations('procurement.postingStatus');
   const tMatch = useTranslations('procurement.matchStatus');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
@@ -105,6 +108,7 @@ export function BillDocumentHeader({
   const [debitNoteOpen, setDebitNoteOpen] = useState(false);
 
   const accounts = useAccounts();
+  const eligibility = useSupplierBillEligibility(bill.id, { enabled: can(ACCOUNTING_PERMISSIONS.managePayables) && isSettleableBill(bill) });
   const profiles = usePostingProfiles();
 
   const submit = useSubmitSupplierBill();
@@ -121,7 +125,6 @@ export function BillDocumentHeader({
   const primary = canManage ? primaryBillAction(bill) : null;
   const plan = planBillPost(bill, accounts.data ?? [], profiles.data ?? [], locale);
   const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
-  const lifecycle = billLifecycle(bill);
   const notice = billNotice(bill);
 
   const close = () => setPending(null);
@@ -156,12 +159,12 @@ export function BillDocumentHeader({
     ...(allowed.includes('return')
       ? [{ key: 'return', label: t('returnForCorrection'), onSelect: () => setPending('return') }]
       : []),
-    ...(allowed.includes('reject')
-      ? [{ key: 'reject', label: t('reject'), onSelect: () => setPending('reject'), destructive: true }]
-      : []),
     // AP-4 — a credit the supplier gave against a posted bill with a balance left to pay.
     ...(canManage && bill.postingStatus === 'POSTED' && Number(bill.outstandingAmount) > 0
       ? [{ key: 'debit-note', label: t('recordDebitNote'), onSelect: () => setDebitNoteOpen(true) }]
+      : []),
+    ...(allowed.includes('reject')
+      ? [{ key: 'reject', label: t('reject'), onSelect: () => setPending('reject'), destructive: true }]
       : []),
     // AP-2 — a draft that will never be submitted (a duplicate, the wrong supplier).
     ...(canManage && bill.documentStatus === 'DRAFT'
@@ -172,146 +175,152 @@ export function BillDocumentHeader({
       : []),
   ];
 
+  const state = billListState(bill, todayWireDate());
+  const settleable = isSettleableBill(bill);
+  const owed = settleable && Number(bill.outstandingAmount) > 0;
+  const daysLate = billDaysLate(bill, todayWireDate());
+  const money = (value: string) => formatMoney(value, bill.currencyCode, locale) ?? value;
+  const title =
+    bill.billNumber ??
+    (bill.postingStatus === 'OPENING_BALANCE' ? t('titleOpening') : t(`titleUnnumbered.${state}` as never));
+  const payHref = `/finance/accounting/payments/new?supplier=${bill.supplierId}&bill=${bill.id}&amount=${Number(bill.outstandingAmount).toFixed(2)}`;
+  // A bill on hold (an opening balance that does not tie, a closed period) cannot be paid yet.
+  const held = Boolean(eligibility.data?.blockedReason && HELD.has(eligibility.data.blockedReason));
+  const payButton =
+    canManage && owed && !held ? (
+      <Button asChild variant={primaryButton ? 'outline' : 'default'}>
+        <Link href={payHref}>{t('payBill')}</Link>
+      </Button>
+    ) : null;
+
   return (
     <>
-      <DocumentActionBar
-        back={
-          <Button asChild variant="ghost" className="gap-1.5 px-2">
-            <Link href={back?.href ?? '/finance/accounting/bills'}>
-              <ArrowLeft size={16} aria-hidden="true" />
-              {back?.label ?? t('backToList')}
-            </Link>
-          </Button>
-        }
-        primary={primaryButton}
-        commands={commands}
-        moreLabel={tc('moreActions')}
-        lifecycle={
-          <LifecycleStepper
-            steps={BILL_STAGES.map((stage) => ({
-              key: stage,
-              label: stage === 'POSTED' ? tPosting('POSTED') : tStatus(stage),
-            }))}
-            current={lifecycle.current}
-            terminal={
-              lifecycle.terminal
-                ? {
-                    label:
-                      lifecycle.terminal === 'REVERSED'
-                        ? tPosting('REVERSED')
-                        : tStatus(lifecycle.terminal),
-                    tone: lifecycle.terminal === 'REJECTED' ? 'danger' : 'historical',
-                  }
-                : undefined
+      <RecordLayout
+        header={
+          <RecordHeader
+            headingLevel="h2"
+            breadcrumb={
+              <Link
+                href={back?.href ?? '/finance/accounting/bills'}
+                className="inline-flex items-center gap-1 text-caption font-medium text-muted-foreground hover:text-foreground"
+              >
+                <ChevronLeft size={14} aria-hidden="true" />
+                {back?.label ?? t('backToList')}
+              </Link>
             }
-            stepOfLabel={(n, total) => t('stepOf', { n, total })}
+            title={<span className={cn(bill.billNumber && 'font-mono')}>{title}</span>}
+            statusPlacement="title"
+            status={<StatusPill tone={BILL_LIST_STATE_TONE[state]}>{t(`listState.${state}`)}</StatusPill>}
+            meta={
+              <span className="flex flex-wrap items-center gap-x-2 text-body-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{bill.supplier?.name ?? tc('notAvailable')}</span>
+                <span>· {t('supplierRef', { ref: bill.supplierInvoiceNumber })}</span>
+                <span>
+                  · {t('dueOn', { date: formatDate(bill.dueDate, locale) ?? '—' })}
+                  {daysLate > 0 ? <span className="font-medium text-danger"> · {t('daysLate', { days: daysLate })}</span> : null}
+                </span>
+                {hasPoLink ? (
+                  <span>
+                    · {tMatch('axis')}: {tMatch(bill.matchStatus)}
+                  </span>
+                ) : null}
+              </span>
+            }
+            figure={{
+              label: settleable ? t('balanceDue') : t('totalAmount'),
+              value: <span className="tabular-nums">{money(settleable ? bill.outstandingAmount : bill.totalAmount)}</span>,
+            }}
+            actions={
+              <>
+                {primaryButton}
+                {payButton}
+                {commands.length > 0 ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline">
+                        {tc('moreActions')}
+                        <ChevronDown size={16} aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {commands.map((command, i) => (
+                        <Fragment key={command.key}>
+                          {command.destructive && i > 0 && !commands[i - 1]!.destructive ? <DropdownMenuSeparator /> : null}
+                          <DropdownMenuItem className={cn(command.destructive && 'text-danger')} onSelect={command.onSelect}>
+                            {command.label}
+                          </DropdownMenuItem>
+                        </Fragment>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </>
+            }
           />
         }
-      />
-
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
-      <div className="min-w-0">
-      <DocumentIdentity
-        eyebrow={t('eyebrow')}
-        facts={facts}
-        title={bill.billNumber ?? tStatus(bill.documentStatus)}
-        subtitle={[
-          bill.supplier?.name ?? tc('notAvailable'),
-          t('supplierRef', { ref: bill.supplierInvoiceNumber }),
-        ].join(' · ')}
-        axes={[
-          {
-            label: t('axisDocument'),
-            value: <ProcurementStatusBadge vocabulary="supplierBill" status={bill.documentStatus} />,
-          },
-          { label: tPosting('axis'), value: <PostingStatusBadge status={bill.postingStatus} /> },
-          // A non-PO bill never matches; showing "Not run" there would read as a missing step (D6).
-          ...(hasPoLink
-            ? [{ label: tMatch('axis'), value: <BillMatchStatusBadge status={bill.matchStatus} /> }]
-            : []),
-        ]}
-      />
-
-      {notice === 'returned' ? (
-        <Notice
-          tone="attention"
-          title={t('notice.returnedTitle', { date: formatDate(bill.returnedAt, locale) ?? '' })}
-          className="mb-6"
-          action={
-            canEdit ? (
-              <Button asChild variant="outline">
-                <Link href={editHref}>{t('editBill')}</Link>
-              </Button>
-            ) : undefined
-          }
-        >
-          {bill.returnReason ?? ''}
-        </Notice>
-      ) : notice === 'rejected' ? (
-        <Notice
-          tone="danger"
-          title={t('notice.rejectedTitle', { date: formatDate(bill.rejectedAt, locale) ?? '' })}
-          className="mb-6"
-        >
-          {bill.rejectionReason ?? ''}
-        </Notice>
-      ) : bill.documentStatus === 'CANCELLED' ? (
-        <Notice
-          tone="historical"
-          title={t('notice.cancelledTitle', { date: formatDate(bill.cancelledAt ?? null, locale) ?? '' })}
-          className="mb-6"
-        >
-          {bill.cancellationReason ?? ''}
-        </Notice>
-      ) : notice === 'post-blocked' ? (
-        <Notice
-          tone="attention"
-          title={t('notice.postBlockedTitle')}
-          className="mb-6"
-          action={
-            <Button asChild variant="outline">
-              <a href="#bill-matching">{t('notice.reviewMatch')}</a>
-            </Button>
-          }
-        >
-          {t('notice.postBlockedBody', { match: tMatch(bill.matchStatus) })}
-        </Notice>
-      ) : notice === 'post-failed' ? (
-        <Notice
-          tone="danger"
-          title={t('notice.postFailedTitle')}
-          className="mb-6"
-          action={
-            allowed.includes('post') ? (
-              <Button variant="outline" onClick={() => setPending('post')}>
-                {t('notice.retryPosting')}
-              </Button>
-            ) : undefined
-          }
-        >
-          {t('notice.postFailedBody')}
-        </Notice>
-      ) : notice === 'posting-pending' ? (
-        <Notice tone="info" title={t('notice.postingPendingTitle')} className="mb-6">
-          {t('notice.postingPendingBody')}
-        </Notice>
-      ) : notice === 'reversed' ? (
-        <Notice tone="historical" title={t('notice.reversedTitle')} className="mb-6">
-          {t('notice.reversedBody')}
-        </Notice>
-      ) : notice === 'posted' ? (
-        <Notice tone="success" title={t('notice.postedTitle')} className="mb-6">
-          {t('notice.postedBody', {
-            amount: formatMoney(bill.totalAmount, bill.currencyCode, locale) ?? '',
-            date: formatDate(bill.billDate, locale) ?? '',
-          })}
-        </Notice>
-      ) : null}
-
-      {children}
-      </div>
-      {rail ? <div className="lg:pt-1">{rail}</div> : null}
-      </div>
+        banner={
+          notice === 'returned' ? (
+            <Notice
+              tone="attention"
+              title={t('notice.returnedTitle', { date: formatDate(bill.returnedAt, locale) ?? '' })}
+              action={
+                canEdit ? (
+                  <Button asChild variant="outline">
+                    <Link href={editHref}>{t('editBill')}</Link>
+                  </Button>
+                ) : undefined
+              }
+            >
+              {bill.returnReason ?? ''}
+            </Notice>
+          ) : notice === 'rejected' ? (
+            <Notice tone="danger" title={t('notice.rejectedTitle', { date: formatDate(bill.rejectedAt, locale) ?? '' })}>
+              {bill.rejectionReason ?? ''}
+            </Notice>
+          ) : bill.documentStatus === 'CANCELLED' ? (
+            <Notice tone="historical" title={t('notice.cancelledTitle', { date: formatDate(bill.cancelledAt ?? null, locale) ?? '' })}>
+              {bill.cancellationReason ?? ''}
+            </Notice>
+          ) : notice === 'post-blocked' ? (
+            <Notice
+              tone="attention"
+              title={t('notice.postBlockedTitle')}
+              action={
+                <Button asChild variant="outline">
+                  <a href="#bill-matching">{t('notice.reviewMatch')}</a>
+                </Button>
+              }
+            >
+              {t('notice.postBlockedBody', { match: tMatch(bill.matchStatus) })}
+            </Notice>
+          ) : notice === 'post-failed' ? (
+            <Notice
+              tone="danger"
+              title={t('notice.postFailedTitle')}
+              action={
+                allowed.includes('post') ? (
+                  <Button variant="outline" onClick={() => setPending('post')}>
+                    {t('notice.retryPosting')}
+                  </Button>
+                ) : undefined
+              }
+            >
+              {t('notice.postFailedBody')}
+            </Notice>
+          ) : notice === 'posting-pending' ? (
+            <Notice tone="info" title={t('notice.postingPendingTitle')}>
+              {t('notice.postingPendingBody')}
+            </Notice>
+          ) : notice === 'reversed' ? (
+            <Notice tone="historical" title={t('notice.reversedTitle')}>
+              {t('notice.reversedBody')}
+            </Notice>
+          ) : null
+        }
+        rail={rail}
+      >
+        {children}
+      </RecordLayout>
 
       {pending === 'approve' ? (
         <ConfirmActionDialog
@@ -319,7 +328,7 @@ export function BillDocumentHeader({
           description={t('approveBody')}
           confirmLabel={t('approve')}
           isPending={approve.isPending}
-          errorMessage={approve.isError ? tc('loadFailed') : undefined}
+          errorMessage={commandError(approve.error, tc('loadFailed'))}
           onConfirm={() => approve.mutate(bill.id, { onSuccess: close })}
           onDismiss={close}
         />
@@ -387,7 +396,7 @@ export function BillDocumentHeader({
           confirmLabel={t('reverse')}
           reason={{ label: t('reverseReason'), required: true }}
           isPending={reverse.isPending}
-          errorMessage={reverse.isError ? tc('loadFailed') : undefined}
+          errorMessage={commandError(reverse.error, tc('loadFailed'))}
           onConfirm={(reason) =>
             reverse.mutate(
               {

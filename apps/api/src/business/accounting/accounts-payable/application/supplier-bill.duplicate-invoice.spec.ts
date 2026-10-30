@@ -41,8 +41,7 @@ function build(existing: { id: string; billNumber: string | null } | null) {
     findBySupplierInvoiceNumber: jest.fn().mockResolvedValue(existing),
     create: jest.fn().mockResolvedValue({ id: 'b-new' }),
   };
-  // The profile-class guard (M1) finds no profile here, so it stays out of this test's way.
-  const client = { postingProfile: { findFirst: jest.fn().mockResolvedValue(null) } };
+  const client = { supplier: { findFirst: jest.fn().mockResolvedValue({ status: 'ACTIVE' }) } };
   const tenancy = { getClient: () => client } as never;
   const svc = new SupplierBillService(
     tenancy,
@@ -55,6 +54,8 @@ function build(existing: { id: string; billNumber: string | null } | null) {
     {} as never, // commandGovernance
     {} as never, // sod
   );
+  // The profile-class guard (M1) has its own spec; here it stays out of the way.
+  jest.spyOn(svc as never, 'resolveExpenseProfileAccount').mockResolvedValue('acc1' as never);
   return { svc, repo };
 }
 

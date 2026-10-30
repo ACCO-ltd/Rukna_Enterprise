@@ -9,6 +9,7 @@ const identity = { activeOrganizationId: 'o1', userId: 'u1' } as never;
 
 function build(accountClass: string | null) {
   const client = {
+    supplier: { findFirst: jest.fn().mockResolvedValue({ status: 'ACTIVE' }) },
     postingProfile: {
       findFirst: jest.fn().mockResolvedValue(accountClass === null ? null : { id: 'pp1', code: 'X' }),
     },
@@ -53,8 +54,12 @@ describe('SupplierBillService — expense profile class (M1)', () => {
     expect(repo.create).toHaveBeenCalled();
   });
 
-  it('an unknown profile is still left to the post-time check', async () => {
-    const { svc } = build(null);
-    await expect(svc.create(identity, dto('NOPE'))).resolves.toEqual({ id: 'b-new' });
+  it('an unknown profile is refused at save (SB-1)', async () => {
+    const { svc, repo } = build(null);
+    await expect(svc.create(identity, dto('NOPE'))).rejects.toMatchObject({
+      status: 400,
+      response: { errorCode: 'POSTING_PROFILE_NOT_FOUND' },
+    });
+    expect(repo.create).not.toHaveBeenCalled();
   });
 });
