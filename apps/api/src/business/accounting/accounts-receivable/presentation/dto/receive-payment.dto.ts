@@ -5,6 +5,7 @@ import {
   IsArray,
   IsDateString,
   IsDecimal,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -13,6 +14,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { RECEIPT_PAYMENT_METHODS, type ReceiptPaymentMethod } from '../../domain/receipt-payment-method.js';
 
 export class ReceivePaymentAllocationDto {
   @ApiProperty() @IsString() @IsNotEmpty()
@@ -43,8 +45,8 @@ export class ReceivePaymentDto {
   @ApiProperty({ example: 'USD' }) @IsString() @MaxLength(3)
   currency!: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30)
-  paymentMethod?: string;
+  @ApiPropertyOptional({ enum: RECEIPT_PAYMENT_METHODS }) @IsOptional() @IsIn(RECEIPT_PAYMENT_METHODS)
+  paymentMethod?: ReceiptPaymentMethod;
 
   @ApiPropertyOptional({ description: 'Bank reference or payment advice number' })
   @IsOptional() @IsString() @MaxLength(100)

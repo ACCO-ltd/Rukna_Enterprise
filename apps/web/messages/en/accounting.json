@@ -1371,7 +1371,7 @@
     "invoicePostedBody": "It is now in the ledger and on the client’s account. Record a receipt against it when payment arrives.",
     "receiptRecorded": "Receipt recorded",
     "receiptPosted": "Receipt posted",
-    "receiptAllocated": "Receipt allocated to the invoice",
+    "receiptAllocated": "Money applied to the invoices",
     "allocationReversed": "Allocation reversed",
     "certificateIssued": "Certificate no. {number} issued",
     "certificateSuperseded": "Certificate superseded",
@@ -1396,7 +1396,8 @@
     "approvalSettingsSaved": "Approval rules saved",
     "receiptReversed": "Receipt reversed. The invoices it paid owe again.",
     "bankAccountUpdated": "Bank account saved",
-    "bankAccountStatusChanged": "Bank account updated"
+    "bankAccountStatusChanged": "Bank account updated",
+    "receiptCancelled": "Receipt cancelled"
   },
   "setup": {
     "title": "Set up accounting",

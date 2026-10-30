@@ -4,15 +4,17 @@ import type { Receipt } from './types';
 
 /**
  * The one state a receipt row shows (ADR-047 list design), from the posting axis and the
- * unallocated balance. "Received · unallocated" is money in the bank not yet matched to an
- * invoice — the thing to finish.
+ * unallocated balance. "On account" is money in the bank not yet matched to an invoice — the
+ * thing to finish.
  */
 export type ReceiptListState =
-  'NOT_POSTED' | 'POSTING' | 'POSTING_FAILED' | 'UNALLOCATED' | 'RECEIVED' | 'REVERSED';
+  'NOT_POSTED' | 'POSTING' | 'POSTING_FAILED' | 'UNALLOCATED' | 'RECEIVED' | 'REVERSED' | 'CANCELLED';
 
 export function receiptListState(
-  receipt: Pick<Receipt, 'postingStatus' | 'unallocatedAmount'>,
+  receipt: Pick<Receipt, 'postingStatus' | 'unallocatedAmount'> & Partial<Pick<Receipt, 'documentStatus'>>,
 ): ReceiptListState {
+  // RC-5 — an unposted receipt set aside.
+  if (receipt.documentStatus === 'CANCELLED') return 'CANCELLED';
   switch (receipt.postingStatus) {
     case 'REVERSED':
       return 'REVERSED';
@@ -37,4 +39,5 @@ export const RECEIPT_LIST_STATE_TONE: Record<
   UNALLOCATED: 'attention',
   RECEIVED: 'success',
   REVERSED: 'historical',
+  CANCELLED: 'historical',
 };

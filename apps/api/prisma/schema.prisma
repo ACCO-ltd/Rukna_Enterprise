@@ -3340,6 +3340,11 @@ model PaymentReceipt {
   reversedBy             String?        @map("reversed_by")
   reversalReason         String?        @map("reversal_reason")
   reversalJournalEntryId String?        @map("reversal_journal_entry_id")
+  // RC-5 — a receipt recorded but never posted, set aside (typed twice, the wrong client):
+  // documentStatus becomes CANCELLED; nothing reached the ledger.
+  cancelledAt            DateTime?      @map("cancelled_at")
+  cancelledBy            String?        @map("cancelled_by")
+  cancellationReason     String?        @map("cancellation_reason") @db.VarChar(500)
   lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
   lastPostingErrorCode String?          @map("last_posting_error_code")
   migrationBatchId     String?          @map("migration_batch_id")

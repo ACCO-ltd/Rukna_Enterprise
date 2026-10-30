@@ -31,6 +31,7 @@ export class PaymentReceiptArRepository {
       accountingDate: Date;
       totalAmount: string;
       currencyCode: string;
+      paymentMethod?: string;
       reference?: string;
       notes?: string;
       createdBy: string;
@@ -46,6 +47,7 @@ export class PaymentReceiptArRepository {
         allocatedAmount: new Decimal(0),
         unallocatedAmount: new Decimal(data.totalAmount),
         currencyCode: data.currencyCode,
+        paymentMethod: data.paymentMethod ?? null,
         reference: data.reference ?? null,
         notes: data.notes ?? null,
         createdBy: data.createdBy,
@@ -60,7 +62,65 @@ export class PaymentReceiptArRepository {
         ...(clientId ? { clientId } : {}),
         ...(projectId ? paymentReceiptProjectWhere(projectId) : {}),
       },
-      orderBy: { receiptDate: 'desc' },
+      // Same-day receipts newest number first, so the list reads in the order they were posted.
+      orderBy: [{ receiptDate: 'desc' }, { receiptNumber: 'desc' }, { createdAt: 'desc' }],
+      include: { bankAccount: { select: { bankName: true, accountName: true } } },
+    });
+  }
+
+  /**
+   * RC-7 — what the receipt page shows beside the receipt: each application with its invoice's
+   * number and dates and whether it was made when the receipt posted (undone only by reversing the
+   * receipt) or later; the bank account; and what was paid back from it (AR-5).
+   */
+  async findDetail(prisma: TenantPrisma, receipt: PaymentReceipt) {
+    const [allocations, bankAccount, refunded] = await Promise.all([
+      prisma.clientReceiptAllocation.findMany({
+        where: { paymentReceiptId: receipt.id },
+        orderBy: { createdAt: 'desc' },
+        include: { invoice: { select: { invoiceNumber: true, invoiceDate: true, dueDate: true, totalAmount: true } } },
+      }),
+      this.bankAccountOf(prisma, receipt),
+      prisma.clientRefund.aggregate({ where: { receiptId: receipt.id, status: 'POSTED' }, _sum: { amount: true } }),
+    ]);
+    return {
+      allocations: allocations.map(({ invoice, ...a }) => ({
+        ...a,
+        atPosting: Boolean(receipt.postedJournalEntryId) && a.journalEntryId === receipt.postedJournalEntryId,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceDate: invoice.invoiceDate,
+        invoiceDueDate: invoice.dueDate,
+        invoiceTotal: invoice.totalAmount,
+      })),
+      bankAccount,
+      refundedAmount: new Decimal(refunded._sum.amount?.toString() ?? '0').toFixed(2),
+    };
+  }
+
+  /**
+   * The bank account a receipt landed in. Receipts posted through the two-step path before RC-3
+   * named the bank by GL code only and left `bankAccountId` empty; recover the account from the
+   * posting journal's bank line when it is a registered bank account.
+   */
+  async bankAccountOf(
+    prisma: TenantPrisma,
+    receipt: Pick<PaymentReceipt, 'organizationId' | 'bankAccountId' | 'postedJournalEntryId'>,
+  ): Promise<{ id: string; bankName: string; accountName: string } | null> {
+    if (receipt.bankAccountId) {
+      return prisma.bankAccount.findFirst({
+        where: { id: receipt.bankAccountId, organizationId: receipt.organizationId },
+        select: { id: true, bankName: true, accountName: true },
+      });
+    }
+    if (!receipt.postedJournalEntryId) return null;
+    const bankLine = await prisma.journalLine.findFirst({
+      where: { journalEntryId: receipt.postedJournalEntryId, sourceSubledgerType: 'BANK' },
+      select: { accountId: true },
+    });
+    if (!bankLine) return null;
+    return prisma.bankAccount.findFirst({
+      where: { organizationId: receipt.organizationId, glAccountId: bankLine.accountId },
+      select: { id: true, bankName: true, accountName: true },
     });
   }
 
@@ -289,21 +349,7 @@ export class PaymentReceiptArRepository {
         })
       : [];
 
-    // AR posting picks the bank by GL code and leaves bankAccountId empty; recover the account from
-    // the posting journal's bank line when it is a registered bank account.
-    let bankAccount = receipt.bankAccount;
-    if (!bankAccount && receipt.postedJournalEntryId) {
-      const bankLine = await prisma.journalLine.findFirst({
-        where: { journalEntryId: receipt.postedJournalEntryId, sourceSubledgerType: 'BANK' },
-        select: { accountId: true },
-      });
-      if (bankLine) {
-        bankAccount = await prisma.bankAccount.findFirst({
-          where: { organizationId, glAccountId: bankLine.accountId },
-          select: { bankName: true, accountName: true },
-        });
-      }
-    }
+    const bankAccount = receipt.bankAccount ?? (await this.bankAccountOf(prisma, receipt));
 
     return { ...receipt, bankAccount, initialAllocations };
   }

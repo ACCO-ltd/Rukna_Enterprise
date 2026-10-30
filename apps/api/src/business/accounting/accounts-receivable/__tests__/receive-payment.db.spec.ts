@@ -110,7 +110,7 @@ it('RP-03: refuses, before writing anything, what the payment cannot settle', as
   const other = await prisma.client.create({ data: { organizationId: env.orgId, code: 'CLI-002', name: 'Other Client', status: 'ACTIVE' } });
   await expect(receive({ clientId: other.id })).rejects.toMatchObject({ response: { errorCode: 'ALLOCATION_CLIENT_MISMATCH' } });
 
-  await expect(receive({ currency: 'EUR', allocations: [] })).rejects.toMatchObject({ response: { errorCode: 'CURRENCY_MISMATCH' } });
+  await expect(receive({ currency: 'EUR', allocations: [] })).rejects.toMatchObject({ response: { errorCode: 'CURRENCY_NOT_SUPPORTED' } });
 
   expect(await prisma.paymentReceipt.count({ where: { organizationId: env.orgId } })).toBe(before);
 });
