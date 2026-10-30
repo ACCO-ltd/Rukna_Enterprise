@@ -95,20 +95,21 @@ export async function createPaymentEnv(prisma: PrismaClient): Promise<PaymentTes
     },
   });
 
-  const mkBank = (glAccountId: string, bankName: string, accountNumber: string) =>
+  const mkBank = (glAccountId: string, bankName: string, accountNumber: string, kind: 'BANK' | 'CASH' | 'MOBILE_WALLET' = 'BANK') =>
     prisma.bankAccount.create({
       data: {
         organizationId: orgId,
         glAccountId,
         bankName,
         accountName: bankName,
+        kind,
         accountNumber: `${accountNumber}-${orgId.slice(-6)}`,
         currencyCode: 'USD',
         createdBy: by,
       },
     });
-  const cashBox = await mkBank(cashGlId, 'Cash box', 'CASH');
-  const evc = await mkBank(evcGlId, 'EVC Plus', 'EVC');
+  const cashBox = await mkBank(cashGlId, 'Cash box', 'CASH', 'CASH');
+  const evc = await mkBank(evcGlId, 'EVC Plus', 'EVC', 'MOBILE_WALLET');
   const mainBank = await mkBank(bankGlId, 'Salaam Bank', 'SB-001');
   for (const persona of ['cfo', 'director'] as const) {
     await prisma.bankAccountSignatory.create({

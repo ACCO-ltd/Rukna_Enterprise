@@ -1,3 +1,4 @@
+import { ACCOUNT_KIND_FOR_METHOD } from '../../accounts-receivable/domain/receipt-payment-method.js';
 import {
   describeReference,
   normaliseProof,
@@ -249,9 +250,18 @@ export class SupplierPaymentService {
     // (The create path validated no bank account at all — A16.)
     const bank = await prisma.bankAccount.findFirst({
       where: { id: dto.bankAccountId, organizationId: orgId },
-      select: { accountName: true, status: true, allowsPayments: true, currencyCode: true },
+      select: { accountName: true, status: true, allowsPayments: true, currencyCode: true, kind: true },
     });
     if (!bank) throw new NotFoundException({ errorCode: 'BANK_ACCOUNT_NOT_FOUND', message: 'Bank account not found.' });
+    // PN-2 — cash leaves a cash box, mobile money a wallet, the rest a bank account (PM-3).
+    const wanted = ACCOUNT_KIND_FOR_METHOD[dto.paymentMethod as keyof typeof ACCOUNT_KIND_FOR_METHOD];
+    if (bank.kind && wanted && bank.kind !== wanted) {
+      const where = { BANK: 'a bank account', CASH: 'a cash box', MOBILE_WALLET: 'a mobile-money wallet' }[wanted];
+      throw new BadRequestException({
+        errorCode: 'BANK_ACCOUNT_WRONG_KIND',
+        message: `This payment method is paid from ${where}; ${bank.accountName} is not one.`,
+      });
+    }
     if (bank.status !== 'ACTIVE' || !bank.allowsPayments) {
       throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_NOT_PAYING', message: `${bank.accountName} is not open for payments.` });
     }

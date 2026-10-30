@@ -3,7 +3,8 @@
  *
  *   SP-01  two payments raised at once for the same bill: one settles it, the other is refused
  *   SP-02  an unknown supplier is a 404 (was a 500); an inactive one is paid nothing new; USD only
- *   SP-03  proof is stored in one shape; a cheque number is used once per account while live
+ *   SP-03  proof is stored in one shape; a cheque number is used once per account while live;
+ *          mobile money is paid from a wallet, never a bank account (PN-2)
  *   SP-04  a reversal needs a reason and a date not before the payment, and is recorded
  *   SP-05  two reversals at once give the bill its balance back once
  */
@@ -85,9 +86,17 @@ it('SP-03: proof is normalised; a cheque number is used once per account while l
   await svc.supplierPaymentService.cancel(env.identity, cheque.id, 'Cheque spoiled');
   await expect(pay({ paymentMethod: 'CHEQUE', bankReference: 'chq-004512' })).resolves.toBeDefined();
 
-  const mobile = await pay({ paymentMethod: 'MOBILE_MONEY', bankReference: 'tx-77', provider: 'EVC_PLUS', payeeAccount: '0615123456' });
+  // Mobile money leaves a wallet (PN-2): refused from the bank account, accepted once it is a wallet.
+  await expect(pay({ paymentMethod: 'MOBILE_MONEY' })).rejects.toMatchObject({ response: { errorCode: 'BANK_ACCOUNT_WRONG_KIND' } });
+  await prisma.bankAccount.update({ where: { id: env.bankAccountId }, data: { kind: 'MOBILE_WALLET' } });
+  let mobile;
+  try {
+    mobile = await pay({ paymentMethod: 'MOBILE_MONEY', bankReference: 'tx-77', provider: 'EVC_PLUS', payeeAccount: '0615123456' });
+    await expect(pay({ paymentMethod: 'MOBILE_MONEY', provider: 'MPESA' })).rejects.toMatchObject({ response: { errorCode: 'PAYMENT_PROOF_INVALID' } });
+  } finally {
+    await prisma.bankAccount.update({ where: { id: env.bankAccountId }, data: { kind: 'BANK' } });
+  }
   expect(mobile).toMatchObject({ provider: 'EVC_PLUS', payeeAccount: '+252615123456', bankReference: 'TX-77' });
-  await expect(pay({ paymentMethod: 'MOBILE_MONEY', provider: 'MPESA' })).rejects.toMatchObject({ response: { errorCode: 'PAYMENT_PROOF_INVALID' } });
 });
 
 async function postedPayment(billId: string) {

@@ -51,15 +51,17 @@ export class StatementDocumentService {
   }
 }
 
-interface Column {
+export interface StatementColumn {
   label: string;
   /** A fixed width in points; the first column takes the rest. */
   width?: number;
   align?: 'right';
 }
 
-/** A ruled table in the kit's style; the header repeats on each page. */
-function table(s: KitStyles, columns: Column[], rows: string[][], emphasis: (row: number) => boolean = () => false) {
+type Column = StatementColumn;
+
+/** A ruled table in the kit's style; the header repeats on each page. Shared with the supplier statement (SS-2). */
+export function statementTable(s: KitStyles, columns: Column[], rows: string[][], emphasis: (row: number) => boolean = () => false) {
   const cellStyle = (c: Column, i: number) => [
     s.cell,
     c.width ? { width: c.width } : { flex: 1 },
@@ -143,7 +145,7 @@ export function StatementDocument({ input }: { input: StatementDocumentInput }) 
     amt(i.total),
     dash((Number(i.received) + Number(i.adjusted)).toFixed(2)),
     amt(i.balance),
-    i.daysOverdue > 0 ? `${i.daysOverdue} days` : 'Not due',
+    i.daysOverdue > 0 ? `${i.daysOverdue} day${i.daysOverdue === 1 ? '' : 's'}` : 'Not due',
   ]);
 
   const activityRows = [
@@ -181,7 +183,7 @@ export function StatementDocument({ input }: { input: StatementDocumentInput }) 
 
       accountRows.length > 0 ? sectionTitle('Account by project') : null,
       accountRows.length > 0
-        ? table(
+        ? statementTable(
             s,
             [
               { label: 'Project / contract' },
@@ -197,7 +199,7 @@ export function StatementDocument({ input }: { input: StatementDocumentInput }) 
 
       sectionTitle('Open invoices'),
       openRows.length > 0
-        ? table(
+        ? statementTable(
             s,
             [
               { label: 'Invoice', width: 74 },
@@ -215,7 +217,7 @@ export function StatementDocument({ input }: { input: StatementDocumentInput }) 
       totalsBlock(s, summary, { label: 'Balance Due', value: usd(balanceDue) }),
 
       sectionTitle(`Activity ${day(st.from)} – ${day(st.to)}`),
-      table(
+      statementTable(
         s,
         [
           { label: 'Date', width: 62 },

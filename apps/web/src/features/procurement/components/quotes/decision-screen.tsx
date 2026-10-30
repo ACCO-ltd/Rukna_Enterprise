@@ -42,7 +42,7 @@ import { useSession } from '@/features/auth/session/use-session';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { WorkflowTransactionType } from '@/features/workflows/types';
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate, formatNumber, formatMoney } from '@/lib/format';
 
 import {
   useAskForAnotherQuote,
@@ -814,7 +814,10 @@ function ContextStrip({
   const [more, setMore] = useState(false);
   const extra = more ? '' : 'hidden sm:block';
   const tWaiting = useTranslations('procurement.quotes.waiting');
-  const items = detail.lines.map((line) => line.description).join(', ');
+  // What is being bought, with how much: "12 Item · Cement bags" (Q-1).
+  const items = detail.lines
+    .map((line) => `${formatNumber(line.quantity) ?? line.quantity} ${typeof line.uom === 'string' ? line.uom : (line.uom?.name ?? line.uom?.code ?? '')} · ${line.description}`.replace(/\s+·/, ' ·'))
+    .join(', ');
   return (
     <>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-body-sm sm:grid-cols-3 lg:grid-cols-6">

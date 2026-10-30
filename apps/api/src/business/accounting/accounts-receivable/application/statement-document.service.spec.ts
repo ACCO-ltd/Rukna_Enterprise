@@ -64,7 +64,7 @@ describe('StatementDocument (ST-6)', () => {
     expect(all).toContain('500,000.00');
     expect(all).toContain('Retention held (due later): USD 12,500.00');
     expect(all).toContain('INV-000005');
-    expect(all).toContain('1 days');
+    expect(all).toContain('1 day');
     expect(all).toContain('Currency');
     expect(all).toContain('Payment RCP-000015');
     expect(all).toContain('Cheque 204118 (Premier Bank)');

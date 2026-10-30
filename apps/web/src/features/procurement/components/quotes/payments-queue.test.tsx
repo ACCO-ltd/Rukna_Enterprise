@@ -45,7 +45,7 @@ describe('PaymentsQueue — "Payments needed"', () => {
     const links = await screen.findAllByRole('link', { name: /MR-/ });
     const hrefs = [...new Set(links.map((l) => l.getAttribute('href')))];
     expect(hrefs).toEqual(['/finance/quotes/b', '/finance/quotes/a']);
-    expect(screen.getAllByText('2 h 20 m').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('2 h 20 min').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$1,000.00').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('tab', { name: /To settle/ }));

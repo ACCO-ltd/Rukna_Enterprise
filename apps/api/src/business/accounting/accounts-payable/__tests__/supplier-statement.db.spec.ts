@@ -63,6 +63,8 @@ it('SST-01: the closing balance is what is owed, and ties to open bills less una
   expect(s.unapplied).toBe('100.00');
   expect(s.pendingPayments).toBe('100.00');
   expect(sum(s.aging) - Number(s.unapplied)).toBe(Number(s.closingBalance));
+  // SS-1 — the open bill with what settled it and what is still owed (the unposted 100 still counts).
+  expect(s.openBills).toEqual([expect.objectContaining({ number: expect.any(String), total: '1000.00', settled: '600.00', balance: '400.00' })]);
 });
 
 it('SST-02: a reversed payment shows paid and reversed, and the bill is owed again', async () => {

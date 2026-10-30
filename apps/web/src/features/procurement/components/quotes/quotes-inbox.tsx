@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import { EmptyState } from '@erp/ui';
+import { EmptyState, StatusPill } from '@erp/ui';
 
 import { ListPageHeader } from '@/components/layout/list-page-header';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -34,12 +34,15 @@ export function QuotesInbox() {
       header: tList('columns.request'),
       sticky: true,
       card: 'title',
-      plainValue: (row) => `${row.mr.number} ${row.mr.title ?? ''} ${row.number}`,
+      plainValue: (row) => `${row.number} ${row.mr.number} ${row.mr.title ?? ''}`,
       render: (row) => (
         <span className="block min-h-11 min-w-0">
-          <span className="block font-semibold text-brand-primary">{row.mr.number}</span>
+          <span className="flex items-center gap-2">
+            <span className="font-mono font-semibold text-brand-primary">{row.number}</span>
+            {row.urgent ? <StatusPill tone="danger">{tList('urgent')}</StatusPill> : null}
+          </span>
           <span className="block max-w-[20rem] truncate text-caption font-normal text-muted-foreground">
-            {row.mr.title ?? row.number}
+            {[row.mr.number, row.mr.title].filter(Boolean).join(' · ')}
           </span>
         </span>
       ),
@@ -82,6 +85,18 @@ export function QuotesInbox() {
   ];
   if (moneyVisible) {
     columns.push({
+      key: 'lowest',
+      header: tList('columns.lowest'),
+      numeric: true,
+      plainValue: (row) => (row.lowestTotal == null ? null : Number(row.lowestTotal)),
+      render: (row) =>
+        row.lowestTotal == null ? (
+          <span className="text-caption text-muted-foreground">{tList('totalsToType')}</span>
+        ) : (
+          <span className="font-medium tabular-nums">{formatMoney(row.lowestTotal, 'USD')}</span>
+        ),
+    });
+    columns.push({
       key: 'estimate',
       header: tList('columns.estimate'),
       numeric: true,
@@ -98,7 +113,11 @@ export function QuotesInbox() {
 
   return (
     <div className="space-y-5">
-      <ListPageHeader eyebrow={t('eyebrow')} title={t('title')} summary={t('subtitle')} />
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={t('title')}
+        summary={data.length > 0 ? t('countLabel', { count: data.length }) : undefined}
+      />
       <PlatformDataGrid
         columns={columns}
         data={data}

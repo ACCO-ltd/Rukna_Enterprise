@@ -121,6 +121,7 @@ export class AwardSupplierPaymentService {
         bankAccountId: a.id,
         name: a.bankName === a.accountName ? a.bankName : `${a.bankName} · ${a.accountName}`,
         glCode: a.glCode,
+        kind: a.kind,
         underDualControl: a.activeSignatories > 0,
         lastUsed: a.id === lastUsed,
       }));
@@ -209,6 +210,9 @@ export class AwardSupplierPaymentService {
     if (!account) throw new NotFoundException(`BankAccount ${cmd.bankAccountId} not found in this organization`);
     if (account.status !== 'ACTIVE' || !account.allowsPayments) throw paymentUnprocessable('ACCOUNT_NOT_USABLE');
     if (account.currencyCode !== currencyCode) throw paymentUnprocessable('CURRENCY_MISMATCH');
+    // PN-2 — cash leaves a cash box, mobile money a wallet, a bank payment a bank account (PM-3).
+    const kindForMethod = { BANK: 'BANK', MOBILE_MONEY: 'MOBILE_WALLET', CASH: 'CASH' } as const;
+    if (account.kind && account.kind !== kindForMethod[cmd.paymentMethod]) throw paymentUnprocessable('ACCOUNT_WRONG_KIND');
     if (cmd.shape === 'PREPAY' && cmd.supplierBillId) throw paymentUnprocessable('PAYMENT_SHAPE_INVALID');
     // QA LOW — not before the order; and no prepayment once a posted bill waits (pay / apply it).
     if (revision?.effectiveFrom && paymentDate.getTime() < revision.effectiveFrom.getTime()) {

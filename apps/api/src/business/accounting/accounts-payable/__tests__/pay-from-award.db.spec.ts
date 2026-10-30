@@ -49,7 +49,8 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
       idempotencyKey: over.key ?? randomUUID(),
       quotationRequestId: requestId,
       bankAccountId: over.bankAccountId ?? env.bank.evcId,
-      paymentMethod: 'MOBILE_MONEY',
+      // PN-2 — the method suits the account: the main bank pays by bank, the EVC float by mobile money.
+      paymentMethod: over.bankAccountId === env.bank.mainBankId ? 'BANK' : over.bankAccountId === env.bank.cashBoxId ? 'CASH' : 'MOBILE_MONEY',
       paymentDate: '2026-10-08',
       amount: over.amount ?? '1000.00',
       shape: over.shape ?? 'PREPAY',
@@ -251,7 +252,7 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
       await refusal(
         svc.awardPayments.payFromAward(env.as('selector'), {
           idempotencyKey: key, quotationRequestId: requestId, bankAccountId: env.bank.mainBankId,
-          paymentMethod: 'BANK', paymentDate: '2026-10-08', amount: '200.00', shape: 'PREPAY',
+          paymentMethod: 'MOBILE_MONEY', paymentDate: '2026-10-08', amount: '200.00', shape: 'PREPAY',
         }),
       ),
     ).toEqual({ status: 409, code: 'IDEMPOTENCY_KEY_REUSED' });
@@ -463,5 +464,31 @@ describe('ADR-045 P7 — pay supplier from the award', () => {
       const done = await svc.awardPayments.continuePayment(env.as('selector'), paymentId);
       expect(done.payment.postingStatus).toBe('POSTED');
     });
+  });
+
+  it('PN-1 / PN-2: the queue names the store and what is left; a method must suit its account', async () => {
+    const { requestId } = await a.awardedOrder({ path: 'FINANCE_PAYS_SUPPLIER' });
+    // Cash from the main bank, or mobile money from the cash box: refused before anything is written.
+    expect(
+      await refusal(
+        svc.awardPayments.payFromAward(env.as('selector'), {
+          idempotencyKey: randomUUID(), quotationRequestId: requestId, bankAccountId: env.bank.mainBankId,
+          paymentMethod: 'CASH', paymentDate: '2026-10-08', amount: '100.00', shape: 'PREPAY',
+        }),
+      ),
+    ).toMatchObject({ code: 'ACCOUNT_WRONG_KIND' });
+    expect(
+      await refusal(
+        svc.awardPayments.payFromAward(env.as('selector'), {
+          idempotencyKey: randomUUID(), quotationRequestId: requestId, bankAccountId: env.bank.cashBoxId,
+          paymentMethod: 'MOBILE_MONEY', paymentDate: '2026-10-08', amount: '100.00', shape: 'PREPAY',
+        }),
+      ),
+    ).toMatchObject({ code: 'ACCOUNT_WRONG_KIND' });
+
+    await pay(requestId, { amount: '300.00' });
+    const queue = await svc.lists.list(env.as('selector'), { queue: 'pay' } as never);
+    const row = queue.items.find((r) => r.id === requestId);
+    expect(row).toMatchObject({ payee: expect.any(String), remainingToPay: '700.00' });
   });
 });

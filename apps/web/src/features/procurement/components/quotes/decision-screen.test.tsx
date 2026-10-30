@@ -499,7 +499,7 @@ describe('QuoteDecisionScreen', () => {
     render({ quotes: three() });
     const waiting = await screen.findByText('Over 4 h');
     expect(waiting.closest('[data-sla]')).toHaveAttribute('data-sla', 'red');
-    expect(screen.getByText('4 h 10 m')).toBeInTheDocument();
+    expect(screen.getByText('4 h 10 min')).toBeInTheDocument();
   });
 });
 

@@ -2194,7 +2194,7 @@
       "short": "Quotes {count} of {required}"
     },
     "waiting": {
-      "duration": "{hours, plural, =0 {} other {# h }}{minutes} m",
+      "duration": "{hours, plural, =0 {{minutes, plural, =0 {Just now} other {# min}}} other {# h {minutes} min}}",
       "sentAt": "Sent {time}",
       "waitingFor": "waiting {duration}",
       "tone": {
@@ -2285,7 +2285,8 @@
         "waiting": "Waiting",
         "estimate": "Estimate",
         "status": "Status",
-        "awarded": "Chosen total"
+        "awarded": "Chosen total",
+        "lowest": "Lowest quote"
       },
       "empty": {
         "collect": "Nothing to collect",
@@ -2303,7 +2304,9 @@
       "noMatches": "Nothing matches.",
       "openRequests": "Material requests",
       "overhead": "Company overhead",
-      "eyebrow": "Purchasing"
+      "eyebrow": "Purchasing",
+      "urgent": "Urgent",
+      "totalsToType": "Totals to type"
     },
     "capture": {
       "back": "Quotes",
@@ -2396,7 +2399,6 @@
     },
     "inbox": {
       "title": "Quotes to choose",
-      "subtitle": "Oldest first. Type each total from the photo, then choose.",
       "empty": "Nothing to choose",
       "emptyHint": "When procurement sends quotes, they show here.",
       "searchLabel": "Search quotes to choose",
@@ -2797,7 +2799,8 @@
         "maintainer": "You registered this store, so another finance user must pay it.",
         "maintainerNamed": "{name} registered this store, so someone else in finance must pay it.",
         "thenSignatures": "Then two bank signatories release it.",
-        "signaturesOnly": "No approval needed — two bank signatories release it before the money goes out."
+        "signaturesOnly": "No approval needed — two bank signatories release it before the money goes out.",
+        "noAccountForMethod": "No account suits this method"
       },
       "changePath": {
         "title": "Change how it's paid?",
@@ -3052,7 +3055,6 @@
     },
     "paymentsQueue": {
       "title": "Payments needed",
-      "subtitle": "Orders from chosen quotes waiting for money, and store receipts waiting to be recorded. Longest wait first — a buyer may be standing at the store.",
       "tabs": {
         "pay": "To pay",
         "settle": "To settle"
@@ -3062,7 +3064,9 @@
           "pay": "Waiting for payment",
           "settle": "Waiting to settle"
         },
-        "awarded": "Awarded"
+        "awarded": "Awarded",
+        "payee": "Pay to",
+        "stillToPay": "Still to pay"
       },
       "searchLabel": "Search payments",
       "searchPlaceholder": "Search by MR or request",
@@ -3086,7 +3090,10 @@
         "cashAccountAction": "Add a cash box or EVC float",
         "done": "done",
         "missing": "missing"
-      }
+      },
+      "eyebrow": "Payables",
+      "summary": "{pay} to pay · {settle} to settle",
+      "ofTotal": "of {total}"
     }
   },
   "site": {

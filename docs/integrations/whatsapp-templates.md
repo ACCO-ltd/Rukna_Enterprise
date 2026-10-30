@@ -106,6 +106,25 @@ Amounts are sent already formatted with their currency (e.g. `USD 12,500.00`), d
 
 Category UTILITY, language English (`en`), like the four above.
 
+## 4c. Supplier statement: `rukna_supplier_statement` (SS-3, 2026-10-30)
+
+- **Env:** `WHATSAPP_TEMPLATE_SUPPLIER_STATEMENT=rukna_supplier_statement` (unset = the Send button explains it is not set up).
+- **Header:** DOCUMENT (the supplier statement PDF).
+- **Body:**
+
+  > Hello {{1}}, please find attached our record of your account with {{4}} as of {{3}}. Our books
+  > show {{2}} owed to you. If it does not match your statement, reply to this message.
+
+| Variable | Meaning | Sample |
+|---|---|---|
+| {{1}} | Supplier name | Berbera Cement Supplies |
+| {{2}} | What we owe at the end of the period (open bills less money paid ahead) | USD 580.00 |
+| {{3}} | Statement date | 30 Oct 2026 |
+| {{4}} | Company name | ACCO Ltd |
+
+Category UTILITY, language English (`en`). A separate template from `rukna_statement`, whose
+"the balance due is" reads as money the reader owes.
+
 ## Notes for the owner
 
 - Meta rejects UTILITY templates that read as promotional; keep the wording factual.
