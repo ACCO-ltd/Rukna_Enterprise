@@ -1,4 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+const KINDS = ['BANK', 'CASH', 'MOBILE_WALLET'] as const;
 import { IsString, IsNotEmpty, IsBoolean, IsIn, IsOptional, MaxLength } from 'class-validator';
 
 export class ConfigureBankAccountDto {
@@ -23,6 +25,10 @@ export class ConfigureBankAccountDto {
   @IsString() @IsNotEmpty() @MaxLength(30)
   glAccountCode!: string;
 
+  @ApiPropertyOptional({ enum: KINDS, description: 'PM-3: a bank account (default), a cash box or a mobile-money wallet' })
+  @IsOptional() @IsIn(KINDS)
+  kind?: (typeof KINDS)[number];
+
   @ApiProperty()
   @IsBoolean()
   allowsReceipts!: boolean;
@@ -37,6 +43,7 @@ export class UpdateBankAccountBody {
   @IsOptional() @IsString() @MaxLength(255) accountName?: string;
   @IsOptional() @IsString() @MaxLength(255) bankName?: string;
   @IsOptional() @IsString() @MaxLength(50) accountNumber?: string;
+  @IsOptional() @IsIn(KINDS) kind?: (typeof KINDS)[number];
   @IsOptional() @IsBoolean() allowsReceipts?: boolean;
   @IsOptional() @IsBoolean() allowsPayments?: boolean;
 }

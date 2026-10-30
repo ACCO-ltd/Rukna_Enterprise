@@ -15,6 +15,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests__/helpers/fixture.factory';
 import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -33,6 +34,7 @@ const sale = (amount: string) => ({
 });
 const receive = (patch: Record<string, unknown> = {}) =>
   svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId,
     bankAccountId: env.bankAccountId,
     receiptDate: day(),

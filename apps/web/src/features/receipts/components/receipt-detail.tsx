@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ChevronDown, ChevronLeft, Download } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -35,7 +36,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
 import { receiptKeys, useCancelReceipt, useOpenReceiptDocument, useReceipt, useReverseReceipt } from '../hooks/use-receipts';
-import { isReceiptPaymentMethod } from '../payment-methods';
+import { isReceiptPaymentMethod, PROOF_FIELDS } from '../payment-methods';
 import { RECEIPT_LIST_STATE_TONE, receiptListState } from '../receipt-list-state';
 import { PostReceiptDialog } from './post-receipt-dialog';
 import { ApplyOnAccountDialog, ReceiptAllocationsPanel } from './receipt-allocations-panel';
@@ -46,6 +47,10 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const t = useTranslations('platform.receipts.detail');
   const tReceipts = useTranslations('platform.receipts');
   const tMethod = useTranslations('platform.receipts.method');
+  const tProof = useTranslations('platform.receipts.proof');
+  const tProvider = useTranslations('platform.receipts.provider');
+  const tCard = useTranslations('platform.receipts.cardType');
+  const proofFailed = useSearchParams()?.get('proof') === 'failed';
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
@@ -62,7 +67,8 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
 
   const cancelled = receipt?.documentStatus === 'CANCELLED';
-  const title = receipt?.receiptNumber ?? (cancelled ? t('cancelledTitle') : t('notPostedTitle'));
+  const onHand = receipt ? receiptListState(receipt) === 'CHEQUE_ON_HAND' : false;
+  const title = receipt?.receiptNumber ?? (cancelled ? t('cancelledTitle') : onHand ? t('onHandTitle') : t('notPostedTitle'));
   useModuleTrail(receipt ? title : undefined);
 
   if (isPending) {
@@ -102,7 +108,7 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const clientName = client.data?.name ?? tReceipts('notSet');
 
   const primary = !mayManage ? null : notPosted ? (
-    <Button onClick={() => setDialog('post')}>{t('postAction')}</Button>
+    <Button onClick={() => setDialog('post')}>{onHand ? t('depositAction') : t('postAction')}</Button>
   ) : posted && onAccountMinor > 0 ? (
     <Button onClick={() => setDialog('apply')}>{t('applyAction')}</Button>
   ) : null;
@@ -178,6 +184,7 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
         banner={
           <>
             {openDocument.isError ? <Alert variant="error" messages={[t('downloadFailed')]} /> : null}
+            {proofFailed ? <Alert variant="warning" messages={[t('proofFailed')]} /> : null}
             {receipt.postingStatus === 'REVERSED' ? (
               <Alert
                 variant="info"
@@ -198,11 +205,18 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
             <RecordPanel title={t('balanceTitle')}>
               <dl className="space-y-2 text-body-sm">
                 <Row label={t('amountReceived')} value={money(receipt.totalAmount)} />
-                <Row label={t('applied')} value={`−${fromMinor(Math.max(appliedMinor, 0))}`} muted={appliedMinor <= 0} />
-                {refundedMinor > 0 ? <Row label={t('refunded')} value={`−${fromMinor(refundedMinor)}`} /> : null}
+                {live ? (
+                  <>
+                    <Row label={t('applied')} value={`−${fromMinor(Math.max(appliedMinor, 0))}`} muted={appliedMinor <= 0} />
+                    {refundedMinor > 0 ? <Row label={t('refunded')} value={`−${fromMinor(refundedMinor)}`} /> : null}
+                  </>
+                ) : null}
+                {/* Nothing is held for the client until the receipt posts (a cheque on hand, a draft). */}
                 <div className="flex items-baseline justify-between border-t border-border pt-2 text-body font-semibold">
                   <dt>{t('onAccount')}</dt>
-                  <dd className={cn('tabular-nums', onAccountMinor > 0 && 'text-warning')}>{fromMinor(onAccountMinor)}</dd>
+                  <dd className={cn('tabular-nums', posted && onAccountMinor > 0 && 'text-warning')}>
+                    {posted ? fromMinor(onAccountMinor) : '—'}
+                  </dd>
                 </div>
               </dl>
             </RecordPanel>
@@ -239,7 +253,33 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
               value={receipt.bankAccount ? `${receipt.bankAccount.bankName} · ${receipt.bankAccount.accountName}` : '—'}
             />
             <Field label={t('method')} value={method ?? '—'} />
-            <Field label={t('reference')} value={receipt.reference ?? '—'} mono={Boolean(receipt.reference)} />
+            {isReceiptPaymentMethod(receipt.paymentMethod)
+              ? PROOF_FIELDS[receipt.paymentMethod]
+                  .filter(({ field }) => receipt[field])
+                  .map(({ field, input }) => {
+                    const raw = receipt[field]!;
+                    const value =
+                      input === 'date'
+                        ? (formatDate(raw, locale) ?? raw)
+                        : input === 'provider'
+                          ? tProvider(raw as never)
+                          : input === 'card'
+                            ? tCard(raw as never)
+                            : input === 'last4'
+                              ? `•••• ${raw}`
+                              : raw;
+                    return (
+                      <Field
+                        key={field}
+                        label={tProof(`${receipt.paymentMethod}.${field}` as never)}
+                        value={value}
+                        mono={field === 'instrumentNumber'}
+                      />
+                    );
+                  })
+              : null}
+            {receipt.reference ? <Field label={t('reference')} value={receipt.reference} mono /> : null}
+            {!receipt.instrumentNumber && !receipt.reference ? <Field label={t('reference')} value={t('noProof')} /> : null}
             {receipt.notes ? <Field label={t('notes')} value={receipt.notes} wide /> : null}
           </dl>
         </RecordPanel>

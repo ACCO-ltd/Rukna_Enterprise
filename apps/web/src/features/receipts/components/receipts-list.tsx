@@ -42,6 +42,7 @@ const DEFAULT_RECEIPT_SORT: SortState = { key: 'date', direction: 'desc' };
 const STATUS_FILTER = ['NOT_POSTED', 'UNALLOCATED', 'RECEIVED', 'CLOSED'] as const;
 const STATUS_GROUP: Record<ReceiptListState, (typeof STATUS_FILTER)[number] | null> = {
   NOT_POSTED: 'NOT_POSTED',
+  CHEQUE_ON_HAND: 'NOT_POSTED',
   POSTING: 'NOT_POSTED',
   POSTING_FAILED: 'NOT_POSTED',
   UNALLOCATED: 'UNALLOCATED',
@@ -128,7 +129,9 @@ export function ReceiptsList({
       header: t('columns.number'),
       sticky: true,
       sortable: true,
-      plainValue: (receipt) => `${receipt.receiptNumber ?? ''} ${receipt.reference ?? ''}`.trim(),
+      // Search finds a receipt by its cheque number, transaction ID or transfer reference too.
+      plainValue: (receipt) =>
+        [receipt.receiptNumber, receipt.instrumentNumber, receipt.reference].filter(Boolean).join(' '),
       exportValue: (receipt) =>
         receipt.receiptNumber ?? (receipt.documentStatus === 'CANCELLED' ? t('listState.CANCELLED') : t('unnumbered')),
       render: (receipt) => (
@@ -141,8 +144,10 @@ export function ReceiptsList({
           >
             {receipt.receiptNumber ?? (receipt.documentStatus === 'CANCELLED' ? t('listState.CANCELLED') : t('unnumbered'))}
           </span>
-          {receipt.reference ? (
-            <span className="block max-w-[12rem] truncate text-caption text-muted-foreground">{receipt.reference}</span>
+          {receipt.instrumentNumber || receipt.reference ? (
+            <span className="block max-w-[12rem] truncate font-mono text-caption text-muted-foreground">
+              {receipt.instrumentNumber ?? receipt.reference}
+            </span>
           ) : null}
         </span>
       ),

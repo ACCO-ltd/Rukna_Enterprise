@@ -17,6 +17,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests__/helpers/fixture.factory';
 import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -38,6 +39,7 @@ async function issuedInvoice(amount: string) {
 }
 const record = (patch: Record<string, unknown> = {}) =>
   svc.customerReceiptService.create(env.identity, {
+    ...transferProof(),
     clientId: env.clientId,
     receiptDate: nextDay(),
     amount: '100.00',
@@ -187,6 +189,7 @@ it('RC-07: the receipt read names invoices and bank; journals name receipt and i
   const first = await issuedInvoice('30.00');
   const second = await issuedInvoice('20.00');
   const receipt = await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: nextDay(), amount: '100.00', currency: 'USD',
     paymentMethod: 'BANK_TRANSFER', allocations: [{ clientInvoiceId: first.id, amount: Number(first.totalAmount) }],
   });

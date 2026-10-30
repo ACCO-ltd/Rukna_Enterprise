@@ -175,6 +175,7 @@ describe('toConfigureBankAccountBody', () => {
       'bankName',
       'currencyCode',
       'glAccountCode',
+      'kind',
     ]);
   });
 });

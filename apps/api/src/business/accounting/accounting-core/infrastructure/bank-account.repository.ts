@@ -40,6 +40,7 @@ export class BankAccountRepository {
       accountNumber: string;
       currencyCode: string;
       glAccountId: string;
+      kind?: 'BANK' | 'CASH' | 'MOBILE_WALLET';
       allowsReceipts: boolean;
       allowsPayments: boolean;
       treasuryGroupId?: string;
@@ -89,7 +90,14 @@ export class BankAccountRepository {
   update(
     prisma: TenantPrisma,
     id: string,
-    data: Partial<{ accountName: string; bankName: string; accountNumber: string; allowsReceipts: boolean; allowsPayments: boolean }>,
+    data: Partial<{
+      accountName: string;
+      bankName: string;
+      accountNumber: string;
+      kind: 'BANK' | 'CASH' | 'MOBILE_WALLET';
+      allowsReceipts: boolean;
+      allowsPayments: boolean;
+    }>,
   ) {
     return prisma.bankAccount.update({ where: { id }, data });
   }

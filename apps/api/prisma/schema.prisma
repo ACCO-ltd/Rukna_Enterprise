@@ -2600,6 +2600,9 @@ model BankAccount {
   currencyCode    String            @map("currency_code") @db.VarChar(3)
   branch          String?
   treasuryGroupId String?           @map("treasury_group_id")
+  // PM-3 — what the account is: a bank account, a cash box or a mobile-money wallet. A receipt's
+  // payment method decides which kind it may land in (cash → cash box, mobile money → wallet).
+  kind            BankAccountKind   @default(BANK)
   allowsReceipts  Boolean           @default(true) @map("allows_receipts")
   allowsPayments  Boolean           @default(true) @map("allows_payments")
   isReconcilable  Boolean           @default(true) @map("is_reconcilable")
@@ -3324,6 +3327,21 @@ model PaymentReceipt {
   currencyCode         String           @map("currency_code") @db.VarChar(3)
   paymentMethod        String?          @map("payment_method")
   bankReference        String?          @map("bank_reference")
+  // PM-1 — the proof behind the payment method, one meaning per method (domain/receipt-payment-method.ts):
+  //   instrumentNumber  transfer reference · cheque number · mobile transaction ID · card authorisation
+  //                     code · cash receipt-book number
+  //   issuer            paying bank · drawee bank · mobile provider · card type
+  //   instrumentDate    transfer value date · cheque date (a later cheque date = cheque on hand)
+  //   payerName         payer's account name · name on cheque · sender's name
+  //   payerAccount      payer's account (last 4) · sender's phone (E.164) · card last 4
+  //   receivedBy        cash: who counted it
+  // One live receipt per method + issuer + number (partial unique index in the migration).
+  instrumentNumber     String?          @map("instrument_number") @db.VarChar(60)
+  issuer               String?          @db.VarChar(80)
+  instrumentDate       DateTime?        @map("instrument_date") @db.Date
+  payerName            String?          @map("payer_name") @db.VarChar(150)
+  payerAccount         String?          @map("payer_account") @db.VarChar(30)
+  receivedBy           String?          @map("received_by") @db.VarChar(100)
   reference            String?
   notes                String?
   documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
@@ -4945,6 +4963,13 @@ enum BillDocStatus {
   APPROVED
   REJECTED
   CANCELLED
+}
+
+/// PM-3 — what a bank account is (bank_accounts.kind).
+enum BankAccountKind {
+  BANK
+  CASH
+  MOBILE_WALLET
 }
 
 enum PaymentDocStatus {

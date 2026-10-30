@@ -37,7 +37,7 @@ function Harness() {
       <button
         type="button"
         onClick={() =>
-          create.mutate({ clientId: 'cl-1', receiptDate: '2026-09-30', amount: '100.00', currency: 'USD' })
+          create.mutate({ payload: { clientId: 'cl-1', receiptDate: '2026-09-30', amount: '100.00', currency: 'USD', paymentMethod: 'CASH' } })
         }
       >
         Record

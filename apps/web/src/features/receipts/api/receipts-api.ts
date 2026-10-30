@@ -22,9 +22,16 @@ export interface CreateReceiptPayload {
   receiptDate: string;
   amount: string;
   currency: string;
-  paymentMethod?: ReceiptPaymentMethod;
+  paymentMethod: ReceiptPaymentMethod;
   reference?: string;
   notes?: string;
+  /** PM-1 — the method's proof (see `PROOF_FIELDS`). */
+  instrumentNumber?: string;
+  issuer?: string;
+  instrumentDate?: string;
+  payerName?: string;
+  payerAccount?: string;
+  receivedBy?: string;
 }
 
 /** One invoice allocation line — `amount` is a JS number (server DTO uses `@IsNumber`). */
@@ -40,6 +47,8 @@ export interface ReceiptAllocationInput {
  */
 export interface PostReceiptPayload {
   bankAccountId: string;
+  /** PM-4 — the day a cheque on hand is deposited; it posts on that date. */
+  depositDate?: string;
   allocations?: ReceiptAllocationInput[];
 }
 

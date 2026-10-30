@@ -70,12 +70,15 @@ import {
   useSetBankAccountStatus,
   useSignatories,
 } from '../hooks/use-accounting';
-import type { BankAccount } from '../types';
+import type { BankAccount, BankAccountKind } from '../types';
+
+const BANK_ACCOUNT_KINDS: readonly BankAccountKind[] = ['BANK', 'CASH', 'MOBILE_WALLET'];
 import { LoadError } from '@/components/load-error';
 
 export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | null } = {}) {
   const t = useTranslations('accounting.bankAccounts');
   const tCommon = useTranslations('common');
+  const tKind = useTranslations('accounting.bankAccounts.kind');
   const { can } = usePermissions();
 
   const banks = useBankAccounts();
@@ -143,6 +146,7 @@ export function BankAccounts({ preset = null }: { preset?: CashAccountPreset | n
       header: t('colUse'),
       render: (bank) => (
         <span className="flex flex-wrap gap-1">
+          {bank.kind && bank.kind !== 'BANK' ? <Badge tone="info">{tKind(bank.kind)}</Badge> : null}
           {bank.allowsReceipts ? <Badge tone="neutral">{t('receipts')}</Badge> : null}
           {bank.allowsPayments ? <Badge tone="neutral">{t('payments')}</Badge> : null}
           {!bank.allowsReceipts && !bank.allowsPayments ? (
@@ -452,6 +456,7 @@ function ConfigureBankAccountForm({
 }) {
   const t = useTranslations('accounting.bankAccounts.create');
   const tPreset = useTranslations('accounting.bankAccounts.cashPreset');
+  const tKind = useTranslations('accounting.bankAccounts.kind');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
@@ -486,6 +491,7 @@ function ConfigureBankAccountForm({
     accountNumber: useId(),
     currency: useId(),
     gl: useId(),
+    kind: useId(),
     allowsReceipts: useId(),
     allowsPayments: useId(),
   };
@@ -559,6 +565,16 @@ function ConfigureBankAccountForm({
           autoComplete="off"
         />
         <p className="text-xs text-muted-foreground">{t('accountNameHint')}</p>
+      </FormField>
+
+      <FormField htmlFor={ids.kind} label={t('kind')}>
+        <Select id={ids.kind} value={draft.kind} onChange={(value) => patch({ kind: value as BankAccountKind })}>
+          {BANK_ACCOUNT_KINDS.map((kind) => (
+            <option key={kind} value={kind}>
+              {tKind(kind)}
+            </option>
+          ))}
+        </Select>
       </FormField>
 
       <FormField htmlFor={ids.accountNumber} label={t('accountNumber')}>

@@ -3227,7 +3227,6 @@
       "clientPlaceholder": "Choose a client",
       "receiptDate": "Date received",
       "amount": "Amount",
-      "reference": "Reference",
       "notes": "Memo",
       "clientRequired": "Choose a client",
       "dateRequired": "Enter the date received",
@@ -3248,10 +3247,17 @@
       "recordTitle": "Record a receipt",
       "back": "Receipts",
       "saving": "Saving…",
-      "referencePlaceholder": "Transfer or cheque number",
       "method": "Payment method",
-      "methodPlaceholder": "Choose how they paid",
-      "noBanks": "No bank account takes receipts. Add one under Banking → Bank accounts."
+      "noBanks": "No bank account takes receipts. Add one under Banking → Bank accounts.",
+      "paymentTitle": "Payment",
+      "methodRequired": "Choose how the client paid",
+      "noAccountOfKind": {
+        "BANK": "No bank account takes receipts. Add one under Banking → Bank accounts.",
+        "CASH": "No cash box takes receipts. Add one, or mark an account as a cash box, under Banking → Bank accounts.",
+        "MOBILE_WALLET": "No mobile-money wallet takes receipts. Add one, or mark an account as a wallet, under Banking → Bank accounts."
+      },
+      "heldCheque": "This cheque is dated after today. It is kept as a cheque on hand and posts when you deposit it.",
+      "submitHold": "Save cheque on hand"
     },
     "detail": {
       "back": "Receipts",
@@ -3304,7 +3310,11 @@
         "confirm": "Cancel receipt",
         "failed": "The receipt could not be cancelled. Try again.",
         "cancelledBecause": "Cancelled: {reason}"
-      }
+      },
+      "depositAction": "Deposit",
+      "proofFailed": "The receipt is saved, but the proof file could not be attached. Attach it again below.",
+      "onHandTitle": "Cheque on hand",
+      "noProof": "Payment details were not recorded for this receipt."
     },
     "allocations": {
       "heading": "Applied to invoices",
@@ -3333,7 +3343,11 @@
       "applyTitle": "Apply to invoices",
       "post": "Post receipt",
       "posting": "Posting…",
-      "failed": "Could not post the receipt."
+      "failed": "Could not post the receipt.",
+      "depositTitle": "Deposit cheque",
+      "deposit": "Deposit",
+      "depositDate": "Deposit date",
+      "chequeDated": "Cheque dated {date}"
     },
     "filterByProject": "Project",
     "allProjects": "All projects",
@@ -3353,7 +3367,8 @@
       "UNALLOCATED": "On account",
       "RECEIVED": "Received",
       "REVERSED": "Reversed",
-      "CANCELLED": "Cancelled"
+      "CANCELLED": "Cancelled",
+      "CHEQUE_ON_HAND": "Cheque on hand"
     },
     "refund": {
       "title": "Refund cash held on account",
@@ -3399,7 +3414,7 @@
     },
     "headerSummaryOnAccount": "{count, plural, one {# receipt} other {# receipts}} · {received} received · {onAccount} on account",
     "statusFilter": {
-      "NOT_POSTED": "Not posted",
+      "NOT_POSTED": "Not posted or on hand",
       "UNALLOCATED": "On account",
       "RECEIVED": "Received",
       "CLOSED": "Reversed or cancelled"
@@ -3428,6 +3443,56 @@
       "onAccount": "On account",
       "overApplied": "Applied {applied} is more than {amount}.",
       "overInvoice": "More is applied to {ref} than it owes."
+    },
+    "provider": {
+      "EVC_PLUS": "EVC Plus",
+      "ZAAD": "Zaad",
+      "SAHAL": "Sahal",
+      "EDAHAB": "eDahab"
+    },
+    "cardType": {
+      "VISA": "Visa",
+      "MASTERCARD": "Mastercard",
+      "OTHER": "Other card"
+    },
+    "proof": {
+      "optional": "{label} (optional)",
+      "choose": "Choose",
+      "file": "Attach proof (optional)",
+      "removeFile": "Remove file",
+      "problem": {
+        "required": "Required",
+        "last4": "Enter 4 digits",
+        "phone": "Enter a full phone number"
+      },
+      "BANK_TRANSFER": {
+        "instrumentNumber": "Transfer reference",
+        "instrumentDate": "Value date",
+        "issuer": "Paying bank",
+        "payerName": "Payer's account name",
+        "payerAccount": "Payer's account, last 4 digits"
+      },
+      "CHEQUE": {
+        "instrumentNumber": "Cheque number",
+        "instrumentDate": "Cheque date",
+        "issuer": "Drawn on (bank)",
+        "payerName": "Name on cheque"
+      },
+      "MOBILE_MONEY": {
+        "issuer": "Provider",
+        "instrumentNumber": "Transaction ID",
+        "payerAccount": "Sender's phone",
+        "payerName": "Sender's name"
+      },
+      "CARD": {
+        "issuer": "Card type",
+        "payerAccount": "Card, last 4 digits",
+        "instrumentNumber": "Authorisation code"
+      },
+      "CASH": {
+        "instrumentNumber": "Cash receipt-book no.",
+        "receivedBy": "Counted by"
+      }
     }
   },
   "ipc": {

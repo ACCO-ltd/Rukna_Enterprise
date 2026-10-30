@@ -27,11 +27,14 @@ export class PaymentReceiptArRepository {
     data: {
       organizationId: string;
       clientId: string;
+      bankAccountId?: string;
       receiptDate: Date;
       accountingDate: Date;
       totalAmount: string;
       currencyCode: string;
       paymentMethod?: string;
+      /** PM-1 — the payment method's proof (instrument number, issuer, date, payer). */
+      details?: Partial<Pick<PaymentReceipt, 'instrumentNumber' | 'issuer' | 'instrumentDate' | 'payerName' | 'payerAccount' | 'receivedBy'>>;
       reference?: string;
       notes?: string;
       createdBy: string;
@@ -41,6 +44,8 @@ export class PaymentReceiptArRepository {
       data: {
         organizationId: data.organizationId,
         clientId: data.clientId,
+        bankAccountId: data.bankAccountId ?? null,
+        ...data.details,
         receiptDate: data.receiptDate,
         accountingDate: data.accountingDate,
         totalAmount: new Decimal(data.totalAmount),

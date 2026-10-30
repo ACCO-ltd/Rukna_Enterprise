@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft } from 'lucide-react';
-import { Alert, Button, DatePicker, FormActionBar, FormField, Input, MoneyInput, Select, Textarea } from '@erp/ui';
+import { Alert, Button, DatePicker, FormActionBar, FormField, MoneyInput, Select, Textarea } from '@erp/ui';
 
 import { LoadError } from '@/components/load-error';
 import { useModuleTrail } from '@/components/layout/module-chrome';
@@ -22,8 +22,16 @@ import { ApiError } from '@/lib/api-client';
 
 import { fromMinorUnits, invoicesForClient, toMinorUnits } from '../allocation';
 import { useCreateReceipt, useReceivePayment } from '../hooks/use-receipts';
-import { RECEIPT_PAYMENT_METHODS } from '../payment-methods';
+import {
+  ACCOUNT_KIND_FOR_METHOD,
+  isPostDatedCheque,
+  proofPayload,
+  proofProblems,
+  type ProofField,
+  type ProofValues,
+} from '../payment-methods';
 import { ApplyInvoicesTable, useApplySplit } from './apply-invoices-table';
+import { PaymentMethodPicker, PaymentProofFields, ProofFilePicker } from './payment-method-fields';
 
 interface ReceiptFormValues {
   clientId: string;
@@ -31,7 +39,6 @@ interface ReceiptFormValues {
   receiptDate: string;
   amount: string;
   paymentMethod: ReceiptPaymentMethod | '';
-  reference: string;
   notes: string;
 }
 
@@ -44,7 +51,6 @@ interface ReceiptFormValues {
  */
 export function ReceiptForm() {
   const t = useTranslations('platform.receipts.create');
-  const tMethod = useTranslations('platform.receipts.method');
   const tApply = useTranslations('platform.receipts.apply');
   const tCommon = useTranslations('common');
 
@@ -58,7 +64,9 @@ export function ReceiptForm() {
   const banks = useBankAccounts();
   const invoices = useInvoices();
 
-  const receivingBanks = (banks.data ?? []).filter((b) => b.status === 'ACTIVE' && b.allowsReceipts);
+  const [proof, setProof] = useState<ProofValues>({});
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [attempted, setAttempted] = useState(false);
 
   const {
     register,
@@ -76,17 +84,30 @@ export function ReceiptForm() {
       // "Record payment" on an invoice arrives with its balance as the amount.
       amount: searchParams?.get('amount') ?? '',
       paymentMethod: '',
-      reference: '',
       notes: '',
     },
   });
   const clientId = useWatch({ control, name: 'clientId' });
   const amount = useWatch({ control, name: 'amount' });
   const bankAccountId = useWatch({ control, name: 'bankAccountId' });
+  const method = useWatch({ control, name: 'paymentMethod' });
+  const receiptDate = useWatch({ control, name: 'receiptDate' });
+
+  // PM-3 — the method decides the kind of account: cash box, mobile wallet or bank.
+  const kind = method ? ACCOUNT_KIND_FOR_METHOD[method] : null;
+  const receivingBanks = (banks.data ?? []).filter(
+    (b) => b.status === 'ACTIVE' && b.allowsReceipts && (!kind || (b.kind ?? 'BANK') === kind),
+  );
   const onlyBankId = receivingBanks.length === 1 ? receivingBanks[0]!.id : null;
+  const bankFits = receivingBanks.some((b) => b.id === bankAccountId);
   useEffect(() => {
-    if (mayPost && onlyBankId && !bankAccountId) setValue('bankAccountId', onlyBankId);
-  }, [mayPost, onlyBankId, bankAccountId, setValue]);
+    if (!mayPost) return;
+    if (bankAccountId && !bankFits) setValue('bankAccountId', onlyBankId ?? '');
+    else if (!bankAccountId && onlyBankId) setValue('bankAccountId', onlyBankId);
+  }, [mayPost, onlyBankId, bankAccountId, bankFits, setValue]);
+
+  const problems = method ? proofProblems(method, proof) : {};
+  const held = isPostDatedCheque(method, proof.instrumentDate, receiptDate);
 
   const open = useMemo(() => (clientId ? invoicesForClient(invoices.data ?? [], clientId) : []), [clientId, invoices.data]);
   const amountMinor = Number.isFinite(Number(amount)) ? Math.max(0, toMinorUnits(amount || '0')) : 0;
@@ -95,22 +116,26 @@ export function ReceiptForm() {
   const overApplied = split.appliedMinor > amountMinor;
 
   const onSubmit = (values: ReceiptFormValues) => {
+    if (!values.paymentMethod || Object.keys(problems).length > 0) return;
     const base = {
       clientId: values.clientId,
       receiptDate: values.receiptDate,
       amount: toDecimalString(values.amount),
       // Single-currency platform (ADR-024): USD is implicit, never entered.
       currency: 'USD',
-      ...(values.paymentMethod ? { paymentMethod: values.paymentMethod } : {}),
-      ...(values.reference.trim() ? { reference: values.reference.trim() } : {}),
+      paymentMethod: values.paymentMethod,
+      ...proofPayload(values.paymentMethod, proof),
       ...(values.notes.trim() ? { notes: values.notes.trim() } : {}),
     };
     if (!mayPost) {
-      create.mutate(base);
+      create.mutate({ payload: base, proof: proofFile });
       return;
     }
-    if (overApplied || split.overInvoice) return;
-    receive.mutate({ ...base, bankAccountId: values.bankAccountId, allocations: split.allocations() });
+    if (!held && (overApplied || split.overInvoice)) return;
+    receive.mutate({
+      payload: { ...base, bankAccountId: values.bankAccountId, allocations: held ? [] : split.allocations() },
+      proof: proofFile,
+    });
   };
 
   const failure = receive.error ?? create.error;
@@ -122,6 +147,7 @@ export function ReceiptForm() {
   return (
     <form
       onSubmit={(e) => {
+        setAttempted(true);
         void handleSubmit(onSubmit)(e);
       }}
       noValidate
@@ -137,7 +163,7 @@ export function ReceiptForm() {
         }
         save={
           <Button type="submit" loading={pending} loadingText={t('saving')}>
-            {mayPost ? t('submitReceive') : t('submit')}
+            {held && mayPost ? t('submitHold') : mayPost ? t('submitReceive') : t('submit')}
           </Button>
         }
         discard={
@@ -159,73 +185,33 @@ export function ReceiptForm() {
         {errorMessages.length > 0 ? <Alert variant="error" messages={errorMessages} /> : null}
         {clients.isError ? <LoadError message={t('loadFailed')} onRetry={() => void clients.refetch()} /> : null}
         {mayPost && banks.isError ? <LoadError message={t('banksLoadFailed')} onRetry={() => void banks.refetch()} /> : null}
-        {mayPost && banks.isSuccess && receivingBanks.length === 0 ? <Alert variant="warning" messages={[t('noBanks')]} /> : null}
 
         <div className="grid gap-x-10 gap-y-5 rounded-panel border border-border bg-surface p-5 sm:p-6 lg:grid-cols-2">
-          <div className="space-y-5">
-            <FormField htmlFor="receipt-client" label={t('client')} error={errors.clientId?.message}>
-              <Controller
-                control={control}
-                name="clientId"
-                rules={{ required: t('clientRequired') }}
-                render={({ field }) => (
-                  <Select
-                    id="receipt-client"
-                    disabled={clients.isPending}
-                    value={field.value}
-                    onChange={(value) => {
-                      field.onChange(value);
-                      split.reset();
-                    }}
-                  >
-                    <option value="">{clients.isPending ? tCommon('loading') : t('clientPlaceholder')}</option>
-                    {(clients.data ?? []).map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              />
-            </FormField>
-
-            {mayPost ? (
-              <FormField htmlFor="receipt-bank" label={t('bank')} error={errors.bankAccountId?.message}>
-                <Controller
-                  control={control}
-                  name="bankAccountId"
-                  rules={{ required: t('bankRequired') }}
-                  render={({ field }) => (
-                    <Select id="receipt-bank" disabled={banks.isPending} value={field.value} onChange={field.onChange}>
-                      <option value="">{banks.isPending ? tCommon('loading') : t('bankPlaceholder')}</option>
-                      {receivingBanks.map((bank) => (
-                        <option key={bank.id} value={bank.id}>
-                          {bankAccountLabel(bank)}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                />
-              </FormField>
-            ) : null}
-
-            <FormField htmlFor="receipt-method" label={t('method')}>
-              <Controller
-                control={control}
-                name="paymentMethod"
-                render={({ field }) => (
-                  <Select id="receipt-method" value={field.value} onChange={field.onChange}>
-                    <option value="">{t('methodPlaceholder')}</option>
-                    {RECEIPT_PAYMENT_METHODS.map((m) => (
-                      <option key={m} value={m}>
-                        {tMethod(m)}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              />
-            </FormField>
-          </div>
+          <FormField htmlFor="receipt-client" label={t('client')} error={errors.clientId?.message}>
+            <Controller
+              control={control}
+              name="clientId"
+              rules={{ required: t('clientRequired') }}
+              render={({ field }) => (
+                <Select
+                  id="receipt-client"
+                  disabled={clients.isPending}
+                  value={field.value}
+                  onChange={(value) => {
+                    field.onChange(value);
+                    split.reset();
+                  }}
+                >
+                  <option value="">{clients.isPending ? tCommon('loading') : t('clientPlaceholder')}</option>
+                  {(clients.data ?? []).map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
+          </FormField>
 
           <div className="grid content-start gap-5 sm:grid-cols-2">
             <FormField htmlFor="receipt-date" label={t('receiptDate')} error={errors.receiptDate?.message}>
@@ -261,14 +247,68 @@ export function ReceiptForm() {
                 )}
               />
             </FormField>
-
-            <FormField htmlFor="receipt-reference" label={t('reference')} className="sm:col-span-2">
-              <Input id="receipt-reference" maxLength={100} placeholder={t('referencePlaceholder')} {...register('reference')} />
-            </FormField>
           </div>
         </div>
 
-        {mayPost && clientId ? (
+        <section aria-labelledby="receipt-payment" className="space-y-5">
+          <h3 id="receipt-payment" className="border-b border-border pb-2 text-body font-semibold text-foreground">
+            {t('paymentTitle')}
+          </h3>
+          <Controller
+            control={control}
+            name="paymentMethod"
+            rules={{ required: t('methodRequired') }}
+            render={({ field }) => (
+              <PaymentMethodPicker
+                value={field.value}
+                onChange={(next) => {
+                  // Each method's proof means something else (a cheque number is not a transaction ID).
+                  if (next !== field.value) setProof({});
+                  field.onChange(next);
+                }}
+                error={errors.paymentMethod?.message}
+              />
+            )}
+          />
+
+          {method ? (
+            <div className="space-y-5 rounded-panel border border-border bg-surface p-5 sm:p-6">
+              {mayPost ? (
+                <FormField htmlFor="receipt-bank" label={t('bank')} error={errors.bankAccountId?.message} className="max-w-xl">
+                  <Controller
+                    control={control}
+                    name="bankAccountId"
+                    rules={{ required: t('bankRequired') }}
+                    render={({ field }) => (
+                      <Select id="receipt-bank" disabled={banks.isPending} value={field.value} onChange={field.onChange}>
+                        <option value="">{banks.isPending ? tCommon('loading') : t('bankPlaceholder')}</option>
+                        {receivingBanks.map((bank) => (
+                          <option key={bank.id} value={bank.id}>
+                            {bankAccountLabel(bank)}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  />
+                </FormField>
+              ) : null}
+              {mayPost && banks.isSuccess && receivingBanks.length === 0 && kind ? (
+                <Alert variant="warning" messages={[t(`noAccountOfKind.${kind}`)]} />
+              ) : null}
+
+              <PaymentProofFields
+                method={method}
+                values={proof}
+                onChange={(field: ProofField, value: string) => setProof((current) => ({ ...current, [field]: value }))}
+                problems={attempted ? problems : {}}
+              />
+              <ProofFilePicker file={proofFile} onChange={setProofFile} />
+              {held ? <Alert variant="info" messages={[t('heldCheque')]} /> : null}
+            </div>
+          ) : null}
+        </section>
+
+        {mayPost && clientId && !held ? (
           <section aria-labelledby="receipt-apply" className="space-y-4">
             <h3 id="receipt-apply" className="border-b border-border pb-2 text-body font-semibold text-foreground">
               {t('applyTitle')}

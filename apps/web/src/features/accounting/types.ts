@@ -685,6 +685,8 @@ export interface BankAccount {
   swiftCode: string | null;
   currencyCode: string;
   branch: string | null;
+  /** PM-3 — a bank account, a cash box or a mobile-money wallet; a receipt lands by its method. */
+  kind?: BankAccountKind;
   /** A receipts-only account must not appear in a payment picker. */
   allowsReceipts: boolean;
   allowsPayments: boolean;
@@ -697,10 +699,13 @@ export interface BankAccount {
 }
 
 /** B-1 — `PATCH /bank-accounts/:id`. The GL account never changes. */
+export type BankAccountKind = 'BANK' | 'CASH' | 'MOBILE_WALLET';
+
 export interface UpdateBankAccountBody {
   accountName?: string;
   bankName?: string;
   accountNumber?: string;
+  kind?: BankAccountKind;
   allowsReceipts?: boolean;
   allowsPayments?: boolean;
 }

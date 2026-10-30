@@ -55,7 +55,8 @@ vi.mock('@/features/communications/hooks', () => ({
   useResolveCommunication: () => ({ isPending: false, mutate: vi.fn() }),
   communicationKeys: { all: ['communications'], resource: () => ['communications'] },
 }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const nav = vi.hoisted(() => ({ query: '' }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams(nav.query) }));
 vi.mock('next/link', () => ({
   default: ({
     href,
@@ -82,9 +83,14 @@ function receipt(overrides: Partial<ReceiptDetailModel> = {}): ReceiptDetailMode
     allocatedAmount: '5000.00',
     unallocatedAmount: '0.00',
     currencyCode: 'USD',
-    reference: 'BANK-77',
+    reference: null,
     receiptNumber: 'RCP-000017',
     paymentMethod: 'BANK_TRANSFER',
+    instrumentNumber: 'BANK-77',
+    issuer: 'Salaam Bank',
+    instrumentDate: '2026-10-01',
+    payerName: 'Hodan Construction Ltd',
+    payerAccount: '4471',
     bankAccount: { bankName: 'Premier Bank', accountName: 'Operating' },
     refundedAmount: '0.00',
     notes: null,
@@ -158,6 +164,7 @@ async function chooseMore(user: ReturnType<typeof userEvent.setup>, name: string
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nav.query = '';
   mocks.useCommunications.mockReturnValue({ isPending: false, isError: false, data: [] });
   mocks.getPreview.mockResolvedValue(preview());
   mocks.send.mockResolvedValue(sent);
@@ -170,7 +177,9 @@ describe('ReceiptDetail — the receipt', () => {
     expect(screen.getAllByText('Hodan Construction Ltd').length).toBeGreaterThan(0);
     expect(screen.getByText('Premier Bank · Operating')).toBeInTheDocument();
     expect(screen.getAllByText('Bank transfer').length).toBeGreaterThan(0);
-    expect(screen.getByText('BANK-77')).toBeInTheDocument();
+    expect(screen.getByText('Transfer reference').nextSibling).toHaveTextContent('BANK-77');
+    expect(screen.getByText('Paying bank').nextSibling).toHaveTextContent('Salaam Bank');
+    expect(screen.getByText("Payer's account, last 4 digits").nextSibling).toHaveTextContent('•••• 4471');
     // 5,000 received − 4,650 applied − 100 refunded = 250 on account.
     expect(screen.getByText('Applied to invoices').nextSibling).toHaveTextContent('−$4,650.00');
     expect(screen.getByText('Refunded').nextSibling).toHaveTextContent('−$100.00');
@@ -306,5 +315,36 @@ describe('ReceiptDetail — reversing and cancelling', () => {
     expect(screen.getByText('Cancelled: Recorded twice')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ReceiptDetail — payment proof (PM)', () => {
+  it('a cheque on hand is deposited, not posted', async () => {
+    const user = userEvent.setup();
+    show(
+      receipt({
+        postingStatus: 'NOT_POSTED',
+        receiptNumber: null,
+        paymentMethod: 'CHEQUE',
+        instrumentNumber: '118204',
+        issuer: 'Premier Bank',
+        instrumentDate: '2026-11-15',
+      }),
+    );
+    expect(screen.getByRole('heading', { name: /Cheque on hand/ })).toBeInTheDocument();
+    expect(screen.getByText('Cheque number').nextSibling).toHaveTextContent('118204');
+    await user.click(screen.getByRole('button', { name: 'Deposit' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Post receipt');
+  });
+
+  it('says when the proof file could not be attached', () => {
+    nav.query = 'proof=failed';
+    show(receipt());
+    expect(screen.getByText(/the proof file could not be attached/)).toBeInTheDocument();
+  });
+
+  it('an older receipt without details says so', () => {
+    show(receipt({ paymentMethod: null, instrumentNumber: null, issuer: null, instrumentDate: null, payerName: null, payerAccount: null }));
+    expect(screen.getByText('Payment details were not recorded for this receipt.')).toBeInTheDocument();
   });
 });

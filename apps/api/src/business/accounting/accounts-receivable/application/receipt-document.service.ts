@@ -46,6 +46,8 @@ export interface ReceiptDocumentInput {
   /** The part of the payment not applied to an invoice at posting (later allocations are not shown). */
   unallocatedAmount: string;
   paymentMethod: string | null;
+  /** PM-1 — the method's proof, one printed line each (cheque number and bank, EVC transaction…). */
+  paymentDetails?: string[];
   /** The receiving bank account, e.g. 'Premier Bank — ACCO Operating'. */
   bankAccountLabel: string | null;
   reference: string | null;
@@ -87,6 +89,7 @@ export function ReceiptDocument({ input }: { input: ReceiptDocumentInput }) {
     { label: 'Date Received', value: formatDate(input.receiptDate) },
   ];
   const facts: string[] = [
+    ...(input.paymentDetails ?? []),
     input.bankAccountLabel ? `Received into ${input.bankAccountLabel}` : null,
     input.reference ? `Reference: ${input.reference}` : null,
     input.bankReference ? `Bank reference: ${input.bankReference}` : null,
