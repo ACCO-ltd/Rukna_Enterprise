@@ -267,11 +267,11 @@ cents. Each line's account must be an active, posting INCOME account. Errors:
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/invoices/manual` | Body `{ clientId, invoiceDate, dueDate, currencyCode, taxCodeId?, paymentTerms?, lines }`. Returns the invoice detail with `source.kind = 'MANUAL'` and `lines`. |
+| `POST` | `/invoices/manual` | Body `{ clientId, invoiceDate, dueDate, currencyCode, taxCodeId?, paymentTerms?, lines }`. `currencyCode` must be `USD` (CI-1, ADR-024 ACC-CUR-001; any other code is a `MANUAL_INVOICE_INVALID` problem). Returns the invoice detail with `source.kind = 'MANUAL'` and `lines`. |
 | `GET` | `/invoices/income-accounts` | `[{ code, name, subtype }]`: the active posting INCOME accounts a line may credit (`OTHER_INCOME` ones first). Readable without `manage:accounting`. |
 | `PUT` | `/invoices/:id/manual` | Same body; rewrites a DRAFT in full. `409 INVOICE_NOT_DRAFT` once it is approved; `400 INVOICE_NOT_MANUAL` for a contract invoice. |
 | `POST` | `/invoices/:id/cancel` | Step 2g. Body `{ reason? }` (≤500). Cancels an unposted invoice (any source except a stage plan) and frees its IPC / BOQ / separate-charge source so it can be billed again; audited `CLIENT_INVOICE_CANCELLED`. `409 INVOICE_ALREADY_POSTED` (reverse it instead) · `409 INVOICE_CANCELLED` · `400 STAGE_DRAFT_USE_COMMERCIAL` (delete it from the contract's Billing tab). The web list sends it only after an 8-second undo window. |
-| `POST` | `/invoices/:id/issue` | ADR-046 §2. Same optional body as `/post` (`arAccountCode?`, `revenueAccountCode?`, `vatAccountCode?`). Approves a DRAFT and posts it in one transaction; returns the numbered invoice. A refusal leaves the draft untouched. `409 INVOICE_ALREADY_POSTED` · `409 INVOICE_CANCELLED` · `409 INVOICE_REVERSED` · any `/post` refusal. |
+| `POST` | `/invoices/:id/issue` | ADR-046 §2. Same optional body as `/post` (`arAccountCode?`, `revenueAccountCode?`, `vatAccountCode?`). Approves a DRAFT and posts it in one transaction; returns the numbered invoice. A refusal leaves the draft untouched. `409 INVOICE_ALREADY_POSTED` (also for the loser of two concurrent Issues, CI-2) · `409 INVOICE_CANCELLED` · `409 INVOICE_REVERSED` · any `/post` refusal. |
 | `POST` | `/customer-receipts/receive` | ADR-046 §6. Body `{ clientId, bankAccountId, receiptDate, amount, currency, paymentMethod?, reference?, notes?, allocations?: [{ clientInvoiceId, amount }] }`. Records, posts (Dr the bank account's GL account / Cr AR for what is applied, Cr Unapplied for the rest) and applies in one transaction; returns the posted receipt. Requires `manage:receivable`. `400 BANK_ACCOUNT_NOT_RECEIVING` · `400 CURRENCY_MISMATCH` · `400 ALLOCATION_CLIENT_MISMATCH` · an unissued invoice or more than it owes → 400 · `409` if an invoice was paid concurrently. |
 | `POST` | `/customer-receipts/:id/reverse` | AR-2. Body `{ reversalDate, reason }` (reason required). Reverses a posted receipt — a bounced cheque, money booked to the wrong client: a mirror journal on the reversal date, every invoice it paid owes again, and `reversedAt`, `reversedBy`, `reversalReason`, `reversalJournalEntryId` are recorded on the receipt (returned by `GET /customer-receipts/:id`). `400 RECEIPT_NOT_POSTED` · `400 REVERSAL_REASON_REQUIRED` · `400 RECEIPT_HAS_LATER_ALLOCATIONS` (applications made after posting are undone first). |
 | `GET` | `/finance/clients/:clientId/statement` | AR-3. `manage:receivable`. Query `from`, `to` (YYYY-MM-DD; default 1 Jan of the `to` year → today). `ClientStatement` `{ client, from, to, openingBalance, lines: [{ date, kind: INVOICE·INVOICE_REVERSAL·CREDIT_NOTE·CREDIT_NOTE_REVERSAL·RECEIPT·RECEIPT_REVERSAL, documentId, reference, description, debit, credit, balance }], totals: { debits, credits }, closingBalance, aging (today), onAccount }` — every project and hand-typed sale, read from the receivables documents (so history before ledger lines carried the client is included). Receipts count in full, so cash held on account lowers the balance; today's closing balance equals open invoices less cash on account. `400 STATEMENT_PERIOD_INVALID` · `404 CLIENT_NOT_FOUND`. |
@@ -324,6 +324,11 @@ cents. Each line's account must be an active, posting INCOME account. Errors:
 
 `POST /clients` also accepts `manage:receivable` (ADR-048 §7: add a client without leaving the invoice).
 `GET /invoices/:id` now also returns `lines: ManualInvoiceLineDto[]` (empty for source invoices).
+CI-3: every row of `GET /invoices` and `GET /invoices/:id` carries `amountPaid`, `amountCredited` and
+`amountWrittenOff` (money strings, posted receipts / credit notes / write-offs only); with
+`outstandingAmount` they add up to `totalAmount`. `GET /invoices/:id` also returns `payments:
+[{ allocationId, receiptId, receiptNumber, receiptDate, appliedOn, paymentMethod, reference, amount }]`,
+the receipts applied to it, oldest first (reversed receipts are left out).
 Posting a manual invoice credits each income account for its lines (`409 MANUAL_LINES_MISMATCH` if
 the lines and subtotal disagree).
 

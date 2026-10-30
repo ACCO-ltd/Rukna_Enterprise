@@ -8,7 +8,8 @@ import { chooseOption } from '@/test/choose-option';
 import { ReceiptForm } from './receipt-form';
 
 const push = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), useSearchParams: () => new URLSearchParams('clientId=c1') }));
+const nav = vi.hoisted(() => ({ query: 'clientId=c1' }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), useSearchParams: () => new URLSearchParams(nav.query) }));
 vi.mock('@/features/clients/hooks/use-clients', () => ({
   useClients: () => ({ isPending: false, isError: false, data: [{ id: 'c1', code: 'CL-1', name: 'Water Agency' }] }),
 }));
@@ -38,6 +39,7 @@ vi.mock('../api/receipts-api', () => ({ receivePayment: (p: unknown) => receiveP
 beforeEach(() => {
   receivePayment.mockReset().mockResolvedValue({ id: 'r9' });
   push.mockReset();
+  nav.query = 'clientId=c1';
 });
 
 describe('ReceiptForm — Receive payment (ADR-046 §6)', () => {
@@ -68,6 +70,21 @@ describe('ReceiptForm — Receive payment (ADR-046 §6)', () => {
       ],
     });
     await waitFor(() => expect(push).toHaveBeenCalledWith('/receipts/r9'));
+  });
+
+  it('CI-5: from an invoice’s Record payment, the balance goes to that invoice, not the oldest', async () => {
+    nav.query = 'clientId=c1&invoiceId=i2&amount=1000.00';
+    const user = userEvent.setup();
+    renderWithProviders(<ReceiptForm />, { permissions: ['manage:receivable'] });
+
+    expect(screen.getByLabelText('Amount')).toHaveValue('1,000.00');
+    expect(screen.getByLabelText('Amount applied to INV-000002')).toHaveValue('1,000.00');
+    expect(screen.getByLabelText('Amount applied to INV-000001')).toHaveValue('0.00');
+
+    await chooseOption(user, screen.getByLabelText('Received into'), 'b1');
+    await user.click(screen.getByRole('button', { name: 'Receive payment' }));
+    await waitFor(() => expect(receivePayment).toHaveBeenCalled());
+    expect(receivePayment.mock.calls[0]![0].allocations).toEqual([{ clientInvoiceId: 'i2', amount: 1000 }]);
   });
 
   it('refuses to apply more than was received', async () => {
