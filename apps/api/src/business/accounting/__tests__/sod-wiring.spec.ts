@@ -20,7 +20,8 @@ describe('Accounting SoD wiring (ADR-022)', () => {
   it('supplier payment: the vendor maintainer processing a payment is checked as PROCESS_SUPPLIER_PAYMENT', async () => {
     const sod = denyingSod();
     const prisma = {
-      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice', status: 'ACTIVE' }) },
+      supplierPayment: { findFirst: jest.fn().mockResolvedValue(null) },
       bankAccount: { findFirst: jest.fn().mockResolvedValue({ accountName: 'Bank', status: 'ACTIVE', allowsPayments: true, currencyCode: 'USD', glAccount: { id: 'acct-10200', code: '10200' } }) },
     };
     const svc = new SupplierPaymentService(

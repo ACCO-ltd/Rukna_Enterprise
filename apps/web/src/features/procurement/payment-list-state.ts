@@ -11,7 +11,7 @@ export type PaymentListState =
   | 'DRAFT'
   | 'APPROVED'
   | 'RELEASED'
-  | 'RETURNED'
+  | 'REJECTED'
   | 'POSTING'
   | 'POSTING_FAILED'
   | 'PAID_UNALLOCATED'
@@ -25,7 +25,7 @@ export function paymentListState(payment: PaymentFields): PaymentListState {
   if (payment.documentStatus === 'CANCELLED') return 'CANCELLED';
   if (payment.postingStatus === 'REVERSED') return 'REVERSED';
   if (payment.documentStatus === 'DRAFT') return 'DRAFT';
-  if (payment.documentStatus === 'REJECTED') return 'RETURNED';
+  if (payment.documentStatus === 'REJECTED') return 'REJECTED';
   if (payment.postingStatus === 'FAILED') return 'POSTING_FAILED';
   if (payment.postingStatus === 'PENDING') return 'POSTING';
   if (payment.postingStatus === 'POSTED') {
@@ -41,7 +41,7 @@ export const PAYMENT_LIST_STATE_TONE: Record<
   DRAFT: 'neutral',
   APPROVED: 'progress',
   RELEASED: 'progress',
-  RETURNED: 'attention',
+  REJECTED: 'historical',
   POSTING: 'progress',
   POSTING_FAILED: 'danger',
   PAID_UNALLOCATED: 'attention',

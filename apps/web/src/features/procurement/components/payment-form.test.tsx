@@ -43,7 +43,7 @@ vi.mock('@/features/projects/hooks/use-project-filter', () => ({
   useProjectFilter: () => ({ initialProjectId: undefined, options: [] }),
 }));
 
-import { PAYMENT_METHODS, SupplierPaymentForm } from './payment-form';
+import { SupplierPaymentForm } from './payment-form';
 import { SupplierPaymentsList } from './payment-screens';
 
 const MANAGE = ['manage:payable'];
@@ -130,36 +130,46 @@ beforeEach(() => {
 /** Fills supplier, bank, date and amount — the fields every submit needs. */
 async function fillHeader(user: ReturnType<typeof userEvent.setup>, amount = '5700') {
   await chooseOption(user, screen.getByLabelText('Supplier'), 'sup-1');
-  await chooseOption(user, screen.getByLabelText('Bank account'), 'bank-1');
+  await chooseOption(user, screen.getByLabelText('Paid from'), 'bank-1');
   const date = screen.getByLabelText('Payment date') as HTMLInputElement;
   await pickDate(user, date, '2026-08-31');
   await user.type(screen.getByLabelText('Amount'), amount);
 }
 
 describe('SupplierPaymentForm — apply to bills', () => {
-  it('offers the supplier, bank account, date, amount and method', () => {
+  it('offers the supplier, account, date, amount and method', () => {
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
 
     expect(screen.getByLabelText('Supplier')).toBeInTheDocument();
-    expect(screen.getByLabelText('Bank account')).toBeInTheDocument();
+    expect(screen.getByLabelText('Paid from')).toBeInTheDocument();
     expect(screen.getByLabelText('Payment date')).toBeInTheDocument();
     expect(screen.getByLabelText('Amount')).toBeInTheDocument();
-    expect(screen.getByLabelText('Method')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'How was the supplier paid?' })).toBeInTheDocument();
   });
 
-  it('shows the Apply to bills section with a live Applied/Unapplied footer', () => {
+  it('shows the Bills to pay section with a live applied / held footer', () => {
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
 
-    expect(screen.getByRole('heading', { name: 'Apply to bills' })).toBeInTheDocument();
-    expect(screen.getByText(/Applied/)).toBeInTheDocument();
-    expect(screen.getByText(/Unapplied/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bills to pay' })).toBeInTheDocument();
+    expect(screen.getByText(/^Applied to bills/)).toBeInTheDocument();
+    expect(screen.getByText(/^Held as advance/)).toBeInTheDocument();
   });
 
-  it('prompts for the amount before listing bills', () => {
-    mocks.useSupplierBills.mockReturnValue({ data: [bill()], isPending: false, isError: false });
+  it('lists bills before any amount; ticking them adds up the amount (SP-4)', async () => {
+    const user = userEvent.setup();
+    mocks.useSupplierBills.mockReturnValue({
+      data: [bill({ id: 'b1' }), bill({ id: 'b2', supplierInvoiceNumber: 'INV-9051', outstandingAmount: '150.00' })],
+      isPending: false,
+      isError: false,
+    });
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
+    await chooseOption(user, screen.getByLabelText('Supplier'), 'sup-1');
 
-    expect(screen.getByText(/Enter the payment amount above/i)).toBeInTheDocument();
+    const [first, second] = screen.getAllByRole('checkbox');
+    await user.click(first);
+    await user.click(second);
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('3,000.00');
+    expect(screen.getByText('Held as advance $0.00')).toBeInTheDocument();
   });
 
   it('lists the supplier outstanding bill and prefills full settlement when ticked', async () => {
@@ -171,15 +181,15 @@ describe('SupplierPaymentForm — apply to bills', () => {
 
     expect(screen.getByText('INV-9044')).toBeInTheDocument();
     // Whole amount unapplied until a bill is ticked.
-    expect(screen.getByText('Unapplied $5,700.00')).toBeInTheDocument();
+    expect(screen.getByText('Held as advance $5,700.00')).toBeInTheDocument();
 
     await user.click(screen.getByRole('checkbox'));
 
     // Prefilled full settlement of 2,850.00, leaving 2,850.00 as an advance.
     const applyInput = screen.getByLabelText('Apply to INV-9044') as HTMLInputElement;
     expect(applyInput.value).toBe('2,850.00');
-    expect(screen.getByText('Applied $2,850.00')).toBeInTheDocument();
-    expect(screen.getByText('Unapplied $2,850.00')).toBeInTheDocument();
+    expect(screen.getByText('Applied to bills $2,850.00')).toBeInTheDocument();
+    expect(screen.getByText('Held as advance $2,850.00')).toBeInTheDocument();
   });
 
   it('sends allocations for the ticked bills on submit', async () => {
@@ -240,8 +250,8 @@ describe('SupplierPaymentForm — apply to bills', () => {
 
     await fillHeader(user);
 
-    expect(screen.getByText(/recorded as a supplier advance/i)).toBeInTheDocument();
-    expect(screen.getByText('Unapplied $5,700.00')).toBeInTheDocument();
+    expect(screen.getByText(/no unpaid bills/i)).toBeInTheDocument();
+    expect(screen.getByText('Held as advance $5,700.00')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /record payment/i }));
     const [payload] = mutate.mock.calls[0];
@@ -265,22 +275,62 @@ describe('SupplierPaymentForm — apply to bills', () => {
     const user = userEvent.setup();
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
 
-    await openSelect(user, screen.getByLabelText('Bank account'));
+    await openSelect(user, screen.getByLabelText('Paid from'));
     expect(
       screen.getByRole('option', { name: 'Salaam Bank · Main Operating — ****4821' }),
     ).toBeInTheDocument();
   });
 
-  it('offers every payment method with a translated label, not a raw code', async () => {
+  it('offers every payment method as a tile with a translated label, not a raw code', () => {
+    renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
+
+    const labels = screen.getAllByRole('radio').map((radio) => radio.textContent);
+    expect(labels).toEqual(['Bank transfer', 'Cheque', 'Cash', 'Mobile money', 'Card']);
+  });
+
+  it('asks for the proof each method has, and sends only what that method shows (SP-3)', async () => {
     const user = userEvent.setup();
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
 
-    await openSelect(user, screen.getByLabelText('Method'));
-    const labels = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(screen.getByLabelText('Transfer reference (optional)')).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Supplier's account number (optional)"), '4471');
+    await user.click(screen.getByRole('radio', { name: 'Cheque' }));
+    expect(screen.getByLabelText('Cheque number (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cheque date (optional)')).toBeInTheDocument();
+    expect(screen.queryByLabelText("Supplier's account number (optional)")).not.toBeInTheDocument();
 
-    expect(labels).toEqual(['Bank transfer', 'Cheque', 'Cash', 'Card', 'Mobile money']);
-    expect(labels).toHaveLength(PAYMENT_METHODS.length);
-    for (const label of labels) expect(label).not.toMatch(/_/);
+    await chooseOption(user, screen.getByLabelText('Supplier'), 'sup-1');
+    await chooseOption(user, screen.getByLabelText('Paid from'), 'bank-1');
+    await user.type(screen.getByLabelText('Amount'), '300');
+    await user.type(screen.getByLabelText('Cheque number (optional)'), 'CHQ-118');
+    await user.type(screen.getByLabelText('Payee on the cheque (optional)'), 'Al-Rashid Trading');
+    await user.click(screen.getByRole('button', { name: /record payment/i }));
+
+    const [payload] = mutate.mock.calls[0];
+    expect(payload).toMatchObject({ paymentMethod: 'CHEQUE', bankReference: 'CHQ-118', payeeName: 'Al-Rashid Trading' });
+    // The transfer's account number typed before switching is not sent with a cheque.
+    expect(payload.payeeAccount).toBeUndefined();
+  });
+
+  it('offers a cash box for cash and a bank account for a transfer (PM-3)', async () => {
+    const user = userEvent.setup();
+    accountingMocks.useBankAccounts.mockReturnValue({
+      data: [
+        { ...BANK, kind: 'BANK' },
+        { ...BANK, id: 'cash-1', bankName: 'Head office', accountName: 'Cash box', accountNumber: '0000CASH', kind: 'CASH' },
+      ],
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
+
+    await openSelect(user, screen.getByLabelText('Paid from'));
+    expect(screen.queryByRole('option', { name: /Cash box/ })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('radio', { name: 'Cash' }));
+    await openSelect(user, screen.getByLabelText('Paid from'));
+    expect(screen.getByRole('option', { name: /Cash box/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Main Operating/ })).not.toBeInTheDocument();
   });
 
   it('blocks the form when no bank account allows payments', () => {

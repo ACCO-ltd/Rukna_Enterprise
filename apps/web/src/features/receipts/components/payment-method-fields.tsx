@@ -30,17 +30,20 @@ export function PaymentMethodPicker({
   value,
   onChange,
   error,
+  label,
 }: {
   value: ReceiptPaymentMethod | '';
   onChange: (method: ReceiptPaymentMethod) => void;
   error?: string;
+  /** The question above the tiles; defaults to the receipt form's. */
+  label?: string;
 }) {
   const t = useTranslations('platform.receipts.method');
   const tCreate = useTranslations('platform.receipts.create');
   return (
     <div className="space-y-1.5">
       <p id="receipt-method-label" className="text-body-sm font-medium text-foreground">
-        {tCreate('method')}
+        {label ?? tCreate('method')}
       </p>
       <div
         role="radiogroup"

@@ -7,7 +7,7 @@ describe('paymentListState', () => {
     [{ documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED', unallocatedAmount: '0' }, 'CANCELLED'],
     [{ documentStatus: 'APPROVED', postingStatus: 'REVERSED', unallocatedAmount: '0' }, 'REVERSED'],
     [{ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', unallocatedAmount: '0' }, 'DRAFT'],
-    [{ documentStatus: 'REJECTED', postingStatus: 'NOT_POSTED', unallocatedAmount: '0' }, 'RETURNED'],
+    [{ documentStatus: 'REJECTED', postingStatus: 'NOT_POSTED', unallocatedAmount: '0' }, 'REJECTED'],
     [{ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED', unallocatedAmount: '0' }, 'APPROVED'],
     [{ documentStatus: 'RELEASED', postingStatus: 'NOT_POSTED', unallocatedAmount: '0' }, 'RELEASED'],
     [{ documentStatus: 'RELEASED', postingStatus: 'FAILED', unallocatedAmount: '0' }, 'POSTING_FAILED'],
