@@ -48,7 +48,7 @@ describe('RemittanceDocumentService (Step 4)', () => {
         'Cement Supplies Co',
         'Bank transfer',
         'Paid from Premier Bank — Operating',
-        'Bank reference: TT-99',
+        'Transfer reference TT-99',
         'SC-778 (our BILL-000012)',
         'SC-781',
         'Paid in advance (not yet applied to a bill)',

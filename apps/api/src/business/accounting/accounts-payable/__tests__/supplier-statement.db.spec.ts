@@ -38,7 +38,7 @@ beforeAll(async () => {
   billId = bill.id;
   const pay = (amount: number, allocated: number) => svc.supplierPaymentService.create(env.identity, {
     supplierId: env.supplierId, bankAccountId: env.bankAccountId, paymentDate: day(), currencyCode: 'USD', totalAmount: amount,
-    paymentMethod: 'BANK_TRANSFER', bankReference: 'TT-1', allocations: [{ supplierBillId: billId, amount: allocated }],
+    paymentMethod: 'BANK_TRANSFER', bankReference: `TT-${Math.random().toString(36).slice(2, 8)}`, allocations: [{ supplierBillId: billId, amount: allocated }],
   } as never);
   const paid = await pay(700, 600); // 600 applied, 100 paid ahead
   await svc.supplierPaymentService.approve(other(), paid.id);

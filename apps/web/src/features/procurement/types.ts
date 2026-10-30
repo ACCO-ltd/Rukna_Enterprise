@@ -997,6 +997,17 @@ export interface SupplierPayment {
   rejectionReason?: string | null;
   cancelledAt?: ApiDate | null;
   cancellationReason?: string | null;
+  /** SP-3 — the rest of the proof (`bankReference` holds the number). */
+  instrumentDate?: ApiDate | null;
+  provider?: string | null;
+  payeeAccount?: string | null;
+  payeeName?: string | null;
+  /** SP-2 — the reversal of a posted payment. */
+  reversedAt?: ApiDate | null;
+  reversalReason?: string | null;
+  approvedAt?: ApiDate | null;
+  postedAt?: ApiDate | null;
+  createdAt?: ApiDate | null;
 }
 
 /**
@@ -1031,6 +1042,11 @@ export interface CreateSupplierPaymentPayload {
   totalAmount: number;
   paymentMethod: string;
   bankReference?: string;
+  /** SP-3 — optional proof beyond the reference number. */
+  instrumentDate?: string;
+  provider?: string;
+  payeeAccount?: string;
+  payeeName?: string;
   notes?: string;
   allocations?: PaymentAllocationPayload[];
 }

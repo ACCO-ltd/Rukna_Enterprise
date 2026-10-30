@@ -1,22 +1,25 @@
 'use client';
 
 /**
- * Lifecycle controls on a supplier payment: approve, release, post, reverse.
- *
- * Same shape as `BillActionBar` — every action confirmed, unavailable ones disabled with the
- * reason attached — with two differences worth naming:
- *  • the Post dialog previews a journal whose bank line comes from the payment's own bank
- *    account, not from a subtype scan of the chart; and
- *  • when the payment's bank account is under dual control (ADR-022 CONST-DOA-005 — the account
- *    has active signatories), a Release step sits between Approve and Post. Two distinct
- *    signatories must sign before the payment can post. The signatory list for the payment's
- *    bank account is what tells this bar whether the account is under dual control at all; who
- *    may sign is enforced server-side and surfaced as a 403.
+ * The commands on a supplier payment (SP-4), for the record header: the one next step as the
+ * primary button — Approve (through the ADR-011 approval gate), Sign release (an account under
+ * dual control, ADR-022), or Post — with the remittance PDF beside it once posted, and the rest
+ * under More: the supplier paid money back, reject or cancel an unposted payment, reverse a
+ * posted one. Anything unavailable is not rendered.
  */
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { ChevronDown, Download } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Button } from '@erp/ui';
+import {
+  Button,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@erp/ui';
 
 import { WorkflowTransactionType } from '@erp/types';
 
@@ -27,149 +30,153 @@ import { useAccounts, useBankAccounts, useSignatories } from '@/features/account
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 import { useSession } from '@/features/auth/session/use-session';
+import { SupplierRefundDialog } from '@/features/supplier-refunds/supplier-refund-dialog';
 
 import {
   useApproveSupplierPayment,
   useEndSupplierPayment,
+  useOpenSupplierPaymentDocument,
   usePostSupplierPayment,
   useReleaseSupplierPayment,
   useReverseSupplierPayment,
 } from '../hooks/use-procurement';
-import {
-  availablePaymentActions,
-  canEndPayment,
-  paymentBlockReason,
-  planPaymentPost,
-  type PaymentAction,
-} from '../payment-actions';
+import { availablePaymentActions, canEndPayment, planPaymentPost } from '../payment-actions';
 import type { PostSupplierPaymentPayload, SupplierPayment } from '../types';
 
-// Approve is rendered separately — it is the governed transition (DRAFT → APPROVED) and runs
-// through the ADR-011 gate. Release, Post and Reverse keep the plain confirm-then-mutate flow.
-const ORDER: PaymentAction[] = ['release', 'post', 'reverse'];
+type Dialog = 'release' | 'post' | 'reverse' | 'end' | 'refund' | null;
 
-export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
+const serverMessage = (error: unknown, fallback: string) =>
+  error instanceof ApiError && error.message ? error.message : fallback;
+
+/** Whether the payment's account is under dual control: it has at least one active signatory. */
+export function useDualControl(bankAccountId: string): boolean {
+  const signatories = useSignatories(bankAccountId);
+  return (signatories.data ?? []).length > 0;
+}
+
+export function PaymentHeaderActions({ payment }: { payment: SupplierPayment }) {
   const t = useTranslations('procurement.payments');
   const tc = useTranslations('procurement.common');
+  const tRefund = useTranslations('procurement.supplierRefund');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
-
-  const [pending, setPending] = useState<PaymentAction | 'end' | null>(null);
   const session = useSession();
+  const [dialog, setDialog] = useState<Dialog>(null);
 
   const accounts = useAccounts();
   const bankAccounts = useBankAccounts();
-  // Dual control is a property of the payment's bank account: it has ≥1 active signatory. The
-  // payment response carries no signatory count, so this list is the only source of that fact.
-  const signatories = useSignatories(payment.bankAccountId);
-  const underDualControl = (signatories.data ?? []).length > 0;
+  const underDualControl = useDualControl(payment.bankAccountId);
 
   const approve = useApproveSupplierPayment();
   const release = useReleaseSupplierPayment();
   const post = usePostSupplierPayment();
   const reverse = useReverseSupplierPayment();
+  const openDocument = useOpenSupplierPaymentDocument();
   // AP-1 — the person who raised an unposted payment cancels it; anyone else rejects it.
   const raisedByMe = Boolean(payment.createdBy) && payment.createdBy === session.user?.id;
   const endHow: 'reject' | 'cancel' = raisedByMe ? 'cancel' : 'reject';
   const end = useEndSupplierPayment(endHow);
 
-  if (!can(ACCOUNTING_PERMISSIONS.managePayables)) return null;
-
-  const allowed = availablePaymentActions(payment, underDualControl);
+  const mayManage = can(ACCOUNTING_PERMISSIONS.managePayables);
+  const posted = payment.postingStatus === 'POSTED';
+  const allowed = mayManage ? availablePaymentActions(payment, underDualControl) : [];
   const plan = planPaymentPost(payment, accounts.data ?? [], bankAccounts.data ?? [], locale);
 
-  function close() {
+  const close = () => {
     release.reset();
-    setPending(null);
-  }
+    post.reset();
+    reverse.reset();
+    end.reset();
+    setDialog(null);
+  };
 
-  const approveReason = paymentBlockReason(payment, 'approve', underDualControl);
-  // AP-6 — once posted (or reversed) the approval line is history: show only what can still be done.
-  const settled = payment.postingStatus === 'POSTED' || payment.postingStatus === 'REVERSED';
+  const primary = allowed.includes('approve') ? (
+    <GatedActionButton
+      command={() => approve.mutateAsync(payment.id)}
+      transactionType={WorkflowTransactionType.SUPPLIER_PAYMENT}
+      label={t('approve')}
+    />
+  ) : allowed.includes('release') ? (
+    <Button onClick={() => setDialog('release')}>{t('signRelease')}</Button>
+  ) : allowed.includes('post') ? (
+    <Button onClick={() => setDialog('post')}>{t('post')}</Button>
+  ) : null;
 
-  // A release can fail three ways the user must be told apart: not a signatory / SoD conflict
-  // (403), already signed (409), and everything else. The message names which.
+  const more: { key: Exclude<Dialog, null>; label: string; danger?: boolean }[] = mayManage
+    ? [
+        // AP-5 — the supplier paid back money this payment holds unapplied.
+        ...(posted && Number(payment.unallocatedAmount) > 0 ? [{ key: 'refund' as const, label: tRefund('action') }] : []),
+        ...(canEndPayment(payment)
+          ? [{ key: 'end' as const, label: t(endHow === 'cancel' ? 'cancelPayment' : 'rejectPayment'), danger: true }]
+          : []),
+        ...(allowed.includes('reverse') ? [{ key: 'reverse' as const, label: t('reverse'), danger: true }] : []),
+      ]
+    : [];
+
+  // A release fails three ways the user must tell apart: not a signatory / SoD (403), already
+  // signed (409), anything else.
   const releaseError = release.isError
     ? release.error instanceof ApiError && release.error.status === 403
       ? t('releaseNotSignatory')
       : release.error instanceof ApiError && release.error.status === 409
         ? t('releaseAlreadySigned')
-        : tc('loadFailed')
+        : serverMessage(release.error, tc('loadFailed'))
     : undefined;
 
   return (
-    <div className="space-y-4">
-      {/* Approve routes through the approval gate (ADR-011): with a DoA binding configured the
-          server opens an approval instead of transitioning, and the panel + "Complete" re-drive
-          carry it through. When approve is not available it stays on screen, disabled with its
-          reason, matching the rest of the bar. */}
-      {settled ? null : allowed.includes('approve') ? (
-        <GatedActionButton
-          command={() => approve.mutateAsync(payment.id)}
-          transactionType={WorkflowTransactionType.SUPPLIER_PAYMENT}
-          label={t('approve')}
-        />
-      ) : (
-        <Button
-          type="button"
-          disabled
-          title={approveReason ? t(`blockReason.${approveReason}`) : undefined}
-        >
-          {t('approve')}
+    <>
+      {primary}
+      {posted && payment.paymentNumber && mayManage ? (
+        <Button variant="outline" onClick={() => openDocument.mutate(payment.id)} disabled={openDocument.isPending}>
+          <Download size={16} aria-hidden="true" />
+          {t('remittance')}
         </Button>
-      )}
-
-      {/* The dual-control notice explains why a Release step exists before Post, so an APPROVED
-          payment that will not post yet is understood rather than read as broken. */}
-      {underDualControl && (payment.documentStatus === 'APPROVED' || payment.documentStatus === 'RELEASED') ? (
-        <p className="text-caption text-muted-foreground">{t('releaseDualControlNote')}</p>
+      ) : null}
+      {more.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              {tc('moreActions')}
+              <ChevronDown size={16} aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {more.map((item, i) => (
+              <Fragment key={item.key}>
+                {item.danger && i > 0 && !more[i - 1]!.danger ? <DropdownMenuSeparator /> : null}
+                <DropdownMenuItem className={cn(item.danger && 'text-danger')} onSelect={() => setDialog(item.key)}>
+                  {item.label}
+                </DropdownMenuItem>
+              </Fragment>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+      {openDocument.isError ? (
+        <p className="basis-full text-body-sm text-danger" role="alert">
+          {t('remittanceFailed')}
+        </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {ORDER.map((action) => {
-          // Release only appears where dual control is in force — otherwise it is not part of
-          // this payment's lifecycle at all and a disabled button would be noise.
-          if (action === 'release' && !underDualControl) return null;
-          if (settled && (action !== 'reverse' || payment.postingStatus !== 'POSTED')) return null;
-          const reason = paymentBlockReason(payment, action, underDualControl);
-          return (
-            <Button
-              key={action}
-              type="button"
-              variant={action === 'reverse' ? 'outline' : 'default'}
-              disabled={!allowed.includes(action)}
-              title={reason ? t(`blockReason.${reason}`) : undefined}
-              onClick={() => setPending(action)}
-            >
-              {t(action)}
-            </Button>
-          );
-        })}
-        {canEndPayment(payment) ? (
-          <Button type="button" variant="outline" onClick={() => setPending('end')}>
-            {t(endHow === 'cancel' ? 'cancelPayment' : 'rejectPayment')}
-          </Button>
-        ) : null}
-      </div>
-
-      {pending === 'end' ? (
+      {dialog === 'end' ? (
         <ConfirmActionDialog
           title={t(endHow === 'cancel' ? 'cancelTitle' : 'rejectTitle')}
           description={t('endBody')}
           confirmLabel={t(endHow === 'cancel' ? 'cancelPayment' : 'rejectPayment')}
           reason={{ label: t('endReason'), required: true }}
+          destructive
           isPending={end.isPending}
-          errorMessage={end.isError ? (end.error instanceof ApiError ? end.error.message : tc('loadFailed')) : undefined}
-          onConfirm={(reason) => end.mutate({ id: payment.id, reason }, { onSuccess: () => { end.reset(); setPending(null); } })}
-          onDismiss={() => { end.reset(); setPending(null); }}
+          errorMessage={end.isError ? serverMessage(end.error, tc('loadFailed')) : undefined}
+          onConfirm={(reason) => end.mutate({ id: payment.id, reason }, { onSuccess: close })}
+          onDismiss={close}
         />
       ) : null}
 
-      {pending === 'release' ? (
+      {dialog === 'release' ? (
         <ConfirmActionDialog
           title={t('releaseTitle')}
           description={t('releaseBody')}
-          confirmLabel={t('release')}
+          confirmLabel={t('signRelease')}
           isPending={release.isPending}
           errorMessage={releaseError}
           onConfirm={() => release.mutate(payment.id, { onSuccess: close })}
@@ -177,38 +184,46 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
         />
       ) : null}
 
-      {pending === 'post' ? (
+      {dialog === 'post' ? (
         <PostPaymentDialog
           payment={payment}
           plan={plan}
           isPending={post.isPending}
-          isError={post.isError}
+          errorMessage={post.isError ? serverMessage(post.error, tc('loadFailed')) : null}
           onConfirm={(payload) => post.mutate({ id: payment.id, payload }, { onSuccess: close })}
           onDismiss={close}
         />
       ) : null}
 
-      {pending === 'reverse' ? (
+      {dialog === 'reverse' ? (
         <ConfirmActionDialog
           title={t('reverseTitle')}
           description={t('reverseBody')}
           confirmLabel={t('reverse')}
-          reason={{ label: t('reverseReason'), required: true }}
+          reason={{ label: t('reverseReason'), required: true, maxLength: 500 }}
+          destructive
           isPending={reverse.isPending}
-          errorMessage={reverse.isError ? tc('loadFailed') : undefined}
+          errorMessage={reverse.isError ? serverMessage(reverse.error, tc('loadFailed')) : undefined}
           onConfirm={(reason) =>
             reverse.mutate(
-              {
-                id: payment.id,
-                payload: { reversalDate: new Date().toISOString().slice(0, 10), reason },
-              },
+              { id: payment.id, payload: { reversalDate: new Date().toISOString().slice(0, 10), reason } },
               { onSuccess: close },
             )
           }
           onDismiss={close}
         />
       ) : null}
-    </div>
+
+      {mayManage && posted ? (
+        <SupplierRefundDialog
+          open={dialog === 'refund'}
+          onOpenChange={(open) => setDialog(open ? 'refund' : null)}
+          paymentId={payment.id}
+          unapplied={payment.unallocatedAmount}
+          currencyCode={payment.currencyCode}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -220,19 +235,18 @@ function PostPaymentDialog({
   payment,
   plan,
   isPending,
-  isError,
+  errorMessage,
   onConfirm,
   onDismiss,
 }: {
   payment: SupplierPayment;
   plan: ReturnType<typeof planPaymentPost>;
   isPending: boolean;
-  isError: boolean;
+  errorMessage: string | null;
   onConfirm: (payload: PostSupplierPaymentPayload) => void;
   onDismiss: () => void;
 }) {
   const t = useTranslations('procurement.payments');
-  const tc = useTranslations('procurement.common');
 
   return (
     <PostingPreviewDialog
@@ -245,10 +259,8 @@ function PostPaymentDialog({
       debitHeading={t('postDebit')}
       creditHeading={t('postCredit')}
       unbalanced={plan.ok && !plan.plan.balanced ? t('postUnbalanced') : null}
-      problems={
-        plan.ok ? undefined : [plan.missingBank ? t('postBankMissing') : t('postAccountProblem')]
-      }
-      errorMessage={isError ? tc('loadFailed') : null}
+      problems={plan.ok ? undefined : [plan.missingBank ? t('postBankMissing') : t('postAccountProblem')]}
+      errorMessage={errorMessage}
       confirmLabel={t('post')}
       isPending={isPending}
       onConfirm={() => {

@@ -145,18 +145,22 @@ describe('AllocationPanel', () => {
     expect(screen.queryByLabelText('Bill to settle')).not.toBeInTheDocument();
   });
 
-  it('explains why an unposted payment cannot allocate, instead of showing a dead form', () => {
-    renderWithProviders(<AllocationPanel payment={payment({ postingStatus: 'NOT_POSTED' })} />);
+  it('shows nothing for an unposted payment that paid no bill — no dead form (SP-4)', () => {
+    const { container } = renderWithProviders(<AllocationPanel payment={payment({ postingStatus: 'NOT_POSTED' })} />);
 
-    expect(screen.getByText(/has to be posted before its advance/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /apply to bill/i })).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('explains a fully allocated payment', () => {
-    const spent = payment({ allocatedAmount: '5000.00', unallocatedAmount: '0.00' });
-    renderWithProviders(<AllocationPanel payment={spent} />);
+  it('a fully applied payment lists its bills, with no apply form', () => {
+    const spent = payment({
+      allocatedAmount: '5000.00',
+      unallocatedAmount: '0.00',
+      allocations: [{ id: 'a1', supplierBillId: 'b1', allocatedAmount: '5000.00', allocationDate: '2026-07-02', postingStatus: 'POSTED', journalEntryId: null, bill: { billNumber: 'BILL-000001', supplierInvoiceNumber: 'INV-1' } }],
+    } as never);
+    renderWithProviders(<AllocationPanel payment={spent} />, { permissions: ['manage:payable'] });
 
-    expect(screen.getByText(/fully allocated/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'BILL-000001' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bill to settle')).not.toBeInTheDocument();
   });
 
 });

@@ -16,7 +16,12 @@ export interface CreateSupplierPaymentData {
   allocatedAmount: Decimal;
   unallocatedAmount: Decimal;
   paymentMethod: string;
-  bankReference?: string;
+  bankReference?: string | null;
+  /** SP-3 — the rest of the proof, optional. */
+  instrumentDate?: Date | null;
+  provider?: string | null;
+  payeeAccount?: string | null;
+  payeeName?: string | null;
   notes?: string;
   createdBy: string;
 }
@@ -82,6 +87,10 @@ export class SupplierPaymentRepository {
         unallocatedAmount: data.unallocatedAmount,
         paymentMethod: data.paymentMethod,
         bankReference: data.bankReference ?? null,
+        instrumentDate: data.instrumentDate ?? null,
+        provider: data.provider ?? null,
+        payeeAccount: data.payeeAccount ?? null,
+        payeeName: data.payeeName ?? null,
         notes: data.notes ?? null,
         documentStatus: 'DRAFT',
         postingStatus: 'NOT_POSTED',

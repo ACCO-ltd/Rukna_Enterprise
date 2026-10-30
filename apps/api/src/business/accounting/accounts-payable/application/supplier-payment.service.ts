@@ -1,4 +1,11 @@
 import {
+  describeReference,
+  normaliseProof,
+  paymentProblem,
+  paymentProofProblems,
+  paymentReversalProblem,
+} from '../domain/supplier-payment-rules.js';
+import {
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -62,6 +69,11 @@ export interface CreateSupplierPaymentDto {
   totalAmount: number;
   paymentMethod: string;
   bankReference?: string;
+  /** SP-3 — the rest of the proof, all optional (see `supplier-payment-rules`). */
+  instrumentDate?: string;
+  provider?: string;
+  payeeAccount?: string;
+  payeeName?: string;
   notes?: string;
   /** Bills to allocate at payment time */
   allocations?: { supplierBillId: string; amount: number }[];
@@ -221,8 +233,17 @@ export class SupplierPaymentService {
 
     const totalAmount = new Decimal(dto.totalAmount);
     if (allocatedAmount.gt(totalAmount)) {
-      throw new BadRequestException(`Total allocations exceed payment amount`);
+      throw new BadRequestException({ errorCode: 'ALLOCATIONS_EXCEED_PAYMENT', message: 'The bills ticked come to more than the payment amount.' });
     }
+    // SP-1 — USD only.
+    const problem = paymentProblem(dto);
+    if (problem) throw new BadRequestException(problem);
+    // SP-3 — the proof given, checked and stored in one shape.
+    const proofProblems = paymentProofProblems(dto.paymentMethod, dto);
+    if (proofProblems.length) {
+      throw new BadRequestException({ errorCode: 'PAYMENT_PROOF_INVALID', message: proofProblems.join(' '), details: { problems: proofProblems } });
+    }
+    const proof = normaliseProof(dto.paymentMethod, dto);
 
     // B-1 — money leaves from an account that is open and pays out, in the payment's currency.
     // (The create path validated no bank account at all — A16.)
@@ -241,18 +262,26 @@ export class SupplierPaymentService {
     // ADR-022 CONST-DOA-003: the vendor maintainer cannot also process a payment to that vendor.
     const supplier = await prisma.supplier.findFirst({
       where: { id: dto.supplierId, organizationId: orgId },
-      select: { createdBy: true },
+      select: { createdBy: true, status: true },
     });
+    // SP-1 — an unknown supplier is a 404 (it was a 500 at the foreign key); an inactive one is paid
+    // nothing new.
+    if (!supplier) throw new NotFoundException({ errorCode: 'SUPPLIER_NOT_FOUND', message: 'That supplier was not found.' });
+    if (supplier.status !== 'ACTIVE') {
+      throw new BadRequestException({ errorCode: 'SUPPLIER_INACTIVE', message: 'This supplier is inactive. Make them active again before paying them.' });
+    }
+    await this.assertReferenceFree(prisma, orgId, dto.bankAccountId, dto.paymentMethod, proof.bankReference, dto.provider);
     await this.sod.assertAllowed({
       organizationId: orgId,
       action: 'PROCESS_SUPPLIER_PAYMENT',
       actorUserId: userId,
-      vendorMaintainerUserId: supplier?.createdBy ?? undefined,
+      vendorMaintainerUserId: supplier.createdBy ?? undefined,
     });
 
     const paymentDate = new Date(dto.paymentDate);
 
-    return prisma.$transaction(async (tx) => {
+    try {
+    return await prisma.$transaction(async (tx) => {
       const payment = await this.paymentRepo.create(tx as never, {
         organizationId: orgId,
         supplierId: dto.supplierId,
@@ -264,7 +293,7 @@ export class SupplierPaymentService {
         allocatedAmount,
         unallocatedAmount: totalAmount.minus(allocatedAmount),
         paymentMethod: dto.paymentMethod,
-        bankReference: dto.bankReference,
+        ...proof,
         notes: dto.notes,
         createdBy: userId,
       });
@@ -312,10 +341,60 @@ export class SupplierPaymentService {
           createdBy: userId,
         });
 
-        await this.billRepo.updateOutstandingAmount(tx as never, bill.id, outstanding.minus(allocAmt));
+        // SP-1 — a guarded decrement, not a write of the balance read above: two payments raised at
+        // once for the same bill used to both read its full balance and both settle it. The loser
+        // now finds too little left and rolls back.
+        const settled = await tx.supplierBill.updateMany({
+          where: { id: bill.id, outstandingAmount: { gte: allocAmt }, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] } },
+          data: { outstandingAmount: { decrement: allocAmt } },
+        });
+        if (settled.count === 0) {
+          throw new ConflictException({
+            errorCode: 'BILL_BALANCE_CHANGED',
+            message: `${bill.billNumber ?? bill.supplierInvoiceNumber} was just paid by another payment — reload and check what is still owed.`,
+          });
+        }
       }
 
       return payment;
+    });
+    } catch (err) {
+      // Two payments saved at once with the same reference: the unique index refuses the second.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw this.referenceUsed(dto.paymentMethod, proof.bankReference ?? '', dto.provider);
+      }
+      throw err;
+    }
+  }
+
+  /** SP-3 — a cheque number or transfer reference is used once per account and method, while live. */
+  private async assertReferenceFree(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    bankAccountId: string,
+    method: string,
+    reference: string | null,
+    provider?: string | null,
+  ) {
+    if (!reference) return;
+    const taken = await prisma.supplierPayment.findFirst({
+      where: {
+        organizationId: orgId,
+        bankAccountId,
+        paymentMethod: method,
+        bankReference: { equals: reference, mode: 'insensitive' },
+        postingStatus: { not: 'REVERSED' },
+        documentStatus: { notIn: ['CANCELLED', 'REJECTED'] },
+      },
+      select: { paymentNumber: true },
+    });
+    if (taken) throw this.referenceUsed(method, reference, provider, taken.paymentNumber);
+  }
+
+  private referenceUsed(method: string, reference: string, provider?: string | null, paymentNumber?: string | null) {
+    return new ConflictException({
+      errorCode: 'PAYMENT_REFERENCE_ALREADY_USED',
+      message: `${describeReference(method, reference, provider)} is already recorded${paymentNumber ? ` on ${paymentNumber}` : ' on another payment'} from this account.`,
     });
   }
 
@@ -908,6 +987,11 @@ export class SupplierPaymentService {
     if (payment.postingStatus !== 'POSTED') {
       throw new BadRequestException(`Only POSTED payments can be reversed (status: ${payment.postingStatus})`);
     }
+    // SP-2 — a reason the history keeps, and a date not before the payment's own.
+    const reason = (opts.reason ?? '').trim();
+    if (!reason) throw new BadRequestException({ errorCode: 'REASON_REQUIRED', message: 'Say why the payment is reversed.' });
+    const dateProblem = paymentReversalProblem(payment.accountingDate, opts.reversalDate);
+    if (dateProblem) throw new BadRequestException(dateProblem);
 
     // Guard: subsequent advance allocations must be reversed first
     const subsequentAllocs = await prisma.supplierPaymentAllocation.count({
@@ -945,12 +1029,21 @@ export class SupplierPaymentService {
     const reversalDate = new Date(opts.reversalDate);
 
     return prisma.$transaction(async (tx) => {
+      // SP-2 — claim the payment first. Two reversals at once used to both pass the read above: the
+      // second got the first's journal back (posting idempotency) and gave every bill its balance
+      // back a second time.
+      const claimed = await tx.supplierPayment.updateMany({
+        where: { id: paymentId, postingStatus: 'POSTED' },
+        data: { postingStatus: 'REVERSED', reversedAt: new Date(), reversedBy: userId, reversalReason: reason },
+      });
+      if (claimed.count === 0) throw new ConflictException({ errorCode: 'PAYMENT_ALREADY_REVERSED', message: 'This payment was reversed a moment ago.' });
+
       const reversalResult = await this.postingPort.post(
         {
           organizationId: orgId,
           accountingDate: reversalDate,
           documentDate: reversalDate,
-          description: `Reversal of Payment ${payment.paymentNumber ?? paymentId}: ${opts.reason}`,
+          description: `Reversal of Payment ${payment.paymentNumber ?? paymentId}: ${reason}`,
           currencyCode: payment.currencyCode,
           eventType: 'EVT-AP-004',
           sourceDocumentType: 'SUPPLIER_PAYMENT',
@@ -989,7 +1082,7 @@ export class SupplierPaymentService {
 
       await tx.supplierPayment.update({
         where: { id: paymentId },
-        data: { postingStatus: 'REVERSED' },
+        data: { reversalJournalEntryId: reversalResult.journalEntryId },
       });
 
       return reversalResult;

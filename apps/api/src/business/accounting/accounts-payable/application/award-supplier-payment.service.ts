@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  ConflictException, BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
@@ -351,7 +352,16 @@ export class AwardSupplierPaymentService {
         return created.id;
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return this.payFromAward(identity, cmd);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        // SP-3 — a reference already on a live payment is a refusal, not a replay to retry.
+        if (/live_reference_key|bank_reference/.test(String((error.meta as { target?: unknown } | undefined)?.target ?? ''))) {
+          throw new ConflictException({
+            errorCode: 'PAYMENT_REFERENCE_ALREADY_USED',
+            message: `Reference ${cmd.bankReference ?? ''} is already recorded on another payment from this account.`,
+          });
+        }
+        return this.payFromAward(identity, cmd);
+      }
       throw error;
     }
     if (replayed) return this.payFromAward(identity, cmd);

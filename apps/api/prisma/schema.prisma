@@ -3574,6 +3574,13 @@ model SupplierPayment {
   unallocatedAmount    Decimal          @map("unallocated_amount") @db.Decimal(18, 2)
   paymentMethod        String           @map("payment_method")
   bankReference        String?          @map("bank_reference")
+  /// SP-3 — the proof of an outgoing payment, all optional: the cheque date, the mobile-money
+  /// provider, the supplier's account or phone paid to, and who took cash. `bankReference` holds
+  /// the number (cheque number, transfer reference, transaction ID, receipt number).
+  instrumentDate       DateTime?        @map("instrument_date") @db.Date
+  provider             String?          @db.VarChar(20)
+  payeeAccount         String?          @map("payee_account") @db.VarChar(50)
+  payeeName            String?          @map("payee_name") @db.VarChar(150)
   notes                String?
   documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
   postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
@@ -3595,6 +3602,11 @@ model SupplierPayment {
   cancelledAt          DateTime?        @map("cancelled_at")
   cancelledBy          String?          @map("cancelled_by")
   cancellationReason   String?          @map("cancellation_reason")
+  /// SP-2 — who reversed a posted payment, when, why, and the reversing journal.
+  reversedAt              DateTime?     @map("reversed_at")
+  reversedBy              String?       @map("reversed_by")
+  reversalReason          String?       @map("reversal_reason")
+  reversalJournalEntryId  String?       @map("reversal_journal_entry_id")
   /// ADR-045 — client key of "Pay supplier" from an award (partial unique per org, see migration).
   idempotencyKey       String?          @map("idempotency_key") @db.VarChar(100)
   /// ADR-045 — the quotation request this payment was made from (SUPPLIER_PAID notification).

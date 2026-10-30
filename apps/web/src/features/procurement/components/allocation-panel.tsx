@@ -97,17 +97,18 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
       ? planAllocation(amountMinor, selected.id, locale, accounts.data ?? [])
       : null;
 
+  // SP-4 — a payment not yet posted, or with nothing left to apply, shows only what it paid.
+  const quiet = blocked === 'payment-not-posted' || blocked === 'nothing-unallocated';
+  const allocations = payment.allocations ?? [];
+  if (quiet && allocations.length === 0) return null;
+
   return (
-    <section className="space-y-4 rounded-panel border border-border bg-surface p-4 shadow-e2">
-      <div className="min-w-0">
-        <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
+    <section className="space-y-4 rounded-panel border border-border bg-surface p-5 shadow-e1">
+      <h2 className="text-body font-semibold text-foreground">{t('title')}</h2>
 
       {/* What the payment has already settled comes first: it is what an accountant looks for. */}
-      {(payment.allocations ?? []).length > 0 ? (
+      {allocations.length > 0 ? (
         <div className="space-y-2">
-          <h3 className="text-body-sm font-semibold text-foreground">{t('appliedTitle')}</h3>
           <ul className="divide-y divide-border rounded-control border border-border">
             {(payment.allocations ?? []).map((a) => {
               // Applied later from the unapplied balance (own journal), not at the payment's creation.
@@ -156,10 +157,11 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
         />
       ) : null}
 
-      {blocked ? (
-        <Alert variant="warning" messages={[t(`blocked.${blocked}`)]} />
+      {quiet ? null : blocked ? (
+        <p className="text-body-sm text-muted-foreground">{t(`blocked.${blocked}`)}</p>
       ) : canManage ? (
-        <div className="space-y-4">
+        <div className="space-y-4 border-t border-border pt-4">
+          <h3 className="text-body-sm font-semibold text-foreground">{t('applyTitle', { amount: formatMoney(payment.unallocatedAmount, payment.currencyCode, locale) ?? '' })}</h3>
           <FormField htmlFor={ids.bill} label={t('bill')}>
             <Select
               id={ids.bill}

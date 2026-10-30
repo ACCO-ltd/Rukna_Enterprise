@@ -357,11 +357,15 @@ describe('eligibility.canPay ⇔ SupplierPaymentService.create accepts an alloca
         ]),
       },
       journalEntry: { findMany: jest.fn().mockResolvedValue([{ id: 'j1', journalNumber: 'JE-000001' }]) },
-      supplierBill: { aggregate: jest.fn().mockResolvedValue({ _sum: { totalAmount: '100' } }) },
+      supplierBill: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { totalAmount: '100' } }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       journalLine: { aggregate: jest.fn().mockResolvedValue({ _sum: { creditAmount: obCredit, debitAmount: '0' } }) },
     };
     const prisma = {
-      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'someone' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'someone', status: 'ACTIVE' }) },
+      supplierPayment: { findFirst: jest.fn().mockResolvedValue(null) },
       bankAccount: { findFirst: jest.fn().mockResolvedValue({ accountName: 'Bank', status: 'ACTIVE', allowsPayments: true, currencyCode: 'USD', glAccount: { id: 'acct-10200', code: '10200' } }) },
       $transaction: (fn: (t: unknown) => unknown) => fn(tx),
     };
