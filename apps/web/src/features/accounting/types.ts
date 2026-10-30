@@ -508,8 +508,26 @@ export interface ClientInvoice {
   advanceRecoveryAmount?: string;
   /** ADR-046 §5 — on a retention release invoice, the retention it bills (subtotal is "0.00"). */
   retentionReleasedAmount?: string;
+  /** On an IPC invoice, the certificate's gross this period; `subtotal` is this less other deductions. */
+  certifiedGrossAmount?: string | null;
+  otherDeductionsAmount?: string;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
+  /**
+   * CI-3 — what has settled the invoice so far, by kind (posted only). With `outstandingAmount`
+   * these add up to `totalAmount`. Optional: an older API omits them.
+   */
+  amountPaid?: string;
+  amountCredited?: string;
+  amountWrittenOff?: string;
+  /** CI-3 — the receipts applied to it, oldest first (detail read only). */
+  payments?: InvoicePayment[];
+  /** The client and line description as frozen when the invoice was raised. */
+  billingAddressSnapshot?: {
+    description?: string | null;
+    org?: { name?: string | null; legalAddress?: string | null; taxRegistrationNumber?: string | null } | null;
+    client?: { name?: string | null; address?: string | null; city?: string | null; taxNumber?: string | null } | null;
+  } | null;
   /** ADR-048 — a hand-typed invoice for a non-contract sale; its `lines` carry the amount. */
   isManual?: boolean;
   /** ADR-048 — the hand-typed lines (detail read only; empty for source invoices). */
@@ -528,6 +546,18 @@ export interface ClientInvoice {
   approvedAt: string | null;
   createdAt: string;
   createdBy: string;
+}
+
+/** CI-3 — one receipt applied to an invoice (`GET /invoices/:id` → `payments`). */
+export interface InvoicePayment {
+  allocationId: string;
+  receiptId: string;
+  receiptNumber: string | null;
+  receiptDate: string;
+  appliedOn: string;
+  paymentMethod: string | null;
+  reference: string | null;
+  amount: string;
 }
 
 /** Body of `POST /invoices/from-ipc`. Dates are `YYYY-MM-DD`. */

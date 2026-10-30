@@ -160,49 +160,42 @@ async function openSourcePicker(user: ReturnType<typeof userEvent.setup>, label:
 }
 
 describe('InvoiceCreate', () => {
-  it('asks what is being invoiced, with no editable lines, discount or client reference', () => {
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+  it('bills from a source, with no editable lines, discount or client picker', () => {
+    renderWithProviders(<InvoiceCreate kind="IPC" />, { permissions: MANAGE });
 
-    expect(screen.getByRole('group', { name: /What are you invoicing\?/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Interim payment certificate/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Billing milestone/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Separate charge/ })).toBeInTheDocument();
-    expect(screen.getByText('Choose a source to add its line')).toBeInTheDocument();
-
+    expect(screen.getByText('Choose a project and a certificate.')).toBeInTheDocument();
     expect(screen.queryByText(/discount/i)).toBeNull();
     expect(screen.queryByText(/client reference/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /Add a line/ })).toBeNull();
-    // The client is derived, never picked.
-    expect(screen.getByLabelText('Client')).toHaveAttribute('readonly');
+    // The client is derived from the project's contract, never picked.
+    expect(screen.queryByRole('combobox', { name: /Client|Bill to/ })).toBeNull();
   });
 
   it('changes the picker with the source kind and lists only billable sources', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+    const view = renderWithProviders(<InvoiceCreate kind="IPC" />, { permissions: MANAGE });
 
-    await user.click(screen.getByRole('radio', { name: /Interim payment certificate/ }));
     await chooseProject(user);
     await openSourcePicker(user, /Payment certificate/);
     expect(await screen.findByRole('option', { name: /IPA-003/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /IPA-002/ })).toBeNull();
     await user.keyboard('{Escape}');
 
-    await user.click(screen.getByRole('radio', { name: /Billing milestone/ }));
+    view.rerender(<InvoiceCreate kind="INSTALLMENT" />);
     await openSourcePicker(user, /^Milestone/);
     expect(await screen.findByRole('option', { name: /Foundation complete/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Roof slab/ })).toBeNull();
     await user.keyboard('{Escape}');
 
-    await user.click(screen.getByRole('radio', { name: /Separate charge/ }));
+    view.rerender(<InvoiceCreate kind="SEPARATE_CHARGE" />);
     await openSourcePicker(user, /Separate charge item/);
     expect(await screen.findByRole('option', { name: /Site mobilisation/ })).toBeInTheDocument();
   });
 
   it('shows the source as one read-only line with its amount, and the derived client', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+    renderWithProviders(<InvoiceCreate kind="SEPARATE_CHARGE" />, { permissions: MANAGE });
 
-    await user.click(screen.getByRole('radio', { name: /Separate charge/ }));
     await chooseProject(user);
     await openSourcePicker(user, /Separate charge item/);
     await user.click(await screen.findByRole('option', { name: /Site mobilisation/ }));
@@ -211,23 +204,19 @@ describe('InvoiceCreate', () => {
     expect(within(lines).getByText('Separate charge — Site mobilisation')).toBeInTheDocument();
     expect(within(lines).getAllByText('$9,800.00').length).toBeGreaterThan(0);
     expect(within(lines).queryByRole('textbox')).toBeNull();
-    expect(screen.getByText("Lines come from the source document and can't be edited here.")).toBeInTheDocument();
     expect(screen.getByText('Amount before sales tax')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByLabelText('Client')).toHaveValue('Ministry of Water Resources'),
-    );
+    expect(await screen.findByText('Ministry of Water Resources')).toBeInTheDocument();
   });
 
   it('saves an IPC draft through POST /invoices/from-ipc and opens it', async () => {
     const user = userEvent.setup();
     vi.mocked(generateInvoiceFromIpc).mockResolvedValue({ id: 'inv-new' } as never);
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+    renderWithProviders(<InvoiceCreate kind="IPC" />, { permissions: MANAGE });
 
-    await user.click(screen.getByRole('radio', { name: /Interim payment certificate/ }));
     await chooseProject(user);
     await openSourcePicker(user, /Payment certificate/);
     await user.click(await screen.findByRole('option', { name: /IPA-003/ }));
-    await user.type(screen.getByLabelText('Terms shown on the invoice'), 'Net 30');
+    await user.type(screen.getByLabelText('Terms'), 'Net 30');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     await waitFor(() => expect(generateInvoiceFromIpc).toHaveBeenCalledTimes(1));
@@ -242,9 +231,8 @@ describe('InvoiceCreate', () => {
   it('saves a separate-charge draft through POST /invoices/from-separate-charge', async () => {
     const user = userEvent.setup();
     vi.mocked(createSeparateChargeInvoice).mockResolvedValue({ id: 'inv-sc', postingStatus: 'NOT_POSTED' });
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+    renderWithProviders(<InvoiceCreate kind="SEPARATE_CHARGE" />, { permissions: MANAGE });
 
-    await user.click(screen.getByRole('radio', { name: /Separate charge/ }));
     await chooseProject(user);
     await openSourcePicker(user, /Separate charge item/);
     await user.click(await screen.findByRole('option', { name: /Site mobilisation/ }));
@@ -258,9 +246,8 @@ describe('InvoiceCreate', () => {
 
   it('routes a milestone through the prepare-invoice (issue package) flow, not a bare draft', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+    renderWithProviders(<InvoiceCreate kind="INSTALLMENT" />, { permissions: MANAGE });
 
-    await user.click(screen.getByRole('radio', { name: /Billing milestone/ }));
     expect(screen.getByRole('button', { name: 'Prepare invoice' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
 
@@ -275,16 +262,16 @@ describe('InvoiceCreate', () => {
 
   it('blocks saving and names every missing field', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<InvoiceCreate />, { permissions: MANAGE });
+    renderWithProviders(<InvoiceCreate kind="IPC" />, { permissions: MANAGE });
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
-    expect(await screen.findByText(/Fix 3 fields before saving/)).toBeInTheDocument();
+    expect(await screen.findByText(/Fix 2 fields before saving/)).toBeInTheDocument();
     expect(generateInvoiceFromIpc).not.toHaveBeenCalled();
   });
 
   it('shows a restricted state without manage:receivable', () => {
-    renderWithProviders(<InvoiceCreate />, { permissions: ['view:accounting'] });
+    renderWithProviders(<InvoiceCreate kind="IPC" />, { permissions: ['view:accounting'] });
 
     expect(screen.getByText("You can't raise client invoices")).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();

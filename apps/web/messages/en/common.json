@@ -297,7 +297,7 @@
     "add": "Attach files",
     "uploading": "Uploading…",
     "empty": "No files attached.",
-    "emptyCanAdd": "No files attached. Add the supplier’s invoice, a bank advice or a signed delivery note.",
+    "emptyCanAdd": "No files attached.",
     "addedAfterPosting": "Added after posting",
     "remove": "Remove",
     "removeNamed": "Remove {name}",

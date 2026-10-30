@@ -64,7 +64,8 @@ export function ReceiptForm() {
       clientId: searchParams?.get('clientId') ?? '',
       bankAccountId: '',
       receiptDate: todayWireDate(),
-      amount: '',
+      // "Record payment" on an invoice arrives with its balance as the amount.
+      amount: searchParams?.get('amount') ?? '',
       reference: '',
       notes: '',
     },
@@ -76,7 +77,12 @@ export function ReceiptForm() {
   // The split follows the amount until the reader edits a line; then it is theirs.
   const [manual, setManual] = useState<Record<string, string> | null>(null);
   const amountMinor = Number.isFinite(Number(amount)) ? toMinorUnits(amount || '0') : 0;
-  const suggested = applyOldestFirst(amountMinor, open);
+  // From an invoice's "Record payment" the money goes to that invoice; otherwise oldest due first.
+  const focusId = searchParams?.get('invoiceId') ?? null;
+  const focus = focusId ? open.find((o) => o.invoice.id === focusId) : undefined;
+  const suggested = focus
+    ? new Map([[focus.invoice.id, Math.min(amountMinor, focus.outstandingMinor)]])
+    : applyOldestFirst(amountMinor, open);
   const appliedFor = (id: string) =>
     manual ? toMinorUnits(manual[id] || '0') : (suggested.get(id) ?? 0);
   const appliedMinor = open.reduce((sum, o) => sum + appliedFor(o.invoice.id), 0);

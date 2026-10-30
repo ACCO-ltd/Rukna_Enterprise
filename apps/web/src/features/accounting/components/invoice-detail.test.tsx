@@ -22,6 +22,8 @@ vi.mock('../hooks/use-invoices', () => ({
   useInvoiceAction: mocks.useInvoiceAction,
   useInvoiceDocumentUrl: mocks.useInvoiceDocumentUrl,
   useInvoiceCreditNotes: mocks.useInvoiceCreditNotes,
+  useIncomeAccounts: () => ({ data: [{ code: '42100', name: 'Equipment hire income' }] }),
+  useOpenInvoiceDocument: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useCancelInvoice: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   invoiceKeys: { all: ['accounting', 'invoices'] },
 }));
@@ -38,6 +40,7 @@ vi.mock('@/features/communications/hooks', () => ({
 }));
 vi.mock('../hooks/use-accounting', () => ({ useAccounts: mocks.useAccounts, useApprovalSettings: mocks.useApprovalSettings }));
 vi.mock('@/features/clients/hooks/use-clients', () => ({ useClients: mocks.useClients }));
+vi.mock('@/features/projects/hooks/use-projects', () => ({ useProjects: () => ({ data: [] }) }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.searchParams }));
 vi.mock('next/link', () => ({
   default: ({
@@ -52,6 +55,11 @@ vi.mock('next/link', () => ({
 }));
 
 import { InvoiceDetail } from './invoice-detail';
+
+/** Opens the More menu, where every action but the one primary action lives. */
+async function openMore() {
+  await userEvent.setup().click(screen.getByRole('button', { name: 'More' }));
+}
 
 function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
   return {
@@ -103,14 +111,14 @@ beforeEach(() => {
 });
 
 describe('InvoiceDetail — state-aware title and totals', () => {
-  it('shows the draft title, the one Issue action (ADR-046 §2), and "Draft total" (never a collectible balance)', () => {
+  it('shows the draft title, the one Issue action (ADR-046 §2), and "Draft total" (never a collectible balance)', async () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
       permissions: ['manage:receivable'],
     });
 
-    expect(screen.getByText('Review draft invoice')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Draft invoice/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Issue invoice' })).toBeInTheDocument();
     // No separate Approve step any more, and no Post before issue.
     expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
@@ -118,7 +126,8 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.getByText('Draft total')).toBeInTheDocument();
     expect(screen.queryByText('Balance due')).not.toBeInTheDocument();
     // Step 2g — an unposted invoice can be cancelled from its page.
-    expect(screen.getByRole('button', { name: 'Cancel draft' })).toBeInTheDocument();
+    await openMore();
+    expect(screen.getByRole('menuitem', { name: 'Cancel draft' })).toBeInTheDocument();
   });
 
   it('shows "awaiting posting" for an approved, not-yet-posted invoice, with the Post action', () => {
@@ -132,14 +141,14 @@ describe('InvoiceDetail — state-aware title and totals', () => {
       permissions: ['manage:receivable'],
     });
 
-    expect(screen.getByText('Approved invoice · awaiting posting')).toBeInTheDocument();
+    expect(screen.getByText('To post')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Post & assign number' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve invoice' })).not.toBeInTheDocument();
     // Still a draft total pre-posting, not a real collectible balance.
     expect(screen.getByText('Draft total')).toBeInTheDocument();
   });
 
-  it('shows the invoice number and "Balance due" once posted', () => {
+  it('shows the invoice number and "Balance due" once posted', async () => {
     mocks.useInvoice.mockReturnValue({
       data: invoice({
         invoiceNumber: 'INV-2026-0042',
@@ -157,21 +166,63 @@ describe('InvoiceDetail — state-aware title and totals', () => {
       permissions: ['manage:receivable'],
     });
 
-    expect(screen.getByText('Invoice INV-2026-0042')).toBeInTheDocument();
-    expect(screen.getByText('Balance due')).toBeInTheDocument();
-    // A posted invoice is reversed, never cancelled.
-    expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /INV-2026-0042/ })).toBeInTheDocument();
+    expect(screen.getAllByText('Balance due').length).toBeGreaterThan(0);
     expect(screen.queryByText('Draft total')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reverse' })).toBeInTheDocument();
+    // CI-5 — an open invoice's one primary action is Record payment, for this invoice's balance.
+    expect(screen.getByRole('link', { name: 'Record payment' })).toHaveAttribute(
+      'href',
+      '/receipts/new?clientId=client-1&invoiceId=inv-1&amount=10000.00',
+    );
+    await openMore();
+    // A posted invoice is reversed, never cancelled.
+    expect(screen.queryByRole('menuitem', { name: 'Cancel draft' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Reverse' })).toBeInTheDocument();
     // AR-1 — a posted invoice with a balance can be credited from Finance, project or not.
-    expect(screen.getByRole('button', { name: 'Issue credit note' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Issue credit note' })).toBeInTheDocument();
     // AR-4 — and written off.
-    expect(screen.getByRole('button', { name: 'Write off' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Write off' })).toBeInTheDocument();
     // ADR-042 step 4 — something is still owed, so a WhatsApp reminder is offered.
-    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Send reminder' })).toBeInTheDocument();
   });
 
-  it('lists the credit notes raised against the invoice, with Reverse on a posted one (AR-1)', () => {
+  it('CI-3: breaks the balance down by kind and lists the payments applied', () => {
+    mocks.useInvoice.mockReturnValue({
+      data: invoice({
+        invoiceNumber: 'INV-000006',
+        documentStatus: 'APPROVED',
+        postingStatus: 'POSTED',
+        totalAmount: '580.00',
+        outstandingAmount: '320.00',
+        amountPaid: '200.00',
+        amountCredited: '50.00',
+        amountWrittenOff: '10.00',
+        payments: [
+          {
+            allocationId: 'a1',
+            receiptId: 'r1',
+            receiptNumber: 'RCP-000003',
+            receiptDate: '2026-10-30',
+            appliedOn: '2026-10-30',
+            paymentMethod: 'Bank transfer',
+            reference: null,
+            amount: '200.00',
+          },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: ['manage:receivable'] });
+
+    expect(screen.getByRole('link', { name: 'RCP-000003' })).toHaveAttribute('href', '/receipts/r1');
+    expect(screen.getAllByText('−$200.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('−$50.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('−$10.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$320.00').length).toBeGreaterThan(0);
+  });
+
+  it('lists the credit notes raised against the invoice, with Reverse on a posted one (AR-1)', async () => {
     mocks.useInvoiceCreditNotes.mockReturnValue({
       data: [
         {
@@ -204,10 +255,11 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     expect(screen.getByText('CN-000003')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Reverse' }).length).toBeGreaterThan(0);
     // Nothing left to credit: no new credit note.
-    expect(screen.queryByRole('button', { name: 'Issue credit note' })).not.toBeInTheDocument();
+    await openMore();
+    expect(screen.queryByRole('menuitem', { name: 'Issue credit note' })).not.toBeInTheDocument();
   });
 
-  it('offers a reminder on an opening-balance invoice (no Rukna number)', () => {
+  it('offers a reminder on an opening-balance invoice (no Rukna number)', async () => {
     mocks.useInvoice.mockReturnValue({
       data: invoice({
         invoiceNumber: null,
@@ -221,10 +273,11 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
       permissions: ['manage:receivable'],
     });
-    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+    await openMore();
+    expect(screen.getByRole('menuitem', { name: 'Send reminder' })).toBeInTheDocument();
   });
 
-  it('offers no reminder once the invoice is fully paid', () => {
+  it('offers no reminder once the invoice is fully paid', async () => {
     mocks.useInvoice.mockReturnValue({
       data: invoice({
         invoiceNumber: 'INV-2026-0042',
@@ -238,7 +291,9 @@ describe('InvoiceDetail — state-aware title and totals', () => {
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, {
       permissions: ['manage:receivable'],
     });
-    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+    await openMore();
+    expect(screen.queryByRole('menuitem', { name: 'Send reminder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Record payment' })).not.toBeInTheDocument();
   });
 });
 
@@ -280,7 +335,7 @@ describe('InvoiceDetail — permission gating', () => {
 
     expect(screen.queryByRole('button', { name: 'Issue invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post & assign number' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel draft' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
   });
 });
 
@@ -308,7 +363,7 @@ describe('InvoiceDetail — readable source', () => {
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
 
-    expect(screen.getByText('Invoice')).toBeInTheDocument();
+    expect(screen.getByText('Source').nextElementSibling).toHaveTextContent(/^Invoice$/);
   });
 });
 
@@ -336,7 +391,7 @@ describe('InvoiceDetail — breadcrumb back-link', () => {
 });
 
 describe('InvoiceDetail — embedded document preview', () => {
-  it('shows a loading state while the signed URL is in flight', () => {
+  it('shows a loading state while the signed URL is in flight', async () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
     mocks.useInvoiceDocumentUrl.mockReturnValue({
       isPending: true,
@@ -345,6 +400,7 @@ describe('InvoiceDetail — embedded document preview', () => {
     });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'PDF' }));
 
     expect(screen.queryByTitle(/invoice/i)).not.toBeInTheDocument();
   });
@@ -361,12 +417,13 @@ describe('InvoiceDetail — embedded document preview', () => {
     });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
+    await user.click(screen.getByRole('tab', { name: 'PDF' }));
 
     await user.click(screen.getByRole('button', { name: 'Reload preview' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('embeds the signed URL and offers download / open-in-new-tab as secondary actions', () => {
+  it('embeds the signed URL and offers download / open-in-new-tab as secondary actions', async () => {
     mocks.useInvoice.mockReturnValue({ data: invoice(), isPending: false, isError: false });
     mocks.useInvoiceDocumentUrl.mockReturnValue({
       isPending: false,
@@ -380,6 +437,7 @@ describe('InvoiceDetail — embedded document preview', () => {
     });
 
     renderWithProviders(<InvoiceDetail invoiceId="inv-1" />, { permissions: [] });
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'PDF' }));
 
     const frame = screen.getByTitle('invoice.pdf');
     expect(frame).toHaveAttribute('src', 'https://storage.rukna.site/signed-abc');

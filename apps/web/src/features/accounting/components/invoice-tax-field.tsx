@@ -170,7 +170,7 @@ export function InvoiceTaxField({
   }
 
   return (
-    <FormField htmlFor={id} label={t('label')} hint={t('hint')}>
+    <FormField htmlFor={id} label={t('label')}>
       <Select
         id={id}
         value={choice.selected.id}
