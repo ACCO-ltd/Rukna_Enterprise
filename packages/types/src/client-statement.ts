@@ -32,8 +32,63 @@ export interface ClientStatementLine {
   balance: string;
 }
 
+/**
+ * ST-4 — one contract (or a project's invoices with no contract, or hand-typed sales) on the
+ * client's account. invoiced − received − credited − writtenOff = balanceDue.
+ */
+export interface ClientAccountRow {
+  key: string;
+  kind: 'CONTRACT' | 'PROJECT' | 'OTHER_SALES';
+  projectId: string | null;
+  projectName: string | null;
+  contractId: string | null;
+  contractNumber: string | null;
+  contractStatus: string | null;
+  /** Current value (base + adopted variations); null for non-contract rows. */
+  contractValue: string | null;
+  /** Contract work billed, before tax (separate charges and retention releases excluded). */
+  billedToDate: string | null;
+  leftToBill: string | null;
+  invoiced: string;
+  received: string;
+  credited: string;
+  writtenOff: string;
+  balanceDue: string;
+  overdue: string;
+  retentionHeld: string;
+  invoiceCount: number;
+}
+
+/** ST-4 — an invoice the client still owes on, most overdue first. */
+export interface ClientOpenInvoice {
+  id: string;
+  invoiceNumber: string | null;
+  invoiceDate: string;
+  dueDate: string | null;
+  projectName: string | null;
+  contractNumber: string | null;
+  /** For an invoice with no contract: the client's PO or its first line. */
+  label: string | null;
+  total: string;
+  received: string;
+  /** Credited and written off. */
+  adjusted: string;
+  balance: string;
+  daysOverdue: number;
+}
+
 export interface ClientStatement {
-  client: { id: string; name: string; code: string | null };
+  client: { id: string; name: string; code: string | null; address: string | null; taxNumber: string | null };
+  /** ST-5 — the letterhead of the printed statement. */
+  organization: { name: string; address: string | null; taxNumber: string | null } | null;
+  /** The day the account figures (accounts, open invoices, aging) are as at: today. */
+  asOf: string;
+  accounts: ClientAccountRow[];
+  openInvoices: ClientOpenInvoice[];
+  /** Today: open invoice balances past their due date. */
+  overdue: string;
+  /** Retention held back on the client's contracts, billed later by a release invoice. */
+  retentionHeld: string;
   from: string;
   to: string;
   /** What the client owed at the start of `from`. */

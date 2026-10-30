@@ -1,11 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import {
+  cn,
   Combobox,
   DateRangePicker,
   EmptyState,
@@ -13,16 +13,9 @@ import {
   FilterField,
   SkeletonTable,
   StatTile,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
 } from '@erp/ui';
 import { FileText } from 'lucide-react';
-import type { ClientStatement as ClientStatementData, ClientStatementLine } from '@erp/types';
+import type { ClientStatement as ClientStatementData } from '@erp/types';
 
 import { LoadError } from '@/components/load-error';
 import { ListPageHeader } from '@/components/layout/list-page-header';
@@ -30,9 +23,12 @@ import { ReportActions } from '@/features/accounting/components/report-actions';
 import { exportCsv, reportFilename } from '@/features/accounting/lib/export-csv';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { apiClient } from '@/lib/api-client';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
-const usd = (amount: string | null) => (amount === null ? '' : (formatMoney(amount, 'USD') ?? amount));
+import { AccountsTable, ActivityTable, OpenInvoicesTable, usd } from './statement-sections';
+
+const TABS = ['accounts', 'open', 'activity'] as const;
+type Tab = (typeof TABS)[number];
 
 /** AR-3 — `GET /finance/clients/:clientId/statement?from&to`. */
 export function getClientStatement(clientId: string, from: string, to: string): Promise<ClientStatementData> {
@@ -44,22 +40,19 @@ function thisYear(now = new Date()) {
   return { from: `${to.slice(0, 4)}-01-01`, to };
 }
 
-function documentHref(line: ClientStatementLine): string | null {
-  if (line.kind === 'RECEIPT' || line.kind === 'RECEIPT_REVERSAL' || line.kind === 'REFUND' || line.kind === 'REFUND_REVERSAL')
-    return `/receipts/${line.documentId}`;
-  return `/finance/accounting/invoices/${line.documentId}`;
-}
 
 /**
- * AR-3 — a client's statement of account: every invoice, credit note and receipt (and each one's
- * reversal) across all projects and hand-typed sales, opening on the balance at the start of the
- * period and closing on what the client owes. Printable (the app chrome drops out) and exportable.
+ * AR-3 / ST — a client's statement of account. Three views of one account: by project and
+ * contract (value, billed, paid, owed, retention, left to bill), the invoices still owed (most
+ * overdue first, aged), and every movement in the period with a running balance. Printing gives
+ * all three under a letterhead; the CSV is the view on screen.
  */
 export function ClientStatement() {
   const t = useTranslations('accounting.statement');
   const params = useSearchParams();
   const clients = useClients();
   const [clientId, setClientId] = useState(params?.get('clientId') ?? '');
+  const [tab, setTab] = useState<Tab>('accounts');
   const [range, setRange] = useState(() => {
     const fallback = thisYear();
     return { from: params?.get('from') ?? fallback.from, to: params?.get('to') ?? fallback.to };
@@ -74,9 +67,48 @@ export function ClientStatement() {
     [clients.data],
   );
 
-  const download = (data: ClientStatementData) =>
+  const download = (data: ClientStatementData) => {
+    const name = `statement-${data.client.code ?? data.client.name}`;
+    if (tab === 'accounts') {
+      exportCsv(
+        reportFilename(`${name}-by-project`, data.asOf, data.asOf),
+        [t('colAccount'), t('colContract'), t('colContractValue'), t('colBilled'), t('colLeftToBill'), t('colInvoiced'), t('colReceived'), t('colAdjusted'), t('colBalanceDue'), t('colOverdue'), t('colRetention')],
+        data.accounts.map((r) => [
+          r.kind === 'OTHER_SALES' ? t('otherSales') : r.projectName,
+          r.contractNumber,
+          r.contractValue === null ? null : Number(r.contractValue),
+          r.billedToDate === null ? null : Number(r.billedToDate),
+          r.leftToBill === null ? null : Number(r.leftToBill),
+          Number(r.invoiced),
+          Number(r.received),
+          Number(r.credited) + Number(r.writtenOff),
+          Number(r.balanceDue),
+          Number(r.overdue),
+          Number(r.retentionHeld),
+        ]),
+      );
+      return;
+    }
+    if (tab === 'open') {
+      exportCsv(
+        reportFilename(`${name}-open-invoices`, data.asOf, data.asOf),
+        [t('colInvoice'), t('colFor'), t('colDate'), t('colDue'), t('colTotal'), t('colReceived'), t('colAdjusted'), t('colBalance'), t('colDaysOverdue')],
+        data.openInvoices.map((r) => [
+          r.invoiceNumber,
+          [r.projectName, r.contractNumber].filter(Boolean).join(' · ') || r.label,
+          r.invoiceDate,
+          r.dueDate,
+          Number(r.total),
+          Number(r.received),
+          Number(r.adjusted),
+          Number(r.balance),
+          r.daysOverdue,
+        ]),
+      );
+      return;
+    }
     exportCsv(
-      reportFilename(`statement-${data.client.code ?? data.client.name}`, data.from, data.to),
+      reportFilename(name, data.from, data.to),
       [t('colDate'), t('colDocument'), t('colKind'), t('colDetails'), t('colCharged'), t('colPaid'), t('colBalance')],
       [
         [data.from, null, t('opening'), null, null, null, Number(data.openingBalance)],
@@ -92,15 +124,21 @@ export function ClientStatement() {
         [data.to, null, t('closing'), null, Number(data.totals.debits), Number(data.totals.credits), Number(data.closingBalance)],
       ],
     );
+  };
 
   const data = statement.data;
+  // What the client owes today (open invoices less cash on account) — the activity's closing
+  // balance only when the period ends today.
+  const balanceDue = data
+    ? (data.openInvoices.reduce((s, i) => s + Math.round(Number(i.balance) * 100), 0) / 100 - Number(data.onAccount)).toFixed(2)
+    : null;
 
   return (
     <div className="space-y-6">
       <ListPageHeader
         eyebrow={t('eyebrow')}
         title={t('title')}
-        summary={data ? t('summary', { client: data.client.name, from: formatDate(data.from) ?? data.from, to: formatDate(data.to) ?? data.to }) : t('subtitle')}
+        summary={data ? t('summaryAsOf', { client: data.client.name, date: formatDate(data.asOf) ?? data.asOf }) : undefined}
         actions={data ? <ReportActions onExport={() => download(data)} /> : undefined}
       />
 
@@ -137,78 +175,69 @@ export function ClientStatement() {
         <LoadError message={t('loadFailed')} onRetry={() => void statement.refetch()} />
       ) : (
         <>
+          {/* Letterhead and addressee: the head of the printed statement, and who it is on screen. */}
+          <section className="grid gap-6 rounded-panel border border-border bg-surface p-5 sm:grid-cols-2 sm:p-6">
+            <div className="space-y-1 text-body-sm">
+              <p className="text-caption font-medium uppercase tracking-wide text-muted-foreground">{t('statementFor')}</p>
+              <p className="text-h3 font-semibold text-foreground">{data.client.name}</p>
+              {data.client.code ? <p className="font-mono text-muted-foreground">{data.client.code}</p> : null}
+              {data.client.address ? <p className="text-muted-foreground">{data.client.address}</p> : null}
+              {data.client.taxNumber ? <p className="text-muted-foreground">{t('taxNumber', { number: data.client.taxNumber })}</p> : null}
+            </div>
+            <div className="space-y-1 text-body-sm sm:text-end">
+              {data.organization ? (
+                <>
+                  <p className="font-semibold text-foreground">{data.organization.name}</p>
+                  {data.organization.address ? <p className="text-muted-foreground">{data.organization.address}</p> : null}
+                </>
+              ) : null}
+              <p className="text-muted-foreground">{t('asOf', { date: formatDate(data.asOf) ?? data.asOf })}</p>
+            </div>
+          </section>
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile label={t('opening')} value={usd(data.openingBalance)} />
-            <StatTile label={t('charged')} value={usd(data.totals.debits)} />
-            <StatTile label={t('paid')} value={usd(data.totals.credits)} />
-            <StatTile label={t('closing')} value={usd(data.closingBalance)} note={Number(data.onAccount) > 0 ? t('onAccount', { amount: usd(data.onAccount) }) : undefined} />
+            <StatTile label={t('balanceDue')} value={usd(balanceDue)} />
+            <StatTile label={t('overdue')} value={usd(data.overdue)} />
+            <StatTile label={t('retentionHeld')} value={usd(data.retentionHeld)} />
+            <StatTile label={t('onAccountTile')} value={usd(data.onAccount)} />
           </div>
 
-          <TableScroll aria-label={t('title')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('colDate')}</TableHead>
-                  <TableHead>{t('colDocument')}</TableHead>
-                  <TableHead>{t('colDetails')}</TableHead>
-                  <TableHead numeric>{t('colCharged')}</TableHead>
-                  <TableHead numeric>{t('colPaid')}</TableHead>
-                  <TableHead numeric>{t('colBalance')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(data.from)}</TableCell>
-                  <TableCell colSpan={4} className="font-medium">{t('opening')}</TableCell>
-                  <TableCell numeric className="font-medium tabular-nums">{usd(data.openingBalance)}</TableCell>
-                </TableRow>
-                {data.lines.map((line, i) => {
-                  const href = documentHref(line);
-                  return (
-                    <TableRow key={`${line.kind}-${line.documentId}-${line.reference ?? ''}-${i}`}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(line.date)}</TableCell>
-                      <TableCell>
-                        <span className="block font-medium">{t(`kinds.${line.kind}`)}</span>
-                        {line.reference ? (
-                          href ? (
-                            <Link href={href} className="font-mono text-caption text-brand-primary underline-offset-2 hover:underline">
-                              {line.reference}
-                            </Link>
-                          ) : (
-                            <span className="font-mono text-caption">{line.reference}</span>
-                          )
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{line.description ?? ''}</TableCell>
-                      <TableCell numeric className="tabular-nums">{usd(line.debit)}</TableCell>
-                      <TableCell numeric className="tabular-nums">{usd(line.credit)}</TableCell>
-                      <TableCell numeric className="tabular-nums">{usd(line.balance)}</TableCell>
-                    </TableRow>
-                  );
-                })}
-                <TableRow className="border-t-2 border-border">
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(data.to)}</TableCell>
-                  <TableCell colSpan={2} className="font-semibold">{t('closing')}</TableCell>
-                  <TableCell numeric className="font-semibold tabular-nums">{usd(data.totals.debits)}</TableCell>
-                  <TableCell numeric className="font-semibold tabular-nums">{usd(data.totals.credits)}</TableCell>
-                  <TableCell numeric className="font-semibold tabular-nums">{usd(data.closingBalance)}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableScroll>
-          {data.lines.length === 0 ? <p className="text-body-sm text-muted-foreground">{t('nothingInPeriod')}</p> : null}
+          <div role="tablist" aria-label={t('viewsLabel')} className="inline-flex rounded-control border border-border bg-surface p-0.5 print:hidden">
+            {TABS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`statement-tab-${key}`}
+                aria-selected={tab === key}
+                aria-controls={`statement-panel-${key}`}
+                onClick={() => setTab(key)}
+                className={cn(
+                  'h-9 rounded-[calc(var(--radius-control)-2px)] px-3 text-body-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-primary',
+                  tab === key ? 'bg-brand-accent text-brand-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t(`tabs.${key}`)}
+                {key === 'open' && data.openInvoices.length > 0 ? (
+                  <span className="ms-1.5 text-caption text-muted-foreground">{data.openInvoices.length}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
 
-          <section aria-labelledby="statement-aging" className="space-y-2">
-            <h2 id="statement-aging" className="text-body font-semibold">{t('agingTitle')}</h2>
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              {(['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus'] as const).map((key) => (
-                <div key={key} className="rounded-panel border border-border bg-surface px-3 py-2">
-                  <dt className="text-caption text-muted-foreground">{t(`aging.${key}`)}</dt>
-                  <dd className="font-medium tabular-nums">{usd(data.aging[key])}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+          {/* On screen one view at a time; on paper all three, each under its heading. */}
+          {TABS.map((key) => (
+            <section
+              key={key}
+              id={`statement-panel-${key}`}
+              role="tabpanel"
+              aria-labelledby={`statement-tab-${key}`}
+              className={cn('space-y-3', tab === key ? 'block' : 'hidden print:block')}
+            >
+              <h2 className="hidden text-body font-semibold print:block">{t(`tabs.${key}`)}</h2>
+              {key === 'accounts' ? <AccountsTable data={data} /> : key === 'open' ? <OpenInvoicesTable data={data} /> : <ActivityTable data={data} />}
+            </section>
+          ))}
         </>
       )}
     </div>

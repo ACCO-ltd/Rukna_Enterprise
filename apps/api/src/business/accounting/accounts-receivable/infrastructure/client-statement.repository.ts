@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = PrismaClient;
 
@@ -10,7 +11,55 @@ type TenantPrisma = PrismaClient;
 @Injectable()
 export class ClientStatementRepository {
   findClient(prisma: TenantPrisma, organizationId: string, clientId: string) {
-    return prisma.client.findFirst({ where: { id: clientId, organizationId }, select: { id: true, name: true, code: true } });
+    return prisma.client.findFirst({
+      where: { id: clientId, organizationId },
+      select: { id: true, name: true, code: true, address: true, city: true, countryCode: true, taxNumber: true },
+    });
+  }
+
+  /** ST-5 — the letterhead of a printed statement. */
+  findOrganization(prisma: TenantPrisma, organizationId: string) {
+    return prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, legalAddress: true, taxRegistrationNumber: true },
+    });
+  }
+
+  /** ST-4 — the client's contracts, with their current value (base + adopted variations). */
+  findContracts(prisma: TenantPrisma, organizationId: string, clientId: string) {
+    return prisma.contract.findMany({
+      where: { organizationId, clientId, status: { notIn: ['DRAFT', 'CANCELLED'] } },
+      select: { id: true, contractNumber: true, contractValue: true, projectId: true, status: true },
+    });
+  }
+
+  /** ST-4 — live money against each invoice: receipts applied, credit notes, write-offs. */
+  async settlementByInvoice(prisma: TenantPrisma, organizationId: string, invoiceIds: string[]) {
+    if (invoiceIds.length === 0) return { received: new Map(), credited: new Map(), writtenOff: new Map() };
+    const [received, credited, writtenOff] = await Promise.all([
+      prisma.clientReceiptAllocation.groupBy({
+        by: ['clientInvoiceId'],
+        where: { organizationId, clientInvoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
+        _sum: { allocatedAmount: true },
+      }),
+      prisma.creditNote.groupBy({
+        by: ['invoiceId'],
+        where: { organizationId, invoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
+        _sum: { totalAmount: true },
+      }),
+      prisma.receivableWriteOff.groupBy({
+        by: ['invoiceId'],
+        where: { organizationId, invoiceId: { in: invoiceIds }, status: 'POSTED' },
+        _sum: { amount: true },
+      }),
+    ]);
+    const toMap = <T,>(rows: T[], id: (r: T) => string, amount: (r: T) => unknown) =>
+      new Map(rows.map((r) => [id(r), new Decimal(String(amount(r) ?? 0))]));
+    return {
+      received: toMap(received, (r) => r.clientInvoiceId, (r) => r._sum.allocatedAmount),
+      credited: toMap(credited, (r) => r.invoiceId, (r) => r._sum.totalAmount),
+      writtenOff: toMap(writtenOff, (r) => r.invoiceId, (r) => r._sum.amount),
+    };
   }
 
   /** Every invoice that ever reached the receivables book (posted, reversed, or carried in). */
@@ -27,6 +76,14 @@ export class ClientStatementRepository {
         postingStatus: true,
         documentStatus: true,
         projectId: true,
+        contractId: true,
+        subtotal: true,
+        retentionAmount: true,
+        retentionReleasedAmount: true,
+        sourceRetentionContractId: true,
+        sourceBoqNodeId: true,
+        clientReference: true,
+        lines: { select: { description: true }, orderBy: { lineNo: 'asc' }, take: 1 },
         postedJournalEntryId: true,
         reversalJournalEntryId: true,
         reversedAt: true,
@@ -58,6 +115,9 @@ export class ClientStatementRepository {
         id: true,
         receiptNumber: true,
         reference: true,
+        paymentMethod: true,
+        issuer: true,
+        instrumentNumber: true,
         accountingDate: true,
         totalAmount: true,
         unallocatedAmount: true,

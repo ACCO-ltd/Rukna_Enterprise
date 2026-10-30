@@ -90,3 +90,31 @@ it('ST-02: a later period opens where the earlier one closed; a bad period is re
   expect(s.lines).toEqual([]);
   await expect(statements.statement(env.identity, env.clientId, later, day)).rejects.toMatchObject({ response: { errorCode: 'STATEMENT_PERIOD_INVALID' } });
 });
+
+it('ST-03: lines say what each document is: the first line of a sale, how a payment was made', async () => {
+  const s = await statements.statement(env.identity, env.clientId, day, day);
+  expect(s.lines.filter((l) => l.kind === 'INVOICE').every((l) => l.description === 'Crane hire')).toBe(true);
+  expect(s.lines.find((l) => l.kind === 'RECEIPT')!.description).toMatch(/^Transfer reference TT-/);
+});
+
+it('ST-04: the account by contract and the open invoices tie to the closing balance', async () => {
+  const s = await statements.statement(env.identity, env.clientId, day, day);
+  // The fixture's contract is shown though nothing is billed on it yet: all of it is left to bill.
+  expect(s.accounts.map((a) => a.kind)).toEqual(['CONTRACT', 'OTHER_SALES']);
+  const contract = s.accounts[0]!;
+  expect(contract).toMatchObject({ invoiceCount: 0, billedToDate: '0.00', balanceDue: '0.00' });
+  expect(contract.leftToBill).toBe(contract.contractValue);
+  const other = s.accounts[1]!;
+  // 1050 + 210 invoiced; 700 received (the bounced 50 was reversed); 21 credited.
+  expect(other).toMatchObject({ invoiced: '1260.00', received: '700.00', credited: '21.00', writtenOff: '0.00', balanceDue: '539.00', invoiceCount: 2 });
+  expect(other.contractValue).toBeNull();
+
+  expect(s.openInvoices.map((i) => i.balance).sort()).toEqual(['189.00', '350.00']);
+  const owed = s.openInvoices.reduce((sum, i) => sum.plus(i.balance), new Decimal(0));
+  expect(owed.minus(s.onAccount).toFixed(2)).toBe(s.closingBalance);
+  expect(s.openInvoices.every((i) => i.label === 'Crane hire')).toBe(true);
+  // Due on the invoice date, long past.
+  expect(s.openInvoices[0]!.daysOverdue).toBeGreaterThan(0);
+  expect(s.overdue).toBe('539.00');
+  expect(s.retentionHeld).toBe('0.00');
+});
