@@ -1290,8 +1290,9 @@ export class ClientInvoiceService {
 
       // The number is claimed before posting, in the same transaction, so the journal names the
       // invoice a reader knows (INV-000002) rather than its database id. A failed post rolls the
-      // claim back with it — no number is burnt.
-      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE');
+      // claim back with it — no number is burnt. CI-8: a yearly / monthly / daily format numbers the
+      // invoice by its own invoice date (a December invoice issued in January is INV-2025-…).
+      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE', undefined, invoice.invoiceDate);
 
       const postResult = await this.postingPort.post(
         {

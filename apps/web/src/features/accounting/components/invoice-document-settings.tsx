@@ -30,6 +30,7 @@ import type {
   InvoicePaymentAccount,
   UpdateInvoiceDocumentSettingsBody,
 } from '../types';
+import { InvoiceNumberingSettings } from './invoice-numbering-settings';
 import { InvoiceSettingsPreview } from './invoice-settings-preview';
 import { LoadError } from '@/components/load-error';
 
@@ -252,6 +253,8 @@ function SettingsForm({ settings }: { settings: InvoiceDocumentSettings }) {
         <h2 className="text-h2 font-semibold text-foreground">{t('title')}</h2>
         <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{t('description')}</p>
       </div>
+
+      <InvoiceNumberingSettings />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,30rem)]">
         <form className="min-w-0 space-y-6" onSubmit={handleSubmit} aria-label={t('title')}>

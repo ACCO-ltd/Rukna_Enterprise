@@ -51,6 +51,8 @@ import {
   createTaxCode,
   listTaxCodes,
   getInvoiceDocumentSettings,
+  getInvoiceNumbering,
+  updateInvoiceNumbering,
   updateInvoiceDocumentSettings,
   previewInvoiceDocumentSettings,
   setDefaultOutputTaxCode,
@@ -95,6 +97,8 @@ import type {
   ReverseJournalPayload,
   TrialBalance,
   InvoiceDocumentSettings,
+  InvoiceNumbering,
+  UpdateInvoiceNumberingBody,
   UpdateInvoiceDocumentSettingsBody,
   UpdateBankAccountBody,
 } from '../types';
@@ -112,6 +116,7 @@ export const accountingKeys = {
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
   taxCodes: () => [...accountingKeys.all, 'tax-codes'] as const,
   invoiceDocumentSettings: () => [...accountingKeys.all, 'invoice-document-settings'] as const,
+  invoiceNumbering: () => [...accountingKeys.all, 'invoice-numbering'] as const,
   bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
   signatories: (bankAccountId: string) =>
     [...accountingKeys.all, 'signatories', bankAccountId] as const,
@@ -900,6 +905,23 @@ export function useRunAccountingSetup() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: accountingKeys.all });
       void qc.invalidateQueries({ queryKey: ['procurement'] });
+    },
+  });
+}
+
+// ─── Invoice numbering (CI-8) ───────────────────────────────────────────────────
+
+export function useInvoiceNumbering(): UseQueryResult<InvoiceNumbering, Error> {
+  return useQuery({ queryKey: accountingKeys.invoiceNumbering(), queryFn: getInvoiceNumbering });
+}
+
+export function useUpdateInvoiceNumbering() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateInvoiceNumberingBody) => updateInvoiceNumbering(body),
+    meta: { successToast: 'accounting.feedback.invoiceNumberingSaved', flashRow: false },
+    onSuccess: (view) => {
+      qc.setQueryData(accountingKeys.invoiceNumbering(), view);
     },
   });
 }
