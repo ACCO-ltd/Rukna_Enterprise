@@ -12,14 +12,19 @@ export interface ConfigureBankAccountDto {
   accountNumber: string;
   currencyCode: string;
   glAccountCode: string;
+  kind?: BankAccountKind;
   allowsReceipts: boolean;
   allowsPayments: boolean;
 }
+
+/** PM-3 — a bank account, a cash box or a mobile-money wallet; receipts land by payment method. */
+export type BankAccountKind = 'BANK' | 'CASH' | 'MOBILE_WALLET';
 
 export interface UpdateBankAccountDto {
   accountName?: string;
   bankName?: string;
   accountNumber?: string;
+  kind?: BankAccountKind;
   allowsReceipts?: boolean;
   allowsPayments?: boolean;
 }
@@ -62,6 +67,7 @@ export class BankAccountService {
       accountNumber: dto.accountNumber,
       currencyCode: dto.currencyCode,
       glAccountId: glAccount.id,
+      kind: dto.kind ?? 'BANK',
       allowsReceipts: dto.allowsReceipts,
       allowsPayments: dto.allowsPayments,
       createdBy: userId,
@@ -102,6 +108,7 @@ export class BankAccountService {
         data[field] = value;
       }
     }
+    if (dto.kind !== undefined) data.kind = dto.kind;
     if (dto.allowsReceipts !== undefined) data.allowsReceipts = dto.allowsReceipts;
     if (dto.allowsPayments !== undefined) data.allowsPayments = dto.allowsPayments;
     try {

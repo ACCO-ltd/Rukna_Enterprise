@@ -21,6 +21,8 @@ import {
 } from '../api/receipts-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 import { openSignedDocument } from '@/lib/open-signed-document';
+import { uploadFile } from '@/features/files/api/files-api';
+import { attachFinanceFile } from '@/features/finance-attachments/api';
 import { invoiceKeys } from '@/features/accounting/hooks/use-invoices';
 import { todayWireDate } from '@/features/accounting/invoice-overdue';
 
@@ -51,16 +53,35 @@ export function useReceipt(id: string): UseQueryResult<ReceiptDetail, Error> {
   });
 }
 
+/**
+ * PM — the optional proof file goes onto the receipt once it exists. The receipt is saved either
+ * way; a failed upload opens the receipt with `?proof=failed` so the reader can attach it again.
+ */
+async function withProof<T extends { id: string }>(saved: Promise<T>, proof?: File | null) {
+  const receipt = await saved;
+  if (!proof) return { receipt, proofFailed: false };
+  try {
+    await attachFinanceFile('RECEIPT', receipt.id, await uploadFile(proof));
+    return { receipt, proofFailed: false };
+  } catch {
+    return { receipt, proofFailed: true };
+  }
+}
+
+const receiptHref = ({ receipt, proofFailed }: { receipt: { id: string }; proofFailed: boolean }) =>
+  `/receipts/${receipt.id}${proofFailed ? '?proof=failed' : ''}`;
+
 export function useCreateReceipt() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: CreateReceiptPayload) => createReceipt(payload),
+    mutationFn: ({ payload, proof }: { payload: CreateReceiptPayload; proof?: File | null }) =>
+      withProof(createReceipt(payload), proof),
     meta: { successToast: 'accounting.feedback.receiptRecorded' },
-    onSuccess: async (receipt) => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: receiptKeys.all });
-      router.push(`/receipts/${receipt.id}`);
+      router.push(receiptHref(result));
     },
   });
 }
@@ -71,14 +92,15 @@ export function useReceivePayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: ReceivePaymentPayload) => receivePayment(payload),
+    mutationFn: ({ payload, proof }: { payload: ReceivePaymentPayload; proof?: File | null }) =>
+      withProof(receivePayment(payload), proof),
     meta: { successToast: 'accounting.feedback.paymentReceived' },
-    onSuccess: async (receipt) => {
+    onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: receiptKeys.all }),
         queryClient.invalidateQueries({ queryKey: ['accounting'] }),
       ]);
-      router.push(`/receipts/${receipt.id}`);
+      router.push(receiptHref(result));
     },
   });
 }

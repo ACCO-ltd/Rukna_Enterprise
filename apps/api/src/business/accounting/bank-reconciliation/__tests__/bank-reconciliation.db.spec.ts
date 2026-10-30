@@ -15,6 +15,7 @@ import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests_
 import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
 import { BankReconciliationService } from '../application/bank-reconciliation.service';
 import { BankStatementRepository } from '../infrastructure/bank-statement.repository';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -47,6 +48,7 @@ beforeAll(async () => {
 
   // The ledger: 1000 received on day 1, 300 paid on day 3, a 200 cheque written on day 10.
   await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: plus(1), amount: '1000.00', currency: 'USD', allocations: [],
   });
   await payment(300, 3);

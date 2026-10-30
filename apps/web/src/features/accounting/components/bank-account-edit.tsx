@@ -12,12 +12,13 @@ import {
   FormDialogFooter,
   FormField,
   Input,
+  Select,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
 import { useUpdateBankAccount } from '../hooks/use-accounting';
-import type { BankAccount } from '../types';
+import type { BankAccount, BankAccountKind } from '../types';
 
 /** The placeholder setup stores when no account number was given ("Not recorded (10100)"). */
 export function accountNumberRecorded(accountNumber: string): boolean {
@@ -30,6 +31,8 @@ export function accountNumberRecorded(accountNumber: string): boolean {
  */
 export function EditBankAccountDialog({ bank, onClose }: { bank: BankAccount; onClose: () => void }) {
   const t = useTranslations('accounting.bankAccounts.edit');
+  const tKind = useTranslations('accounting.bankAccounts.kind');
+  const [kind, setKind] = useState<BankAccountKind>(bank.kind ?? 'BANK');
   const mutation = useUpdateBankAccount();
   const [accountName, setAccountName] = useState(bank.accountName);
   const [bankName, setBankName] = useState(bank.bankName);
@@ -49,6 +52,7 @@ export function EditBankAccountDialog({ bank, onClose }: { bank: BankAccount; on
           accountName: accountName.trim(),
           bankName: bankName.trim(),
           ...(accountNumber.trim() ? { accountNumber: accountNumber.trim() } : {}),
+          kind,
           allowsReceipts,
           allowsPayments,
         },
@@ -64,7 +68,7 @@ export function EditBankAccountDialog({ bank, onClose }: { bank: BankAccount; on
       title={t('title')}
       subtitle={bank.accountName}
       size="md"
-      dirty={accountName !== bank.accountName || bankName !== bank.bankName || allowsReceipts !== bank.allowsReceipts || allowsPayments !== bank.allowsPayments}
+      dirty={kind !== (bank.kind ?? 'BANK') || accountName !== bank.accountName || bankName !== bank.bankName || allowsReceipts !== bank.allowsReceipts || allowsPayments !== bank.allowsPayments}
       busy={mutation.isPending}
     >
       <FormDialogBody>
@@ -77,6 +81,15 @@ export function EditBankAccountDialog({ bank, onClose }: { bank: BankAccount; on
         </FormField>
         <FormField htmlFor="ba-number" label={t('accountNumber')} hint={accountNumberRecorded(bank.accountNumber) ? undefined : t('numberMissingHint')}>
           <Input id="ba-number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} maxLength={50} />
+        </FormField>
+        <FormField htmlFor="ba-kind" label={t('kind')}>
+          <Select id="ba-kind" value={kind} onChange={(value) => setKind(value as BankAccountKind)}>
+            {(['BANK', 'CASH', 'MOBILE_WALLET'] as const).map((k) => (
+              <option key={k} value={k}>
+                {tKind(k)}
+              </option>
+            ))}
+          </Select>
         </FormField>
         <CheckboxField id="ba-receipts" label={t('allowsReceipts')} checked={allowsReceipts} onChange={(e) => setAllowsReceipts(e.target.checked)} />
         <CheckboxField id="ba-payments" label={t('allowsPayments')} checked={allowsPayments} onChange={(e) => setAllowsPayments(e.target.checked)} />

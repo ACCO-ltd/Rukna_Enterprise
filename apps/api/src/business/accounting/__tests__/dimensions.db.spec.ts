@@ -11,6 +11,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 import { AccountingFixtureFactory, type AccountingTestEnv } from './helpers/fixture.factory';
 import { buildServices, type AccountingServices } from './helpers/build-services';
+import { transferProof } from './helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -61,6 +62,7 @@ it('DIM-01: every line of an invoice, and of its reversal, names the client', as
 
 it('DIM-02: bank lines name the client who paid and the supplier who was paid', async () => {
   const receipt = await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: day, amount: '250.00', currency: 'USD', allocations: [],
   });
   const r = await prisma.paymentReceipt.findUniqueOrThrow({ where: { id: (receipt as { id: string }).id } });

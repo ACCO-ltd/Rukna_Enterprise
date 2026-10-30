@@ -609,6 +609,13 @@ export interface Receipt {
   /** Assigned when the receipt is posted (e.g. 'RCP-000017'); null before. */
   receiptNumber?: string | null;
   paymentMethod?: string | null;
+  /** PM-1 — the payment method's proof; each column's meaning depends on the method. */
+  instrumentNumber?: string | null;
+  issuer?: string | null;
+  instrumentDate?: string | null;
+  payerName?: string | null;
+  payerAccount?: string | null;
+  receivedBy?: string | null;
   reference: string | null;
   notes: string | null;
   documentStatus: string;

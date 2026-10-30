@@ -15,6 +15,7 @@ import { buildServices, type AccountingServices } from '../../__tests__/helpers/
 import { FinanceHomeService } from '../application/finance-home.service';
 import { FinanceHomeRepository } from '../infrastructure/finance-home.repository';
 import { AgingReportService } from '../application/aging-report.service';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -45,6 +46,7 @@ beforeAll(async () => {
   });
   await svc.clientInvoiceService.issue(env.identity, inv.id);
   await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: openDay, amount: '400.00', currency: 'USD',
     allocations: [{ clientInvoiceId: inv.id, amount: 400 }],
   });

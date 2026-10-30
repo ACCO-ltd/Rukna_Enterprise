@@ -313,7 +313,8 @@
           "body": "Each GL account maps to exactly one bank account, and all of them are taken. Add another cash and bank account to the chart first."
         }
       },
-      "currency": "Currency"
+      "currency": "Currency",
+      "kind": "Type"
     },
     "colStatus": "Status",
     "signatories": {
@@ -390,7 +391,13 @@
       "required": "Required.",
       "failed": "The bank account could not be saved.",
       "cancel": "Cancel",
-      "save": "Save"
+      "save": "Save",
+      "kind": "Type"
+    },
+    "kind": {
+      "BANK": "Bank account",
+      "CASH": "Cash box",
+      "MOBILE_WALLET": "Mobile-money wallet"
     }
   },
   "reconciliation": {

@@ -21,6 +21,29 @@ import { PaymentReceiptArRepository } from '../infrastructure/payment-receipt-ar
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import {
+  ACCOUNT_KIND_FOR_METHOD,
+  RECEIPT_PAYMENT_METHODS,
+  describeInstrument,
+  normaliseDetails,
+  paymentDetailProblems,
+  type NormalisedDetails,
+  type PaymentDetails,
+  type ReceiptPaymentMethod,
+} from '../domain/receipt-payment-method.js';
+
+/** A new receipt's fields that the payment-method rules read (PM-1). */
+type RecordableReceipt = PaymentDetails & {
+  clientId: string;
+  amount: string;
+  currency: string;
+  receiptDate: string;
+  paymentMethod?: string;
+};
+
+const NO_DETAILS: NormalisedDetails = {
+  instrumentNumber: null, issuer: null, instrumentDate: null, payerName: null, payerAccount: null, receivedBy: null,
+};
 
 // ADR-024 ACC-POST-001: bankAccountCode is an explicit choice (which account received the
 // money); arAccountCode/unappliedAccountCode are optional overrides, resolved by role when absent.
@@ -29,6 +52,8 @@ export interface PostReceiptDto {
   /** The registered bank account the money landed in (RC-3); `bankAccountCode` names it by GL code. */
   bankAccountId?: string;
   bankAccountCode?: string;
+  /** PM-4 — the day a cheque on hand is deposited (today when omitted); it posts on that date. */
+  depositDate?: string;
   arAccountCode?: string;
   unappliedAccountCode?: string;
   /** Invoices to allocate at post time — optional; remaining goes to Unapplied */
@@ -95,8 +120,9 @@ export class CustomerReceiptService {
     // RC-3: the money lands in a registered bank account that takes receipts, in the receipt's
     // currency — the same checks as Receive payment. The AR control and unapplied-cash accounts
     // resolve server-side by role (ACC-POST-001), overridable via DTO.
-    const bank = await this.receivingBank(prisma, orgId, dto, receipt.currencyCode);
+    const bank = await this.receivingBank(prisma, orgId, dto, receipt.currencyCode, receipt.paymentMethod);
     const bankGl = { id: bank.glAccount.id };
+    const postingDate = this.depositDay(receipt, dto.depositDate);
 
     const arGl = await this.resolver.resolveByCodeOrRole(
       prisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
@@ -132,7 +158,7 @@ export class CustomerReceiptService {
       // then match nothing (it is POSTED by then) — one journal, one number, one set of allocations.
       const claimed = await tx.paymentReceipt.updateMany({
         where: { id: receipt.id, postingStatus: 'NOT_POSTED', documentStatus: { not: 'CANCELLED' } },
-        data: { bankAccountId: bank.id, lastPostingAttemptAt: new Date() },
+        data: { bankAccountId: bank.id, accountingDate: postingDate, lastPostingAttemptAt: new Date() },
       });
       if (claimed.count === 0) {
         throw new ConflictException({ errorCode: 'RECEIPT_ALREADY_POSTED', message: 'This receipt was posted or cancelled a moment ago. Reload it.' });
@@ -173,7 +199,7 @@ export class CustomerReceiptService {
       const postResult = await this.postingPort.post(
         {
           organizationId: orgId,
-          accountingDate: receipt.accountingDate,
+          accountingDate: postingDate,
           documentDate: receipt.receiptDate,
           description: `Customer receipt ${receiptNumber}`,
           currencyCode: receipt.currencyCode,
@@ -208,7 +234,7 @@ export class CustomerReceiptService {
           paymentReceiptId: receipt.id,
           clientInvoiceId: alloc.clientInvoiceId,
           allocatedAmount: new Decimal(alloc.amount),
-          allocationDate: receipt.accountingDate,
+          allocationDate: postingDate,
           journalEntryId: postResult.journalEntryId,
           postingStatus: 'POSTED',
           createdBy: userId,
@@ -254,6 +280,7 @@ export class CustomerReceiptService {
     orgId: string,
     ref: { bankAccountId?: string; bankAccountCode?: string },
     currency: string,
+    method?: string | null,
   ) {
     if (!ref.bankAccountId && !ref.bankAccountCode) {
       throw new BadRequestException({ errorCode: 'BANK_ACCOUNT_REQUIRED', message: 'Choose the bank account the money arrived in.' });
@@ -274,7 +301,37 @@ export class CustomerReceiptService {
         message: `${bank.accountName} holds ${bank.currencyCode}; this payment is ${currency}.`,
       });
     }
+    // PM-3 — cash lands in a cash box, mobile money in a wallet, the rest in a bank account.
+    const kind = method ? ACCOUNT_KIND_FOR_METHOD[method as ReceiptPaymentMethod] : undefined;
+    if (kind && bank.kind !== kind) {
+      const where = { BANK: 'a bank account', CASH: 'a cash box', MOBILE_WALLET: 'a mobile-money wallet' }[kind];
+      throw new BadRequestException({
+        errorCode: 'BANK_ACCOUNT_WRONG_KIND',
+        message: `This payment method is received into ${where}; ${bank.accountName} is not one.`,
+      });
+    }
     return bank;
+  }
+
+  /**
+   * PM-4 — the day a receipt posts. A cheque dated later than the receipt is a cheque on hand: it
+   * posts when deposited (`depositDate`, today by default), never before the cheque date.
+   */
+  private depositDay(
+    receipt: { paymentMethod: string | null; instrumentDate: Date | null; accountingDate: Date },
+    depositDate?: string,
+  ): Date {
+    const onHand =
+      receipt.paymentMethod === 'CHEQUE' && receipt.instrumentDate && receipt.instrumentDate.getTime() > receipt.accountingDate.getTime();
+    if (!onHand) return receipt.accountingDate;
+    const day = new Date(depositDate ?? new Date().toISOString().slice(0, 10));
+    if (day.getTime() < receipt.instrumentDate!.getTime()) {
+      throw new BadRequestException({
+        errorCode: 'CHEQUE_NOT_DUE',
+        message: `This cheque is dated ${receipt.instrumentDate!.toISOString().slice(0, 10)}; it can be deposited from that day.`,
+      });
+    }
+    return day;
   }
 
   /**
@@ -723,6 +780,8 @@ export class CustomerReceiptService {
       paymentMethod?: string;
       reference?: string;
       notes?: string;
+      /** PM-1 — the method's proof, already checked and normalised. */
+      details?: NormalisedDetails;
       allocations: Array<{ clientInvoiceId: string; amount: number }>;
     },
     tx: Prisma.TransactionClient,
@@ -760,6 +819,7 @@ export class CustomerReceiptService {
         unallocatedAmount: totalAmount,
         currencyCode: dto.currency,
         paymentMethod: dto.paymentMethod ?? null,
+        ...(dto.details ?? NO_DETAILS),
         reference: dto.reference ?? null,
         notes: dto.notes ?? null,
         createdBy: userId,
@@ -865,7 +925,7 @@ export class CustomerReceiptService {
       reference?: string;
       notes?: string;
       allocations?: Array<{ clientInvoiceId: string; amount: number }>;
-    },
+    } & PaymentDetails,
   ) {
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
@@ -873,9 +933,16 @@ export class CustomerReceiptService {
     const allocations = dto.allocations ?? [];
 
     const total = new Decimal(dto.amount);
-    await this.assertRecordable(prisma, orgId, dto);
+    const details = await this.assertRecordable(prisma, orgId, dto);
 
-    const bank = await this.receivingBank(prisma, orgId, { bankAccountId: dto.bankAccountId }, dto.currency);
+    const bank = await this.receivingBank(prisma, orgId, { bankAccountId: dto.bankAccountId }, dto.currency, dto.paymentMethod);
+
+    // PM-4 — a cheque dated after the day it is received is held, not banked: it is recorded with
+    // its bank account and posts when deposited (Post → Deposit), on or after the cheque date.
+    if (details.instrumentDate && dto.paymentMethod === 'CHEQUE' && details.instrumentDate.getTime() > new Date(dto.receiptDate).getTime()) {
+      const held = await this.saveReceipt(prisma, identity, dto, details, bank.id);
+      return this.findById(identity, held.id);
+    }
 
     const ids = allocations.map((a) => a.clientInvoiceId);
     if (new Set(ids).size !== ids.length) {
@@ -911,9 +978,9 @@ export class CustomerReceiptService {
     const { receiptId } = await prisma.$transaction(async (tx) => {
       const result = await this.createAndPost(
         identity,
-        { ...dto, bankAccountCode: bank.glAccount.code, allocations },
+        { ...dto, bankAccountCode: bank.glAccount.code, details, allocations },
         tx,
-      );
+      ).catch((err: unknown) => this.duplicateProof(err, dto.paymentMethod));
       // The invoices' outstanding balances moved inside the same transaction; a concurrent receipt
       // that already settled one would drive it below zero, so re-check before committing.
       if (ids.length) {
@@ -929,20 +996,45 @@ export class CustomerReceiptService {
   // accounting date is captured on the receipt form, so the receipt date is its accounting date.
   async create(identity: RequestIdentity, dto: CreateReceiptDto) {
     const prisma = this.tenancyService.getClient();
-    await this.assertRecordable(prisma, identity.activeOrganizationId, dto);
+    const details = await this.assertRecordable(prisma, identity.activeOrganizationId, dto);
+    return this.saveReceipt(prisma, identity, dto, details);
+  }
+
+  private async saveReceipt(
+    prisma: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    dto: RecordableReceipt & { reference?: string; notes?: string },
+    details: NormalisedDetails,
+    bankAccountId?: string,
+  ) {
     const receiptDate = new Date(dto.receiptDate);
-    return this.receiptRepo.create(prisma, {
-      organizationId: identity.activeOrganizationId,
-      clientId: dto.clientId,
-      receiptDate,
-      accountingDate: receiptDate,
-      totalAmount: dto.amount,
-      currencyCode: dto.currency,
-      paymentMethod: dto.paymentMethod,
-      reference: dto.reference?.trim() || undefined,
-      notes: dto.notes?.trim() || undefined,
-      createdBy: identity.userId,
-    });
+    return this.receiptRepo
+      .create(prisma as never, {
+        organizationId: identity.activeOrganizationId,
+        clientId: dto.clientId,
+        bankAccountId,
+        receiptDate,
+        accountingDate: receiptDate,
+        totalAmount: dto.amount,
+        currencyCode: dto.currency,
+        paymentMethod: dto.paymentMethod,
+        details,
+        reference: dto.reference?.trim() || undefined,
+        notes: dto.notes?.trim() || undefined,
+        createdBy: identity.userId,
+      })
+      .catch((err: unknown) => this.duplicateProof(err, dto.paymentMethod));
+  }
+
+  /** A concurrent receipt claimed the same proof between the check and the write (PM-2's index). */
+  private duplicateProof(err: unknown, method?: string): never {
+    if ((err as { code?: string })?.code === 'P2002' && String((err as { meta?: { target?: unknown } }).meta?.target ?? '').includes('instrument')) {
+      throw new ConflictException({
+        errorCode: 'PAYMENT_PROOF_ALREADY_USED',
+        message: `That ${method === 'CHEQUE' ? 'cheque' : 'payment'} was just recorded on another receipt.`,
+      });
+    }
+    throw err;
   }
 
   /**
@@ -953,8 +1045,8 @@ export class CustomerReceiptService {
   private async assertRecordable(
     prisma: Prisma.TransactionClient,
     orgId: string,
-    dto: { clientId: string; amount: string; currency: string },
-  ): Promise<void> {
+    dto: RecordableReceipt,
+  ): Promise<NormalisedDetails> {
     if (dto.currency !== 'USD') {
       throw new BadRequestException({ errorCode: 'CURRENCY_NOT_SUPPORTED', message: 'Receipts are recorded in US dollars (USD) only.' });
     }
@@ -963,6 +1055,41 @@ export class CustomerReceiptService {
     }
     const client = await prisma.client.findFirst({ where: { id: dto.clientId, organizationId: orgId }, select: { id: true } });
     if (!client) throw new NotFoundException({ errorCode: 'CLIENT_NOT_FOUND', message: 'That client was not found.' });
+
+    // PM-1 — the method, and the proof it needs, before anything is written.
+    if (!dto.paymentMethod || !RECEIPT_PAYMENT_METHODS.includes(dto.paymentMethod as ReceiptPaymentMethod)) {
+      throw new BadRequestException({ errorCode: 'PAYMENT_METHOD_REQUIRED', message: 'Choose how the client paid.' });
+    }
+    const method = dto.paymentMethod as ReceiptPaymentMethod;
+    const problems = paymentDetailProblems(method, dto);
+    if (problems.length) {
+      throw new BadRequestException({ errorCode: 'PAYMENT_DETAILS_INVALID', message: problems.join(' '), details: { problems } });
+    }
+    const details = normaliseDetails(method, dto);
+
+    // PM-2 — the same proof cannot pay twice. A reversed (bounced cheque) or cancelled receipt frees it.
+    if (details.instrumentNumber) {
+      const used = await prisma.paymentReceipt.findFirst({
+        where: {
+          organizationId: orgId,
+          paymentMethod: method,
+          // A bank typed "premier bank" is the same bank as "Premier Bank".
+          issuer: details.issuer ? { equals: details.issuer, mode: 'insensitive' } : null,
+          instrumentNumber: details.instrumentNumber,
+          postingStatus: { not: 'REVERSED' },
+          documentStatus: { not: 'CANCELLED' },
+        },
+        select: { receiptNumber: true },
+      });
+      if (used) {
+        throw new ConflictException({
+          errorCode: 'PAYMENT_PROOF_ALREADY_USED',
+          message: `${describeInstrument(method, details.issuer, details.instrumentNumber)} is already on ${used.receiptNumber ?? 'an unposted receipt'}.`,
+          details: { receiptNumber: used.receiptNumber },
+        });
+      }
+    }
+    return details;
   }
 
   /**

@@ -8,10 +8,18 @@ import type { Receipt } from './types';
  * thing to finish.
  */
 export type ReceiptListState =
-  'NOT_POSTED' | 'POSTING' | 'POSTING_FAILED' | 'UNALLOCATED' | 'RECEIVED' | 'REVERSED' | 'CANCELLED';
+  | 'NOT_POSTED'
+  | 'CHEQUE_ON_HAND'
+  | 'POSTING'
+  | 'POSTING_FAILED'
+  | 'UNALLOCATED'
+  | 'RECEIVED'
+  | 'REVERSED'
+  | 'CANCELLED';
 
 export function receiptListState(
-  receipt: Pick<Receipt, 'postingStatus' | 'unallocatedAmount'> & Partial<Pick<Receipt, 'documentStatus'>>,
+  receipt: Pick<Receipt, 'postingStatus' | 'unallocatedAmount'> &
+    Partial<Pick<Receipt, 'documentStatus' | 'paymentMethod' | 'instrumentDate' | 'receiptDate'>>,
 ): ReceiptListState {
   // RC-5 — an unposted receipt set aside.
   if (receipt.documentStatus === 'CANCELLED') return 'CANCELLED';
@@ -25,7 +33,13 @@ export function receiptListState(
     case 'POSTED':
       return toMinorUnits(receipt.unallocatedAmount, 2) > 0 ? 'UNALLOCATED' : 'RECEIVED';
     default:
-      return 'NOT_POSTED';
+      // PM-4 — a post-dated cheque waiting to be deposited.
+      return receipt.paymentMethod === 'CHEQUE' &&
+        receipt.instrumentDate &&
+        receipt.receiptDate &&
+        receipt.instrumentDate.slice(0, 10) > receipt.receiptDate.slice(0, 10)
+        ? 'CHEQUE_ON_HAND'
+        : 'NOT_POSTED';
   }
 }
 
@@ -34,6 +48,7 @@ export const RECEIPT_LIST_STATE_TONE: Record<
   'neutral' | 'progress' | 'attention' | 'success' | 'danger' | 'historical'
 > = {
   NOT_POSTED: 'neutral',
+  CHEQUE_ON_HAND: 'progress',
   POSTING: 'progress',
   POSTING_FAILED: 'danger',
   UNALLOCATED: 'attention',

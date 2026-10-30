@@ -1,6 +1,6 @@
 import { currentVersion } from './account-display';
 
-import type { Account, BankAccount } from './types';
+import type { Account, BankAccount, BankAccountKind } from './types';
 
 /**
  * ─── Configuring a bank account ─────────────────────────────────────────────────
@@ -72,6 +72,7 @@ export interface BankAccountDraft {
   bankName: string;
   accountNumber: string;
   glAccountCode: string;
+  kind: BankAccountKind;
   allowsReceipts: boolean;
   allowsPayments: boolean;
 }
@@ -82,6 +83,7 @@ export function emptyBankAccountDraft(): BankAccountDraft {
     bankName: '',
     accountNumber: '',
     glAccountCode: '',
+    kind: 'BANK',
     // Both default on: a bank account that can neither receive nor pay is configuration with
     // no purpose, and the seeded accounts allow both.
     allowsReceipts: true,
@@ -127,6 +129,7 @@ export interface ConfigureBankAccountBody {
   accountNumber: string;
   currencyCode: string;
   glAccountCode: string;
+  kind: BankAccountKind;
   allowsReceipts: boolean;
   allowsPayments: boolean;
 }
@@ -143,6 +146,7 @@ export function toConfigureBankAccountBody(
     // Single-currency platform (ADR-024): USD is implicit, never entered.
     currencyCode: 'USD',
     glAccountCode: draft.glAccountCode,
+    kind: draft.kind,
     allowsReceipts: draft.allowsReceipts,
     allowsPayments: draft.allowsPayments,
   };
@@ -175,6 +179,7 @@ export function cashAccountPreset(
       bankName: names.cashBoxName,
       accountNumber: 'CASH-BOX',
       glAccountCode: gl,
+      kind: 'CASH',
     };
   }
   return {
@@ -183,6 +188,7 @@ export function cashAccountPreset(
     bankName: names.evcProvider,
     // The float's merchant number when known; a readable placeholder otherwise (editable).
     accountNumber: 'EVC-FLOAT',
+    kind: 'MOBILE_WALLET',
     glAccountCode: named(/evc|zaad|mobile money|float/i),
   };
 }

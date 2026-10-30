@@ -13,6 +13,7 @@ import { buildServices, type AccountingServices } from '../../__tests__/helpers/
 import { BankAccountService } from '../application/bank-account.service';
 import { AccountRepository } from '../infrastructure/account.repository';
 import { BankAccountRepository } from '../infrastructure/bank-account.repository';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -29,6 +30,7 @@ beforeAll(async () => {
   svc = buildServices(prisma);
   banks = new BankAccountService({ getClient: () => prisma } as never, new BankAccountRepository(), new AccountRepository());
   await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: day(), amount: '1250.00', currency: 'USD', allocations: [],
   });
 }, 90_000);
