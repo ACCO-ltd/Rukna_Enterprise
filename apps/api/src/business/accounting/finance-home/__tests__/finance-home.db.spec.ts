@@ -84,7 +84,7 @@ it('FH-02: a receivables clerk sees receivables only', async () => {
 it('FH-03: the receivables aging agrees with Finance Home, by client and bucket', async () => {
   const today = new Date(env.periods.openStart.getTime() + 45 * 86_400_000);
   const aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
-  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'receivables', today);
+  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'receivables', undefined, today);
   expect(r.total).toBe('650.00');
   expect(r.totals.d31_60).toBe('650.00');
   expect(r.rows).toHaveLength(1);
@@ -104,11 +104,11 @@ it('FH-04: the payables aging includes opening bills; each side has its own perm
     },
   });
   const aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
-  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.payablesManage] }, 'payables', today);
+  const r = await aging.report({ ...env.identity, permissions: [PERMISSIONS.payablesManage] }, 'payables', undefined, today);
   const row = r.rows.find((x) => x.partyId === env.supplierId)!;
   expect(row.buckets.d31_60).toBe('500.00');
   expect(row.documents).toEqual([expect.objectContaining({ number: 'OPEN-1', daysLate: 59, opening: true, dueDate: '2026-01-31' })]);
 
-  await expect(aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'payables', today))
+  await expect(aging.report({ ...env.identity, permissions: [PERMISSIONS.receivablesManage] }, 'payables', undefined, today))
     .rejects.toMatchObject({ status: 403 });
 });

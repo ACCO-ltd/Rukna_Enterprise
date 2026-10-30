@@ -76,15 +76,31 @@ export interface AgingPartyRow {
   total: string;
   oldestDaysLate: number;
   documents: AgingDocument[];
+  /** AG-2 (receivables) — money the client paid ahead, held on account; lowers what they owe. */
+  onAccount?: string;
+  /** total − onAccount: what the client owes, as their statement shows it. */
+  netBalance?: string;
+  /** AG-3 (receivables) — retention held back on their contracts, due later on a release invoice. */
+  retentionHeld?: string;
 }
 
 export interface AgingReport {
   side: AgingSide;
   asOf: string;
+  /** AG-1 — true when the report is as of a past day (balances rebuilt to that day). */
+  historical?: boolean;
   totals: Record<AgingBucketKey, string>;
   total: string;
   /** Largest balance first. */
   rows: AgingPartyRow[];
+  onAccount?: string;
+  netTotal?: string;
+  retentionHeld?: string;
+  /**
+   * AG-4 — the control account in the ledger on the same day (AR or AP), and whether the aging
+   * total agrees with it. Null when the chart has no such account.
+   */
+  ledger?: { balance: string; difference: string; agrees: boolean } | null;
 }
 
 // ─── VAT report (Step 6) ─────────────────────────────────────────────────
