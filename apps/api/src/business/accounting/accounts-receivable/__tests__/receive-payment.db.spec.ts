@@ -7,6 +7,8 @@
  *          more than an invoice owes, a bank account in another currency
  *   RP-04  AR-2: reversing a receipt (bounced cheque) records when, who and why, posts the mirror,
  *          and the invoice owes again; it needs a reason and refuses after later applications
+ *   RP-05  CI-3: the invoice read says what settled it — payments listed, reversed ones left out —
+ *          and total = paid + credited + written off + still owed
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -129,4 +131,21 @@ it('RP-04: reversing a receipt records why, mirrors the journal, and the invoice
   const mirror = await prisma.journalLine.findMany({ where: { journalEntryId: after.reversalJournalEntryId! } });
   expect(mirror.find((l) => l.accountId === env.accounts.bankId)?.creditAmount.toFixed(2)).toBe('30.00');
   expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: issuedId } })).outstandingAmount.toFixed(2)).toBe(before);
+});
+
+it('RP-05 (CI-3): the invoice lists its payments and ties out, leaving reversed receipts out', async () => {
+  const detail = await svc.clientInvoiceService.findById(env.identity, issuedId);
+  const live = await prisma.clientReceiptAllocation.findMany({
+    where: { clientInvoiceId: issuedId, postingStatus: 'POSTED' },
+  });
+  expect(detail.payments.map((p) => p.amount).sort()).toEqual(live.map((a) => a.allocatedAmount.toFixed(2)).sort());
+  // RP-04's bounced 30.00 receipt is not a payment any more.
+  expect(detail.payments.every((p) => p.receiptNumber?.startsWith('RCP-'))).toBe(true);
+  expect(detail.payments.some((p) => p.amount === '30.00')).toBe(false);
+
+  const cents = (v: string) => Math.round(Number(v) * 100);
+  expect(cents(detail.amountPaid)).toBe(detail.payments.reduce((s, p) => s + cents(p.amount), 0));
+  expect(
+    cents(detail.amountPaid) + cents(detail.amountCredited) + cents(detail.amountWrittenOff) + cents(detail.outstandingAmount.toString()),
+  ).toBe(cents(detail.totalAmount.toString()));
 });

@@ -333,6 +333,52 @@ export class ClientInvoiceRepository {
     });
   }
 
+  /**
+   * CI-3 — what has settled each invoice, by kind: receipts applied, credit notes, write-offs.
+   * Posted rows only; a reversed receipt, credit note or write-off gave its amount back.
+   */
+  async findSettlementTotals(prisma: TenantPrisma, organizationId: string, invoiceIds: string[]) {
+    const totals = new Map<string, { paid: Decimal; credited: Decimal; writtenOff: Decimal }>();
+    if (invoiceIds.length === 0) return totals;
+    const zero = () => ({ paid: new Decimal(0), credited: new Decimal(0), writtenOff: new Decimal(0) });
+    const [paid, credited, writtenOff] = await Promise.all([
+      prisma.clientReceiptAllocation.groupBy({
+        by: ['clientInvoiceId'],
+        where: { organizationId, clientInvoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
+        _sum: { allocatedAmount: true },
+      }),
+      prisma.creditNote.groupBy({
+        by: ['invoiceId'],
+        where: { organizationId, invoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
+        _sum: { totalAmount: true },
+      }),
+      prisma.receivableWriteOff.groupBy({
+        by: ['invoiceId'],
+        where: { organizationId, invoiceId: { in: invoiceIds }, status: 'POSTED' },
+        _sum: { amount: true },
+      }),
+    ]);
+    const at = (id: string) => totals.get(id) ?? totals.set(id, zero()).get(id)!;
+    for (const row of paid) at(row.clientInvoiceId).paid = new Decimal(row._sum.allocatedAmount ?? 0);
+    for (const row of credited) at(row.invoiceId).credited = new Decimal(row._sum.totalAmount ?? 0);
+    for (const row of writtenOff) at(row.invoiceId).writtenOff = new Decimal(row._sum.amount ?? 0);
+    return totals;
+  }
+
+  /** CI-3 — the receipts applied to one invoice, oldest first. */
+  findPayments(prisma: TenantPrisma, organizationId: string, invoiceId: string) {
+    return prisma.clientReceiptAllocation.findMany({
+      where: { organizationId, clientInvoiceId: invoiceId, postingStatus: 'POSTED' },
+      select: {
+        id: true,
+        allocatedAmount: true,
+        allocationDate: true,
+        receipt: { select: { id: true, receiptNumber: true, receiptDate: true, paymentMethod: true, reference: true } },
+      },
+      orderBy: [{ allocationDate: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
   findUnpostedApproved(prisma: TenantPrisma, organizationId: string) {
     return prisma.clientInvoice.findMany({
       where: { organizationId, documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' },

@@ -1,3 +1,4 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
@@ -600,7 +601,11 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
 
 describe('findById — readable source (detail read path)', () => {
   function buildDetail(invoice: unknown) {
-    const repo = { findByIdWithSource: jest.fn().mockResolvedValue(invoice) };
+    const repo = {
+      findByIdWithSource: jest.fn().mockResolvedValue(invoice),
+      findSettlementTotals: jest.fn().mockResolvedValue(new Map()),
+      findPayments: jest.fn().mockResolvedValue([]),
+    };
     const tenancy = { getClient: () => ({}) };
     const service = new ClientInvoiceService(
       tenancy as never,
@@ -681,7 +686,12 @@ describe('findAll — every row carries its readable source (list read path)', (
         sourceBoqNode: null,
       },
     ];
-    const repo = { findAll: jest.fn().mockResolvedValue(rows) };
+    const repo = {
+      findAll: jest.fn().mockResolvedValue(rows),
+      findSettlementTotals: jest.fn().mockResolvedValue(
+        new Map([['inv-a', { paid: new Decimal('120'), credited: new Decimal('30'), writtenOff: new Decimal('0.5') }]]),
+      ),
+    };
     const service = new ClientInvoiceService(
       { getClient: () => ({}) } as never,
       repo as never,
@@ -699,6 +709,11 @@ describe('findAll — every row carries its readable source (list read path)', (
     expect(result.map((r) => r.source)).toEqual([
       { kind: 'INSTALLMENT', label: 'Structure', id: 'inst-1' },
       { kind: 'NONE', label: null, id: null },
+    ]);
+    // CI-3 — each row says what settled it, by kind; an untouched invoice reads all zeros.
+    expect(result.map((r) => [r.amountPaid, r.amountCredited, r.amountWrittenOff])).toEqual([
+      ['120.00', '30.00', '0.50'],
+      ['0.00', '0.00', '0.00'],
     ]);
     for (const r of result) {
       expect(r).not.toHaveProperty('sourceInstallment');
