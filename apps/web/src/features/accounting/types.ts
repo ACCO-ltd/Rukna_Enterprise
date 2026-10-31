@@ -807,18 +807,6 @@ export interface MigrationReport {
   readyForCfoApproval: boolean;
 }
 
-/**
- * Body of `POST /accounting/reconcile`.
- *
- * `bankAccountCodes` is `@IsArray() @IsOptional()` with no `@IsString({ each: true })`, so the
- * server would accept an array of anything. Sent as GL codes, which is what it reads.
- */
-export interface RunReconciliationPayload {
-  arAccountCode: string;
-  apAccountCode: string;
-  bankAccountCodes?: string[];
-  periodId?: string;
-}
 
 /**
  * One control account as `POST /accounting/reconcile` reports it.
@@ -829,14 +817,17 @@ export interface RunReconciliationPayload {
  * a component that tries to render both.
  */
 export interface ControlAccountCheck {
+  accountId: string;
   accountCode: string;
   accountName: string;
-  subledgerType: 'AR' | 'AP' | 'BANK';
+  subledgerType: 'AR' | 'AP';
+  /** On the account's own side (GL-L): a negative is a fault. */
   glBalance: string;
   subledgerBalance: string;
+  /** Books less documents, signed. */
   variance: string;
   reconciled: boolean;
-  periodId?: string;
+  documentCount: number;
 }
 
 export interface ReconciliationReport {

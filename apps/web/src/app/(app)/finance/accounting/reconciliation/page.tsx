@@ -1,9 +1,9 @@
-import { BankReconciliation } from '@/features/accounting/components/bank-reconciliation';
+import { SubledgerTieOut } from '@/features/accounting/components/subledger-tieout';
 
 export default function ReconciliationPage() {
   return (
-    <div className="w-full max-w-5xl">
-      <BankReconciliation />
+    <div className="w-full min-w-0 max-w-5xl">
+      <SubledgerTieOut />
     </div>
   );
 }
